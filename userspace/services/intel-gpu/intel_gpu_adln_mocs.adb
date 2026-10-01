@@ -20,7 +20,8 @@ package body Intel_GPU_ADLN_MOCS with SPARK_Mode is
          when 14 | 15 =>
             R.LRU_Management := 2; R.Do_Not_Allocate_On_Miss := 1;
          when 16 | 17 =>
-            R.Cacheability := 1; R.LRU_Management := 0; R.Snoop_Control := 1;
+            R.Cacheability := 1; R.LRU_Management := 0;
+            R.Snoop_Control := Noncoherent_Access;
          when 18 => R.Self_Snoop := 3;
          when 19 => R.Skip_Caching_Control := 7;
          when 20 => R.Skip_Caching_Control := 3;

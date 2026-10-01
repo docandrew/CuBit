@@ -264,7 +264,26 @@ package body CCL_Workspace is
       Highest : Revision;
    begin
       Scan (Highest, Result, Files, Collect => True);
-      if Result /= Succeeded then Files := (others => <>); end if;
+      if Result /= Succeeded then
+         Files := (others => <>);
+         return;
+      end if;
+      --  By name, whatever order the directory holds them in: dialogs and
+      --  :files list the same workspace the same way every time.
+      for I in 2 .. Files.Count loop
+         declare
+            Key : constant CuBit.File_Selection.File_Name := Files.Names (I);
+            J : Natural := I - 1;
+         begin
+            while J >= 1 and then
+              CuBit.File_Selection.Value (Files.Names (J)) > CuBit.File_Selection.Value (Key)
+            loop
+               Files.Names (J + 1) := Files.Names (J);
+               J := J - 1;
+            end loop;
+            Files.Names (J + 1) := Key;
+         end;
+      end loop;
    end List_Files;
 
    procedure Suggest_Name

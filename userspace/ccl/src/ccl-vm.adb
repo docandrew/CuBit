@@ -1,3 +1,4 @@
+with CCL.Text_Operations;
 with CCL.Ownership.Bytecode;
 with CCL.Checked_Arithmetic;
 
@@ -20,6 +21,8 @@ is
          when Boolean_Value => return (if Item.Boolean then "true" else "false");
          when Object_Value => return "<native object>";
          when Resource_Value => return "<resource " & CCL.Types.Image (D.Identifier) & ">";
+         --  The characters live in the run's region (Execution_Result).
+         when Text_Value => return "<text>";
          when Variant_Value =>
             return CCL.Types.Image (D.Identifier) & "." &
               CCL.Types.Image (D.Parts (Item.Alternative).Identifier) &
@@ -123,6 +126,30 @@ is
       end if;
    end Pop_Kind;
 
+   package T renames CCL.Text_Operations;
+   use type T.Operation;
+   use type T.Outcome;
+   use type T.Operand_Kind;
+
+   procedure Find_Operation
+     (Immediate : Integer_64; Item : out T.Operation; Found : out Boolean) is
+   begin
+      Item := T.Operation'First;
+      Found := False;
+      for Candidate in T.Operation loop
+         if Integer_64 (T.Operation'Enum_Rep (Candidate)) = Immediate then
+            Item := Candidate;
+            Found := True;
+         end if;
+      end loop;
+   end Find_Operation;
+
+   function Kind_Of (Kind : T.Operand_Kind) return Value_Kind is
+     (case Kind is
+         when T.Text_Operand => Text_Value,
+         when T.Integer_Operand => Integer_Value,
+         when T.Boolean_Operand => Boolean_Value);
+
    procedure Verify
      (Candidate : Program;
       Result    : out Validated_Program;
@@ -191,6 +218,16 @@ is
       Result := (Checked => False, Content => Candidate);
       Error := Valid;
 
+      --  Every text constant lies inside the pool's text.
+      for I in 1 .. Candidate.Constants_Length loop
+         if Candidate.Constants (I - 1).Length >
+           MAX_CONSTANT_BYTES - (Candidate.Constants (I - 1).First - 1)
+         then
+            Error := Invalid_Constant;
+            return;
+         end if;
+      end loop;
+
       -- A discovery snapshot may describe more types than this VM can execute.
       -- Registry construction/CCLB decoding already validate the definitions.
       -- Enforce executable shapes at each use below (locals, match tables,
@@ -226,8 +263,13 @@ is
          end;
       end loop;
       for L in 1 .. Candidate.Locals_Length loop
+         --  Text may live in a compiler-created (dynamic) local, never in an
+         --  initial local the host supplies: hosts cannot forge descriptors.
          if not Known_Value_Type (Candidate.Data_Types,
-           Candidate.Local_Kinds (L - 1), Candidate.Local_Data_Types (L - 1))
+           Candidate.Local_Kinds (L - 1), Candidate.Local_Data_Types (L - 1)) and then
+           not (Candidate.Local_Kinds (L - 1) = Text_Value and then
+                Candidate.Local_Data_Types (L - 1) = CCL.Types.Invalid_Type and then
+                L - 1 >= Candidate.Locals_Length - Candidate.Dynamic_Locals_Length)
          then Error := Invalid_Data_Type; return; end if;
          if Candidate.Local_Kinds (L - 1) = Resource_Value and then
            (Candidate.Local_Types (L - 1) >= Candidate.Types_Length or else
@@ -347,6 +389,44 @@ is
 
             when Push_Integer =>
                Push_Kind (State, Integer_Value, Error);
+
+            when Push_Text =>
+               if Instruction.Immediate not in 0 .. Integer_64 (Candidate.Constants_Length) - 1 then
+                  Error := Invalid_Constant;
+               else
+                  Push_Kind (State, Text_Value, Error);
+               end if;
+
+            when Concat_Text | Equal_Text =>
+               Pop_Kind (State, Text_Value, Error);
+               Pop_Kind (State, Text_Value, Error);
+               Push_Kind (State, (if Instruction.Op = Concat_Text then Text_Value else Boolean_Value), Error);
+
+            when Length_Text =>
+               Pop_Kind (State, Text_Value, Error);
+               Push_Kind (State, Integer_Value, Error);
+
+            when Text_Builtin =>
+               declare
+                  Operation : CCL.Text_Operations.Operation;
+                  Known : Boolean;
+               begin
+                  Find_Operation (Instruction.Immediate, Operation, Known);
+                  if not Known then
+                     Error := Invalid_Builtin;
+                  else
+                     declare
+                        Sig : constant CCL.Text_Operations.Signature :=
+                          CCL.Text_Operations.Signature_Of (Operation);
+                     begin
+                        Pop_Kind (State, Text_Value, Error);
+                        for I in reverse 1 .. Sig.Count loop
+                           Pop_Kind (State, Kind_Of (Sig.Operands (I)), Error);
+                        end loop;
+                        Push_Kind (State, Kind_Of (Sig.Result), Error);
+                     end;
+                  end if;
+               end;
 
             when Push_Boolean =>
                Push_Kind (State, Boolean_Value, Error);
@@ -779,6 +859,7 @@ is
       CCL.Execution_Budgets.Initialize (State.Execution_Budget, Fuel);
       CCL.Ownership.Initialize (State.Ownership);
       CCL.Imports.Initialize (State.Import_Lifecycle);
+      Text_Regions.Initialize (State.Text);
       if Initial_Locals_Length > 0 then
          State.Terminal := True;
          State.Terminal_Status := Invalid_Bytecode;
@@ -802,6 +883,7 @@ is
       CCL.Execution_Budgets.Initialize (State.Execution_Budget, Fuel);
       CCL.Ownership.Initialize (State.Ownership);
       CCL.Imports.Initialize (State.Import_Lifecycle);
+      Text_Regions.Initialize (State.Text);
       Accepted := Count = Initial_Locals_Length;
       if Accepted and then Count > 0 then
          for Local in 0 .. Count - 1 loop
@@ -835,6 +917,204 @@ is
       end if;
    end Initialize_With_Locals;
 
+   ---------------------------------------------------------------------------
+   --  Text operations of the executor. Each makes its result a new string in
+   --  the run's region and reports the region's status: Storage_Full and
+   --  Value_Table_Full mean the region is exhausted; anything else is an
+   --  invalid descriptor.
+   ---------------------------------------------------------------------------
+   use type Text_Regions.Operation_Result;
+
+   procedure Push_Constant
+     (Content : Program; Index : Constant_Index;
+      Region  : in out Text_Regions.Stack; Item : out Value;
+      Status  : out Text_Regions.Operation_Result)
+   is
+      C : constant Text_Constant := Content.Constants (Index);
+   begin
+      Item := (Kind => Text_Value, others => <>);
+      Status := Text_Regions.Invalid_Bounds;
+      if C.Length > MAX_CONSTANT_BYTES - (C.First - 1) then
+         return;
+      end if;
+      Text_Regions.Allocate_String
+        (Region, Content.Constant_Text (C.First .. C.First + C.Length - 1), Item.Text, Status);
+   end Push_Constant;
+
+   procedure Concat_Texts
+     (Region : in out Text_Regions.Stack; Left, Right : Value;
+      Item   : out Value; Status : out Text_Regions.Operation_Result)
+   is
+      Buffer : String (1 .. MAX_STRING_BYTES) := [others => ' '];
+      L : constant Natural := Text_Regions.Length (Left.Text);
+      R : constant Natural := Text_Regions.Length (Right.Text);
+   begin
+      Item := (Kind => Text_Value, others => <>);
+      if L > MAX_STRING_BYTES or else R > MAX_STRING_BYTES - L then
+         Status := Text_Regions.Storage_Full;
+         return;
+      end if;
+      Text_Regions.Copy_To (Region, Left.Text, Buffer (1 .. L), Status);
+      if Status /= Text_Regions.Operation_Ok then return; end if;
+      Text_Regions.Copy_To (Region, Right.Text, Buffer (L + 1 .. L + R), Status);
+      if Status /= Text_Regions.Operation_Ok then return; end if;
+      Text_Regions.Allocate_String (Region, Buffer (1 .. L + R), Item.Text, Status);
+   end Concat_Texts;
+
+   procedure Equal_Texts
+     (Region : Text_Regions.Stack; Left, Right : Value;
+      Same   : out Boolean; Status : out Text_Regions.Operation_Result)
+   is
+      A, B : Character;
+   begin
+      Same := False;
+      Status := Text_Regions.Operation_Ok;
+      if not Text_Regions.Is_Valid (Region, Left.Text) or else
+        not Text_Regions.Is_Valid (Region, Right.Text)
+      then
+         Status := Text_Regions.Invalid_Value;
+         return;
+      end if;
+      if Text_Regions.Length (Left.Text) /= Text_Regions.Length (Right.Text) then
+         return;
+      end if;
+      for I in 1 .. Text_Regions.Length (Left.Text) loop
+         Text_Regions.Read (Region, Left.Text, I, A, Status);
+         if Status /= Text_Regions.Operation_Ok then return; end if;
+         Text_Regions.Read (Region, Right.Text, I, B, Status);
+         if Status /= Text_Regions.Operation_Ok then return; end if;
+         if A /= B then return; end if;
+      end loop;
+      Same := True;
+   end Equal_Texts;
+
+   function Text_Failure (Status : Text_Regions.Operation_Result) return Execution_Status is
+     (if Status in Text_Regions.Storage_Full | Text_Regions.Value_Table_Full
+      then Text_Storage_Exhausted else Invalid_Bytecode);
+
+   ---------------------------------------------------------------------------
+   --  String built-ins (CCL.Text_Operations, shared with the interpreter).
+   ---------------------------------------------------------------------------
+   --  Patterns, separators and replacements: the interpreter's short strings.
+   MAX_PATTERN_BYTES : constant := 1_024;
+   type Text_Operands is array (1 .. 2) of Value;
+
+   procedure Run_Text_Builtin
+     (Region   : in out Text_Regions.Stack;
+      Item     : T.Operation;
+      Operands : Text_Operands;
+      Subject  : Value;
+      Result   : out Value;
+      Status   : out Execution_Status)
+   is
+      S, Output : String (1 .. MAX_STRING_BYTES) := [others => ' '];
+      A, B : String (1 .. MAX_PATTERN_BYTES) := [others => ' '];
+      S_Length : constant Natural := Text_Regions.Length (Subject.Text);
+      A_Length, B_Length : Natural range 0 .. MAX_PATTERN_BYTES := 0;
+      Output_Length : T.String_Length := 0;
+      Region_Status : Text_Regions.Operation_Result;
+      Outcome : T.Outcome;
+
+      procedure Copy (Source : Value; Target : out String; Good : out Boolean) is
+      begin
+         Text_Regions.Copy_To (Region, Source.Text, Target, Region_Status);
+         Good := Region_Status = Text_Regions.Operation_Ok;
+      end Copy;
+
+      procedure Store (Text : String) is
+      begin
+         Result := (Kind => Text_Value, others => <>);
+         Text_Regions.Allocate_String (Region, Text, Result.Text, Region_Status);
+         Status := (if Region_Status = Text_Regions.Operation_Ok then Completed
+                    else Text_Failure (Region_Status));
+      end Store;
+
+      Good : Boolean := True;
+   begin
+      Result := (others => <>);
+      Status := Invalid_Bytecode;
+      if S_Length > MAX_STRING_BYTES then return; end if;
+      Copy (Subject, S (1 .. S_Length), Good);
+      if not Good then return; end if;
+      if T.Signature_Of (Item).Count >= 1 and then
+        T.Signature_Of (Item).Operands (1) = T.Text_Operand
+      then
+         A_Length := Natural'Min (Text_Regions.Length (Operands (1).Text), MAX_PATTERN_BYTES);
+         if Text_Regions.Length (Operands (1).Text) > MAX_PATTERN_BYTES then
+            Status := Text_Storage_Exhausted; return;
+         end if;
+         Copy (Operands (1), A (1 .. A_Length), Good);
+         if not Good then return; end if;
+      end if;
+      if Item = T.Replace then
+         B_Length := Natural'Min (Text_Regions.Length (Operands (2).Text), MAX_PATTERN_BYTES);
+         if Text_Regions.Length (Operands (2).Text) > MAX_PATTERN_BYTES then
+            Status := Text_Storage_Exhausted; return;
+         end if;
+         Copy (Operands (2), B (1 .. B_Length), Good);
+         if not Good then return; end if;
+      end if;
+      case Item is
+         when T.Upper | T.Lower | T.Reverse_Text =>
+            T.Transform (Item, S (1 .. S_Length), Output (1 .. S_Length));
+            Store (Output (1 .. S_Length));
+         when T.Trim | T.First_Chars | T.Last_Chars | T.Skip_Chars =>
+            declare
+               Low : Positive;
+               High : Natural;
+            begin
+               T.Slice (Item, S (1 .. S_Length),
+                        (if Item = T.Trim then 0 else Operands (1).Integer), Low, High);
+               Store (S (Low .. High));
+            end;
+         when T.Contains | T.Starts_With | T.Ends_With =>
+            Result := Boolean_Constant (T.Test (Item, S (1 .. S_Length), A (1 .. A_Length)));
+            Status := Completed;
+         when T.Index_Of =>
+            Result := Integer_Constant
+              (Integer_64 (if A_Length = 0 then 1 else T.Find (S (1 .. S_Length), A (1 .. A_Length), 1)));
+            Status := Completed;
+         when T.Replace =>
+            T.Replace_All (S (1 .. S_Length), A (1 .. A_Length), B (1 .. B_Length),
+                           Output, Output_Length, Outcome);
+            if Outcome = T.Done then
+               Store (Output (1 .. Output_Length));
+            else
+               Status := Text_Storage_Exhausted;
+            end if;
+         when T.Parse_Int =>
+            declare
+               Number : Integer_64;
+            begin
+               T.Parse_Integer (S (1 .. S_Length), Number, Outcome);
+               case Outcome is
+                  when T.Done =>
+                     Result := Integer_Constant (Number);
+                     Status := Completed;
+                  when T.Overflow => Status := Arithmetic_Overflow;
+                  when others => Status := Invalid_Number;
+               end case;
+            end;
+      end case;
+   end Run_Text_Builtin;
+
+   --  A text result's characters, for Execution_Result.
+   function Result_Text_Of (Region : Text_Regions.Stack; Item : Value) return Result_Text is
+      Text : Result_Text;
+      Status : Text_Regions.Operation_Result;
+   begin
+      if Item.Kind = Text_Value and then Text_Regions.Is_Valid (Region, Item.Text) and then
+        Text_Regions.Length (Item.Text) <= MAX_RESULT_TEXT
+      then
+         Text.Length := Text_Regions.Length (Item.Text);
+         Text_Regions.Copy_To (Region, Item.Text, Text.Data (1 .. Text.Length), Status);
+         if Status /= Text_Regions.Operation_Ok then
+            Text := (others => <>);
+         end if;
+      end if;
+      return Text;
+   end Result_Text_Of;
+
    procedure Continue_With_Native
      (Item   : Validated_Program;
       State  : in out Machine_State;
@@ -842,6 +1122,7 @@ is
       Instructions : Natural;
       Result : out Execution_Result)
    is
+      Item_Length : constant Program_Length := Item.Content.Length;
       Stack : Runtime_Stacks.Stack;
       PC    : Instruction_Index;
       Left  : Integer_64;
@@ -861,6 +1142,46 @@ is
       Arithmetic_Result : Integer_64;
       Arithmetic_Error : CCL.Checked_Arithmetic.Arithmetic_Error;
       Slice_Remaining : Natural := Instructions;
+      Text_Status : Text_Regions.Operation_Result;
+      Same_Text : Boolean;
+      Joined : Value;
+
+      --  Stop the run with Code. Only the terminal status changes.
+      procedure Trap (Code : Execution_Status)
+        with Post => Fuel_Limit (State) = Fuel_Limit (State'Old) and then
+                     CCL.Imports.Phase (State.Import_Lifecycle) =
+                       CCL.Imports.Phase (State.Import_Lifecycle'Old);
+      procedure Trap (Code : Execution_Status) is
+      begin
+         Status := Code;
+         State.Terminal := True;
+         State.Terminal_Status := Code;
+         Done := True;
+      end Trap;
+
+      --  Push Item and step, or trap.
+      procedure Push_Next (Item : Value) is
+      begin
+         if Program_Length (PC) + 1 >= Item_Length then
+            Trap (Invalid_Bytecode);
+            return;
+         end if;
+         Runtime_Stacks.Push (Stack, Item, Stack_Result);
+         if Stack_Result = Runtime_Stacks.Stack_Ok then
+            PC := PC + 1;
+         else
+            Trap (Invalid_Bytecode);
+         end if;
+      end Push_Next;
+
+      --  Pop a text operand, or trap.
+      procedure Pop_Text (Item : out Value) is
+      begin
+         Runtime_Stacks.Pop (Stack, Item, Stack_Result);
+         if Stack_Result /= Runtime_Stacks.Stack_Ok or else Item.Kind /= Text_Value then
+            Trap (Invalid_Bytecode);
+         end if;
+      end Pop_Text;
    begin
       Stack := State.Stack;
       PC := State.PC;
@@ -1045,7 +1366,15 @@ is
                   if Stack_Result = Runtime_Stacks.Stack_Ok then
                      State.Has_Value := True;
                   end if;
-                  State.Terminal_Status := Completed;
+                  --  A text result longer than a result carries fails, as
+                  --  in the interpreter, rather than arriving cut short.
+                  if State.Has_Value and then State.Result_Value.Kind = Text_Value and then
+                    Text_Regions.Length (State.Result_Value.Text) > MAX_RESULT_TEXT
+                  then
+                     Status := Text_Storage_Exhausted;
+                     State.Has_Value := False;
+                  end if;
+                  State.Terminal_Status := Status;
                end if;
                State.Terminal := True;
                Done := True;
@@ -1272,6 +1601,86 @@ is
                         Done := True;
                      end if;
                   end;
+               end if;
+
+            when Push_Text =>
+               if Item.Content.Code (PC).Immediate not in
+                 0 .. Integer_64 (Item.Content.Constants_Length) - 1
+               then
+                  Trap (Invalid_Bytecode);
+               else
+                  Push_Constant
+                    (Item.Content, Constant_Index (Item.Content.Code (PC).Immediate),
+                     State.Text, Left_Value, Text_Status);
+                  if Text_Status /= Text_Regions.Operation_Ok then
+                     Trap (Text_Failure (Text_Status));
+                  else
+                     Push_Next (Left_Value);
+                  end if;
+               end if;
+
+            when Concat_Text =>
+               Pop_Text (Right_Value);
+               if not Done then Pop_Text (Left_Value); end if;
+               if not Done then
+                  Concat_Texts (State.Text, Left_Value, Right_Value, Joined, Text_Status);
+                  if Text_Status /= Text_Regions.Operation_Ok then
+                     Trap (Text_Failure (Text_Status));
+                  else
+                     Push_Next (Joined);
+                  end if;
+               end if;
+
+            when Text_Builtin =>
+               declare
+                  Operation : CCL.Text_Operations.Operation;
+                  Known : Boolean;
+                  Operands : Text_Operands := [others => (others => <>)];
+                  Subject, Answer : Value;
+                  Outcome : Execution_Status;
+               begin
+                  Find_Operation (Item.Content.Code (PC).Immediate, Operation, Known);
+                  if not Known then
+                     Trap (Invalid_Bytecode);
+                  else
+                     Pop_Text (Subject);
+                     for I in reverse 1 .. CCL.Text_Operations.Signature_Of (Operation).Count loop
+                        exit when Done;
+                        Runtime_Stacks.Pop (Stack, Operands (I), Stack_Result);
+                        if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+                          Operands (I).Kind /= Kind_Of (CCL.Text_Operations.Signature_Of (Operation).Operands (I))
+                        then
+                           Trap (Invalid_Bytecode);
+                        end if;
+                     end loop;
+                     if not Done then
+                        Run_Text_Builtin (State.Text, Operation, Operands, Subject, Answer, Outcome);
+                        if Outcome /= Completed then
+                           Trap (Outcome);
+                        else
+                           Push_Next (Answer);
+                        end if;
+                     end if;
+                  end if;
+               end;
+
+            when Length_Text =>
+               Pop_Text (Left_Value);
+               if not Done then
+                  Push_Next (Integer_Constant
+                    (Integer_64 (Text_Regions.Length (Left_Value.Text))));
+               end if;
+
+            when Equal_Text =>
+               Pop_Text (Right_Value);
+               if not Done then Pop_Text (Left_Value); end if;
+               if not Done then
+                  Equal_Texts (State.Text, Left_Value, Right_Value, Same_Text, Text_Status);
+                  if Text_Status /= Text_Regions.Operation_Ok then
+                     Trap (Text_Failure (Text_Status));
+                  else
+                     Push_Next (Boolean_Constant (Same_Text));
+                  end if;
                end if;
 
             when Equal_Integer | Less_Integer | Less_Equal_Integer | Equal_Boolean =>
@@ -1606,6 +2015,7 @@ is
          Steps          => CCL.Execution_Budgets.Steps (State.Execution_Budget),
          Requested_Import => State.Waiting_Import,
          Request_Argument => State.Waiting_Argument,
+         Result_Text_Value => Result_Text_Of (State.Text, State.Result_Value),
          Request_Receiver => State.Waiting_Receiver,
          Request_Owned => Waiting_Owned,
          Requested_Authority =>

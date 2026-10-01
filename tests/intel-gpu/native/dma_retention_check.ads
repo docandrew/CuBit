@@ -5,5 +5,5 @@ generic
    with procedure Borrow
      (Owner : Interfaces.Unsigned_64;
       Reference : out CuBit.Memory_Grants.Grant_Reference;
-      Success : out Boolean);
+      Success : out Boolean; Large : Boolean := False);
 procedure DMA_Retention_Check;

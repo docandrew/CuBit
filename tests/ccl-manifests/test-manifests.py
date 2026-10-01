@@ -10,6 +10,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 TOOL = ROOT / 'userspace/ccl/build/manifest/ccl-manifest'
 CATALOG = (ROOT / 'userspace/ccl/catalogs/bootstrap-services.ccl').read_text()
+DECODER = ROOT / 'tests/ccl-manifests/build/resources/resource_decode'
 SOURCE = (ROOT / 'userspace/ccl/apps/ccl-vm/manifest.ccl').read_text()
 
 
@@ -389,6 +390,236 @@ class Manifests(unittest.TestCase):
         # Truncation must fail without exceptions or partial ELF output.
         for end in range(len(template) - 1):
             self.reject(template[:end])
+
+    def test_device_resources_encoding(self):
+        # An NVMe-style PCI driver: resources relative to the matched device.
+        template = '''(executable-manifest v1 (identity "nvme") (version "1")
+          (match-pci-class 1 8 2)
+          (device-memory registers (bar 0) (max-bytes 16384) read-write)
+          (interrupt completion msix (vectors 1))
+          (dma queues (bytes 1048576)))'''
+        result = self.compile(template)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sections = self.sections(result.stdout)
+        # Device resources never appear as endpoint capability requests.
+        self.assertNotIn('.cubit.caps', sections)
+        header = struct.pack('<IHH', 0x53524243, 1, 3) + struct.pack('<BBHHHQ', 1, 0, 1, 8, 2, 0)
+        entries = (struct.pack('<BBHIQQ', 16, 3, 24, 0, 16384, 0) +
+                   struct.pack('<BBHIQQ', 18, 1, 25, 0, 1, 1) +
+                   struct.pack('<BBHIQQ', 19, 3, 26, 0, 1048576, 0))
+        self.assertEqual(sections['.cubit.resources'], header + entries)
+        bindings = (self.directory / 'ccl_manifest_bindings.ads').read_text()
+        for name, slot in (('registers', 24), ('completion', 25), ('queues', 26)):
+            self.assertIn(f'Slot_{name} : constant Interfaces.Unsigned_64 := {slot};', bindings)
+        # Truncation must fail without exceptions or partial ELF output.
+        for end in range(len(template) - 1):
+            self.reject(template[:end])
+
+    def test_platform_device_and_ports(self):
+        template = '''(executable-manifest v1 (identity "ps2") (version "1")
+          (platform-device ps2-controller)
+          (io-ports data (resource 0) (count 1))
+          (io-ports command (resource 1) (count 1))
+          (interrupt keyboard (resource 2))
+          (interrupt mouse (resource 3)))'''
+        result = self.compile(template)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        resources = self.sections(result.stdout)['.cubit.resources']
+        self.assertEqual(resources[:24], struct.pack('<IHH', 0x53524243, 1, 4) +
+                         struct.pack('<BBHHHQ', 3, 0, 1, 0, 0, 0))
+        self.assertEqual(resources[24:], struct.pack('<BBHIQQ', 17, 3, 24, 0, 1, 0) +
+                         struct.pack('<BBHIQQ', 17, 3, 25, 1, 1, 0) +
+                         struct.pack('<BBHIQQ', 18, 1, 26, 2, 1, 4) +
+                         struct.pack('<BBHIQQ', 18, 1, 27, 3, 1, 4))
+        # PCI spelling on a platform device, and the reverse.
+        self.reject(template.replace('(resource 0)', '(bar 0)'),
+                    diagnostic='INVALID_DEVICE_RESOURCE')
+        pci = template.replace('(platform-device ps2-controller)', '(match-pci-id 4358 4096)')
+        self.reject(pci, diagnostic='INVALID_DEVICE_RESOURCE')
+
+    def test_device_resource_rejections(self):
+        base = '''(executable-manifest v1 (identity "d") (version "1")
+          (match-pci-id 6900 4096)
+          (device-memory regs (bar 0) (max-bytes 4096) read-write))'''
+        self.assertEqual(self.compile(base).returncode, 0)
+        for old, bad, diagnostic in [
+                ('(match-pci-id 6900 4096)', '', 'MISSING_DEVICE_MATCH'),
+                ('(match-pci-id 6900 4096)', '(match-pci-id 6900 4096) (match-pci-class 1 8 2)',
+                 'DUPLICATE_DEVICE_MATCH'),
+                ('6900 4096', '65535 4096', 'INVALID_DEVICE_MATCH'),
+                ('6900 4096', '65536 4096', 'INVALID_DEVICE_MATCH'),
+                ('6900 4096', '-1 4096', 'INVALID_DEVICE_MATCH'),
+                ('(match-pci-id 6900 4096)', '(match-pci-class 256 0 0)', 'INVALID_DEVICE_MATCH'),
+                ('(match-pci-id 6900 4096)', '(platform-device serial)', 'INVALID_DEVICE_MATCH'),
+                ('(bar 0)', '(bar 6)', 'INVALID_DEVICE_RESOURCE'),
+                ('(bar 0)', '(bar -1)', 'INVALID_DEVICE_RESOURCE'),
+                ('(max-bytes 4096)', '(max-bytes 4095)', 'INVALID_DEVICE_RESOURCE'),
+                ('(max-bytes 4096)', '(max-bytes 6000)', 'INVALID_DEVICE_RESOURCE'),
+                ('(max-bytes 4096)', '(max-bytes 268439552)', 'INVALID_DEVICE_RESOURCE'),
+                ('read-write)', 'write)', 'INVALID_DEVICE_RESOURCE'),
+                ('read-write)', 'everything)', 'UNKNOWN_RIGHTS'),
+                ('regs', 'Regs', 'INVALID_BINDING_NAME')]:
+            with self.subTest(bad=bad):
+                self.reject(base.replace(old, bad), diagnostic=diagnostic)
+        # A match that asks for no resources grants nothing and is a mistake.
+        self.reject(base.replace('(device-memory regs (bar 0) (max-bytes 4096) read-write)', ''),
+                    diagnostic='MISSING_DEVICE_MATCH')
+        extra = base.replace('read-write))', 'read-write) {})')
+        for form, diagnostic in [
+                ('(interrupt irq msix (vectors 0))', 'INVALID_DEVICE_RESOURCE'),
+                ('(interrupt irq msix (vectors 33))', 'INVALID_DEVICE_RESOURCE'),
+                ('(interrupt irq edge)', 'INVALID_DEVICE_RESOURCE'),
+                ('(dma buf (bytes 0))', 'INVALID_DEVICE_RESOURCE'),
+                ('(dma buf (bytes 67112960))', 'INVALID_DEVICE_RESOURCE'),
+                ('(io-ports p (bar 0) (count 65537))', 'INVALID_DEVICE_RESOURCE'),
+                ('(dma regs (bytes 4096))', 'DUPLICATE_BINDING')]:
+            with self.subTest(form=form):
+                self.reject(extra.format(form), diagnostic=diagnostic)
+        for form in ('(interrupt irq line)', '(interrupt irq msi (vectors 32))',
+                     '(io-ports p (bar 5) (count 65536))', '(dma buf (bytes 67108864))'):
+            with self.subTest(form=form):
+                self.assertEqual(self.compile(extra.format(form)).returncode, 0)
+
+    def test_scheduling_request(self):
+        template = '''(executable-manifest v1 (identity "mixer") (version "1")
+          (request-scheduling realtime-cpu realtime (budget-us 1500) (period-us 5000)))'''
+        result = self.compile(template)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sections = self.sections(result.stdout)
+        self.assertNotIn('.cubit.caps', sections)
+        self.assertEqual(sections['.cubit.resources'],
+                         struct.pack('<IHH', 0x53524243, 1, 1) + bytes(16) +
+                         struct.pack('<BBHIQQ', 20, 1, 24, 0, 1500, 5000))
+        # The kernel admits at most 70% of a CPU and budget <= period <= 2^30 us.
+        for budget, period in [('5000', '7143'), ('1', '1073741824'), ('700', '1000')]:
+            with self.subTest(budget=budget, period=period):
+                self.assertEqual(self.compile(template.replace(
+                    '(budget-us 1500) (period-us 5000)',
+                    f'(budget-us {budget}) (period-us {period})')).returncode, 0)
+        for budget, period in [('0', '5000'), ('1500', '0'), ('5000', '4999'),
+                               ('3501', '5000'), ('1', '1073741825'), ('"1500"', '5000')]:
+            with self.subTest(budget=budget, period=period):
+                self.reject(template.replace('(budget-us 1500) (period-us 5000)',
+                                             f'(budget-us {budget}) (period-us {period})'),
+                            diagnostic='INVALID_SCHEDULING')
+        self.reject(template.replace(' realtime (', ' batch ('), diagnostic='INVALID_SCHEDULING')
+        # Existing capability requests are unaffected by a resource request.
+        both = template.replace('(request-scheduling', '(request-service filesystem read-write fs)\n  (request-scheduling')
+        sections = self.sections(self.compile(both).stdout)
+        self.assertEqual(sections['.cubit.caps'],
+                         struct.pack('<IHH', 0x43424954, 1, 1) + struct.pack('<BBHIQ', 2, 3, 24, 6, 0))
+        self.assertEqual(sections['.cubit.resources'][24:],
+                         struct.pack('<BBHIQQ', 20, 1, 25, 0, 1500, 5000))
+        self.assertEqual(self.compile(template.replace(
+            '(request-scheduling', '(requests-none)\n  (request-scheduling')).returncode, 0)
+
+    def test_driver_draft_manifests(self):
+        # Draft driver manifests (not yet attached) against the slots devmgr
+        # hand-mints today. Differences are listed so a migration handles them
+        # deliberately: ps2 mouse notification (devmgr 9, now reserved for
+        # scheduling), hda and mixer registration (devmgr 8).
+        catalog = (ROOT / 'userspace/ccl/catalogs/driver-services.ccl').read_text()
+        expected = {
+            'nvme': {'registers': 4, 'completion': 5, 'queues': 6, 'registration': 7, 'ready': 15},
+            'ata': {'command-block': 4, 'control': 5, 'channel': 6, 'registration': 7, 'ready': 15},
+            'virtio-net': {'registers': 4, 'device': 5, 'rings': 6, 'ready': 15},
+            'xhci': {'registers': 4, 'events': 5, 'rings': 6, 'mouse-events': 7,
+                     'keyboard-events': 8, 'ready': 15},
+            'ps2': {'data': 4, 'command': 5, 'keyboard-line': 6, 'mouse-line': 7,
+                    'keyboard-events': 8, 'mouse-events': 10, 'ready': 15},
+            'hda': {'registers': 4, 'controller': 5, 'streams': 6, 'registration': 7, 'ready': 15},
+            'mixer': {'scheduling': 9, 'registration': 4, 'ready': 15},
+        }
+        for name, slots in expected.items():
+            with self.subTest(driver=name):
+                source = (ROOT / f'userspace/services/{name}/manifest.ccl').read_text()
+                result = self.compile(source, catalog)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                bindings = (self.directory / 'ccl_manifest_bindings.ads').read_text()
+                for binding, slot in slots.items():
+                    ada = binding.replace('-', '_')
+                    self.assertIn(f'Slot_{ada} : constant Interfaces.Unsigned_64 := {slot};',
+                                  bindings)
+                self.assertIn('.cubit.resources', self.sections(result.stdout))
+
+    def decode(self, section):
+        path = self.directory / 'resources.bin'
+        path.write_bytes(section)
+        result = subprocess.run([DECODER, path], capture_output=True, text=True, timeout=5)
+        self.assertNotIn('raised ', result.stderr, result.stderr)
+        self.assertIn(result.returncode, (0, 1), result.stderr)
+        return result
+
+    def test_resource_sections_round_trip_through_decoder(self):
+        # Every draft decodes with the proved startup decoder, and any single
+        # corrupted byte is either refused or still a valid plan: never a crash.
+        catalog = (ROOT / 'userspace/ccl/catalogs/driver-services.ccl').read_text()
+        rng = random.Random(4242)
+        for name in ('nvme', 'ata', 'ps2', 'virtio-net', 'hda', 'xhci', 'mixer'):
+            with self.subTest(driver=name):
+                source = (ROOT / f'userspace/services/{name}/manifest.ccl').read_text()
+                result = self.compile(source, catalog)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                section = self.sections(result.stdout)['.cubit.resources']
+                decoded = self.decode(section)
+                self.assertEqual(decoded.returncode, 0, decoded.stdout)
+                for _ in range(200):
+                    corrupt = bytearray(section)
+                    corrupt[rng.randrange(len(corrupt))] ^= 1 << rng.randrange(8)
+                    self.decode(bytes(corrupt))
+                for end in range(len(section)):
+                    self.assertEqual(self.decode(section[:end]).returncode, 1)
+                self.assertEqual(self.decode(section + b'\0').returncode, 1)
+        nvme = self.sections(self.compile((ROOT / 'userspace/services/nvme/manifest.ccl').read_text(),
+                                          catalog).stdout)['.cubit.resources']
+        self.assertEqual(self.decode(nvme).stdout.splitlines(), [
+            'match PCI_CLASS_MATCH 1 8 2',
+            'DEVICE_MEMORY READ_WRITE slot=4 index=0 amount=16384 extra=0',
+            'INTERRUPT READ_ONLY slot=5 index=0 amount=1 extra=1',
+            'DMA READ_WRITE slot=6 index=0 amount=1048576 extra=0'])
+        # Hand-made sections the compiler never emits are refused.
+        header = struct.pack('<IHH', 0x53524243, 1, 1)
+        pci = struct.pack('<BBHHHQ', 1, 0, 1, 8, 2, 0)
+        memory = lambda **f: struct.pack('<BBHIQQ', f.get('kind', 16), f.get('rights', 3),
+                                         f.get('slot', 4), f.get('index', 0),
+                                         f.get('amount', 4096), f.get('extra', 0))
+        self.assertEqual(self.decode(header + pci + memory()).returncode, 0)
+        for bad, status in [
+                (header + pci + memory(slot=62), 'INVALID_ENTRY'),
+                (header + pci + memory(slot=0), 'INVALID_ENTRY'),
+                (header + pci + memory(amount=4097), 'INVALID_ENTRY'),
+                (header + pci + memory(rights=2), 'INVALID_ENTRY'),
+                (header + pci + memory(index=6), 'INVALID_ENTRY'),
+                (header + pci + memory(extra=1), 'INVALID_ENTRY'),
+                (header + pci + memory(kind=21), 'INVALID_ENTRY'),
+                (header + struct.pack('<BBHHHQ', 0, 0, 0, 0, 0, 0) + memory(), 'DEVICE_WITHOUT_MATCH'),
+                (header + struct.pack('<BBHHHQ', 1, 1, 1, 8, 2, 0) + memory(), 'INVALID_MATCH'),
+                (header + struct.pack('<BBHHHQ', 1, 0, 1, 8, 2, 1) + memory(), 'INVALID_MATCH'),
+                (header + struct.pack('<BBHHHQ', 2, 0, 0xFFFF, 1, 0, 0) + memory(), 'INVALID_MATCH'),
+                (header + pci + struct.pack('<BBHIQQ', 20, 1, 4, 0, 1500, 5000),
+                 'MATCH_WITHOUT_DEVICE'),
+                (struct.pack('<IHH', 0x53524243, 1, 2) + pci + memory() + memory(),
+                 'DUPLICATE_SLOT'),
+                (struct.pack('<IHH', 0x53524243, 2, 1) + pci + memory(), 'INVALID_HEADER'),
+                (struct.pack('<IHH', 0x53524243, 1, 0) + pci, 'INVALID_HEADER')]:
+            with self.subTest(status=status, bad=bad.hex()):
+                result = self.decode(bad)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout.strip(), status)
+        # Scheduling beyond the kernel's real-time share is refused.
+        scheduling = struct.pack('<IHH', 0x53524243, 1, 1) + bytes(16)
+        self.assertEqual(self.decode(scheduling + struct.pack('<BBHIQQ', 20, 1, 4, 0, 3500, 5000)).returncode, 0)
+        self.assertEqual(self.decode(scheduling + struct.pack('<BBHIQQ', 20, 1, 4, 0, 3501, 5000)).stdout.strip(),
+                         'INVALID_ENTRY')
+
+    def test_resources_never_take_saved_reply_slot(self):
+        catalog = '(service-catalog v1 (application-slots 61 62))'
+        two = '''(executable-manifest v1 (identity "m") (version "1")
+          (request-scheduling a realtime (budget-us 1) (period-us 2))
+          (request-scheduling b realtime (budget-us 1) (period-us 2)))'''
+        self.reject(two, catalog, diagnostic='INVALID_SLOT')
+        one = two.replace('\n          (request-scheduling b realtime (budget-us 1) (period-us 2))', '')
+        self.assertEqual(self.compile(one, catalog).returncode, 0)
 
 
 if __name__ == '__main__':

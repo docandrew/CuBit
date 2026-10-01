@@ -11,7 +11,8 @@ package body CCL.Language.Views with SPARK_Mode => On is
    procedure Convert
      (Source : String; From, Into : Surface;
       Visible_Interfaces : CCL.Catalog.Interface_Catalog;
-      Result : out Conversion)
+      Result : out Conversion;
+      Check : Boolean := True)
    is
       Input : Text;
       Lowered, Comments : Text;
@@ -135,6 +136,27 @@ package body CCL.Language.Views with SPARK_Mode => On is
 
       --  Backticks escape BASIC's contextual keyword or delimiter-bearing
       --  names. The Lisp analyzer still decides whether the name is legal.
+      --  An integer literal: optional '-', then digits.
+      procedure Number_Token (Value : out Text) is
+         Start : Positive;
+      begin
+         Value := (others => <>);
+         Skip;
+         Start := Cursor;
+         if Cursor <= Input.Length and then Input.Data (Cursor) = '-' then
+            Cursor := Cursor + 1;
+         end if;
+         while Cursor <= Input.Length and then Input.Data (Cursor) in '0' .. '9' loop
+            Cursor := Cursor + 1;
+         end loop;
+         if Cursor = Start then
+            Failed := True;
+            return;
+         end if;
+         Value.Length := Cursor - Start;
+         Value.Data (1 .. Value.Length) := Input.Data (Start .. Cursor - 1);
+      end Number_Token;
+
       procedure Name_Token (Value : out Text) is
          Start : Positive;
          Escaped : Boolean;
@@ -278,10 +300,20 @@ package body CCL.Language.Views with SPARK_Mode => On is
                Skip;
                if Cursor <= Input.Length and then Input.Data (Cursor) /= ')' then
                   loop
-                     Name_Token (Binding); Expect ("AS"); Basic_Type (Token);
+                     Name_Token (Binding);
+                     Skip;
                      exit when Failed or else Full;
-                     Put ("(" & Binding.Data (1 .. Binding.Length) & " " &
-                          Token.Data (1 .. Token.Length) & ")", Cursor);
+                     if Cursor + 1 <= Input.Length and then Input.Data (Cursor .. Cursor + 1) = "AS" and then
+                       (Cursor + 2 > Input.Length or else not Basic_Name_Character (Input.Data (Cursor + 2)))
+                     then
+                        Expect ("AS"); Basic_Type (Token);
+                        exit when Failed or else Full;
+                        Put ("(" & Binding.Data (1 .. Binding.Length) & " " &
+                             Token.Data (1 .. Token.Length) & ")", Cursor);
+                     else
+                        --  FUNCTION(x) body: the type is inferred where it is passed.
+                        Put (Binding.Data (1 .. Binding.Length), Cursor);
+                     end if;
                      Skip;
                      exit when Cursor > Input.Length or else Input.Data (Cursor) /= ',';
                      Cursor := Cursor + 1;
@@ -399,6 +431,26 @@ package body CCL.Language.Views with SPARK_Mode => On is
             Put (")", Start);
             if not Full then Ends (Lowered.Length) := Right_End; end if;
          end loop;
+         --  Pipelines bind loosest: a | f(x) | g lowers to (->> a (f x) g).
+         if Minimum = 1 and then not Failed and then not Full then
+            Skip;
+            if Cursor <= Input.Length and then Input.Data (Cursor) = '|' then
+               Prefix ("(->> ");
+               loop
+                  Skip;
+                  exit when Cursor > Input.Length or else Input.Data (Cursor) /= '|';
+                  Cursor := Cursor + 1;
+                  Put (" ", Cursor);
+                  Skip;
+                  Primary (Depth + 1);
+                  exit when Failed or Full;
+               end loop;
+               --  The pipeline ends where its last stage ends.
+               Right_End := (if Lowered.Length > 0 then Ends (Lowered.Length) else Cursor);
+               Put (")", Start);
+               if not Full then Ends (Lowered.Length) := Right_End; end if;
+            end if;
+         end if;
       end Expression;
 
       --  A BASIC type after AS, lowered to its Lisp spelling: a name,
@@ -459,33 +511,51 @@ package body CCL.Language.Views with SPARK_Mode => On is
                Expect ("TYPE"); Name_Token (Token);
                Put ("(type " & Token.Data (1 .. Token.Length), Start);
                Expect ("="); Skip;
-               Variant := Cursor + 6 <= Input.Length and then Input.Data (Cursor .. Cursor + 6) = "VARIANT";
-               Record_Type := Cursor + 5 <= Input.Length and then Input.Data (Cursor .. Cursor + 5) = "RECORD";
-               if Variant then Expect ("VARIANT"); end if;
-               if Record_Type then Expect ("RECORD"); end if;
-               Put ((if Record_Type then " (record" elsif Variant then " (variant" else " (enum"), Start);
-               Expect ("(");
-               Skip;
-               if Record_Type and then Cursor <= Input.Length and then Input.Data (Cursor) = ')' then
-                  null;
+               if Cursor + 4 <= Input.Length and then Input.Data (Cursor .. Cursor + 4) = "RANGE" then
+                  --  TYPE P = RANGE lo TO hi  ->  (type P (range lo hi))
+                  Expect ("RANGE");
+                  Put (" (range", Start);
+                  Number_Token (Type_Name);
+                  Put (" " & Type_Name.Data (1 .. Type_Name.Length), Cursor);
+                  Expect ("TO");
+                  Number_Token (Type_Name);
+                  Put (" " & Type_Name.Data (1 .. Type_Name.Length), Cursor);
+                  Put ("))", Cursor - 1);
+                  if Lowered.Length > 0 then Ends (Lowered.Length) := Cursor; end if;
+                  Put (" ", Cursor);
                else
-               loop
-                  Name_Token (Token);
-                  Put ((if Variant or Record_Type then " (" else " ") & Token.Data (1 .. Token.Length), Cursor);
-                  if Variant or Record_Type then
-                     Skip;
-                     if Cursor + 1 <= Input.Length and then Input.Data (Cursor .. Cursor + 1) = "AS" then
-                        Expect ("AS"); Name_Token (Type_Name);
-                        Put (" " & Type_Name.Data (1 .. Type_Name.Length), Cursor);
-                     end if;
-                     Put (")", Cursor);
-                  end if;
+                  Variant := Cursor + 6 <= Input.Length and then Input.Data (Cursor .. Cursor + 6) = "VARIANT";
+                  Record_Type := Cursor + 5 <= Input.Length and then Input.Data (Cursor .. Cursor + 5) = "RECORD";
+                  if Variant then Expect ("VARIANT"); end if;
+                  if Record_Type then Expect ("RECORD"); end if;
+                  Put ((if Record_Type then " (record" elsif Variant then " (variant" else " (enum"), Start);
+                  Expect ("(");
                   Skip;
-                  exit when Failed or else Full or else Cursor > Input.Length or else Input.Data (Cursor) /= ',';
-                  Cursor := Cursor + 1;
-               end loop;
+                  if Record_Type and then Cursor <= Input.Length and then Input.Data (Cursor) = ')' then
+                     null;
+                  else
+                  loop
+                     Name_Token (Token);
+                     Put ((if Variant or Record_Type then " (" else " ") & Token.Data (1 .. Token.Length), Cursor);
+                     if Variant or Record_Type then
+                        Skip;
+                        if Cursor + 1 <= Input.Length and then Input.Data (Cursor .. Cursor + 1) = "AS" then
+                           Expect ("AS"); Basic_Type (Type_Name);
+                           Put (" " & Type_Name.Data (1 .. Type_Name.Length), Cursor);
+                        end if;
+                        Put (")", Cursor);
+                     end if;
+                     Skip;
+                     exit when Failed or else Full or else Cursor > Input.Length or else Input.Data (Cursor) /= ',';
+                     Cursor := Cursor + 1;
+                  end loop;
+                  end if;
+                  --  The declaration ends at its closing parenthesis, as a
+                  --  FUNCTION's does at END.
+                  Expect (")"); Put ("))", Cursor - 1);
+                  if Lowered.Length > 0 then Ends (Lowered.Length) := Cursor; end if;
+                  Put (" ", Cursor);
                end if;
-               Expect (")"); Put (")) ", Cursor);
             else
             exit when Cursor + 7 > Input.Length or else
               Input.Data (Cursor .. Cursor + 7) /= "FUNCTION" or else
@@ -581,6 +651,55 @@ package body CCL.Language.Views with SPARK_Mode => On is
          end Identifier;
          procedure Child (Index : Node_Reference) is
          begin Print (Index, Style, Buffer, Spans, Depth + 1, Pretty); end Child;
+         --  N ends a pipeline: print its first value, then each stage without
+         --  the argument the pipeline supplies (a bare name when none remain).
+         procedure Print_Pipeline is
+            Stages : array (1 .. MAX_NESTING) of Node_Reference := [others => NO_NODE];
+            Count : Natural := 0;
+            Current : Node_Reference := Ref;
+            S : Node;
+            function Input_Of (Stage : Node) return Node_Reference is
+              (if Stage.Kind in Builtin_Form | Function_Call then
+                  (if Stage.Argument_Count >= 1 then Stage.Arguments (Stage.Argument_Count) else NO_NODE)
+               else Stage.First);
+         begin
+            loop
+               exit when Current >= Analysis.Tree.Length or else Count = MAX_NESTING;
+               S := Analysis.Tree.Nodes (Current);
+               exit when not S.Piped;
+               Count := Count + 1;
+               Stages (Count) := Current;
+               Current := Input_Of (S);
+            end loop;
+            if Style = Lisp then Emit ("(->> "); end if;
+            Child (Current);
+            for I in reverse 1 .. Count loop
+               S := Analysis.Tree.Nodes (Stages (I));
+               Emit ((if Style = Lisp then " " else " | "));
+               if I > 1 then Spans (Stages (I)).First := Buffer.Length + 1; end if;
+               declare
+                  Remaining : constant Natural :=
+                    (if S.Kind in Builtin_Form | Function_Call and then S.Argument_Count >= 1
+                     then S.Argument_Count - 1 else 0);
+               begin
+                  if Remaining > 0 and then Style = Lisp then Emit ("("); end if;
+                  if S.Kind = Builtin_Form then Emit (Builtin_Name (S.Builtin));
+                  elsif S.Kind = Function_Call then Identifier (S.Identifier);
+                  else Emit (Builtin (S.Kind, Style, False));
+                  end if;
+                  if Remaining > 0 then
+                     if Style = Basic then Emit ("("); end if;
+                     for P in 1 .. Remaining loop
+                        if Style = Lisp then Emit (" "); elsif P > 1 then Emit (", "); end if;
+                        Child (S.Arguments (P));
+                     end loop;
+                     Emit (")");
+                  end if;
+               end;
+               if I > 1 then Spans (Stages (I)).After_Last := Buffer.Length + 1; end if;
+            end loop;
+            if Style = Lisp then Emit (")"); end if;
+         end Print_Pipeline;
          --  A type as written: a name, a list type (List Integer) /
          --  LIST(Integer), or a function type spelled from its parts,
          --  (Function (Integer) Integer) / FUNCTION(Integer) AS Integer.
@@ -650,6 +769,8 @@ package body CCL.Language.Views with SPARK_Mode => On is
             --  Even associative operators retain explicit right grouping:
             --  overflow/fuel behavior and the AST must remain identical.
             Print (N.Second, Style, Buffer, Spans, Depth + 1, Pretty, Priority (Op) + 1);
+         elsif N.Piped then
+            Print_Pipeline;
          elsif Style = Basic and then N.Kind = If_Form then
             Emit ("IF ");
             Child (N.First);
@@ -670,6 +791,25 @@ package body CCL.Language.Views with SPARK_Mode => On is
                begin
                   Emit ((if Style = Lisp then "(type " else "TYPE "));
                   Identifier (D.Identifier);
+                  if D.Form = CCL.Types.Bounded then
+                     --  (type P (range 1 10)) / TYPE P = RANGE 1 TO 10
+                     declare
+                        Low : constant String :=
+                          CCL.Types.Low_Of (Analysis.Tree.Types, N.Declared_Kind)'Image;
+                        High : constant String :=
+                          CCL.Types.High_Of (Analysis.Tree.Types, N.Declared_Kind)'Image;
+                        function Trim (S : String) return String is
+                          (if S'Length >= 2 and then S (S'First) = ' '
+                           then S (S'Last - (S'Length - 2) .. S'Last) else S);
+                     begin
+                        Emit ((if Style = Lisp then " (range " & Trim (Low) & " " & Trim (High) & "))"
+                               else " = RANGE " & Trim (Low) & " TO " & Trim (High)));
+                     end;
+                     Spans (Ref).After_Last := Buffer.Length + 1;
+                     if Pretty then New_Line (Depth); New_Line (Depth); else Emit (" "); end if;
+                     Print (N.Second, Style, Buffer, Spans, Depth, Pretty);
+                     return;
+                  end if;
                   --  Canonicalize nullary sums to the enum shorthand.
                   Emit ((if Style = Lisp then
                            (if D.Form = CCL.Types.Product then " (record " elsif Enum then " (enum " else " (variant ")
@@ -679,7 +819,8 @@ package body CCL.Language.Views with SPARK_Mode => On is
                      if not Enum and Style = Lisp then Emit ("("); end if;
                      Identifier (D.Parts (I).Identifier);
                      if D.Parts (I).Payload /= Unit_Type or D.Form = CCL.Types.Product then
-                        Emit ((if Style = Lisp then " " else " AS ") & Type_Name (D.Parts (I).Payload));
+                        Emit ((if Style = Lisp then " " else " AS "));
+                        Emit_Type (D.Parts (I).Payload);
                      end if;
                      if not Enum and Style = Lisp then Emit (")"); end if;
                   end loop;
@@ -779,23 +920,47 @@ package body CCL.Language.Views with SPARK_Mode => On is
                   Emit ((if Style = Lisp then "(fn (" else "FUNCTION("));
                   for P in 1 .. Decl.Count loop
                      if P > 1 then Emit ((if Style = Lisp then " " else ", ")); end if;
-                     if Style = Lisp then Emit ("("); end if;
-                     Identifier (Decl.Parameters (P).Identifier);
-                     Emit ((if Style = Lisp then " " else " AS "));
-                     Emit_Type (Decl.Parameters (P).Kind);
-                     if Style = Lisp then Emit (")"); end if;
+                     if Decl.Parameters (P).Declared then
+                        if Style = Lisp then Emit ("("); end if;
+                        Identifier (Decl.Parameters (P).Identifier);
+                        Emit ((if Style = Lisp then " " else " AS "));
+                        Emit_Type (Decl.Parameters (P).Kind);
+                        if Style = Lisp then Emit (")"); end if;
+                     else
+                        Identifier (Decl.Parameters (P).Identifier);
+                     end if;
                   end loop;
                   Emit (") ");
                   Child (N.First);
                   if Style = Lisp then Emit (")"); end if;
                end;
             when List_Construct =>
-               Emit ("[");
-               for P in 1 .. N.Element_Count loop
-                  if P > 1 then Emit ((if Style = Lisp then " " else ", ")); end if;
-                  Child (N.Components (P));
-               end loop;
-               Emit ("]");
+               if N.Element_Count = 0 and then N.Second = NO_NODE then
+                  --  (list-of T) / list-of(T): the typed empty list.
+                  Emit ((if Style = Lisp then "(list-of " else "list-of("));
+                  Emit_Type (CCL.Types.Element_Of (Analysis.Tree.Types, N.Declared_Kind));
+                  Emit (")");
+               else
+                  Emit ("[");
+                  declare
+                     Chunk : Node_Reference := Ref;
+                     First_Element : Boolean := True;
+                  begin
+                     --  Long literals continue in chunks chained through Second.
+                     for Step in 0 .. MAX_NESTING loop
+                        exit when Chunk = NO_NODE or else Chunk >= Analysis.Tree.Length;
+                        for P in 1 .. Analysis.Tree.Nodes (Chunk).Element_Count loop
+                           if not First_Element then
+                              Emit ((if Style = Lisp then " " else ", "));
+                           end if;
+                           First_Element := False;
+                           Child (Analysis.Tree.Nodes (Chunk).Components (P));
+                        end loop;
+                        Chunk := Analysis.Tree.Nodes (Chunk).Second;
+                     end loop;
+                  end;
+                  Emit ("]");
+               end if;
             when Function_Call =>
                if Style = Lisp then Emit ("("); end if;
                Identifier (N.Identifier);
@@ -905,6 +1070,15 @@ package body CCL.Language.Views with SPARK_Mode => On is
       end if;
       if Full then Result.Status := Capacity_Exceeded; return; end if;
       if Failed then Result.Position := Cursor; Result.Diagnostic := Unexpected_Token; return; end if;
+      if not Check and then From = Basic and then Into = Lisp then
+         if Lowered.Length > MAX_SOURCE_LENGTH then
+            Result.Status := Capacity_Exceeded;
+         else
+            Result.Canonical := Lowered;
+            Result.Status := Converted;
+         end if;
+         return;
+      end if;
       Analyze (Lowered.Data (1 .. Lowered.Length), Visible_Interfaces, Analysis);
       if Analysis.Status /= Analysis_Succeeded then
          Result.Diagnostic := Analysis.Diagnostic;

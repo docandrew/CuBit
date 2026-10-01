@@ -1,0 +1,10 @@
+# DRAFT, not yet attached to ata.drv: devmgr still mints these grants itself.
+(executable-manifest v1
+  (identity "com.cubit.ata")
+  (version "0.1.0")
+  (platform-device ata-primary)
+  (io-ports command-block (resource 0) (count 8))
+  (io-ports control (resource 1) (count 1))
+  (interrupt channel (resource 2))
+  (request-notification ata manage registration)
+  (request-service device-manager read-write ready))

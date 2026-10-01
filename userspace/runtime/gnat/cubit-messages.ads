@@ -77,10 +77,16 @@ package CuBit.Messages is
    SYSCALL_MAP_DEVICE      : constant Unsigned_64 := 70;
    SYSCALL_PROCLIST        : constant Unsigned_64 := 71;
    SYSCALL_POLICY_MINT_CAPABILITY : constant Unsigned_64 := 72;
+   SYSCALL_POLICY_MINT_CAPABILITY_FOR_INCARNATION :
+     constant Unsigned_64 := 120;
+   SYSCALL_POLICY_DELEGATE_ENDPOINT : constant Unsigned_64 := 121;
    SYSCALL_RESUME          : constant Unsigned_64 := 73;
 
    --  Device manager syscalls
    SYSCALL_ALLOC_DMA       : constant Unsigned_64 := 74;
+   --  ALLOC_DMA arg3: 0 ordinary, 1 retained with 4 KiB CPU leaves,
+   --  3 retained driver-private 2 MiB CPU leaf (order9/aligned VA only).
+   --  Subpage grants pin constituent frames and map 4 KiB recipient leaves.
    SYSCALL_ENABLE_IRQ      : constant Unsigned_64 := 75;
    SYSCALL_MAP_INTO        : constant Unsigned_64 := 76;
    SYSCALL_SET_SYSINFO     : constant Unsigned_64 := 77;
@@ -122,6 +128,8 @@ package CuBit.Messages is
       constant Unsigned_64 := 111;
    SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY :
       constant Unsigned_64 := 112;
+   SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY :
+      constant Unsigned_64 := 122;
    SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND :
       constant Unsigned_64 := 113;
 

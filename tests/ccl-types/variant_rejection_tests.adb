@@ -1,7 +1,7 @@
+with CCL.Catalog;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Types; use CCL.Types;
-with CCL.Types.Encoding;
 with CCL.VM; use CCL.VM;
 with CCL.Format;
 with CCL.Ownership;
@@ -19,27 +19,45 @@ procedure Variant_Rejection_Tests is
    Format_Error : CCL.Format.Format_Error;
    Limits : CCL.Format.Resource_Limits;
    use type CCL.Format.Format_Error;
+   use type CCL.Format.Byte_Array;
    type Tiny_Index is mod 4;
    package Stacks is new CCL.Bounded_Stacks (Tiny_Index, Integer, 0);
    Stack : Stacks.Stack;
    Stack_Result : Stacks.Operation_Result;
    Value : Integer;
    use type Stacks.Operation_Result;
+   type Unsigned_8_Array is array (Positive range <>) of Unsigned_8;
    procedure Reject (Label : String; Expected : Validation_Error) is
    begin
       Verify (P, Checked, Error);
       if Error /= Expected then Put_Line (Label & ": " & Error'Image & " expected " & Expected'Image); end if;
       pragma Assert (Error = Expected and not Is_Valid (Checked));
    end Reject;
+   --  A corrupted v8 module is either rejected or is itself a valid module
+   --  that re-encodes to exactly its bytes: the decoder accepts only the
+   --  profile's one encoding of a valid program.
    procedure Corrupt (Position : CCL.Format.Byte_Index; Byte : Unsigned_8) is
+      Decoded : Program;
+      Linkage : CCL.Catalog.Linkage_Table;
+      Again : CCL.Format.Byte_Array;
+      Again_Length : CCL.Format.Module_Length;
+      Again_Error : CCL.Format.Format_Error;
+      Again_Validation : Validation_Error;
    begin
       Bad := Data; Bad (Position) := Byte;
-      CCL.Format.Decode (Bad, Length, Checked, Limits, Format_Error, Error);
-      if Format_Error = CCL.Format.Format_Valid then Put_Line ("accepted corrupt byte" & Position'Image); end if;
-      pragma Assert (Format_Error /= CCL.Format.Format_Valid and not Is_Valid (Checked));
+      if Bad (Position) = Data (Position) then return; end if;
+      CCL.Format.Decode (Bad, Length, Decoded, Linkage, Limits, Format_Error, Error);
+      if Format_Error = CCL.Format.Format_Valid then
+         CCL.Format.Encode (Decoded, Linkage, Limits, Again, Again_Length, Again_Error, Again_Validation);
+         if Again_Error /= CCL.Format.Format_Valid or else Again_Length /= Length or else
+           Again (0 .. Length - 1) /= Bad (0 .. Length - 1)
+         then
+            Put_Line ("accepted a noncanonical or invalid module at byte" & Position'Image);
+         end if;
+         pragma Assert (Again_Error = CCL.Format.Format_Valid and then Again_Length = Length and then
+                        Again (0 .. Length - 1) = Bad (0 .. Length - 1));
+      end if;
    end Corrupt;
-   Schema : constant Natural := CCL.Format.HEADER_SIZE;
-   Dispatch : constant Natural := Schema + CCL.Format.DATA_TYPE_SIZE * 2;
 begin
    -- Exercise wrapped/full ADT indices as well as underflow.
    Stacks.Peek_At (Stack, 0, Value, Stack_Result);
@@ -151,22 +169,14 @@ begin
    -- Check canonical schema records and match tables in untrusted modules.
    CCL.Format.Encode (Good, (1024, 4096, 1), Data, Length, Format_Error, Error);
    pragma Assert (Format_Error = CCL.Format.Format_Valid);
-   Corrupt (CCL.Format.VERSION_OFFSET, 3);
-   Corrupt (CCL.Format.DATA_TYPE_COUNT_OFFSET, 33);
-   Corrupt (CCL.Format.MATCH_COUNT_OFFSET, 17);
-   Corrupt (Schema, 33);
-   Corrupt (Schema + 8, 1); -- nonzero name padding
-   Corrupt (Schema + CCL.Types.Encoding.Shape_Offset, 0);
-   Corrupt (Schema + CCL.Types.Encoding.Count_Offset, 17);
-   Corrupt (Schema + CCL.Types.Encoding.Reserved_Offset, 1);
-   Corrupt (Schema + CCL.Types.Encoding.Parts_Offset + CCL.Types.Encoding.Name_Size, 255);
-   Corrupt (Schema + CCL.Types.Encoding.Parts_Offset + CCL.Types.Encoding.Name_Size, Unsigned_8 (Ref));
-   Corrupt (Schema + CCL.Types.Encoding.Parts_Offset + CCL.Types.Encoding.Name_Size, Unsigned_8 (String_Type));
-   Corrupt (Schema + CCL.Types.Encoding.Parts_Offset + 2 * CCL.Types.Encoding.Part_Size, 1);
-   Corrupt (Dispatch + CCL.Format.MATCH_TYPE_OFFSET, 255);
-   Corrupt (Dispatch + CCL.Format.MATCH_RESERVED_OFFSET, 1);
-   Corrupt (Dispatch + CCL.Format.MATCH_TARGETS_OFFSET, 0);
-   Corrupt (Dispatch + CCL.Format.MATCH_TARGETS_OFFSET + 1, 1);
+   for Position in 0 .. Length - 1 loop
+      for Byte of Unsigned_8_Array'[0, 1, 16#17#, 16#18#, 16#19#, 16#1F#, 16#20#, 16#38#,
+                                     16#40#, 16#5F#, 16#80#, 16#9F#, 16#A0#, 16#C0#, 16#F9#,
+                                     16#FF#, Data (Position) xor 1, Data (Position) xor 16#80#]
+      loop
+         Corrupt (Position, Byte);
+      end loop;
+   end loop;
    for Last in 0 .. Length - 1 loop
       CCL.Format.Decode (Data, Last, Checked, Limits, Format_Error, Error);
       pragma Assert (Format_Error /= CCL.Format.Format_Valid and not Is_Valid (Checked));

@@ -2,14 +2,16 @@ with Interfaces; use Interfaces;
 with System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 with Intel_GPU_DMA_Cache;
-with Intel_GPU_Live_Ring_Publish;
 package body Intel_GPU_Native_Live_Ring is
-   Base : constant Unsigned_64 := 16#6108C000#;
-   Ring_Base : constant Unsigned_64 := Base + 65536;
+   Base, Bytes, Ring_Base : Unsigned_64 := 0;
+   function Mapping_Valid return Boolean is
+     (Base /= 0 and then Base mod 4096 = 0 and then Bytes >= 81920 and then
+      Base < 2 ** 47 and then Bytes <= 2 ** 47 - Base);
    Active : Boolean := False;
    First, Last : Unsigned_32 := 0;
    function Owned return Boolean is
-     (Active and then Owner_Ready and then Coherent_Ready);
+     (Mapping_Valid and then Active and then CPU_Base = Base and then
+      Backing_Bytes = Bytes and then Owner_Ready and then Coherent_Ready);
    procedure Barrier is
    begin
       System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
@@ -67,17 +69,20 @@ package body Intel_GPU_Native_Live_Ring is
       Barrier;
       return Owned;
    end Visible;
-   package Writer is new Intel_GPU_Live_Ring_Publish
-     (Owned, Read_Marker, Load_Tail, Store_Word, Publish_Words, Store_Tail, Visible);
-   Object : Writer.Channel;
-   procedure Fail is
-   begin Writer.Fail (Object); end Fail;
-   function Tail return Unsigned_32 is (Writer.Tail (Object));
-   function Sequence return Unsigned_32 is (Writer.Sequence (Object));
-   procedure Read_Saved_Pointers (Head, Tail : out Unsigned_32; OK : out Boolean) is
+   procedure Fail (Object : in out Channel) is
+   begin Writer.Fail (Object.Inner); end Fail;
+   function Tail (Object : Channel) return Unsigned_32 is (Writer.Tail (Object.Inner));
+   function Sequence (Object : Channel) return Unsigned_32 is (Writer.Sequence (Object.Inner));
+   procedure Read_Saved_Pointers
+     (Object : Channel; Head, Tail : out Unsigned_32; OK : out Boolean) is
    begin
       Head := 0; Tail := 0; OK := False;
-      if not Owner_Ready or else not Coherent_Ready then return; end if;
+      if Active then return; end if;
+      Base := CPU_Base; Bytes := Backing_Bytes;
+      if not Mapping_Valid or else
+        (Object.Bound and then (Object.Base /= Base or Object.Bytes /= Bytes)) or else
+        not Owner_Ready or else not Coherent_Ready
+      then return; end if;
       Barrier;
       declare
          Saved_Head : Unsigned_32 with Import, Volatile_Full_Access,
@@ -86,21 +91,49 @@ package body Intel_GPU_Native_Live_Ring is
            Address => To_Address (Integer_Address (Base + 4124));
       begin Head := Saved_Head; Tail := Saved_Tail; end;
       Barrier;
-      OK := Owner_Ready and then Coherent_Ready;
+      OK := CPU_Base = Base and then Backing_Bytes = Bytes and then
+        Owner_Ready and then Coherent_Ready;
    end Read_Saved_Pointers;
-   procedure Append (Segment : Intel_GPU_ADLN_Context_Init.Segment;
+   function Select_Channel (Object : in out Channel) return Boolean is
+   begin
+      if Active then Fail (Object); return False; end if;
+      Base := CPU_Base; Bytes := Backing_Bytes;
+      if not Mapping_Valid or else
+        (Object.Bound and then (Object.Base /= Base or Object.Bytes /= Bytes))
+      then Fail (Object); return False; end if;
+      Object.Bound := True; Object.Base := Base; Object.Bytes := Bytes;
+      Ring_Base := Base + 65536;
+      return True;
+   end Select_Channel;
+   procedure Append (Object : in out Channel; Segment : Intel_GPU_ADLN_Context_Init.Segment;
                      Success : out Boolean) is
       Status : Writer.Result;
       use type Writer.Result;
    begin
       Success := False;
-      if Active then Fail; return; end if;
-      First := Tail;
+      if not Select_Channel (Object) then return; end if;
+      First := Tail (Object);
       if First > Writer.Ring_Bytes - Writer.Guard_Bytes - Writer.Segment_Bytes
       then return; end if;
       Last := First + Writer.Segment_Bytes;
       Active := True;
-      Writer.Append (Object, Segment, Status);
+      Writer.Append (Object.Inner, Segment, Status);
+      Active := False;
+      Success := Status = Writer.Published;
+   end Append;
+   procedure Append (Object : in out Channel; Segment : Intel_GPU_ADLN_Barrier.Segment;
+                     Success : out Boolean) is
+      Status : Writer.Result;
+      use type Writer.Result;
+   begin
+      Success := False;
+      if not Select_Channel (Object) then return; end if;
+      First := Tail (Object);
+      if First > Writer.Ring_Bytes - Writer.Guard_Bytes - Writer.Barrier_Bytes
+      then return; end if;
+      Last := First + Writer.Barrier_Bytes;
+      Active := True;
+      Writer.Append (Object.Inner, Segment, Status);
       Active := False;
       Success := Status = Writer.Published;
    end Append;

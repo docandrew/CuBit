@@ -46,15 +46,19 @@ package body Memory_Grants with SPARK_Mode => On is
       (firstByte : Unsigned_64;
        pages     : Page_Count) return Boolean
     is
-        byteCount : constant Unsigned_64 := Unsigned_64 (pages) * Page_Size;
     begin
-        return
-            (firstByte >= Received_Region_First and then
-             firstByte < Received_Region_Limit)
-            or else
-            (firstByte < Received_Region_First and then
-             byteCount > Received_Region_First - firstByte);
+        return Overlaps_Received_Bytes (firstByte, Unsigned_64 (pages) * Page_Size);
     end Overlaps_Received_Region;
+
+    function Overlaps_Received_Bytes
+      (First, Bytes : Unsigned_64) return Boolean is
+    begin
+        if Bytes = 0 then return False; end if;
+        if Bytes - 1 > Unsigned_64'Last - First then return True; end if;
+        return First < Received_Region_Limit and then
+          (First >= Received_Region_First or else
+           Bytes > Received_Region_First - First);
+    end Overlaps_Received_Bytes;
 
     function Permission_Attenuates
       (parent, child : Permission) return Boolean

@@ -2,7 +2,8 @@
 --  must pass the existing CCL analyzer before a conversion can be published.
 package CCL.Language.Views with SPARK_Mode => On is
    type Surface is (Lisp, Basic);
-   Maximum_View_Length : constant := 4_096;
+   --  Pretty-printed views run longer than the canonical source.
+   Maximum_View_Length : constant := 2 * CCL.Language.MAX_SOURCE_LENGTH;
    subtype View_Length is Natural range 0 .. Maximum_View_Length;
    type Text is record
       Length : View_Length := 0;
@@ -25,10 +26,14 @@ package CCL.Language.Views with SPARK_Mode => On is
       Input_Nodes, Output_Nodes : Node_Spans := [others => (others => 0)];
    end record;
    function Detect (Source : String) return Surface;
+   --  Check => False (BASIC into Lisp only) stops after reading: Canonical is
+   --  the lowered Lisp, not yet analyzed. A REPL session uses this to check
+   --  the entry in the context of its kept definitions and values.
    procedure Convert
      (Source : String; From, Into : Surface;
       Visible_Interfaces : CCL.Catalog.Interface_Catalog;
-      Result : out Conversion);
+      Result : out Conversion;
+      Check : Boolean := True);
    --  From = Into formats the current view. Rendered uses two-space
    --  indentation and an 80-column wrapping target (literals stay intact).
    --  Comments retain their order/text but currently move above the program.

@@ -1,6 +1,9 @@
 # CCL Bytecode Module Format
 
-Status: version 7; native objects plus opaque live VM resource values
+Status: version 8 (CBOR, 2026-09-30); native objects plus opaque live VM resource values.
+Version 8 replaces version 7's fixed little-endian layout with CBOR and adds
+the function table. The history below describes what versions 6 and 7 added
+to the program model, which version 8 keeps.
 
 Version 7 adds the resource value kind (`4`) and retains the layout of v6. It
 intentionally replaces v6; there are no deployed binaries requiring a
@@ -54,213 +57,152 @@ without normalization ambiguity. The decoder is bounded, allocation-free,
 implemented in SPARK, and always invokes the ordinary CCL bytecode verifier
 before returning a `Validated_Program`.
 
-## Version 7 layout
+## Version 8 plan: canonical CBOR and interpreter parity (2026-09-30)
+
+**Why.** The interpreter now has:
+- a value arena (records, payload variants);
+- lists of records and list fields, `(list-of T)`;
+- recursive types (a list of self) and range types.
+
+CCLB still compiles none of them, has no strings or lists, and keeps
+records in a 16-snapshot pool. Parity comes before any further language
+feature (docs/ccl-repl.md).
+
+**Module encoding: CBOR, format v8, replacing v7 with no compatibility
+decoder.**
+- **Built on what exists.** It uses the Nix-pinned `cbor_ada` (a SPARK
+  single-head decoder that already enforces shortest-form heads and rejects
+  reserved additional-info values) and the restricted profile of
+  `CCL.Objects.Persistence`: definite lengths, shortest integers, no tags,
+  maps or floats, no trailing data.
+- **Text is byte strings.** CCL text is carried as CBOR byte strings, as in
+  persistence: CCL strings can hold NUL and bytes above 127.
+- **One encoding per module.** No maps (so no duplicate keys) and
+  shortest-form heads, so hashing and signing (COSE_Sign1 later) need no
+  normalization.
+- **Top level** is a fixed-position array:
+  `[8, types, constants, imports, locals, functions, code]`.
+  - Types carry every interpreter shape: products, sums, sequences,
+    completed self-lists, and range bounds.
+  - Constants carry text.
+- **Placement: outside the core.** The codec lives in its own directory,
+  `userspace/ccl/modules/`, like `persistence/`, so embedding the CCL core
+  doesn't pull in CBOR. The core VM keeps accepting a decoded `Program`,
+  which always goes through the ordinary verifier. Only loaders of `.cclb`
+  bytes opt in (the module loader, `ccl-run`, the Observatory's "install
+  module" request, tests). `ccl-format`'s v7 reader is removed from `src/`.
+
+**The VM gains the interpreter's value model:**
+- per-run text and list regions, and the value arena (nodes and slots,
+  components referring only to older nodes);
+- a `Value` refers to a node instead of an object-snapshot position;
+- host images are copied in and out at import boundaries, as in the
+  interpreter.
+
+**Steps, each with compiler lowering, verifier rules, VM execution, proofs
+and a differential test** (every interpreter test program is also compiled,
+verified and run, and the literals must match):
+
+1. **Done 2026-09-30.** The v8 module codec in `userspace/ccl/modules/` on
+   `cbor_ada`, for today's v7 content only. It is proved at level 1, except
+   one 64-bit conversion proved at level 3 (`make prove-ccl-format`). All existing CCLB tests pass
+   unchanged; v7 is removed. Round-trip and hostile-input tests.
+2. Strings: text constants, the text region, string builtins. **First
+   slice done 2026-09-30:**
+   - **Values.** `Text_Value` (kind 5) holds a descriptor into the run's
+     text region (`Text_Regions`, 64 KiB, 512 strings). Strings hold up to
+     8 KiB and results carry up to 1 KiB, the interpreter's bounds, so both
+     fail at the same points (differential tests).
+   - **Opcodes:** `Push_Text`, `Concat_Text`, `Length_Text` and
+     `Equal_Text`, plus string `=`/`/=`, which the language gained at the
+     same time.
+   - **Constant pool.** The verifier checks constant references and pool
+     bounds.
+   - **Locals.** Text may live in compiler-created locals, never in
+     host-supplied ones.
+   - **Built-ins** (second slice, same day). One opcode, `Text_Builtin`
+     (38), whose immediate names a `CCL.Text_Operations.Operation`:
+     - the 13 operations `upper`, `lower`, `trim`, `reverse`, `first`,
+       `last`, `skip`, `contains`, `index-of`, `starts-with`, `ends-with`,
+       `replace` and `parse-int`;
+     - the interpreter and the VM call the same Ada package. It is proved at
+       level 1, so the engines differ only in how they copy operands in and
+       store results;
+     - the verifier types the operands and the result from the package's
+       signature table;
+     - differential tests cover every operation, the clamping edges,
+       `parse-int` junk and overflow, and a pattern over 1 KiB.
+   - **Next:** characters (`at`), `to-string`, then `split`/`join` (with
+     lists, step 3).
+3. Lists and list builtins.
+4. The value arena: record and payload-variant construction, field and
+   payload access, lists of records, list fields, `(list-of T)`, recursive
+   types.
+5. Range checks: a verified `Check_Range` on values entering range-typed
+   positions.
+6. Function values and captures (the former "parity 4").
+
+**Limits to revisit:** 256 instructions and a 64-slot stack per module are
+small for a full startup profile.
+
+## Version 8 layout
+
+A module is **one CBOR item** in the restricted profile that
+`CCL.Objects.Persistence` also uses:
+- definite lengths and shortest-form heads (`cbor_ada` rejects anything
+  else);
+- no maps, tags or floats, and no trailing data.
+
+Every value therefore has exactly one encoding, and the bytes can be hashed
+and signed as they are. The codec (`userspace/ccl/modules/ccl-format.ad?`)
+lives outside the CCL core, so embedding the core doesn't pull in CBOR.
 
 ```text
-header             32 bytes
-ownership table     type_count × 36 bytes
-nominal type table  data_type_count × 580 bytes
-match table         match_count × 34 bytes
-local table         local_count × 4 bytes
-import table        import_count × 120 bytes
-instruction table   instruction_count × 16 bytes
+["CCLB" (bytes), 8, [fuel, memory, in_flight],
+ ownership_types, data_types, matches,
+ [dynamic_locals, locals], imports, functions, constants, code]
+
+ownership_types [[mode, [[verb, effect, next_type] ...]] ...]
+data_types      [[shape, name, [[part_name, type] ...], low, high] ...]
+matches         [[type, [target x 16]] ...]
+locals          [[kind, ownership_type, data_type] ...]
+imports         [[argument, result, authority, ownership_argument, local,
+                  transfer, cancellation, parameters, success_verb,
+                  failure_verb, cancel_verb, major, minor, operation,
+                  argument_type, result_type,
+                  digest, argument_schema, result_schema] ...]
+functions       [[entry, [[kind, type] ...], result_kind, result_type] ...]
+constants       [text ...]      (byte strings: Push_Text's pool)
+code            [[op, local, verb, type, alternative, immediate, target,
+                  import] ...]
 ```
 
-No trailing bytes are permitted. All reserved fields must be zero.
+**Field notes:**
+- **Integers.** Enumerations and indexes are unsigned integers; an
+  instruction's `immediate` and a range's `low`/`high` are signed.
+- **Names** are byte strings of at most 32 bytes.
+- **Digests and schema identities** are 32-byte byte strings, words most
+  significant first.
+- **Data types** are the declared types in registry order. The shape codes
+  are:
+  - product 1, sum 2, resource 3, sequence 4, callable 5;
+  - bounded 6, a range type with `low`/`high`; the bounds are 0 for every
+    other shape.
 
-### Header
+  A part may name a later type only as the list of its own type
+  (`CCL.Types.Complete_Self_List`). The decoder defines it with a
+  placeholder and completes it once every definition exists.
+- **Match tables** always carry the full 16 targets.
+- **Constants** are packed into the program's pool in order: at most 32
+  constants and 4 KiB of text.
+- **Unused operand fields** of an instruction must be zero, as the
+  canonical-instruction rule requires.
 
-| Offset | Size | Field |
-|---:|---:|---|
-| 0 | 4 | ASCII `CCLB` |
-| 4 | 2 | format version, currently 7 |
-| 6 | 2 | header size, currently 32 |
-| 8 | 4 | exact total payload length |
-| 12 | 2 | instruction count, maximum 256 |
-| 14 | 2 | import count, maximum 16 |
-| 16 | 4 | requested instruction fuel |
-| 20 | 4 | requested isolate memory bytes |
-| 24 | 2 | maximum outstanding host operations |
-| 26 | 1 | total local count (initial plus dynamic), maximum 32 |
-| 27 | 1 | ownership-type count, maximum 32 |
-| 28 | 1 | compiler-created dynamic-local count, at most the local count |
-| 29 | 1 | nominal type count, maximum 32 |
-| 30 | 1 | match table count, maximum 16 |
-| 31 | 1 | reserved, zero |
-
-Current loader policy permits at most 1,000,000 fuel, 16 MiB of declared
-memory, and one outstanding operation per isolate. A module must request
-nonzero fuel. Loading does not itself grant these resources: the host may
-reduce limits according to installation and session policy.
-
-### Ownership type definition
-
-| Offset | Size | Field |
-|---:|---:|---|
-| 0 | 1 | mode: unrestricted `0`, move-only `1`, must-handle `2` |
-| 1 | 1 | active disposition count, maximum 8 |
-| 2 | 2 | reserved, zero |
-| 4 | 32 | eight fixed disposition slots, 4 bytes each |
-
-Each disposition slot contains a verb byte, effect byte (`consume` `0`,
-`transfer` `1`, or `transition` `2`), next-type byte, and one zero reserved
-byte. Active verbs must be unique. Every next-type value is range checked;
-active transitions may refer only to a declared type. Fixed slots keep the
-representation canonical and the decoder bounded.
-
-### Nominal type definitions and match tables
-
-Each 580-byte type definition has a 33-byte name (one length byte, then 32
-zero-padded bytes), shape byte at offset 33 (sum = 2), count byte at 34, and
-zero reserved byte at 35. Offset 36 contains sixteen 34-byte alternatives:
-the same name encoding followed by a payload type reference. Unused alternative
-slots must be entirely zero. Names and alternative names must be valid and
-unique in their respective scope. Reference 1 means Integer, 2 Boolean, and
-6 Unit (no payload); executable variants reject other payload kinds. Definitions receive
-snapshot-local references 7 through 38 in table order. The registry codec can
-describe products too; these and non-scalar variants use native-object values,
-not scalar variant opcodes. Scalar match/constructor instructions still reject
-non-scalar payloads.
-
-A 34-byte match entry contains its nominal type reference, a zero reserved
-byte, then sixteen little-endian 16-bit code targets, ordered by alternative.
-Every declared alternative must have a forward, in-range target when used by
-`Switch_Variant`; remaining entries must be zero. Tables contain no authority,
-service identity, or runtime bindings. These type references are local to this
-module, never authenticated IPC schema identities.
-
-### Local declaration
-
-| Offset | Size | Field |
-|---:|---:|---|
-| 0 | 1 | representation: integer `0`, Boolean `1`, scalar variant `2`, native object `3`, opaque resource `4` |
-| 1 | 1 | declared ownership type |
-| 2 | 1 | type reference for variant/object/resource, otherwise zero |
-| 3 | 1 | reserved, zero |
-
-Initial locals precede compiler-created dynamic locals. Initial entries form
-an instantiation contract, not module-owned data; the host must supply exact
-value-kind, ownership-type, and nominal-type matches with valid alternatives.
-Dynamic locals begin uninitialized and are checked by the ownership verifier.
-
-### Portable import declaration and linkage
-
-| Offset | Size | Field |
-|---:|---:|---|
-| 0 | 1 | argument value kind |
-| 1 | 1 | result value kind |
-| 2 | 1 | authority class |
-| 3 | 1 | ownership-argument Boolean (`0` or `1`) |
-| 4 | 1 | owned local index |
-| 5 | 1 | transfer mode |
-| 6 | 1 | cancellation mode |
-| 7 | 1 | source parameter count |
-| 8 | 1 | success disposition verb |
-| 9 | 1 | failure disposition verb |
-| 10 | 1 | cancellation disposition verb |
-| 11 | 1 | reserved, zero |
-| 12 | 2 | interface major version |
-| 14 | 2 | interface minor version |
-| 16 | 1 | operation ordinal |
-| 17 | 1 | argument nominal type reference (zero for scalar representation) |
-| 18 | 1 | result nominal type reference (zero for scalar representation) |
-| 19 | 5 | reserved, zero |
-| 24 | 32 | descriptor SHA-256 digest as four little-endian 64-bit words |
-| 56 | 32 | argument schema identity (zero for ordinary scalar contract) |
-| 88 | 32 | result schema identity (zero for ordinary scalar contract) |
-
-Value kinds, authority classes, transfer modes, and cancellation modes use the
-explicit enum representations declared by the CCL core. A decoder range-checks
-each byte before converting it to the corresponding enum. The digest, version,
-and ordinal pin operation identity; the remaining fields pin its full type,
-effect, and ownership contract.
-
-The decoder returns an unlinked `Program` and a separate `Linkage_Table` after
-structural and bytecode verification. Trusted admission must match that linkage
-against already-granted operations, install opaque host-local bindings, and
-verify the linked program before execution. No capability slot, endpoint,
-driver ID, process ID, or host binding can be represented in a CCLB v7 payload.
-Import kinds are Integer (`0`), Boolean (`1`), scalar Variant (`2`), or native
-Object (`3`). Objects require a nonzero type reference, a persistable shape
-outside the scalar representations, and a pinned nonzero schema identity.
-A variant requires
-a declared nominal reference and nonzero schema identity. Scalar representations
-require nominal reference zero; a nonzero schema identity distinguishes an
-object-wrapped Integer/Boolean from an ordinary scalar contract.
-
-Resource (`4`) is not admitted in the portable import table yet. It must not be
-disguised as Object, assigned a persistence binding, or encoded as an integer
-handle to bypass the missing resource-signature linkage.
-
-The compiler lowers the checked source type, but does not grant anything. Linking
-matches the complete descriptor contract against existing grants, then resolves
-each nonzero schema identity against an explicitly supplied authorized catalog.
-It compares the full nominal type definition, including names, alternatives,
-payloads and ordering, using type correspondence rather than numeric-ID equality.
-Shifted local IDs are allowed; changed definitions or absent schemas fail. The
-default empty schema view only admits ordinary scalar imports. All checks finish
-before any runtime binding is installed. Schema identity is not issuer identity
-or authority, and this step does not implement signature verification.
-
-Host completion independently checks the expected nominal type, valid alternative
-and unrestricted ownership before resuming. Module deserialization is separate
-from Config value transport: Config clients still exchange native typed objects,
-not serialized CCLB/CBOR payloads.
-
-### Instruction
-
-| Offset | Size | Field |
-|---:|---:|---|
-| 0 | 1 | opcode |
-| 1 | 1 | local index, or zero when unused |
-| 2 | 1 | disposition verb, or zero when unused |
-| 3 | 1 | nominal type for Make_Variant/Equal_Variant, otherwise zero |
-| 4 | 8 | signed immediate, two's-complement little-endian |
-| 12 | 2 | jump target |
-| 14 | 1 | import index |
-| 15 | 1 | one-based alternative for Make_Variant, otherwise zero |
-
-Unused operands must be zero. Boolean immediates must be exactly zero or one.
-These rules reject semantically equivalent alternate encodings.
-
-The scalar arithmetic opcodes are `Add_Integer` (`3`), `Multiply_Integer`
-(`19`), `Divide_Integer` (`20`), and `Modulo_Integer` (`21`). Each consumes two
-integers and produces one integer. Division by zero and the sole signed-division
-overflow case terminate execution with a typed status. These additive opcodes
-retain their prior opcode numbers. Strings remain excluded pending a future
-canonical constant pool and variable-sized value representation.
-
-| Opcode | Instruction | Effect |
-|---:|---|---|
-| 22 | Make_Variant | Consume the declared scalar payload (none for Unit), produce a nominal variant. |
-| 23 | Equal_Variant | Compare two values of the declared enum type; payload sums are rejected. |
-| 24 | Switch_Variant | Immediate indexes a match table; consume a variant, jump and expose only that alternative's payload. |
-| 25 | Copy_Stack | Immediate is depth from top, zero-based; copy only unrestricted data. |
-| 26 | Drop_Under_Top | Preserve result while removing the unrestricted lexical payload underneath. |
-| 27 | Project_Field | Consume an object of the declared product type; produce the immediate's field. |
-| 28 | Subtract_Integer | Consume two integers, produce their difference; overflow terminates with a typed status. |
-| 29 | Less_Integer | Consume two integers, produce `left < right`. |
-| 30 | Less_Equal_Integer | Consume two integers, produce `left <= right`. |
-| 31 | Equal_Boolean | Consume two Booleans, produce their equality. |
-| 32 | Call_Function | Immediate is an earlier function's index; its parameters are on the stack. |
-| 33 | Return_Function | Keep the result, drop the parameters, continue after the call. |
-
-The compiler adds no opcode for the other operators:
-
-* `>` is `Less_Equal_Integer` followed by `Not_Boolean`, and `>=` is
-  `Less_Integer` followed by `Not_Boolean`. Both are exact on integers.
-* `/=` is the matching equality followed by `Not_Boolean`.
-* `and` and `or` lower to the conditional's forward jumps, so the right
-  operand runs only when it decides the result.
-
-Operands are always evaluated left to right.
-
-The verifier propagates a distinct payload stack type into every dispatch arm,
-and enforces nominal identity, ownership-copy restrictions, and stack equality
-at joins. Moved locals are opaque transferred values on the operand stack:
-they can be returned but cannot be copied, boxed, discarded, laundered through
-arithmetic/scalar imports, or reinitialized as unrestricted locals. Resource
-operations remain governed by the existing ownership-import/disposition path.
+**Tests.** Corruption tests locate a field by its one encoding
+(`tests/ccl-module-support/module_patches.ads`). A byte sweep replaces
+every byte of a module with 18 values and requires each result to be
+rejected, or to be a valid module whose re-encoding is exactly those
+bytes.
 
 ## Functions
 
@@ -300,14 +242,16 @@ function table).
 
 The loader fails closed in this order:
 
-1. minimum buffer size, magic, version, and header size;
-2. bounded counts and exact total length;
-3. reserved fields and resource ceilings;
-4. ownership modes, dispositions, nominal definitions, match tables, and locals;
-5. import enum values, ownership contracts, and descriptor linkage;
-6. opcode and operand encodings;
-7. canonical-encoding rules; and
-8. control-flow, stack, type, import, and ownership verification.
+1. The profile, as each head is read: major type, shortest form, definite
+   length, and each count's bound.
+2. Magic, version and resource ceilings.
+3. Ownership modes and dispositions, nominal definitions (including
+   completed self-lists and range bounds), match tables and locals.
+4. Import enumeration values, ownership contracts and descriptor linkage.
+5. Functions.
+6. Opcodes, operand bounds and canonical instructions.
+7. Exactly one item: nothing may follow it.
+8. Control-flow, stack, type, import and ownership verification.
 
 The portable decoder never directly produces an executable linked program.
 Execution requires descriptor admission, transactional binding, and ordinary

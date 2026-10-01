@@ -207,16 +207,49 @@ begin
       -- Exact 8 KiB aggregate budget; each language string stays within its
       -- own bound. Sixteen constructor fields are independent of function arity.
       Pure (Prefix & Text & "(let ((t (concat s s))) (length (field " & Slots & " p))))", 512);
-      L.Interpret (Prefix & Text & "(let ((t (concat (concat s s) ""x""))) (length (field " & Slots & " p))))", 1024, Result);
-      Check (Result.Status = L.Evaluation_Object_Storage_Exhausted and not Result.Has_Value);
+      -- Record fields refer to the evaluation's text region, not copies:
+      -- sixteen fields naming one 513-byte string store 513 bytes.
+      Pure (Prefix & Text & "(let ((t (concat (concat s s) ""x""))) (length (field " & Slots & " p))))", 513);
    end;
    declare
-      function Repeated (N : Positive) return String is
-        (if N = 1 then "(make)" else "(+ (make) " & Repeated (N - 1) & ")");
+      -- Records and payload variants come out as canonical literals that
+      -- read back as the same value.
+      procedure Literal (Program, Expected : String) is
+         Again : L.Interpretation_Result;
+      begin
+         L.Interpret (Program, 4096, Result);
+         Check (Result.Status = L.Succeeded and Result.Has_Literal and
+                Result.Literal.Data (1 .. Result.Literal.Length) = Expected);
+         L.Interpret (Program (Program'First .. Program'Last - Expected'Length) & Expected, 4096, Again);
+         Check (Again.Status = L.Succeeded and Again.Has_Literal and
+                Again.Literal.Data (1 .. Again.Literal.Length) = Expected);
+      end Literal;
+      Types_Source : constant String :=
+        "(type C (record (a Integer) (b Boolean))) " &
+        "(type Note (variant (Text String) (Absent) (Count Integer) (Inner C))) " &
+        "(type L (record (c C) (n Note) (s String))) ";
    begin
-      L.Interpret ("(type Box (record (x Integer))) (define (make) Integer (field (Box 1) x)) " &
-        Repeated (L.MAX_OBJECT_VALUES + 1), 1024, Result);
+      Literal (Types_Source & "(L (C 1 true) (Note.Inner (C -2 false)) ""q\""\\\n\t"")",
+               "(L (C 1 true) (Note.Inner (C -2 false)) ""q\""\\\n\t"")");
+      Literal (Types_Source & "(L (C 0 false) Note.Absent """")", "(L (C 0 false) Note.Absent """")");
+      Literal (Types_Source & "(L (C 0 false) (Note.Count 7) ""x"")", "(L (C 0 false) (Note.Count 7) ""x"")");
+      Literal (Types_Source & "(Note.Text ""hi"")", "(Note.Text ""hi"")");
+      -- No literal spelling exists for characters yet: refused, not guessed.
+      L.Interpret ("(type K (record (c Character))) (K (at ""ab"" 1))", 4096, Result);
+      Check (Result.Status = L.Host_Contract_Unsupported and not Result.Has_Literal);
+   end;
+   declare
+      -- Each record is an arena node; more than MAX_VALUE_NODES of them in
+      -- one evaluation is a typed exhaustion, never an overwrite.
+      function Boxes (N : Positive) return String is
+        ("(type Box (record (x Integer))) " &
+         "(length (each (fn ((n Integer)) (field (Box n) x)) (range 1" & N'Image & ")))");
+   begin
+      L.Interpret (Boxes (L.MAX_VALUE_NODES + 1), 1_000_000, Result);
       Check (Result.Status = L.Evaluation_Object_Storage_Exhausted and not Result.Has_Value);
+      L.Interpret (Boxes (L.MAX_VALUE_NODES), 1_000_000, Result);
+      Check (Result.Status = L.Succeeded and
+             Result.Result_Value = CCL.VM.Integer_Constant (Integer_64 (L.MAX_VALUE_NODES)));
    end;
    Define (Types, (Identifier => Named ("Reading"), Form => Sum, Count => 2,
      Parts => [1 => (Named ("Text"), String_Type), 2 => (Named ("Absent"), Unit_Type), others => <>]),

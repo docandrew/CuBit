@@ -56,6 +56,51 @@ package body CCL.Objects with SPARK_Mode is
       return Allowed (Root);
    end Persistable;
 
+   --  Whether Payload is the list of Owner itself.
+   function Self_List (Types : Registry; Owner, Payload : Type_Reference) return Boolean is
+     (Known (Types, Payload)
+      and then Describe (Types, Payload).Form = Sequence
+      and then Describe (Types, Payload).Count = 1
+      and then Describe (Types, Payload).Parts (1).Payload = Owner);
+
+   function Storable (Types : Registry; Root : Type_Reference) return Boolean is
+      Allowed : array (Type_Reference) of Boolean := [others => False];
+      D : Description;
+   begin
+      if not Known (Types, Root) then return False; end if;
+      Allowed (Integer_Type) := True;
+      Allowed (Boolean_Type) := True;
+      Allowed (String_Type) := True;
+      Allowed (Character_Type) := True;
+      Allowed (Unit_Type) := True;
+      --  Backward references, except that a record or variant may hold a
+      --  list of itself (CCL.Types.Complete_Self_List). A list's element
+      --  may be any storable type except another list.
+      for Ref in Declared_Type'First .. Last (Types) loop
+         D := Describe (Types, Ref);
+         if D.Form = Bounded then
+            --  A range subtype of Integer.
+            Allowed (Ref) := True;
+         elsif D.Form = Sequence then
+            Allowed (Ref) := D.Count = 1 and then D.Parts (1).Payload < Ref
+              and then Allowed (D.Parts (1).Payload)
+              and then Describe (Types, D.Parts (1).Payload).Form /= Sequence;
+         else
+            Allowed (Ref) := D.Form in Product | Sum;
+            for I in 1 .. D.Count loop
+               if D.Parts (I).Payload >= Ref then
+                  if not Self_List (Types, Ref, D.Parts (I).Payload) then
+                     Allowed (Ref) := False;
+                  end if;
+               elsif not Allowed (D.Parts (I).Payload) then
+                  Allowed (Ref) := False;
+               end if;
+            end loop;
+         end if;
+      end loop;
+      return Allowed (Root);
+   end Storable;
+
    procedure Bind
      (Types : Registry; Root : Type_Reference; Key : Schema_Key;
       Contract : out Binding; Accepted : out Boolean) is
@@ -162,7 +207,7 @@ package body CCL.Objects with SPARK_Mode is
                   when Declared_Type =>
                      D := Describe (Contract.Types, Expected);
                      case D.Form is
-                        when Primitive | Resource | Sequence | Callable => return False;
+                        when Primitive | Resource | Sequence | Callable | Bounded => return False;
                         when Product =>
                            if C.First /= Unsigned_64 (D.Count) then return False; end if;
                            for P in reverse 1 .. D.Count loop

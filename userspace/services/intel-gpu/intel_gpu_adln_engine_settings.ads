@@ -6,9 +6,9 @@ package Intel_GPU_ADLN_Engine_Settings with SPARK_Mode is
       Offset, Mask, Value : Unsigned_32 := 0;
       Masked_Write, CPU_Steered : Boolean := False;
    end record;
-   type Settings_Array is array (Positive range 1 .. 9) of Setting;
+   type Settings_Array is array (Positive range 1 .. 21) of Setting;
    type Settings_Plan is record
-      Count : Natural range 0 .. 9 := 0;
+      Count : Natural range 0 .. 21 := 0;
       Entries : Settings_Array := [others => <>];
    end record;
    function Build (Description : Intel_GPU_ADLN_Inventory.Inventory;

@@ -49,6 +49,22 @@ package CuBit.Memory_Grants is
       mappedAddress : out System.Address;
       success       : out Boolean);
 
+   --  Explicit owner opt-in; only caller-owned pages can be granted. Existing
+   --  creation APIs remain nonforwardable. This does not create a child loan;
+   --  use Derive_Via_Capability only after acquiring the parent.
+   procedure Create_Forwardable_Via_Capability
+     (slot : CuBit.Messages.CapabilitySlot; localAddr : System.Address;
+      numPages : Natural; readWrite : Boolean;
+      reference : out Grant_Reference; success : out Boolean);
+
+   --  The acquired parent's owner must have opted into forwarding. Children
+   --  cannot be forwarded, widen the page range or add write permission.
+   --  Recipient is authenticated through an endpoint capability, not a PID.
+   procedure Derive_Via_Capability
+     (recipient : CuBit.Messages.CapabilitySlot; parent : Grant_Reference;
+      pageOffset, numPages : Natural; readWrite : Boolean;
+      reference : out Grant_Reference; success : out Boolean);
+
    --  Acquire from the service named by an endpoint capability.  The kernel
    --  derives and generation-checks the expected grant owner from that
    --  authority, avoiding a caller-supplied PID at service boundaries.

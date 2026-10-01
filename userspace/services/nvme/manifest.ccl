@@ -1,0 +1,11 @@
+# DRAFT, not yet attached to nvme.drv: devmgr still mints these grants itself.
+(executable-manifest v1
+  (identity "com.cubit.nvme")
+  (version "0.1.0")
+  (match-pci-class 1 8 2)
+  (device-memory registers (bar 0) (max-bytes 16384) read-write)
+  # devmgr falls back to a line interrupt when MSI-X is unavailable.
+  (interrupt completion msix (vectors 1))
+  (dma queues (bytes 1048576))
+  (request-notification nvme manage registration)
+  (request-service device-manager read-write ready))

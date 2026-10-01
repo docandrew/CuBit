@@ -31,7 +31,7 @@ procedure Catalog_Tests is
       if not Good then raise Program_Error with "catalog type check" & Checks'Image; end if;
    end Check;
    procedure Run
-     (Text : String; Expected : CCL.Types.Component_Index; Serializes : Boolean := True;
+     (Text : String; Expected : CCL.Types.Component_Index;
       Flag : Boolean := True) is
       Analysis : CCL.Language.Analysis_Result;
       Interpreted : CCL.Language.Interpretation_Result;
@@ -67,11 +67,6 @@ procedure Catalog_Tests is
       Check (Executed.Result_Value.Kind = CCL.VM.Variant_Value and Executed.Result_Value.Alternative = Expected);
       Check (Same (Describe (Compiled.Program.Data_Types, Executed.Result_Value.Data_Type).Identifier, Named ("Reading")));
       CCL.Format.Encode (Compiled.Program, Limits, Data, Length, Encoded_As, Valid);
-      if not Serializes then
-         -- Programs with functions run as CCLB; the v7 module format has no
-         -- function table, so they serialize only once v8 lands.
-         Check (Encoded_As = CCL.Format.Unsupported_Functions); return;
-      end if;
       Check (Encoded_As = CCL.Format.Format_Valid and Valid = CCL.VM.Valid);
       CCL.Format.Decode (Data, Length, Program, Limits, Encoded_As, Valid);
       Check (Encoded_As = CCL.Format.Format_Valid and Valid = CCL.VM.Valid);
@@ -93,7 +88,7 @@ begin
    Run ("Reading.Unavailable", 2);
    Run ("(Reading.Flag true)", 3);
    Run ("(Reading.Flag false)", 3, Flag => False);
-   Run ("(define (id (x Reading)) Reading x) (id (Reading.Value 42))", 1, Serializes => False);
+   Run ("(define (id (x Reading)) Reading x) (id (Reading.Value 42))", 1);
    Run ("(type Local (enum Other)) (Reading.Value 42)", 1);
    declare
       R : CCL.Language.Interpretation_Result;

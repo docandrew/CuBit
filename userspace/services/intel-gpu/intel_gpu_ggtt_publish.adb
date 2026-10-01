@@ -1,8 +1,19 @@
-with Intel_GPU_GGTT;
 package body Intel_GPU_GGTT_Publish is
    use Interfaces;
    function Current (Object : Attempt) return Phase is (Object.Value);
    function Search_Detail (Object : Attempt) return Search_Evidence is (Object.Search);
+   function Valid_Backing (Base, Bytes : Unsigned_64) return Boolean is
+   begin
+      if Bytes = 0 or else Bytes > Maximum_Bytes or else
+        Bytes > 16 * 1024 * 1024 or else Bytes mod 4096 /= 0
+      then return False; end if;
+      for Page in Unsigned_64 range 0 .. Bytes / 4096 - 1 loop
+         if Intel_GPU_GGTT.Encode_System_Page (Resolve_Page (Base, Page * 4096)) = 0 then
+            return False;
+         end if;
+      end loop;
+      return True;
+   end Valid_Backing;
    procedure Publish_Available
      (Object : in out Attempt;
       Reservations : in out Intel_GPU_GGTT_Reservations.Ledger;
@@ -22,9 +33,7 @@ package body Intel_GPU_GGTT_Publish is
       Selected_Start := 0;
       Status := Rejected;
       if Object.Value /= Fresh then return; end if;
-      if Bytes = 0 or else Bytes > Maximum_Bytes or else Bytes > 16 * 1024 * 1024 or else
-        Bytes mod 4096 /= 0 or else Intel_GPU_GGTT.Encode_System_Page (DMA_Start) = 0 or else
-        DMA_Start > 2 ** 32 - Bytes or else
+      if not Valid_Backing (DMA_Start, Bytes) or else
         Alignment < 4096 or else Alignment > 16 * 1024 * 1024 or else
         (Alignment and (Alignment - 1)) /= 0 or else Length = 0
       then Object.Value := Consumed_No_Writes; return; end if;
@@ -70,11 +79,7 @@ package body Intel_GPU_GGTT_Publish is
       Object.Value := Consumed_No_Writes;
       -- Bounded retained firmware/runtime window. Whole retained pages only;
       -- no implicit tail coverage beyond the caller's backing allocation.
-      if not Plan.Valid or else Bytes = 0 or else Bytes > Maximum_Bytes or else
-        Bytes > 16 * 1024 * 1024 or else
-        Bytes mod 4096 /= 0 or else
-        Intel_GPU_GGTT.Encode_System_Page (DMA_Start) = 0 or else
-        DMA_Start > 2 ** 32 - Bytes
+      if not Plan.Valid or else not Valid_Backing (DMA_Start, Bytes)
       then return; end if;
       if not Range_Allowed (GPU_Start, Bytes) then
          Status := Protected_Range; return;
@@ -106,18 +111,18 @@ package body Intel_GPU_GGTT_Publish is
       Status := Quarantined;
       Object.Value := Possibly_Published;
       for Offset in Unsigned_64 range 0 .. Plan.Entry_Count - 1 loop
-         Expected := Intel_GPU_GGTT.Encode_System_Page (DMA_Start + Offset * 4096);
+         Expected := Intel_GPU_GGTT.Encode_System_Page (Resolve_Page (DMA_Start, Offset * 4096));
          Write_PTE (Plan.First_Entry + Offset, Expected, OK);
          if not OK then return; end if;
       end loop;
       -- Readback is distinct from translation invalidation and DMA coherence.
       for Offset in Unsigned_64 range 0 .. Plan.Entry_Count - 1 loop
-         Expected := Intel_GPU_GGTT.Encode_System_Page (DMA_Start + Offset * 4096);
+         Expected := Intel_GPU_GGTT.Encode_System_Page (Resolve_Page (DMA_Start, Offset * 4096));
          Read_PTE (Plan.First_Entry + Offset, Value, OK);
          if not OK or else Value /= Expected then return; end if;
       end loop;
       Invalidate (OK);
-      if OK then
+      if OK and then Range_Allowed (GPU_Start, Bytes) then
          Object.Value := Complete;
          Status := Published;
       end if;

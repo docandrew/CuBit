@@ -1,5 +1,7 @@
 with CCL.VM;
 with CCL.Declarations;
+with CCL.Scheduling_Limits;
+with CCL.Resource_Sections;
 with CuBit.Network_Authority;
 with CuBit.TLS_Scopes;
 
@@ -13,11 +15,46 @@ package body CCL.Manifests with SPARK_Mode => On is
    subtype Slot_Number is Natural range 1 .. 62;
    type Rights_Kind is (Read_Only, Write_Only, Read_Write);
    for Rights_Kind use (Read_Only => 1, Write_Only => 2, Read_Write => 3);
+   --  Device and scheduling requests travel in .cubit.resources, never in
+   --  .cubit.caps: device resources are authorized by a path separate from
+   --  endpoint delegation (docs/ccl-driver-manifests.md).
    type Request_Kind is
-     (Framebuffer_Request, Service_Request, Notification_Request, Network_Request);
+     (Framebuffer_Request, Service_Request, Notification_Request, Network_Request,
+      Device_Memory_Request, IO_Port_Request, Interrupt_Request, DMA_Request,
+      Scheduling_Request);
+   package Sections renames CCL.Resource_Sections;
    for Request_Kind use
      (Framebuffer_Request => 1, Service_Request => 2, Notification_Request => 7,
-      Network_Request => CuBit.Network_Authority.Manifest_Request);
+      Network_Request => CuBit.Network_Authority.Manifest_Request,
+      Device_Memory_Request => Sections.Resource_Kind'Enum_Rep (Sections.Device_Memory),
+      IO_Port_Request => Sections.Resource_Kind'Enum_Rep (Sections.IO_Ports),
+      Interrupt_Request => Sections.Resource_Kind'Enum_Rep (Sections.Interrupt),
+      DMA_Request => Sections.Resource_Kind'Enum_Rep (Sections.DMA),
+      Scheduling_Request => Sections.Resource_Kind'Enum_Rep (Sections.Scheduling));
+   subtype Resource_Request is Request_Kind
+     range Device_Memory_Request .. Scheduling_Request;
+   subtype Device_Request is Request_Kind
+     range Device_Memory_Request .. DMA_Request;
+
+   --  Which devices a driver may be bound to. devmgr's discovery supplies the
+   --  actual device; a manifest never names an address or a vector. The wire
+   --  codes and limits are CCL.Resource_Sections', whose decoder startup uses.
+   subtype Match_Kind is Sections.Match_Kind;
+   use all type Sections.Match_Kind;
+   use all type Sections.Platform_Device;
+   use all type Sections.Interrupt_Mode;
+   subtype Platform_Device is Sections.Platform_Device;
+   subtype Interrupt_Mode is Sections.Interrupt_Mode;
+   PAGE_BYTES : constant := Sections.PAGE_BYTES;
+   PCI_BAR_COUNT : constant := Sections.PCI_BAR_COUNT;
+   MAX_PLATFORM_RESOURCES : constant := Sections.MAX_PLATFORM_RESOURCES;
+   MAX_DEVICE_MEMORY_BYTES : constant := Sections.MAX_DEVICE_MEMORY_BYTES;
+   MAX_DMA_BYTES : constant := Sections.MAX_DMA_BYTES;
+   IO_PORT_SPACE : constant := Sections.IO_PORT_SPACE;
+   MAX_INTERRUPT_VECTORS : constant := Sections.MAX_INTERRUPT_VECTORS;
+   PCI_ID_LAST : constant := Sections.PCI_ID_LAST;
+   PCI_CODE_LAST : constant := Sections.PCI_CODE_LAST;
+
    type Request is record
       Kind : Request_Kind := Service_Request;
       Service : Unsigned_32 := 0;
@@ -25,6 +62,11 @@ package body CCL.Manifests with SPARK_Mode => On is
       Rights : Rights_Kind := Read_Only;
       Slot : Slot_Number := Slot_Number'First;
       Name : Binding_Name;
+      --  Resource requests: BAR or platform resource index (or interrupt
+      --  mode), size/count/budget, and the scheduling period.
+      Index : Unsigned_32 := 0;
+      Amount : Unsigned_64 := 0;
+      Extra : Unsigned_64 := 0;
    end record;
    type Request_Array is array (Positive range 1 .. MAX_REQUESTS) of Request;
    subtype Metadata_Text is Binding_Name;
@@ -85,6 +127,8 @@ package body CCL.Manifests with SPARK_Mode => On is
       Stream_Order : array (Positive range 1 .. 3) of Stream_Kind := [others => Standard_Output];
       Stream_Count : Natural range 0 .. 3 := 0;
       Explicit_No_Requests : Boolean := False;
+      Match : Match_Kind := No_Match;
+      Match_Values : array (1 .. 3) of Unsigned_16 := [others => 0];
       Value : CCL.Language.Interpretation_Result;
 
       procedure Fail (Code : Diagnostic_Code; At_Position : Natural) is
@@ -259,9 +303,9 @@ package body CCL.Manifests with SPARK_Mode => On is
          end loop;
       end Read_Binding_Name;
 
-      procedure Store_Request (Item : in out Request) is
+      procedure Store_Request (Item : in out Request; Named : Boolean := False) is
       begin
-         Read_Binding_Name (Item.Name);
+         if not Named then Read_Binding_Name (Item.Name); end if;
          for Index in 1 .. Count loop
             if Requests (Index).Name = Item.Name then Fail (Duplicate_Binding, Cursor); end if;
          end loop;
@@ -405,6 +449,174 @@ package body CCL.Manifests with SPARK_Mode => On is
          end if;
          Store_Request (Item);
       end Add_Network;
+
+      procedure Integer_Field
+        (Low, High : Integer_64; Code : Diagnostic_Code; Number : out Integer_64)
+      is
+      begin
+         Number := Low;
+         Expression;
+         if Failed then return; end if;
+         if not CCL.Language.Has_Scalar (Value)
+           or else Value.Result_Value.Kind /= CCL.VM.Integer_Value
+           or else Value.Result_Value.Integer not in Low .. High
+         then
+            Fail (Code, Cursor);
+         else
+            Number := Value.Result_Value.Integer;
+         end if;
+      end Integer_Field;
+
+      --  (KEYWORD n): one named integer, as in (bar 0) or (bytes 4096).
+      procedure Keyed_Integer
+        (Keyword : String; Low, High : Integer_64; Code : Diagnostic_Code;
+         Number : out Integer_64)
+      is
+         Name : Metadata_Text;
+      begin
+         Number := Low;
+         Expect ('(');
+         Atom (Name);
+         if not Failed and then not Is_Text (Name, Keyword) then Fail (Code, Cursor); end if;
+         Integer_Field (Low, High, Code, Number);
+         Expect (')');
+      end Keyed_Integer;
+
+      procedure Add_Match (Kind : Match_Kind) is
+         Name : Metadata_Text;
+         Number : Integer_64;
+      begin
+         if Match /= No_Match then Fail (Duplicate_Device_Match, Cursor); return; end if;
+         Match := Kind;
+         case Kind is
+            when PCI_Class_Match =>
+               --  class, subclass, programming interface
+               for Index in Match_Values'Range loop
+                  Integer_Field (0, PCI_CODE_LAST, Invalid_Device_Match, Number);
+                  Match_Values (Index) := Unsigned_16 (Number);
+               end loop;
+            when PCI_ID_Match =>
+               for Index in 1 .. 2 loop
+                  Integer_Field (0, PCI_ID_LAST, Invalid_Device_Match, Number);
+                  Match_Values (Index) := Unsigned_16 (Number);
+               end loop;
+               --  0xFFFF is "no device" in PCI configuration space.
+               if Match_Values (1) = PCI_ID_LAST then Fail (Invalid_Device_Match, Cursor); end if;
+            when Platform_Match =>
+               Atom (Name);
+               if Is_Text (Name, "ps2-controller") then
+                  Match_Values (1) := Unsigned_16 (Platform_Device'Enum_Rep (PS2_Controller));
+               elsif Is_Text (Name, "ata-primary") then
+                  Match_Values (1) := Unsigned_16 (Platform_Device'Enum_Rep (ATA_Primary));
+               elsif Is_Text (Name, "cmos-rtc") then
+                  Match_Values (1) := Unsigned_16 (Platform_Device'Enum_Rep (CMOS_RTC));
+               else Fail (Invalid_Device_Match, Cursor);
+               end if;
+            when No_Match => Fail (Invalid_Device_Match, Cursor);
+         end case;
+      end Add_Match;
+
+      --  (bar n) for a PCI device, (resource n) for a platform device.
+      procedure Resource_Index (Item : in out Request) is
+         Number : Integer_64;
+      begin
+         if Match = Platform_Match then
+            Keyed_Integer ("resource", 0, MAX_PLATFORM_RESOURCES - 1,
+                           Invalid_Device_Resource, Number);
+         else
+            Keyed_Integer ("bar", 0, PCI_BAR_COUNT - 1, Invalid_Device_Resource, Number);
+         end if;
+         Item.Index := Unsigned_32 (Number);
+      end Resource_Index;
+
+      procedure Add_Resource (Kind : Device_Request) is
+         Item : Request;
+         Name : Metadata_Text;
+         Number : Integer_64;
+      begin
+         --  Resources are relative to the matched device, so the match
+         --  must come first.
+         if Match = No_Match then Fail (Missing_Device_Match, Cursor); return; end if;
+         Item.Kind := Kind;
+         Read_Binding_Name (Item.Name);
+         case Kind is
+            when Device_Memory_Request =>
+               Resource_Index (Item);
+               Keyed_Integer ("max-bytes", PAGE_BYTES, MAX_DEVICE_MEMORY_BYTES,
+                              Invalid_Device_Resource, Number);
+               if Number mod PAGE_BYTES /= 0 then Fail (Invalid_Device_Resource, Cursor); end if;
+               Item.Amount := Unsigned_64 (Number);
+               Read_Rights (Item.Rights);
+               if Item.Rights = Write_Only then Fail (Invalid_Device_Resource, Cursor); end if;
+            when IO_Port_Request =>
+               Resource_Index (Item);
+               Keyed_Integer ("count", 1, IO_PORT_SPACE, Invalid_Device_Resource, Number);
+               Item.Amount := Unsigned_64 (Number);
+               Item.Rights := Read_Write;
+            when Interrupt_Request =>
+               Item.Rights := Read_Only;
+               if Match = Platform_Match then
+                  Item.Extra := Unsigned_64 (Interrupt_Mode'Enum_Rep (Platform_Line));
+                  Keyed_Integer ("resource", 0, MAX_PLATFORM_RESOURCES - 1,
+                                 Invalid_Device_Resource, Number);
+                  Item.Index := Unsigned_32 (Number);
+                  Item.Amount := 1;
+               else
+                  Atom (Name);
+                  if Is_Text (Name, "msix") then
+                     Item.Extra := Unsigned_64 (Interrupt_Mode'Enum_Rep (MSI_X));
+                  elsif Is_Text (Name, "msi") then
+                     Item.Extra := Unsigned_64 (Interrupt_Mode'Enum_Rep (MSI));
+                  elsif Is_Text (Name, "line") then
+                     Item.Extra := Unsigned_64 (Interrupt_Mode'Enum_Rep (Line));
+                  else Fail (Invalid_Device_Resource, Cursor); return;
+                  end if;
+                  if Is_Text (Name, "line") then
+                     Item.Amount := 1;
+                  else
+                     Keyed_Integer ("vectors", 1, MAX_INTERRUPT_VECTORS,
+                                    Invalid_Device_Resource, Number);
+                     Item.Amount := Unsigned_64 (Number);
+                  end if;
+               end if;
+            when DMA_Request =>
+               Keyed_Integer ("bytes", PAGE_BYTES, MAX_DMA_BYTES,
+                              Invalid_Device_Resource, Number);
+               if Number mod PAGE_BYTES /= 0 then Fail (Invalid_Device_Resource, Cursor); end if;
+               Item.Amount := Unsigned_64 (Number);
+               Item.Rights := Read_Write;
+         end case;
+         if Failed then return; end if;
+         Store_Request (Item, Named => True);
+      end Add_Resource;
+
+      --  (request-scheduling NAME realtime (budget-us b) (period-us p)).
+      --  Rejects shapes the kernel's admission can never accept.
+      procedure Add_Scheduling is
+         Item : Request;
+         Name : Metadata_Text;
+         Budget, Period : Integer_64;
+      begin
+         Item.Kind := Scheduling_Request;
+         Item.Rights := Read_Only;
+         Read_Binding_Name (Item.Name);
+         Atom (Name);
+         if not Failed and then not Is_Text (Name, "realtime") then
+            Fail (Invalid_Scheduling, Cursor);
+         end if;
+         Keyed_Integer ("budget-us", 1, CCL.Scheduling_Limits.MAX_MICROSECONDS,
+                        Invalid_Scheduling, Budget);
+         Keyed_Integer ("period-us", 1, CCL.Scheduling_Limits.MAX_MICROSECONDS,
+                        Invalid_Scheduling, Period);
+         if Failed then return; end if;
+         if not CCL.Scheduling_Limits.Admissible (Budget, Period) then
+            Fail (Invalid_Scheduling, Cursor);
+            return;
+         end if;
+         Item.Amount := Unsigned_64 (Budget);
+         Item.Extra := Unsigned_64 (Period);
+         Store_Request (Item, Named => True);
+      end Add_Scheduling;
 
       procedure Slot_Expression (Slot : out Slot_Number) is
       begin
@@ -705,6 +917,7 @@ package body CCL.Manifests with SPARK_Mode => On is
       end Pair;
 
       Name : Metadata_Text;
+      Resource_Count, Capability_Count : Natural range 0 .. MAX_REQUESTS := 0;
    begin
       Result := (others => <>);
       Result.In_Catalog := True;
@@ -746,6 +959,14 @@ package body CCL.Manifests with SPARK_Mode => On is
          elsif Is_Text (Name, "config-scope") then Add_Scope (Config_Domain);
          elsif Is_Text (Name, "tls-scope") then Add_TLS_Scope;
          elsif Is_Text (Name, "stream") then Add_Stream;
+         elsif Is_Text (Name, "match-pci-class") then Add_Match (PCI_Class_Match);
+         elsif Is_Text (Name, "match-pci-id") then Add_Match (PCI_ID_Match);
+         elsif Is_Text (Name, "platform-device") then Add_Match (Platform_Match);
+         elsif Is_Text (Name, "device-memory") then Add_Resource (Device_Memory_Request);
+         elsif Is_Text (Name, "io-ports") then Add_Resource (IO_Port_Request);
+         elsif Is_Text (Name, "interrupt") then Add_Resource (Interrupt_Request);
+         elsif Is_Text (Name, "dma") then Add_Resource (DMA_Request);
+         elsif Is_Text (Name, "request-scheduling") then Add_Scheduling;
          elsif Is_Text (Name, "requests-none") then
             if Explicit_No_Requests then Fail (Duplicate_Field, Cursor); end if;
             Explicit_No_Requests := True;
@@ -757,10 +978,25 @@ package body CCL.Manifests with SPARK_Mode => On is
       Skip;
       if Cursor <= Last then Fail (Trailing_Input, Cursor); end if;
       if not Have_Identity or else not Have_Version then Fail (Missing_Field, Cursor); end if;
-      if Explicit_No_Requests and then Count > 0 then Fail (Duplicate_Field, Cursor); end if;
+      for Item of Requests (1 .. Count) loop
+         if Item.Kind in Resource_Request then
+            Resource_Count := Resource_Count + 1;
+         end if;
+      end loop;
+      Capability_Count := Count - Resource_Count;
+      if Explicit_No_Requests and then Capability_Count > 0 then
+         Fail (Duplicate_Field, Cursor);
+      end if;
       if Failed then return; end if;
       Allocate_Slots;
       if Failed then return; end if;
+      --  Resources never take the reserved saved-reply slot.
+      for Item of Requests (1 .. Count) loop
+         if Item.Kind in Resource_Request and then Item.Slot > Sections.Slot_Number'Last then
+            Fail (Invalid_Slot, Cursor);
+            return;
+         end if;
+      end loop;
 
       --  Canonical little-endian wire ABI; no host layout/padding dependence.
       Append (Result.Identity, 16#4449_4243#, 4);
@@ -768,11 +1004,12 @@ package body CCL.Manifests with SPARK_Mode => On is
       Append (Result.Identity, 2, 2);
       Pair ("id", Identity);
       Pair ("version", Version);
-      if Count > 0 or else Explicit_No_Requests then
+      if Capability_Count > 0 or else Explicit_No_Requests then
       Append (Result.Capabilities, 16#4342_4954#, 4);
       Append (Result.Capabilities, 1, 2);
-      Append (Result.Capabilities, Unsigned_64 (Count), 2);
+      Append (Result.Capabilities, Unsigned_64 (Capability_Count), 2);
       for Item of Requests (1 .. Count) loop
+         if Item.Kind not in Resource_Request then
          Append (Result.Capabilities, Unsigned_64 (Request_Kind'Enum_Rep (Item.Kind)), 1);
          Append (Result.Capabilities, Unsigned_64 (Rights_Kind'Enum_Rep (Item.Rights)), 1);
          Append (Result.Capabilities, Unsigned_64 (Item.Slot), 2);
@@ -783,7 +1020,56 @@ package body CCL.Manifests with SPARK_Mode => On is
             Append (Result.Capabilities, Unsigned_64 (Item.Service), 4);
             Append (Result.Capabilities, 0, 8);
          end if;
+         end if;
       end loop;
+      end if;
+      --  .cubit.resources: "CBRS", version, entry count; a 16-byte match
+      --  (kind, reserved, three 16-bit values, reserved); then 24-byte
+      --  entries (kind, rights, slot, index, amount, extra).
+      if Resource_Count > 0 then
+         Append (Result.Resources, Sections.MAGIC, 4);
+         Append (Result.Resources, Sections.VERSION, 2);
+         Append (Result.Resources, Unsigned_64 (Resource_Count), 2);
+         Append (Result.Resources, Unsigned_64 (Match_Kind'Enum_Rep (Match)), 1);
+         Append (Result.Resources, 0, 1);
+         for Number of Match_Values loop
+            Append (Result.Resources, Unsigned_64 (Number), 2);
+         end loop;
+         Append (Result.Resources, 0, 8);
+         for Item of Requests (1 .. Count) loop
+            if Item.Kind in Resource_Request then
+               Append (Result.Resources, Unsigned_64 (Request_Kind'Enum_Rep (Item.Kind)), 1);
+               Append (Result.Resources, Unsigned_64 (Rights_Kind'Enum_Rep (Item.Rights)), 1);
+               Append (Result.Resources, Unsigned_64 (Item.Slot), 2);
+               Append (Result.Resources, Unsigned_64 (Item.Index), 4);
+               Append (Result.Resources, Item.Amount, 8);
+               Append (Result.Resources, Item.Extra, 8);
+            end if;
+         end loop;
+      elsif Match /= No_Match then
+         --  A match without resources grants nothing; reject it as a mistake.
+         Fail (Missing_Device_Match, Cursor);
+         return;
+      end if;
+      --  Emit only what startup's decoder accepts.
+      if Result.Resources.Length > 0 then
+         declare
+            Bytes : Sections.Byte_Array (1 .. Result.Resources.Length);
+            Plan : Sections.Section_Plan;
+            Status : Sections.Decode_Status;
+            use type Sections.Decode_Status;
+         begin
+            for I in Bytes'Range loop Bytes (I) := Result.Resources.Data (I); end loop;
+            if Bytes'Length > Sections.MAX_SECTION_BYTES then
+               Fail (Too_Many_Requests, Cursor);
+               return;
+            end if;
+            Sections.Decode (Bytes, Plan, Status);
+            if Status /= Sections.Decoded then
+               Fail (Invalid_Device_Resource, Cursor);
+               return;
+            end if;
+         end;
       end if;
       if Scope_Count > 0 then
          Append (Result.Access_Scopes, 16#4343_4143#, 4);

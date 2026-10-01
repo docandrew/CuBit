@@ -1,5 +1,6 @@
 with Interfaces; use Interfaces;
 with Intel_GPU_ADLN_Context_Init;
+with Intel_GPU_ADLN_Barrier;
 generic
    -- Single retained ADL-N context, first segment already published, context
    -- enabled, system-memory backing and coherent saved-tail access. Caller
@@ -28,6 +29,19 @@ package Intel_GPU_Live_Ring_Publish with SPARK_Mode is
    function Tail (Object : Channel) return Unsigned_32
      with Post => Tail'Result in Segment_Bytes .. Ring_Bytes - Guard_Bytes;
    function Sequence (Object : Channel) return Unsigned_32;
+   Barrier_Bytes : constant Unsigned_32 := Intel_GPU_ADLN_Barrier.Command_Words'Length * 4;
+   procedure Append (Object : in out Channel;
+                     Segment : Intel_GPU_ADLN_Barrier.Segment;
+                     Status : out Result)
+     with Post =>
+       (if State (Object)'Old = Quarantined then
+          State (Object) = Quarantined and Status = Rejected) and then
+       (if Status = Published then Tail (Object) = Tail (Object)'Old + Barrier_Bytes
+          and State (Object) = Available
+          and Sequence (Object)'Old < Unsigned_32'Last
+          and Sequence (Object) = Sequence (Object)'Old + 1
+        else Tail (Object) = Tail (Object)'Old and Sequence (Object) = Sequence (Object)'Old) and then
+       (if Status not in Rejected | Full | Published then State (Object) = Quarantined);
    procedure Fail (Object : in out Channel)
      with Post => State (Object) = Quarantined and
        Tail (Object) = Tail (Object)'Old and Sequence (Object) = Sequence (Object)'Old;

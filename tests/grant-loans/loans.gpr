@@ -2,7 +2,8 @@ project Loans is
    for Source_Dirs use
      (".", "../../kernel/src", "../../userspace/runtime/gnat");
    for Source_Files use
-     ("main.adb", "parent_lifetime_test.adb", "output_lifetime_test.adb",
+     ("main.adb", "parent_lifetime_test.adb", "output_lifetime_test.adb", "parent_scope_test.adb",
+      "mapping_test.adb", "grant_page_installation.ads", "grant_page_installation.adb",
       "loan_proof.ads", "cubit.ads",
       "cubit-presentation_state.ads", "cubit-presentation_state.adb",
       "memory_grants.ads", "memory_grants.adb",
@@ -10,7 +11,7 @@ project Loans is
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use
-     ("main.adb", "parent_lifetime_test.adb", "output_lifetime_test.adb");
+     ("main.adb", "parent_lifetime_test.adb", "output_lifetime_test.adb", "parent_scope_test.adb", "mapping_test.adb");
    package Compiler is
       for Default_Switches ("Ada") use
         ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe", "-O2");

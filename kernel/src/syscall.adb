@@ -94,6 +94,8 @@ package body Syscall is
             when 117  => number := SYSCALL_PROTECT_OWNED_MEMORY;
             when 118  => number := SYSCALL_YIELD;
             when 119  => number := SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND;
+            when 120  => number := SYSCALL_POLICY_MINT_CAPABILITY_FOR_INCARNATION;
+            when 121  => number := SYSCALL_POLICY_DELEGATE_ENDPOINT;
             when 12   => number := SYSCALL_WRITE;
             when 15   => number := SYSCALL_INFO;
             when 17   => number := SYSCALL_RECEIVE;
@@ -164,6 +166,7 @@ package body Syscall is
             when 113 =>
                 number :=
                   SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND;
+            when 122 => number := SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY;
             when 2000 => number := SYSCALL_REGISTER_DRIVER;
             when others =>
                 number := SYSCALL_EXIT;
@@ -414,6 +417,11 @@ package body Syscall is
                   (Process.processOf (percpu.currentThread),
                    arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
+            when SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY =>
+                IPC.handleDeriveGrantViaCap
+                  (Process.processOf (percpu.currentThread),
+                   arg0, arg1, arg2, arg3, arg4, arg5, retval);
+
             when SYSCALL_INFO =>
                 IPC.handleInfo (
                     Process.processOf (percpu.currentThread), arg0, arg1, retval);
@@ -474,6 +482,17 @@ package body Syscall is
                 Admin.handleMintCap (
                     Process.processOf (percpu.currentThread),
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
+
+            when SYSCALL_POLICY_MINT_CAPABILITY_FOR_INCARNATION =>
+                Admin.handleMintCap (
+                    Process.processOf (percpu.currentThread),
+                    arg0, arg1, arg2, arg3, arg4, arg5, retval,
+                    boundRecipient => True);
+
+            when SYSCALL_POLICY_DELEGATE_ENDPOINT =>
+                Admin.handleDelegateEndpoint
+                  (Process.processOf (percpu.currentThread),
+                   arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_RESUME =>
                 Admin.handleResume (

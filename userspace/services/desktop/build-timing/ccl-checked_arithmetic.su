@@ -1,0 +1,5 @@
+/home/doc/git/cubit/userspace/ccl/src/ccl-checked_arithmetic.adb:12:4:ADD	8	static
+/home/doc/git/cubit/userspace/ccl/src/ccl-checked_arithmetic.adb:37:4:SUBTRACT	8	static
+/home/doc/git/cubit/userspace/ccl/src/ccl-checked_arithmetic.adb:62:4:MULTIPLY	8	static
+/home/doc/git/cubit/userspace/ccl/src/ccl-checked_arithmetic.adb:80:4:DIVIDE	8	static
+/home/doc/git/cubit/userspace/ccl/src/ccl-checked_arithmetic.adb:96:4:MODULO	8	static

@@ -1,10 +1,15 @@
 project Signatures is
-   for Source_Dirs use (".", "../../userspace/ccl/src");
+   for Source_Dirs use (".", "../../userspace/ccl/src", "../../userspace/ccl/modules", external ("CBOR_ADA_SRC") & "/src");
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use ("signature_tests.adb", "lowering_tests.adb");
    package Compiler is
       for Default_Switches ("Ada") use
         ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+      --  The pinned cbor_ada sources warn; keep warnings fatal for ours only.
+      for Switches ("cbor-decoding.adb") use ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa");
+      for Switches ("cbor-encoding.adb") use ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa");
+      for Switches ("cbor-properties.adb") use ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa");
+
    end Compiler;
 end Signatures;

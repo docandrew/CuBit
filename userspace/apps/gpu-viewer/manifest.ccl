@@ -1,0 +1,3 @@
+(executable-manifest v1
+  (identity "com.cubit.gpu-probe-viewer")
+  (version "0.1.0"))

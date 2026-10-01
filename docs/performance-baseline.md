@@ -465,15 +465,15 @@ each on 2026-09-29. The full table, with round spreads, is in
 
 | Operation | CuBit native | Linux guest | CuBit / Linux |
 |---|---:|---:|---:|
-| 64 MiB sequential write + fsync | 474 MB/s | 810 MB/s | 0.59 |
-| sequential read, warm | 17,350 MB/s | 21,939 MB/s | 0.79 |
-| 4 KiB random read IOPS | 2,158,841 | 2,433,891 | 0.89 |
-| 4 KiB random write IOPS, no fsync | 1,312,259 | 24,998 | 52 |
-| 4 KiB random write + fsync IOPS | 547 | 265 | 2.1 |
-| create + write 4 KiB + close | 106,224 files/s | 98,519 files/s | 1.08 |
-| open + read 4 KiB + close | 1,629,883 files/s | 658,592 files/s | 2.5 |
-| readdir, 1,000 entries | 5,121,285 entries/s | 5,433,601 entries/s | 0.94 |
-| unlink | 133,369 files/s | 286,967 files/s | 0.46 |
+| 64 MiB sequential write + fsync | 584 MB/s | 848 MB/s | 0.69 |
+| sequential read, warm | 19,953 MB/s | 22,677 MB/s | 0.88 |
+| 4 KiB random read IOPS | 3,011,131 | 2,538,895 | 1.19 |
+| 4 KiB random write IOPS, no fsync | 586,089 | 24,190 | 24 |
+| 4 KiB random write + fsync IOPS | 603 | 264 | 2.3 |
+| create + write 4 KiB + close | 110,998 files/s | 86,590 files/s | 1.28 |
+| open + read 4 KiB + close | 1,742,825 files/s | 565,093 files/s | 3.1 |
+| readdir, 1,000 entries | 5,497,722 entries/s | 4,767,353 entries/s | 1.15 |
+| unlink | 138,379 files/s | 250,307 files/s | 0.55 |
 
 On 2026-09-28, before the block cache, journal write-back, client cache,
 request queue and parked handles, CuBit managed 15 creates/s, 43
@@ -484,19 +484,23 @@ open+read+close/s and no unlink.
   generation and delegation are unchanged
   (docs/filesystem-data-plane.md).
 - Create and unlink each take one synchronous request to the
-  single-threaded service. A create's first write stays buffered and its
-  close parks asynchronously; unlink needs about 4 µs of service time.
-  Create is ahead of Linux. Unlink is still 2.2x behind, outside the
-  15–20% goal.
-- seq-write is below Linux and below this morning's CuBit runs (medians
-  575-618 MB/s); no single cause was found (tests/fs-bench/README.md).
+  single-threaded service. A create's first write stays buffered and
+  its close parks asynchronously. Create is ahead of Linux. Unlink is at
+  0.55, after two unsafe shortcuts were removed in review
+  (docs/filesystem-data-plane.md).
+- Sequential write is at 0.69. The fsync is at parity (mostly the device
+  flush). The write phase is bound by client cache memory allocation
+  (a kernel owned-memory allocation per page on first use) and by the
+  NVMe driver's 1 MiB kernel-mapped DMA window. Both need kernel work.
 - Proved vs tested:
   - Proved at level 1: the service's handle/object table
-    (`Shared_Objects`), the directory-record scans (`Directory_Blocks`)
-    and the queue rings.
-  - Tested, not proved: the parked-handle, generation, delegation,
-    deferred-harvest and dead-process logic in main.adb and libc, and
-    ext2's inode hint. The tests are the fs-bench coherence checks,
+    (`Shared_Objects`), the directory-record scans and in-place removal
+    (`Directory_Blocks`) and the queue rings.
+  - Tested, not proved:
+    - in main.adb: the parked-handle, generation, delegation, tag,
+      deferred-harvest, write-error and dead-process logic;
+    - in libc: the same logic on the client side;
+    - in ext2.adb: the inode hint and the unlink fast path. The tests are the fs-bench coherence checks,
     storage-grants and the hosted power-cut suites.
 
 ## Verification and next work

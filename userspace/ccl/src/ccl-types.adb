@@ -1,4 +1,5 @@
 package body CCL.Types with SPARK_Mode is
+   use type Interfaces.Integer_64;
    function Named (Text : String) return Name is
       Result : Name;
    begin
@@ -10,10 +11,33 @@ package body CCL.Types with SPARK_Mode is
    end Named;
 
    --  A natural number as text, without Ada's leading blank.
-   function Image_Of (Value : Natural) return String is
-      Text : constant String := Natural'Image (Value);
+   --  Decimal digits of Value, bounded so generated names provably fit.
+   Natural_Digits : constant := 10;
+   function Image_Of (Value : Natural) return String
+     with Post => Image_Of'Result'First = 1 and then
+                  Image_Of'Result'Length in 1 .. Natural_Digits
+   is
+      Text : String (1 .. Natural_Digits) := [others => '0'];
+      Rest : Natural := Value;
+      Count : Natural range 0 .. Natural_Digits := 0;
    begin
-      return Text (Text'First + 1 .. Text'Last);
+      loop
+         pragma Loop_Invariant (Count < Natural_Digits);
+         pragma Loop_Variant (Increases => Count);
+         Count := Count + 1;
+         Text (Natural_Digits + 1 - Count) :=
+           Character'Val (Character'Pos ('0') + Rest mod 10);
+         Rest := Rest / 10;
+         exit when Rest = 0 or else Count = Natural_Digits;
+      end loop;
+      declare
+         Result : String (1 .. Natural_Digits) := [others => '0'];
+      begin
+         for I in 1 .. Count loop
+            Result (I) := Text (Natural_Digits - Count + I);
+         end loop;
+         return Result (1 .. Count);
+      end;
    end Image_Of;
 
    function Valid_Name (Item : Name) return Boolean is
@@ -111,7 +135,8 @@ package body CCL.Types with SPARK_Mode is
       Result := Duplicate_Name;
       if Find (Item, Definition.Identifier) /= Invalid_Type then return; end if;
       Result := Invalid_Shape;
-      if Definition.Form = Primitive or else
+      --  Range types carry bounds: Define_Range only.
+      if Definition.Form in Primitive | Bounded or else
         (Definition.Form = Sum and Definition.Count = 0)
       then return; end if;
       for I in 1 .. Definition.Count loop
@@ -218,12 +243,12 @@ package body CCL.Types with SPARK_Mode is
    begin
       Ref := Invalid_Type;
       Result := Invalid_List_Element;
-      --  Scalars, strings and enumerations first; lists of records and of
-      --  lists come with object-image elements.
+      --  Scalars, strings, enumerations, records and variants (records and
+      --  payload variants are value-arena nodes). Lists of lists and of
+      --  functions are not elements yet.
       if not Known (Item, Element) or else Element = Handler_Type or else
         Element = Unit_Type or else
-        (Describe (Item, Element).Form /= Primitive and then
-         not Is_Enumeration (Item, Element))
+        Describe (Item, Element).Form not in Primitive | Product | Sum
       then
          return;
       end if;
@@ -251,6 +276,65 @@ package body CCL.Types with SPARK_Mode is
                  else Invalid_List_Element);
       if Defined_As /= Defined then Ref := Invalid_Type; end if;
    end Specialize_List;
+
+   function Is_Range (Item : Registry; Ref : Type_Reference) return Boolean is
+     (Ref in Declared_Type and then Ref <= Item.Used and then
+      Item.Definitions (Ref).Form = Bounded);
+   function Low_Of (Item : Registry; Ref : Type_Reference) return Bound is
+     (if Is_Range (Item, Ref) then Item.Lows (Ref) else Bound'First);
+   function High_Of (Item : Registry; Ref : Type_Reference) return Bound is
+     (if Is_Range (Item, Ref) then Item.Highs (Ref) else Bound'Last);
+   function Base_Of (Item : Registry; Ref : Type_Reference) return Type_Reference is
+     (if Is_Range (Item, Ref) then Integer_Type else Ref);
+
+   procedure Define_Range
+     (Item : in out Registry; Identifier : Name; Low, High : Bound;
+      Ref : out Type_Reference; Result : out Definition_Result)
+   is
+   begin
+      Ref := Invalid_Type;
+      Result := Invalid_Name;
+      if not Valid_Name (Identifier) then return; end if;
+      Result := Duplicate_Name;
+      if Find (Item, Identifier) /= Invalid_Type then return; end if;
+      Result := Invalid_Shape;
+      if Low > High then return; end if;
+      Result := Registry_Full;
+      if Item.Used = Type_Reference'Last then return; end if;
+      Ref := Item.Used + 1;
+      Item.Definitions (Ref) := (Identifier => Identifier, Form => Bounded, others => <>);
+      Item.Layouts (Ref) := 1;
+      Item.Lows (Ref) := Low;
+      Item.Highs (Ref) := High;
+      Item.Used := Ref;
+      Result := Defined;
+   end Define_Range;
+
+   procedure Complete_Self_List
+     (Item : in out Registry; Ref : Type_Reference; Part : Component_Index;
+      List_Ref : Type_Reference; Completed : out Boolean)
+   is
+   begin
+      Completed := False;
+      if Ref not in Declared_Type or else Ref > Item.Used or else
+        not Known (Item, List_Ref)
+      then
+         return;
+      end if;
+      declare
+         D : constant Description := Describe (Item, Ref);
+         L : constant Description := Describe (Item, List_Ref);
+      begin
+         if D.Form not in Product | Sum or else Part > D.Count or else
+           D.Parts (Part).Payload /= Unit_Type or else
+           L.Form /= Sequence or else L.Count /= 1 or else L.Parts (1).Payload /= Ref
+         then
+            return;
+         end if;
+      end;
+      Item.Definitions (Ref).Parts (Part).Payload := List_Ref;
+      Completed := True;
+   end Complete_Self_List;
 
    function Is_Function (Item : Registry; Ref : Type_Reference) return Boolean is
      (Known (Item, Ref) and then Describe (Item, Ref).Form = Callable);
@@ -353,7 +437,14 @@ package body CCL.Types with SPARK_Mode is
                Translated.Parts (Part).Payload := Mapping (Translated.Parts (Part).Payload);
             end loop;
             Candidate := Find (Staged, Translated.Identifier);
-            if Candidate = Invalid_Type then
+            if Candidate = Invalid_Type and then Translated.Form = Bounded then
+               Define_Range (Staged, Translated.Identifier, Low_Of (Source, Index),
+                             High_Of (Source, Index), Candidate, Defined_As);
+               if Defined_As /= Defined then
+                  if Defined_As = Registry_Full then Result := Import_Full; end if;
+                  return;
+               end if;
+            elsif Candidate = Invalid_Type then
                Define (Staged, Translated, Candidate, Defined_As);
                if Defined_As /= Defined then
                   if Defined_As = Registry_Full then Result := Import_Full; end if;
@@ -362,6 +453,12 @@ package body CCL.Types with SPARK_Mode is
             else
                Existing := Describe (Staged, Candidate);
                if Existing.Form /= Translated.Form or Existing.Count /= Translated.Count then return; end if;
+               if Existing.Form = Bounded and then
+                 (Low_Of (Staged, Candidate) /= Low_Of (Source, Index) or else
+                  High_Of (Staged, Candidate) /= High_Of (Source, Index))
+               then
+                  return;
+               end if;
                for Part in 1 .. Translated.Count loop
                   if not Same (Existing.Parts (Part).Identifier, Translated.Parts (Part).Identifier)
                     or else Existing.Parts (Part).Payload /= Translated.Parts (Part).Payload

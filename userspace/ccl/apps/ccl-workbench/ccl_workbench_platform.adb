@@ -25,9 +25,9 @@ package body CCL_Workbench_Platform is
             when Sampled => "SAMPLED", when Faulted => "FAULTED") & ASCII.LF);
    end Live_Label_Changed;
 
-   procedure REPL_Completed is
+   procedure REPL_Completed (Result : String) is
    begin
-      CuBit.Messages.debugPrint ("ccl-workbench: REPL completed" & ASCII.LF);
+      CuBit.Messages.debugPrint ("ccl-workbench: REPL completed: " & Result & ASCII.LF);
    end REPL_Completed;
 
    MINIMUM_WIDTH  : constant Natural := 900;

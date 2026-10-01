@@ -59,6 +59,9 @@ package body Intel_GPU_ADLN_Regset with SPARK_Mode is
          return (others => <>);
       end if;
       for I in 1 .. Settings.Count loop
+         -- FORCE_TO_NONPRIV slots are already in Build_Common as ordinary
+         -- unsteered registers. Do not change their save/restore metadata.
+         if Settings.Entries (I).Offset not in 16#24D0# .. 16#24FC# then
          Add (Result.Registers,
               (Offset => Settings.Entries (I).Offset,
                Masked => Settings.Entries (I).Masked_Write,
@@ -67,6 +70,7 @@ package body Intel_GPU_ADLN_Regset with SPARK_Mode is
                  (Steering, Settings.Entries (I).Offset)), MMIO_Bytes, Status);
          if Status /= Added and Status /= Already_Present then
             return (others => <>);
+         end if;
          end if;
       end loop;
       if Result.Registers.Count /= (if Item = Render then 63 else 55) then

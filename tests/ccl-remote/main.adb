@@ -75,7 +75,7 @@ begin
       pragma Assert (D.Items (15).Kind = MT_Unsigned_Integer and D.Items (15).UInt_Value = 3);
    end;
    --  A long list carries its first 64 elements and its full length.
-   Control_Wire.Decode (Query (3, "(range 1 100)"), Q, Valid);
+   Control_Wire.Decode (Query (2, "(range 1 100)"), Q, Valid);
    pragma Assert (Valid);
    CCL.Control.Execute (Session, Q.Op, Q.Source (1 .. Q.Length), (others => <>), Value);
    pragma Assert (Value.Outcome.List_Length = 64 and Value.Outcome.List_Total = 100);

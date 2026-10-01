@@ -1,3 +1,4 @@
+with Intel_GPU_ADLN_L3_Commands;
 -- SPDX-License-Identifier: MIT
 -- Adapted from Linux v6.16 gen8_engine_cs.c: gen12_emit_flush_rcs,
 -- gen12_emit_aux_table_inv, and intel_workarounds.c: intel_engine_emit_ctx_wa.
@@ -6,19 +7,11 @@
 with Intel_GPU_ADLN_Context_Settings;
 with Intel_GPU_ADLN_Batch_Start;
 with Intel_GPU_Arbitration_Command;
+with Intel_GPU_ADLN_Barrier;
+with Intel_GPU_Submission_Image;
 package body Intel_GPU_ADLN_Context_Init with SPARK_Mode is
-   type Barrier_Words is array (Natural range 0 .. 21) of Unsigned_32;
-   Barrier : constant Barrier_Words :=
-     [16#7A000204#, 16#183070A1#, 16#D0#, 0, 0, 0,
-      -- PIPE_CONTROL: HDC, L3/tile/RT/depth/DC flush, depth/CS stall,
-      -- QW post-sync write through context-relative HWSP store-data index.
-      16#02800101#, -- MI_ARB_CHECK: disable pre-parser
-      16#7A000004#, 16#20344C1C#, 16#D0#, 0, 0, 0,
-      -- Command/TLB/instruction/texture/VF/constant/state invalidation,
-      -- CS stall and context-relative post-sync write.
-      16#11020001#, 16#4208#, 1, -- remapped LRI, CCS_AUX_INV
-      16#0E01C003#, 0, 16#4208#, 0, 0, -- register-poll until AUX_INV clears
-      16#02800100#]; -- re-enable pre-parser
+   Barrier : constant Intel_GPU_ADLN_Barrier.Barrier_Words :=
+     Intel_GPU_ADLN_Barrier.Flush_And_Invalidate;
    function Build (Read_Valid : Boolean; WM_Chicken2 : Unsigned_32;
                    Sequence_Value : Unsigned_32 := Completion_Value) return Segment is
       Result : Segment;
@@ -55,4 +48,50 @@ package body Intel_GPU_ADLN_Context_Init with SPARK_Mode is
       Result.Valid := True;
       return Result;
    end Build;
+   function Build_Setup (Read_Valid : Boolean; WM_Chicken2 : Unsigned_32)
+     return Segment is
+      Result : Segment := Build (Read_Valid, WM_Chicken2);
+   begin
+      if not Result.Valid then return Result; end if;
+      -- No batch call and no associated arbitration off/on pair. Keep the
+      -- final arbitration check and ordered HWSP completion from Build.
+      Result.Words (58 .. 63) := [others => 0];
+      Result.Words (92) := 0;
+      return Result;
+   end Build_Setup;
+   function Build_L3 (Sequence_Value : Unsigned_32) return Segment is
+      Result : Segment := Build (True, 0, Sequence_Value);
+   begin
+      if not Result.Valid then return Result; end if;
+      -- Replace the context settings region with L3 write + sample.
+      Result.Words (22 .. 35) := [others => 0];
+      for I in Intel_GPU_ADLN_L3_Commands.Initialize_And_Sample'Range loop
+         Result.Words (22 + I) :=
+           Intel_GPU_ADLN_L3_Commands.Initialize_And_Sample (I);
+      end loop;
+      -- No private-batch branch, and therefore no arbitration disable to
+      -- balance. Keep the final MI_ARB_CHECK preemption point intact.
+      Result.Words (58 .. 63) := [others => 0];
+      Result.Words (92) := 0;
+      return Result;
+   end Build_L3;
+   function Build_Batch
+     (Read_Valid : Boolean; WM_Chicken2, Sequence_Value : Unsigned_32;
+      Batch_GPU : Unsigned_64) return Segment is
+      Result : Segment := Build (Read_Valid, WM_Chicken2, Sequence_Value);
+      Branch : constant Intel_GPU_ADLN_Batch_Start.Encoded_Batch :=
+        Intel_GPU_ADLN_Batch_Start.Build_At (Batch_GPU);
+   begin
+      if not Result.Valid or else not Branch.Valid then return (others => <>); end if;
+      for I in Branch.Words'Range loop
+         Result.Words (58 + I) := Branch.Words (I);
+      end loop;
+      return Result;
+   end Build_Batch;
+   function Build_Draw (Read_Valid : Boolean; WM_Chicken2, Sequence_Value : Unsigned_32)
+     return Segment is
+   begin
+      return Build_Batch (Read_Valid, WM_Chicken2, Sequence_Value,
+                         Intel_GPU_Submission_Image.Draw_Batch_VA);
+   end Build_Draw;
 end Intel_GPU_ADLN_Context_Init;

@@ -1,4 +1,5 @@
 with Ada.Text_IO; use Ada.Text_IO;
+with CCL.Sessions;
 with Interfaces; use Interfaces;
 with CCL.VM; use CCL.VM;
 with CCL.Language;
@@ -14,6 +15,7 @@ with CCL.Ownership.Bytecode;
 with CCL.Imports;
 with CCL.Host_Values;
 
+with Module_Patches;
 procedure Main is
    use type CCL.Language.Interpretation_Status;
    use type CCL.Language.Diagnostic_Code;
@@ -622,11 +624,148 @@ procedure Main is
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.List_Length = 2 and then
          Outcome.List_Values (1).Boolean and then not Outcome.List_Values (2).Boolean,
          "a list of Booleans");
+      --  Literals longer than one syntax node's 16 components chain chunks.
       CCL.Language.Interpret ("[1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17]", 64, Outcome);
       Check
-        (Outcome.Status = CCL.Language.Parse_Failed and then
-         Outcome.Diagnostic = CCL.Language.Too_Many_List_Elements,
-         "literal element bound");
+        (Outcome.Status = CCL.Language.Succeeded and then Outcome.List_Total = 17 and then
+         Outcome.List_Values (17).Integer = 17,
+         "a literal longer than one chunk");
+      --  Lists of records and variants, and record fields that are lists,
+      --  live in the value arena and leave as literals that read back.
+      declare
+         Types_Source : constant String :=
+           "(type C (record (a Integer) (s String))) " &
+           "(type K (variant (A) (B Integer) (Boxed C))) " &
+           "(type R (record (xs (List Integer)) (cs (List C)))) ";
+         procedure Literal (Program, Expected, Name : String) is
+            Again : CCL.Language.Interpretation_Result;
+         begin
+            CCL.Language.Interpret (Types_Source & Program, 100_000, Outcome);
+            Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_Literal and then
+                   Outcome.Literal.Data (1 .. Outcome.Literal.Length) = Expected, Name);
+            CCL.Language.Interpret (Types_Source & Expected, 100_000, Again);
+            Check (Again.Status = CCL.Language.Succeeded and then Again.Has_Literal and then
+                   Again.Literal.Data (1 .. Again.Literal.Length) = Expected, Name & " reads back");
+         end Literal;
+         procedure Count (Program : String; Expected : Integer_64; Name : String) is
+         begin
+            CCL.Language.Interpret (Types_Source & Program, 100_000, Outcome);
+            Check (Outcome.Status = CCL.Language.Succeeded and then
+                   Outcome.Result_Value = CCL.VM.Integer_Constant (Expected), Name);
+         end Count;
+      begin
+         Literal ("[(C 1 ""x"") (C 2 ""y"")]", "[(C 1 ""x"") (C 2 ""y"")]", "a list of records");
+         Literal ("[K.A (K.B 2) (K.Boxed (C 3 ""z""))]", "[K.A (K.B 2) (K.Boxed (C 3 ""z""))]",
+                  "a list of variants");
+         Literal ("(R [1 2] [(C 1 ""x"")])", "(R [1 2] [(C 1 ""x"")])", "list fields");
+         Literal ("(R (list-of Integer) (list-of C))", "(R (list-of Integer) (list-of C))",
+                  "empty list fields");
+         Literal ("(each (fn ((n Integer)) (C n ""k"")) (range 1 3))",
+                  "[(C 1 ""k"") (C 2 ""k"") (C 3 ""k"")]", "each builds records");
+         Literal ("(sort-by (fn ((c C)) (field c a)) [(C 3 ""z"") (C 1 ""x"")])",
+                  "[(C 1 ""x"") (C 3 ""z"")]", "sort-by orders records");
+         Literal ("(reverse [(C 1 ""x"") (C 2 ""y"")])", "[(C 2 ""y"") (C 1 ""x"")]",
+                  "reverse keeps records");
+         Count ("(length (where (fn ((c C)) (> (field c a) 1)) [(C 1 ""x"") (C 2 ""y"") (C 3 ""z"")]))",
+                2, "where filters records");
+         Count ("(fold (fn ((t Integer) (c C)) (+ t (field c a))) 0 [(C 1 ""x"") (C 2 ""y"")])",
+                3, "fold over records");
+         Count ("(length (field (R [5 6 7] (list-of C)) xs))", 3, "a list field's length");
+         Count ("(length (list-of C))", 0, "an empty typed list");
+         Literal ("(first 1 (skip 1 [(C 1 ""x"") (C 9 ""y"")]))", "[(C 9 ""y"")]",
+                  "first and skip keep records");
+         --  Recursive types: a record or variant may hold a list of itself.
+         declare
+            Launch_Type : constant String :=
+              "(type Launch (record (name String) (after (List Launch)))) ";
+            Tree_Type : constant String :=
+              "(type Tree (variant (Leaf Integer) (Node (List Tree)))) ";
+            Again : CCL.Language.Interpretation_Result;
+            procedure Recursive (Types, Program, Expected, Name : String) is
+            begin
+               CCL.Language.Interpret (Types & Program, 100_000, Outcome);
+               Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_Literal and then
+                      Outcome.Literal.Data (1 .. Outcome.Literal.Length) = Expected, Name);
+               CCL.Language.Interpret (Types & Expected, 100_000, Again);
+               Check (Again.Status = CCL.Language.Succeeded and then Again.Has_Literal and then
+                      Again.Literal.Data (1 .. Again.Literal.Length) = Expected, Name & " reads back");
+            end Recursive;
+         begin
+            Recursive (Launch_Type,
+              "(let ((a (Launch ""a"" (list-of Launch)))) (Launch ""b"" [a a]))",
+              "(Launch ""b"" [(Launch ""a"" (list-of Launch)) (Launch ""a"" (list-of Launch))])",
+              "a record holding a list of itself");
+            Recursive (Tree_Type, "(Tree.Node [(Tree.Leaf 1) (Tree.Node [(Tree.Leaf 2)])])",
+              "(Tree.Node [(Tree.Leaf 1) (Tree.Node [(Tree.Leaf 2)])])", "a recursive variant");
+            Count (Launch_Type &
+                   "(length (field (Launch ""c"" [(Launch ""a"" (list-of Launch))]) after))",
+                   1, "a recursive field's length");
+            --  A direct self field has no base case; only a list of itself.
+            CCL.Language.Interpret ("(type T (record (next T))) 1", 1024, Outcome);
+            Check (Outcome.Status = CCL.Language.Parse_Failed, "no direct self field");
+            CCL.Language.Interpret ("(type T (record (x (List (List T))))) 1", 1024, Outcome);
+            Check (Outcome.Status = CCL.Language.Parse_Failed, "no list of a list of itself");
+            CCL.Language.Interpret ("(type T (record (x Integer))) (type U (record (y (List T)))) " &
+              "(field (U [(T 1)]) y)", 1024, Outcome);
+            Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_Literal,
+                   "ordinary list fields still work beside self lists");
+         end;
+         --  Range types: subtypes of Integer that constrain positions.
+         declare
+            Ranges : constant String :=
+              "(type Priority (range 1 10)) (type Neg (range -5 -1)) " &
+              "(type L (record (name String) (pri Priority))) " &
+              "(define (bump (p Priority)) Priority (+ p 1)) ";
+            procedure Status (Program : String; Expected : CCL.Language.Interpretation_Status;
+                              Name : String) is
+            begin
+               CCL.Language.Interpret (Ranges & Program, 100_000, Outcome);
+               Check (Outcome.Status = Expected, Name);
+            end Status;
+         begin
+            Status ("(L ""a"" 10)", CCL.Language.Succeeded, "a literal inside the range");
+            Status ("(L ""a"" 11)", CCL.Language.Type_Check_Failed, "a literal above the range");
+            Check (Outcome.Diagnostic = CCL.Language.Value_Out_Of_Range, "out of range is typed");
+            Status ("(L ""a"" 0)", CCL.Language.Type_Check_Failed, "a literal below the range");
+            Status ("(L ""a"" (+ 5 5))", CCL.Language.Succeeded, "a computed value inside");
+            Status ("(L ""a"" (+ 5 6))", CCL.Language.Evaluation_Range_Error,
+                    "a computed value outside is a typed run-time error");
+            Status ("(bump 9)", CCL.Language.Succeeded, "a range parameter and result");
+            Status ("(bump 10)", CCL.Language.Evaluation_Range_Error, "a range result is checked");
+            Status ("(bump 0)", CCL.Language.Type_Check_Failed, "a range argument literal is checked");
+            Status ("(each (fn ((p Priority)) (L ""x"" p)) (range 8 11))",
+                    CCL.Language.Evaluation_Range_Error, "function values check their ranges");
+            Status ("(type R (record (n Neg))) (R -6)", CCL.Language.Type_Check_Failed,
+                    "negative bounds");
+            Count ("(type Priority (range 1 10)) (type L (record (name String) (pri Priority))) " &
+                   "(+ (field (L ""a"" 7) pri) 100)", 107, "a range field reads as an Integer");
+            declare
+               Decls : constant String :=
+                 "(type Priority (range 1 10)) (type L (record (name String) (pri Priority))) ";
+            begin
+               CCL.Language.Interpret (Decls & "(L ""a"" (+ 3 4))", 100_000, Outcome);
+               Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_Literal and then
+                      Outcome.Literal.Data (1 .. Outcome.Literal.Length) = "(L ""a"" 7)",
+                      "a record with a range field");
+               CCL.Language.Interpret (Decls & "(L ""a"" 7)", 100_000, Outcome);
+               Check (Outcome.Status = CCL.Language.Succeeded and then
+                      Outcome.Literal.Data (1 .. Outcome.Literal.Length) = "(L ""a"" 7)",
+                      "a record with a range field reads back");
+            end;
+            CCL.Language.Interpret ("(type Bad (range 5 1)) 1", 1024, Outcome);
+            Check (Outcome.Status = CCL.Language.Parse_Failed, "an empty range is refused");
+            CCL.Language.Interpret ("(type P (range 1 10)) (type R (record (xs (List P)))) 1", 1024, Outcome);
+            Check (Outcome.Status = CCL.Language.Parse_Failed and then
+                   Outcome.Diagnostic = CCL.Language.Unsupported_List_Element,
+                   "no lists of range types yet");
+         end;
+         --  Still refused: lists of lists, and lists across a host boundary.
+         CCL.Language.Interpret ("[[1] [2]]", 1024, Outcome);
+         Check (Outcome.Status = CCL.Language.Type_Check_Failed, "no lists of lists yet");
+         CCL.Language.Interpret ("(list-of Nope)", 1024, Outcome);
+         Check (Outcome.Status in CCL.Language.Parse_Failed | CCL.Language.Type_Check_Failed,
+                "list-of an unknown type");
+      end;
       --  First-class functions: named functions as values, calls through
       --  values, function-typed parameters.
       CCL.Language.Interpret
@@ -700,9 +839,28 @@ procedure Main is
          "an anonymous function as the result");
       CCL.Language.Interpret ("(fn (n) (* n 2))", 256, Outcome);
       Check
-        (Outcome.Status = CCL.Language.Parse_Failed and then
+        (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Lambda_Parameter_Needs_Type,
-         "an untyped parameter asks for its type (inference comes later)");
+         "an untyped parameter with nothing to infer from asks for its type");
+      CCL.Language.Interpret ("(sum (each (fn (n) (* n n)) [1 2 3]))", 256, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 14,
+         "each infers its function's parameter from the elements");
+      CCL.Language.Interpret ("(fold (fn (acc n) (+ acc n)) 0 (range 1 10))", 1024, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 55,
+         "fold infers the accumulator from init and the element from the list");
+      CCL.Language.Interpret ("(each (fn (s) (upper s)) [1 2])", 256, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Type_Check_Failed and then
+         Outcome.Diagnostic = CCL.Language.Expected_String,
+         "an inferred parameter is checked like a written one");
+      CCL.Language.Interpret
+        ("(define (twice (f (Function (Integer) Integer)) (x Integer)) Integer (f (f x))) " &
+         "(twice (fn (n) (* n 3)) 2)", 256, Outcome);
+      Check
+        (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 18,
+         "a call infers from the declared function type");
       CCL.Language.Interpret
         ("(let ((limit 10)) (let ((above (fn ((n Integer)) (> n limit)))) (above 11)))", 256, Outcome);
       Check
@@ -906,6 +1064,68 @@ procedure Main is
          Check (Outcome.Status = CCL.Language.Type_Check_Failed, "upper needs text");
          CCL.Language.Interpret ("(sort [true false])", 256, Outcome);
          Check (Outcome.Status = CCL.Language.Type_Check_Failed, "Booleans have no order");
+      end;
+      --  Pipelines: (->> x (f a) g) threads x through each stage as its last
+      --  argument; a bare name stage is a one-argument call.
+      CCL.Language.Interpret ("(->> (range 1 20) (where (fn (n) (= (mod n 3) 0))) sum)", 10_000, Outcome);
+      Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 63,
+             "a pipeline threads the value through builtins");
+      CCL.Language.Interpret ("(define (double (n Integer)) Integer (* n 2)) (->> 5 double double)", 256, Outcome);
+      Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 20,
+             "a bare-name stage calls a defined function");
+      CCL.Language.Interpret ("(->> ""abc"" length)", 256, Outcome);
+      Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 3,
+             "length is a stage");
+      CCL.Language.Interpret ("(->> 1 (+ 2))", 256, Outcome);
+      Check (Outcome.Status = CCL.Language.Parse_Failed, "an operator is not a stage");
+      CCL.Language.Interpret ("(->> [1 2] (each (fn (n) (* n 10))) (join "",""))", 256, Outcome);
+      Check (Outcome.Status = CCL.Language.Type_Check_Failed, "stages are type-checked like calls");
+
+      --  The persistent session environment (CCL.Sessions).
+      declare
+         S : CCL.Sessions.Session;
+         R : CCL.Language.Interpretation_Result;
+         procedure Step (Source, Expected, Label : String) is
+         begin
+            CCL.Sessions.Submit (S, Source, CCL.Sessions.Default_Fuel, R);
+            Check (CCL.Sessions.Result_Image (R) = Expected, Label);
+            if CCL.Sessions.Result_Image (R) /= Expected then
+               Ada.Text_IO.Put_Line ("   got: " & CCL.Sessions.Result_Image (R));
+            end if;
+         end Step;
+      begin
+         CCL.Sessions.Initialize (S);
+         Step ("(define (sq (n Integer)) Integer (* n n))", "String: defined sq", "a Lisp definition is kept");
+         Step ("(sq 12)", "Integer: 144", "a later entry calls it");
+         Step ("FUNCTION cube(n AS Integer) AS Integer RETURN n * sq(n) END", "String: defined cube",
+               "a BASIC definition alone is kept");
+         Step ("cube(3)", "Integer: 27", "BASIC calls across entries and dialects");
+         Step ("LET words = split("""", ""the quick brown fox"")",
+               "List<String>: [""the"", ""quick"", ""brown"", ""fox""]", "LET keeps a list value");
+         Step ("length(words)", "Integer: 4", "a kept value is in scope");
+         Step ("(define total (sum (each (fn ((w String)) (length w)) words)))", "Integer: 16",
+               "a Lisp value binding shows its value");
+         Step ("LET total = total * 2", "Integer: 32", "rebinding sees the old value");
+         Step ("total", "Integer: 32", "the rebound value is kept");
+         Step ("(define (sq (n Integer)) Integer (+ n n))", "String: defined sq", "redefinition replaces");
+         Step ("cube(3)", "Integer: 18", "dependents use the new definition");
+         Step ("(define (sq (n Boolean)) Boolean n)",
+               "Expression does not type-check: Argument type does not match the function parameter",
+               "a redefinition that breaks a dependent is refused");
+         Step ("cube(3)", "Integer: 18", "and the environment is unchanged");
+         Step ("(define big (range 1 100))",
+               "Value cannot be kept in the session (too long or not storable); define a function instead",
+               "a value too large to keep is reported");
+         Step ("big", "Expression does not type-check: Unknown name (keep a value with LET x = ... or (define x ...)) at character 1", "and it is not kept");
+         Step (":env", "String: definitions: sq, cube; values: words = [""the"" ""quick"" ""brown"" ""fox""], total = 32",
+               ":env lists the environment");
+         CCL.Sessions.Submit (S, "LET 1x = 2", CCL.Sessions.Default_Fuel, R);
+         Check (R.Status /= CCL.Language.Succeeded and then CCL.Sessions.Kept_Values (S) = 2,
+                "a value name must be an identifier");
+         Step (":reset", "String: session environment cleared", ":reset");
+         Step ("words", "Expression does not type-check: Unknown name (keep a value with LET x = ... or (define x ...)) at character 1", ":reset forgets values");
+         Check (CCL.Sessions.Kept_Definitions (S) = 0 and CCL.Sessions.Kept_Values (S) = 0,
+                ":reset forgets everything");
       end;
       CCL.Language.Interpret ("(and 1 true)", 16, Outcome);
       Check
@@ -1207,6 +1427,10 @@ procedure Main is
                Check (False, Label & " (execute)");
             elsif Outcome.Result_Value.Kind = Integer_Value then
                Check (Outcome.Result_Value.Integer = Interpreted.Result_Value.Integer, Label);
+            elsif Outcome.Result_Value.Kind = Text_Value then
+               Check (Interpreted.Has_Text and then
+                      Outcome.Result_Text_Value.Data (1 .. Outcome.Result_Text_Value.Length) =
+                        Interpreted.Result_Text.Data (1 .. Interpreted.Result_Text.Length), Label);
             else
                Check (Outcome.Result_Value.Kind = Boolean_Value and then
                       Outcome.Result_Value.Boolean = Interpreted.Result_Value.Boolean, Label);
@@ -1218,6 +1442,60 @@ procedure Main is
          Same ("(- 0 9223372036854775807)", "CCLB subtraction at the range edge");
          Same ("(- -9223372036854775807 2)", "CCLB subtraction overflow traps");
          Same ("(< 1 2)", "CCLB less");
+         --  Text (parity step 2): constants, concat, length, equality.
+         Same ("""hello""", "CCLB a text literal");
+         Same ("(concat ""ab"" ""cd"")", "CCLB concat");
+         Same ("(length (concat ""ab"" ""cde""))", "CCLB length of a concat");
+         Same ("(= ""ab"" (concat ""a"" ""b""))", "CCLB text equality");
+         Same ("(/= ""ab"" ""abc"")", "CCLB text inequality");
+         Same ("(if (= ""x"" ""x"") (concat ""y"" ""es"") ""no"")", "CCLB text in branches");
+         Same ("(let ((s ""hi"")) (concat s s))", "CCLB text in a local");
+         Same ("(concat """" """")", "CCLB empty text");
+         Same ("(concat ""ab"" ""ab"")", "CCLB equal literals share a constant");
+         --  The shared string built-ins: one implementation, both engines.
+         Same ("(upper ""Hello, World"")", "CCLB upper");
+         Same ("(lower ""Hello, World"")", "CCLB lower");
+         Same ("(trim ""  padded \t"")", "CCLB trim");
+         Same ("(reverse ""stressed"")", "CCLB reverse text");
+         Same ("(first 3 ""abcdef"")", "CCLB first on text");
+         Same ("(last 2 ""abcdef"")", "CCLB last on text");
+         Same ("(skip 4 ""abcdef"")", "CCLB skip on text");
+         Same ("(first 99 ""abc"")", "CCLB first past the end");
+         Same ("(skip -1 ""abc"")", "CCLB skip below zero");
+         Same ("(contains ""lo, W"" ""Hello, World"")", "CCLB contains");
+         Same ("(contains ""xyz"" ""Hello"")", "CCLB contains (absent)");
+         Same ("(index-of ""World"" ""Hello, World"")", "CCLB index-of");
+         Same ("(index-of """" ""abc"")", "CCLB index-of an empty pattern");
+         Same ("(starts-with ""He"" ""Hello"")", "CCLB starts-with");
+         Same ("(ends-with ""lo"" ""Hello"")", "CCLB ends-with");
+         Same ("(ends-with ""Hello!"" ""Hello"")", "CCLB ends-with (longer pattern)");
+         Same ("(replace ""a"" ""ooo"" ""banana"")", "CCLB replace");
+         Same ("(replace """" ""x"" ""keep"")", "CCLB replace with an empty pattern");
+         Same ("(parse-int "" -42 "")", "CCLB parse-int");
+         Same ("(parse-int ""12x"")", "CCLB parse-int rejects junk");
+         Same ("(parse-int ""99999999999999999999"")", "CCLB parse-int overflow");
+         Same ("(length (upper (concat ""ab"" ""cd"")))", "CCLB built-ins compose");
+         Same ("(let ((p (concat ""0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"" " &
+               """0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef""))) " &
+               "(let ((q (concat p p))) (let ((r (concat q q))) (let ((t (concat r r))) " &
+               "(let ((u (concat t ""!""))) (contains u ""abc""))))))",
+               "CCLB a pattern over 1 KiB fails as in the interpreter");
+         --  Both fail at the same bounds: a string over 8 KiB, and a text
+         --  result over 1 KiB.
+         Same ("(let ((a ""0123456789abcdef0123456789abcdef"")) " &
+               "(let ((b (concat a a))) (let ((c (concat b b))) (let ((d (concat c c))) " &
+               "(let ((e (concat d d))) (let ((f (concat e e))) (let ((g (concat f f))) " &
+               "(let ((h (concat g g))) (let ((i (concat h h))) (length i))))))))))",
+               "CCLB 8 KiB of text");
+         Same ("(let ((a ""0123456789abcdef0123456789abcdef"")) " &
+               "(let ((b (concat a a))) (let ((c (concat b b))) (let ((d (concat c c))) " &
+               "(let ((e (concat d d))) (let ((f (concat e e))) (let ((g (concat f f))) " &
+               "(let ((h (concat g g))) (let ((i (concat h h))) (length (concat i ""!"")))))))))))",
+               "CCLB text past 8 KiB fails as in the interpreter");
+         Same ("(let ((a ""0123456789abcdef0123456789abcdef"")) " &
+               "(let ((b (concat a a))) (let ((c (concat b b))) (let ((d (concat c c))) " &
+               "(let ((e (concat d d))) (let ((f (concat e e))) (concat f ""!"")))))))",
+               "CCLB a text result past 1 KiB fails as in the interpreter");
          Same ("(< 2 2)", "CCLB less, equal operands");
          Same ("(<= 2 2)", "CCLB less or equal");
          Same ("(> 3 2)", "CCLB greater");
@@ -1247,6 +1525,8 @@ procedure Main is
          Same ("(define (inc (n Integer)) Integer (+ n 1)) (let ((x 40)) (inc (inc x)))",
                "CCLB a call inside a let");
          Same ("(define (boom (n Integer)) Integer (/ n 0)) (boom 1)", "CCLB a trap inside a function");
+         Same ("(define (double (n Integer)) Integer (* n 2)) (define (inc (n Integer)) Integer (+ n 1)) " &
+               "(->> 5 double inc double)", "CCLB a pipeline of functions");
       end;
 
       --  Function-region rules, checked on tampered programs.
@@ -1295,16 +1575,67 @@ procedure Main is
       begin
          CCL.Format.Encode (Compiled.Program, Compiled.Linkage, (Fuel => 64, Memory => 0, In_Flight => 0),
                             Encoded, Encoded_Length, Format_Status, Encode_Validation);
-         Check (Format_Status = CCL.Format.Unsupported_Functions,
-                "version 7 modules refuse functions until version 8");
+         Check (Format_Status = CCL.Format.Format_Valid,
+                "version 8 modules carry the function table");
+         declare
+            Round_Trip : Program;
+            Round_Linkage : CCL.Catalog.Linkage_Table;
+            Round_Limits : CCL.Format.Resource_Limits;
+         begin
+            CCL.Format.Decode (Encoded, Encoded_Length, Round_Trip, Round_Linkage, Round_Limits,
+                               Format_Status, Encode_Validation);
+            Check (Format_Status = CCL.Format.Format_Valid and then
+                   Round_Trip.Functions_Length = Compiled.Program.Functions_Length and then
+                   Round_Trip.Functions = Compiled.Program.Functions and then
+                   Round_Trip.Code = Compiled.Program.Code,
+                   "functions round-trip through a version 8 module");
+         end;
       end;
 
 
       CCL.Language.Analyze ("(concat ""a"" ""b"")", Analysis);
       CCL.Compiler.Compile (Analysis, Compiled);
       Check
-        (Compiled.Status = CCL.Compiler.Unsupported_Form,
-         "reject strings until CCLB has a variable-sized value representation");
+        (Compiled.Status = CCL.Compiler.Compilation_Succeeded,
+         "strings compile to CCLB text values");
+
+      --  Text through a version 8 module, and verifier rules for the pool.
+      CCL.Language.Analyze ("(let ((s ""ab"")) (concat s ""cd""))", Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      declare
+         Encoded : CCL.Format.Byte_Array;
+         Encoded_Length : CCL.Format.Module_Length;
+         Format_Status : CCL.Format.Format_Error;
+         Format_Validation : Validation_Error;
+         Decoded : Validated_Program;
+         Limits : CCL.Format.Resource_Limits;
+         Tampered : Program := Compiled.Program;
+      begin
+         CCL.Format.Encode (Compiled.Program, (Fuel => 64, Memory => 0, In_Flight => 0),
+                            Encoded, Encoded_Length, Format_Status, Format_Validation);
+         Check (Format_Status = CCL.Format.Format_Valid, "encode a module with text constants");
+         CCL.Format.Decode (Encoded, Encoded_Length, Decoded, Limits, Format_Status, Format_Validation);
+         Check (Format_Status = CCL.Format.Format_Valid, "decode a module with text constants");
+         if Format_Status = CCL.Format.Format_Valid then
+            Execute (Decoded, 64, Outcome);
+            Check (Outcome.Status = Completed and then Outcome.Result_Value.Kind = Text_Value and then
+                   Outcome.Result_Text_Value.Data (1 .. Outcome.Result_Text_Value.Length) = "abcd",
+                   "run text decoded from a module");
+         end if;
+         for PC in Instruction_Index loop
+            exit when Program_Length (PC) >= Tampered.Length;
+            if Tampered.Code (PC).Op = Push_Text then
+               Tampered.Code (PC).Immediate := Integer_64 (Tampered.Constants_Length);
+               exit;
+            end if;
+         end loop;
+         Verify (Tampered, Checked, Error);
+         Check (Error = Invalid_Constant, "reject a text constant outside the pool");
+         Tampered := Compiled.Program;
+         Tampered.Constants (0).First := MAX_CONSTANT_BYTES;
+         Verify (Tampered, Checked, Error);
+         Check (Error = Invalid_Constant, "reject a pool entry outside the pool text");
+      end;
 
       CCL.Language.Analyze ("(if false 1 (+ 20 22))", Analysis);
       CCL.Compiler.Compile (Analysis, Compiled);
@@ -1634,7 +1965,7 @@ procedure Main is
       Candidate.Code (3) := Ins (Halt);
       Encode (Candidate, Limits, Data, Length, Error, Validation);
       Check
-        (Error = Format_Valid and then Length > HEADER_SIZE,
+        (Error = Format_Valid and then Length > 0,
          "encode canonical module");
       Encode (Candidate, Limits, Data_2, Length_2, Error, Validation);
       Check
@@ -1653,55 +1984,52 @@ procedure Main is
             "execute decoded module");
       end if;
 
-      Data_2 := Data;
-      Data_2 (MAGIC_OFFSET) := 0;
-      Decode
-        (Data_2, Length, Decoded, Decoded_Limits, Error, Validation);
-      Check (Error = Bad_Magic, "reject bad module magic");
-
-      Data_2 := Data;
-      Data_2 (HEADER_RESERVED_OFFSET) := 1;
-      Decode
-        (Data_2, Length, Decoded, Decoded_Limits, Error, Validation);
-      Check (Error = Bad_Reserved_Field, "reject nonzero module reserved field");
-
-      Data_2 := Data;
-      Data_2 (HEADER_SIZE + INSTRUCTION_OPCODE_OFFSET) := 99;
-      Decode
-        (Data_2, Length, Decoded, Decoded_Limits, Error, Validation);
-      Check (Error = Invalid_Opcode, "reject invalid serialized opcode");
-
-      Data_2 := Data;
-      Data_2 (HEADER_SIZE + INSTRUCTION_OPCODE_OFFSET) :=
-        Unsigned_8 (Op_Code'Enum_Rep (Add_Integer));
-      for I in HEADER_SIZE + INSTRUCTION_IMMEDIATE_OFFSET ..
-        HEADER_SIZE + INSTRUCTION_IMMEDIATE_OFFSET + 7
-      loop
-         Data_2 (I) := 0;
-      end loop;
-      Decode
-        (Data_2, Length, Decoded, Decoded_Limits, Error, Validation);
-      Check
-        (Error = Bytecode_Invalid and then Validation = Stack_Underflow,
-         "verify decoded bytecode before execution");
-
-      Data_2 := Data;
-      for I in FUEL_LIMIT_OFFSET .. FUEL_LIMIT_OFFSET + 3 loop
-         Data_2 (I) := 0;
-      end loop;
-      Decode
-        (Data_2, Length, Decoded, Decoded_Limits, Error, Validation);
-      Check (Error = Invalid_Resource_Limit, "reject zero module fuel");
-
-      Data_2 := Data;
-      Data_2
-        (HEADER_SIZE + 2 * INSTRUCTION_SIZE +
-         INSTRUCTION_IMMEDIATE_OFFSET) := 1;
-      Decode
-        (Data_2, Length, Decoded, Decoded_Limits, Error, Validation);
-      Check
-        (Error = Noncanonical_Instruction,
-         "reject noncanonical serialized instruction");
+      --  v8 corruptions: each field is found by its one canonical encoding.
+      declare
+         Push : constant Unsigned_8 := Unsigned_8 (Op_Code'Enum_Rep (Push_Integer));
+         Add : constant Unsigned_8 := Unsigned_8 (Op_Code'Enum_Rep (Add_Integer));
+         --  [16, 4096, 1]
+         Limit_Bytes : constant Module_Patches.Bytes :=
+           [16#83#, 16#10#, 16#19#, 16#10#, 16#00#, 16#01#];
+         --  [Push_Integer, 0, 0, 0, 0, -5, 0, 0]
+         First_Push : constant Module_Patches.Bytes :=
+           [16#88#, Push, 0, 0, 0, 0, 16#24#, 0, 0];
+         --  [Add_Integer, 0, 0, 0, 0, 0, 0, 0]
+         Addition : constant Module_Patches.Bytes := [16#88#, Add, 0, 0, 0, 0, 0, 0, 0];
+         procedure Corrupt
+           (From, To : Module_Patches.Bytes; Expected : Format_Error; Name : String;
+            Extra : Natural := 0)
+         is
+            Found : Boolean := True;
+            Bad : Byte_Array := Data;
+            Bad_Length : Module_Length := Length;
+         begin
+            if From'Length > 0 then
+               Module_Patches.Replace (Bad, Bad_Length, From, To, Found);
+            end if;
+            if Extra > 0 then
+               Bad_Length := Bad_Length + Extra;
+            end if;
+            Decode (Bad, Bad_Length, Decoded, Decoded_Limits, Error, Validation);
+            Check (Found and then Error = Expected, Name);
+         end Corrupt;
+      begin
+         Corrupt ([16#44#, 16#43#, 16#43#, 16#4C#, 16#42#],
+                  [16#44#, 16#58#, 16#43#, 16#4C#, 16#42#], Bad_Magic, "reject bad module magic");
+         Corrupt ([], [], Malformed_Encoding, "reject trailing data after the module", Extra => 1);
+         Corrupt (Limit_Bytes, [16#83#, 16#18#, 16#10#, 16#19#, 16#10#, 16#00#, 16#01#],
+                  Malformed_Encoding, "reject a non-shortest head");
+         Corrupt ([16#8B#, 16#44#], [16#9F#, 16#44#], Malformed_Encoding,
+                  "reject an indefinite-length array");
+         Corrupt (First_Push, [16#88#, 16#18#, 16#63#, 0, 0, 0, 0, 16#24#, 0, 0],
+                  Invalid_Opcode, "reject invalid serialized opcode");
+         Corrupt (First_Push, Addition, Bytecode_Invalid, "verify decoded bytecode before execution");
+         Check (Validation = Stack_Underflow, "the verifier finds the stack underflow");
+         Corrupt (Limit_Bytes, [16#83#, 16#00#, 16#19#, 16#10#, 16#00#, 16#01#],
+                  Invalid_Resource_Limit, "reject zero module fuel");
+         Corrupt (Addition, [16#88#, Add, 0, 0, 0, 0, 1, 0, 0],
+                  Noncanonical_Instruction, "reject noncanonical serialized instruction");
+      end;
 
       Candidate := (others => <>);
       Candidate.Imports_Length := 1;
@@ -1730,27 +2058,42 @@ procedure Main is
       Encode
         (Candidate, Linkage, Limits, Data, Length, Error, Validation);
       if Error = Format_Valid then
-         Data_2 := Data;
-         Data_2 (HEADER_SIZE + IMPORT_TRANSFER_OFFSET) := 99;
-         Decode
-           (Data_2, Length, Decoded_Candidate, Decoded_Linkage,
-            Decoded_Limits, Error, Validation);
-         Check
-           (Error = Invalid_Transfer_Mode,
-            "reject invalid portable import transfer mode");
+         declare
+            Authority : constant Unsigned_8 :=
+              Unsigned_8 (Authority_Class'Enum_Rep (Observe_Authority));
+            Transfer : constant Unsigned_8 :=
+              Unsigned_8 (CCL.Imports.Transfer_Mode'Enum_Rep (Candidate.Imports (0).Transfer));
+            --  [argument, result, authority, ownership, local, transfer, ...
+            Import_Head : constant Module_Patches.Bytes :=
+              [16#93#, 0, 0, Authority, 0, 0, Transfer];
+            Found : Boolean;
+            Zero_Digest : constant Module_Patches.Bytes (1 .. 34) :=
+              [1 => 16#58#, 2 => 16#20#, others => 0];
+         begin
+            Data_2 := Data;
+            Length_2 := Length;
+            Module_Patches.Replace
+              (Data_2, Length_2, Import_Head,
+               [16#93#, 0, 0, Authority, 0, 0, 16#18#, 16#63#], Found);
+            Decode
+              (Data_2, Length_2, Decoded_Candidate, Decoded_Linkage,
+               Decoded_Limits, Error, Validation);
+            Check
+              (Found and then Error = Invalid_Transfer_Mode,
+               "reject invalid portable import transfer mode");
 
-         Data_2 := Data;
-         for I in HEADER_SIZE + IMPORT_DIGEST_OFFSET ..
-           HEADER_SIZE + IMPORT_SIZE - 1
-         loop
-            Data_2 (I) := 0;
-         end loop;
-         Decode
-           (Data_2, Length, Decoded_Candidate, Decoded_Linkage,
-            Decoded_Limits, Error, Validation);
-         Check
-           (Error = Invalid_Linkage,
-            "reject portable import without descriptor identity");
+            Data_2 := Data;
+            Length_2 := Length;
+            Module_Patches.Replace
+              (Data_2, Length_2, Module_Patches.Encoded_Digest (TEST_INTERFACE_DIGEST),
+               Zero_Digest, Found);
+            Decode
+              (Data_2, Length_2, Decoded_Candidate, Decoded_Linkage,
+               Decoded_Limits, Error, Validation);
+            Check
+              (Found and then Error = Invalid_Linkage,
+               "reject portable import without descriptor identity");
+         end;
 
          Decode
            (Data, Length, Decoded_Candidate, Decoded_Linkage,
@@ -1821,15 +2164,23 @@ procedure Main is
             "execute decoded owned module after exact injection");
       end if;
 
-      Data_2 := Data;
-      --  Type 2 begins after the two preceding fixed-size type entries.
-      Data_2 (HEADER_SIZE + 2 * TYPE_SIZE + 1) := 2;
-      Data_2 (HEADER_SIZE + 2 * TYPE_SIZE + 8) := SEND;
-      Decode
-        (Data_2, Length, Decoded, Decoded_Limits, Error, Validation);
-      Check
-        (Error = Invalid_Ownership_Metadata,
-         "reject duplicate serialized disposition verb");
+      declare
+         Consume_Code : constant Unsigned_8 :=
+           Unsigned_8 (CCL.Ownership.Disposition_Effect'Enum_Rep (Consume));
+         Found : Boolean;
+      begin
+         --  Type 2's one disposition [SEND, Consume, 0], then a duplicate.
+         Data_2 := Data;
+         Length_2 := Length;
+         Module_Patches.Replace
+           (Data_2, Length_2, [16#81#, 16#83#, SEND, Consume_Code, 0],
+            [16#82#, 16#83#, SEND, Consume_Code, 0, 16#83#, SEND, Consume_Code, 0], Found);
+         Decode
+           (Data_2, Length_2, Decoded, Decoded_Limits, Error, Validation);
+         Check
+           (Found and then Error = Invalid_Ownership_Metadata,
+            "reject duplicate serialized disposition verb");
+      end;
 
       Candidate.Imports_Length := 1;
       Candidate.Imports (0) :=
@@ -1863,7 +2214,7 @@ procedure Main is
          Decoded_Candidate.Imports (0).Transfer =
            CCL.Imports.Move_Argument and then
          Decoded_Candidate.Imports (0).Success_Verb = SEND,
-         "v3 preserves owned import and portable linkage metadata");
+         "v8 preserves owned import and portable linkage metadata");
    end Test_Module_Format;
 
    procedure Test_Ownership_Checker is

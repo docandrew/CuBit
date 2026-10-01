@@ -6,7 +6,7 @@ library project Native is
       "ccl-objects-values.ads", "ccl-objects-values.adb",
       "ccl-host_values.ads", "ccl-host_values.adb", "ccl-handler_references.ads",
       "ccl-handler_references.adb",
-      "ccl-vm.ads", "ccl-vm.adb", "ccl-ownership.ads", "ccl-ownership.adb",
+      "ccl-vm.ads", "ccl-vm.adb", "ccl-secondary_stacks.ads", "ccl-secondary_stacks.adb", "ccl-ownership.ads", "ccl-ownership.adb",
       "ccl-resources.ads", "ccl-resources.adb",
       "ccl-ownership-bytecode.ads", "ccl-ownership-bytecode.adb",
       "ccl-imports.ads", "ccl-imports.adb",

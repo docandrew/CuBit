@@ -253,7 +253,18 @@ package Process.IPC is
                            perm      : in  GrantPermission;
                            id        : out Natural;
                            success   : out Boolean;
-                           expectedGeneration : Capabilities.Generation := 0);
+                           expectedGeneration : Capabilities.Generation := 0;
+                           forwardable : Boolean := False);
+
+    -- Derive a terminal mapping from an acquired, owner-forwardable parent.
+    -- The caller must be the parent's receiver. Recipient identity comes from
+    -- endpoint authority; its generation is rechecked under grantLock.
+    procedure deriveGrant
+      (parent : Memory_Grants.Reference; grantee : ProcessID;
+       expectedGeneration : Capabilities.Generation;
+       pageOffset : Memory_Grants.Page_Offset;
+       numPages : Memory_Grants.Page_Count; perm : GrantPermission;
+       derived : out Memory_Grants.Reference; success : out Boolean);
 
     ---------------------------------------------------------------------------
     -- revokeGrant

@@ -104,6 +104,11 @@ is
                           arg0, arg1 : Unsigned_64;
                           retval     : out Unsigned_64);
 
+    procedure handleDeriveGrantViaCap
+      (callerPID : Process.ProcessID;
+       arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
+       retval : out Unsigned_64);
+
     procedure handleGrantViaCap (callerPID : Process.ProcessID;
                                   arg0, arg1, arg2, arg3 : Unsigned_64;
                                   retval : out Unsigned_64);

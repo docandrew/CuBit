@@ -1,0 +1,8 @@
+# DRAFT, not yet attached to mixer.svc: devmgr still mints these grants itself
+# (MIXER_REALTIME_BUDGET_US / MIXER_REALTIME_PERIOD_US).
+(executable-manifest v1
+  (identity "com.cubit.mixer")
+  (version "0.1.0")
+  (request-scheduling scheduling realtime (budget-us 1500) (period-us 5000))
+  (request-notification mixer manage registration)
+  (request-service device-manager read-write ready))

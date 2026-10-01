@@ -44,9 +44,20 @@ before page-table disposal, without consuming a separate kernel forwarding hold.
 
 The forwarding hold is one-shot and independent of user returns. Its state core
 is implemented/proved, and receiver teardown preserves a held parent record
-after unmapping (installed page count becomes zero). No native syscall creates
-a forwarding scope yet: child mappings, independently owned frame pins, owner
-permission checks and scope-close cascades remain required integration work.
+after unmapping (installed page count becomes zero). The native adapter now
+connects child mappings, independent frame pins, owner permission checks and
+scope-close cascades. `Derive_Via_Capability` uses syscall 122 with recipient
+endpoint slot, parent slot/generation, page offset/count and a 0/1 write flag.
+Success returns the canonical packed child reference atomically; failure returns
+U64'Last. The child is terminal. Recipient generation is rechecked under the
+grant lock; received memory still cannot be re-granted through ordinary creation.
+The three-party `grant-forward` fixture exercises this native path separately
+from the pure SPARK policy tests. This does not establish GPU DMA quiescence.
+Companion native exit fixtures also retain a child while the intermediary or
+original owner exits. Both passed four-CPU QEMU on 2026-09-30: admission closes,
+the retained mapping remains readable, and returning it retires the child.
+The intermediary-exit fixture additionally confirms root retirement through
+the surviving owner. These do not test later owner PID or physical-frame reuse.
 See [derived-loan implementation and proof boundaries](../tests/grant-loans/README.md).
 
 The focused kernel SPARK gate passed 116 checks on 2026-09-09. This is evidence

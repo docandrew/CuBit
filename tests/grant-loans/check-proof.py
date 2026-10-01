@@ -30,7 +30,8 @@ for unit in ('loan_proof', 'memory_grants'):
         for instance in ('Production', 'Bounded'):
             for operation in ('Configure', 'Reserve', 'Publish', 'Acquire',
                               'Return_Reader', 'Revoke', 'Finish_Retirement',
-                              'Close', 'Release_Parent'):
+                              'Close', 'Release_Parent', 'Open_Forwarding',
+                              'Close_Forwarding', 'Release_Forwarding'):
                 name = f'Loan_Proof.{instance}.{operation}'
                 assert name in proved, name
         for operation in ('Submit', 'Apply', 'Close'):

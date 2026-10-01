@@ -8,6 +8,7 @@ with CCL.Host_Values;
 with CCL.Language;
 with CCL.Compiler;
 with CCL.Format;
+with Module_Patches; use type Module_Patches.Bytes;
 with CCL.VM;
 
 procedure Portable_Object_Tests is
@@ -34,14 +35,14 @@ procedure Portable_Object_Tests is
    Analysis : CCL.Language.Analysis_Result;
    Compiled : CCL.Compiler.Compilation_Result;
    Bytes, Changed, Again : F.Byte_Array;
-   Size, Again_Size : F.Module_Length;
+   Size, Again_Size, Changed_Size : F.Module_Length;
    Error : F.Format_Error;
    Validation : V.Validation_Error;
    Decoded, Original : V.Program;
    Links, Again_Links : Linkage_Table;
    Limits : F.Resource_Limits;
    Linked : Link_Result;
-   Import_Offset : Natural;
+   Patched : Boolean;
    Checks : Natural := 0;
    procedure Check (OK : Boolean) is
    begin
@@ -96,8 +97,18 @@ procedure Portable_Object_Tests is
    end Describe;
    procedure Decode_Changed is
    begin
-      F.Decode (Changed, Size, Decoded, Again_Links, Limits, Error, Validation);
+      F.Decode (Changed, Changed_Size, Decoded, Again_Links, Limits, Error, Validation);
    end Decode_Changed;
+   --  Changed := Bytes with the Occurrence'th (0: only) From replaced by To.
+   procedure Patch (From, To : Module_Patches.Bytes; Occurrence : Natural := 0) is
+   begin
+      Changed := Bytes;
+      Changed_Size := Size;
+      Module_Patches.Replace (Changed, Changed_Size, From, To, Patched, Occurrence);
+      Check (Patched);
+   end Patch;
+   --  "CCLB" and the format version.
+   Header : constant Module_Patches.Bytes := [16#44#, 16#43#, 16#43#, 16#4C#, 16#42#, F.FORMAT_VERSION];
    procedure Execute (Expected : V.Value) is
       Verified : V.Validated_Program;
       Machine : V.Machine_State;
@@ -153,36 +164,43 @@ begin
    Decoded := Original;
    Link_Program (Grants, Links, Decoded, Linked, Shifted); Check (Linked = Link_Valid);
    Execute ((Kind => V.Variant_Value, Data_Type => Root, Alternative => 1, Integer => 42, others => <>));
-   Import_Offset := F.HEADER_SIZE + Compiled.Program.Types_Length * F.TYPE_SIZE +
-     Natural (Last (Types) - Unit_Type) * F.DATA_TYPE_SIZE +
-     Compiled.Program.Matches_Length * F.MATCH_SIZE + Compiled.Program.Locals_Length * F.LOCAL_SIZE;
-   for Mutation in 1 .. 5 loop
-      Changed := Bytes;
-      case Mutation is
-         when 1 => Changed (F.VERSION_OFFSET) := 4;
-         when 2 => Changed (Import_Offset + F.IMPORT_IDENTITY_RESERVED_OFFSET) := 1;
-         when 3 => Changed (Import_Offset + F.IMPORT_RESULT_DATA_TYPE_OFFSET) := 255;
-         when 4 => Changed (Import_Offset + F.IMPORT_RESULT_SCHEMA_OFFSET ..
-                            Import_Offset + F.IMPORT_RESULT_SCHEMA_OFFSET + 31) := [others => 0];
-         when others => Changed (Import_Offset + F.IMPORT_RESULT_SCHEMA_OFFSET) := 99;
-      end case;
-      Decode_Changed;
-      Check (Error = (case Mutation is when 1 => F.Unsupported_Version,
-        when 2 => F.Bad_Reserved_Field, when 3 => F.Invalid_Type_Metadata,
-        when 4 => F.Invalid_Linkage, when others => F.Format_Valid));
-      if Mutation = 5 then
-         Original := Decoded;
-         Link_Program (Grants, Again_Links, Decoded, Linked, Catalog);
-         Check (Linked = Authority_Not_Granted and Decoded = Original);
-      end if;
-   end loop;
-   -- A bad later import must not leave the earlier authorized import bound.
-   Changed := Bytes;
-   Changed (Import_Offset + F.IMPORT_SIZE + F.IMPORT_RESULT_SCHEMA_OFFSET) := 99;
-   Decode_Changed; Check (Error = F.Format_Valid);
-   Original := Decoded;
-   Link_Program (Grants, Again_Links, Decoded, Linked, Catalog);
-   Check (Linked = Authority_Not_Granted and Decoded = Original);
+   declare
+      Import : constant Resolved_Operation := Element (Links, 0);
+      Result_Schema : constant Module_Patches.Bytes :=
+        Module_Patches.Encoded_Digest (Import.Import.Result_Schema);
+      Interface_Digest : constant Module_Patches.Bytes :=
+        Module_Patches.Encoded_Digest (Import.Interface_Digest);
+      Result_Type : constant Unsigned_8 := Unsigned_8 (Decoded.Imports (0).Result_Data_Type);
+      Zeroed : Module_Patches.Bytes := Result_Schema;
+      Moved : Module_Patches.Bytes := Result_Schema;
+   begin
+      Zeroed (3 .. Zeroed'Last) := [others => 0];
+      Moved (3) := 99;
+      for Mutation in 1 .. 5 loop
+         case Mutation is
+            when 1 => Patch (Header, [16#44#, 16#43#, 16#43#, 16#4C#, 16#42#, 4]);
+            when 2 => Patch (Interface_Digest, [1 => 16#58#, 2 => 16#20#, 3 .. 34 => 0], Occurrence => 1);
+            when 3 => Patch (Result_Type & Interface_Digest, [16#18#, 16#FF#] & Interface_Digest, Occurrence => 1);
+            when 4 => Patch (Result_Schema, Zeroed, Occurrence => 1);
+            when others => Patch (Result_Schema, Moved, Occurrence => 1);
+         end case;
+         Decode_Changed;
+         Check (Error = (case Mutation is when 1 => F.Unsupported_Version,
+           when 2 => F.Invalid_Linkage, when 3 => F.Invalid_Type_Metadata,
+           when 4 => F.Invalid_Linkage, when others => F.Format_Valid));
+         if Mutation = 5 then
+            Original := Decoded;
+            Link_Program (Grants, Again_Links, Decoded, Linked, Catalog);
+            Check (Linked = Authority_Not_Granted and Decoded = Original);
+         end if;
+      end loop;
+      -- A bad later import must not leave the earlier authorized import bound.
+      Patch (Result_Schema, Moved, Occurrence => 2);
+      Decode_Changed; Check (Error = F.Format_Valid);
+      Original := Decoded;
+      Link_Program (Grants, Again_Links, Decoded, Linked, Catalog);
+      Check (Linked = Authority_Not_Granted and Decoded = Original);
+   end;
    -- Every truncated prefix is rejected before it can become executable.
    for Prefix in F.Module_Length range 0 .. Size - 1 loop
       F.Decode (Bytes, Prefix, Decoded, Again_Links, Limits, Error, Validation);
@@ -222,12 +240,14 @@ begin
    Execute (V.Integer_Constant (42));
    -- Removing schema keys must not turn approved object access into scalar
    -- access, even though both happen to use an Integer VM representation.
-   Import_Offset := F.HEADER_SIZE + Compiled.Program.Types_Length * F.TYPE_SIZE +
-     Natural (Last (Compiled.Program.Data_Types) - Unit_Type) * F.DATA_TYPE_SIZE +
-     Compiled.Program.Matches_Length * F.MATCH_SIZE + Compiled.Program.Locals_Length * F.LOCAL_SIZE;
-   Changed := Bytes;
-   Changed (Import_Offset + F.IMPORT_RESULT_SCHEMA_OFFSET ..
-            Import_Offset + F.IMPORT_RESULT_SCHEMA_OFFSET + 31) := [others => 0];
+   declare
+      Result_Schema : constant Module_Patches.Bytes :=
+        Module_Patches.Encoded_Digest (Element (Links, 0).Import.Result_Schema);
+      Zeroed : Module_Patches.Bytes := Result_Schema;
+   begin
+      Zeroed (3 .. Zeroed'Last) := [others => 0];
+      Patch (Result_Schema, Zeroed, Occurrence => 1);
+   end;
    Decode_Changed; Check (Error = F.Format_Valid);
    Original := Decoded;
    Link_Program (Grants, Again_Links, Decoded, Linked, Catalog);

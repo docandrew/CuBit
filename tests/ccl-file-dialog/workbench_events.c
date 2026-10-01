@@ -278,6 +278,25 @@ int SDL_WaitEvent(SDL_Event *event)
         generated_event = 1;
         return 1;
     }
+    const char *repl_lines = getenv("CCL_TEST_REPL_LINES");
+    if (repl_lines != NULL) {
+        /* Type each newline-separated entry into the REPL and submit it. */
+        const unsigned total = (unsigned)strlen(repl_lines);
+        if (stage == 0) event->key.keysym.sym = SDLK_F6;
+        else if (stage <= total) {
+            const char c = repl_lines[stage - 1];
+            if (c == '\n') event->key.keysym.sym = SDLK_RETURN;
+            else {
+                event->type = SDL_TEXTINPUT;
+                event->text.text[0] = c;
+            }
+        } else if (stage == total + 1) event->key.keysym.sym = SDLK_RETURN;
+        else if (stage < total + 4) event->key.keysym.sym = SDLK_UNKNOWN;
+        else event->type = SDL_QUIT;
+        ++stage;
+        generated_event = 1;
+        return 1;
+    }
     if (getenv("CCL_TEST_REPL") != NULL) {
         /* Nine text events, including both string delimiters. */
         static const char expression[] = "\"hello!!\"";

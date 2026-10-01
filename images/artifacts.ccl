@@ -29,6 +29,7 @@
   (artifact "devices" repository "kernel/isodir/boot/devices.app")
   (artifact "config-inspector" repository "kernel/isodir/boot/config-inspector.app")
   (artifact "boot-logs" repository "kernel/isodir/boot/boot-logs.app")
+  (artifact "gpu-viewer" repository "kernel/isodir/boot/gpu-viewer.app")
   (artifact "intel-gpu" repository "kernel/isodir/boot/intel-gpu.drv")
   (artifact "files" repository "kernel/isodir/boot/files.app")
   (artifact "storage-check" repository "kernel/isodir/boot/storage-check.app")

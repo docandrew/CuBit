@@ -1,6 +1,5 @@
 with Ada.Command_Line;
 with Ada.Text_IO; use Ada.Text_IO;
-with Interfaces; use Interfaces;
 
 with CCL.Language;
 with CCL.Sessions;
@@ -46,10 +45,14 @@ procedure Main is
       end case;
    end Print_Result;
 
+   --  One session for the whole run: the same engine as the Workbench, so
+   --  either dialect may be typed.
+   Session : CCL.Sessions.Session;
+
    function Run_Source (Source : String) return Boolean is
       Result : CCL.Language.Interpretation_Result;
    begin
-      CCL.Language.Interpret (Source, DEFAULT_FUEL, Result);
+      CCL.Sessions.Submit (Session, Source, DEFAULT_FUEL, Result);
       Print_Result (Result);
       return Result.Status = CCL.Language.Succeeded;
    end Run_Source;
@@ -103,9 +106,6 @@ procedure Main is
            Buffer (1 .. Last) = ":q"
          then
             exit;
-         elsif Buffer (1 .. Last) = ":help" then
-            Put_Line ("Enter one CCL expression, for example (+ 20 22).");
-            Put_Line ("Evaluation is type-checked and fuel-bounded.");
          else
             Ignore := Run_Source (Buffer (1 .. Last));
          end if;
@@ -116,6 +116,7 @@ procedure Main is
    end Run_REPL;
 
 begin
+   CCL.Sessions.Initialize (Session);
    if Ada.Command_Line.Argument_Count = 0 then
       Run_REPL;
    else

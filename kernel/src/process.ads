@@ -387,7 +387,9 @@ package Process is
     --
     -- Tracks DMA memory allocated via ALLOC_DMA so it can be freed on kill().
     ---------------------------------------------------------------------------
-    MAX_DMA_ALLOCS : constant := 4;
+    -- Sixteen 2MiB GPU backing blocks plus firmware/queue allocations.
+    -- Record capacity is separate from the retained-byte quota.
+    MAX_DMA_ALLOCS : constant := 32;
 
     type DMAAlloc is record
         active   : Boolean              := False;
@@ -433,6 +435,7 @@ package Process is
     type GrantPermission is (GRANT_READ, GRANT_READWRITE);
 
     type Grant is record
+        globalSlot   : Memory_Grants.Global_Slot := 0;
         lifecycle    : Memory_Grants.Lifecycle :=
           Memory_Grants.Inactive_Lifecycle;
         reusable     : Boolean         := True;
@@ -448,6 +451,10 @@ package Process is
         -- kernel forwarding hold retains the grant identity/resources.
         numPages     : StoredGrantPageCount := 0;
         permission   : GrantPermission := GRANT_READ;
+        -- Set only by the owner when creating this grant from owned pages.
+        -- A derived child must always clear this; ordinary acquisition does
+        -- not grant delegation authority.
+        forwardable  : Boolean := False;
     end record;
 
     type GrantArray is array (GrantID) of Grant;

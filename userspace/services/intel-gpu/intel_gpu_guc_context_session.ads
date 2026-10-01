@@ -3,8 +3,8 @@ with Intel_GPU_GuC_Context_Event;
 with Intel_GPU_GuC_Context_Lifecycle;
 generic
    -- Serialized, bounded, nonraising callbacks. Exclusive channel ownership;
-   -- caller reserves four unique control fences and four G2H words. When
-   -- Notify_Work is used, fences above those controls are reserved as well.
+   -- caller reserves the entire unique [Fence_Base, Fence_Last] interval and
+   -- four G2H words. The first four fences are controls; the rest are work.
    with function Owner_Ready return Boolean;
    with procedure Queue
      (Payload : Intel_GPU_GuC_Context_Event.Words;
@@ -20,7 +20,7 @@ package Intel_GPU_GuC_Context_Session is
    procedure Initialize
      (Object : in out Session; ID : Interfaces.Unsigned_32;
       GPU_Start, Pin_Bias : Interfaces.Unsigned_64;
-      Fence_Base : Interfaces.Unsigned_16;
+      Fence_Base, Fence_Last : Interfaces.Unsigned_16;
       Quantum_Us, Preemption_Us : Interfaces.Unsigned_32;
       Preempt_To_Idle : Boolean);
    procedure Submit (Object : in out Session;

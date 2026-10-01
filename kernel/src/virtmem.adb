@@ -383,6 +383,12 @@ is
         -- address is 0.
         adjPFN : constant BigPFN := BigPFN(Shift_Left (physPFN, 9));
     begin
+        -- Do not round an invalid request down into a different allocation.
+        -- Runtime checks are required even in builds disabling contracts.
+        success := False;
+        if phys mod BIG_FRAME_SIZE /= 0 or else virt mod BIG_PAGE_SIZE /= 0 then
+            return;
+        end if;
         -- if phys > 16#0F00000# and phys < 16#1100000# then
         --     print("mapping big page from "); print(phys); print(" to "); println(virt);
         -- end if;
@@ -401,6 +407,15 @@ is
                             Import, Address => To_Address(P2V (p2Addr));
                     begin
                         --print(" Creating huge page table with flags: "); println(flags or PG_HUGE);
+                        -- User installation must not replace an existing
+                        -- table/leaf or retained backing. Kernel direct-map
+                        -- setup still explicitly remaps PCI ranges here;
+                        -- converting that legacy path needs a separate API.
+                        if (flags and PG_USER) /= 0 and then
+                          (myP2(p2Index).present or else myP2(p2Index).size or else
+                           myP2(p2Index).pgNum /= 0) then
+                            return;
+                        end if;
                         myP2(p2Index) := makeBigPTE (adjPFN, flags);
                         
                         success := True;
@@ -488,7 +503,8 @@ is
     -- Given a virtual address, walk the page tables to determine the physical
     -- address it is mapped to.
     ---------------------------------------------------------------------------
-    function tableWalk (virt : in VirtAddress; myP4 : in P4)
+    function tableWalk (virt : in VirtAddress; myP4 : in P4;
+                        Allow_Big : Boolean := False)
         return PhysAddress
         with SPARK_Mode => On
     is
@@ -513,6 +529,7 @@ is
                 myP3 : P3 with
                     Import, Address => To_Address(P2V (p3Addr));
             begin
+                if myP3(p3Index).size then return 0; end if;
                 p2Addr := getP2 (myP3, p3Index);
                 
                 if p2Addr /= 0 then
@@ -520,6 +537,18 @@ is
                         myP2 : P2 with
                             Import, Address => To_Address(P2V (p2Addr));
                     begin
+                        if myP2(p2Index).size then
+                            if not Allow_Big or else not myP2(p2Index).present then
+                                return 0;
+                            end if;
+                            -- pgNum bit0 is the large-leaf PAT bit; bits1..8
+                            -- are reserved, not physical address bits.
+                            if (myP2(p2Index).pgNum and 16#1FE#) /= 0 then
+                                return 0;
+                            end if;
+                            return pfnToAddr (myP2(p2Index).pgNum and not PFN'(511)) +
+                              (virt mod BIG_PAGE_SIZE / PAGE_SIZE) * PAGE_SIZE;
+                        end if;
                         p1Addr := getP1 (myP2, p2Index);
 
                         if p1Addr /= 0 then

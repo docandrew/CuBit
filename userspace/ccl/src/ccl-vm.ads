@@ -7,6 +7,7 @@ with CCL.Types;
 with CCL.Objects;
 with CCL.Objects.Views;
 with CCL.Resources;
+with CCL.Secondary_Stacks;
 
 package CCL.VM with
    SPARK_Mode => On
@@ -32,12 +33,47 @@ is
    type Local_Type_Array is
      array (CCL.Ownership.Binding_Id) of CCL.Ownership.Type_Id;
 
-   type Value_Kind is (Integer_Value, Boolean_Value, Variant_Value, Object_Value, Resource_Value);
-   for Value_Kind use (Integer_Value => 0, Boolean_Value => 1, Variant_Value => 2, Object_Value => 3, Resource_Value => 4);
+   type Value_Kind is
+     (Integer_Value, Boolean_Value, Variant_Value, Object_Value, Resource_Value, Text_Value);
+   for Value_Kind use
+     (Integer_Value => 0, Boolean_Value => 1, Variant_Value => 2, Object_Value => 3,
+      Resource_Value => 4, Text_Value => 5);
    for Value_Kind'Size use 8;
    subtype Scalar_Kind is Value_Kind range Integer_Value .. Boolean_Value;
    MAX_OBJECT_VALUES : constant := 16;
    subtype Object_Position is Natural range 0 .. MAX_OBJECT_VALUES;
+
+   --  Text (docs/ccl-bytecode-format.md, "Version 8 plan", step 2): a run's
+   --  strings live in a bounded region of its machine state; a Text_Value
+   --  holds a checked descriptor into it, never a pointer, so the state
+   --  stays serializable. Literals come from the program's constant pool.
+   --  The interpreter's bounds (CCL.Language), so a program fails at the
+   --  same point in both: a string holds at most 8 KiB (the interpreter
+   --  keeps longer-than-1-KiB strings in object images of that size), a
+   --  result carries at most 1 KiB out, and as many live strings as a
+   --  program has syntax nodes.
+   MAX_STRING_BYTES   : constant := 8_192;
+   MAX_TEXT_BYTES     : constant := 65_536;
+   MAX_TEXT_VALUES    : constant := 512;
+   MAX_RESULT_TEXT    : constant := 1_024;
+   MAX_CONSTANTS      : constant := 32;
+   MAX_CONSTANT_BYTES : constant := 4_096;
+   package Text_Regions is new CCL.Secondary_Stacks
+     (Capacity => MAX_TEXT_BYTES, Max_Values => MAX_TEXT_VALUES,
+      Max_String_Length => MAX_STRING_BYTES);
+   subtype Constant_Count is Natural range 0 .. MAX_CONSTANTS;
+   subtype Constant_Index is Natural range 0 .. MAX_CONSTANTS - 1;
+   subtype Constant_Length is Natural range 0 .. MAX_CONSTANT_BYTES;
+   type Text_Constant is record
+      First  : Positive range 1 .. MAX_CONSTANT_BYTES + 1 := 1;
+      Length : Constant_Length := 0;
+   end record;
+   type Text_Constants is array (Constant_Index) of Text_Constant;
+   subtype Result_Text_Length is Natural range 0 .. MAX_RESULT_TEXT;
+   type Result_Text is record
+      Length : Result_Text_Length := 0;
+      Data   : String (1 .. MAX_RESULT_TEXT) := [others => ' '];
+   end record;
 
    type Value is record
       Kind    : Value_Kind := Integer_Value;
@@ -50,6 +86,7 @@ is
       Object : Object_Position := 0;
       Object_Node : CCL.Objects.Views.Cursor := CCL.Objects.Views.No_Value;
       Resource : CCL.Resources.Reference := CCL.Resources.No_Reference;
+      Text : Text_Regions.String_Value;
    end record;
 
    function Integer_Constant (Item : Integer_64) return Value is
@@ -63,7 +100,7 @@ is
      ((Kind => Item.Kind, Integer => Item.Integer, Boolean => Item.Boolean,
        Type_Tag => Type_Tag, Data_Type => Item.Data_Type, Alternative => Item.Alternative,
        Copyable => Item.Copyable, Object => Item.Object, Object_Node => Item.Object_Node,
-       Resource => Item.Resource));
+       Resource => Item.Resource, Text => Item.Text));
 
    function Native_Object_Type
      (Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference) return Boolean is
@@ -77,7 +114,10 @@ is
         when Variant_Value => CCL.Types.Is_Scalar_Sum (Types, Ref),
         when Object_Value => Native_Object_Type (Types, Ref),
         when Resource_Value => CCL.Types.Known (Types, Ref) and then
-          CCL.Types.Describe (Types, Ref).Form = CCL.Types.Resource);
+          CCL.Types.Describe (Types, Ref).Form = CCL.Types.Resource,
+        --  Text lives in the run's region: not yet a local, import or
+        --  host-supplied value.
+        when Text_Value => False);
    function Kind_For_Type
      (Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference) return Value_Kind is
      (if Ref = CCL.Types.Integer_Type then Integer_Value
@@ -143,7 +183,16 @@ is
       Less_Equal_Integer,
       Equal_Boolean,
       Call_Function,
-      Return_Function);
+      Return_Function,
+      --  Text: Push_Text pushes constant Immediate; Concat_Text joins the
+      --  two top texts (left below right); Length_Text and Equal_Text.
+      Push_Text,
+      Concat_Text,
+      Length_Text,
+      Equal_Text,
+      --  A string built-in (CCL.Text_Operations): Immediate is the
+      --  operation; its operands are below the subject on the stack.
+      Text_Builtin);
    for Op_Code use
      (Halt                    => 0,
       Push_Integer            => 1,
@@ -178,7 +227,12 @@ is
       Less_Equal_Integer      => 30,
       Equal_Boolean           => 31,
       Call_Function           => 32,
-      Return_Function         => 33);
+      Return_Function         => 33,
+      Push_Text               => 34,
+      Concat_Text             => 35,
+      Length_Text             => 36,
+      Equal_Text              => 37,
+      Text_Builtin            => 38);
    for Op_Code'Size use 8;
 
    type Authority_Class is
@@ -298,6 +352,10 @@ is
       Matches : Match_Tables := [others => (others => <>)];
       Functions_Length : Function_Count := 0;
       Functions : Function_Array := [others => (others => <>)];
+      --  Text literals: Constants (I) is Constant_Text (First .. First + Length - 1).
+      Constants_Length : Constant_Count := 0;
+      Constants : Text_Constants := [others => (others => <>)];
+      Constant_Text : String (1 .. MAX_CONSTANT_BYTES) := [others => ' '];
    end record;
 
    type Validation_Error is
@@ -315,7 +373,11 @@ is
       Invalid_Data_Type,
       Invalid_Match,
       Invalid_Ownership,
-      Invalid_Function);
+      Invalid_Function,
+      --  A text constant outside the pool, or a pool entry outside its text.
+      Invalid_Constant,
+      --  A Text_Builtin naming no operation.
+      Invalid_Builtin);
 
    type Validated_Program is private;
 
@@ -337,6 +399,10 @@ is
       Arithmetic_Overflow,
       Division_By_Zero,
       Object_Storage_Exhausted,
+      --  The run's text region is full.
+      Text_Storage_Exhausted,
+      --  parse-int on text that is not a decimal integer.
+      Invalid_Number,
       Invalid_Bytecode,
       Waiting_For_Host,
       Host_Call_Failed,
@@ -354,6 +420,8 @@ is
       Request_Owned : Boolean := False;
       Requested_Authority : Authority_Class := No_Authority;
       Requested_Binding   : Unsigned_32 := 0;
+      --  A text result's characters (Result_Value.Kind = Text_Value).
+      Result_Text_Value : Result_Text := (others => <>);
    end record;
 
    type Machine_State is private;
@@ -546,6 +614,7 @@ private
       Locals              : Local_Value_Array := [others => (others => <>)];
       Frames              : Call_Frames := [others => (others => <>)];
       Frame_Count         : Function_Count := 0;
+      Text                : Text_Regions.Stack;
    end record;
 
    function Is_Valid (Item : Validated_Program) return Boolean is

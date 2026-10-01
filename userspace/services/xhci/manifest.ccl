@@ -1,0 +1,12 @@
+# DRAFT, not yet attached to xhci.drv: devmgr still mints these grants itself.
+# Sizes are upper bounds; devmgr grants what the device reports.
+(executable-manifest v1
+  (identity "com.cubit.xhci")
+  (version "0.1.0")
+  (match-pci-class 12 3 48)
+  (device-memory registers (bar 0) (max-bytes 65536) read-write)
+  (interrupt events msi (vectors 1))
+  (dma rings (bytes 4194304))
+  (request-notification mouse publish mouse-events)
+  (request-notification keyboard publish keyboard-events)
+  (request-service device-manager read-write ready))

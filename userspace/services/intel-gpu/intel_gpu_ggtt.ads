@@ -3,6 +3,9 @@ package Intel_GPU_GGTT with SPARK_Mode is
    use Interfaces;
    Table_BAR_Offset : constant Unsigned_64 := 8 * 1024 * 1024;
    Maximum_Table_Bytes : constant Unsigned_64 := 8 * 1024 * 1024;
+   function Linear_Page (Base, Offset : Unsigned_64) return Unsigned_64 is
+     (if Base = 0 or else Base >= 2 ** 32 or else Offset >= 2 ** 32 - Base
+      then 0 else Base + Offset);
    -- Conservative first-upload policy: system-memory DMA addresses below
    -- 4GiB only. This is not the hardware's maximum address width. The caller
    -- supplies a device-visible DMA address, never a CPU virtual address.

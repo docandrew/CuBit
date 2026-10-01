@@ -45,9 +45,9 @@ begin
    CCL.Catalog.Publish_Type (Catalog, Source, Sum_Type, Ref, Imported_As);
    Check (Imported_As = Imported);
    CCL.Language.Interpret ("MaybeDocument.Missing", 4096, Catalog, Interpreted);
-   -- Construction is supported by the interpreter, but its legacy scalar
-   -- final-result interface still cannot export a general aggregate.
-   Check (Interpreted.Status = CCL.Language.Host_Contract_Unsupported and not Interpreted.Has_Value);
+   -- A general aggregate result comes out as its canonical literal.
+   Check (Interpreted.Status = CCL.Language.Succeeded and Interpreted.Has_Literal and
+          Interpreted.Literal.Data (1 .. Interpreted.Literal.Length) = "MaybeDocument.Missing");
    CCL.Language.Analyze ("MaybeDocument.Missing", Catalog, Analysis);
    CCL.Compiler.Compile (Analysis, Compiled);
    Check (Compiled.Status = CCL.Compiler.Unsupported_Form);
@@ -61,7 +61,8 @@ begin
       Check (Imported_As = Imported);
    end;
    CCL.Language.Interpret ("(TextReading.Value ""hello"")", 4096, Catalog, Interpreted);
-   Check (Interpreted.Status = CCL.Language.Host_Contract_Unsupported and not Interpreted.Has_Value);
+   Check (Interpreted.Status = CCL.Language.Succeeded and Interpreted.Has_Literal and
+          Interpreted.Literal.Data (1 .. Interpreted.Literal.Length) = "(TextReading.Value ""hello"")");
    CCL.Language.Analyze ("(TextReading.Value ""hello"")", Catalog, Analysis);
    CCL.Compiler.Compile (Analysis, Compiled); Check (Compiled.Status = CCL.Compiler.Unsupported_Form);
    CCL.Language.Interpret

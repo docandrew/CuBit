@@ -8,12 +8,19 @@ package Intel_GPU_GuC_Context_Lifecycle with SPARK_Mode is
    type Context is limited private;
    function State (Object : Context) return Phase;
    function Credits_Held (Object : Context) return Natural;
-   -- One driver-owned context, no ID/fence reuse or re-enable in this bring-up
-   -- lifetime. Caller serializes send/dispatch and reserves four unique fences
+   function Last_Fence (Object : Context) return Unsigned_16;
+   -- One driver-owned context, no ID/fence reuse. Re-enable is permitted only
+   -- after acknowledged disable and consumes a fresh fence. Caller serializes
+   -- send/dispatch and reserves four initial control fences
    -- globally plus four receive DWORDs (CT + HXG + two event data words).
    -- These are trusted local facts, not authorizations accepted from clients.
+   -- Repeated scheduling controls share the monotonic notification-fence pool;
+   -- re-enable reserves capacity for a subsequent disable. Backpressure alone
+   -- restores the previous phase/fence; queued or uncertain sends spend it.
+   -- Disabled is a scheduling acknowledgement, not proof of a flushed engine
+   -- or permission to mutate PTEs. The owner supplies those separate gates.
    procedure Initialize (Object : in out Context; ID : Unsigned_32;
-                         Fence_Base : Unsigned_16; Ownership_Ready : Boolean)
+                         Fence_Base, Fence_Last : Unsigned_16; Ownership_Ready : Boolean)
      with Post => (if State (Object)'Old = Quarantined then State (Object) = Quarantined);
    procedure Prepare (Object : in out Context; Action : Operation;
                       Fence : out Unsigned_16; Accepted : out Boolean)
@@ -27,11 +34,13 @@ package Intel_GPU_GuC_Context_Lifecycle with SPARK_Mode is
    -- Repeated single-LRC scheduling notifications while already enabled.
    -- Caller has published a new tail with the required cache ordering. A
    -- notification is NOT a GPU completion and holds no scheduling-done credit.
-   -- Fences above the four lifetime controls are never reused after queued or
+   -- Fences above the four initial controls are never reused after queued or
    -- uncertain publication; exhaustion rejects without wrapping. The caller
-   -- reserves that remaining fence interval for this single context lifetime.
+   -- reserves [Fence_Base, Fence_Last] for this context lifetime. Four fences
+   -- are required initially; extra capacity serves notifications and resume.
    procedure Prepare_Notification
-     (Object : in out Context; Fence : out Unsigned_16; Accepted : out Boolean);
+     (Object : in out Context; Fence : out Unsigned_16; Accepted : out Boolean)
+     with Post => (if Accepted then Fence <= Last_Fence (Object) else Fence = 0);
    procedure Notification_Sent (Object : in out Context; Result : Send_Result)
      with Post => (if State (Object)'Old = Quarantined then State (Object) = Quarantined);
    -- Dispatcher has already checked HXG origin/type/shape. A failure for any
@@ -54,8 +63,11 @@ private
       Value : Phase := Fresh;
       ID : Unsigned_32 := 65535;
       Base : Unsigned_16 := 0;
+      Last : Unsigned_16 := 0;
       Used : Sent_Set := [others => False];
       Active : Operation := Register_Context;
+      Before_Send : Phase := Fresh;
+      Previously_Used, Dynamic_Fence : Boolean := False;
       Sending : Boolean := False;
       Credits : Natural range 0 .. 4 := 0;
       Notification_Sending : Boolean := False;

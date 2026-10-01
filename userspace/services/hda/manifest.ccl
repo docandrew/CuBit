@@ -1,0 +1,10 @@
+# DRAFT, not yet attached to hda.drv: devmgr still mints these grants itself.
+(executable-manifest v1
+  (identity "com.cubit.hda")
+  (version "0.1.0")
+  (match-pci-class 4 3 0)
+  (device-memory registers (bar 0) (max-bytes 16384) read-write)
+  (interrupt controller msi (vectors 1))
+  (dma streams (bytes 8388608))
+  (request-notification hda manage registration)
+  (request-service device-manager read-write ready))

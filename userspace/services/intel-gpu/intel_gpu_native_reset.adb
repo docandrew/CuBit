@@ -9,6 +9,8 @@ with Intel_GPU_Reset_Pages;
 with Intel_GPU_Forcewake_Fallback;
 with Intel_GPU_ADS_Observe;
 with Intel_GPU_ADS_System_Info;
+with Intel_GPU_Timestamp_Clock;
+with Intel_GPU_Timestamp_Observe;
 package body Intel_GPU_Native_Reset is
    use Interfaces;
    Description : Inventory;
@@ -26,7 +28,10 @@ package body Intel_GPU_Native_Reset is
          Offset = Intel_GPU_ADLN_Steering.DSS_Register or else
          Offset = Intel_GPU_ADLN_Steering.L3_Register or else
          Offset = Intel_GPU_ADLN_EU.EU_Disable_Register or else
-         Offset = Intel_GPU_ADS_System_Info.Doorbell_Register));
+         Offset = Intel_GPU_ADS_System_Info.Doorbell_Register or else
+         Offset = Intel_GPU_Timestamp_Clock.CONFIG0_Offset or else
+         Offset = Intel_GPU_Timestamp_Clock.CTC_Mode_Offset or else
+         Offset = Intel_GPU_Timestamp_Clock.Override_Offset));
       for D in Domain loop Allowed := Allowed or Offset = Ack_Register (D); end loop;
       for E in Engine loop
          if Description.Engines (E) then
@@ -125,6 +130,30 @@ package body Intel_GPU_Native_Reset is
    end Recover_Domain;
    package Power is new Intel_GPU_ADLN_Forcewake
      (Read, Write, Pause, Milliseconds, Recover_Domain => Recover_Domain);
+   Saved_Timestamp_Hz : Unsigned_32 := 0;
+   function Timestamp_Hz return Unsigned_32 is
+      use type Power.Ownership_State;
+   begin
+      return (if Succeeded and not Access_Fault and Power.State = Power.Held
+              then Saved_Timestamp_Hz else 0);
+   end Timestamp_Hz;
+   procedure Read_Clock (Offset : Unsigned_32; Value : out Unsigned_32;
+                         Success : out Boolean) is
+      use type Power.Ownership_State;
+   begin
+      Value := 0;
+      Success := Succeeded and not Access_Fault and Power.State = Power.Held;
+      -- TIMESTAMP_OVERRIDE is in the display register range. GT forcewake
+      -- alone does not establish its display-power prerequisite here; keep
+      -- that source unavailable until its power/read contract is integrated.
+      Success := Success and Offset /= Intel_GPU_Timestamp_Clock.Override_Offset;
+      if not Success then return; end if;
+      Value := Read (Offset);
+      -- All-ones is not a valid observed clock configuration. In particular
+      -- do not interpret an inaccessible display/GT register as a frequency.
+      Success := not Access_Fault and Value /= Unsigned_32'Last;
+   end Read_Clock;
+   package Clock_Reader is new Intel_GPU_Timestamp_Observe (Read_Clock);
    procedure Hold (Success : out Boolean) is
    begin Power.Acquire (16#8086#, 16#46D2#, Saved_Fuse, Success); end Hold;
    package Reset is new Intel_GPU_ADLN_Reset (Read, Write, Hold, Now, Pause);
@@ -145,8 +174,10 @@ package body Intel_GPU_Native_Reset is
       if Succeeded then
          declare
             use type Power.Ownership_State;
+            Clock_Status : Clock_Reader.Outcome;
          begin
             ADS := ADS_Reader.Capture (Description, Power.State = Power.Held);
+            Clock_Reader.Sample (Saved_Timestamp_Hz, Clock_Status);
          end;
       end if;
       if Status = Reset.Forcewake_Failed then

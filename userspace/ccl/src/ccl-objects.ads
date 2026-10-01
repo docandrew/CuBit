@@ -72,6 +72,11 @@ package CCL.Objects with SPARK_Mode is
    -- numbering. The caller supplies an approved Contract; this grants nothing.
    function Persistable
      (Types : CCL.Types.Registry; Root : CCL.Types.Type_Reference) return Boolean;
+   --  Values one evaluation may hold (the value arena): what Persistable
+   --  allows, plus list fields and lists whose elements are Persistable.
+   --  Only Persistable values cross a host boundary as images.
+   function Storable
+     (Types : CCL.Types.Registry; Root : CCL.Types.Type_Reference) return Boolean;
 
    function Empty (Contract : Binding) return Image;
    type Build_Result is (Added, Full, Invalid_Image);

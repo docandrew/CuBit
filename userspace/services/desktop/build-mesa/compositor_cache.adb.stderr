@@ -1,0 +1,2 @@
+compositor_cache.ads:48:04: warning: "State" is already use-visible through previous use_type_clause at line 18 [-gnatwr]
+compositor_cache.ads:48:04: warning: use clause for type "State" defined at compositor_policy.ads:2 has no effect [-gnatwu]

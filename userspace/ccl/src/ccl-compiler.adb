@@ -1,3 +1,4 @@
+with CCL.Text_Operations;
 with Interfaces;
 with CCL.Ownership;
 with CCL.Host_Values;
@@ -271,6 +272,7 @@ is
                   Read_Node (Item.First, Initializer);
                   if Initializer.Static_Kind = CCL.Language.Integer_Type then Emit (CCL.VM.Equal_Integer);
                   elsif Initializer.Static_Kind = CCL.Language.Boolean_Type then Emit (CCL.VM.Equal_Boolean);
+                  elsif Initializer.Static_Kind = CCL.Language.String_Type then Emit (CCL.VM.Equal_Text);
                   else Emit (CCL.VM.Equal_Variant, Data_Type => Initializer.Static_Kind); end if;
                else
                   Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
@@ -381,6 +383,7 @@ is
                     (case Initializer.Static_Kind is
                         when CCL.Language.Integer_Type => CCL.VM.Integer_Value,
                         when CCL.Language.Boolean_Type => CCL.VM.Boolean_Value,
+                        when CCL.Language.String_Type => CCL.VM.Text_Value,
                         when others => (if CCL.Types.Describe (Program.Data_Types, Initializer.Static_Kind).Form = CCL.Types.Resource
                           then CCL.VM.Resource_Value
                           elsif CCL.Types.Is_Scalar_Sum (Program.Data_Types, Initializer.Static_Kind)
@@ -392,7 +395,9 @@ is
                   elsif Initializer.Static_Kind = CCL.Language.Invalid_Type then
                      Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
                   else
-                     if Initializer.Static_Kind not in CCL.Language.Integer_Type | CCL.Language.Boolean_Type then
+                     if Initializer.Static_Kind not in
+                       CCL.Language.Integer_Type | CCL.Language.Boolean_Type | CCL.Language.String_Type
+                     then
                         Program.Local_Data_Types (Local) := Initializer.Static_Kind;
                      end if;
                      Next_Local := Next_Local + 1;
@@ -573,6 +578,7 @@ is
                elsif Item.Kind = CCL.Language.Not_Equal_Form then
                   if Initializer.Static_Kind = CCL.Language.Integer_Type then Emit (CCL.VM.Equal_Integer);
                   elsif Initializer.Static_Kind = CCL.Language.Boolean_Type then Emit (CCL.VM.Equal_Boolean);
+                  elsif Initializer.Static_Kind = CCL.Language.String_Type then Emit (CCL.VM.Equal_Text);
                   else Emit (CCL.VM.Equal_Variant, Data_Type => Initializer.Static_Kind); end if;
                   Emit (CCL.VM.Not_Boolean);
                elsif Initializer.Static_Kind /= CCL.Language.Integer_Type then
@@ -620,21 +626,81 @@ is
                   Program.Code (End_Jump).Target := Target;
                end if;
 
-            when CCL.Language.List_Construct | CCL.Language.Lambda_Form |
-                 CCL.Language.Builtin_Form =>
+            when CCL.Language.Builtin_Form =>
+               --  A string built-in: its operands, then the subject (last
+               --  in source), then the shared operation. List built-ins
+               --  arrive with lists in CCLB.
+               declare
+                  Subject : CCL.Language.Node;
+               begin
+                  if Item.Argument_Count = 0 or else
+                    not CCL.Language.Is_Text_Operation (Item.Builtin)
+                  then
+                     Fail (Unsupported_Form, Index, Item.Source_Position); return;
+                  end if;
+                  Read_Node (Item.Arguments (Item.Argument_Count), Subject);
+                  if Subject.Static_Kind /= CCL.Language.String_Type then
+                     Fail (Unsupported_Form, Index, Item.Source_Position); return;
+                  end if;
+                  for P in 1 .. Item.Argument_Count loop
+                     Emit_Node (Item.Arguments (P), Depth + 1, In_Conditional_Branch, Stack_Base + P - 1);
+                  end loop;
+                  Emit (CCL.VM.Text_Builtin, Interfaces.Integer_64
+                    (CCL.Text_Operations.Operation'Enum_Rep (CCL.Language.Text_Operation_Of (Item.Builtin))));
+               end;
+
+            when CCL.Language.List_Construct | CCL.Language.Lambda_Form =>
                --  Implemented by the direct interpreter (the REPL's path).
                --  CCLB lowering needs verifier-checked opcodes first, so it
                --  fails explicitly rather than approximating.
                Fail (Unsupported_Form, Index, Item.Source_Position);
 
-            when CCL.Language.String_Literal |
-                 CCL.Language.String_Length_Form |
-                 CCL.Language.String_Index_Form |
-                 CCL.Language.String_Concat_Form |
-                 CCL.Language.To_String_Form =>
-               --  The source semantics are implemented and exercised by the
-               --  direct interpreter. CCLB has no string constant pool or
-               --  variable-sized value kind, so lowering fails explicitly.
+            when CCL.Language.String_Literal =>
+               --  A pool constant; equal literals share one entry.
+               declare
+                  Text : constant String := CCL.Language.Analysis_Literal (Analysis, Index);
+                  Found : CCL.VM.Constant_Count := Program.Constants_Length;
+                  Used : Natural := 0;
+               begin
+                  for C in 0 .. Program.Constants_Length - 1 loop
+                     declare
+                        K : constant CCL.VM.Text_Constant := Program.Constants (C);
+                     begin
+                        if K.First + K.Length - 1 > Used then
+                           Used := K.First + K.Length - 1;
+                        end if;
+                        if Found = Program.Constants_Length and then K.Length = Text'Length and then
+                          Program.Constant_Text (K.First .. K.First + K.Length - 1) = Text
+                        then
+                           Found := C;
+                        end if;
+                     end;
+                  end loop;
+                  if Found = Program.Constants_Length then
+                     if Program.Constants_Length = CCL.VM.MAX_CONSTANTS or else
+                       Text'Length > CCL.VM.MAX_CONSTANT_BYTES - Used
+                     then
+                        Fail (Program_Full, Index, Item.Source_Position); return;
+                     end if;
+                     Program.Constants (Program.Constants_Length) :=
+                       (First => Used + 1, Length => Text'Length);
+                     Program.Constant_Text (Used + 1 .. Used + Text'Length) := Text;
+                     Program.Constants_Length := Program.Constants_Length + 1;
+                  end if;
+                  Emit (CCL.VM.Push_Text, Interfaces.Integer_64 (Found));
+               end;
+
+            when CCL.Language.String_Concat_Form =>
+               Emit_Node (Item.First, Depth + 1, In_Conditional_Branch, Stack_Base);
+               Emit_Node (Item.Second, Depth + 1, In_Conditional_Branch, Stack_Base + 1);
+               Emit (CCL.VM.Concat_Text);
+
+            when CCL.Language.String_Length_Form =>
+               Emit_Node (Item.First, Depth + 1, In_Conditional_Branch, Stack_Base);
+               Emit (CCL.VM.Length_Text);
+
+            when CCL.Language.String_Index_Form | CCL.Language.To_String_Form =>
+               --  Characters and to-string arrive with the next text step.
                Fail (Unsupported_Form, Index, Item.Source_Position);
 
             when CCL.Language.Invalid_Node =>

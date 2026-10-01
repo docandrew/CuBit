@@ -1,0 +1,8 @@
+<built-in>:lifecycleIP	8	static
+/home/doc/git/cubit/userspace/ccl/src/ccl-imports.ads:99:4:PHASE	8	static
+/home/doc/git/cubit/userspace/ccl/src/ccl-imports.adb:9:4:INITIALIZE	544	static
+/home/doc/git/cubit/userspace/ccl/src/ccl-imports.adb:15:4:OFFER	8	static
+/home/doc/git/cubit/userspace/ccl/src/ccl-imports.adb:42:4:REJECT_SUBMISSION	8	static
+/home/doc/git/cubit/userspace/ccl/src/ccl-imports.adb:53:4:ACCEPT_SUBMISSION	560	static
+/home/doc/git/cubit/userspace/ccl/src/ccl-imports.adb:90:4:REQUEST_CANCELLATION	8	static
+/home/doc/git/cubit/userspace/ccl/src/ccl-imports.adb:103:4:COMPLETE	48	static

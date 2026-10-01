@@ -11,10 +11,11 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Expected_Close => "Expected a closing parenthesis",
          when Expected_Name => "Expected a binding or operation name (at most 32 characters)",
          when Invalid_Integer => "Invalid or out-of-range integer",
+         when Value_Out_Of_Range => "Value is outside the range of its type",
          when Nesting_Too_Deep => "Expression nesting limit exceeded",
          when AST_Full => "Expression has too many syntax nodes",
          when Trailing_Input => "Unexpected text after the expression",
-         when Unknown_Name => "Unknown name; bindings do not persist between submissions",
+         when Unknown_Name => "Unknown name (keep a value with LET x = ... or (define x ...))",
          when Expected_Integer => "Expected an Integer expression",
          when Expected_Boolean => "Expected a Boolean expression",
          when Expected_String => "Expected a String expression",
@@ -46,7 +47,6 @@ package body CCL.Diagnostics with SPARK_Mode is
          when List_Element_Mismatch => "Every element of a list must have the same type",
          when Unsupported_List_Element => "Lists of this element type are not supported yet",
          when Empty_List_Needs_Type => "An empty list needs a declared element type",
-         when Too_Many_List_Elements => "Too many elements in one list literal (at most 16)",
          when Lambda_Parameter_Needs_Type => "Give each fn parameter a type: (fn ((x Integer)) ...)",
          when Lambda_Capture_Unsupported => "A fn body can capture only scalar, String, Character or enumeration values; pass lists and functions as parameters",
          when Too_Many_Captures => "A fn body can capture at most 4 enclosing values; pass the rest as parameters");
@@ -63,6 +63,7 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Evaluation_Overflow => "Integer arithmetic overflow",
          when Evaluation_Division_By_Zero => "Cannot divide by zero",
          when Evaluation_Index_Error => "Index is outside the value's bounds",
+         when Evaluation_Range_Error => "A computed value is outside the range of its type",
          when Evaluation_Text_Storage_Exhausted => "Execution text storage exhausted",
          when Evaluation_Object_Storage_Exhausted => "Execution object storage exhausted",
          when Host_Import_Required => "Service call needs a host-enabled interpreter or VM; no service was invoked.",
@@ -73,7 +74,8 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Host_Contract_Unsupported => "This interpreter host does not support the operation's value or lifecycle contract",
          when Evaluation_Depth_Exhausted => "Execution call/expression depth limit exceeded",
          when Evaluation_List_Storage_Exhausted => "Execution list storage exhausted",
-         when Evaluation_Invalid_Number => "Text is not a decimal integer");
+         when Evaluation_Invalid_Number => "Text is not a decimal integer",
+         when Session_Value_Not_Kept => "Value cannot be kept in the session (too long or not storable); define a function instead");
    end Message;
    function Message (Status : CCL.VM.Execution_Status) return String is
       use CCL.VM;
@@ -86,6 +88,8 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Arithmetic_Overflow => "Arithmetic overflow",
          when Division_By_Zero => "Division by zero",
          when Object_Storage_Exhausted => "Object storage exhausted",
+         when Text_Storage_Exhausted => "Text storage exhausted",
+         when Invalid_Number => "Not a number",
          when Invalid_Bytecode => "Invalid bytecode",
          when Waiting_For_Host => "Waiting for service",
          when Host_Call_Failed => "Service call failed",

@@ -13,4 +13,12 @@ package Intel_GPU_Submission_Materialize with SPARK_Mode is
      with Post =>
        Success = (Image.Valid and Buffer'Length = Byte_Count) and then
        (if not Success then Buffer = Buffer'Old);
+   -- Native split preparation: leave the four private VM table pages intact
+   -- for the sealed VM writer; write context/ring/batch/completion as usual.
+   procedure Write_Non_VM
+     (Image : Intel_GPU_Submission_Image.Image;
+      Buffer : in out Bytes; Success : out Boolean)
+     with Post =>
+       Success = (Image.Valid and Buffer'Length = Byte_Count) and then
+       (if not Success then Buffer = Buffer'Old);
 end Intel_GPU_Submission_Materialize;

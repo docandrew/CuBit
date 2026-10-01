@@ -4,7 +4,7 @@
 
 package body CCL_Workbench_Platform is
    procedure Live_Label_Changed (Event : Live_Label_Event) is null;
-   procedure REPL_Completed is null;
+   procedure REPL_Completed (Result : String) is null;
    procedure Activate is
    begin
       null;

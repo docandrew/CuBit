@@ -1,0 +1,6 @@
+desktop_settings.adb:140:07: warning: "Color_Scheme" is already use-visible through previous use_type_clause at line 9 [-gnatwr]
+desktop_settings.adb:140:07: warning: use clause for type "Color_Scheme" defined at cubit-appearance.ads:3 has no effect [-gnatwu]
+desktop_settings.adb:141:07: warning: "Background" is already use-visible through previous use_type_clause at line 10 [-gnatwr]
+desktop_settings.adb:141:07: warning: use clause for type "Background" defined at cubit-appearance.ads:5 has no effect [-gnatwu]
+desktop_settings.adb:142:07: warning: "Placement" is already use-visible through previous use_type_clause at line 11 [-gnatwr]
+desktop_settings.adb:142:07: warning: use clause for type "Placement" defined at cubit-appearance.ads:6 has no effect [-gnatwu]

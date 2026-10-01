@@ -12,6 +12,9 @@ package CCL.Periodic_Programs with SPARK_Mode is
    subtype Timestamp is Interfaces.Unsigned_64;
    subtype Interval_Ms is Positive range 1_000 .. 60_000;
    subtype Fuel_Budget is Positive range 1 .. 4_096;
+   --  A periodic program runs on every tick, so its per-run budget stays
+   --  small; interactive entries use CCL.Sessions.Default_Fuel instead.
+   Default_Fuel : constant Fuel_Budget := Fuel_Budget'Last;
    type Lifecycle is (Empty, Waiting, Executing, Stopping, Stopped, Faulted);
    type Load_Result is (Loaded, Busy, Source_Too_Long, Identity_Exhausted);
    type Program is private;

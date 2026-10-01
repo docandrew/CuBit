@@ -1,6 +1,11 @@
+with Intel_GPU_ADLN_L3;
+with CuBit.Capability_Grants;
+with Intel_GPU_Probe_Export;
+with Native_GPU_Probe_Protocol;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with Intel_GPU_Boot;
+with Intel_GPU_Device_Query;
 with Intel_GPU_Diagnostics;
 with Intel_GPU_Display_Presence;
 with Intel_GPU_ADS_Buffer;
@@ -13,10 +18,26 @@ with Intel_GPU_Forcewake;
 with Intel_GPU_Firmware_File;
 with Intel_GPU_Firmware_Buffer;
 with Intel_GPU_Submission_Backing;
+with Intel_GPU_Buffer_Backing;
+with Intel_GPU_Buffer_Memory;
+with Intel_GPU_Buffer_Reply;
+with Intel_GPU_Application_State;
+with Intel_GPU_Application_Submit;
+with Intel_GPU_Application_Image;
+with Intel_GPU_Application_Image.Publication;
+with Intel_GPU_Buffer_Requests;
+with Intel_GPU_Buffer_Requests.Sharing;
+with Intel_GPU_Buffer_Requests.Binding;
+with Intel_GPU_Render_Control;
+with Intel_GPU_Render_Sessions;
 with Intel_GPU_Submission_Image;
 with Intel_GPU_Submission_Buffer;
+with Intel_GPU_Submission_Buffer.Updates;
+with Intel_GPU_ADLN_PPGTT;
 with Intel_GPU_Native_Initial_Ring;
 with Intel_GPU_Native_Live_Ring;
+with Intel_GPU_Native_TLB_IO;
+with Intel_GPU_ADLN_TLB_Invalidate;
 with Intel_GPU_Initial_Completion;
 with Intel_GPU_Firmware;
 with Intel_GPU_GGTT;
@@ -40,9 +61,15 @@ with Intel_GPU_GuC_CT_Roundtrip;
 with Intel_GPU_GuC_Context_Event;
 with Intel_GPU_GuC_Context_Lifecycle;
 with Intel_GPU_GuC_Context_Session;
-with Intel_GPU_GuC_Context_Wait;
+with Intel_GPU_Context_Table;
+with Intel_GPU_Context_Table.Waiting;
+with Intel_GPU_Context_Table.Draining;
+with Intel_GPU_VM_Update;
+with Intel_GPU_VM_Image.Snapshots;
+with Intel_GPU_Application_Image.Updates;
 with Intel_GPU_Native_Context_Read;
 with Intel_GPU_ADLN_Context_Init;
+with Intel_GPU_ADLN_Barrier;
 with Intel_GPU_Native_GuC_IO;
 with Intel_GPU_DMA_Cache;
 with Intel_GPU_GGTT_Mapping;
@@ -253,6 +280,301 @@ procedure Main is
    Render_Settings_Attempt : Render_Settings.Attempt;
    ADS_GPU_Start, Log_GPU_Start, CT_GPU_Start : Unsigned_64 := 0;
    Submission_GPU_Start, Engine_Status_GPU_Start : Unsigned_64 := 0;
+   package Submission_Buffers is new Intel_GPU_Submission_Buffer (Publication_Owner_Ready);
+   Submission_State : Submission_Buffers.Buffer_State;
+   -- Not exported yet. Never substitute the complete private allocation when
+   -- wiring read-only presentation; it also contains command and table pages.
+   Completed_Probe_Pixels : Intel_GPU_Buffer_Reply.Backing;
+   -- The diagnostic uses allocator slot1; GuC context IDs are a separate
+   -- namespace. Keep this allocation retained even if publication fails.
+   package Buffer_Memory is new Intel_GPU_Buffer_Memory (Publication_Owner_Ready);
+   Buffer_Pool : Buffer_Memory.Pool;
+   Submission_Slot : constant Intel_GPU_Buffer_Backing.Slot := 1;
+   Submission_Bytes : constant Unsigned_64 :=
+     Intel_GPU_Submission_Backing.After_Last - Intel_GPU_Submission_Backing.First;
+   Submission_CPU : constant Unsigned_64 := Intel_GPU_Buffer_Backing.CPU_Base;
+   -- This is the first allocation in the arena. Verify that identity before
+   -- using the fixed mapping instances below; never infer it from the slot ID.
+   Submission_Allocation : Intel_GPU_Buffer_Reply.Backing;
+   -- Startup must bind the admission controller through trusted bootstrap.
+   -- It deliberately stays unbound until that supervisor integration exists.
+   Render_Admission : Intel_GPU_Render_Control.Controller;
+   function Application_Session (From, Stamp : Unsigned_64) return Unsigned_64 is
+     (Intel_GPU_Render_Control.Resolve (Render_Admission, From, Stamp));
+   package Application_Buffers is new Intel_GPU_Buffer_Requests
+     (Application_Session, Publication_Owner_Ready, First_Slot => 2);
+   Application_Buffer_State : Application_Buffers.Service;
+   Boot_Update_Allocation : Intel_GPU_Buffer_Reply.Backing;
+   Boot_Update_Candidate : Submission_Buffers.VM.Image;
+   procedure Application_Recipient
+     (From, Stamp : Unsigned_64; Slot : out CapabilitySlot;
+      Identity : out Unsigned_64) is
+      Session : constant Unsigned_64 := Application_Session (From, Stamp);
+      Base : constant Unsigned_64 := Intel_GPU_Render_Sessions.Tag_Base;
+   begin
+      Slot := 0;
+      Identity := 0;
+      if Session <= Base or else
+        Session > Base + Intel_GPU_Render_Sessions.Capacity then return; end if;
+      -- Proposed startup layout: one immutable recipient endpoint per session
+      -- in40..55, after hardware pages32..39. No capability is minted here.
+      -- Admission MUST stay unbound until startup reserves and populates this
+      -- range and guarantees slot stability through sharing/retirement.
+      Slot := CapabilitySlot (39 + Session - Base);
+      Identity := Intel_GPU_Render_Control.Recipient_Identity
+        (Render_Admission, From, Stamp);
+   end Application_Recipient;
+   package Application_Maps is new Application_Buffers.Sharing (Application_Recipient);
+   Application_Map_State : Application_Maps.Mapping_Table;
+   procedure Handle_Application_Map (From : ProcessID; Msg : Message) is
+      Response : Application_Buffers.Words;
+      Created : Application_Maps.Mapping_ID;
+      Reply_Message : Message := NULL_MESSAGE;
+      Delivery : Unsigned_64;
+   begin
+      Application_Maps.Handle
+        (Application_Buffer_State, Application_Map_State,
+         Unsigned_64 (From), Msg.authorityTag, Msg.tag.label, Msg.tag.length,
+         Msg.tag.flags, Msg.tag.reserved,
+         [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Response, Created);
+      Reply_Message.tag := (Application_Maps.Map_Label, 4, 0, 0);
+      Reply_Message.words := [Response (0), Response (1), Response (2), Response (3)];
+      Delivery := reply (From, Reply_Message);
+      if Delivery /= 1 then
+         Application_Maps.Reject_Delivery (Application_Map_State, Created);
+      end if;
+   end Handle_Application_Map;
+   Application_Pending : Application_Buffers.Ticket := 0;
+   -- Private parents are retained even after admission is revoked. They are
+   -- never passed to Application_Buffers.Complete or exported as BO handles.
+   package Application_State renames Intel_GPU_Application_State;
+   package Application_VM renames Application_State.VM;
+   package Application_Binding is new Application_Buffers.Binding (Application_VM);
+   Private_Contexts : Application_State.Context_Array renames Application_State.Items;
+   Private_Pending : Application_Buffers.Ticket := 0;
+   Update_Pending : Application_Buffers.Ticket := 0;
+   Private_Session, Private_Identity : Unsigned_64 := 0;
+   -- Initial bounded VM budget:64 table pages plus the private context image.
+   -- No application data is placed in this allocation.
+   Private_Table_Pages : constant := Application_State.Table_Pages;
+   Private_Pages : constant Intel_GPU_Buffer_Backing.Page_Count :=
+     Intel_GPU_Submission_Image.Byte_Count / 4096 + Private_Table_Pages;
+   procedure Finish_Private_Context (Backing : Intel_GPU_Buffer_Reply.Backing) is
+      Base : constant Unsigned_64 := Intel_GPU_Render_Sessions.Tag_Base;
+      Consumed : Boolean;
+   begin
+      Application_Buffers.Finish_Private
+        (Application_Buffer_State, Private_Pending, Consumed);
+      if not Consumed then return; end if;
+      Private_Pending := 0;
+      if Private_Session <= Base or else Private_Session > Base +
+        Intel_GPU_Render_Sessions.Capacity then return; end if;
+      declare
+         Index : constant Positive := Positive (Private_Session - Base);
+         Pages : Application_VM.Backing_Pages;
+         Initialized : Boolean;
+      begin
+         Private_Contexts (Index).Parent := Backing;
+         Private_Contexts (Index).Ready := Backing.Ready and then
+           Backing.Bytes = Unsigned_64 (Private_Pages) * 4096 and then
+           Publication_Owner_Ready and then
+           Application_Session (Private_Identity and 16#FFFF_FFFF#,
+                                Private_Session) = Private_Session and then
+           Intel_GPU_Render_Control.Recipient_Identity
+             (Render_Admission, Private_Identity and 16#FFFF_FFFF#,
+              Private_Session) = Private_Identity;
+         if not Private_Contexts (Index).Ready then return; end if;
+         Private_Contexts (Index).Ready := False;
+         Private_Contexts (Index).Context := Intel_GPU_Buffer_Reply.Slice
+           (Backing, 0, Intel_GPU_Submission_Image.Byte_Count);
+         Private_Contexts (Index).Tables := Intel_GPU_Buffer_Reply.Slice
+           (Backing, Intel_GPU_Submission_Image.Byte_Count, Private_Table_Pages * 4096);
+         if not Private_Contexts (Index).Context.Ready or else
+           not Private_Contexts (Index).Tables.Ready then return; end if;
+         for P in Application_VM.Page_Number loop
+            Pages (P) := Intel_GPU_Buffer_Reply.Page_Address
+              (Private_Contexts (Index).Tables, Unsigned_64 (P - 1) * 4096);
+         end loop;
+         Application_VM.Initialize (Private_Contexts (Index).Source, Pages, Initialized);
+         Private_Contexts (Index).Ready := Initialized;
+      end;
+   end Finish_Private_Context;
+   procedure Start_Private_Context
+     (Session, Identity : Unsigned_64; Started : out Boolean) is
+      Base : constant Unsigned_64 := Intel_GPU_Render_Sessions.Tag_Base;
+   begin
+      Started := False;
+      if Session <= Base or else Session > Base + Intel_GPU_Render_Sessions.Capacity
+        or else Private_Pending /= 0 or else
+        Application_Session (Identity and 16#FFFF_FFFF#, Session) /= Session or else
+        Intel_GPU_Render_Control.Recipient_Identity
+          (Render_Admission, Identity and 16#FFFF_FFFF#, Session) /= Identity
+      then return; end if;
+      declare
+         Index : constant Positive := Positive (Session - Base);
+      begin
+         if Private_Contexts (Index).Attempted then return; end if;
+         Application_Buffers.Reserve_Private (Application_Buffer_State, Private_Pending);
+         if Private_Pending = 0 then return; end if;
+         Private_Contexts (Index).Attempted := True;
+         Private_Session := Session;
+         Private_Identity := Identity;
+         Buffer_Memory.Start
+           (Buffer_Pool, Intel_GPU_Buffer_Backing.Slot (Private_Pending),
+            Private_Pages, Started);
+         if not Started then Finish_Private_Context ((Ready => False)); end if;
+      end;
+   end Start_Private_Context;
+   procedure Retire_Application_Resources (Session : Unsigned_64);
+   procedure Handle_Application_Bind (From : ProcessID; Msg : Message) is
+      Session : constant Unsigned_64 := Application_Session (Unsigned_64 (From), Msg.authorityTag);
+      Identity : constant Unsigned_64 := Intel_GPU_Render_Control.Recipient_Identity
+        (Render_Admission, Unsigned_64 (From), Msg.authorityTag);
+      Base : constant Unsigned_64 := Intel_GPU_Render_Sessions.Tag_Base;
+      Response : Application_Buffers.Words := [Application_Buffers.Denied, 1, 0, 0];
+      Reply_Message : Message := NULL_MESSAGE;
+      Delivery : Unsigned_64;
+   begin
+      if Session > Base and then Session <= Base + Intel_GPU_Render_Sessions.Capacity then
+         declare Index : constant Positive := Positive (Session - Base); begin
+            Response (0) := Application_Buffers.Unavailable;
+            if Private_Contexts (Index).Ready then
+               Application_Binding.Handle
+                 (Application_Buffer_State, Private_Contexts (Index).Source, Session,
+                  Unsigned_64 (From), Msg.authorityTag, Msg.tag.label, Msg.tag.length,
+                  Msg.tag.flags, Msg.tag.reserved,
+                  [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Response);
+            end if;
+         end;
+      end if;
+      Reply_Message.tag := (Application_Binding.Bind_Label, 4, 0, 0);
+      Reply_Message.words := [Response (0), Response (1), Response (2), Response (3)];
+      Delivery := reply (From, Reply_Message);
+      if Delivery /= 1 and then Response (0) = Application_Buffers.OK then
+         -- A committed mapping with an undelivered reply cannot safely be
+         -- treated as an allocation failure by Mesa followed by VA reuse.
+         -- Close admission using the captured incarnation BEFORE resource
+         -- retirement. Preserve the VM and backing; this is not rollback or
+         -- hardware completion. No later PID lookup or capability minting.
+         Intel_GPU_Render_Control.Reject_Delivery (Render_Admission, Identity, Session);
+         Retire_Application_Resources (Session);
+      end if;
+   end Handle_Application_Bind;
+   -- Dedicated empty deferred-reply slot. saveReplyCap fails without replacing
+   -- an occupied slot; no incoming request may select this capability slot.
+   Application_Reply_Slot : constant CapabilitySlot := 62;
+   procedure Finish_Application_Buffer (Backing : Intel_GPU_Buffer_Reply.Backing) is
+      Ticket : constant Application_Buffers.Ticket := Application_Pending;
+      Response : Application_Buffers.Words;
+      Consumed : Boolean;
+      Reply_Message : Message := NULL_MESSAGE;
+      Delivery : Unsigned_64;
+   begin
+      Application_Buffers.Complete
+        (Application_Buffer_State, Application_Pending, Backing, Response, Consumed);
+      if not Consumed then return; end if;
+      Application_Pending := 0;
+      Reply_Message.tag := (Application_Buffers.Label, 4, 0, 0);
+      Reply_Message.words := [Response (0), Response (1), Response (2), Response (3)];
+      Delivery := replyCap (Application_Reply_Slot, Reply_Message);
+      if Delivery /= 1 then
+         Application_Buffers.Reject_Delivery (Application_Buffer_State, Ticket);
+      end if;
+   end Finish_Application_Buffer;
+   procedure Handle_Application_Buffer (From : ProcessID; Msg : Message) is
+      Response : Application_Buffers.Words;
+      Deferred : Application_Buffers.Ticket;
+      Started, Consumed : Boolean;
+      Reply_Message : Message := NULL_MESSAGE;
+      Ignored : Unsigned_64;
+      pragma Unreferenced (Ignored);
+   begin
+      Application_Buffers.Handle
+        (Application_Buffer_State, Unsigned_64 (From), Msg.authorityTag,
+         Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+         [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Response, Deferred);
+      if Deferred /= 0 then
+         if saveReplyCap (Unsigned_64 (Application_Reply_Slot)) = 1 then
+            Application_Pending := Deferred;
+            Buffer_Memory.Start
+              (Buffer_Pool, Intel_GPU_Buffer_Backing.Slot (Deferred),
+               Intel_GPU_Buffer_Backing.Page_Count (Msg.words (2) / 4096), Started);
+            if not Started then Finish_Application_Buffer ((Ready => False)); end if;
+            return;
+         end if;
+         -- No allocation was submitted. Retire the ticket and use only the
+         -- current thread's reply authority; never fall back to a saved PID.
+         Application_Buffers.Complete
+           (Application_Buffer_State, Deferred, (Ready => False), Response, Consumed);
+      end if;
+      Reply_Message.tag := (Application_Buffers.Label, 4, 0, 0);
+      Reply_Message.words := [Response (0), Response (1), Response (2), Response (3)];
+      Ignored := reply (From, Reply_Message);
+   end Handle_Application_Buffer;
+   procedure Retire_Application_Context (Session : Unsigned_64);
+   procedure Retire_Application_Resources (Session : Unsigned_64) is
+      Base : constant Unsigned_64 := Intel_GPU_Render_Sessions.Tag_Base;
+   begin
+      if Session > Base and then Session <= Base + Intel_GPU_Render_Sessions.Capacity then
+         Private_Contexts (Positive (Session - Base)).Ready := False;
+      end if;
+      Retire_Application_Context (Session);
+      Application_Buffers.Retire_Session (Application_Buffer_State, Session);
+      Application_Maps.Retire_Session (Application_Map_State, Session);
+   end Retire_Application_Resources;
+   procedure Handle_Render_Control (From : ProcessID; Msg : Message) is
+      package Control renames Intel_GPU_Render_Control;
+      Response : Control.Words;
+      Reply_Message : Message := NULL_MESSAGE;
+      Delivery : Unsigned_64;
+      Started : Boolean;
+   begin
+      -- Only abort can succeed with Ready=False. Enabling reserve/activate
+      -- requires the startup slot contract AND a usable render backend; raw
+      -- GuC/owner readiness is not sufficient. Bootstrap remains unbound.
+      Control.Handle (Render_Admission, Unsigned_64 (From), Msg.authorityTag,
+        False, Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+        [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Response);
+      if Response (0) = Control.OK and then Msg.words (3) = Control.Abort_Session then
+         -- Handle has closed admission before handles/grants are drained.
+         Retire_Application_Resources (Response (2));
+      end if;
+      if Response (0) = Control.OK and then Msg.words (3) = Control.Activate then
+         Start_Private_Context (Response (2), Msg.words (1), Started);
+         if not Started then
+            Control.Reject_Delivery (Render_Admission, Msg.words (1), Response (2));
+            Retire_Application_Resources (Response (2));
+            Response (0) := Control.Unavailable;
+         end if;
+      end if;
+      Reply_Message.tag := (Control.Label, 4, 0, 0);
+      Reply_Message.words := [Response (0), Response (1), Response (2), Response (3)];
+      Delivery := reply (From, Reply_Message);
+      if Delivery /= 1 and then Response (0) = Control.OK then
+         Control.Reject_Delivery (Render_Admission, Msg.words (1), Response (2));
+         Retire_Application_Resources (Response (2));
+      end if;
+   end Handle_Render_Control;
+   type Submission_View (Ready : Boolean := False) is record
+      case Ready is
+         when True => DMA_Address, CPU_Address, Bytes : Unsigned_64;
+         when False => null;
+      end case;
+   end record;
+   function Submission_Region (Part : Intel_GPU_Submission_Backing.Region)
+     return Submission_View is
+      Offset : constant Unsigned_64 := Intel_GPU_Submission_Backing.Offsets (Part) -
+        Intel_GPU_Submission_Backing.First;
+      Bytes : constant Unsigned_64 := Intel_GPU_Submission_Backing.Sizes (Part);
+   begin
+      if not Submission_Allocation.Ready or else
+        not Intel_GPU_Submission_Backing.Valid_Layout or else
+        Offset > Submission_Allocation.Bytes or else
+        Bytes > Submission_Allocation.Bytes - Offset
+      then return (Ready => False); end if;
+      return (True, Intel_GPU_Buffer_Reply.Page_Address (Submission_Allocation, Offset),
+        Submission_Allocation.CPU_Address + Offset, Bytes);
+   end Submission_Region;
    Submission_Mapped, Engine_Status_Mapped : Boolean := False;
    CT_Backing_View : Intel_GPU_Firmware_Buffer.Prepared_CT_Buffer;
    Runtime_Ledger : Intel_GPU_GGTT_Reservations.Ledger;
@@ -261,6 +583,27 @@ procedure Main is
    Active_Runtime : Runtime_Kind := No_Buffer;
    Runtime_DMA, Runtime_CPU, Runtime_Bytes, Runtime_GPU : Unsigned_64 := 0;
    Runtime_Bound : Boolean := False;
+   function Runtime_Page (Base, Offset : Unsigned_64) return Unsigned_64 is
+   begin
+      if Base /= Runtime_DMA or else Offset mod 4096 /= 0 or else
+        Offset >= Runtime_Bytes or else Runtime_Bytes - Offset < 4096
+      then return 0; end if;
+      case Active_Runtime is
+         when Submission_Buffer | Engine_Status_Buffer =>
+            if not Submission_Allocation.Ready or else
+              Runtime_CPU < Submission_Allocation.CPU_Address or else
+              Runtime_CPU - Submission_Allocation.CPU_Address >= Submission_Allocation.Bytes or else
+              Offset >= Submission_Allocation.Bytes -
+                (Runtime_CPU - Submission_Allocation.CPU_Address)
+            then return 0; end if;
+            return Intel_GPU_Buffer_Reply.Page_Address
+              (Submission_Allocation,
+               Runtime_CPU - Submission_Allocation.CPU_Address + Offset);
+         when ADS_Buffer | Log_Buffer | CT_Buffer =>
+            return Intel_GPU_GGTT.Linear_Page (Base, Offset);
+         when No_Buffer => return 0;
+      end case;
+   end Runtime_Page;
    function Runtime_Range_Allowed (First, Bytes : Unsigned_64) return Boolean is
      (GGTT_Takeover_Held and then Firmware_Mapped and then Publication_Owner_Ready and then Address_Layout.Valid and then
       Bytes > 0 and then First >= Address_Layout.Runtime_First and then
@@ -274,7 +617,7 @@ procedure Main is
       then return False; end if;
       return Runtime_Range_Allowed (Index * 4096, 4096) and then
         Value = Intel_GPU_GGTT.Encode_System_Page
-          (Runtime_DMA + (Index - Runtime_GPU / 4096) * 4096);
+          (Runtime_Page (Runtime_DMA, (Index - Runtime_GPU / 4096) * 4096));
    end Runtime_Write_Allowed;
    package Runtime_IO is new Intel_GPU_Native_GGTT
      (Publication_Owner_Ready, Intel_GPU_GGTT_Mapping.Bytes, Runtime_Write_Allowed);
@@ -308,32 +651,33 @@ procedure Main is
             end;
          when Submission_Buffer =>
             declare
-               Current : constant Intel_GPU_Firmware_Buffer.Prepared_Submission_Buffer :=
-                 Intel_GPU_Firmware_Buffer.Prepared_Submission
+               Current : constant Submission_View :=
+                 Submission_Region
                    (Intel_GPU_Submission_Backing.Context_Image);
             begin
                if not Current.Ready or else Current.DMA_Address /= Runtime_DMA or else
                  Current.CPU_Address /= Runtime_CPU or else
-                 Current.Region_Bytes /= Intel_GPU_Submission_Backing.Sizes
+                 Current.Bytes /= Intel_GPU_Submission_Backing.Sizes
                    (Intel_GPU_Submission_Backing.Context_Image) or else
                  Bytes /= Intel_GPU_Submission_Image.GGTT_Bytes
                then return; end if;
-               Intel_GPU_Submission_Buffer.Initialize (First, Bytes, Success);
+               Submission_Buffers.Initialize
+                 (Submission_State, Submission_Allocation, First, Bytes, Success);
             end;
          when Engine_Status_Buffer =>
             declare
-               Current : constant Intel_GPU_Firmware_Buffer.Prepared_Submission_Buffer :=
-                 Intel_GPU_Firmware_Buffer.Prepared_Submission
+               Current : constant Submission_View :=
+                 Submission_Region
                    (Intel_GPU_Submission_Backing.Engine_Status_Page);
             begin
                -- The earlier context preparation initialized the entire tail.
                -- Never zero it again after publishing any of its GGTT aliases.
                if not Submission_Mapped or else Engine_Status_Mapped or else
                  Submission_GPU_Start = 0 or else
-                 Intel_GPU_Submission_Buffer.Initialized_GPU_Start /= Submission_GPU_Start or else
+                 Submission_Buffers.Initialized_GPU_Start (Submission_State) /= Submission_GPU_Start or else
                  not Current.Ready or else Current.DMA_Address /= Runtime_DMA or else
                  Current.CPU_Address /= Runtime_CPU or else
-                 Current.Region_Bytes /= Bytes or else Bytes /= 4096
+                 Current.Bytes /= Bytes or else Bytes /= 4096
                then return; end if;
                Success := Intel_GPU_DMA_Cache.Flush_Range (Runtime_CPU, Bytes);
             end;
@@ -343,7 +687,8 @@ procedure Main is
    end Prepare_Runtime;
    package Runtime_Publication is new Intel_GPU_GGTT_Publish
      (Runtime_Range_Allowed, Prepare_Runtime, Runtime_IO.Read_PTE,
-      Runtime_IO.Write_PTE, Invalidate_Upload, 16 * 1024 * 1024);
+      Runtime_IO.Write_PTE, Invalidate_Upload, 16 * 1024 * 1024,
+      Resolve_Page => Runtime_Page);
    ADS_Attempt, Log_Attempt, CT_Attempt, Submission_Attempt : Runtime_Publication.Attempt;
    Engine_Status_Attempt : Runtime_Publication.Attempt;
    Startup_Active, Startup_Access_Fault : Boolean := False;
@@ -396,6 +741,72 @@ procedure Main is
    package Native_GuC is new Intel_GPU_GuC_Upload
      (GuC_Read, GuC_Write, GuC_Byte, GuC_Now, GuC_Pause);
    Runtime_Admitted, Runtime_Fault : Boolean := False;
+   -- Optional supervisor-installed diagnostic recipient. Unlike render
+   -- admission, this endpoint can only obtain the completed boot pixels.
+   Probe_Recipient_Slot : constant CapabilitySlot := Native_GPU_Probe_Protocol.Driver_Recipient_Slot;
+   Probe_Stamp : constant Unsigned_64 := Native_GPU_Probe_Protocol.Viewer_Tag;
+   Probe_Identity : Unsigned_64 := 0;
+   procedure Capture_Probe_Recipient is
+      Endpoint_Kind : constant Unsigned_64 := 1;
+      Read_Right : constant Unsigned_64 := 1;
+      Data : aliased array (0 .. 5) of Unsigned_64 := [others => 0];
+      Result : Unsigned_64;
+   begin
+      Result := syscall (SYSCALL_INSPECT_CAPABILITY, syscall (SYSCALL_GETPID),
+        Unsigned_64 (Probe_Recipient_Slot),
+        Unsigned_64 (System.Storage_Elements.To_Integer (Data'Address)));
+      if Result = 1 and then Data (0) = Endpoint_Kind and then
+        (Data (1) and Read_Right) /= 0 and then
+        Data (3) in 1 .. Unsigned_64 (Unsigned_32'Last) and then
+        Data (5) in 1 .. Unsigned_64 (Unsigned_32'Last)
+      then
+         Probe_Identity := Shift_Left (Data (5), 32) or Data (3);
+      end if;
+   end Capture_Probe_Recipient;
+   procedure Probe_Recipient
+     (From, Stamp : Unsigned_64; Slot : out CapabilitySlot;
+      Identity : out Unsigned_64) is
+   begin
+      Slot := Probe_Recipient_Slot;
+      Identity := 0;
+      if Probe_Identity /= 0 and then Stamp = Probe_Stamp and then
+        From = (Probe_Identity and 16#FFFF_FFFF#) and then
+        CuBit.Capability_Grants.Endpoint_Matches (Slot, Probe_Identity)
+      then Identity := Probe_Identity; end if;
+   end Probe_Recipient;
+   function Probe_Pixels return Intel_GPU_Buffer_Reply.Backing is
+     (if Runtime_Fault then (Ready => False) else Completed_Probe_Pixels);
+   package Probe_Export is new Intel_GPU_Probe_Export (Probe_Pixels, Probe_Recipient);
+   Probe_State : Probe_Export.Export_State;
+   procedure Publish_Snapshot (Text : String);
+   procedure Handle_Probe (From : ProcessID; Msg : Message) is
+      Response : Native_GPU_Probe_Protocol.Words;
+      Reply_Message : Message := NULL_MESSAGE;
+      Delivery : Unsigned_64;
+   begin
+      Probe_Export.Handle (Probe_State, Unsigned_64 (From), Msg.authorityTag,
+        Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+        Native_GPU_Probe_Protocol.Words (Msg.words), Response);
+      Reply_Message.tag := (Native_GPU_Probe_Protocol.Label, 4, 0, 0);
+      Reply_Message.words := MessageWords (Response);
+      Delivery := reply (From, Reply_Message);
+      if Delivery /= 1 and then Response (0) = 0 then
+         Probe_Export.Reject_Delivery (Probe_State);
+      end if;
+      -- Read requests are one-shot diagnostics. Keep their result in the
+      -- collector, not only serial stdout: the physical testbench may have
+      -- neither a serial cable nor a functioning viewer. Do not log repeated
+      -- retirement polling, which could crowd out the original failure.
+      if Msg.words (1) = 0 then
+         Publish_Snapshot ("intel-gpu: viewer target request status=" &
+           Unsigned_64'Image (Response (0)) & " delivered=" &
+           Boolean'Image (Delivery = 1));
+         Publish_Snapshot ("intel-gpu: viewer target backing=" &
+           Boolean'Image (Completed_Probe_Pixels.Ready) & " runtime-fault=" &
+           Boolean'Image (Runtime_Fault) & " recipient=" &
+           Boolean'Image (Probe_Identity /= 0));
+      end if;
+   end Handle_Probe;
    function Runtime_Owner_Base return Boolean is
       Current : constant Intel_GPU_Firmware_Buffer.Prepared_CT_Buffer :=
         Intel_GPU_Firmware_Buffer.Prepared_CT;
@@ -444,7 +855,7 @@ procedure Main is
    function RCS_Page_Ready (GPU : Unsigned_64) return Boolean is
      (Engine_Status_Mapped and then GPU /= 0 and then GPU = Engine_Status_GPU_Start and then
       Submission_Mapped and then Submission_GPU_Start /= 0 and then
-      Intel_GPU_Submission_Buffer.Initialized_GPU_Start = Submission_GPU_Start);
+      Submission_Buffers.Initialized_GPU_Start (Submission_State) = Submission_GPU_Start);
    function RCS_Start_Owner return Boolean is
      (RCS_Start_Active and then Publication_Owner_Ready and then
       Native_CT.Enabled (CT_Registration) and then RCS_Page_Ready (Engine_Status_GPU_Start) and then
@@ -477,6 +888,9 @@ procedure Main is
    Send_Channel : CT_Send.Channel;
    CT_Events : array (Positive range 1 .. 8) of CT_Receive.Message;
    CT_Event_Count : Natural range 0 .. 8 := 0;
+   -- Context table owns all post-probe fence allocations.
+   function Context_Fence_Allowed (Fence : Unsigned_16) return Boolean;
+
    procedure Queue_Log_Control (Fence : Unsigned_16; Success : out Boolean) is
       Send_Status : CT_Send.Result;
       use type CT_Send.Result;
@@ -522,8 +936,9 @@ procedure Main is
       use type CT_Send.Result;
    begin
       Result := Context_Life.Uncertain;
-      -- Controls100..103 plus the single repeated-submission checkpoint104.
-      if not Context_Owner or else Fence not in 100 .. 104 then return; end if;
+      -- Only controls/notifications with a retained table-owned fence may
+      -- enter the shared transport, across all registered contexts.
+      if not Context_Owner or else not Context_Fence_Allowed (Fence) then return; end if;
       CT_Send.Send (Send_Channel, CT_Send.Words (Payload), Fence, Status);
       if not Context_Owner then return; end if;
       Result := (if Status = CT_Send.Queued then Context_Life.Queued
@@ -544,28 +959,64 @@ procedure Main is
    end Retain_Context_Event;
    package Context_Driver is new Intel_GPU_GuC_Context_Session
      (Context_Owner, Queue_Context, Retain_Context_Event);
-   package Context_Wait is new Intel_GPU_GuC_Context_Wait
-     (Context_Driver, CT_Receive, Context_Owner, Poll_CT_Reply, Runtime_Now, GuC_Pause);
-   Render_Context : Context_Driver.Session;
+   First_Context_ID : constant Unsigned_32 := 7;
+   package Context_Pool is new Intel_GPU_Context_Table
+     (16, 100, 65535, Context_Driver, Context_Owner, Retain_Context_Event,
+      First_ID => First_Context_ID);
+   Contexts : Context_Pool.Table;
+   package Context_Drain is new Context_Pool.Draining (Runtime_Now);
+   Drain_State : Context_Drain.Drain_State;
+   Render_Context_ID : Unsigned_32 := Context_Pool.No_Context;
+   procedure Retire_Application_Context (Session : Unsigned_64) is
+      Retained_ID : Unsigned_32;
+   begin
+      -- Close context lookup/new work before retiring application handles.
+      -- No reclamation: retirement is not a hardware-disable acknowledgement.
+      -- The service-loop drain observes retained retirement flags; no blocking
+      -- disable wait or backing release occurs in the IPC handler.
+      Context_Pool.Retire_Session (Contexts, Session, Retained_ID);
+   end Retire_Application_Context;
+   function Context_Fence_Allowed (Fence : Unsigned_16) return Boolean is
+     (Context_Pool.Owns_Fence (Contexts, Fence));
+   procedure Dispatch_Context_Event
+     (Payload : Context_Event.Words; Fence : Unsigned_16;
+      Status : out Context_Driver.Result) is
+      ID : Unsigned_32;
+      Delivery : Context_Pool.Dispatch_Result;
+   begin
+      Context_Pool.Dispatch (Contexts, Payload, Fence, ID, Delivery);
+      Status := (case Delivery is
+        when Context_Pool.Delivered => Context_Driver.Handled,
+        when Context_Pool.Retained => Context_Driver.Retained,
+        when Context_Pool.Context_Fault =>
+          (if ID = Render_Context_ID then Context_Driver.Faulted else Context_Driver.Handled),
+        when Context_Pool.Transport_Fault => Context_Driver.Faulted);
+   end Dispatch_Context_Event;
+   package Context_Wait is new Context_Pool.Waiting
+     (CT_Receive, Poll_CT_Reply, Runtime_Now, GuC_Pause);
    Context_Started : Boolean := False;
    function Initial_Backing_Owner return Boolean is
      (Context_Owner and then Submission_GPU_Start /= 0 and then
-      Intel_GPU_Submission_Buffer.Initialized_GPU_Start = Submission_GPU_Start and then
-      Intel_GPU_Firmware_Buffer.Prepared.Ready and then
-      Intel_GPU_Firmware_Buffer.Prepared.CPU_Address = 16#61000000# and then
-      Intel_GPU_Firmware_Buffer.Prepared.Allocation_Bytes = 1024 * 1024);
+      Submission_Buffers.Initialized_GPU_Start (Submission_State) = Submission_GPU_Start and then
+      Submission_Allocation.Ready and then
+      Submission_Allocation.CPU_Address = Submission_CPU and then
+      Submission_Allocation.Bytes = Submission_Bytes);
    function Initial_Exclusive return Boolean is
-     (Context_Driver.State (Render_Context) = Context_Life.Fresh);
+     (Context_Pool.State (Contexts, Render_Context_ID) = Context_Life.Fresh);
    package Initial_Ring is new Intel_GPU_Native_Initial_Ring
-     (Initial_Backing_Owner, Initial_Exclusive);
+     (Submission_CPU, Submission_Bytes, Initial_Backing_Owner, Initial_Exclusive);
    function Live_Backing_Owner return Boolean is
      (Initial_Backing_Owner and then
-      Context_Driver.State (Render_Context) = Context_Life.Enabled);
+      Context_Pool.Work_Allowed (Contexts, Render_Context_ID));
    function Live_Coherent_Ready return Boolean is
      (PCI_Device = 16#46D2# and then Live_Backing_Owner);
    -- ADL-N LLC system-memory/WB contract only, not a cross-platform default.
+   function Live_CPU_Base return Unsigned_64 is (Submission_CPU);
+   function Live_Bytes return Unsigned_64 is (81920);
    package Live_Ring is new Intel_GPU_Native_Live_Ring
-     (Live_Backing_Owner, Live_Coherent_Ready, Initial_Ring.Read_Marker);
+     (Live_CPU_Base, Live_Bytes, Live_Backing_Owner, Live_Coherent_Ready,
+      Initial_Ring.Read_Marker);
+   Live_Channel : Live_Ring.Channel;
    function Service_Initial_Events return Boolean is
       Item : CT_Receive.Message;
       Received : CT_Receive.Result;
@@ -578,9 +1029,9 @@ procedure Main is
          Poll_CT_Reply (Item, Received);
          if Received = CT_Receive.Empty then return Context_Owner; end if;
          if Received /= CT_Receive.Received or else Item.Length = 0 then
-            Context_Driver.Fail (Render_Context); return False;
+            Context_Pool.Fail (Contexts); return False;
          end if;
-         Context_Driver.Dispatch (Render_Context,
+         Dispatch_Context_Event (
            Context_Event.Words (Item.Payload (1 .. Item.Length)), Item.Fence, Status);
          if Status in Context_Driver.Faulted | Context_Driver.Rejected then return False; end if;
       end loop;
@@ -694,6 +1145,592 @@ procedure Main is
       Intel_GPU_Diagnostics.Tick;
    end Publish_Snapshot;
    function Hex (Value : Unsigned_32) return String;
+   -- One-shot offline-bind -> prepared context transition. Admission remains
+   -- disabled at Handle_Render_Control until the complete backend is usable.
+   Prepare_Context_Label : constant Unsigned_32 := 16#0A25#;
+   Preparing_Index : Natural range 0 .. Intel_GPU_Render_Sessions.Capacity := 0;
+   Preparing_Identity, Preparing_Session : Unsigned_64 := 0;
+   function Application_Image_Owner return Boolean is
+     (Preparing_Index /= 0 and then not Runtime_Fault and then Publication_Owner_Ready and then
+      Private_Contexts (Preparing_Index).Ready and then
+      Application_Session (Preparing_Identity and 16#FFFF_FFFF#, Preparing_Session) =
+        Preparing_Session and then
+      Intel_GPU_Render_Control.Recipient_Identity
+        (Render_Admission, Preparing_Identity and 16#FFFF_FFFF#, Preparing_Session) =
+          Preparing_Identity);
+   function Flush_Application_Page (CPU : Unsigned_64) return Boolean is
+     (Application_Image_Owner and then Intel_GPU_DMA_Cache.Flush_Range (CPU, 4096)
+      and then Application_Image_Owner);
+   package Application_Images is new Intel_GPU_Application_Image
+     (Application_VM, Application_Image_Owner, Flush_Application_Page);
+   Application_Images_State : array (Private_Contexts'Range) of Application_Images.State;
+   function Application_PTE_Allowed (Index, Value : Unsigned_64) return Boolean is
+      First : Unsigned_64;
+   begin
+      if not Application_Image_Owner then return False; end if;
+      First := Application_Images.GPU_Start (Application_Images_State (Preparing_Index));
+      return First /= 0 and then Runtime_Range_Allowed (First, Intel_GPU_Submission_Image.GGTT_Bytes)
+        and then Index >= First / 4096 and then
+        Index - First / 4096 < Intel_GPU_Submission_Image.GGTT_Bytes / 4096 and then
+        Value = Intel_GPU_GGTT.Encode_System_Page
+          (Intel_GPU_Buffer_Reply.Page_Address
+             (Private_Contexts (Preparing_Index).Context,
+              (Index - First / 4096) * 4096));
+   end Application_PTE_Allowed;
+   package Application_GGTT_IO is new Intel_GPU_Native_GGTT
+     (Application_Image_Owner, Intel_GPU_GGTT_Mapping.Bytes, Application_PTE_Allowed);
+   package Application_Publication is new Application_Images.Publication
+     (Runtime_Range_Allowed, Application_GGTT_IO.Read_PTE,
+      Application_GGTT_IO.Write_PTE, Invalidate_Upload);
+   procedure Handle_Context_Preparation (From : ProcessID; Msg : Message) is
+      Session : constant Unsigned_64 := Application_Session (Unsigned_64 (From), Msg.authorityTag);
+      Identity : constant Unsigned_64 := Intel_GPU_Render_Control.Recipient_Identity
+        (Render_Admission, Unsigned_64 (From), Msg.authorityTag);
+      Base : constant Unsigned_64 := Intel_GPU_Render_Sessions.Tag_Base;
+      Code : Unsigned_64 := Application_Buffers.Denied;
+      Prepared : Boolean := False;
+      Backing : Application_Images.Tables.Mappings;
+      Status : Application_Publication.Result;
+      use type Application_Publication.Result;
+      Response : Message := NULL_MESSAGE;
+      Delivered : Unsigned_64;
+   begin
+      if Update_Pending /= 0 then
+         Code := Application_Buffers.Unavailable;
+      elsif Session > Base and then Session <= Base + Intel_GPU_Render_Sessions.Capacity then
+         Code := Application_Buffers.Bad_Request;
+         if Msg.tag.length = 4 and then Msg.tag.flags = 0 and then Msg.tag.reserved = 0 and then
+           Msg.words (0) = 1 and then Msg.words (1) = 0 and then
+           Msg.words (2) = 0 and then Msg.words (3) = 0
+         then
+            Code := Application_Buffers.Unavailable;
+            Preparing_Index := Natural (Session - Base);
+            Preparing_Identity := Identity; Preparing_Session := Session;
+            if Application_Image_Owner then
+               Application_VM.Seal (Private_Contexts (Preparing_Index).Source, Prepared);
+               if Prepared then
+                  for P in Application_VM.Page_Number loop
+                     Backing (P) :=
+                       (Private_Contexts (Preparing_Index).Tables.CPU_Address + Unsigned_64 (P - 1) * 4096,
+                        Intel_GPU_Buffer_Reply.Page_Address
+                          (Private_Contexts (Preparing_Index).Tables, Unsigned_64 (P - 1) * 4096));
+                  end loop;
+                  Application_Publication.Publish
+                    (Application_Images_State (Preparing_Index),
+                     Private_Contexts (Preparing_Index).Source, Backing,
+                     Private_Contexts (Preparing_Index).Context, Runtime_Ledger, Status);
+                  Prepared := Status = Application_Publication.Published;
+               end if;
+               -- No later offline binds or second publication attempt. The
+               -- retained source is sealed; future live binds need VM_Update.
+               Private_Contexts (Preparing_Index).Ready := False;
+               if Prepared then Code := Application_Buffers.OK;
+               else
+                  Intel_GPU_Render_Control.Reject_Delivery (Render_Admission, Identity, Session);
+                  Retire_Application_Resources (Session);
+               end if;
+            end if;
+            Preparing_Index := 0; Preparing_Identity := 0; Preparing_Session := 0;
+         end if;
+      end if;
+      Response.tag := (Prepare_Context_Label, 4, 0, 0);
+      Response.words := [Code, 1, 0, 0];
+      Delivered := reply (From, Response);
+      if Delivered /= 1 and then Prepared then
+         Intel_GPU_Render_Control.Reject_Delivery (Render_Admission, Identity, Session);
+         Retire_Application_Resources (Session);
+      end if;
+   end Handle_Context_Preparation;
+   Register_Context_Label : constant Unsigned_32 := 16#0A26#;
+   Application_Registration_Attempted : array (Private_Contexts'Range) of Boolean := [others => False];
+   Application_Setup_Complete : array (Private_Contexts'Range) of Boolean := [others => False];
+   procedure Handle_Context_Registration (From : ProcessID; Msg : Message) is
+      Session : constant Unsigned_64 := Application_Session (Unsigned_64 (From), Msg.authorityTag);
+      Identity : constant Unsigned_64 := Intel_GPU_Render_Control.Recipient_Identity
+        (Render_Admission, Unsigned_64 (From), Msg.authorityTag);
+      Base : constant Unsigned_64 := Intel_GPU_Render_Sessions.Tag_Base;
+      Code : Unsigned_64 := Application_Buffers.Denied;
+      ID : Unsigned_32 := Context_Pool.No_Context;
+      Accepted : Boolean := False;
+      Status : Context_Driver.Result;
+      use type Context_Driver.Result;
+      Response : Message := NULL_MESSAGE;
+      Delivered : Unsigned_64;
+   begin
+      if Update_Pending /= 0 then
+         Code := Application_Buffers.Unavailable;
+      elsif Session > Base and then Session <= Base + Intel_GPU_Render_Sessions.Capacity then
+         Code := Application_Buffers.Bad_Request;
+         if Msg.tag.length = 4 and then Msg.tag.flags = 0 and then Msg.tag.reserved = 0 and then
+           Msg.words (0) = 1 and then Msg.words (1) = 0 and then
+           Msg.words (2) = 0 and then Msg.words (3) = 0
+         then
+            Code := Application_Buffers.Unavailable;
+            -- Generic actuals are evaluated during elaboration, before
+            -- Ring_Owner can reject a missing allocation.
+            if Private_Contexts (Positive (Session - Base)).Context.Ready then
+               declare
+                  Index : constant Positive := Positive (Session - Base);
+                  GPU : constant Unsigned_64 :=
+                    Application_Publication.GPU_Address (Application_Images_State (Index));
+                  function Ring_Owner return Boolean is
+                    (not Runtime_Fault and then Context_Owner and then
+                     Application_Session (Unsigned_64 (From), Msg.authorityTag) = Session and then
+                     Intel_GPU_Render_Control.Recipient_Identity
+                       (Render_Admission, Unsigned_64 (From), Msg.authorityTag) = Identity and then
+                     Private_Contexts (Index).Context.Ready and then GPU /= 0 and then
+                     Application_Publication.GPU_Address (Application_Images_State (Index)) = GPU);
+                  function Never_Registered return Boolean is
+                    (Context_Pool.Session_Context (Contexts, Session) = Context_Pool.No_Context);
+                  -- Instance is used once, under the retained per-session attempt
+                  -- flag. No caller-supplied CPU address or ring contents.
+                  package App_Initial_Ring is new Intel_GPU_Native_Initial_Ring
+                    (Private_Contexts (Index).Context.CPU_Address,
+                     Private_Contexts (Index).Context.Bytes, Ring_Owner, Never_Registered);
+                  function Setup_Owner return Boolean is
+                    (Ring_Owner and then
+                     (ID = Context_Pool.No_Context or else
+                      Context_Pool.State (Contexts, ID) /= Context_Life.Quarantined));
+                  package App_Completion is new Intel_GPU_Initial_Completion
+                    (Setup_Owner, App_Initial_Ring.Read_Marker, Service_Initial_Events,
+                     Runtime_Now, GuC_Pause);
+                  Completion_Attempt : App_Completion.Attempt;
+                  Completion_Status : App_Completion.Result;
+                  Wait_Status : Context_Wait.Result;
+                  use type App_Completion.Result;
+                  use type Context_Wait.Result;
+                  Setup : Intel_GPU_ADLN_Context_Init.Segment;
+                  WM : Unsigned_32;
+               begin
+                  if GPU /= 0 and then not Application_Registration_Attempted (Index) and then
+                    not Runtime_Fault and then Context_Owner
+                  then
+                     Application_Registration_Attempted (Index) := True;
+                     WM := Context_Input.Read_WM_Chicken2;
+                     Setup := Intel_GPU_ADLN_Context_Init.Build_Setup
+                       (Ring_Owner and then WM /= Unsigned_32'Last, WM);
+                     -- Arm against the untouched marker before ANY GPU publication.
+                     App_Completion.Arm (Completion_Attempt, Completion_Status);
+                     if Completion_Status = App_Completion.Ready then
+                        App_Initial_Ring.Publish (Setup, Accepted);
+                     end if;
+                     if Accepted then
+                        Context_Pool.Open
+                          (Contexts, GPU, Address_Layout.Runtime_First, 256, 1000, 500_000, True,
+                           ID, Accepted, Session => Session);
+                     end if;
+                     if Accepted then
+                        for Action in Context_Life.Register_Context .. Context_Life.Set_Policy loop
+                           Context_Pool.Submit (Contexts, ID, Action, Status);
+                           if Status /= Context_Driver.Queued then Accepted := False; exit; end if;
+                        end loop;
+                     end if;
+                     if Accepted then
+                        Context_Wait.Execute
+                          (Contexts, ID, Context_Life.Enable, 1_000_000, Wait_Status);
+                        Accepted := Wait_Status = Context_Wait.Complete;
+                     end if;
+                     if Accepted then
+                        App_Completion.Wait
+                          (Completion_Attempt, 1_000_000, Completion_Status);
+                        Accepted := Completion_Status = App_Completion.Complete;
+                     end if;
+                     if Accepted then
+                        Context_Wait.Execute
+                          (Contexts, ID, Context_Life.Disable, 1_000_000, Wait_Status);
+                        Accepted := Wait_Status = Context_Wait.Complete;
+                     end if;
+                     -- Success means the driver-owned setup marker was observed
+                     -- and scheduling disable acknowledged. No application batch
+                     -- is present, and backing remains retained on every path.
+                     if Accepted and then Setup_Owner and then
+                       Context_Pool.State (Contexts, ID) = Context_Life.Disabled
+                     then
+                        Application_Setup_Complete (Index) := True;
+                        Code := Application_Buffers.OK;
+                     else
+                        Intel_GPU_Render_Control.Reject_Delivery (Render_Admission, Identity, Session);
+                        Retire_Application_Resources (Session);
+                     end if;
+                  end if;
+               end;
+            end if;
+         end if;
+      end if;
+      Response.tag := (Register_Context_Label, 4, 0, 0);
+      Response.words := [Code, 1, 0, 0];
+      Delivered := reply (From, Response);
+      if Delivered /= 1 and then Code = Application_Buffers.OK then
+         Intel_GPU_Render_Control.Reject_Delivery (Render_Admission, Identity, Session);
+         Retire_Application_Resources (Session);
+      end if;
+   end Handle_Context_Registration;
+   -- Selection belongs to the serialized service loop, never to request-supplied
+   -- context IDs or CPU/DMA addresses. Per-session channels retain their tails.
+   -- Public render admission remains CLOSED: wiring this transport is not proof
+   -- of command isolation, bounded hostile-work recovery or safe address reuse.
+   Submit_Label : constant Unsigned_32 := 16#0A27#;
+   Selected_Index : Natural := 0;
+   Selected_Session, Selected_Identity, Selected_Sender, Selected_Stamp : Unsigned_64 := 0;
+   Selected_CPU, Selected_Bytes, Selected_DMA, Selected_GPU : Unsigned_64 := 0;
+   Selected_Context : Unsigned_32 := Context_Pool.No_Context;
+   function Submission_Owner return Boolean is
+     (Selected_Index in Private_Contexts'Range and then
+      not Runtime_Fault and then Context_Owner and then PCI_Device = 16#46D2# and then
+      Application_Setup_Complete (Selected_Index) and then
+      Application_Session (Selected_Sender, Selected_Stamp) = Selected_Session and then
+      Intel_GPU_Render_Control.Recipient_Identity
+        (Render_Admission, Selected_Sender, Selected_Stamp) = Selected_Identity and then
+      Selected_Context /= Context_Pool.No_Context and then
+      Context_Pool.Session_Context (Contexts, Selected_Session) = Selected_Context and then
+      Context_Pool.State (Contexts, Selected_Context) /= Context_Life.Quarantined and then
+      Private_Contexts (Selected_Index).Ready and then
+      Private_Contexts (Selected_Index).Context.Ready and then
+      Private_Contexts (Selected_Index).Context.CPU_Address = Selected_CPU and then
+      Private_Contexts (Selected_Index).Context.Bytes = Selected_Bytes and then
+      Intel_GPU_Buffer_Reply.Page_Address (Private_Contexts (Selected_Index).Context, 0) = Selected_DMA and then
+      Selected_GPU /= 0 and then Application_Publication.GPU_Address
+        (Application_Images_State (Selected_Index)) = Selected_GPU);
+   function Submission_Work_Owner return Boolean is
+     (Update_Pending = 0 and then Submission_Owner and then
+      Context_Pool.Work_Allowed (Contexts, Selected_Context));
+   function Selected_CPU_Base return Unsigned_64 is (Selected_CPU);
+   function Selected_Backing_Bytes return Unsigned_64 is (Selected_Bytes);
+   procedure Read_Submission_Marker (Value : out Unsigned_64; OK : out Boolean) is
+      function Never_Publish return Boolean is (False);
+      package Reader is new Intel_GPU_Native_Initial_Ring
+        (Selected_CPU, Selected_Bytes, Submission_Owner, Never_Publish);
+   begin
+      Reader.Read_Marker (Value, OK);
+   end Read_Submission_Marker;
+   package Application_Ring is new Intel_GPU_Native_Live_Ring
+     (Selected_CPU_Base, Selected_Backing_Bytes, Submission_Work_Owner,
+      Submission_Work_Owner, Read_Submission_Marker);
+   Application_Channels : array (Private_Contexts'Range) of Application_Ring.Channel;
+   package Application_Completion is new Intel_GPU_Initial_Completion
+     (Submission_Owner, Read_Submission_Marker, Service_Initial_Events,
+      Runtime_Now, GuC_Pause);
+   function Submission_Batch (Handle, GPU, Offset, Bytes : Unsigned_64) return Boolean is
+     (Submission_Owner and then Application_Binding.Batch_Mapped
+       (Application_Buffer_State, Private_Contexts (Selected_Index).Source,
+        Selected_Session, Selected_Sender, Selected_Stamp, Handle, GPU, Offset, Bytes));
+   procedure Arm_Submission
+     (Attempt : in out Application_Completion.Attempt;
+      Previous, Expected : Unsigned_32; OK : out Boolean) is
+      Status : Application_Completion.Result;
+      use type Application_Completion.Result;
+   begin
+      Application_Completion.Arm (Attempt, Status, Previous, Expected);
+      OK := Status = Application_Completion.Ready;
+   end Arm_Submission;
+   procedure Enable_Submission (OK : out Boolean) is
+      Status : Context_Wait.Result;
+      use type Context_Wait.Result;
+   begin
+      Context_Wait.Execute (Contexts, Selected_Context, Context_Life.Enable, 1_000_000, Status);
+      OK := Status = Context_Wait.Complete;
+   end Enable_Submission;
+   procedure Publish_Submission (GPU : Unsigned_64; Sequence : Unsigned_32; OK : out Boolean) is
+      WM : Unsigned_32;
+      Segment : Intel_GPU_ADLN_Context_Init.Segment;
+   begin
+      OK := False;
+      if not Submission_Work_Owner then return; end if;
+      WM := Context_Input.Read_WM_Chicken2;
+      Segment := Intel_GPU_ADLN_Context_Init.Build_Batch
+        (Submission_Work_Owner and then WM /= Unsigned_32'Last, WM, Sequence, GPU);
+      Application_Ring.Append (Application_Channels (Selected_Index), Segment, OK);
+   end Publish_Submission;
+   procedure Notify_Submission (OK : out Boolean) is
+      Status : Context_Driver.Result;
+      use type Context_Driver.Result;
+   begin
+      Context_Pool.Notify_Work (Contexts, Selected_Context, True, Status);
+      OK := Status = Context_Driver.Queued;
+   end Notify_Submission;
+   procedure Wait_Submission (Attempt : in out Application_Completion.Attempt; OK : out Boolean) is
+      Status : Application_Completion.Result;
+      use type Application_Completion.Result;
+   begin
+      Application_Completion.Wait (Attempt, 1_000_000, Status);
+      OK := Status = Application_Completion.Complete;
+   end Wait_Submission;
+   procedure Disable_Submission (OK : out Boolean) is
+      Status : Context_Wait.Result;
+      use type Context_Wait.Result;
+   begin
+      Context_Wait.Execute (Contexts, Selected_Context, Context_Life.Disable, 1_000_000, Status);
+      OK := Status = Context_Wait.Complete;
+   end Disable_Submission;
+   procedure Quarantine_Submission is
+   begin
+      Intel_GPU_Render_Control.Reject_Delivery
+        (Render_Admission, Selected_Identity, Selected_Session);
+      Retire_Application_Resources (Selected_Session);
+   end Quarantine_Submission;
+   package Application_Submission is new Intel_GPU_Application_Submit
+     (Submission_Owner, Submission_Batch, Application_Completion.Attempt,
+      Arm_Submission, Enable_Submission, Publish_Submission, Notify_Submission,
+      Wait_Submission, Disable_Submission, Quarantine_Submission);
+   Application_Submissions : array (Private_Contexts'Range) of Application_Submission.State;
+   procedure Handle_Application_Submission (From : ProcessID; Msg : Message) is
+      Session : constant Unsigned_64 := Application_Session (Unsigned_64 (From), Msg.authorityTag);
+      Base : constant Unsigned_64 := Intel_GPU_Render_Sessions.Tag_Base;
+      Code : Unsigned_64 := Application_Buffers.Denied;
+      Completion : Unsigned_32 := 0;
+      Status : Application_Submission.Result;
+      use type Application_Submission.Result;
+      use type Application_Submission.Phase;
+      Response : Message := NULL_MESSAGE;
+      Delivered : Unsigned_64;
+   begin
+      Selected_Index := 0;
+      if Session > Base and then Session <= Base + Intel_GPU_Render_Sessions.Capacity then
+         Code := Application_Buffers.Bad_Request;
+         -- [version | (byte offset << 32), BO handle, raw48 GPU address, bytes]
+         if Msg.tag.length = 4 and then Msg.tag.flags = 0 and then Msg.tag.reserved = 0 and then
+           (Msg.words (0) and 16#FFFF_FFFF#) = 1
+         then
+            Selected_Index := Natural (Session - Base);
+            Selected_Session := Session; Selected_Sender := Unsigned_64 (From);
+            Selected_Stamp := Msg.authorityTag;
+            Selected_Identity := Intel_GPU_Render_Control.Recipient_Identity
+              (Render_Admission, Selected_Sender, Selected_Stamp);
+            Selected_Context := Context_Pool.Session_Context (Contexts, Session);
+            Code := Application_Buffers.Unavailable;
+            -- Do not evaluate fields of the Ready=True variant until the
+            -- backing discriminant is established. Submission_Owner runs
+            -- later and cannot protect these selection-time reads.
+            if Private_Contexts (Selected_Index).Context.Ready then
+               Selected_CPU := Private_Contexts (Selected_Index).Context.CPU_Address;
+               Selected_Bytes := Private_Contexts (Selected_Index).Context.Bytes;
+               Selected_DMA := Intel_GPU_Buffer_Reply.Page_Address
+                 (Private_Contexts (Selected_Index).Context, 0);
+               Selected_GPU := Application_Publication.GPU_Address (Application_Images_State (Selected_Index));
+               if Update_Pending = 0 and then Submission_Owner and then
+                 Context_Pool.State (Contexts, Selected_Context) = Context_Life.Disabled
+               then
+                  if Application_Submission.Current (Application_Submissions (Selected_Index)) =
+                    Application_Submission.Uninitialized
+                  then
+                     Application_Submission.Initialize (Application_Submissions (Selected_Index),
+                       Application_Setup_Complete (Selected_Index));
+                  end if;
+                  Application_Submission.Execute (Application_Submissions (Selected_Index),
+                    Msg.words (1), Msg.words (2), Shift_Right (Msg.words (0), 32), Msg.words (3),
+                    Status, Completion);
+                  Code := (case Status is
+                    when Application_Submission.Complete => Application_Buffers.OK,
+                    when Application_Submission.Rejected => Application_Buffers.Bad_Request,
+                    when Application_Submission.Batch_Denied => Application_Buffers.Denied,
+                    when others => Application_Buffers.Unavailable);
+               end if;
+            end if;
+         end if;
+      end if;
+      Response.tag := (Submit_Label, 4, 0, 0);
+      Response.words := [Code, 1, Unsigned_64 (Completion), 0];
+      Delivered := reply (From, Response);
+      if Delivered /= 1 and then Code = Application_Buffers.OK then
+         -- Completed work cannot be replayed safely after a lost reply.
+         Quarantine_Submission;
+      end if;
+      Selected_Index := 0;
+   end Handle_Application_Submission;
+   Update_Index : Natural := 0;
+   Update_Session, Update_Identity, Update_Sender, Update_Stamp : Unsigned_64 := 0;
+   Update_Request : Message := NULL_MESSAGE;
+   Update_Context : Unsigned_32 := Context_Pool.No_Context;
+   Update_Held : Boolean := False;
+   function Update_Owner return Boolean is
+     (Update_Index in Private_Contexts'Range and then not Runtime_Fault and then
+      Context_Owner and then PCI_Device = 16#46D2# and then Reset_Pages_Mapped and then
+      Intel_GPU_Native_Reset.Last_Succeeded and then
+      Application_Setup_Complete (Update_Index) and then
+      Private_Contexts (Update_Index).Ready and then
+      Application_Session (Update_Sender, Update_Stamp) = Update_Session and then
+      Intel_GPU_Render_Control.Recipient_Identity
+        (Render_Admission, Update_Sender, Update_Stamp) = Update_Identity and then
+      Context_Pool.Session_Context (Contexts, Update_Session) = Update_Context and then
+      Update_Context /= Context_Pool.No_Context and then not Context_Pool.Failed (Contexts));
+   function Update_Exclusive return Boolean is
+   begin
+      if not Update_Owner or else not Update_Held or else Update_Pending = 0 then
+         return False;
+      end if;
+      -- Current native backend is RCS-only, with synchronous completed/flush
+      -- markers and disable acknowledgments between batches. No OA admission.
+      -- Refuse publication while ANY retained context is not disabled.
+      for I in 1 .. Context_Pool.Count (Contexts) loop
+         if Context_Pool.State (Contexts, First_Context_ID + Unsigned_32 (I - 1)) /=
+           Context_Life.Disabled then return False; end if;
+      end loop;
+      return True;
+   end Update_Exclusive;
+   package Live_TLB_IO is new Intel_GPU_Native_TLB_IO (Update_Exclusive);
+   procedure Update_Clock (Value : out Unsigned_64; OK : out Boolean) is
+   begin
+      Value := Runtime_Now;
+      OK := Value /= Unsigned_64'Last and then Update_Exclusive;
+   end Update_Clock;
+   package Live_TLB is new Intel_GPU_ADLN_TLB_Invalidate
+     (Update_Exclusive, Live_TLB_IO.Write_Register, Live_TLB_IO.Read_Register, Update_Clock);
+   package Live_Images is new Application_Images.Updates (Update_Exclusive);
+   package Live_Snapshots is new Application_VM.Snapshots;
+   procedure Drain_Update (OK : out Boolean) is
+   begin
+      -- The hold was acquired before asynchronous allocation. The service
+      -- blocks all new submissions until finish; previous submits are bounded
+      -- synchronous transactions with completion and scheduling disable.
+      OK := Update_Exclusive;
+   end Drain_Update;
+   procedure Publish_Update (OK : out Boolean) is
+      Mappings : Application_Images.Tables.Mappings;
+   begin
+      OK := False;
+      if not Update_Exclusive then return; end if;
+      declare
+         Tables : Intel_GPU_Buffer_Reply.Backing renames
+           Application_State.Updates (Update_Pending).Tables;
+      begin
+         if not Tables.Ready then return; end if;
+         for P in Application_VM.Page_Number loop
+            Mappings (P) :=
+              (Tables.CPU_Address + Unsigned_64 (P - 1) * 4096,
+               Intel_GPU_Buffer_Reply.Page_Address (Tables, Unsigned_64 (P - 1) * 4096));
+         end loop;
+         Preparing_Index := Update_Index;
+         Preparing_Session := Update_Session; Preparing_Identity := Update_Identity;
+         Live_Images.Publish_Tables
+           (Application_Images_State (Update_Index), Private_Contexts (Update_Index).Source,
+            Application_State.Updates (Update_Pending).Candidate, Mappings, OK);
+         Preparing_Index := 0; Preparing_Session := 0; Preparing_Identity := 0;
+      end;
+   end Publish_Update;
+   procedure Invalidate_Update (OK : out Boolean) is
+      Attempt : Live_TLB.Attempt;
+      Status : Live_TLB.Result;
+      use type Live_TLB.Result;
+   begin
+      Live_TLB.Execute (Attempt, Status);
+      OK := Status = Live_TLB.Complete;
+   end Invalidate_Update;
+   procedure Resume_Update (OK : out Boolean) is
+   begin
+      -- Submit-on-demand: preserve acknowledged disabled state. Release the
+      -- software hold only after the coordinator commits and image is adopted.
+      OK := Update_Exclusive;
+   end Resume_Update;
+   package Live_VM is new Intel_GPU_VM_Update
+     (Update_Owner, Drain_Update, Publish_Update, Invalidate_Update, Resume_Update);
+   Live_VM_States : array (Private_Contexts'Range) of Live_VM.State;
+   procedure Execute_Update is new Application_Binding.Handle_Update (Live_VM);
+   procedure Fail_Update is
+   begin
+      if Update_Index in Private_Contexts'Range then
+         Live_VM.Fail (Live_VM_States (Update_Index));
+         Intel_GPU_Render_Control.Reject_Delivery
+           (Render_Admission, Update_Identity, Update_Session);
+         Retire_Application_Resources (Update_Session);
+      end if;
+   end Fail_Update;
+   procedure Finish_VM_Update (Backing : Intel_GPU_Buffer_Reply.Backing) is
+      Tables : Application_VM.Backing_Pages;
+      Response : Application_Buffers.Words := [Application_Buffers.Unavailable, 1, 0, 0];
+      Message_Out : Message := NULL_MESSAGE;
+      OK, Consumed : Boolean;
+      Delivered : Unsigned_64;
+   begin
+      if Update_Pending = 0 then return; end if;
+      Application_State.Updates (Update_Pending).Tables := Backing;
+      if Backing.Ready and then Backing.Bytes = Private_Table_Pages * 4096 and then
+        Update_Exclusive
+      then
+         for P in Application_VM.Page_Number loop
+            Tables (P) := Intel_GPU_Buffer_Reply.Page_Address (Backing, Unsigned_64 (P - 1) * 4096);
+         end loop;
+         Execute_Update
+           (Application_Buffer_State, Private_Contexts (Update_Index).Source,
+            Application_State.Updates (Update_Pending).Candidate, Tables,
+            Live_VM_States (Update_Index), Update_Session, Update_Sender, Update_Stamp,
+            Update_Request.tag.label, Update_Request.tag.length, Update_Request.tag.flags,
+            Update_Request.tag.reserved,
+            [Update_Request.words (0), Update_Request.words (1),
+             Update_Request.words (2), Update_Request.words (3)], Response);
+         if Response (0) = Application_Buffers.OK then
+            Live_Snapshots.Adopt_Committed
+              (Private_Contexts (Update_Index).Source,
+               Application_State.Updates (Update_Pending).Candidate, OK);
+            if OK and then Update_Exclusive then
+               Context_Pool.Release_Work (Contexts, Update_Context, OK, Keep_Disabled => True);
+            else OK := False; end if;
+            if not OK then Response := [Application_Buffers.Unavailable, 1, 0, 0]; end if;
+         end if;
+      end if;
+      if Response (0) /= Application_Buffers.OK then Fail_Update; end if;
+      Application_Buffers.Finish_Private (Application_Buffer_State, Update_Pending, Consumed);
+      if not Consumed then Fail_Update; Response := [Application_Buffers.Unavailable, 1, 0, 0]; end if;
+      Message_Out.tag := (Application_Binding.Update_Label, 4, 0, 0);
+      Message_Out.words := [Response (0), Response (1), Response (2), Response (3)];
+      Delivered := replyCap (Application_Reply_Slot, Message_Out);
+      if Delivered /= 1 then Fail_Update; end if;
+      Update_Pending := 0; Update_Held := False; Update_Index := 0;
+   end Finish_VM_Update;
+   procedure Handle_VM_Update (From : ProcessID; Msg : Message) is
+      Session : constant Unsigned_64 := Application_Session (Unsigned_64 (From), Msg.authorityTag);
+      Base : constant Unsigned_64 := Intel_GPU_Render_Sessions.Tag_Base;
+      Response : Message := NULL_MESSAGE;
+      Code : Unsigned_64 := Application_Buffers.Denied;
+      Status : Application_Binding.Preparation_Result;
+      use type Application_Binding.Preparation_Result;
+      Started, Consumed : Boolean;
+      Delivered : Unsigned_64;
+   begin
+      if Session > Base and then Session <= Base + Intel_GPU_Render_Sessions.Capacity then
+         Code := Application_Buffers.Unavailable;
+         if Update_Pending = 0 and then Application_Pending = 0 and then Private_Pending = 0 then
+            Update_Index := Natural (Session - Base); Update_Session := Session;
+            Update_Sender := Unsigned_64 (From); Update_Stamp := Msg.authorityTag;
+            Update_Identity := Intel_GPU_Render_Control.Recipient_Identity
+              (Render_Admission, Update_Sender, Update_Stamp);
+            Update_Context := Context_Pool.Session_Context (Contexts, Session);
+            if Update_Owner and then Live_VM.Can_Submit (Live_VM_States (Update_Index)) then
+               Application_Binding.Check_Update_Request
+                 (Application_Buffer_State, Private_Contexts (Update_Index).Source,
+                  Session, Live_VM.Generation (Live_VM_States (Update_Index)),
+                  Update_Sender, Update_Stamp, Msg.tag.label, Msg.tag.length,
+                  Msg.tag.flags, Msg.tag.reserved,
+                  [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Status);
+               Code := (case Status is
+                 when Application_Binding.Malformed => Application_Buffers.Bad_Request,
+                 when Application_Binding.Request_Denied => Application_Buffers.Denied,
+                 when others => Application_Buffers.Unavailable);
+               if Status = Application_Binding.Eligible then
+                  Application_Buffers.Reserve_Private (Application_Buffer_State, Update_Pending);
+                  if Update_Pending /= 0 then
+                     Context_Pool.Hold_Work (Contexts, Update_Context, Update_Held);
+                     if Update_Exclusive and then saveReplyCap (Unsigned_64 (Application_Reply_Slot)) = 1 then
+                        Update_Request := Msg;
+                        Buffer_Memory.Start (Buffer_Pool, Intel_GPU_Buffer_Backing.Slot (Update_Pending),
+                                             Private_Table_Pages, Started);
+                        if not Started then Finish_VM_Update ((Ready => False)); end if;
+                        return;
+                     end if;
+                     -- No deferred reply/allocation exists. Keep backing/slot
+                     -- retained and retire instead of guessing a safe resume.
+                     Fail_Update;
+                     Application_Buffers.Finish_Private (Application_Buffer_State, Update_Pending, Consumed);
+                     Update_Pending := 0; Update_Held := False;
+                  end if;
+               end if;
+            end if;
+            Update_Index := 0;
+         end if;
+      end if;
+      Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+      Response.words := [Code, 1, 0, 0];
+      Delivered := reply (From, Response);
+   end Handle_VM_Update;
    procedure Start_Render_Context is
       function Completion_Name (Value : Initial_Completion.Result) return String is
         (case Value is
@@ -735,11 +1772,80 @@ procedure Main is
       Repeat_Notify : Context_Driver.Result := Context_Driver.Rejected;
       Repeat_Published : Boolean := False;
       Repeat_Segment : Intel_GPU_ADLN_Context_Init.Segment;
+      Repeat_Tail : Unsigned_32 := 0;
+      Barrier_Attempt : Initial_Completion.Attempt;
+      Barrier_Completed : Initial_Completion.Result := Initial_Completion.Rejected;
+      Barrier_Notify : Context_Driver.Result := Context_Driver.Rejected;
+      Barrier_Published : Boolean := False;
+      L3_Attempt : Initial_Completion.Attempt;
+      L3_Completed : Initial_Completion.Result := Initial_Completion.Rejected;
+      L3_Notify : Context_Driver.Result := Context_Driver.Rejected;
+      L3_Published, L3_Read, L3_Fresh, L3_Matches : Boolean := False;
+      L3_Value : Unsigned_32 := Unsigned_32'Last;
+      L3_Parameters : Unsigned_32 := Unsigned_32'Last;
+      L3_URB_KiB : Natural := 0;
+      Draw_Attempt : Initial_Completion.Attempt;
+      Draw_Completed : Initial_Completion.Result := Initial_Completion.Rejected;
+      Draw_Notify : Context_Driver.Result := Context_Driver.Rejected;
+      Draw_Published, Draw_Target_Clear, Pixels_Read, Pixels_Match : Boolean := False;
+      Pixels : Initial_Ring.Pixel_Samples := [others => Unsigned_32'Last];
+      Image : Initial_Ring.Target_Image;
+      Image_Read : Boolean := False;
+      Image_Nonzero : Natural := 0;
+      Image_Hash : Unsigned_32 := 16#811C9DC5#;
       Saved_Head, Saved_Tail, H2G_Head, H2G_Tail, H2G_Status : Unsigned_32 := 0;
       Saved_OK, H2G_OK : Boolean := False;
       Batch_Value : Unsigned_64 := Unsigned_64'Last;
       Batch_Read : Boolean := False;
       use type Initial_Completion.Result;
+      TLB_Armed : Boolean := False;
+      Update_Held, Update_Released : Boolean := False;
+      function TLB_Probe_Owner return Boolean is
+        (TLB_Armed and then Update_Held and then PCI_Device = 16#46D2# and then
+         Initial_Backing_Owner and then not Runtime_Fault and then
+         Reset_Pages_Mapped and then Intel_GPU_Native_Reset.Last_Succeeded and then
+         Context_Pool.Count (Contexts) = 1 and then
+         not Context_Pool.Failed (Contexts) and then
+         Context_Pool.State (Contexts, Render_Context_ID) = Context_Life.Disabled);
+      -- One serialized bootstrap owner, no application or OA admission.
+      -- Successful native reset retains forcewake; only this RCS probe has
+      -- executed since that reset. This is NOT a general multi-engine gate.
+      package TLB_IO is new Intel_GPU_Native_TLB_IO (TLB_Probe_Owner);
+      procedure TLB_Clock (Value : out Unsigned_64; OK : out Boolean) is
+      begin
+         Value := Runtime_Now;
+         OK := Value /= Unsigned_64'Last and then TLB_Probe_Owner;
+      end TLB_Clock;
+      package TLB_Probe is new Intel_GPU_ADLN_TLB_Invalidate
+        (TLB_Probe_Owner, TLB_IO.Write_Register, TLB_IO.Read_Register, TLB_Clock);
+      TLB_Attempt : TLB_Probe.Attempt;
+      TLB_Status : TLB_Probe.Result := TLB_Probe.Rejected;
+      use type TLB_Probe.Result;
+      function Flush_Update_Page (CPU : Unsigned_64) return Boolean is
+        (TLB_Probe_Owner and then Intel_GPU_DMA_Cache.Flush_Range (CPU, 4096)
+         and then TLB_Probe_Owner);
+      package Boot_Updates is new Submission_Buffers.Updates
+        (TLB_Probe_Owner, Flush_Update_Page);
+      Update_Tables : Submission_Buffers.VM.Backing_Pages;
+      Update_Mappings : Boot_Updates.Tables.Mappings;
+      Update_Ready : Boolean := False;
+      type Update_Stage is (Prechecks, Allocation, Ownership, Prepare,
+                            Map_Alias, Seal, Publish, Invalidate, Finished);
+      Update_At : Update_Stage := Prechecks;
+      Resume_Status, Final_Disable : Context_Wait.Result := Context_Wait.Rejected;
+      Alias_Attempt : Initial_Completion.Attempt;
+      Alias_Completed : Initial_Completion.Result := Initial_Completion.Rejected;
+      Alias_Published : Boolean := False;
+      Alias_Notify : Context_Driver.Result := Context_Driver.Rejected;
+      function Pixel_Read_Owner return Boolean is
+        (not Runtime_Fault and then Context_Owner and then
+         Draw_Completed = Initial_Completion.Complete and then
+         Pixels_Match and then Image_Read and then
+         Barrier_Completed = Initial_Completion.Complete and then
+         Alias_Completed = Initial_Completion.Complete and then
+         Final_Disable = Context_Wait.Complete and then
+         Context_Pool.State (Contexts, Render_Context_ID) = Context_Life.Disabled);
+      function Pixel_View is new Submission_Buffers.Completed_Pixel_View (Pixel_Read_Owner);
    begin
       if Context_Started or else not Context_Owner then return; end if;
       Context_Started := True;
@@ -749,14 +1855,14 @@ procedure Main is
          Context_Init := Intel_GPU_ADLN_Context_Init.Build
            (Context_Owner and then WM /= Unsigned_32'Last, WM);
          if not Context_Init.Valid then
-            Context_Driver.Fail (Render_Context); Runtime_Fault := True;
+            Context_Pool.Fail (Contexts); Runtime_Fault := True;
             Publish_Snapshot ("intel-gpu: context initialization input unavailable; backing retained");
             return;
          end if;
       end;
       Initial_Completion.Arm (Initial_Attempt, Completed);
       if Completed /= Initial_Completion.Ready then
-         Context_Driver.Fail (Render_Context); Runtime_Fault := True;
+         Context_Pool.Fail (Contexts); Runtime_Fault := True;
          Publish_Snapshot ("intel-gpu: initialization marker arm " &
            Initial_Completion.Result'Image (Completed) & "; backing retained");
          return;
@@ -764,27 +1870,32 @@ procedure Main is
       Initial_Ring.Publish (Context_Init, Published);
       if not Published then
          Initial_Completion.Fail (Initial_Attempt);
-         Context_Driver.Fail (Render_Context); Runtime_Fault := True;
+         Context_Pool.Fail (Contexts); Runtime_Fault := True;
          Publish_Snapshot ("intel-gpu: initialization ring publication failed; backing retained");
          return;
       end if;
-      -- One retained RCS0 context, controls100..103 and notification104
-      -- (transport probe uses42). No other notification fence is used yet.
+      -- One retained RCS0 context, with a disjoint retained fence interval.
       -- Only one four-word scheduling response is outstanding at a time.
       -- This bring-up policy explicitly requests preempt-to-idle on quantum
       -- expiry; it is a driver policy choice, not a probed hardware property.
-      Context_Driver.Initialize (Render_Context, 7, Submission_GPU_Start,
-        Address_Layout.Runtime_First, 100, 1000, 500_000, True);
+      Context_Pool.Open (Contexts, Submission_GPU_Start,
+        Address_Layout.Runtime_First, 256, 1000, 500_000, True,
+        Render_Context_ID, Published);
+      if not Published then
+         Context_Pool.Fail (Contexts); Runtime_Fault := True;
+         Publish_Snapshot ("intel-gpu: context table allocation failed; backing retained");
+         return;
+      end if;
       for Action in Context_Life.Register_Context .. Context_Life.Set_Policy loop
-         Context_Driver.Submit (Render_Context, Action, Status);
+         Context_Pool.Submit (Contexts, Render_Context_ID, Action, Status);
          if Status /= Context_Driver.Queued then
-            Context_Driver.Fail (Render_Context); Runtime_Fault := True;
+            Context_Pool.Fail (Contexts); Runtime_Fault := True;
             Publish_Snapshot ("intel-gpu: context " & Context_Life.Operation'Image (Action) &
               " " & Context_Driver.Result'Image (Status) & "; backing retained");
             return;
          end if;
       end loop;
-      Context_Wait.Execute (Render_Context, Context_Life.Enable, 1_000_000, Wait_Status);
+      Context_Wait.Execute (Contexts, Render_Context_ID, Context_Life.Enable, 1_000_000, Wait_Status);
       if Wait_Status /= Context_Wait.Complete then
          Runtime_Fault := True;
          Publish_Snapshot ("intel-gpu: context enable " & Context_Wait.Result'Image (Wait_Status));
@@ -800,9 +1911,9 @@ procedure Main is
          Repeat_Segment.Words (90) := 2;
          Initial_Completion.Arm (Repeat_Attempt, Repeat_Completed, 1, 2);
          if Repeat_Completed = Initial_Completion.Ready then
-            Live_Ring.Append (Repeat_Segment, Repeat_Published);
+            Live_Ring.Append (Live_Channel, Repeat_Segment, Repeat_Published);
             if Repeat_Published then
-               Context_Driver.Notify_Work (Render_Context, True, Repeat_Notify);
+               Context_Pool.Notify_Work (Contexts, Render_Context_ID, True, Repeat_Notify);
                if Repeat_Notify = Context_Driver.Queued then
                   Initial_Completion.Wait (Repeat_Attempt, 1_000_000, Repeat_Completed);
                else
@@ -815,33 +1926,282 @@ procedure Main is
             end if;
          end if;
       end if;
-      -- Keep the bounded bring-up checkpoint closed after this attempt, even
-      -- if a late error or failed scheduling-disable follows completion.
-      Live_Ring.Fail;
+      Repeat_Tail := Live_Ring.Tail (Live_Channel);
+      if Repeat_Completed = Initial_Completion.Complete and then Live_Coherent_Ready then
+         -- This dedicated slot must still contain its initialized value.
+         -- Never clear it on the CPU after GPU publication.
+         Initial_Ring.Read_L3_Result (L3_Value, L3_Parameters, L3_Read);
+         L3_Fresh := L3_Read and then L3_Value = 0 and then L3_Parameters = 0;
+         L3_Read := False;
+         if L3_Fresh then
+            Initial_Completion.Arm (L3_Attempt, L3_Completed, 2, 3);
+            if L3_Completed = Initial_Completion.Ready then
+               Live_Ring.Append (Live_Channel, Intel_GPU_ADLN_Context_Init.Build_L3 (3), L3_Published);
+               if L3_Published then
+                  Context_Pool.Notify_Work (Contexts, Render_Context_ID, True, L3_Notify);
+                  if L3_Notify = Context_Driver.Queued then
+                     Initial_Completion.Wait (L3_Attempt, 1_000_000, L3_Completed);
+                  else
+                     Initial_Completion.Fail (L3_Attempt);
+                     L3_Completed := Initial_Completion.Event_Failed;
+                  end if;
+               else
+                  Initial_Completion.Fail (L3_Attempt);
+                  L3_Completed := Initial_Completion.Rejected;
+               end if;
+            end if;
+         end if;
+      end if;
+      -- No pending work remains after sequence3. Read GPU-produced samples
+      -- before terminal disable; the immutable drawing batch is already
+      -- published, so no CPU rewrite or context re-enable is needed.
+      if L3_Completed = Initial_Completion.Complete then
+         Initial_Ring.Read_L3_Result (L3_Value, L3_Parameters, L3_Read);
+         L3_Matches := L3_Read and then Intel_GPU_ADLN_L3.Render_Allocation_Matches
+           (Intel_GPU_ADLN_L3.Decode_Allocation (L3_Value));
+         L3_URB_KiB := Intel_GPU_ADLN_L3.Probe_URB_KiB
+           (L3_Matches and then L3_Fresh and then Context_Owner and then
+              PCI_Device = 16#46D2# and then Steering.Valid,
+            Intel_GPU_ADLN_L3.Decode_Fuse (Steering_First.L3_Disable),
+            Intel_GPU_ADLN_L3.Decode_Parameters (L3_Parameters),
+            Intel_GPU_ADLN_L3.Decode_Allocation (L3_Value));
+         Initial_Ring.Read_Batch_Result (Batch_Value, Batch_Read);
+         if L3_URB_KiB = Intel_GPU_Submission_Image.Draw_URB_KiB and then
+           Batch_Read and then Batch_Value =
+             Unsigned_64 (Intel_GPU_Submission_Image.Batch_Probe_Value) and then
+           Live_Coherent_Ready and then Context_Owner
+         then
+            Initial_Ring.Read_Pixels (Pixels, Pixels_Read);
+            Draw_Target_Clear := Pixels_Read and then (for all P of Pixels => P = 0);
+            Pixels_Read := False;
+            if Draw_Target_Clear then
+               declare
+                  WM : constant Unsigned_32 := Context_Input.Read_WM_Chicken2;
+                  Segment : constant Intel_GPU_ADLN_Context_Init.Segment :=
+                    Intel_GPU_ADLN_Context_Init.Build_Draw
+                      (Context_Owner and then WM /= Unsigned_32'Last, WM, 4);
+               begin
+                  if Segment.Valid then
+                     Initial_Completion.Arm (Draw_Attempt, Draw_Completed, 3, 4);
+                     if Draw_Completed = Initial_Completion.Ready then
+                        Live_Ring.Append (Live_Channel, Segment, Draw_Published);
+                        if Draw_Published then
+                           Context_Pool.Notify_Work (Contexts, Render_Context_ID, True, Draw_Notify);
+                           if Draw_Notify = Context_Driver.Queued then
+                              Initial_Completion.Wait (Draw_Attempt, 1_000_000, Draw_Completed);
+                           else
+                              Initial_Completion.Fail (Draw_Attempt);
+                              Draw_Completed := Initial_Completion.Event_Failed;
+                           end if;
+                        else
+                           Initial_Completion.Fail (Draw_Attempt);
+                           Draw_Completed := Initial_Completion.Rejected;
+                        end if;
+                     end if;
+                  end if;
+               end;
+            end if;
+         end if;
+      end if;
+      -- Preserve the draw sequence (4); exercise the standalone barrier as 5.
+      -- Completion here does not authorize page-table updates or memory reuse.
+      if Draw_Completed = Initial_Completion.Complete and then Live_Coherent_Ready then
+         Initial_Completion.Arm (Barrier_Attempt, Barrier_Completed, 4, 5);
+         if Barrier_Completed = Initial_Completion.Ready then
+            Live_Ring.Append (Live_Channel, Intel_GPU_ADLN_Barrier.Build (5), Barrier_Published);
+            if Barrier_Published then
+               Context_Pool.Notify_Work (Contexts, Render_Context_ID, True, Barrier_Notify);
+               if Barrier_Notify = Context_Driver.Queued then
+                  Initial_Completion.Wait (Barrier_Attempt, 1_000_000, Barrier_Completed);
+               else
+                  Initial_Completion.Fail (Barrier_Attempt);
+                  Barrier_Completed := Initial_Completion.Event_Failed;
+               end if;
+            else
+               Initial_Completion.Fail (Barrier_Attempt);
+               Barrier_Completed := Initial_Completion.Rejected;
+            end if;
+         end if;
+      end if;
       -- Capture before scheduling-disable adds another CT message or changes
       -- context state. Saved pointers may lag; neither snapshot is atomic.
-      Live_Ring.Read_Saved_Pointers (Saved_Head, Saved_Tail, Saved_OK);
+      Live_Ring.Read_Saved_Pointers (Live_Channel, Saved_Head, Saved_Tail, Saved_OK);
       CT_Send_IO.Read_Descriptor (H2G_Head, H2G_Tail, H2G_Status, H2G_OK);
+      -- Preserve the healthy writer across a controlled VM update. This hold
+      -- prevents both tail publication and notification; it is not a drain.
+      Context_Pool.Hold_Work (Contexts, Render_Context_ID, Update_Held);
+      if not Update_Held then Live_Ring.Fail (Live_Channel); end if;
       -- Even after a marker timeout, try to disable a still-healthy enabled
       -- context before slow logging. A faulted transport cannot be trusted;
       -- in every case backing stays retained and no further work is submitted.
-      Context_Wait.Execute (Render_Context, Context_Life.Disable, 1_000_000, Wait_Status);
+      Context_Wait.Execute (Contexts, Render_Context_ID, Context_Life.Disable, 1_000_000, Wait_Status);
       if Wait_Status = Context_Wait.Complete and Completed = Initial_Completion.Complete then
          Initial_Ring.Read_Batch_Result (Batch_Value, Batch_Read);
+         if Draw_Completed = Initial_Completion.Complete then
+            Initial_Ring.Read_Pixels (Pixels, Pixels_Read);
+            Initial_Ring.Read_Image (Image, Image_Read);
+            if Image_Read then
+               for Pixel of Image loop
+                  if Pixel /= 0 then Image_Nonzero := Image_Nonzero + 1; end if;
+                  Image_Hash := (Image_Hash xor Pixel) * 16#01000193#;
+               end loop;
+            end if;
+            -- Linear B8G8R8A8_UNORM target, opaque red fragment shader.
+            Pixels_Match := Pixels_Read and then Pixels (0) = 16#FFFF0000# and then
+              (for all I in 1 .. 4 => Pixels (I) = 0);
+         end if;
       end if;
-      if Wait_Status /= Context_Wait.Complete or Completed /= Initial_Completion.Complete or
+      if not Update_Held or Wait_Status /= Context_Wait.Complete or Completed /= Initial_Completion.Complete or
         Repeat_Completed /= Initial_Completion.Complete or
+        L3_Completed /= Initial_Completion.Complete or not L3_Matches or L3_URB_KiB = 0 or
+        Draw_Completed /= Initial_Completion.Complete or not Pixels_Match or not Image_Read or
+        Barrier_Completed /= Initial_Completion.Complete or
         not Batch_Read or Batch_Value /=
           Unsigned_64 (Intel_GPU_Submission_Image.Batch_Probe_Value)
       then
-         Context_Driver.Fail (Render_Context); Runtime_Fault := True;
+         Context_Pool.Fail (Contexts); Runtime_Fault := True;
       end if;
+      if not Runtime_Fault then
+         -- Marker5 is the completed flush/invalidate barrier, not merely a
+         -- scheduling ACK. New work is held until publication, invalidation
+         -- and acknowledged enable all succeed. All generations are retained.
+         TLB_Armed := True;
+         Update_At := Allocation;
+         if Boot_Update_Allocation.Ready and then
+           Boot_Update_Allocation.Bytes = 4 * 4096
+         then Update_At := Ownership; end if;
+         if Boot_Update_Allocation.Ready and then
+           Boot_Update_Allocation.Bytes = 4 * 4096 and then TLB_Probe_Owner
+         then
+            for P in Submission_Buffers.VM.Page_Number loop
+               Update_Tables (P) := Intel_GPU_Buffer_Reply.Page_Address
+                 (Boot_Update_Allocation, Unsigned_64 (P - 1) * 4096);
+               Update_Mappings (P) :=
+                 (Boot_Update_Allocation.CPU_Address + Unsigned_64 (P - 1) * 4096,
+                  Update_Tables (P));
+            end loop;
+            Update_At := Prepare;
+            Submission_Buffers.Prepare_Boot_Update
+              (Submission_State, Boot_Update_Candidate, Update_Tables, Update_Ready);
+            if Update_Ready then
+               -- New private VA alias of the already-authorized batch
+               -- page. No device or firmware memory is added to this VM.
+               Update_At := Map_Alias;
+               Submission_Buffers.VM.Map_Page
+                 (Boot_Update_Candidate, 16#208000#,
+                  Intel_GPU_Buffer_Reply.Page_Address (Submission_Allocation,
+                    Intel_GPU_Submission_Backing.Offsets
+                      (Intel_GPU_Submission_Backing.Batch_Buffer) -
+                    Intel_GPU_Submission_Backing.First),
+                  Intel_GPU_ADLN_PPGTT.Write_Back, Intel_GPU_ADLN_PPGTT.Read_Write,
+                  Update_Ready);
+            end if;
+            if Update_Ready then
+               Update_At := Seal;
+               Submission_Buffers.VM.Seal (Boot_Update_Candidate, Update_Ready);
+            end if;
+            if Update_Ready then
+               Update_At := Publish;
+               Publish_Snapshot ("intel-gpu: stable-root update beginning; context disabled");
+               Boot_Updates.Publish_Boot_Tables
+                 (Submission_State, Boot_Update_Candidate, Update_Mappings, Update_Ready);
+            end if;
+         end if;
+         Publish_Snapshot ("intel-gpu: stable-root update published=" &
+           Boolean'Image (Update_Ready) & "; alias=00208000; backing retained");
+         if Update_Ready then
+            Update_At := Invalidate;
+            Publish_Snapshot ("intel-gpu: native TLB invalidation beginning (PPGTT updated)");
+            TLB_Probe.Execute (TLB_Attempt, TLB_Status);
+            if TLB_Status = TLB_Probe.Complete then Update_At := Finished; end if;
+         end if;
+         TLB_Armed := False;
+         if TLB_Status /= TLB_Probe.Complete then
+            Context_Pool.Fail (Contexts); Runtime_Fault := True;
+         end if;
+      end if;
+      Publish_Snapshot ("intel-gpu: boot VM update stage=" & Update_Stage'Image (Update_At));
+      if Update_At = Prechecks then
+         Publish_Snapshot ("intel-gpu: boot VM gates held=" & Boolean'Image (Update_Held) &
+           " disable=" & Wait_Name (Wait_Status) & " barrier=" & Completion_Name (Barrier_Completed));
+         Publish_Snapshot ("intel-gpu: boot VM gates pixels=" & Boolean'Image (Pixels_Match) &
+           " image=" & Boolean'Image (Image_Read) & " L3=" & Boolean'Image (L3_Matches) &
+           " URB=" & Natural'Image (L3_URB_KiB));
+      end if;
+      Publish_Snapshot ("intel-gpu: native TLB invalidation " &
+        (case TLB_Status is
+           when TLB_Probe.Rejected => "REJECTED",
+           when TLB_Probe.Complete => "COMPLETE",
+           when TLB_Probe.Ownership_Lost => "OWNERSHIP-LOST",
+           when TLB_Probe.Write_Failed => "WRITE-FAILED",
+           when TLB_Probe.Read_Failed => "READ-FAILED",
+           when TLB_Probe.Invalid_Clock => "INVALID-CLOCK",
+           when TLB_Probe.Timed_Out => "TIMED-OUT") & "; backing retained");
+      if not Runtime_Fault and then Update_Ready and then TLB_Status = TLB_Probe.Complete then
+         Context_Wait.Execute
+           (Contexts, Render_Context_ID, Context_Life.Enable, 1_000_000, Resume_Status);
+         if Resume_Status = Context_Wait.Complete then
+            Context_Pool.Release_Work (Contexts, Render_Context_ID, Update_Released);
+            if Update_Released then
+               Update_Held := False;
+               Initial_Completion.Arm (Alias_Attempt, Alias_Completed, 5, 6);
+               if Alias_Completed = Initial_Completion.Ready then
+                  declare
+                     WM : constant Unsigned_32 := Context_Input.Read_WM_Chicken2;
+                     Segment : constant Intel_GPU_ADLN_Context_Init.Segment :=
+                       Intel_GPU_ADLN_Context_Init.Build_Batch
+                         (Live_Backing_Owner and then WM /= Unsigned_32'Last,
+                          WM, 6, 16#208000#);
+                  begin
+                     Live_Ring.Append (Live_Channel, Segment, Alias_Published);
+                  end;
+                  if Alias_Published then
+                     Context_Pool.Notify_Work (Contexts, Render_Context_ID, True, Alias_Notify);
+                     if Alias_Notify = Context_Driver.Queued then
+                        Initial_Completion.Wait (Alias_Attempt, 1_000_000, Alias_Completed);
+                     end if;
+                  end if;
+               end if;
+            end if;
+         end if;
+         -- Best effort disable even when the resumed work failed. No backing
+         -- is recycled, and failure permanently closes the context below.
+         Context_Wait.Execute
+           (Contexts, Render_Context_ID, Context_Life.Disable, 1_000_000, Final_Disable);
+         if Alias_Completed /= Initial_Completion.Complete or else
+           Final_Disable /= Context_Wait.Complete
+         then Context_Pool.Fail (Contexts); Runtime_Fault := True; end if;
+      end if;
+      Live_Ring.Fail (Live_Channel);
+      Completed_Probe_Pixels := Pixel_View (Submission_State);
+      Publish_Snapshot ("intel-gpu: completed pixel view ready=" &
+        Boolean'Image (Completed_Probe_Pixels.Ready) & " (NOT exported)");
+      Publish_Snapshot ("intel-gpu: updated-VM batch published=" & Boolean'Image (Alias_Published) &
+        " completion=" & Completion_Name (Alias_Completed) &
+        " disable=" & Wait_Name (Final_Disable) & "; alias=00208000");
+      Publish_Snapshot ("intel-gpu: L3 ring fresh=" & Boolean'Image (L3_Fresh) &
+        " published=" & Boolean'Image (L3_Published) &
+        " notify=" & Notify_Name (L3_Notify) & " completion=" & Completion_Name (L3_Completed));
+      Publish_Snapshot ("intel-gpu: L3 allocation read=" & Boolean'Image (L3_Read) &
+        " raw=" & Hex (L3_Value) & " fields-match=" & Boolean'Image (L3_Matches) &
+        " (before draw)");
+      Publish_Snapshot ("intel-gpu: L3 parameters=" & Hex (L3_Parameters) &
+        " admitted URB KiB=" & Natural'Image (L3_URB_KiB));
+      Publish_Snapshot ("intel-gpu: draw target-clear=" & Boolean'Image (Draw_Target_Clear) &
+        " published=" & Boolean'Image (Draw_Published) &
+        " notify=" & Notify_Name (Draw_Notify) & " completion=" & Completion_Name (Draw_Completed));
+      Publish_Snapshot ("intel-gpu: draw pixels read=" & Boolean'Image (Pixels_Read) &
+        " center=" & Hex (Pixels (0)) & " match=" & Boolean'Image (Pixels_Match));
+      Publish_Snapshot ("intel-gpu: draw corners=" & Hex (Pixels (1)) & "/" &
+        Hex (Pixels (2)) & "/" & Hex (Pixels (3)) & "/" & Hex (Pixels (4)));
+      Publish_Snapshot ("intel-gpu: draw image read=" & Boolean'Image (Image_Read) &
+        " nonzero=" & Natural'Image (Image_Nonzero) & " word-hash=" & Hex (Image_Hash));
       Publish_Snapshot ("intel-gpu: private batch read=" & Boolean'Image (Batch_Read) &
         " value=" & Unsigned_64'Image (Batch_Value) &
         "; expected=" & Unsigned_32'Image (Intel_GPU_Submission_Image.Batch_Probe_Value));
       Publish_Snapshot ("intel-gpu: initialization GPU marker " &
         Completion_Name (Completed) & "; disable " &
-        Wait_Name (Wait_Status) & " (NO drawing batch submitted)");
+        Wait_Name (Wait_Status));
       Publish_Snapshot ("intel-gpu: initialization marker value=" &
         Unsigned_64'Image (Initial_Completion.Last_Marker (Initial_Attempt)) & " reads=" &
         Natural'Image (Initial_Completion.Marker_Reads (Initial_Attempt)));
@@ -851,7 +2211,14 @@ procedure Main is
       Publish_Snapshot ("intel-gpu: repeated marker value=" &
         Unsigned_64'Image (Initial_Completion.Last_Marker (Repeat_Attempt)) &
         " reads=" & Natural'Image (Initial_Completion.Marker_Reads (Repeat_Attempt)) &
-        " tail=" & Unsigned_32'Image (Live_Ring.Tail) & " (NO drawing batch submitted)");
+        " tail=" & Unsigned_32'Image (Repeat_Tail));
+      Publish_Snapshot ("intel-gpu: standalone barrier published=" & Boolean'Image (Barrier_Published) &
+        " notify=" & Notify_Name (Barrier_Notify) &
+        " completion=" & Completion_Name (Barrier_Completed));
+      Publish_Snapshot ("intel-gpu: standalone barrier marker=" &
+        Unsigned_64'Image (Initial_Completion.Last_Marker (Barrier_Attempt)) &
+        " reads=" & Natural'Image (Initial_Completion.Marker_Reads (Barrier_Attempt)) &
+        " tail=" & Unsigned_32'Image (Live_Ring.Tail (Live_Channel)) & " (before PPGTT update)");
       Publish_Snapshot ("intel-gpu: repeat saved-context sampled=" & Boolean'Image (Saved_OK) &
         " head=" & Hex (Saved_Head) & " tail=" & Hex (Saved_Tail) & " (NOT live engine pointers)");
       Publish_Snapshot ("intel-gpu: repeat H2G sampled=" & Boolean'Image (H2G_OK) &
@@ -867,7 +2234,7 @@ procedure Main is
    begin
       if not Context_Started or else Runtime_Fault then return; end if;
       if not Context_Owner then
-         Context_Driver.Fail (Render_Context); Runtime_Fault := True;
+         Context_Pool.Fail (Contexts); Runtime_Fault := True;
          Publish_Snapshot ("intel-gpu: context owner lost; backing retained");
          return;
       end if;
@@ -875,11 +2242,11 @@ procedure Main is
          Poll_CT_Reply (Item, Status);
          exit when Status = CT_Receive.Empty;
          if Status /= CT_Receive.Received or else Item.Length = 0 then
-            Context_Driver.Fail (Render_Context); Runtime_Fault := True;
+            Context_Pool.Fail (Contexts); Runtime_Fault := True;
             Publish_Snapshot ("intel-gpu: context receive failed; backing retained");
             return;
          end if;
-         Context_Driver.Dispatch (Render_Context,
+         Dispatch_Context_Event (
            Context_Event.Words (Item.Payload (1 .. Item.Length)), Item.Fence, Dispatched);
          if Dispatched in Context_Driver.Faulted | Context_Driver.Rejected then
             Runtime_Fault := True;
@@ -1167,6 +2534,7 @@ begin
    end if;
    -- Capture identity only after sender/protocol/resource admission. Later
    -- IPC requests must not become the source of firmware startup identity.
+   Capture_Probe_Recipient;
    PCI_Device := Unsigned_16 (Shift_Right (Request.words (1), 16) and 16#FFFF#);
    PCI_Revision := Unsigned_8 (Shift_Right (Request.words (1), 32) and 16#FF#);
    debugPrint ("intel-gpu: GGC=" & Hex (Unsigned_32 (GGC)) &
@@ -1414,6 +2782,9 @@ begin
          begin
             debugPrint ("intel-gpu: native reset " & Reset_Result & ASCII.LF);
             Publish_Snapshot ("intel-gpu: native reset " & Reset_Result);
+            Publish_Snapshot ("intel-gpu: CS timestamp Hz=" &
+              Unsigned_32'Image (Intel_GPU_Native_Reset.Timestamp_Hz) &
+              " (0=unavailable; read-only observation)");
             if Intel_GPU_Native_Reset.Last_Succeeded then
                -- Initial boot only: the static display claim excludes other
                -- software writers. Keep firmware scanout, clocks and buffers;
@@ -1786,12 +3157,45 @@ begin
                   end;
                end if;
                if Firmware_Mapped then
+                  -- Bootstrap is serialized: no non-logger IPC request remains
+                  -- in flight here. Allocate before preparing any context PTEs.
+                  Submission_Allocation := Buffer_Memory.Acquire
+                    (Buffer_Pool, Submission_Slot,
+                     Intel_GPU_Buffer_Backing.Page_Count (Submission_Bytes / 4096));
+                  if Submission_Allocation.Ready and then
+                    (Submission_Allocation.CPU_Address /= Submission_CPU or else
+                     Submission_Allocation.Bytes /= Submission_Bytes)
+                  then
+                     -- Unexpected layout is retained but never published.
+                     Submission_Allocation := (Ready => False);
+                  end if;
+                  Publish_Snapshot ("intel-gpu: context buffer zeroed-retained=" &
+                    Boolean'Image (Submission_Allocation.Ready));
+                  Publish_Snapshot ("intel-gpu: context allocation stage=" &
+                    Buffer_Memory.Allocation_Stage'Image (Buffer_Memory.Last_Stage (Buffer_Pool)));
+                  if Submission_Allocation.Ready then
+                     declare
+                        Ticket : Application_Buffers.Ticket;
+                        Consumed : Boolean;
+                     begin
+                        Application_Buffers.Reserve_Private (Application_Buffer_State, Ticket);
+                        if Ticket /= 0 then
+                           Boot_Update_Allocation := Buffer_Memory.Acquire
+                             (Buffer_Pool, Intel_GPU_Buffer_Backing.Slot (Ticket), 4);
+                           Application_Buffers.Finish_Private
+                             (Application_Buffer_State, Ticket, Consumed);
+                           if not Consumed then Boot_Update_Allocation := (Ready => False); end if;
+                        end if;
+                        Publish_Snapshot ("intel-gpu: update tables zeroed-retained=" &
+                          Boolean'Image (Boot_Update_Allocation.Ready));
+                     end;
+                  end if;
                   declare
                      Backing : constant Intel_GPU_ADS_Buffer.Prepared_Backing := Intel_GPU_ADS_Buffer.Prepared;
                      Log_Backing : constant Intel_GPU_Firmware_Buffer.Prepared_Log_Buffer := Intel_GPU_Firmware_Buffer.Prepared_Log;
                      CT_Backing : constant Intel_GPU_Firmware_Buffer.Prepared_CT_Buffer := Intel_GPU_Firmware_Buffer.Prepared_CT;
-                     Submission_Backing : constant Intel_GPU_Firmware_Buffer.Prepared_Submission_Buffer :=
-                       Intel_GPU_Firmware_Buffer.Prepared_Submission
+                     Submission_Backing : constant Submission_View :=
+                       Submission_Region
                          (Intel_GPU_Submission_Backing.Context_Image);
                      Admitted : Boolean;
                      Selected : Unsigned_64;
@@ -1867,15 +3271,15 @@ begin
                         end if;
                         if Submission_Mapped then
                            declare
-                              Page : constant Intel_GPU_Firmware_Buffer.Prepared_Submission_Buffer :=
-                                Intel_GPU_Firmware_Buffer.Prepared_Submission
+                              Page : constant Submission_View :=
+                                Submission_Region
                                   (Intel_GPU_Submission_Backing.Engine_Status_Page);
                            begin
                               if Page.Ready then
                                  Active_Runtime := Engine_Status_Buffer;
                                  Runtime_DMA := Page.DMA_Address;
                                  Runtime_CPU := Page.CPU_Address;
-                                 Runtime_Bytes := Page.Region_Bytes;
+                                 Runtime_Bytes := Page.Bytes;
                                  Runtime_Bound := False;
                                  Runtime_Publication.Publish_Available
                                    (Engine_Status_Attempt, Runtime_Ledger, Runtime_DMA,
@@ -2040,6 +3444,12 @@ begin
                                  use type RCS_Startup.Result;
                               begin
                                  RCS_Start_Active := True;
+                                 Publish_Snapshot ("intel-gpu: RCS preflight hwsp=" &
+                                   Hex64 (Engine_Status_GPU_Start) & " mapped=" &
+                                   Boolean'Image (Engine_Status_Mapped));
+                                 Publish_Snapshot ("intel-gpu: RCS context mapped=" &
+                                   Boolean'Image (Submission_Mapped) & " gpu=" &
+                                   Hex64 (Submission_GPU_Start));
                                  RCS_Startup.Start (RCS_Attempt, Engine_Status_GPU_Start, Engine_Result);
                                  RCS_Ready := Engine_Result = RCS_Startup.Ready and then RCS_Start_Owner;
                                  RCS_Start_Active := False;
@@ -2052,6 +3462,11 @@ begin
                                       when RCS_Startup.Readback_Failed => "READBACK-FAILED",
                                       when RCS_Startup.Ready => "READY") &
                                    " (NOT context-registered/submitted)");
+                                 if Engine_Result = RCS_Startup.Rejected then
+                                    Publish_Snapshot ("intel-gpu: RCS rejection=" &
+                                      RCS_Startup.Rejection_Reason'Image
+                                        (RCS_Startup.Rejection (RCS_Attempt)));
+                                 end if;
                                  if RCS_Ready then Start_Render_Context; end if;
                               end;
                            end if;
@@ -2073,17 +3488,83 @@ begin
    loop
       Service_Context_Events;
       declare
+         New_Fault : Boolean;
+      begin
+         Context_Drain.Tick (Contexts, Drain_State, New_Fault);
+         if New_Fault then
+            Publish_Snapshot ("intel-gpu: retired context quarantined; backing retained");
+         end if;
+      end;
+      declare
          Receipt : aliased CompletionEntry;
          Unused : Unsigned_64;
          Found : Boolean;
          Activity : Activity_Result;
+         Consumed : Boolean;
          Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
-         pragma Unreferenced (Activity, Unused);
+         pragma Unreferenced (Activity);
       begin
          Unused := Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address);
+         if Unused /= 0 and then
+           (Application_Pending /= 0 or Private_Pending /= 0 or Update_Pending /= 0) then
+            Buffer_Memory.Complete (Buffer_Pool, Receipt, Consumed);
+         end if;
+         if Application_Pending /= 0 or Private_Pending /= 0 or Update_Pending /= 0 then
+            Buffer_Memory.Tick (Buffer_Pool);
+            if not Buffer_Memory.Pending (Buffer_Pool) then
+               if Update_Pending /= 0 then
+                  Finish_VM_Update (Buffer_Memory.Result (Buffer_Pool));
+               elsif Private_Pending /= 0 then
+                  Finish_Private_Context (Buffer_Memory.Result (Buffer_Pool));
+               else
+                  Finish_Application_Buffer (Buffer_Memory.Result (Buffer_Pool));
+               end if;
+            end if;
+         end if;
          Intel_GPU_Diagnostics.Tick;
+         Application_Maps.Poll (Application_Map_State);
          Poll_Service_Request (Sender, Request, Found);
-         if Found then debugPrint ("intel-gpu: unsupported request ignored" & ASCII.LF); end if;
+         if Found and then Request.tag.label = Native_GPU_Probe_Protocol.Label then
+            Handle_Probe (Sender, Request);
+         elsif Found and then Request.tag.label = Application_Buffers.Label then
+            Handle_Application_Buffer (Sender, Request);
+         elsif Found and then Request.tag.label = Application_Maps.Map_Label then
+            Handle_Application_Map (Sender, Request);
+         elsif Found and then Request.tag.label = Application_Binding.Bind_Label then
+            Handle_Application_Bind (Sender, Request);
+         elsif Found and then Request.tag.label = Prepare_Context_Label then
+            Handle_Context_Preparation (Sender, Request);
+         elsif Found and then Request.tag.label = Register_Context_Label then
+            Handle_Context_Registration (Sender, Request);
+         elsif Found and then Request.tag.label = Submit_Label then
+            Handle_Application_Submission (Sender, Request);
+         elsif Found and then Request.tag.label = Application_Binding.Update_Label then
+            Handle_VM_Update (Sender, Request);
+         elsif Found and then Request.tag.label = Intel_GPU_Render_Control.Label then
+            Handle_Render_Control (Sender, Request);
+         elsif Found then
+            declare
+               package DQ renames Intel_GPU_Device_Query;
+               Data : constant DQ.Snapshot :=
+                 (Device => PCI_Device, Revision => PCI_Revision,
+                  Topology_Observed => Intel_GPU_Native_Reset.ADS_Observed and then
+                    Intel_GPU_Native_Reset.ADS_Execution_Units.Valid,
+                  DSS_Mask => Intel_GPU_Native_Reset.ADS_Execution_Units.DSS_Mask,
+                  EU_Mask => Intel_GPU_Native_Reset.ADS_Execution_Units.EU_Mask);
+               Response : constant DQ.Words := DQ.Respond
+                 (Data, Request.tag.label, Request.tag.length, Request.tag.flags,
+                  Request.tag.reserved,
+                  [Request.words (0), Request.words (1),
+                   Request.words (2), Request.words (3)],
+                  Timestamp_Hz => Intel_GPU_Native_Reset.Timestamp_Hz);
+               Reply_Message : Message := NULL_MESSAGE;
+            begin
+               Reply_Message.tag := (Request.tag.label, 4, 0, 0);
+               Reply_Message.words :=
+                 [Response (0), Response (1), Response (2), Response (3)];
+               Unused := reply (Sender, Reply_Message);
+            end;
+         end if;
          Activity := Wait_For_Activity_Until
            (if Now < Unsigned_64'Last - 10 then Now + 10 else Now);
       end;

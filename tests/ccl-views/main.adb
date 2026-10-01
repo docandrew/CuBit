@@ -166,6 +166,19 @@ begin
    Check ("[1, 2 + 3, 4 * 5]", Basic);
    Check ("LET xs = [10, 20, 30] IN length(xs) + at(xs, 2) END", Basic);
    Value_Is ("length([1, 2, 3])", 3);
+   --  Typed empty lists and literals longer than one syntax node's chunk.
+   Check ("(list-of Integer)");
+   Check ("[1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18]");
+   Value_Is ("length(list-of(Integer))", 0);
+   Value_Is ("length([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])", 18);
+   Check ("(type C (record (a Integer) (s String))) 1");
+   Check ("(type C (record (a Integer) (s String))) [(C 1 ""x"") (C 2 ""y"")]");
+   Check ("(type R (record (xs (List Integer)))) (R (list-of Integer))");
+   Check ("(type Priority (range 1 10)) (type Neg (range -5 -1)) " &
+          "(type L (record (p Priority) (n Neg))) (L 3 -2)");
+   Check ("TYPE Small = RANGE 0 TO 3" & ASCII.LF & "1", Basic);
+   Check ("(type Launch (record (name String) (after (List Launch)))) " &
+          "(Launch ""b"" [(Launch ""a"" (list-of Launch))])");
    Value_Is ("at([7, 8, 9], 3) - 1", 8);
    Reject ("[1, 2");
    Reject ("[1 2]");
@@ -206,6 +219,26 @@ begin
           "scale(10, [1, 2])", Basic);
    Value_Is ("FUNCTION total(k AS Integer, xs AS LIST(Integer)) AS Integer RETURN sum(each(FUNCTION(n AS Integer) n * k, xs)) END " &
              "total(10, [1, 2])", 30);
+   --  Strings and list builtins, round 2: hyphenated names are ordinary calls.
+   Check ("(join "", "" (sort (split """" ""pear apple fig"")))");
+   Check ("(starts-with ""ap"" (lower (trim "" APPLE "")))");
+   Check ("join("", "", sort-by(FUNCTION(s AS String) length(s), split("" "", ""pear fig apple"")))", Basic);
+   Check ("parse-int(replace("","", """", ""1,234""))", Basic);
+   Value_Is ("parse-int(replace("","", """", ""1,234"")) + 1", 1235);
+   Value_Is ("count(FUNCTION(w AS String) starts-with(""a"", w), split("""", ""an apple a day""))", 3);
+   Value_Is ("max(reverse([3, 9, 4]))", 9);
+   --  Untyped parameters print as written in both dialects.
+   Check ("(each (fn (n) (* n n)) [1 2 3])");
+   Check ("each(FUNCTION(w) length(w), split("""", ""a bb ccc""))", Basic);
+   Check ("fold(FUNCTION(acc, n) acc + n, 0, range(1, 10))", Basic);
+   Value_Is ("fold(FUNCTION(acc, n) acc + n, 0, range(1, 10))", 55);
+   --  Pipelines: each stage takes the piped value last; printed as written.
+   Check ("(->> (range 1 20) (where (fn (n) (= (mod n 3) 0))) sum)");
+   Check ("(->> ""hello"" upper reverse)");
+   Check ("range(1, 20) | where(FUNCTION(n) n MOD 3 = 0) | sum", Basic);
+   Check ("split("""", ""a bb c"") | sort-by(FUNCTION(w) length(w)) | first(2) | length", Basic);
+   Value_Is ("range(1, 20) | where(FUNCTION(n) n MOD 3 = 0) | sum", 63);
+   Value_Is ("[3, 1, 2] | sort | reverse | first(1) | sum", 3);
    Reject ("1 <");
    Reject ("1 AND");
    declare

@@ -156,6 +156,58 @@ memory in 0xFFFF_8000_0000_0000 to 0xFFFF_8FFF_FFFF_FFFF.
 
 CuBit Memory Map
 ----------------
+
+CPU virtual addresses below use the current 48-bit canonical address model.
+Boundaries in this diagram are exclusive upper bounds; sizes are not to scale.
+Gaps are omitted, and named regions are not necessarily fully backed by RAM.
+
+```text
+                       CPU VIRTUAL ADDRESS SPACE
+  0xFFFF_FFFF_FFFF_FFFF +-----------------------------------------------+
+                        | Kernel image (top 2 GiB)                     |
+  0xFFFF_FFFF_8000_0000 +-----------------------------------------------+
+                        : Other higher-half space                     :
+  0xFFFF_9000_0000_0000 +-----------------------------------------------+
+                        | Physical direct-map window (16 TiB)         |
+                        | Kernel bootstrap stack is within this map   |
+  0xFFFF_8000_0000_0000 +-----------------------------------------------+
+                        | Noncanonical hole (not usable addresses)    |
+  0x0000_8000_0000_0000 +-----------------------------------------------+
+                        | User stacks grow downward from this bound   |
+                        : Other user-space regions / gaps             :
+  0x0000_7800_0000_0000 +-----------------------------------------------+
+                        | PROPOSED device-driver aperture (8 TiB)     |
+                        | Per-process; GPU and other device mappings  |
+                        | Separate MMIO / DMA RAM / framebuffer areas |
+                        | Guards and explicit cache policies required |
+  0x0000_7000_0000_0000 +-----------------------------------------------+
+                        :                                             :
+  0x0000_5900_0000_0000 +-----------------------------------------------+
+                        | Owned anonymous memory (1 TiB)              |
+  0x0000_5800_0000_0000 +-----------------------------------------------+
+                        :                                             :
+  0x0000_4010_0000_0000 +-----------------------------------------------+
+                        | Received memory grants (currently 64 GiB)   |
+  0x0000_4000_0000_0000 +-----------------------------------------------+
+                        : Application images, heaps, legacy mappings  :
+  0x0000_0000_0000_0000 +-----------------------------------------------+
+```
+
+The device-driver aperture is **proposed, not yet kernel-enforced**. The Intel
+bootstrap buffer arena already starts at its lower boundary; register and
+firmware mappings still use legacy low addresses. Adoption requires a shared
+layout contract and reservation checks in ELF loading and mapping/allocation
+paths. Reserving virtual space allocates no RAM and grants no device authority.
+Separate driver processes can use the same layout; multiple devices in one
+process need disjoint suballocations.
+
+This diagram is not the GPU or IOMMU address map. GPU GGTT/PPGTT addresses and
+device DMA addresses are independent of CPU virtual addresses. Contiguous
+virtual buffers may use scattered physical blocks, including aligned 2 MiB
+blocks; large-page mappings require support and suitable alignment on each
+side. See [GPU device lifecycle](docs/intel-gpu-device-lifecycle.md) for the
+mapping, backing-lifetime and migration requirements.
+
 Note that due to the x86-64 ABI, the kernel must be linked in the top 2GiB of
 memory when using mcmodel=kernel. Therefore, our page tables also
 need a mapping for 0xFFFF_FFFF_8XXX_XXXX -> 0x0000_0000_0XXX_XXXX.

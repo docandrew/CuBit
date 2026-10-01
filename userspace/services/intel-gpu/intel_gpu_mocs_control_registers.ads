@@ -13,6 +13,8 @@ package Intel_GPU_MOCS_Control_Registers with SPARK_Mode, Pure is
    type Bits_2 is mod 2 ** 2 with Size => 2;
    type Bits_3 is mod 2 ** 3 with Size => 3;
    type Bits_13 is mod 2 ** 13 with Size => 13;
+   Coherent_Access : constant Bits_1 := 0;
+   Noncoherent_Access : constant Bits_1 := 1;
    type Control_Register is record
       Cacheability : Bits_2 := 0;
       Target_Cache : Bits_2 := 0;
@@ -21,7 +23,8 @@ package Intel_GPU_MOCS_Control_Registers with SPARK_Mode, Pure is
       Reverse_Skip_Caching : Bits_1 := 0;
       Skip_Caching_Control : Bits_3 := 0;
       Page_Fault_Mode : Bits_3 := 0;
-      Snoop_Control : Bits_1 := 0;
+      -- TGL Vol6-5.23 p17: 0 coherent, 1 non-coherent (not enable=1).
+      Snoop_Control : Bits_1 := Coherent_Access;
       Class_Of_Service : Bits_2 := 0;
       Self_Snoop : Bits_2 := 0;
       Reserved_High : Bits_13 := 0;

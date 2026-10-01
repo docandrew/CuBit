@@ -32,7 +32,8 @@ package CCL.Manifests with SPARK_Mode => On is
       Slots_Exhausted, Duplicate_Slot, Invalid_Path, Invalid_Access_Rights,
       Too_Many_Scopes, Duplicate_Scope, Unknown_Stream, Invalid_Stream_Pages,
       Duplicate_Stream, Invalid_Network_Scope, Unknown_Notification,
-      Invalid_Notification_ID);
+      Invalid_Notification_ID, Invalid_Device_Match, Duplicate_Device_Match,
+      Missing_Device_Match, Invalid_Device_Resource, Invalid_Scheduling);
    type Compilation_Result is record
       Success : Boolean := False;
       Diagnostic : Diagnostic_Code := No_Error;
@@ -40,7 +41,7 @@ package CCL.Manifests with SPARK_Mode => On is
       In_Catalog : Boolean := False;
       Expression_Diagnostic : CCL.Language.Diagnostic_Code :=
         CCL.Language.No_Diagnostic;
-      Identity, Capabilities, Access_Scopes, Streams : Section;
+      Identity, Capabilities, Access_Scopes, Streams, Resources : Section;
       Binding_Count : Natural range 0 .. MAX_BINDINGS := 0;
       Bindings : Binding_Array := [others => (others => <>)];
    end record;

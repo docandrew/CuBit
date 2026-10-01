@@ -92,6 +92,52 @@ package body CuBit.Memory_Grants is
       Finish_Creation (rawSlot, reference, success);
    end Create_Via_Capability;
 
+   procedure Create_Forwardable_Via_Capability
+     (slot : CuBit.Messages.CapabilitySlot; localAddr : System.Address;
+      numPages : Natural; readWrite : Boolean;
+      reference : out Grant_Reference; success : out Boolean)
+   is
+      function To_Number is new Ada.Unchecked_Conversion
+        (System.Address, Unsigned_64);
+      Raw : Unsigned_64;
+   begin
+      reference := (slot => 0, generation => 1);
+      success := False;
+      if numPages not in 1 .. 4096 then
+         return;
+      end if;
+      Raw := CuBit.Messages.syscall
+        (CuBit.Messages.SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
+         slot, To_Number (localAddr), Unsigned_64 (numPages),
+         (if readWrite then 3 else 2));
+      if Raw = Unsigned_64'Last then
+         return;
+      end if;
+      Finish_Creation (Raw, reference, success);
+   end Create_Forwardable_Via_Capability;
+
+   procedure Derive_Via_Capability
+     (recipient : CuBit.Messages.CapabilitySlot; parent : Grant_Reference;
+      pageOffset, numPages : Natural; readWrite : Boolean;
+      reference : out Grant_Reference; success : out Boolean)
+   is
+      Raw : Unsigned_64;
+   begin
+      reference := (slot => 0, generation => 1);
+      success := False;
+      if pageOffset > 4095 or else numPages not in 1 .. 4096 then
+         return;
+      end if;
+      Raw := CuBit.Messages.syscall
+        (CuBit.Messages.SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
+         recipient, parent.slot, parent.generation, Unsigned_64 (pageOffset),
+         Unsigned_64 (numPages), (if readWrite then 1 else 0));
+      if CuBit.Grant_References.Valid_Wire (Raw) then
+         reference := CuBit.Grant_References.Decode (Raw);
+         success := True;
+      end if;
+   end Derive_Via_Capability;
+
    procedure Acquire
      (reference     : Grant_Reference;
       expectedOwner : CuBit.Messages.ProcessID;

@@ -1,5 +1,31 @@
 # ADL-N reset and GPU-address ownership
 
+## Render permissions / application setup image (2026-09-30)
+
+Private image: `.build-workspaces/graphics-permissions-ef2lftob/kernel/cubit_live_permissions.img`.
+SHA256: `9f43c07daf990dc53fa19004f2b719d9390000c142ba48a2a40d4a2ae33d3dc8`.
+Extracted `/apps/intel-gpu.drv` matches the freshly built driver byte-for-byte:
+`cfda78abba12c41cf5b13227509f3c6f854821764192694d914577843245fa04`.
+Snapshot records sources and reused service seed binaries; kernel/runtime and
+Intel driver were rebuilt, not all services. Existing frozen images preserved.
+
+Includes explicit twelve-slot render permission initialization and the
+application setup/marker/disable handler. Application admission remains closed,
+so the latter is compiled but not exercised by this image's ordinary boot.
+No writes to the eight additional slots listed in the TGL PRM are enabled.
+
+Build5550, packaging14554 and extracted-driver audit95893 passed. QEMU15535
+passed USB-flash/UEFI/four-CPU Desktop and native Mesa software rendering:
+194673 geometric pixels, animation and close. Logs: `/tmp/cubit-usb-live.j4fow66h`.
+The first test49197 terminated before testing because the private TMPDIR made
+the Unix socket path too long; the successful rerun used `env TMPDIR=/tmp`.
+This is native CuBit software rendering under QEMU, not Intel acceleration.
+
+NUC checkpoints: `render engine settings READY`, draw completion/pixel match,
+`native TLB invalidation COMPLETE`, then `updated-VM batch published=TRUE
+completion=COMPLETE disable=COMPLETE; alias=00208000`. Capture the first failing
+stage if one is absent. No physical result is recorded for this image yet.
+
 ## CT roundtrip NUC image (2026-09-28)
 
 Published `kernel/cubit_n95_ct_roundtrip.img`, SHA256

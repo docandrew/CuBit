@@ -4,6 +4,9 @@ with CCL.Call_Context;
 with CuBit.UI.Widgets;
 
 package body CCL_REPL_View is
+   --  A count without Ada's leading blank.
+   function Image (Value : Natural) return String is
+     (Natural'Image (Value) (2 .. Natural'Image (Value)'Last));
    use CuBit.UI;
    Entry_Height : constant := 48;
    function Type_Name (Kind : CCL.Host_Values.Value_Kind) return String is
@@ -294,7 +297,9 @@ package body CCL_REPL_View is
       if Is_Empty (G.Input) then return; end if;
       Fill_Rect (C, Bounds, Colors.face);
       CuBit.UI.Widgets.Label (C, (Bounds.x, Bounds.y, Bounds.w - 78, 24), Colors,
-        "REPL |" & Natural'Image (Count) & "/16 | fuel 4096");
+        "REPL " & Image (Count) & "/" & Image (CCL.Sessions.Maximum_History) &
+        " | kept " & Image (CCL.Sessions.Kept_Definitions (State.Session)) & " defs, " &
+        Image (CCL.Sessions.Kept_Values (State.Session)) & " values | :env :reset");
       Draw_Button (C, G.Clear, Colors,
         (if State.Capture = Clear_Capture then Button_Pressed else Button_Normal), "Clear");
       CuBit.UI.Widgets.Label (C, (Bounds.x, Bounds.y + 27, Bounds.w, 20), Colors,
@@ -393,4 +398,13 @@ package body CCL_REPL_View is
          end;
       end if;
    end Draw;
+   function Latest_Result (State : View_State) return String is
+      Latest : CCL.Sessions.Submission;
+      Found : Boolean := False;
+   begin
+      if CCL.Sessions.Length (State.Session) > 0 then
+         CCL.Sessions.Recall (State.Session, CCL.Sessions.Length (State.Session), Latest, Found);
+      end if;
+      return (if Found then CCL.Sessions.Result_Image (Latest.Outcome) else "");
+   end Latest_Result;
 end CCL_REPL_View;

@@ -1,5 +1,6 @@
 package body Intel_GPU_RCS_Start is
    use Interfaces;
+   function Rejection (Object : Attempt) return Rejection_Reason is (Object.Reason);
    procedure Start
      (Object : in out Attempt; Status_GPU : Unsigned_64;
       Status : out Result)
@@ -13,11 +14,13 @@ package body Intel_GPU_RCS_Start is
       Values : Words;
    begin
       Status := Rejected;
-      if Object.Started then return; end if;
+      if Object.Started then Object.Reason := Already_Attempted; return; end if;
       Object.Started := True;
-      if Status_GPU = 0 or else Status_GPU mod 4096 /= 0 or else
-        Status_GPU > 16#FEE0_0000# - 4096
-      then return; end if;
+      if Status_GPU = 0 then Object.Reason := Zero_Address; return; end if;
+      if Status_GPU mod 4096 /= 0 then Object.Reason := Unaligned_Address; return; end if;
+      if Status_GPU > 16#FEE0_0000# - 4096 then
+         Object.Reason := Outside_Runtime_Range; return;
+      end if;
       -- Linux v6.16 intel_guc_submission.c setup_hwsp/start_engine:
       -- mask status writes, install GGTT HWSP, disable legacy mode, clear STOP.
       -- Upper sixteen bits are write-enable masks, not register state.

@@ -120,6 +120,38 @@ package Memory_Grants.Loans with Pure, SPARK_Mode is
        (Applied = (Phase (Item'Old) = Closing and Empty (Item'Old))) and
        (if Applied then Phase (Item) = Retired and not Holds_Parent (Item)
         else Item = Item'Old);
+   -- Serialized under the kernel grant lock. The adapter authenticates and
+   -- generation-checks Reference against the actual Parent record, checks the
+   -- parent's forwarding authority, and supplies its true extent/permission.
+   -- This package does not map memory or grant forwarding authority.
+   procedure Open_Forwarding
+     (Scope : in out State; Parent : in out Lifecycle; Identity : Reference;
+      Pages : Page_Count; Access_Mode : Permission;
+      Forwarding : Forwarding_Policy; Applied : out Boolean)
+     with Pre => Is_Valid (Parent),
+       Post => Is_Valid (Parent) and then
+         (if Applied then Phase (Scope) = Accepting and
+            Has_Forwarding_Hold (Parent) and Empty (Scope)
+          else Scope = Scope'Old and Parent = Parent'Old);
+   -- Closing forwarding does not revoke the parent's ordinary acquisition.
+   -- The kernel separately invokes Request_Revocation/Close_Receiver for those
+   -- events, before or after Close_Forwarding, while preserving the forwarding hold.
+   procedure Close_Forwarding
+     (Scope : in out State; Identity : Reference; Applied : out Boolean)
+     with Post => (if Applied then Phase (Scope) = Closing
+                   else Scope = Scope'Old);
+   -- Call only after each child's real unmap and acknowledged shootdown has
+   -- been committed through Finish_Retirement. A user "done" is insufficient.
+   -- Released does not establish GPU quiescence or release physical frames.
+   procedure Release_Forwarding
+     (Scope : in out State; Parent : in out Lifecycle; Identity : Reference;
+      Applied : out Boolean; Result : out Hold_Release_Result)
+     with Pre => Is_Valid (Parent),
+       Post => Is_Valid (Parent) and then
+         (if Applied then Phase (Scope) = Retired and
+            not Has_Forwarding_Hold (Parent)
+          else Scope = Scope'Old and Parent = Parent'Old and
+            Result = Hold_Release_Rejected);
 private
    function Valid (Item : State) return Boolean with Ghost;
    type Loan_Reference is record

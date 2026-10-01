@@ -23,6 +23,10 @@ package body CCL.Configurations with SPARK_Mode => On is
          when Duplicate_Field => return "DUPLICATE_FIELD";
          when Missing_Field => return "MISSING_FIELD";
          when Trailing_Input => return "TRAILING_INPUT";
+         when Invalid_Dependency => return "INVALID_DEPENDENCY";
+         when Invalid_Launch_Mode => return "INVALID_LAUNCH_MODE";
+         when Invalid_Scheduling => return "INVALID_SCHEDULING";
+         when Invalid_Deadline => return "INVALID_DEADLINE";
       end case;
    end Diagnostic_Name;
 
@@ -119,19 +123,67 @@ package body CCL.Configurations with SPARK_Mode => On is
                   end;
                when CCL.VM.Boolean_Value =>
                   Store_Value ((if Value.Result_Value.Boolean then "true" else "false"));
-               when CCL.VM.Variant_Value | CCL.VM.Object_Value | CCL.VM.Resource_Value =>
+               when CCL.VM.Variant_Value | CCL.VM.Object_Value | CCL.VM.Resource_Value |
+                    CCL.VM.Text_Value =>
                   Fail (Invalid_Value);
             end case;
          else Fail (Invalid_Value);
          end if;
       end Setting;
 
+      --  (KEYWORD n) inside a field, as in (budget-us 1500).
+      procedure Keyed_Integer
+        (Keyword : String; Low, High : Integer_64; Code : Diagnostic_Code;
+         Number : out Integer_64)
+      is
+      begin
+         Number := Low;
+         Open_Form (Reader);
+         Read_Symbol (Reader, Name);
+         if not Stopped and then not Matches (Name, Keyword) then Fail (Code); end if;
+         Integer_Field (Low, High, Number);
+         if Result.Diagnostic = Invalid_Value then Result.Diagnostic := Code; end if;
+         Close_Form (Reader);
+      end Keyed_Integer;
+
       procedure Launch is
          Executable : Key_Text;
-         Have_Priority, Have_Network, Have_Role : Boolean := False;
+         Have_Priority, Have_Network, Have_Role, Have_Mode, Have_Device,
+           Have_Scheduling, Have_Deadline : Boolean := False;
          Priority : Integer_64 := 5;
          Approval : Network_Approval := Deny;
          Role : Startup_Role := Application;
+         Item : Launch_Entry;
+         Number : Integer_64;
+
+         procedure Dependency is
+            Target : Key_Text;
+            Found : Launch_Number := 0;
+         begin
+            Read_Key (Target, True);
+            if Stopped then return; end if;
+            --  An earlier entry, named exactly once so the reference is
+            --  unambiguous.
+            for Index in 1 .. Count loop
+               declare
+                  Earlier : Executable_Text renames Result.Plan.Launches (Index).Executable;
+               begin
+                  if Earlier.Data (1 .. Earlier.Length) = Target.Data (1 .. Target.Length) then
+                     if Found /= 0 then Fail (Invalid_Dependency); return; end if;
+                     Found := Index;
+                  end if;
+               end;
+            end loop;
+            if Found = 0 then Fail (Invalid_Dependency); return; end if;
+            for Existing of Item.Dependencies (1 .. Item.Dependency_Total) loop
+               if Existing = Found then Fail (Invalid_Dependency); return; end if;
+            end loop;
+            if Item.Dependency_Total = MAX_DEPENDENCIES then
+               Fail (Invalid_Dependency); return;
+            end if;
+            Item.Dependency_Total := Item.Dependency_Total + 1;
+            Item.Dependencies (Item.Dependency_Total) := Found;
+         end Dependency;
       begin
          if Count = 16 then Fail (Too_Many_Entries); return; end if;
          Read_Key (Executable, True);
@@ -162,18 +214,69 @@ package body CCL.Configurations with SPARK_Mode => On is
                else Fail (Invalid_Role);
                end if;
                Have_Role := True;
+            elsif Matches (Name, "launch") then
+               if Have_Mode then Fail (Duplicate_Field); end if;
+               Read_Symbol (Reader, Name);
+               if Matches (Name, "at-startup") then Item.Mode := At_Startup;
+               elsif Matches (Name, "per-device") then Item.Mode := Per_Device;
+               else Fail (Invalid_Launch_Mode);
+               end if;
+               Have_Mode := True;
+            elsif Matches (Name, "approve-device") then
+               if Have_Device then Fail (Duplicate_Field); end if;
+               Item.Approve_Device := True;
+               Have_Device := True;
+            elsif Matches (Name, "after") then
+               --  (after "a.svc" "b.drv" ...)
+               if Item.Dependency_Total > 0 then Fail (Duplicate_Field); end if;
+               loop
+                  Dependency;
+                  exit when Stopped or else At_Close (Reader) or else At_End (Reader);
+               end loop;
+            elsif Matches (Name, "approve-scheduling") then
+               --  (approve-scheduling realtime (budget-us b) (period-us p))
+               if Have_Scheduling then Fail (Duplicate_Field); end if;
+               Read_Symbol (Reader, Name);
+               if not Stopped and then not Matches (Name, "realtime") then
+                  Fail (Invalid_Scheduling);
+               end if;
+               Keyed_Integer ("budget-us", 1, CCL.Scheduling_Limits.MAX_MICROSECONDS,
+                              Invalid_Scheduling, Number);
+               if not Stopped then Item.Scheduling_Budget := Number; end if;
+               Keyed_Integer ("period-us", 1, CCL.Scheduling_Limits.MAX_MICROSECONDS,
+                              Invalid_Scheduling, Number);
+               if not Stopped then Item.Scheduling_Period := Number; end if;
+               if not Stopped and then not CCL.Scheduling_Limits.Admissible
+                 (Item.Scheduling_Budget, Item.Scheduling_Period)
+               then
+                  Fail (Invalid_Scheduling);
+               end if;
+               Item.Approve_Scheduling := True;
+               Have_Scheduling := True;
+            elsif Matches (Name, "ready-deadline-ms") then
+               if Have_Deadline then Fail (Duplicate_Field); end if;
+               Integer_Field (1, MAX_READY_DEADLINE_MS, Number);
+               if Result.Diagnostic = Invalid_Value then Result.Diagnostic := Invalid_Deadline; end if;
+               if not Stopped then Item.Ready_Deadline_Ms := Ready_Deadline (Number); end if;
+               Item.Has_Ready_Deadline := True;
+               Have_Deadline := True;
             else Fail (Unknown_Declaration);
             end if;
             Close_Form (Reader);
          end loop;
          if not Have_Priority then Fail (Missing_Field); end if;
+         --  A per-device driver exists to receive device resources, and only
+         --  a per-device driver may be granted them.
+         if Item.Mode = Per_Device xor Item.Approve_Device then Fail (Invalid_Launch_Mode); end if;
+         if Item.Mode = Per_Device and then Role /= Application then Fail (Invalid_Role); end if;
          if Stopped then return; end if;
          Count := Count + 1;
          Result.Plan.Launch_Count := Count;
-         Result.Plan.Launches (Count) :=
-           (Executable => (Length => Executable.Length,
-                           Data => Executable.Data (1 .. 64)),
-            Priority => Startup_Priority (Priority), Approval => Approval, Role => Role);
+         Item.Executable := (Length => Executable.Length, Data => Executable.Data (1 .. 64));
+         Item.Priority := Startup_Priority (Priority);
+         Item.Approval := Approval;
+         Item.Role := Role;
+         Result.Plan.Launches (Count) := Item;
       end Launch;
    begin
       Result := (others => <>);

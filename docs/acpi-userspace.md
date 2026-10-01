@@ -20,7 +20,8 @@ interpreter as an intermediate milestone.
 
 `kernel/src/acpi.adb` discovers firmware tables, handles FADT/MADT/MCFG data and
 feeds early platform setup. `parseDSDT` checks the signature but leaves AML
-interpretation as a TODO. SSDT and HPET handling are reported as unsupported.
+interpretation as a TODO. SSDT handling is reported as unsupported. HPET descriptors are now decoded
+through `Firmware_Tables.HPET` for the early kernel timer path.
 Existing address overlays/table walkers are not made safe merely by marking
 their package SPARK On; table admission needs the same explicit raw-address
 boundary and bounded pure parsing approach as the boot memory map.
@@ -178,3 +179,7 @@ This work follows boot-map correctness; it is not part of the current allocator
 proof. SPARK can establish implementation properties under explicit assumptions,
 not that firmware describes real hardware truthfully or that every hardware
 operation is harmless.
+
+The first userspace decoder milestone and concrete authority/event plan are in
+[the ACPI service contract](acpi-service-contract.md); it is hosted groundwork,
+not a running service or complete interpreter.

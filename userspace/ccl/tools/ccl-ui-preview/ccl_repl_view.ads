@@ -33,6 +33,8 @@ package CCL_REPL_View is
    procedure Handle_With_Executor
      (State : in out View_State; Event : View_Event; Bounds : CuBit.UI.Rect;
       Submitted : out Boolean);
+   --  The newest entry's result, as the transcript shows it ("" if none).
+   function Latest_Result (State : View_State) return String;
    procedure Draw
      (State : in out View_State; Canvas : CuBit.UI.Canvas;
       Bounds : CuBit.UI.Rect; Colors : CuBit.UI.Theme);

@@ -889,33 +889,6 @@ procedure main is
       harvestEntries (q, -1);
    end harvestOwner;
 
-   --  Free slot's entries in queue q's dirty arena unwritten (its
-   --  delegation already taken back): every one a scan finds.
-   procedure discardEntries (q : Client_Queue_Index; slot : Handle_Slot) is
-      base : constant System.Address := clientQueues (q).dirty;
-
-      procedure discard (i : Dirty_Index) is
-         entryAt : constant System.Address :=
-           base + Storage_Offset (i * FQ.Dirty_Entry_Bytes);
-         seqWord : Unsigned_32 with Volatile, Import,
-           Address => entryAt + Storage_Offset (FQ.Dirty_Sequence_At);
-         slotWord : Unsigned_32 with Volatile, Import,
-           Address => entryAt + Storage_Offset (FQ.Dirty_Slot_At);
-         sequence : constant Unsigned_32 := seqWord;
-      begin
-         if sequence /= 0 and then sequence mod 2 = 0 and then
-           slotWord = tagOf (slot) and then
-           compareAndSwap (seqWord'Address, sequence, 0)
-         then
-            null;
-         end if;
-      end discard;
-   begin
-      for i in Dirty_Index loop
-         discard (i);
-      end loop;
-   end discardEntries;
-
    --  Take back slot's write delegation: clear its valid word, then harvest.
    procedure recallWrite (slot : Handle_Slot) is
    begin
@@ -3148,11 +3121,19 @@ procedure main is
             --  outcome of the unlink.
             delegate (parked, False);
          end if;
+         --  A handle that outlives this request keeps the inode (the ext3
+         --  orphan list, freed at its last close). A dropped parked handle
+         --  is the file's only holder (checkParked) and is released below
+         --  in this same request, before anything else can run: the inode
+         --  goes with its name, under the unlink's own journal handle, as
+         --  an unheld file's does.
          declare
             object : constant Open_Inodes.Link :=
               Open_Inodes.Object_Of (inodeObjects, (volume, target));
          begin
-            if object /= 0 and then Open_Inodes.Holding (inodeObjects, object) > 0 then
+            if not dropping and then object /= 0 and then
+              Open_Inodes.Holding (inodeObjects, object) > 0
+            then
                holder := Open_Inodes.Holder (inodeObjects, object, 0);
             end if;
          end;
@@ -3171,11 +3152,12 @@ procedure main is
             Open_Inodes.Replace
               (inodeObjects, Open_Inodes.Owner_Index (holder), current);
             for orphan of orphans loop
-               if not recorded and then orphan.number = 0 then
+               if orphan.number = 0 then
                   orphan := (volume, target);
                   orphanCount := orphanCount + 1;
                   recorded := True;
                end if;
+               exit when recorded;
             end loop;
          end;
       end if;
@@ -3185,17 +3167,12 @@ procedure main is
          bumpVersion ((volume, target));
       end if;
       if dropping then
-         --  The file is gone with its name: nothing can read the pages.
-         --  Any other outcome keeps the file, and so its data.
-         if status = Ext2.Remove_Complete and then unlinkedNumber = target then
-            declare
-               q : constant Client_Queue_Count := queueOf (sender);
-            begin
-               if q /= No_Client_Queue then
-                  discardEntries (q, parked);
-               end if;
-            end;
-         else
+         --  Once the name is gone, so is the file: nothing can read the
+         --  pages, and once the handle is released its entries' tags name
+         --  no live handle, so they are never written anywhere (a later
+         --  harvest of the client frees them). A name still there keeps
+         --  the file, and so its data.
+         if unlinkedNumber /= target then
             harvest (parked);
          end if;
          writebackFailed (parked) := False;

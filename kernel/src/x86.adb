@@ -395,11 +395,14 @@ is
     -- TODO: move this to or call this from a separate error-handling packages
     ---------------------------------------------------------------------------
     procedure panic is
-        dummy : exception;
     begin
         panicked := True;
         Asm("int $127", Volatile => True);
-        raise dummy;
+        -- The panic interrupt must not return. If it does, stop locally
+        -- without exception propagation or resuming the failed operation.
+        loop
+            Asm("cli; hlt", Volatile => True);
+        end loop;
     end panic;
 
     ---------------------------------------------------------------------------

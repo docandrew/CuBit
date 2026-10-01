@@ -4,7 +4,7 @@ project Devmgr is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".", "../filesystem", "../xhci", "../intel-gpu", "../../ccl/src", "../../lib/time");
+    for Source_Dirs use (".", "../filesystem", "../xhci", "../intel-gpu", "../../ccl/src", "../../lib/time", "../../mesa/anv");
 
     for Main use ("main.adb");
 
@@ -12,6 +12,7 @@ project Devmgr is
     for Source_Files use ("main.adb", "cpio.ads", "cpio.adb", "ccl.ads",
        "boot_rtc.ads", "boot_rtc.adb", "civil_time.ads", "civil_time.adb",
        "intel_gpu_probe.ads", "intel_gpu_probe.adb",
+       "native_gpu_probe_protocol.ads", "native_gpu_probe_protocol.adb",
        "intel_gpu_resources.ads", "intel_gpu_resources.adb",
        "intel_gpu_reset_pages.ads",
        "intel_gpu_display_pages.ads",
@@ -19,6 +20,10 @@ project Devmgr is
        "intel_gpu_phy_registers.ads",
        "intel_gpu_combo_phy.ads", "intel_gpu_combo_phy.adb",
        "intel_gpu_ads_backing.ads",
+       "intel_gpu_buffer_backing.ads",
+       "intel_gpu_extent_allocator.ads", "intel_gpu_extent_allocator.adb",
+       "intel_gpu_physical_extents.ads", "intel_gpu_physical_extents.adb",
+       "intel_gpu_buffer_reply.ads", "intel_gpu_buffer_reply.adb",
        "intel_gpu_display_claim.ads", "intel_gpu_display_claim.adb",
        "intel_gpu_boot.ads", "intel_gpu_boot.adb",
        "intel_gpu_pci_power.ads", "intel_gpu_pci_power.adb",
@@ -37,6 +42,7 @@ project Devmgr is
        "ccl-secondary_stacks.ads", "ccl-secondary_stacks.adb",
        "ccl-secondary_arrays.ads", "ccl-secondary_arrays.adb",
        "ccl-vm.ads", "ccl-vm.adb",
+       "ccl-text_operations.ads", "ccl-text_operations.adb",
        "ccl-resources.ads", "ccl-resources.adb",
        "ccl-resource_policies.ads", "ccl-resource_policies.adb",
       "ccl-host_values.ads", "ccl-host_values.adb",
@@ -50,6 +56,7 @@ project Devmgr is
        "ccl-objects-values.ads", "ccl-objects-values.adb",
        "ccl-objects-views.ads", "ccl-objects-views.adb",
        "ccl-declarations.ads", "ccl-declarations.adb",
+       "ccl-scheduling_limits.ads",
        "ccl-configurations.ads", "ccl-configurations.adb");
 
     for Runtime ("Ada") use "../../runtime";

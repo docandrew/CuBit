@@ -13,11 +13,11 @@ package body Intel_GPU_GuC_Context_Session is
    begin Life.Fail (Object.Life); end Fail;
    procedure Initialize
      (Object : in out Session; ID : Unsigned_32;
-      GPU_Start, Pin_Bias : Unsigned_64; Fence_Base : Unsigned_16;
+      GPU_Start, Pin_Bias : Unsigned_64; Fence_Base, Fence_Last : Unsigned_16;
       Quantum_Us, Preemption_Us : Unsigned_32; Preempt_To_Idle : Boolean) is
    begin
       if State (Object) /= Life.Fresh then return; end if;
-      Life.Initialize (Object.Life, ID, Fence_Base,
+      Life.Initialize (Object.Life, ID, Fence_Base, Fence_Last,
         Owner_Ready and then Requests.Admissible (ID, GPU_Start, Pin_Bias)
         and then Quantum_Us /= 0 and then Preemption_Us /= 0);
       if State (Object) /= Life.Ready then return; end if;

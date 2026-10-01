@@ -1,5 +1,8 @@
+with Interfaces;
+
 --  Nominal, bounded type descriptions. Products and sums refer only to
---  previously published types: no recursive layouts or forward references.
+--  previously published types, except a list of the declaring type itself
+--  (Complete_Self_List): no recursive layouts or other forward references.
 package CCL.Types with SPARK_Mode is
    Maximum_Name_Length : constant := 32;
    Maximum_Declarations : constant := 32;
@@ -36,7 +39,10 @@ package CCL.Types with SPARK_Mode is
    --  Callable: a function type; Parts (1 .. Count - 1) are its parameter
    --  types and Parts (Count) its result type. Function types are
    --  structural: the same parameters and result give the same type.
-   type Shape is (Primitive, Product, Sum, Resource, Sequence, Callable);
+   --  Bounded: a range subtype of Integer, (type Priority (range 1 10)). Its
+   --  values are Integers; the type constrains the positions (fields,
+   --  payloads, parameters, results) that hold them. Bounds: Low_Of, High_Of.
+   type Shape is (Primitive, Product, Sum, Resource, Sequence, Callable, Bounded);
    --  In a product these are fields; in a sum they are alternatives whose
    --  payload type may itself be a product. Unit is the empty product.
    --  Resource is an opaque live reference, not a constructible record or an
@@ -121,6 +127,33 @@ package CCL.Types with SPARK_Mode is
         else Ref = Invalid_Type and Item = Item'Old);
    function Is_List (Item : Registry; Ref : Type_Reference) return Boolean;
 
+   --  The one forward reference a declaration may make: a list of itself
+   --  (a Launch's (after (List Launch))). The declaration is defined with a
+   --  Unit placeholder in Part; once List_Ref (the list of Ref) exists, the
+   --  part becomes List_Ref. Lists can be empty, so values stay finite; a
+   --  direct self field has no base case and is never allowed.
+   subtype Bound is Interfaces.Integer_64;
+   function Is_Range (Item : Registry; Ref : Type_Reference) return Boolean;
+   function Low_Of (Item : Registry; Ref : Type_Reference) return Bound;
+   function High_Of (Item : Registry; Ref : Type_Reference) return Bound;
+   --  Integer for a range type, otherwise Ref itself.
+   function Base_Of (Item : Registry; Ref : Type_Reference) return Type_Reference;
+   procedure Define_Range
+     (Item : in out Registry; Identifier : Name; Low, High : Bound;
+      Ref : out Type_Reference; Result : out Definition_Result)
+   with Global => null,
+     Post =>
+       (if Result = Defined then Ref = Last (Item) and
+          Last (Item) = Last (Item'Old) + 1
+        else Ref = Invalid_Type and Item = Item'Old);
+
+   procedure Complete_Self_List
+     (Item : in out Registry; Ref : Type_Reference; Part : Component_Index;
+      List_Ref : Type_Reference; Completed : out Boolean)
+   with Global => null,
+     Post => (if Completed then Last (Item) = Last (Item'Old)
+              else Item = Item'Old);
+
    --  The function type taking Parameters and returning Result: an existing
    --  one with the same parts, or a new one named Fn<n> (presented from its
    --  parts, e.g. Function (Integer) Integer).
@@ -159,10 +192,12 @@ package CCL.Types with SPARK_Mode is
 private
    type Definition_Array is array (Declared_Type) of Description;
    type Layout_Array is array (Declared_Type) of Cell_Count;
+   type Bound_Array is array (Declared_Type) of Bound;
    type Registry is record
       Used : Registry_Bound := Unit_Type;
       Definitions : Definition_Array := [others => (others => <>)];
       Layouts : Layout_Array := [others => 0];
+      Lows, Highs : Bound_Array := [others => 0];
    end record;
    function Last (Item : Registry) return Registry_Bound is (Item.Used);
 end CCL.Types;

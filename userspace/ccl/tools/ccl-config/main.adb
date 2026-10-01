@@ -63,13 +63,34 @@ begin
          when Startup_Profile =>
             for Item of Result.Plan.Launches (1 .. Result.Plan.Launch_Count) loop
                declare
+                  function Image (N : Long_Long_Integer) return String is
+                     Text : constant String := N'Image;
+                  begin
+                     return Text (Text'First + 1 .. Text'Last);
+                  end Image;
                   Pri : constant String := Item.Priority'Image;
                begin
-                  Put_Line (Item.Executable.Data (1 .. Item.Executable.Length) &
-                            " pri=" & Pri (Pri'First + 1 .. Pri'Last) &
-                            (if Item.Approval = Approve_Declared
-                             then " network=declared" else "") &
-                            (if Item.Role = Config_Storage then " role=config-storage" else ""));
+                  Put (Item.Executable.Data (1 .. Item.Executable.Length) &
+                       " pri=" & Pri (Pri'First + 1 .. Pri'Last) &
+                       (if Item.Approval = Approve_Declared
+                        then " network=declared" else "") &
+                       (if Item.Role = Config_Storage then " role=config-storage" else ""));
+                  --  Startup-policy fields appear only when set, so existing
+                  --  profiles dump exactly as before.
+                  if Item.Mode = Per_Device then Put (" launch=per-device"); end if;
+                  if Item.Approve_Device then Put (" device=approved"); end if;
+                  for Index in 1 .. Item.Dependency_Total loop
+                     Put ((if Index = 1 then " after=" else ",") &
+                          Image (Long_Long_Integer (Item.Dependencies (Index))));
+                  end loop;
+                  if Item.Approve_Scheduling then
+                     Put (" scheduling=" & Image (Long_Long_Integer (Item.Scheduling_Budget)) &
+                          "/" & Image (Long_Long_Integer (Item.Scheduling_Period)));
+                  end if;
+                  if Item.Has_Ready_Deadline then
+                     Put (" ready-ms=" & Image (Long_Long_Integer (Item.Ready_Deadline_Ms)));
+                  end if;
+                  New_Line;
                end;
             end loop;
       end case;

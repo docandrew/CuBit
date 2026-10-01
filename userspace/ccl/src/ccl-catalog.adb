@@ -630,7 +630,9 @@ is
          Ref : constant CCL.Types.Type_Reference :=
            (case Kind is when CCL.VM.Integer_Value => CCL.Types.Integer_Type,
              when CCL.VM.Boolean_Value => CCL.Types.Boolean_Type,
-             when CCL.VM.Variant_Value | CCL.VM.Object_Value | CCL.VM.Resource_Value => Local);
+             when CCL.VM.Variant_Value | CCL.VM.Object_Value | CCL.VM.Resource_Value => Local,
+             --  Text imports are not linkable yet (Known_Value_Type refuses them).
+             when CCL.VM.Text_Value => CCL.Types.String_Type);
          Expected : constant CCL.Types.Type_Reference :=
            (if Kind = CCL.VM.Resource_Value then CCL.Types.Find (Visible_Types (Schemas), Resource_Name)
             else Schema_Type (Schemas, Key));

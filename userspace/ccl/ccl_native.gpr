@@ -1,6 +1,6 @@
 project CCL_Native is
    for Languages use ("Ada");
-   for Source_Dirs use ("src", "tests/native");
+   for Source_Dirs use ("src", "modules", "tests/native", "../../tests/ccl-module-support", external ("CBOR_ADA_SRC") & "/src");
    for Object_Dir use "build/native";
    for Exec_Dir use "build/native";
    for Main use ("main.adb");
@@ -8,5 +8,10 @@ project CCL_Native is
    package Compiler is
       for Default_Switches ("Ada") use
         ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata");
+      --  The pinned cbor_ada sources warn; keep warnings fatal for ours only.
+      for Switches ("cbor-decoding.adb") use ("-O2", "-gnat2022", "-gnatwa", "-gnata");
+      for Switches ("cbor-encoding.adb") use ("-O2", "-gnat2022", "-gnatwa", "-gnata");
+      for Switches ("cbor-properties.adb") use ("-O2", "-gnat2022", "-gnatwa", "-gnata");
+
    end Compiler;
 end CCL_Native;

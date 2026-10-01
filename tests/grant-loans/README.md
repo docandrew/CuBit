@@ -1,11 +1,27 @@
 # Bounded derived-loan lifetime core
 
 `Memory_Grants.Loans` is a pure SPARK state machine for one forwarding scope
-bound to a generation-checked parent grant. This is a **foundation, not a live
-derived-grant syscall**. The parent grant lifetime and receiver teardown now
-understand a separate kernel forwarding hold; no native caller creates one yet.
-Grant permissions and display mapping behavior remain unchanged. The desktop
-still uses its copying path.
+bound to a generation-checked parent grant. The native forwarding syscall now
+connects it to parent lifetime and receiver teardown through a separate kernel
+forwarding hold. The pure proof does not prove that native adapter.
+Existing grant creation remains nonforwardable by default, and display mapping
+behavior remains unchanged. The desktop still uses its copying path.
+
+`Open_Forwarding`, `Close_Forwarding`, and `Release_Forwarding` join scope
+transitions with the parent's kernel forwarding hold. Opening requires an
+ordinary acquisition and unused forwarding retention; rejection leaves both
+states unchanged. Closing prevents new children but does not itself return
+the parent acquisition. Release checks the stored parent reference, a closed
+empty scope and the retained hold. Children must first finish actual unmap and
+acknowledged shootdown through the native adapter; calling the policy method
+alone is not that evidence. Parent authentication, generation association and
+owner-selected forwarding permission remain mandatory adapter responsibilities.
+
+`parent_scope_test` composes both state machines through revoke/return orderings,
+receiver death, stale identity, child readers and pending shootdown. The joined
+operations live in the invariant-owning package because GNATprove does not
+support this generic child-package instantiation with the parent's invariant.
+No invariant was removed to accommodate the prover.
 
 ```
 nix develop -c make -C kernel test-grant-loans prove-grant-loans
@@ -19,10 +35,21 @@ prohibition on treating borrowed addresses as owned memory.
 
 ## Security and state
 
-The parent owner chooses `No_Forwarding` or `Forward_Once`. This will have to be
-kernel-stored authority; a borrower's unchecked syscall field cannot supply it.
+The parent owner chooses `No_Forwarding` or `Forward_Once`. Native grant creation
+now stores the owner's explicit forwarding opt-in on the kernel grant record;
+invalidation clears it. A borrower's unchecked derivation field must never
+substitute for that stored authority.
 Read access is not permission to delegate a live mapping. This restriction does
 not prevent copying data that a process already has authority to read.
+
+Creation wire flags use bit 0 for writable and bit 1 for forwardable. Unknown
+bits and page counts outside 1..4096 are rejected before argument narrowing.
+The runtime exposes `Create_Forwardable_Via_Capability` as an explicit opt-in;
+ordinary APIs retain flags 0/1. Creation still requires owned source pages and
+rejects received grant mappings. This stores policy only: no native child loan,
+forwarding hold, or derived mapping is created by setting the flag. The native
+adapter and capability-checked syscall now exist; the three-party native fixture
+is in `tests/grant-forward`.
 
 One dedicated kernel parent hold is retained for the whole scope. Child loans
 are nonempty page subranges and cannot add write permission. There are at most
@@ -102,6 +129,36 @@ wakeup experiment. No pixel copies were removed by this lifetime change.
 
 ## Integration obligations before exposing a syscall
 
+Native `Process.IPC.deriveGrant` connects the policy to independent page pins,
+mapping rollback and generation-bound child links. It requires an acquired,
+available, owner-forwardable root grant; children are terminal and only narrow
+the page range and access. It rechecks recipient generation and process closing
+state under `grantLock`. Syscall 122 authenticates the recipient endpoint
+capability before supplying its PID and generation to this internal API.
+
+Native acquisition/return also updates the parent scope's child reader count.
+Revocation closes child admission, and receiver death drains its reader count
+before acknowledged mapping retirement. Parent mapping removal on intermediary
+death leaves independent child pins and the parent hold intact. Final child
+retirement can then release the hold and finish deferred owner teardown. Scope
+tables live outside process records/kernel stacks and reset only on invalidation
+of their associated grant identity. Ordinary-grant regressions do not establish
+these child paths are correct; use the separate three-party native fixture.
+
+`Grant_Page_Installation` is now used by native `Process.IPC.createGrant` for
+the page installation/rollback sequence. A derived adapter can reuse it with
+an authenticated parent source while retaining independent pins on root-owned
+frames. A failed pin retires only the previously mapped prefix; a failed map
+first releases the unpublished pin, then retires that prefix. Publication stays
+outside the transaction and is reached only on full success. Native retirement
+still removes mappings, acknowledges TLB shootdown and only then drops pins.
+
+`mapping_test` injects pin and mapping failures at every position in short
+ranges, plus full 4096-page success and last-page failure. Distinct and aliased
+physical frames exercise per-mapping pin accounting and preserve a simulated
+parent pin. These are hosted callback-order tests, not a proof of page-table
+operations, physical TLB behavior, or the allocator's pin capacity.
+
 1. Authenticate the caller, parent reference and intended recipient through the
    existing endpoint/reply authority rules, checking process generations and
    closing state under the existing lock/lifetime discipline. The pure model
@@ -121,8 +178,8 @@ wakeup experiment. No pixel copies were removed by this lifetime change.
    the state machine introduces no pixel copying.
 5. Parent revocation/owner exit must close associated scopes. Receiver exit
    must retire children before releasing their ancestor hold. The existing
-   `revokeAllGrantsTo` now preserves the parent hold, but it does not yet close
-   associated child scopes (none exist natively). Child mapping pins must
+   `revokeAllGrantsTo` now preserves the parent hold and closes associated child
+   scopes; native owner/intermediary-death coverage is still required. Child mapping pins must
    survive removal of a dead intermediary's mappings. Do not wait for readers
    while holding the global grant spinlock.
 6. Invoke `Finish_Retirement` only after real unmap/shootdown evidence. Release

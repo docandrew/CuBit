@@ -1,3 +1,4 @@
+with CCL.Text_Operations;
 with Interfaces;
 with CCL.Catalog;
 with CCL.VM;
@@ -10,20 +11,27 @@ package CCL.Language with
    SPARK_Mode => On
 is
 
-   MAX_SOURCE_LENGTH : constant := 1_024;
-   MAX_AST_NODES     : constant := 128;
+   MAX_SOURCE_LENGTH : constant := 8_192;
+   MAX_AST_NODES     : constant := 512;
    MAX_NAME_LENGTH   : constant := CCL.Types.Maximum_Name_Length;
    MAX_BINDINGS      : constant := 32;
    MAX_NESTING       : constant := 32;
    MAX_TEXT_BYTES    : constant := CCL.Host_Values.Maximum_Text_Length;
+   --  All string literals of one program together: bounded by its source.
+   MAX_PROGRAM_TEXT  : constant := MAX_SOURCE_LENGTH;
    MAX_FUNCTIONS     : constant := 16;
    MAX_PARAMETERS    : constant := 8;
    --  Enclosing values one anonymous function may capture.
    MAX_CAPTURES      : constant := 4;
    MAX_OBJECT_VALUES : constant := 16;
+   --  Records and variants with payloads that one evaluation builds live in
+   --  a bounded arena: nodes whose components are stored values, never
+   --  pointers (docs/ccl-driver-manifests.md, "Value model").
+   MAX_VALUE_NODES : constant := 512;
+   MAX_VALUE_SLOTS : constant := 2_048;
    --  Lists (docs/ccl-repl.md, "Lists"): elements across all lists of one
    --  evaluation, and elements a result can carry out.
-   MAX_LIST_ELEMENTS : constant := 1_024;
+   MAX_LIST_ELEMENTS : constant := 4_096;
    MAX_LIST_RESULT   : constant := 64;
 
    --  Shared, bounded frontend representation.  Both direct interpretation
@@ -113,6 +121,32 @@ is
         when Ends_With_Builtin => "ends-with", when Index_Of_Builtin => "index-of",
         when Replace_Builtin => "replace", when Split_Builtin => "split",
         when Join_Builtin => "join", when Parse_Int_Builtin => "parse-int");
+   --  The string built-ins with a shared implementation (CCL.Text_Operations),
+   --  which the interpreter and compiled code both call. On a String subject
+   --  first, last, skip, reverse and contains are these; on a list they are
+   --  list built-ins. Split and join produce or take lists.
+   function Is_Text_Operation (Operation : Builtin_Operation) return Boolean is
+     (Operation in Upper_Builtin | Lower_Builtin | Trim_Builtin | Reverse_Builtin |
+        First_Builtin | Last_Builtin | Skip_Builtin | Contains_Builtin |
+        Index_Of_Builtin | Starts_With_Builtin | Ends_With_Builtin |
+        Replace_Builtin | Parse_Int_Builtin);
+   function Text_Operation_Of (Operation : Builtin_Operation)
+     return CCL.Text_Operations.Operation is
+     (case Operation is
+         when Upper_Builtin => CCL.Text_Operations.Upper,
+         when Lower_Builtin => CCL.Text_Operations.Lower,
+         when Trim_Builtin => CCL.Text_Operations.Trim,
+         when Reverse_Builtin => CCL.Text_Operations.Reverse_Text,
+         when First_Builtin => CCL.Text_Operations.First_Chars,
+         when Last_Builtin => CCL.Text_Operations.Last_Chars,
+         when Skip_Builtin => CCL.Text_Operations.Skip_Chars,
+         when Contains_Builtin => CCL.Text_Operations.Contains,
+         when Index_Of_Builtin => CCL.Text_Operations.Index_Of,
+         when Starts_With_Builtin => CCL.Text_Operations.Starts_With,
+         when Ends_With_Builtin => CCL.Text_Operations.Ends_With,
+         when Replace_Builtin => CCL.Text_Operations.Replace,
+         when others => CCL.Text_Operations.Parse_Int)
+     with Pre => Is_Text_Operation (Operation);
    function Builtin_Arity (Operation : Builtin_Operation) return Natural is
      (case Operation is
         when No_Builtin => 0,
@@ -137,6 +171,10 @@ is
    type Parameter is record
       Identifier : Name;
       Kind : Static_Type := Invalid_Type;
+      --  False for an anonymous function's parameter written without a type,
+      --  (fn (x) ...) / FUNCTION(x) ...: the checker infers it from context
+      --  and views print it as written.
+      Declared : Boolean := True;
    end record;
    type Parameter_Array is array (Parameter_Index) of Parameter;
    subtype Capture_Count is Natural range 0 .. MAX_CAPTURES;
@@ -169,8 +207,8 @@ is
       Boolean_Value   : Boolean := False;
       --  Inclusive slice bounds, including the canonical empty slice 1 .. 0.
       --  Unlike independent offset/length fields, no sum can leave storage.
-      Text_First      : Positive range 1 .. MAX_TEXT_BYTES + 1 := 1;
-      Text_Last       : Natural range 0 .. MAX_TEXT_BYTES := 0;
+      Text_First      : Positive range 1 .. MAX_PROGRAM_TEXT + 1 := 1;
+      Text_Last       : Natural range 0 .. MAX_PROGRAM_TEXT := 0;
       Identifier      : Name;
       Pattern         : Name;
       First           : Node_Reference := NO_NODE;
@@ -192,6 +230,10 @@ is
       Calls_Value     : Boolean := False;
       --  Builtin_Form: which builtin; its operands are Arguments.
       Builtin         : Builtin_Operation := No_Builtin;
+      --  A pipeline stage, (->> x (f a)) / x | f(a): its last argument (or
+      --  First, for length and to-string) is the stage before it. Checking
+      --  and evaluation see an ordinary call; views print the pipeline.
+      Piped           : Boolean := False;
    end record;
 
    type Node_Array is array (Node_Index) of Node;
@@ -203,8 +245,8 @@ is
       Function_Count : Natural range 0 .. MAX_FUNCTIONS := 0;
       Functions : Function_Array := [others => (others => <>)];
       Types : CCL.Types.Registry;
-      Text_Bytes_Used : Natural range 0 .. MAX_TEXT_BYTES := 0;
-      Text_Data : String (1 .. MAX_TEXT_BYTES) :=
+      Text_Bytes_Used : Natural range 0 .. MAX_PROGRAM_TEXT := 0;
+      Text_Data : String (1 .. MAX_PROGRAM_TEXT) :=
         [others => Character'Val (0)];
    end record;
 
@@ -216,6 +258,8 @@ is
       Evaluation_Overflow,
       Evaluation_Division_By_Zero,
       Evaluation_Index_Error,
+      --  A computed value outside the range type of its position.
+      Evaluation_Range_Error,
       Evaluation_Text_Storage_Exhausted,
       Evaluation_Object_Storage_Exhausted,
       Host_Import_Required,
@@ -227,7 +271,10 @@ is
       Evaluation_Depth_Exhausted,
       Evaluation_List_Storage_Exhausted,
       --  parse-int on text that is not a decimal integer.
-      Evaluation_Invalid_Number);
+      Evaluation_Invalid_Number,
+      --  A REPL value binding whose value has no literal form to keep
+      --  (too long, or a kind the session cannot store).
+      Session_Value_Not_Kept);
 
    type Diagnostic_Code is
      (No_Diagnostic,
@@ -238,6 +285,8 @@ is
       Expected_Close,
       Expected_Name,
       Invalid_Integer,
+      --  A literal outside the range type of its position.
+      Value_Out_Of_Range,
       Nesting_Too_Deep,
       AST_Full,
       Trailing_Input,
@@ -273,7 +322,6 @@ is
       List_Element_Mismatch,
       Unsupported_List_Element,
       Empty_List_Needs_Type,
-      Too_Many_List_Elements,
       Lambda_Parameter_Needs_Type,
       Lambda_Capture_Unsupported,
       Too_Many_Captures);
@@ -328,6 +376,11 @@ is
      (Result : Analysis_Result;
       Index  : Node_Index) return Node;
 
+   --  A string literal node's text (empty for any other node).
+   function Analysis_Literal
+     (Result : Analysis_Result;
+      Index  : Node_Index) return String;
+
    procedure Analyze
      (Source : String;
       Result : out Analysis_Result);
@@ -365,6 +418,12 @@ is
       List_Values : List_Result_Values := [others => (others => <>)];
       List_Text : Text_Result := (others => <>);
       List_Text_Ends : List_Result_Ends := [others => 0];
+      --  A record or payload variant: its canonical CCL literal, which reads
+      --  back as the same value (for example (Pair 42 "hi")).
+      Has_Literal : Boolean := False;
+      Literal_Type : Static_Type := Invalid_Type;
+      Literal_Type_Name : Name;
+      Literal : Text_Result := (others => <>);
       Fuel_Remaining : Natural := 0;
    end record;
 
@@ -372,6 +431,7 @@ is
      (Item.Status = Succeeded and then Item.Has_Value and then
       not Item.Has_Text and then not Item.Has_Character and then
       not Item.Has_List and then not Item.Has_Function and then
+      not Item.Has_Literal and then
       CCL.Types."=" (Item.Variant_Type, Invalid_Type));
 
    procedure Interpret

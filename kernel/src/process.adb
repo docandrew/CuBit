@@ -648,7 +648,8 @@ package body Process is
           frames.length >= proctab(frameOwner).quota.maxFrames then
             result := Frame_Quota_Full;
             return;
-        elsif Virtmem.tableWalk (To_Integer (mapTo), addrtab(proc.pgTable)) /= 0 then
+        elsif Virtmem.tableWalk
+          (To_Integer (mapTo), addrtab(proc.pgTable), Allow_Big => True) /= 0 then
             result := Mapping_Already_Present;
             return;
         end if;
@@ -2004,7 +2005,8 @@ package body Process is
             return;
         end if;
         lockAddressSpace (pid);
-        if Virtmem.tableWalk (page, addrtab(proctab(pid).pgTable)) /= 0 then
+        if Virtmem.tableWalk
+          (page, addrtab(proctab(pid).pgTable), Allow_Big => True) /= 0 then
             handled := True;
         elsif Page_Admission.Check
           (Unsigned_64 (To_Integer (proctab(pid).stackBottom)),
@@ -2041,7 +2043,8 @@ package body Process is
            Unsigned_64 (To_Integer (addr)), proctab(pid).frames.length,
            proctab(pid).frames.capacity, Natural (proctab(pid).quota.maxFrames));
         if admission = Page_Admission.Admitted and then
-           Virtmem.tableWalk (page, addrtab(proctab(pid).pgTable)) /= 0
+           Virtmem.tableWalk
+             (page, addrtab(proctab(pid).pgTable), Allow_Big => True) /= 0
         then
             -- A sibling thread mapped it first.
             unlockAddressSpace (pid);

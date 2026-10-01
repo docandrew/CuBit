@@ -275,6 +275,7 @@ package body Syscall.IPC is
                               arg1      : Unsigned_64;
                               arg2      : Unsigned_64;
                               retain    : Boolean;
+                              largePage : Boolean;
                               ceiling   : Unsigned_64;
                               retval    : out Unsigned_64) with
         SPARK_Mode => Off   -- generic instantiation
@@ -296,6 +297,8 @@ package body Syscall.IPC is
 
         procedure mapPage is new Virtmem.mapPage
             (BuddyAllocator.allocFrame);
+        procedure mapBigPage is new Virtmem.mapBigPage
+            (BuddyAllocator.allocFrame);
     begin
         retval := reterr;
 
@@ -309,8 +312,19 @@ package body Syscall.IPC is
         targetPID := Process.ProcessID (arg0);
         order := BuddyAllocator.Order (arg1);
         virtBase := Virtmem.VirtAddress (arg2);
-        if Memory_Grants.Overlaps_Received_Region
-          (arg2, Memory_Grants.Page_Count (2 ** Natural (order)))
+        -- Explicit driver-private 2 MiB mode. No implicit promotion of memory
+        -- whose caller expects subpage grants. Keep the entire range canonical.
+        if arg2 mod Unsigned_64 (Virtmem.PAGE_SIZE) /= 0 or else
+          arg2 >= 16#0000_8000_0000_0000# or else
+          (2 ** Natural (order)) * Unsigned_64 (Virtmem.PAGE_SIZE) >
+            16#0000_8000_0000_0000# - arg2 or else
+          (largePage and then
+            (arg1 /= 9 or else arg2 mod 16#20_0000# /= 0))
+        then
+            return;
+        end if;
+        if Memory_Grants.Overlaps_Received_Bytes
+          (arg2, (2 ** Natural (order)) * Unsigned_64 (Virtmem.PAGE_SIZE))
           or else Owned_Memory_Layout.Conflicts
             (arg2, (2 ** Natural (order)) * Unsigned_64 (Virtmem.PAGE_SIZE))
         then
@@ -356,6 +370,8 @@ package body Syscall.IPC is
         dmaPhys := Virtmem.V2P (dmaAddr);
         declare
             numPages : constant Natural := 2 ** Natural (order);
+            mappingStep : constant Natural := (if largePage then 512 else 1);
+            numMappings : constant Natural := numPages / mappingStep;
         begin
             -- DMA is still userspace-owned memory.  Tag every frame to the
             -- driver so it may grant a deliberately selected subrange while
@@ -381,8 +397,19 @@ package body Syscall.IPC is
             end loop;
 
             Process.lockAddressSpace (targetPID);
-            for i in 0 .. numPages - 1 loop
-                mapPage (
+            for i in 0 .. numMappings - 1 loop
+                -- mapPage permits replacement for privileged callers. DMA
+                -- allocation must not replace an existing target mapping.
+                ok := Virtmem.tableWalk
+                  (virtBase + Virtmem.VirtAddress (i * Virtmem.PAGE_SIZE),
+                   Process.addrtab (targetPID), Allow_Big => True) = 0;
+                if ok then
+                  if largePage then
+                    mapBigPage
+                      (dmaPhys, virtBase, Virtmem.PG_USERDATA,
+                       Process.addrtab (targetPID), ok);
+                  else
+                    mapPage (
                     phys    => dmaPhys +
                         Virtmem.PhysAddress (i * Virtmem.PAGE_SIZE),
                     virt    => virtBase +
@@ -390,6 +417,8 @@ package body Syscall.IPC is
                     flags   => Virtmem.PG_USERDATA,
                     myP4    => Process.addrtab (targetPID),
                     success => ok);
+                  end if;
+                end if;
 
                 if not ok then
                     print ("ALLOC_DMA: map fail pg ");
@@ -398,10 +427,17 @@ package body Syscall.IPC is
                         for page in 0 .. mappedPages - 1 loop
                             Virtmem.unmapPage
                               (virt => virtBase + Virtmem.VirtAddress
-                               (page * Virtmem.PAGE_SIZE),
+                               (page * mappingStep * Virtmem.PAGE_SIZE),
                                myP4 => Process.addrtab (targetPID),
                                success => ok);
+                            if not ok then
+                                println ("FATAL: DMA rollback unmap failed; backing retained");
+                                x86.panic;
+                            end if;
                         end loop;
+                        -- A running target may have cached a partial mapping.
+                        -- Retire translations before returning backing to buddy.
+                        TLB_Shootdown.Invalidate_All;
                     end if;
                     for page in 0 .. numPages - 1 loop
                         BuddyAllocator.releaseUserFrame
@@ -430,12 +466,19 @@ package body Syscall.IPC is
             end loop trackDMA;
 
             if not tracked then
-                for page in 0 .. numPages - 1 loop
+                for page in 0 .. numMappings - 1 loop
                     Virtmem.unmapPage
                       (virt => virtBase + Virtmem.VirtAddress
-                         (page * Virtmem.PAGE_SIZE),
+                         (page * mappingStep * Virtmem.PAGE_SIZE),
                        myP4 => Process.addrtab (targetPID),
                        success => ok);
+                    if not ok then
+                        println ("FATAL: DMA tracking rollback unmap failed; backing retained");
+                        x86.panic;
+                    end if;
+                end loop;
+                TLB_Shootdown.Invalidate_All;
+                for page in 0 .. numPages - 1 loop
                     BuddyAllocator.releaseUserFrame
                       (dmaPhys + Virtmem.PhysAddress
                          (page * Virtmem.PAGE_SIZE),
@@ -461,9 +504,11 @@ package body Syscall.IPC is
     begin
         retval := reterr;
         if arg3 = 0 then
-            allocateDma (callerPID, arg0, arg1, arg2, False, arg4, retval);
+            allocateDma (callerPID, arg0, arg1, arg2, False, False, arg4, retval);
             return;
-        elsif arg3 /= 1 or else arg1 > 14 then
+        elsif (arg3 /= 1 and then arg3 /= 3) or else arg1 > 14 or else
+          (arg3 = 3 and then arg1 /= 9)
+        then
             return;
         end if;
         Pages := 2 ** Natural (arg1);
@@ -475,7 +520,7 @@ package body Syscall.IPC is
         Retained_DMA_Pages := Retained_DMA_Pages + Pages;
         Spinlocks.exitCriticalSection (Retained_DMA_Lock);
         -- Existing CAP_PROCESS/RIGHT_GRANT authorization remains mandatory.
-        allocateDma (callerPID, arg0, arg1, arg2, True, arg4, retval);
+        allocateDma (callerPID, arg0, arg1, arg2, True, arg3 = 3, arg4, retval);
         if retval = reterr then
             Spinlocks.enterCriticalSection (Retained_DMA_Lock);
             Retained_DMA_Pages := Retained_DMA_Pages - Pages;
@@ -1133,7 +1178,8 @@ package body Syscall.IPC is
         perm : Process.GrantPermission;
         ok : Boolean;
     begin
-        if arg0 = 0 or else arg0 > Unsigned_64(Process.ProcessID'Last) then
+        if arg0 = 0 or else arg0 > Unsigned_64(Process.ProcessID'Last) or else
+           not Memory_Grants.Valid_Creation_Request (arg2, arg3) then
             retval := reterr;
             return;
         end if;
@@ -1206,7 +1252,7 @@ package body Syscall.IPC is
                 arg0, arg1);
             retval := reterr;
         else
-            if arg3 = 1 then
+            if (arg3 and 1) /= 0 then
                 perm := Process.GRANT_READWRITE;
             else
                 perm := Process.GRANT_READ;
@@ -1219,7 +1265,8 @@ package body Syscall.IPC is
                 perm      => perm,
                 id        => gid,
                 success   => ok,
-                expectedGeneration => generation);
+                expectedGeneration => generation,
+                forwardable => (arg3 and 2) /= 0);
 
             if ok then
                 retval := Unsigned_64(gid);
@@ -1496,7 +1543,8 @@ package body Syscall.IPC is
     -- handleGrantViaCap
     -- Create a shared memory grant using a capability slot to identify the
     -- grantee, instead of a raw PID.
-    -- arg0 = cap slot, arg1 = local addr, arg2 = num pages, arg3 = RW flag
+    -- arg0 = cap slot, arg1 = local addr, arg2 = pages,
+    -- arg3 = bit0 RW, bit1 explicit owner forwarding opt-in
     ---------------------------------------------------------------------------
     procedure handleGrantViaCap (callerPID : Process.ProcessID;
                                   arg0, arg1, arg2, arg3 : Unsigned_64;
@@ -1511,7 +1559,8 @@ package body Syscall.IPC is
         perm : Process.GrantPermission;
         ok : Boolean;
     begin
-        if arg0 > Unsigned_64 (Capabilities.CapabilitySlot'Last) then
+        if arg0 > Unsigned_64 (Capabilities.CapabilitySlot'Last) or else
+           not Memory_Grants.Valid_Creation_Request (arg2, arg3) then
             println
               ("CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY: invalid slot");
             retval := reterr;
@@ -1558,7 +1607,7 @@ package body Syscall.IPC is
             return;
         end if;
 
-        if arg3 = 1 then
+        if (arg3 and 1) /= 0 then
             perm := Process.GRANT_READWRITE;
         else
             perm := Process.GRANT_READ;
@@ -1571,7 +1620,8 @@ package body Syscall.IPC is
             perm      => perm,
             id        => gid,
             success   => ok,
-                expectedGeneration => cap.gen);
+                expectedGeneration => cap.gen,
+                forwardable => (arg3 and 2) /= 0);
 
         if ok then
             retval := Unsigned_64(gid);
@@ -1580,5 +1630,47 @@ package body Syscall.IPC is
             retval := reterr;
         end if;
     end handleGrantViaCap;
+
+    -- Recipient endpoint, parent slot/generation, page offset/count, RW flag.
+    -- Return the child slot+generation atomically in canonical reference form.
+    procedure handleDeriveGrantViaCap
+      (callerPID : Process.ProcessID;
+       arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
+       retval : out Unsigned_64)
+    is
+        use type Capabilities.CapabilityType;
+        cap : Capabilities.Capability;
+        derived : Memory_Grants.Reference;
+        success : Boolean;
+    begin
+        retval := reterr;
+        if arg0 > Unsigned_64 (Capabilities.CapabilitySlot'Last) or else
+           arg1 > Unsigned_64 (Memory_Grants.Global_Slot'Last) or else
+           not Memory_Grants.Is_Valid_Generation_Field (arg2) or else
+           arg3 > Unsigned_64 (Memory_Grants.Page_Offset'Last) or else
+           arg4 not in 1 .. Unsigned_64 (Memory_Grants.Page_Count'Last) or else
+           arg5 > 1
+        then
+            return;
+        end if;
+        cap := Process.proctab(callerPID).caps(Capabilities.CapabilitySlot (arg0));
+        if cap.capType /= Capabilities.CAP_ENDPOINT or else
+           not cap.rights (Capabilities.RIGHT_READ) or else
+           cap.object.ref = 0 or else
+           cap.object.ref > Unsigned_64 (Process.ProcessID'Last)
+        then
+            return;
+        end if;
+        Process.IPC.deriveGrant
+          ((Memory_Grants.Global_Slot (arg1), Memory_Grants.To_Live_Generation (arg2)),
+           Process.ProcessID (cap.object.ref), cap.gen,
+           Memory_Grants.Page_Offset (arg3), Memory_Grants.Page_Count (arg4),
+           (if arg5 = 1 then Process.GRANT_READWRITE else Process.GRANT_READ),
+           derived, success);
+        if success then
+            retval := Shift_Left (Unsigned_64 (derived.generation), 32) or
+              Unsigned_64 (derived.slot);
+        end if;
+    end handleDeriveGrantViaCap;
 
 end Syscall.IPC;

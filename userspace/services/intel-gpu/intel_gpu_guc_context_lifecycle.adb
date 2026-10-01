@@ -1,14 +1,17 @@
 package body Intel_GPU_GuC_Context_Lifecycle with SPARK_Mode is
    function State (Object : Context) return Phase is (Object.Value);
    function Credits_Held (Object : Context) return Natural is (Object.Credits);
+   function Last_Fence (Object : Context) return Unsigned_16 is (Object.Last);
    procedure Initialize (Object : in out Context; ID : Unsigned_32;
-                         Fence_Base : Unsigned_16; Ownership_Ready : Boolean) is
+                         Fence_Base, Fence_Last : Unsigned_16; Ownership_Ready : Boolean) is
    begin
       if Object.Value /= Fresh then return; end if;
       Object.Value := Quarantined;
-      if not Ownership_Ready or ID >= 65535 or Fence_Base = 0 or
-        Fence_Base > 65532 then return; end if;
+      if not Ownership_Ready or else ID >= 65535 or else Fence_Base = 0 or else
+        Fence_Base > 65532 or else
+        Unsigned_32 (Fence_Last) < Unsigned_32 (Fence_Base) + 3 then return; end if;
       Object.ID := ID; Object.Base := Fence_Base; Object.Value := Ready;
+      Object.Last := Fence_Last;
       Object.Next_Notification := Unsigned_32 (Fence_Base) + 4;
    end Initialize;
    procedure Prepare (Object : in out Context; Action : Operation;
@@ -19,18 +22,32 @@ package body Intel_GPU_GuC_Context_Lifecycle with SPARK_Mode is
         [Register_Pending, Policy_Pending, Enable_Pending, Disable_Pending];
    begin
       Fence := 0; Accepted := False;
-      if Object.Value /= Expected (Action) or Object.Sending or Object.Notification_Sending or
-        Object.Used (Action) then return; end if;
+      if Object.Sending or Object.Notification_Sending then return; end if;
+      if Object.Value /= Expected (Action) and then
+        not (Action = Enable and Object.Value = Disabled) then return; end if;
+      if Object.Used (Action) and Action not in Enable | Disable then return; end if;
+      if Object.Used (Action) and then
+        Object.Next_Notification > Unsigned_32 (Object.Last) then return; end if;
+      -- Re-enable must leave one fresh fence for a later disable. Notifications
+      -- also preserve it once the initial reserved disable fence was spent.
+      if Action = Enable and then Object.Used (Action) and then
+        Object.Next_Notification >= Unsigned_32 (Object.Last) then return; end if;
+      Object.Before_Send := Object.Value;
+      Object.Previously_Used := Object.Used (Action);
+      Object.Dynamic_Fence := Object.Used (Action);
       Object.Value := Pending (Action);
       Object.Active := Action; Object.Sending := True;
       Object.Used (Action) := True;
       if Action in Enable | Disable then Object.Credits := 4; end if;
-      Fence := Object.Base + Unsigned_16 (Operation'Pos (Action));
+      if Object.Dynamic_Fence then
+         Fence := Unsigned_16 (Object.Next_Notification);
+         Object.Next_Notification := Object.Next_Notification + 1;
+      else
+         Fence := Object.Base + Unsigned_16 (Operation'Pos (Action));
+      end if;
       Accepted := True;
    end Prepare;
    procedure Sent (Object : in out Context; Result : Send_Result) is
-      Before : constant array (Operation) of Phase :=
-        [Ready, Registration_Queued, Policy_Queued, Enabled];
    begin
       if not Object.Sending or Object.Value = Quarantined then
          Object.Value := Quarantined; return;
@@ -38,8 +55,11 @@ package body Intel_GPU_GuC_Context_Lifecycle with SPARK_Mode is
       Object.Sending := False;
       case Result is
          when Backpressure =>
-            Object.Value := Before (Object.Active);
-            Object.Used (Object.Active) := False;
+            Object.Value := Object.Before_Send;
+            Object.Used (Object.Active) := Object.Previously_Used;
+            if Object.Dynamic_Fence then
+               Object.Next_Notification := Object.Next_Notification - 1;
+            end if;
             Object.Credits := 0;
          when Uncertain => Object.Value := Quarantined;
          when Queued =>
@@ -55,7 +75,10 @@ package body Intel_GPU_GuC_Context_Lifecycle with SPARK_Mode is
    begin
       Fence := 0; Accepted := False;
       if Object.Value /= Enabled or else Object.Sending or else
-        Object.Notification_Sending or else Object.Next_Notification >= 65536
+        Object.Notification_Sending or else
+        Object.Next_Notification > Unsigned_32 (Object.Last) or else
+        (Object.Used (Disable) and then
+         Object.Next_Notification >= Unsigned_32 (Object.Last))
       then return; end if;
       Fence := Unsigned_16 (Object.Next_Notification);
       Object.Next_Notification := Object.Next_Notification + 1;

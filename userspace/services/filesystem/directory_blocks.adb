@@ -59,7 +59,10 @@ package body Directory_Blocks with SPARK_Mode => On is
    end Next;
 
    --  A record's header alone (Next without copying the name): the hot
-   --  path of a removal compares names in place.
+   --  path of a removal compares names in place. Always inlined: called
+   --  out of line, its record result went through memory with partial-
+   --  width stores, and those store-forwarding stalls made a 4 KiB block
+   --  walk (about 340 records) cost about 18k cycles instead of 4k.
    type Header_Info is record
       Inode : Unsigned_32 := 0;
       Kind : Unsigned_8 := 0;
@@ -70,7 +73,7 @@ package body Directory_Blocks with SPARK_Mode => On is
      (Data : Block_Data; Size : Block_Length; Maximum_Inode : Unsigned_32;
       Position : in out Byte_Count; Item : out Header_Info;
       Result : out Read_Result)
-     with Post =>
+     with Inline_Always, Post =>
        (if Result = Available then
           Position >= Position'Old + Header_Bytes + Item.Length and
           Position <= Size and

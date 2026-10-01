@@ -64,9 +64,9 @@ package body CCL.Objects.Values with SPARK_Mode is
         not CCL.VM.Well_Typed (Local_Types, Value)
       then return; end if;
       case Value.Kind is
-         when CCL.VM.Object_Value | CCL.VM.Resource_Value => return;
+         when CCL.VM.Object_Value | CCL.VM.Resource_Value | CCL.VM.Text_Value => return;
          -- Objects require their owning native VM store; resources can never
-         -- become persistence images.
+         -- become persistence images; text needs the run's text region.
          when CCL.VM.Integer_Value =>
             if Contract.Root /= Integer_Type or Value.Data_Type /= Invalid_Type then return; end if;
             Append (Object, Integer_Cell (Value.Integer), Result);

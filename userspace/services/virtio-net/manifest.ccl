@@ -1,0 +1,10 @@
+# DRAFT, not yet attached to virtio-net.drv: devmgr still mints these grants
+# (and the netstack driver endpoint) itself.
+(executable-manifest v1
+  (identity "com.cubit.virtio-net")
+  (version "0.1.0")
+  (match-pci-id 6900 4096)          # 0x1AF4:0x1000, transitional virtio-net
+  (io-ports registers (bar 0) (count 32))
+  (interrupt device msix (vectors 1))
+  (dma rings (bytes 131072))
+  (request-service device-manager read-write ready))

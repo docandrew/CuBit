@@ -1,5 +1,1024 @@
 # Mesa ANV: first CuBit OS-boundary audit
 
+Full rebuild of `target/unmap-preparation.KEeT8M/build` subsequently completed:
+all 61 configured native archives, 1138 Ninja steps. Optional Linux-service
+symbol checks and allocator dispatch regressions pass. The real instance link
+still fails at the sole unresolved `anv_physical_device_try_create` reference
+from `anv_CreateInstance`; see `target/native-instance-link.5iml41s1/link.log`.
+This confirms library compilation, not a usable native Vulkan driver.
+
+## Native factory and mapping integration gates, 2026-09-30
+
+Reinspection of the prepared upstream source confirms `anv_CreateInstance`
+still installs `anv_physical_device_try_create` as `try_create_for_drm`.
+Mesa already provides `vk_instance.physical_devices.enumerate` for non-DRM
+discovery; the CuBit integration should use that callback with authorized
+service discovery, not fabricate a DRM device or an always-successful factory.
+The callback takes precedence over DRM except for `VK_ERROR_INCOMPATIBLE_DRIVER`,
+which falls back. CuBit must leave the DRM callback unset. A genuinely absent
+compatible device may produce an empty successful enumeration; missing required
+transport implementation is not evidence that device initialization succeeded.
+Only publish a physical device after common initialization, backend lifetime,
+engine inventory, memory, queue and synchronization requirements are satisfied.
+
+The existing grant API does not directly implement POSIX unmapping:
+`CuBit.Memory_Grants.Return_Acquisition` calls `Process.IPC.returnGrant`, which
+decrements acquisitions but only unmaps when the final return completes a
+previously requested revocation. `revokeGrantLocked` unmaps immediately if no
+acquisitions remain, or defers until they return. Thus returning a CPU borrow,
+revoking the grant, confirming retirement, and releasing GPU backing are distinct
+operations. The future Mesa callback must track these states; a successful
+return alone cannot establish that an address is unmapped or safe to repurpose.
+Per-mapping grants plus owner-side retirement are one possible implementation,
+but no such transport has been wired here. Fixed-address replacement stays
+unsupported until its address-reservation semantics can be implemented correctly.
+
+## Backend buffer unmapping, 2026-09-30
+
+`buffer-unmap.patch` adds optional backend `unmap_bo` dispatch after upstream
+slab/page-offset adjustment. The backend receives the original BO and adjusted
+mapping/size; failures propagate without falling through to POSIX calls.
+Linux i915/Xe preserve their existing mmap/munmap fallback. CuBit rejects a
+missing callback rather than discarding a shared-memory view through munmap.
+This releases a CPU view, not GPU backing; the actual CuBit callback remains
+unimplemented. Replacement mappings must fail unchanged when unsupported.
+
+Fresh zero-fuzz preparation: `target/unmap-preparation.KEeT8M/source`.
+`test-buffer-unmap.py` passes real-function hosted fixtures for both platform
+branches, slab adjustment, replacement, missing backend and error propagation;
+removing the native guard or ignoring callback failures is detected. Eleven
+real Linux units compile (`target/lifecycle-compile._tavsj4r`), and the real
+allocator compiles with native CuBit flags (`target/native-unmap.yyr6w4do`).
+These checks do not execute a GPU, validate a live view-release transport, or
+establish a complete native Mesa application link. Existing NUC image unchanged.
+
+## Optional Linux services excluded from native target, 2026-09-30
+
+`native-optional-services.patch` retains Linux's fd-based engine-inventory
+update but excludes it from CuBit; shared compute-thread policy remains
+unchanged. Native engine inventory must come from the authorized backend.
+CuBit already leaves both hardware performance-query extensions unadvertised.
+Their Linux OA-stream entrypoints are now absent from the native object, rather
+than leaving unreachable ioctl/syncobj references or inventing success stubs.
+Performance-result interpretation helpers remain available; native stream
+cleanup asserts that no stream was opened.
+
+All 61 native archives rebuild. Eleven Linux compilation checks pass, and
+`test-native-optional-symbols.py` verifies Linux providers are absent while
+shared helpers remain. Fresh patch replay matches the edited source. The
+native instance link now fails only at `anv_physical_device_try_create`
+(`target/native-instance-link.s07s1ul3/link.log`). This still does not establish
+native enumeration, logical-device creation, submission or hardware rendering.
+
+## Backend-owned physical destruction, 2026-09-30
+
+`physical-destroy.patch` moves the real `anv_physical_device_destroy` into
+common code. `finish_physical` is mandatory on a backend before allocation;
+the i915/Xe tables supply the original DRM budget/perf/descriptor cleanup.
+Normal destruction preserves WSI, measurement, common, backend, base ordering.
+Failed construction still unwinds in its factory. This is real cleanup, not
+a success stub; it does not make device creation or submission available.
+
+Ordering/negative-mutation tests, allocation rejection for a missing callback,
+partial cleanup tests, Linux regression compilation, fresh patch replay and
+the 61 native archive build pass. Header audit remains 914/914. The instance
+link now resolves the destructor, but common code brings additional existing
+references into the link: Linux performance-stream/bind-timeline operations
+and `intel_common` engine queries, alongside the still-missing device factory.
+See `target/native-instance-link.3d2kqb86/link.log`. These must be properly
+ported or excluded as unsupported functionality, not silently stubbed.
+
+## Shared physical-device teardown, 2026-09-30
+
+`physical-cleanup.patch` extracts `anv_physical_device_finish_common`: release
+and clear the retained engine inventory, compiler and shader cache without
+closing Linux descriptors or CuBit endpoints. Linux's normal destruction and
+post-common-initialization failure paths now call it; WSI, measurement, perf,
+budget registry and transport teardown retain their existing platform order.
+A native factory can use the same cleanup before releasing its Vulkan base.
+
+Hosted tests execute the actual routine for all eight resource-presence
+combinations, check repeated calls, and reject stale-engine/compiler mutations.
+Base-lifetime tests, nine Linux unit compilations and native common-unit
+compilation pass. Fresh patch replay matches the edited source. This does not
+implement a native factory or prove GPU/context teardown safe; those remain
+separate runtime requirements.
+
+## Complete static dependency build, 2026-09-30
+
+For the native configuration, default `ninja` and the ANV archive target are
+insufficient: supporting archives such as NIR and Mesa utilities are marked
+`build_by_default: false`. A fresh default build left 588 configured target
+objects without valid dependency records and produced many additional linker
+errors. Do not interpret a successful archive/default build as a complete
+application-link dependency build.
+
+After `configure-cubit.sh`, run these inside `tests/mesa-anv/host-shell.nix`:
+
+```sh
+python3 tests/mesa-anv/build-cubit.py BUILD_DIRECTORY
+python3 tests/mesa-anv/audit-native-deps.py BUILD_DIRECTORY
+python3 tests/mesa-anv/test-native-instance-link.py BUILD_DIRECTORY
+```
+
+The build helper requests every static-library target from Meson's inventory.
+The link probe now rejects missing configured archives instead of silently
+linking whichever archives already exist. The header audit requires valid
+dependency records for every configured native static-library object and checks
+their paths against the source/build trees, CuBit headers, and matching cross
+C++/compiler headers. It rejects Linux headers and missing/stale records.
+Optional native tool executables such as `spirv2nir` are outside this archive
+inventory; the audit does not claim to cover their unbuilt objects.
+
+Verified fresh result: all 61 configured archives built; header audit covers
+914/914 native static-library objects and 1,773 unique dependencies. The
+instance-link probe against these fresh archives now fails only at
+`anv_physical_device_try_create` and `anv_physical_device_destroy`, matching
+the older build's known native-factory gap. Log:
+`target/native-instance-link.clb0de6x/link.log`. The additional unresolved
+utility/compiler symbols from the incomplete default build are gone.
+
+## Native compiler entrypoint, 2026-09-30
+
+The main `configure-cubit.sh` uses `tests/mesa-anv/cubit-cross.ini` and
+`native-compiler.sh`, not the private workspace compiler wrappers. C and C++
+resolve the raw musl-cross compiler and binutils from the existing libc
+toolchain record; no Nix store hashes, GCC version, or checkout path is baked
+into this entrypoint. C++ uses the matching toolchain headers; C library headers
+and startup objects come from CuBit's sysroot. Ambient include paths are cleared.
+This is ANV-specific and does not change the shared libc wrappers.
+
+Fresh Meson cross configuration passes. The C++ header-isolation probe also
+passes with deliberately contaminated `CPATH`/`CPLUS_INCLUDE_PATH`. The real
+instance-link probe now uses this entrypoint and still fails only at the two
+unimplemented physical-device factory/destructor symbols (log
+`target/native-instance-link.8pyn9nli/link.log`). That failure remains visible;
+neither unresolved-symbol suppression nor a fake device factory is used.
+Fresh ANV static archive build completed all 377 steps in
+`target/full-preparation.F0lcK1/build`. This is a target-library build, not a
+linked/executed native application or hardware rendering result.
+
+## Unified source preparation, 2026-09-30
+
+`tests/mesa-anv/prepare-cubit-source.sh` now applies the complete current ANV
+adaptation, including the common physical-device and backend boundaries.
+The obsolete private `prepare-device-core.sh` wrapper was removed; historical
+references below describe earlier checkpoints. No private wrapper is needed
+to reproduce the patched sources from pristine pinned Mesa 26.2.3.
+
+Fresh preparation in `target/full-preparation.F0lcK1/source` matches every
+source file in the existing isolated native build (excluding generated
+`__pycache__` directories). Hosted physical-base lifetime tests and 288 admission
+cases pass, including their negative mutation checks. Nine modified/common
+ANV units compile with the pinned Linux build flags; output is
+`target/lifecycle-compile.6qvkfqym`. These are source reproducibility and
+regression checks, not native GPU execution. The native physical-device factory
+and usable CuBit rendering backend remain incomplete; no fake factory or
+render-ready advertisement was added to make the instance link pass.
+
+## Backend selected by discovery, 2026-09-30
+
+Common physical-device initialization, heap refresh, extension selection and
+logical-device creation now use the backend supplied at physical-device
+allocation. The pointer must remain immutable and valid for that lifetime;
+NULL is rejected before allocation. The Linux factory still chooses its
+original i915/Xe table from the discovered KMD enum, once. A native factory
+can provide CuBit operations without misidentifying itself as a Linux KMD.
+This does not itself supply those operations, authorize an endpoint, or make
+the hardware ready. Existing KMD-dependent feature/workaround policy still
+requires auditing before a native device can be exposed.
+
+Job28883 compiles nine Linux units and native physical/common/logical device
+objects (`lifecycle-compile.z952yejh`); base-lifetime tests pass including
+NULL-backend rejection and a leak mutation. Job49718 passes 288 mock admission
+cases, 20 memory-type failure cases, their mutations, and eleven upstream
+preservation checks. These are source/compile/hosted checks, not native GPU
+execution or Vulkan conformance results.
+
+Full native rebuild5503 completes 169 scheduled steps after these changes
+(`/tmp/cubit-mesa-backend-build.omvjge`). Fresh patch reconstruction67099
+matches the active source at `target/backend-repro.YQrkT9/source`. A fresh
+Linux Meson configuration45676 passes; target introspection confirms Linux
+still selects an installed shared `libvulkan_intel.so` and both ICD manifests,
+whereas CuBit selects a non-installed static archive and no ICD manifests.
+This is Linux configuration evidence, not a rebuilt Linux shared library.
+The rebuilt native instance probe still fails to link at the missing native
+physical-device factory/destructor (`native-instance-link.okbux_8s/link.log`).
+
+## Shared physical-device base lifetime, 2026-09-30
+
+Physical-device allocation, dispatch-table initialization and Vulkan base
+cleanup are now common helpers rather than part of the DRM constructor.
+The Linux constructor/destructor use those helpers while retaining Linux
+transport/resource cleanup. Allocation or base-initialization failure leaves
+the caller's output unchanged and frees any allocated storage. Freeing the
+base requires the caller to have released its other resources first.
+
+Nine Linux units and the native common object compile (job16871,
+`lifecycle-compile.pwopqqha`). `test-physical-base.py` extracts the actual
+helpers and exercises success, allocation failure and Vulkan initialization
+failure with a hosted mock; its leak mutation removes the failure-path free.
+This is preparatory code for a native factory, not a factory implementation,
+device enumeration result, or hardware resource-lifetime proof.
+
+## Backend-owned external handles and tiling, 2026-09-30
+
+Common allocator import/export and typed ISL tiling calls now use explicit
+optional backend operations. Missing operations reject the request rather
+than dispatching Linux GEM helpers. Both Linux backends retain their original
+FD helpers; the original tiling conversion routines moved unchanged into the
+Linux adapter. This does not implement native external-memory import/export;
+those extensions remain disabled. Optional FD paths still use libc file APIs.
+
+Nine Linux units and the native allocator compile (job42806,
+`lifecycle-compile.v3z6q61k`). Eleven moved-routine preservation checks pass,
+and the native allocator object no longer references `anv_gem_*` helpers.
+Fresh preparation from pinned pristine Mesa with zero-fuzz patches reproduces
+the working source tree at `target/allocator-repro.UsKYDg/source` (job68598;
+Python caches excluded from comparison).
+
+`test-allocator-dispatch.py` extracts the actual export/get-tiling/set-tiling
+functions and tests 32 callback/error combinations under hosted UBSan. It
+checks arguments, return values, dispatch counts and unchanged outputs on
+rejection; a wrong-exported-FD mutation is detected (job4344). These are mock
+backend tests, not native memory mapping or GPU execution. Import behavior is
+not covered by this focused harness.
+
+The updated native static build completes all 171 scheduled steps (job71696,
+`/tmp/cubit-mesa-allocator-build.kkg80j`). Relinking the real instance probe
+still fails at `anv_physical_device_try_create` and
+`anv_physical_device_destroy` (`target/native-instance-link.xjrzsaz9/link.log`).
+Thus archive compilation is reproducible, but the probe is not a runnable
+native application. Authorized CuBit discovery and physical-device lifetime
+integration remain the next link boundary; later device/submission paths
+are not covered by this instance-only probe.
+
+## Backend-owned placed suballocation mapping, 2026-09-30
+
+The common allocator's fixed-address slab mapping now dispatches an optional
+`map_placed_slab` backend operation. Its Linux DMA-BUF export/mmap/close
+implementation moved unchanged to the Linux adapter. A missing operation
+returns MEMORY_MAP_FAILED without modifying the output mapping, and extension
+advertisement requires both mmap-offset support and this operation. No Linux
+descriptor is synthesized for CuBit; an eventual native implementation must
+map authorized buffer objects through CuBit's memory interface.
+
+Job79314 compiles nine Linux units and native allocator/property objects
+(`lifecycle-compile.p45k401z`). The upstream-preservation test now checks nine
+moved routines, including this Linux mapping path; both affected patches
+reverse-check with zero fuzz. These checks do not exercise real mapping,
+and other allocator import/export/tiling boundaries remain unfinished.
+
+## Backend queue-engine lifecycle, 2026-09-30
+
+The common VkQueue initialization path now invokes paired backend
+`create_engine`/`destroy_engine` operations instead of switching directly to
+Linux i915/Xe symbols. It rejects missing backend, creation or destruction
+callbacks before creating an engine. Success retains the existing cleanup
+path; backend creation failure must clean up its own partial resources.
+The backend table remains immutable for the device lifetime.
+
+Both Linux tables point to their original queue implementations. Job13438
+compiles eight Linux units plus the native common queue object
+(`lifecycle-compile.5hrhdomv`). A harness extracts the actual common dispatchers
+and passes 16 callback/error combinations under UBSan; removing the required
+cleanup check is detected (job95341). This validates dispatch/error handling,
+not native queue execution or hardware resource reclamation. CuBit still
+needs concrete queue and physical-device implementations.
+
+## Explicit native static library and application link probe, 2026-09-30
+
+CuBit now selects a non-installed static `libvulkan_intel.a` target instead
+of asking the static-application wrapper to produce a shared ICD. Linux
+retains the shared target, link arguments and installation. CuBit does not
+generate ICD/development manifests or run the shared-symbol export check.
+Build71327 completes successfully. The archive is an intermediate, not an
+executable or a working driver; its dependencies must accompany application
+integration.
+
+`native-instance-link.c` calls Mesa's actual CreateInstance, resolves physical
+enumeration through its instance dispatch, and treats zero devices as an
+unsuccessful integration test. `test-native-instance-link.py` compiles/links
+it with native archives and the CuBit startup/runtime; it neither runs it on
+Linux nor substitutes backend functions. Latest result is a genuine link
+failure at `native-instance-link.7kprrufm/link.log`: missing
+`anv_physical_device_try_create` and `anv_physical_device_destroy`. This is the
+reachable instance path only, not proof that all later device/submission
+dependencies are satisfied. The factory and native discovery must be wired
+to authorized endpoints before the instance probe can become executable.
+
+## Native compilation reaches final link, 2026-09-30
+
+Full rebuild79103 completed the common and per-generation archives, then
+failed at209/210 because the final library still unconditionally selected
+Linux `anv_gem.c`. That source is now Linux-only, matching the other DRM
+adapters; no fake GEM implementation replaces it on CuBit.
+
+After resolving a generated-file permission issue, retry81919 reaches the
+final `libvulkan_intel.so` link. Its first error is missing `-lm`: the CuBit
+sysroot contains libm.a, but isolated-c++ lacks the C wrapper's sysroot library
+search path. The larger issue is artifact type: this wrapper supplies static
+application startup/linker-script options while upstream requests a shared
+library. The native static library/application integration must be made
+explicit; simply producing an ELF named .so would not prove a usable ICD.
+Factory, queue and memory backend operations remain incomplete regardless
+of compile success. No native hardware rendering result is established.
+
+Dependency audit56993 passes for 829/915 target objects with valid recorded
+dependencies (1561 unique paths). Missing/stale records are excluded, so this
+is partial header-isolation evidence, not a whole-driver certification.
+
+## Physical-property code separated from DRM discovery, 2026-09-30
+
+Linux discovery/destruction and its major/minor-keyed budget registry now
+live in `anv_physical_device_drm.c`, selected only for non-CuBit builds. The
+existing property/feature/extension calculations stay in
+`anv_physical_device.c`; a small common initialization entry point invokes
+them. This removes Linux headers from the common physical-device unit without
+replacing DRM calls with success stubs. CuBit's factory and teardown still
+need actual implementations before the driver can link and expose devices.
+
+Job60572 compiles the previously blocked native physical-device unit and
+common module, as well as all seven affected Linux units
+(`lifecycle-compile.w7k_2n_d`). Fresh full preparation88189 at
+`target/drm-split.KdCB6a/source` matches the active source tree (excluding
+Python caches) and passes eight upstream-preservation checks. Full isolated
+rebuild79103 was started afterward; its results are not yet established by
+these targeted checks. Log: `/tmp/cubit-mesa-post-physical-build.log`.
+
+## Mandatory shared device admission, 2026-09-30
+
+Generation admission, force-probe handling, the existing Gfx12.0 workaround
+adjustment and the context-isolation requirement now run in common physical
+initialization, before backend parameter queries. These requirements are no
+longer confined to the Linux discovery path. The native identity/topology
+query alone is deliberately insufficient to satisfy them: measured identity
+must not be mistaken for a usable isolated Vulkan device.
+
+Linux now allocates/initializes the base object before admission and releases
+it via fail_base on rejection. On accepted devices the same checks and
+workaround policy apply. Under allocation failure, OOM can therefore precede
+an unsupported-device error; successful device policy is unchanged.
+
+Job97615 compiles six Linux units and the native common object
+(`lifecycle-compile.jo7tz91c`). The actual admission block passes 288 hosted
+mock metadata cases under UBSan, including generation boundaries, force-probe,
+isolation and workaround state; disabling the isolation check is detected
+(`device-admission.26xsbfws`, job73525 exit0). Both patches reverse-check with
+zero fuzz. This verifies admission logic, not actual hardware isolation.
+
+## Callable common physical initialization stage, 2026-09-30
+
+`anv_physical_device_init_common` now assembles the previously separated
+parameter/admission, heap, sync-type, addressing, compiler, ISL, UUID, VA-range
+and disk-cache setup. The Linux constructor invokes this stage after its base
+object, device info and transport are initialized. The stage preserves the
+pre-parameter-query device-info snapshot used by the original constructor.
+On UUID failure it releases the compiler and clears its pointer; base object
+and transport cleanup remain with the caller. Later Linux failures retain
+the existing cache/compiler teardown order.
+
+Job12283 passed six Linux compilation checks and native CuBit compilation of
+the common module (`lifecycle-compile.k8uc3z4d`). Fresh full preparation75862
+at `target/common-constructor.ha7LRa/source` matches the active source tree
+(excluding Python caches). Eight upstream source-preservation checks pass,
+as do GTT admission and memory-type failure tests including their bug mutations.
+
+This stage is not a complete native physical-device factory: discovery,
+transport implementation, engine inventory, budget identity and WSI completion
+still require integration. No native Vulkan device or hardware drawing result
+is implied by compiling this stage.
+
+## Shared heap initialization and backend memory policy, 2026-09-30
+
+Heap construction and availability refresh now live in the shared physical
+module. The Linux-specific system-RAM restriction heuristic lives in the
+Linux adapter behind the required `restrict_sys_heap_size` operation. Both
+Linux backends use the original implementation; CuBit must provide its own
+budget policy rather than implicitly treating authorized memory as all host
+RAM. Missing policy or a zero-sized system heap rejects initialization.
+
+Memory-type initialization now returns a backend error before appending a
+protected memory type to the possibly incomplete result. The extracted real
+branch passes 20 hosted mock cases under UBSan; removing the early error check
+is rejected by the test (`memory-type-failure.6nrtp4fm`, job35574 exit0).
+This checks failure propagation, not kernel-enforced memory authority.
+
+Job38996 compiles six Linux units and the native common object
+(`lifecycle-compile.h3qli2da`). Eight relocated implementations match upstream
+(including the renamed Linux budget routine), and all three updated patches
+reverse-check with zero fuzz. Full native device construction, authorized
+allocation budgets and submission remain incomplete.
+
+## Shared queue-family construction, 2026-09-30
+
+Queue-family construction and its existing debug overrides now live in the
+shared physical-device module. The engine inventory callback remains the
+discovery boundary; this move does not invent a CuBit queue or enable engines.
+In particular, the legacy single-render-queue fallback is preserved upstream
+policy, not evidence that CuBit has discovered or initialized such a queue.
+
+`test-common-preservation.py` compares seven moved functions' signatures and
+bodies against pinned upstream Mesa, allowing only removal of static linkage.
+All seven pass. Job23137 also compiles six affected Linux units and the native
+CuBit common object (`lifecycle-compile.cohwtdfy`); both patches reverse-check
+with zero fuzz. These checks establish reuse and compilation, not GPU execution.
+
+## Shared UUID and cache initialization, 2026-09-30
+
+The existing build-id/UUID and shader-cache initialization/teardown routines
+now reside in `anv_physical_device_common.c`, with internal declarations for
+use by platform constructors. Their algorithms and error checks are unchanged;
+the Linux constructor and teardown retain their calls. UUIDs still derive
+from the driver build and device information, not a CuBit placeholder.
+
+Job99260 passed compilation of all six affected Linux units
+(`lifecycle-compile.ri_ox7f9`) and the isolated native CuBit common object.
+Both updated patches reverse-apply in dry-run mode with zero fuzz. Native
+build-id lookup, shader-cache persistence, full linking and physical-device
+construction are not established by these compilation checks. Shared script
+promotion remains deferred because the build lock was unavailable.
+
+## Shared compiler initialization and patch reproduction, 2026-09-30
+
+Mesa's existing compiler initialization and logging callbacks now live in
+`anv_physical_device_common.c`. The Linux constructor calls the shared helper;
+the compiler, callbacks, spilling policy, and failure cleanup retain their
+existing behavior. This moves Mesa code; it does not implement a new compiler.
+`physical-common.patch` adds the module, declaration and build entry.
+
+The module compiled with the isolated native CuBit toolchain (job28453 exit0).
+A fresh application of the entire private preparation sequence to pristine
+Mesa 26.2.3 also passed (job59007 exit0):
+`tests/mesa-anv/target/physical-repro.JbdHZv/source` matches the active isolated
+source tree, excluding generated Python caches. Six affected Linux units
+compile from the reproduced source, including both kernel backends and the
+new common module (`lifecycle-compile.l46m6bhi`). These are compilation and
+reproducibility checks, not native Vulkan device or rendering tests.
+
+The full sequence still resides in the private `prepare-device-core.sh`;
+the shared preparation script does not yet include all these patches. A
+held-lock attempt to promote it was unavailable, so shared scripts were left
+untouched. The physical-device factory still requires DRM separation and a
+real CuBit backend before this becomes a usable native hardware Mesa driver.
+
+## Backend-owned relocation and sparse policy, 2026-09-30
+
+The constructor no longer applies Linux relocation/TR-TT/VM-bind policy to
+every non-Xe backend. It requires init_addressing, and the Linux backend
+contains the existing policy unchanged, including debug options. A future
+CuBit backend must explicitly select its implemented addressing mechanisms;
+this change does not enable sparse memory or relocations on CuBit.
+
+`test-addressing-policy.py` compares the actual extracted implementation to
+the pristine constructor block across 432 generation/backend/debug-option
+combinations under UBSan (addressing-policy.be9fa13c, PASS). Five real Linux
+units compile (65401 exit0, lifecycle-compile.j9v1pgxo), and both patches
+reverse-validate with zero fuzz. The differential test checks Linux policy
+preservation only, not GPU memory mapping or native sparse execution.
+
+## Backend-specific feature probes, 2026-09-30
+
+Protected-context, render-timestamp access and VM-fault support probes now
+belong to backend callbacks. Missing probes mean unsupported. Timestamp and
+fault capabilities also require their corresponding operational callbacks,
+so a positive probe alone cannot advertise an unimplemented entry point.
+Existing generation/scratch-page gates remain. Linux probes preserve the
+original queries, with the Xe-only fault probe in the Xe backend.
+
+Five real Linux units compile (46027 exit0, lifecycle-compile.d545ejxf), and
+reverse zero-fuzz patch checks pass. This is compile/source evidence, not
+proof of those hardware capabilities on CuBit. The physical factory still
+uses DRM discovery; native construction and backend implementations remain.
+
+## Engine discovery backend operation, 2026-09-30
+
+Engine inventory and the adjacent common device-info refresh now run through
+init_engine_info. The Linux implementation retains intel_engine_get_info and
+intel_common_update_device_info, including its existing legacy queue fallback
+when no engine inventory is returned. A native implementation can return an
+explicit query failure rather than adopting that Linux fallback.
+
+Common construction rejects missing/failed callbacks through a new cleanup
+label that frees engine info and disk cache before the compiler/base teardown.
+It intentionally skips the later budget-release step: that object has not
+been acquired yet and its release helper dereferences its argument. Published
+engine_info retains common free()-based ownership.
+
+Five real Linux units compile (92410 exit0, lifecycle-compile.0l23wxno), and
+both patches reverse-validate with zero fuzz. This is compile/source evidence,
+not native engine discovery or a runtime resource-lifetime proof. Remaining
+DRM constructor queries and CuBit factory/backend implementation are pending.
+
+## Physical-device rejection result correction, 2026-09-30
+
+Audit of the pinned constructor found that the below-4GiB GPU-address-space
+branch called vk_errorf without assigning its returned result before jumping
+to cleanup. A preceding successful parameter query could therefore leave
+VK_SUCCESS as the return value after freeing the candidate device. The port
+patch now assigns VK_ERROR_INCOMPATIBLE_DRIVER through the existing logger.
+
+`test-gtt-admission.py` executes that actual extracted branch with six sizes
+around the 4GiB boundary under UBSan. It checks failure status and cleanup
+selection together. Reintroducing the exact omitted-assignment bug causes the
+test to fail, as required. Run55925 exited0 (gtt-admission.zr1asifb); the five
+real Linux units also compile (lifecycle-compile.iw3nbb0d). Reverse zero-fuzz
+patch validation passes. The fixture mocks logging/cleanup and does not test
+complete Vulkan enumeration or native hardware resource disposal.
+
+## Backend-owned synchronization-type discovery, 2026-09-30
+
+Physical construction now invokes init_sync_types rather than constructing a
+DRM sync-object type itself. Linux's adapter retains fd/virtio-provider
+discovery and publishes the type only after checking its implementation,
+timeline support and CPU wait support. These are now release-build checks
+instead of assertions. Missing backend support fails initialization; no
+native CuBit synchronization type is fabricated or advertised.
+
+Five real Linux units compiled (96534 exit0, lifecycle-compile.n5iligtz).
+The actual extracted adapter passed 32 hosted mocked-discovery combinations
+under UBSan, including missing features, wrong implementation and both provider
+routes; failed admission publishes no supported-type list. The 24 existing
+open/cleanup cases also pass (93900 exit0, device-open.yh9l5ko6). Both updated
+patches reverse-validate with zero fuzz. These tests do not establish native
+GPU synchronization or correctness of an unimplemented CuBit sync type.
+
+## Memory availability refresh boundary, 2026-09-30
+
+Common memory availability refresh now calls a backend operation instead of
+passing a Linux fd to intel_device_info_update_memory_info. Linux i915/xe
+retain that query in anv_gem.c. Missing or failed refresh leaves the common
+heap availability snapshot unchanged, matching the former failed-query path.
+Removed unused fd arguments from initial memory-info and heap construction.
+
+Five real Linux units compiled (96380 exit0, lifecycle-compile.bcva4qtl);
+both modified patches reverse-validate with zero fuzz. This is not a native
+memory-budget implementation: CuBit must provide actual authorized allocation
+limits and availability, not substitute global RAM capacity or static PCI
+defaults. Physical discovery still has its Linux constructor and cannot yet
+create a native ANV device.
+
+## Physical parameter and memory-type backend selection, 2026-09-30
+
+The physical-device audit found direct Linux selection in parameter discovery
+and memory-type construction, including a default-to-i915 memory path for
+unknown backends. `physical-backend.patch` routes both through backend
+callbacks; missing callbacks return initialization failure. Linux i915 and
+Xe tables point to the existing functions. This does not invent memory types,
+heaps or support flags for CuBit based solely on a PCI identifier.
+
+Five real Linux translation units compiled (68984 exit0,
+lifecycle-compile._9y3a0kc), including physical-device code. Both updated
+patches reverse-validate with zero fuzz. Native physical construction remains
+unfinished: DRM enumeration, synchronization-type discovery, supported-engine
+and memory properties must be supplied from actual CuBit interfaces. The
+existing typed identity/topology query alone is insufficient.
+
+## Fresh source reproduction, 2026-09-30
+
+Ran the full private preparation script from pristine pinned Mesa26.2.3 into
+target/lifecycle-repro.ZUWlvG/source (69953 exit0). All patches applied with
+zero fuzz. Whole-tree comparison with the active isolated source found only
+two generated Python cache directories, under src/intel/dev and src/util;
+source contents otherwise match. This checks that recent lifecycle edits are
+captured by the preparation series rather than existing only in a build tree.
+It does not make the main shared preparation script complete: its integration
+is still separate from the private script. Build28619 remains active.
+
+## Common ANV device unit compiles natively, 2026-09-30
+
+Timestamp reads and VM fault collection now dispatch through the backend.
+Linux i915 retains basic render timestamp reads; Xe retains correlated
+render/CPU sampling and VM fault collection. Correlated sampling is optional
+and selected by callback availability; absent basic reads report device loss,
+not a fabricated timestamp. Fault collection requires both the advertised
+capability and a callback. Common device code no longer includes DRM ioctl
+or Linux i915/xe device headers.
+
+The actual isolated CuBit anv_device.c object compiled successfully (79568
+exit0), as did the four Linux regression units (lifecycle-compile.wis440_5).
+Reverse zero-fuzz patch validation passed. This clears one significant native
+compile boundary, not the full link, backend implementation or hardware
+rendering requirements. A full rebuild follows to expose remaining integration
+dependencies; no successful native GPU-device creation is claimed.
+
+## Device transport teardown callbacks, 2026-09-30
+
+`context-backend.patch` now routes common creation-failure and normal-destroy
+cleanup through abort_device/close_device callbacks. Both must exist before
+opening a transport. Linux abort retains virtio-unref then close; Linux normal
+destruction retains close only. The closed descriptor is invalidated. Native
+backends may share a cleanup callback if their two lifetime paths coincide.
+No direct device-fd open/close remains in common anv_device.c.
+
+The actual-function mock fixture now also verifies both cleanup contracts and
+descriptor invalidation (24 combinations, UBSan PASS, device-open.h0jcstxa).
+Four real Linux units compiled (15601 exit0, lifecycle-compile.9fp1hcd6), and
+reverse zero-fuzz patch validation passed. Actual runtime cleanup remains
+unverified. Timestamp reads and Xe fault reporting are the remaining direct
+OS-specific calls in this common unit; native transport implementation is
+still required, not provided by these interface changes.
+
+## Device-open failure-path regression, 2026-09-30
+
+`test-device-open.py` extracts the actual anv_drm_open_device function into
+a hosted mock-transport fixture. `device-open-test.c` checks 24 combinations
+of open result (-1,0,7,65535), virtio initialization result and provider type.
+It verifies descriptor zero remains valid, failed open acquires nothing,
+initialization failure unrefs before closing exactly once, failure publishes
+no sync provider, and success selects the expected provider without closing.
+
+Nix/UBSan run passed at target/device-open.kl9uyu5m. This verifies adapter
+branching with mocked system operations; it does not establish real Linux or
+CuBit cleanup, concurrency, or GPU behavior. Real structure/API compatibility
+is covered separately by the four-unit Linux regression compilation.
+
+## Device connection and synchronization-provider setup, 2026-09-30
+
+`context-backend.patch` now provides an open_device callback, implemented for
+Linux in anv_gem.c. It retains device-path open, virtio initialization and
+DRM/virtio synchronization-provider selection. Open failure owns no resource;
+virtio-init failure performs the former unref/close cleanup before returning
+failure. Common creation checks open/status support before opening anything,
+and installs the backend status callback after successful connection.
+
+This does not yet abstract connection teardown: upstream's creation-failure
+path does virtio-unref plus close while normal destruction only closes. Those
+paths are preserved for a separate lifetime review rather than silently
+changing Linux behavior in this extraction. CPU/GPU timestamp and fault-query
+dependencies also remain. No CuBit open implementation is selected yet.
+
+Actual Linux compilation of anv_device.c, anv_gem.c and both i915/xe backend
+units passed (30437 exit0, lifecycle-compile.dps4mnbd). Reverse patch validation
+passed with zero fuzz; private source preparation includes the change.
+Compilation is not a runtime resource-lifetime or synchronization proof.
+
+## Active device status versus unused wait wrapper, 2026-09-30
+
+Source-wide reference inspection found no callers of modern ANV's
+`anv_device_wait`; HASVK has its own used implementation and is untouched.
+Removed the unused modern wrapper and its internal declaration rather than
+creating a backend operation for dead code. Lower-level Linux GEM wait
+helpers remain unchanged. Declaration removal is `unused-device-wait.patch`;
+body removal accompanies `context-backend.patch`.
+
+The active Vulkan device status callback now comes from the backend table,
+preserving i915/xe's existing functions. Missing status support rejects device
+creation instead of proceeding without device-loss detection. The common
+device unit and both Linux backend units compiled successfully under Nix
+(52555 exit0, lifecycle-compile.44barmo6). Both patches reverse-validate with
+zero fuzz. These are compile/source checks, not runtime fault-injection or
+native GPU execution. CuBit transport/sync/timestamp integration is unfinished.
+
+## Context lifecycle backend callbacks, 2026-09-30
+
+`context-backend.patch` extends ANV's backend table with setup/destroy context
+operations. Common device code dispatches through those callbacks instead of
+selecting Linux i915/xe routines directly. Setup requires both callbacks to
+avoid admitting a context without a teardown operation. The Linux backends
+retain their original routines: i915 chooses VM versus legacy context teardown
+using has_vm_control; xe calls its existing VM setup/destruction functions.
+
+`test-lifecycle-compile.py` compiled the real changed common device unit and
+both Linux backend units using the pinned host configuration, with objects in
+a unique directory (57697 exit0, lifecycle-compile.pmebcp7h). Reverse zero-fuzz
+patch validation passed. This is regression compilation, not Linux execution
+or a native CuBit backend. Real CuBit lifecycle, device transport, sync/wait
+and timestamp operations remain to be implemented; native full compilation
+still encounters the remaining DRM includes in anv_device.c.
+
+## Common batch compilation and device lifecycle boundary, 2026-09-30
+
+Build79780 ended at the unused xf86drm.h include in common anv_batch_chain.c.
+`batch-chain-header.patch` removes only that include; actual isolated native
+object47285 compiled successfully and reverse zero-fuzz patch validation
+passed. Private preparation includes the patch.
+
+Follow-up64640 terminated at anv_device.c's DRM header. Unlike batch-chain,
+this file has actual Linux dependencies: device-path open/close, i915/xe
+context/VM lifecycle and status callbacks, DRM synchronization setup, GEM BO
+waits, and GPU timestamp reads. These need backend lifecycle/synchronization
+operations with real CuBit implementations, not header substitutions or
+successful no-op callbacks. Existing BO/queue backend hooks alone do not
+cover the entire device lifecycle. Full native ANV link remains incomplete.
+
+## Native synchronization regression preparation, 2026-09-30
+
+`futex-native-test.c` links the actual patched upstream Mesa helper with CuBit
+libc, without a syscall mock. It tests value mismatch, absolute monotonic
+timeout, and a pthread waiter awakened by the kernel's reported wake count.
+Both producer and waiter use bounded deadlines rather than treating a fixed
+startup sleep as evidence of a queued waiter. Native isolated compile/link
+succeeded at `/tmp/cubit-mesa-futex-native.app`; target execution and manifest
+integration are still pending. This is not yet a native synchronization pass.
+
+Full Mesa rebuild79780 remains active in isolated-build.PyWBDf/build-linked
+(`build-futex.log`). Read-only dependency audit57105 passed for779/915 VALID
+target objects,1505 unique dependencies; missing/stale records are not covered.
+
+## Backend routing and native futex adapter, 2026-09-29
+
+anv-backend-build.patch excludes Linux i915/xe source files on CuBit and
+prevents native selection of i915/xe/STUB backends. Until the actual CuBit
+backend is implemented, selection returns NULL; no successful fake device.
+Linux source set and selection remain intact. Rebuild99507 stopped at
+ANV allocator's calls to missing Mesa futex helpers.
+
+CuBit libc overlay/src/cubit/syscall.c already translates SYS_futex wait/wake
+to CuBit kernel services. Its WAIT_BITSET9 path takes an absolute monotonic
+deadline; WAKE1 returns the wake count. futex-platform.patch adds that Mesa
+adapter without Linux headers or kernel syscall-number assumptions. The
+operation constants refer to the libc adapter contract. ThreadSanitizer's
+existing UTIL_FUTEX_SUPPORTED disabling still takes precedence.
+
+Actual isolated native futex.c and anv_allocator.c compiled (13153 exit0).
+Hosted UBSan futex-adapter-test.c verifies forwarded absolute/null timeouts,
+expected value, match-all bitset, wake count and errno. It mocks transport
+only: target scheduling, lost-wakeup and timeout behavior still need native
+tests. Private preparation includes both patches; no shared libc edits.
+
+## External-memory capability policy, 2026-09-29
+
+Build61781 ended exit1 at Linux i915/anv_batch_chain.c after compiling the
+generation-specific ANV paths. Source audit found unconditional Linux fd,
+dma-buf and DRM extension flags in anv_physical_device.c, plus external-buffer
+properties accepting fd/userptr handles independently of the extension list.
+
+external-memory-policy.patch makes CuBit's fd fence/memory/semaphore, dma-buf,
+host-memory, acquire-unmodified, DRM modifier and physical-device DRM extension
+flags false. Generic external-memory/fence/semaphore vocabulary is retained;
+supported handle types must come from actual native transports. Image queries
+with nonzero external handle types take the existing unsupported/zero-image-
+properties path; handleType0 ordinary-image semantics remain unchanged.
+Buffer queries use the existing unsupported response preserving the queried
+compatibleHandleTypes but advertising no import/export features.
+
+Reverse zero-fuzz patch validation passed. Actual isolated native anv_formats.c
+object build87119 exited0. Physical-device compilation and runtime query tests
+remain pending; these guards are not a proof of hostile-call confinement or
+of a completed external-memory backend. No CuBit GPU device is exposed yet.
+Private source preparation includes this patch; shared wrappers unchanged.
+
+## ANV common header and portable image metadata, 2026-09-29
+
+After isolated32765 terminated exit1, anv-header.patch made the pure Intel
+address header unconditional and the Linux GEM header non-CuBit-only.
+ANV inline address arithmetic retains Mesa's existing helpers. The next
+compile error exposed vk_image.drm_format_mod gated to Linux/BSD despite
+ANV using it for internal layout decisions.
+
+image-modifier.patch enables the existing field, INVALID initialization,
+data-only modifier include and common property getter for DETECT_OS_CUBIT.
+It does not set MESA_SYSTEM_HAS_KMS_DRM, grant external buffers, implement
+dma-buf import/export or claim WSI capability. Runtime capability advertising
+still needs a separate backend audit. Both patches reverse-validate zero-fuzz;
+private preparation includes them.
+
+Build61781 is LIVE in isolated-build.PyWBDf/build-linked, log build-anv.log.
+It has compiled initial ANV generation-specific command, query, shader and
+BLORP objects past the former errors (step25/239 observed). Header changes
+also trigger Vulkan runtime recompilation. Not a complete driver link or
+hardware execution result; preserve inputs until terminal.
+
+## Isolated build reaches ANV, 2026-09-29
+
+Dependency audit48513 passed608 of924 valid recorded target objects with
+1333 unique allowed paths. Full build32765 reached ANV genX_blorp_exec.c;
+anv_private.h unconditionally includes common/intel_gem.h, which requires
+Linux DRM types. This is the next actual CuBit backend/header boundary.
+At handoff the process remains live on polling while another compiler drains;
+the logged failed compile is not permission to edit inputs before terminal.
+No full-build success or runtime rendering claim. Shared wrappers untouched.
+
+## Backend call-site audit during isolated build, 2026-09-29
+
+The pinned anv_kmd_backend.h and actual anv_allocator.c/anv_batch_chain.c
+call sites require a complete CuBit backend, not metadata alone:
+
+- gem_create returns a nonzero local handle plus actual allocation size;
+  mmap maps bounded backing, and close must respect outstanding device work.
+- vm_bind_bo/unbind_bo operate in the device VM; bind completion participates
+  in submission ordering. Sparse vm_bind additionally receives explicit
+  operation/address/offset/size and optional bind-timeline signaling.
+- queue_exec_locked requires the device mutex already held and must honor
+  wait/signal arrays; queue_exec_async has a different locking contract.
+- Userptr import, placed mappings, sparse resources and optional counters
+  cannot be claimed merely because the function table compiles.
+
+CuBit's current A20 device query deliberately exposes none of these
+operations. A local integer BO handle can index retained authorized resources,
+but must never become a global authority or physical-address shortcut.
+Existing device-address-spaces.md separates CPU VA, GPU VA and DMA/IOVA;
+recycling backing requires completed device work and translation retirement,
+not just dropping the app's handle. ANV selection currently has i915/xe/stub
+only: a real CuBit backend and selection still remain to implement.
+
+## Live dependency audit, 2026-09-29
+
+Private audit-isolated-deps.py derives target objects from compile_commands
+using the isolated compiler wrappers, then inspects Ninja's VALID dependency
+records. It rejects paths outside the exact Mesa source/build, CuBit libc
+headers, and pinned compiler/C++ header roots, as well as Linux headers.
+Host generators are excluded explicitly; missing/stale objects are reported
+as uncovered, not silently claimed as passing.
+
+Audit6921 exited0 on the ongoing isolated build:149 of924 target objects,
+612 unique dependency paths. Example os_time.c uses CuBit time/pthread-era
+system headers rather than Linux cross sys-include. Build32765 remains live,
+latest step383/1056. Rerun after completion for whole-build evidence; this
+snapshot alone does not validate every library or runtime ABI.
+
+## Fresh isolated-header full build started, 2026-09-29
+
+Private isolated-cc/c++ wrappers retain CuBit's static link/startup contract,
+but invoke the raw pinned musl cross compiler with explicit CuBit/compiler
+headers and C++ standard headers. They unset ambient CPATH/C_INCLUDE_PATH/
+CPLUS_INCLUDE_PATH/OBJC_INCLUDE_PATH. No shared wrapper changes. Pinned raw
+binutils are selected with -B: first configuration failed without that
+Nix-wrapper-provided linker path, then fresh build-linked configuration passed.
+
+All accumulated patches, including latest perf/tracing changes, applied to
+fresh source target/isolated-build.PyWBDf/source. Full build32765 is LIVE in
+build-linked at handoff, logs configure-linked.log and build-linked.log.
+No completion claim until native dependency audit and eventual execution;
+library successes from the older header search setup are not substituted
+for this rebuild. Private wrappers use exact pinned store paths intentionally
+for this experiment; production wrapper integration needs coordination.
+
+## Header isolation audit, 2026-09-29
+
+Actual -E -v probes show cubit-c++ places Linux-target cross-toolchain
+sys-include before CuBit's -idirafter headers. This is cross-toolchain Linux
+header exposure, not evidence of a glibc host ABI in every compiled object.
+cubit-cc also inherits Nix dependency include flags despite -nostdinc.
+Existing archive successes therefore do not establish hermetic target builds.
+Shared compiler wrappers remain untouched pending coordination/build-lock access.
+
+An explicit raw pinned g++ invocation with -nostdinc/-nostdinc++, only its
+C++/compiler headers plus CuBit sysroot, passed header-isolation-test.cpp
+(string/vector/atomic/pthread/mmap; rejects reachable linux/types.h).
+Private test-isolated-compiler.py replayed the actual Mesa brw_compile_vs.cpp
+command under that isolation and audited every generated dependency path:
+87346 EXIT0, target/isolated-compiler.ydyjnhsv. Target object not executed.
+
+`tracing-headers.patch` guards the GEM include in intel_driver_ds.cc with
+HAVE_PERFETTO, matching its only users. No Perfetto code is removed. Replaying
+that tracing unit with the same header allowlist also exits0, output
+target/isolated-compiler.dkdpk98q. Full fresh isolated compiler configuration
+and rebuild remain necessary; one audited object is not the whole library.
+
+## Counter-result calculations separated, 2026-09-29
+
+`perf-results.patch` moves the unchanged contiguous result-accumulation block
+from intel_perf.c to intel_perf_results.c, retaining its license. Linux builds
+compile both; CuBit builds the results plus generated metrics, not Linux
+counter access/query code. No successful stream-open/configuration stubs.
+Native libintel_perf.a job93057 exited0. This archive does not supply the
+remaining optional counter-service functions required by ANV callers.
+
+Hosted UBSan test12490 exited0: result clear, 4,096 counter-wrap cases and
+65,536 shifted timestamp samples. Test uses real extracted helpers; library
+NDEBUG matches release configuration, test assertions remain enabled. Initial
+test compile attempts lacked internal include/configuration flags and failed;
+corrected HAVE_PTHREAD/HAVE_STRUCT_TIMESPEC and Intel include path. No target
+execution. Patch reverse validation passed zero-fuzz; private preparation
+includes the patch, fresh-chain retest pending for this latest addition.
+
+Full native build30987 now stops at intel_driver_ds.cc: its GEM include pulls
+Linux DRM types that conflict with the CuBit fourcc __u64 alias. Importantly,
+the C++ compile sees Nix Linux headers while the C compiler did not. Inspect
+both the tracing dependency and target C++ header isolation before treating
+this as just a typedef mismatch. No active jobs or changed NUC image.
+
+## Optional OA performance-query policy, 2026-09-29
+
+Source inspection found a non-native shortcut that must not be used:
+intel_perf.c's oa_metrics_available treats fd=-1 as supported for offline
+metrics generation. CuBit capability handles must never be represented by
+that sentinel to satisfy discovery. anv_physical_device.c already gates
+KHR_performance_query and INTEL_performance_query on a non-NULL perf config.
+
+`perf-policy.patch` keeps perf NULL and command count zero on CuBit before
+any Linux metric initialization; Linux's existing path remains unchanged.
+This explicitly means OA counters are unavailable until an authorized native
+interface exists. It is NOT a successful counter backend or replacement for
+ordinary pipeline-statistics/occlusion queries, timestamps or rendering.
+
+Private test-perf-policy.py compiles the actual init function and extracts
+the two actual extension predicates into a minimal hosted fixture. Five fd
+values (including -1) and both debug settings leave extensions false without
+calling the metric-capability helper. UBSan exit0, target/perf-policy.27g76_gv.
+This is policy-branch testing, not a full ANV compilation or device test.
+The full build still needs performance-library OS separation; this guard
+alone does not resolve the compile failure. Private preparation now includes
+the patch; the accumulated chain before this addition was fresh-tested.
+
+## Native shader compiler and reproducible patch chain, 2026-09-29
+
+Full build53972 ended exit1 in Linux `perf/i915/intel_perf.c` at step151/385.
+The shader compiler object work had completed; explicitly building
+`src/intel/compiler/brw/libintel_compiler.a` then linked successfully (exit0).
+This is the actual Mesa Intel compiler cross-built for CuBit, not a substitute
+compiler. Target execution, complete ANV linking and rendering remain untested.
+
+Private prepare-device-core.sh now applies every device/ISL/common patch,
+including engine, common-build and address-header changes. Fresh preparation
+29140 exited0 at target/port-repro.wgst18/source; ten changed key source/build
+files compare byte-for-byte with the compiled device-build.jZSWDe tree.
+The preceding fresh attempt14467 failed because the ISL parent directory
+was read-only; fixed that exact preparation permission and used a NEW tree.
+Shared preparation edits remain deferred after another actual flock exit1.
+
+Performance-counter support is not merely a header issue: anv_perf.c invokes
+OS metric-stream/configuration operations. The next work must keep optional
+performance-query advertising consistent with implemented capabilities while
+preserving normal rendering and future counter support; fake successful DRM
+calls would not establish a working backend.
+
+## Native Intel common library, 2026-09-29
+
+`address-header.patch` extracts Mesa's unchanged intel_canonical_address and
+intel_48b_address helpers into intel_address.h with the original license and
+PRM comment. intel_gem.h includes it for existing Linux callers; auxiliary
+mapping includes the pure header directly. No mapping allocator or address
+authorization behavior is changed. Reverse zero-fuzz patch validation passed.
+
+Native `src/intel/common/libintel_common.a` build84516 exited0 (12 steps),
+including auxiliary mapping, L3/URB configuration and engine helpers. Hosted
+UBSan address-header-test.c passed 524,288 inputs covering all upper16-bit
+patterns and lower/upper canonical-half edges. These functions CONVERT,
+not validate, addresses; untrusted bindings still need the separate CuBit
+range/canonical validation before conversion.
+
+Full native build53972 started after this success, still running at handoff
+through real Mesa shader-compiler objects. Do not edit its inputs until it
+terminates. Main preparation script still needs accumulated patch integration.
+No new NUC image or claim of full ANV/native rendering completion.
+
+## Engine helper separation, 2026-09-29
+
+`engine-platform.patch` retains Mesa's unmodified engine counting/name helpers
+but excludes Linux fd discovery and semaphore support queries under CuBit.
+No replacement discovery result or advertised queue is supplied. Hosted UBSan
+test `engine-core-test.c` passed 11,520 count cases plus names, including
+empty lists and noncontiguous instance/GT IDs. Native object compiled without
+i915/xe/drm/ioctl undefined references. Private test-engine-core.py job48504
+exited0; output `target/engine-core.squm427z`. Not hardware execution.
+
+`common-build.patch` routes Linux i915/xe/GEM/bind-timeline sources out of the
+CuBit common library while preserving the Linux source set. Both patches
+passed zero-fuzz reverse validation on device-build.jZSWDe. Not yet integrated
+in the shared preparation script. Meson regeneration requires the pinned host
+mesa_clc/vtn_bindgen2 PATH used during configuration; a copied read-only
+build/bin/drm-shim also required owner-write permission for regeneration.
+
+Latest library build96981 exits1 at intel_aux_map.c including intel_gem.h.
+That remaining common-header dependency needs inspection; do not claim the
+common archive or full ANV links. Log `/tmp/cubit-mesa-common-build.log`.
+
+## Native Intel surface-layout library, 2026-09-29
+
+Full native build56685 reached step650 and stopped at isl_drm.c's Linux
+i915 header dependency. `isl-platform.patch` excludes only that include and
+the two legacy i915 tiling conversion functions for CuBit. Mesa's modifier
+tables and surface-layout implementation remain unchanged; no ioctl stubs
+or invented tiling constants were added. Linux compilation is unchanged.
+
+Applied to isolated `target/device-build.jZSWDe/source`; zero-fuzz reverse
+patch validation passed. Nix cross-build of `src/intel/isl/libisl.a` passed
+(four steps, exit0). This is compilation, not native rendering verification.
+Patch is not yet wired into the shared preparation script.
+
+The next full build exits1 at `src/intel/common/i915/intel_engine.c`:
+Linux engine discovery still enters the native target. Next work must
+separate that OS query boundary and provide actual CuBit engine discovery,
+not satisfy it with fake Linux headers or a successful no-op. Full native
+ANV linking and physical Mesa rendering remain incomplete.
+
+## Fresh native device library build, 2026-09-29
+
+`device-build.patch` separates the fd-query portion of intel_hwconfig.c and
+selects common device-info/topology/workaround sources for CuBit in Meson.
+Linux builds retain their KMD sources. No replacement DRM calls or fake
+success paths are supplied. The pure hardware-configuration table processor
+remains compiled; consuming a real table still requires validated driver data.
+
+Private `tests/mesa-anv/prepare-device-core.sh` runs the normal preparation,
+then device-platform, device-topology and device-build patches, all zero-fuzz,
+on a fresh pinned source copy. Job19993 exited zero after fresh configuration
+and `ninja -j2 src/intel/dev/libintel_dev.a` in
+`target/device-build.jZSWDe/build`. This is a real CuBit cross-built static
+archive (11 build steps), not the Linux baseline. Undefined-symbol inspection
+found no i915/xe/drm/ioctl query references. Extracted core/topology sources
+match the previously differential-tested source tree byte-for-byte.
+
+The initial preparation attempt60915 failed from incorrect patch hunk line
+counts; the corrected patch was tested on a NEW source tree, not an already
+partially patched one. Main preparation/finalizer script integration still
+awaits the shared lock edit window; the private wrapper is the reproducible
+working command meanwhile. ANV backend, BO/VM/submission/sync and full native
+Vulkan linking are NOT established by this library build.
+
 ## Common topology extraction, 2026-09-29
 
 `device-topology.patch` (after device-platform.patch) moves Mesa's mask
@@ -1523,6 +2542,82 @@ This is a Linux build baseline, not a CuBit port or acceleration test. Its DRM
 platform and reported ray-tracing/video build support are not CuBit features.
 
 ### Native integration
+
+2026-09-30: `Intel_GPU_VM_Image` now constructs bounded offline four-level
+PPGTT images spanning raw 48-bit GPU VA, using the existing ADL-N PTE encoder.
+The diagnostic `Initial_VM` remains unchanged: its single 2MiB window is not
+sufficient for Mesa's separated code/state/buffer allocations. The new builder
+preflights directory capacity before each page insertion, rejects duplicate VA
+and aliases to any reserved table backing, and seals against subsequent edits.
+It retains the existing below-4GiB DMA and read-only-erratum admission policies;
+48-bit GPU VA support does not expand physical allocation authority.
+
+`tests/intel-gpu/vm_image.gpr` passed under Nix with assertions/overflow checks:
+independent exported-PTE walks; every index at each of four levels (2048
+images); 2MiB/1GiB/512GiB boundaries and both halves of raw48 VA; dense leaf
+sharing; unused-table aliases; unchanged images after rejected mappings;
+capacity exhaustion with a later successful smaller insertion; duplicate
+backing rejection; and sealing. This is regression-tested offline construction,
+not a SPARK proof, live VM binding, GPU execution or Mesa device exposure.
+The owner must authorize backing, materialize/cache-publish sealed tables and
+retain them for the context lifetime. Live invalidation/unbind, public buffer
+handles and native ANV wiring remain open.
+
+The offline builder now also supports atomic whole-buffer insertion via
+`Map_Pages`: consecutive GPU addresses backed by a possibly noncontiguous DMA
+page list. A read-only preflight checks all leaves, collisions, reserved-table
+aliases and total directory demand; ascending VA prefixes count shared new
+directories only once. Commit requires neither allocation callbacks nor a
+full page-table copy. The single-page entrypoint delegates to this path.
+Nix hosted assertions pass for cross-level ranges, arbitrary array lower
+bounds, every bad-page position in a 513-page buffer, last-page collisions,
+raw48 overflow, exact-boundary success and insufficient directory capacity.
+Failures preserve all exported table words and used capacity. These are
+offline transaction tests, not hardware TLB/cache invalidation evidence.
+
+`Intel_GPU_VM_Materialize` now writes a sealed image to trusted retained CPU/DMA
+page mappings. It validates every destination before writes, rejects duplicate
+CPU pages and mismatched DMA identities, writes children before the root,
+flushes each used page and volatile-verifies every word including zero holes.
+It returns a root only after all steps and a final ownership check succeed.
+Each state permits one attempt; failure retains partial backing with root zero.
+The owner must still establish actual CPU-to-DMA mapping authority and exclusive
+access, and check the same context lifetime before hardware root publication.
+This does not perform root publication, live invalidation or backing retirement.
+
+Nix `vm_materialize.gpr` passed actual host-RAM write/readback and x86 CLFLUSH
+tests, guard-page-content checks, all14 ownership-check failure points, every
+flush failure, injected readback corruption and invalid final-page mappings.
+An initial test caught eager ownership-callback evaluation on unsealed input;
+the admission check now short-circuits before invoking that callback. These
+tests do not prove device coherence, GPU execution or whole-driver isolation.
+
+The main native `Submission_Buffer` now instantiates this VM builder/writer
+for its diagnostic batch/completion mappings. The payload writer deliberately
+skips the four VM pages; the sealed VM writer fills them, avoiding duplicate
+table writes. Full-image volatile readback still compares against the existing
+diagnostic image, and the GGTT preparation address is withheld until flushing
+and ownership checks succeed. `Submission_Buffer` is now an Ada generic bound
+to the service's real `Publication_Owner_Ready` predicate. An initial nested
+function-pointer version was rejected by native `No_Implicit_Dynamic_Code`;
+static generic binding removes the trampoline requirement.
+
+Native `make -C kernel intel-gpu` passed, including link/staging. Hosted buffer
+tests match both independent buffers byte-for-byte against the prior image and
+reject ownership loss at all18 checkpoints. Payload tests verify VM bytes stay
+untouched for the separate writer. This is native build integration, not a new
+NUC execution result. The private extended offscreen-drawing workspace remains
+unchanged: it needs all its extra mappings retained when adopting this path;
+copying the main two-page diagnostic mapping there would be incorrect.
+
+The private workspace has now adopted the same preparation path with all
+eight offscreen leaf mappings preserved. Its hosted fixture matches the full
+extended image byte-for-byte, and the native driver builds. The resulting
+`cubit_live_vm_sealed.img` passed UEFI/4-CPU USB-flash QEMU boot and native
+software-Mesa launch,194673 geometric pixels,animation and close. Firmware,
+Mesa source/license and image-membership audits passed. SHA256:
+`0d39c76f6afbc817610e7f8bdc8c8de0a9f14a1dbd226be54abaa21bdc7d469b`.
+No physical Intel GPU execution result is available for this image yet.
 
 The Linux baseline linked successfully (2026-09-27):
 `tests/mesa-anv/build-host/src/intel/vulkan/libvulkan_intel.so`, SHA256

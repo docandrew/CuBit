@@ -1,0 +1,7 @@
+<built-in>:host_resultD2	8	static
+<built-in>:host_resultEQ	8	static
+<built-in>:host_resultIP	8	static
+/home/doc/git/cubit/userspace/ccl/src/ccl-objects-values.adb:6:4:FROM_HOST	16448	static
+/home/doc/git/cubit/userspace/ccl/src/ccl-objects-values.adb:33:4:TO_HOST	102400	static
+/home/doc/git/cubit/userspace/ccl/src/ccl-objects-values.adb:51:4:FROM_VM	17136	static
+/home/doc/git/cubit/userspace/ccl/src/ccl-objects-values.adb:94:4:TO_VM	736	static

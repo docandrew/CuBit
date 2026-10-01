@@ -9,6 +9,9 @@ package Intel_GPU_Native_Reset is
    -- One shot, retaining power on success/failure; no firmware/PTE publication.
    function Execute (Fuse : Interfaces.Unsigned_32) return String;
    function Last_Succeeded return Boolean;
+   -- Zero until a stable CS clock sample is captured under retained forcewake.
+   -- Independent of reset success; not a timestamp-counter read capability.
+   function Timestamp_Hz return Interfaces.Unsigned_32;
    -- Captured only after successful reset while this adapter retains forcewake.
    -- Invalid observations never make the independent reset result successful.
    function ADS_Observed return Boolean;

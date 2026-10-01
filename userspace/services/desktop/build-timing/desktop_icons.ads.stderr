@@ -1,0 +1,8 @@
+desktop_icons.ads:22:36: warning: array aggregate using () is an obsolescent syntax, use [] instead [-gnatwj]
+desktop_icons.ads:23:16: warning: array aggregate using () is an obsolescent syntax, use [] instead [-gnatwj]
+desktop_icons.ads:97:18: warning: array aggregate using () is an obsolescent syntax, use [] instead [-gnatwj]
+desktop_icons.ads:171:16: warning: array aggregate using () is an obsolescent syntax, use [] instead [-gnatwj]
+desktop_icons.ads:245:15: warning: array aggregate using () is an obsolescent syntax, use [] instead [-gnatwj]
+desktop_icons.ads:319:19: warning: array aggregate using () is an obsolescent syntax, use [] instead [-gnatwj]
+desktop_icons.ads:393:16: warning: array aggregate using () is an obsolescent syntax, use [] instead [-gnatwj]
+desktop_icons.ads:467:16: warning: array aggregate using () is an obsolescent syntax, use [] instead [-gnatwj]

@@ -1516,10 +1516,12 @@ procedure main is
       end if;
       handle := File_Handle (msg.words (0));
 
+      --  A read-only handle may flush (fsync of an O_RDONLY descriptor, as
+      --  Linux): a flush writes back and commits, it changes no data.
       msg := Flush_Request (handle);
       msg.tag := capCall (CAP_SLOT_FS, msg);
-      if msg.tag.label /= REPLY_ACCESS_DENIED then
-         debugPrint ("STORAGE-FLUSH-CHECK: read-only handle accepted" & LF);
+      if msg.tag.label /= REPLY_OK then
+         debugPrint ("STORAGE-FLUSH-CHECK: read-only handle refused" & LF);
          return False;
       end if;
       debugPrint ("STORAGE-FLUSH-CHECK: PASS" & LF);

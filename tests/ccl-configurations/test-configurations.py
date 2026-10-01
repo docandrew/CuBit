@@ -168,6 +168,61 @@ class Configurations(unittest.TestCase):
             result = self.compile(text)
             self.assertIn(result.returncode, (0, 1), result.stderr)
 
+    def test_startup_policy_fields(self):
+        policy = '''(startup v1
+          (start "logstore.svc" (priority 5))
+          (start "ps2.drv" (priority 5) (launch per-device) (approve-device)
+            (after "logstore.svc") (ready-deadline-ms 2000))
+          (start "hda.drv" (priority 5) (launch per-device) (approve-device))
+          (start "mixer.svc" (priority 5) (after "logstore.svc" "hda.drv")
+            (approve-scheduling realtime (budget-us 1500) (period-us 5000))))'''
+        result = self.compile(policy)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout,
+                         'logstore.svc pri=5\n'
+                         'ps2.drv pri=5 launch=per-device device=approved after=1 ready-ms=2000\n'
+                         'hda.drv pri=5 launch=per-device device=approved\n'
+                         'mixer.svc pri=5 after=1,3 scheduling=1500/5000\n')
+        for old, bad, diagnostic in [
+                # Dependencies name an earlier, unique entry: acyclic by construction.
+                ('(after "logstore.svc" "hda.drv")', '(after "mixer.svc")', 'INVALID_DEPENDENCY'),
+                ('(after "logstore.svc" "hda.drv")', '(after "nope.svc")', 'INVALID_DEPENDENCY'),
+                ('(after "logstore.svc" "hda.drv")', '(after "hda.drv" "hda.drv")', 'INVALID_DEPENDENCY'),
+                ('(after "logstore.svc" "hda.drv")', '(after "logstore.svc") (after "hda.drv")',
+                 'DUPLICATE_FIELD'),
+                ('(after "logstore.svc" "hda.drv")', '(after 5)', 'INVALID_EXECUTABLE'),
+                # Device resources go only to per-device drivers, which need them.
+                ('(launch per-device) (approve-device)\n            (after',
+                 '(approve-device)\n            (after', 'INVALID_LAUNCH_MODE'),
+                ('(launch per-device) (approve-device))', '(launch per-device))',
+                 'INVALID_LAUNCH_MODE'),
+                ('(launch per-device) (approve-device))', '(launch sometimes) (approve-device))',
+                 'INVALID_LAUNCH_MODE'),
+                ('(launch per-device) (approve-device))',
+                 '(launch per-device) (approve-device) (role config-storage))', 'INVALID_ROLE'),
+                ('(launch per-device) (approve-device))',
+                 '(launch per-device) (approve-device) (approve-device))', 'DUPLICATE_FIELD'),
+                # The kernel admits budget <= period and at most 70% of a CPU.
+                ('(budget-us 1500)', '(budget-us 3501)', 'INVALID_SCHEDULING'),
+                ('(budget-us 1500)', '(budget-us 0)', 'INVALID_SCHEDULING'),
+                ('(period-us 5000)', '(period-us 1073741825)', 'INVALID_SCHEDULING'),
+                ('(budget-us 1500)', '(budget "1500")', 'INVALID_SCHEDULING'),
+                ('realtime (budget-us', 'batch (budget-us', 'INVALID_SCHEDULING'),
+                ('(ready-deadline-ms 2000)', '(ready-deadline-ms 0)', 'INVALID_DEADLINE'),
+                ('(ready-deadline-ms 2000)', '(ready-deadline-ms 60001)', 'INVALID_DEADLINE'),
+                ('(ready-deadline-ms 2000)', '(ready-deadline-ms 2000) (ready-deadline-ms 1)',
+                 'DUPLICATE_FIELD')]:
+            with self.subTest(bad=bad):
+                self.assertIn(old, policy)
+                self.reject(policy.replace(old, bad), diagnostic)
+        self.assertEqual(self.compile(policy.replace('(budget-us 1500)', '(budget-us 3500)')).returncode, 0)
+        # A name started twice is an ambiguous dependency.
+        twice = policy.replace('(start "logstore.svc" (priority 5))',
+                               '(start "logstore.svc" (priority 5)) (start "logstore.svc" (priority 5))')
+        self.reject(twice, 'INVALID_DEPENDENCY')
+        for end in range(len(policy)):
+            self.reject(policy[:end])
+
 
 if __name__ == '__main__':
     unittest.main()

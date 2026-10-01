@@ -13,11 +13,15 @@ generic
 package Intel_GPU_RCS_Start is
    type Result is (Rejected, Ownership_Lost, Write_Failed, Readback_Failed, Ready);
    type Attempt is limited private;
+   type Rejection_Reason is (None, Already_Attempted, Zero_Address,
+                            Unaligned_Address, Outside_Runtime_Range);
+   function Rejection (Object : Attempt) return Rejection_Reason;
    procedure Start
      (Object : in out Attempt; Status_GPU : Interfaces.Unsigned_64;
       Status : out Result);
 private
    type Attempt is limited record
       Started : Boolean := False;
+      Reason : Rejection_Reason := None;
    end record;
 end Intel_GPU_RCS_Start;

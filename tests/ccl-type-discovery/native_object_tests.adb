@@ -8,6 +8,7 @@ with CCL.Host_Values;
 with CCL.Language;
 with CCL.Compiler;
 with CCL.Format;
+with Module_Patches;
 with CCL.VM; use CCL.VM;
 with CCL.VM.Native_Objects;
 
@@ -67,10 +68,18 @@ procedure Native_Object_Tests is
       Check (Format_Error = F.Format_Valid);
       F.Decode (Bytes, Size, Code, Links, Limits, Format_Error, Validity);
       Check (Format_Error = F.Format_Valid and Validity = Valid);
-      Bytes (F.VERSION_OFFSET) := 5;
-      F.Decode (Bytes, Size, Code, Links, Limits, Format_Error, Validity);
-      Check (Format_Error = F.Unsupported_Version);
-      Bytes (F.VERSION_OFFSET) := F.FORMAT_VERSION;
+      declare
+         Changed : F.Byte_Array := Bytes;
+         Changed_Size : F.Module_Length := Size;
+         Patched : Boolean;
+      begin
+         Module_Patches.Replace
+           (Changed, Changed_Size, [16#44#, 16#43#, 16#43#, 16#4C#, 16#42#, F.FORMAT_VERSION],
+            [16#44#, 16#43#, 16#43#, 16#4C#, 16#42#, 5], Patched);
+         Check (Patched);
+         F.Decode (Changed, Changed_Size, Code, Links, Limits, Format_Error, Validity);
+         Check (Format_Error = F.Unsupported_Version);
+      end;
       F.Decode (Bytes, Size, Code, Links, Limits, Format_Error, Validity);
       Check (Format_Error = F.Format_Valid and Validity = Valid);
       Link_Program (No_Grants, Links, Code, Linked, Catalog);

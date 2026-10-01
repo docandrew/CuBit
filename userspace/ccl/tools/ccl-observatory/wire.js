@@ -4,7 +4,9 @@ const maxU64 = (1n << 64n) - 1n;
 // CCL.Sessions.Maximum_Fuel: evaluation fuel never exceeds it.
 const MAX_FUEL = 16777216n;
 // CCL.Language.MAX_LIST_ELEMENTS: the longest list an evaluation can hold.
-const MAX_LIST_ELEMENTS = 1024n;
+const MAX_LIST_ELEMENTS = 4096n;
+// CCL.Language.MAX_SOURCE_LENGTH + 1: a diagnostic position is within the program.
+const MAX_SOURCE_POSITION = 8193n;
 const operations = { inspect: 1, evaluate: 2, clock: 3, startMonitor: 4, stopMonitor: 5, monitor: 6 };
 export function encodeRequest(id, operation, source = '', target = 0n) {
   if (typeof id !== 'bigint' || id < 1n || id > maxU64 || !Object.hasOwn(operations, operation)) throw new Error('Invalid request identity');
@@ -81,7 +83,7 @@ export function decodeResponse(bytes, id, operation) {
   if (op === 3) return { clock: { available: flag(3), monotonicMs: uint(4).toString() } };
   const base = op >= 4 ? 9 : 3;
   const ok = flag(base), type = uint(base+2), position = uint(base+3), fuel = uint(base+4);
-  if (typeof values[base+1] !== 'string' || type > 6n || position > 1025n || fuel > MAX_FUEL || listShape !== (op === 2 && type === 5n)) throw new Error('Invalid evaluation result');
+  if (typeof values[base+1] !== 'string' || type > 6n || position > MAX_SOURCE_POSITION || fuel > MAX_FUEL || listShape !== (op === 2 && type === 5n)) throw new Error('Invalid evaluation result');
   const result = { ok, message: values[base+1], type: ['Invalid','Integer','Boolean','String','Character','List','Function'][Number(type)], position: position.toString(), fuelRemaining: fuel.toString() };
   if (listShape) {
     const code = uint(8), items = values[9], total = uint(10);

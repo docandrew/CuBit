@@ -1,0 +1,13 @@
+/home/doc/git/cubit/userspace/services/desktop/desktop_launch.adb:55:7:Skip_Space	16	static
+/home/doc/git/cubit/userspace/services/desktop/desktop_launch.adb:75:7:Word	32	static
+/home/doc/git/cubit/userspace/services/desktop/desktop_launch.adb:64:7:Accept_Char	32	static
+/home/doc/git/cubit/userspace/services/desktop/desktop_launch.adb:88:7:Quoted	32	static
+/home/doc/git/cubit/userspace/services/desktop/desktop_launch.adb:15:4:Make	176	static
+<built-in>:entry_infoIP	8	static
+<built-in>:Tentry_arrayBIP	8	static
+<built-in>:menuIP	8	static
+/home/doc/git/cubit/userspace/services/desktop/desktop_launch.ads:60:4:Label_Of	32	static
+/home/doc/git/cubit/userspace/services/desktop/desktop_launch.ads:63:4:Program_Of	32	static
+/home/doc/git/cubit/userspace/services/desktop/desktop_launch.adb:7:4:Append	16	static
+/home/doc/git/cubit/userspace/services/desktop/desktop_launch.adb:34:4:Defaults	1744	dynamic,bounded
+/home/doc/git/cubit/userspace/services/desktop/desktop_launch.adb:49:4:Parse	144	static

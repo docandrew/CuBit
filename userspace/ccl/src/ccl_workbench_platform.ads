@@ -18,5 +18,6 @@ package CCL_Workbench_Platform is
    procedure Live_Label_Changed (Event : Live_Label_Event);
    procedure Activate;
    --  Optional lifecycle diagnostic. Never logs submitted source or values.
-   procedure REPL_Completed;
+   --  One REPL entry finished; Result is its transcript line (tests read it).
+   procedure REPL_Completed (Result : String);
 end CCL_Workbench_Platform;

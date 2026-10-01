@@ -6,9 +6,11 @@ procedure DMA_Retention_Check is
    LF : constant Character := ASCII.LF;
    reterr : constant Unsigned_64 := Unsigned_64'Last;
    type Unsigned_64_Array is array (Positive range <>) of Unsigned_64;
-   DMA_Order : constant Unsigned_64 := 12;
-   DMA_Bytes : constant Unsigned_64 := 16 * 1024 * 1024;
-   Addresses : array (1 .. 4) of Unsigned_64 := [others => 0];
+   DMA_Order : constant Unsigned_64 := 9;
+   DMA_Bytes : constant Unsigned_64 := 2 * 1024 * 1024;
+   Blocks_Per_Owner : constant := 16;
+   Addresses : array (1 .. 32) of Unsigned_64 := [others => 0];
+   Virtual : Unsigned_64;
    Pid, Address, Status, Count : Unsigned_64;
    Rows : array (0 .. 255, 0 .. 15) of Unsigned_16 := [others => [others => 0]];
    Found, Gone : Boolean;
@@ -41,12 +43,15 @@ begin
       end if;
    end loop;
    for I in Addresses'Range loop
-      Pid := Spawn;
+      if (I - 1) mod Blocks_Per_Owner = 0 then
+         Pid := Spawn;
+      end if;
+      Virtual := 16#7600_0000# + Unsigned_64 ((I - 1) mod Blocks_Per_Owner) * DMA_Bytes;
       if Pid = 0 or else Pid = reterr then
          debugPrint ("dma-retention: FAIL spawn" & LF); return;
       end if;
       if syscall (SYSCALL_ALLOC_DMA, Pid, 0, 16#7600_0000#, 2) /= reterr or else
-        syscall (SYSCALL_ALLOC_DMA, Pid, DMA_Order + 1, 16#7600_0000#, 1) /= reterr or else
+        syscall (SYSCALL_ALLOC_DMA, Pid, 14, Virtual, 1) /= reterr or else
         syscall (SYSCALL_ALLOC_DMA, Pid, Unsigned_64'Last, 16#7600_0000#, 1) /= reterr
       then debugPrint ("dma-retention: FAIL invalid mode/order" & LF); return; end if;
       -- Impossible ceilings must leave lists and retained budget unchanged.
@@ -55,7 +60,8 @@ begin
             debugPrint ("dma-retention: FAIL impossible ceiling" & LF); return;
          end if;
       end loop;
-      Address := syscall (SYSCALL_ALLOC_DMA, Pid, DMA_Order, 16#7600_0000#, 1, 2 ** 32);
+      Address := syscall (SYSCALL_ALLOC_DMA, Pid, DMA_Order, Virtual,
+        (if I > Blocks_Per_Owner then 3 else 1), 2 ** 32);
       if Address = reterr then
          debugPrint ("dma-retention: FAIL allocation" & LF); return;
       end if;
@@ -69,14 +75,33 @@ begin
       end loop;
       Addresses (I) := Address;
       if I = Addresses'First then
+         -- First page maps, second collides with the retained allocation.
+         -- Repetition also checks that failed retained reservations refund quota.
+         for Attempt in 1 .. 16 loop
+            if syscall (SYSCALL_ALLOC_DMA, Pid, 1, Virtual - 4096, 1) /= reterr then
+               debugPrint ("dma-retention: FAIL partial collision accepted" & LF); return;
+            end if;
+         end loop;
+         if syscall (SYSCALL_ALLOC_DMA, Pid, 0, Virtual - 4096, 0) = reterr then
+            debugPrint ("dma-retention: FAIL rollback prefix left mapped" & LF); return;
+         end if;
+         debugPrint ("dma-retention: partial mapping rollback PASS" & LF);
          Borrow (Pid, Loan, Loan_OK);
          if not Loan_OK then
             debugPrint ("dma-retention: FAIL borrow" & LF); return;
          end if;
       end if;
-      Reap (Pid, Gone);
-      if not Gone then debugPrint ("dma-retention: FAIL reap" & LF); return; end if;
-      if I = Addresses'First then
+      if I = Addresses'Last then
+         Borrow (Pid, Loan, Loan_OK, Large => True);
+         if not Loan_OK then
+            debugPrint ("dma-retention: FAIL large grant acquisition" & LF); return;
+         end if;
+      end if;
+      if I mod Blocks_Per_Owner = 0 then
+         Reap (Pid, Gone);
+         if not Gone then debugPrint ("dma-retention: FAIL reap" & LF); return; end if;
+      end if;
+      if I mod Blocks_Per_Owner = 0 then
          Other := Spawn;
          if Other = 0 or else Other = reterr or else Other = Pid then
             debugPrint ("dma-retention: FAIL loan PID reservation" & LF); return;
@@ -115,7 +140,7 @@ begin
    Reap (Pid, Gone);
    if Gone then
       debugPrint ("dma-retention: constrained ceilings PASS" & LF);
-      debugPrint ("dma-retention: maximum order12 four16MiB ranges PASS" & LF);
+      debugPrint ("dma-retention: sixteen order9 blocks per owner PASS" & LF);
       debugPrint ("dma-retention: PASS exit retention, quota, failed reservations, ordinary mode" & LF);
    else debugPrint ("dma-retention: FAIL final reap" & LF); end if;
 end DMA_Retention_Check;

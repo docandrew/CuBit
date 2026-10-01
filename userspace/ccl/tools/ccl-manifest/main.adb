@@ -127,6 +127,7 @@ begin
    Emit (".cubit.caps", Result.Capabilities);
    Emit (".cubit.access", Result.Access_Scopes);
    Emit (".cubit.streams", Result.Streams);
+   Emit (".cubit.resources", Result.Resources);
    Put_Line (".section .note.GNU-stack,"""",@progbits");
 exception
    when Ada.Streams.Stream_IO.Name_Error | Ada.Streams.Stream_IO.Use_Error =>

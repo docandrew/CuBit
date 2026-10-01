@@ -1,0 +1,93 @@
+with Interfaces; use Interfaces;
+with Intel_GPU_ADLN_PPGTT;
+generic
+   Capacity : Positive;
+package Intel_GPU_VM_Image is
+   pragma Compile_Time_Error
+     (Capacity < 4 or Capacity > 4096, "invalid page-table capacity");
+   -- Offline four-level PPGTT image, not live VM_BIND. Serialized owner only.
+   -- The owner authorizes and retains every DMA page, copies the sealed image
+   -- into its exclusive backing, and establishes visibility before publishing
+   -- the root. No client-supplied physical addresses, allocation or MMIO here.
+   -- Reuse the hardware encoder; unlike Initial_VM this spans raw 48-bit VA.
+   subtype Page_Number is Positive range 1 .. Capacity;
+   type Backing_Pages is array (Page_Number) of Unsigned_64;
+   type Data_Pages is array (Positive range <>) of Unsigned_64;
+   type Image is limited private;
+   procedure Initialize
+     (Object : in out Image; Backing : Backing_Pages; Accepted : out Boolean);
+   -- One initialization attempt per object; backing must be distinct, valid
+   -- DMA pages. It must not be recycled while this image/context exists.
+   procedure Prepare_Update
+     (Target : in out Image; Source : Image; Backing : Backing_Pages;
+      Accepted : out Boolean);
+   -- One-attempt offline copy of a sealed source into fresh, disjoint table
+   -- backing. Rebase directory pointers, preserve leaf addresses/attributes,
+   -- leave Target mutable and Source untouched. Owner retains BOTH generations
+   -- and all data backing. This does not publish a root, quiesce a context,
+   -- invalidate translations, or authorize old-backing/address reuse.
+   -- The trusted caller must serialize and establish actual backing authority.
+   procedure Map_Page
+     (Object : in out Image; GPU, DMA : Unsigned_64;
+      Policy : Intel_GPU_ADLN_PPGTT.Cache_Policy;
+      Access_Mode : Intel_GPU_ADLN_PPGTT.Page_Access;
+      Accepted : out Boolean);
+   -- Rejection leaves the image unchanged, including capacity. Rejects zero
+   -- VA, non-page values, existing mappings and ALL table/data aliases, even
+   -- unused table backing. Data aliases within this authorized VM are allowed
+   -- only with the same cache policy. Cross-VM/CPU alias policy still belongs
+   -- to the backing owner; this offline builder cannot establish it.
+   -- Read-only remains rejected by the existing Gen12 erratum policy.
+   procedure Map_Pages
+     (Object : in out Image; GPU : Unsigned_64; Data : Data_Pages;
+      Policy : Intel_GPU_ADLN_PPGTT.Cache_Policy;
+      Access_Mode : Intel_GPU_ADLN_PPGTT.Page_Access;
+      Accepted : out Boolean);
+   -- Map consecutive GPU pages to possibly noncontiguous authorized DMA pages.
+   -- Entire operation succeeds or leaves all entries/capacity unchanged. Data
+   -- must remain immutable during this serialized call. Empty lists rejected.
+   procedure Seal (Object : in out Image; Accepted : out Boolean);
+   procedure Seal_Update (Object : in out Image; Accepted : out Boolean);
+   -- Only a Prepare_Update successor may seal with no mapped data pages.
+   -- Retained directories remain valid; absent leaves grant no translation.
+   -- Initial context preparation still requires the nonempty Seal operation.
+   -- Empty sealing does not authorize submission, publication or reclamation.
+   procedure Unmap_Pages
+     (Object : in out Image; GPU : Unsigned_64; Expected : Data_Pages;
+      Accepted : out Boolean);
+   -- Offline only: all leaves must exist and match the owner's expected DMA
+   -- pages. Preflight the whole range before removing anything. Retain empty
+   -- directory pages for reuse; never release backing or modify a sealed VM.
+   -- Success is NOT permission to recycle physical pages or GPU addresses
+   -- in a published context; that requires the separate live-update protocol.
+   function Sealed (Object : Image) return Boolean;
+   function Used (Object : Image) return Natural;
+   function Root_DMA (Object : Image) return Unsigned_64;
+   function Page_DMA (Object : Image; Page : Page_Number) return Unsigned_64;
+   -- True only for a valid page-aligned DMA extent disjoint from every
+   -- reserved table page AND every mapped data page in this valid image.
+   -- Numeric isolation only; the backing owner must exclude hidden aliases.
+   function DMA_Disjoint (Object : Image; First, Bytes : Unsigned_64) return Boolean;
+   generic
+      with function Conflicts (Page : Unsigned_64) return Boolean;
+   function Backing_Disjoint (Object : Image) return Boolean;
+   -- Walk reserved tables and mapped pages once; the owner supplies its
+   -- backing-range predicate. No contiguous-allocation assumption.
+   function Entry_Value
+     (Object : Image; Page : Page_Number;
+      Index : Intel_GPU_ADLN_PPGTT.Table_Index) return Unsigned_64;
+   function Lookup (Object : Image; GPU : Unsigned_64) return Unsigned_64;
+private
+   type Table_Page is array (Intel_GPU_ADLN_PPGTT.Table_Index) of Unsigned_64;
+   type Table_Pages is array (Page_Number) of Table_Page;
+   type Image is limited record
+      Attempted, Valid, Frozen : Boolean := False;
+      Mapped_Pages : Natural range 0 .. Capacity * 512 := 0;
+      Count : Natural range 0 .. Capacity := 0;
+      -- Logical predecessor only. Hardware's stable root is owned separately
+      -- by Application_Image; this does not authorize publication or reuse.
+      Predecessor_Root : Unsigned_64 := 0;
+      DMA : Backing_Pages := [others => 0];
+      Entries : Table_Pages := [others => [others => 0]];
+   end record;
+end Intel_GPU_VM_Image;

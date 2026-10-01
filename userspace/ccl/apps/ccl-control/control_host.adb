@@ -104,7 +104,7 @@ package body Control_Host is
    begin
       CCL.Periodic_Programs.Load
         (Periodic, Source, syscall (SYSCALL_GETTIME), 1_000,
-         CCL.Sessions.Default_Fuel, Status);
+         CCL.Periodic_Programs.Default_Fuel, Status);
       Accepted := Status = CCL.Periodic_Programs.Loaded;
    end Start_Monitor;
 

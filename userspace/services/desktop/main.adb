@@ -5,6 +5,11 @@
 --  @summary
 --  Desktop compositor/session service prototype
 ------------------------------------------------------------------------------
+with Desktop_Timing_Policy;
+with Compositor_Elapsed;
+with CuBit.Monotonic;
+with CuBit.Timing_Histograms;
+with Compositor_Presentation;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -36,6 +41,9 @@ with CuBit.Memory_Grants;
 with CuBit.Graphics_Metrics;
 with CuBit.Graphics_Metrics_IO;
 with Presentation_Test_Policy;
+with Desktop_Composition;
+with Compositor_Damage;
+with Desktop_Compositor;
 
 procedure main is
    package DSP renames CuBit.Display_Protocol;
@@ -153,10 +161,11 @@ procedure main is
    fbBpp    : Natural := 0;
    backBufferAddr : System.Address := System.Null_Address;
    sceneCapacityBytes : Natural := 0;
-   type Transfer_Phase is (Available, In_Flight, Quarantined);
+   package CP renames Compositor_Presentation;
+   use type CP.Phase;
    frameSequence : Unsigned_64 := 0;
    asyncAnnounced, releaseAnnounced : Boolean := False;
-   inputWhileHeldFrame : Unsigned_64 := 0;
+   sparseCopyAnnounced : Boolean := False;
    retiredThrough : Unsigned_64 := 0;
    dragBaseBufferAddr : System.Address := System.Null_Address;
    dragBaseReady : Boolean := False;
@@ -173,6 +182,9 @@ procedure main is
    --  first, then a completed frame is copied to the real framebuffer in one
    --  pass. That avoids exposing intermediate clear/background/window phases
    --  to the display and is the first step toward real compositor buffering.
+   mesaAnnounced, mesaFallbackAnnounced : Boolean := False;
+   procedure exitCompositor (Status : Integer)
+     with Import, Convention => C, External_Name => "_exit", No_Return;
    backBufferReady : Boolean := False;
    drawingBackBuffer : Boolean := False;
 
@@ -182,6 +194,18 @@ procedure main is
       w : Natural := 0;
       h : Natural := 0;
    end record;
+   function damageRectangle (B : Compositor_Damage.Box) return Rect is
+     (if Compositor_Damage.Valid (B) then
+        (B.Left, B.Top, B.Right - B.Left, B.Bottom - B.Top)
+      else (others => 0));
+
+   procedure addOutputDamage (S : in out Compositor_Damage.State; R : Rect) is
+   begin
+      if R.w > 0 and then R.h > 0 then
+         Compositor_Damage.Add (S, (R.x, R.y, R.x + R.w, R.y + R.h));
+      end if;
+   end addOutputDamage;
+
    --  Initial native arrangement: adjacent, mixed-size, unit-scale outputs.
    --  Scene storage is private. Each output owns an immutable transfer buffer
    --  while its non-reused completion token is outstanding.
@@ -194,9 +218,10 @@ procedure main is
       Pitch : Natural := 0;
       Buffer : System.Address := System.Null_Address;
       Grant : MG.Grant_Reference;
-      Session, Token, Started : Unsigned_64 := 0;
-      Phase : Transfer_Phase := Available;
-      Damage : Rect;
+      Started : Unsigned_64 := 0;
+      Started_Us : Unsigned_64 := Compositor_Elapsed.Unavailable;
+      Transfer : CP.State;
+      Damage : Compositor_Damage.State;
    end record;
    presentations : array (Output_Index) of Output_Presentation;
    primaryOutput : Output_Index := 0;
@@ -224,19 +249,10 @@ procedure main is
    clipRect    : Rect;
    framePending : Boolean := False;
    frameDamage  : Rect;
-   frameDueMs   : Unsigned_64 := 0;
-   FRAME_INTERVAL_MS : constant Unsigned_64 := 16;
-
-   --  Relative input may arrive substantially faster than scanout.  Keep
-   --  consuming and dispatching every report, but bound software-cursor
-   --  presents so a 500/1000 Hz USB mouse cannot serialize the desktop on
-   --  synchronous display IPC.  A hardware cursor plane can eventually make
-   --  this interval unnecessary; four milliseconds still gives a 250 Hz
-   --  visual update budget on the framebuffer path.
+   --  Coalesce pointer motion during each bounded event-loop pass. Painting
+   --  happens after input dispatch, with no timer delay and no per-report
+   --  display IPC. Output retirement still governs transfer-buffer writes.
    cursorPresentPending : Boolean := False;
-   cursorPresentDueMs   : Unsigned_64 := 0;
-   lastCursorPresentMs  : Unsigned_64 := 0;
-   CURSOR_PRESENT_INTERVAL_MS : constant Unsigned_64 := 4;
 
    --  Priority for applications launched from Apps (see trySpawnApplication).
    APP_PRIORITY : constant Unsigned_64 := 3;
@@ -786,6 +802,69 @@ procedure main is
       return Text (Text'First + 1 .. Text'Last);
    end Decimal;
 
+   package TH renames CuBit.Timing_Histograms;
+   type Timing_Stage is (Input_Dispatch, Request_Dispatch, Scene_Draw,
+                        Submit_Call, Submit_To_Completion);
+   Timing : array (Timing_Stage) of TH.Histogram := (others => TH.Empty);
+   Timing_Invalid, Timing_Dropped : array (Timing_Stage) of Unsigned_64 := (others => 0);
+   function timingNow return Unsigned_64 is
+   begin
+      if Desktop_Timing_Policy.Enabled then
+         declare R : constant CuBit.Monotonic.Reading := CuBit.Monotonic.Read;
+         begin
+            if R.Available then return R.Microseconds; end if;
+         end;
+      end if;
+      return Compositor_Elapsed.Unavailable;
+   end timingNow;
+   procedure noteTiming (Stage : Timing_Stage; First : Unsigned_64) is
+   begin
+      if Desktop_Timing_Policy.Enabled then
+         declare V : constant Compositor_Elapsed.Sample :=
+           Compositor_Elapsed.Measure (First, timingNow);
+         begin
+            if not V.Valid then
+               if Timing_Invalid (Stage) /= Unsigned_64'Last then
+                  Timing_Invalid (Stage) := Timing_Invalid (Stage) + 1;
+               end if;
+            elsif TH.Count (Timing (Stage)) = TH.Maximum_Samples then
+               if Timing_Dropped (Stage) /= Unsigned_64'Last then
+                  Timing_Dropped (Stage) := Timing_Dropped (Stage) + 1;
+               end if;
+            else TH.Add (Timing (Stage), V.Microseconds);
+            end if;
+         end;
+      end if;
+   end noteTiming;
+   procedure publishTiming is
+      function Name (Stage : Timing_Stage) return String is
+        (case Stage is
+           when Input_Dispatch => "input_dispatch",
+           when Request_Dispatch => "request_dispatch",
+           when Scene_Draw => "scene_draw",
+           when Submit_Call => "submit_call",
+           when Submit_To_Completion => "submit_to_completion");
+   begin
+      if not Desktop_Timing_Policy.Enabled then return; end if;
+      for Stage in Timing_Stage loop
+         if TH.Count (Timing (Stage)) > 0 or Timing_Invalid (Stage) > 0 or
+           Timing_Dropped (Stage) > 0
+         then
+            debugPrint ("COMPOSITOR-TIMING: stage=" & Name (Stage) &
+              " count=" & Decimal (Unsigned_64 (TH.Count (Timing (Stage)))) &
+              " min_us=" & Decimal (TH.Minimum (Timing (Stage))) &
+              " max_us=" & Decimal (TH.Maximum (Timing (Stage))) &
+              " p50_upper_us=" & Decimal (TH.Quantile_Upper (Timing (Stage), 50)) &
+              " p99_upper_us=" & Decimal (TH.Quantile_Upper (Timing (Stage), 99)) &
+              " invalid=" & Decimal (Timing_Invalid (Stage)) &
+              " dropped=" & Decimal (Timing_Dropped (Stage)) & LF);
+         end if;
+         Timing (Stage) := TH.Empty;
+         Timing_Invalid (Stage) := 0;
+         Timing_Dropped (Stage) := 0;
+      end loop;
+   end publishTiming;
+
    procedure printDec (val : Unsigned_64) is
       buf : String (1 .. 20);
       pos : Natural := buf'Last;
@@ -873,6 +952,7 @@ procedure main is
             " cursor_y=" & Decimal (Unsigned_64 (cursorY)) & LF);
       end if;
 
+      publishTiming;
       statsStartMs := now;
       statsEvents := 0;
       CuBit.Graphics_Metrics_IO.Publish
@@ -1617,8 +1697,7 @@ procedure main is
       if backBufferReady and then fbBpp = 32 and then not isEmpty (r) then
          for Output in Output_Index loop
             if presentations (Output).Enabled then
-               presentations (Output).Damage := unionRect
-                 (presentations (Output).Damage, localDamage (Output, r));
+               addOutputDamage (presentations (Output).Damage, localDamage (Output, r));
             end if;
          end loop;
       end if;
@@ -1627,7 +1706,7 @@ procedure main is
    procedure quarantinePresentations is
    begin
       for P of presentations loop
-         P.Phase := Quarantined;
+         CP.Quarantine (P.Transfer);
       end loop;
    end quarantinePresentations;
 
@@ -1649,7 +1728,7 @@ procedure main is
          if completion.token > retiredThrough then
             matched := False;
             for P of presentations loop
-               if P.Enabled and then completion.token = P.Token then
+               if P.Enabled and then completion.token = CP.Token (P.Transfer) then
                   matched := True;
                   declare
                      result : constant DSP.Frame_Result_Decoding :=
@@ -1658,19 +1737,27 @@ procedure main is
                   begin
                      -- The non-reused kernel completion token selects the
                      -- output. Payload session/frame values only validate it.
-                     if not completion.valid or else
-                       completion.status /= COMPLETION_OK or else
-                       P.Phase /= In_Flight or else not result.Valid or else
-                       result.Value.Session /= P.Session or else
-                       result.Value.Frame /= P.Token or else
-                       result.Value.Outcome /= DSP.Published or else
-                       result.Value.Buffer_State /= DSP.Released
-                     then
-                        P.Phase := Quarantined;
+                     CP.Complete
+                       (P.Transfer,
+                        (Kernel_Valid => completion.valid,
+                         Kernel_OK => completion.status = COMPLETION_OK,
+                         Payload_Valid => result.Valid,
+                         Kernel_Token => completion.token,
+                         Payload_Session => (if result.Valid then result.Value.Session else 0),
+                         Payload_Frame => (if result.Valid then result.Value.Frame else 0),
+                         Published => result.Valid and then result.Value.Outcome = DSP.Published,
+                         Released => result.Valid and then result.Value.Buffer_State = DSP.Released));
+                     if not CP.Writable (P.Transfer) then
                         debugPrint ("desktop: asynchronous transfer quarantined" & LF);
                      else
-                        P.Phase := Available;
-                        statsCompletionMs := statsCompletionMs + nowMs - P.Started;
+                        noteTiming (Submit_To_Completion, P.Started_Us);
+                        declare Finished : constant Unsigned_64 := nowMs;
+                        begin
+                           if Finished /= Unsigned_64'Last and P.Started /= Unsigned_64'Last and
+                             Finished >= P.Started
+                           then statsCompletionMs := statsCompletionMs + Finished - P.Started;
+                           end if;
+                        end;
                         if not releaseAnnounced then
                            releaseAnnounced := True;
                            debugPrint ("desktop: asynchronous frame released" & LF);
@@ -1691,12 +1778,66 @@ procedure main is
 
    procedure pumpOutput (Output : Output_Index) is
       P : Output_Presentation renames presentations (Output);
-      r : constant Rect := P.Damage;
-      ignored : System.Address;
+      r : constant Rect := damageRectangle (Compositor_Damage.Bounds (P.Damage));
       request : Message;
+      copiedBytes : Unsigned_64 := 0;
+      envelopeBytes : constant Unsigned_64 :=
+        Unsigned_64 (r.w) * Unsigned_64 (r.h) * 4;
       use type DG.Scale_Component;
+      procedure copyRegion (r : Rect) is
+         ignored : System.Address;
+      begin
+         if P.Geometry.Scale.Numerator = P.Geometry.Scale.Denominator then
+            -- Preserve the bulk-copy fast path for unscaled outputs.
+            for row in r.y .. r.y + r.h - 1 loop
+            ignored := memcpy
+              (P.Buffer + Storage_Offset (row * P.Pitch + r.x * 4),
+               backBufferAddr + Storage_Offset
+                 ((row + Natural (P.Geometry.Y)) * fbPitch +
+                  (r.x + Natural (P.Geometry.X)) * 4),
+               Storage_Count (r.w * 4));
+            end loop;
+         else
+            -- Compatibility sampling of logical-pixel surfaces. Map each column
+            -- once per damage rectangle, not once per pixel. This writes directly
+            -- into the existing transfer buffer; no extra intermediate image.
+            declare
+               Columns : array (r.x .. r.x + r.w - 1) of Natural;
+               Source : array (0 .. sceneCapacityBytes / 4 - 1) of Unsigned_32
+                 with Import, Address => backBufferAddr;
+            begin
+               for X in Columns'Range loop
+                  declare M : constant DG.Point_Mapping := DG.To_Desktop
+                    (P.Geometry, (DG.Pixel_Index (X), 0));
+                  begin
+                     if not M.Valid then quarantinePresentations; return; end if;
+                     Columns (X) := Natural (M.Value.X);
+                  end;
+               end loop;
+               for Y in r.y .. r.y + r.h - 1 loop
+                  declare
+                     M : constant DG.Point_Mapping := DG.To_Desktop
+                       (P.Geometry, (0, DG.Pixel_Index (Y)));
+                     Target_Row : array (0 .. Natural (P.Geometry.Width) - 1) of Unsigned_32
+                       with Import, Address => P.Buffer + Storage_Offset (Y * P.Pitch),
+                       Alignment => 1;
+                     Row : Natural;
+                  begin
+                     if not M.Valid then quarantinePresentations; return; end if;
+                     Row := Natural (M.Value.Y) * (fbPitch / 4);
+                     for X in Columns'Range loop
+                        Target_Row (X) := Source (Row + Columns (X));
+                     end loop;
+                  end;
+               end loop;
+            end;
+         end if;
+         copiedBytes := copiedBytes + Unsigned_64 (r.w) * Unsigned_64 (r.h) * 4;
+         GM.Add (stagingCopies, Unsigned_64 (r.w) * Unsigned_64 (r.h) * 4);
+      end copyRegion;
+
    begin
-      if not P.Enabled or else P.Phase /= Available or else isEmpty (r) then
+      if not P.Enabled or else not CP.Writable (P.Transfer) or else isEmpty (r) then
          return;
       end if;
       if frameSequence >= Unsigned_64'Last - 1 then
@@ -1704,70 +1845,47 @@ procedure main is
          debugPrint ("desktop: frame identifiers exhausted" & LF);
          return;
       end if;
-      if P.Geometry.Scale.Numerator = P.Geometry.Scale.Denominator then
-         -- Preserve the bulk-copy fast path for unscaled outputs.
-         for row in r.y .. r.y + r.h - 1 loop
-         ignored := memcpy
-           (P.Buffer + Storage_Offset (row * P.Pitch + r.x * 4),
-            backBufferAddr + Storage_Offset
-              ((row + Natural (P.Geometry.Y)) * fbPitch +
-               (r.x + Natural (P.Geometry.X)) * 4),
-            Storage_Count (r.w * 4));
-         end loop;
-      else
-         -- Compatibility sampling of logical-pixel surfaces. Map each column
-         -- once per damage rectangle, not once per pixel. This writes directly
-         -- into the existing transfer buffer; no extra intermediate image.
-         declare
-            Columns : array (r.x .. r.x + r.w - 1) of Natural;
-            Source : array (0 .. sceneCapacityBytes / 4 - 1) of Unsigned_32
-              with Import, Address => backBufferAddr;
-         begin
-            for X in Columns'Range loop
-               declare M : constant DG.Point_Mapping := DG.To_Desktop
-                 (P.Geometry, (DG.Pixel_Index (X), 0));
-               begin
-                  if not M.Valid then quarantinePresentations; return; end if;
-                  Columns (X) := Natural (M.Value.X);
-               end;
-            end loop;
-            for Y in r.y .. r.y + r.h - 1 loop
-               declare
-                  M : constant DG.Point_Mapping := DG.To_Desktop
-                    (P.Geometry, (0, DG.Pixel_Index (Y)));
-                  Target_Row : array (0 .. Natural (P.Geometry.Width) - 1) of Unsigned_32
-                    with Import, Address => P.Buffer + Storage_Offset (Y * P.Pitch),
-                    Alignment => 1;
-                  Row : Natural;
-               begin
-                  if not M.Valid then quarantinePresentations; return; end if;
-                  Row := Natural (M.Value.Y) * (fbPitch / 4);
-                  for X in Columns'Range loop
-                     Target_Row (X) := Source (Row + Columns (X));
-                  end loop;
-               end;
-            end loop;
-         end;
+      -- Retained transfer contents outside these regions remain current.
+      -- Display still receives the conservative envelope in the existing ABI.
+      for I in 1 .. Compositor_Damage.Count (P.Damage) loop
+         copyRegion (damageRectangle (Compositor_Damage.Item (P.Damage, I)));
+         if not CP.Writable (P.Transfer) then return; end if;
+      end loop;
+      if not sparseCopyAnnounced and then
+        copiedBytes < envelopeBytes
+      then
+         sparseCopyAnnounced := True;
+         debugPrint ("desktop: sparse output copy bytes=" & copiedBytes'Image &
+           " envelope=" & envelopeBytes'Image & LF);
       end if;
-      GM.Add (stagingCopies, Unsigned_64 (r.w) * Unsigned_64 (r.h) * 4);
       frameSequence := frameSequence + 1;
-      P.Token := frameSequence;
+      declare
+         Started : Boolean;
+      begin
+         CP.Submit (P.Transfer, frameSequence, Started);
+         if not Started then
+            debugPrint ("desktop: invalid presentation transition" & LF);
+            return;
+         end if;
+      end;
       request := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
         (DSP.Encode_Frame
-           ((P.Session, P.Token,
+           ((CP.Session (P.Transfer), CP.Token (P.Transfer),
              (DP.Pixel_Coordinate (r.x), DP.Pixel_Coordinate (r.y),
               DP.Pixel_Extent (r.w), DP.Pixel_Extent (r.h)))), Output));
-      P.Phase := In_Flight;
       P.Started := nowMs;
-      if capSubmit (CAP_SLOT_DISPLAY, request, P.Token) then
-         P.Damage := (others => 0);
+      P.Started_Us := timingNow;
+      if capSubmit (CAP_SLOT_DISPLAY, request, CP.Token (P.Transfer)) then
+         noteTiming (Submit_Call, P.Started_Us);
+         Compositor_Damage.Clear (P.Damage);
          statsPresentOps := statsPresentOps + 1;
          if not asyncAnnounced then
             asyncAnnounced := True;
             debugPrint ("desktop: asynchronous presentation active" & LF);
          end if;
       else
-         P.Phase := Quarantined;
+         CP.Quarantine (P.Transfer);
+         noteTiming (Submit_Call, P.Started_Us);
          debugPrint ("desktop: asynchronous submission unavailable" & LF);
       end if;
    end pumpOutput;
@@ -2229,12 +2347,8 @@ procedure main is
    end drawStreamBadges;
 
    procedure drawClientBuffer (s : Surface; x, y, w, h : Natural) is
-      copyW : Natural := w;
-      copyH : Natural := h;
-      minX  : Natural := x;
-      minY  : Natural := y;
-      maxX  : Natural;
-      maxY  : Natural;
+      P : Desktop_Composition.Blit_Plan;
+      drawn, mustRestart : Boolean;
    begin
       if not s.bufferAttached or else
          s.bufferAddr = System.Null_Address or else
@@ -2245,62 +2359,48 @@ procedure main is
          return;
       end if;
 
-      if copyW > s.bufferW then
-         copyW := s.bufferW;
-      end if;
-      if copyH > s.bufferH then
-         copyH := s.bufferH;
-      end if;
-      if copyW = 0 or else copyH = 0 or else
-         x >= fbWidth or else y >= fbHeight
-      then
+      P := Desktop_Composition.Plan
+        (fbWidth, fbHeight, s.bufferW, s.bufferH,
+         (x, y, w, h), clipEnabled,
+         (clipRect.x, clipRect.y, clipRect.w, clipRect.h));
+      if P.Width = 0 or else P.Height = 0 then
          return;
       end if;
 
-      maxX := x + copyW;
-      maxY := y + copyH;
-
-      if clipEnabled then
-         if minX < clipRect.x then
-            minX := clipRect.x;
+      if Desktop_Compositor.Selected then
+         Desktop_Compositor.Draw_Client
+           ((backBufferAddr, Unsigned_32 (fbWidth), Unsigned_32 (fbHeight), Unsigned_32 (fbPitch), 1),
+            (s.bufferAddr, Unsigned_32 (s.bufferW), Unsigned_32 (s.bufferH), Unsigned_32 (s.bufferPitch), 0),
+            Unsigned_64 (sceneCapacityBytes), Unsigned_64 (s.bufferPitch) * Unsigned_64 (s.bufferH),
+            P, backBufferAddr = dragBaseBufferAddr, drawn, mustRestart);
+         if mustRestart then
+            debugPrint ("desktop: Mesa access uncertain; compositor restart required" & LF);
+            exitCompositor (1);
          end if;
-         if minY < clipRect.y then
-            minY := clipRect.y;
-         end if;
-         if maxX > clipRect.x + clipRect.w then
-            maxX := clipRect.x + clipRect.w;
-         end if;
-         if maxY > clipRect.y + clipRect.h then
-            maxY := clipRect.y + clipRect.h;
+         if drawn then
+            if not mesaAnnounced then
+               debugPrint ("desktop: Mesa imported-surface compositor active" & LF);
+               mesaAnnounced := True;
+            end if;
+            return;
+         elsif not mesaFallbackAnnounced then
+            debugPrint ("desktop: Mesa unavailable; CPU compositor fallback" & LF);
+            mesaFallbackAnnounced := True;
          end if;
       end if;
 
-      if maxX > fbWidth then
-         maxX := fbWidth;
-      end if;
-      if maxY > fbHeight then
-         maxY := fbHeight;
-      end if;
-      if minX >= maxX or else minY >= maxY then
-         return;
-      end if;
-
-      --  Client buffers are already BGRA8888, matching the compositor
-      --  backbuffer. Clip once, then copy rows directly; bitmap-heavy clients
-      --  such as DOOM should not pay the cost of putPixel/readClientPixel for
-      --  every pixel in a full-frame present.
-      for yy in minY .. maxY - 1 loop
+      --  Preserve the existing opaque BGRA row-copy renderer. The SPARK plan
+      --  bounds both images and clips while preserving source coordinates.
+      for Row in 0 .. P.Height - 1 loop
          declare
-            srcY : constant Natural := yy - y;
-            srcX : constant Natural := minX - x;
-            bytes : constant Storage_Count := Storage_Count ((maxX - minX) * 4);
             ignore : System.Address;
          begin
             ignore := memcpy
-              (backBufferAddr + Storage_Offset (yy * fbPitch + minX * 4),
-               s.bufferAddr +
-                  Storage_Offset (srcY * s.bufferPitch + srcX * 4),
-               bytes);
+              (backBufferAddr + Storage_Offset
+                 ((P.Target_Y + Row) * fbPitch + P.Target_X * 4),
+               s.bufferAddr + Storage_Offset
+                 ((P.Source_Y + Row) * s.bufferPitch + P.Source_X * 4),
+               Storage_Count (P.Width * 4));
          end;
       end loop;
    end drawClientBuffer;
@@ -2382,67 +2482,29 @@ procedure main is
    end drawCursorOverlay;
 
    procedure noteCursorPresented is
-      now : constant Unsigned_64 := nowMs;
    begin
       cursorPresentPending := False;
-      cursorPresentDueMs := 0;
-      if now /= Unsigned_64'Last then
-         lastCursorPresentMs := now;
-      end if;
    end noteCursorPresented;
 
    procedure presentCursorOverlay is
-      newCursor : constant Rect := cursorRect;
-      oldCursor : Rect := newCursor;
-      damage    : Rect;
+      Started : constant Unsigned_64 := timingNow;
    begin
-      if cursorSaveValid then
-         oldCursor := cursorSaveRect;
-      end if;
-      damage := unionRect (oldCursor, newCursor);
+      -- Both helpers queue their exact written footprints. Keep them separate
+      -- so a pointer jump does not copy the unchanged rectangle between them.
       restoreCursorOverlay;
       drawCursorOverlay;
-      damage := inflateRect (damage, 1);
-      --  Cursor feedback is latency-critical and this damage is only a small
-      --  rectangle. Waiting for legacy VGA vertical blank for every input
-      --  packet serializes the input path at the refresh rate and can fill
-      --  the bounded event ring. display.svc still owns scanout, but copies
-      --  this explicitly marked damage immediately.
-      flushBackBufferRect (damage);
       noteCursorPresented;
+      noteTiming (Scene_Draw, Started);
    end presentCursorOverlay;
 
    procedure scheduleCursorPresent is
-      now : constant Unsigned_64 := nowMs;
-      due : Unsigned_64;
    begin
-      if now = Unsigned_64'Last or else lastCursorPresentMs = 0 or else
-         now < lastCursorPresentMs or else
-         now - lastCursorPresentMs >= CURSOR_PRESENT_INTERVAL_MS
-      then
-         presentCursorOverlay;
-         return;
-      end if;
-
-      due := lastCursorPresentMs + CURSOR_PRESENT_INTERVAL_MS;
-      if not cursorPresentPending or else cursorPresentDueMs = 0 or else
-         due < cursorPresentDueMs
-      then
-         cursorPresentPending := True;
-         cursorPresentDueMs := due;
-      end if;
+      cursorPresentPending := True;
    end scheduleCursorPresent;
 
    procedure flushCursorPresent is
-      now : constant Unsigned_64 := nowMs;
    begin
-      if not cursorPresentPending then
-         return;
-      end if;
-
-      if now = Unsigned_64'Last or else cursorPresentDueMs = 0 or else
-         now < lastCursorPresentMs or else now >= cursorPresentDueMs
-      then
+      if cursorPresentPending then
          presentCursorOverlay;
       end if;
    end flushCursorPresent;
@@ -2450,8 +2512,6 @@ procedure main is
    function tryFastClientRedraw (dirty : Rect) return Boolean is
       r : constant Rect := clampRect (dirty);
       c : Rect;
-      oldCursor : Rect := (others => 0);
-      damage : Rect;
       occluded : Boolean;
    begin
       if isEmpty (r) or else launchMenuOpen or else audioPopupOpen or else
@@ -2484,10 +2544,8 @@ procedure main is
                end if;
 
                if not occluded then
-                  if cursorSaveValid then
-                     oldCursor := cursorSaveRect;
-                  end if;
-
+                  declare Draw_Started : constant Unsigned_64 := timingNow;
+                  begin
                   statsFastFrames := statsFastFrames + 1;
                   restoreCursorOverlay;
                   declare
@@ -2503,11 +2561,12 @@ procedure main is
                      clipEnabled := savedEnabled;
                   end;
                   drawCursorOverlay;
+                  noteCursorPresented;
 
-                  damage := unionRect (r, cursorRect);
-                  damage := unionRect (damage, oldCursor);
-                  flushBackBufferRect (damage);
+                  flushBackBufferRect (r);
+                  noteTiming (Scene_Draw, Draw_Started);
                   return True;
+                  end;
                end if;
             end if;
          end if;
@@ -2909,7 +2968,7 @@ procedure main is
 
       if drawingBackBuffer then
          drawingBackBuffer := False;
-         flushBackBufferRect (unionRect (r, cursorRect));
+         flushBackBufferRect (r);
       end if;
 
       clipEnabled := False;
@@ -3001,7 +3060,7 @@ procedure main is
       clipEnabled := False;
       drawCursorOverlay;
       drawingBackBuffer := False;
-      flushBackBufferRect (unionRect (r, cursorRect));
+      flushBackBufferRect (r);
 
       pixelCount := Unsigned_64 (r.w) * Unsigned_64 (r.h);
       handled := True;
@@ -3115,45 +3174,23 @@ procedure main is
    end redrawDragFrame;
 
    procedure scheduleRedraw is
-      now : constant Unsigned_64 := nowMs;
    begin
       framePending := True;
       frameDamage := (x => 0, y => 0, w => fbWidth, h => fbHeight);
-      if now /= Unsigned_64'Last then
-         frameDueMs := now;
-      else
-         frameDueMs := 0;
-      end if;
    end scheduleRedraw;
 
-   procedure scheduleRedrawRect (dirty : Rect; defer : Boolean := False) is
+   procedure scheduleRedrawRect (dirty : Rect) is
       r : constant Rect := clampRect (dirty);
-      now : constant Unsigned_64 := nowMs;
-      due : Unsigned_64 := 0;
    begin
       if isEmpty (r) then
          return;
       end if;
 
-      if now /= Unsigned_64'Last then
-         if defer then
-            due := now + FRAME_INTERVAL_MS;
-         else
-            due := now;
-         end if;
-      end if;
-
       if framePending then
          frameDamage := unionRect (frameDamage, r);
-         --  Non-deferred damage, such as surface creation/resize, should not
-         --  wait behind a mouse coalescing deadline.
-         if not defer then
-            frameDueMs := due;
-         end if;
       else
          frameDamage := r;
          framePending := True;
-         frameDueMs := due;
       end if;
    end scheduleRedrawRect;
 
@@ -3163,30 +3200,24 @@ procedure main is
 
    procedure flushFrame is
       damage : Rect := frameDamage;
-      now : constant Unsigned_64 := nowMs;
       t0 : Unsigned_64;
       t1 : Unsigned_64;
+      Draw_Started : Unsigned_64;
       full : Boolean;
       damagePixels : Unsigned_64 := 0;
    begin
       if not framePending then
          return;
       end if;
-      if now /= Unsigned_64'Last and then frameDueMs /= 0 and then
-         now < frameDueMs
-      then
-         return;
-      end if;
-
       framePending := False;
       frameDamage := (others => 0);
-      frameDueMs := 0;
 
       reapDeadClientSurfaces (damage);
       full :=
          damage.x = 0 and then damage.y = 0 and then
          damage.w = fbWidth and then damage.h = fbHeight;
 
+      Draw_Started := timingNow;
       t0 := syscall (SYSCALL_GETTIME);
       if full then
          redraw;
@@ -3206,6 +3237,7 @@ procedure main is
       noteCursorPresented;
       t1 := syscall (SYSCALL_GETTIME);
 
+      noteTiming (Scene_Draw, Draw_Started);
       statsFrames := statsFrames + 1;
       if full then
          statsFullFrames := statsFullFrames + 1;
@@ -3445,11 +3477,16 @@ procedure main is
    end toggleMaximizeSurface;
 
    procedure releaseSurfaceBuffer (s : in out Surface) is
-      returned : Boolean;
+      returned, safe : Boolean;
    begin
       if s.bufferAttached then
          -- Single compositor event loop: no blit retains this address after
          -- the handler returns. This is lifetime, not pixel immutability.
+         Desktop_Compositor.Forget_Source (s.bufferAddr, safe);
+         if not safe then
+            debugPrint ("desktop: Mesa retirement uncertain; compositor restart required" & LF);
+            exitCompositor (1);
+         end if;
          s.bufferAttached := False;
          s.bufferAddr := System.Null_Address;
          MG.Return_Acquisition (s.bufferGrant, returned);
@@ -5288,8 +5325,9 @@ procedure main is
          if presentations (Output).Enabled then
             -- In-flight transfers remain immutable. Queue a full replacement
             -- in output-local coordinates for after their matching completion.
-            presentations (Output).Damage := (0, 0,
-              Natural (presentations (Output).Geometry.Width), Natural (presentations (Output).Geometry.Height));
+            Compositor_Damage.Clear (presentations (Output).Damage);
+            addOutputDamage (presentations (Output).Damage, (0, 0,
+              Natural (presentations (Output).Geometry.Width), Natural (presentations (Output).Geometry.Height)));
          end if;
       end loop;
       dragBaseReady := False;
@@ -5864,7 +5902,7 @@ procedure main is
                end if;
 
                --  Ensure a final position that arrived just before release is
-               --  presented even if the deferred drag frame had not fired.
+               --  presented even if this pass has not painted the drag yet.
                damage := unionRect
                  (damage,
                   inflateRect
@@ -5913,9 +5951,7 @@ procedure main is
       if sceneDamage or else
         (dragMode /= DRAG_NONE and then dragSurfaceId /= 0)
       then
-         scheduleRedrawRect
-           (inflateRect (damage, 2),
-            defer => False);
+         scheduleRedrawRect (inflateRect (damage, 2));
       else
          scheduleCursorPresent;
       end if;
@@ -6237,7 +6273,6 @@ procedure main is
       cursorSaveValid := False;
       framePending := False;
       frameDamage := (others => 0);
-      frameDueMs := 0;
       clearInputQueue;
    end releaseDisplayBuffer;
 
@@ -6323,7 +6358,7 @@ procedure main is
          closeOutput (Output);
          return;
       end if;
-      P.Session := Response.words (1);
+      P.Transfer := CP.Open (Response.words (1));
       P.Enabled := True;
       Ok := True;
    end prepareOutput;
@@ -6482,7 +6517,7 @@ begin
 
    ret := setLatencyContract
       (LATENCY_INTERACTIVE,
-       16_667,  --  Target one compositor frame per 60 Hz display period.
+       4_167,   --  Advisory 240 Hz target; presentation follows the output.
        4_000);  --  Budget hint for input dispatch and compositor drawing.
    if ret = Unsigned_64'Last then
       debugPrint ("desktop: latency contract rejected" & LF);
@@ -6530,13 +6565,18 @@ begin
                exit when not eventFound;
                eventsRemaining := eventsRemaining - 1;
                if Presentation_Test_Policy.Enabled and then
-                 presentations (primaryOutput).Phase = In_Flight and then
-                 inputWhileHeldFrame /= presentations (primaryOutput).Token
+                 CP.Current (presentations (primaryOutput).Transfer) = CP.In_Flight
                then
-                  inputWhileHeldFrame := presentations (primaryOutput).Token;
-                  debugPrint ("desktop: input during frame" & inputWhileHeldFrame'Image & LF);
+                  -- Test-only: the first event may precede the reader's hold.
+                  -- Record each bounded dispatch so later progress is visible.
+                  debugPrint ("desktop: input during frame" &
+                    CP.Token (presentations (primaryOutput).Transfer)'Image & LF);
                end if;
-               handleEvent (eventMsg, running);
+               declare Started : constant Unsigned_64 := timingNow;
+               begin
+                  handleEvent (eventMsg, running);
+                  noteTiming (Input_Dispatch, Started);
+               end;
             end loop;
          end Drain_Events;
       begin
@@ -6546,7 +6586,11 @@ begin
          loop
             Poll_Service_Request (from, msg, found);
             exit when not found;
-            handleRequest (from, msg);
+            declare Started : constant Unsigned_64 := timingNow;
+            begin
+               handleRequest (from, msg);
+               noteTiming (Request_Dispatch, Started);
+            end;
             requestsThisPass := requestsThisPass + 1;
             exit when not running;
             --  Do not let a steady stream of synchronous input polls hold a
@@ -6587,28 +6631,7 @@ begin
                   if statusDueMs /= 0 and then
                     (nextDueMs = 0 or else statusDueMs < nextDueMs)
                   then nextDueMs := statusDueMs; end if;
-                  if framePending and then now /= Unsigned_64'Last and then
-                     frameDueMs /= 0 and then now < frameDueMs
-                  then
-                     if nextDueMs = 0 or else frameDueMs < nextDueMs then
-                        nextDueMs := frameDueMs;
-                     end if;
-                  elsif framePending then
-                     mayWait := False;
-                  end if;
-
-                  if cursorPresentPending and then now /= Unsigned_64'Last
-                    and then cursorPresentDueMs /= 0
-                    and then now < cursorPresentDueMs
-                    and then
-                      (nextDueMs = 0 or else cursorPresentDueMs < nextDueMs)
-                  then
-                     nextDueMs := cursorPresentDueMs;
-                  elsif cursorPresentPending and then
-                    (now = Unsigned_64'Last or else
-                     cursorPresentDueMs = 0 or else
-                     now >= cursorPresentDueMs)
-                  then
+                  if framePending or else cursorPresentPending then
                      mayWait := False;
                   end if;
 

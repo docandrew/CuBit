@@ -1,0 +1,12 @@
+# DRAFT, not yet attached to ps2.drv: devmgr still mints these grants itself.
+(executable-manifest v1
+  (identity "com.cubit.ps2")
+  (version "0.1.0")
+  (platform-device ps2-controller)
+  (io-ports data (resource 0) (count 1))
+  (io-ports command (resource 1) (count 1))
+  (interrupt keyboard-line (resource 2))
+  (interrupt mouse-line (resource 3))
+  (request-notification keyboard publish keyboard-events)
+  (request-notification mouse publish mouse-events)
+  (request-service device-manager read-write ready))

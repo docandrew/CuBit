@@ -3,15 +3,32 @@ project Desktop is
 
     for Languages use ("Ada");
 
+    type Backend_Type is ("legacy", "mesa");
+    Backend : Backend_Type := external ("CUBIT_COMPOSITOR", "legacy");
+    Backend_Directory := "backend-" & Backend;
+    Backend_Suffix := "";
+    case Backend is
+        when "legacy" => null;
+        when "mesa" => Backend_Suffix := "-mesa";
+    end case;
+
+    type Timing_Type is ("off", "on");
+    Timing : Timing_Type := external ("CUBIT_COMPOSITOR_TIMING", "off");
+    Timing_Directory := "timing-" & Timing;
+    case Timing is
+        when "off" => null;
+        when "on" => Backend_Suffix := Backend_Suffix & "-timing";
+    end case;
+
     type Test_Mode_Type is ("production", "delayed");
     Test_Mode : Test_Mode_Type := external ("CUBIT_DISPLAY_TEST_MODE", "production");
     case Test_Mode is
         when "production" =>
-            for Object_Dir use "build";
-            for Source_Dirs use ("../../lib/display", ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/production");
+            for Object_Dir use "build" & Backend_Suffix;
+            for Source_Dirs use ("../../lib/display", "../../lib/compositor", Backend_Directory, Timing_Directory, ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/production");
         when "delayed" =>
-            for Object_Dir use "build-delayed";
-            for Source_Dirs use ("../../lib/display", ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/test-delayed");
+            for Object_Dir use "build-delayed" & Backend_Suffix;
+            for Source_Dirs use ("../../lib/display", "../../lib/compositor", Backend_Directory, Timing_Directory, ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/test-delayed");
     end case;
 
     for Main use ("main.adb");

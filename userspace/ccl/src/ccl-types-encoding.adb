@@ -21,7 +21,10 @@ package body CCL.Types.Encoding with SPARK_Mode is
         when Sum => Wire_Shape'Enum_Rep (Wire_Sum),
         when Resource => Wire_Shape'Enum_Rep (Wire_Resource),
         when Sequence => Wire_Shape'Enum_Rep (Wire_Sequence),
-        when Callable => Wire_Shape'Enum_Rep (Wire_Callable), when Primitive => 0);
+        when Callable => Wire_Shape'Enum_Rep (Wire_Callable),
+        --  Range types are local (Storable, never Persistable), so they are
+        --  never published; their wire form comes with typed imports.
+        when Primitive | Bounded => 0);
       Data (Count_Offset) := Unsigned_8 (Item.Count);
       for I in 1 .. Item.Count loop
          Put_Name (Parts_Offset + (I - 1) * Part_Size, Item.Parts (I).Identifier);

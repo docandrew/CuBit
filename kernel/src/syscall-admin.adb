@@ -348,7 +348,7 @@ package body Syscall.Admin is
         else
             phys := Virtmem.tableWalk (
                 Virtmem.VirtAddress(arg0),
-                Process.addrtab(callerPID));
+                Process.addrtab(callerPID), Allow_Big => True);
             if phys = 0 then
                 retval := reterr;
             else
@@ -691,7 +691,8 @@ package body Syscall.Admin is
     procedure handleMintCap (callerPID : Process.ProcessID;
                              arg0, arg1, arg2, arg3,
                              arg4, arg5 : Unsigned_64;
-                             retval : out Unsigned_64) with
+                             retval : out Unsigned_64;
+                             boundRecipient : Boolean := False) with
         SPARK_Mode => Off
     is
         use type Capabilities.CapabilityType;
@@ -703,20 +704,33 @@ package body Syscall.Admin is
         newCap     : Capabilities.Capability;
         newRights  : Capabilities.CapabilityRights;
         targetSlot : Capabilities.CapabilitySlot;
+        targetWord : constant Unsigned_64 :=
+          (if boundRecipient then arg0 mod 2 ** 32 else arg0);
+        expectedGeneration : constant Unsigned_64 := arg0 / 2 ** 32;
     begin
         -- Validate target PID range
-        if arg0 > Unsigned_64 (Process.ProcessID'Last) or
-           arg0 = 0
+        if targetWord > Unsigned_64 (Process.ProcessID'Last) or else
+           targetWord = 0 or else
+           (boundRecipient and then (expectedGeneration = 0 or else arg4 > 31))
         then
             println ("POLICY_MINT_CAPABILITY: invalid target PID");
             retval := reterr;
             return;
         end if;
 
-        targetPID := Process.ProcessID (arg0);
+        targetPID := Process.ProcessID (targetWord);
         declare
             procedure performLocked is
             begin
+                -- Recipient generation is checked under the same mailbox
+                -- lock as installation. Root CSPACE authority cannot bypass
+                -- a stale explicitly supplied recipient incarnation.
+                if boundRecipient and then expectedGeneration /=
+                  Unsigned_64 (Process.generationOf (targetPID))
+                then
+                    retval := reterr;
+                    return;
+                end if;
                 if not Process.proctab(targetPID).admitted or else
                    Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime) then
                     retval := reterr;
@@ -752,6 +766,13 @@ package body Syscall.Admin is
                 end if;
 
                 targetSlot := Capabilities.CapabilitySlot (arg5);
+                if boundRecipient and then
+                   Process.proctab(targetPID).caps(targetSlot).capType /=
+                     Capabilities.CAP_NULL
+                then
+                    retval := reterr;
+                    return;
+                end if;
                 capTypePos := Natural (arg1);
 
                 -- Build rights from bitmask
@@ -840,6 +861,73 @@ package body Syscall.Admin is
     ---------------------------------------------------------------------------
     -- handleResume
     ---------------------------------------------------------------------------
+    procedure handleDelegateEndpoint
+      (callerPID : Process.ProcessID;
+       recipient, sourceSlot, destinationSlot, rights, tag, reserved : Unsigned_64;
+       retval : out Unsigned_64) with SPARK_Mode => Off
+    is
+        use type Capabilities.CapabilityType;
+        targetWord : constant Unsigned_64 := recipient mod 2 ** 32;
+        generation : constant Unsigned_64 := recipient / 2 ** 32;
+        targetPID, firstPID, secondPID : Process.ProcessID;
+        procedure performLocked is
+            parent : constant Capabilities.Capability :=
+              Process.proctab(callerPID).caps(Capabilities.CapabilitySlot(sourceSlot));
+            requested : constant Capabilities.CapabilityRights :=
+              (Capabilities.RIGHT_READ => (rights and 1) /= 0,
+               Capabilities.RIGHT_WRITE => (rights and 2) /= 0,
+               Capabilities.RIGHT_EXECUTE => (rights and 4) /= 0,
+               Capabilities.RIGHT_GRANT => (rights and 8) /= 0,
+               Capabilities.RIGHT_REVOKE => (rights and 16) /= 0);
+        begin
+            if not Process.proctab(targetPID).admitted or else
+               Process_Lifetime.Closing (Process.threadOf(targetPID).lifetime) or else
+               generation /= Unsigned_64(Process.generationOf(targetPID)) or else
+               not hasCspaceGrantFor(callerPID, targetPID) or else
+               parent.capType /= Capabilities.CAP_ENDPOINT or else
+               not parent.rights(Capabilities.RIGHT_GRANT) or else
+               parent.gen = 0 or else parent.object.ref = 0 or else
+               not Capabilities.isSubsetOf(requested, parent.rights) or else
+               Process.proctab(targetPID).caps
+                 (Capabilities.CapabilitySlot(destinationSlot)).capType /=
+                   Capabilities.CAP_NULL
+            then
+                return;
+            end if;
+            -- Preserve the exact source object and generation. Never resolve
+            -- its PID again: a stale endpoint remains stale, not redirected.
+            Capabilities.Operations.insertCapAt
+              (Process.proctab(targetPID).caps,
+               Capabilities.CapabilitySlot(destinationSlot),
+               Capabilities.mint(parent, tag, requested));
+            retval := 0;
+        end performLocked;
+    begin
+        retval := reterr;
+        if targetWord = 0 or else
+           targetWord > Unsigned_64(Process.ProcessID'Last) or else
+           generation = 0 or else reserved /= 0 or else rights > 31 or else
+           sourceSlot > Unsigned_64(Capabilities.CapabilitySlot'Last) or else
+           destinationSlot > Unsigned_64(Capabilities.CapabilitySlot'Last)
+        then
+            return;
+        end if;
+        targetPID := Process.ProcessID(targetWord);
+        firstPID := Process.ProcessID'Min(callerPID, targetPID);
+        secondPID := Process.ProcessID'Max(callerPID, targetPID);
+        -- Follow the IPC two-mailbox ascending-PID order. Source snapshot,
+        -- CSPACE authorization and destination installation are one operation.
+        Spinlocks.enterCriticalSection(Process.mailtab(firstPID).lock);
+        if secondPID /= firstPID then
+            Spinlocks.enterCriticalSection(Process.mailtab(secondPID).lock);
+        end if;
+        performLocked;
+        if secondPID /= firstPID then
+            Spinlocks.exitCriticalSection(Process.mailtab(secondPID).lock);
+        end if;
+        Spinlocks.exitCriticalSection(Process.mailtab(firstPID).lock);
+    end handleDelegateEndpoint;
+
     procedure handleResume (callerPID : Process.ProcessID;
                             arg0      : Unsigned_64;
                             retval    : out Unsigned_64) with

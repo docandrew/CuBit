@@ -53,7 +53,13 @@ is
     procedure handleMintCap (callerPID : Process.ProcessID;
                              arg0, arg1, arg2, arg3,
                              arg4, arg5 : Unsigned_64;
-                             retval : out Unsigned_64);
+                             retval : out Unsigned_64;
+                             boundRecipient : Boolean := False);
+
+    procedure handleDelegateEndpoint
+      (callerPID : Process.ProcessID;
+       recipient, sourceSlot, destinationSlot, rights, tag, reserved : Unsigned_64;
+       retval : out Unsigned_64);
 
     procedure handleResume (callerPID : Process.ProcessID;
                             arg0      : Unsigned_64;

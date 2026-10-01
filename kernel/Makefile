@@ -431,6 +431,8 @@ test-grant-loans:
 	$(ALR) gprbuild -p -P ../tests/grant-loans/loans.gpr
 	../tests/grant-loans/build/main
 	../tests/grant-loans/build/parent_lifetime_test
+	../tests/grant-loans/build/parent_scope_test
+	../tests/grant-loans/build/mapping_test
 	../tests/grant-loans/build/output_lifetime_test
 
 prove-grant-loans:
@@ -608,6 +610,20 @@ input-stress: user_runtime ccl-manifest
 	$(call compile_ccl_manifest,../userspace/apps/input-stress)
 	$(ALR) gprbuild -P ../userspace/apps/input-stress/input_stress.gpr
 	cp ../userspace/apps/input-stress/build/input-stress.app isodir/boot/input-stress.app
+
+.PHONY: grant-forward
+grant-forward: user_runtime ccl-manifest
+	@set -e; for role in owner reader client intermediary_exit owner_exit desktop; do \
+	  dir=../tests/grant-forward/native; \
+	  manifest=$$role; case $$role in *_exit) manifest=client;; esac; \
+	  mkdir -p $$dir/build/$$role/generated; \
+	  ../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl \
+	    $$dir/$$manifest-manifest.ccl --ada-output $$dir/build/$$role/generated/ccl_manifest_bindings.ads \
+	    > $$dir/build/$$role/manifest.S; \
+	  $(ALR) gcc -c $$dir/build/$$role/manifest.S -o $$dir/build/$$role/manifest.o; \
+	  $(ALR) gprbuild -p -P $$dir/fixture.gpr -XROLE=$$role; \
+	  cp $$dir/build/$$role/grant-forward-$$role.app isodir/boot/; \
+	done
 
 .PHONY : ipctest-server
 ipctest-server: user_runtime ccl-manifest
@@ -955,7 +971,22 @@ ccl-migrated-manifests: ccl-manifest
 
 .PHONY : test-ccl-manifests
 test-ccl-manifests: ccl-vm
+	$(ALR) gprbuild -p -q -P ../tests/ccl-manifests/resources.gpr
 	$(ALR) python3 ../tests/ccl-manifests/test-manifests.py -v
+
+# Level-1 proofs: the .cubit.resources decoder and startup grant decision.
+.PHONY : prove-ccl-format
+# CCLB v8 module codec: level 1, except one 64-bit conversion at level 3.
+prove-ccl-format:
+	$(ALR) gnatprove -P../tests/ccl-types/types_tests.gpr --subdirs=format-proof -u ccl-format.adb --level=1 --checks-as-errors=off -j0
+	$(ALR) gnatprove -P../tests/ccl-types/types_tests.gpr --subdirs=format-proof -u ccl-format.adb \
+		--limit-line=ccl-format.adb:$$(grep -n 'Magnitude : constant Integer_64 := Integer_64 (Found);' ../userspace/ccl/modules/ccl-format.adb | cut -d: -f1) \
+		--level=3 --checks-as-errors=on -j0
+
+.PHONY : prove-ccl-startup
+prove-ccl-startup:
+	$(ALR) gnatprove -P../tests/ccl-manifests/resources.gpr -u ccl-resource_sections.adb --level=1 -j0
+	$(ALR) gnatprove -P../tests/ccl-manifests/startup_grants.gpr -u ccl-startup_grants.adb --level=1 -j0
 
 ccl-vm: user_runtime ccl-manifest
 	mkdir -p ../userspace/ccl/apps/ccl-vm/build/generated
@@ -1216,7 +1247,7 @@ wget: user_runtime ccl-manifest
 .PHONY : devices
 .PHONY : config-inspector
 .PHONY: intel-gpu
-intel-gpu: user_runtime ccl-manifest
+intel-gpu: user_runtime ccl-manifest intel-buffer-layout-check
 	mkdir -p ../userspace/services/intel-gpu/build
 	$(call compile_ccl_manifest,../userspace/services/intel-gpu)
 	$(ALR) gprbuild -P ../userspace/services/intel-gpu/intel_gpu.gpr
@@ -1236,6 +1267,26 @@ devices: user_runtime ccl-manifest ui-fonts-native
 
 # Build the read-only, authority-scoped filesystem browser.
 .PHONY : files
+.PHONY: gpu-viewer-test
+gpu-viewer-test: user_runtime ccl-manifest
+	@set -e; for role in owner viewer; do \
+	  dir=../tests/gpu-viewer/native; \
+	  mkdir -p $$dir/build/$$role; \
+	  ../userspace/ccl/build/manifest/ccl-manifest $$dir/catalog.ccl \
+	    $$dir/$$role-manifest.ccl > $$dir/build/$$role/manifest.S; \
+	  $(ALR) gcc -c $$dir/build/$$role/manifest.S -o $$dir/build/$$role/manifest.o; \
+	  $(ALR) gprbuild -p -P $$dir/fixture.gpr -XROLE=$$role; \
+	  case $$role in owner) app=gpu-viewer-owner;; viewer) app=gpu-viewer-test;; esac; \
+	  cp $$dir/build/$$role/$$app.app isodir/boot/; \
+	done
+
+.PHONY: gpu-viewer
+gpu-viewer: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/gpu-viewer/build
+	$(call compile_ccl_manifest,../userspace/apps/gpu-viewer)
+	$(ALR) gprbuild -P ../userspace/apps/gpu-viewer/gpu_viewer.gpr
+	cp ../userspace/apps/gpu-viewer/build/gpu-viewer.app isodir/boot/gpu-viewer.app
+
 .PHONY : boot-logs
 boot-logs: user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/boot-logs/build
@@ -1387,10 +1438,14 @@ netmgr: user_runtime
 
 # Build the userspace device manager
 .PHONY : devmgr
-devmgr: user_runtime
+devmgr: user_runtime intel-buffer-layout-check
 	mkdir -p ../userspace/services/devmgr/build
 	$(ALR) gprbuild -P ../userspace/services/devmgr/devmgr.gpr
 	cp ../userspace/services/devmgr/build/devmgr.svc isodir/boot/devmgr.svc
+
+.PHONY: intel-buffer-layout-check
+intel-buffer-layout-check:
+	python3 ../tools/check-intel-buffer-layout.py
 
 # Build the userspace shell app
 .PHONY : shell
@@ -1544,7 +1599,7 @@ CCL_WORKSPACE_SAMPLES := $(sort $(wildcard ../userspace/ccl/samples/*.ccl))
 # Native USB optical edition. Keep the original initrd-only laptop image as
 # an independent fallback; no ATA/NVMe driver is admitted in this profile.
 .PHONY: usb-live-iso run-usb-live run-usb-live-fast
-usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu config-storage mesa-cube $(LAPTOP_LIVE_RW_DISK)
+usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu gpu-viewer config-storage mesa-cube $(LAPTOP_LIVE_RW_DISK)
 	@test -s isodir/boot/cubitshell.app || (echo "missing Servo payload; run make -C kernel servo first" && false)
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)"
 

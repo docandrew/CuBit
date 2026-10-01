@@ -41,7 +41,7 @@ usage() {
     cat <<'EOF'
 Usage: tests/headless/run.sh [options]
 
-Mesa native tests: --test softpipe, opengl, buffer or mesa-window (default RAM 512 MiB).
+Mesa native tests: --test softpipe, opengl, buffer, mesa-window or mesa-sync (default RAM 512 MiB).
 
 Options:
   --build              Run make world before booting QEMU
@@ -244,6 +244,14 @@ case "$TIMEOUT_SECONDS" in
         ;;
 esac
 
+MESA_WINDOW_ANIMATION_WAIT_SECONDS="${MESA_WINDOW_ANIMATION_WAIT_SECONDS:-15}"
+if [ "$TEST_NAME" = mesa-window ] &&
+   { ! [[ "$MESA_WINDOW_ANIMATION_WAIT_SECONDS" =~ ^[1-9][0-9]{0,3}$ ]] ||
+     [ "$MESA_WINDOW_ANIMATION_WAIT_SECONDS" -gt 3600 ]; }; then
+    echo "headless: MESA_WINDOW_ANIMATION_WAIT_SECONDS must be 1..3600" >&2
+    exit 2
+fi
+
 if [ "$TEST_NAME" != "turso-native" ] &&
    { [ "$TURSO_REVISION" != 1 ] || [ -n "$TURSO_EXPORT" ]; }; then
     echo "headless: Turso revision/export options require --test turso-native" >&2
@@ -256,12 +264,12 @@ if [ -n "$CONFIG_EXPORT" ] && [ "$TEST_NAME" != config-objects ] && [ "$TEST_NAM
 fi
 
 case "$TEST_NAME" in
-    softpipe|opengl|buffer|mesa-window)
+    softpipe|opengl|buffer|mesa-window|mesa-sync|gpu-viewer)
         ;;
     config-objects|config-objects-reopen|config-objects-benchmark|config-storage)
         CONFIG_STORAGE_TEST=1
         ;;
-    config-tree|config-inspection|log-authority|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
+    grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
     boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|rust-std|libc|servo|bench-spread|timesync|tls-probe|tls-service|netsurf-https|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary|bench-latency)
         ;;
@@ -431,6 +439,9 @@ case "$TEST_NAME" in
     log-authority)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-log-authority.ccl"
         ;;
+    grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|gpu-viewer)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-$TEST_NAME.ccl"
+        ;;
     async-ipc)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-async-ipc.ccl"
         ;;
@@ -492,6 +503,10 @@ case "$TEST_NAME" in
     softpipe)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-softpipe.ccl"
         # Softpipe's context caches plus resident services exceed 128 MiB.
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
+        ;;
+    mesa-sync)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-mesa-sync.ccl"
         QEMU_MEMORY="${QEMU_MEMORY:-512M}"
         ;;
     opengl)
@@ -670,6 +685,27 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         fi
     fi
+    if [ "$TEST_NAME" = gpu-viewer ]; then
+        for app in gpu-viewer-owner.app gpu-viewer-test.app; do
+            if [ ! -f "$KERNEL_DIR/isodir/boot/$app" ]; then
+                echo "headless: build gpu-viewer-test first ($app missing)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $app" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$app $app" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
+    fi
+    if [[ "$TEST_NAME" == grant-forward* ]]; then
+        for role in owner reader client intermediary_exit owner_exit desktop; do
+            grant_image="$KERNEL_DIR/isodir/boot/grant-forward-$role.app"
+            if [ ! -f "$grant_image" ]; then
+                echo "headless: build grant-forward first ($grant_image missing)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm grant-forward-$role.app" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $grant_image grant-forward-$role.app" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
+    fi
     if [ "$TEST_NAME" = "async-ipc" ]; then
         for ipc_image in ipctest-server.app ipctest-client.app ipctest-departing.app; do
             if [ ! -f "$KERNEL_DIR/isodir/boot/$ipc_image" ]; then
@@ -750,7 +786,7 @@ if [ -n "$INIT_PROFILE" ]; then
         debugfs -w -R "write $KERNEL_DIR/isodir/boot/$app $app" \
             "$TEMP_DISK" >/dev/null 2>&1 || exit 1
     fi
-    if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "mesa-window" ] ||
+    if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
        [ "$TEST_NAME" = "bench-input" ] ||
        [ "$TEST_NAME" = "desktop-protocol" ] ||
        [ "$TEST_NAME" = "desktop-dual-output" ] ||
@@ -766,6 +802,10 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "virtio-vga-primary" ]; then
         for DESKTOP_TEST_IMAGE_NAME in display.svc desktop.svc virtio-gpu.drv; do
             DESKTOP_TEST_IMAGE="$KERNEL_DIR/isodir/boot/$DESKTOP_TEST_IMAGE_NAME"
+            # Explicit test-only compositor executable; never alter production staging.
+            if [ "$DESKTOP_TEST_IMAGE_NAME" = desktop.svc ] && [ -n "${CUBIT_DESKTOP_IMAGE:-}" ]; then
+                DESKTOP_TEST_IMAGE="$CUBIT_DESKTOP_IMAGE"
+            fi
             if [ ! -f "$DESKTOP_TEST_IMAGE" ]; then
                 echo "headless: missing current desktop test image: $DESKTOP_TEST_IMAGE" >&2
                 exit 1
@@ -995,9 +1035,11 @@ if [ -n "$INIT_PROFILE" ]; then
                 "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         done
     fi
-    if [ "$TEST_NAME" = "softpipe" ] || [ "$TEST_NAME" = "opengl" ] || [ "$TEST_NAME" = "buffer" ] || [ "$TEST_NAME" = "mesa-window" ]; then
+    if [ "$TEST_NAME" = "softpipe" ] || [ "$TEST_NAME" = "opengl" ] || [ "$TEST_NAME" = "buffer" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "mesa-sync" ]; then
         MESA_APP="native-$TEST_NAME.app"
-        if [ "$TEST_NAME" = "softpipe" ]; then
+        if [ "$TEST_NAME" = "mesa-sync" ]; then
+            MESA_IMAGE="${MESA_SYNC_IMAGE:?build-native-sync.py output required}"
+        elif [ "$TEST_NAME" = "softpipe" ]; then
             MESA_IMAGE="${SOFTPIPE_IMAGE:-$ROOT_DIR/tests/mesa-software/target/native-softpipe-cubit/$MESA_APP}"
         elif [ "$TEST_NAME" = "opengl" ]; then
             MESA_IMAGE="${OPENGL_IMAGE:-$ROOT_DIR/tests/mesa-software/target/native-softpipe-cubit/$MESA_APP}"
@@ -1435,7 +1477,7 @@ fi
 
 MONITOR_ARGS=()
 QMP_ARGS=()
-if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "mesa-window" ] ||
+if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
    [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] ||
    [ "$TEST_NAME" = "desktop-doom" ] ||
@@ -1476,6 +1518,27 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             exit 1
         fi
 
+        if [ "$TEST_NAME" = "gpu-viewer" ]; then
+            attached=0
+            for ((attempt = 0; attempt < 250; attempt++)); do
+                if grep -aF "gpu-viewer: completed target attached" "$SERIAL_LOG" >/dev/null 2>&1; then
+                    attached=1
+                    break
+                fi
+                sleep 0.1
+            done
+            if [ "$attached" != 1 ]; then
+                echo "headless: GPU viewer did not attach" >&2
+                exit 1
+            fi
+            sleep 1
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-viewer.ppm" |
+                nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            python3 "$ROOT_DIR/tests/gpu-viewer/check_pixels.py" \
+                "${SERIAL_LOG%.log}-viewer.ppm" || exit 1
+            printf 'sendkey esc\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            exit 0
+        fi
         if [ "$TEST_NAME" = "mesa-window" ]; then
             for ((attempt = 0; attempt < 200; attempt++)); do
                 grep -aF "MESA-WINDOW: attached immutable Mesa buffer" "$SERIAL_LOG" >/dev/null 2>&1 && break
@@ -1486,7 +1549,7 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
             if [ "${MESA_WINDOW_ANIMATION:-0}" = 1 ]; then
                 printf 'sendkey spc\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
-                for ((attempt = 0; attempt < 150; attempt++)); do
+                for ((attempt = 0; attempt < MESA_WINDOW_ANIMATION_WAIT_SECONDS * 10; attempt++)); do
                     grep -aF "MESA-WINDOW: PASS animated cycle" "$SERIAL_LOG" >/dev/null 2>&1 && break
                     sleep 0.1
                 done
@@ -1726,10 +1789,11 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 sleep 0.5
                 printf 'sendkey f6\n'
                 sleep 0.3
-                printf 'sendkey 4\n'
-                sleep 0.15
-                printf 'sendkey 2\n'
-                sleep 0.15
+                # BASIC in the REPL: 40 + 2 (the session reads either dialect).
+                for key in 4 0 spc shift-equal spc 2; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.15
+                done
                 printf 'sendkey ret\n'
                 sleep 0.3
                 printf 'sendkey up\n'
@@ -2260,6 +2324,12 @@ sched-latency: done
             exit 1
         fi
         ;;
+    mesa-sync)
+        required_markers="
+MESA-SYNC-NATIVE: starting
+MESA-SYNC-NATIVE: PASS timeline threads deadlines loss
+"
+        ;;
     softpipe)
         required_markers="
 SOFTPIPE-NATIVE: starting
@@ -2487,6 +2557,25 @@ TEST: PASS tls-service
         fi
         NETWORK_PEER_PID=""
         ;;
+    grant-forward)
+        required_markers="GRANT-FORWARD-CHECK: PASS"
+        ;;
+    grant-forward-intermediary-exit)
+        required_markers="GRANT-FORWARD-INTERMEDIARY-EXIT: PASS"
+        ;;
+    grant-forward-owner-exit)
+        required_markers="GRANT-FORWARD-OWNER-EXIT: PASS"
+        ;;
+    gpu-viewer)
+        required_markers="
+gpu-viewer fixture: synthetic RAM producer ready
+gpu-viewer: completed target attached; viewer copied no pixels
+GPU-VIEWER-ROOT-RETIRED: PASS
+"
+        ;;
+    grant-forward-desktop)
+        required_markers="GRANT-FORWARD-DESKTOP: PASS"
+        ;;
     async-ipc)
         required_markers="
 ipctest-server: registered
@@ -2577,7 +2666,7 @@ ccl-workbench: workspace saved ccl-0002.ccl
 ccl-workbench: workspace opened ccl-0002.ccl
 ccl-workbench: workspace saved clock.ccl
 ccl-workbench: workspace saved quoted.ccl
-ccl-workbench: REPL completed
+ccl-workbench: REPL completed: Integer: 42
 ccl-workbench: live label STARTED
 ccl-workbench: live label SAMPLED
 ccl-workbench: live label STOPPED

@@ -361,7 +361,10 @@ is
     -- @param myP4 - the top-level page table for this mapping.
     -- @param success - True if successful, False otherwise.
     --
-    -- TODO: add alignment-checking precondition here.
+    -- Misaligned physical/virtual addresses are rejected before allocation.
+    -- User mappings reject populated P2 slots, including retained addresses.
+    -- Kernel direct-map PCI setup still uses legacy replacement behavior.
+    -- Caller must serialize the address space. Does not perform TLB shootdown.
     ---------------------------------------------------------------------------
     generic
         with procedure allocate (newframe : out PhysAddress);
@@ -420,7 +423,12 @@ is
     -- @return - physical address that the virtual address maps to or 0 if not
     --  mapped.
     ---------------------------------------------------------------------------
-    function tableWalk (virt : in VirtAddress; myP4 : in P4)
+    -- Returns the containing 4KiB physical frame base, not the byte offset.
+    -- Large leaves are rejected by default: grant/retirement callers must not
+    -- silently acquire large-page semantics. Explicit opt-in supports 2MiB
+    -- leaves only; 1GiB leaves remain unsupported and return zero.
+    function tableWalk (virt : in VirtAddress; myP4 : in P4;
+                        Allow_Big : Boolean := False)
         return PhysAddress;
 
     ---------------------------------------------------------------------------

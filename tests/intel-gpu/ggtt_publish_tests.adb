@@ -12,6 +12,7 @@ procedure GGTT_Publish_Tests is
    Prepared_Start, Prepared_Bytes : Unsigned_64 := 0;
    Allow_Range : Boolean := True;
    Revoke_In_Prepare : Boolean := False;
+   Revoke_In_Flush : Boolean := False;
    Protected_First, Protected_Bytes : Unsigned_64 := 0;
    function Range_Allowed (First, Bytes : Unsigned_64) return Boolean is
      (Allow_Range and then (Protected_Bytes = 0 or else
@@ -46,11 +47,19 @@ procedure GGTT_Publish_Tests is
    begin
       pragma Assert (Writes = Expected_Pages and Reads = Search_Reads + 2 * Expected_Pages);
       Flushes := Flushes + 1; Success := Flush_OK;
+      if Revoke_In_Flush then Allow_Range := False; end if;
    end Flush;
    package Transaction is new Intel_GPU_GGTT_Publish
      (Range_Allowed, Prepare, Read_Entry, Write_Entry, Flush);
    package ADS_Transaction is new Intel_GPU_GGTT_Publish
      (Range_Allowed, Prepare, Read_Entry, Write_Entry, Flush, 16 * 1024 * 1024);
+   Bad_Scatter : Boolean := False;
+   function Scatter_Page (Base, Offset : Unsigned_64) return Unsigned_64 is
+     (if Bad_Scatter and then Offset = 3 * 4096 then 0
+      else Base - Offset * 2);
+   package Scatter_Transaction is new Intel_GPU_GGTT_Publish
+     (Range_Allowed, Prepare, Read_Entry, Write_Entry, Flush,
+      Resolve_Page => Scatter_Page);
    use Transaction;
    Status : Result;
    -- Each scenario owns one noncopyable attempt. Repeat with both identical
@@ -107,12 +116,38 @@ procedure GGTT_Publish_Tests is
       Flushes := 0; Prepares := 0; Fail_Read := 0; Fail_Write := 0;
       Prepare_OK := True; Flush_OK := True; Corrupt_Write := False;
       Prepared_Start := 0; Prepared_Bytes := 0;
-      Allow_Range := True; Revoke_In_Prepare := False;
+      Allow_Range := True; Revoke_In_Prepare := False; Revoke_In_Flush := False;
       Protected_First := 0; Protected_Bytes := 0;
    end Reset;
    procedure Run is
    begin Publish (4096, 4096, 16#100000#, 4 * 4096, Status); end Run;
 begin
+   for Bad in Boolean loop
+      Reset;
+      Expected_Pages := 4;
+      Bad_Scatter := Bad;
+      declare
+         Object : Scatter_Transaction.Attempt;
+         Reservations : Intel_GPU_GGTT_Reservations.Ledger;
+         OK : Boolean;
+         Outcome : Scatter_Transaction.Result;
+         use type Scatter_Transaction.Result;
+      begin
+         Intel_GPU_GGTT_Reservations.Admit (Reservations, 4096, 0, 512 * 4096, OK);
+         pragma Assert (OK);
+         Scatter_Transaction.Publish (Object, Reservations, 4096, 16#100000#, 4 * 4096, Outcome);
+         if Bad then
+            pragma Assert (Outcome = Scatter_Transaction.Rejected and Writes = 0
+              and Reads = 0 and Prepares = 0 and Flushes = 0);
+            pragma Assert (Intel_GPU_GGTT_Reservations.Count (Reservations) = 0);
+         else
+            pragma Assert (Outcome = Scatter_Transaction.Published);
+            for I in 0 .. 3 loop
+               pragma Assert (Table (I + 1) = 16#100001# - Unsigned_64 (I) * 8192);
+            end loop;
+         end if;
+      end;
+   end loop;
    for Fault in 0 .. 3 loop
       Reset;
       Expected_Pages := 4096;
@@ -309,6 +344,9 @@ begin
    pragma Assert (Status = Prepare_Failed and Writes = 0);
    Reset; Flush_OK := False; Run;
    pragma Assert (Status = Quarantined and Flushes = 1);
+   Reset; Revoke_In_Flush := True; Run;
+   pragma Assert (Status = Quarantined and Flushes = 1);
+   Revoke_In_Flush := False;
    Reset; Corrupt_Write := True; Run;
    pragma Assert (Status = Quarantined and Flushes = 0);
    Reset; Publish (4096, 4096, 2 ** 32 - 4096, 8192, Status);

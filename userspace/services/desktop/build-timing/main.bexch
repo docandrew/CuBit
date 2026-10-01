@@ -1,0 +1,66 @@
+[GENERATED OBJECT FILE]
+b__main.o
+[PROJECT FILES]
+/home/doc/git/cubit/userspace/services/desktop/desktop.gpr
+20261001043956 41fcb9126905176b3491c99b369e9e9d
+/home/doc/git/cubit/userspace/lib/ui/fonts_native.gpr
+20260921043353 614086304e2ed3f6932a3e873e53c28e
+[BOUND OBJECT FILES]
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/compositor_damage.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/compositor_elapsed.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/compositor_formats.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/compositor_presentation.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/cubit-appearance.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/cubit-display_geometry.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/cubit-display_layouts.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/cubit-display_arrangement.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/desktop_composition.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-bounded_stacks.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-checked_arithmetic.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-execution_budgets.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-handler_references.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-ownership.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-imports.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-secondary_arrays.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-secondary_stacks.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-text_operations.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-types.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-ownership-bytecode.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-resource_policies.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-types-correspondence.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-objects.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-objects-catalog.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-objects-views.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-resources.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-vm.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-host_values.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-catalog.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-objects-values.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-language.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/ccl-declarations.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/cubit-fonts.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/cubit-theme.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/desktop_compositor.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/desktop_cursors.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/desktop_icons.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/desktop_launch.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/desktop_timing_policy.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/desktop_wallpaper.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/desktop_window_icons.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/font8x16.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/cubit-ui.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/cubit-ui-theme_data.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/cubit-ui-theme_ccl.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/desktop_settings.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/presentation_test_policy.o
+/home/doc/git/cubit/userspace/services/desktop/build-timing/main.o
+[GENERATED SOURCE FILES]
+b__main.ads
+b__main.adb
+b__main.ali
+[RESULTING OPTIONS]
+-L/home/doc/git/cubit/userspace/services/desktop/build-timing/
+-L/home/doc/git/cubit/userspace/services/desktop/build-timing/
+-L/home/doc/git/cubit/userspace/rust/build/font-native/
+-L/home/doc/git/cubit/userspace/runtime/adalib/

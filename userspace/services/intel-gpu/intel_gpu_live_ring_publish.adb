@@ -4,21 +4,23 @@ package body Intel_GPU_Live_Ring_Publish with SPARK_Mode is
    function Sequence (Object : Channel) return Unsigned_32 is (Object.Current_Sequence);
    procedure Fail (Object : in out Channel) is
    begin Object.Value := Quarantined; end Fail;
-   procedure Append (Object : in out Channel;
+   procedure Append_Words (Object : in out Channel;
                      Segment : Intel_GPU_ADLN_Context_Init.Segment;
+                     Count, Marker_Index : Natural;
                      Status : out Result) is
       Marker : Unsigned_64;
       Saved_Tail : Unsigned_32;
       OK : Boolean;
       Next_Tail : Unsigned_32;
+      Bytes : constant Unsigned_32 := Unsigned_32 (Count) * 4;
    begin
       Status := Rejected;
       if Object.Value /= Available or else not Segment.Valid then return; end if;
       if Object.Current_Sequence = Unsigned_32'Last or else
-        Segment.Words (90) /= Object.Current_Sequence + 1 or else
-        Segment.Words (91) /= 0
+        Segment.Words (Marker_Index) /= Object.Current_Sequence + 1 or else
+        Segment.Words (Marker_Index + 1) /= 0
       then return; end if;
-      if Object.Current_Tail > Ring_Bytes - Guard_Bytes - Segment_Bytes then
+      if Object.Current_Tail > Ring_Bytes - Guard_Bytes - Bytes then
          Status := Full; return;
       end if;
       -- Latch before the first callback; no retry after any ambiguous access.
@@ -34,8 +36,8 @@ package body Intel_GPU_Live_Ring_Publish with SPARK_Mode is
       if not Owner_Ready then Status := Ownership_Lost; return; end if;
       if not OK then Status := Read_Failed; return; end if;
       if Saved_Tail /= Object.Current_Tail then Status := Tail_Mismatch; return; end if;
-      Next_Tail := Object.Current_Tail + Segment_Bytes;
-      for I in Segment.Words'Range loop
+      Next_Tail := Object.Current_Tail + Bytes;
+      for I in 0 .. Count - 1 loop
          if not Owner_Ready then Status := Ownership_Lost; return; end if;
          Write_Word (Object.Current_Tail + Unsigned_32 (I) * 4,
                      Segment.Words (I), OK);
@@ -43,7 +45,7 @@ package body Intel_GPU_Live_Ring_Publish with SPARK_Mode is
          if not OK then Status := Write_Failed; return; end if;
       end loop;
       if not Owner_Ready then Status := Ownership_Lost; return; end if;
-      OK := Publish_Words (Object.Current_Tail, Segment_Bytes);
+      OK := Publish_Words (Object.Current_Tail, Bytes);
       if not Owner_Ready then Status := Ownership_Lost; return; end if;
       if not OK then Status := Visibility_Failed; return; end if;
       Write_Tail (Next_Tail, OK);
@@ -56,5 +58,20 @@ package body Intel_GPU_Live_Ring_Publish with SPARK_Mode is
       Object.Current_Sequence := Object.Current_Sequence + 1;
       Object.Value := Available;
       Status := Published;
+   end Append_Words;
+   procedure Append (Object : in out Channel;
+                     Segment : Intel_GPU_ADLN_Context_Init.Segment;
+                     Status : out Result) is
+   begin
+      Append_Words (Object, Segment, Segment.Words'Length, 90, Status);
+   end Append;
+   procedure Append (Object : in out Channel;
+                     Segment : Intel_GPU_ADLN_Barrier.Segment;
+                     Status : out Result) is
+      Bounded : Intel_GPU_ADLN_Context_Init.Segment;
+   begin
+      Bounded.Valid := Segment.Valid;
+      for I in Segment.Words'Range loop Bounded.Words (I) := Segment.Words (I); end loop;
+      Append_Words (Object, Bounded, Segment.Words'Length, 26, Status);
    end Append;
 end Intel_GPU_Live_Ring_Publish;

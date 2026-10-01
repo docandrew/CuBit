@@ -39,7 +39,7 @@ value, described by the display text only).
 
 An evaluation whose result is a list has three more fields (11 in all):
 `[1,id,2,ok,displayText,5,diagnosticPosition,fuelRemaining,elementType,elements,total]`.
-`total` is the list's full length (at most 1024). `elements` carries its first
+`total` is the list's full length (at most 4096). `elements` carries its first
 `min(total, 64)` items; a list of strings may carry fewer when their text
 exceeds 1024 bytes. The display text ends with `... N more` when shortened.
 - `elementType` is Integer 1, Boolean 2, String 3, Character 4, or

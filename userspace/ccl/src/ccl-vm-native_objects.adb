@@ -33,7 +33,9 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
             end case;
          when Object_Value =>
             Result := (Kind => Object_Value, Data_Type => Ref, Object => Owner, Object_Node => Node, others => <>);
-         when Resource_Value => return;
+         --  Text inside an object image stays there until objects move to
+         --  the value arena (docs/ccl-bytecode-format.md, step 4).
+         when Resource_Value | Text_Value => return;
       end case;
       Accepted := True;
    end Load_View;
@@ -156,7 +158,7 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
           when Integer_Value => CCL.Types.Integer_Type,
           when Boolean_Value => CCL.Types.Boolean_Type,
           when Variant_Value | Object_Value => Item.Content.Imports (State.Core.Waiting_Import).Result_Data_Type,
-          when Resource_Value => CCL.Types.Invalid_Type)) and then
+          when Resource_Value | Text_Value => CCL.Types.Invalid_Type)) and then
       (State.Core.Waiting_Result_Kind /= Object_Value or else State.Used < MAX_OBJECT_VALUES));
 
    procedure Complete_Object

@@ -443,6 +443,18 @@ RMW bits and invalid/disabled inventory. GNATprove accepts
 Platform applicability and masks are audited/tested, not a hardware correctness
 proof. This is a pure plan: no MOCS selection, MMIO application or GPU execution.
 
+The native render initialization consumes this plan, including twelve
+FORCE_TO_NONPRIV entries assembled from the Intel register-field record.
+Four explicit read-only counter DWORDs avoid relying on the range alignment
+interpretation; three tuning registers are read/write and the remaining entries
+use RING_NOPID. These are the twelve slots managed by i915, not a claim that
+all hardware permission mechanisms have been sanitized. Application admission
+remains closed. The ADS merge preserves their existing unsteered save entries.
+`engine_configure_tests` injects read, write and readback failures at each of
+the twelve entries and checks that initialization stops and cannot be retried.
+These are hosted mock-MMIO regressions; the native driver compiles and links,
+but this permission initialization has not yet been validated on the NUC.
+
 ADL-N common register sets use `adln_regset.gpr` and
 `build-adln-regset/adln_regset_tests`: all five engine bases,54 exact entries,
 mask/steering flags, sorted offsets, disabled engines, unavailable steering and

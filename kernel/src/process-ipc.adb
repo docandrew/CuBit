@@ -12,8 +12,10 @@
 with BuddyAllocator;
 with Capabilities.Operations;
 with Config;
+with Grant_Page_Installation;
 with IPI;
 with Memory_Grants;
+with Memory_Grants.Loans;
 with PerCPUData;
 with Process.Queues;
 with Process_Lifetime;
@@ -27,6 +29,9 @@ use type Capabilities.CapabilityType;
 use type Capabilities.Operations.OperationStatus;
 use type Memory_Grants.Return_Result;
 use type Memory_Grants.Revocation_Result;
+use type Memory_Grants.Reference;
+use type Memory_Grants.Grant_Generation;
+use type Memory_Grants.Hold_Release_Result;
 
 -- Ada implementation: custom storage, address overlays or live context state.
 -- Only separately annotated SPARK policy/state routines carry proof obligations.
@@ -1571,6 +1576,24 @@ package body Process.IPC is
     -- Shared Memory Grant Operations
     ---------------------------------------------------------------------------
 
+    package Grant_Loans is new Memory_Grants.Loans;
+    use type Grant_Loans.Parent_Phase;
+    use type Grant_Loans.Loan_Phase;
+    use type Grant_Loans.Reservation_Result;
+    -- Only grantLock accesses these tables. Keep scope state off kernel stacks
+    -- and reset it only when the associated grant identity is invalidated.
+    Empty_Forwarding_Scope : Grant_Loans.State; -- never mutated
+    Forwarding_Scopes : array (Memory_Grants.Global_Slot) of Grant_Loans.State;
+    type Parent_Link is record
+        active : Boolean := False;
+        parent : Memory_Grants.Reference := (0, Memory_Grants.Initial_Generation);
+        loan : Grant_Loans.Loan_Reference := Grant_Loans.No_Loan;
+    end record;
+    Parent_Links : array (Memory_Grants.Global_Slot) of Parent_Link;
+
+    function grantReference (value : Grant) return Memory_Grants.Reference is
+      ((value.globalSlot, value.generation));
+
     procedure invalidateGrant (value : in out Grant)
 
     is
@@ -1578,13 +1601,20 @@ package body Process.IPC is
           value.generation;
         mayReuse : Boolean;
     begin
+        if Parent_Links(value.globalSlot).active or else
+           Grant_Loans.Holds_Parent (Forwarding_Scopes(value.globalSlot))
+        then
+            raise ProcessException with "Grant invalidated before child retirement";
+        end if;
+        Forwarding_Scopes(value.globalSlot) := Empty_Forwarding_Scope;
         -- Stay within this life's generation range (its high half); at the
         -- ceiling the slot retires for this life instead of stepping into the
         -- next process's range.
         Memory_Grants.Advance_Generation_Within
           (nextGeneration, Memory_Grants.Ceiling_Of (value.generation), mayReuse);
         value :=
-          (lifecycle   => Memory_Grants.Inactive_Lifecycle,
+          (globalSlot  => 0,
+           lifecycle   => Memory_Grants.Inactive_Lifecycle,
            reusable    => mayReuse,
            generation  => nextGeneration,
            granterPID  => NO_PROCESS,
@@ -1592,7 +1622,8 @@ package body Process.IPC is
            granterAddr => System.Null_Address,
            granteeAddr => System.Null_Address,
            numPages    => 0,
-           permission  => GRANT_READ);
+           permission  => GRANT_READ,
+           forwardable => False);
     end invalidateGrant;
 
     function overlapsGrantRegion (localAddr : System.Address;
@@ -1626,13 +1657,13 @@ package body Process.IPC is
                            perm      : in GrantPermission;
                            id        : out Natural;
                            success   : out Boolean;
-                           expectedGeneration : Capabilities.Generation := 0)
+                           expectedGeneration : Capabilities.Generation := 0;
+                           forwardable : Boolean := False)
     is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
         owner : constant ProcessID :=
           pid;
         receiver : ProcessID;
-        physical : Virtmem.PhysAddress;
         flags : Unsigned_64;
         ok : Boolean;
         found : Boolean := False;
@@ -1640,6 +1671,62 @@ package body Process.IPC is
         globalId : Natural;
         staging : Grant;
         procedure mapPageInst is new Virtmem.mapPage (BuddyAllocator.allocFrame);
+
+        procedure resolveAndPin
+          (page : Natural; physical : out Virtmem.PhysAddress; success : out Boolean)
+        is
+        begin
+            -- Lookup and ownership-checked pin share the source address-space
+            -- lock. Release it before the receiver lock, including self-grants.
+            lockAddressSpace (owner);
+            physical := Virtmem.tableWalk
+              (To_Integer (localAddr) +
+                 Integer_Address (page) * Virtmem.PAGE_SIZE,
+               addrtab(proctab(owner).pgTable), Allow_Big => True);
+            -- Resolve a 4 KiB constituent of an owned 2 MiB leaf. The pin is
+            -- still per frame, and installPage creates a 4 KiB recipient leaf.
+            -- Retirement must never unmap the owner's large leaf.
+            success := False;
+            if physical /= 0 then
+                BuddyAllocator.pinOwnedFrame
+                  (physical, Unsigned_8 (owner), success);
+            end if;
+            unlockAddressSpace (owner);
+        end resolveAndPin;
+
+        procedure installPage
+          (page : Natural; physical : Virtmem.PhysAddress; success : out Boolean)
+        is
+        begin
+            lockAddressSpace (receiver);
+            mapPageInst
+              (physical,
+               To_Integer (staging.granteeAddr) +
+                 Integer_Address (page) * Virtmem.PAGE_SIZE,
+               flags, addrtab(proctab(receiver).pgTable), success);
+            unlockAddressSpace (receiver);
+        end installPage;
+
+        procedure releaseUnpublished (physical : Virtmem.PhysAddress) is
+            released : Boolean;
+        begin
+            BuddyAllocator.unpinFrame (physical, released);
+            if not released then
+                raise ProcessException with "Unpublished grant pin lost";
+            end if;
+        end releaseUnpublished;
+
+        procedure retirePrefix (pages : Positive) is
+        begin
+            staging.numPages := pages;
+            unmapGrantPages (staging);
+            staging.numPages := 0;
+        end retirePrefix;
+
+        procedure installPages is new Grant_Page_Installation
+          (Virtmem.PhysAddress, resolveAndPin, installPage,
+           releaseUnpublished, retirePrefix);
+        installed : Natural;
     begin
         id := 0;
         success := False;
@@ -1681,55 +1768,19 @@ package body Process.IPC is
         globalId := Natural (owner) * MAX_GRANTS_PER_PROCESS + slot;
         flags := (if perm = GRANT_READWRITE then Virtmem.PG_USERDATA
                   else Virtmem.PG_USERDATARO);
-        staging := (granterPID => owner, granteePID => receiver,
+        staging := (globalSlot => globalId,
+                    granterPID => owner, granteePID => receiver,
                     granterAddr => localAddr,
                     granteeAddr => To_Address (GRANT_REGION_BASE +
                         Integer_Address (globalId) * GRANT_SLOT_SIZE),
-                    permission => perm, others => <>);
+                    permission => perm, forwardable => forwardable, others => <>);
 
-        for page in 0 .. numPages - 1 loop
-            -- A source mapping must not be replaced/retired between looking
-            -- up its frame and acquiring the mapping-owned pin. Lock order:
-            -- grantLock -> source address space -> physical allocator.
-            -- Release the source lock before taking the receiver lock below;
-            -- this also permits self-grants without recursive locking.
-            lockAddressSpace (owner);
-            physical := Virtmem.tableWalk
-              (To_Integer (localAddr) +
-                 Integer_Address (page) * Virtmem.PAGE_SIZE,
-               addrtab(proctab(owner).pgTable));
-            ok := False;
-            if physical /= 0 then
-                BuddyAllocator.pinOwnedFrame (physical, Unsigned_8 (owner), ok);
-            end if;
-            unlockAddressSpace (owner);
-            if not ok then
-                unmapGrantPages (staging);
-                Spinlocks.exitCriticalSection (grantLock);
-                return;
-            end if;
-
-            -- The mapping itself owns this pin, even without an acquisition.
-            lockAddressSpace (receiver);
-            mapPageInst
-              (physical,
-               To_Integer (staging.granteeAddr) +
-                 Integer_Address (page) * Virtmem.PAGE_SIZE,
-               flags, addrtab(proctab(receiver).pgTable), ok);
-            unlockAddressSpace (receiver);
-            if not ok then
-                -- This page was never published. Prior pages require a real
-                -- unmap/shootdown before dropping their mapping-owned pins.
-                BuddyAllocator.unpinFrame (physical, ok);
-                if not ok then
-                    raise ProcessException with "Unpublished grant pin lost";
-                end if;
-                unmapGrantPages (staging);
-                Spinlocks.exitCriticalSection (grantLock);
-                return;
-            end if;
-            staging.numPages := staging.numPages + 1;
-        end loop;
+        installPages (numPages, installed, ok);
+        if not ok then
+            Spinlocks.exitCriticalSection (grantLock);
+            return;
+        end if;
+        staging.numPages := installed;
 
         staging.lifecycle := Memory_Grants.Available_Lifecycle;
         staging.generation := proctab(owner).grants(slot).generation;
@@ -1738,6 +1789,175 @@ package body Process.IPC is
         success := True;
         Spinlocks.exitCriticalSection (grantLock);
     end createGrant;
+
+    procedure deriveGrant
+      (parent : Memory_Grants.Reference; grantee : ProcessID;
+       expectedGeneration : Capabilities.Generation;
+       pageOffset : Memory_Grants.Page_Offset;
+       numPages : Memory_Grants.Page_Count; perm : GrantPermission;
+       derived : out Memory_Grants.Reference; success : out Boolean)
+    is
+        caller : constant ProcessID := PerCPUData.getCurrentPID;
+        rootOwner : constant ProcessID := ProcessID (Memory_Grants.Owner_Of (parent.slot));
+        source : Grant renames proctab(rootOwner).grants
+          (GrantID (Memory_Grants.Local_Slot_Of (parent.slot)));
+        scope : Grant_Loans.State renames Forwarding_Scopes(parent.slot);
+        requested : constant Grant_Loans.Terms :=
+          (pageOffset, numPages, (if perm = GRANT_READWRITE then
+           Memory_Grants.Borrowed_Read_Write else Memory_Grants.Borrowed_Read_Only));
+        loan : Grant_Loans.Loan_Reference;
+        reservation : Grant_Loans.Reservation_Result;
+        applied, mapped : Boolean;
+        found : Boolean := False;
+        childLocal : GrantID := 0;
+        childSlot : Memory_Grants.Global_Slot;
+        staging : Grant;
+        installed : Natural;
+        flags : constant Unsigned_64 := (if perm = GRANT_READWRITE then
+          Virtmem.PG_USERDATA else Virtmem.PG_USERDATARO);
+        procedure mapPageInst is new Virtmem.mapPage (BuddyAllocator.allocFrame);
+
+        procedure resolveAndPin
+          (page : Natural; physical : out Virtmem.PhysAddress; success : out Boolean)
+        is
+        begin
+            lockAddressSpace (caller);
+            physical := Virtmem.tableWalk
+              (To_Integer (source.granteeAddr) +
+               Integer_Address (pageOffset + page) * Virtmem.PAGE_SIZE,
+               addrtab(proctab(caller).pgTable));
+            success := False;
+            if physical /= 0 then
+                -- New mapping owns a NEW pin, checked against the actual
+                -- root owner, never re-labeling borrowed pages as caller-owned.
+                BuddyAllocator.pinOwnedFrame
+                  (physical, Unsigned_8 (rootOwner), success);
+            end if;
+            unlockAddressSpace (caller);
+        end resolveAndPin;
+
+        procedure installPage
+          (page : Natural; physical : Virtmem.PhysAddress; success : out Boolean)
+        is
+        begin
+            lockAddressSpace (grantee);
+            mapPageInst (physical, To_Integer (staging.granteeAddr) +
+              Integer_Address (page) * Virtmem.PAGE_SIZE, flags,
+              addrtab(proctab(grantee).pgTable), success);
+            unlockAddressSpace (grantee);
+        end installPage;
+
+        procedure releaseUnpublished (physical : Virtmem.PhysAddress) is
+            released : Boolean;
+        begin
+            BuddyAllocator.unpinFrame (physical, released);
+            if not released then
+                raise ProcessException with "Unpublished child pin lost";
+            end if;
+        end releaseUnpublished;
+
+        procedure retirePrefix (pages : Positive) is
+        begin
+            staging.numPages := pages;
+            unmapGrantPages (staging);
+            staging.numPages := 0;
+        end retirePrefix;
+
+        procedure installPages is new Grant_Page_Installation
+          (Virtmem.PhysAddress, resolveAndPin, installPage,
+           releaseUnpublished, retirePrefix);
+    begin
+        derived := (0, Memory_Grants.Initial_Generation);
+        success := False;
+        if rootOwner = NO_PROCESS or else grantee = NO_PROCESS or else
+           expectedGeneration = 0
+        then
+            return;
+        end if;
+        Spinlocks.enterCriticalSection (grantLock);
+        if not proctab(caller).admitted or else not proctab(rootOwner).admitted or else
+           not proctab(grantee).admitted or else
+           Process_Lifetime.Closing (threadOf (caller).lifetime) or else
+           Process_Lifetime.Closing (threadOf (rootOwner).lifetime) or else
+           Process_Lifetime.Closing (threadOf (grantee).lifetime) or else
+           expectedGeneration /= generationOf (grantee) or else
+           not Memory_Grants.Is_Current (parent, source.generation) or else
+           not Memory_Grants.Is_Available (source.lifecycle) or else
+           Memory_Grants.Acquisition_Total (source.lifecycle) = 0 or else
+           source.granteePID /= caller or else source.granterPID /= rootOwner or else
+           not source.forwardable or else Parent_Links(parent.slot).active or else
+           source.numPages = 0 or else
+           not Memory_Grants.Range_Attenuates
+             (Memory_Grants.Page_Count (source.numPages), pageOffset, numPages) or else
+           (perm = GRANT_READWRITE and then source.permission /= GRANT_READWRITE)
+        then
+            Spinlocks.exitCriticalSection (grantLock);
+            return;
+        end if;
+        for candidate in GrantID loop
+            if not Memory_Grants.Is_Active (proctab(caller).grants(candidate).lifecycle)
+              and then proctab(caller).grants(candidate).reusable
+            then
+                childLocal := candidate;
+                found := True;
+                exit;
+            end if;
+        end loop;
+        if not found then
+            Spinlocks.exitCriticalSection (grantLock);
+            return;
+        end if;
+        if Grant_Loans.Phase (scope) = Grant_Loans.Unconfigured then
+            Grant_Loans.Open_Forwarding (scope, source.lifecycle, parent,
+              Memory_Grants.Page_Count (source.numPages),
+              (if source.permission = GRANT_READWRITE then Memory_Grants.Borrowed_Read_Write
+               else Memory_Grants.Borrowed_Read_Only), Grant_Loans.Forward_Once, applied);
+            if not applied then
+                Spinlocks.exitCriticalSection (grantLock);
+                return;
+            end if;
+        end if;
+        Grant_Loans.Reserve (scope, requested, loan, reservation);
+        if reservation /= Grant_Loans.Reserved then
+            Spinlocks.exitCriticalSection (grantLock);
+            return;
+        end if;
+        childSlot := Memory_Grants.Make_Global_Slot
+          (Memory_Grants.Process_Index (caller), childLocal);
+        staging := (globalSlot => childSlot, granterPID => caller,
+          granteePID => grantee, permission => perm, forwardable => False,
+          granterAddr => To_Address (To_Integer (source.granteeAddr) +
+            Integer_Address (pageOffset) * Virtmem.PAGE_SIZE),
+          granteeAddr => To_Address (GRANT_REGION_BASE +
+            Integer_Address (childSlot) * GRANT_SLOT_SIZE), others => <>);
+        installPages (numPages, installed, mapped);
+        if not mapped then
+            -- Transaction has already removed its partial mappings and waited
+            -- for shootdown. Only now can the reserved loan retire.
+            Grant_Loans.Revoke (scope, loan, applied);
+            if not applied then
+                raise ProcessException with "Child rollback lost reservation";
+            end if;
+            Grant_Loans.Finish_Retirement (scope, loan, applied);
+            if not applied then
+                raise ProcessException with "Child rollback retirement failed";
+            end if;
+            Spinlocks.exitCriticalSection (grantLock);
+            return;
+        end if;
+        staging.numPages := installed;
+        staging.generation := proctab(caller).grants(childLocal).generation;
+        staging.lifecycle := Memory_Grants.Available_Lifecycle;
+        Grant_Loans.Publish (scope, loan, applied);
+        if not applied then
+            raise ProcessException with "Child publication lost reservation";
+        end if;
+        Parent_Links(childSlot) := (True, parent, loan);
+        proctab(caller).grants(childLocal) := staging;
+        derived := grantReference (staging);
+        success := True;
+        Spinlocks.exitCriticalSection (grantLock);
+    end deriveGrant;
 
     procedure unmapGrantPages (g : Grant) is
         physical : Virtmem.PhysAddress;
@@ -1780,22 +2000,118 @@ package body Process.IPC is
         end loop;
     end unmapGrantPages;
 
-    procedure revokeGrantLocked (g : in out Grant)
+    procedure completeOwnerPIDIfReady (owner : ProcessID);
+    procedure releaseForwardingIfReady (reference : Memory_Grants.Reference);
+
+    procedure retireGrantLocked (slot : Memory_Grants.Global_Slot) is
+        owner : constant ProcessID := ProcessID (Memory_Grants.Owner_Of (slot));
+        value : Grant renames proctab(owner).grants
+          (GrantID (Memory_Grants.Local_Slot_Of (slot)));
+        link : constant Parent_Link := Parent_Links(slot);
+        applied : Boolean;
+    begin
+        unmapGrantPages (value);
+        if link.active then
+            Grant_Loans.Finish_Retirement
+              (Forwarding_Scopes(link.parent.slot), link.loan, applied);
+            if not applied then
+                raise ProcessException with "Child retired in invalid loan phase";
+            end if;
+            Parent_Links(slot) := (others => <>);
+        end if;
+        invalidateGrant (value);
+        if link.active then
+            releaseForwardingIfReady (link.parent);
+        end if;
+        completeOwnerPIDIfReady (owner);
+    end retireGrantLocked;
+
+    procedure releaseForwardingIfReady (reference : Memory_Grants.Reference) is
+        owner : constant ProcessID := ProcessID
+          (Memory_Grants.Owner_Of (reference.slot));
+        value : Grant renames proctab(owner).grants
+          (GrantID (Memory_Grants.Local_Slot_Of (reference.slot)));
+        scope : Grant_Loans.State renames Forwarding_Scopes(reference.slot);
+        applied : Boolean;
+        result : Memory_Grants.Hold_Release_Result;
+    begin
+        if value.generation /= reference.generation or else
+           Grant_Loans.Phase (scope) /= Grant_Loans.Closing or else
+           not Grant_Loans.Empty (scope)
+        then
+            return;
+        end if;
+        Grant_Loans.Release_Forwarding
+          (scope, value.lifecycle, reference, applied, result);
+        if not applied then
+            raise ProcessException with "Forwarding scope lost its parent hold";
+        end if;
+        if result = Memory_Grants.Revocation_Completed_On_Hold_Release then
+            retireGrantLocked (reference.slot);
+        end if;
+    end releaseForwardingIfReady;
+
+    procedure revokeGrantLocked (slot : Memory_Grants.Global_Slot);
+
+    procedure closeForwardingLocked (slot : Memory_Grants.Global_Slot) is
+        value : Grant renames proctab(ProcessID (Memory_Grants.Owner_Of (slot))).grants
+          (GrantID (Memory_Grants.Local_Slot_Of (slot)));
+        reference : constant Memory_Grants.Reference := grantReference (value);
+        receiver : constant ProcessID := value.granteePID;
+        applied : Boolean;
+        childSlot : Memory_Grants.Global_Slot;
+    begin
+        if Grant_Loans.Phase (Forwarding_Scopes(slot)) /= Grant_Loans.Accepting then
+            return;
+        end if;
+        Grant_Loans.Close_Forwarding (Forwarding_Scopes(slot), reference, applied);
+        if not applied then
+            raise ProcessException with "Forwarding close rejected current identity";
+        end if;
+        -- Children are terminal and owned by the original receiver. Its PID
+        -- cannot recycle while any owned grant still retains its backing.
+        for local in GrantID loop
+            childSlot := Memory_Grants.Make_Global_Slot
+              (Memory_Grants.Process_Index (receiver), local);
+            if Parent_Links(childSlot).active and then
+               Parent_Links(childSlot).parent = reference
+            then
+                revokeGrantLocked (childSlot);
+            end if;
+        end loop;
+        -- Last child retirement may already have released/inactivated parent.
+        releaseForwardingIfReady (reference);
+    end closeForwardingLocked;
+
+    procedure revokeGrantLocked (slot : Memory_Grants.Global_Slot)
 
     is
+        g : Grant renames proctab(ProcessID (Memory_Grants.Owner_Of (slot))).grants
+          (GrantID (Memory_Grants.Local_Slot_Of (slot)));
         result : Memory_Grants.Revocation_Result;
+        applied : Boolean;
+        link : Parent_Link renames Parent_Links(slot);
     begin
         if not Memory_Grants.Is_Active (g.lifecycle) then
             return;
         end if;
 
+        if link.active and then Grant_Loans.Phase_Of
+          (Forwarding_Scopes(link.parent.slot), link.loan) = Grant_Loans.Available
+        then
+            Grant_Loans.Revoke
+              (Forwarding_Scopes(link.parent.slot), link.loan, applied);
+            if not applied then
+                raise ProcessException with "Child revocation lost parent scope";
+            end if;
+        end if;
         Memory_Grants.Request_Revocation (g.lifecycle, result);
         if result = Memory_Grants.Revocation_Pending then
+            closeForwardingLocked (slot);
             return;
         end if;
 
-        unmapGrantPages (g);
-        invalidateGrant (g);
+        retireGrantLocked (slot);
     end revokeGrantLocked;
 
     ---------------------------------------------------------------------------
@@ -1809,7 +2125,8 @@ package body Process.IPC is
             pid;
     begin
         Spinlocks.enterCriticalSection (grantLock);
-        revokeGrantLocked (proctab(owner).grants(id));
+        revokeGrantLocked (Memory_Grants.Make_Global_Slot
+          (Memory_Grants.Process_Index (owner), id));
         Spinlocks.exitCriticalSection (grantLock);
     end revokeGrant;
 
@@ -1824,12 +2141,11 @@ package body Process.IPC is
     begin
         Spinlocks.enterCriticalSection (grantLock);
         for i in GrantID loop
-            revokeGrantLocked (proctab(pid).grants(i));
+            revokeGrantLocked (Memory_Grants.Make_Global_Slot
+              (Memory_Grants.Process_Index (pid), i));
         end loop;
         Spinlocks.exitCriticalSection (grantLock);
     end revokeAllGrants;
-
-    procedure completeOwnerPIDIfReady (owner : ProcessID);
 
     ---------------------------------------------------------------------------
     -- revokeAllGrantsTo
@@ -1837,8 +2153,8 @@ package body Process.IPC is
     -- INVALID is a scheduler state, not proof of remote TLB quiescence.
     -- Receiver close stops its acquisitions. Retire its mappings while the
     -- page tables exist, but do not discard a kernel-owned forwarding hold.
-    -- Every downstream mapping must own independent frame pins; such mappings
-    -- are not implemented yet, and no caller currently creates these holds.
+    -- Every downstream mapping owns independent frame pins. A dead forwarding
+    -- receiver closes its children before its own page tables can be destroyed.
     ---------------------------------------------------------------------------
     procedure revokeAllGrantsTo (pid : ProcessID)
 
@@ -1853,19 +2169,49 @@ package body Process.IPC is
                 then
                     declare
                         hadAcquisitions : Boolean;
+                        value : Grant renames proctab(owner).grants(slot);
+                        reference : constant Memory_Grants.Reference :=
+                          grantReference (value);
+                        link : constant Parent_Link := Parent_Links(reference.slot);
+                        applied : Boolean;
                     begin
+                        if link.active then
+                            if Grant_Loans.Phase_Of
+                              (Forwarding_Scopes(link.parent.slot), link.loan) =
+                                Grant_Loans.Available
+                            then
+                                Grant_Loans.Revoke
+                                  (Forwarding_Scopes(link.parent.slot), link.loan, applied);
+                                if not applied then
+                                    raise ProcessException with "Dead child revocation failed";
+                                end if;
+                            end if;
+                            -- Kernel-confirmed receiver death ends its CPU
+                            -- readers; this is never exposed as a user request.
+                            for reader in 1 .. Grant_Loans.Readers
+                              (Forwarding_Scopes(link.parent.slot), link.loan)
+                            loop
+                                Grant_Loans.Return_Reader
+                                  (Forwarding_Scopes(link.parent.slot), link.loan, applied);
+                                if not applied then
+                                    raise ProcessException with "Dead child reader lost";
+                                end if;
+                            end loop;
+                        end if;
                         Memory_Grants.Close_Receiver
-                          (proctab(owner).grants(slot).lifecycle,
-                           hadAcquisitions);
-                        unmapGrantPages (proctab(owner).grants(slot));
-                        --  Zero means there is no remaining receiver mapping.
-                        --  A retained parent record can later retire without
-                        --  touching these now-destroyed/reused page tables.
-                        proctab(owner).grants(slot).numPages := 0;
-                        if not Memory_Grants.Is_Active
-                          (proctab(owner).grants(slot).lifecycle)
+                          (value.lifecycle, hadAcquisitions);
+                        closeForwardingLocked (reference.slot);
+                        -- Child closure may already have retired this parent.
+                        if value.generation = reference.generation and then
+                           value.granterPID = owner and then
+                           value.globalSlot = reference.slot
                         then
-                            invalidateGrant (proctab(owner).grants(slot));
+                            if Memory_Grants.Is_Active (value.lifecycle) then
+                                unmapGrantPages (value);
+                                value.numPages := 0;
+                            else
+                                retireGrantLocked (reference.slot);
+                            end if;
                         end if;
                     end;
                 end if;
@@ -1930,6 +2276,8 @@ package body Process.IPC is
           (Memory_Grants.Local_Slot_Of (reference.slot));
         value : Grant renames proctab(slotOwner).grants(localSlot);
         mappedBytes : Unsigned_64;
+        applied : Boolean;
+        link : Parent_Link renames Parent_Links(reference.slot);
     begin
         mappedAddress := System.Null_Address;
         success := False;
@@ -1959,6 +2307,14 @@ package body Process.IPC is
 
         -- Mapping-owned lifetime pins already exist. Acquisitions govern
         -- deferred revocation, not whether a visible mapping owns its pages.
+        if link.active then
+            Grant_Loans.Acquire
+              (Forwarding_Scopes(link.parent.slot), link.loan, applied);
+            if not applied then
+                Spinlocks.exitCriticalSection (grantLock);
+                return;
+            end if;
+        end if;
         Memory_Grants.Record_Acquire (value.lifecycle);
 
         mappedAddress := To_Address
@@ -2049,6 +2405,8 @@ package body Process.IPC is
           (Memory_Grants.Local_Slot_Of (reference.slot));
         value : Grant renames proctab(slotOwner).grants(localSlot);
         result : Memory_Grants.Return_Result;
+        applied : Boolean;
+        link : Parent_Link renames Parent_Links(reference.slot);
     begin
         success := False;
         Spinlocks.enterCriticalSection (grantLock);
@@ -2062,12 +2420,17 @@ package body Process.IPC is
             return;
         end if;
 
+        if link.active then
+            Grant_Loans.Return_Reader
+              (Forwarding_Scopes(link.parent.slot), link.loan, applied);
+            if not applied then
+                raise ProcessException with "Child return lost parent reader";
+            end if;
+        end if;
         Memory_Grants.Record_Return (value.lifecycle, result);
         if Memory_Grants.Acquisition_Total (value.lifecycle) = 0 then
             if result = Memory_Grants.Revocation_Completed_On_Return then
-                unmapGrantPages (value);
-                invalidateGrant (value);
-                completeOwnerPIDIfReady (slotOwner);
+                retireGrantLocked (reference.slot);
             end if;
         end if;
 
@@ -2100,7 +2463,7 @@ package body Process.IPC is
             return;
         end if;
 
-        revokeGrantLocked (value);
+        revokeGrantLocked (reference.slot);
         success := True;
         Spinlocks.exitCriticalSection (grantLock);
     end revokeGrantReference;

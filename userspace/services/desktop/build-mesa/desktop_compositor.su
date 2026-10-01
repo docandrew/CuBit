@@ -1,0 +1,4 @@
+/home/doc/git/cubit/userspace/services/desktop/backend-mesa/desktop_compositor.adb:5:4:Selected	8	static
+/home/doc/git/cubit/userspace/services/desktop/backend-mesa/desktop_compositor.adb:6:4:Draw_Client	144	static
+/home/doc/git/cubit/userspace/services/desktop/backend-mesa/desktop_compositor.adb:35:4:Forget_Source	16	static
+/home/doc/git/cubit/userspace/services/desktop/backend-mesa/desktop_compositor.adb:2:1:Desktop_Compositor	8	static

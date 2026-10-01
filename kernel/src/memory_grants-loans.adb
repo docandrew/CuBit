@@ -33,6 +33,9 @@ package body Memory_Grants.Loans with SPARK_Mode is
          if Item.Entries (Index).Stage = Absent then
             Item.Last_Sequence := Item.Last_Sequence + 1;
             Item.Entries (Index) := (Mapping, Item.Last_Sequence, 0, Requested);
+            -- Make preservation of every other loan explicit for the prover;
+            -- this is a checked assertion, not a trusted assumption.
+            pragma Assert (Valid (Item));
             Loan := (Item.Parent, Index, Item.Last_Sequence);
             Result := Reserved;
             return;
@@ -124,4 +127,43 @@ package body Memory_Grants.Loans with SPARK_Mode is
          Item.Stage := Retired;
       end if;
    end Release_Parent;
+   procedure Open_Forwarding
+     (Scope : in out State; Parent : in out Lifecycle; Identity : Reference;
+      Pages : Page_Count; Access_Mode : Permission;
+      Forwarding : Forwarding_Policy; Applied : out Boolean)
+   is
+      Held : Boolean;
+   begin
+      Applied := False;
+      if Phase (Scope) /= Unconfigured or else Forwarding /= Forward_Once or else
+        not Can_Retain_Forwarding_Hold (Parent) or else
+        Acquisition_Total (Parent) = 0
+      then return; end if;
+      -- All rejection checks precede either mutation. No callbacks, allocation
+      -- or mapping operation can interleave these transitions.
+      Retain_Forwarding_Hold (Parent, Held);
+      pragma Assert (Held);
+      Configure (Scope, Identity, Pages, Access_Mode, Forwarding, Applied);
+      pragma Assert (Applied);
+   end Open_Forwarding;
+   procedure Close_Forwarding
+     (Scope : in out State; Identity : Reference; Applied : out Boolean) is
+   begin
+      Applied := Scope.Parent = Identity and then Phase (Scope) = Accepting;
+      if Applied then Close (Scope); end if;
+   end Close_Forwarding;
+   procedure Release_Forwarding
+     (Scope : in out State; Parent : in out Lifecycle; Identity : Reference;
+      Applied : out Boolean; Result : out Hold_Release_Result)
+   is
+   begin
+      Applied := False; Result := Hold_Release_Rejected;
+      if Scope.Parent /= Identity or else Phase (Scope) /= Closing or else
+        not Empty (Scope) or else not Has_Forwarding_Hold (Parent)
+      then return; end if;
+      Release_Parent (Scope, Applied);
+      pragma Assert (Applied);
+      Release_Forwarding_Hold (Parent, Result);
+      pragma Assert (Result /= Hold_Release_Rejected);
+   end Release_Forwarding;
 end Memory_Grants.Loans;

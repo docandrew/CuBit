@@ -1,0 +1,16 @@
+# Driver CSPACE layout that devmgr hand-mints today (docs/ccl-driver-manifests.md):
+# 4..8 device resources and driver registration, 9 real-time scheduling,
+# 15 the devmgr ready endpoint. Slot 62 is reserved for a driver's saved
+# reply capability (intel-gpu buffer-object replies) and is never allocated
+# or granted from a manifest. Binding data only; no policy approval is implied.
+(service-catalog v1
+  (application-slots 4 14)
+  (service device-manager 7 read-write)
+  (notification keyboard 1 publish-and-manage)
+  (notification ata 2 publish-and-manage)
+  (notification nvme 5 publish-and-manage)
+  (notification hda 8 publish-and-manage)
+  (notification mixer 9 publish-and-manage)
+  (notification mouse 10 publish-and-manage)
+  (fixed-binding scheduling 9)
+  (fixed-binding ready 15))

@@ -36,7 +36,7 @@ is
 
     -- 2^MAX_BUDDY_ORDER is the largest contiguous memory chunks that
     -- we keep track of in our physical BuddyAllocator
-    MAX_BUDDY_ORDER : constant := 12;
+    MAX_BUDDY_ORDER : constant := 13;
 
     -- This is the number of times that a slab allocator will expand and
     -- grab more underlying physical memory from the BuddyAllocator

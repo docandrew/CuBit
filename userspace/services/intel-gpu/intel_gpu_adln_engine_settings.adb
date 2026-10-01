@@ -1,3 +1,4 @@
+with Intel_GPU_Nonpriv_Registers;
 package body Intel_GPU_ADLN_Engine_Settings with SPARK_Mode is
    use Intel_GPU_ADLN_Inventory;
    function Build (Description : Inventory; Item : Engine;
@@ -13,7 +14,7 @@ package body Intel_GPU_ADLN_Engine_Settings with SPARK_Mode is
       Result.Entries (1) := (Engine_Base (Item) + 16#C4#, 16#3FFF#,
                             MOCS * 256 + MOCS * 2, True, False);
       if Item = Render then
-         Result.Count := 9;
+         Result.Count := 21;
          Result.Entries (2) := (16#B004#, 16#80#, 0, False, False);
          -- Merge indirect-state override and ENABLE_SMALLPL.
          Result.Entries (3) := (16#E18C#, 16#8001#, 16#8001#, True, True);
@@ -24,6 +25,29 @@ package body Intel_GPU_ADLN_Engine_Settings with SPARK_Mode is
          Result.Entries (7) := (16#E48C#, 16#200#, 16#200#, True, True);
          Result.Entries (8) := (16#2050#, 16#1080#, 16#1080#, True, False);
          Result.Entries (9) := (16#20E0#, 16#4000#, 16#4000#, True, False);
+         -- TGL PRM Vol2c-12.21 pp988-989: explicit FORCE_TO_NONPRIV fields.
+         -- Cross-check Linux intel_workarounds.c tgl_whitelist_build and
+         -- intel_engine_apply_whitelist (v6.19-rc8-185-g2687c848e578).
+         -- RCS gets four counter DWORDs RO and three tuning registers RW.
+         -- Use individual counters rather than Linux's range4 at 0x2348:
+         -- documented range comparison ignores address bits3:2.
+         -- Clear all remaining i915-managed slots to RING_NOPID, not zero.
+         for Slot in 0 .. 11 loop
+            declare
+               package NP renames Intel_GPU_Nonpriv_Registers;
+               Offset : constant Unsigned_32 :=
+                 (case Slot is when 0 .. 3 => 16#2348# + Unsigned_32 (Slot) * 4,
+                  when 4 => 16#7010#, when 5 => 16#7018#,
+                  when 6 => 16#7304#, when others => 16#2094#);
+               Permission : constant NP.Register_Value :=
+                 (Address_DWords => NP.Bits_24 (Offset / 4),
+                  Access_Selection => (if Slot < 4 then 1 else 0), others => <>);
+            begin
+               Result.Entries (10 + Slot) :=
+                 (NP.Documented_RCS_Offset (Slot), Unsigned_32'Last,
+                  NP.Encode (Permission), False, False);
+            end;
+         end loop;
       end if;
       return Result;
    end Build;

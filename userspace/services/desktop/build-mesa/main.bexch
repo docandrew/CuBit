@@ -1,0 +1,69 @@
+[GENERATED OBJECT FILE]
+b__main.o
+[PROJECT FILES]
+/home/doc/git/cubit/userspace/services/desktop/desktop.gpr
+20261001014125 ac492de922362404b82b2ccede95149a
+/home/doc/git/cubit/userspace/lib/ui/fonts_native.gpr
+20260921043353 614086304e2ed3f6932a3e873e53c28e
+[BOUND OBJECT FILES]
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/compositor_damage.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/compositor_formats.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/compositor_policy.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/compositor_presentation.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/cubit-appearance.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/cubit-display_geometry.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/cubit-display_layouts.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/cubit-display_arrangement.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/desktop_composition.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-bounded_stacks.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-checked_arithmetic.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-execution_budgets.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-handler_references.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-ownership.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-imports.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-secondary_arrays.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-secondary_stacks.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-text_operations.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-types.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-ownership-bytecode.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-resource_policies.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-types-correspondence.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-objects.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-objects-catalog.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-objects-views.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-resources.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-vm.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-host_values.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-catalog.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-objects-values.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-language.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/ccl-declarations.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/compositor_cache.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/cubit-fonts.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/cubit-theme.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/desktop_cursors.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/desktop_icons.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/desktop_launch.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/desktop_wallpaper.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/desktop_window_icons.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/font8x16.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/cubit-ui.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/cubit-ui-theme_data.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/cubit-ui-theme_ccl.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/desktop_settings.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/mesa_ffi.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/mesa_binding.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/mesa_cache.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/desktop_compositor.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/presentation_test_policy.o
+/home/doc/git/cubit/userspace/services/desktop/build-mesa/main.o
+[GENERATED SOURCE FILES]
+b__main.ads
+b__main.adb
+b__main.ali
+[RESULTING OPTIONS]
+-L/home/doc/git/cubit/userspace/services/desktop/build-mesa/
+-L/home/doc/git/cubit/userspace/services/desktop/build-mesa/
+-L/home/doc/git/cubit/userspace/rust/build/font-native/
+-L/home/doc/git/cubit/userspace/runtime/adalib/

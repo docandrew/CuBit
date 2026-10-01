@@ -1,10 +1,12 @@
 with Interfaces;
 with Intel_GPU_GGTT_Reservations;
+with Intel_GPU_GGTT;
 generic
    -- Mandatory owner-local exclusion check: current retained scanout and
    -- platform ranges, correct runtime/upload partition, and lifecycle gates.
    -- Called for search pages and the complete allocation before reservation
-   -- and again after backing preparation. Must not mutate/reenter the ledger.
+   -- and again after backing preparation and successful invalidation, before
+   -- reporting Published. Must not mutate/reenter the ledger.
    -- Caller still serializes display/address-space mutation through writes.
    with function Range_Allowed
      (GPU_Start, Bytes : Interfaces.Unsigned_64) return Boolean;
@@ -28,6 +30,11 @@ generic
    -- Upload staging normally needs 1 MiB; ADS uses a 16 MiB allocation.
    -- Larger callers must opt in. Publication retains an absolute 16 MiB bound.
    Maximum_Bytes : Interfaces.Unsigned_64 := 1_048_576;
+   -- Immutable retained backing resolver. Offset is page-aligned. Return zero
+   -- on failure; every page is checked before reservation or MMIO writes.
+   -- Nonlinear adapters resolve an extent map, never first-extent + offset.
+   with function Resolve_Page (Base, Offset : Interfaces.Unsigned_64)
+     return Interfaces.Unsigned_64 is Intel_GPU_GGTT.Linear_Page;
 package Intel_GPU_GGTT_Publish is
    type Phase is (Fresh, Consumed_No_Writes, Possibly_Published, Complete);
    type Attempt is limited private;

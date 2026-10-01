@@ -103,7 +103,8 @@ package body CCL.Host_Values with SPARK_Mode => On is
         (case Kind is
            when CCL.VM.Integer_Value => CCL.Types.Integer_Type,
            when CCL.VM.Boolean_Value => CCL.Types.Boolean_Type,
-           when CCL.VM.Variant_Value | CCL.VM.Object_Value | CCL.VM.Resource_Value => Local);
+           when CCL.VM.Variant_Value | CCL.VM.Object_Value | CCL.VM.Resource_Value => Local,
+           when CCL.VM.Text_Value => CCL.Types.String_Type);
    begin
       if not Has_Resources (Declared) then return Matches_Bytecode (Compiled, Declared); end if;
       To_Bytecode (Declared, Types,

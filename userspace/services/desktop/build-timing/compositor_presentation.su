@@ -1,0 +1,11 @@
+<built-in>:stateIP	8	static
+/home/doc/git/cubit/userspace/lib/compositor/compositor_presentation.ads:44:4:Current	8	static
+/home/doc/git/cubit/userspace/lib/compositor/compositor_presentation.ads:45:4:Session	8	static
+/home/doc/git/cubit/userspace/lib/compositor/compositor_presentation.ads:46:4:Token	8	static
+<built-in>:completionIP	8	static
+/home/doc/git/cubit/userspace/lib/compositor/compositor_presentation.ads:12:4:Writable	8	static
+/home/doc/git/cubit/userspace/lib/compositor/compositor_presentation.ads:30:4:Releases	8	static
+/home/doc/git/cubit/userspace/lib/compositor/compositor_presentation.adb:2:4:Open	8	static
+/home/doc/git/cubit/userspace/lib/compositor/compositor_presentation.adb:4:4:Quarantine	8	static
+/home/doc/git/cubit/userspace/lib/compositor/compositor_presentation.adb:8:4:Submit	8	static
+/home/doc/git/cubit/userspace/lib/compositor/compositor_presentation.adb:18:4:Complete	8	static

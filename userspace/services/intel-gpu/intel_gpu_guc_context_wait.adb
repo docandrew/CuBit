@@ -1,71 +1,20 @@
-with Intel_GPU_GuC_Context_Event;
+with Intel_GPU_Context_Wait_Core;
 package body Intel_GPU_GuC_Context_Wait is
-   use Interfaces;
-   package Life renames Intel_GPU_GuC_Context_Lifecycle;
-   use type Life.Operation;
-   use type Life.Phase;
-   use type Driver.Result;
-   use type Receiver.Result;
+   package Core is new Intel_GPU_Context_Wait_Core
+     (Driver, Receiver, Driver.Session, Driver.State, Driver.Submit, Driver.Fail,
+      Owner_Ready, Poll, Now_Us, Pause, Dispatch);
    procedure Execute
-     (Object : in out Driver.Session; Action : Life.Operation;
+     (Object : in out Driver.Session;
+      Action : Intel_GPU_GuC_Context_Lifecycle.Operation;
       Poll_Limit : Positive; Status : out Result) is
-      Started, Previous, Current : Unsigned_64;
-      Sent : Boolean := False;
-      Outcome : Driver.Result;
-      Item : Receiver.Message;
-      Received : Receiver.Result;
-      Target : Life.Phase;
-      procedure Fail (Reason : Result) is
-      begin Driver.Fail (Object); Status := Reason; end Fail;
-      function Within_Deadline return Boolean is
-      begin
-         if not Owner_Ready then Fail (Ownership_Lost); return False; end if;
-         Current := Now_Us;
-         if not Owner_Ready then Fail (Ownership_Lost); return False; end if;
-         if Current = Unsigned_64'Last or else Current < Previous then
-            Fail (Invalid_Clock); return False;
-         end if;
-         if Current - Started >= 1_000_000 then Fail (Timed_Out); return False; end if;
-         Previous := Current;
-         return True;
-      end Within_Deadline;
+      Outcome : Core.Result;
    begin
-      Status := Rejected;
-      if Action = Life.Enable and then Driver.State (Object) = Life.Policy_Queued then
-         Target := Life.Enabled;
-      elsif Action = Life.Disable and then Driver.State (Object) = Life.Enabled then
-         Target := Life.Disabled;
-      else return;
-      end if;
-      if not Owner_Ready then Fail (Ownership_Lost); return; end if;
-      Started := Now_Us; Previous := Started;
-      if not Owner_Ready then Fail (Ownership_Lost); return; end if;
-      if Started = Unsigned_64'Last then Fail (Invalid_Clock); return; end if;
-      for Index in 1 .. Poll_Limit loop
-         if not Within_Deadline then return; end if;
-         if not Sent then
-            Driver.Submit (Object, Action, Outcome);
-            if not Within_Deadline then return; end if;
-            if Outcome = Driver.Queued then Sent := True;
-            elsif Outcome /= Driver.Backpressure then Fail (Send_Failed); return;
-            end if;
-         end if;
-         Poll (Item, Received);
-         if not Within_Deadline then return; end if;
-         if Received = Receiver.Received and then Item.Length > 0 then
-            Driver.Dispatch (Object, Intel_GPU_GuC_Context_Event.Words
-              (Item.Payload (1 .. Item.Length)), Item.Fence, Outcome);
-            if not Within_Deadline then return; end if;
-            if Outcome = Driver.Faulted or else Outcome = Driver.Rejected then
-               Fail (Context_Failed); return;
-            end if;
-            if Sent and then Driver.State (Object) = Target then
-               Status := Complete; return;
-            end if;
-         elsif Received /= Receiver.Empty then Fail (Receive_Failed); return;
-         end if;
-         Pause;
-      end loop;
-      Fail (Timed_Out);
+      Core.Execute (Object, Action, Poll_Limit, Outcome);
+      Status := (case Outcome is
+        when Core.Rejected => Rejected, when Core.Complete => Complete,
+        when Core.Ownership_Lost => Ownership_Lost,
+        when Core.Invalid_Clock => Invalid_Clock, when Core.Timed_Out => Timed_Out,
+        when Core.Send_Failed => Send_Failed, when Core.Receive_Failed => Receive_Failed,
+        when Core.Context_Failed => Context_Failed);
    end Execute;
 end Intel_GPU_GuC_Context_Wait;

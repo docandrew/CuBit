@@ -577,11 +577,107 @@ package body CCL_Workbench is
    procedure Interpret_Live is new CCL.Language.Interpret_With_Values
      (Live_Context, Invoke_Live);
    procedure Submit_Live is new CCL.Sessions.Submit_With_Values (Live_Context, Invoke_Live);
+   --  The REPL, plus workspace commands (the Workbench owns the workspace,
+   --  so these live here, not in the session engine):
+   --    :files        the .ccl files in the workspace
+   --    :save NAME    the session's definitions as a new file (never replaces)
+   --    :load NAME    a file's definitions into the session
    procedure Submit_REPL
      (Item : in out CCL.Sessions.Session; Source : String;
-      Fuel : CCL.Sessions.Fuel_Budget; Outcome : out CCL.Language.Interpretation_Result) is
+      Fuel : CCL.Sessions.Fuel_Budget; Outcome : out CCL.Language.Interpretation_Result)
+   is
+      First : Natural := Source'First;
+      Last : Natural := Source'Last;
+      function Command (Word : String) return Boolean is
+        (Last - First + 1 >= Word'Length and then Source (First .. First + Word'Length - 1) = Word and then
+         (Last - First + 1 = Word'Length or else Source (First + Word'Length) = ' '));
+      --  The argument after the command word, with ".ccl" added if missing.
+      function File_Argument (Word : String) return String is
+         From : Natural := First + Word'Length;
+      begin
+         while From <= Last and then Source (From) = ' ' loop From := From + 1; end loop;
+         if From > Last then return ""; end if;
+         return (if Last - From + 1 > 4 and then Source (Last - 3 .. Last) = ".ccl"
+                 then Source (From .. Last) else Source (From .. Last) & ".ccl");
+      end File_Argument;
+      function Failure (Result : CCL_Workspace.Storage_Result) return String is
+        (case Result is
+           when CCL_Workspace.Conflict => "a file with that name exists; choose a new name",
+           when CCL_Workspace.Not_Found => "no such file in the workspace",
+           when CCL_Workspace.Invalid_Name => "invalid name (letters, digits, - and _, ending .ccl)",
+           when CCL_Workspace.Unavailable => "no workspace in this session",
+           when CCL_Workspace.Limit_Reached => "the workspace or file is full",
+           when CCL_Workspace.Access_Denied => "the workspace refused access",
+           when others => "workspace I/O failed");
    begin
-      Submit_Live (Item, Source, Fuel, Granted_Interfaces, Live_Host, Outcome);
+      while First <= Last and then Source (First) = ' ' loop First := First + 1; end loop;
+      while Last >= First and then Source (Last) = ' ' loop Last := Last - 1; end loop;
+      if Command (":files") then
+         declare
+            Files : CuBit.File_Selection.File_List;
+            Result : CCL_Workspace.Storage_Result;
+            Names : String (1 .. 900) := [others => ' '];
+            Used : Natural := 0;
+         begin
+            CCL_Workspace.List_Files (Files, Result);
+            if Result /= CCL_Workspace.Succeeded then
+               CCL.Sessions.Note (Item, Source, Failure (Result), Outcome);
+               return;
+            end if;
+            for I in 1 .. Files.Count loop
+               declare
+                  Name : constant String := CuBit.File_Selection.Value (Files.Names (I));
+               begin
+                  exit when Name'Length + 2 > Names'Length - Used;
+                  if Used > 0 then Names (Used + 1 .. Used + 2) := ", "; Used := Used + 2; end if;
+                  Names (Used + 1 .. Used + Name'Length) := Name;
+                  Used := Used + Name'Length;
+               end;
+            end loop;
+            CCL.Sessions.Note
+              (Item, Source, (if Used = 0 then "no .ccl files in " & CCL_Workspace.Location
+                              else Names (1 .. Used)), Outcome);
+         end;
+      elsif Command (":save") then
+         declare
+            Name : constant String := File_Argument (":save");
+            Result : CCL_Workspace.Storage_Result;
+         begin
+            if not CCL_Workspace.Valid_Source_Name (Name) then
+               CCL.Sessions.Note (Item, Source, Failure (CCL_Workspace.Invalid_Name), Outcome);
+            elsif CCL.Sessions.Kept_Definitions (Item) = 0 then
+               CCL.Sessions.Note (Item, Source, "no definitions to save (values are not saved)", Outcome);
+            else
+               CCL_Workspace.Save_New (Name, CCL.Sessions.Definitions_Source (Item), Result);
+               CCL.Sessions.Note
+                 (Item, Source,
+                  (if Result = CCL_Workspace.Succeeded then "saved" &
+                     Natural'Image (CCL.Sessions.Kept_Definitions (Item)) & " definitions to " & Name
+                   else Failure (Result)), Outcome);
+            end if;
+         end;
+      elsif Command (":load") then
+         declare
+            Name : constant String := File_Argument (":load");
+            Text : CCL_Workspace.Source_Buffer;
+            Length : CCL_Workspace.Source_Length;
+            Result : CCL_Workspace.Storage_Result;
+         begin
+            if not CCL_Workspace.Valid_Source_Name (Name) then
+               CCL.Sessions.Note (Item, Source, Failure (CCL_Workspace.Invalid_Name), Outcome);
+               return;
+            end if;
+            CCL_Workspace.Load (Name, Text, Length, Result);
+            if Result /= CCL_Workspace.Succeeded then
+               CCL.Sessions.Note (Item, Source, Failure (Result), Outcome);
+            else
+               Submit_Live (Item, Text (1 .. Length), Fuel, Granted_Interfaces, Live_Host, Outcome,
+                            Shown => Source);
+            end if;
+         end;
+      else
+         Submit_Live (Item, Source, Fuel, Granted_Interfaces, Live_Host, Outcome);
+      end if;
    end Submit_REPL;
    procedure Handle_REPL_Event is new CCL_REPL_View.Handle_With_Executor (Submit_REPL);
    procedure Pump_Live is new CCL.Periodic_Programs.Evaluate_Values_Due
@@ -602,7 +698,7 @@ package body CCL_Workbench is
          if not Prepare_Source (View) then return; end if;
          CCL.Periodic_Programs.Load
            (Live_Program, View.Canonical.Data (1 .. View.Canonical.Length), Window_Ticks,
-            1_000, CCL.Sessions.Default_Fuel, Result);
+            1_000, CCL.Periodic_Programs.Default_Fuel, Result);
          if Result /= CCL.Periodic_Programs.Loaded then
             Set_Result
               (case Result is
@@ -728,7 +824,7 @@ package body CCL_Workbench is
       Edit : CuBit.UI.Editor.Documents.Edit_Result;
    begin
       if REPL_Visible then
-         Set_Result ("F8 switches the source editor; the REPL currently uses Lisp");
+         Set_Result ("F8 switches the source editor; the REPL reads Lisp or BASIC");
          return;
       end if;
       CCL.Language.Views.Convert
@@ -2705,7 +2801,7 @@ package body CCL_Workbench is
       if REPL_Visible then
          CuBit.UI.Widgets.Label (Canvas,
            (Editor_Content.x, Editor_Content.y, Editor_Content.w - 94, 22), Colors,
-           "CCL session - Lisp");
+           "CCL session - Lisp or BASIC");
          CCL_REPL_View.Draw (REPL, Canvas, REPL_Bounds, Colors);
       else
       CuBit.UI.Draw_UI_Text
@@ -3239,7 +3335,7 @@ begin
          Event.Shift := (Modifiers and 1) /= 0;
          Event.Control := (Modifiers and 2) /= 0;
          Handle_REPL_Event (REPL, Event, REPL_Bounds, Submitted);
-         if Submitted then CCL_Workbench_Platform.REPL_Completed; end if;
+         if Submitted then CCL_Workbench_Platform.REPL_Completed (CCL_REPL_View.Latest_Result (REPL)); end if;
       end Handle_REPL;
 
       procedure Toggle_REPL is

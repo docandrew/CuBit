@@ -15,19 +15,23 @@ src/build.ads
 *.a
 *.elf
 
+# Random stuff we don't want
+*.zip
+*.pcap
+*.log
+
+# userspace services/drivers
+*.svc
+*.drv
+*.app
+*.img
+*.iso
+
 # Kernel and live-image build artifacts
-/kernel/*.img
-/kernel/*.iso
 /kernel/*.iso.plan.json
 /kernel/*.img.plan.json
 /kernel/isodir/boot/*.img.plan.json
-/kernel/*.log
-/kernel/*.pcap
 /kernel/src/build.ads
-/kernel/isodir/boot/*.app
-/kernel/isodir/boot/*.drv
-/kernel/isodir/boot/*.img
-/kernel/isodir/boot/*.svc
 /kernel/isodir/licenses/cbor_ada.txt
 
 # Local third-party source/build trees used by port experiments
@@ -49,19 +53,17 @@ userspace/apps/display-check/build-gpu-clear-failure/
 # Advisory cross-session build/test lock; never delete a live lock file.
 /coordination/*.lock
 /.build-workspaces/
+# Local source backup; not an input to isolated source snapshots.
+/cubit_092826.zip
 
 # Networking scratch: proof/test build variants, runner temp files, logs.
 /tests/net-tcp/build-*/
 /tests/net-tcp/build*.log
 # Local A/B backups of built images (never committed).
 /kernel/*.pre-*
-/tests/intel-gpu/build-guc-dma/
-/tests/intel-gpu/build-ggtt-reservations/
-/tests/intel-gpu/build-guc-rsa/
-/tests/intel-gpu/build-wopcm/
-/tests/intel-gpu/build-guc-upload/
-/tests/intel-gpu/build-guc-status/
+/tests/intel-gpu/build-*/
 /tests/mesa-software/target/
+/tests/mesa-anv/target/
 /tests/region-transition/build-pte/
 /tests/region-transition/build-registry/
 /tests/region-transition/build-adapter/
