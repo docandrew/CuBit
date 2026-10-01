@@ -1,1 +1,0 @@
-compositor_damage.ads:41:25: warning: array aggregate using () is an obsolescent syntax, use [] instead [-gnatwj]

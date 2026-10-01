@@ -1,7 +1,0 @@
-<built-in>:budgetIP	8	static
-/home/doc/git/cubit/userspace/ccl/src/ccl-execution_budgets.ads:32:4:HAS_FUEL	8	static
-/home/doc/git/cubit/userspace/ccl/src/ccl-execution_budgets.ads:36:4:REMAINING	8	static
-/home/doc/git/cubit/userspace/ccl/src/ccl-execution_budgets.ads:39:4:STEPS	8	static
-/home/doc/git/cubit/userspace/ccl/src/ccl-execution_budgets.ads:47:4:LIMIT	8	static
-/home/doc/git/cubit/userspace/ccl/src/ccl-execution_budgets.adb:4:4:INITIALIZE	8	static
-/home/doc/git/cubit/userspace/ccl/src/ccl-execution_budgets.adb:11:4:CONSUME	8	static

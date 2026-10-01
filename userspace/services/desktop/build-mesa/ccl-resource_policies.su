@@ -1,8 +1,0 @@
-<built-in>:dispositionIP	8	static
-<built-in>:Tdisposition_arrayBIP	8	static
-<built-in>:descriptionIP	8	static
-<built-in>:Tpolicy_tableBIP	32	static
-<built-in>:TselectionBIP	8	static
-<built-in>:Tbinding_mapBIP	8	static
-/home/doc/git/cubit/userspace/ccl/src/ccl-resource_policies.adb:10:4:VALID	1520	static
-/home/doc/git/cubit/userspace/ccl/src/ccl-resource_policies.adb:37:4:LAYOUT	5008	static

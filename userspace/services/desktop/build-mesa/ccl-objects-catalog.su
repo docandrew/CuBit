@@ -1,9 +1,0 @@
-<built-in>:entry_descriptionIP	8	static
-<built-in>:Tentry_arrayBIP	8	static
-<built-in>:schema_catalogIP	8	static
-/home/doc/git/cubit/userspace/ccl/src/ccl-objects-catalog.ads:48:4:LENGTH	8	static
-/home/doc/git/cubit/userspace/ccl/src/ccl-objects-catalog.ads:49:4:VISIBLE_TYPES	16	static
-/home/doc/git/cubit/userspace/ccl/src/ccl-objects-catalog.adb:7:4:PUBLISH_TYPE	16	static
-/home/doc/git/cubit/userspace/ccl/src/ccl-objects-catalog.adb:15:4:ROOT_OF	16	static
-/home/doc/git/cubit/userspace/ccl/src/ccl-objects-catalog.adb:23:4:PUBLISH	22592	static
-/home/doc/git/cubit/userspace/ccl/src/ccl-objects-catalog.adb:63:4:RESOLVE	22656	static

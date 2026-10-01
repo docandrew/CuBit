@@ -1,5 +1,0 @@
-/home/doc/git/cubit/userspace/lib/display/cubit-display_arrangement.ads:11:4:Factor	16	static
-<built-in>:candidate_resultD2	8	static
-<built-in>:candidate_resultIP	8	static
-/home/doc/git/cubit/userspace/lib/display/cubit-display_arrangement.adb:84:4:Move	1952	static
-/home/doc/git/cubit/userspace/lib/display/cubit-display_arrangement.adb:17:4:Rescale	1232	static

@@ -1,2 +1,0 @@
-desktop_cursors.ads:31:49: warning: array aggregate using () is an obsolescent syntax, use [] instead [-gnatwj]
-desktop_cursors.ads:40:49: warning: array aggregate using () is an obsolescent syntax, use [] instead [-gnatwj]

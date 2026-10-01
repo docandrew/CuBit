@@ -1,6 +1,0 @@
-<built-in>:contextIP	8	static
-/home/doc/git/cubit/userspace/lib/compositor/mesa_binding.adb:4:4:Start	16	static
-/home/doc/git/cubit/userspace/lib/compositor/mesa_binding.adb:9:4:Import_View	48	static
-/home/doc/git/cubit/userspace/lib/compositor/mesa_binding.adb:15:4:Render_View	80	static
-/home/doc/git/cubit/userspace/lib/compositor/mesa_binding.adb:28:4:Release_View	16	static
-/home/doc/git/cubit/userspace/lib/compositor/mesa_binding.adb:33:4:Stop	16	static

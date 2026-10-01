@@ -1,3 +1,0 @@
-presentation_test_policy.ads:8:07: warning: formal parameter "Address" is not referenced [-gnatwf]
-presentation_test_policy.ads:8:33: warning: formal parameter "Bytes" is not referenced [-gnatwf]
-presentation_test_policy.ads:8:40: warning: formal parameter "Frame" is not referenced [-gnatwf]

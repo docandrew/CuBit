@@ -1,5 +1,0 @@
-/home/doc/git/cubit/userspace/lib/compositor/compositor_policy.ads:4:4:Initial	8	static
-/home/doc/git/cubit/userspace/lib/compositor/compositor_policy.ads:6:4:May_Retire	8	static
-/home/doc/git/cubit/userspace/lib/compositor/compositor_policy.ads:8:4:May_Fallback	8	static
-/home/doc/git/cubit/userspace/lib/compositor/compositor_policy.adb:2:4:Begin_Draw	8	static
-/home/doc/git/cubit/userspace/lib/compositor/compositor_policy.adb:6:4:Finish_Draw	16	static
