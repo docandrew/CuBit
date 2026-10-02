@@ -18,12 +18,24 @@ def require(condition, explanation):
 
 
 serial, socket_path, timeout = sys.argv[1:]
+# Functional settling only. Software Mesa under TCG may take longer than the
+# legacy row-copy path; all scanout and input assertions stay identical.
+settle_seconds = float(os.environ.get("CUBIT_TEST_SETTLE_SECONDS", "0.8"))
+require(0.1 <= settle_seconds <= 30, "invalid functional settle allowance")
+print(f"dual Desktop: functional settle={settle_seconds}s (not a timing benchmark)", flush=True)
 mixed = os.environ.get("CUBIT_TEST_MIXED_OUTPUTS") == "1"
 side_width, side_height = (1280, 720) if mixed else (1024, 768)
 handoff = os.environ.get("CUBIT_TEST_BOOT_HANDOFF") == "1"
 main_width, main_height = (1280, 720) if handoff else (1024, 768)
 if handoff:
     side_width, side_height = 1024, 768
+
+if os.environ.get("CUBIT_TEST_SCALING") == "1":
+    require(os.environ.get("CUBIT_TEST_ARRANGEMENT") == "1" and
+            os.environ.get("CUBIT_TEST_PRIMARY") == "1" and
+            (side_width, side_height) == (1280, 720),
+            "scaling fixture requires ARRANGEMENT=1, PRIMARY=1, MIXED_OUTPUTS=1 "
+            "and no BOOT_HANDOFF (all CUBIT_TEST_ prefixed)")
 
 
 @dataclass
@@ -62,7 +74,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         require(not result.strip(), f"input rejected: {result}")
 
     def capture(phase):
-        time.sleep(0.8)
+        time.sleep(settle_seconds)
         images = []
         for head in range(2):
             path = log.with_suffix(f".{phase}-head-{head}.ppm")
@@ -179,8 +191,11 @@ with socket.socket(socket.AF_UNIX) as connection:
     # Settings is compositor-owned but must display the same actual layout.
     hmp("sendkey meta_l")
     time.sleep(0.3)
-    for _ in range(6):
-        hmp("sendkey down")
+    # Both Defaults and the system.ccl fixture put Settings immediately before
+    # Config Inspector. Wrap backward so additional program entries (Servo,
+    # for example) do not silently launch a different application here.
+    for _ in range(2):
+        hmp("sendkey up")
         time.sleep(0.12)
     hmp("sendkey ret")
     appearance = capture("settings-appearance")

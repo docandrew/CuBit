@@ -3,6 +3,7 @@ with CCL.Declarations;
 with CCL.Scheduling_Limits;
 with CCL.Resource_Sections;
 with CuBit.Network_Authority;
+with CuBit.Render_Authority;
 with CuBit.TLS_Scopes;
 
 package body CCL.Manifests with SPARK_Mode => On is
@@ -20,12 +21,13 @@ package body CCL.Manifests with SPARK_Mode => On is
    --  endpoint delegation (docs/ccl-driver-manifests.md).
    type Request_Kind is
      (Framebuffer_Request, Service_Request, Notification_Request, Network_Request,
-      Device_Memory_Request, IO_Port_Request, Interrupt_Request, DMA_Request,
+      Render_Request, Device_Memory_Request, IO_Port_Request, Interrupt_Request, DMA_Request,
       Scheduling_Request);
    package Sections renames CCL.Resource_Sections;
    for Request_Kind use
      (Framebuffer_Request => 1, Service_Request => 2, Notification_Request => 7,
       Network_Request => CuBit.Network_Authority.Manifest_Request,
+      Render_Request => CuBit.Render_Authority.Manifest_Request,
       Device_Memory_Request => Sections.Resource_Kind'Enum_Rep (Sections.Device_Memory),
       IO_Port_Request => Sections.Resource_Kind'Enum_Rep (Sections.IO_Ports),
       Interrupt_Request => Sections.Resource_Kind'Enum_Rep (Sections.Interrupt),
@@ -323,7 +325,16 @@ package body CCL.Manifests with SPARK_Mode => On is
          Found : Boolean := False;
       begin
          Item.Kind := Kind;
-         if Kind /= Framebuffer_Request then
+         if Kind = Render_Request then
+            -- One admitted session per launch. Distinct binding names must
+            -- not disguise duplicate requests that procmgr will reject.
+            for Existing of Requests (1 .. Count) loop
+               if Existing.Kind = Render_Request then
+                  Fail (Duplicate_Field, Cursor);
+               end if;
+            end loop;
+         end if;
+         if Kind not in Framebuffer_Request | Render_Request then
             Atom (Name);
             for Binding of Services (1 .. Service_Count) loop
                if Name = Binding.Name and then Kind = Binding.Kind then
@@ -338,7 +349,10 @@ package body CCL.Manifests with SPARK_Mode => On is
             end if;
          end if;
          Read_Rights (Item.Rights, Kind);
-         if Kind /= Framebuffer_Request and then Offered /= Read_Write
+         if Kind = Render_Request and then Item.Rights /= Read_Write then
+            Fail (Unknown_Rights, Cursor);
+         end if;
+         if Kind not in Framebuffer_Request | Render_Request and then Offered /= Read_Write
            and then Item.Rights /= Offered
          then
             Fail (Rights_Not_Offered, Cursor);
@@ -955,6 +969,7 @@ package body CCL.Manifests with SPARK_Mode => On is
          elsif Is_Text (Name, "request-notification") then Add_Request (Notification_Request);
          elsif Is_Text (Name, "request-framebuffer") then Add_Request (Framebuffer_Request);
          elsif Is_Text (Name, "request-network") then Add_Network;
+         elsif Is_Text (Name, "request-render") then Add_Request (Render_Request);
          elsif Is_Text (Name, "filesystem-scope") then Add_Scope (Filesystem_Domain);
          elsif Is_Text (Name, "config-scope") then Add_Scope (Config_Domain);
          elsif Is_Text (Name, "tls-scope") then Add_TLS_Scope;

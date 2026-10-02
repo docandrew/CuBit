@@ -1,0 +1,24 @@
+project Native is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/lib/ui", "../../userspace/services/desktop/backend-mesa", "../../userspace/allocator/src");
+   for Languages use ("Ada");
+   for Source_Files use ("compositor_glyph_target.ads", "compositor_glyph_target.adb", "compositor_glyph_software.ads", "compositor_glyph_software.adb", "compositor_text.ads", "compositor_text.adb", "native_glyph_owner_test.adb", "compositor_glyph_renderer.ads", "compositor_glyph_renderer.adb", "compositor_glyph_storage.ads", "compositor_glyph_storage.adb", "native_placement_test.adb", "compositor_glyph_placement.ads", "compositor_glyph_placement.adb", "native_batch_test.adb", "compositor_mask_batch.ads", "compositor_mask_batch.adb", "compositor_identity.ads", "native_pool_test.adb", "compositor_pool.ads", "compositor_pool.adb",
+     "native_mask_test.adb", "mesa_mask_ffi.ads", "mesa_mask_ffi.adb",
+     "mesa_masks.ads", "mesa_masks.adb", "mesa_binding-masks.ads", "mesa_binding-masks.adb",
+     "compositor_glyph_cache.ads", "compositor_glyph_cache.adb",
+     "compositor_glyph_memory.ads", "compositor_glyph_memory.adb", "compositor_glyph_arena.ads", "compositor_glyph_arena.adb", "heap_extents.ads", "heap_extents.adb",
+     "native_glyph_test.adb", "compositor_glyph_layout.ads", "compositor_glyph_layout.adb", "compositor_glyph_ffi.ads", "compositor_glyph_ffi.adb", "cubit-fonts.ads", "cubit-fonts.adb", "native_output_test.adb", "desktop_compositor.ads", "desktop_compositor.adb", "desktop_composition.ads", "desktop_composition.adb", "mesa_binding-affine.ads", "mesa_binding-affine.adb", "native_affine_test.adb", "mesa_affine_ffi.ads", "mesa_affine_ffi.adb", "compositor_transform.ads", "compositor_transform.adb", "compositor_affine.ads", "compositor_affine.adb",
+     "compositor_sampling.ads", "compositor_sampling.adb", "cubit-display_geometry.ads", "cubit-display_geometry.adb",
+     "native_target_retirement_test.adb", "compositor_cache.ads", "compositor_cache.adb",
+     "mesa_cache.ads", "mesa_binding.ads", "mesa_binding.adb",
+     "compositor_repaint.ads", "compositor_repaint.adb", "compositor_damage.ads", "compositor_damage.adb",
+     "native_main.adb", "mesa_ffi.ads", "compositor_policy.ads", "compositor_policy.adb", "compositor_formats.ads");
+   for Runtime ("Ada") use "../../userspace/runtime";
+   for Object_Dir use "build/native";
+   for Main use ("native_main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-d_C", "-nostdlib", "-x");
+   end Binder;
+end Native;

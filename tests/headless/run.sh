@@ -41,11 +41,11 @@ usage() {
     cat <<'EOF'
 Usage: tests/headless/run.sh [options]
 
-Mesa native tests: --test softpipe, opengl, buffer, mesa-window or mesa-sync (default RAM 512 MiB).
+Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa-native-instance or mesa-log-bridge (default RAM 512 MiB).
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, rust-std, libc, servo, bench-spread, timesync, tls-probe, tls-service, netsurf-https, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, rust-std, libc, servo, bench-spread, timesync, tls-probe, tls-service, netsurf-https, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
@@ -71,6 +71,9 @@ bench-fs: tests/fs-bench (build tests/fs-bench/build-cubit.sh first).
 bench-latency: tests/sched-latency (build tests/sched-latency/build-cubit.sh
   and bench-ipc-server first); use --timeout 300. QEMU quits at its done marker.
 Logging fixture: log-authority (build logstore procmgr clock log-check first).
+Observability: log-fields (build logstore log-fields-check first); metrics
+  (build metricsvc metrics-check; needs procmgr metrics tag issuance).
+Render denial: render-launch-policy (build procmgr devmgr devices render-launch-policy first).
 Rust fixture: rust-native (build rust-probe ccl-test-host clock first).
 Native Turso: turso-native-std, turso-native, config-storage; see tests/config-turso/native/README.md.
 Public typed Config: config-objects, config-objects-reopen, config-objects-benchmark;
@@ -264,14 +267,14 @@ if [ -n "$CONFIG_EXPORT" ] && [ "$TEST_NAME" != config-objects ] && [ "$TEST_NAM
 fi
 
 case "$TEST_NAME" in
-    softpipe|opengl|buffer|mesa-window|mesa-sync|gpu-viewer)
+    softpipe|opengl|buffer|mesa-window|mesa-sync|gpu-viewer|render-launch-policy|mesa-native-instance|mesa-log-bridge)
         ;;
     config-objects|config-objects-reopen|config-objects-benchmark|config-storage)
         CONFIG_STORAGE_TEST=1
         ;;
-    grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
+    grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|rust-std|libc|servo|bench-spread|timesync|tls-probe|tls-service|netsurf-https|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary|bench-latency)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|rust-std|libc|servo|bench-spread|timesync|tls-probe|tls-service|netsurf-https|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary|bench-latency)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -439,6 +442,9 @@ case "$TEST_NAME" in
     log-authority)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-log-authority.ccl"
         ;;
+    log-fields|metrics)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-$TEST_NAME.ccl"
+        ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|gpu-viewer)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-$TEST_NAME.ccl"
         ;;
@@ -576,8 +582,23 @@ case "$TEST_NAME" in
     display-grants|display-grants-virtio-vga|display-dual-output|display-discovery-multi-output|display-discovery-boot-only)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-display-grants.ccl"
         ;;
+    managed-ui)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-managed-ui.ccl"
+        ;;
     devices)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-devices.ccl"
+        ;;
+    render-launch-policy)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-render-launch-policy.ccl"
+        ;;
+    mesa-log-bridge)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-mesa-log-bridge.ccl"
+        ;;
+    mesa-native-instance)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-mesa-native-instance.ccl"
+        # Static ANV image plus procmgr's retained ELF buffer and services
+        # exceed the tiny generic 128 MiB fixture, like the other Mesa tests.
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
         ;;
     files)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-files.ccl"
@@ -591,6 +612,37 @@ case "$TEST_NAME" in
         fi
         ;;
 esac
+
+if [ "${CUBIT_DESKTOP_METRICS_TEST:-0}" = 1 ]; then
+    if [ "$TEST_NAME" != ccl-workspace ] || [ -z "${CUBIT_DESKTOP_IMAGE:-}" ]; then
+        echo "headless: Desktop metrics requires ccl-workspace and a metrics-enabled Desktop image" >&2
+        exit 1
+    fi
+    INIT_PROFILE="$ROOT_DIR/tests/compositor/init-metrics-desktop.ccl"
+    if [ "${CUBIT_DESKTOP_METRICS_LOAD:-0}" = 1 ]; then
+        if [ "${CUBIT_DESKTOP_METRICS_FAULT:-0}" = 1 ]; then
+            echo "headless: metrics load and fault fixtures are mutually exclusive" >&2
+            exit 1
+        fi
+        INIT_PROFILE="$ROOT_DIR/tests/compositor/init-metrics-load.ccl"
+    fi
+    if [ "${CUBIT_DESKTOP_METRICS_FAULT:-0}" = 1 ]; then
+        if [ -z "${CUBIT_METRICS_FAULT_IMAGE:-}" ]; then
+            echo "headless: metrics fault mode requires its isolated test collector" >&2
+            exit 1
+        fi
+        INIT_PROFILE="$ROOT_DIR/tests/compositor/init-metrics-fault.ccl"
+    fi
+fi
+
+if [ "${CUBIT_TEST_IDLE_DPI:-0}" = 1 ]; then
+    if [ "$TEST_NAME" != desktop-dual-output ] || [ "${CUBIT_TEST_MIXED_OUTPUTS:-0}" != 1 ]; then
+        echo "headless: idle DPI requires desktop-dual-output and mixed outputs" >&2
+        exit 1
+    fi
+    INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-dpi.ccl"
+    QEMU_MEMORY="${QEMU_MEMORY:-1G}"
+fi
 
 if [ "$BENCH_LOAD" = 1 ]; then
     INIT_PROFILE="$ROOT_DIR/tests/headless/init-${TEST_NAME}-load.ccl"
@@ -684,6 +736,26 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         fi
+    fi
+    if [ "$TEST_NAME" = mesa-log-bridge ]; then
+        for app in logstore.svc mesa-log-check.app; do
+            if [ ! -f "$KERNEL_DIR/isodir/boot/$app" ]; then
+                echo "headless: build logstore mesa-log-test first ($app missing)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $app" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$app $app" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
+    fi
+    if [ "$TEST_NAME" = mesa-native-instance ]; then
+        MESA_INSTANCE_IMAGE="$KERNEL_DIR/isodir/boot/mesa-no-provider.app"
+        if [ ! -f "$MESA_INSTANCE_IMAGE" ]; then
+            echo "headless: build and stage the native Mesa no-provider fixture first" >&2
+            exit 1
+        fi
+        debugfs -w -R 'rm mesa-no-provider.app' "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "write $MESA_INSTANCE_IMAGE mesa-no-provider.app" \
+            "$TEMP_DISK" >/dev/null 2>&1 || exit 1
     fi
     if [ "$TEST_NAME" = gpu-viewer ]; then
         for app in gpu-viewer-owner.app gpu-viewer-test.app; do
@@ -794,7 +866,9 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
        [ "$TEST_NAME" = "ccl-workspace" ] ||
        [ "$TEST_NAME" = "input-stream" ] ||
+       [ "$TEST_NAME" = "managed-ui" ] ||
        [ "$TEST_NAME" = "devices" ] ||
+       [ "$TEST_NAME" = "render-launch-policy" ] ||
        [ "$TEST_NAME" = "config-tree" ] ||
        [ "$TEST_NAME" = "files" ] ||
        [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
@@ -819,6 +893,19 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
+    fi
+    if [ "${CUBIT_TEST_IDLE_DPI:-0}" = 1 ]; then
+        DPI_IMAGE="$ROOT_DIR/tests/compositor/build/dpi-client/dpi-client.app"
+        DPI_CHECK=$(mktemp "${TMPDIR:-/tmp}/cubit-dpi-image.XXXXXXXX")
+        debugfs -w -R "rm dpi-client.app" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "write $DPI_IMAGE dpi-client.app" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -R "dump /dpi-client.app $DPI_CHECK" "$TEMP_DISK" >/dev/null 2>&1
+        if ! cmp -s "$DPI_IMAGE" "$DPI_CHECK"; then
+            rm -f "$DPI_CHECK"
+            echo "headless: DPI client image verification failed" >&2
+            exit 1
+        fi
+        rm -f "$DPI_CHECK"
     fi
     if [ "$TEST_NAME" = "desktop-protocol" ]; then
         DESKTOP_CHECK_IMAGE="$KERNEL_DIR/isodir/boot/desktop-check.app"
@@ -868,10 +955,26 @@ if [ -n "$INIT_PROFILE" ]; then
             CCL_IMAGES="ccl-vm.app ccl-test-host.svc clock.svc"
         else
             CCL_IMAGES="ccl-workbench.app clock.svc desktop.svc display.svc"
+            if [ "${CUBIT_DESKTOP_METRICS_TEST:-0}" = 1 ]; then
+                CCL_IMAGES="$CCL_IMAGES metrics.svc"
+                if [ "${CUBIT_DESKTOP_METRICS_FAULT:-0}" != 1 ]; then
+                    if [ "${CUBIT_DESKTOP_METRICS_LOAD:-0}" = 1 ]; then
+                        CCL_IMAGES="$CCL_IMAGES desktop-metrics-load.app desktop-metrics-load-observer.app"
+                    else
+                    CCL_IMAGES="$CCL_IMAGES desktop-metrics-observer.app"
+                    fi
+                fi
+            fi
             debugfs -w -R "mkdir work" "$TEMP_DISK" >/dev/null 2>&1
         fi
         for CCL_IMAGE_NAME in $CCL_IMAGES; do
             CCL_IMAGE="$KERNEL_DIR/isodir/boot/$CCL_IMAGE_NAME"
+            if [ "$CCL_IMAGE_NAME" = desktop.svc ] && [ -n "${CUBIT_DESKTOP_IMAGE:-}" ]; then
+                CCL_IMAGE="$CUBIT_DESKTOP_IMAGE"
+            fi
+            if [ "$CCL_IMAGE_NAME" = metrics.svc ] && [ "${CUBIT_DESKTOP_METRICS_FAULT:-0}" = 1 ]; then
+                CCL_IMAGE="$CUBIT_METRICS_FAULT_IMAGE"
+            fi
             if [ ! -f "$CCL_IMAGE" ]; then
                 echo "headless: missing current CCL image: $CCL_IMAGE" >&2
                 exit 1
@@ -884,8 +987,15 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
     fi
-    if [ "$TEST_NAME" = "devices" ]; then
-        for DEVICE_TEST_IMAGE_NAME in devices.app desktop.svc; do
+    if [ "$TEST_NAME" = "devices" ] || [ "$TEST_NAME" = "managed-ui" ] || [ "$TEST_NAME" = "render-launch-policy" ]; then
+        DEVICE_TEST_IMAGES="devices.app desktop.svc"
+        if [ "$TEST_NAME" = "managed-ui" ]; then
+            DEVICE_TEST_IMAGES="$DEVICE_TEST_IMAGES config-inspector.app boot-logs.app logstore.svc"
+        fi
+        if [ "$TEST_NAME" = "render-launch-policy" ]; then
+            DEVICE_TEST_IMAGES="$DEVICE_TEST_IMAGES render-denied.app render-unavailable.app"
+        fi
+        for DEVICE_TEST_IMAGE_NAME in $DEVICE_TEST_IMAGES; do
             DEVICE_TEST_IMAGE="$KERNEL_DIR/isodir/boot/$DEVICE_TEST_IMAGE_NAME"
             if [ ! -f "$DEVICE_TEST_IMAGE" ]; then
                 echo "headless: missing current Devices test image: $DEVICE_TEST_IMAGE" >&2
@@ -1062,6 +1172,11 @@ if [ -n "$INIT_PROFILE" ]; then
         # Servo (85 MB) is past what 1 KiB ext2 blocks reach without
         # triple-indirect blocks (~64 MiB), which CuBit's ext2 does not
         # read: rebuild the copy with the same files, 4 KiB blocks, 512 MiB.
+        # debugfs may report status0 without replacing an existing file.
+        # Verify each controlled guest file by dumping its installed bytes.
+        servo_install() {
+            python3 "$ROOT_DIR/tests/servo/install_fixture.py" "$TEMP_DISK" "$1" "$2"
+        }
         SERVO_STAGE="$(mktemp -d "${TMPDIR:-/tmp}/cubit-servo-stage.XXXXXX")"
         debugfs -R "rdump / $SERVO_STAGE" "$TEMP_DISK" >/dev/null 2>&1
         rm -rf "$SERVO_STAGE/lost+found"
@@ -1074,8 +1189,7 @@ if [ -n "$INIT_PROFILE" ]; then
         rm -rf "$SERVO_STAGE"
         for SERVO_IMAGE in logstore.svc clock.svc display.svc desktop.svc cubitshell.app; do
             debugfs -w -R "rm $SERVO_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
-            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$SERVO_IMAGE $SERVO_IMAGE" \
-              "$TEMP_DISK" >/dev/null 2>&1; then
+            if ! servo_install "$KERNEL_DIR/isodir/boot/$SERVO_IMAGE" "$SERVO_IMAGE"; then
                 echo "headless: failed to install $SERVO_IMAGE" >&2
                 exit 1
             fi
@@ -1084,8 +1198,7 @@ if [ -n "$INIT_PROFILE" ]; then
         SERVO_FONT_DIR="$(dirname "${IBM_PLEX_SANS_FONT:?run inside nix develop}")"
         for SERVO_FONT in IBMPlexSans-Regular.ttf IBMPlexSans-Bold.ttf \
           IBMPlexSerif-Regular.ttf IBMPlexMono-Regular.ttf; do
-            if ! debugfs -w -R "write $SERVO_FONT_DIR/$SERVO_FONT fonts/$SERVO_FONT" \
-              "$TEMP_DISK" >/dev/null 2>&1; then
+            if ! servo_install "$SERVO_FONT_DIR/$SERVO_FONT" "fonts/$SERVO_FONT"; then
                 echo "headless: failed to install fonts/$SERVO_FONT" >&2
                 exit 1
             fi
@@ -1104,7 +1217,7 @@ SERVO_PAGES_EOF
             echo "$SERVO_EXTRA_PAGE" >> "$SERVO_PAGES"
         done
         debugfs -w -R "mkdir servo" "$TEMP_DISK" >/dev/null 2>&1
-        if ! debugfs -w -R "write $SERVO_PAGES servo/pages" "$TEMP_DISK" >/dev/null 2>&1; then
+        if ! servo_install "$SERVO_PAGES" "servo/pages"; then
             rm -f "$SERVO_PAGES"
             echo "headless: failed to install servo/pages" >&2
             exit 1
@@ -1121,18 +1234,31 @@ SERVO_PAGES_EOF
         debugfs -w -R "rm tls/roots.der" "$TEMP_DISK" >/dev/null 2>&1
         SERVO_HOSTS="$(mktemp "${TMPDIR:-/tmp}/cubit-servo-hosts.XXXXXX")"
         echo "10.0.2.2 tls-test.cubit.internal" > "$SERVO_HOSTS"
-        if ! debugfs -w -R "write $SERVO_ROOTS tls/roots.der" \
-          "$TEMP_DISK" >/dev/null 2>&1 ||
-           ! debugfs -w -R "write $SERVO_HOSTS servo/hosts" "$TEMP_DISK" >/dev/null 2>&1; then
+        if ! servo_install "$SERVO_ROOTS" "tls/roots.der" ||
+           ! servo_install "$SERVO_HOSTS" "servo/hosts"; then
             rm -f "$SERVO_HOSTS" "$SERVO_ROOTS"
             echo "headless: failed to install the servo trust store or hosts" >&2
             exit 1
         fi
         rm -f "$SERVO_HOSTS" "$SERVO_ROOTS"
+        # Keep the historical batch page/ink oracle only in test sessions;
+        # ordinary desktop launches enter the interactive loop immediately.
+        SERVO_FLAG="$(mktemp "${TMPDIR:-/tmp}/cubit-servo-flag.XXXXXX")"
+        if ! servo_install "$SERVO_FLAG" "servo/batch-test"; then
+            echo "headless: failed to install Servo batch-test flag" >&2
+            exit 1
+        fi
+        if [ "${SERVO_BROWSER_CHECK:-0}" = 1 ]; then
+            if ! servo_install "$SERVO_FLAG" "servo/browser-check"; then
+                echo "headless: failed to install Servo browser-check flag" >&2
+                exit 1
+            fi
+        fi
+        rm -f "$SERVO_FLAG"
         # Opt-in: dump each frame to the serial log (tests/servo/frame_from_log.py).
         if [ -n "${SERVO_DUMP_FRAMES:-}" ]; then
             SERVO_FLAG="$(mktemp "${TMPDIR:-/tmp}/cubit-servo-flag.XXXXXX")"
-            debugfs -w -R "write $SERVO_FLAG servo/dump-frames" "$TEMP_DISK" >/dev/null 2>&1
+            servo_install "$SERVO_FLAG" "servo/dump-frames"
             rm -f "$SERVO_FLAG"
         fi
     fi
@@ -1270,6 +1396,26 @@ SERVO_PAGES_EOF
             if ! debugfs -w -R "write $LOG_IMAGE $LOG_IMAGE_NAME" \
                 "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $LOG_IMAGE_NAME" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "log-fields" ] || [ "$TEST_NAME" = "metrics" ]; then
+        if [ "$TEST_NAME" = "log-fields" ]; then
+            OBSERVABILITY_IMAGES="logstore.svc log-fields-check.app"
+        else
+            OBSERVABILITY_IMAGES="logstore.svc metrics.svc metrics-check.app"
+        fi
+        for OBSERVABILITY_IMAGE_NAME in $OBSERVABILITY_IMAGES; do
+            OBSERVABILITY_IMAGE="$KERNEL_DIR/isodir/boot/$OBSERVABILITY_IMAGE_NAME"
+            if [ ! -f "$OBSERVABILITY_IMAGE" ]; then
+                echo "headless: missing $OBSERVABILITY_IMAGE_NAME (see --help)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $OBSERVABILITY_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $OBSERVABILITY_IMAGE $OBSERVABILITY_IMAGE_NAME" \
+                "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $OBSERVABILITY_IMAGE_NAME" >&2
                 exit 1
             fi
         done
@@ -1477,6 +1623,11 @@ fi
 
 MONITOR_ARGS=()
 QMP_ARGS=()
+if [ "$TEST_NAME" = "managed-ui" ]; then
+    MONITOR_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-monitor-$$.sock"
+    rm -f "$MONITOR_SOCKET"
+    MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
+fi
 if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
    [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] ||
@@ -1544,9 +1695,28 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 grep -aF "MESA-WINDOW: attached immutable Mesa buffer" "$SERIAL_LOG" >/dev/null 2>&1 && break
                 sleep 0.1
             done
-            sleep 2
-            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-mesa.ppm" |
-                nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            # Present acknowledges scheduling, not scanout. Wait for the exact
+            # final pixels instead of assuming a fixed TCG rendering duration.
+            # This is a bounded correctness wait, never a latency measurement.
+            case "${MESA_WINDOW_SCENE:-quads}" in
+                quads) pixel_checker="$ROOT_DIR/tests/mesa-software/check-window.py" ;;
+                cube) pixel_checker="$ROOT_DIR/tests/mesa-software/check-cube-window.py" ;;
+                *) exit 2 ;;
+            esac
+            pixel_deadline=$((SECONDS + 20))
+            while :; do
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-mesa.ppm" |
+                    nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+                if python3 "$pixel_checker" "${SERIAL_LOG%.log}-mesa.ppm" \
+                    >"${SERIAL_LOG%.log}-mesa-pixels.log" 2>&1; then
+                    break
+                fi
+                if ((SECONDS >= pixel_deadline)); then
+                    cat "${SERIAL_LOG%.log}-mesa-pixels.log" >&2
+                    exit 1
+                fi
+                sleep 0.1
+            done
             if [ "${MESA_WINDOW_ANIMATION:-0}" = 1 ]; then
                 printf 'sendkey spc\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
                 for ((attempt = 0; attempt < MESA_WINDOW_ANIMATION_WAIT_SECONDS * 10; attempt++)); do
@@ -1558,6 +1728,15 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             fi
             printf 'sendkey esc\n' |
                 nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            if [ "${CUBIT_TEST_TARGET_RETIREMENT:-0}" = 1 ]; then
+                for ((attempt = 0; attempt < 100; attempt++)); do
+                    grep -aF 'MESA-WINDOW: Escape; exiting' "$SERIAL_LOG" >/dev/null 2>&1 && break
+                    sleep 0.1
+                done
+                # Once the client is gone, Q exits the otherwise idle Desktop
+                # and exercises its real imported-target retirement boundary.
+                printf 'sendkey q\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            fi
             exit 0
         fi
         if [ "$TEST_NAME" = "servo" ] && [ -n "${SERVO_DESKTOP:-}" ]; then
@@ -1578,8 +1757,15 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             } | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
             for ((attempt = 0; attempt < 1200; attempt++)); do
                 grep -aF "CUBITSHELL: PASS" "$SERIAL_LOG" >/dev/null 2>&1 && break
+                if [ "${SERVO_BROWSER_CHECK:-0}" = 1 ] &&
+                   grep -aE 'USER-MEMORY-FAULT:|CUBITSHELL: FAIL|CUBITSHELL: panic' "$SERIAL_LOG" >/dev/null 2>&1; then
+                    break
+                fi
                 sleep 0.1
             done
+            if [ "${SERVO_BROWSER_CHECK:-0}" = 1 ]; then
+                python3 "$ROOT_DIR/tests/servo/browser_input.py" "$MONITOR_SOCKET" "$SERIAL_LOG" "${SERIAL_LOG%.log}-browser.ppm"
+            fi
             sleep 3
             printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-servo.ppm" |
                 nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
@@ -1796,6 +1982,17 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 done
                 printf 'sendkey ret\n'
                 sleep 0.3
+                # The REPL log viewer: (>= (length (logs.recent "desktop")) 0)
+                # proves observer authority, logstore's source filter and a
+                # typed List<LogEntry> crossing into the session.
+                for key in shift-9 shift-dot equal spc shift-9 l e n g t h spc shift-9 \
+                           l o g s dot r e c e n t spc shift-apostrophe d e s k t o p \
+                           shift-apostrophe shift-0 shift-0 spc 0 shift-0; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.15
+                done
+                printf 'sendkey ret\n'
+                sleep 0.6
                 printf 'sendkey up\n'
                 sleep 0.15
                 printf 'sendkey down\n'
@@ -1827,6 +2024,28 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                     sleep 0.15
                 done
                 printf 'sendkey ret\n'
+                if [ "${CUBIT_DESKTOP_METRICS_LOAD:-0}" = 1 ]; then
+                    metrics_baseline_ready=0
+                    for ((attempt = 0; attempt < 600; attempt++)); do
+                        if grep -F 'TEST: metrics-load baseline frames=' "$SERIAL_LOG" >/dev/null; then
+                            metrics_baseline_ready=1
+                            break
+                        fi
+                        sleep 0.1
+                    done
+                    if [ "$metrics_baseline_ready" -ne 1 ]; then
+                        echo "headless: metrics load observer did not establish baseline" >&2
+                        exit 1
+                    fi
+                    # Explicit post-load Desktop redraws. A static desktop
+                    # must not render continuously just to satisfy telemetry.
+                    for ((repaint = 0; repaint < 3; repaint++)); do
+                        printf 'sendkey meta_l\n'
+                        sleep 0.5
+                        printf 'sendkey esc\n'
+                        sleep 0.5
+                    done
+                fi
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
         elif [ "$TEST_NAME" = "files" ]; then
             # Files is the first native client of the shared resizable table
@@ -2004,6 +2223,9 @@ if { [ "$TEST_NAME" = "display-dual-output" ] || [ "$TEST_NAME" = "desktop-dual-
     QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
     if [ "$TEST_NAME" = "desktop-dual-output" ]; then
         observer=check-dual-desktop.py
+        if [ "${CUBIT_TEST_IDLE_DPI:-0}" = 1 ]; then
+            observer=../compositor/check-idle-dpi.py
+        fi
     else
         observer=check-dual-display.py
     fi
@@ -2250,6 +2472,18 @@ TEST: PASS log-collector-death
 TEST: PASS log-authority
 "
         ;;
+    log-fields)
+        required_markers="
+logstore: authorized typed diagnostics ready
+TEST: PASS log-fields
+"
+        ;;
+    metrics)
+        required_markers="
+metricsvc: typed metrics ready
+TEST: PASS metrics
+"
+        ;;
     ccl-remote)
         required_markers="ccl-control: native listener ready"
         ;;
@@ -2371,11 +2605,27 @@ MESA-WINDOW: PASS 9 frames with retired-buffer reuse
 MESA-WINDOW: attached immutable Mesa buffer
 MESA-WINDOW: Escape; exiting
 "
+        if [ "${CUBIT_TEST_PHYSICAL_CLIENT:-0}" = 1 ]; then
+            required_markers+="
+desktop: physical output client drawing active
+"
+            if grep -qF 'desktop: Mesa unavailable; CPU compositor fallback' "$SERIAL_LOG"; then
+                echo "headless: required physical-output Mesa path fell back to CPU" >&2
+                exit 1
+            fi
+        fi
         if [ "${MESA_WINDOW_ANIMATION:-0}" = 1 ]; then
             required_markers+="
 MESA-WINDOW: animation resumed
 MESA-WINDOW: PASS animated cycle with retired-buffer reuse
 MESA-WINDOW: animation paused
+"
+        fi
+        if [ "${CUBIT_TEST_TARGET_RETIREMENT:-0}" = 1 ]; then
+            required_markers+="
+desktop: renderer targets retired
+desktop: output readers retired= 0
+desktop: pixel teardown charged= 0
 "
         fi
         if grep -qF 'MESA-WINDOW: FAIL' "$SERIAL_LOG"; then
@@ -2432,6 +2682,19 @@ CUBITSHELL: loading page 0
 CUBITSHELL: loading page 1
 CUBITSHELL: loading page 2
 CUBITSHELL: PASS
+"
+        fi
+        if [ "${SERVO_BROWSER_CHECK:-0}" = 1 ]; then
+            required_markers="$required_markers
+ui-app: protected frame published
+CUBITSHELL-BROWSER: aligned allocator PASS cycles=32
+CUBITSHELL-BROWSER: frame cancel PASS cycles=2
+CUBITSHELL-BROWSER: fonts PASS
+CUBITSHELL: closed
+CUBITSHELL-BROWSER: title CuBitBrowserTyped:abc
+CUBITSHELL: back
+CUBITSHELL: forward
+CUBITSHELL: reload
 "
         fi
         ;;
@@ -2642,6 +2905,7 @@ clock: registered
 desktop: active outputs= 1 primary= 0
 ccl-workbench: native window ready
 ccl-workbench: first frame presented
+ui-app: protected frame published
 "
         ;;
     ccl-workbench-virtio-vga)
@@ -2652,6 +2916,7 @@ desktop: active outputs= 1 primary= 0
 virtio-gpu: page flipping active
 ccl-workbench: native window ready
 ccl-workbench: first frame presented
+ui-app: protected frame published
 "
         ;;
     ccl-workspace)
@@ -2661,12 +2926,14 @@ display: backend virtio-gpu
 desktop: active outputs= 1 primary= 0
 ccl-workbench: native window ready
 ccl-workbench: first frame presented
+ui-app: protected frame published
 ccl-workbench: workspace saved ccl-0001.ccl
 ccl-workbench: workspace saved ccl-0002.ccl
 ccl-workbench: workspace opened ccl-0002.ccl
 ccl-workbench: workspace saved clock.ccl
 ccl-workbench: workspace saved quoted.ccl
 ccl-workbench: REPL completed: Integer: 42
+ccl-workbench: REPL completed: Boolean: true
 ccl-workbench: live label STARTED
 ccl-workbench: live label SAMPLED
 ccl-workbench: live label STOPPED
@@ -2774,10 +3041,21 @@ desktop: internal shell active
 desktop: asynchronous frame released
 ccl-workbench: native window ready
 "
+        if [ "${CUBIT_TEST_IDLE_DPI:-0}" = 1 ]; then
+            required_markers="
+desktop: active outputs= 2 primary= 0
+desktop: native output scene rendering active
+DPI-CLIENT: ready
+ui-app: protected frame published
+DPI-CLIENT: closed
+"
+        fi
         ;;
     desktop-protocol)
         required_markers="
 desktop: internal shell active
+DESKTOP-DENSITY-TEXT-CHECK: PASS scales=5 faces=2
+DESKTOP-FRAME-PAIR-CHECK: PASS frames=12 resize=1
 DESKTOP-PROTOCOL-CHECK: PASS
 desktop: dead client buffer acquisition released
 "
@@ -2806,6 +3084,7 @@ DISPLAY-GRANTS-CHECK: PASS
 display: boot output registered
 display: gpu not primary, using linear-fb
 DISPLAY-GRANTS-CHECK: PASS
+DISPLAY-POOL-CHECK: PASS
 "
         ;;
     display-dual-output)
@@ -2842,8 +3121,17 @@ ps2: consumer registered, entering event loop
 ccl-workbench: first frame presented
 input-stress: publication and recovery PASS
 desktop: stats ev=
-source_gap=1
-source_reject=0
+input-stress: resync reports
+"
+        ;;
+    managed-ui)
+        required_markers="
+devices: inventory snapshot ready
+devices: native window ready
+config-inspector: snapshot ready
+config-inspector: native window ready
+boot-logs: window ready
+ui-app: protected frame published
 "
         ;;
     devices)
@@ -2854,12 +3142,42 @@ devices: inventory snapshot ready
 devices: native window ready
 "
         ;;
+    render-launch-policy)
+        required_markers="
+procmgr: init spawn failed: render-denied.app
+procmgr: init spawn failed: render-unavailable.app
+procmgr: render admission submitted; child suspended
+procmgr: failed launch child stop requested
+procmgr: render admission denied; child not resumed
+devices: inventory snapshot ready
+devices: native window ready
+"
+        ;;
+    mesa-log-bridge)
+        required_markers="
+MESA-LOG round 1 delivered and retired
+MESA-LOG round 2 delivered and retired
+TEST: PASS mesa-log-bridge native delivery (NO GPU)
+"
+        ;;
+    mesa-native-instance)
+        required_markers="
+MESA-NATIVE: instance 0 create=0
+MESA-NATIVE: instance 0 enumerate=-3 count=0
+MESA-NATIVE: instance 0 destroyed
+MESA-NATIVE: instance 1 create=0
+MESA-NATIVE: instance 1 enumerate=-3 count=0
+MESA-NATIVE: instance 1 destroyed
+TEST: PASS native Mesa lifecycle without provider (NO GPU)
+"
+        ;;
     files)
         required_markers="
 files: starting read-only filesystem browser
 files: directory page protocol ready
 files: native window ready
 files: first frame presented
+ui-app: protected frame published
 files: column resize complete first=
 files: scrollbar scroll row=
 files: scrollbar thumb drag row=
@@ -3063,22 +3381,9 @@ if [ "$TEST_NAME" = "input-stream" ]; then
     # pointer report. The stress source publishes 128 motion reports across
     # its rich editor; only semantic hover transitions and actual edits should
     # now submit application surface damage.
-    INPUT_STATS_LINE="$(grep -F 'source_gap=1' "$SERIAL_LOG" | tail -n 1)"
-    INPUT_PRESENT_REQUESTS="$(printf '%s\n' "$INPUT_STATS_LINE" | \
-      sed -n 's/.*present_req=\([0-9][0-9]*\).*/\1/p')"
-    INPUT_REQUESTS="$(printf '%s\n' "$INPUT_STATS_LINE" | \
-      sed -n 's/.*input_req=\([0-9][0-9]*\).*/\1/p')"
-    if [ -z "$INPUT_PRESENT_REQUESTS" ] ||
-       [ "$INPUT_PRESENT_REQUESTS" -gt 20 ]; then
-        echo "headless: excessive Workbench surface presents during input stress: ${INPUT_PRESENT_REQUESTS:-missing}" >&2
-        echo "headless: serial log: $SERIAL_LOG" >&2
-        exit 1
-    fi
-    if [ -z "$INPUT_REQUESTS" ] || [ "$INPUT_REQUESTS" -gt 160 ]; then
-        echo "headless: excessive Workbench input IPC during stress: ${INPUT_REQUESTS:-missing}" >&2
-        echo "headless: serial log: $SERIAL_LOG" >&2
-        exit 1
-    fi
+    # Retries explicitly request resynchronization too. Match the publisher's
+    # actual count across every telemetry interval, never a literal bucket of 1.
+    python3 "$ROOT_DIR/tests/headless/check-input-stream.py" "$SERIAL_LOG" || exit 1
 fi
 
 if [ "$TEST_NAME" = "desktop-display" ]; then
@@ -3148,11 +3453,51 @@ if { [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
     exit 1
 fi
 
+if [ "$TEST_NAME" = "managed-ui" ]; then
+    if [ "$(grep -Fc 'ui-app: protected frame published' "$SERIAL_LOG")" -ne 3 ]; then
+        echo "headless: expected one protected publication from each of three applications" >&2
+        exit 1
+    fi
+fi
 if [ "$TEST_NAME" = "devices" ]; then
     # A prefix match would accept the old malformed id with two version-header
     # bytes appended. Require exactly the canonical identity from the loader.
     if ! tr -d '\r' < "$SERIAL_LOG" | grep -Fx 'procmgr: pkg id=com.cubit.devices' >/dev/null; then
         echo "headless: Devices package identity is malformed or missing" >&2
+        exit 1
+    fi
+fi
+
+if [ "$TEST_NAME" = "render-launch-policy" ]; then
+    if [ "$(grep -Fc 'procmgr: render admission denied; child not resumed' "$SERIAL_LOG")" -ne 2 ] ||
+       [ "$(grep -Fc 'procmgr: render admission submitted; child suspended' "$SERIAL_LOG")" -ne 1 ] ||
+       [ "$(grep -Fc 'procmgr: failed launch child stop requested' "$SERIAL_LOG")" -ne 2 ] ||
+       grep -F 'KILL: denied' "$SERIAL_LOG" >/dev/null ||
+       grep -F 'procmgr: render admission complete' "$SERIAL_LOG" >/dev/null; then
+        echo "headless: render launch denial count or outcome incorrect" >&2
+        exit 1
+    fi
+fi
+
+if [ "${CUBIT_DESKTOP_METRICS_TEST:-0}" = 1 ]; then
+    if [ "${CUBIT_DESKTOP_METRICS_FAULT:-0}" = 1 ] && [ "${CUBIT_DESKTOP_METRICS_STALL:-0}" = 1 ]; then
+        if ! grep -F 'TEST: metrics-stall held page unchanged checks=600' "$SERIAL_LOG" >/dev/null ||
+           ! grep -F 'TEST: PASS metrics-stall resumed batches=' "$SERIAL_LOG" >/dev/null ||
+           grep -F 'desktop: metrics quarantined' "$SERIAL_LOG" >/dev/null; then
+            echo "headless: stalled metrics collector did not recover cleanly" >&2
+            exit 1
+        fi
+    elif [ "${CUBIT_DESKTOP_METRICS_FAULT:-0}" = 1 ]; then
+        if ! grep -F 'TEST: metrics-fault invalid count injected' "$SERIAL_LOG" >/dev/null ||
+           ! grep -E 'desktop: metrics quarantined dropped=[0-9]+ invalid=1 rejected=0' "$SERIAL_LOG" >/dev/null; then
+            echo "headless: malformed metrics reply did not quarantine telemetry" >&2
+            exit 1
+        fi
+    elif [ "${CUBIT_DESKTOP_METRICS_LOAD:-0}" = 1 ]; then
+        python3 "$ROOT_DIR/tests/compositor/check-metrics-load.py" "$SERIAL_LOG" || exit 1
+    elif ! grep -F 'TEST: PASS desktop-metrics frames=' "$SERIAL_LOG" >/dev/null ||
+         grep -F 'desktop: metrics quarantined' "$SERIAL_LOG" >/dev/null; then
+        echo "headless: Desktop metric publication/observation failed" >&2
         exit 1
     fi
 fi

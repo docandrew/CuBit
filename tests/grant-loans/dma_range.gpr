@@ -1,0 +1,9 @@
+project DMA_Range is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("dma_range_test.adb", "memory_grants.ads", "memory_grants.adb");
+   for Object_Dir use "build-dma-range";
+   for Main use ("dma_range_test.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end DMA_Range;

@@ -51,6 +51,10 @@ parser.add_argument('--config', action='store_true', help='write/read typed Conf
 parser.add_argument('--servo', action='store_true', help='launch the bundled Servo shell and require a rendered page')
 parser.add_argument('--mesa', action='store_true', help='launch native Mesa software cube from optical media and verify pixels and input')
 parser.add_argument('--boot-logs', action='store_true', help='verify on-screen boot viewer and typed USB startup log replay')
+parser.add_argument('--boot-log-delivery', action='store_true',
+                    help='require real logstore and clock replay through the boot viewer, including quiet USB images')
+parser.add_argument('--boot-log-window-controls', action='store_true',
+                    help='exercise boot viewer minimize/restore/maximize/close using native USB input')
 parser.add_argument('--quiet-xhci', action='store_true', help='require quiet USB logs; retain filesystem and interactive input checks')
 parser.add_argument('--boot-logs-menu', action='store_true', help='launch an additional boot viewer from Apps and verify log replay')
 parser.add_argument('--sameboy-audio', action='store_true',
@@ -62,6 +66,8 @@ parser.add_argument('--sameboy-local-rom', action='store_true',
 parser.add_argument('--sameboy-second-local-rom', action='store_true',
                     help='also exercise explicitly staged ROM 02')
 args = parser.parse_args()
+if args.boot_log_window_controls and not args.boot_log_delivery:
+    parser.error('--boot-log-window-controls requires --boot-log-delivery')
 if args.quiet_xhci and (args.boot_logs or args.boot_logs_menu or args.eject or args.usb_hub):
     parser.error('quiet-xhci cannot use USB-log-dependent replay/ejection/hub assertions')
 if args.usb_flash and args.disk_first:
@@ -233,6 +239,84 @@ with (run / 'qemu.log').open('w') as log:
             print('SMP TIMEOUT PASS: halted AP reports logical ID, APIC ID and stage', flush=True)
             sys.exit(0)
         wait_for('desktop: display info ready')
+        if args.boot_log_delivery:
+            wait_for('boot-logs: window ready')
+            wait_for('boot-logs: logstore: typed diagnostics ready')
+            wait_for('boot-logs: clock: service ready')
+            wait_for('desktop: asynchronous frame released')
+            hmp(f'screendump {run}/boot-log-delivery.ppm')
+            text = serial.read_text(errors='replace')
+            if re.search(r'panic|^EXCEPTION:|TEST: FAIL|general protection', text,
+                         flags=re.IGNORECASE | re.MULTILINE):
+                raise RuntimeError('fault during boot log delivery; see serial.log')
+            print('BOOT LOG DELIVERY PASS: viewer received collector and clock records.', flush=True)
+        if args.boot_log_window_controls:
+            from PIL import Image
+
+            def window_snapshot(name):
+                time.sleep(0.7)
+                path = run / f'{name}.ppm'
+                hmp(f'screendump {path}')
+                return Image.open(path).convert('RGB')
+
+            initial = window_snapshot('boot-log-window-initial')
+            width, height = initial.size
+            if (width, height) != (1920, 1080):
+                raise RuntimeError('window controls fixture requires 1920x1080 UEFI mode')
+
+            def move_relative(dx, dy):
+                while dx or dy:
+                    x, y = max(-80, min(80, dx)), max(-80, min(80, dy))
+                    hmp(f'mouse_move {x} {y}')
+                    dx -= x
+                    dy -= y
+                    time.sleep(0.04)
+
+            def window_click(x, y):
+                move_relative(-width * 2, -height * 2)
+                move_relative(x, y)
+                time.sleep(0.2)
+                hmp('mouse_button 1')
+                time.sleep(0.15)
+                hmp('mouse_button 0')
+
+            # Fixed live-image fixture: sole initial 960x646 decorated window
+            # at (98,82). Check large interior regions, not cursor/button pixels.
+            panel = initial.getpixel((400, 300))
+
+            def panel_present(frame, box):
+                colors = frame.crop(box).getcolors(1)
+                return colors is not None and colors[0][1] == panel
+
+            interior = (350, 300, 650, 500)
+            outside = (1200, 300, 1500, 500)
+            if not panel_present(initial, interior) or panel_present(initial, outside):
+                raise RuntimeError('unexpected initial boot viewer geometry')
+            window_click(1004, 94)
+            minimized = window_snapshot('boot-log-minimized')
+            if panel_present(minimized, interior):
+                raise RuntimeError('minimize did not remove the viewer')
+            window_click(180, 1062)
+            restored = window_snapshot('boot-log-restored')
+            if not panel_present(restored, interior):
+                raise RuntimeError('taskbar restore did not restore the viewer')
+            window_click(1022, 94)
+            maximized = window_snapshot('boot-log-maximized')
+            if not panel_present(maximized, outside):
+                raise RuntimeError('maximize did not expand the viewer')
+            window_click(width - 34, 13)
+            normal = window_snapshot('boot-log-normal')
+            if not panel_present(normal, interior) or panel_present(normal, outside):
+                raise RuntimeError('maximize restore did not restore original bounds')
+            window_click(1040, 94)
+            closed = window_snapshot('boot-log-closed')
+            if panel_present(closed, interior):
+                raise RuntimeError('close did not remove the viewer')
+            text = serial.read_text(errors='replace')
+            if re.search(r'panic|^EXCEPTION:|TEST: FAIL|general protection|retirement uncertain',
+                         text, flags=re.IGNORECASE | re.MULTILINE):
+                raise RuntimeError('fault during viewer window controls; see serial.log')
+            print('BOOT LOG WINDOW PASS: minimize, taskbar restore, maximize, restore, close.', flush=True)
         if args.usb_hub:
             wait_for('xhci: hub children enumerated')
             wait_for('xhci: boot keyboard endpoint DCI=')

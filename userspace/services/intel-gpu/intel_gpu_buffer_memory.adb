@@ -9,6 +9,11 @@ package body Intel_GPU_Buffer_Memory is
    use type Replies.Outcome;
    function Last_Stage (Object : Pool) return Allocation_Stage is (Object.Stage);
    function Pending (Object : Pool) return Boolean is (Object.Active);
+   function Retirement_Confirmed
+     (Object : Pool; Index : Layout.Slot; Generation : Unsigned_32) return Boolean is
+     (not Object.Active and then not Object.Broken and then Owner_Ready and then
+      Object.Stage = Retired and then Object.Index = Index and then
+      Object.Generation = Generation);
    function Result (Object : Pool) return Replies.Backing is
      (if Object.Active or Object.Broken then (Ready => False) else Object.Current);
    procedure Cancel (Object : in out Pool) is
@@ -17,19 +22,27 @@ package body Intel_GPU_Buffer_Memory is
       Object.Current := (Ready => False);
       Intel_GPU_Extent_Replies.Cancel (Object.Assembly);
    end Cancel;
-   function Submit (Object : Pool) return Boolean is
+   function Submit_Message (Object : in out Pool; Request : Message) return Boolean is
+   begin
+      if Object.Serial = Unsigned_32'Last then return False; end if;
+      Object.Serial := Object.Serial + 1;
+      Object.Completion_Token := 16#4947_5000_0000_0000# + Unsigned_64 (Object.Serial);
+      return capSubmit (15, Request, Object.Completion_Token);
+   end Submit_Message;
+   function Submit (Object : in out Pool) return Boolean is
       Request : Message := NULL_MESSAGE;
    begin
-      Request.tag := (Layout.Request_Label, 2, 0, 0);
-      Request.words := [Unsigned_64 (Object.Index), Unsigned_64 (Object.Pages), 0, 0];
-      return capSubmit (15, Request, 16#4947_5000# + Unsigned_64 (Object.Index));
+      Request.tag := (Layout.Request_Label, 3, 0, 0);
+      Request.words := [Unsigned_64 (Object.Index), Unsigned_64 (Object.Pages),
+                        Unsigned_64 (Object.Generation), 0];
+      return Submit_Message (Object, Request);
    end Submit;
-   function Submit_Extent (Object : Pool) return Boolean is
+   function Submit_Extent (Object : in out Pool) return Boolean is
       Request : Message := NULL_MESSAGE;
    begin
       Request.tag := (Layout.Extent_Request_Label, 2, 0, 0);
       Request.words := [Unsigned_64 (Object.Extent_Index), Object.Arena_ID, 0, 0];
-      return capSubmit (15, Request, 16#4947_6000# + Unsigned_64 (Object.Extent_Index));
+      return Submit_Message (Object, Request);
    end Submit_Extent;
    procedure Start
      (Object : in out Pool; Index : Layout.Slot; Pages : Layout.Page_Count;
@@ -47,6 +60,8 @@ package body Intel_GPU_Buffer_Memory is
       Object.Attempted (Index) := True;
       Object.Broken := True;
       Object.Index := Index; Object.Pages := Pages;
+      Object.Generation := Object.Slot_Generations (Index);
+      Object.Retiring := False;
       Object.Started_At := syscall (SYSCALL_GETTIME);
       Object.Previous := Object.Started_At;
       if Object.Started_At > Unsigned_64'Last - 30_000 then return; end if;
@@ -55,6 +70,31 @@ package body Intel_GPU_Buffer_Memory is
       Object.Stage := Awaiting_Reply;
       Object.Active := True; Started := True;
    end Start;
+   procedure Retire
+     (Object : in out Pool; Index : Layout.Slot; Generation : Unsigned_32;
+      All_References_Retired : Boolean; Started : out Boolean) is
+      Request : Message := NULL_MESSAGE;
+   begin
+      Started := False;
+      if Object.Active or else Object.Broken or else not All_References_Retired or else
+        not Object.Attempted (Index) or else not Object.Items (Index).Ready or else
+        Generation = 0 or else Generation = Unsigned_32'Last or else
+        Generation /= Object.Slot_Generations (Index)
+      then return; end if;
+      if not Owner_Ready then Cancel (Object); return; end if;
+      Object.Current := (Ready => False);
+      Object.Broken := True;
+      Object.Index := Index; Object.Generation := Generation;
+      Object.Retiring := True;
+      Object.Started_At := syscall (SYSCALL_GETTIME);
+      Object.Previous := Object.Started_At;
+      if Object.Started_At > Unsigned_64'Last - 30_000 then return; end if;
+      Request.tag := (Layout.Retire_Request_Label, 4, 0, 0);
+      Request.words := [Unsigned_64 (Index), Unsigned_64 (Generation), Object.Arena_ID, 1];
+      if not Submit_Message (Object, Request) then return; end if;
+      Object.Stage := Awaiting_Retirement;
+      Object.Active := True; Started := True;
+   end Retire;
    procedure Tick (Object : in out Pool) is
       Now : Unsigned_64;
    begin
@@ -71,14 +111,24 @@ package body Intel_GPU_Buffer_Memory is
       Accepted : Boolean;
    begin
       Consumed := Object.Active and then
-        Receipt.token = (if Object.Fetching then
-          16#4947_6000# + Unsigned_64 (Object.Extent_Index)
-          else 16#4947_5000# + Unsigned_64 (Object.Index));
+        Receipt.token = Object.Completion_Token;
       if not Consumed then return; end if;
       Tick (Object);
       if not Object.Active then return; end if;
       Object.Stage := Validate_Reply;
       if Receipt.status /= COMPLETION_OK then Cancel (Object); return; end if;
+      if Object.Retiring then
+         if Receipt.msg.tag /= (Layout.Retire_Request_Label, 4, 0, 0) or else
+           Receipt.msg.words /=
+             [0, Layout.Allocation_Key (Object.Index, Object.Generation), Object.Arena_ID, 0]
+         then Cancel (Object); return; end if;
+         Object.Items (Object.Index) := (Ready => False);
+         Object.Attempted (Object.Index) := False;
+         Object.Slot_Generations (Object.Index) := Object.Generation + 1;
+         Object.Active := False; Object.Broken := False; Object.Retiring := False;
+         Object.Stage := Retired;
+         return;
+      end if;
       if Object.Fetching then
          if Receipt.msg.tag /= (16#F003#, 4, 0, 0) then Cancel (Object); return; end if;
          Intel_GPU_Extent_Replies.Accept_Reply
@@ -107,7 +157,8 @@ package body Intel_GPU_Buffer_Memory is
                return;
          end if;
          if Receipt.msg.tag /= (16#F004#, 4, 0, 0) or else
-           Receipt.msg.words (3) /= Unsigned_64 (Object.Index) or else
+           Receipt.msg.words (3) /= Layout.Allocation_Key
+             (Object.Index, Object.Generation) or else
            Receipt.msg.words (2) = 0 or else
            Receipt.msg.words (1) /= Unsigned_64 (Object.Pages) * 4096 or else
            Receipt.msg.words (0) < Layout.CPU_Base or else

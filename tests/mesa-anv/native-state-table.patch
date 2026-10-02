@@ -1,0 +1,86 @@
+--- a/src/intel/vulkan/anv_private.h
++++ b/src/intel/vulkan/anv_private.h
+@@ -737,6 +737,9 @@
+ struct anv_state_table {
+    struct anv_device *device;
+    int fd;
++#if defined(__cubit__)
++   uint64_t cubit_committed;
++#endif
+    struct anv_free_entry *map;
+    uint32_t size;
+    uint64_t max_size;
+--- a/src/intel/vulkan/anv_allocator.c
++++ b/src/intel/vulkan/anv_allocator.c
+@@ -28,6 +28,9 @@
+ #include <sys/mman.h>
+ 
+ #include "anv_private.h"
++#if defined(__cubit__)
++#include "anv_cubit_state_table.h"
++#endif
+ #include "anv_slab_bo.h"
+ 
+ #include "common/intel_aux_map.h"
+@@ -124,6 +127,9 @@
+                     struct anv_device *device,
+                     uint32_t initial_entries)
+ {
++#if defined(__cubit__)
++   return anv_cubit_state_table_init(table, device, initial_entries);
++#else
+    VkResult result;
+ 
+    table->device = device;
+@@ -159,11 +165,15 @@
+    close(table->fd);
+ 
+    return result;
++#endif
+ }
+ 
+ static VkResult
+ anv_state_table_expand_range(struct anv_state_table *table, uint32_t size)
+ {
++#if defined(__cubit__)
++   return anv_cubit_state_table_expand(table, size);
++#else
+    void *map;
+    struct anv_state_table_cleanup *cleanup;
+ 
+@@ -200,6 +210,7 @@
+    table->size = size;
+ 
+    return VK_SUCCESS;
++#endif
+ }
+ 
+ static VkResult
+@@ -240,6 +251,9 @@
+ void
+ anv_state_table_finish(struct anv_state_table *table)
+ {
++#if defined(__cubit__)
++   anv_cubit_state_table_finish(table);
++#else
+    struct anv_state_table_cleanup *cleanup;
+ 
+    u_vector_foreach(cleanup, &table->cleanups) {
+@@ -250,6 +264,7 @@
+    u_vector_finish(&table->cleanups);
+ 
+    close(table->fd);
++#endif
+ }
+ 
+ VkResult
+--- a/src/intel/vulkan/meson.build
++++ b/src/intel/vulkan/meson.build
+@@ -245,6 +245,7 @@
+     'anv_cubit_sync.c',
+     'anv_cubit_sync_types.c',
+     'native_gpu_mapping.c',
++    'anv_cubit_state_table.c',
+     'cubit-device-query.c',
+     'cubit-device-info.c',
+     'cubit-device-native.c',

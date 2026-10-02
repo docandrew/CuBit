@@ -1,7 +1,7 @@
 with Interfaces; use Interfaces;
 with CuBit.Log_Protocol;
 package Log_Budgets with SPARK_Mode is
-   --  One record is one credit (the wire record is already bounded to 544 B).
+   --  One record is one credit (the wire record is already bounded to 800 B).
    --  Development defaults, not a throughput/latency guarantee.
    Burst : constant := 64;
    Refill_Ms : constant Unsigned_64 := 100;

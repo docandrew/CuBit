@@ -1,0 +1,13 @@
+--- a/src/intel/vulkan/anv_private.h
++++ b/src/intel/vulkan/anv_private.h
+@@ -43,7 +43,10 @@
+ #include "common/intel_aux_map.h"
+ #include "common/intel_bind_timeline.h"
+ #include "common/intel_engine.h"
++#include "common/intel_address.h"
++#if !defined(__cubit__)
+ #include "common/intel_gem.h"
++#endif
+ #include "common/intel_l3_config.h"
+ #include "common/intel_measure.h"
+ #include "common/intel_sample_positions.h"

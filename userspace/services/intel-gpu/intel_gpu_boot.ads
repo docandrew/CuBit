@@ -3,6 +3,9 @@ with Intel_GPU_Resources;
 package Intel_GPU_Boot with SPARK_Mode is
    Configure_Label : constant := 16#4947#;
    Protocol_Version : constant Unsigned_64 := 4;
+   -- Kernel-stamped startup broker authority, distinct from render-session
+   -- and read-only probe tags. Only the trusted supervisor retains GRANT.
+   Broker_Tag : constant Unsigned_64 := 16#4750_4252_4F4B_0001#;
    type Words is array (Natural range 0 .. 3) of Unsigned_64;
    -- w0 BAR0 low/high; w1 vendor/device/revision/class/header/reserved;
    -- w2 command register + bit16 trusted D0 evidence (required), upper bits

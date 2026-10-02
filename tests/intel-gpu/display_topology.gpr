@@ -1,0 +1,11 @@
+project Display_Topology is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("display_topology_tests.adb",
+     "intel_gpu_display_topology.ads", "intel_gpu_display_topology.adb",
+     "intel_gpu_display_lease.ads", "intel_gpu_display_lease.adb");
+   for Object_Dir use "build-display-topology";
+   for Main use ("display_topology_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-O2", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Display_Topology;

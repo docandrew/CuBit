@@ -1,0 +1,9 @@
+# Scheduler latency benchmark (tests/sched-latency): the ipc-test echo
+# (bench-ipc-server) for the interactive workload, and one file under
+# @nvme:0/sched-latency for the io background load.
+(executable-manifest v1
+  (identity "com.cubit.sched-latency")
+  (version "0.1.0")
+  (request-service ipc-test read-write ipc-test)
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read write create) "@nvme:0/sched-latency"))

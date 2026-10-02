@@ -1,0 +1,68 @@
+--- a/src/intel/common/intel_common.c
++++ b/src/intel/common/intel_common.c
+@@ -13,6 +13,7 @@
+ 
+ #include "util/compiler.h"
+ 
++#if !defined(__cubit__)
+ /* Updates intel_device_info fields that has dependencies on intel/common
+  * functions.
+  */
+@@ -34,6 +35,7 @@
+ 
+    free(engine_info);
+ }
++#endif
+ 
+ void
+ intel_compute_engine_async_threads_limit(const struct intel_device_info *devinfo,
+--- a/src/intel/common/intel_common.h
++++ b/src/intel/common/intel_common.h
+@@ -7,7 +7,9 @@
+ 
+ #include "dev/intel_device_info.h"
+ 
++#if !defined(__cubit__)
+ void intel_common_update_device_info(int fd, struct intel_device_info *devinfo);
++#endif
+ 
+ void
+ intel_compute_engine_async_threads_limit(const struct intel_device_info *devinfo,
+--- a/src/intel/vulkan/anv_perf.c
++++ b/src/intel/vulkan/anv_perf.c
+@@ -110,6 +110,12 @@
+ void
+ anv_device_perf_close(struct anv_device *device)
+ {
++#if defined(__cubit__)
++   /* No OA stream can be opened on this platform. Never interpret a CuBit
++    * handle as a Linux perf fd or syncobj. init_perf keeps both extensions off.
++    */
++   assert(device->perf_fd == -1);
++#else
+    if (device->perf_fd == -1)
+       return;
+ 
+@@ -117,8 +123,13 @@
+       intel_bind_timeline_finish(&device->perf_timeline, device->fd);
+    close(device->perf_fd);
+    device->perf_fd = -1;
++#endif
+ }
+ 
++#if !defined(__cubit__)
++/* Optional OA profiling entrypoints require a real counter-stream provider.
++ * Keep them absent, rather than exposing no-op or fabricated-success methods.
++ */
+ static uint32_t
+ anv_device_perf_get_queue_context_or_exec_queue_id(struct anv_queue *queue)
+ {
+@@ -458,6 +469,8 @@
+    anv_device_perf_close(device);
+ }
+ 
++#endif
++
+ void
+ anv_perf_write_pass_results(struct intel_perf_config *perf,
+                             struct anv_query_pool *pool, uint32_t pass,

@@ -1,0 +1,8 @@
+project Client_Canvas is
+   for Source_Dirs use ("../../userspace/lib/ui");
+   for Source_Files use ("client_canvas_geometry.ads", "client_canvas_geometry.adb");
+   for Object_Dir use "build/client-canvas/obj";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+end Client_Canvas;

@@ -1,11 +1,18 @@
-# Porting Servo to CuBit
+# Penny: Servo on CuBit
 
-Status: Servo renders real web pages natively on CuBit, over HTTP and
-HTTPS (Wikipedia, example.com; headless case `servo`, 2026-09-25). Not
-yet: a desktop disk that holds it for manual sessions, an address bar,
-persistent storage,
-returning memory to the system, a robust TCP (netstack redesign).
-Date: 2026-09-25. Current state: [Port status](#port-status).
+The native browser is named **Penny**. Its Help → About Penny dialog credits
+Servo. Internal package names, executable `cubitshell.app`, and Config scope
+`browser.servo` remain stable so branding does not discard settings or grants.
+
+Status (2026-10-01): Servo renders readable data, HTTP and HTTPS pages in
+an interactive CuBit desktop window with an address bar, history and reload.
+The native v9 test validates a short functional sequence; its 180-second VM
+runtime is not 180 seconds of browser-alive evidence. The v14 tabbed build passes230.103seconds open across four native QEMU
+interaction cycles, including scrolling, resize and both tab orientations. Rendering uses software SWGL
+readback, not GPU acceleration or zero-copy. Bounded tabs, complete resource
+retirement, persistent storage and broader browser behavior remain unfinished.
+See [Native browser shell continuation](#native-browser-shell-continuation-2026-10-01).
+The following audit and early port results are historical.
 
 Servo checked out at `8319b662` (2026-09-25), 1,153 crates, Rust 1.97.1
 (CuBit's pinned toolchain is 1.98.1). The audit below was the first
@@ -190,6 +197,311 @@ Where it stands:
 Runtime gaps known before the first native run: sockets, a memory region
 API (anonymous `mmap` grows the heap; `munmap` does not return memory),
 writing files, and presenting frames.
+
+## Native browser shell continuation (2026-10-01)
+
+The browser shell is moving from the proof-of-concept's raw, permanently
+writable Desktop attachment to `userspace/servo/native/servo_shell.*`. This
+standalone Ada library owns native chrome and calls `CuBit.UI.App` with protected
+frames. Rust owns Servo/WebRender/SWGL; a narrow, serialized C ABI transfers
+configuration, input, engine notifications and a borrowed page readback. A
+writable destination pointer or grant never enters the Rust browser engine.
+
+The first functional milestone is one tab with an editable address field,
+Back/Forward/Reload, Ctrl+L, Ctrl+R, Alt+Left/Right and Ctrl+W. Native chrome uses
+the existing text editor and density-aware UI rasterizer; the latter links as
+a Rust library inside Servo's runtime rather than importing a second allocator
+and panic handler from the standalone font archive. Normal desktop sessions
+remain interactive while the initial page loads. Explicit fixture sessions
+retain the earlier batch page/ink checks.
+
+The software presentation boundary has one full SWGL RGBA readback. Ada converts
+bottom-up RGBA directly into the currently acquired frame's page region and
+draws current chrome into the same buffer. The old full-size BGRA conversion
+allocation and following full-frame copy are removed. The current fallback
+reconstructs the whole candidate to cover both frame slots' repair debt; it is
+not zero-copy or damage-limited WebRender rendering. Unavailable frames defer
+publication and preserve pending work through the existing owner.
+
+Viewport extents use `Client_Canvas_Geometry.Relative`, including the toolbar's
+fractional origin phase. Servo receives physical viewport dimensions and its
+separate HiDPI scale factor. Input uses a proved signed cell-edge mapping into
+device pixels, matching Servo's `WebViewPoint::Device` contract. Pointer capture
+coordinates can remain negative; only foreign signed32 overflow saturates.
+The existing proved `Client_Input_Budget` bounds admission before returning to
+engine work and presentation. Servo notifications unpark the main thread;
+Desktop input still needs a combined completion/input wake path, so the current
+idle fallback polls at 1 ms. This is not a latency measurement or guarantee.
+
+Proof boundaries: pixel conversion/admission and signed input geometry are
+SPARK packages, with independent hosted pixel and round-trip oracles. Existing
+frame, damage, configuration and input-budget policies are reused. The complete
+Ada shell, pointer bindings, IPC, Rust engine and Mesa are outside these proofs.
+Rust promises readable, non-aliasing source slices during a synchronous call;
+the native owner promises valid exclusive destination mappings. The shell does
+not yet opt into causal input provenance for asynchronously handled page events.
+
+A native rebuild exposed a platform compatibility gap before the first frame:
+SpiderMonkey's Unix GC alignment path trims mappings using partial `munmap`,
+where CuBit currently accepts exact owned-region release only. The CuBit crate
+patch now selects SpiderMonkey's existing `posix_memalign`/`free` strategy for
+aligned GC regions, preserving accounting and real protection operations.
+The second native attempt passed 32 allocator/protection cycles and two frame
+cancellation cycles, then exposed an overly broad unmap adaptation during the
+engine address-width probe. The corrected patch leaves `UnmapInternal` intact
+and uses `free` only in the paired GC `UnmapPages` path. Hosted ASan/UBSan now
+covers 32 ordinary mmap/unmap probes as well as 288 aligned allocation pairs
+and nine allocation failures. It does not add a no-op unmap or weaken `mprotect`. A third native run reached page-load completion, then SWGL failed a texture
+allocation. The software backend now requests a supported 2048-pixel internal texture limit
+and smaller 1024-pixel RGBA atlases through existing WebRender options: the previous 2048-pixel RGBA
+atlas alone matched the current 16 MiB mapping limit before malloc overhead.
+This bounds those atlas dimensions, not total engine memory, and does not
+change future hardware-context defaults. The subsequent v9 native test validates the corrected bridge with readable
+data, HTTP and HTTPS rendering and a short interactive sequence. Sustained
+browser stability remains a separate pending gate. See `tests/servo/README.md` for the dedicated regression.
+
+The shell acquires its protected frame before requesting SWGL readback. A
+serialized Rust guard cancels abandoned paints through the Ada owner, including
+a changed viewport; deferred acquisition therefore avoids another full-page
+readback. Hosted FFI mocks cover guard failure paths, and native startup checks have
+passed two cancellation/reacquisition cycles. The subsequent v9 test also validates functional navigation; startup checks
+alone do not establish it or sustained browser stability.
+
+Remaining browser work includes sustained native validation, tabs and
+bounded tab lifetime, richer navigation/error/dialog/download behavior,
+clipboard/selection and accessibility, configured mixed-DPI tests, overload and
+failure recovery, and a hardware rendering backend. Servo's current WebRender
+context consumes a GL API: hardware integration must use the existing Mesa
+stack through an appropriate context/import bridge, not merely claim success
+from the separate Vulkan or Linux-hosted demonstrations. Software fallback and
+the same protected publication contract must remain available.
+
+The standalone Ada bridge uses its own aligned 32 KiB secondary-stack storage:
+the shared runtime's normal getter addresses a location outside Rust's 8 MiB
+main stack. Linker wrapping redirects every secondary-stack runtime caller to
+the local getter, which initializes storage before returning it, including a
+pre-binder call. An ELF check verifies this interposition. The existing binder
+default pool still exists; the private scratch size is not the total runtime
+footprint. Rust enforces single-threaded, non-reentrant bridge entry. These are
+audited FFI/runtime boundaries, not proved compositor policy.
+
+The corrected native bridge now publishes colored page content and readable
+text from data, HTTP and HTTPS pages. CuBit font loading uses owned bytes
+for WebRender's FontData and a private read-only map for FreeType's retained
+face/table backing; shared file mappings remain unsupported. The first
+35ms/key QEMU TCG run reported
+input resynchronization and lost address characters. The functional fixture
+now uses 300ms/key; that pacing is explicitly not overload or latency evidence.
+Chrome avoids repainting on key releases or printable key presses before their
+text event. Input resynchronization invalidates an in-progress address and
+blocks submission until Ctrl+L restarts editing, with visible recovery guidance;
+ordinary resize/configure preserves the edit. The hosted actual editor/resync
+branches pass 1,000 cycles. The corrected native v9 run passes a short functional sequence within a
+180-second four-CPU TCG session and its final fault scan: address navigation, real
+pointer click/focus, DOM typing, Back/Forward with restored-document handlers,
+reload and close. The screenshot shows readable page content and native chrome.
+This is the first functional software browser milestone; scrolling, browser
+resize/DPI coverage, bounded tabs and sustained overload readiness remain open.
+
+### Tabbed shell and browser authority
+
+The native shell retains Back, Forward and Reload and adds horizontal tabs or a
+vertical side rail, a new-tab button, per-tab close buttons, Ctrl+T, Ctrl+Tab,
+Ctrl+Shift+Tab, Ctrl+W and Ctrl+Shift+W. The tab-layout preference lives in
+the native Settings modal, which blocks underlying browser/page input and
+supports pointer selection, Tab, Space/Enter and Escape. Changes take effect
+immediately and save through Config. The
+selected view supplies the address, loading state and history controls; each
+view retains its own page and navigation history. Each window admits up to 32
+resident WebView containers sharing its own SWGL rendering context. Only its
+selected view is shown. Up to four browser windows have independent native
+chrome, input state, addresses and tab collections. Ctrl+N or File > New window
+opens a window; Ctrl+Shift+W closes the current window. Native UI.App.Close uses
+Desktop Destroy_Surface so sibling windows in the process survive. The
+browser opts into DP.Graceful_Close (bit256) and routes INPUT_CLOSE_REQUEST
+(event10) to window closure before Settings intercepts input. Desktop retains
+that request outside its lossy input queue; legacy non-opted-in clients keep
+their existing close behavior. Failed
+closure retains the native slot and frame retirement state for retry.
+
+Horizontal tabs shrink to a 44-pixel minimum with separate close buttons.
+Previous/next buttons appear when either orientation has more tabs than fit;
+keyboard tab cycling also keeps the active tab visible. Back and Forward use
+native arrow icons with captions and disabled history states.
+
+Closed window contexts remain resident and are reused only after every view
+has completed the same blank-load/history-clear handshake as closed tabs.
+The event loop services each window in bounded input batches. Native frame
+leases pin the selected session until presentation or cancellation. Hosted
+router tests cover capacity, independent state, pinned frames, denied close
+and reuse. The 32-tab policy and geometry have 39 SPARK results, none unproved
+or justified.
+
+Native v26 passes the complete 360-second headless gate and final fault scan.
+Its feature sequence exercises 16 live tabs, overflow in both orientations,
+four simultaneous windows, capacity rejection, title-bar closure with Settings
+open, sibling survival, closed-window reuse, and Config preference retention
+across browser relaunch. Settings blocks both Ctrl+T and background clicks;
+Escape and keyboard activation of Done dismiss it. The resize oracle checks
+31,930 restored wallpaper pixels. This run contains one 66.144-second ordinary
+interaction cycle followed by the expanded feature sequence; it is not a fresh
+180-second sustained-interaction claim. Earlier sustained evidence below stays
+scoped to its corresponding build.
+
+The fixture waits for parked tabs and loaded windows before typing. A prior
+cold-window run overflowed the input stream; the shell refused to submit its
+partial address. That interruption now takes priority over capacity messages
+in the status bar. These tests do not establish overload or hardware latency.
+Evidence: `/tmp/cubit-servo-browser-v26.serial.log`, its adjacent
+`serial-browser.timeline.jsonl`, `/tmp/cubit-servo-browser-v26-features.json`,
+and `/tmp/cubit-servo-browser-v26-run.log`. Tested browser SHA-256:
+`7293c4feba8b13ae2b0b6034a86bcc5898042505090156922d7078297fc09bb0`.
+
+The browser uses the [native menubar toolkit](native-menus.md) for a dedicated
+File/Edit/View row above navigation. File contains New tab, New window, Close
+tab, and Close window; Edit contains Select address and Settings; View contains
+Back, Forward, Reload, Previous tab, and Next tab. Settings and New window no
+longer occupy toolbar buttons. F10 activates the menu and Alt+F/E/V opens a
+title; arrows, Enter, Escape, and item mnemonics route through native menus.
+Disabled history actions cannot activate. Popups intercept page input and an
+outside dismissal consumes its press and release. Menus use their own retained
+control map; Settings remains the modal owner when opened. The new menubar
+consumes 24 logical pixels in both tab orientations.
+
+Native v27 validates the integrated menu row through the full 360-second
+headless gate and final fault scan, including 16 tabs, both overflow layouts,
+four windows, isolated closure/reuse, and Config reopen. The fixture invokes
+File > New tab by mouse, Edit > Settings by mouse and mnemonic, View > Reload
+by mnemonic, and F10/Right with an outside page click that must only dismiss.
+Actual native captures are `/tmp/cubit-servo-v27-file-menu.png` and
+`/tmp/cubit-servo-v27-edit-menu.png`; the feature report is
+`/tmp/cubit-servo-browser-v27-features.json`.
+
+The final v28 build adds explicit menu-to-dialog keyboard ownership and clears
+old chrome pointer capture when a menu opens. Its focused 180-second native
+gate/fault scan passes, including opening Settings by mnemonic, clicking Done,
+and immediately typing into the page without losing the first character.
+Menu dismissal does not click through. Config reopen and the built ELF authority
+audit pass. Browser SHA-256:
+`97d75aa3f68cef7cf638066cf5407bd1191e6ca64e7ada92ab55a18b4cb18b61`.
+Final native menu screenshots: `/tmp/cubit-servo-v28-file-menu.png` and
+`/tmp/cubit-servo-v28-edit-menu.png`. Tab/geometry proof remains 39 results with
+no unproved or justified checks; this is not a proof of the menu event bridge.
+
+The subsequent toolkit spacing pass uses eight-pixel toolbar gaps, compact
+menu separator rows, padded/clipped labels, continuous dividers, and an
+unshadowed Settings frame. Its v29 native 180-second gate passes menu/modal
+keyboard handoff, navigation, DOM input, tab orientation, resize, browser
+reopening, and the final fault scan. The missing shared development disk was
+replaced for this test by a private, verified fixture under `/tmp`; no user disk
+was modified. The stronger raised/inset control treatment and its hosted
+checks are described in [UI polish](ui-polish.md).
+
+The final v30 native build includes the approved framed gradient menu strip,
+always-visible model-driven mnemonic underlines, stronger button/field bevels,
+tabs with no bottom bevel, and inset list/scroll containers. Its full 180-second
+four-vCPU TCG gate and final fault scan pass, including keyboard menu activation,
+Settings handoff, navigation, resize, tab orientation and Config recovery after
+browser reopening. Native captures are `/tmp/cubit-servo-v30-file-menu.png` and
+`/tmp/cubit-servo-v30-edit-menu.png`; inputs are recorded in
+`/tmp/cubit-servo-browser-v30-inputs.sha256`. This is QEMU integration evidence,
+not a hardware latency benchmark.
+
+
+The SPARK slot policy does not reuse a closing slot until the audited Rust
+adapter has observed an `about:blank` load followed by a cleared-history
+notification. The view container remains resident and can then be reused.
+This avoids repeated container creation and does not interpret `WebViewClosed`
+as retirement. It does not bound all script pipelines or total Servo memory.
+Native v14 confirms retained page input, navigation controls and pointer
+mapping in both orientations, tab close/reuse and browser-restart Config
+preference recovery. The tested ELF scope audit confirms exactly these grants.
+
+The shell now uses the native `CuBit.UI.Widgets.Tab` container overload for
+both orientations. It returns a clipped child canvas and matching theme for
+captions, icons and independently registered controls. Servo supplies a caption
+and native close button; favicon fetching is not part of this change. Shared
+retained control routing handles pointer capture and activation before paint;
+a close click cannot also select its containing tab. Button hit bounds respect
+the canvas clip, including an empty content area. Hosted widget tests cover
+200 interaction cycles, repaint during capture, cancellation and clipping;
+the production native bridge compiles. Native v17 validates this widget
+migration through four interaction cycles, including inactive-tab close-button
+isolation, both orientations and retained DOM input.
+
+The shared native renderer now uses small logical-pixel corners and subtle
+single borders for buttons, with distinct hover/pressed/disabled states.
+Selected tabs retain an orientation-specific accent; close buttons use the
+native widget's quiet presentation until hovered or pressed. Horizontal tabs
+adapt to the live tab count with a 220-pixel maximum instead of reserving eight
+narrow slots. The tab geometry remains bounded for every supported width and
+count; its SPARK run reports 32 results with none unproved or justified. These
+visuals use the existing theme, font and renderer callbacks, with no animations.
+The actual light/dark widget preview is `/tmp/cubit-tab-style-preview.png`.
+Native v18 validates this visual update for 180.839 seconds of browser
+interaction across three complete cycles and 132 callbacks, followed by Config
+layout recovery after reopening. All three 31,930-pixel resize comparisons and
+the full 360-second QEMU runner/final fault scan pass. The native captures are
+`/tmp/cubit-servo-polished-tabs-{horizontal,vertical}.png`; the report is
+`/tmp/cubit-servo-browser-v18-stability.json`. Existing shared-renderer tests
+pass 144 Settings cases and the 256-density/font/clipping suite. Tested browser
+SHA-256: `9fcf5b6e0a01194a161dfae9c4a67350b402931733f2a15e5e45088c879ff790`.
+
+The layout key is `browser.servo.vertical-tabs`, accessed through Config with
+read/write authority limited to `browser.servo`. The current scalar Config API
+keeps values across browser restarts in the same OS session, but is in-memory.
+Durable typed Config preferences are still required for reboot persistence;
+no filesystem preference/profile fallback is permitted.
+
+The browser manifest's only writable filesystem scopes are
+`@nvme:0/Bookmarks` and `@nvme:0/Downloads`. Fonts, Servo fixtures/start pages and
+TLS roots remain read-only. The filesystem service's read/write *endpoint*
+permission allows request/reply transport; the separate path scopes determine
+file authority. These grants do not implement bookmarks/download UI or create
+the folders automatically. No writable cache or profile directory is granted.
+
+Native v14 keeps the browser open for230.103seconds after the render gate,
+completes four full interaction cycles and170callbacks, then closes and
+relaunches to verify Config layout recovery. The full360-second four-vCPU TCG
+runner and final fault scan pass. Evidence is retained under
+`/tmp/cubit-servo-browser-v14-*`; this is native CuBit in QEMU, not NUC hardware
+or input-latency evidence. Visual inspection finds stale pixels outside the
+restored window after a resize; this has been reported through coordination to
+the compositor owner. Functional responsiveness is not a clean-pixel verdict.
+
+Native v17 keeps the browser responsive for 232.777 seconds, completes four
+cycles and 172 callbacks, then verifies vertical-tab Config recovery after a
+browser restart. The full 360-second, four-vCPU TCG runner and final fault scan
+pass. Each cycle also compares 31,930 wallpaper pixels against the pre-resize
+baseline, confirming the compositor's resize repair in those exposed regions.
+This supersedes v14's resize artifact finding for this tested scenario.
+Evidence: `/tmp/cubit-servo-browser-v17-stability.json`, matching serial/run logs,
+and `/tmp/cubit-servo-native-tabs-{horizontal,vertical}.png`. Tested browser
+SHA-256: `4b97709c69714147e3216c019268f52c7ec57c5eef97959cab8e0daa22ee88a1`.
+The fixture now waits through QEMU's fragmented banner, command echo and final
+prompt before reading a screenshot; its actual command implementation has a
+fragmented-socket regression test. These remain functional QEMU checks, not
+hardware performance or whole-engine memory bounds.
+
+### Tab retirement boundary (source audit, 2026-10-01)
+
+At the pinned Servo revision, `WebViewInner::drop` sends `CloseWebView` and
+removes the view from Paint. Constellation sends `WebViewClosed` after requesting
+browsing-context closure, while `close_pipeline` explicitly retains pipelines
+until exit messages arrive. `handle_pipeline_exited` subsequently removes the
+pipeline and sends a further message to Paint. Paint removal also submits
+WebRender transactions. Therefore neither dropping the frontend handle nor
+receiving `WebViewClosed` proves that all engine work and allocations retired.
+
+A future tab admission policy must charge closing tabs until an audited engine
+retirement boundary completes, including pending pipelines and rendering work.
+Proving the slot counter alone would not prove that foreign resources satisfy
+that boundary. Total memory also needs separate accounting for session history,
+shared caches and page-dependent allocations; the SWGL atlas limits do not
+supply that bound. Resident tab/window reuse is guarded by the blank-history
+handshake described above; this does not establish full engine retirement or
+a total-memory bound. Sustained interaction tests are responsiveness gates,
+not memory-bound proofs.
 
 ## Licenses
 

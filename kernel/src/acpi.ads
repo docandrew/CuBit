@@ -11,6 +11,9 @@ with Interfaces.C;
 with System;
 
 with virtmem;
+with Firmware_Tables.Catalog;
+with Firmware_Tables.Snapshots;
+with Firmware_Tables.Exposure;
 
 -- Firmware-table overlays are Ada; no blanket SPARK claim for this package.
 package acpi is
@@ -778,6 +781,35 @@ package acpi is
     -- @return True if parsing ACPI tables was successful, False otherwise.
     ---------------------------------------------------------------------------
     function setup return Boolean;
+
+    -- Admitted immutable SDT source metadata, visible only after successful
+    -- discovery. No mapping or grant authority is conferred by these queries.
+    type Table_Copy_Status is
+      (Copied, No_Table, Buffer_Too_Small, Snapshot_Unavailable);
+    -- Captured once during successful boot discovery. No original firmware
+    -- bytes are reread by Copy_Table. A failed snapshot publishes no prefix.
+    function Table_Snapshot_State return Firmware_Tables.Snapshots.Phase;
+    function Snapshot_Table_Count return Natural;
+    -- Trusted kernel caller supplies writable, disjoint owned storage. Padding
+    -- and all failure outputs are zero. The caller owns snapshot lifetime.
+    -- This is not a userspace pointer/syscall or reclamation authorization.
+    procedure Copy_Table
+      (Index : Positive; Destination : out Firmware_Tables.Bytes;
+       Result : out Table_Copy_Status);
+
+    function Table_Inventory_State return Firmware_Tables.Catalog.Phase;
+    function Table_Count return Natural;
+    function Table_Source (Index : Positive)
+      return Firmware_Tables.Catalog.Descriptor
+      with Pre => Index <= Table_Count;
+    -- Content eligibility only: Retained_Candidate is NOT a mapping grant.
+    -- The mapping adapter must separately validate backing/cache and lifetime.
+    function Table_Page_Exposure (Index : Positive)
+      return Firmware_Tables.Exposure.Plan
+      with Pre => Index <= Table_Count;
+    -- Backing classification only, independent of content-exposure eligibility.
+    function Table_Backing_Is_Reclaim_RAM (Index : Positive) return Boolean
+      with Pre => Index <= Table_Count;
 
     ---------------------------------------------------------------------------
     -- findRSDP - search through BIOS memory area for a pointer to the ACPI

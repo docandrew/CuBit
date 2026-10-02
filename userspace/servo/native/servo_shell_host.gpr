@@ -1,0 +1,20 @@
+with "../../lib/ui/fonts_native.gpr";
+library project Servo_Shell_Host is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../lib/ui", "../../lib/theme",
+                        "../../lib/compositor", "../../lib/display",
+                        "../../allocator/src");
+   for Object_Dir use "build/obj";
+   for Library_Dir use "build/lib";
+   for Library_Name use "servo_shell_host";
+   for Library_Kind use "static";
+   for Library_Interface use ("servo_shell", "servo_secondary_stack");
+   for Library_Standalone use "standard";
+   for Library_Auto_Init use "false";
+   for Runtime ("Ada") use "../../runtime";
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatwa", "-gnatw.X", "-fstack-usage",
+         "-fomit-frame-pointer", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+end Servo_Shell_Host;

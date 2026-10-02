@@ -7,7 +7,9 @@ package body Intel_GPU_Native_TLB_IO is
    function Failed return Boolean is (Fault);
    function Address_For (Offset : Unsigned_32) return Unsigned_64 is
    begin
-      if Offset /= Intel_GPU_TLB_Registers.GFX_Offset and then
+      if GuC_Only then
+         if Offset /= Intel_GPU_TLB_Registers.GuC_Offset then return 0; end if;
+      elsif Offset /= Intel_GPU_TLB_Registers.GFX_Offset and then
         Offset /= Intel_GPU_TLB_Registers.OA_Offset then return 0; end if;
       for Page in Intel_GPU_Reset_Pages.Page_Index loop
          if Intel_GPU_Reset_Pages.Offset (Page) = Unsigned_64 (Offset / 4096 * 4096) then

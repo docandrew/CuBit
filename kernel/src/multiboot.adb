@@ -8,6 +8,7 @@ with System;
 with TextIO; use TextIO;
 with Virtmem;
 with Multiboot_Memory_Map;
+with Multiboot_Memory_Map.Reclaim;
 with Multiboot_Entry;
 with CPUID;
 with Boot_Font;
@@ -84,6 +85,22 @@ package body Multiboot with SPARK_Mode => On is
         end loop;
         return Covered or else (not bootUsesTags and Last < 16#100000#);
     end Firmware_Readable;
+
+    function Firmware_Reclaim_Pages (Base, Length : Unsigned_64) return Boolean
+      with SPARK_Mode => Off
+    is
+    begin
+        if not bootSnapshotReady or else Base = 0 or else Length = 0 or else
+          Base mod Unsigned_64 (Virtmem.PAGE_SIZE) /= 0 or else
+          Length mod Unsigned_64 (Virtmem.PAGE_SIZE) /= 0 or else
+          Base >= Virtmem.LINEAR_PHYSICAL_LIMIT or else
+          Length > Virtmem.LINEAR_PHYSICAL_LIMIT - Base
+        then
+            return False;
+        end if;
+        return Multiboot_Memory_Map.Reclaim.Covers
+          (bootMapSnapshot (1 .. bootMapCount), Base, Base + (Length - 1));
+    end Firmware_Reclaim_Pages;
 
     function Framebuffer return Boot_Framebuffer.Description
       with SPARK_Mode => Off

@@ -13,7 +13,7 @@ procedure Main is
    Buffer : Pixels := [others => [others => 0]];
    Parent : constant Canvas :=
      (addr => Buffer'Address, width => W, height => H, pitch => W * 4,
-      clipEnabled => False, clip => (others => 0));
+      clipEnabled => False, clip => (others => 0), others => <>);
 
    function Ev (Kind : Unsigned_64; X, Y : Natural; P1 : Unsigned_64 := 0)
      return Input_Event is

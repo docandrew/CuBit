@@ -32,6 +32,29 @@ package Desktop_Settings is
    procedure Open (View : out State; Current : CuBit.Appearance.Preferences;
                    Layout : CuBit.Display_Layouts.Layout;
                    Primary : CuBit.Display_Layouts.Named_Display_ID);
+   -- Layout emits synchronous drawing operations. Every primitive is required:
+   -- a physical-output renderer must not silently inherit a canvas pixel writer.
+   -- Canvas carries logical bounds/clip; Render never dereferences its address.
+   generic
+      with procedure Fill_Rect
+        (C : CuBit.UI.Canvas; R : CuBit.UI.Rect; Fill : CuBit.UI.Color);
+      with procedure Stroke_Rect
+        (C : CuBit.UI.Canvas; R : CuBit.UI.Rect; Light, Dark : CuBit.UI.Color);
+      with procedure Fill_Vertical_Gradient
+        (C : CuBit.UI.Canvas; R : CuBit.UI.Rect; TopColor, BottomColor : CuBit.UI.Color);
+      with procedure Draw_UI_Text
+        (C : CuBit.UI.Canvas; X, Y : Natural; Text : String; FG, BG : CuBit.UI.Color);
+      with procedure Draw_Button
+        (C : CuBit.UI.Canvas; R : CuBit.UI.Rect; Colors : CuBit.UI.Theme;
+         Style : CuBit.UI.Button_Style; Label : String);
+      with procedure Draw_Tab
+        (C : CuBit.UI.Canvas; R : CuBit.UI.Rect; Colors : CuBit.UI.Theme;
+         Selected, Hot, Active : Boolean; Label : String;
+         Orientation : CuBit.UI.Tab_Orientation := CuBit.UI.Horizontal);
+      with procedure Paint_Wallpaper
+        (C : CuBit.UI.Canvas; Bounds : CuBit.UI.Rect; Style : CuBit.Appearance.Preferences);
+   procedure Render (View : State; C : CuBit.UI.Canvas; Window_Bounds : CuBit.UI.Rect);
+
    procedure Draw (View : State; C : CuBit.UI.Canvas; Window_Bounds : CuBit.UI.Rect);
    procedure Pointer
      (View : in out State; Bounds : CuBit.UI.Rect;

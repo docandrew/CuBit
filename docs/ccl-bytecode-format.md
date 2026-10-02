@@ -132,15 +132,209 @@ verified and run, and the literals must match):
        signature table;
      - differential tests cover every operation, the clamping edges,
        `parse-int` junk and overflow, and a pattern over 1 KiB.
-   - **Next:** characters (`at`), `to-string`, then `split`/`join` (with
-     lists, step 3).
-3. Lists and list builtins.
+   - **Characters and `to-string`** (third slice, 2026-10-01):
+     - `Character_Value` (kind 6) holds a character's code. Like text, it
+       lives only in compiler-created locals until the host boundary carries
+       it.
+     - Opcodes: `Equal_Character` (39), `Text_At` (40), `Integer_To_Text`
+       (41) and `Variant_To_Text` (42). `Variant_To_Text` names its
+       enumeration in `Data_Type`, and the identifier comes from the
+       module's own type table.
+     - `at` outside the text traps `Index_Out_Of_Range`.
+     - The interpreter and the VM share `Decimal_Image` (in
+       `CCL.Text_Operations`). Character `=`/`/=` landed in both engines at
+       the same time.
+     - Tests: differential tests, a module round trip, and tampered
+       programs the verifier must refuse.
+   - **Next:** `split`/`join` arrive with lists (step 3). `at` on a list
+     compiles from step 3 on.
+3. Lists and list builtins. **First slice done 2026-10-01:**
+   - **Values.** `List_Value` (kind 7) holds a descriptor into the run's
+     list region and names its `List<T>` in `Data_Type`. The region is
+     `CCL.Secondary_Arrays`, the interpreter's proved generic. Elements are
+     compact: one code (Integer, Boolean, Character or enumeration
+     position) plus a text descriptor.
+   - **Bounds.** The interpreter now takes `MAX_LIST_ELEMENTS` (4,096) and
+     its list-result types from the VM, so the two share one definition and
+     fail at the same point. This adds about 100 KB to each
+     `Machine_State`, which was 85 KB.
+   - **Element types:** Integer, Boolean, String, Character and
+     enumerations (`Supported_List`). Lists of records need the value arena
+     (step 4).
+   - **Opcodes** (each names its list type in `Data_Type`):
+     - `New_List` (43) reserves N elements;
+     - `Fill_List` (44) writes the element on top into position i of the
+       list below it, which stays;
+     - `Length_List` (45);
+     - `List_At` (46) traps `Index_Out_Of_Range` outside the list.
+   - **Literals** of any length compile to `New_List N` and then N
+     `Fill_List` steps across the parser's 16-element chunks, so the stack
+     holds at most the list and one element.
+   - **Limits.** The verifier checks immediates statically. A fill past the
+     reserved length is refused at run time, because the verifier doesn't
+     track lengths. `List_Storage_Exhausted` reports a full region.
+   - **Results** carry out the first 64 elements, with string elements
+     packed into 1 KiB, exactly as the interpreter does.
+   - **Locals.** Lists may live in compiler-created locals; they don't
+     cross the host boundary yet.
+   - **Built-ins (3b, same day).** One opcode, `List_Builtin` (47). Its
+     immediate names a `CCL.List_Operations.Operation`; `Data_Type` names
+     the subject's list type (the result's, for `range` and `split`).
+     - Covers `first`, `last`, `skip`, `reverse`, `sort`, `sum`, `min`,
+       `max`, `contains`, `join`, `range` and `split`.
+     - **Shared algorithms.** `CCL.List_Operations` holds the
+       `first`/`last`/`skip` bounds, the size of a range and a generic
+       heapsort. `CCL.Text_Operations.Next_Piece` is `split`'s scanner. The
+       interpreter now uses them too, so its own copies are gone.
+     - **Fuel** matches the interpreter: one per element read, per sort
+       comparison and per joined piece. A built-in over a long list runs
+       out of fuel at the same point in both engines (tested).
+     - **Verifier:** the operands' kinds come from the operation and the
+       list type. A built-in on a list it doesn't fit (`sum` over strings,
+       `sort` over Booleans) is `Invalid_Builtin`.
+     - **Failures** in both engines: overflow, `min`/`max` of nothing,
+       `range` past the region, oversized split pieces, and long
+       separators.
+     - **Tests:** 42 differential tests plus hostile programs.
+   - **Next:** the built-ins that take a function (`each`, `where`, `fold`,
+     `any`, `all`, `count`, `sort-by`) arrive with function values (step 6).
+     Step 4, the value arena, comes first.
 4. The value arena: record and payload-variant construction, field and
    payload access, lists of records, list fields, `(list-of T)`, recursive
-   types.
+   types. **Design (2026-10-01): one representation per type.**
+   - **The problem.** A record type could be a host image (`Object_Value`,
+     from an import) or a value built in the run. The compiler can't always
+     tell which, but locals and the verifier type values by kind. So host
+     images come into the arena at the import boundary, and every value of
+     a type has one representation inside a run.
+   - **`Object_Value`** is a record or payload variant in the run's arena.
+     It holds a node index, or 0 for a payload variant's unit alternative.
+     Scalar sums (unit or Integer/Boolean payloads) stay `Variant_Value`, as
+     in the interpreter.
+   - **Kinds.** `Kind_For_Type` maps a type to its in-run kind: String to
+     text, Character to character, a list to `List_Value`, a range subtype
+     to Integer. A field projected from a record is an ordinary value.
+   - **Arena.** In `Machine_State`, with the interpreter's bounds (512 nodes,
+     2,048 slots).
+     - A node is (type, alternative, first slot, count).
+     - A cell (slot or list element) mirrors a `Value`'s scalar fields:
+       integer, Boolean, alternative, text, list, node. It's read back by
+       its static type.
+     - Nodes are allocated after their components; the machine checks that
+       every component node is older.
+   - **Opcodes.** `Make_Node` pops a record's components or a variant's
+     payload. `Project_Field` and `Switch_Variant` read the arena.
+   - **The host boundary.** `CCL.VM.Native_Objects` keeps its public API
+     (`Complete_Object`, `Export_Argument`, `Export_Result`).
+     - A completed image is walked into nodes (copy-in); an exported value
+       is walked back into an image (copy-out).
+     - The 16-snapshot pool and the `Continue_With_Native` hook go away.
+     - **Admission before a host effect:** the arena must have room for
+       the worst case of the import's result type (Persistable types are
+       acyclic and list-free, so that is a static count of nodes, slots and
+       text). No effect is submitted whose result could not be stored.
+   - **Results** of record and payload-variant types (and lists of them)
+     leave as canonical literals, from a printer over the VM's arena that
+     matches the interpreter's. The differential tests compare the text.
+   - **Cost (measured).**
+     - A `Machine_State` is 380 KB (85 KB before lists and the arena).
+     - A native-objects machine is also 380 KB, down from 876 KB, since the
+       pool of 16 snapshots is gone.
+     - A four-isolate `CCL.Scheduler` is 1.7 MB.
+     - Services link with 16 MB stacks. Each run clears its state; measure
+       that before shrinking bounds.
+   - **Done 2026-10-01 (hosted; proofs at the next checkpoint):**
+     - `Make_Node`; `Project_Field` and `Switch_Variant` over the arena.
+     - Copy-in and copy-out at the host boundary, with admission sized by
+       the result type's worst case.
+     - Lists of records and payload variants, list fields and recursive
+       types.
+     - Literal results from a printer matching the interpreter's.
+     - Tests: 25 differential tests plus the native-object, config-client
+       and receiver suites. The receivers' capacity test now fills the
+       arena with a deep record.
+     - Range-typed fields are refused by the compiler until step 5.
+   - **Found by the differential tests:** the interpreter's `at` on a list
+     of records dropped the element's node (fixed).
+   - **Deliberate differences from the interpreter:**
+     - A record result with no literal (a Character field, or one longer
+       than 1 KiB) completes in compiled code, without a literal.
+     - A text result over 1 KiB completes without its characters
+       (`Has_Result_Text` is False).
+     - A host exports either one in full. The REPL refuses to show them.
 5. Range checks: a verified `Check_Range` on values entering range-typed
-   positions.
-6. Function values and captures (the former "parity 4").
+   positions. **Done 2026-10-01 (hosted):**
+   - **Opcode.** `Check_Range` (49) names the range type in `Data_Type`. It
+     keeps an in-range Integer and traps `Range_Error` otherwise.
+   - **Where the compiler emits it:** after each record field, variant
+     payload, call argument and function result of a range type. Those are
+     the interpreter's positions, except values applied by the higher-order
+     built-ins, which arrive with step 6.
+   - **Functions** now take and return any value a run holds (strings,
+     characters, lists, records and payload variants), not only scalars.
+     This applies to the compiler's signatures and the verifier's
+     `Function_Data`.
+   - **Codec fix.** `Make_Node` was missing from the codec's
+     data-type-carrying group, so step 4 programs could not be encoded. A
+     module round trip of records with a range field now covers it.
+6. Function values and captures (the former "parity 4"). **Design
+   (2026-10-01), two slices:**
+   - **6a. Values and calls.**
+     - **Kind:** a `Function_Value` holds a function index, with its
+       captures (at most 4, by value, as in the interpreter) in the run's
+       list region.
+     - **Lambdas** are already lifted to numbered functions by the analyzer.
+       A lifted body binds its captures ahead of its parameters, so to the
+       VM a capture is just a leading parameter.
+     - `Make_Closure` pops the captured values. `Call_Value` pops the
+       arguments and the function value, then enters the callee with
+       captures and arguments as its frame.
+     - **Verifier:** the function value's type must agree with the callee's
+       declared kinds.
+     - **Bounds:** the call depth stays bounded by the frame table, and the
+       stack by the runtime checks it already has. The language can't
+       express recursion: there are no function-typed captures, cycles are
+       rejected by name, and a function type can't contain itself. Hostile
+       bytecode that tries it traps.
+   - **6b. Higher-order built-ins** (`each`, `where`, `fold`, `any`, `all`,
+     `count`, `sort-by`).
+     - **The problem.** The VM has only forward jumps (that's what
+       guarantees termination), so these can't be bytecode loops, and an
+       executor that called itself recursively would lose the bounded,
+       resumable machine state.
+     - **The approach:** one resumable opcode, `List_Apply`.
+       - Its iteration state (list, position, accumulator, result being
+         built) lives in a bounded table in the machine state.
+       - Each element enters the function as an ordinary call whose return
+         address is the `List_Apply` instruction itself, so the instruction
+         resumes with the element's result.
+       - It ends at the list's end or at a decisive element (`any`/`all`).
+     - **Termination** follows from finite lists plus fuel per element, as
+       in the interpreter. Pausing, host calls and snapshots inside a mapped
+       function work because nothing lives on the native stack.
+   - **Done 2026-10-01 (hosted; proofs at the checkpoint):**
+     - **Values.** `Function_Value` (kind 8), `Make_Closure` (50) and
+       `Call_Value` (51) over named functions and lambdas with captures.
+       The VM function declaration gains `Captures`, encoded in the module
+       (`[entry, captures, parameters, result kind, result type]`).
+     - **Applying built-ins.** `List_Apply` (52) for `each`, `where`,
+       `fold`, `any`, `all`, `count` and `sort-by`.
+       - It's resumable, with an iteration table of at most one entry per
+         frame level.
+       - `sort-by` sorts its computed keys with sort's fuel rule.
+       - An Integer element filling a range-typed parameter is checked per
+         element.
+       - `each` over a range-typed result builds `List<Integer>`, as the
+         interpreter does.
+     - **Changed from the design.** Calls through values are bounded *at
+       run time* (`Call_Depth_Exhausted` when the frame table is full), not
+       by the static stack bound. A type-level analysis can't tell
+       `twice → lambda → twice` (harmless) from recursion, and rejected
+       ordinary programs. Named calls keep their static bound.
+     - **Tests:** 37 differential tests plus a closure module round trip.
+   - **A language inconsistency found:** `(+ p 1)` type-checks when `p` is a
+     named function's range-typed parameter, but not when it's a lambda's
+     (`Expected_Integer`). It isn't fixed yet.
 
 **Limits to revisit:** 256 instructions and a 64-slot stack per module are
 small for a full startup profile.
@@ -171,7 +365,7 @@ imports         [[argument, result, authority, ownership_argument, local,
                   failure_verb, cancel_verb, major, minor, operation,
                   argument_type, result_type,
                   digest, argument_schema, result_schema] ...]
-functions       [[entry, [[kind, type] ...], result_kind, result_type] ...]
+functions       [[entry, captures, [[kind, type] ...], result_kind, result_type] ...]
 constants       [text ...]      (byte strings: Push_Text's pool)
 code            [[op, local, verb, type, alternative, immediate, target,
                   import] ...]

@@ -1,0 +1,97 @@
+--- a/src/intel/vulkan/meson.build
++++ b/src/intel/vulkan/meson.build
+@@ -236,1 +236,16 @@
++if host_machine.system() == 'cubit'
++  libanv_files += files(
++    'anv_cubit_memory.c',
++    'anv_cubit_physical.c',
++    'anv_cubit_sync.c',
++    'anv_cubit_sync_types.c',
++    'native_gpu_mapping.c',
++    'cubit-device-query.c',
++    'cubit-device-info.c',
++    'cubit-device-native.c',
++    'cubit-topology.c',
++    'cubit-memory-info.c',
++  )
++endif
++
+ if host_machine.system() != 'cubit'
+--- a/src/intel/vulkan/anv_private.h
++++ b/src/intel/vulkan/anv_private.h
+@@ -108,6 +108,8 @@
+ #include "vk_shader.h"
+ #include "vk_shader_module.h"
+ #include "vk_sync.h"
++#include "vk_sync_binary.h"
++#include "anv_backend_sync.h"
+ #include "vk_texcompress_astc.h"
+ #include "vk_util.h"
+ #include "vk_query_pool.h"
+@@ -1690,6 +1691,7 @@
+ 
+     struct vk_sync_type                         sync_syncobj_type;
+-    const struct vk_sync_type *                 sync_types[2];
++    struct vk_sync_binary_type                  cubit_binary_sync_type;
++    const struct vk_sync_type *                 sync_types[3];
+ 
+     struct wsi_device                       wsi_device;
+     int                                         local_fd;
+--- a/src/intel/vulkan/anv_queue.c
++++ b/src/intel/vulkan/anv_queue.c
+@@ -83,8 +83,7 @@
+    if (INTEL_DEBUG(DEBUG_SYNC) ||
+        ANV_DEBUG(SHADER_PRINT) ||
+        INTEL_DEBUG_BVH_ANY) {
+-      result = vk_sync_create(&device->vk,
+-                              &device->physical->sync_syncobj_type,
++      result = anv_backend_sync_create(&device->vk,
+                               0, 0, &queue->sync);
+       if (result != VK_SUCCESS) {
+          anv_queue_finish(queue);
+@@ -94,8 +93,7 @@
+ 
+    if (queue_family->engine_class == INTEL_ENGINE_CLASS_COPY ||
+        queue_family->engine_class == INTEL_ENGINE_CLASS_COMPUTE) {
+-      result = vk_sync_create(&device->vk,
+-                              &device->physical->sync_syncobj_type,
++      result = anv_backend_sync_create(&device->vk,
+                               0, 0, &queue->companion_sync);
+       if (result != VK_SUCCESS) {
+          anv_queue_finish(queue);
+--- a/src/intel/vulkan/anv_batch_chain.c
++++ b/src/intel/vulkan/anv_batch_chain.c
+@@ -1759,8 +1759,7 @@
+    submit->batch_bos = UTIL_DYNARRAY_INIT;
+ 
+    if (create_signal_sync) {
+-      result = vk_sync_create(&device->vk,
+-                              &device->physical->sync_syncobj_type,
++      result = anv_backend_sync_create(&device->vk,
+                               0, 0, &submit->signal.sync);
+       if (result != VK_SUCCESS) {
+          anv_reloc_list_finish(&submit->relocs);
+--- a/src/intel/vulkan/anv_device.c
++++ b/src/intel/vulkan/anv_device.c
+@@ -276,8 +276,7 @@
+    struct anv_trtt *trtt = &device->trtt;
+ 
+    VkResult result =
+-      vk_sync_create(&device->vk,
+-                     &device->physical->sync_syncobj_type,
++      anv_backend_sync_create(&device->vk,
+                      VK_SYNC_IS_TIMELINE,
+                      0 /* initial_value */,
+                      &trtt->timeline);
+--- a/src/intel/vulkan/anv_sparse.c
++++ b/src/intel/vulkan/anv_sparse.c
+@@ -936,8 +936,7 @@
+          return vk_queue_set_lost(&queue->vk, "vk_sync_wait_many failed");
+ 
+       struct vk_sync *sync;
+-      result = vk_sync_create(&device->vk,
+-                              &device->physical->sync_syncobj_type,
++      result = anv_backend_sync_create(&device->vk,
+                               VK_SYNC_IS_TIMELINE, 0 /* initial_value */,
+                               &sync);
+       if (result != VK_SUCCESS)

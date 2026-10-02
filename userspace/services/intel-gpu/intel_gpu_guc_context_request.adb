@@ -50,4 +50,9 @@ package body Intel_GPU_GuC_Context_Request with SPARK_Mode is
       if ID >= 65535 then return [others => 0]; end if;
       return [16#20001000#, ID];
    end Schedule;
+   function Deregister (ID : Unsigned_32) return Schedule_Words is
+   begin
+      if ID >= 65535 then return [others => 0]; end if;
+      return [16#20004503#, ID];
+   end Deregister;
 end Intel_GPU_GuC_Context_Request;

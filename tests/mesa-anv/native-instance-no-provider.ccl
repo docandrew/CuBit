@@ -1,0 +1,3 @@
+(executable-manifest v1
+  (identity "com.cubit.test.mesa-no-provider")
+  (version "1"))

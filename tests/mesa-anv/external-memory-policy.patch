@@ -1,0 +1,70 @@
+--- a/src/intel/vulkan/anv_physical_device.c
++++ b/src/intel/vulkan/anv_physical_device.c
+@@ -214,11 +214,11 @@
+       .KHR_dynamic_rendering                 = true,
+       .KHR_dynamic_rendering_local_read      = true,
+       .KHR_external_fence                    = true,
+-      .KHR_external_fence_fd                 = true,
++      .KHR_external_fence_fd                 = !DETECT_OS_CUBIT,
+       .KHR_external_memory                   = true,
+-      .KHR_external_memory_fd                = true,
++      .KHR_external_memory_fd                = !DETECT_OS_CUBIT,
+       .KHR_external_semaphore                = true,
+-      .KHR_external_semaphore_fd             = true,
++      .KHR_external_semaphore_fd             = !DETECT_OS_CUBIT,
+       .KHR_format_feature_flags2             = true,
+       .KHR_fragment_shader_barycentric       = device->info.ver >= 20,
+       .KHR_fragment_shading_rate             = device->info.ver >= 11,
+@@ -367,9 +367,9 @@
+       .EXT_extended_dynamic_state            = true,
+       .EXT_extended_dynamic_state2           = true,
+       .EXT_extended_dynamic_state3           = true,
+-      .EXT_external_memory_acquire_unmodified = true,
+-      .EXT_external_memory_dma_buf           = true,
+-      .EXT_external_memory_host              = device->info.has_userptr_uapi,
++      .EXT_external_memory_acquire_unmodified = !DETECT_OS_CUBIT,
++      .EXT_external_memory_dma_buf           = !DETECT_OS_CUBIT,
++      .EXT_external_memory_host              = !DETECT_OS_CUBIT && device->info.has_userptr_uapi,
+       .EXT_fragment_shader_interlock         = true,
+       .EXT_global_priority                   = device->max_context_priority >=
+                                                VK_QUEUE_GLOBAL_PRIORITY_MEDIUM_KHR,
+@@ -381,7 +381,7 @@
+       .EXT_host_query_reset                  = true,
+       .EXT_image_2d_view_of_3d               = true,
+       .EXT_image_compression_control         = device->expose_compression_control,
+-      .EXT_image_drm_format_modifier         = true,
++      .EXT_image_drm_format_modifier         = !DETECT_OS_CUBIT,
+       .EXT_image_robustness                  = true,
+       .EXT_image_sliced_view_of_3d           = true,
+       .EXT_image_view_min_lod                = true,
+@@ -404,7 +404,7 @@
+       .EXT_nested_command_buffer             = true,
+       .EXT_non_seamless_cube_map             = true,
+       .EXT_pci_bus_info                      = true,
+-      .EXT_physical_device_drm               = true,
++      .EXT_physical_device_drm               = !DETECT_OS_CUBIT,
+       .EXT_pipeline_creation_cache_control   = true,
+       .EXT_pipeline_creation_feedback        = true,
+       .EXT_pipeline_library_group_handles    = rt_enabled,
+--- a/src/intel/vulkan/anv_formats.c
++++ b/src/intel/vulkan/anv_formats.c
+@@ -2025,6 +2025,9 @@
+     *    present and VkExternalImageFormatProperties will be ignored.
+     */
+    if (external_info && external_info->handleType != 0) {
++      /* CuBit has no external-memory import/export transport yet. */
++      if (DETECT_OS_CUBIT)
++         goto unsupported;
+       /* Does there exist a method for app and driver to explicitly communicate
+        * to each other the image's memory layout?
+        */
+@@ -2367,6 +2370,9 @@
+     */
+    assert(pExternalBufferInfo->handleType != 0);
+ 
++   if (DETECT_OS_CUBIT)
++      goto unsupported;
++
+    /* All of the current flags are for sparse which we don't support yet.
+     * Even when we do support it, doing sparse on external memory sounds
+     * sketchy.  Also, just disallowing flags is the safe option.

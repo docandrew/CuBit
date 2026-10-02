@@ -1,0 +1,10 @@
+project DMA_Cache is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("dma_cache_tests.adb", "intel_gpu_dma_cache.ads",
+                         "intel_gpu_dma_cache.adb");
+   for Object_Dir use "build-dma-cache";
+   for Main use ("dma_cache_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end DMA_Cache;

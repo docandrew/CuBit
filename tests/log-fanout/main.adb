@@ -189,4 +189,102 @@ begin
    Log_Fanout.Advance_Time (Store, Unsigned_64'Last);
    Read (99, Other); pragma Assert (Result = Denied);
    Put_Line ("PASS: policy matrix, log fan-out gates, independent recipients, loss, launch tags, stale handles and lease expiration");
+   --  Severity-filtered subscriptions (observability agent, 2026-10-01).
+   declare
+      package L renames CuBit.Log_Records;
+      use type L.Severity;
+      Filtered : Log_Fanout.Broker;
+      Low, High : Unsigned_64;
+      function At_Level (Level : L.Severity; Ms : Unsigned_64) return Event is
+        (Source => 30, Publication_Tag => Publisher_Authority_Tag,
+         Monotonic_Ms => Ms, Data => L.Make ("x", Level).Value);
+   begin
+      Log_Fanout.Publish (Filtered, At_Level (L.Debug, 1));
+      Log_Fanout.Publish (Filtered, At_Level (L.Error, 2));
+      --  Replay of retained history honours the filter.
+      Log_Fanout.Subscribe (Filtered, 50, Observer_Authority_Tag, High,
+                            Result, L.Warning);
+      pragma Assert (Result = OK);
+      Log_Fanout.Subscribe (Filtered, 51, Observer_Authority_Tag, Low,
+                            Result);
+      pragma Assert (Result = OK);
+      Log_Fanout.Publish (Filtered, At_Level (L.Trace, 3));
+      Log_Fanout.Publish (Filtered, At_Level (L.Critical, 4));
+      Log_Fanout.Read_Next (Filtered, 50, Observer_Authority_Tag, High,
+                            Value, Lost, Result);
+      pragma Assert (Result = OK and Value.Monotonic_Ms = 2);
+      Log_Fanout.Read_Next (Filtered, 50, Observer_Authority_Tag, High,
+                            Value, Lost, Result);
+      pragma Assert (Result = OK and Value.Monotonic_Ms = 4);
+      Log_Fanout.Read_Next (Filtered, 50, Observer_Authority_Tag, High,
+                            Value, Lost, Result);
+      pragma Assert (Result = Empty);
+      for Ms in Unsigned_64'(1) .. 4 loop
+         Log_Fanout.Read_Next (Filtered, 51, Observer_Authority_Tag, Low,
+                               Value, Lost, Result);
+         pragma Assert (Result = OK and Value.Monotonic_Ms = Ms);
+      end loop;
+      --  Filtered records are not loss: a narrow observer flooded with
+      --  low-severity records sees no gap.
+      for I in 1 .. 2 * Log_Fanout.Capacity loop
+         Log_Fanout.Publish (Filtered, At_Level (L.Debug, 5));
+      end loop;
+      Log_Fanout.Read_Next (Filtered, 50, Observer_Authority_Tag, High,
+                            Value, Lost, Result);
+      pragma Assert (Result = Empty);
+      Log_Fanout.Read_Next (Filtered, 51, Observer_Authority_Tag, Low,
+                            Value, Lost, Result);
+      pragma Assert (Result = Gap and Lost = Unsigned_64 (Log_Fanout.Capacity));
+      --  A retry keeps the queue and narrows later publications.
+      Log_Fanout.Subscribe (Filtered, 51, Observer_Authority_Tag, Other,
+                            Result, L.Critical);
+      pragma Assert (Result = OK and Other = Low);
+      Log_Fanout.Publish (Filtered, At_Level (L.Error, 6));
+      for I in 1 .. Log_Fanout.Capacity loop
+         Log_Fanout.Read_Next (Filtered, 51, Observer_Authority_Tag, Low,
+                               Value, Lost, Result);
+         pragma Assert (Result = OK and Value.Monotonic_Ms = 5);
+      end loop;
+      Log_Fanout.Read_Next (Filtered, 51, Observer_Authority_Tag, Low,
+                            Value, Lost, Result);
+      pragma Assert (Result = Empty);
+      Put_Line ("PASS: severity-filtered subscriptions, filtered replay, filtering is not loss");
+   end;
+   --  Source-filtered subscriptions: a viewer's "recent records of service X"
+   --  replays only that publisher's history and then only its new records.
+   declare
+      package L renames CuBit.Log_Records;
+      Sourced : Log_Fanout.Broker;
+      Mine : Unsigned_64;
+      type Times is array (Positive range <>) of Unsigned_64;
+      From_70 : constant Times := [1, 3, 5];
+      From_80 : constant Times := [2, 4];
+      function From (Source, Ms : Unsigned_64) return Event is
+        (Source => Source, Publication_Tag => Publisher_Authority_Tag,
+         Monotonic_Ms => Ms, Data => L.Make ("y").Value);
+   begin
+      Log_Fanout.Publish (Sourced, From (70, 1));
+      Log_Fanout.Publish (Sourced, From (80, 2));
+      Log_Fanout.Publish (Sourced, From (70, 3));
+      Log_Fanout.Subscribe (Sourced, 60, Observer_Authority_Tag, Mine, Result, Source => 70);
+      pragma Assert (Result = OK);
+      Log_Fanout.Publish (Sourced, From (80, 4));
+      Log_Fanout.Publish (Sourced, From (70, 5));
+      for Ms of From_70 loop
+         Log_Fanout.Read_Next (Sourced, 60, Observer_Authority_Tag, Mine, Value, Lost, Result);
+         pragma Assert (Result = OK and Value.Source = 70 and Value.Monotonic_Ms = Ms);
+      end loop;
+      Log_Fanout.Read_Next (Sourced, 60, Observer_Authority_Tag, Mine, Value, Lost, Result);
+      pragma Assert (Result = Empty);
+      --  Closing and subscribing again replays afresh (a new query).
+      Log_Fanout.Close (Sourced, 60, Observer_Authority_Tag, Mine, Result);
+      pragma Assert (Result = OK);
+      Log_Fanout.Subscribe (Sourced, 60, Observer_Authority_Tag, Mine, Result, Source => 80);
+      pragma Assert (Result = OK);
+      for Ms of From_80 loop
+         Log_Fanout.Read_Next (Sourced, 60, Observer_Authority_Tag, Mine, Value, Lost, Result);
+         pragma Assert (Result = OK and Value.Source = 80 and Value.Monotonic_Ms = Ms);
+      end loop;
+      Put_Line ("PASS: source-filtered subscriptions and fresh replay per query");
+   end;
 end Main;

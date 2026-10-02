@@ -34,6 +34,11 @@ package CCL.Objects.Views with SPARK_Mode is
    function Field
      (Object : Snapshot; Position : Cursor; Index : Types.Component_Index) return Cursor;
    function Payload (Object : Snapshot; Position : Cursor) return Cursor;
+   --  A list's element count, and its element Index (1-based).
+   subtype Element_Count is Natural range 0 .. Maximum_Cells;
+   function Length (Object : Snapshot; Position : Cursor) return Element_Count;
+   function Element
+     (Object : Snapshot; Position : Cursor; Index : Positive) return Cursor;
    function Alternative (Object : Snapshot; Position : Cursor) return Types.Component_Count;
    function Scalar (Object : Snapshot; Position : Cursor) return Cell;
    function Text (Object : Snapshot; Position : Cursor) return String;

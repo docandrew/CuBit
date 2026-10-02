@@ -124,7 +124,8 @@ package body CCL.Configurations with SPARK_Mode => On is
                when CCL.VM.Boolean_Value =>
                   Store_Value ((if Value.Result_Value.Boolean then "true" else "false"));
                when CCL.VM.Variant_Value | CCL.VM.Object_Value | CCL.VM.Resource_Value |
-                    CCL.VM.Text_Value =>
+                    CCL.VM.Text_Value | CCL.VM.Character_Value | CCL.VM.List_Value |
+                    CCL.VM.Function_Value =>
                   Fail (Invalid_Value);
             end case;
          else Fail (Invalid_Value);
@@ -149,7 +150,7 @@ package body CCL.Configurations with SPARK_Mode => On is
       procedure Launch is
          Executable : Key_Text;
          Have_Priority, Have_Network, Have_Role, Have_Mode, Have_Device,
-           Have_Scheduling, Have_Deadline : Boolean := False;
+           Have_Scheduling, Have_Deadline, Have_Render : Boolean := False;
          Priority : Integer_64 := 5;
          Approval : Network_Approval := Deny;
          Role : Startup_Role := Application;
@@ -203,6 +204,15 @@ package body CCL.Configurations with SPARK_Mode => On is
                else Fail (Invalid_Approval);
                end if;
                Have_Network := True;
+            elsif Matches (Name, "render") then
+               if Have_Render then Fail (Duplicate_Field); end if;
+               Read_Symbol (Reader, Name);
+               if Matches (Name, "deny") then Item.Approve_Render := False;
+               elsif Matches (Name, "approve-declared") then
+                  Item.Approve_Render := True;
+               else Fail (Invalid_Approval);
+               end if;
+               Have_Render := True;
             elsif Matches (Name, "role") then
                if Have_Role then Fail (Duplicate_Field); end if;
                Read_Symbol (Reader, Name);

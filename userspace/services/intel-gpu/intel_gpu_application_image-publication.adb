@@ -2,12 +2,14 @@ with Intel_GPU_GGTT_Publish;
 with Intel_GPU_GGTT;
 with Intel_GPU_Submission_Image;
 package body Intel_GPU_Application_Image.Publication is
-   function GPU_Address (Object : State) return Unsigned_64 is (Object.Published);
+   function GPU_Address (Object : State) return Unsigned_64 is
+     (if Object.Retirement_Attempted then 0 else Object.Published);
    procedure Publish
      (Object : in out State; Source : VM.Image; Backing : Tables.Mappings;
       Allocation : Intel_GPU_Buffer_Reply.Backing;
       Reservations : in out Intel_GPU_GGTT_Reservations.Ledger;
-      Status : out Result) is
+      Status : out Result;
+      Scratch : Tables.Scratch_Mappings := [others => (0, 0)]) is
       Bytes : constant Unsigned_64 := Intel_GPU_Submission_Image.GGTT_Bytes;
       First_Page : constant Unsigned_64 :=
         Intel_GPU_Buffer_Reply.Page_Address (Allocation, 0);
@@ -19,7 +21,7 @@ package body Intel_GPU_Application_Image.Publication is
         (Owner_Ready and then Range_Allowed (First, Size));
       procedure Prepare_Backing (First, Size : Unsigned_64; Success : out Boolean) is
       begin
-         Prepare (Object, Source, Backing, Allocation, First, Size, Success);
+         Prepare (Object, Source, Backing, Allocation, First, Size, Success, Scratch);
          if Success then Prepared_First := First; end if;
       end Prepare_Backing;
       procedure Write_Checked (Index, Value : Unsigned_64; Success : out Boolean) is

@@ -1,0 +1,8 @@
+project Bridge is
+   for Source_Dirs use (".", "../../../userspace/mesa/anv");
+   for Object_Dir use "build";
+   for Main use ("bridge_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Bridge;

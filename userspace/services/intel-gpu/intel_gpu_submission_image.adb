@@ -9,6 +9,7 @@ with Intel_GPU_ADLN_Pixel_Blend;
 with Intel_GPU_ADLN_Coarse_Pixel;
 with Intel_GPU_ADLN_Color_Calc;
 with Intel_GPU_ADLN_Offscreen_Batch;
+with Intel_GPU_Memory_Copy_Command;
 package body Intel_GPU_Submission_Image with SPARK_Mode is
    function Valid_Extent (DMA_Start, GGTT_Start : Unsigned_64) return Boolean is
      (Intel_GPU_Submission_Backing.Valid_Layout and then
@@ -64,7 +65,8 @@ package body Intel_GPU_Submission_Image with SPARK_Mode is
       use Intel_GPU_Initial_VM;
       Result : Image;
       function Address (R : Region; Extra : Unsigned_64 := 0) return Unsigned_64 is
-        (Pages (Natural ((Offsets (R) - First + Extra) / 4096)));
+        (Pages (Natural ((Offsets (R) - First + Extra) / 4096)))
+        with Pre => Extra < Sizes (R) and then Extra mod 4096 = 0;
    begin
       if not Valid_Layout or else
         GGTT_Start = 0 or else GGTT_Start mod 4096 /= 0 or else
@@ -159,9 +161,20 @@ package body Intel_GPU_Submission_Image with SPARK_Mode is
          -- Gen8+ MI_STORE_DWORD_IMM, four DWORDs, MI_USE_GGTT deliberately
          -- clear: destination belongs to this context's private PPGTT.
          -- Fixed driver-owned probe, not arbitrary client command admission.
-         Result.Words (24576 .. 24580) :=
+         Result.Words (24576 .. 24579) :=
            [16#10000002#, Unsigned_32 (Completion_VA), 0,
-            Batch_Probe_Value, 16#05000000#];
+            Batch_Probe_Value];
+         declare
+            Copy : constant Intel_GPU_Memory_Copy_Command.Command :=
+              Intel_GPU_Memory_Copy_Command.Build
+                (Completion_VA + Copy_Source_Offset,
+                 Completion_VA + Copy_Result_Offset);
+         begin
+            for I in Copy.Words'Range loop
+               Result.Words (24580 + I) := Copy.Words (I);
+            end loop;
+         end;
+         Result.Words (24585) := 16#05000000#;
          for I in 0 .. Draw.Count - 1 loop
             Result.Words (24576 + Draw_Batch_Offset / 4 + I) := Draw.Data (I);
          end loop;

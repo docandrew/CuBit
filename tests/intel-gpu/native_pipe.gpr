@@ -1,0 +1,14 @@
+project Native_Pipe is
+   for Source_Dirs use (".", "pipe-fixture", "../../userspace/services/intel-gpu");
+   for Source_Files use ("native_pipe_tests.adb", "cubit.ads",
+     "cubit-monotonic.ads", "cubit-monotonic.adb", "intel_gpu_display_mapping.ads",
+     "intel_gpu_native_pipe.ads", "intel_gpu_native_pipe.adb",
+     "intel_gpu_display_enable.ads", "intel_gpu_display_enable.adb",
+     "intel_gpu_display_topology.ads", "intel_gpu_display_topology.adb",
+     "intel_gpu_pipe_irq.ads", "intel_gpu_pipe_irq.adb");
+   for Object_Dir use "build-native-pipe";
+   for Main use ("native_pipe_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Native_Pipe;

@@ -4,7 +4,7 @@ project Devmgr is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".", "../filesystem", "../xhci", "../intel-gpu", "../../ccl/src", "../../lib/time", "../../mesa/anv");
+    for Source_Dirs use (".", "../filesystem", "../xhci", "../intel-gpu", "../../ccl/src", "../../lib/time", "../../mesa/anv", "../../lib/display");
 
     for Main use ("main.adb");
 
@@ -12,6 +12,13 @@ project Devmgr is
     for Source_Files use ("main.adb", "cpio.ads", "cpio.adb", "ccl.ads",
        "boot_rtc.ads", "boot_rtc.adb", "civil_time.ads", "civil_time.adb",
        "intel_gpu_probe.ads", "intel_gpu_probe.adb",
+       "intel_gpu_broker_request.ads", "intel_gpu_broker_request.adb",
+       "intel_gpu_broker_launches.ads", "intel_gpu_broker_launches.adb",
+       "intel_gpu_render_sessions.ads", "intel_gpu_render_sessions.adb",
+       "intel_render_admission.ads", "intel_render_admission.adb",
+       "intel_render_admission_native.ads", "intel_render_admission_native.adb",
+       "intel_render_admission_dispatch.ads", "intel_render_admission_dispatch.adb",
+       "intel_render_broker.ads", "intel_render_broker.adb",
        "native_gpu_probe_protocol.ads", "native_gpu_probe_protocol.adb",
        "intel_gpu_resources.ads", "intel_gpu_resources.adb",
        "intel_gpu_reset_pages.ads",
@@ -22,6 +29,7 @@ project Devmgr is
        "intel_gpu_ads_backing.ads",
        "intel_gpu_buffer_backing.ads",
        "intel_gpu_extent_allocator.ads", "intel_gpu_extent_allocator.adb",
+       "intel_gpu_va_placement.ads", "intel_gpu_va_placement.adb",
        "intel_gpu_physical_extents.ads", "intel_gpu_physical_extents.adb",
        "intel_gpu_buffer_reply.ads", "intel_gpu_buffer_reply.adb",
        "intel_gpu_display_claim.ads", "intel_gpu_display_claim.adb",
@@ -43,6 +51,7 @@ project Devmgr is
        "ccl-secondary_arrays.ads", "ccl-secondary_arrays.adb",
        "ccl-vm.ads", "ccl-vm.adb",
        "ccl-text_operations.ads", "ccl-text_operations.adb",
+       "ccl-list_operations.ads", "ccl-list_operations.adb",
        "ccl-resources.ads", "ccl-resources.adb",
        "ccl-resource_policies.ads", "ccl-resource_policies.adb",
       "ccl-host_values.ads", "ccl-host_values.adb",

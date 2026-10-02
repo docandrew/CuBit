@@ -1,0 +1,9 @@
+project Status_Names is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-status-names";
+   for Main use ("status_names_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+      for Local_Configuration_Pragmas use "status_names.adc";
+   end Compiler;
+end Status_Names;

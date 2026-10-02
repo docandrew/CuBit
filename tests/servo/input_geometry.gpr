@@ -1,0 +1,11 @@
+project Input_Geometry is
+   for Source_Dirs use (".", "../../userspace/servo/native", "../../userspace/lib/ui");
+   for Source_Files use ("servo_input_geometry.ads", "servo_input_geometry.adb",
+     "client_canvas_geometry.ads", "client_canvas_geometry.adb", "input_geometry_tests.adb");
+   for Object_Dir use "build/input-geometry/obj";
+   for Exec_Dir use "build/input-geometry";
+   for Main use ("input_geometry_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Input_Geometry;

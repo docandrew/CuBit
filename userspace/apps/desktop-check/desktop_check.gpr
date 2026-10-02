@@ -1,6 +1,7 @@
+with "../../lib/ui/fonts_native.gpr";
 project Desktop_Check is
    for Languages use ("Ada");
-   for Source_Dirs use (".");
+   for Source_Dirs use (".", "../../lib/ui", "../../lib/theme", "../../lib/compositor", "../../lib/display", "../../allocator/src");
    for Object_Dir use "build";
    for Main use ("main.adb");
    for Runtime ("Ada") use "../../runtime";

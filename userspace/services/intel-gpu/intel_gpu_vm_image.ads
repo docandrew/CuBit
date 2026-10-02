@@ -1,5 +1,6 @@
 with Interfaces; use Interfaces;
 with Intel_GPU_ADLN_PPGTT;
+with Intel_GPU_PPGTT_Scratch;
 generic
    Capacity : Positive;
 package Intel_GPU_VM_Image is
@@ -15,9 +16,14 @@ package Intel_GPU_VM_Image is
    type Data_Pages is array (Positive range <>) of Unsigned_64;
    type Image is limited private;
    procedure Initialize
-     (Object : in out Image; Backing : Backing_Pages; Accepted : out Boolean);
-   -- One initialization attempt per object; backing must be distinct, valid
+     (Object : in out Image; Backing : Backing_Pages; Accepted : out Boolean;
+      Scratch : Intel_GPU_PPGTT_Scratch.Backing_Pages := [others => 0]);
+   -- One initialization attempt per incarnation; backing must be distinct, valid
    -- DMA pages. It must not be recycled while this image/context exists.
+   -- Optional private scratch pages must all be valid, distinct and disjoint
+   -- from tables/data. All-zero selects faulting absent entries. Caller owns
+   -- and zeroes scratch data and exports all three scratch tables BEFORE root
+   -- publication. Never share writable scratch with another protection domain.
    procedure Prepare_Update
      (Target : in out Image; Source : Image; Backing : Backing_Pages;
       Accepted : out Boolean);
@@ -27,6 +33,8 @@ package Intel_GPU_VM_Image is
    -- and all data backing. This does not publish a root, quiesce a context,
    -- invalidate translations, or authorize old-backing/address reuse.
    -- The trusted caller must serialize and establish actual backing authority.
+   -- A used target can only be reused through Snapshots.Forget_Retired after
+   -- independent retirement confirmation, never by retrying Initialize.
    procedure Map_Page
      (Object : in out Image; GPU, DMA : Unsigned_64;
       Policy : Intel_GPU_ADLN_PPGTT.Cache_Policy;
@@ -49,7 +57,8 @@ package Intel_GPU_VM_Image is
    procedure Seal (Object : in out Image; Accepted : out Boolean);
    procedure Seal_Update (Object : in out Image; Accepted : out Boolean);
    -- Only a Prepare_Update successor may seal with no mapped data pages.
-   -- Retained directories remain valid; absent leaves grant no translation.
+   -- Retained directories remain valid; absent leaves use the selected
+   -- faulting or private-scratch policy (never an application BO mapping).
    -- Initial context preparation still requires the nonempty Seal operation.
    -- Empty sealing does not authorize submission, publication or reclamation.
    procedure Unmap_Pages
@@ -63,6 +72,10 @@ package Intel_GPU_VM_Image is
    function Sealed (Object : Image) return Boolean;
    function Used (Object : Image) return Natural;
    function Root_DMA (Object : Image) return Unsigned_64;
+   function Revision (Object : Image) return Unsigned_64;
+   function Direct_Successor (Object, Candidate : Image) return Boolean;
+   -- Local metadata incarnation, advanced on initialization/preparation and
+   -- adoption. Never a hardware completion or allocation authority.
    function Page_DMA (Object : Image; Page : Page_Number) return Unsigned_64;
    -- True only for a valid page-aligned DMA extent disjoint from every
    -- reserved table page AND every mapped data page in this valid image.
@@ -76,10 +89,18 @@ package Intel_GPU_VM_Image is
    function Entry_Value
      (Object : Image; Page : Page_Number;
       Index : Intel_GPU_ADLN_PPGTT.Table_Index) return Unsigned_64;
+   -- Hardware export, including fallback entries. Lookup reports explicit
+   -- application mappings only and returns zero for scratch-backed holes.
+   function Scratch_DMA
+     (Object : Image; L : Intel_GPU_PPGTT_Scratch.Level) return Unsigned_64;
+   function Scratch_Entry
+     (Object : Image; L : Intel_GPU_PPGTT_Scratch.Table_Level) return Unsigned_64;
+   -- Every one of the512 words in scratch table L has Scratch_Entry(L).
    function Lookup (Object : Image; GPU : Unsigned_64) return Unsigned_64;
 private
    type Table_Page is array (Intel_GPU_ADLN_PPGTT.Table_Index) of Unsigned_64;
    type Table_Pages is array (Page_Number) of Table_Page;
+   type Page_Levels is array (Page_Number) of Intel_GPU_PPGTT_Scratch.Level;
    type Image is limited record
       Attempted, Valid, Frozen : Boolean := False;
       Mapped_Pages : Natural range 0 .. Capacity * 512 := 0;
@@ -87,7 +108,10 @@ private
       -- Logical predecessor only. Hardware's stable root is owned separately
       -- by Application_Image; this does not authorize publication or reuse.
       Predecessor_Root : Unsigned_64 := 0;
+      Epoch, Predecessor_Epoch : Unsigned_64 := 0;
       DMA : Backing_Pages := [others => 0];
+      Scratch : Intel_GPU_PPGTT_Scratch.Backing_Pages := [others => 0];
+      Levels : Page_Levels := [others => 0];
       Entries : Table_Pages := [others => [others => 0]];
    end record;
 end Intel_GPU_VM_Image;

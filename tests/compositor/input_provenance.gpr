@@ -1,0 +1,10 @@
+project Input_Provenance is
+   for Source_Dirs use (".", "../../userspace/lib/ui");
+   for Source_Files use ("client_input_provenance.ads", "client_input_provenance.adb", "input_provenance_tests.adb");
+   for Object_Dir use "build/input-provenance/obj";
+   for Exec_Dir use "build/input-provenance";
+   for Main use ("input_provenance_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Input_Provenance;

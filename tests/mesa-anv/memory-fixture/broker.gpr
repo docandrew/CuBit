@@ -1,0 +1,24 @@
+project Broker is
+   for Source_Dirs use (".", "../../../userspace/lib/display",
+     "../../../userspace/runtime/gnat", "../../../userspace/services/intel-gpu");
+   for Source_Files use ("broker_tests.adb", "cubit.ads",
+     "messages_mock.ads", "messages_mock.adb",
+     "cubit-capability_grants.ads", "cubit-capability_grants.adb",
+     "cubit-async_requests.ads", "cubit-async_requests.adb",
+     "intel_gpu_render_sessions.ads", "intel_gpu_render_sessions.adb",
+     "intel_gpu_broker_request.ads", "intel_gpu_broker_request.adb",
+     "intel_gpu_broker_launches.ads", "intel_gpu_broker_launches.adb",
+     "intel_render_admission.ads", "intel_render_admission.adb",
+     "intel_render_admission_native.ads", "intel_render_admission_native.adb",
+     "intel_render_admission_dispatch.ads", "intel_render_admission_dispatch.adb",
+     "intel_render_broker.ads", "intel_render_broker.adb");
+   for Object_Dir use "build-broker";
+   for Main use ("broker_tests.adb");
+   package Naming is
+      for Spec ("CuBit.Messages") use "messages_mock.ads";
+      for Body ("CuBit.Messages") use "messages_mock.adb";
+   end Naming;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+end Broker;

@@ -1,0 +1,40 @@
+--- a/src/intel/vulkan/anv_kmd_backend.h
++++ b/src/intel/vulkan/anv_kmd_backend.h
+@@ -165,2 +165,7 @@
+-   void *(*gem_mmap)(struct anv_device *device, struct anv_bo *bo,
+-                     uint64_t offset, uint64_t size, void *placed_addr);
++   void *(*gem_mmap)(struct anv_device *device, struct anv_bo *bo,
++                     uint64_t offset, uint64_t size, void *placed_addr);
++   /* Receives page-adjusted mapping/size, like gem_mmap. CuBit releases a
++    * tracked shared-memory view here, not the retained GPU backing.
++    * replace must fail without changing the mapping when unsupported. */
++   VkResult (*unmap_bo)(struct anv_device *device, struct anv_bo *bo,
++                        void *map, size_t size, bool replace);
+--- a/src/intel/vulkan/anv_allocator.c
++++ b/src/intel/vulkan/anv_allocator.c
+@@ -1879,1 +1879,12 @@
+-   if (replace) {
++   const struct anv_kmd_backend *backend = device->kmd_backend;
++   if (backend && backend->unmap_bo) {
++      VkResult result = backend->unmap_bo(device, bo, map, map_size, replace);
++      if (result == VK_SUCCESS && !replace)
++         VG(VALGRIND_FREELIKE_BLOCK(map, 0));
++      return result;
++   }
++#if defined(__cubit__)
++   /* Missing transport support must not discard a grant with POSIX munmap. */
++   return vk_error(device, VK_ERROR_MEMORY_MAP_FAILED);
++#else
++   if (replace) {
+@@ -1890,5 +1890,6 @@
+-   return VK_SUCCESS;
+-}
+-
+-VkResult
+-anv_device_import_bo_from_host_ptr(struct anv_device *device,
++   return VK_SUCCESS;
++#endif
++}
++
++VkResult
++anv_device_import_bo_from_host_ptr(struct anv_device *device,

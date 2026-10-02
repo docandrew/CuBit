@@ -1,5 +1,6 @@
 with Interfaces; use Interfaces;
 with Intel_GPU_VM_Image;
+with Intel_GPU_PPGTT_Scratch;
 generic
    with package VM is new Intel_GPU_VM_Image (<>);
    with function Owner_Ready return Boolean;
@@ -9,19 +10,28 @@ package Intel_GPU_VM_Materialize is
       CPU, DMA : Unsigned_64 := 0;
    end record;
    type Mappings is array (VM.Page_Number) of Page_Mapping;
+   type Scratch_Mappings is array (Intel_GPU_PPGTT_Scratch.Level) of Page_Mapping;
    type State is limited private;
    -- Trusted owner supplies exclusive retained CPU mappings of these exact
    -- DMA pages; numeric checks cannot prove that relationship or authority.
    -- Pages must not alias the source image or another writer/device. Caller
    -- serializes this entire operation. Callbacks are bounded and nonraising.
    -- Flush_Page must complete cache visibility/ordering before returning True.
+   -- Optional scratch backing is exclusive and not yet GPU-referenced.
+   -- Data is zeroed; fallback tables are filled, flushed and verified before
+   -- normal tables. Never call this to reinitialize a live VM's scratch.
    procedure Prepare
      (Object : in out State; Source : VM.Image; Backing : Mappings;
-      Root : out Unsigned_64; Success : out Boolean);
+      Root : out Unsigned_64; Success : out Boolean;
+      Scratch : Scratch_Mappings := [others => (0, 0)]);
    procedure Publish_Update
      (Object : in out State; Previous, Candidate : VM.Image;
       Backing : Mappings; Stable_Root : Page_Mapping;
-      Success : out Boolean);
+      Success : out Boolean;
+      Scratch : Scratch_Mappings := [others => (0, 0)]);
+   -- Scratch descriptor must be identical across both generations; verify
+   -- retained tables without rewriting them or touching GPU-written data.
+   -- Caller retains the original exclusive CPU/DMA mappings and visibility.
    -- One attempt, including rejected preflight. Owner must hold submission
    -- exclusion, completed GPU flush/drain and acknowledged disable for EVERY
    -- context using this root throughout the call. Previous is the last

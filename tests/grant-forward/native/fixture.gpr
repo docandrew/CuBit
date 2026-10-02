@@ -1,0 +1,35 @@
+project Fixture is
+   Role := external ("ROLE", "client");
+   for Languages use ("Ada", "C");
+   for Excluded_Source_Files use ("anv_cubit_memory.c", "native_gpu_mapping.c");
+   for Source_Dirs use (".", "build/" & Role & "/generated", "../../../userspace/mesa/anv");
+   for Object_Dir use "build/" & Role;
+   for Exec_Dir use "build/" & Role;
+   for Main use (Role & ".adb");
+   for Runtime ("Ada") use "../../../userspace/runtime";
+   package Builder is
+      for Default_Switches ("Ada") use ("-nostdlib");
+      for Executable ("owner.adb") use "grant-forward-owner.app";
+      for Executable ("reader.adb") use "grant-forward-reader.app";
+      for Executable ("client.adb") use "grant-forward-client.app";
+      for Executable ("intermediary_exit.adb") use "grant-forward-intermediary_exit.app";
+      for Executable ("owner_exit.adb") use "grant-forward-owner_exit.app";
+      for Executable ("desktop.adb") use "grant-forward-desktop.app";
+   end Builder;
+   package Compiler is
+      for Default_Switches ("C") use
+        ("-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-ffreestanding",
+         "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-fstack-usage", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-d_C");
+   end Binder;
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("-nostdlib", "-static", "-no-pie", "-Wl,-z,stack-size=16777216", "-lgnat-user",
+         "-T", "../../../userspace/c/link.ld", "../../../userspace/c/build/crt0.o",
+         "build/" & Role & "/manifest.o");
+   end Linker;
+end Fixture;

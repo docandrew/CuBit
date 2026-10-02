@@ -286,7 +286,7 @@ begin
    CuBit.UI.App.Open (Win, 860, 560,
      CuBit.UI.App.WINDOW_FLAG_DECORATED or CuBit.UI.App.WINDOW_FLAG_RESIZABLE or
      CuBit.UI.App.WINDOW_FLAG_MINIMIZABLE or CuBit.UI.App.WINDOW_FLAG_MAXIMIZABLE or
-     CuBit.UI.App.WINDOW_FLAG_CLOSEABLE, Opened, title => "Config Inspector");
+     CuBit.UI.App.WINDOW_FLAG_CLOSEABLE, Opened, title => "Config Inspector", protected_frames => True);
    if Opened then
       debugPrint ("config-inspector: native window ready" & ASCII.LF);
       Run_UI (Win);

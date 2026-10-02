@@ -57,6 +57,22 @@ FIXES = {
          "\t\tTARGET = x86_64-unknown-linux-musl\n"
          "\tendif\n\n"
          "\tifeq (aarch64-unknown-linux-gnu,$(TARGET))", "once"),
+        # CuBit releases whole owned mappings. SpiderMonkey's generic Unix
+        # aligned allocator trims reservations with partial munmap, which is
+        # deliberately unsupported. Reuse its posix_memalign/free strategy
+        # (also used by WASI), keeping accounting and real mprotect unchanged.
+        ("mozjs/js/src/gc/Memory.cpp",
+         "#ifdef __wasi__\n  void* region = nullptr;\n  if (int err = posix_memalign(&region, alignment, length))",
+         "#if 1  // CuBit: aligned libc allocations, paired with free below.\n  void* region = nullptr;\n  if (int err = posix_memalign(&region, alignment, length))", "once"),
+        ("mozjs/js/src/gc/Memory.cpp",
+         "  memset(region, 0, length);\n  return region;\n#else\n\n#  ifdef JS_64BIT",
+         "  memset(region, 0, length);\n  RecordMemoryAlloc(length);\n  return region;\n#else\n\n#  ifdef JS_64BIT", "once"),
+        ("mozjs/js/src/gc/Memory.cpp",
+         "  UnmapInternal(region, length);\n\n#ifndef __wasi__\n  RecordMemoryFree(length);",
+         "  // CuBit: only MapAlignedPages allocations use libc ownership.\n  free(region);\n\n#ifndef __wasi__\n  RecordMemoryFree(length);", "once"),
+        ("mozjs/js/src/gc/Memory.cpp",
+         "  void* region = MapAlignedPagesLastDitch(length, alignment, StallAndRetry::No);\n  if (region) {\n    RecordMemoryAlloc(length);\n  }\n  return region;",
+         "  // CuBit has no partial-unmap alignment strategy to stress.\n  return MapAlignedPages(length, alignment, StallAndRetry::No);", "once"),
         # Every CuBit program is statically linked, libstdc++ included
         # (Firefox's shipping policy against that does not apply).
         ("mozjs/build/moz.configure/flags.configure",
@@ -123,13 +139,27 @@ def apply(registry, out):
                     j = os.path.join(dst, junk)
                     if os.path.exists(j):
                         os.remove(j)
-            for path, old, new, how in fix.get("edits", []):
-                p = os.path.join(dst, path)
-                s = open(p, encoding="utf-8").read()
-                assert old in s, (crate, path, old)
-                s = s.replace(old, new) if how == "all" else s.replace(old, new, 1)
-                open(p, "w", encoding="utf-8").write(s)
             open(stamp, "w").close()
+        # Repair the abandoned broad GC unmap edit in existing build caches.
+        # Ordinary mmap probes must retain their matching munmap operation.
+        if crate.startswith("mozjs_sys-"):
+            memory = os.path.join(dst, "mozjs/js/src/gc/Memory.cpp")
+            text = open(memory, encoding="utf-8").read()
+            corrected = text.replace(
+                "#elif 1  // CuBit: MapAlignedPages returns a libc-owned allocation.",
+                "#elif defined(__wasi__)")
+            if corrected != text:
+                open(memory, "w", encoding="utf-8").write(corrected)
+        # Apply newly added exact edits to an existing patched checkout too.
+        # Identical replacements preserve timestamps and Cargo's build cache.
+        for path, old, new, how in fix.get("edits", []):
+            p = os.path.join(dst, path)
+            s = open(p, encoding="utf-8").read()
+            if new in s:
+                continue
+            assert old in s, (crate, path, old)
+            s = s.replace(old, new) if how == "all" else s.replace(old, new, 1)
+            open(p, "w", encoding="utf-8").write(s)
         # name-version, where the version may itself contain '-' (153.3.0-0)
         name = re.match(r"^(.*?)-\d+\.\d+\.\d+", crate).group(1)
         lines.append(f"{name}={dst}")

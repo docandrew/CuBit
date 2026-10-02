@@ -55,4 +55,14 @@ package Intel_GPU_GuC_Context_Request with SPARK_Mode is
    function Schedule (ID : Unsigned_32) return Schedule_Words
      with Post => (if ID >= 65535 then
        (for all Word of Schedule'Result => Word = 0));
+   -- GuC single-context deregistration: action4503 + owned context ID.
+   -- Linux __guc_action_deregister_context reserves an asynchronous G2H
+   -- completion. This encoder neither sends nor acknowledges destruction.
+   -- Caller must close admission, drain work, reserve completion credits and
+   -- record pending state before publication. Scheduling-disable alone does
+   -- not permit IDs, context pages, PPGTT or application backing to be reused.
+   function Deregister (ID : Unsigned_32) return Schedule_Words
+     with Post => Deregister'Result =
+       (if ID < 65535 then Schedule_Words'[16#20004503#, ID]
+        else Schedule_Words'[0, 0]);
 end Intel_GPU_GuC_Context_Request;

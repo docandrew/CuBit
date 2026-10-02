@@ -1,0 +1,675 @@
+--- a/src/intel/perf/intel_perf.c
++++ b/src/intel/perf/intel_perf.c
+@@ -914,115 +914,6 @@
+    }
+ }
+ 
+-static void
+-get_passes_mask(struct intel_perf_config *perf,
+-                const uint32_t *counter_indices,
+-                uint32_t counter_indices_count,
+-                BITSET_WORD *queries_mask)
+-{
+-   /* For each counter, look if it's already computed by a selected metric set
+-    * or find one that can compute it.
+-    */
+-   for (uint32_t c = 0; c < counter_indices_count; c++) {
+-      uint32_t counter_idx = counter_indices[c];
+-      assert(counter_idx < perf->n_counters);
+-
+-      const struct intel_perf_query_counter_info *counter_info =
+-         &perf->counter_infos[counter_idx];
+-
+-      /* Check if the counter is already computed by one of the selected
+-       * metric set. If it is, there is nothing more to do with this counter.
+-       */
+-      uint32_t match = UINT32_MAX;
+-      for (uint32_t w = 0; w < BITSET_WORDS(INTEL_PERF_MAX_METRIC_SETS); w++) {
+-         if (queries_mask[w] & counter_info->query_mask[w]) {
+-            match = w * BITSET_WORDBITS + ffsll(queries_mask[w] & counter_info->query_mask[w]) - 1;
+-            break;
+-         }
+-      }
+-      if (match != UINT32_MAX)
+-         continue;
+-
+-      /* Now go through each metric set and find one that contains this
+-       * counter.
+-       */
+-      bool found = false;
+-      for (uint32_t w = 0; w < BITSET_WORDS(INTEL_PERF_MAX_METRIC_SETS); w++) {
+-         if (!counter_info->query_mask[w])
+-            continue;
+-
+-         uint32_t query_idx = w * BITSET_WORDBITS + ffsll(counter_info->query_mask[w]) - 1;
+-
+-         /* Since we already looked for this in the query_mask, it should not
+-          * be set.
+-          */
+-         assert(!BITSET_TEST(queries_mask, query_idx));
+-
+-         BITSET_SET(queries_mask, query_idx);
+-         found = true;
+-         break;
+-      }
+-      assert(found);
+-   }
+-}
+-
+-uint32_t
+-intel_perf_get_n_passes(struct intel_perf_config *perf,
+-                        const uint32_t *counter_indices,
+-                        uint32_t counter_indices_count,
+-                        struct intel_perf_query_info **pass_queries)
+-{
+-   BITSET_DECLARE(queries_mask, INTEL_PERF_MAX_METRIC_SETS);
+-   BITSET_ZERO(queries_mask);
+-
+-   get_passes_mask(perf, counter_indices, counter_indices_count, queries_mask);
+-
+-   if (pass_queries) {
+-      uint32_t pass = 0;
+-      for (uint32_t q = 0; q < perf->n_queries; q++) {
+-         if (BITSET_TEST(queries_mask, q))
+-            pass_queries[pass++] = &perf->queries[q];
+-      }
+-   }
+-
+-   return BITSET_COUNT(queries_mask);
+-}
+-
+-void
+-intel_perf_get_counters_passes(struct intel_perf_config *perf,
+-                               const uint32_t *counter_indices,
+-                               uint32_t counter_indices_count,
+-                               struct intel_perf_counter_pass *counter_pass)
+-{
+-   BITSET_DECLARE(queries_mask, INTEL_PERF_MAX_METRIC_SETS);
+-   BITSET_ZERO(queries_mask);
+-
+-   get_passes_mask(perf, counter_indices, counter_indices_count, queries_mask);
+-
+-   for (uint32_t i = 0; i < counter_indices_count; i++) {
+-      assert(counter_indices[i] < perf->n_counters);
+-
+-      uint32_t counter_idx = counter_indices[i];
+-      counter_pass[i].counter = perf->counter_infos[counter_idx].counter;
+-
+-      const struct intel_perf_query_counter_info *counter_info =
+-         &perf->counter_infos[counter_idx];
+-
+-      uint32_t query_idx = UINT32_MAX;
+-      for (uint32_t w = 0; w < BITSET_WORDS(INTEL_PERF_MAX_METRIC_SETS); w++) {
+-         if (counter_info->query_mask[w] & queries_mask[w]) {
+-            query_idx = w * BITSET_WORDBITS +
+-               ffsll(counter_info->query_mask[w] & queries_mask[w]) - 1;
+-            break;
+-         }
+-      }
+-      assert(query_idx != UINT32_MAX);
+-
+-      counter_pass[i].query = &perf->queries[query_idx];
+-   }
+-}
+-
+-
+ static int
+ intel_perf_compare_query_names(const void *v1, const void *v2)
+ {
+--- /dev/null
++++ b/src/intel/perf/intel_perf_passes.c
+@@ -0,0 +1,135 @@
++/*
++ * Copyright © 2018 Intel Corporation
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice (including the next
++ * paragraph) shall be included in all copies or substantial portions of the
++ * Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
++ * IN THE SOFTWARE.
++ */
++
++#include "intel_perf.h"
++#include <strings.h>
++
++static void
++get_passes_mask(struct intel_perf_config *perf,
++                const uint32_t *counter_indices,
++                uint32_t counter_indices_count,
++                BITSET_WORD *queries_mask)
++{
++   /* For each counter, look if it's already computed by a selected metric set
++    * or find one that can compute it.
++    */
++   for (uint32_t c = 0; c < counter_indices_count; c++) {
++      uint32_t counter_idx = counter_indices[c];
++      assert(counter_idx < perf->n_counters);
++
++      const struct intel_perf_query_counter_info *counter_info =
++         &perf->counter_infos[counter_idx];
++
++      /* Check if the counter is already computed by one of the selected
++       * metric set. If it is, there is nothing more to do with this counter.
++       */
++      uint32_t match = UINT32_MAX;
++      for (uint32_t w = 0; w < BITSET_WORDS(INTEL_PERF_MAX_METRIC_SETS); w++) {
++         if (queries_mask[w] & counter_info->query_mask[w]) {
++            match = w * BITSET_WORDBITS + ffsll(queries_mask[w] & counter_info->query_mask[w]) - 1;
++            break;
++         }
++      }
++      if (match != UINT32_MAX)
++         continue;
++
++      /* Now go through each metric set and find one that contains this
++       * counter.
++       */
++      bool found = false;
++      for (uint32_t w = 0; w < BITSET_WORDS(INTEL_PERF_MAX_METRIC_SETS); w++) {
++         if (!counter_info->query_mask[w])
++            continue;
++
++         uint32_t query_idx = w * BITSET_WORDBITS + ffsll(counter_info->query_mask[w]) - 1;
++
++         /* Since we already looked for this in the query_mask, it should not
++          * be set.
++          */
++         assert(!BITSET_TEST(queries_mask, query_idx));
++
++         BITSET_SET(queries_mask, query_idx);
++         found = true;
++         break;
++      }
++      assert(found);
++   }
++}
++
++uint32_t
++intel_perf_get_n_passes(struct intel_perf_config *perf,
++                        const uint32_t *counter_indices,
++                        uint32_t counter_indices_count,
++                        struct intel_perf_query_info **pass_queries)
++{
++   BITSET_DECLARE(queries_mask, INTEL_PERF_MAX_METRIC_SETS);
++   BITSET_ZERO(queries_mask);
++
++   get_passes_mask(perf, counter_indices, counter_indices_count, queries_mask);
++
++   if (pass_queries) {
++      uint32_t pass = 0;
++      for (uint32_t q = 0; q < perf->n_queries; q++) {
++         if (BITSET_TEST(queries_mask, q))
++            pass_queries[pass++] = &perf->queries[q];
++      }
++   }
++
++   return BITSET_COUNT(queries_mask);
++}
++
++void
++intel_perf_get_counters_passes(struct intel_perf_config *perf,
++                               const uint32_t *counter_indices,
++                               uint32_t counter_indices_count,
++                               struct intel_perf_counter_pass *counter_pass)
++{
++   BITSET_DECLARE(queries_mask, INTEL_PERF_MAX_METRIC_SETS);
++   BITSET_ZERO(queries_mask);
++
++   get_passes_mask(perf, counter_indices, counter_indices_count, queries_mask);
++
++   for (uint32_t i = 0; i < counter_indices_count; i++) {
++      assert(counter_indices[i] < perf->n_counters);
++
++      uint32_t counter_idx = counter_indices[i];
++      counter_pass[i].counter = perf->counter_infos[counter_idx].counter;
++
++      const struct intel_perf_query_counter_info *counter_info =
++         &perf->counter_infos[counter_idx];
++
++      uint32_t query_idx = UINT32_MAX;
++      for (uint32_t w = 0; w < BITSET_WORDS(INTEL_PERF_MAX_METRIC_SETS); w++) {
++         if (counter_info->query_mask[w] & queries_mask[w]) {
++            query_idx = w * BITSET_WORDBITS +
++               ffsll(counter_info->query_mask[w] & queries_mask[w]) - 1;
++            break;
++         }
++      }
++      assert(query_idx != UINT32_MAX);
++
++      counter_pass[i].query = &perf->queries[query_idx];
++   }
++}
++
++
+--- a/src/intel/perf/intel_perf_mdapi.c
++++ b/src/intel/perf/intel_perf_mdapi.c
+@@ -28,189 +28,6 @@
+ 
+ #include "dev/intel_device_info.h"
+ 
+-int
+-intel_perf_query_result_write_mdapi(void *data, uint32_t data_size,
+-                                    const struct intel_device_info *devinfo,
+-                                    const struct intel_perf_query_info *query,
+-                                    const struct intel_perf_query_result *result)
+-{
+-   switch (devinfo->verx10) {
+-   case 70:
+-   case 75: {
+-      struct gfx7_mdapi_metrics *mdapi_data = (struct gfx7_mdapi_metrics *) data;
+-
+-      if (data_size < sizeof(*mdapi_data))
+-         return 0;
+-
+-      assert(devinfo->platform == INTEL_PLATFORM_HSW);
+-
+-      for (int i = 0; i < ARRAY_SIZE(mdapi_data->ACounters); i++)
+-         mdapi_data->ACounters[i] = result->accumulator[1 + i];
+-
+-      for (int i = 0; i < ARRAY_SIZE(mdapi_data->NOACounters); i++) {
+-         mdapi_data->NOACounters[i] =
+-            result->accumulator[1 + ARRAY_SIZE(mdapi_data->ACounters) + i];
+-      }
+-
+-      mdapi_data->PerfCounter1 = result->accumulator[query->perfcnt_offset + 0];
+-      mdapi_data->PerfCounter2 = result->accumulator[query->perfcnt_offset + 1];
+-
+-      mdapi_data->ReportsCount = result->reports_accumulated;
+-      mdapi_data->TotalTime =
+-         intel_device_info_timebase_scale(devinfo, result->accumulator[0]);
+-      mdapi_data->CoreFrequency = result->gt_frequency[1];
+-      mdapi_data->CoreFrequencyChanged = result->gt_frequency[1] != result->gt_frequency[0];
+-      mdapi_data->SplitOccured = result->query_disjoint;
+-      return sizeof(*mdapi_data);
+-   }
+-   case 80: {
+-      struct gfx8_mdapi_metrics *mdapi_data = (struct gfx8_mdapi_metrics *) data;
+-
+-      if (data_size < sizeof(*mdapi_data))
+-         return 0;
+-
+-      for (int i = 0; i < ARRAY_SIZE(mdapi_data->OaCntr); i++)
+-         mdapi_data->OaCntr[i] = result->accumulator[2 + i];
+-      for (int i = 0; i < ARRAY_SIZE(mdapi_data->NoaCntr); i++) {
+-         mdapi_data->NoaCntr[i] =
+-            result->accumulator[2 + ARRAY_SIZE(mdapi_data->OaCntr) + i];
+-      }
+-
+-      mdapi_data->PerfCounter1 = result->accumulator[query->perfcnt_offset + 0];
+-      mdapi_data->PerfCounter2 = result->accumulator[query->perfcnt_offset + 1];
+-
+-      mdapi_data->ReportId = result->hw_id;
+-      mdapi_data->ReportsCount = result->reports_accumulated;
+-      mdapi_data->TotalTime =
+-         intel_device_info_timebase_scale(devinfo, result->accumulator[0]);
+-      mdapi_data->BeginTimestamp =
+-         intel_device_info_timebase_scale(devinfo, result->begin_timestamp);
+-      mdapi_data->GPUTicks = result->accumulator[1];
+-      mdapi_data->CoreFrequency = result->gt_frequency[1];
+-      mdapi_data->CoreFrequencyChanged = result->gt_frequency[1] != result->gt_frequency[0];
+-      mdapi_data->SliceFrequency =
+-         (result->slice_frequency[0] + result->slice_frequency[1]) / 2ULL;
+-      mdapi_data->UnsliceFrequency =
+-         (result->unslice_frequency[0] + result->unslice_frequency[1]) / 2ULL;
+-      mdapi_data->SplitOccured = result->query_disjoint;
+-      return sizeof(*mdapi_data);
+-   }
+-   case 90:
+-   case 110:
+-   case 120:{
+-      struct gfx9_mdapi_metrics *mdapi_data = (struct gfx9_mdapi_metrics *) data;
+-
+-      if (data_size < sizeof(*mdapi_data))
+-         return 0;
+-
+-      for (int i = 0; i < ARRAY_SIZE(mdapi_data->OaCntr); i++)
+-         mdapi_data->OaCntr[i] = result->accumulator[2 + i];
+-      for (int i = 0; i < ARRAY_SIZE(mdapi_data->NoaCntr); i++) {
+-         mdapi_data->NoaCntr[i] =
+-            result->accumulator[2 + ARRAY_SIZE(mdapi_data->OaCntr) + i];
+-      }
+-
+-      mdapi_data->PerfCounter1 = result->accumulator[query->perfcnt_offset + 0];
+-      mdapi_data->PerfCounter2 = result->accumulator[query->perfcnt_offset + 1];
+-
+-      mdapi_data->ReportId = result->hw_id;
+-      mdapi_data->ReportsCount = result->reports_accumulated;
+-      mdapi_data->TotalTime =
+-         intel_device_info_timebase_scale(devinfo, result->accumulator[0]);
+-      mdapi_data->BeginTimestamp =
+-         intel_device_info_timebase_scale(devinfo, result->begin_timestamp);
+-      mdapi_data->GPUTicks = result->accumulator[1];
+-      mdapi_data->CoreFrequency = result->gt_frequency[1];
+-      mdapi_data->CoreFrequencyChanged = result->gt_frequency[1] != result->gt_frequency[0];
+-      mdapi_data->SliceFrequency =
+-         (result->slice_frequency[0] + result->slice_frequency[1]) / 2ULL;
+-      mdapi_data->UnsliceFrequency =
+-         (result->unslice_frequency[0] + result->unslice_frequency[1]) / 2ULL;
+-      mdapi_data->SplitOccured = result->query_disjoint;
+-      return sizeof(*mdapi_data);
+-   }
+-   case 125: {
+-      struct gfx12_5_mdapi_metrics *mdapi_data = (struct gfx12_5_mdapi_metrics *) data;
+-
+-      if (data_size < sizeof(*mdapi_data))
+-         return 0;
+-
+-      for (int i = 0; i < ARRAY_SIZE(mdapi_data->OaCntr); i++)
+-         mdapi_data->OaCntr[i] = result->accumulator[2 + i];
+-      for (int i = 0; i < ARRAY_SIZE(mdapi_data->NoaCntr); i++) {
+-         mdapi_data->NoaCntr[i] =
+-            result->accumulator[2 + ARRAY_SIZE(mdapi_data->OaCntr) + i];
+-      }
+-
+-      mdapi_data->PerfCounter1 = result->accumulator[query->perfcnt_offset + 0];
+-      mdapi_data->PerfCounter2 = result->accumulator[query->perfcnt_offset + 1];
+-
+-      mdapi_data->ReportId = result->hw_id;
+-      mdapi_data->ReportsCount = result->reports_accumulated;
+-      mdapi_data->TotalTime =
+-         intel_device_info_timebase_scale(devinfo, result->accumulator[0]);
+-      mdapi_data->BeginTimestamp =
+-         intel_device_info_timebase_scale(devinfo, result->begin_timestamp);
+-      mdapi_data->GPUTicks = result->accumulator[1];
+-      mdapi_data->CoreFrequency = result->gt_frequency[1];
+-      mdapi_data->CoreFrequencyChanged = result->gt_frequency[1] != result->gt_frequency[0];
+-      mdapi_data->SliceFrequency =
+-         (result->slice_frequency[0] + result->slice_frequency[1]) / 2ULL;
+-      mdapi_data->UnsliceFrequency =
+-         (result->unslice_frequency[0] + result->unslice_frequency[1]) / 2ULL;
+-      mdapi_data->SplitOccured = result->query_disjoint;
+-
+-      /* TODO: Fields not being set: MidQueryEvents, OverrunOccured, MarkerUser,
+-       * MarkerDriver, UserCntr, UserCntrCfgId, Flags.
+-       */
+-      return sizeof(*mdapi_data);
+-   }
+-   case 200:
+-   case 300: {
+-      struct gfx20_mdapi_metrics *mdapi_data = (struct gfx20_mdapi_metrics *) data;
+-
+-      if (data_size < sizeof(*mdapi_data))
+-         return 0;
+-
+-      mdapi_data->TotalTime =
+-         intel_device_info_timebase_scale(devinfo, result->accumulator[0]);
+-      mdapi_data->GpuTicks = result->accumulator[1];
+-
+-      for (int i = 0; i < ARRAY_SIZE(mdapi_data->PerformanceEventCounter); i++)
+-         mdapi_data->PerformanceEventCounter[i] = result->accumulator[2 + i];
+-
+-      for (int i = 0; i < ARRAY_SIZE(mdapi_data->VisaCounter); i++) {
+-         uint32_t acc_index = 2 + ARRAY_SIZE(mdapi_data->PerformanceEventCounter) + i;
+-
+-         /* TODO: not clear from where the remaining VisaCounters should be read from */
+-         if (acc_index == ARRAY_SIZE(result->accumulator))
+-            break;
+-
+-         mdapi_data->VisaCounter[i] = result->accumulator[acc_index];
+-      }
+-
+-      mdapi_data->ReportId = result->hw_id;
+-      mdapi_data->ReportsCount = result->reports_accumulated;
+-      mdapi_data->BeginTimestamp =
+-         intel_device_info_timebase_scale(devinfo, result->begin_timestamp);
+-      mdapi_data->CoreFrequency = result->gt_frequency[1];
+-      mdapi_data->CoreFrequencyChanged = result->gt_frequency[1] != result->gt_frequency[0];
+-      mdapi_data->SliceFrequency =
+-         (result->slice_frequency[0] + result->slice_frequency[1]) / 2ULL;
+-      mdapi_data->UnsliceFrequency =
+-         (result->unslice_frequency[0] + result->unslice_frequency[1]) / 2ULL;
+-      mdapi_data->SplitOccured = result->query_disjoint;
+-
+-      /* TODO: Fields not being set: MidQueryEvents, OverrunOccured, MarkerUser,
+-       * MarkerDriver, UserCntr, UserCntrCfgId, Flags
+-       */
+-      return sizeof(*mdapi_data);
+-   }
+-   default:
+-      UNREACHABLE("unexpected gen");
+-   }
+-}
+-
+ void
+ intel_perf_register_mdapi_statistic_query(struct intel_perf_config *perf_cfg,
+                                           const struct intel_device_info *devinfo)
+--- /dev/null
++++ b/src/intel/perf/intel_perf_mdapi_results.c
+@@ -0,0 +1,213 @@
++/*
++ * Copyright © 2018 Intel Corporation
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice (including the next
++ * paragraph) shall be included in all copies or substantial portions of the
++ * Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
++ * IN THE SOFTWARE.
++ */
++
++#include "intel_perf.h"
++#include "intel_perf_mdapi.h"
++#include "intel_perf_private.h"
++#include "intel_perf_regs.h"
++
++#include "dev/intel_device_info.h"
++
++int
++intel_perf_query_result_write_mdapi(void *data, uint32_t data_size,
++                                    const struct intel_device_info *devinfo,
++                                    const struct intel_perf_query_info *query,
++                                    const struct intel_perf_query_result *result)
++{
++   switch (devinfo->verx10) {
++   case 70:
++   case 75: {
++      struct gfx7_mdapi_metrics *mdapi_data = (struct gfx7_mdapi_metrics *) data;
++
++      if (data_size < sizeof(*mdapi_data))
++         return 0;
++
++      assert(devinfo->platform == INTEL_PLATFORM_HSW);
++
++      for (int i = 0; i < ARRAY_SIZE(mdapi_data->ACounters); i++)
++         mdapi_data->ACounters[i] = result->accumulator[1 + i];
++
++      for (int i = 0; i < ARRAY_SIZE(mdapi_data->NOACounters); i++) {
++         mdapi_data->NOACounters[i] =
++            result->accumulator[1 + ARRAY_SIZE(mdapi_data->ACounters) + i];
++      }
++
++      mdapi_data->PerfCounter1 = result->accumulator[query->perfcnt_offset + 0];
++      mdapi_data->PerfCounter2 = result->accumulator[query->perfcnt_offset + 1];
++
++      mdapi_data->ReportsCount = result->reports_accumulated;
++      mdapi_data->TotalTime =
++         intel_device_info_timebase_scale(devinfo, result->accumulator[0]);
++      mdapi_data->CoreFrequency = result->gt_frequency[1];
++      mdapi_data->CoreFrequencyChanged = result->gt_frequency[1] != result->gt_frequency[0];
++      mdapi_data->SplitOccured = result->query_disjoint;
++      return sizeof(*mdapi_data);
++   }
++   case 80: {
++      struct gfx8_mdapi_metrics *mdapi_data = (struct gfx8_mdapi_metrics *) data;
++
++      if (data_size < sizeof(*mdapi_data))
++         return 0;
++
++      for (int i = 0; i < ARRAY_SIZE(mdapi_data->OaCntr); i++)
++         mdapi_data->OaCntr[i] = result->accumulator[2 + i];
++      for (int i = 0; i < ARRAY_SIZE(mdapi_data->NoaCntr); i++) {
++         mdapi_data->NoaCntr[i] =
++            result->accumulator[2 + ARRAY_SIZE(mdapi_data->OaCntr) + i];
++      }
++
++      mdapi_data->PerfCounter1 = result->accumulator[query->perfcnt_offset + 0];
++      mdapi_data->PerfCounter2 = result->accumulator[query->perfcnt_offset + 1];
++
++      mdapi_data->ReportId = result->hw_id;
++      mdapi_data->ReportsCount = result->reports_accumulated;
++      mdapi_data->TotalTime =
++         intel_device_info_timebase_scale(devinfo, result->accumulator[0]);
++      mdapi_data->BeginTimestamp =
++         intel_device_info_timebase_scale(devinfo, result->begin_timestamp);
++      mdapi_data->GPUTicks = result->accumulator[1];
++      mdapi_data->CoreFrequency = result->gt_frequency[1];
++      mdapi_data->CoreFrequencyChanged = result->gt_frequency[1] != result->gt_frequency[0];
++      mdapi_data->SliceFrequency =
++         (result->slice_frequency[0] + result->slice_frequency[1]) / 2ULL;
++      mdapi_data->UnsliceFrequency =
++         (result->unslice_frequency[0] + result->unslice_frequency[1]) / 2ULL;
++      mdapi_data->SplitOccured = result->query_disjoint;
++      return sizeof(*mdapi_data);
++   }
++   case 90:
++   case 110:
++   case 120:{
++      struct gfx9_mdapi_metrics *mdapi_data = (struct gfx9_mdapi_metrics *) data;
++
++      if (data_size < sizeof(*mdapi_data))
++         return 0;
++
++      for (int i = 0; i < ARRAY_SIZE(mdapi_data->OaCntr); i++)
++         mdapi_data->OaCntr[i] = result->accumulator[2 + i];
++      for (int i = 0; i < ARRAY_SIZE(mdapi_data->NoaCntr); i++) {
++         mdapi_data->NoaCntr[i] =
++            result->accumulator[2 + ARRAY_SIZE(mdapi_data->OaCntr) + i];
++      }
++
++      mdapi_data->PerfCounter1 = result->accumulator[query->perfcnt_offset + 0];
++      mdapi_data->PerfCounter2 = result->accumulator[query->perfcnt_offset + 1];
++
++      mdapi_data->ReportId = result->hw_id;
++      mdapi_data->ReportsCount = result->reports_accumulated;
++      mdapi_data->TotalTime =
++         intel_device_info_timebase_scale(devinfo, result->accumulator[0]);
++      mdapi_data->BeginTimestamp =
++         intel_device_info_timebase_scale(devinfo, result->begin_timestamp);
++      mdapi_data->GPUTicks = result->accumulator[1];
++      mdapi_data->CoreFrequency = result->gt_frequency[1];
++      mdapi_data->CoreFrequencyChanged = result->gt_frequency[1] != result->gt_frequency[0];
++      mdapi_data->SliceFrequency =
++         (result->slice_frequency[0] + result->slice_frequency[1]) / 2ULL;
++      mdapi_data->UnsliceFrequency =
++         (result->unslice_frequency[0] + result->unslice_frequency[1]) / 2ULL;
++      mdapi_data->SplitOccured = result->query_disjoint;
++      return sizeof(*mdapi_data);
++   }
++   case 125: {
++      struct gfx12_5_mdapi_metrics *mdapi_data = (struct gfx12_5_mdapi_metrics *) data;
++
++      if (data_size < sizeof(*mdapi_data))
++         return 0;
++
++      for (int i = 0; i < ARRAY_SIZE(mdapi_data->OaCntr); i++)
++         mdapi_data->OaCntr[i] = result->accumulator[2 + i];
++      for (int i = 0; i < ARRAY_SIZE(mdapi_data->NoaCntr); i++) {
++         mdapi_data->NoaCntr[i] =
++            result->accumulator[2 + ARRAY_SIZE(mdapi_data->OaCntr) + i];
++      }
++
++      mdapi_data->PerfCounter1 = result->accumulator[query->perfcnt_offset + 0];
++      mdapi_data->PerfCounter2 = result->accumulator[query->perfcnt_offset + 1];
++
++      mdapi_data->ReportId = result->hw_id;
++      mdapi_data->ReportsCount = result->reports_accumulated;
++      mdapi_data->TotalTime =
++         intel_device_info_timebase_scale(devinfo, result->accumulator[0]);
++      mdapi_data->BeginTimestamp =
++         intel_device_info_timebase_scale(devinfo, result->begin_timestamp);
++      mdapi_data->GPUTicks = result->accumulator[1];
++      mdapi_data->CoreFrequency = result->gt_frequency[1];
++      mdapi_data->CoreFrequencyChanged = result->gt_frequency[1] != result->gt_frequency[0];
++      mdapi_data->SliceFrequency =
++         (result->slice_frequency[0] + result->slice_frequency[1]) / 2ULL;
++      mdapi_data->UnsliceFrequency =
++         (result->unslice_frequency[0] + result->unslice_frequency[1]) / 2ULL;
++      mdapi_data->SplitOccured = result->query_disjoint;
++
++      /* TODO: Fields not being set: MidQueryEvents, OverrunOccured, MarkerUser,
++       * MarkerDriver, UserCntr, UserCntrCfgId, Flags.
++       */
++      return sizeof(*mdapi_data);
++   }
++   case 200:
++   case 300: {
++      struct gfx20_mdapi_metrics *mdapi_data = (struct gfx20_mdapi_metrics *) data;
++
++      if (data_size < sizeof(*mdapi_data))
++         return 0;
++
++      mdapi_data->TotalTime =
++         intel_device_info_timebase_scale(devinfo, result->accumulator[0]);
++      mdapi_data->GpuTicks = result->accumulator[1];
++
++      for (int i = 0; i < ARRAY_SIZE(mdapi_data->PerformanceEventCounter); i++)
++         mdapi_data->PerformanceEventCounter[i] = result->accumulator[2 + i];
++
++      for (int i = 0; i < ARRAY_SIZE(mdapi_data->VisaCounter); i++) {
++         uint32_t acc_index = 2 + ARRAY_SIZE(mdapi_data->PerformanceEventCounter) + i;
++
++         /* TODO: not clear from where the remaining VisaCounters should be read from */
++         if (acc_index == ARRAY_SIZE(result->accumulator))
++            break;
++
++         mdapi_data->VisaCounter[i] = result->accumulator[acc_index];
++      }
++
++      mdapi_data->ReportId = result->hw_id;
++      mdapi_data->ReportsCount = result->reports_accumulated;
++      mdapi_data->BeginTimestamp =
++         intel_device_info_timebase_scale(devinfo, result->begin_timestamp);
++      mdapi_data->CoreFrequency = result->gt_frequency[1];
++      mdapi_data->CoreFrequencyChanged = result->gt_frequency[1] != result->gt_frequency[0];
++      mdapi_data->SliceFrequency =
++         (result->slice_frequency[0] + result->slice_frequency[1]) / 2ULL;
++      mdapi_data->UnsliceFrequency =
++         (result->unslice_frequency[0] + result->unslice_frequency[1]) / 2ULL;
++      mdapi_data->SplitOccured = result->query_disjoint;
++
++      /* TODO: Fields not being set: MidQueryEvents, OverrunOccured, MarkerUser,
++       * MarkerDriver, UserCntr, UserCntrCfgId, Flags
++       */
++      return sizeof(*mdapi_data);
++   }
++   default:
++      UNREACHABLE("unexpected gen");
++   }
++}
++
+--- a/src/intel/perf/meson.build
++++ b/src/intel/perf/meson.build
+@@ -20,7 +20,7 @@
+   intel_hw_metrics_xml_files += 'oa-@0@.xml'.format(hw)
+ endforeach
+ 
+-intel_perf_sources = ['intel_perf_results.c']
++intel_perf_sources = ['intel_perf_results.c', 'intel_perf_passes.c', 'intel_perf_mdapi_results.c']
+ if host_machine.system() != 'cubit'
+ intel_perf_sources += [
+   'i915/intel_perf.c',

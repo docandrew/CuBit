@@ -1,0 +1,10 @@
+project CCL is
+ for Source_Dirs use ("ccl", "build/ccl-source", "build/source", "../../userspace/lib/observatory");
+ for Excluded_Source_Files use ("observatory_metric_observer.ads", "observatory_metric_observer.adb", "observatory_query_lifetime.ads", "observatory_query_lifetime.adb");
+ for Object_Dir use "build/ccl/obj";
+ for Exec_Dir use "build/ccl";
+ for Main use ("ccl_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+ end Compiler;
+end CCL;

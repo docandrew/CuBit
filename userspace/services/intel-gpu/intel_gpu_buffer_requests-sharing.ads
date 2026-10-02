@@ -48,6 +48,28 @@ package Intel_GPU_Buffer_Requests.Sharing is
    -- Close admission first so no subsequent request resolves this session.
    -- This hook drains its grants; it does not edit the admission controller.
    procedure Retire_Session (Table : in out Mapping_Table; Session : Unsigned_64);
+   type Retirement_State is (Clear, Outstanding, Uncertain);
+   -- Trusted dispatcher observation, not caller authentication. Clear means
+   -- no outstanding grant in this table for Session, not closed admission,
+   -- completed GPU work, or permission to reclaim backing. Caller must first
+   -- close admission and serialize allocation/map completions with this read.
+   -- Failed views/table/ownership never become Clear just because polling ends.
+   function Observe_Retirement (Table : Mapping_Table; Session : Unsigned_64)
+      return Retirement_State;
+   -- Per-buffer counterpart for the trusted retirement coordinator. Includes
+   -- ordinary reads/writes AND forwardable presentation roots, regardless of
+   -- whether the buffer name is still open. Zero identities fail closed.
+   -- Clear is only a CPU-grant observation, not evidence of a valid BO or of
+   -- GPU unbinding/completion. The caller must authenticate the retained BO
+   -- generation and close mapping admission before using this observation.
+   function Observe_Buffer_Retirement
+     (Table : Mapping_Table; Session, Buffer_ID : Unsigned_64)
+      return Retirement_State;
+   -- Serialized dispatcher interlock: a presentation loan (including
+   -- uncertain/retiring grants) forbids new GPU submissions for this session.
+   -- A read-only grant alone is not a GPU-write exclusion mechanism.
+   function Presentation_Held (Table : Mapping_Table; Session : Unsigned_64)
+      return Boolean;
    procedure Quarantine (Table : in out Mapping_Table);
    procedure Poll (Table : in out Mapping_Table);
    -- Dispatcher-owned view; caller supplies only its BO handle and range.
@@ -64,6 +86,9 @@ private
    type Mapping_Entry is limited record
       ID : Mapping_ID := 0;
       Session : Unsigned_64 := 0;
+      Buffer_ID : Unsigned_64 := 0;
+      Writable : Boolean := False;
+      Presentation : Boolean := False;
       View : Intel_GPU_Buffer_Views.View;
    end record;
    type Entries is array (Positive range 1 .. Capacity) of Mapping_Entry;

@@ -41,6 +41,9 @@ package CCL.Configurations with SPARK_Mode => On is
       Executable : Executable_Text;
       Priority : Startup_Priority := 5;
       Approval : Network_Approval := Deny;
+      -- Trusted startup approval, not authority claimed by the executable.
+      -- Still requires its declared render endpoint and broker admission.
+      Approve_Render : Boolean := False;
       Role : Startup_Role := Application;
       Mode : Launch_Mode := At_Startup;
       --  Per_Device drivers only: the manifest's device resources may be

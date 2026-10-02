@@ -1,0 +1,10 @@
+project Transactions is
+   for Source_Dirs use (".", "../../../userspace/lib/acpi", "../../../shared/firmware");
+   for Object_Dir use "../build/transactions/obj";
+   for Exec_Dir use "../build/transactions";
+   for Main use ("transaction_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Transactions;

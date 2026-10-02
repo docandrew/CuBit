@@ -1,0 +1,6 @@
+--- a/src/intel/vulkan/anv_private.h
++++ b/src/intel/vulkan/anv_private.h
+@@ -3115,3 +3115,0 @@
+-VkResult anv_device_wait(struct anv_device *device, struct anv_bo *bo,
+-                         int64_t timeout);
+-

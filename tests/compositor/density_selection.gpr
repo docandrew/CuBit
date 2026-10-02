@@ -1,0 +1,10 @@
+project Density_Selection is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use ("density_selection_tests.adb", "compositor_density_selection.ads", "compositor_density_selection.adb", "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb");
+   for Object_Dir use "build/density-selection/obj";
+   for Exec_Dir use "build/density-selection";
+   for Main use ("density_selection_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Density_Selection;

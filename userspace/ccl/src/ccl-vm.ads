@@ -5,9 +5,10 @@ with CCL.Bounded_Stacks;
 with CCL.Execution_Budgets;
 with CCL.Types;
 with CCL.Objects;
-with CCL.Objects.Views;
 with CCL.Resources;
 with CCL.Secondary_Stacks;
+with CCL.Secondary_Arrays;
+with CCL.List_Operations;
 
 package CCL.VM with
    SPARK_Mode => On
@@ -16,9 +17,10 @@ is
    use type CCL.Types.Type_Reference;
    use type CCL.Types.Shape;
    use type CCL.Resources.Reference;
-   use type CCL.Objects.Views.Cursor;
 
    MAX_INSTRUCTIONS : constant := 256;
+   --  Functions per program ("Functions" below).
+   MAX_FUNCTIONS    : constant := 16;
    MAX_STACK_DEPTH  : constant := 64;
    MAX_IMPORTS      : constant := 16;
 
@@ -34,14 +36,25 @@ is
      array (CCL.Ownership.Binding_Id) of CCL.Ownership.Type_Id;
 
    type Value_Kind is
-     (Integer_Value, Boolean_Value, Variant_Value, Object_Value, Resource_Value, Text_Value);
+     (Integer_Value, Boolean_Value, Variant_Value, Object_Value, Resource_Value, Text_Value,
+      Character_Value, List_Value, Function_Value);
    for Value_Kind use
      (Integer_Value => 0, Boolean_Value => 1, Variant_Value => 2, Object_Value => 3,
-      Resource_Value => 4, Text_Value => 5);
+      Resource_Value => 4, Text_Value => 5, Character_Value => 6, List_Value => 7,
+      Function_Value => 8);
    for Value_Kind'Size use 8;
    subtype Scalar_Kind is Value_Kind range Integer_Value .. Boolean_Value;
-   MAX_OBJECT_VALUES : constant := 16;
-   subtype Object_Position is Natural range 0 .. MAX_OBJECT_VALUES;
+
+   --  The value arena (docs/ccl-bytecode-format.md, step 4): the records and
+   --  payload variants a run builds or copies in from the host. An
+   --  Object_Value holds a node index (0 for a payload variant's unit
+   --  alternative). The interpreter's bounds (CCL.Language uses these).
+   MAX_VALUE_NODES : constant := 512;
+   MAX_VALUE_SLOTS : constant := 2_048;
+   subtype Node_Count is Natural range 0 .. MAX_VALUE_NODES;
+   subtype Node_Index is Positive range 1 .. MAX_VALUE_NODES;
+   subtype Slot_Count is Natural range 0 .. MAX_VALUE_SLOTS;
+   subtype Slot_Index is Positive range 1 .. MAX_VALUE_SLOTS;
 
    --  Text (docs/ccl-bytecode-format.md, "Version 8 plan", step 2): a run's
    --  strings live in a bounded region of its machine state; a Text_Value
@@ -75,6 +88,32 @@ is
       Data   : String (1 .. MAX_RESULT_TEXT) := [others => ' '];
    end record;
 
+   --  Lists (step 3): a run's lists live in a bounded region of its machine
+   --  state, as strings do; a List_Value holds a checked descriptor and
+   --  names its List<T> type in Data_Type. The interpreter's bounds
+   --  (CCL.Language uses these): elements across all lists of a run, live
+   --  lists, and elements a result carries out.
+   MAX_LIST_ELEMENTS : constant := 4_096;
+   MAX_LIST_VALUES   : constant := 512;
+   MAX_LIST_RESULT   : constant := 64;
+   --  One element: a value's scalar fields, read back by the element type.
+   --  Integer holds an Integer, a Character's code or a scalar variant's
+   --  Integer payload; Boolean a Boolean or Boolean payload; Alternative a
+   --  variant's member; Text a String; Node a record or payload variant.
+   type List_Element is record
+      Integer : Integer_64 := 0;
+      Boolean : Standard.Boolean := False;
+      Alternative : CCL.Types.Component_Count := 0;
+      Text : Text_Regions.String_Value;
+      Node : Node_Count := 0;
+   end record;
+   Null_List_Element : constant List_Element := (others => <>);
+   type List_Element_Array is array (Positive range <>) of List_Element;
+   package List_Regions is new CCL.Secondary_Arrays
+     (Element_Type => List_Element, Null_Element => Null_List_Element,
+      Element_Array => List_Element_Array,
+      Capacity => MAX_LIST_ELEMENTS, Max_Values => MAX_LIST_VALUES);
+
    type Value is record
       Kind    : Value_Kind := Integer_Value;
       Integer : Integer_64 := 0;
@@ -83,11 +122,18 @@ is
       Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
       Alternative : CCL.Types.Component_Index := 1;
       Copyable : Standard.Boolean := True;
-      Object : Object_Position := 0;
-      Object_Node : CCL.Objects.Views.Cursor := CCL.Objects.Views.No_Value;
+      Node : Node_Count := 0;
       Resource : CCL.Resources.Reference := CCL.Resources.No_Reference;
       Text : Text_Regions.String_Value;
+      Items : List_Regions.Array_Value;
    end record;
+
+   --  A list result: its first elements as values (Integer, Boolean; a
+   --  Character as its code; an enumeration member as its position) or, for
+   --  strings, as consecutive slices of List_Text ending at List_Text_Ends.
+   subtype List_Result_Count is Natural range 0 .. MAX_LIST_RESULT;
+   type List_Result_Values is array (1 .. MAX_LIST_RESULT) of Value;
+   type List_Result_Ends is array (1 .. MAX_LIST_RESULT) of Result_Text_Length;
 
    function Integer_Constant (Item : Integer_64) return Value is
      ((Kind => Integer_Value, Integer => Item, others => <>));
@@ -95,18 +141,23 @@ is
    function Boolean_Constant (Item : Standard.Boolean) return Value is
      ((Kind => Boolean_Value, Boolean => Item, others => <>));
 
+   --  A character is its code in Integer.
+   MAX_CHARACTER_CODE : constant := Character'Pos (Character'Last);
+   function Character_Constant (Item : Character) return Value is
+     ((Kind => Character_Value, Integer => Integer_64 (Character'Pos (Item)), others => <>));
+
    function With_Type
      (Item : Value; Type_Tag : CCL.Ownership.Type_Id) return Value is
      ((Kind => Item.Kind, Integer => Item.Integer, Boolean => Item.Boolean,
        Type_Tag => Type_Tag, Data_Type => Item.Data_Type, Alternative => Item.Alternative,
-       Copyable => Item.Copyable, Object => Item.Object, Object_Node => Item.Object_Node,
-       Resource => Item.Resource, Text => Item.Text));
+       Copyable => Item.Copyable, Node => Item.Node,
+       Resource => Item.Resource, Text => Item.Text, Items => Item.Items));
 
    function Native_Object_Type
      (Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference) return Boolean is
      (CCL.Objects.Persistable (Types, Ref) and then
       Ref not in CCL.Types.Integer_Type | CCL.Types.Boolean_Type and then
-      not CCL.Types.Is_Scalar_Sum (Types, Ref));
+      not CCL.Types.Is_Scalar_Sum (Types, Ref) and then not CCL.Types.Is_List (Types, Ref));
    function Known_Value_Type
      (Types : CCL.Types.Registry; Kind : Value_Kind; Ref : CCL.Types.Type_Reference) return Boolean is
      (case Kind is
@@ -115,29 +166,69 @@ is
         when Object_Value => Native_Object_Type (Types, Ref),
         when Resource_Value => CCL.Types.Known (Types, Ref) and then
           CCL.Types.Describe (Types, Ref).Form = CCL.Types.Resource,
-        --  Text lives in the run's region: not yet a local, import or
-        --  host-supplied value.
-        when Text_Value => False);
+        --  A list crosses as an image (copied into the run's list region).
+        when List_Value => CCL.Types.Is_List (Types, Ref) and then CCL.Objects.Persistable (Types, Ref),
+        --  Text lives in the run's region, and neither text nor characters
+        --  cross the host boundary yet: only compiler-created locals hold them.
+        when Text_Value | Character_Value | Function_Value => False);
+   --  How a value of type Ref lives in a run: one representation per type.
+   --  A range subtype is an Integer; a record or payload variant is an
+   --  Object_Value in the arena, whether built here or copied in.
    function Kind_For_Type
      (Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference) return Value_Kind is
      (if Ref = CCL.Types.Integer_Type then Integer_Value
       elsif Ref = CCL.Types.Boolean_Type then Boolean_Value
+      elsif Ref = CCL.Types.String_Type then Text_Value
+      elsif Ref = CCL.Types.Character_Type then Character_Value
+      elsif CCL.Types.Describe (Types, Ref).Form = CCL.Types.Bounded then Integer_Value
       elsif CCL.Types.Describe (Types, Ref).Form = CCL.Types.Resource then Resource_Value
+      elsif CCL.Types.Is_List (Types, Ref) then List_Value
+      elsif CCL.Types.Is_Function (Types, Ref) then Function_Value
       elsif CCL.Types.Is_Scalar_Sum (Types, Ref) then Variant_Value else Object_Value);
-   function Reference_For_Type (Ref : CCL.Types.Type_Reference) return CCL.Types.Type_Reference is
-     (if Ref in CCL.Types.Integer_Type | CCL.Types.Boolean_Type then CCL.Types.Invalid_Type else Ref);
+   --  The data type a value of type Ref carries on the stack: none for the
+   --  types its kind already says.
+   function Reference_For_Type
+     (Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference) return CCL.Types.Type_Reference is
+     (if Kind_For_Type (Types, Ref) in Integer_Value | Boolean_Value | Text_Value | Character_Value
+      then CCL.Types.Invalid_Type else Ref);
+
+   --  A record or payload variant the arena holds.
+   function Node_Type
+     (Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference) return Boolean is
+     (CCL.Objects.Storable (Types, Ref) and then
+      CCL.Types.Describe (Types, Ref).Form in CCL.Types.Product | CCL.Types.Sum and then
+      not CCL.Types.Is_Scalar_Sum (Types, Ref));
+   --  A List<T> a run holds: any storable element except another list.
+   function Supported_List
+     (Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference) return Boolean is
+     (CCL.Types.Is_List (Types, Ref) and then CCL.Objects.Storable (Types, Ref));
+   function Element_Kind
+     (Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference) return Value_Kind is
+     (Kind_For_Type (Types, CCL.Types.Element_Of (Types, Ref)));
+   function Element_Data_Type
+     (Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference) return CCL.Types.Type_Reference is
+     (Reference_For_Type (Types, CCL.Types.Element_Of (Types, Ref)));
 
    function Value_Image (Types : CCL.Types.Registry; Item : Value) return String;
    function Well_Typed (Types : CCL.Types.Registry; Item : Value) return Boolean is
      (if Item.Kind = Resource_Value then
          Known_Value_Type (Types, Item.Kind, Item.Data_Type) and then
          not Item.Copyable and then Item.Resource /= CCL.Resources.No_Reference and then
-         Item.Object = 0 and then Item.Object_Node = CCL.Objects.Views.No_Value
+         Item.Node = 0
       elsif Item.Resource /= CCL.Resources.No_Reference then False
       elsif Item.Kind = Object_Value then
-         Native_Object_Type (Types, Item.Data_Type) and then Item.Object /= 0 and then
-         Item.Object_Node /= CCL.Objects.Views.No_Value
-      elsif Item.Object /= 0 or else Item.Object_Node /= CCL.Objects.Views.No_Value then False
+         Node_Type (Types, Item.Data_Type) and then
+         (Item.Node /= 0 or else
+          (CCL.Types.Describe (Types, Item.Data_Type).Form = CCL.Types.Sum and then
+           Item.Alternative <= CCL.Types.Describe (Types, Item.Data_Type).Count and then
+           CCL.Types.Describe (Types, Item.Data_Type).Parts (Item.Alternative).Payload =
+             CCL.Types.Unit_Type))
+      elsif Item.Node /= 0 then False
+      elsif Item.Kind = List_Value then Supported_List (Types, Item.Data_Type)
+      elsif Item.Kind = Function_Value then
+         CCL.Types.Is_Function (Types, Item.Data_Type) and then Item.Integer in 0 .. MAX_FUNCTIONS - 1
+      elsif Item.Kind = Character_Value then
+         Item.Data_Type = CCL.Types.Invalid_Type and then Item.Integer in 0 .. MAX_CHARACTER_CODE
       elsif Item.Kind /= Variant_Value then Item.Data_Type = CCL.Types.Invalid_Type
       else CCL.Types.Is_Scalar_Sum (Types, Item.Data_Type) and then
          Item.Alternative <= CCL.Types.Describe (Types, Item.Data_Type).Count);
@@ -192,7 +283,43 @@ is
       Equal_Text,
       --  A string built-in (CCL.Text_Operations): Immediate is the
       --  operation; its operands are below the subject on the stack.
-      Text_Builtin);
+      Text_Builtin,
+      --  Characters and to-string. Text_At pops an index (1-based) and the
+      --  text below it. Variant_To_Text names its enumeration in Data_Type.
+      Equal_Character,
+      Text_At,
+      Integer_To_Text,
+      Variant_To_Text,
+      --  Lists; Data_Type names the List<T>. New_List reserves Immediate
+      --  elements; Fill_List pops an element into position Immediate of the
+      --  list below it, which stays; List_At pops an index and a list.
+      New_List,
+      Fill_List,
+      Length_List,
+      List_At,
+      --  A list built-in (CCL.List_Operations): Immediate is the operation,
+      --  Data_Type the subject's list type (the result's, for range and
+      --  split); its operands are below the subject on the stack.
+      List_Builtin,
+      --  A record (Alternative 0) or payload-variant member built in the
+      --  arena (step 4): pops the record's components, or the member's
+      --  payload; a unit member pops nothing.
+      Make_Node,
+      --  An Integer entering a position of the range type in Data_Type
+      --  (step 5): kept within its bounds, or Range_Error.
+      Check_Range,
+      --  Function values (step 6): Make_Closure makes a value of the function
+      --  type in Data_Type for function Immediate, popping its captures;
+      --  Call_Value pops the arguments and the function value beneath them,
+      --  then calls it with the captures ahead of the arguments.
+      Make_Closure,
+      Call_Value,
+      --  each, where, fold, any, all, count and sort-by
+      --  (CCL.List_Operations.Apply_Operation in Immediate) over the list
+      --  type in Data_Type. Resumable: each element is an ordinary call whose
+      --  return comes back to this instruction, with the iteration's state in
+      --  the machine (no loop in the code, no recursion in the VM).
+      List_Apply);
    for Op_Code use
      (Halt                    => 0,
       Push_Integer            => 1,
@@ -232,7 +359,21 @@ is
       Concat_Text             => 35,
       Length_Text             => 36,
       Equal_Text              => 37,
-      Text_Builtin            => 38);
+      Text_Builtin            => 38,
+      Equal_Character         => 39,
+      Text_At                 => 40,
+      Integer_To_Text         => 41,
+      Variant_To_Text         => 42,
+      New_List                => 43,
+      Fill_List               => 44,
+      Length_List             => 45,
+      List_At                 => 46,
+      List_Builtin            => 47,
+      Make_Node               => 48,
+      Check_Range             => 49,
+      Make_Closure            => 50,
+      Call_Value              => 51,
+      List_Apply              => 52);
    for Op_Code'Size use 8;
 
    type Authority_Class is
@@ -313,12 +454,13 @@ is
 
    --  Functions (docs/ccl-bytecode-format.md, "Functions"): code after the
    --  main body, one contiguous region each, in declaration order. A function
-   --  may call only functions declared before it, so calls never recurse and
-   --  every program still terminates; at most MAX_FUNCTIONS frames are live.
-   --  Parameters and results are unrestricted data: Integer, Boolean or a
-   --  scalar variant.
-   MAX_FUNCTIONS  : constant := 16;
-   MAX_PARAMETERS : constant := 8;
+   --  calls by name only functions declared before it; a call through a
+   --  function value is bounded by the verifier's stack analysis and the
+   --  frame table, so every program still terminates; at most MAX_FUNCTIONS
+   --  frames are live. Parameters and results are any value a run holds. An
+   --  anonymous function's captured values are its leading parameters: a
+   --  language function's 8 parameters plus 4 captures.
+   MAX_PARAMETERS : constant := 12;
    subtype Function_Count is Natural range 0 .. MAX_FUNCTIONS;
    subtype Function_Index is Natural range 0 .. MAX_FUNCTIONS - 1;
    subtype Parameter_Count is Natural range 0 .. MAX_PARAMETERS;
@@ -327,7 +469,9 @@ is
    type Parameter_Data_Types is array (Parameter_Index) of CCL.Types.Type_Reference;
    type Function_Declaration is record
       Entry_PC : Instruction_Index := 0;
+      --  Parameters, the first Captures of them bound by its function value.
       Count : Parameter_Count := 0;
+      Captures : Parameter_Count := 0;
       Kinds : Parameter_Kinds := [others => Integer_Value];
       Data_Types : Parameter_Data_Types := [others => CCL.Types.Invalid_Type];
       Result : Value_Kind := Integer_Value;
@@ -376,7 +520,8 @@ is
       Invalid_Function,
       --  A text constant outside the pool, or a pool entry outside its text.
       Invalid_Constant,
-      --  A Text_Builtin naming no operation.
+      --  A Text_Builtin or List_Builtin naming no operation, or a
+      --  List_Builtin on a list it does not apply to.
       Invalid_Builtin);
 
    type Validated_Program is private;
@@ -398,11 +543,20 @@ is
       Fuel_Exhausted,
       Arithmetic_Overflow,
       Division_By_Zero,
+      --  The run's value arena is full.
       Object_Storage_Exhausted,
       --  The run's text region is full.
       Text_Storage_Exhausted,
       --  parse-int on text that is not a decimal integer.
       Invalid_Number,
+      --  at outside 1 .. the text's or list's length.
+      Index_Out_Of_Range,
+      --  The run's list region is full.
+      List_Storage_Exhausted,
+      --  A value outside the range type of the position it enters.
+      Range_Error,
+      --  Calls through function values nested deeper than the frame table.
+      Call_Depth_Exhausted,
       Invalid_Bytecode,
       Waiting_For_Host,
       Host_Call_Failed,
@@ -420,8 +574,21 @@ is
       Request_Owned : Boolean := False;
       Requested_Authority : Authority_Class := No_Authority;
       Requested_Binding   : Unsigned_32 := 0;
-      --  A text result's characters (Result_Value.Kind = Text_Value).
+      --  A text result's characters (Result_Value.Kind = Text_Value), when
+      --  they fit; a longer text still completes, and a host exports it.
+      Has_Result_Text : Boolean := False;
       Result_Text_Value : Result_Text := (others => <>);
+      --  A list result (Result_Value.Kind = List_Value): List_Length of its
+      --  List_Total elements are carried out.
+      List_Length : List_Result_Count := 0;
+      List_Total : Natural range 0 .. MAX_LIST_ELEMENTS := 0;
+      List_Values : List_Result_Values := [others => (others => <>)];
+      List_Text : Result_Text := (others => <>);
+      List_Text_Ends : List_Result_Ends := [others => 0];
+      --  A record or payload variant, or a list of them: its canonical CCL
+      --  literal, as the interpreter prints it, when it has one that fits.
+      Has_Literal : Boolean := False;
+      Literal : Result_Text := (others => <>);
    end record;
 
    type Machine_State is private;
@@ -555,20 +722,79 @@ is
       Post => Result.Steps <= Unsigned_32 (Fuel);
 
 private
-   -- Native storage is a trusted in-process implementation detail, not an IPC
-   -- import or an extra authority. Scalar execution supplies a rejecting store.
-   generic
-      type Native_Store is limited private;
-      with procedure Evaluate_Native
-        (Store : in out Native_Store; Types : CCL.Types.Registry;
-         Op : Instruction; Source : Value; Result : out Value;
-         Alternative : out CCL.Types.Component_Count; Accepted : out Boolean);
-   procedure Continue_With_Native
-     (Item : Validated_Program; State : in out Machine_State;
-      Store : in out Native_Store; Instructions : Natural; Result : out Execution_Result)
-     with Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),
-       Post => Is_Well_Formed (Item, State) and then
-         Fuel_Limit (State) = Fuel_Limit (State'Old) and then Result.Steps <= Fuel_Limit (State);
+   --  The value arena. A node's components are Count slots from First; a
+   --  slot holds one component as a cell, read back by the component's
+   --  static type. Every node a slot refers to is older than the slot's own
+   --  node (Allocate_Node checks it), so the arena is acyclic.
+   type Slot is record
+      Element : List_Element;
+      Items : List_Regions.Array_Value;
+   end record;
+   type Arena_Node is record
+      Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
+      Alternative : CCL.Types.Component_Count := 0;
+      First : Positive range 1 .. MAX_VALUE_SLOTS + 1 := 1;
+      Count : CCL.Types.Component_Count := 0;
+   end record;
+   type Node_Array is array (Node_Index) of Arena_Node;
+   type Slot_Array is array (Slot_Index) of Slot;
+   type Value_Arena is record
+      Nodes : Node_Array := [others => (others => <>)];
+      Slots : Slot_Array := [others => (others => <>)];
+      Nodes_Used : Node_Count := 0;
+      Slots_Used : Slot_Count := 0;
+   end record;
+   type Component_Values is array (CCL.Types.Component_Index) of Value;
+
+   --  A List_Apply in progress: at most one per live frame level (the main
+   --  body and each call), so the table never needs more entries.
+   MAX_ITERATIONS : constant := MAX_FUNCTIONS + 1;
+   type Iteration is record
+      Active : Boolean := False;
+      --  Waiting for the function's result for element Position.
+      Awaiting : Boolean := False;
+      At_PC : Instruction_Index := 0;
+      Frame_Level : Natural range 0 .. MAX_FUNCTIONS := 0;
+      Operation : CCL.List_Operations.Apply_Operation := CCL.List_Operations.Each_Items;
+      List_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
+      Subject : Value := (others => <>);
+      Callee : Value := (others => <>);
+      --  fold's accumulator; count's count; any/all's answer so far.
+      Accumulator : Value := (others => <>);
+      Position : Natural range 0 .. MAX_LIST_ELEMENTS := 0;
+      --  each/where/sort-by build into Built (Kept elements); sort-by's keys.
+      Built : Value := (others => <>);
+      Kept : Natural range 0 .. MAX_LIST_ELEMENTS := 0;
+      Keys : List_Regions.Array_Value;
+   end record;
+   subtype Iteration_Count is Natural range 0 .. MAX_ITERATIONS;
+   type Iteration_Array is array (1 .. MAX_ITERATIONS) of Iteration;
+
+   --  A value of type Ref (Kind_For_Type) as a cell, and back. From_Slot
+   --  checks what a cell cannot carry by itself: a character's range, a
+   --  member within its type, and a node of the right type in the arena.
+   function To_Slot (Item : Value) return Slot;
+   procedure From_Slot
+     (Arena : Value_Arena; Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference;
+      Item : Slot; Result : out Value; Good : out Boolean);
+   --  A node of a record (Alternative 0) or payload-variant member from
+   --  Count components; Good is False when the arena is full or a component
+   --  does not fit its part. A unit member needs no node.
+   procedure Allocate_Node
+     (Arena : in out Value_Arena; Types : CCL.Types.Registry;
+      Data_Type : CCL.Types.Type_Reference; Alternative : CCL.Types.Component_Count;
+      Components : Component_Values; Count : CCL.Types.Component_Count;
+      Result : out Value; Good : out Boolean);
+   --  A list element and the value it stands for in a list of type
+   --  List_Type (From_Element checks it as From_Slot does).
+   function To_Element (Item : Value) return List_Element;
+   procedure From_Element
+     (Arena : Value_Arena; Types : CCL.Types.Registry; List_Type : CCL.Types.Type_Reference;
+      Element : List_Element; Item : out Value; Good : out Boolean);
+   --  Component P of a record (a field) or payload variant (P = 1, payload).
+   procedure Component
+     (Arena : Value_Arena; Types : CCL.Types.Registry; Owner : Value;
+      P : CCL.Types.Component_Index; Result : out Value; Good : out Boolean);
    -- Only the native-object child admits object references, after copying and
    -- validating their owned storage. Public scalar completion cannot mint one.
    procedure Complete_Checked_Host_Call
@@ -615,6 +841,10 @@ private
       Frames              : Call_Frames := [others => (others => <>)];
       Frame_Count         : Function_Count := 0;
       Text                : Text_Regions.Stack;
+      Lists               : List_Regions.Stack;
+      Arena               : Value_Arena;
+      Iterations          : Iteration_Array := [others => (others => <>)];
+      Iteration_Depth     : Iteration_Count := 0;
    end record;
 
    function Is_Valid (Item : Validated_Program) return Boolean is

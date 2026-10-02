@@ -1,0 +1,26 @@
+project ACPI is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "native", "../../lib/acpi", "../../../shared/firmware");
+   for Object_Dir use "build";
+   for Main use ("main.adb");
+   for Runtime ("Ada") use "../../runtime";
+   package Builder is
+      for Executable ("main.adb") use "acpi.svc";
+      for Default_Switches ("Ada") use ("-nostdlib");
+   end Builder;
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-fstack-usage",
+         "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-d_C");
+   end Binder;
+   package Linker is
+      -- Explicit checked-build budget, not a proved whole-call-chain bound.
+      for Default_Switches ("Ada") use
+        ("-nostdlib", "-static", "-no-pie", "-Wl,-z,stack-size=67108864",
+         "-lgnat-user", "-T", "../../c/link.ld", "../../c/build/crt0.o",
+         "build/manifest.o");
+   end Linker;
+end ACPI;

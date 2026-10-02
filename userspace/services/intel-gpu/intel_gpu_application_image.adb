@@ -8,14 +8,16 @@ package body Intel_GPU_Application_Image is
    begin
       return Intel_GPU_Buffer_Reply.Valid (Allocation) and then Check (Object);
    end Allocation_Disjoint;
-   function GPU_Start (Object : State) return Unsigned_64 is (Object.Prepared);
+   function GPU_Start (Object : State) return Unsigned_64 is
+     (if Object.Retirement_Attempted then 0 else Object.Prepared);
    function Retained_Root (Object : State) return Tables.Page_Mapping is (Object.Root);
    function Overlap (Page, First, Bytes : Unsigned_64) return Boolean is
      (if Page >= First then Page - First < Bytes else First - Page < 4096);
    procedure Prepare
      (Object : in out State; Source : VM.Image; Backing : Tables.Mappings;
       Allocation : Intel_GPU_Buffer_Reply.Backing;
-      GGTT_Start, Bytes : Unsigned_64; Success : out Boolean) is
+      GGTT_Start, Bytes : Unsigned_64; Success : out Boolean;
+      Scratch : Tables.Scratch_Mappings := [others => (0, 0)]) is
       Root : Unsigned_64;
       Ready : Boolean;
       Image_Pages : Intel_GPU_Submission_Image.Backing_Pages;
@@ -48,13 +50,19 @@ package body Intel_GPU_Application_Image is
            Overlap (Backing (P).CPU, Allocation.CPU_Address, Allocation.Bytes)
          then return; end if;
       end loop;
-      Tables.Prepare (Object.Table_State, Source, Backing, Root, Ready);
+      for Page of Scratch loop
+         if Page.CPU /= 0 and then
+           Overlap (Page.CPU, Allocation.CPU_Address, Allocation.Bytes)
+         then return; end if;
+      end loop;
+      Tables.Prepare (Object.Table_State, Source, Backing, Root, Ready, Scratch);
       if not Ready or else not Owner_Ready then return; end if;
       Contexts.Initialize_For_VM (Object.Context_State, Allocation,
                                  GGTT_Start, Bytes, Root, Ready);
       if not Ready or else not Owner_Ready then return; end if;
       Object.Prepared := Contexts.Initialized_GPU_Start (Object.Context_State);
       Object.Root := Backing (1);
+      Object.Scratch := Scratch;
       Object.Allocation := Allocation;
       Success := True;
    end Prepare;

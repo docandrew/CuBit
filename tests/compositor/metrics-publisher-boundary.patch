@@ -1,0 +1,47 @@
+--- a/userspace/runtime/gnat/cubit-metrics.ads
++++ b/userspace/runtime/gnat/cubit-metrics.ads
+@@ -64,7 +64,7 @@
+       Grants : Grant_Array;
+       Has_Grant : Flag_Array := [others => False];
+       Tokens : Token_Array := [others => 0];
+-      Refused : Unsigned_64 := 0;
++      Refused, Disabled_Drops : Unsigned_64 := 0;
+       Off : Boolean := False;
+    end record;
+ 
+--- a/userspace/runtime/gnat/cubit-metrics.adb
++++ b/userspace/runtime/gnat/cubit-metrics.adb
+@@ -39,17 +39,22 @@
+       else Left + Right);
+ 
+    function Dropped (Item : Publisher) return Unsigned_64 is
+-     (Batches.Dropped (Item.State));
++     (Add (Batches.Dropped (Item.State), Item.Disabled_Drops));
+    function Rejected (Item : Publisher) return Unsigned_64 is
+      (Item.Refused);
+    function Disabled (Item : Publisher) return Boolean is (Item.Off);
+    function Has_Room (Item : Publisher) return Boolean is
+-     (Batches.Has_Room (Item.State));
++     (not Item.Off and then Batches.Has_Room (Item.State));
+ 
+    procedure Put
+      (Item : in out Publisher; Value : Records.Metric_Record;
+       Accepted : out Boolean) is
+    begin
++      if Item.Off then
++         Accepted := False;
++         Item.Disabled_Drops := Add (Item.Disabled_Drops, 1);
++         return;
++      end if;
+       Batches.Append (Item.State, Item.Pages, Value, Accepted);
+    end Put;
+ 
+@@ -104,7 +109,7 @@
+          then
+             Handled := True;
+             Result := Reply_Status (Completion.msg);
+-            if Completion.status /= COMPLETION_OK or else
++            if not Completion.valid or else Completion.status /= COMPLETION_OK or else
+               Result = Protocol.Unavailable
+             then
+                --  Ambiguous: the page may still be acquired. Never reuse it.

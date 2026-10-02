@@ -1,0 +1,10 @@
+project Adapter is
+   for Source_Dirs use ("adapter", "../../kernel/src");
+   for Source_Files use ("virtmem.ads", "virtmem.adb", "virtmem-regions.ads",
+     "virtmem-regions.adb", "region_pte.ads", "region_pte.adb", "adapter_tests.adb");
+   for Object_Dir use "build-adapter";
+   for Main use ("adapter_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-O2");
+   end Compiler;
+end Adapter;

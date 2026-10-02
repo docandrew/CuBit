@@ -16,6 +16,7 @@ procedure Main is
    keyboardSequence : Source_Sequence := 0;
    ignored          : Unsigned_64;
    passed           : Boolean := True;
+   resyncReports    : Natural := 0;
 
    function Pack_Signed_12 (value : Integer) return Unsigned_64 is
      (Unsigned_64 (value mod 4096) and 16#FFF#);
@@ -28,6 +29,9 @@ procedure Main is
    begin
       for attempt in 1 .. 100 loop
          if trySendEvent (destination, Encode (pending)) then
+            if pending.flags (RESYNCHRONIZE) then
+               resyncReports := resyncReports + 1;
+            end if;
             return;
          end if;
          pending.flags (RESYNCHRONIZE) := True;
@@ -131,6 +135,7 @@ begin
    end if;
 
    if passed then
+      debugPrint ("input-stress: resync reports" & resyncReports'Image & LF);
       debugPrint ("input-stress: publication and recovery PASS" & LF);
    else
       debugPrint ("input-stress: publication and recovery FAIL" & LF);

@@ -1,0 +1,23 @@
+library project Backend is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "native", "../../lib/acpi", "../../../shared/firmware", "../../../shared/hardware");
+   -- Privileged backend closure deliberately excludes the AML interpreter and
+   -- table service. Changes to this list must preserve that separation.
+   for Source_Files use
+     ("hardware_authority.ads", "acpi_region_policy.ads", "acpi_region_policy.adb",
+      "acpi_region_protocol.ads", "acpi_region_io.ads", "acpi_region_io.adb",
+      "acpi_backend_endpoint.ads", "acpi_backend_endpoint.adb",
+      "acpi_fadt.ads", "acpi_fadt.adb",
+      "acpi_fadt-transactions.ads", "acpi_fadt-transactions.adb",
+      "firmware_tables.ads", "firmware_tables.adb");
+   for Object_Dir use "build/obj";
+   for Library_Dir use "build/lib";
+   for Library_Name use "acpi_backend";
+   for Library_Kind use "static";
+   for Runtime ("Ada") use "../../runtime";
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-fstack-usage",
+         "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+end Backend;

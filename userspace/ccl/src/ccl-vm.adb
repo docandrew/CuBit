@@ -19,10 +19,13 @@ is
       case Item.Kind is
          when Integer_Value => return Integer_64'Image (Item.Integer);
          when Boolean_Value => return (if Item.Boolean then "true" else "false");
-         when Object_Value => return "<native object>";
+         when Object_Value => return "<object " & CCL.Types.Image (D.Identifier) & ">";
+         when Function_Value => return "<function" & Integer_64'Image (Item.Integer) & ">";
          when Resource_Value => return "<resource " & CCL.Types.Image (D.Identifier) & ">";
          --  The characters live in the run's region (Execution_Result).
          when Text_Value => return "<text>";
+         when Character_Value => return "'" & Character'Val (Item.Integer) & "'";
+         when List_Value => return "<list " & CCL.Types.Image (D.Identifier) & ">";
          when Variant_Value =>
             return CCL.Types.Image (D.Identifier) & "." &
               CCL.Types.Image (D.Parts (Item.Alternative).Identifier) &
@@ -144,6 +147,100 @@ is
       end loop;
    end Find_Operation;
 
+   package L renames CCL.List_Operations;
+   use type L.Operation;
+
+   procedure Find_List_Operation
+     (Immediate : Integer_64; Item : out L.Operation; Found : out Boolean) is
+   begin
+      Item := L.Operation'First;
+      Found := False;
+      for Candidate in L.Operation loop
+         if Integer_64 (L.Operation'Enum_Rep (Candidate)) = Immediate then
+            Item := Candidate;
+            Found := True;
+         end if;
+      end loop;
+   end Find_List_Operation;
+
+   use type L.Apply_Operation;
+
+   procedure Find_Apply_Operation
+     (Immediate : Integer_64; Item : out L.Apply_Operation; Found : out Boolean) is
+   begin
+      Item := L.Apply_Operation'First;
+      Found := False;
+      for Candidate in L.Apply_Operation loop
+         if Integer_64 (L.Apply_Operation'Enum_Rep (Candidate)) = Immediate then
+            Item := Candidate;
+            Found := True;
+         end if;
+      end loop;
+   end Find_Apply_Operation;
+
+   --  The registry's List<Element>, as the type checker specialized it (each
+   --  builds a list of its function's result type, a range type's values as
+   --  Integers, as the interpreter does), or Invalid_Type.
+   function List_Of
+     (Types : CCL.Types.Registry; Result : CCL.Types.Type_Reference) return CCL.Types.Type_Reference is
+      Element : constant CCL.Types.Type_Reference :=
+        (if CCL.Types.Is_Range (Types, Result) then CCL.Types.Integer_Type else Result);
+   begin
+      for Ref in CCL.Types.Declared_Type'First .. CCL.Types.Last (Types) loop
+         if CCL.Types.Is_List (Types, Ref) and then CCL.Types.Element_Of (Types, Ref) = Element then
+            return Ref;
+         end if;
+      end loop;
+      return CCL.Types.Invalid_Type;
+   end List_Of;
+
+   --  Whether List_Apply's Operation applies a function of type Fn to the
+   --  list type List_Type: its parameters (fold: accumulator then element)
+   --  and result, as the type checker decides.
+   function Apply_Fits
+     (Types : CCL.Types.Registry; Operation : L.Apply_Operation;
+      List_Type, Fn : CCL.Types.Type_Reference) return Boolean is
+     (Supported_List (Types, List_Type) and then CCL.Types.Is_Function (Types, Fn) and then
+      CCL.Types.Describe (Types, Fn).Count = (if Operation = L.Fold_Items then 3 else 2) and then
+      (CCL.Types.Describe (Types, Fn).Parts
+         ((if Operation = L.Fold_Items then 2 else 1)).Payload = CCL.Types.Element_Of (Types, List_Type) or else
+       (CCL.Types.Element_Of (Types, List_Type) = CCL.Types.Integer_Type and then
+        CCL.Types.Is_Range (Types, CCL.Types.Describe (Types, Fn).Parts
+          ((if Operation = L.Fold_Items then 2 else 1)).Payload))) and then
+      (case Operation is
+          when L.Each_Items =>
+             Supported_List (Types, List_Of (Types, CCL.Types.Describe (Types, Fn).Parts (2).Payload)),
+          when L.Where_Items | L.Any_Items | L.All_Items | L.Count_Items =>
+             CCL.Types.Describe (Types, Fn).Parts (2).Payload = CCL.Types.Boolean_Type,
+          when L.Fold_Items =>
+             CCL.Types.Describe (Types, Fn).Parts (3).Payload = CCL.Types.Describe (Types, Fn).Parts (1).Payload,
+          when L.Sort_By_Items =>
+             CCL.Types.Describe (Types, Fn).Parts (2).Payload in CCL.Types.Integer_Type | CCL.Types.String_Type));
+
+   --  Whether a list built-in applies to List_Type (the subject's list type,
+   --  or the result's for range and split), as the type checker decides.
+   function List_Builtin_Applies
+     (Types : CCL.Types.Registry; Item : L.Operation; List_Type : CCL.Types.Type_Reference)
+      return Boolean is
+     (Supported_List (Types, List_Type) and then
+      (case Item is
+          when L.Sort_Items | L.Contains_Item =>
+             CCL.Types.Element_Of (Types, List_Type) in CCL.Types.Integer_Type | CCL.Types.String_Type |
+               CCL.Types.Character_Type or else
+             (Item = L.Contains_Item and then CCL.Types.Element_Of (Types, List_Type) = CCL.Types.Boolean_Type) or else
+             CCL.Types.Is_Enumeration (Types, CCL.Types.Element_Of (Types, List_Type)),
+          when L.Sum_Items | L.Min_Items | L.Max_Items | L.Range_Items =>
+             Element_Kind (Types, List_Type) = Integer_Value,
+          when L.Join_Items | L.Split_Text => Element_Kind (Types, List_Type) = Text_Value,
+          when others => True));
+
+   --  The operand kind of a comparison opcode.
+   function Comparison_Kind (Op : Op_Code) return Value_Kind is
+     (case Op is
+         when Equal_Boolean => Boolean_Value,
+         when Equal_Character => Character_Value,
+         when others => Integer_Value);
+
    function Kind_Of (Kind : T.Operand_Kind) return Value_Kind is
      (case Kind is
          when T.Text_Operand => Text_Value,
@@ -196,9 +293,36 @@ is
             Program_Length (Candidate.Functions (R + 1).Entry_PC)
          else Length);
 
+      --  A parameter or result: any value a run holds (not a resource).
       function Function_Data (Kind : Value_Kind; Ref : CCL.Types.Type_Reference) return Boolean is
-        (Kind in Integer_Value | Boolean_Value | Variant_Value and then
-         Known_Value_Type (Candidate.Data_Types, Kind, Ref));
+        (case Kind is
+            when Integer_Value | Boolean_Value | Text_Value | Character_Value => Ref = CCL.Types.Invalid_Type,
+            when Variant_Value => CCL.Types.Is_Scalar_Sum (Candidate.Data_Types, Ref),
+            when List_Value => Supported_List (Candidate.Data_Types, Ref),
+            when Object_Value => Node_Type (Candidate.Data_Types, Ref),
+            when Function_Value => CCL.Types.Is_Function (Candidate.Data_Types, Ref),
+            when Resource_Value => False);
+
+      --  Whether function F is a value of the function type T: its
+      --  parameters after the captures, and its result, are T's.
+      function Matches_Signature (F : Function_Index; T : CCL.Types.Type_Reference) return Boolean is
+        (CCL.Types.Is_Function (Candidate.Data_Types, T) and then
+         CCL.Types.Describe (Candidate.Data_Types, T).Count >= 1 and then
+         Candidate.Functions (F).Captures <= Candidate.Functions (F).Count and then
+         Candidate.Functions (F).Count - Candidate.Functions (F).Captures =
+           CCL.Types.Describe (Candidate.Data_Types, T).Count - 1 and then
+         (for all P in 1 .. CCL.Types.Describe (Candidate.Data_Types, T).Count - 1 =>
+            Candidate.Functions (F).Captures + P in Parameter_Index and then
+            Candidate.Functions (F).Kinds (Candidate.Functions (F).Captures + P) =
+              Kind_For_Type (Candidate.Data_Types, CCL.Types.Describe (Candidate.Data_Types, T).Parts (P).Payload) and then
+            Candidate.Functions (F).Data_Types (Candidate.Functions (F).Captures + P) =
+              Reference_For_Type (Candidate.Data_Types, CCL.Types.Describe (Candidate.Data_Types, T).Parts (P).Payload)) and then
+         Candidate.Functions (F).Result =
+           Kind_For_Type (Candidate.Data_Types,
+             CCL.Types.Describe (Candidate.Data_Types, T).Parts (CCL.Types.Describe (Candidate.Data_Types, T).Count).Payload) and then
+         Candidate.Functions (F).Result_Data_Type =
+           Reference_For_Type (Candidate.Data_Types,
+             CCL.Types.Describe (Candidate.Data_Types, T).Parts (CCL.Types.Describe (Candidate.Data_Types, T).Count).Payload));
 
       --  Whole-program stack bound. Each region's own maximum depth, and for
       --  each call site the depth under the callee's frame; callees have lower
@@ -263,13 +387,20 @@ is
          end;
       end loop;
       for L in 1 .. Candidate.Locals_Length loop
-         --  Text may live in a compiler-created (dynamic) local, never in an
-         --  initial local the host supplies: hosts cannot forge descriptors.
+         --  Text and characters may live in a compiler-created (dynamic)
+         --  local, never in an initial local the host supplies: hosts cannot
+         --  forge descriptors or out-of-range codes.
          if not Known_Value_Type (Candidate.Data_Types,
            Candidate.Local_Kinds (L - 1), Candidate.Local_Data_Types (L - 1)) and then
-           not (Candidate.Local_Kinds (L - 1) = Text_Value and then
-                Candidate.Local_Data_Types (L - 1) = CCL.Types.Invalid_Type and then
-                L - 1 >= Candidate.Locals_Length - Candidate.Dynamic_Locals_Length)
+           not (L - 1 >= Candidate.Locals_Length - Candidate.Dynamic_Locals_Length and then
+                ((Candidate.Local_Kinds (L - 1) in Text_Value | Character_Value and then
+                  Candidate.Local_Data_Types (L - 1) = CCL.Types.Invalid_Type) or else
+                 (Candidate.Local_Kinds (L - 1) = List_Value and then
+                  Supported_List (Candidate.Data_Types, Candidate.Local_Data_Types (L - 1))) or else
+                 (Candidate.Local_Kinds (L - 1) = Object_Value and then
+                  Node_Type (Candidate.Data_Types, Candidate.Local_Data_Types (L - 1))) or else
+                 (Candidate.Local_Kinds (L - 1) = Function_Value and then
+                  CCL.Types.Is_Function (Candidate.Data_Types, Candidate.Local_Data_Types (L - 1)))))
          then Error := Invalid_Data_Type; return; end if;
          if Candidate.Local_Kinds (L - 1) = Resource_Value and then
            (Candidate.Local_Types (L - 1) >= Candidate.Types_Length or else
@@ -278,7 +409,7 @@ is
       end loop;
       for M in 1 .. Candidate.Matches_Length loop
          if CCL.Types.Describe (Candidate.Data_Types, Candidate.Matches (M - 1).Data_Type).Form /= CCL.Types.Sum or else
-           not CCL.Objects.Persistable (Candidate.Data_Types, Candidate.Matches (M - 1).Data_Type)
+           not CCL.Objects.Storable (Candidate.Data_Types, Candidate.Matches (M - 1).Data_Type)
          then Error := Invalid_Match; return; end if;
          D := CCL.Types.Describe (Candidate.Data_Types, Candidate.Matches (M - 1).Data_Type);
          for A in D.Count + 1 .. CCL.Types.Maximum_Components loop
@@ -294,6 +425,7 @@ is
          begin
             if Decl.Entry_PC = 0 or else Program_Length (Decl.Entry_PC) >= Length or else
               (F > 1 and then Decl.Entry_PC <= Candidate.Functions (F - 2).Entry_PC) or else
+              Decl.Captures > Decl.Count or else
               not Function_Data (Decl.Result, Decl.Result_Data_Type)
             then Error := Invalid_Function; return; end if;
             for P in 1 .. Decl.Count loop
@@ -353,7 +485,9 @@ is
             Error := Invalid_Function; exit;
          end if;
 
-         if Instruction.Op not in Make_Variant | Equal_Variant | Project_Field and then
+         if Instruction.Op not in Make_Variant | Equal_Variant | Project_Field | Variant_To_Text |
+           New_List | Fill_List | Length_List | List_At | List_Builtin | Make_Node | Check_Range |
+           Make_Closure | Call_Value | List_Apply and then
            (Instruction.Data_Type /= CCL.Types.Invalid_Type or else Instruction.Alternative /= 0)
          then Error := Invalid_Data_Type; exit; end if;
 
@@ -361,7 +495,7 @@ is
             when Project_Field =>
                D := CCL.Types.Describe (Candidate.Data_Types, Instruction.Data_Type);
                if D.Form /= CCL.Types.Product or else
-                 not CCL.Objects.Persistable (Candidate.Data_Types, Instruction.Data_Type) or else
+                 not Node_Type (Candidate.Data_Types, Instruction.Data_Type) or else
                  Instruction.Immediate not in 1 .. Integer_64 (D.Count) or else Instruction.Alternative /= 0
                then Error := Invalid_Data_Type;
                else
@@ -370,8 +504,121 @@ is
                      Ref : constant CCL.Types.Type_Reference :=
                        D.Parts (CCL.Types.Component_Index (Instruction.Immediate)).Payload;
                   begin
-                     Push_Kind (State, Kind_For_Type (Candidate.Data_Types, Ref), Error, Reference_For_Type (Ref));
+                     Push_Kind (State, Kind_For_Type (Candidate.Data_Types, Ref), Error,
+                                Reference_For_Type (Candidate.Data_Types, Ref));
                   end;
+               end if;
+            when Make_Closure =>
+               if not CCL.Types.Is_Function (Candidate.Data_Types, Instruction.Data_Type) or else
+                 Instruction.Alternative /= 0 or else
+                 Instruction.Immediate not in 0 .. Integer_64 (Candidate.Functions_Length) - 1
+               then Error := Invalid_Function;
+               elsif not Matches_Signature (Function_Index (Instruction.Immediate), Instruction.Data_Type) then
+                  Error := Invalid_Function;
+               else
+                  declare
+                     Decl : constant Function_Declaration :=
+                       Candidate.Functions (Function_Index (Instruction.Immediate));
+                  begin
+                     for P in reverse 1 .. Decl.Captures loop
+                        Pop_Kind (State, Decl.Kinds (P), Error, Decl.Data_Types (P));
+                     end loop;
+                     Push_Kind (State, Function_Value, Error, Instruction.Data_Type);
+                  end;
+               end if;
+            when Call_Value =>
+               if not CCL.Types.Is_Function (Candidate.Data_Types, Instruction.Data_Type) or else
+                 CCL.Types.Describe (Candidate.Data_Types, Instruction.Data_Type).Count = 0 or else
+                 Instruction.Immediate /= 0 or else Instruction.Alternative /= 0
+               then Error := Invalid_Function;
+               else
+                  declare
+                     D : constant CCL.Types.Description :=
+                       CCL.Types.Describe (Candidate.Data_Types, Instruction.Data_Type);
+                  begin
+                     --  The arguments, then the function value beneath them.
+                     for P in reverse 1 .. D.Count - 1 loop
+                        Pop_Kind (State, Kind_For_Type (Candidate.Data_Types, D.Parts (P).Payload), Error,
+                                  Reference_For_Type (Candidate.Data_Types, D.Parts (P).Payload));
+                     end loop;
+                     Pop_Kind (State, Function_Value, Error, Instruction.Data_Type);
+                     Push_Kind (State, Kind_For_Type (Candidate.Data_Types, D.Parts (D.Count).Payload), Error,
+                                Reference_For_Type (Candidate.Data_Types, D.Parts (D.Count).Payload));
+                  end;
+               end if;
+            when List_Apply =>
+               --  Operands: the function value, fold's initial value, the
+               --  list on top. The function's type is read from the stack.
+               declare
+                  Operation : L.Apply_Operation;
+                  Known : Boolean;
+                  Fn_Slot : Stack_Type;
+               begin
+                  Find_Apply_Operation (Instruction.Immediate, Operation, Known);
+                  Stack_Result := Abstract_Stacks.Stack_Ok;
+                  if Known then
+                     Abstract_Stacks.Peek_At
+                       (State.Values, (if Operation = L.Fold_Items then 2 else 1), Fn_Slot, Stack_Result);
+                  end if;
+                  if not Known or else Instruction.Alternative /= 0 or else
+                    Stack_Result /= Abstract_Stacks.Stack_Ok or else Fn_Slot.Kind /= Function_Value or else
+                    not Apply_Fits (Candidate.Data_Types, Operation, Instruction.Data_Type, Fn_Slot.Data_Type)
+                  then
+                     Error := Invalid_Builtin;
+                  else
+                     declare
+                        D : constant CCL.Types.Description := CCL.Types.Describe (Candidate.Data_Types, Fn_Slot.Data_Type);
+                        Result : constant CCL.Types.Type_Reference := D.Parts (D.Count).Payload;
+                     begin
+                        Pop_Kind (State, List_Value, Error, Instruction.Data_Type);
+                        if Operation = L.Fold_Items then
+                           Pop_Kind (State, Kind_For_Type (Candidate.Data_Types, Result), Error,
+                                     Reference_For_Type (Candidate.Data_Types, Result));
+                        end if;
+                        Pop_Kind (State, Function_Value, Error, Fn_Slot.Data_Type);
+                        case Operation is
+                           when L.Each_Items =>
+                              Push_Kind (State, List_Value, Error, List_Of (Candidate.Data_Types, Result));
+                           when L.Where_Items | L.Sort_By_Items =>
+                              Push_Kind (State, List_Value, Error, Instruction.Data_Type);
+                           when L.Any_Items | L.All_Items =>
+                              Push_Kind (State, Boolean_Value, Error);
+                           when L.Count_Items =>
+                              Push_Kind (State, Integer_Value, Error);
+                           when L.Fold_Items =>
+                              Push_Kind (State, Kind_For_Type (Candidate.Data_Types, Result), Error,
+                                         Reference_For_Type (Candidate.Data_Types, Result));
+                        end case;
+                     end;
+                  end if;
+               end;
+            when Check_Range =>
+               if not CCL.Types.Is_Range (Candidate.Data_Types, Instruction.Data_Type) or else
+                 Instruction.Immediate /= 0 or else Instruction.Alternative /= 0
+               then Error := Invalid_Data_Type;
+               else
+                  Pop_Kind (State, Integer_Value, Error);
+                  Push_Kind (State, Integer_Value, Error);
+               end if;
+            when Make_Node =>
+               D := CCL.Types.Describe (Candidate.Data_Types, Instruction.Data_Type);
+               if not Node_Type (Candidate.Data_Types, Instruction.Data_Type) or else
+                 Instruction.Immediate /= 0 or else
+                 (if D.Form = CCL.Types.Product then Instruction.Alternative /= 0
+                  else Instruction.Alternative not in 1 .. D.Count)
+               then Error := Invalid_Data_Type;
+               else
+                  --  Components in source order; the last is on top.
+                  if D.Form = CCL.Types.Product then
+                     for P in reverse 1 .. D.Count loop
+                        Pop_Kind (State, Kind_For_Type (Candidate.Data_Types, D.Parts (P).Payload), Error,
+                                  Reference_For_Type (Candidate.Data_Types, D.Parts (P).Payload));
+                     end loop;
+                  elsif D.Parts (Instruction.Alternative).Payload /= CCL.Types.Unit_Type then
+                     Pop_Kind (State, Kind_For_Type (Candidate.Data_Types, D.Parts (Instruction.Alternative).Payload),
+                               Error, Reference_For_Type (Candidate.Data_Types, D.Parts (Instruction.Alternative).Payload));
+                  end if;
+                  Push_Kind (State, Object_Value, Error, Instruction.Data_Type);
                end if;
             when Halt =>
                -- The top value is returned to the host. No other moved
@@ -405,6 +652,101 @@ is
             when Length_Text =>
                Pop_Kind (State, Text_Value, Error);
                Push_Kind (State, Integer_Value, Error);
+
+            when Text_At =>
+               Pop_Kind (State, Integer_Value, Error);
+               Pop_Kind (State, Text_Value, Error);
+               Push_Kind (State, Character_Value, Error);
+
+            when Integer_To_Text =>
+               Pop_Kind (State, Integer_Value, Error);
+               Push_Kind (State, Text_Value, Error);
+
+            when List_Builtin =>
+               declare
+                  Operation : L.Operation;
+                  Known : Boolean;
+                  List_Type : constant CCL.Types.Type_Reference := Instruction.Data_Type;
+               begin
+                  Find_List_Operation (Instruction.Immediate, Operation, Known);
+                  if not Known or else Instruction.Alternative /= 0 or else
+                    not List_Builtin_Applies (Candidate.Data_Types, Operation, List_Type)
+                  then
+                     Error := Invalid_Builtin;
+                  else
+                     case Operation is
+                        when L.Range_Items =>
+                           Pop_Kind (State, Integer_Value, Error);
+                           Pop_Kind (State, Integer_Value, Error);
+                        when L.Split_Text =>
+                           Pop_Kind (State, Text_Value, Error);
+                           Pop_Kind (State, Text_Value, Error);
+                        when others =>
+                           Pop_Kind (State, List_Value, Error, List_Type);
+                           case Operation is
+                              when L.First_Items | L.Last_Items | L.Skip_Items =>
+                                 Pop_Kind (State, Integer_Value, Error);
+                              when L.Contains_Item =>
+                                 Pop_Kind (State, Element_Kind (Candidate.Data_Types, List_Type), Error,
+                                           Element_Data_Type (Candidate.Data_Types, List_Type));
+                              when L.Join_Items =>
+                                 Pop_Kind (State, Text_Value, Error);
+                              when others => null;
+                           end case;
+                     end case;
+                     case Operation is
+                        when L.Sum_Items | L.Min_Items | L.Max_Items =>
+                           Push_Kind (State, Integer_Value, Error);
+                        when L.Contains_Item =>
+                           Push_Kind (State, Boolean_Value, Error);
+                        when L.Join_Items =>
+                           Push_Kind (State, Text_Value, Error);
+                        when others =>
+                           Push_Kind (State, List_Value, Error, List_Type);
+                     end case;
+                  end if;
+               end;
+
+            when New_List | Fill_List | Length_List | List_At =>
+               if not Supported_List (Candidate.Data_Types, Instruction.Data_Type) or else
+                 Instruction.Alternative /= 0 or else
+                 (case Instruction.Op is
+                     when New_List => Instruction.Immediate not in 0 .. MAX_LIST_ELEMENTS,
+                     when Fill_List => Instruction.Immediate not in 1 .. MAX_LIST_ELEMENTS,
+                     when others => Instruction.Immediate /= 0)
+               then Error := Invalid_Data_Type;
+               else
+                  case Instruction.Op is
+                     when New_List => null;
+                     when Fill_List =>
+                        Pop_Kind (State, Element_Kind (Candidate.Data_Types, Instruction.Data_Type), Error,
+                                  Element_Data_Type (Candidate.Data_Types, Instruction.Data_Type));
+                        Pop_Kind (State, List_Value, Error, Instruction.Data_Type);
+                     when Length_List =>
+                        Pop_Kind (State, List_Value, Error, Instruction.Data_Type);
+                     when others =>
+                        Pop_Kind (State, Integer_Value, Error);
+                        Pop_Kind (State, List_Value, Error, Instruction.Data_Type);
+                  end case;
+                  case Instruction.Op is
+                     when New_List | Fill_List =>
+                        Push_Kind (State, List_Value, Error, Instruction.Data_Type);
+                     when Length_List =>
+                        Push_Kind (State, Integer_Value, Error);
+                     when others =>
+                        Push_Kind (State, Element_Kind (Candidate.Data_Types, Instruction.Data_Type), Error,
+                                   Element_Data_Type (Candidate.Data_Types, Instruction.Data_Type));
+                  end case;
+               end if;
+
+            when Variant_To_Text =>
+               if not CCL.Types.Is_Enumeration (Candidate.Data_Types, Instruction.Data_Type) or else
+                 Instruction.Alternative /= 0
+               then Error := Invalid_Data_Type;
+               else
+                  Pop_Kind (State, Variant_Value, Error, Instruction.Data_Type);
+                  Push_Kind (State, Text_Value, Error);
+               end if;
 
             when Text_Builtin =>
                declare
@@ -517,7 +859,7 @@ is
                            Branch := State;
                            if D.Parts (A).Payload /= CCL.Types.Unit_Type then
                               Push_Kind (Branch, Kind_For_Type (Candidate.Data_Types, D.Parts (A).Payload),
-                                Error, Reference_For_Type (D.Parts (A).Payload));
+                                Error, Reference_For_Type (Candidate.Data_Types, D.Parts (A).Payload));
                            end if;
                            Merge_State (States, M.Targets (A), Branch, Error);
                         end if;
@@ -589,10 +931,10 @@ is
                end if;
                Falls_Through := False;
 
-            when Equal_Integer | Less_Integer | Less_Equal_Integer | Equal_Boolean =>
-               Pop_Kind (State, (if Instruction.Op = Equal_Boolean then Boolean_Value else Integer_Value), Error);
+            when Equal_Integer | Less_Integer | Less_Equal_Integer | Equal_Boolean | Equal_Character =>
+               Pop_Kind (State, Comparison_Kind (Instruction.Op), Error);
                if Error = Valid then
-                  Pop_Kind (State, (if Instruction.Op = Equal_Boolean then Boolean_Value else Integer_Value), Error);
+                  Pop_Kind (State, Comparison_Kind (Instruction.Op), Error);
                end if;
                if Error = Valid then
                   Push_Kind (State, Boolean_Value, Error);
@@ -718,7 +1060,10 @@ is
          end if;
       end loop;
 
-      --  The deepest call chain must fit the machine's stack.
+      --  The deepest chain of named calls must fit the machine's stack. Calls
+      --  through function values are bounded when they run (the frame table
+      --  and the stack: Call_Depth_Exhausted), since which function a value
+      --  holds is not a static fact.
       if Error = Valid then
          for R in Region_Index loop
             Need (R) := Own_Max (R);
@@ -860,6 +1205,7 @@ is
       CCL.Ownership.Initialize (State.Ownership);
       CCL.Imports.Initialize (State.Import_Lifecycle);
       Text_Regions.Initialize (State.Text);
+      List_Regions.Initialize (State.Lists);
       if Initial_Locals_Length > 0 then
          State.Terminal := True;
          State.Terminal_Status := Invalid_Bytecode;
@@ -884,10 +1230,11 @@ is
       CCL.Ownership.Initialize (State.Ownership);
       CCL.Imports.Initialize (State.Import_Lifecycle);
       Text_Regions.Initialize (State.Text);
+      List_Regions.Initialize (State.Lists);
       Accepted := Count = Initial_Locals_Length;
       if Accepted and then Count > 0 then
          for Local in 0 .. Count - 1 loop
-            if Values (Local).Kind in Object_Value | Resource_Value or else
+            if Values (Local).Kind in Object_Value | Resource_Value | List_Value or else
               Values (Local).Kind /= Item.Content.Local_Kinds (Local) or else
               Values (Local).Type_Tag /= Item.Content.Local_Types (Local) or else
               Values (Local).Data_Type /= Item.Content.Local_Data_Types (Local) or else
@@ -924,6 +1271,7 @@ is
    --  invalid descriptor.
    ---------------------------------------------------------------------------
    use type Text_Regions.Operation_Result;
+   use type List_Regions.Operation_Result;
 
    procedure Push_Constant
      (Content : Program; Index : Constant_Index;
@@ -1099,6 +1447,827 @@ is
    end Run_Text_Builtin;
 
    --  A text result's characters, for Execution_Result.
+   --  A value as a cell: its scalar fields, whatever its kind (List_Element).
+   function To_Slot (Item : Value) return Slot is
+     ((Element => (Integer => Item.Integer, Boolean => Item.Boolean,
+                   Alternative => (if Item.Kind in Variant_Value | Object_Value then Item.Alternative else 0),
+                   Text => Item.Text, Node => Item.Node),
+       Items => Item.Items));
+
+   procedure From_Slot
+     (Arena : Value_Arena; Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference;
+      Item : Slot; Result : out Value; Good : out Boolean)
+   is
+      Kind : constant Value_Kind := Kind_For_Type (Types, Ref);
+      D : constant CCL.Types.Description := CCL.Types.Describe (Types, Ref);
+   begin
+      Result := (Kind => Kind, Data_Type => Reference_For_Type (Types, Ref), others => <>);
+      Good := True;
+      case Kind is
+         when Integer_Value => Result.Integer := Item.Element.Integer;
+         when Boolean_Value => Result.Boolean := Item.Element.Boolean;
+         when Character_Value =>
+            Good := Item.Element.Integer in 0 .. MAX_CHARACTER_CODE;
+            Result.Integer := Item.Element.Integer;
+         when Text_Value => Result.Text := Item.Element.Text;
+         when List_Value => Result.Items := Item.Items;
+         when Variant_Value =>
+            Good := Item.Element.Alternative in 1 .. D.Count;
+            if Good then
+               Result.Alternative := Item.Element.Alternative;
+               Result.Integer := Item.Element.Integer;
+               Result.Boolean := Item.Element.Boolean;
+            end if;
+         when Object_Value =>
+            if Item.Element.Node = 0 then
+               --  A payload variant's unit member, carried inline.
+               Good := D.Form = CCL.Types.Sum and then Item.Element.Alternative in 1 .. D.Count and then
+                 D.Parts (Item.Element.Alternative).Payload = CCL.Types.Unit_Type;
+               if Good then Result.Alternative := Item.Element.Alternative; end if;
+            else
+               Good := Item.Element.Node <= Arena.Nodes_Used and then
+                 Arena.Nodes (Item.Element.Node).Data_Type = Ref;
+               if Good then
+                  Result.Node := Item.Element.Node;
+                  if Arena.Nodes (Item.Element.Node).Alternative in CCL.Types.Component_Index then
+                     Result.Alternative := Arena.Nodes (Item.Element.Node).Alternative;
+                  end if;
+               end if;
+            end if;
+         --  Function values never sit in a slot or list (not Storable).
+         when Resource_Value | Function_Value => Good := False;
+      end case;
+      if not Good then
+         Result := (others => <>);
+      end if;
+   end From_Slot;
+
+   --  Whether Item is a well-formed value of type Ref that may go in a slot
+   --  of a node allocated after every node now in the arena.
+   function Fits
+     (Arena : Value_Arena; Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference; Item : Value)
+      return Boolean is
+     (Item.Kind = Kind_For_Type (Types, Ref) and then
+      Item.Data_Type = Reference_For_Type (Types, Ref) and then
+      Item.Copyable and then Item.Type_Tag = 0 and then
+      Item.Kind not in Resource_Value and then
+      (Item.Kind /= Object_Value or else Item.Node <= Arena.Nodes_Used) and then
+      (Item.Kind /= Character_Value or else Item.Integer in 0 .. MAX_CHARACTER_CODE));
+
+   procedure Allocate_Node
+     (Arena : in out Value_Arena; Types : CCL.Types.Registry;
+      Data_Type : CCL.Types.Type_Reference; Alternative : CCL.Types.Component_Count;
+      Components : Component_Values; Count : CCL.Types.Component_Count;
+      Result : out Value; Good : out Boolean)
+   is
+      D : constant CCL.Types.Description := CCL.Types.Describe (Types, Data_Type);
+      Expected : constant CCL.Types.Component_Count :=
+        (if D.Form = CCL.Types.Product then D.Count
+         elsif Alternative in 1 .. D.Count and then D.Parts (Alternative).Payload /= CCL.Types.Unit_Type then 1
+         else 0);
+   begin
+      Result := (others => <>);
+      Good := Node_Type (Types, Data_Type) and then Count = Expected and then
+        (if D.Form = CCL.Types.Product then Alternative = 0 else Alternative in 1 .. D.Count);
+      if Good then
+         for P in 1 .. Count loop
+            if not Fits (Arena, Types,
+                         D.Parts (if D.Form = CCL.Types.Product then P else Alternative).Payload,
+                         Components (P))
+            then
+               Good := False;
+            end if;
+         end loop;
+      end if;
+      if not Good then
+         return;
+      elsif D.Form = CCL.Types.Sum and then Count = 0 then
+         --  A unit member: no node. (An empty record still gets one, as in
+         --  the interpreter.)
+         Result := (Kind => Object_Value, Data_Type => Data_Type,
+                    Alternative => (if Alternative in CCL.Types.Component_Index then Alternative else 1),
+                    others => <>);
+      elsif Arena.Nodes_Used = MAX_VALUE_NODES or else MAX_VALUE_SLOTS - Arena.Slots_Used < Count then
+         Good := False;
+      else
+         for P in 1 .. Count loop
+            Arena.Slots (Arena.Slots_Used + P) := To_Slot (Components (P));
+         end loop;
+         Arena.Nodes_Used := Arena.Nodes_Used + 1;
+         Arena.Nodes (Arena.Nodes_Used) :=
+           (Data_Type => Data_Type, Alternative => Alternative,
+            First => Arena.Slots_Used + 1, Count => Count);
+         Arena.Slots_Used := Arena.Slots_Used + Count;
+         Result := (Kind => Object_Value, Data_Type => Data_Type,
+                    Alternative => (if Alternative in CCL.Types.Component_Index then Alternative else 1),
+                    Node => Arena.Nodes_Used, others => <>);
+      end if;
+   end Allocate_Node;
+
+   procedure Component
+     (Arena : Value_Arena; Types : CCL.Types.Registry; Owner : Value;
+      P : CCL.Types.Component_Index; Result : out Value; Good : out Boolean)
+   is
+      D : constant CCL.Types.Description := CCL.Types.Describe (Types, Owner.Data_Type);
+   begin
+      Result := (others => <>);
+      Good := Owner.Kind = Object_Value and then Owner.Node in 1 .. Arena.Nodes_Used and then
+        Arena.Nodes (Owner.Node).Data_Type = Owner.Data_Type and then
+        P <= Arena.Nodes (Owner.Node).Count and then
+        Arena.Nodes (Owner.Node).First <= MAX_VALUE_SLOTS - (P - 1) and then
+        (D.Form = CCL.Types.Product or else Arena.Nodes (Owner.Node).Alternative in CCL.Types.Component_Index);
+      if Good then
+         declare
+            Part : constant CCL.Types.Component_Index :=
+              (if D.Form = CCL.Types.Product then P else Arena.Nodes (Owner.Node).Alternative);
+         begin
+            From_Slot (Arena, Types, D.Parts (Part).Payload,
+                       Arena.Slots (Arena.Nodes (Owner.Node).First + (P - 1)), Result, Good);
+         end;
+      end if;
+   end Component;
+
+   --  A list element and the value it stands for.
+   function To_Element (Item : Value) return List_Element is (To_Slot (Item).Element);
+   procedure From_Element
+     (Arena : Value_Arena; Types : CCL.Types.Registry; List_Type : CCL.Types.Type_Reference;
+      Element : List_Element; Item : out Value; Good : out Boolean) is
+   begin
+      From_Slot (Arena, Types, CCL.Types.Element_Of (Types, List_Type),
+                 (Element => Element, Items => <>), Item, Good);
+   end From_Element;
+
+   --  The interpreter's string order (sort): byte by byte, a prefix first.
+   function Text_Less
+     (Region : Text_Regions.Stack; Left, Right : Text_Regions.String_Value) return Boolean
+   is
+      A, B : Character;
+      Status_A, Status_B : Text_Regions.Operation_Result;
+      Shorter : constant Natural := Natural'Min (Text_Regions.Length (Left), Text_Regions.Length (Right));
+   begin
+      for I in 1 .. Shorter loop
+         if I - 1 > Text_Regions.String_Index'Last - Text_Regions.First_Index (Left) or else
+           I - 1 > Text_Regions.String_Index'Last - Text_Regions.First_Index (Right)
+         then
+            return False;
+         end if;
+         Text_Regions.Read (Region, Left, Text_Regions.First_Index (Left) + (I - 1), A, Status_A);
+         Text_Regions.Read (Region, Right, Text_Regions.First_Index (Right) + (I - 1), B, Status_B);
+         if Status_A /= Text_Regions.Operation_Ok or else Status_B /= Text_Regions.Operation_Ok then
+            return False;
+         elsif A /= B then
+            return A < B;
+         end if;
+      end loop;
+      return Text_Regions.Length (Left) < Text_Regions.Length (Right);
+   end Text_Less;
+
+   --  The interpreter keeps a split piece as a region string of at most
+   --  1 KiB (CCL.Host_Values.Maximum_Text_Length); a longer piece fills it.
+   MAX_SPLIT_PIECE : constant := MAX_RESULT_TEXT;
+
+   --  A list built-in, with the interpreter's fuel: one per element read and
+   --  per sort comparison or joined piece. Subject is the list (the text,
+   --  for split); A and B are the operands before it in source.
+   procedure Run_List_Builtin
+     (Lists  : in out List_Regions.Stack;
+      Texts  : in out Text_Regions.Stack;
+      Budget : in out CCL.Execution_Budgets.Budget;
+      Arena  : Value_Arena;
+      Types  : CCL.Types.Registry;
+      Item   : L.Operation;
+      List_Type : CCL.Types.Type_Reference;
+      Subject, A, B : Value;
+      Result : out Value;
+      Status : out Execution_Status)
+   with Post => CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Old)
+   is
+      Length : constant Natural :=
+        (if Subject.Kind = List_Value then List_Regions.Length (Subject.Items) else 0);
+      Kind : constant Value_Kind := Element_Kind (Types, List_Type);
+      Region_Status : List_Regions.Operation_Result := List_Regions.Operation_Ok;
+      Good : Boolean := True;
+      E : List_Element;
+
+      procedure Fail (Code : Execution_Status) is
+      begin
+         if Good then Status := Code; end if;
+         Good := False;
+      end Fail;
+
+      procedure Spend
+        with Post => CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Old);
+      procedure Spend is
+         Spent : CCL.Execution_Budgets.Consume_Result;
+      begin
+         if not Good then return; end if;
+         if not CCL.Execution_Budgets.Has_Fuel (Budget) then
+            Fail (Fuel_Exhausted);
+            return;
+         end if;
+         CCL.Execution_Budgets.Consume (Budget, Spent);
+         if Spent /= CCL.Execution_Budgets.Consumed then
+            Fail (Fuel_Exhausted);
+         end if;
+      end Spend;
+
+      --  Count fuel spent after the fact (a sort's comparisons).
+      procedure Charge (Count : Natural)
+        with Post => CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Old);
+      procedure Charge (Count : Natural) is
+         Spent : CCL.Execution_Budgets.Consume_Result;
+      begin
+         for C in 1 .. Count loop
+            pragma Loop_Invariant
+              (CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Loop_Entry));
+            CCL.Execution_Budgets.Consume (Budget, Spent);
+            exit when Spent /= CCL.Execution_Budgets.Consumed;
+         end loop;
+      end Charge;
+
+      procedure Get (List : List_Regions.Array_Value; I : Positive; Element : out List_Element) is
+      begin
+         Element := Null_List_Element;
+         if not Good then return; end if;
+         if I > List_Regions.Array_Index'Last then
+            Fail (Invalid_Bytecode);
+            return;
+         end if;
+         List_Regions.Read (Lists, List, List_Regions.Array_Index (I), Element, Region_Status);
+         if Region_Status /= List_Regions.Operation_Ok then
+            Element := Null_List_Element;
+            Fail (Invalid_Bytecode);
+         end if;
+      end Get;
+
+      procedure Put (List : List_Regions.Array_Value; I : Positive; Element : List_Element) is
+      begin
+         if not Good then return; end if;
+         if I > List_Regions.Array_Index'Last then
+            Fail (Invalid_Bytecode);
+            return;
+         end if;
+         List_Regions.Write (Lists, List, List_Regions.Array_Index (I), Element, Region_Status);
+         if Region_Status /= List_Regions.Operation_Ok then
+            Fail (Invalid_Bytecode);
+         end if;
+      end Put;
+
+      --  Element I of the subject, for one fuel.
+      procedure Read (I : Positive; Element : out List_Element)
+        with Post => CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Old);
+      procedure Read (I : Positive; Element : out List_Element) is
+      begin
+         Element := Null_List_Element;
+         Spend;
+         Get (Subject.Items, I, Element);
+      end Read;
+
+      procedure Reserve (Size : Natural) is
+      begin
+         Result := (Kind => List_Value, Data_Type => List_Type, others => <>);
+         List_Regions.Reserve (Lists, Size, Result.Items, Region_Status);
+         if Region_Status /= List_Regions.Operation_Ok then
+            Fail (List_Storage_Exhausted);
+         end if;
+      end Reserve;
+   begin
+      Result := (others => <>);
+      Status := Completed;
+      case Item is
+         when L.First_Items | L.Last_Items | L.Skip_Items =>
+            declare
+               From : Positive;
+               To : Natural;
+            begin
+               L.Take_Bounds (Item, A.Integer, Length, From, To);
+               Reserve (if To >= From then To - From + 1 else 0);
+               for I in From .. To loop
+                  exit when not Good;
+                  Read (I, E);
+                  Put (Result.Items, I - From + 1, E);
+               end loop;
+            end;
+
+         when L.Reverse_Items =>
+            Reserve (Length);
+            for I in 1 .. Length loop
+               exit when not Good;
+               Read (Length - I + 1, E);
+               Put (Result.Items, I, E);
+            end loop;
+
+         when L.Sort_Items =>
+            Reserve (Length);
+            for I in 1 .. Length loop
+               exit when not Good;
+               Read (I, E);
+               Put (Result.Items, I, E);
+            end loop;
+            --  One fuel per comparison, as in the interpreter: the comparisons
+            --  are counted against the fuel left (so the sort stops at the same
+            --  point) and charged after it, outside the generic sort.
+            declare
+               Allowance : constant Natural :=
+                 Natural (Unsigned_32'Min (CCL.Execution_Budgets.Remaining (Budget),
+                                           Unsigned_32 (Natural'Last)));
+               Compared : Natural := 0;
+               procedure Sort_Less (I, J : Positive; Before : out Boolean; Ok : out Boolean) is
+                  X, Y : List_Element;
+               begin
+                  Before := False;
+                  if Compared >= Allowance then
+                     Fail (Fuel_Exhausted);
+                  else
+                     Compared := Compared + 1;
+                  end if;
+                  Get (Result.Items, I, X);
+                  Get (Result.Items, J, Y);
+                  Before := Good and then
+                    (if Kind = Text_Value then Text_Less (Texts, X.Text, Y.Text)
+                     elsif Kind = Variant_Value then X.Alternative < Y.Alternative
+                     else X.Integer < Y.Integer);
+                  Ok := Good;
+               end Sort_Less;
+               procedure Sort_Swap (I, J : Positive; Ok : out Boolean) is
+                  X, Y : List_Element;
+               begin
+                  Get (Result.Items, I, X);
+                  Get (Result.Items, J, Y);
+                  Put (Result.Items, I, Y);
+                  Put (Result.Items, J, X);
+                  Ok := Good;
+               end Sort_Swap;
+               procedure Sort is new L.Heap_Sort (Sort_Less, Sort_Swap);
+               Sorted : Boolean;
+            begin
+               if Good then
+                  Sort (Length, Sorted);
+                  Charge (Compared);
+                  if not Sorted then
+                     Fail (Invalid_Bytecode);
+                  end if;
+               end if;
+            end;
+
+         when L.Sum_Items =>
+            Result := Integer_Constant (0);
+            for I in 1 .. Length loop
+               exit when not Good;
+               Read (I, E);
+               exit when not Good;
+               declare
+                  Total : Integer_64;
+                  Overflowed : Boolean;
+               begin
+                  CCL.Checked_Arithmetic.Add (Result.Integer, E.Integer, Total, Overflowed);
+                  if Overflowed then
+                     Fail (Arithmetic_Overflow);
+                  else
+                     Result.Integer := Total;
+                  end if;
+               end;
+            end loop;
+
+         when L.Min_Items | L.Max_Items =>
+            if Length = 0 then
+               Fail (Index_Out_Of_Range);
+            else
+               Read (1, E);
+               Result := Integer_Constant (E.Integer);
+               for I in 2 .. Length loop
+                  exit when not Good;
+                  Read (I, E);
+                  if Good and then
+                    (if Item = L.Min_Items then E.Integer < Result.Integer else E.Integer > Result.Integer)
+                  then
+                     Result.Integer := E.Integer;
+                  end if;
+               end loop;
+            end if;
+
+         when L.Contains_Item =>
+            Result := Boolean_Constant (False);
+            for I in 1 .. Length loop
+               exit when not Good;
+               Read (I, E);
+               exit when not Good;
+               declare
+                  Member : Value;
+                  Valid, Same : Boolean;
+                  Compared : Text_Regions.Operation_Result;
+               begin
+                  From_Element (Arena, Types, List_Type, E, Member, Valid);
+                  if not Valid then
+                     Fail (Invalid_Bytecode);
+                  else
+                     case Kind is
+                        when Text_Value =>
+                           Equal_Texts (Texts, Member, A, Same, Compared);
+                           if Compared /= Text_Regions.Operation_Ok then
+                              Fail (Text_Failure (Compared));
+                           end if;
+                        when Boolean_Value => Same := Member.Boolean = A.Boolean;
+                        when Variant_Value => Same := Member.Alternative = A.Alternative;
+                        when others => Same := Member.Integer = A.Integer;
+                     end case;
+                     if Good and then Same then
+                        Result := Boolean_Constant (True);
+                        exit;
+                     end if;
+                  end if;
+               end;
+            end loop;
+
+         when L.Join_Items =>
+            declare
+               Separator : String (1 .. MAX_STRING_BYTES) := [others => ' '];
+               Joined : String (1 .. MAX_STRING_BYTES) := [others => ' '];
+               Separator_Length : constant Natural := Text_Regions.Length (A.Text);
+               Used : Natural range 0 .. MAX_STRING_BYTES := 0;
+               Piece_Length : Natural;
+               Copied : Text_Regions.Operation_Result;
+            begin
+               if Separator_Length > MAX_STRING_BYTES then
+                  Fail (Text_Storage_Exhausted);
+               else
+                  Text_Regions.Copy_To (Texts, A.Text, Separator (1 .. Separator_Length), Copied);
+                  if Copied /= Text_Regions.Operation_Ok then
+                     Fail (Text_Failure (Copied));
+                  end if;
+               end if;
+               for I in 1 .. Length loop
+                  exit when not Good;
+                  Read (I, E);
+                  exit when not Good;
+                  Piece_Length := Text_Regions.Length (E.Text);
+                  if (I > 1 and then Separator_Length > MAX_STRING_BYTES - Used) or else
+                    Piece_Length > MAX_STRING_BYTES - Used - (if I > 1 then Separator_Length else 0)
+                  then
+                     Fail (Text_Storage_Exhausted);
+                  else
+                     if I > 1 then
+                        Joined (Used + 1 .. Used + Separator_Length) := Separator (1 .. Separator_Length);
+                        Used := Used + Separator_Length;
+                     end if;
+                     Text_Regions.Copy_To (Texts, E.Text, Joined (Used + 1 .. Used + Piece_Length), Copied);
+                     if Copied /= Text_Regions.Operation_Ok then
+                        Fail (Text_Failure (Copied));
+                     else
+                        Used := Used + Piece_Length;
+                     end if;
+                  end if;
+               end loop;
+               if Good then
+                  Result := (Kind => Text_Value, others => <>);
+                  Text_Regions.Allocate_String (Texts, Joined (1 .. Used), Result.Text, Copied);
+                  if Copied /= Text_Regions.Operation_Ok then
+                     Fail (Text_Failure (Copied));
+                  end if;
+               end if;
+            end;
+
+         when L.Range_Items =>
+            declare
+               Size : Natural;
+               Fits : Boolean;
+               Next : Integer_64;
+               Overflowed : Boolean;
+            begin
+               L.Range_Length (A.Integer, B.Integer, MAX_LIST_ELEMENTS, Size, Fits);
+               if not Fits then
+                  Fail (List_Storage_Exhausted);
+               else
+                  Reserve (Size);
+               end if;
+               for I in 1 .. Size loop
+                  exit when not Good;
+                  CCL.Checked_Arithmetic.Add (A.Integer, Integer_64 (I - 1), Next, Overflowed);
+                  if Overflowed then
+                     Fail (Arithmetic_Overflow);
+                  else
+                     Put (Result.Items, I, (Integer => Next, others => <>));
+                  end if;
+               end loop;
+            end;
+
+         when L.Split_Text =>
+            declare
+               Text : String (1 .. MAX_STRING_BYTES) := [others => ' '];
+               Separator : String (1 .. MAX_PATTERN_BYTES) := [others => ' '];
+               Text_Length : constant Natural range 0 .. MAX_STRING_BYTES :=
+                 Natural'Min (Text_Regions.Length (Subject.Text), MAX_STRING_BYTES);
+               Separator_Length : constant Natural range 0 .. MAX_PATTERN_BYTES :=
+                 Natural'Min (Text_Regions.Length (A.Text), MAX_PATTERN_BYTES);
+               Copied : Text_Regions.Operation_Result;
+               Capacity : Natural range 0 .. MAX_LIST_ELEMENTS := 0;
+               Count : Natural range 0 .. MAX_LIST_ELEMENTS := 0;
+               Position : Positive := 1;
+               Finished : Boolean := False;
+               Low : Positive;
+               High : Natural;
+               Found : Boolean;
+               Piece : Text_Regions.String_Value;
+            begin
+               if Text_Regions.Length (Subject.Text) > MAX_STRING_BYTES or else
+                 Text_Regions.Length (A.Text) > MAX_PATTERN_BYTES
+               then
+                  Fail (Text_Storage_Exhausted);
+               else
+                  Text_Regions.Copy_To (Texts, Subject.Text, Text (1 .. Text_Length), Copied);
+                  if Copied = Text_Regions.Operation_Ok then
+                     Text_Regions.Copy_To (Texts, A.Text, Separator (1 .. Separator_Length), Copied);
+                  end if;
+                  if Copied /= Text_Regions.Operation_Ok then
+                     Fail (Text_Failure (Copied));
+                  end if;
+                  Capacity := Natural'Min (Text_Length + 1, MAX_LIST_ELEMENTS);
+               end if;
+               if Good then
+                  Reserve (Capacity);
+               end if;
+               --  At most Text_Length + 1 pieces; one more step reports a full
+               --  list when Capacity is smaller.
+               for Step in 0 .. Capacity loop
+                  pragma Loop_Invariant (Position <= Text_Length + 1);
+                  exit when not Good;
+                  CCL.Text_Operations.Next_Piece
+                    (Text (1 .. Text_Length), Separator (1 .. Separator_Length),
+                     Position, Finished, Low, High, Found);
+                  exit when not Found;
+                  if Count >= Capacity or else (High >= Low and then High - Low + 1 > MAX_SPLIT_PIECE) then
+                     Fail (List_Storage_Exhausted);
+                  else
+                     Text_Regions.Allocate_String
+                       (Texts, (if High >= Low then Text (Low .. High) else ""), Piece, Copied);
+                     if Copied /= Text_Regions.Operation_Ok then
+                        Fail (Text_Failure (Copied));
+                     else
+                        Count := Count + 1;
+                        Put (Result.Items, Count, (Text => Piece, others => <>));
+                     end if;
+                  end if;
+               end loop;
+               if Good then
+                  List_Regions.Shrink (Lists, Result.Items, Count, Region_Status);
+                  if Region_Status /= List_Regions.Operation_Ok then
+                     Fail (List_Storage_Exhausted);
+                  end if;
+               end if;
+            end;
+      end case;
+      if not Good then
+         Result := (others => <>);
+      end if;
+   end Run_List_Builtin;
+
+   --  sort-by's last step: the elements in It.Built ordered by their keys
+   --  (Integer or String), one fuel per comparison as in sort: counted
+   --  against the fuel left, charged after the sort. Exhausted when it ran
+   --  out. Only the regions and budget it names change.
+   procedure Sort_By_Keys
+     (Lists : in out List_Regions.Stack; Texts : Text_Regions.Stack;
+      Budget : in out CCL.Execution_Budgets.Budget; Types : CCL.Types.Registry;
+      It : in out Iteration; Good : out Boolean; Exhausted : out Boolean)
+     with Post => CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Old)
+   is
+      D : constant CCL.Types.Description := CCL.Types.Describe (Types, It.Callee.Data_Type);
+      Text_Keys : constant Boolean := D.Count >= 1 and then D.Parts (D.Count).Payload = CCL.Types.String_Type;
+      Allowance : constant Natural :=
+        Natural (Unsigned_32'Min (CCL.Execution_Budgets.Remaining (Budget), Unsigned_32 (Natural'Last)));
+      Compared : Natural := 0;
+      procedure Get (List : List_Regions.Array_Value; I : Positive; E : out List_Element; Ok : in out Boolean) is
+         Read : List_Regions.Operation_Result;
+      begin
+         E := Null_List_Element;
+         if Ok and then I <= List_Regions.Array_Index'Last then
+            List_Regions.Read (Lists, List, List_Regions.Array_Index (I), E, Read);
+            Ok := Read = List_Regions.Operation_Ok;
+         else
+            Ok := False;
+         end if;
+      end Get;
+      procedure Put (List : List_Regions.Array_Value; I : Positive; E : List_Element; Ok : in out Boolean) is
+         Written : List_Regions.Operation_Result;
+      begin
+         if Ok and then I <= List_Regions.Array_Index'Last then
+            List_Regions.Write (Lists, List, List_Regions.Array_Index (I), E, Written);
+            Ok := Written = List_Regions.Operation_Ok;
+         else
+            Ok := False;
+         end if;
+      end Put;
+      procedure Less (I, J : Positive; Before : out Boolean; Ok : out Boolean) is
+         A, B : List_Element;
+      begin
+         Before := False;
+         Ok := Compared < Allowance;
+         if not Ok then
+            Exhausted := True;
+            return;
+         end if;
+         Compared := Compared + 1;
+         Get (It.Keys, I, A, Ok);
+         Get (It.Keys, J, B, Ok);
+         Before := Ok and then (if Text_Keys then Text_Less (Texts, A.Text, B.Text) else A.Integer < B.Integer);
+      end Less;
+      procedure Swap (I, J : Positive; Ok : out Boolean) is
+         A, B, X, Y : List_Element;
+      begin
+         Ok := True;
+         Get (It.Keys, I, A, Ok); Get (It.Keys, J, B, Ok);
+         Put (It.Keys, I, B, Ok); Put (It.Keys, J, A, Ok);
+         Get (It.Built.Items, I, X, Ok); Get (It.Built.Items, J, Y, Ok);
+         Put (It.Built.Items, I, Y, Ok); Put (It.Built.Items, J, X, Ok);
+      end Swap;
+      procedure Sort is new L.Heap_Sort (Less, Swap);
+   begin
+      Exhausted := False;
+      Sort (List_Regions.Length (It.Built.Items), Good);
+      for C in 1 .. Compared loop
+         pragma Loop_Invariant
+           (CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Loop_Entry));
+         declare
+            Spent : CCL.Execution_Budgets.Consume_Result;
+         begin
+            CCL.Execution_Budgets.Consume (Budget, Spent);
+            exit when Spent /= CCL.Execution_Budgets.Consumed;
+         end;
+      end loop;
+      Good := Good and then not Exhausted;
+   end Sort_By_Keys;
+
+   --  Copy a list result out, as the interpreter does: the first elements
+   --  as values, strings as consecutive slices of List_Text.
+   procedure Export_List
+     (Lists : List_Regions.Stack; Texts : Text_Regions.Stack; Arena : Value_Arena;
+      Types : CCL.Types.Registry; Item : Value; Result : in out Execution_Result)
+   is
+      Total : constant Natural := List_Regions.Length (Item.Items);
+      Element : List_Element;
+      Element_Value : Value;
+      Read_Status : List_Regions.Operation_Result;
+      Copied : Text_Regions.Operation_Result;
+      Used : Result_Text_Length := 0;
+      Size : Natural;
+      Good : Boolean;
+   begin
+      Result.List_Total := Total;
+      Result.List_Length := Natural'Min (Total, MAX_LIST_RESULT);
+      for I in 1 .. Result.List_Length loop
+         List_Regions.Read (Lists, Item.Items, List_Regions.Array_Index (I), Element, Read_Status);
+         From_Element (Arena, Types, Item.Data_Type, Element, Element_Value, Good);
+         if Read_Status /= List_Regions.Operation_Ok or else not Good then
+            Result.List_Length := I - 1; exit;
+         end if;
+         if Element_Value.Kind = Text_Value then
+            Size := Text_Regions.Length (Element.Text);
+            if Size > MAX_RESULT_TEXT - Used then
+               --  Carry out the elements that fit.
+               Result.List_Length := I - 1; exit;
+            end if;
+            Text_Regions.Copy_To (Texts, Element.Text, Result.List_Text.Data (Used + 1 .. Used + Size), Copied);
+            if Copied /= Text_Regions.Operation_Ok then
+               Result.List_Length := I - 1; exit;
+            end if;
+            Used := Used + Size;
+            Result.List_Text_Ends (I) := Used;
+         elsif Element_Value.Kind = Character_Value then
+            Result.List_Values (I) := Integer_Constant (Element.Integer);
+         elsif Element_Value.Kind = Variant_Value then
+            Result.List_Values (I) := Integer_Constant (Integer_64 (Element.Alternative));
+         else
+            Result.List_Values (I) := Element_Value;
+         end if;
+      end loop;
+      Result.List_Text.Length := Used;
+   end Export_List;
+
+   --  A result's canonical CCL literal, as the interpreter prints it (it
+   --  reads back as the same value): (Pair 42 "hi"), Shape.Empty,
+   --  (Shape.Circle 3), [1 2], (list-of T). Characters have no literal.
+   --  A node's components are older nodes, so Bound (the node being
+   --  printed) decreases; a list's elements print at Level 0, which has no
+   --  lists of its own.
+   subtype Print_Bound is Natural range 0 .. MAX_VALUE_NODES + 1;
+   subtype Print_Level is Natural range 0 .. 1;
+   procedure Print_Value
+     (Arena : Value_Arena; Texts : Text_Regions.Stack; Lists : List_Regions.Stack;
+      Types : CCL.Types.Registry; Item : Value; Bound : Print_Bound; Level : Print_Level;
+      Output : in out Result_Text; Good : in out Boolean)
+     with Subprogram_Variant => (Decreases => Bound, Decreases => Level)
+   is
+      procedure Add (Text : String) is
+      begin
+         if Good and then Text'Length <= MAX_RESULT_TEXT - Output.Length then
+            Output.Data (Output.Length + 1 .. Output.Length + Text'Length) := Text;
+            Output.Length := Output.Length + Text'Length;
+         else
+            Good := False;
+         end if;
+      end Add;
+      function Name_Of (Ref : CCL.Types.Type_Reference) return String is
+        (CCL.Types.Image (CCL.Types.Describe (Types, Ref).Identifier));
+      D : constant CCL.Types.Description := CCL.Types.Describe (Types, Item.Data_Type);
+      Part : Value;
+      C : Character;
+      Read : Text_Regions.Operation_Result;
+      Element : List_Element;
+      Listed : List_Regions.Operation_Result;
+   begin
+      if not Good then return; end if;
+      if Item.Node >= Bound then
+         Good := False;
+         return;
+      end if;
+      case Item.Kind is
+         when Integer_Value => Add (CCL.Text_Operations.Decimal_Image (Item.Integer));
+         when Boolean_Value => Add ((if Item.Boolean then "true" else "false"));
+         when Text_Value =>
+            Add ("""");
+            for I in 1 .. Text_Regions.Length (Item.Text) loop
+               exit when not Good;
+               Text_Regions.Read (Texts, Item.Text, Text_Regions.String_Index (I), C, Read);
+               Good := Read = Text_Regions.Operation_Ok;
+               exit when not Good;
+               case C is
+                  when '"' => Add ("\""");
+                  when '\' => Add ("\\");
+                  when ASCII.LF => Add ("\n");
+                  when ASCII.CR => Add ("\r");
+                  when ASCII.HT => Add ("\t");
+                  when ' ' .. '!' | '#' .. '[' | ']' .. '~' => Add ([1 => C]);
+                  when others => Good := False;
+               end case;
+            end loop;
+            Add ("""");
+         when List_Value =>
+            if Level = 0 then
+               Good := False;
+            elsif List_Regions.Length (Item.Items) = 0 then
+               Add ("(list-of " & Name_Of (CCL.Types.Element_Of (Types, Item.Data_Type)) & ")");
+            else
+               Add ("[");
+               for I in 1 .. List_Regions.Length (Item.Items) loop
+                  exit when not Good;
+                  List_Regions.Read (Lists, Item.Items, List_Regions.Array_Index (I), Element, Listed);
+                  Good := Good and then Listed = List_Regions.Operation_Ok;
+                  if Good then
+                     From_Element (Arena, Types, Item.Data_Type, Element, Part, Good);
+                  end if;
+                  if I > 1 then Add (" "); end if;
+                  if Good then
+                     Print_Value (Arena, Texts, Lists, Types, Part, Bound, 0, Output, Good);
+                  end if;
+               end loop;
+               Add ("]");
+            end if;
+         when Variant_Value | Object_Value =>
+            if D.Form = CCL.Types.Product and then Item.Node /= 0 then
+               Add ("(" & Name_Of (Item.Data_Type));
+               for P in 1 .. D.Count loop
+                  exit when not Good;
+                  Component (Arena, Types, Item, P, Part, Good);
+                  exit when not Good;
+                  Add (" ");
+                  Print_Value (Arena, Texts, Lists, Types, Part, Item.Node, 1, Output, Good);
+               end loop;
+               Add (")");
+            elsif D.Form = CCL.Types.Sum and then Item.Alternative <= D.Count then
+               if D.Parts (Item.Alternative).Payload = CCL.Types.Unit_Type then
+                  Add (Name_Of (Item.Data_Type) & "." & CCL.Types.Image (D.Parts (Item.Alternative).Identifier));
+               else
+                  Add ("(" & Name_Of (Item.Data_Type) & "." &
+                       CCL.Types.Image (D.Parts (Item.Alternative).Identifier) & " ");
+                  if Item.Node /= 0 then
+                     Component (Arena, Types, Item, 1, Part, Good);
+                     if Good then
+                        Print_Value (Arena, Texts, Lists, Types, Part, Item.Node, 1, Output, Good);
+                     end if;
+                  else
+                     --  A scalar payload carried inline: no node to decrease.
+                     case D.Parts (Item.Alternative).Payload is
+                        when CCL.Types.Integer_Type => Add (CCL.Text_Operations.Decimal_Image (Item.Integer));
+                        when CCL.Types.Boolean_Type => Add ((if Item.Boolean then "true" else "false"));
+                        when others => Good := False;
+                     end case;
+                  end if;
+                  Add (")");
+               end if;
+            else
+               Good := False;
+            end if;
+         when Character_Value | Resource_Value | Function_Value => Good := False;
+      end case;
+   end Print_Value;
+
+   --  Whether a list's elements are records or payload variants: such a
+   --  list leaves as a literal, as the interpreter's does.
+   function Compound_Elements (Types : CCL.Types.Registry; List_Type : CCL.Types.Type_Reference) return Boolean is
+     (CCL.Types.Describe (Types, CCL.Types.Element_Of (Types, List_Type)).Form = CCL.Types.Product or else
+      (CCL.Types.Describe (Types, CCL.Types.Element_Of (Types, List_Type)).Form = CCL.Types.Sum and then
+       not CCL.Types.Is_Enumeration (Types, CCL.Types.Element_Of (Types, List_Type))));
+
    function Result_Text_Of (Region : Text_Regions.Stack; Item : Value) return Result_Text is
       Text : Result_Text;
       Status : Text_Regions.Operation_Result;
@@ -1115,10 +2284,17 @@ is
       return Text;
    end Result_Text_Of;
 
-   procedure Continue_With_Native
+   procedure Run
      (Item   : Validated_Program;
       State  : in out Machine_State;
-      Store : in out Native_Store;
+      Instructions : Natural;
+      Result : out Execution_Result)
+     with Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),
+       Post => Is_Well_Formed (Item, State) and then
+         Fuel_Limit (State) = Fuel_Limit (State'Old) and then Result.Steps <= Fuel_Limit (State);
+   procedure Run
+     (Item   : Validated_Program;
+      State  : in out Machine_State;
       Instructions : Natural;
       Result : out Execution_Result)
    is
@@ -1129,7 +2305,7 @@ is
       Right : Integer_64;
       Left_Value  : Value;
       Right_Value : Value;
-      Stack_Result : Runtime_Stacks.Operation_Result;
+      Stack_Result : Runtime_Stacks.Operation_Result := Runtime_Stacks.Stack_Ok;
       Waiting : Boolean := State.Waiting;
       Waiting_Owned : Boolean := State.Waiting_Owned;
       Done  : Boolean := State.Terminal or else Waiting;
@@ -1145,6 +2321,8 @@ is
       Text_Status : Text_Regions.Operation_Result;
       Same_Text : Boolean;
       Joined : Value;
+      Element : Character;
+      List_Status : List_Regions.Operation_Result := List_Regions.Operation_Ok;
 
       --  Stop the run with Code. Only the terminal status changes.
       procedure Trap (Code : Execution_Status)
@@ -1182,6 +2360,556 @@ is
             Trap (Invalid_Bytecode);
          end if;
       end Pop_Text;
+
+      --  Enter the function value Callee: its captures, then Arity
+      --  arguments, as the callee's frame; Return_PC is where its result
+      --  comes back to.
+      procedure Enter_Call
+        (Callee : Value; Arguments : Component_Values; Arity : Natural;
+         Return_PC : Instruction_Index; Good : out Boolean)
+        with Post => Fuel_Limit (State) = Fuel_Limit (State'Old) and then
+                     CCL.Imports.Phase (State.Import_Lifecycle) =
+                       CCL.Imports.Phase (State.Import_Lifecycle'Old);
+      procedure Enter_Call
+        (Callee : Value; Arguments : Component_Values; Arity : Natural;
+         Return_PC : Instruction_Index; Good : out Boolean)
+      is
+         Captured : List_Element;
+         Read : List_Regions.Operation_Result;
+         Pushed : Runtime_Stacks.Operation_Result;
+      begin
+         Good := Callee.Kind = Function_Value and then
+           Callee.Integer in 0 .. Integer_64 (Item.Content.Functions_Length) - 1 and then
+           State.Frame_Count < MAX_FUNCTIONS and then Arity <= CCL.Types.Maximum_Components;
+         if not Good then return; end if;
+         declare
+            F : constant Function_Index := Function_Index (Callee.Integer);
+            Decl : constant Function_Declaration := Item.Content.Functions (F);
+         begin
+            Good := Decl.Captures <= Decl.Count and then Decl.Count - Decl.Captures = Arity and then
+              List_Regions.Length (Callee.Items) = Decl.Captures;
+            for C in 1 .. Decl.Captures loop
+               exit when not Good;
+               List_Regions.Read (State.Lists, Callee.Items, List_Regions.Array_Index (C), Captured, Read);
+               Good := Read = List_Regions.Operation_Ok;
+               if Good then
+                  Runtime_Stacks.Push
+                    (Stack, (Kind => Decl.Kinds (C), Data_Type => Decl.Data_Types (C),
+                             Integer => Captured.Integer, Boolean => Captured.Boolean,
+                             Alternative => (if Captured.Alternative in CCL.Types.Component_Index
+                                             then Captured.Alternative else 1),
+                             Text => Captured.Text, Node => Captured.Node, others => <>),
+                     Pushed);
+                  Good := Pushed = Runtime_Stacks.Stack_Ok;
+               end if;
+            end loop;
+            for P in 1 .. Arity loop
+               exit when not Good;
+               Runtime_Stacks.Push (Stack, Arguments (P), Pushed);
+               Good := Pushed = Runtime_Stacks.Stack_Ok;
+            end loop;
+            if Good then
+               State.Frames (State.Frame_Count) := (Return_PC => Return_PC, Callee => F);
+               State.Frame_Count := State.Frame_Count + 1;
+               PC := Decl.Entry_PC;
+            end if;
+         end;
+      end Enter_Call;
+
+      --  List_Apply at PC: start an iteration, or resume it with the result
+      --  of its last call; then call for the next element or finish.
+      procedure Run_Apply
+        with Post => Fuel_Limit (State) = Fuel_Limit (State'Old) and then
+                     CCL.Imports.Phase (State.Import_Lifecycle) =
+                       CCL.Imports.Phase (State.Import_Lifecycle'Old);
+      procedure Run_Apply is
+         Ins : constant Instruction := Item.Content.Code (PC);
+         Types : constant CCL.Types.Registry := Item.Content.Data_Types;
+         Good : Boolean := True;
+         Answer : Value;
+         Element : List_Element;
+         Read : List_Regions.Operation_Result;
+         Written : List_Regions.Operation_Result;
+         Operation : L.Apply_Operation;
+         Known : Boolean;
+         Decided : Boolean := False;
+      begin
+         if State.Iteration_Depth > 0 and then
+           State.Iterations (State.Iteration_Depth).Active and then
+           State.Iterations (State.Iteration_Depth).Awaiting and then
+           State.Iterations (State.Iteration_Depth).At_PC = PC and then
+           State.Iterations (State.Iteration_Depth).Frame_Level = State.Frame_Count
+         then
+            --  Resume: the function's result for element Position.
+            declare
+               --  A copy, written back below (an element whose index can
+               --  change cannot be renamed).
+               It : Iteration := State.Iterations (State.Iteration_Depth);
+            begin
+               Runtime_Stacks.Pop (Stack, Answer, Stack_Result);
+               Good := Stack_Result = Runtime_Stacks.Stack_Ok and then It.Position >= 1 and then
+                 It.Position <= List_Regions.Length (It.Subject.Items);
+               if Good then
+                  It.Awaiting := False;
+                  case It.Operation is
+                     when L.Each_Items =>
+                        List_Regions.Write (State.Lists, It.Built.Items, List_Regions.Array_Index (It.Position),
+                                            To_Element (Answer), Written);
+                        Good := Written = List_Regions.Operation_Ok;
+                        It.Kept := It.Position;
+                     when L.Where_Items =>
+                        if Answer.Boolean then
+                           List_Regions.Read (State.Lists, It.Subject.Items, List_Regions.Array_Index (It.Position),
+                                              Element, Read);
+                           Good := Read = List_Regions.Operation_Ok and then It.Kept < MAX_LIST_ELEMENTS;
+                           if Good then
+                              It.Kept := It.Kept + 1;
+                              List_Regions.Write (State.Lists, It.Built.Items, List_Regions.Array_Index (It.Kept),
+                                                  Element, Written);
+                              Good := Written = List_Regions.Operation_Ok;
+                           end if;
+                        end if;
+                     when L.Fold_Items => It.Accumulator := Answer;
+                     when L.Any_Items | L.All_Items =>
+                        if Answer.Boolean = (It.Operation = L.Any_Items) then
+                           It.Accumulator := Boolean_Constant (Answer.Boolean);
+                           Decided := True;
+                        end if;
+                     when L.Count_Items =>
+                        if Answer.Boolean and then It.Accumulator.Integer < Integer_64'Last then
+                           It.Accumulator.Integer := It.Accumulator.Integer + 1;
+                        end if;
+                     when L.Sort_By_Items =>
+                        List_Regions.Write (State.Lists, It.Keys, List_Regions.Array_Index (It.Position),
+                                            To_Element (Answer), Written);
+                        Good := Written = List_Regions.Operation_Ok;
+                  end case;
+               end if;
+               State.Iterations (State.Iteration_Depth) := It;
+            end;
+         else
+            --  Start: the list, fold's initial value, the function value.
+            Find_Apply_Operation (Ins.Immediate, Operation, Known);
+            Good := Known and then State.Iteration_Depth < MAX_ITERATIONS;
+            declare
+               Subject, Initial, Callee : Value;
+            begin
+               if Good then
+                  Runtime_Stacks.Pop (Stack, Subject, Stack_Result);
+                  Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Subject.Kind = List_Value and then
+                    Subject.Data_Type = Ins.Data_Type;
+               end if;
+               if Good and then Operation = L.Fold_Items then
+                  Runtime_Stacks.Pop (Stack, Initial, Stack_Result);
+                  Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+               end if;
+               if Good then
+                  Runtime_Stacks.Pop (Stack, Callee, Stack_Result);
+                  Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Callee.Kind = Function_Value and then
+                    Apply_Fits (Types, Operation, Ins.Data_Type, Callee.Data_Type);
+               end if;
+               if Good then
+                  State.Iteration_Depth := State.Iteration_Depth + 1;
+                  State.Iterations (State.Iteration_Depth) :=
+                    (Active => True, Awaiting => False, At_PC => PC, Frame_Level => State.Frame_Count,
+                     Operation => Operation, List_Type => Ins.Data_Type, Subject => Subject, Callee => Callee,
+                     Accumulator =>
+                       (case Operation is
+                           when L.Fold_Items => Initial,
+                           when L.Count_Items => Integer_Constant (0),
+                           when L.All_Items => Boolean_Constant (True),
+                           when others => Boolean_Constant (False)),
+                     Position => 0, Built => (others => <>), Kept => 0, Keys => <>);
+                  declare
+                     It : Iteration := State.Iterations (State.Iteration_Depth);
+                     Length : constant Natural := List_Regions.Length (Subject.Items);
+                     D : constant CCL.Types.Description := CCL.Types.Describe (Types, Callee.Data_Type);
+                  begin
+                     if Operation in L.Each_Items | L.Where_Items | L.Sort_By_Items then
+                        It.Built := (Kind => List_Value, Data_Type =>
+                                       (if Operation = L.Each_Items then List_Of (Types, D.Parts (D.Count).Payload)
+                                        else Ins.Data_Type), others => <>);
+                        List_Regions.Reserve (State.Lists, Length, It.Built.Items, Written);
+                        Good := Written = List_Regions.Operation_Ok;
+                     end if;
+                     if Good and then Operation = L.Sort_By_Items then
+                        List_Regions.Reserve (State.Lists, Length, It.Keys, Written);
+                        Good := Written = List_Regions.Operation_Ok;
+                        --  The elements, in order, to be sorted with their keys.
+                        for I in 1 .. Length loop
+                           exit when not Good;
+                           List_Regions.Read (State.Lists, Subject.Items, List_Regions.Array_Index (I), Element, Read);
+                           Good := Read = List_Regions.Operation_Ok;
+                           if Good then
+                              List_Regions.Write (State.Lists, It.Built.Items, List_Regions.Array_Index (I),
+                                                  Element, Written);
+                              Good := Written = List_Regions.Operation_Ok;
+                           end if;
+                        end loop;
+                     end if;
+                     State.Iterations (State.Iteration_Depth) := It;
+                     if not Good then
+                        Trap (List_Storage_Exhausted);
+                        return;
+                     end if;
+                  end;
+               end if;
+            end;
+         end if;
+         if not Good or else State.Iteration_Depth = 0 then
+            Trap (Invalid_Bytecode);
+            return;
+         end if;
+
+         declare
+            Depth : constant Iteration_Count := State.Iteration_Depth;
+            It : Iteration := State.Iterations (Depth);
+            Length : constant Natural := List_Regions.Length (It.Subject.Items);
+            D : constant CCL.Types.Description := CCL.Types.Describe (Types, It.Callee.Data_Type);
+            Parameter : constant CCL.Types.Type_Reference :=
+              D.Parts (if It.Operation = L.Fold_Items then 2 else 1).Payload;
+            Arguments : Component_Values := [others => (others => <>)];
+            Argument : Value;
+            Result : Value;
+         begin
+            if not Decided and then It.Position < Length then
+               --  The next element, as the function's argument.
+               It.Position := It.Position + 1;
+               List_Regions.Read (State.Lists, It.Subject.Items, List_Regions.Array_Index (It.Position), Element, Read);
+               From_Element (State.Arena, Types, It.List_Type, Element, Argument, Good);
+               Good := Good and then Read = List_Regions.Operation_Ok;
+               if not Good then
+                  Trap (Invalid_Bytecode);
+               elsif CCL.Types.Is_Range (Types, Parameter) and then
+                 (Argument.Integer < CCL.Types.Low_Of (Types, Parameter) or else
+                  Argument.Integer > CCL.Types.High_Of (Types, Parameter))
+               then
+                  Trap (Range_Error);
+               else
+                  if It.Operation = L.Fold_Items then
+                     Arguments (1) := It.Accumulator;
+                     Arguments (2) := Argument;
+                  else
+                     Arguments (1) := Argument;
+                  end if;
+                  It.Awaiting := True;
+                  State.Iterations (Depth) := It;
+                  if State.Frame_Count = MAX_FUNCTIONS then
+                     Trap (Call_Depth_Exhausted);
+                  else
+                     Enter_Call (It.Callee, Arguments, (if It.Operation = L.Fold_Items then 2 else 1), PC, Good);
+                     if not Good then
+                        Trap (Invalid_Bytecode);
+                     end if;
+                  end if;
+               end if;
+            else
+               --  Finished: the result, then past the instruction.
+               case It.Operation is
+                  when L.Each_Items | L.Where_Items =>
+                     List_Regions.Shrink (State.Lists, It.Built.Items, It.Kept, Written);
+                     Good := Written = List_Regions.Operation_Ok;
+                     Result := It.Built;
+                  when L.Sort_By_Items =>
+                     declare
+                        Exhausted : Boolean;
+                     begin
+                        Sort_By_Keys (State.Lists, State.Text, State.Execution_Budget, Types, It, Good, Exhausted);
+                        if Exhausted then
+                           Trap (Fuel_Exhausted);
+                        end if;
+                     end;
+                     Result := It.Built;
+                  when others =>
+                     Result := It.Accumulator;
+               end case;
+               State.Iterations (Depth) := (others => <>);
+               State.Iteration_Depth := Depth - 1;
+               if Good then
+                  Push_Next (Result);
+               elsif not Done then
+                  Trap (Invalid_Bytecode);
+               end if;
+            end if;
+         end;
+      end Run_Apply;
+
+      --  The list opcodes, with their frame: they change the stack, the
+      --  list region and the terminal status, never the fuel limit or the
+      --  import lifecycle.
+      procedure Run_Region_Op (Op : Op_Code)
+        with Pre => Op in New_List | Fill_List | Length_List | List_At | List_Builtin | Make_Node | Check_Range |
+                          Make_Closure | Call_Value | List_Apply,
+             Post => Fuel_Limit (State) = Fuel_Limit (State'Old) and then
+                     CCL.Imports.Phase (State.Import_Lifecycle) =
+                       CCL.Imports.Phase (State.Import_Lifecycle'Old);
+      procedure Run_Region_Op (Op : Op_Code) is
+      begin
+         case Op is
+            when New_List =>
+               Joined := (Kind => List_Value, Data_Type => Item.Content.Code (PC).Data_Type, others => <>);
+               if Item.Content.Code (PC).Immediate not in 0 .. MAX_LIST_ELEMENTS then
+                  Trap (Invalid_Bytecode);
+               else
+                  List_Regions.Reserve
+                    (State.Lists, Natural (Item.Content.Code (PC).Immediate), Joined.Items, List_Status);
+                  if List_Status /= List_Regions.Operation_Ok then
+                     Trap (List_Storage_Exhausted);
+                  else
+                     Push_Next (Joined);
+                  end if;
+               end if;
+
+            when Fill_List =>
+               Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+               if Stack_Result = Runtime_Stacks.Stack_Ok then
+                  Runtime_Stacks.Peek_Top (Stack, Left_Value, Stack_Result);
+               end if;
+               if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+                 Left_Value.Kind /= List_Value or else
+                 Left_Value.Data_Type /= Item.Content.Code (PC).Data_Type or else
+                 Right_Value.Kind /= Element_Kind (Item.Content.Data_Types, Left_Value.Data_Type) or else
+                 Right_Value.Data_Type /= Element_Data_Type (Item.Content.Data_Types, Left_Value.Data_Type) or else
+                 Item.Content.Code (PC).Immediate not in 1 .. Integer_64 (List_Regions.Length (Left_Value.Items)) or else
+                 Program_Length (PC) + 1 >= Item.Content.Length
+               then
+                  Trap (Invalid_Bytecode);
+               else
+                  List_Regions.Write
+                    (State.Lists, Left_Value.Items,
+                     List_Regions.Array_Index (Item.Content.Code (PC).Immediate),
+                     To_Element (Right_Value), List_Status);
+                  if List_Status /= List_Regions.Operation_Ok then
+                     Trap (Invalid_Bytecode);
+                  else
+                     PC := PC + 1;
+                  end if;
+               end if;
+
+            when Length_List =>
+               Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
+               if Stack_Result /= Runtime_Stacks.Stack_Ok or else Left_Value.Kind /= List_Value then
+                  Trap (Invalid_Bytecode);
+               else
+                  Push_Next (Integer_Constant (Integer_64 (List_Regions.Length (Left_Value.Items))));
+               end if;
+
+            when List_At =>
+               Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+               if Stack_Result = Runtime_Stacks.Stack_Ok then
+                  Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
+               end if;
+               if Stack_Result /= Runtime_Stacks.Stack_Ok or else Right_Value.Kind /= Integer_Value or else
+                 Left_Value.Kind /= List_Value or else
+                 Left_Value.Data_Type /= Item.Content.Code (PC).Data_Type
+               then
+                  Trap (Invalid_Bytecode);
+               elsif Right_Value.Integer < 1 or else
+                 Right_Value.Integer > Integer_64 (List_Regions.Length (Left_Value.Items))
+               then
+                  Trap (Index_Out_Of_Range);
+               else
+                  declare
+                     Element : List_Element;
+                     Good : Boolean;
+                  begin
+                     List_Regions.Read
+                       (State.Lists, Left_Value.Items, List_Regions.Array_Index (Right_Value.Integer),
+                        Element, List_Status);
+                     From_Element (State.Arena, Item.Content.Data_Types, Left_Value.Data_Type, Element, Joined, Good);
+                     if List_Status /= List_Regions.Operation_Ok or else not Good then
+                        Trap (Invalid_Bytecode);
+                     else
+                        Push_Next (Joined);
+                     end if;
+                  end;
+               end if;
+            when List_Builtin =>
+               declare
+                  Ins : constant Instruction := Item.Content.Code (PC);
+                  Operation : L.Operation;
+                  Known : Boolean;
+                  Subject, A, B, Answer : Value;
+                  Outcome : Execution_Status;
+
+                  --  Pop an operand of Kind (and list type, for lists), or trap.
+                  procedure Take (Kind : Value_Kind; Operand : out Value) is
+                  begin
+                     Operand := (others => <>);
+                     if Done then return; end if;
+                     Runtime_Stacks.Pop (Stack, Operand, Stack_Result);
+                     if Stack_Result /= Runtime_Stacks.Stack_Ok or else Operand.Kind /= Kind or else
+                       (Kind = List_Value and then Operand.Data_Type /= Ins.Data_Type)
+                     then
+                        Trap (Invalid_Bytecode);
+                     end if;
+                  end Take;
+               begin
+                  Find_List_Operation (Ins.Immediate, Operation, Known);
+                  if not Known or else
+                    not List_Builtin_Applies (Item.Content.Data_Types, Operation, Ins.Data_Type)
+                  then
+                     Trap (Invalid_Bytecode);
+                  else
+                     case Operation is
+                        when L.Range_Items =>
+                           Take (Integer_Value, B);
+                           Take (Integer_Value, A);
+                        when L.Split_Text =>
+                           Take (Text_Value, Subject);
+                           Take (Text_Value, A);
+                        when others =>
+                           Take (List_Value, Subject);
+                           case Operation is
+                              when L.First_Items | L.Last_Items | L.Skip_Items =>
+                                 Take (Integer_Value, A);
+                              when L.Contains_Item =>
+                                 Take (Element_Kind (Item.Content.Data_Types, Ins.Data_Type), A);
+                              when L.Join_Items =>
+                                 Take (Text_Value, A);
+                              when others => null;
+                           end case;
+                     end case;
+                     if not Done then
+                        Run_List_Builtin
+                          (State.Lists, State.Text, State.Execution_Budget, State.Arena, Item.Content.Data_Types,
+                           Operation, Ins.Data_Type, Subject, A, B, Answer, Outcome);
+                        if Outcome /= Completed then
+                           Trap (Outcome);
+                        else
+                           Push_Next (Answer);
+                        end if;
+                     end if;
+                  end if;
+               end;
+            when Make_Node =>
+               declare
+                  Ins : constant Instruction := Item.Content.Code (PC);
+                  D : constant CCL.Types.Description := CCL.Types.Describe (Item.Content.Data_Types, Ins.Data_Type);
+                  Count : constant CCL.Types.Component_Count :=
+                    (if D.Form = CCL.Types.Product then D.Count
+                     elsif Ins.Alternative in 1 .. D.Count and then
+                       D.Parts (Ins.Alternative).Payload /= CCL.Types.Unit_Type then 1
+                     else 0);
+                  Parts : Component_Values := [others => (others => <>)];
+                  Built : Value;
+                  Good : Boolean := True;
+               begin
+                  for P in reverse 1 .. Count loop
+                     Runtime_Stacks.Pop (Stack, Parts (P), Stack_Result);
+                     if Stack_Result /= Runtime_Stacks.Stack_Ok then
+                        Good := False;
+                        exit;
+                     end if;
+                  end loop;
+                  if not Good then
+                     Trap (Invalid_Bytecode);
+                  elsif (D.Form = CCL.Types.Product or else Count > 0) and then
+                    (State.Arena.Nodes_Used = MAX_VALUE_NODES or else
+                     MAX_VALUE_SLOTS - State.Arena.Slots_Used < Count)
+                  then
+                     Trap (Object_Storage_Exhausted);
+                  else
+                     Allocate_Node (State.Arena, Item.Content.Data_Types, Ins.Data_Type, Ins.Alternative,
+                                    Parts, Count, Built, Good);
+                     if Good then
+                        Push_Next (Built);
+                     else
+                        Trap (Invalid_Bytecode);
+                     end if;
+                  end if;
+               end;
+            when Make_Closure =>
+               --  The captures, in order, into the list region.
+               declare
+                  Ins : constant Instruction := Item.Content.Code (PC);
+                  Captured : List_Element_Array (Parameter_Index) := [others => Null_List_Element];
+                  Closure : Value;
+                  Good : Boolean := True;
+               begin
+                  if Ins.Immediate not in 0 .. Integer_64 (Item.Content.Functions_Length) - 1 or else
+                    not CCL.Types.Is_Function (Item.Content.Data_Types, Ins.Data_Type)
+                  then
+                     Trap (Invalid_Bytecode);
+                  else
+                     declare
+                        Decl : constant Function_Declaration := Item.Content.Functions (Function_Index (Ins.Immediate));
+                     begin
+                        for P in reverse 1 .. Decl.Captures loop
+                           Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+                           if Stack_Result /= Runtime_Stacks.Stack_Ok or else Right_Value.Kind /= Decl.Kinds (P) or else
+                             Right_Value.Data_Type /= Decl.Data_Types (P)
+                           then
+                              Good := False;
+                              exit;
+                           end if;
+                           Captured (P) := To_Element (Right_Value);
+                        end loop;
+                        Closure := (Kind => Function_Value, Data_Type => Ins.Data_Type,
+                                    Integer => Ins.Immediate, others => <>);
+                        if not Good then
+                           Trap (Invalid_Bytecode);
+                        elsif Decl.Captures > 0 then
+                           List_Regions.Allocate (State.Lists, Captured (1 .. Decl.Captures), Closure.Items, List_Status);
+                           if List_Status /= List_Regions.Operation_Ok then
+                              Trap (List_Storage_Exhausted);
+                           else
+                              Push_Next (Closure);
+                           end if;
+                        else
+                           Push_Next (Closure);
+                        end if;
+                     end;
+                  end if;
+               end;
+            when Call_Value =>
+               declare
+                  Ins : constant Instruction := Item.Content.Code (PC);
+                  D : constant CCL.Types.Description := CCL.Types.Describe (Item.Content.Data_Types, Ins.Data_Type);
+                  Arity : constant Natural := (if D.Count >= 1 then D.Count - 1 else 0);
+                  Arguments : Component_Values := [others => (others => <>)];
+                  Callee : Value;
+                  Good : Boolean := D.Count >= 1 and then Arity <= CCL.Types.Maximum_Components;
+               begin
+                  for P in reverse 1 .. Arity loop
+                     exit when not Good;
+                     Runtime_Stacks.Pop (Stack, Arguments (P), Stack_Result);
+                     Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                  end loop;
+                  if Good then
+                     Runtime_Stacks.Pop (Stack, Callee, Stack_Result);
+                     Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Callee.Data_Type = Ins.Data_Type and then
+                       Program_Length (PC) + 1 < Item.Content.Length;
+                  end if;
+                  if Good and then State.Frame_Count = MAX_FUNCTIONS then
+                     Trap (Call_Depth_Exhausted);
+                  elsif Good then
+                     Enter_Call (Callee, Arguments, Arity, PC + 1, Good);
+                     if not Good then
+                        Trap (Invalid_Bytecode);
+                     end if;
+                  else
+                     Trap (Invalid_Bytecode);
+                  end if;
+               end;
+            when List_Apply =>
+               Run_Apply;
+            when Check_Range =>
+               Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+               if Stack_Result /= Runtime_Stacks.Stack_Ok or else Right_Value.Kind /= Integer_Value or else
+                 not CCL.Types.Is_Range (Item.Content.Data_Types, Item.Content.Code (PC).Data_Type)
+               then
+                  Trap (Invalid_Bytecode);
+               elsif Right_Value.Integer < CCL.Types.Low_Of (Item.Content.Data_Types, Item.Content.Code (PC).Data_Type) or else
+                 Right_Value.Integer > CCL.Types.High_Of (Item.Content.Data_Types, Item.Content.Code (PC).Data_Type)
+               then
+                  Trap (Range_Error);
+               else
+                  Push_Next (Right_Value);
+               end if;
+            when others => null;
+         end case;
+      end Run_Region_Op;
    begin
       Stack := State.Stack;
       PC := State.PC;
@@ -1236,7 +2964,7 @@ is
                   Native_Value : Value;
                   function Matches (V : Value; Ref : CCL.Types.Type_Reference) return Boolean is
                     (V.Kind = Kind_For_Type (Item.Content.Data_Types, Ref) and then
-                     V.Data_Type = Reference_For_Type (Ref) and then
+                     V.Data_Type = Reference_For_Type (Item.Content.Data_Types, Ref) and then
                      V.Copyable and then V.Type_Tag = 0 and then Well_Typed (Item.Content.Data_Types, V));
                begin
                   case Ins.Op is
@@ -1246,7 +2974,8 @@ is
                           Matches (Right_Value, Ins.Data_Type) and then D.Form = CCL.Types.Product and then
                           Ins.Immediate in 1 .. Integer_64 (D.Count);
                         if Good then
-                           Evaluate_Native (Store, Item.Content.Data_Types, Ins, Right_Value, Native_Value, Alternative, Good);
+                           Component (State.Arena, Item.Content.Data_Types, Right_Value,
+                                      CCL.Types.Component_Index (Ins.Immediate), Native_Value, Good);
                            if Good then
                               Good := Matches (Native_Value, D.Parts (CCL.Types.Component_Index (Ins.Immediate)).Payload);
                            end if;
@@ -1320,12 +3049,13 @@ is
                                 Right_Value.Data_Type = M.Data_Type and then
                                 Well_Typed (Item.Content.Data_Types, Right_Value);
                               if Good and then Right_Value.Kind = Object_Value then
-                                 Evaluate_Native (Store, Item.Content.Data_Types, Ins, Right_Value, Native_Value, Alternative, Good);
-                                 Good := Good and then Alternative in 1 .. Schema.Count;
+                                 Alternative := Right_Value.Alternative;
+                                 Good := Alternative in 1 .. Schema.Count;
                                  if Good then
                                     Next_PC := M.Targets (Alternative);
                                     if Schema.Parts (Alternative).Payload /= CCL.Types.Unit_Type then
-                                       Good := Matches (Native_Value, Schema.Parts (Alternative).Payload);
+                                       Component (State.Arena, Item.Content.Data_Types, Right_Value, 1, Native_Value, Good);
+                                       Good := Good and then Matches (Native_Value, Schema.Parts (Alternative).Payload);
                                        if Good then
                                           Runtime_Stacks.Push (Stack, Native_Value, Stack_Result);
                                           Good := Stack_Result = Runtime_Stacks.Stack_Ok;
@@ -1365,14 +3095,6 @@ is
                     (Stack, State.Result_Value, Stack_Result);
                   if Stack_Result = Runtime_Stacks.Stack_Ok then
                      State.Has_Value := True;
-                  end if;
-                  --  A text result longer than a result carries fails, as
-                  --  in the interpreter, rather than arriving cut short.
-                  if State.Has_Value and then State.Result_Value.Kind = Text_Value and then
-                    Text_Regions.Length (State.Result_Value.Text) > MAX_RESULT_TEXT
-                  then
-                     Status := Text_Storage_Exhausted;
-                     State.Has_Value := False;
                   end if;
                   State.Terminal_Status := Status;
                end if;
@@ -1683,11 +3405,63 @@ is
                   end if;
                end if;
 
-            when Equal_Integer | Less_Integer | Less_Equal_Integer | Equal_Boolean =>
+            when Text_At =>
+               Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+               if Stack_Result /= Runtime_Stacks.Stack_Ok or else Right_Value.Kind /= Integer_Value then
+                  Trap (Invalid_Bytecode);
+               end if;
+               if not Done then Pop_Text (Left_Value); end if;
+               if not Done then
+                  if Right_Value.Integer < 1 or else
+                    Right_Value.Integer > Integer_64 (Text_Regions.Length (Left_Value.Text))
+                  then
+                     Trap (Index_Out_Of_Range);
+                  else
+                     Text_Regions.Read
+                       (State.Text, Left_Value.Text, Text_Regions.String_Index (Right_Value.Integer),
+                        Element, Text_Status);
+                     if Text_Status /= Text_Regions.Operation_Ok then
+                        Trap (Text_Failure (Text_Status));
+                     else
+                        Push_Next (Character_Constant (Element));
+                     end if;
+                  end if;
+               end if;
+
+            when New_List | Fill_List | Length_List | List_At | List_Builtin | Make_Node | Check_Range |
+                 Make_Closure | Call_Value | List_Apply =>
+               Run_Region_Op (Item.Content.Code (PC).Op);
+
+            when Integer_To_Text | Variant_To_Text =>
+               Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
+               if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+                 Left_Value.Kind /=
+                   (if Item.Content.Code (PC).Op = Integer_To_Text then Integer_Value else Variant_Value) or else
+                 (Left_Value.Kind = Variant_Value and then
+                  (Left_Value.Data_Type /= Item.Content.Code (PC).Data_Type or else
+                   not CCL.Types.Is_Enumeration (Item.Content.Data_Types, Left_Value.Data_Type) or else
+                   Left_Value.Alternative > CCL.Types.Describe (Item.Content.Data_Types, Left_Value.Data_Type).Count))
+               then
+                  Trap (Invalid_Bytecode);
+               else
+                  Joined := (Kind => Text_Value, others => <>);
+                  Text_Regions.Allocate_String
+                    (State.Text,
+                     (if Left_Value.Kind = Integer_Value then T.Decimal_Image (Left_Value.Integer)
+                      else CCL.Types.Image (CCL.Types.Describe (Item.Content.Data_Types, Left_Value.Data_Type)
+                        .Parts (Left_Value.Alternative).Identifier)),
+                     Joined.Text, Text_Status);
+                  if Text_Status /= Text_Regions.Operation_Ok then
+                     Trap (Text_Failure (Text_Status));
+                  else
+                     Push_Next (Joined);
+                  end if;
+               end if;
+
+            when Equal_Integer | Less_Integer | Less_Equal_Integer | Equal_Boolean | Equal_Character =>
                Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
                if Stack_Result /= Runtime_Stacks.Stack_Ok or else
-                 Right_Value.Kind /=
-                   (if Item.Content.Code (PC).Op = Equal_Boolean then Boolean_Value else Integer_Value) or else
+                 Right_Value.Kind /= Comparison_Kind (Item.Content.Code (PC).Op) or else
                  Program_Length (PC) + 1 >= Item.Content.Length
                then
                   Status := Invalid_Bytecode;
@@ -2016,6 +3790,9 @@ is
          Requested_Import => State.Waiting_Import,
          Request_Argument => State.Waiting_Argument,
          Result_Text_Value => Result_Text_Of (State.Text, State.Result_Value),
+         Has_Result_Text => State.Has_Value and then State.Result_Value.Kind = Text_Value and then
+           Text_Regions.Is_Valid (State.Text, State.Result_Value.Text) and then
+           Text_Regions.Length (State.Result_Value.Text) <= MAX_RESULT_TEXT,
          Request_Receiver => State.Waiting_Receiver,
          Request_Owned => Waiting_Owned,
          Requested_Authority =>
@@ -2025,25 +3802,37 @@ is
          Requested_Binding =>
            (if Waiting then
                Item.Content.Imports (State.Waiting_Import).Binding
-            else 0));
-   end Continue_With_Native;
+            else 0),
+         others => <>);
+      if State.Has_Value and then
+        (State.Result_Value.Kind = Object_Value or else
+         (State.Result_Value.Kind = List_Value and then
+          Compound_Elements (Item.Content.Data_Types, State.Result_Value.Data_Type)))
+      then
+         declare
+            Printed : Boolean := True;
+         begin
+            Print_Value (State.Arena, State.Text, State.Lists, Item.Content.Data_Types, State.Result_Value,
+                         MAX_VALUE_NODES + 1, 1, Result.Literal, Printed);
+            --  The literal is for display; a value without one (a Character
+            --  field, or longer than a result carries) still completes, and a
+            --  host takes it through Native_Objects.Export_Result.
+            if Printed then
+               Result.Has_Literal := True;
+            else
+               Result.Literal := (others => <>);
+            end if;
+         end;
+      elsif State.Has_Value and then State.Result_Value.Kind = List_Value then
+         Export_List (State.Lists, State.Text, State.Arena, Item.Content.Data_Types, State.Result_Value, Result);
+      end if;
+   end Run;
 
-   type No_Native_Store is null record;
-   procedure Reject_Native
-     (Store : in out No_Native_Store; Types : CCL.Types.Registry;
-      Op : Instruction; Source : Value; Result : out Value;
-      Alternative : out CCL.Types.Component_Count; Accepted : out Boolean) is
-      pragma Unreferenced (Store, Types, Op, Source);
-   begin
-      Result := (others => <>); Alternative := 0; Accepted := False;
-   end Reject_Native;
-   procedure Scalar_Continue is new Continue_With_Native (No_Native_Store, Reject_Native);
    procedure Continue_Execution_For
      (Item : Validated_Program; State : in out Machine_State;
       Instructions : Natural; Result : out Execution_Result) is
-      Store : No_Native_Store;
    begin
-      Scalar_Continue (Item, State, Store, Instructions, Result);
+      Run (Item, State, Instructions, Result);
    end Continue_Execution_For;
 
    procedure Continue_Execution

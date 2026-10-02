@@ -5,6 +5,14 @@ generic
 package Intel_GPU_Buffer_Requests.Binding is
    Bind_Label : constant Unsigned_32 := 16#0A24#;
    Update_Label : constant Unsigned_32 := 16#0A28#;
+   -- Trusted retirement observation, not IPC authority or a release token.
+   -- Requires a closed retained name and a sealed VM image, then excludes
+   -- every physical alias, including table and scratch backing. Caller must
+   -- establish this is the correct session's committed hardware generation,
+   -- plus GPU quiescence/TLB completion and independent CPU-loan retirement.
+   function Closed_Buffer_Disjoint
+     (Object : Service; Image : VM.Image; Session, ID : Unsigned_64)
+      return Boolean;
    type Preparation_Result is
      (Request_Denied, Malformed, Stale_Generation, Not_Ready, Eligible, Prepared);
    procedure Check_Update_Request
@@ -63,11 +71,12 @@ package Intel_GPU_Buffer_Requests.Binding is
       Tables : VM.Backing_Pages; VM_Session : Unsigned_64;
       Sender, Stamp, ID, GPU, Offset, Bytes : Unsigned_64;
       Remove : Boolean; Accepted : out Boolean);
-   -- Offline binding: [version | (BO offset in pages << 32), handle,
-   -- GPU address, bytes]. Low32 is the version; high32 is an unsigned 4KiB
+   -- Offline binding: [version | (operation << 16) | (BO offset in pages << 32),
+   -- handle, GPU address, bytes]. Low16 is the version; operation is0(bind)
+   -- or1(unbind) in bits16..31; high32 is an unsigned 4KiB
    -- page offset. The registry validates the complete slice against backing.
    -- Reply [status, version, GPU address, bytes] on success, trailing zeros
-   -- otherwise. No unbind/live update; sealed VMs reject further bindings.
+   -- otherwise. No live update; sealed VMs reject both operations.
    procedure Handle
      (Object : Service; Image : in out VM.Image; VM_Session : Unsigned_64;
       Sender, Stamp : Unsigned_64; Request_Label : Unsigned_32;
@@ -88,6 +97,6 @@ package Intel_GPU_Buffer_Requests.Binding is
      (Object : Service; Image : in out VM.Image; VM_Session : Unsigned_64;
       Sender, Stamp, ID, GPU, Offset, Bytes : Unsigned_64;
       Accepted : out Boolean);
-   -- Driver-internal only, same authenticated owner and retained-handle checks.
-   -- No wire endpoint: this modifies only an unpublished image, not a live VM.
+   -- Same authenticated owner and retained-handle checks. Used by the offline
+   -- wire handler; modifies only an unpublished image, not a live VM.
 end Intel_GPU_Buffer_Requests.Binding;

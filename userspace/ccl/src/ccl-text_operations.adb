@@ -165,4 +165,72 @@ package body CCL.Text_Operations with SPARK_Mode => On is
       end loop;
       Status := Done;
    end Parse_Integer;
+
+   function Decimal_Image (Value : Integer_64) return String is
+      Buffer : String (1 .. MAX_INTEGER_IMAGE) := [others => '0'];
+      First : Positive range 2 .. MAX_INTEGER_IMAGE := MAX_INTEGER_IMAGE;
+      Signed_First : Positive range 1 .. MAX_INTEGER_IMAGE;
+      Magnitude : Unsigned_64;
+      Digit : Unsigned_64 range 0 .. 9;
+   begin
+      Magnitude := (if Value < 0 then Unsigned_64 (-(Value + 1)) + 1
+                    else Unsigned_64 (Value));
+      --  Nineteen magnitude digits, plus a reserved sign position. The
+      --  bounded reverse loop cannot underflow, even for Integer_64'First.
+      for Position in reverse 2 .. MAX_INTEGER_IMAGE loop
+         First := Position;
+         Digit := Magnitude mod 10;
+         Buffer (First) := Character'Val (Character'Pos ('0') + Natural (Digit));
+         Magnitude := Magnitude / 10;
+         exit when Magnitude = 0;
+      end loop;
+      Signed_First := First;
+      if Value < 0 then
+         Signed_First := First - 1;
+         Buffer (Signed_First) := '-';
+      end if;
+      pragma Assert (Signed_First >= 1 and then Signed_First <= MAX_INTEGER_IMAGE);
+      return Buffer (Signed_First .. MAX_INTEGER_IMAGE);
+   end Decimal_Image;
+   procedure Next_Piece
+     (Subject, Separator : String; Position : in out Positive;
+      Finished : in out Boolean; Low : out Positive; High : out Natural;
+      Found : out Boolean)
+   is
+      Next : Natural;
+   begin
+      Low := 1; High := 0; Found := False;
+      if Finished then
+         return;
+      elsif Separator'Length = 0 then
+         while Position <= Subject'Length and then Is_Blank (Subject (Position)) loop
+            pragma Loop_Variant (Increases => Position);
+            Position := Position + 1;
+         end loop;
+         if Position > Subject'Length then
+            Finished := True;
+            return;
+         end if;
+         Low := Position;
+         while Position <= Subject'Length and then not Is_Blank (Subject (Position)) loop
+            pragma Loop_Invariant (Low <= Position);
+            pragma Loop_Variant (Increases => Position);
+            Position := Position + 1;
+         end loop;
+         High := Position - 1;
+         Found := True;
+      else
+         Next := (if Position <= Subject'Length then Find (Subject, Separator, Position) else 0);
+         Low := Position;
+         Found := True;
+         if Next = 0 then
+            High := Subject'Length;
+            Finished := True;
+         else
+            High := Next - 1;
+            Position := Next + Separator'Length;
+         end if;
+      end if;
+   end Next_Piece;
+
 end CCL.Text_Operations;

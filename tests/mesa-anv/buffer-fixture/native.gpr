@@ -1,0 +1,11 @@
+project Native is
+   for Languages use ("Ada");
+   for Source_Dirs use ("../../../userspace/mesa/anv");
+   for Source_Files use ("native_gpu_buffers.ads", "native_gpu_buffers.adb");
+   for Object_Dir use "../target/buffer-requests-native";
+   for Runtime ("Ada") use "../../../userspace/runtime";
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-O2", "-mno-red-zone", "-fno-pic");
+   end Compiler;
+end Native;

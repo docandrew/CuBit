@@ -23,6 +23,12 @@ package body Intel_GPU_GGTT_Reservations with SPARK_Mode is
       Object.Claims (Object.Used).Limit >= First and then
       Object.Claims (Object.Used).Limit - First = Bytes);
    function Table_Size (Object : Ledger) return Unsigned_64 is (Object.Table_Bytes);
+   function Has_Claim (Object : Ledger; First, Bytes : Unsigned_64) return Boolean is
+     (Object.Ready and then Bytes > 0 and then
+      (for some I in 1 .. Object.Used =>
+         Object.Claims (I).First = First and then
+         Object.Claims (I).Limit >= First and then
+         Object.Claims (I).Limit - First = Bytes));
    function Aperture_First (Object : Ledger) return Unsigned_64 is
      (if Object.Ready then Object.Aperture.First else 0);
    function Aperture_Bytes (Object : Ledger) return Unsigned_64 is

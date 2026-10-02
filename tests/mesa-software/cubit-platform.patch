@@ -1,0 +1,46 @@
+--- a/src/util/detect_os.h
++++ b/src/util/detect_os.h
+@@ -15,7 +15,10 @@
+ #ifndef DETECT_OS_H
+ #define DETECT_OS_H
+ 
+-#if defined(__linux__)
++#if defined(__cubit__)
++#define DETECT_OS_CUBIT 1
++#define DETECT_OS_POSIX 1
++#elif defined(__linux__)
+ #define DETECT_OS_LINUX 1
+ #define DETECT_OS_POSIX 1
+ #endif
+@@ -94,6 +97,9 @@
+ /*
+  * Make sure DETECT_OS_* are always defined, so that they can be used with #if
+  */
++#ifndef DETECT_OS_CUBIT
++#define DETECT_OS_CUBIT 0
++#endif
+ #ifndef DETECT_OS_ANDROID
+ #define DETECT_OS_ANDROID 0
+ #endif
+--- a/src/util/os_misc.c
++++ b/src/util/os_misc.c
+@@ -61,7 +61,7 @@
+ #  include <unistd.h>
+ #  include <android/log.h>
+ #  include <sys/system_properties.h>
+-#elif DETECT_OS_LINUX || DETECT_OS_CYGWIN || DETECT_OS_SOLARIS || DETECT_OS_HURD || DETECT_OS_MANAGARM
++#elif DETECT_OS_LINUX || DETECT_OS_CYGWIN || DETECT_OS_SOLARIS || DETECT_OS_HURD || DETECT_OS_MANAGARM || DETECT_OS_CUBIT
+ #  include <unistd.h>
+ #elif DETECT_OS_OPENBSD || DETECT_OS_FREEBSD
+ #  include <sys/resource.h>
+--- a/src/c11/impl/threads_posix.c
++++ b/src/c11/impl/threads_posix.c
+@@ -137,7 +137,7 @@
+  * Thus the linker will be happy and things don't clash when building
+  * with -O1 or greater.
+  */
+-#if defined(HAVE_FUNC_ATTRIBUTE_WEAK) && !defined(__CYGWIN__)
++#if defined(HAVE_FUNC_ATTRIBUTE_WEAK) && !defined(__CYGWIN__) && !defined(__cubit__)
+ __attribute__((weak))
+ int pthread_mutexattr_init(pthread_mutexattr_t *attr);
+ 

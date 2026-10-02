@@ -1,0 +1,8 @@
+project Protocol_Proof is
+   for Source_Dirs use ("../../userspace/mesa/anv");
+   for Source_Files use ("native_gpu_probe_protocol.ads", "native_gpu_probe_protocol.adb");
+   for Object_Dir use "build/protocol-proof";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-I-");
+   end Compiler;
+end Protocol_Proof;

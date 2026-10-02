@@ -1,0 +1,11 @@
+project ADLN_Golden is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("adln_golden_tests.adb", "intel_gpu_adln_golden.ads",
+                         "intel_gpu_adln_golden.adb", "intel_gpu_adln_inventory.ads",
+                         "intel_gpu_adln_inventory.adb");
+   for Object_Dir use "build-adln-golden";
+   for Main use ("adln_golden_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end ADLN_Golden;

@@ -1,0 +1,10 @@
+project Readers is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("reader_tests.adb", "reader_proof.ads", "compositor_readers.ads", "compositor_readers.adb");
+   for Object_Dir use "build/readers/obj";
+   for Exec_Dir use "build/readers";
+   for Main use ("reader_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Readers;

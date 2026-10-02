@@ -1,0 +1,10 @@
+project Image_Sampling is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("image_sampling_tests.adb", "compositor_image_sampling.ads", "compositor_image_sampling.adb");
+   for Object_Dir use "build/image-sampling/obj";
+   for Exec_Dir use "build/image-sampling";
+   for Main use ("image_sampling_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Image_Sampling;

@@ -128,11 +128,12 @@ package CuBit.Desktop_Protocol with SPARK_Mode, Pure is
    type Input_Event_Kind is
      (No_Input, Key_Pressed, Key_Released, Pointer_Moved, Pointer_Pressed,
       Pointer_Released, Text_Entered, Wheel_Turned, Surface_Configured,
-      Input_Resynchronized);
+      Input_Resynchronized, Close_Requested);
    for Input_Event_Kind use
      (No_Input => 0, Key_Pressed => 1, Key_Released => 2, Pointer_Moved => 3,
       Pointer_Pressed => 4, Pointer_Released => 5, Text_Entered => 6,
-      Wheel_Turned => 7, Surface_Configured => 8, Input_Resynchronized => 9);
+      Wheel_Turned => 7, Surface_Configured => 8,
+      Input_Resynchronized => 9, Close_Requested => 10);
    --  Checked event envelope. Packed words remain for the existing toolkit
    --  ABI; validity establishes their per-kind bounds before narrowing.
    type Input_Envelope is record
@@ -280,11 +281,11 @@ package CuBit.Desktop_Protocol with SPARK_Mode, Pure is
 
    type Window_Feature is
      (Decorated, Resizable, Minimizable, Maximizable, Closeable,
-      Fullscreenable, Pointer_Capture, Fixed_Size);
+      Fullscreenable, Pointer_Capture, Fixed_Size, Graceful_Close);
    for Window_Feature use
      (Decorated => 1, Resizable => 2, Minimizable => 4, Maximizable => 8,
       Closeable => 16, Fullscreenable => 32, Pointer_Capture => 64,
-      Fixed_Size => 128);
+      Fixed_Size => 128, Graceful_Close => 256);
    type Window_Features is array (Window_Feature) of Boolean;
    function Feature_Bits (Features : Window_Features) return Unsigned_64;
    type Window_Bounds is record

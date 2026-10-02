@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Penny</title>
+  <desc id="desc">A copper globe with raised meridians and parallels inside a beveled penny rim.</desc>
+  <defs>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#fff0c8"/><stop offset=".24" stop-color="#edaa69"/>
+      <stop offset=".52" stop-color="#b76b36"/><stop offset=".77" stop-color="#82421f"/>
+      <stop offset="1" stop-color="#d38a48"/>
+    </linearGradient>
+    <linearGradient id="copper" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#f0b376"/><stop offset=".45" stop-color="#ba713d"/>
+      <stop offset="1" stop-color="#653016"/>
+    </linearGradient>
+    <linearGradient id="lines" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#ffe2ac"/><stop offset=".48" stop-color="#e6a05c"/>
+      <stop offset="1" stop-color="#ac602e"/>
+    </linearGradient>
+    <clipPath id="face"><circle cx="128" cy="128" r="99"/></clipPath>
+    <g id="grid" fill="none">
+      <ellipse cx="128" cy="128" rx="49" ry="99"/>
+      <path d="M128 29V227M42 79H214M29 128H227M42 177H214"/>
+    </g>
+  </defs>
+  <!-- All depth is ordinary gradients and strokes; no filters or shadows. -->
+  <circle cx="128" cy="128" r="114" fill="url(#rim)" stroke="#713719" stroke-width="2"/>
+  <circle cx="128" cy="127" r="111" fill="none" stroke="#ffda9d" stroke-width="2"/>
+  <circle cx="128" cy="129" r="102" fill="#693017"/>
+  <circle cx="128" cy="128" r="99" fill="url(#copper)"/>
+  <g clip-path="url(#face)">
+    <use href="#grid" stroke="#773515" stroke-width="8" transform="translate(1 2)"/>
+    <use href="#grid" stroke="url(#lines)" stroke-width="6"/>
+    <use href="#grid" stroke="#ffe0a7" stroke-width="1" transform="translate(-1 -1)" opacity=".8"/>
+  </g>
+  <circle cx="128" cy="128" r="99" fill="none" stroke="#eaaa66" stroke-width="2"/>
+</svg>

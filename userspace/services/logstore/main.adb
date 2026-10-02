@@ -112,10 +112,16 @@ begin
                         end if;
                      end if;
                   when Subscribe =>
-                     if Request.words = [0, 0, 0, 0] then
+                     if Request.words (2 .. 3) = [0, 0] and then
+                       Request.words (0) <=
+                         Logs.Severity'Pos (Logs.Severity'Last)
+                     then
                         Log_Fanout.Subscribe
-                          (Store, From, Request.authorityTag, Handle, Result);
+                          (Store, From, Request.authorityTag, Handle, Result,
+                           Logs.Severity'Val (Request.words (0)), Request.words (1));
+                        --  The handle, and the source filter it applies.
                         Response.words (0) := Handle;
+                        Response.words (1) := Request.words (1);
                      end if;
                   when Read_Next =>
                      if Request.words (3) =

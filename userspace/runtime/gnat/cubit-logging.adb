@@ -121,14 +121,20 @@ package body CuBit.Logging is
       end if;
    end Disconnect;
 
-   procedure Subscribe (Item : in out Reader; Result : out Status) is
+   procedure Subscribe
+     (Item : in out Reader; Result : out Status;
+      Minimum : Logs.Severity := Logs.Trace;
+      Source : Unsigned_64 := Every_Source) is
       Msg : Message := Request (CuBit.Log_Protocol.Subscribe);
       Tag : MessageTag;
    begin
+      Msg.words (0) := Logs.Severity'Pos (Minimum);
+      Msg.words (1) := Source;
       Tag := capCall (Item.Slot, Msg);
       Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
+      --  The reply confirms the handle and the source filter applied.
       if Result = OK and then Msg.words (0) /= 0 and then
-        Msg.words (1 .. 3) = [0, 0, 0]
+        Msg.words (1) = Source and then Msg.words (2 .. 3) = [0, 0]
       then
          Item.Subscription := Msg.words (0);
       else

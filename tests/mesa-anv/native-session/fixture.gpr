@@ -1,0 +1,37 @@
+project Fixture is
+   for Languages use ("Ada", "C");
+   for Source_Dirs use (".", "build/generated", "../../../userspace/mesa/anv");
+   for Source_Files use
+     ("main.adb", "ccl_manifest_bindings.ads", "discovery.c",
+      "cubit-device-query.c", "cubit-device-native.c",
+      "native_gpu_query.ads", "native_gpu_query.adb",
+      "native_gpu_buffers.ads", "native_gpu_buffers.adb",
+      "native_gpu_memory.ads", "native_gpu_memory.adb");
+   for Object_Dir use "build";
+   for Main use ("main.adb");
+   for Runtime ("Ada") use "../../../userspace/runtime";
+   package Builder is
+      for Executable ("main.adb") use "render-session.app";
+      for Default_Switches ("Ada") use ("-nostdlib");
+   end Builder;
+   package Compiler is
+      for Default_Switches ("C") use
+        ("-O2", "-std=c11", "-Wall", "-Wextra", "-Werror", "-ffreestanding",
+         "-fno-stack-protector", "-fno-pic", "-mno-red-zone", "-mno-sse",
+         "-mno-sse2", "-I" & Fixture'Project_Dir & "../../../userspace/mesa/anv");
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-fstack-usage", "-fomit-frame-pointer",
+         "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-d_C");
+   end Binder;
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("-nostdlib", "-static", "-no-pie", "-lgnat-user",
+         "-Wl,-z,stack-size=16777216",
+         "-T", Fixture'Project_Dir & "../../../userspace/c/link.ld",
+         Fixture'Project_Dir & "../../../userspace/c/build/crt0.o",
+         Fixture'Project_Dir & "build/manifest.o");
+   end Linker;
+end Fixture;

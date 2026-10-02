@@ -1,0 +1,15 @@
+project Display_Pool is
+   for Source_Dirs use (".", "build/display-pool/source", "../../userspace/lib/display");
+   for Source_Files use ("display_pool_tests.adb", "cubit.ads", "cubit-grant_references.ads",
+      "cubit-desktop_protocol.ads", "cubit-desktop_protocol.adb",
+      "cubit-display_protocol.ads", "cubit-display_protocol.adb",
+      "cubit-display_pool_protocol.ads", "cubit-display_pool_protocol.adb",
+      "cubit-output_discovery.ads", "cubit-output_discovery.adb",
+      "cubit-display_pool_registry.ads", "cubit-display_pool_registry.adb");
+   for Object_Dir use "build/display-pool/obj";
+   for Exec_Dir use "build/display-pool";
+   for Main use ("display_pool_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Display_Pool;

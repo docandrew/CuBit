@@ -42,7 +42,9 @@ is
         CAP_REPLY,          -- One-use reply capability (kernel-minted)
         CAP_RESOURCE,       -- Resource quota (memory/CPU limits)
         CAP_CSPACE,         -- Capability-table administration
-        CAP_SCHEDULING      -- May reserve real-time CPU (docs/scheduler.md)
+        CAP_SCHEDULING,     -- May reserve real-time CPU (docs/scheduler.md)
+        CAP_HARDWARE_GROUP, -- Kernel catalog group; no raw-address authority
+        CAP_HARDWARE_REGISTER -- Kernel catalog member; fixed admitted operation
     );
 
     ---------------------------------------------------------------------------
@@ -198,6 +200,14 @@ is
     function isOrdinarilyDerivable (capType : CapabilityType)
         return Boolean is
         (capType /= CAP_NULL and then capType /= CAP_REPLY);
+
+    -- Hardware references may only originate in trusted catalog admission or
+    -- checked group-member delegation. The generic policy syscall accepts raw
+    -- object words, so it must never manufacture these capability types.
+    function isPolicyMintable (capType : CapabilityType) return Boolean is
+        (isOrdinarilyDerivable (capType)
+         and then capType not in CAP_HARDWARE_GROUP | CAP_HARDWARE_REGISTER);
+
 
     ---------------------------------------------------------------------------
     -- isAttenuationOf

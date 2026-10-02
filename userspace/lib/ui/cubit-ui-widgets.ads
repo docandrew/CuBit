@@ -142,7 +142,21 @@ package CuBit.UI.Widgets is
        colors : CuBit.UI.Theme;
        label : String;
        result : out CuBit.UI.Widget_Result;
-       retainedInput : Boolean := False);
+       retainedInput : Boolean := False;
+       quiet : Boolean := False);
+
+   type Navigation_Icon is (Navigate_Back, Navigate_Forward);
+   procedure Navigation_Button
+      (c : CuBit.UI.Canvas;
+       st : in out CuBit.UI.State.UI_State;
+       controls : in out CuBit.UI.Controls.Control_Map;
+       id : CuBit.UI.Controls.Control_ID;
+       bounds, damage : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme;
+       icon : Navigation_Icon;
+       caption : String;
+       enabled : Boolean;
+       result : out CuBit.UI.Widget_Result);
 
    procedure Disabled_Button
       (c : CuBit.UI.Canvas;
@@ -236,6 +250,25 @@ package CuBit.UI.Widgets is
        tabIndex : Natural;
        selectedIndex : in out Natural;
        result : out CuBit.UI.Widget_Result);
+
+   --  A retained tab header containing arbitrary native child widgets.
+   --  Register children after this call, using content.clip as their damage
+   --  and interaction boundary. Later child IDs win hits over the parent.
+   --  Consume parent/child actions with Controls.Take_Activated before paint.
+   --  contentColors matches the tab background for labels and icons.
+   procedure Tab
+      (c : CuBit.UI.Canvas;
+       st : in out CuBit.UI.State.UI_State;
+       controls : in out CuBit.UI.Controls.Control_Map;
+       id : CuBit.UI.Controls.Control_ID;
+       bounds, damage : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme;
+       selected : Boolean;
+       content : out CuBit.UI.Canvas;
+       contentColors : out CuBit.UI.Theme;
+       result : out CuBit.UI.Widget_Result;
+       orientation : CuBit.UI.Tab_Orientation := CuBit.UI.Horizontal;
+       padding : Natural := 2);
 
    procedure Tab_Panel
       (c : CuBit.UI.Canvas;

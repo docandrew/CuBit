@@ -1,0 +1,401 @@
+--- a/src/intel/vulkan/anv_device.c
++++ b/src/intel/vulkan/anv_device.c
+@@ -28,6 +28,17 @@
+ #include "drm-uapi/drm_fourcc.h"
+ 
+ #include "anv_private.h"
++
++/* Optional probe hook; no callback in ordinary applications. */
++#if defined(__cubit__)
++extern void cubit_test_mesa_init_stage(const char *, int, int) __attribute__((weak));
++#define CUBIT_DEVICE_STAGE(name, returned, result) do { \
++   if (cubit_test_mesa_init_stage) \
++      cubit_test_mesa_init_stage("device:" name, returned, result); \
++} while (0)
++#else
++#define CUBIT_DEVICE_STAGE(name, returned, result) ((void)0)
++#endif
+ #include "anv_measure.h"
+ #include "anv_shader.h"
+ #include "anv_slab_bo.h"
+@@ -765,8 +776,12 @@
+       &wsi_device_entrypoints, false);
+ 
+ 
+-   result = vk_device_init(&device->vk, &physical_device->vk,
++   do {
++      CUBIT_DEVICE_STAGE("vk_device_init", 0, 0);
++      result = vk_device_init(&device->vk, &physical_device->vk,
+                            &dispatch_table, pCreateInfo, pAllocator);
++      CUBIT_DEVICE_STAGE("vk_device_init", 1, result);
++   } while (0);
+    if (result != VK_SUCCESS)
+       goto fail_alloc;
+ 
+@@ -799,10 +814,18 @@
+        device->kmd_backend->abort_device == NULL ||
+        device->kmd_backend->close_device == NULL ||
+        device->kmd_backend->check_status == NULL) {
+-      result = vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
++      do {
++         CUBIT_DEVICE_STAGE("backend-contract", 0, 0);
++         result = vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
++         CUBIT_DEVICE_STAGE("backend-contract", 1, result);
++      } while (0);
+       goto fail_device;
+    }
+-   result = device->kmd_backend->open_device(device);
++   do {
++      CUBIT_DEVICE_STAGE("device->kmd_backend->open_device", 0, 0);
++      result = device->kmd_backend->open_device(device);
++      CUBIT_DEVICE_STAGE("device->kmd_backend->open_device", 1, result);
++   } while (0);
+    if (result != VK_SUCCESS)
+       goto fail_device;
+    device->vk.check_status = device->kmd_backend->check_status;
+@@ -812,7 +835,11 @@
+    for (uint32_t i = 0; i < pCreateInfo->queueCreateInfoCount; i++)
+       num_queues += pCreateInfo->pQueueCreateInfos[i].queueCount;
+ 
+-   result = anv_device_setup_context_or_vm(device, pCreateInfo, num_queues);
++   do {
++      CUBIT_DEVICE_STAGE("anv_device_setup_context_or_vm", 0, 0);
++      result = anv_device_setup_context_or_vm(device, pCreateInfo, num_queues);
++      CUBIT_DEVICE_STAGE("anv_device_setup_context_or_vm", 1, result);
++   } while (0);
+    if (result != VK_SUCCESS)
+       goto fail_fd;
+ 
+@@ -820,11 +847,19 @@
+       vk_zalloc(&device->vk.alloc, num_queues * sizeof(*device->queues), 8,
+                 VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+    if (device->queues == NULL) {
+-      result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
++      do {
++         CUBIT_DEVICE_STAGE("queue-array-allocation", 0, 0);
++         result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
++         CUBIT_DEVICE_STAGE("queue-array-allocation", 1, result);
++      } while (0);
+       goto fail_context_id;
+    }
+ 
+-   result = anv_device_init_vma_heaps(device);
++   do {
++      CUBIT_DEVICE_STAGE("anv_device_init_vma_heaps", 0, 0);
++      result = anv_device_init_vma_heaps(device);
++      CUBIT_DEVICE_STAGE("anv_device_init_vma_heaps", 1, result);
++   } while (0);
+    if (result != VK_SUCCESS)
+       goto fail_queues_alloc;
+ 
+@@ -832,30 +867,50 @@
+    list_inithead(&device->image_private_objects);
+ 
+    if (pthread_mutex_init(&device->mutex, NULL) != 0) {
+-      result = vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
++      do {
++         CUBIT_DEVICE_STAGE("device-mutex", 0, 0);
++         result = vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
++         CUBIT_DEVICE_STAGE("device-mutex", 1, result);
++      } while (0);
+       goto fail_vmas;
+    }
+ 
+    if (mtx_init(&device->fault.mutex, mtx_plain) != thrd_success) {
+-      result = vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
++      do {
++         CUBIT_DEVICE_STAGE("fault-mutex", 0, 0);
++         result = vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
++         CUBIT_DEVICE_STAGE("fault-mutex", 1, result);
++      } while (0);
+       goto fail_mutex;
+    }
+ 
+    if (u_cnd_monotonic_init(&device->fault.lost_cnd) != thrd_success) {
+-      result = vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
++      do {
++         CUBIT_DEVICE_STAGE("fault-condition", 0, 0);
++         result = vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
++         CUBIT_DEVICE_STAGE("fault-condition", 1, result);
++      } while (0);
+       goto fail_fault_mutex;
+    }
+ 
+-   result = anv_device_bind_null_va(device,
++   do {
++      CUBIT_DEVICE_STAGE("anv_device_bind_null_va", 0, 0);
++      result = anv_device_bind_null_va(device,
+                                     &device->physical->va.null_initialized_heap,
+                                     ANV_VM_BIND);
++      CUBIT_DEVICE_STAGE("anv_device_bind_null_va", 1, result);
++   } while (0);
+    if (result != VK_SUCCESS)
+       goto fail_fault_cnd;
+ 
+    if (physical_device->instance->vk.trace_mode & VK_TRACE_MODE_RMV)
+       anv_memory_trace_init(device);
+ 
+-   result = anv_bo_cache_init(&device->bo_cache, device);
++   do {
++      CUBIT_DEVICE_STAGE("anv_bo_cache_init", 0, 0);
++      result = anv_bo_cache_init(&device->bo_cache, device);
++      CUBIT_DEVICE_STAGE("anv_bo_cache_init", 1, result);
++   } while (0);
+    if (result != VK_SUCCESS)
+       goto fail_null_vma_init;
+ 
+@@ -869,7 +924,11 @@
+                        0 /* alloc_flags */);
+    }
+ 
+-   result = anv_state_pools_init(device);
++   do {
++      CUBIT_DEVICE_STAGE("anv_state_pools_init", 0, 0);
++      result = anv_state_pools_init(device);
++      CUBIT_DEVICE_STAGE("anv_state_pools_init", 1, result);
++   } while (0);
+    if (result != VK_SUCCESS)
+       goto fail_batch_bo_pool;
+ 
+@@ -880,22 +939,30 @@
+          goto fail_aux_tt_pool;
+    }
+ 
+-   result = anv_device_alloc_bo(device, "workaround", 8192,
++   do {
++      CUBIT_DEVICE_STAGE("allocate-workaround", 0, 0);
++      result = anv_device_alloc_bo(device, "workaround", 8192,
+                                 ANV_BO_ALLOC_CAPTURE |
+                                 ANV_BO_ALLOC_HOST_COHERENT |
+                                 ANV_BO_ALLOC_MAPPED |
+                                 ANV_BO_ALLOC_INTERNAL,
+                                 0 /* explicit_address */,
+                                 &device->workaround_bo);
++      CUBIT_DEVICE_STAGE("allocate-workaround", 1, result);
++   } while (0);
+    ANV_DMR_BO_ALLOC(&device->vk.base, device->workaround_bo, result);
+    if (result != VK_SUCCESS)
+       goto fail_surface_aux_map_pool;
+ 
+    if (intel_needs_workaround(device->info, 14019708328)) {
+-      result = anv_device_alloc_bo(device, "dummy_aux", 4096,
++      do {
++         CUBIT_DEVICE_STAGE("allocate-dummy-aux", 0, 0);
++         result = anv_device_alloc_bo(device, "dummy_aux", 4096,
+                                    0 /* alloc_flags */,
+                                    0 /* explicit_address */,
+                                    &device->dummy_aux_bo);
++         CUBIT_DEVICE_STAGE("allocate-dummy-aux", 1, result);
++      } while (0);
+       ANV_DMR_BO_ALLOC(&device->vk.base, device->dummy_aux_bo, result);
+       if (result != VK_SUCCESS)
+          goto fail_alloc_device_bo;
+@@ -911,9 +978,13 @@
+     * HAS 1607240579 then provides the size information: 4K
+     */
+    if (device->info->verx10 >= 200) {
+-      result = anv_device_alloc_bo(device, "mem_fence", 4096,
++      do {
++         CUBIT_DEVICE_STAGE("allocate-memory-fence", 0, 0);
++         result = anv_device_alloc_bo(device, "mem_fence", 4096,
+                                    ANV_BO_ALLOC_NO_LOCAL_MEM, 0,
+                                    &device->mem_fence_bo);
++         CUBIT_DEVICE_STAGE("allocate-memory-fence", 1, result);
++      } while (0);
+       ANV_DMR_BO_ALLOC(&device->vk.base, device->mem_fence_bo, result);
+       if (result != VK_SUCCESS)
+          goto fail_alloc_device_bo;
+@@ -966,11 +1037,15 @@
+       uint32_t ray_queries_size =
+          align(brw_rt_ray_queries_hw_stacks_size(device->info), 4096);
+ 
+-      result = anv_device_alloc_bo(device, "ray queries",
++      do {
++         CUBIT_DEVICE_STAGE("allocate-ray-query-render", 0, 0);
++         result = anv_device_alloc_bo(device, "ray queries",
+                                    ray_queries_size,
+                                    ANV_BO_ALLOC_INTERNAL,
+                                    0 /* explicit_address */,
+                                    &device->ray_query_bo[0]);
++         CUBIT_DEVICE_STAGE("allocate-ray-query-render", 1, result);
++      } while (0);
+       ANV_DMR_BO_ALLOC(&device->vk.base, device->ray_query_bo[0], result);
+       if (result != VK_SUCCESS)
+          goto fail_alloc_device_bo;
+@@ -978,18 +1053,26 @@
+       /* We need a separate ray query bo for CCS engine with Wa_14022863161. */
+       if (intel_needs_workaround(device->isl_dev.info, 14022863161) &&
+           device_has_compute_queue) {
+-         result = anv_device_alloc_bo(device, "ray queries",
++         do {
++            CUBIT_DEVICE_STAGE("allocate-ray-query-compute", 0, 0);
++            result = anv_device_alloc_bo(device, "ray queries",
+                                       ray_queries_size,
+                                       ANV_BO_ALLOC_INTERNAL,
+                                       0 /* explicit_address */,
+                                       &device->ray_query_bo[1]);
++            CUBIT_DEVICE_STAGE("allocate-ray-query-compute", 1, result);
++         } while (0);
+          ANV_DMR_BO_ALLOC(&device->vk.base, device->ray_query_bo[1], result);
+          if (result != VK_SUCCESS)
+             goto fail_ray_query_bo;
+       }
+    }
+ 
+-   result = anv_device_init_trivial_batch(device);
++   do {
++      CUBIT_DEVICE_STAGE("anv_device_init_trivial_batch", 0, 0);
++      result = anv_device_init_trivial_batch(device);
++      CUBIT_DEVICE_STAGE("anv_device_init_trivial_batch", 1, result);
++   } while (0);
+    if (result != VK_SUCCESS)
+       goto fail_ray_query_bo;
+ 
+@@ -1056,12 +1139,16 @@
+       /* The docs say to always allocate 128KB per DSS */
+       const uint32_t btd_fifo_bo_size =
+          128 * 1024 * intel_device_info_dual_subslice_id_bound(device->info);
+-      result = anv_device_alloc_bo(device,
++      do {
++         CUBIT_DEVICE_STAGE("allocate-rt-btd-fifo", 0, 0);
++         result = anv_device_alloc_bo(device,
+                                    "rt-btd-fifo",
+                                    btd_fifo_bo_size,
+                                    ANV_BO_ALLOC_INTERNAL,
+                                    0 /* explicit_address */,
+                                    &device->btd_fifo_bo);
++         CUBIT_DEVICE_STAGE("allocate-rt-btd-fifo", 1, result);
++      } while (0);
+       ANV_DMR_BO_ALLOC(&device->vk.base, device->btd_fifo_bo, result);
+       if (result != VK_SUCCESS)
+          goto fail_trivial_batch_bo_and_scratch_pool;
+@@ -1074,7 +1161,11 @@
+    device->vk.mem_cache =
+       vk_pipeline_cache_create(&device->vk, &pcc_info, NULL);
+    if (!device->vk.mem_cache) {
+-      result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
++      do {
++         CUBIT_DEVICE_STAGE("pipeline-cache", 0, 0);
++         result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
++         CUBIT_DEVICE_STAGE("pipeline-cache", 1, result);
++      } while (0);
+       goto fail_btd_fifo_bo;
+    }
+ 
+@@ -1091,12 +1182,20 @@
+    device->internal_cache =
+       vk_pipeline_cache_create(&device->vk, &internal_pcc_info, NULL);
+    if (device->internal_cache == NULL) {
+-      result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
++      do {
++         CUBIT_DEVICE_STAGE("internal-pipeline-cache", 0, 0);
++         result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
++         CUBIT_DEVICE_STAGE("internal-pipeline-cache", 1, result);
++      } while (0);
+       goto fail_default_pipeline_cache;
+    }
+ 
+    if (anv_needs_printf_buffer()) {
+-      result = anv_device_print_init(device);
++      do {
++         CUBIT_DEVICE_STAGE("anv_device_print_init", 0, 0);
++         result = anv_device_print_init(device);
++         CUBIT_DEVICE_STAGE("anv_device_print_init", 1, result);
++      } while (0);
+       if (result != VK_SUCCESS)
+          goto fail_internal_cache;
+    }
+@@ -1118,27 +1217,51 @@
+              anv_get_first_render_queue_index(device->physical),
+       };
+ 
+-      result = vk_common_CreateCommandPool(anv_device_to_handle(device),
++      do {
++         CUBIT_DEVICE_STAGE("vk_common_CreateCommandPool", 0, 0);
++         result = vk_common_CreateCommandPool(anv_device_to_handle(device),
+                                            &pool_info, NULL,
+                                            &device->companion_rcs_cmd_pool);
++         CUBIT_DEVICE_STAGE("vk_common_CreateCommandPool", 1, result);
++      } while (0);
+       if (result != VK_SUCCESS) {
+          goto fail_print;
+       }
+    }
+ 
+-   result = anv_device_init_trtt(device);
++   do {
++      CUBIT_DEVICE_STAGE("anv_device_init_trtt", 0, 0);
++      result = anv_device_init_trtt(device);
++      CUBIT_DEVICE_STAGE("anv_device_init_trtt", 1, result);
++   } while (0);
+    if (result != VK_SUCCESS)
+       goto fail_companion_cmd_pool;
+ 
+-   result = anv_device_init_rt_shaders(device);
++   do {
++      CUBIT_DEVICE_STAGE("anv_device_init_rt_shaders", 0, 0);
++      result = anv_device_init_rt_shaders(device);
++      CUBIT_DEVICE_STAGE("anv_device_init_rt_shaders", 1, result);
++   } while (0);
+    if (result != VK_SUCCESS) {
+-      result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
++      do {
++         CUBIT_DEVICE_STAGE("rt-shaders-error", 0, 0);
++         result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
++         CUBIT_DEVICE_STAGE("rt-shaders-error", 1, result);
++      } while (0);
+       goto fail_trtt;
+    }
+ 
+-   result = anv_device_init_shader_dump(device);
++   do {
++      CUBIT_DEVICE_STAGE("anv_device_init_shader_dump", 0, 0);
++      result = anv_device_init_shader_dump(device);
++      CUBIT_DEVICE_STAGE("anv_device_init_shader_dump", 1, result);
++   } while (0);
+    if (result != VK_SUCCESS) {
+-      result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
++      do {
++         CUBIT_DEVICE_STAGE("shader-dump-error", 0, 0);
++         result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
++         CUBIT_DEVICE_STAGE("shader-dump-error", 1, result);
++      } while (0);
+       goto fail_rt_shaders;
+    }
+ 
+@@ -1200,8 +1323,12 @@
+          &pCreateInfo->pQueueCreateInfos[i];
+ 
+       for (uint32_t j = 0; j < queueCreateInfo->queueCount; j++) {
+-         result = anv_queue_init(device, &device->queues[device->queue_count],
++         do {
++            CUBIT_DEVICE_STAGE("anv_queue_init", 0, 0);
++            result = anv_queue_init(device, &device->queues[device->queue_count],
+                                  queueCreateInfo, j);
++            CUBIT_DEVICE_STAGE("anv_queue_init", 1, result);
++         } while (0);
+          if (result != VK_SUCCESS)
+             goto fail_queues;
+ 
+@@ -1214,11 +1341,19 @@
+ 
+    anv_device_utrace_init(device);
+ 
+-   result = vk_meta_device_init(&device->vk, &device->meta_device);
++   do {
++      CUBIT_DEVICE_STAGE("vk_meta_device_init", 0, 0);
++      result = vk_meta_device_init(&device->vk, &device->meta_device);
++      CUBIT_DEVICE_STAGE("vk_meta_device_init", 1, result);
++   } while (0);
+    if (result != VK_SUCCESS)
+       goto fail_utrace;
+ 
+-   result = anv_genX(device->info, init_device_state)(device);
++   do {
++      CUBIT_DEVICE_STAGE("anv_genX", 0, 0);
++      result = anv_genX(device->info, init_device_state)(device);
++      CUBIT_DEVICE_STAGE("anv_genX", 1, result);
++   } while (0);
+    if (result != VK_SUCCESS)
+       goto fail_meta_device;
+ 

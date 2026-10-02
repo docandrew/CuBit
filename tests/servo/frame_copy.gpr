@@ -1,0 +1,11 @@
+project Frame_Copy is
+   for Source_Dirs use (".", "../../userspace/servo/native", "../../userspace/lib/ui");
+   for Source_Files use ("servo_frame_copy.ads", "servo_frame_copy.adb",
+     "client_glyph_blend.ads", "client_glyph_blend.adb", "frame_copy_tests.adb");
+   for Object_Dir use "build/frame-copy/obj";
+   for Exec_Dir use "build/frame-copy";
+   for Main use ("frame_copy_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Frame_Copy;

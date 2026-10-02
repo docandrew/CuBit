@@ -1,0 +1,3 @@
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "log-fields-check.app" (priority 5)))

@@ -9,6 +9,7 @@ with Interfaces; use Interfaces;
 with System;
 with CuBit.Theme;
 with CuBit.Appearance;
+with Client_Canvas_Geometry;
 
 package CuBit.UI is
    use type CuBit.Appearance.Color_Scheme;
@@ -26,6 +27,11 @@ package CuBit.UI is
       width : Natural := 0;
       height : Natural := 0;
       pitch : Natural := 0;
+      -- Logical geometry; pitch and address always describe physical storage.
+      -- Fills, bitmaps, font masks and nested views share this density.
+      -- Applications must still obtain a configured physical buffer.
+      densityNumerator, densityDenominator : Client_Canvas_Geometry.Component := 1;
+      originX, originY : Client_Canvas_Geometry.Logical_Edge := 0;
       clipEnabled : Boolean := False;
       clip : Rect := (others => 0);
    end record;
@@ -224,6 +230,10 @@ package CuBit.UI is
       (c : Canvas; x, y : Natural; text : String; fg, bg : Color);
    procedure Draw_Button_Frame
       (c : Canvas; r : Rect; colors : Theme; style : Button_Style);
+   type Arrow_Direction is (Arrow_Up, Arrow_Down, Arrow_Left, Arrow_Right);
+   procedure Draw_Arrow_Button
+      (c : Canvas; r : Rect; colors : Theme; style : Button_Style;
+       direction : Arrow_Direction);
    procedure Draw_Button
       (c : Canvas; r : Rect; colors : Theme; style : Button_Style;
        label : String);
@@ -274,6 +284,25 @@ package CuBit.UI is
        selected : Boolean; hot : Boolean; active : Boolean;
        label : String;
        orientation : Tab_Orientation := Horizontal);
+   --  Synchronous control decomposition for canvas and physical-output renderers.
+   --  Required primitives prevent accidental fallback to direct canvas writes.
+   generic
+      with procedure Fill_Rect (C : Canvas; R : Rect; Fill : Color);
+      with procedure Stroke_Rect (C : Canvas; R : Rect; Light, Dark : Color);
+      with procedure Draw_UI_Text
+        (C : Canvas; X, Y : Natural; Text : String; FG, BG : Color);
+   package Control_Renderer is
+      procedure Stroke_Sunken (C : Canvas; R : Rect; Colors : Theme);
+      procedure Stroke_Raised (C : Canvas; R : Rect; Colors : Theme);
+      procedure Draw_Button_Frame
+        (C : Canvas; R : Rect; Colors : Theme; Style : Button_Style);
+      procedure Draw_Button
+        (C : Canvas; R : Rect; Colors : Theme; Style : Button_Style; Label : String);
+      procedure Draw_Tab
+        (C : Canvas; R : Rect; Colors : Theme; Selected, Hot, Active : Boolean;
+         Label : String; Orientation : Tab_Orientation := Horizontal);
+   end Control_Renderer;
+
    procedure Draw_Natural_Value
       (c : Canvas; r : Rect; colors : Theme; value : Natural);
    procedure Draw_Progress_Bar

@@ -1,0 +1,47 @@
+--- a/src/util/futex.h
++++ b/src/util/futex.h
+@@ -27,7 +27,9 @@
+ #if THREAD_SANITIZER
+ #define UTIL_FUTEX_SUPPORTED 0
+ #else
+-#if defined(HAVE_LINUX_FUTEX_H) && defined(__linux__)
++#if defined(__cubit__)
++#define UTIL_FUTEX_SUPPORTED 1
++#elif defined(HAVE_LINUX_FUTEX_H) && defined(__linux__)
+ #define UTIL_FUTEX_SUPPORTED 1
+ #elif defined(__FreeBSD__)
+ #define UTIL_FUTEX_SUPPORTED 1
+--- a/src/util/futex.c
++++ b/src/util/futex.c
+@@ -26,7 +26,30 @@
+ 
+ #if UTIL_FUTEX_SUPPORTED
+ 
+-#if defined(HAVE_LINUX_FUTEX_H)
++#if defined(__cubit__)
++
++#include <unistd.h>
++#include <sys/syscall.h>
++
++/* Operations implemented by CuBit libc's syscall adapter, not direct
++ * kernel syscall numbers. WAIT_BITSET preserves Mesa's absolute monotonic
++ * timeout contract. Only the match-all bitset is used here.
++ */
++enum { CUBIT_LIBC_FUTEX_WAKE = 1, CUBIT_LIBC_FUTEX_WAIT_BITSET = 9 };
++
++int futex_wake(uint32_t *addr, int32_t count)
++{
++   return syscall(SYS_futex, addr, CUBIT_LIBC_FUTEX_WAKE, count,
++                  NULL, NULL, 0);
++}
++
++int futex_wait(uint32_t *addr, int32_t value, const struct timespec *timeout)
++{
++   return syscall(SYS_futex, addr, CUBIT_LIBC_FUTEX_WAIT_BITSET, value,
++                  timeout, NULL, UINT32_MAX);
++}
++
++#elif defined(HAVE_LINUX_FUTEX_H)
+ 
+ #include <limits.h>
+ #include <stdint.h>

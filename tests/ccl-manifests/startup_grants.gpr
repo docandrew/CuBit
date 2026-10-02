@@ -1,0 +1,13 @@
+--  SPARK proof (level 1) of CCL.Startup_Grants: manifest requests
+--  intersected with startup policy.
+project Startup_Grants is
+   for Languages use ("Ada");
+   for Source_Dirs use ("../../userspace/ccl/src");
+   for Object_Dir use "build/startup-grants";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnata");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=1", "--checks-as-errors=on");
+   end Prove;
+end Startup_Grants;

@@ -56,3 +56,48 @@ font parser/rasterizer, or desktop IPC. Those boundaries have regression tests.
 Cold glyph timing and warm lookup measurements are hosted microbenchmarks,
 not native input-to-photon guarantees. Physical-laptop validation remains a
 separate follow-up.
+
+## Logical-to-physical canvas primitives
+
+The Ada pixel suite also covers all 256 density numerator/denominator pairs
+from 1..16. It checks adjacent filled cells, padded rows, nested fractional-origin
+views, clip preservation, alpha bitmap composition and the 8x16 bitmap font.
+Oversized rectangle/clip controls exercise `Natural'Last` without arithmetic
+wrap. The normal-scale TrueType/control tests remain enabled. Geometry proof is
+in `tests/compositor/client_canvas.gpr`: 22 checks, zero unproved/justified.
+
+Native compatibility: Desktop, desktop-shell and Files build; the 90-second
+`desktop-display` CuBit/QEMU run and final fault scan pass. Logs are
+`/tmp/cubit-ui-density-native-final.log` and `-native.serial`; hosted font/surface
+results are `/tmp/cubit-ui-density-integrated-final.log`. Non-unit DPI remains
+disabled in application canvases until buffer configuration/lifetime integration
+is complete. Hosted TrueType mask rendering is now covered below. This is not a native mixed-DPI
+or performance result.
+
+## Density TrueType and bounded glyph ownership
+
+The pixel oracle also compares toolkit text with fresh Rust rasterizer masks at
+5/4, 3/2, 2/1, 16/1 and 1/2 density for Sans and Monospace. It checks clipped
+transparent/opaque output and verifies that 2x masks differ from enlarged normal
+glyphs. `tests/compositor/client_glyphs.gpr` checks 570 real masks, warm reuse,
+held-reader stability during eviction, foreign-owner finish rejection, the
+32-reader bound, terminal close and final reclamation. Its 148 SPARK checks,
+including instantiated policy, all pass without unproved or justified checks.
+
+The backing cache is fixed at 512 KiB plus metadata per process; calls are
+serialized. Raw memory/font operations remain outside the owner proof.
+The density loop now uses `Client_Glyph_Blend`: its separate SPARK proof covers
+bounds, channel arithmetic, termination and unchanged pixels outside damage.
+Run `gnatprove -P tests/compositor/client_blend.gpr -u client_glyph_blend.adb
+--level=2 --report=all -j2` inside Nix (75 checks, none unproved/justified).
+Build the same project and run `tests/compositor/build/client-blend/client_glyph_blend_tests`
+for 16,777,216 channel combinations and 38,220 clipped/padded/partial-row cases.
+The bridge checks virtual non-overlap and lengths; valid mappings and exclusive
+writable ownership are still assumptions. Native builds and the normal-scale 90-second desktop-display boot
+regression pass. Native fractional-density text now also passes in the
+`desktop-protocol` fixture: five scales, two faces, fresh masks, clipping,
+padding and outline comparison. See `/tmp/cubit-native-density.log` and `.serial`.
+This is native offscreen rendering; configured per-output client scaling and
+physical presentation remain separate integration gates.
+Evidence is `/tmp/cubit-ui-text-integrated.log`, `-integrated-final.log`,
+`-native-final2.log`, `-native-complete.log` and `-native.serial`.

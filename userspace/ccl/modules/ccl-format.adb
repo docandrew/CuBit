@@ -195,7 +195,9 @@ is
      (Item.Fuel > 0);
 
    function Canonical (Item : Instruction) return Boolean is
-     ((if Item.Op in Make_Variant | Equal_Variant | Project_Field then
+     ((if Item.Op in Make_Variant | Equal_Variant | Project_Field | Variant_To_Text |
+          New_List | Fill_List | Length_List | List_At | List_Builtin | Make_Node | Check_Range |
+          Make_Closure | Call_Value | List_Apply then
           Item.Data_Type in CCL.Types.Declared_Type
        else Item.Data_Type = CCL.Types.Invalid_Type and then Item.Alternative = 0) and then
       (case Item.Op is
@@ -203,13 +205,20 @@ is
            Item.Immediate in 1 .. Integer_64 (CCL.Types.Maximum_Components) and then
            Item.Target = 0 and then Item.Import = 0 and then Item.Local = 0 and then
            Item.Verb = 0 and then Item.Alternative = 0,
-         when Make_Variant | Equal_Variant =>
+         when New_List | Fill_List =>
+           Item.Immediate in (if Item.Op = New_List then 0 else 1) .. MAX_LIST_ELEMENTS and then
+           Item.Target = 0 and then Item.Import = 0 and then Item.Local = 0 and then
+           Item.Verb = 0 and then Item.Alternative = 0,
+         when Length_List | List_At | Make_Variant | Equal_Variant | Variant_To_Text =>
            Item.Immediate = 0 and then Item.Target = 0 and then Item.Import = 0 and then
            Item.Local = 0 and then Item.Verb = 0 and then
            (if Item.Op = Make_Variant then Item.Alternative > 0 else Item.Alternative = 0),
          when Switch_Variant | Copy_Stack | Call_Function | Push_Text | Text_Builtin =>
            Item.Immediate >= 0 and then Item.Target = 0 and then Item.Import = 0 and then
            Item.Local = 0 and then Item.Verb = 0,
+         when List_Builtin | Make_Closure | List_Apply =>
+           Item.Immediate >= 0 and then Item.Target = 0 and then Item.Import = 0 and then
+           Item.Local = 0 and then Item.Verb = 0 and then Item.Alternative = 0,
          when Push_Integer => Item.Target = 0 and then Item.Import = 0 and then
            Item.Local = 0 and then Item.Verb = 0,
          when Push_Boolean =>
@@ -441,8 +450,9 @@ is
       --  Functions.
       Put_Array (Candidate.Functions_Length);
       for F in 0 .. Candidate.Functions_Length - 1 loop
-         Put_Array (4);
+         Put_Array (FUNCTION_FIELDS);
          Put_Unsigned (Unsigned_64 (Candidate.Functions (F).Entry_PC));
+         Put_Unsigned (Unsigned_64 (Candidate.Functions (F).Captures));
          Put_Array (Candidate.Functions (F).Count);
          for P in 1 .. Candidate.Functions (F).Count loop
             Put_Array (2);
@@ -949,7 +959,8 @@ is
          declare
             Argument, Result : Value_Kind;
             Authority, Ownership, Local, Transfer, Cancellation, Parameters,
-              Success, Failure, Cancel, Major, Minor, Operation : Unsigned_64;
+              Success, Failure, Cancel, Major, Minor : Unsigned_64;
+            Operation : CCL.Catalog.Operation_Index;
             Argument_Type, Result_Type : CCL.Types.Type_Reference;
             Digest, Argument_Key, Result_Key : Digest_Words;
             Resolution : CCL.Catalog.Resolved_Operation;
@@ -977,7 +988,7 @@ is
             Get_Unsigned (Major, Unsigned_64 (Unsigned_16'Last));
             Get_Unsigned (Minor, Unsigned_64 (Unsigned_16'Last));
             if Error /= Format_Valid or else Major = 0 then Error := Invalid_Linkage; return; end if;
-            Get_Unsigned (Operation, Unsigned_64 (CCL.Catalog.Operation_Index'Last));
+            Get_Natural (Operation, CCL.Catalog.Operation_Index'Last);
             if Error /= Format_Valid then Error := Invalid_Ownership_Metadata; return; end if;
             Get_Type (Argument_Type);
             Get_Type (Result_Type);
@@ -1011,7 +1022,7 @@ is
               (Interface_Digest => To_Descriptor (Digest),
                Interface_Major => Unsigned_16 (Major),
                Interface_Minor => Unsigned_16 (Minor),
-               Operation => CCL.Catalog.Operation_Index (Operation),
+               Operation => Operation,
                Parameters => CCL.Catalog.Parameter_Count (Parameters),
                Import => CCL.Host_Values.From_Bytecode
                  (Candidate.Imports (I), To_Schema (Argument_Key),
@@ -1036,10 +1047,12 @@ is
          declare
             Parameters : Natural;
          begin
-            Expect_Array (4);
+            Expect_Array (FUNCTION_FIELDS);
             Get_Unsigned (Value, MAX_INSTRUCTIONS - 1);
             if Error /= Format_Valid then Error := Invalid_Function; return; end if;
             Candidate.Functions (F).Entry_PC := Instruction_Index (Value);
+            Get_Natural (Candidate.Functions (F).Captures, MAX_PARAMETERS);
+            if Error /= Format_Valid then Error := Invalid_Function; return; end if;
             Get_Array (Parameters, MAX_PARAMETERS);
             if Error /= Format_Valid then Error := Invalid_Function; return; end if;
             Candidate.Functions (F).Count := Parameters;

@@ -396,7 +396,7 @@ begin
       pragma Assert (not Decode_Limits (Wire).Valid);
       Wire := Encode_Resize (Resize); Wire.Words (3) := 1;
       pragma Assert (not Decode_Resize (Wire).Valid);
-      Wire := Encode_Limits (Limits); Wire.Words (3) := 256;
+      Wire := Encode_Limits (Limits); Wire.Words (3) := 512;
       pragma Assert (not Decode_Limits (Wire).Valid);
       Wire := Encode_Limits (Limits); Wire.Words (2) := 119;
       pragma Assert (not Decode_Limits (Wire).Valid);
@@ -675,7 +675,7 @@ begin
                   Item.Payload1 := (if Kind = Wheel_Turned then Unsigned_64'Last
                                     elsif Kind = Input_Resynchronized then 16 * 2 ** 32 - 1
                                     else 2 ** 32 - 1);
-               when No_Input => null;
+               when No_Input | Close_Requested => null;
             end case;
             pragma Assert (Valid_Input_Envelope (Item));
             Canonical := Encode_Input_Reply (Op, Item);
@@ -694,7 +694,7 @@ begin
             Compare_Input_Decoders (Wire, Op);
             Wire := Canonical;
             case Kind is
-               when No_Input | Text_Entered => Wire.Words (3) := 1;
+               when No_Input | Text_Entered | Close_Requested => Wire.Words (3) := 1;
                when Key_Pressed | Key_Released => Wire.Words (3) := 16;
                when Surface_Configured => Wire.Words (3) := 65_536;
                when Pointer_Moved | Pointer_Pressed | Pointer_Released =>
@@ -704,7 +704,7 @@ begin
             end case;
             pragma Assert (Decode_Input_Result (Wire, Op).Status = Invalid_Request);
             Compare_Input_Decoders (Wire, Op);
-            Wire := Canonical; Wire.Words (0) := 10;
+            Wire := Canonical; Wire.Words (0) := 11;
             pragma Assert (Decode_Input_Result (Wire, Op).Status = Invalid_Request);
             Compare_Input_Decoders (Wire, Op);
             -- Mutate every bit of every payload word, including kind/serial.

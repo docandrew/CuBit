@@ -15,21 +15,33 @@ with CuBit.Display_Protocol;
 with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
 with CuBit.Presentation_State;
+with CuBit.Display_Pool_Protocol;
+with CuBit.Display_Pool_Registry;
 with CuBit.Display_Outputs;
 with CuBit.Output_Discovery;
 with CuBit.Graphics_Metrics;
 with CuBit.Graphics_Metrics_IO;
 with Presentation_Test_Policy;
+with Compositor_Repaint;
+with Compositor_Damage;
+with Compositor_Requests;
+with CuBit.Backend_Targets;
 
 procedure main is
    package DSP renames CuBit.Display_Protocol;
    use type DSP.Frame_Outcome;
+   use type DSP.Buffer_Disposition;
    package MG renames CuBit.Memory_Grants;
    package PS is new CuBit.Presentation_State;
+   package Pool_Wire renames CuBit.Display_Pool_Protocol;
+   package Pool_Registry renames CuBit.Display_Pool_Registry;
    use type DSP.Output_Number;
    package Outputs renames CuBit.Display_Outputs.Registry;
    package OD renames CuBit.Output_Discovery;
    package GM renames CuBit.Graphics_Metrics;
+   package Repair renames Compositor_Repaint;
+   package BT renames CuBit.Backend_Targets;
+   use type BT.Phase;
    backendCopies, repairCopies : GM.Counter;
    backendReporter, repairReporter : CuBit.Graphics_Metrics_IO.Reporter;
    use type OD.Output_Role, OD.Output_Source, OD.Query;
@@ -112,12 +124,14 @@ procedure main is
       srcOwner  : ProcessID := NO_PROCESS;
       srcGrant : MG.Grant_Reference;
       srcAcquired : Boolean := False;
+      Pool : Pool_Registry.State;
+      Pool_Slot : Natural range 0 .. 3 := 0;
       activeSession : Unsigned_64 := 0;
       lastFrame : Unsigned_64 := 0;
       frameState : PS.State;
       presentationFault : Boolean := False;
       gpuScanoutAddr : Gpu_Address_Array := [others => System.Null_Address];
-      gpuActiveBuffer : Gpu_Buffer_Index := 0;
+      Targets : BT.State;
       displayOwner : ProcessID := NO_PROCESS;
       currentOutput : Outputs.Output_Reference := Outputs.No_Output;
       leasedOutput : Outputs.Output_Reference := Outputs.No_Output;
@@ -437,6 +451,7 @@ procedure main is
 
    procedure detachOwnerBuffer is
       returned : Boolean;
+      Empty_Pool : Pool_Registry.State;
    begin
       -- Invalidate before releasing the attachment. Old queued frame requests
       -- can then only be rejected, never read after a release acknowledgement.
@@ -454,6 +469,18 @@ procedure main is
       outputStates (selectedOutput).pendingPresent := False;
       outputStates (selectedOutput).pendingRect := (others => 0);
       outputStates (selectedOutput).gpuPreviousDamage := (others => 0);
+      for B in Pool_Wire.Buffer_Slot loop
+         if Pool_Registry.Registered (outputStates (selectedOutput).Pool, B) then
+            MG.Return_Acquisition (Pool_Registry.Item (outputStates (selectedOutput).Pool, B).Grant, returned);
+            if not returned then outputStates (selectedOutput).presentationFault := True; end if;
+         end if;
+      end loop;
+      if not outputStates (selectedOutput).presentationFault then
+         outputStates (selectedOutput).Pool := Empty_Pool;
+         outputStates (selectedOutput).Pool_Slot := 0;
+      else
+         Pool_Registry.Quarantine (outputStates (selectedOutput).Pool);
+      end if;
       if outputStates (selectedOutput).srcAcquired then
          MG.Return_Acquisition (outputStates (selectedOutput).srcGrant, returned);
          if not returned then
@@ -554,13 +581,19 @@ procedure main is
    function clearGpu (color : Unsigned_64) return Boolean is
       reply : Message;
    begin
+      if BT.Current (outputStates (selectedOutput).Targets) not in BT.Unconfigured | BT.Idle then
+         outputStates (selectedOutput).presentationFault := True;
+         BT.Quarantine (outputStates (selectedOutput).Targets);
+         return False;
+      end if;
       reply := callGpu (OP_GPU_CLEAR, color, 0, 0, 0);
       if reply.tag = (OP_GPU_CLEAR, 1, 0, 0) and then reply.words (0) = 0 then
-         outputStates (selectedOutput).gpuActiveBuffer := 0;
+         BT.Cleared (outputStates (selectedOutput).Targets);
          outputStates (selectedOutput).gpuPreviousDamage := (others => 0);
          return True;
       end if;
 
+      BT.Quarantine (outputStates (selectedOutput).Targets);
       debugPrint ("display: gpu clear failed" & LF);
       outputStates (selectedOutput).presentationFault := True;
       return False;
@@ -727,10 +760,11 @@ procedure main is
    function prepareGpuRect (damage : Rect) return Message is
       r : constant Rect := clampGpuRect (damage);
       previous : constant Rect := clampGpuRect (outputStates (selectedOutput).gpuPreviousDamage);
-      target : constant Gpu_Buffer_Index := 1 - outputStates (selectedOutput).gpuActiveBuffer;
+      target : constant Gpu_Buffer_Index := BT.Target (outputStates (selectedOutput).Targets);
       transfer : Rect := r;
       packedXY : Unsigned_64;
       packedWH : Unsigned_64;
+      accepted : Boolean;
    begin
       if outputStates (selectedOutput).backend.Kind /= Native_GPU or else outputStates (selectedOutput).srcAddr = System.Null_Address or else
         isEmpty (r)
@@ -738,15 +772,30 @@ procedure main is
          return NULL_MESSAGE;
       end if;
 
+      BT.Prepare (outputStates (selectedOutput).Targets, accepted);
+      if not accepted then return NULL_MESSAGE; end if;
+
       --  The inactive resource is one frame old. Bring forward precisely the
       --  damage written while it was inactive, then apply this frame's new
       --  pixels. This is buffer-age tracking: unchanged pixels never need a
       --  full-screen copy merely because the scanout resource alternates.
       if not isEmpty (previous) then
-         copyGpuRect
-           (outputStates (selectedOutput).gpuScanoutAddr (target), outputStates (selectedOutput).fbPitch,
-            outputStates (selectedOutput).gpuScanoutAddr (outputStates (selectedOutput).gpuActiveBuffer), outputStates (selectedOutput).fbPitch,
-            previous, repairCopies);
+         -- New source pixels replace the overlap, so only preserve the
+         -- previous damage outside it. The shared SPARK policy returns at
+         -- most four nonempty outside strips when the cursor is empty.
+         for Region of Repair.Before_Draw
+           ((previous.x, previous.y, previous.x + previous.w, previous.y + previous.h),
+            (r.x, r.y, r.x + r.w, r.y + r.h), (0, 0, 0, 0), True)
+         loop
+            if Compositor_Damage.Valid (Region) then
+               copyGpuRect
+                 (outputStates (selectedOutput).gpuScanoutAddr (target), outputStates (selectedOutput).fbPitch,
+                  outputStates (selectedOutput).gpuScanoutAddr (BT.Active (outputStates (selectedOutput).Targets)), outputStates (selectedOutput).fbPitch,
+                  (Region.Left, Region.Top, Region.Right - Region.Left, Region.Bottom - Region.Top), repairCopies);
+            end if;
+         end loop;
+         -- The backend still uploads the union once, including both repair
+         -- strips and the new source rectangle; do not expose partial frames.
          transfer := unionRect (previous, r);
       end if;
 
@@ -768,22 +817,31 @@ procedure main is
    function copyAndFlipGpuRect (damage : Rect) return Boolean is
       request : Message := prepareGpuRect (damage);
       tag : MessageTag;
+      token : Unsigned_64;
+      State : Output_State renames outputStates (selectedOutput);
    begin
       if request.tag.length = 0 then
-         outputStates (selectedOutput).presentationFault := True;
+         BT.Quarantine (State.Targets);
+         State.presentationFault := True;
+         return False;
+      end if;
+      Compositor_Requests.Allocate (backendSequence, token);
+      BT.Seal (State.Targets, token);
+      if BT.Current (State.Targets) /= BT.In_Flight then
+         State.presentationFault := True;
          return False;
       end if;
       tag := capCall (CAP_SLOT_GPU, request);
       request.tag := tag;
-      if request.tag = (OP_GPU_PRESENT_BUFFER, 1, 0, 0) and then request.words (0) = 0 then
-         outputStates (selectedOutput).gpuActiveBuffer :=
-           1 - outputStates (selectedOutput).gpuActiveBuffer;
-         outputStates (selectedOutput).gpuPreviousDamage := clampGpuRect (damage);
+      BT.Complete (State.Targets, token,
+                   request.tag = (OP_GPU_PRESENT_BUFFER, 1, 0, 0) and then request.words (0) = 0);
+      if BT.Current (State.Targets) = BT.Idle then
+         State.gpuPreviousDamage := clampGpuRect (damage);
          return True;
       end if;
 
       debugPrint ("display: gpu page flip failed" & LF);
-      outputStates (selectedOutput).presentationFault := True;
+      State.presentationFault := True;
       return False;
    end copyAndFlipGpuRect;
 
@@ -925,6 +983,16 @@ procedure main is
       end if;
    end presentPackedRegion;
 
+   function frameResponse (Result : DSP.Frame_Result; Slot : Natural) return Message is
+   begin
+      if Slot = 0 then
+         return CuBit.Desktop_Messages.From_Wire (DSP.Encode_Frame_Result (Result));
+      else
+         return CuBit.Desktop_Messages.From_Wire
+           (Pool_Wire.Encode (Pool_Wire.Completion'(Pool_Wire.Buffer_Slot (Slot), Result)));
+      end if;
+   end frameResponse;
+
    procedure finishFrame
      (Output : Output_Index; ID : PS.Submission_ID;
       Result : in out DSP.Frame_Result; Published, Certain : Boolean;
@@ -963,6 +1031,7 @@ procedure main is
       end if;
       if not Published then State.presentationFault := True; end if;
       if State.presentationFault then
+         BT.Quarantine (State.Targets);
          PS.Close (State.frameState);
          debugPrint ("display: asynchronous presentation quarantined" & LF);
       end if;
@@ -989,8 +1058,10 @@ procedure main is
             end if;
          end;
       end if;
-      Response := CuBit.Desktop_Messages.From_Wire
-        (DSP.Encode_Frame_Result (Result));
+      Response := frameResponse (Result, State.Pool_Slot);
+      if State.Pool_Slot /= 0 and then Result.Buffer_State = DSP.Released then
+         State.srcAddr := System.Null_Address;
+      end if;
    end finishFrame;
 
    procedure collectFrames is
@@ -1022,8 +1093,10 @@ procedure main is
                   Published := Published and then
                     State.sourceOutput = State.currentOutput and then
                     outputUsable (State.currentOutput);
+                  BT.Complete (State.Targets, Completion.token,
+                               Published and then State.backendTarget = BT.Target (State.Targets));
+                  Published := Published and then BT.Current (State.Targets) = BT.Idle;
                   if Published then
-                     State.gpuActiveBuffer := State.backendTarget;
                      State.gpuPreviousDamage := State.backendDamage;
                   end if;
                   finishFrame (Output, State.backendID, State.backendFrame,
@@ -1037,6 +1110,7 @@ procedure main is
             --  Never guess which buffer an unrecognized completion releases.
             for State of outputStates loop
                State.presentationFault := True;
+               BT.Quarantine (State.Targets);
                PS.Close (State.frameState);
             end loop;
             debugPrint ("display: unrecognized GPU completion" & LF);
@@ -1046,8 +1120,10 @@ procedure main is
 
    procedure submitFrame (from : ProcessID; request : Message;
                           replyMsg : out Message) is
-      decoded : constant DSP.Frame_Decoding := DSP.Decode_Frame
-        (CuBit.Desktop_Messages.To_Wire (request));
+      decoded : DSP.Frame_Decoding;
+      Pool_Decoded : Pool_Wire.Frame_Decoding;
+      Slot : Natural range 0 .. 3 := 0;
+      Source_Grant : MG.Grant_Reference;
       State : Output_State renames outputStates (selectedOutput);
       result : DSP.Frame_Result;
       admission : PS.Admission;
@@ -1058,17 +1134,28 @@ procedure main is
       published : Boolean := False;
       started : Unsigned_64;
       backendRequest : Message;
+      token : Unsigned_64;
    begin
       replyMsg := NULL_MESSAGE;
-      replyMsg.tag := (DSP.Code (DSP.Submit_Frame), 1, 0, 0);
+      replyMsg.tag := (request.tag.label, 1, 0, 0);
       replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
+      if request.tag.label = Pool_Wire.Submit_Frame then
+         Pool_Decoded := Pool_Wire.Decode_Frame (CuBit.Desktop_Messages.To_Wire (request));
+         if not Pool_Decoded.Valid then return; end if;
+         Slot := Pool_Decoded.Value.Buffer;
+         decoded := (True, Pool_Decoded.Value.Request);
+      else
+         decoded := DSP.Decode_Frame (CuBit.Desktop_Messages.To_Wire (request));
+      end if;
       if not decoded.Valid then return; end if;
       result := (decoded.Value.Session, decoded.Value.Frame,
                  DSP.Rejected, DSP.Not_Acquired);
       r := (Natural (decoded.Value.Area.X), Natural (decoded.Value.Area.Y),
             Natural (decoded.Value.Area.Width), Natural (decoded.Value.Area.Height));
       if State.presentationFault or else not ownsDisplay (from) or else
-        not State.srcAcquired or else State.srcOwner /= from or else
+        (if Slot = 0 then not State.srcAcquired
+         else not Pool_Registry.Active (State.Pool) or else Pool_Registry.Faulted (State.Pool)) or else
+        State.srcOwner /= from or else
         State.activeSession /= decoded.Value.Session or else
         State.sessionOutput /= State.currentOutput or else
         decoded.Value.Frame <= State.lastFrame or else
@@ -1077,25 +1164,29 @@ procedure main is
         r.y + r.h > State.srcHeight or else
         backendSequence >= NO_COMPLETION_TOKEN - 1
       then
-         replyMsg := CuBit.Desktop_Messages.From_Wire (DSP.Encode_Frame_Result (result));
+         replyMsg := frameResponse (result, Slot);
          return;
       end if;
       --  Attachment is not authority for new work after grant revocation.
-      MG.Acquire (State.srcGrant, from, 0,
+      Source_Grant := (if Slot = 0 then State.srcGrant else
+        Pool_Registry.Item (State.Pool, Pool_Wire.Buffer_Slot (Slot)).Grant);
+      MG.Acquire (Source_Grant, from, 0,
                   Unsigned_64 (State.srcPitch) * Unsigned_64 (State.srcHeight),
                   MG.Read_Access, mapped, acquired);
       if not acquired then
-         replyMsg := CuBit.Desktop_Messages.From_Wire (DSP.Encode_Frame_Result (result));
+         replyMsg := frameResponse (result, Slot);
          return;
       end if;
       PS.Submit (State.frameState, admission, id);
       if admission /= PS.Accepted then
-         MG.Return_Acquisition (State.srcGrant, returned);
+         MG.Return_Acquisition (Source_Grant, returned);
          result.Buffer_State := (if returned then DSP.Released else DSP.Still_Held);
          State.presentationFault := True;
-         replyMsg := CuBit.Desktop_Messages.From_Wire (DSP.Encode_Frame_Result (result));
+         replyMsg := frameResponse (result, Slot);
          return;
       end if;
+      State.srcGrant := Source_Grant;
+      State.Pool_Slot := Slot;
       State.lastFrame := decoded.Value.Frame;
       result.Buffer_State := DSP.Still_Held;
       result.Outcome := DSP.Failed;
@@ -1118,13 +1209,16 @@ procedure main is
            saveReplyCap (Unsigned_64 (frameReplySlot (selectedOutput))) = 1
          then
             deferredReply := True;
-            backendSequence := backendSequence + 1;
+            Compositor_Requests.Allocate (backendSequence, token);
             State.backendFrame := result;
             State.backendID := id;
-            State.backendTarget := 1 - State.gpuActiveBuffer;
+            State.backendTarget := BT.Target (State.Targets);
             State.backendDamage := clampGpuRect (r);
-            if capSubmit (CAP_SLOT_GPU, backendRequest, backendSequence) then
-               State.backendToken := backendSequence;
+            BT.Seal (State.Targets, token);
+            if BT.Current (State.Targets) = BT.In_Flight and then
+              capSubmit (CAP_SLOT_GPU, backendRequest, token)
+            then
+               State.backendToken := token;
                statsPresents := statsPresents + 1;
                statsPixels := statsPixels + Unsigned_64 (r.w) * Unsigned_64 (r.h);
                statsCopyMs := statsCopyMs + syscall (SYSCALL_GETTIME) - started;
@@ -1190,7 +1284,7 @@ procedure main is
       --  lease and session until their captured continuation has retired.
       if PS.Current (outputStates (selectedOutput).frameState) /= PS.Idle and then
         request.tag.label not in OP_DISPLAY_GET_INFO | OP_DISPLAY_GET_STATUS |
-          OP_SUBMIT_FRAME
+          OP_SUBMIT_FRAME | Pool_Wire.Submit_Frame
       then
          replyMsg.tag := (request.tag.label, 1, 0, 0);
          replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
@@ -1198,6 +1292,83 @@ procedure main is
       end if;
 
       case request.tag.label is
+         when Pool_Wire.Attach_Buffer =>
+            replyMsg.tag := (request.tag.label, 1, 0, 0);
+            replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+            declare
+               State : Output_State renames outputStates (selectedOutput);
+               A : constant Pool_Wire.Attachment_Result :=
+                 Pool_Wire.Decode_Attachment (CuBit.Desktop_Messages.To_Wire (request));
+               Mapped : System.Address;
+               Acquired, Accepted, Returned : Boolean;
+            begin
+               if not ownsDisplay (from) then
+                  replyMsg.words (0) := DISPLAY_ERR_DENIED;
+               elsif not A.Valid then
+                  replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
+               elsif State.presentationFault or else State.srcAcquired or else
+                 State.activeSession /= 0 or else not Pool_Registry.Admits (State.Pool, A.Value)
+               then null;
+               elsif Natural (A.Value.Source.Layout.Width) > State.fbWidth or else
+                 Natural (A.Value.Source.Layout.Height) > State.fbHeight
+               then replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
+               elsif State.backend.Kind = Native_GPU and then not ensureGpuScanout then
+                  State.presentationFault := True;
+               else
+                  MG.Acquire (A.Value.Source.Grant, from, 0,
+                    DSP.DP.Byte_Length (A.Value.Source.Layout), MG.Read_Access, Mapped, Acquired);
+                  if not Acquired then
+                     replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
+                  else
+                     Pool_Registry.Register (State.Pool, A.Value, Accepted);
+                     if Accepted then
+                        -- Registration retains one pin; each frame separately
+                        -- reacquires live authority and returns that frame pin.
+                        State.srcOwner := from;
+                        State.sourceOutput := State.currentOutput;
+                        State.srcWidth := Natural (A.Value.Source.Layout.Width);
+                        State.srcHeight := Natural (A.Value.Source.Layout.Height);
+                        State.srcPitch := A.Value.Source.Layout.Pitch;
+                        replyMsg.words (0) := DISPLAY_OK;
+                     else
+                        MG.Return_Acquisition (A.Value.Source.Grant, Returned);
+                        if not Returned then
+                           State.presentationFault := True;
+                           Pool_Registry.Quarantine (State.Pool);
+                        end if;
+                     end if;
+                  end if;
+               end if;
+            end;
+
+         when Pool_Wire.Open_Session =>
+            replyMsg.tag := (request.tag.label, 4, 0, 0);
+            replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+            declare
+               State : Output_State renames outputStates (selectedOutput);
+               Accepted : Boolean;
+            begin
+               if not Pool_Wire.Valid_Open (CuBit.Desktop_Messages.To_Wire (request)) then
+                  replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
+               elsif not ownsDisplay (from) or else State.srcOwner /= from then
+                  replyMsg.words (0) := DISPLAY_ERR_DENIED;
+               elsif not State.presentationFault and then sourceOnCurrentOutput and then
+                 State.activeSession = 0 and then sessionSequence < Unsigned_64'Last
+               then
+                  Pool_Registry.Open (State.Pool, Accepted);
+                  if Accepted then
+                     sessionSequence := sessionSequence + 1;
+                     State.activeSession := sessionSequence;
+                     State.sessionOutput := State.sourceOutput;
+                     State.lastFrame := 0;
+                     replyMsg.words (0) := DISPLAY_OK;
+                     replyMsg.words (1) := State.activeSession;
+                     replyMsg.words (2) := 3;
+                     replyMsg.words (3) := 1; -- contract version
+                  end if;
+               end if;
+            end;
+
          when OP_OPEN_SESSION =>
             replyMsg.tag := (request.tag.label, 4, 0, 0);
             replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
@@ -1231,7 +1402,7 @@ procedure main is
                end;
             end if;
 
-         when OP_SUBMIT_FRAME =>
+         when OP_SUBMIT_FRAME | Pool_Wire.Submit_Frame =>
             submitFrame (from, request, replyMsg);
 
          when OP_DISPLAY_GET_INFO =>
@@ -1282,9 +1453,13 @@ procedure main is
                replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
             elsif outputStates (selectedOutput).displayOwner = from and then not outputStates (selectedOutput).presentationFault then
                detachOwnerBuffer;
-               outputStates (selectedOutput).displayOwner := NO_PROCESS;
-               outputStates (selectedOutput).leasedOutput := Outputs.No_Output;
-               replyMsg.words (0) := DISPLAY_OK;
+               if outputStates (selectedOutput).presentationFault then
+                  replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+               else
+                  outputStates (selectedOutput).displayOwner := NO_PROCESS;
+                  outputStates (selectedOutput).leasedOutput := Outputs.No_Output;
+                  replyMsg.words (0) := DISPLAY_OK;
+               end if;
             elsif outputStates (selectedOutput).displayOwner = NO_PROCESS then
                replyMsg.words (0) := DISPLAY_OK;
             else
@@ -1298,6 +1473,8 @@ procedure main is
                replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
             elsif not ownsDisplay (from) then
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
+            elsif Pool_Registry.Count (outputStates (selectedOutput).Pool) /= 0 then
+               replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
             else
                declare
                   decoded : constant DSP.Attachment_Decoding :=
@@ -1363,7 +1540,9 @@ procedure main is
               OP_DISPLAY_PRESENT_IMMEDIATE_RECT =>
             replyMsg.tag := (label => request.tag.label,
                              length => 1, flags => 0, reserved => 0);
-            if outputStates (selectedOutput).activeSession /= 0 or else outputStates (selectedOutput).presentationFault then
+            if outputStates (selectedOutput).activeSession /= 0 or else
+              Pool_Registry.Count (outputStates (selectedOutput).Pool) /= 0 or else
+              outputStates (selectedOutput).presentationFault then
                replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
             elsif not ownsDisplay (from) then
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
@@ -1401,7 +1580,9 @@ procedure main is
               OP_DISPLAY_PRESENT_IMMEDIATE_REGION =>
             replyMsg.tag := (label => request.tag.label,
                              length => 1, flags => 0, reserved => 0);
-            if outputStates (selectedOutput).activeSession /= 0 or else outputStates (selectedOutput).presentationFault then
+            if outputStates (selectedOutput).activeSession /= 0 or else
+              Pool_Registry.Count (outputStates (selectedOutput).Pool) /= 0 or else
+              outputStates (selectedOutput).presentationFault then
                replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
             elsif not ownsDisplay (from) then
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
@@ -1422,7 +1603,9 @@ procedure main is
          when OP_DISPLAY_CLEAR =>
             replyMsg.tag := (label => OP_DISPLAY_CLEAR,
                              length => 1, flags => 0, reserved => 0);
-            if outputStates (selectedOutput).activeSession /= 0 or else outputStates (selectedOutput).presentationFault then
+            if outputStates (selectedOutput).activeSession /= 0 or else
+              Pool_Registry.Count (outputStates (selectedOutput).Pool) /= 0 or else
+              outputStates (selectedOutput).presentationFault then
                replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
             elsif not ownsDisplay (from) then
                replyMsg.words (0) := DISPLAY_ERR_DENIED;

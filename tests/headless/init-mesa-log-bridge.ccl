@@ -1,0 +1,3 @@
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "mesa-log-check.app" (priority 3)))

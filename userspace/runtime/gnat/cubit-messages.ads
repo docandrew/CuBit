@@ -50,6 +50,15 @@ package CuBit.Messages is
    --  Page-aligned subrange of one owned allocation; bytes round upward.
    --  Mode 0 inaccessible, 1 read-only, 3 RW; no executable mode.
    SYSCALL_PROTECT_OWNED_MEMORY : constant Unsigned_64 := 117;
+   --  Reserve virtual capacity only: arg0 page-aligned bytes (up to 2GiB).
+   --  Returns base or zero. No RAM is committed by reservation alone.
+   SYSCALL_RESERVE_OWNED_MEMORY : constant Unsigned_64 := 123;
+   --  arg0 reservation base, arg1 exact current prefix, arg2 page-aligned
+   --  additional bytes (up to 16MiB). Returns zero or Last; old pointers stay.
+   SYSCALL_COMMIT_OWNED_MEMORY_PREFIX : constant Unsigned_64 := 124;
+   --  arg0 base, arg1 exact reserved capacity. Retires all committed chunks;
+   --  returns zero only after address-space reservation is released.
+   SYSCALL_RELEASE_OWNED_RESERVATION : constant Unsigned_64 := 125;
    SYSCALL_SLEEP           : constant Unsigned_64 := 28;
    --  Give the CPU to any other ready thread and run again when next picked.
    SYSCALL_YIELD           : constant Unsigned_64 := 118;
@@ -278,6 +287,18 @@ package CuBit.Messages is
       status : Unsigned_64 := COMPLETION_OK;
       valid : Boolean := False;
    end record;
+   --  Wire layout shared with kernel Process.CompletionEntry. The kernel
+   --  explicitly zeroes reserved tail bytes 81..87 before exporting them.
+   for CompletionEntry use record
+      requestId at 0 range 0 .. 63;
+      token at 8 range 0 .. 63;
+      msg at 16 range 0 .. 383;
+      from at 64 range 0 .. 63;
+      status at 72 range 0 .. 63;
+      valid at 80 range 0 .. 7;
+   end record;
+   for CompletionEntry'Size use 88 * 8;
+   for CompletionEntry'Alignment use 8;
 
    NULL_COMPLETION : constant CompletionEntry :=
      (requestId => 0,

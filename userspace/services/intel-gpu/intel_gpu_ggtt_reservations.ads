@@ -38,6 +38,9 @@ package Intel_GPU_GGTT_Reservations with SPARK_Mode is
           Preserves (Claims (Object)'Old, Claims (Object), Count (Object)'Old) and
           (if Status = Reserved then Last_Claim_Is (Object, First, Bytes));
    function Table_Size (Object : Ledger) return Unsigned_64;
+   -- Exact retained extent, not mere containment or overlap. This is only
+   -- allocation bookkeeping; caller still establishes device/range authority.
+   function Has_Claim (Object : Ledger; First, Bytes : Unsigned_64) return Boolean;
    function Aperture_First (Object : Ledger) return Unsigned_64;
    function Aperture_Bytes (Object : Ledger) return Unsigned_64;
    function Space_Free

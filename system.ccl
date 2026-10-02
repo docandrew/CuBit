@@ -25,7 +25,7 @@
   (setting "desktop.launch.20-doom" "(launch v1 (label \"DOOM\") (program \"doom.elf\") (icon doom) (single-instance))")
   (setting "desktop.launch.30-devices" "(launch v1 (label \"Devices\") (program \"devices.app\") (icon files))")
   (setting "desktop.launch.40-netsurf" "(launch v1 (label \"NetSurf\") (program \"netsurf.app\") (icon files))")
-  (setting "desktop.launch.45-servo" "(launch v1 (label \"Servo\") (program \"cubitshell.app\") (icon files))")
+  (setting "desktop.launch.45-servo" "(launch v1 (label \"Penny\") (program \"cubitshell.app\") (icon files))")
   (setting "desktop.launch.50-files" "(launch v1 (label \"Files\") (program \"files.app\") (icon files))")
   (setting "desktop.launch.60-sameboy" "(launch v1 (label \"SameBoy\") (program \"sameboy.app\") (icon doom))")
   (setting "desktop.launch.70-settings" "(launch v1 (label \"Settings\") (internal settings))")

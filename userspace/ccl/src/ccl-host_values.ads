@@ -87,12 +87,12 @@ package CCL.Host_Values with SPARK_Mode => On is
       Argument_Schema, Result_Schema : CCL.Objects.Schema_Key) return Boolean is
      (Item.Argument /= CCL.VM.Resource_Value and then Item.Result /= CCL.VM.Resource_Value and then
       Item.Result_Type_Tag = 0 and then not CCL.VM.Has_Receiver (Item) and then
-      (if Item.Argument = CCL.VM.Object_Value then
+      (if Item.Argument in CCL.VM.Object_Value | CCL.VM.List_Value then
           Item.Argument_Data_Type /= CCL.Types.Invalid_Type and Argument_Schema /= CCL.Objects.No_Schema
        elsif Item.Argument = CCL.VM.Variant_Value then
           Item.Argument_Data_Type in CCL.Types.Declared_Type and Argument_Schema /= CCL.Objects.No_Schema
        else Item.Argument_Data_Type = CCL.Types.Invalid_Type) and then
-      (if Item.Result = CCL.VM.Object_Value then
+      (if Item.Result in CCL.VM.Object_Value | CCL.VM.List_Value then
           Item.Result_Data_Type /= CCL.Types.Invalid_Type and Result_Schema /= CCL.Objects.No_Schema
        elsif Item.Result = CCL.VM.Variant_Value then
           Item.Result_Data_Type in CCL.Types.Declared_Type and Result_Schema /= CCL.Objects.No_Schema

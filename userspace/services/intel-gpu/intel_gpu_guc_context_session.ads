@@ -31,6 +31,14 @@ package Intel_GPU_GuC_Context_Session is
    -- Retain batch/ring backing until a separate GPU completion is observed.
    procedure Notify_Work (Object : in out Session; Tail_Published : Boolean;
                           Status : out Result);
+   -- Trusted dispatcher facts, never client-supplied flags. Caller has closed
+   -- admission and drained every in-flight work reference before this call.
+   -- Its channel reservation must cover CT+HXG+ID (three DWORDs); the session's
+   -- existing four-word exclusive control allowance is sufficient. Keep the
+   -- context and all backing until completion and later retirement gates.
+   procedure Deregister
+     (Object : in out Session; Admission_Closed, Work_Drained : Boolean;
+      Status : out Result);
    -- Owned, CT-validated frame only. Unrelated valid messages are retained;
    -- overflow, malformed messages and matching failures quarantine the session.
    procedure Dispatch (Object : in out Session;

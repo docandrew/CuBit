@@ -1,0 +1,10 @@
+project Capture_List is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("capture_list_tests.adb", "intel_gpu_capture_list.ads",
+                         "intel_gpu_capture_list.adb");
+   for Object_Dir use "build-capture-list";
+   for Main use ("capture_list_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Capture_List;

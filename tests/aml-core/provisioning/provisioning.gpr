@@ -1,0 +1,9 @@
+project Provisioning is
+ for Source_Dirs use (".", "../../../shared/firmware");
+ for Object_Dir use "../build/provisioning/obj";
+ for Exec_Dir use "../build/provisioning";
+ for Main use ("provisioning_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato");
+ end Compiler;
+end Provisioning;

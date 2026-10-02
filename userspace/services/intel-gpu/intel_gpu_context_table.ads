@@ -35,6 +35,13 @@ package Intel_GPU_Context_Table is
    -- is lost. Does NOT claim hardware stopped, free backing, or remove routes.
    procedure Retire_Session
      (Object : in out Table; Session : Unsigned_64; ID : out Unsigned_32);
+   -- Trusted dispatcher only: Work_Drained certifies completion of outstanding
+   -- work and deferred publication, not merely absence of a VM-update hold.
+   -- Also requires retired admission, no hold, and acknowledged Disabled.
+   -- Completion retains ID/fence routes/backing; this is NOT reclamation.
+   procedure Deregister_Retired
+     (Object : in out Table; ID : Unsigned_32; Work_Drained : Boolean;
+      Status : out Driver.Result);
    function State (Object : Table; ID : Unsigned_32)
      return Intel_GPU_GuC_Context_Lifecycle.Phase;
    procedure Open

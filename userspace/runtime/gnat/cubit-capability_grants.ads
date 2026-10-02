@@ -6,6 +6,11 @@ package CuBit.Capability_Grants is
    type Recipient is private;
    function Valid (Target : Recipient) return Boolean;
    function Process_ID (Target : Recipient) return Unsigned_64;
+   --  Stable generation32/PID32 captured from the selected capability. Use
+   --  this same value for broker reserve/activate messages; never recapture
+   --  the PID between policy evaluation and delegation. Zero means invalid.
+   --  This is correlation data, not authority or proof of current liveness.
+   function Incarnation (Target : Recipient) return Unsigned_64;
    --  Inspect an existing process-referencing capability in this process.
    --  Reply capabilities identify threads, not process incarnations: rejected.
    function Capture (Slot : CuBit.Messages.CapabilitySlot) return Recipient;

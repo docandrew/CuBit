@@ -1,0 +1,10 @@
+project Diagnostic_Capture is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("diagnostic_capture_tests.adb",
+     "intel_gpu_diagnostic_capture.ads", "intel_gpu_diagnostic_capture.adb");
+   for Object_Dir use "build-diagnostic-capture";
+   for Main use ("diagnostic_capture_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Diagnostic_Capture;

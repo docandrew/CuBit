@@ -1251,7 +1251,9 @@ package body Process.IPC is
             enqueueCompletion
               (owner => replyTo,
                item => (requestId => requestId, token => token, msg => msg,
-                        from => mypid, status => COMPLETION_OK, valid => True),
+                        from => Unsigned_64 (mypid),
+                        status => COMPLETION_OK, valid => True,
+                        reserved => (others => 0)),
                thread => submitter,
                success => ok);
             if not ok then
@@ -2804,9 +2806,10 @@ package body Process.IPC is
                                         proctab(p).pendingRequests(r)
                                             .token,
                                      msg       => NULL_MESSAGE,
-                                     from      => pid,
+                                     from      => Unsigned_64 (pid),
                                      status    => COMPLETION_TARGET_DIED,
-                                     valid     => True);
+                                     valid     => True,
+                                     reserved  => (others => 0));
                                 cq.owners(cq.tail) :=
                                     proctab(p).pendingRequests(r).thread;
                                 cq.tail := (cq.tail + 1) mod

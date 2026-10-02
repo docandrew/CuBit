@@ -1,0 +1,12 @@
+project ADLN_Capture is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("adln_capture_tests.adb", "intel_gpu_adln_capture.ads",
+     "intel_gpu_adln_capture.adb", "intel_gpu_capture_list.ads", "intel_gpu_capture_list.adb",
+     "intel_gpu_adln_inventory.ads", "intel_gpu_adln_inventory.adb",
+     "intel_gpu_adln_steering.ads", "intel_gpu_adln_steering.adb");
+   for Object_Dir use "build-adln-capture";
+   for Main use ("adln_capture_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end ADLN_Capture;

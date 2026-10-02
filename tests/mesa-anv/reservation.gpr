@@ -1,0 +1,9 @@
+project Reservation is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../kernel/src");
+   for Object_Dir use external ("RESERVATION_OBJECT_DIR", "build-reservation");
+   for Main use ("owned_reservation_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Reservation;

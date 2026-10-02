@@ -1,0 +1,9 @@
+project Native_DC is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("native_dc_tests.adb", "intel_gpu_native_dc.ads", "intel_gpu_native_dc.adb", "intel_gpu_dc_transition.ads", "intel_gpu_dc_transition.adb", "intel_gpu_dc_exit.ads", "intel_gpu_dc_exit.adb", "intel_gpu_dc_write.ads", "intel_gpu_dc_write.adb", "intel_gpu_dc_state.ads", "intel_gpu_dc_state.adb", "intel_gpu_native_dc_state.ads", "intel_gpu_native_dc_state.adb", "intel_gpu_native_combo_restore.ads", "intel_gpu_native_combo_restore.adb", "intel_gpu_combo_restore.ads", "intel_gpu_combo_restore.adb", "intel_gpu_native_combo_state.ads", "intel_gpu_native_combo_state.adb", "intel_gpu_phy_pages.ads", "intel_gpu_phy_pages.adb", "intel_gpu_combo_phy.ads", "intel_gpu_combo_phy.adb", "intel_gpu_phy_registers.ads");
+   for Object_Dir use "build-native-dc";
+   for Main use ("native_dc_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Native_DC;

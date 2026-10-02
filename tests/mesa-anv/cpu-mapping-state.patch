@@ -1,0 +1,9 @@
+--- a/src/intel/vulkan/anv_private.h
++++ b/src/intel/vulkan/anv_private.h
+@@ -2627,2 +2627,6 @@ struct anv_device {
+     const struct anv_kmd_backend *              kmd_backend;
++#if defined(__cubit__)
++    /* Device-owned: must outlive BO/slab teardown and pending grants. */
++    struct cubit_cpu_mapping_tracker *          cubit_cpu_mappings;
++#endif
+     struct isl_device                           isl_dev;

@@ -55,7 +55,9 @@ procedure VM_Tests is
         (Types, (case Value.Kind is when CCL.VM.Integer_Value => CCL.Types.Integer_Type,
                  when CCL.VM.Boolean_Value => CCL.Types.Boolean_Type,
                  when CCL.VM.Variant_Value | CCL.VM.Object_Value => Value.Data_Type,
-                 when CCL.VM.Resource_Value | CCL.VM.Text_Value => CCL.Types.Invalid_Type),
+                 when CCL.VM.Resource_Value | CCL.VM.Text_Value | CCL.VM.Character_Value |
+                      CCL.VM.List_Value | CCL.VM.Function_Value =>
+                   CCL.Types.Invalid_Type),
          [1, 2, 3, 4], Contract, Good); Check (Good);
       CCL.Objects.Values.From_VM (Contract, Types, Value, Image, Good); Check (Good);
       Adapter.Take_Get_Result (Object, Types, Item); Check (Item.State = Adapter.No_Result);

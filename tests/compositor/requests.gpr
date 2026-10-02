@@ -1,0 +1,10 @@
+project Requests is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("request_tests.adb", "compositor_requests.ads", "compositor_requests.adb");
+   for Object_Dir use "build/requests/obj";
+   for Exec_Dir use "build/requests";
+   for Main use ("request_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Requests;

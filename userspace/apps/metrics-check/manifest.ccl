@@ -1,0 +1,5 @@
+(executable-manifest v1
+  (identity "com.cubit.metrics-check")
+  (version "0.1.0")
+  (request-service metrics read-write metrics)
+  (request-service metrics-observer read-write metrics-observer))

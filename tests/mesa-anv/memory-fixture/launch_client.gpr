@@ -1,0 +1,18 @@
+project Launch_Client is
+   for Source_Dirs use (".", "../../../userspace/lib/display",
+     "../../../userspace/runtime/gnat", "../../../userspace/services/intel-gpu");
+   for Source_Files use ("launch_client_tests.adb", "cubit.ads",
+     "messages_mock.ads", "messages_mock.adb",
+     "cubit-capability_grants.ads", "cubit-capability_grants.adb",
+     "intel_gpu_broker_request.ads", "intel_gpu_broker_request.adb",
+     "intel_render_launch_client.ads", "intel_render_launch_client.adb");
+   for Object_Dir use "build-launch-client";
+   for Main use ("launch_client_tests.adb");
+   package Naming is
+      for Spec ("CuBit.Messages") use "messages_mock.ads";
+      for Body ("CuBit.Messages") use "messages_mock.adb";
+   end Naming;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+end Launch_Client;

@@ -8,8 +8,10 @@ Kernel logging and CCL live routing are not migrated by this work.
 
 ## Diagnostic record contract
 
-`CuBit.Log_Records.Contract` declares LogRecord v1: bounded wire size 544 bytes,
-with at most 512 UTF-8 text bytes. Schema identity is the current local metadata
+`CuBit.Log_Records.Contract` declares LogRecord schema version 2: bounded wire
+size 800 bytes, with at most 512 UTF-8 text bytes and at most eight typed
+fields (see [structured fields](#structured-fields-format-version-2)). A record
+without fields still encodes as format version 1, byte for byte as before. Schema identity is the current local metadata
 identifier `16#4355_424C_4F47_0001#`, not a provider identity or authority.
 
 The producer supplies severity (trace, debug, information, warning, error,
@@ -46,6 +48,34 @@ pointer, padding-dependent Ada record overlay, allocation, or host-endian cast.
 | 17–24 | Timestamp value; zero if unspecified |
 | 25–32 | Monotonic clock domain; zero otherwise |
 | 33 onward | Exactly the declared text bytes |
+
+### Structured fields (format version 2)
+
+A record may carry up to eight typed fields alongside its text, so viewers and
+CCL can filter and chart values without re-parsing prose. Each field has a
+1–16 byte name (lowercase ASCII letters, digits, `.`, `_`, `-`) and one kind:
+signed integer (two's complement), unsigned integer, duration in microseconds,
+or truth (0/1). Kinds map onto CCL integer and boolean values. Build with
+`With_Field`; read with `Field_Total`, `Field_At`, `Name`, `Kind`, `Value` and
+`Signed_Value`.
+
+Version 2 differs from version 1 only as follows: byte 5 is 2; byte 11 is the
+field count (1–8; version 1 requires 0, so the encoding stays canonical); then
+`count × 32` bytes of fields precede the text.
+
+| Field bytes | Contents |
+|---|---|
+| 1–16 | Name, zero padded; no zero byte inside the name |
+| 17 | Kind: 1 signed, 2 unsigned, 3 duration µs, 4 truth |
+| 18–24 | Reserved, zero |
+| 25–32 | Value, little-endian (truth: 0 or 1) |
+
+Field values are producer claims, like the text. Tests: `nix develop -c bash
+tests/log-fields/run.sh` (wire vectors, limits, every malformed field form and
+a canonical re-encoding fuzz); GNATprove level 1 proves absence of run-time
+errors in the codec (104 checks). Round-trip behaviour is tested, not proved.
+
+### Validation
 
 The decoder rejects unsupported headers, reserved bits, invalid enum values,
 inconsistent lengths, invalid clock/domain combinations, and malformed UTF-8.
@@ -132,6 +162,13 @@ disable that publisher; it does not reuse potentially
 acquired memory. Independent collector restart/reconnection is not implemented.
 Interactive readers block on RPC and are unsuitable for latency-sensitive paths.
 
+Subscriptions take a minimum severity (request word 0, `Severity'Pos`; zero
+means everything). Logstore filters before queueing, including the replay of
+retained history, so a narrow observer does not copy or lose its queue to
+low-severity floods: filtered records are not loss and never produce `Gap`.
+A repeated Subscribe keeps the queue and updates the filter for later records.
+Hosted tests: `tests/log-fanout` (filtered replay, filter-is-not-loss, retry).
+
 ### Explicit publisher disconnect and grant retirement
 
 `Disconnect(Publisher, Done)` permanently stops new submissions from that object,
@@ -201,7 +238,7 @@ current issuer always selects pool 1. No pool IDs are hashed from app-supplied
 names or self-asserted package identities.
 
 Each pool starts with 64 record credits and refills one credit per 100 ms, capped
-at 64. A record is at most 544 wire bytes, so one record-credit also bounds bytes
+at 64. A record is at most 800 wire bytes, so one record-credit also bounds bytes
 without a second accounting dimension. These are tunable development constants,
 not performance targets. Trusted monotonic time drives refill; backwards time
 does not create credits, and long idle intervals cannot accumulate above burst.
@@ -229,3 +266,21 @@ credit spending for Admit. Sustained-rate behavior, tag mapping, pool isolation,
 and clock edge cases are regression tested, not claimed universally proved.
 Native QEMU tests exercise rate-limit replies, forged pool tags, client drop
 accounting, and successful publication after refill.
+
+## Viewing logs from the CCL REPL (2026-10-01)
+
+`(logs.recent "netstack")` in the CCL Workbench returns a typed `List<LogEntry>`:
+- `LogEntry` is `(time, severity, source, message)`, and `severity` is a `Severity` variant (`userspace/ccl/interfaces/logs.schema`).
+- The result is ordinary CCL data, for example `(where (fn ((e LogEntry)) (= (field e severity) Severity.Error)) (logs.recent "netstack"))`.
+- The argument is a service-catalog name (`CuBit.Service_Names`) or a decimal process number.
+
+**How it works:**
+- **Subscribe** carries a source filter in word 1 (`Every_Source` = 0). A new subscription replays only that process's retained records, so one query is subscribe, drain, close.
+- **Result size:** one result carries up to `CCL.Interfaces.Logs.MAX_ENTRIES` (42) entries; when they don't all fit, the newest are kept.
+- **Host boundary:** lists of records cross it as typed images (`CCL.Objects` sequences), which the interpreter and the VM copy into their own regions.
+
+**Status:**
+- **Hosted:** the interpreter path is tested (`tests/ccl-type-discovery/log_view_tests.adb`), as is logstore's source filter (`tests/log-fanout`).
+- **Native:** the Workbench builds.
+- **Not yet live:** procmgr approves log observation only for `boot-logs.app`. The Workbench needs the same transitional approval; I've asked the graphics agent, who owns procmgr.
+- **Later:** typed log fields in entries, live tailing (a subscription left open), a table view in the Workbench and Observatory, and persistence to disk.

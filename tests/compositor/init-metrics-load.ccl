@@ -1,0 +1,14 @@
+# Native CCL Workbench desktop integration profile
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "metrics.svc" (priority 2))
+  (start "desktop.svc" (priority 4))
+  (start "ccl-workbench.app" (priority 3))
+  (start "desktop-metrics-load-observer.app" (priority 3))
+  (start "desktop-metrics-load.app" (priority 3))
+  (start "desktop-metrics-load.app" (priority 3))
+  (start "desktop-metrics-load.app" (priority 3))
+  (start "desktop-metrics-load.app" (priority 3))
+)

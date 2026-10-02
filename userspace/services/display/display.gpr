@@ -7,13 +7,13 @@ project Display is
     case Test_Mode is
         when "production" =>
             for Object_Dir use "build";
-            for Source_Dirs use ("../../lib/display", ".", "production");
+            for Source_Dirs use ("../../lib/display", "../../lib/compositor", ".", "production");
         when "delayed" =>
             for Object_Dir use "build-delayed";
-            for Source_Dirs use ("../../lib/display", ".", "test-delayed");
+            for Source_Dirs use ("../../lib/display", "../../lib/compositor", ".", "test-delayed");
         when "output-rebind" =>
             for Object_Dir use "build-output-rebind";
-            for Source_Dirs use ("../../lib/display", ".", "test-output");
+            for Source_Dirs use ("../../lib/display", "../../lib/compositor", ".", "test-output");
     end case;
 
     for Main use ("main.adb");
@@ -40,6 +40,7 @@ project Display is
         for Default_Switches ("Ada") use
         (
             "-O2",
+            "-gnat2022",
             "-fstack-usage",
             "-fomit-frame-pointer",
             "-mno-red-zone",

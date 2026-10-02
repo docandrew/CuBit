@@ -1,0 +1,25 @@
+--- a/src/util/build_id.c
++++ b/src/util/build_id.c
+@@ -159,6 +159,14 @@
+ const struct build_id_note *
+ build_id_find_nhdr_for_addr(const void *addr)
+ {
++#if defined(__cubit__)
++   /* Static native applications have no dynamic loader. Retain the genuine
++    * linker-generated SHA-1 note and bound lookup to this executable's code.
++    * The native adapter rejects missing/malformed notes; never invent a UUID.
++    */
++   extern const void *cubit_mesa_build_id_for_address(const void *);
++   return cubit_mesa_build_id_for_address(addr);
++#else
+    Dl_info info;
+ 
+    if (!dladdr(addr, &info))
+@@ -184,6 +192,7 @@
+ #endif /* DETECT_OS_APPLE */
+ 
+    return data.note;
++#endif /* __cubit__ */
+ }
+ 
+ unsigned

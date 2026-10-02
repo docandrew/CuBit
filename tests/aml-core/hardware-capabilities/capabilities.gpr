@@ -1,0 +1,11 @@
+project Capabilities is
+   for Source_Dirs use (".", "../../../kernel/src");
+   for Source_Files use ("capability_tests.adb", "config.ads", "capabilities.ads");
+   for Object_Dir use "../build/hardware-capabilities/obj";
+   for Exec_Dir use "../build/hardware-capabilities";
+   for Main use ("capability_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+end Capabilities;

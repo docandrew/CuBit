@@ -2,6 +2,9 @@
 #![cfg_attr(target_os = "none", no_std)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
+mod density;
+pub use density::{Metrics as RasterMetrics, Request as RasterRequest, cubit_font_raster_mask};
+
 use ab_glyph_rasterizer::{Point, Rasterizer, point};
 use core::{
     cell::UnsafeCell,

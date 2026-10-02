@@ -82,6 +82,26 @@ package body Intel_GPU_GuC_Context_Session is
       elsif Outcome = Life.Backpressure then Status := Backpressure;
       else Status := Queued; end if;
    end Notify_Work;
+   procedure Deregister
+     (Object : in out Session; Admission_Closed, Work_Drained : Boolean;
+      Status : out Result) is
+      Fence : Unsigned_16;
+      Accepted : Boolean;
+      Outcome : Life.Send_Result;
+   begin
+      Status := Rejected;
+      if State (Object) in Life.Fresh | Life.Quarantined then return; end if;
+      if not Owner_Ready then Fail (Object); Status := Faulted; return; end if;
+      if not Admission_Closed or else not Work_Drained then return; end if;
+      Life.Prepare_Deregister (Object.Life, Fence, Accepted);
+      if not Accepted then return; end if;
+      Queue (Events.Words (Requests.Deregister (Object.ID)), Fence, Outcome);
+      Life.Deregister_Sent (Object.Life, Outcome);
+      if not Owner_Ready then Fail (Object); end if;
+      if State (Object) = Life.Quarantined then Status := Faulted;
+      elsif Outcome = Life.Backpressure then Status := Backpressure;
+      else Status := Queued; end if;
+   end Deregister;
    procedure Dispatch (Object : in out Session; Payload : Events.Words;
                        Fence : Unsigned_16; Status : out Result) is
       Item : constant Events.Event := Events.Decode (Payload, Fence);
@@ -99,6 +119,11 @@ package body Intel_GPU_GuC_Context_Session is
          when Events.Scheduling_Done =>
             if Item.ID = Object.ID then
                Life.Scheduling_Done (Object.Life, Item.ID, Item.Runnable, Matched);
+               Status := (if Matched then Handled else Faulted); return;
+            end if;
+         when Events.Deregister_Done =>
+            if Item.ID = Object.ID then
+               Life.Deregistration_Done (Object.Life, Item.ID, Matched);
                Status := (if Matched then Handled else Faulted); return;
             end if;
          when Events.Other_Message => null;

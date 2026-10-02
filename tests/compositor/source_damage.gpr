@@ -1,0 +1,11 @@
+project Source_Damage is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use
+     ("source_damage_tests.adb", "compositor_source_damage.ads", "compositor_source_damage.adb");
+   for Object_Dir use "build/source-damage/obj";
+   for Exec_Dir use "build/source-damage";
+   for Main use ("source_damage_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Source_Damage;

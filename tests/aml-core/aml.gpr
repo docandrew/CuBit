@@ -1,0 +1,10 @@
+project AML is
+   for Source_Dirs use (".", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("conversion_runner.adb", "string_conversion_tests.adb", "selection_tests.adb", "literal_value_tests.adb", "field_declaration_tests.adb", "field_boundary_tests.adb", "service_field_execution_tests.adb", "service_field_runner.adb", "readonly_input_tests.adb", "exposure_tests.adb", "catalog_tests.adb", "decode_tests.adb", "field_tests.adb", "field_data_tests.adb", "name_tests.adb", "namespace_tests.adb", "namespace_field_tests.adb", "resolve_tests.adb", "load_tests.adb", "string_tests.adb", "buffer_tests.adb", "execute_tests.adb", "method_tests.adb", "expression_tests.adb", "service_tests.adb", "integer_oracle_tests.adb", "branch_tests.adb", "loop_tests.adb", "table_runner.adb", "logic_tests.adb", "binding_tests.adb", "call_tests.adb", "object_tests.adb", "data_tests.adb", "inspect_tests.adb", "division_tests.adb", "coercion_tests.adb", "bootstrap_tests.adb", "typed_tests.adb", "store_tests.adb", "request_tests.adb", "endpoint_tests.adb", "method_storage_tests.adb", "package_count_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end AML;

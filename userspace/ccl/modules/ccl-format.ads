@@ -48,9 +48,11 @@ is
    SHAPE_CALLABLE : constant := 5;
    SHAPE_BOUNDED  : constant := 6;
 
-   --  Fields of one import and one instruction (fixed-length arrays).
+   --  Fields of one import, instruction and function (fixed-length arrays).
+   --  A function: entry, captures, parameters, result kind, result type.
    IMPORT_FIELDS      : constant := 19;
    INSTRUCTION_FIELDS : constant := 8;
+   FUNCTION_FIELDS    : constant := 5;
    DIGEST_BYTES       : constant := 32;
 
    MAX_MODULE_SIZE : constant := 65_536;

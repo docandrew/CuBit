@@ -61,11 +61,10 @@ package body AML_Decode with SPARK_Mode is
       return (Kind => Limit_Exceeded);
    end Read_String;
 
-   function Read_Package (Data : Bytes) return Package_Result is
+   function Read_Field_Length (Data : Bytes) return Field_Length_Result is
       Following : Natural range 0 .. 3;
       Count : Positive range 1 .. 4;
       Length : Natural range 0 .. 16#0FFF_FFFF#;
-      Factor : Positive := 16;
    begin
       if Data'Length = 0 then
          return (Kind => Truncated);
@@ -81,23 +80,31 @@ package body AML_Decode with SPARK_Mode is
          if (Data (Data'First) and 16#30#) /= 0 then
             return (Kind => Malformed);
          end if;
-         Length := Natural (Data (Data'First) and 16#0F#);
-         for I in 1 .. Following loop
-            pragma Loop_Invariant (Length < Factor);
-            pragma Loop_Invariant
-              (Factor = (if I = 1 then 16 elsif I = 2 then 4096 else 1048576));
-            Length := Length + Natural (Data (Data'First + I)) * Factor;
-            if I < Following then
-               Factor := Factor * 256;
-            end if;
-         end loop;
+         Length := Natural (Data (Data'First)) mod 16
+           + Natural (Data (Data'First + 1)) * 16;
+         if Following >= 2 then
+            Length := Length + Natural (Data (Data'First + 2)) * 4096;
+         end if;
+         if Following = 3 then
+            Length := Length + Natural (Data (Data'First + 3)) * 1048576;
+         end if;
       end if;
-      if Length < Count then
+      return (Kind => Accepted, Encoding_Bytes => Count, Bits => Length);
+   end Read_Field_Length;
+   function Read_Package (Data : Bytes) return Package_Result is
+      Length : constant Field_Length_Result := Read_Field_Length (Data);
+   begin
+      case Length.Kind is
+         when Accepted => null;
+         when Truncated => return (Kind => Truncated);
+         when others => return (Kind => Malformed);
+      end case;
+      if Length.Bits < Length.Encoding_Bytes then
          return (Kind => Malformed);
-      elsif Length > Data'Length then
+      elsif Length.Bits > Data'Length then
          return (Kind => Truncated);
       end if;
-      return (Kind => Accepted, Encoding_Bytes => Count, Extent => Length);
+      return (Kind => Accepted, Encoding_Bytes => Length.Encoding_Bytes, Extent => Length.Bits);
    end Read_Package;
    function Read_Buffer (Data : Bytes; Width : Integer_Width) return Buffer_Result is
       subtype Failure_Status is Status range Truncated .. Limit_Exceeded;

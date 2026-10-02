@@ -13,6 +13,9 @@ with Interfaces; use Interfaces;
 with Interfaces.C;
 with System;
 with CuBit.UI;
+-- Linked pure geometry entry point called by the C frontend.
+with Client_Signed_Clip;
+pragma Warnings (Off, Client_Signed_Clip);
 --  The C fetcher keeps its network channel rings with these entry points.
 with CuBit.Channel_Rings_C;
 pragma Warnings (Off, CuBit.Channel_Rings_C);

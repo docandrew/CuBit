@@ -4,6 +4,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Memory_Grants;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Display_Protocol; use CuBit.Display_Protocol;
+with CuBit.Display_Pool_Protocol;
 with CuBit.Desktop_Messages; use CuBit.Desktop_Messages;
 with CuBit.Output_Discovery;
 with Presentation_Test_Policy;
@@ -478,6 +479,114 @@ procedure Main is
       if Passed then debugPrint ("DISPLAY-DUAL-CHECK: PASS" & ASCII.LF); end if;
    end Exercise_Outputs;
 
+   procedure Exercise_Pool is
+      package P renames CuBit.Display_Pool_Protocol;
+      use type P.Completion;
+      Grants : array (P.Buffer_Slot) of MG.Grant_Reference;
+      Addresses : array (P.Buffer_Slot) of Integer_Address;
+      Session : Unsigned_64 := 0;
+      procedure Pool_Frame (Slot : P.Buffer_Slot; ID : Live_ID;
+                            Outcome : Frame_Outcome; Disposition : Buffer_Disposition;
+                            Area : DP.Rectangle := (0, 0, 32, 32)) is
+         Msg : constant Message := From_Wire
+           (P.Encode (P.Frame'(Slot, (Session, ID, Area))));
+         C : CompletionEntry := NULL_COMPLETION;
+         Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 5000;
+         Activity : Activity_Result;
+      begin
+         Frame_Token := Frame_Token + 1;
+         Check (capSubmit (CAP_SLOT_DISPLAY, Msg, Frame_Token), "pool submit transport");
+         if not Passed then return; end if;
+         if GPU_Test_Policy.Delay_First_Output_Ms /= 0 and then Outcome = Published then
+            Wire := Send ((Label => Code (Get_Information), others => <>));
+            Check (Wire.Length = 4, "pool pending query remains responsive");
+            Expect (Encode_Lease_Request (Release_Display), DP.Bad_State, "pool pending cannot release");
+            Expect (P.Encode (P.Attachment'(Slot, (Grants (Slot), (32, 32, 128)))),
+              DP.Bad_State, "pool pending cannot replace slot");
+            declare
+               Other : constant P.Buffer_Slot := (if Slot = 3 then 1 else Slot + 1);
+               Rejected_Reply : constant P.Completion_Decoding := P.Decode_Completion
+                 (Send (P.Encode (P.Frame'(Other, (Session, ID + 100, (0, 0, 32, 32))))));
+               Pixels : array (0 .. 1023) of Unsigned_32
+                 with Import, Address => To_Address (Addresses (Other)), Volatile;
+            begin
+               Check (Rejected_Reply.Valid and then Rejected_Reply.Value =
+                 (Other, (Session, ID + 100, Rejected, Not_Acquired)), "pool overload rejects without retargeting held slot");
+               -- Independent root allocation remains writable during the hold.
+               Pixels := [others => 16#FFAABBCC#];
+            end;
+         end if;
+         loop
+            Ignored := Poll_Completion (C'Address);
+            exit when Ignored = 1;
+            Activity := Wait_For_Activity_Until (Deadline);
+            if Activity /= Work_Available or else syscall (SYSCALL_GETTIME) >= Deadline then
+               Check (False, "pool completion deadline"); return;
+            end if;
+         end loop;
+         declare R : constant P.Completion_Decoding := P.Decode_Completion (To_Wire (C.msg));
+         begin
+            Check (C.valid and then C.status = COMPLETION_OK and then C.token = Frame_Token and then
+              R.Valid and then R.Value = (Slot, (Session, ID, Outcome, Disposition)),
+              "pool completion slot/session/frame/disposition");
+         end;
+      end Pool_Frame;
+   begin
+      -- Rebinding deliberately invalidates the first session; covered separately.
+      if Presentation_Test_Policy.Rebind_Enabled then return; end if;
+      Expect (Encode_Lease_Request (Acquire_Display), DP.Success, "pool lease");
+      for B in P.Buffer_Slot loop
+         Raw := syscall (SYSCALL_SBRK, 8192);
+         Check (Raw /= Unsigned_64'Last, "pool storage");
+         if not Passed then return; end if;
+         Addresses (B) := Integer_Address ((Raw + 4095) and not Unsigned_64'(4095));
+         MG.Create_Via_Capability (CAP_SLOT_DISPLAY, To_Address (Addresses (B)), 1, False, Grants (B), Ok);
+         Check (Ok, "pool root grant");
+         if not Passed then return; end if;
+         Expect (P.Encode (P.Attachment'(B, (Grants (B), (32, 32, 128)))),
+                 DP.Success, "pool slot registration");
+         Expect (P.Encode (P.Attachment'(B, (Grants (B), (32, 32, 128)))),
+                 DP.Bad_State, "pool slot cannot be replaced");
+         if B < 3 then
+            Wire := Send (P.Encode_Open);
+            Check (Wire.Length = 4 and then Wire.Words (0) = 3, "incomplete pool cannot open");
+         end if;
+      end loop;
+      Expect (Encode_Attachment ((Grants (1), (32, 32, 128))), DP.Bad_State, "no legacy pool mixing");
+      Wire := Send (P.Encode_Open);
+      Check (Wire.Label = P.Open_Session and then Wire.Length = 4 and then Wire.Flags = 0 and then
+        Wire.Reserved = 0 and then Wire.Words (0) = 0 and then Wire.Words (1) /= 0 and then
+        Wire.Words (2) = 3 and then Wire.Words (3) = 1, "pool session contract");
+      if not Passed then return; end if;
+      Session := Wire.Words (1);
+      Wire := Send (P.Encode_Open);
+      Check (Wire.Words (0) = 3, "live pool cannot reopen");
+      for ID in 1 .. 9 loop
+         declare
+            B : constant P.Buffer_Slot := 1 + (ID - 1) mod 3;
+            Pixels : array (0 .. 1023) of Unsigned_32
+              with Import, Address => To_Address (Addresses (B)), Volatile;
+         begin
+            Pixels := [others => 16#FF000000# + Unsigned_32 (ID) * 16#00010101#];
+            Pool_Frame (B, Unsigned_64 (ID), Published, Released);
+            if not Passed then return; end if;
+         end;
+      end loop;
+      Pool_Frame (1, 9, Rejected, Not_Acquired); -- replay does not consume anything
+      Pool_Frame (1, 10, Rejected, Not_Acquired, (0, 0, 33, 32));
+      MG.Revoke (Grants (2), Ok);
+      Check (Ok and then Generation (Grants (2)) = Grants (2).generation, "registration retains revoked pin");
+      Pool_Frame (2, 10, Rejected, Not_Acquired); -- registration is not renewed authority
+      Pool_Frame (3, 11, Published, Released);
+      if not Passed then return; end if;
+      Expect (Encode_Lease_Request (Release_Display), DP.Success, "pool release");
+      for B in P.Buffer_Slot loop
+         if B /= 2 then MG.Revoke (Grants (B), Ok); Check (Ok, "pool revoke"); end if;
+         Check (Generation (Grants (B)) = 0, "all registration and frame pins returned");
+      end loop;
+      if Passed then debugPrint ("DISPLAY-POOL-CHECK: PASS three slots, exact replies, revocation and release" & ASCII.LF); end if;
+   end Exercise_Pool;
+
    procedure Exercise_Backend_Failure is
       Info, Status : Wire_Message;
    begin
@@ -510,6 +619,7 @@ begin
    else
       Exercise;
       if Passed then Exercise_Outputs; end if;
+      if Passed then Exercise_Pool; end if;
    end if;
    if Passed then
       debugPrint ("DISPLAY-GRANTS-CHECK: PASS" & ASCII.LF);

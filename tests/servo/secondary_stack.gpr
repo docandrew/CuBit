@@ -1,0 +1,16 @@
+library project Secondary_Stack is
+   for Languages use ("Ada");
+   for Source_Dirs use ("../../userspace/servo/native");
+   for Source_Files use ("servo_secondary_stack.ads", "servo_secondary_stack.adb");
+   for Object_Dir use "build/secondary-stack/obj";
+   for Library_Dir use "build/secondary-stack/lib";
+   for Library_Name use "servo_stack_test";
+   for Library_Kind use "static";
+   for Library_Interface use ("servo_secondary_stack");
+   for Library_Standalone use "standard";
+   for Library_Auto_Init use "false";
+   for Runtime ("Ada") use "../../userspace/runtime";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-fno-pic", "-mno-red-zone");
+   end Compiler;
+end Secondary_Stack;

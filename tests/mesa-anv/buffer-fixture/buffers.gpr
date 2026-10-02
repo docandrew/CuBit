@@ -1,0 +1,15 @@
+project Buffers is
+   for Languages use ("Ada", "C");
+   for Source_Dirs use (".", "../../../userspace/mesa/anv",
+                        "../../../userspace/services/intel-gpu");
+   for Object_Dir use "../target/buffer-requests-host";
+   -- This is the wire/C-ABI fixture, not the prepared Mesa-type adapter test.
+   for Excluded_Source_Files use
+     ("anv_cubit_memory.c", "anv_cubit_sync.c", "anv_cubit_sync_types.c",
+      "native_gpu_mapping.c", "native_gpu_presenter.c");
+   for Main use ("buffer_bridge_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+      for Default_Switches ("C") use ("-std=c11", "-Wall", "-Wextra", "-Werror");
+   end Compiler;
+end Buffers;

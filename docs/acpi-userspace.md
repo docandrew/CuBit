@@ -1,7 +1,13 @@
 # ACPI and AML outside the kernel
 
-Status: shared table admission integrated into native BIOS/UEFI boot; no
-implemented userspace ACPI service, AML interpreter or IOMMU enforcement yet.
+Track remaining work and completion evidence in the
+[ACPI coverage checklist](acpi-coverage.md).
+
+Status: shared table admission is integrated into native BIOS/UEFI boot. A
+SPARK-analyzed userspace service core and partial AML interpreter have hosted
+validation; no live userspace ACPI service or IOMMU enforcement is deployed.
+See [current service core](../userspace/services/acpi/README.md) for implemented
+interfaces and remaining integration work.
 
 ## Invariant
 
@@ -148,6 +154,40 @@ frames and executed instructions. Account separately for elapsed waits, event
 storms and synchronization. Yield/suspend through the scheduler rather than
 busy-waiting. Bounded interpreter execution is not proof that arbitrary firmware
 methods terminate successfully or meet hardware timing requirements.
+
+Kernel capture now measures the sealed catalog and allocates an owned snapshot
+with exactly that table count, total payload and largest-table capacity. Its
+allocation, including metadata, must fit the configured maximum buddy block
+(currently 32 MiB); catalog count remains bounded at 256. This is allocator
+policy, not an ACPI format limit. Native service startup still selects prototype
+defaults of 64 KiB per table, 32 tables and 1 MiB total pending startup/grant wiring. Exceeding a budget
+fails the snapshot/import rather than truncating a table or admitting a prefix
+as a complete table set. Essential kernel ACPI setup can succeed while this
+userspace handoff is unavailable.
+
+The shared snapshot now supports runtime capacities and packs tables into a
+byte allocation, rather than reserving a fixed payload slot for each table.
+Hosted fixtures cover 39 tables and a single table larger than 1 MiB. The
+service core and bootstrap likewise accept construction-time capacities; their
+hosted fixtures retain a table larger than 1 MiB and complete a 35-table
+bootstrap. The request core and native grant adapter now enforce the selected instance
+capacities, and capacity metrics report those same values. Native startup still
+constructs a statically constrained default instance; discovered-size allocation
+is not connected. A >1 MiB grant passed the hosted native-adapter fixture,
+including failed-return retry and owned-copy readback; kernel acquisition was
+mocked. All 108 request/endpoint proof checks passed (86013), with no unproved checks
+or assumptions.
+The service/bootstrap capacity contracts and request/endpoint callers passed
+SPARK proof (40571); this does not prove the remaining allocation/grant wiring.
+
+Before general deployment, use allocations and grants sized at runtime from validated firmware lengths, subject
+to an explicit resource quota. The operator should not have to predict firmware
+table sizes. Round owned allocations up to pages and zero padding before
+read-only grant publication. Report required table count,
+largest table and total bytes when admission exceeds that quota. This work is
+not implemented end to end yet. Increasing a constant alone requires reviewing
+kernel snapshot storage, service state copies, scratch/stack usage and proof bounds;
+it must not imply wider register capabilities or physical-memory access.
 
 Timeouts are not transactional rollback. Record the failed method, device,
 operation, reason and any known completed effects; quarantine the affected

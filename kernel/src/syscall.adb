@@ -92,6 +92,9 @@ package body Syscall is
             when 115  => number := SYSCALL_ALLOCATE_OWNED_MEMORY;
             when 116  => number := SYSCALL_RELEASE_OWNED_MEMORY;
             when 117  => number := SYSCALL_PROTECT_OWNED_MEMORY;
+            when 123  => number := SYSCALL_RESERVE_OWNED_MEMORY;
+            when 124  => number := SYSCALL_COMMIT_OWNED_MEMORY_PREFIX;
+            when 125  => number := SYSCALL_RELEASE_OWNED_RESERVATION;
             when 118  => number := SYSCALL_YIELD;
             when 119  => number := SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND;
             when 120  => number := SYSCALL_POLICY_MINT_CAPABILITY_FOR_INCARNATION;
@@ -280,6 +283,30 @@ package body Syscall is
             when SYSCALL_ALLOCATE_OWNED_MEMORY =>
                 Process.Owned_Memory.Allocate
                   (Process.processOf (percpu.currentThread), arg0, retval);
+
+            -- Page-aligned virtual capacity only; zero means rejected.
+            when SYSCALL_RESERVE_OWNED_MEMORY =>
+                Process.Owned_Memory.Reserve
+                  (Process.processOf (percpu.currentThread), arg0, retval);
+
+            -- Exact reservation base, expected prefix offset, bounded bytes.
+            when SYSCALL_COMMIT_OWNED_MEMORY_PREFIX =>
+                declare
+                    Committed : Boolean;
+                begin
+                    Process.Owned_Memory.Commit_Prefix
+                      (Process.processOf (percpu.currentThread), arg0, arg1, arg2, Committed);
+                    retval := (if Committed then 0 else Unsigned_64'Last);
+                end;
+
+            when SYSCALL_RELEASE_OWNED_RESERVATION =>
+                declare
+                    Released : Boolean;
+                begin
+                    Process.Owned_Memory.Release_Reservation
+                      (Process.processOf (percpu.currentThread), arg0, arg1, Released);
+                    retval := (if Released then 0 else Unsigned_64'Last);
+                end;
 
             when SYSCALL_RELEASE_OWNED_MEMORY =>
                 declare

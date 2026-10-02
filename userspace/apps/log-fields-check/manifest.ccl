@@ -1,0 +1,5 @@
+(executable-manifest v1
+  (identity "com.cubit.log-fields-check")
+  (version "0.1.0")
+  (request-service logstore read-write logstore)
+  (request-service log-observer read-write log-observer))

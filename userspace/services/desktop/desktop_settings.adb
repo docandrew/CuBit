@@ -104,12 +104,11 @@ package body Desktop_Settings is
        (View.Current_Page = Displays and then Item in Make_Primary .. Scale_Up) or else
        (View.Current_Page = Appearance and then Item in Light .. Revert));
 
-   procedure Draw (View : State; C : Canvas; Window_Bounds : Rect) is
+   procedure Render (View : State; C : Canvas; Window_Bounds : Rect) is
       Bounds : constant Rect := Page_Bounds (Window_Bounds);
       Colors : constant Theme := Current_Theme;
       Preview_Colors : constant Theme := Palette (View.Pending.Scheme);
       Preview : constant Rect := (Bounds.x + 20, Bounds.y + 56, 236, 150);
-      P : constant Rect := Clamp_Rect (C, Preview);
       function Label (Item : Control) return String is
         (case Item is when Appearance_Tab => "Appearance", when Displays_Tab => "Displays",
          when Light => "Alloy Light", when Dark => "Alloy Dark",
@@ -210,12 +209,7 @@ package body Desktop_Settings is
       Text (280, 32, "Alloy theme");
       Text (280, 104, "Background");
       Text (280, 176, "Wallpaper placement");
-      if not Is_Empty (P) then
-         Desktop_Wallpaper.Paint
-           (C.addr + Storage_Offset (Preview.y * C.pitch + Preview.x * 4),
-            Preview.w, Preview.h, C.pitch,
-            P.x - Preview.x, P.y - Preview.y, P.w, P.h, View.Pending);
-      end if;
+      Paint_Wallpaper (C, Preview, View.Pending);
       Stroke_Rect (C, Preview, Colors.shadow, Colors.highlight);
       declare
          Window : constant Rect := (Preview.x + 38, Preview.y + 32, 160, 94);
@@ -253,7 +247,35 @@ package body Desktop_Settings is
       else
          Text (20, 340, "Tab to navigate; Enter to choose");
       end if;
+   end Render;
+
+   procedure Paint_Legacy_Wallpaper
+     (C : Canvas; Bounds : Rect; Style : CuBit.Appearance.Preferences)
+   is
+      P : constant Rect := Clamp_Rect (C, Bounds);
+   begin
+      if not Is_Empty (P) then
+         Desktop_Wallpaper.Paint
+           (C.addr + Storage_Offset (Bounds.y * C.pitch + Bounds.x * 4),
+            Bounds.w, Bounds.h, C.pitch,
+            P.x - Bounds.x, P.y - Bounds.y, P.w, P.h, Style);
+      end if;
+   end Paint_Legacy_Wallpaper;
+
+   procedure Draw_Legacy is new Render
+     (Fill_Rect => CuBit.UI.Fill_Rect,
+      Stroke_Rect => CuBit.UI.Stroke_Rect,
+      Fill_Vertical_Gradient => CuBit.UI.Fill_Vertical_Gradient,
+      Draw_UI_Text => CuBit.UI.Draw_UI_Text,
+      Draw_Button => CuBit.UI.Draw_Button,
+      Draw_Tab => CuBit.UI.Draw_Tab,
+      Paint_Wallpaper => Paint_Legacy_Wallpaper);
+
+   procedure Draw (View : State; C : Canvas; Window_Bounds : Rect) is
+   begin
+      Draw_Legacy (View, C, Window_Bounds);
    end Draw;
+
 
    procedure Activate (View : in out State; Item : Control; Apply_Requested : out Boolean) is
    begin

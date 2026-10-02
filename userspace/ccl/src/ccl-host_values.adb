@@ -59,6 +59,7 @@ package body CCL.Host_Values with SPARK_Mode => On is
          elsif Ref = CCL.Types.Boolean_Type then CCL.VM.Boolean_Value
          elsif CCL.Types.Describe (Types, Ref).Form = CCL.Types.Resource then CCL.VM.Resource_Value
          elsif CCL.Types.Is_Scalar_Sum (Types, Ref) then CCL.VM.Variant_Value
+         elsif CCL.Types.Is_List (Types, Ref) then CCL.VM.List_Value
          else CCL.VM.Object_Value);
       function Nominal (Ref : CCL.Types.Type_Reference) return CCL.Types.Type_Reference is
         (if Ref in CCL.Types.Integer_Type | CCL.Types.Boolean_Type then CCL.Types.Invalid_Type else Ref);
@@ -104,7 +105,9 @@ package body CCL.Host_Values with SPARK_Mode => On is
            when CCL.VM.Integer_Value => CCL.Types.Integer_Type,
            when CCL.VM.Boolean_Value => CCL.Types.Boolean_Type,
            when CCL.VM.Variant_Value | CCL.VM.Object_Value | CCL.VM.Resource_Value => Local,
-           when CCL.VM.Text_Value => CCL.Types.String_Type);
+           when CCL.VM.Text_Value => CCL.Types.String_Type,
+           when CCL.VM.Character_Value => CCL.Types.Character_Type,
+           when CCL.VM.List_Value | CCL.VM.Function_Value => Local);
    begin
       if not Has_Resources (Declared) then return Matches_Bytecode (Compiled, Declared); end if;
       To_Bytecode (Declared, Types,

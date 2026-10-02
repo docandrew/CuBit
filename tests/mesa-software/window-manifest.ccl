@@ -1,0 +1,4 @@
+(executable-manifest v1
+  (identity "com.cubit.mesa-window")
+  (version "0.1.0")
+  (request-service desktop read-write desktop))

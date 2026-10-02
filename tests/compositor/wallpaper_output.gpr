@@ -1,0 +1,16 @@
+project Wallpaper_Output is
+   for Source_Dirs use (".", "../../userspace/services/desktop", "../../userspace/lib/compositor",
+     "../../userspace/lib/display", "../../userspace/lib/theme", "../../userspace/runtime/gnat");
+   for Source_Files use ("wallpaper_output_tests.adb", "wallpaper_assets.ads",
+     "desktop_wallpaper.ads", "desktop_wallpaper.adb", "cubit.ads", "cubit-appearance.ads",
+     "cubit-appearance.adb", "cubit-display_geometry.ads", "cubit-display_geometry.adb",
+     "compositor_image_sampling.ads", "compositor_image_sampling.adb",
+     "compositor_sampling.ads", "compositor_sampling.adb", "compositor_text.ads",
+     "compositor_text.adb", "compositor_affine.ads", "compositor_affine.adb");
+   for Object_Dir use "build/wallpaper-output/obj";
+   for Exec_Dir use "build/wallpaper-output";
+   for Main use ("wallpaper_output_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Wallpaper_Output;

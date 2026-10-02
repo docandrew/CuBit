@@ -1,0 +1,6 @@
+(executable-manifest v1
+  (identity "com.cubit.grant-forward.desktop")
+  (version "1.0.0")
+  (request-service ipc-test read-write ipc-test)
+  (request-service ccl-test-host read-write ccl-test-host)
+  (request-service desktop read-write desktop))

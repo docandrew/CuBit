@@ -1,0 +1,8 @@
+project GuC_Upload is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-guc-upload";
+   for Main use ("guc_upload_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end GuC_Upload;

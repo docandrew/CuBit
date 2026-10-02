@@ -93,7 +93,8 @@ class Images(unittest.TestCase):
                                                 "xhci.drv", "system.ccl", "init.ccl", "live-rw.ext2"})
                     apps = {row[5].removeprefix("apps/") for row in rows if row[5].startswith("apps/")}
                     self.assertEqual(apps, (stage1 | stage2 | {"sameboy.app", "sameboy/00.gb", "doom1.wad", "config-storage.svc", "cubitshell.app",
-                                                            "intel-gpu.drv", "firmware/intel/tgl_guc_70.bin", "mesa-cube.app"})
+                                                            "intel-gpu.drv", "firmware/intel/tgl_guc_70.bin", "mesa-cube.app",
+                                                            "boot-logs.app", "gpu-viewer.app"})
                                      - {"devmgr.svc", "filesystem.svc", "ramdisk.drv", "ps2.drv", "xhci.drv",
                                         "ata.drv", "nvme.drv", "storage-check.app"})
                     self.assertFalse(any("network-check" in row[2] or "ccl-control" in row[2] for row in rows))
@@ -108,10 +109,55 @@ class Images(unittest.TestCase):
                     self.assertEqual(len(mesa), 2)
                     self.assertTrue(all(row[0] == "OPTICAL" for row in mesa))
 
+    def test_mesa_device_profile_is_opt_in(self):
+        catalog = ROOT / "images/artifacts.ccl"
+        _, normal, _ = realizer.compile_plan(catalog, ROOT / "images/laptop-usb.ccl")
+        _, session, _ = realizer.compile_plan(catalog, ROOT / "images/render-session.ccl")
+        _, mesa, _ = realizer.compile_plan(catalog, ROOT / "images/mesa-device.ccl")
+        self.assertFalse(any(row[2] == "mesa-logical-device" for row in normal + session))
+        device, = [row for row in mesa if row[2] == "mesa-logical-device"]
+        self.assertEqual(device[0], "OPTICAL")
+        self.assertEqual(device[5], "apps/mesa-logical-device.app")
+        self.assertFalse(any(row[2] == "render-session" for row in mesa))
+        self.assertTrue(any(row[2] == "init-mesa-device" for row in mesa))
+        # Only the selected fixture/startup differ; retain firmware and licenses.
+        excluded = {"render-session", "mesa-logical-device",
+                    "init-render-session", "init-mesa-device"}
+        self.assertEqual([r for r in session if r[2] not in excluded],
+                         [r for r in mesa if r[2] not in excluded])
+
     def test_ordinary_ccl_expressions(self):
         result = self.compile(PROFILE.replace('"a.app"', '(concat "a" ".app")'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("\ta.app\n", result.stdout)
+
+    def test_mesa_triangle_profile_is_opt_in(self):
+        catalog = ROOT / "images/artifacts.ccl"
+        _, device, _ = realizer.compile_plan(catalog, ROOT / "images/mesa-device.ccl")
+        _, triangle, _ = realizer.compile_plan(catalog, ROOT / "images/mesa-triangle.ccl")
+        draw, = [row for row in triangle if row[2] == "mesa-triangle"]
+        self.assertEqual((draw[0], draw[5]), ("OPTICAL", "apps/mesa-triangle.app"))
+        self.assertFalse(any(row[2] == "mesa-triangle" for row in device))
+        self.assertFalse(any(row[2] == "mesa-logical-device" for row in triangle))
+        self.assertTrue(any(row[2] == "init-mesa-triangle" for row in triangle))
+        excluded = {"mesa-logical-device", "mesa-triangle",
+                    "init-mesa-device", "init-mesa-triangle"}
+        self.assertEqual([r for r in device if r[2] not in excluded],
+                         [r for r in triangle if r[2] not in excluded])
+
+    def test_mesa_window_profile_is_opt_in(self):
+        catalog = ROOT / "images/artifacts.ccl"
+        _, offscreen, _ = realizer.compile_plan(catalog, ROOT / "images/mesa-triangle.ccl")
+        _, window, _ = realizer.compile_plan(catalog, ROOT / "images/mesa-triangle-window.ccl")
+        draw, = [row for row in window if row[2] == "mesa-triangle-window"]
+        self.assertEqual((draw[0], draw[5]), ("OPTICAL", "apps/mesa-triangle-window.app"))
+        self.assertFalse(any(row[2] == "mesa-triangle-window" for row in offscreen))
+        self.assertFalse(any(row[2] == "mesa-triangle" for row in window))
+        self.assertTrue(any(row[2] == "init-mesa-triangle-window" for row in window))
+        excluded = {"mesa-triangle", "mesa-triangle-window",
+                    "init-mesa-triangle", "init-mesa-triangle-window"}
+        self.assertEqual([r for r in offscreen if r[2] not in excluded],
+                         [r for r in window if r[2] not in excluded])
 
     def test_live_ccl_samples(self):
         self.assertTrue(SAMPLES, "the LiveCD must include runnable CCL examples")
@@ -177,7 +223,7 @@ class Images(unittest.TestCase):
         self.reject("#" * 8193)
         self.reject(PROFILE.replace('"a.app"', '"' + "a" * 193 + '"'), diagnostic="INVALID_PATH")
         catalog = '(image-artifacts v1 (catalog "test-v1") ' + " ".join(
-            f'(artifact "a{i}" repository "a{i}")' for i in range(65)) + ')'
+            f'(artifact "a{i}" repository "a{i}")' for i in range(129)) + ')'
         self.reject(catalog=catalog, diagnostic="TOO_MANY_ITEMS")
         for end in range(0, len(PROFILE), 3):
             self.reject(PROFILE[:end])
@@ -185,6 +231,17 @@ class Images(unittest.TestCase):
         for _ in range(50):
             result = self.compile("".join(rng.choice('()#"abc 12\n') for _ in range(rng.randrange(100))))
             self.assertEqual(result.returncode, 1)
+
+    def test_exact_catalog_capacity(self):
+        catalog = '(image-artifacts v1 (catalog "test-v1") ' + " ".join(
+            f'(artifact "a{i}" repository "a{i}")' for i in range(128)) + (
+                ' (bootstrap-requires "resident" "a0" "a0.app"))')
+        profile = ('(system-image v1 (catalog "test-v1") '
+                   '(layout bootstrap-only) (provider "resident") (settings "a127") '
+                   '(file bootstrap "a0" "a0.app"))')
+        result = self.compile(profile, catalog)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("\ta0.app\n", result.stdout)
 
     def test_symbolic_format_versions(self):
         for token in ("1", "2", "v2", "V1", '"v1"', "(+ 0 1)"):

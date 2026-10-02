@@ -1,0 +1,13 @@
+project Display_Power is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("display_power_tests.adb",
+     "intel_gpu_display_power.ads", "intel_gpu_display_power.adb",
+     "intel_gpu_display_enable.ads", "intel_gpu_display_enable.adb",
+     "intel_gpu_display_lease.ads", "intel_gpu_display_lease.adb",
+     "intel_gpu_display_topology.ads", "intel_gpu_display_topology.adb");
+   for Object_Dir use "build-display-power";
+   for Main use ("display_power_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-O2", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Display_Power;

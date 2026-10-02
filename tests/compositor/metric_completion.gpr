@@ -1,0 +1,12 @@
+project Metric_Completion is
+ for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/runtime/gnat");
+ for Source_Files use
+  ("metric_completion_tests.adb", "compositor_metric_completion.ads", "cubit.ads",
+   "cubit-metric_records.ads", "cubit-metric_records.adb", "cubit-metric_protocol.ads");
+ for Object_Dir use "build/metric-completion/obj";
+ for Exec_Dir use "build/metric-completion";
+ for Main use ("metric_completion_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+ end Compiler;
+end Metric_Completion;

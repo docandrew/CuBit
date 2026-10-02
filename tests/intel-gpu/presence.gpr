@@ -1,0 +1,9 @@
+project Presence is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("presence_tests.adb", "intel_gpu_display_presence.ads", "intel_gpu_display_presence.adb");
+   for Object_Dir use "build-presence";
+   for Main use ("presence_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Presence;

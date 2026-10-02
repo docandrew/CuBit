@@ -133,7 +133,7 @@ package body CuBit.UI.Widgets is
    is
    begin
       CuBit.UI.Fill_Rect (c, bounds, colors.face);
-      CuBit.UI.Stroke_Rect (c, bounds, colors.edge, colors.shadow);
+      CuBit.UI.Stroke_Rect (c, bounds, colors.shadow, colors.shadow);
       content := Inner_Rect (bounds, padding, padding, padding, padding);
    end Panel;
 
@@ -216,7 +216,8 @@ package body CuBit.UI.Widgets is
          y := bounds.y + (bounds.h - CuBit.UI.UI_Text_Height) / 2;
       end if;
 
-      CuBit.UI.Draw_UI_Text (tc, bounds.x, y, key, colors.muted, colors.face);
+      CuBit.UI.Draw_UI_Text (CuBit.UI.With_Clip (tc, (bounds.x, bounds.y, keyW, bounds.h)),
+        bounds.x, y, key, colors.muted, colors.face);
       if valueX < bounds.x + bounds.w then
          CuBit.UI.Draw_UI_Text
            (tc, valueX, y, value, fgValue, colors.face);
@@ -251,7 +252,7 @@ package body CuBit.UI.Widgets is
          else CuBit.UI.Button_Normal);
       Content : constant CuBit.UI.Rect := Inner_Rect (bounds, 2, 2, 2, 2);
       Icon_Canvas : constant CuBit.UI.Canvas := CuBit.UI.With_Clip (c, Content);
-      Offset : constant Natural := (if pressed and enabled then 1 else 0);
+      Offset : constant Natural := 0;
       X : constant Natural := Content.x +
         Natural'Max (0, Integer (Content.w) - Bluecurve.Icon_Size) / 2 + Offset;
       Y : constant Natural := Content.y +
@@ -457,7 +458,12 @@ package body CuBit.UI.Widgets is
       maxScroll : Natural := 0;
       result : CuBit.UI.Widget_Result;
    begin
-      Panel (c, bounds, colors, viewport, padding);
+      CuBit.UI.Draw_Table_Viewport (Parent_Canvas (c, damage), bounds, colors);
+      declare
+         inset : constant Natural := Natural'Max (2, padding);
+      begin
+         viewport := Inner_Rect (bounds, inset, inset, inset, inset);
+      end;
       if viewport.w > 18 then
          viewport.w := viewport.w - 18;
          scrollBar :=
@@ -499,13 +505,14 @@ package body CuBit.UI.Widgets is
        colors : CuBit.UI.Theme;
        label : String;
        result : out CuBit.UI.Widget_Result;
-       retainedInput : Boolean := False)
+       retainedInput : Boolean := False;
+       quiet : Boolean := False)
    is
       style : CuBit.UI.Button_Style;
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
    begin
       if retainedInput then
-         CuBit.UI.Controls.Add_Button (controls, id, bounds, damage);
+         CuBit.UI.Controls.Add_Button (controls, id, CuBit.UI.Clamp_Rect (pc, bounds), damage);
          result :=
            (hot => st.pointer.enabled and then
               CuBit.UI.Point_In_Rect
@@ -518,7 +525,7 @@ package body CuBit.UI.Widgets is
                  CuBit.UI.Controls.Bounds (controls, id)),
             activated => False);
       else
-         CuBit.UI.Controls.Add (controls, id, bounds, damage);
+         CuBit.UI.Controls.Add (controls, id, CuBit.UI.Clamp_Rect (pc, bounds), damage);
          result := CuBit.UI.State.Button
            (st, CuBit.UI.Controls.Bounds (controls, id),
             CuBit.UI.State.Widget_ID (id));
@@ -527,7 +534,17 @@ package body CuBit.UI.Widgets is
          (if result.active then CuBit.UI.Button_Pressed
           elsif result.hot then CuBit.UI.Button_Hot
           else CuBit.UI.Button_Normal);
-      CuBit.UI.Draw_Button (pc, bounds, colors, style, label);
+      if quiet and then not result.hot and then not result.active then
+         CuBit.UI.Draw_UI_Text
+           (CuBit.UI.With_Clip (pc, bounds),
+            bounds.x + (bounds.w - Natural'Min
+              (bounds.w, CuBit.UI.UI_Text_Width (label))) / 2,
+            bounds.y + (bounds.h - Natural'Min
+              (bounds.h, CuBit.UI.UI_Text_Height)) / 2,
+            label, colors.muted, colors.face);
+      else
+         CuBit.UI.Draw_Button (pc, bounds, colors, style, label);
+      end if;
 
       --  Retained buttons do not participate in the legacy per-frame
       --  last-widget focus protocol. A fresh UI_State has both keyboardItem
@@ -542,6 +559,56 @@ package body CuBit.UI.Widgets is
             colors.accent);
       end if;
    end Button;
+
+   procedure Navigation_Button
+      (c : CuBit.UI.Canvas;
+       st : in out CuBit.UI.State.UI_State;
+       controls : in out CuBit.UI.Controls.Control_Map;
+       id : CuBit.UI.Controls.Control_ID;
+       bounds, damage : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme;
+       icon : Navigation_Icon;
+       caption : String;
+       enabled : Boolean;
+       result : out CuBit.UI.Widget_Result)
+   is
+      pc : constant CuBit.UI.Canvas := CuBit.UI.With_Clip
+        (Parent_Canvas (c, damage), bounds);
+      fg : constant CuBit.UI.Color :=
+        (if enabled then colors.text else colors.muted);
+      x, y, offset : Natural;
+   begin
+      result := (others => False);
+      if enabled then
+         Button (pc, st, controls, id, bounds, damage, colors, "", result,
+           retainedInput => True);
+      else
+         CuBit.UI.Draw_Button (pc, bounds, colors,
+           CuBit.UI.Button_Disabled, "");
+      end if;
+      if bounds.w < 20 or else bounds.h < 12 then return; end if;
+      offset := 0;
+      x := bounds.x + 7 + offset;
+      y := bounds.y + (bounds.h - 10) / 2 + offset;
+      CuBit.UI.Fill_Rect (pc, (x, y + 4, 10, 2), fg);
+      for step in 0 .. 4 loop
+         CuBit.UI.Fill_Rect
+           (pc, (x + (if icon = Navigate_Back then step else 8 - step),
+                 y + 4 - step, 2, 2), fg);
+         CuBit.UI.Fill_Rect
+           (pc, (x + (if icon = Navigate_Back then step else 8 - step),
+                 y + 4 + step, 2, 2), fg);
+      end loop;
+      if caption'Length > 0 and then bounds.w > 26 then
+         CuBit.UI.Draw_UI_Text_Transparent
+           (CuBit.UI.With_Clip
+              (pc, (bounds.x + 22, bounds.y, bounds.w - 25, bounds.h)),
+            bounds.x + 22 + offset,
+            bounds.y + (bounds.h - Natural'Min
+              (bounds.h, CuBit.UI.UI_Text_Height)) / 2 + offset,
+            caption, fg);
+      end if;
+   end Navigation_Button;
 
    procedure Disabled_Button
       (c : CuBit.UI.Canvas;
@@ -731,6 +798,43 @@ package body CuBit.UI.Widgets is
       CuBit.UI.Draw_Tab
         (pc, bounds, colors, selectedIndex = tabIndex,
          result.hot, result.active, label);
+   end Tab;
+
+   procedure Tab
+      (c : CuBit.UI.Canvas;
+       st : in out CuBit.UI.State.UI_State;
+       controls : in out CuBit.UI.Controls.Control_Map;
+       id : CuBit.UI.Controls.Control_ID;
+       bounds, damage : CuBit.UI.Rect;
+       colors : CuBit.UI.Theme;
+       selected : Boolean;
+       content : out CuBit.UI.Canvas;
+       contentColors : out CuBit.UI.Theme;
+       result : out CuBit.UI.Widget_Result;
+       orientation : CuBit.UI.Tab_Orientation := CuBit.UI.Horizontal;
+       padding : Natural := 2)
+   is
+      pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
+      visible : constant CuBit.UI.Rect := CuBit.UI.Clamp_Rect (pc, bounds);
+   begin
+      CuBit.UI.Controls.Add_Button (controls, id, visible, damage);
+      result :=
+        (hot => st.pointer.enabled and then
+           CuBit.UI.Point_In_Rect (st.pointer.x, st.pointer.y, visible),
+         active => CuBit.UI.Controls.Is_Active (controls, id) and then
+           st.pointer.enabled and then
+           CuBit.UI.Point_In_Rect (st.pointer.x, st.pointer.y, visible),
+         activated => False);
+      CuBit.UI.Draw_Tab
+        (pc, bounds, colors, selected, result.hot, result.active, "",
+         orientation);
+      content := CuBit.UI.With_Clip
+        (pc, Inner_Rect (bounds, padding, padding, padding, padding));
+      contentColors := colors;
+      contentColors.face :=
+        (if result.active then colors.edge
+         elsif selected then colors.face
+         elsif result.hot then colors.edge else colors.panel);
    end Tab;
 
    procedure Tab_Panel

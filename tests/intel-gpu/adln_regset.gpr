@@ -1,0 +1,14 @@
+project ADLN_Regset is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("adln_regset_tests.adb", "intel_gpu_adln_regset.ads",
+                         "intel_gpu_adln_regset.adb", "intel_gpu_adln_inventory.ads",
+                         "intel_gpu_adln_inventory.adb", "intel_gpu_adln_steering.ads",
+                         "intel_gpu_adln_steering.adb", "intel_gpu_ads_regset.ads",
+                         "intel_gpu_ads_regset.adb", "intel_gpu_adln_engine_settings.ads",
+                         "intel_gpu_adln_engine_settings.adb");
+   for Object_Dir use "build-adln-regset";
+   for Main use ("adln_regset_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end ADLN_Regset;

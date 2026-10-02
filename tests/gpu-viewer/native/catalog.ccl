@@ -1,0 +1,8 @@
+# Test-local slot layout for the UNMODIFIED production viewer main.
+(service-catalog v1
+  (application-slots 24 62)
+  (service ipc-test 14 read-write)
+  (service desktop 15 read-write)
+  (fixed-binding test-driver 4)
+  (fixed-binding test-supervisor 15)
+  (fixed-binding desktop 21))

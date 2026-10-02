@@ -64,7 +64,8 @@ package body CCL.Objects.Values with SPARK_Mode is
         not CCL.VM.Well_Typed (Local_Types, Value)
       then return; end if;
       case Value.Kind is
-         when CCL.VM.Object_Value | CCL.VM.Resource_Value | CCL.VM.Text_Value => return;
+         when CCL.VM.Object_Value | CCL.VM.Resource_Value | CCL.VM.Text_Value |
+              CCL.VM.Character_Value | CCL.VM.List_Value | CCL.VM.Function_Value => return;
          -- Objects require their owning native VM store; resources can never
          -- become persistence images; text needs the run's text region.
          when CCL.VM.Integer_Value =>

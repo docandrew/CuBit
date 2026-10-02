@@ -18,6 +18,8 @@ package body CuBit.Capability_Grants is
    function Valid (Target : Recipient) return Boolean is (Target.Wire /= 0);
    function Process_ID (Target : Recipient) return Unsigned_64 is
      (Target.Wire mod 2 ** 32);
+   function Incarnation (Target : Recipient) return Unsigned_64 is
+     (Target.Wire);
    function Capture (Slot : CapabilitySlot) return Recipient is
       Data : constant Inspection := Inspect (Slot);
    begin

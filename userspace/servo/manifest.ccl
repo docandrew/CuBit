@@ -1,4 +1,4 @@
-# Servo on CuBit (docs/servo-port.md). Reads fonts, its page list and
+# Penny, powered by Servo on CuBit (docs/servo-port.md). Reads fonts, its page list and
 # the TLS trust store; wall-clock time from clock.svc;
 # outbound TCP with DNS through netstack, like NetSurf. Network use needs
 # launch approval (network approve-declared).
@@ -6,6 +6,11 @@
   (identity "com.cubit.servo")
   (version "0.1.0")
   (request-service filesystem read-write filesystem)
+  # Only these folders may be modified; no writable profile/cache directory.
+  (filesystem-scope (rights read write create) "@nvme:0/Bookmarks")
+  (filesystem-scope (rights read write create) "@nvme:0/Downloads")
+  (request-service config read-write config)
+  (config-scope (rights read write) "browser.servo")
   # A window on the desktop (desktop.svc; lent buffer, surface-scoped input).
   (request-service desktop read-write desktop)
   (filesystem-scope (rights read) "@nvme:0/fonts")

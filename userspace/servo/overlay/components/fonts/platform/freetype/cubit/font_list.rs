@@ -130,8 +130,12 @@ impl FontList {
         });
         let mut families: Vec<FontFamily> = vec![];
         for path in files {
-            let Ok(bytes) = fs::read(&path) else {
-                continue;
+            let bytes = match fs::read(&path) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    warn!("CuBit font read failed at {}: {error}", path.display());
+                    continue;
+                },
             };
             let faces: Vec<(u16, FontRef)> = match FileRef::new(&bytes) {
                 Ok(FileRef::Font(font)) => vec![(0, font)],

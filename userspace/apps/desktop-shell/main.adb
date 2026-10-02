@@ -59,7 +59,7 @@ procedure main is
          height      => bufferH,
          pitch       => bufferPitch,
          clipEnabled => False,
-         clip        => (others => 0));
+         clip        => (others => 0), others => <>);
    end canvas;
 
    function callDesktop

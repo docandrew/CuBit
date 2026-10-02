@@ -1,0 +1,14 @@
+project Refresh_Transport is
+   for Source_Dirs use (".", "refresh-fixture", "../../userspace/services/desktop",
+                       "../../userspace/services/desktop/timing-off", "../../userspace/lib/compositor");
+   for Source_Files use ("refresh_transport_tests.adb", "cubit.ads", "cubit-messages.ads", "cubit-messages.adb",
+      "cubit-memory_grants.ads", "cubit-memory_grants.adb", "desktop_launch_refresh.ads", "desktop_launch_refresh.adb",
+      "desktop_launch.ads", "desktop_launch.adb", "desktop_icons.ads", "desktop_timing_policy.ads",
+      "compositor_requests.ads", "compositor_requests.adb", "compositor_refresh.ads", "compositor_refresh.adb");
+   for Object_Dir use "build/refresh-transport/obj";
+   for Exec_Dir use "build/refresh-transport";
+   for Main use ("refresh_transport_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Refresh_Transport;

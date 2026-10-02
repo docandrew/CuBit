@@ -1,0 +1,11 @@
+project Render_Trace is
+ for Source_Dirs use (".","../../userspace/lib/compositor");
+ for Source_Files use ("render_trace_tests.adb","compositor_render_trace.ads",
+   "compositor_render_trace.adb","compositor_elapsed.ads");
+ for Object_Dir use "build/render-trace/obj";
+ for Exec_Dir use "build/render-trace";
+ for Main use ("render_trace_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022","-gnata","-gnato","-O2");
+ end Compiler;
+end Render_Trace;

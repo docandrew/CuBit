@@ -23,6 +23,7 @@ is
    use type CCL.Ownership.Ownership_Mode;
    package Object_Views renames CCL.Objects.Views;
    package T renames CCL.Text_Operations;
+   package L renames CCL.List_Operations;
    use type T.Outcome;
    subtype Object_Count is Natural range 0 .. MAX_OBJECT_VALUES;
    subtype Object_Index is Positive range 1 .. MAX_OBJECT_VALUES;
@@ -185,32 +186,6 @@ is
       elsif Right < 0 then
          Left < Integer_64'First - Right
       else False);
-
-   function Decimal_Image (Value : Integer_64) return String is
-      Buffer : String (1 .. 20) := [others => '0'];
-      First : Positive range 2 .. 20 := 20;
-      Signed_First : Positive range 1 .. 20;
-      Magnitude : Unsigned_64;
-      Digit : Unsigned_64 range 0 .. 9;
-   begin
-      Magnitude := (if Value < 0 then Unsigned_64 (-(Value + 1)) + 1
-                    else Unsigned_64 (Value));
-      --  Nineteen magnitude digits, plus a reserved sign position. The
-      --  bounded reverse loop cannot underflow, even for Integer_64'First.
-      for Position in reverse 2 .. 20 loop
-         First := Position;
-         Digit := Magnitude mod 10;
-         Buffer (First) := Character'Val (Character'Pos ('0') + Natural (Digit));
-         Magnitude := Magnitude / 10;
-         exit when Magnitude = 0;
-      end loop;
-      Signed_First := First;
-      if Value < 0 then
-         Signed_First := First - 1;
-         Buffer (Signed_First) := '-';
-      end if;
-      return Buffer (Signed_First .. Buffer'Last);
-   end Decimal_Image;
 
    procedure Process_Source_With_Host
      (Source : String; Fuel : Natural;
@@ -2138,6 +2113,7 @@ is
                      (Left_Type /= Integer_Type and then
                       Left_Type /= Boolean_Type and then
                       Left_Type /= String_Type and then
+                      Left_Type /= Character_Type and then
                       not CCL.Types.Is_Enumeration (Tree.Types, Left_Type)))
                   then Diagnostic := Expected_Comparable; end if;
                   Kind := Boolean_Type;
@@ -2722,6 +2698,116 @@ is
          end if;
       end Make_String;
 
+      --  A host image's value as this evaluation's own (docs/ccl-repl.md,
+      --  "Lists"): strings into the text region, records and payload
+      --  variants into the arena (components first, so nodes point
+      --  backwards), lists into the list region. Persistable types refer only
+      --  to earlier types, so Kind decreases.
+      procedure Copy_In
+        (Owner : Object_Index; Position : Object_Views.Cursor; Kind : Static_Type;
+         Item : out Runtime_Value; Good : out Boolean)
+        with Subprogram_Variant => (Decreases => Kind)
+      is
+         D : constant CCL.Types.Description := CCL.Types.Describe (Tree.Types, Kind);
+         Region_Result : Text_Regions.Operation_Result;
+      begin
+         Item := (others => <>);
+         Good := Object_Views.Local_Type (Objects (Owner), Position, Tree.Types) = Kind;
+         if not Good then return; end if;
+         if Kind = String_Type then
+            declare
+               Length : constant Object_Views.Text_Size := Object_Views.Text_Length (Objects (Owner), Position);
+               Buffer : String (1 .. CCL.Objects.Maximum_Text_Bytes) := [others => ' '];
+            begin
+               Good := Length <= MAX_TEXT_BYTES;
+               if Good then
+                  Object_Views.Copy_Text (Objects (Owner), Position, Buffer (1 .. Length), Good);
+               end if;
+               if Good then
+                  Text_Regions.Allocate_String (Text_Region, Buffer (1 .. Length), Item.Text, Region_Result);
+                  Good := Region_Result = Text_Regions.Operation_Ok;
+                  Item.Kind := String_Type;
+               end if;
+               if not Good then Eval_Status := Evaluation_Text_Storage_Exhausted; end if;
+            end;
+         elsif Kind not in CCL.Types.Declared_Type or else CCL.Types.Is_Scalar_Sum (Tree.Types, Kind) then
+            --  Scalars and scalar variants hold no reference to the image.
+            Load_View (Owner, Position, Item, Good);
+         elsif D.Form = CCL.Types.Sequence then
+            declare
+               Count : constant Object_Views.Element_Count := Object_Views.Length (Objects (Owner), Position);
+               Items : List_Element_Array (1 .. CCL.Objects.Maximum_Cells) := [others => Null_List_Element];
+               Part : Runtime_Value;
+               Placed : List_Regions.Operation_Result;
+            begin
+               Good := D.Count = 1 and then D.Parts (1).Payload < Kind;
+               --  Guarded on the type order itself: elements are earlier types.
+               if D.Count = 1 and then D.Parts (1).Payload < Kind then
+                  for E in 1 .. Count loop
+                     Copy_In (Owner, Object_Views.Element (Objects (Owner), Position, E), D.Parts (1).Payload,
+                              Part, Good);
+                     exit when not Good;
+                     Items (E) := (Scalar => Part.Scalar, Text => Part.Text, Character_Item => Part.Character_Item,
+                                   Alternative => Part.Alternative, Node => Part.Node);
+                  end loop;
+               end if;
+               if Good then
+                  List_Regions.Allocate (List_Region, Items (1 .. Count), Item.Items, Placed);
+                  Good := Placed = List_Regions.Operation_Ok;
+                  Item.Kind := Kind;
+                  if not Good then Eval_Status := Evaluation_List_Storage_Exhausted; end if;
+               end if;
+            end;
+         else
+            --  A record (every field) or a payload variant (its payload).
+            declare
+               Choice : constant CCL.Types.Component_Count :=
+                 (if D.Form = CCL.Types.Sum then Object_Views.Alternative (Objects (Owner), Position) else 0);
+               Count : constant CCL.Types.Component_Count :=
+                 (if D.Form = CCL.Types.Product then D.Count
+                  elsif Choice in 1 .. D.Count and then D.Parts (Choice).Payload /= Unit_Type then 1 else 0);
+               Parts : array (CCL.Types.Component_Index) of Runtime_Value := [others => (others => <>)];
+            begin
+               Good := D.Form = CCL.Types.Product or else Choice in 1 .. D.Count;
+               for P in 1 .. Count loop
+                  exit when not Good;
+                  declare
+                     Part_Kind : constant Static_Type :=
+                       D.Parts (if D.Form = CCL.Types.Product then P else Choice).Payload;
+                  begin
+                     Good := Part_Kind < Kind;
+                     if Good then
+                        Copy_In (Owner,
+                                 (if D.Form = CCL.Types.Product then Object_Views.Field (Objects (Owner), Position, P)
+                                  else Object_Views.Payload (Objects (Owner), Position)),
+                                 Part_Kind, Parts (P), Good);
+                     end if;
+                  end;
+               end loop;
+               if Good and then D.Form = CCL.Types.Sum and then Count = 0 then
+                  --  A unit member: no node.
+                  Item := (Kind => Kind, Alternative => Choice, others => <>);
+               elsif Good then
+                  if Nodes_Used = MAX_VALUE_NODES or else MAX_VALUE_SLOTS - Slots_Used < Count then
+                     Eval_Status := Evaluation_Object_Storage_Exhausted;
+                     Good := False;
+                  else
+                     for P in 1 .. Count loop
+                        Value_Slots (Slots_Used + P) := Parts (P);
+                     end loop;
+                     Nodes_Used := Nodes_Used + 1;
+                     Value_Nodes (Nodes_Used) :=
+                       (Kind => Kind, Alternative => (if Choice in CCL.Types.Component_Index then Choice else 1),
+                        First => Slots_Used + 1, Count => Count);
+                     Slots_Used := Slots_Used + Count;
+                     Item := (Kind => Kind, Alternative => (if Choice in CCL.Types.Component_Index then Choice else 1),
+                              Node => Nodes_Used, others => <>);
+                  end if;
+               end if;
+            end;
+         end if;
+      end Copy_In;
+
       --  Order of two region strings (list elements), compared character by
       --  character without copying.
       function Text_Less (Left, Right : Text_Regions.String_Value) return Boolean is
@@ -2758,9 +2844,6 @@ is
          Copy_String (Right, B (1 .. L), Good_B);
          return Good_A and then Good_B and then A (1 .. L) = B (1 .. L);
       end Equal_Strings;
-
-      function Is_Blank (C : Character) return Boolean is
-        (C in ' ' | ASCII.HT | ASCII.LF | ASCII.CR);
 
       --  Builtins whose subject (last operand) is a String. Kept out of
       --  Evaluate_Node so the text buffers live only during this call, not on
@@ -2875,37 +2958,23 @@ is
                   if Placed /= List_Regions.Operation_Ok then
                      Eval_Status := Evaluation_List_Storage_Exhausted; Good := False; return;
                   end if;
-                  if A_Length = 0 then
-                     declare
-                        P : Positive := 1;
-                        Start : Positive;
-                     begin
-                        while Good and then P <= S_Length loop
-                           if Is_Blank (S (P)) then
-                              P := P + 1;
-                           else
-                              Start := P;
-                              while P <= S_Length and then not Is_Blank (S (P)) loop P := P + 1; end loop;
-                              Add (Start, P - 1);
-                           end if;
-                        end loop;
-                     end;
-                  else
-                     declare
-                        P : Positive := 1;
-                        Next : Natural;
-                     begin
-                        loop
-                           exit when not Good;
-                           Next := (if P <= S_Length then T.Find (S (1 .. S_Length), A (1 .. A_Length), P) else 0);
-                           if Next = 0 then
-                              Add (P, S_Length); exit;
-                           end if;
-                           Add (P, Next - 1);
-                           P := Next + A_Length;
-                        end loop;
-                     end;
-                  end if;
+                  declare
+                     P : Positive := 1;
+                     Finished : Boolean := False;
+                     Low : Positive;
+                     High : Natural;
+                     Found : Boolean;
+                  begin
+                     --  At most S_Length + 1 pieces; one more step reports a
+                     --  full list when Capacity is smaller.
+                     for Step in 0 .. Capacity loop
+                        pragma Loop_Invariant (P <= S_Length + 1);
+                        exit when not Good;
+                        T.Next_Piece (S (1 .. S_Length), A (1 .. A_Length), P, Finished, Low, High, Found);
+                        exit when not Found;
+                        Add (Low, High);
+                     end loop;
+                  end;
                   if Good then
                      List_Regions.Shrink (List_Region, Pieces, Count, Placed);
                      if Placed = List_Regions.Operation_Ok then
@@ -3350,6 +3419,8 @@ is
                         Left.Scalar.Boolean = Right.Scalar.Boolean
                      elsif Left.Kind = String_Type then
                         Equal_Strings (Left, Right)
+                     elsif Left.Kind = Character_Type then
+                        Left.Character_Item = Right.Character_Item
                      else Left.Alternative = Right.Alternative);
                end if;
                Ok := Good;
@@ -3372,6 +3443,8 @@ is
                               Left.Scalar.Boolean /= Right.Scalar.Boolean
                            elsif Left.Kind = String_Type then
                               not Equal_Strings (Left, Right)
+                           elsif Left.Kind = Character_Type then
+                              Left.Character_Item /= Right.Character_Item
                            else Left.Alternative /= Right.Alternative),
                         when Less_Form =>
                           Left.Scalar.Integer < Right.Scalar.Integer,
@@ -3473,6 +3546,7 @@ is
                            Item.Text := Element.Text;
                            Item.Character_Item := Element.Character_Item;
                            Item.Alternative := Element.Alternative;
+                           Item.Node := Element.Node;
                         else
                            Eval_Status := Evaluation_Index_Error;
                            Good := False;
@@ -3525,7 +3599,7 @@ is
                if Good then
                   Text_Regions.Allocate_String
                     (Text_Region,
-                     (if Left.Kind = Integer_Type then Decimal_Image (Left.Scalar.Integer)
+                     (if Left.Kind = Integer_Type then T.Decimal_Image (Left.Scalar.Integer)
                       else CCL.Types.Image (CCL.Types.Describe
                         (Tree.Types, Left.Kind).Parts (Left.Alternative).Identifier)),
                      Item.Text, Region_Result);
@@ -3650,7 +3724,14 @@ is
                                     if Reserved_Object /= 0 then
                                        Object_Views.Capture (Objects (Reserved_Object), Contract, Reply.Value.Object, Good);
                                        if Good then
-                                          Load_View (Reserved_Object, Object_Views.Root (Objects (Reserved_Object)), Item, Good);
+                                          if CCL.Types.Is_List (Tree.Types, Tree.Nodes (Node_Index (Index)).Static_Kind) then
+                                             --  A list is copied in: its elements are this
+                                             --  evaluation's values, not views of the image.
+                                             Copy_In (Reserved_Object, Object_Views.Root (Objects (Reserved_Object)),
+                                                      Tree.Nodes (Node_Index (Index)).Static_Kind, Item, Good);
+                                          else
+                                             Load_View (Reserved_Object, Object_Views.Root (Objects (Reserved_Object)), Item, Good);
+                                          end if;
                                        end if;
                                     else
                                        CCL.Objects.Values.To_VM (Contract, Tree.Types, Reply.Value.Object, VM_Value, Good);
@@ -3659,7 +3740,9 @@ is
                                             when CCL.VM.Integer_Value => Integer_Type,
                                             when CCL.VM.Boolean_Value => Boolean_Type,
                                             when CCL.VM.Variant_Value | CCL.VM.Object_Value => VM_Value.Data_Type,
-                                            when CCL.VM.Resource_Value | CCL.VM.Text_Value => Invalid_Type);
+                                            when CCL.VM.Resource_Value | CCL.VM.Text_Value |
+                                                 CCL.VM.Character_Value | CCL.VM.List_Value |
+                                                 CCL.VM.Function_Value => Invalid_Type);
                                           Item.Alternative := VM_Value.Alternative;
                                           Item.Scalar :=
                                             (if Item.Kind = Boolean_Type or else
@@ -3857,16 +3940,16 @@ is
                               exit when not Good;
                               Item := Mapped;
                            end loop;
-                        when First_Builtin =>
+                        when First_Builtin | Last_Builtin | Skip_Builtin =>
                            declare
-                              Wanted : constant Natural :=
-                                (if Operands (1).Scalar.Integer <= 0 then 0
-                                 elsif Operands (1).Scalar.Integer >= Integer_64 (Length) then Length
-                                 else Natural (Operands (1).Scalar.Integer));
+                              From : Positive;
+                              To : Natural;
                            begin
-                              Reserve (Wanted);
+                              L.Take_Bounds (List_Operation_Of (Operation), Operands (1).Scalar.Integer,
+                                             Length, From, To);
+                              Reserve (if To >= From then To - From + 1 else 0);
                               if Good then
-                                 for I in 1 .. Wanted loop
+                                 for I in From .. To loop
                                     Element (I, Element_Kind, Current, Good);
                                     exit when not Good;
                                     Keep (Current);
@@ -3892,22 +3975,13 @@ is
                            --  [a .. b], empty when b < a, bounded by the list region.
                            declare
                               Low : constant Integer_64 := Operands (1).Scalar.Integer;
-                              High : constant Integer_64 := Operands (2).Scalar.Integer;
-                              Size : Natural := 0;
-                              Span : Integer_64 := 0;
-                              Span_Overflowed : Boolean := False;
+                              Size : Natural;
+                              Fits : Boolean;
                            begin
-                              if High >= Low then
-                                 CCL.Checked_Arithmetic.Subtract (High, Low, Span, Span_Overflowed);
-                              end if;
-                              if High >= Low and then
-                                (Span_Overflowed or else Span >= Integer_64 (MAX_LIST_ELEMENTS))
-                              then
+                              L.Range_Length (Low, Operands (2).Scalar.Integer, MAX_LIST_ELEMENTS, Size, Fits);
+                              if not Fits then
                                  Eval_Status := Evaluation_List_Storage_Exhausted; Good := False;
                               else
-                                 if High >= Low and then Span in 0 .. Integer_64 (MAX_LIST_ELEMENTS) - 1 then
-                                    Size := Natural (Span) + 1;
-                                 end if;
                                  Reserve (Size);
                                  if Good then
                                     for I in 1 .. Size loop
@@ -3929,26 +4003,6 @@ is
                                  end if;
                                  if Good then Finish (Tree.Nodes (Index).Static_Kind); end if;
                               end if;
-                           end;
-                        when Last_Builtin | Skip_Builtin =>
-                           declare
-                              N : constant Natural :=
-                                (if Operands (1).Scalar.Integer <= 0 then 0
-                                 elsif Operands (1).Scalar.Integer >= Integer_64 (Length) then Length
-                                 else Natural (Operands (1).Scalar.Integer));
-                              From : constant Positive :=
-                                (if Operation = Last_Builtin then Length - N + 1 else N + 1);
-                           begin
-                              Reserve (Length - From + 1);
-                              if Good then
-                                 for I in From .. Length loop
-                                    Element (I, Element_Kind, Current, Good);
-                                    exit when not Good;
-                                    Keep (Current);
-                                    exit when not Good;
-                                 end loop;
-                              end if;
-                              if Good then Finish (Source_List.Kind); end if;
                            end;
                         when Reverse_Builtin =>
                            Reserve (Length);
@@ -4060,25 +4114,18 @@ is
                                     Put (Item.Items, I, B); Put (Item.Items, J, A);
                                  end if;
                               end Swap;
-                              --  Restore the max-heap below Root within 1 .. Last.
-                              procedure Sift (Root_Start, Last : Positive) is
-                                 Root : Positive := Root_Start;
-                                 Child : Positive;
-                                 Before : Boolean;
+                              procedure Sort_Less (I, J : Positive; Before : out Boolean; Ok : out Boolean) is
                               begin
-                                 while Good and then Root <= Last / 2 loop
-                                    Child := 2 * Root;
-                                    if Child < Last then
-                                       Key_Less (Child, Child + 1, Before);
-                                       if Before then Child := Child + 1; end if;
-                                    end if;
-                                    exit when not Good;
-                                    Key_Less (Root, Child, Before);
-                                    exit when not Good or else not Before;
-                                    Swap (Root, Child);
-                                    Root := Child;
-                                 end loop;
-                              end Sift;
+                                 Key_Less (I, J, Before);
+                                 Ok := Good;
+                              end Sort_Less;
+                              procedure Sort_Swap (I, J : Positive; Ok : out Boolean) is
+                              begin
+                                 Swap (I, J);
+                                 Ok := Good;
+                              end Sort_Swap;
+                              procedure Sort is new L.Heap_Sort (Sort_Less, Sort_Swap);
+                              Sorted : Boolean;
                            begin
                               Reserve (Length);
                               for I in 1 .. Length loop
@@ -4104,16 +4151,9 @@ is
                               else
                                  Keys := Item.Items;
                               end if;
-                              if Good and then Length > 1 then
-                                 for Root in reverse 1 .. Length / 2 loop
-                                    Sift (Root, Length);
-                                    exit when not Good;
-                                 end loop;
-                                 for Last in reverse 2 .. Length loop
-                                    exit when not Good;
-                                    Swap (1, Last);
-                                    if Last > 2 then Sift (1, Last - 1); end if;
-                                 end loop;
+                              if Good then
+                                 Sort (Length, Sorted);
+                                 Good := Good and then Sorted;
                               end if;
                               if Good then Finish (Source_List.Kind); end if;
                            end;

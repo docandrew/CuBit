@@ -1,0 +1,10 @@
+project Workspace is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("workspace_tests.adb", "compositor_workspace.ads");
+   for Object_Dir use "build/workspace/obj";
+   for Exec_Dir use "build/workspace";
+   for Main use ("workspace_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Workspace;

@@ -1,3 +1,4 @@
+with CCL.List_Operations;
 with Ada.Text_IO; use Ada.Text_IO;
 with CCL.Sessions;
 with Interfaces; use Interfaces;
@@ -1414,21 +1415,56 @@ procedure Main is
             CCL.Language.Analyze (Source, Analysis);
             CCL.Compiler.Compile (Analysis, Compiled);
             if Compiled.Status /= CCL.Compiler.Compilation_Succeeded then
-               Check (False, Label & " (compile)"); return;
+               Check (False, Label & " (compile: " & CCL.Compiler.Compilation_Status'Image (Compiled.Status) & ")");
+               return;
             end if;
             Verify (Compiled.Program, Checked, Error);
             if Error /= Valid then
-               Check (False, Label & " (verify)"); return;
+               Check (False, Label & " (verify: " & Validation_Error'Image (Error) & ")"); return;
             end if;
             Execute (Checked, 256, Outcome);
+            if (Interpreted.Status = CCL.Language.Succeeded) /= (Outcome.Status = Completed) then
+               Put_Line ("  interpreter " & CCL.Language.Interpretation_Status'Image (Interpreted.Status) &
+                         ", compiled " & Execution_Status'Image (Outcome.Status));
+            end if;
             if Interpreted.Status /= CCL.Language.Succeeded then
                Check (Outcome.Status /= Completed, Label);
             elsif Outcome.Status /= Completed or else not Outcome.Has_Value then
                Check (False, Label & " (execute)");
+            elsif Outcome.Has_Literal or else Interpreted.Has_Literal then
+               Check (Outcome.Has_Literal and then Interpreted.Has_Literal and then
+                      Outcome.Literal.Data (1 .. Outcome.Literal.Length) =
+                        Interpreted.Literal.Data (1 .. Interpreted.Literal.Length), Label);
             elsif Outcome.Result_Value.Kind = Integer_Value then
                Check (Outcome.Result_Value.Integer = Interpreted.Result_Value.Integer, Label);
+            elsif Outcome.Result_Value.Kind = Function_Value then
+               Check (Interpreted.Has_Function, Label);
+            elsif Outcome.Result_Value.Kind = List_Value then
+               declare
+                  Same_List : Boolean :=
+                    Interpreted.Has_List and then
+                    Outcome.List_Total = Interpreted.List_Total and then
+                    Outcome.List_Length = Interpreted.List_Length and then
+                    Outcome.List_Text.Length = Interpreted.List_Text.Length and then
+                    Outcome.List_Text.Data (1 .. Outcome.List_Text.Length) =
+                      Interpreted.List_Text.Data (1 .. Interpreted.List_Text.Length);
+               begin
+                  for I in 1 .. Outcome.List_Length loop
+                     exit when not Same_List;
+                     Same_List :=
+                       Outcome.List_Text_Ends (I) = Interpreted.List_Text_Ends (I) and then
+                       Outcome.List_Values (I).Kind = Interpreted.List_Values (I).Kind and then
+                       Outcome.List_Values (I).Integer = Interpreted.List_Values (I).Integer and then
+                       Outcome.List_Values (I).Boolean = Interpreted.List_Values (I).Boolean;
+                  end loop;
+                  Check (Same_List, Label);
+               end;
+            elsif Outcome.Result_Value.Kind = Character_Value then
+               Check (Interpreted.Has_Character and then
+                      Outcome.Result_Value.Integer =
+                        Character'Pos (Interpreted.Result_Character), Label);
             elsif Outcome.Result_Value.Kind = Text_Value then
-               Check (Interpreted.Has_Text and then
+               Check (Interpreted.Has_Text and then Outcome.Has_Result_Text and then
                       Outcome.Result_Text_Value.Data (1 .. Outcome.Result_Text_Value.Length) =
                         Interpreted.Result_Text.Data (1 .. Interpreted.Result_Text.Length), Label);
             else
@@ -1480,6 +1516,224 @@ procedure Main is
                "(let ((q (concat p p))) (let ((r (concat q q))) (let ((t (concat r r))) " &
                "(let ((u (concat t ""!""))) (contains u ""abc""))))))",
                "CCLB a pattern over 1 KiB fails as in the interpreter");
+         --  Characters and to-string.
+         Same ("(at ""hello"" 2)", "CCLB at");
+         Same ("(at ""hello"" 5)", "CCLB at the last character");
+         Same ("(at ""hello"" 0)", "CCLB at index zero fails");
+         Same ("(at ""hello"" 6)", "CCLB at past the end fails");
+         Same ("(at """" 1)", "CCLB at on empty text fails");
+         Same ("(= (at ""abc"" 2) (at ""xbz"" 2))", "CCLB character equality");
+         Same ("(/= (at ""abc"" 1) (at ""abc"" 3))", "CCLB character inequality");
+         Same ("(let ((c (at ""xyz"" 3))) (= c c))", "CCLB a character in a local");
+         Same ("(to-string 42)", "CCLB to-string");
+         Same ("(to-string -9223372036854775807)", "CCLB to-string near the low edge");
+         Same ("(to-string (- -9223372036854775807 1))", "CCLB to-string overflow fails first");
+         Same ("(length (to-string 1000))", "CCLB to-string composes");
+         Same ("(concat ""n="" (to-string (* 6 7)))", "CCLB to-string in concat");
+         Same ("(type Color (variant (Red) (Green) (Blue))) (= Color.Red Color.Red)",
+               "CCLB enumeration equality");
+         Same ("(type Color (variant (Red) (Green) (Blue))) (to-string Color.Green)",
+               "CCLB to-string on an enumeration");
+         Same ("(type Color (variant (Red) (Green) (Blue))) (concat (to-string Color.Red) (to-string Color.Blue))",
+               "CCLB to-string on enumerations in concat");
+         --  Lists (parity step 3): literals, length, at, locals, results.
+         Same ("[1 2 3]", "CCLB an integer list");
+         Same ("[true false true]", "CCLB a Boolean list");
+         Same ("[""a"" ""bc"" """"]", "CCLB a string list");
+         Same ("[(at ""xy"" 2) (at ""xy"" 1)]", "CCLB a character list");
+         Same ("(type Color (variant (Red) (Green) (Blue))) [Color.Blue Color.Red]",
+               "CCLB an enumeration list");
+         Same ("(list-of Integer)", "CCLB an empty list");
+         Same ("(length (list-of String))", "CCLB length of an empty list");
+         Same ("(length [4 5 6 7])", "CCLB length of a list");
+         Same ("(at [10 20 30] 2)", "CCLB at on a list");
+         Same ("(at [""p"" ""q""] 2)", "CCLB at on a string list");
+         Same ("(type Color (variant (Red) (Green) (Blue))) (to-string (at [Color.Blue Color.Red] 2))",
+               "CCLB at on an enumeration list");
+         Same ("(at [1 2] 0)", "CCLB list index zero fails");
+         Same ("(at [1 2] 3)", "CCLB list index past the end fails");
+         Same ("(at (list-of Integer) 1)", "CCLB at on an empty list fails");
+         Same ("(let ((xs [1 2 3])) (+ (at xs 3) (length xs)))", "CCLB a list in a local");
+         Same ("(if (< 1 2) [1] [2 3])", "CCLB lists in branches");
+         Same ("(let ((n 5)) [n (* n n) (+ n 1)])", "CCLB computed elements");
+         Same ("[1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 " &
+               "31 32 33 34 35 36 37 38 39 40]", "CCLB a chunked literal");
+         Same ("(at [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20] 18)", "CCLB at in a later chunk");
+         Same ("[1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 " &
+               "31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 " &
+               "59 60 61 62 63 64 65 66 67 68 69 70]", "CCLB a result longer than it carries");
+         Same ("(let ((s ""0123456789012345678901234567890123456789012345678901234567890123"")) " &
+               "(let ((t (concat s s))) (let ((u (concat t t))) (let ((v (concat u u))) [v v v]))))",
+               "CCLB string list results carry what fits");
+         --  List built-ins (step 3b): shared algorithms, both engines.
+         Same ("(first 2 [1 2 3])", "CCLB first on a list");
+         Same ("(last 2 [1 2 3])", "CCLB last on a list");
+         Same ("(skip 1 [1 2 3])", "CCLB skip on a list");
+         Same ("(first -1 [1 2])", "CCLB first below zero");
+         Same ("(skip 99 [1 2])", "CCLB skip past the end");
+         Same ("(reverse [1 2 3])", "CCLB reverse a list");
+         Same ("(reverse [""a"" ""b""])", "CCLB reverse a string list");
+         Same ("(sort [3 1 2 5 4])", "CCLB sort integers");
+         Same ("(sort [""b"" ""a"" ""ab"" """"])", "CCLB sort strings");
+         Same ("(sort [(at ""zay"" 1) (at ""zay"" 2) (at ""zay"" 3)])", "CCLB sort characters");
+         Same ("(type Color (variant (Red) (Green) (Blue))) (sort [Color.Blue Color.Red Color.Green])",
+               "CCLB sort an enumeration");
+         Same ("(sort (list-of Integer))", "CCLB sort an empty list");
+         Same ("(sum [1 2 3])", "CCLB sum");
+         Same ("(sum (list-of Integer))", "CCLB sum of nothing");
+         Same ("(sum [9223372036854775807 1])", "CCLB sum overflow fails");
+         Same ("(min [3 1 2])", "CCLB min");
+         Same ("(max [3 1 2])", "CCLB max");
+         Same ("(min (list-of Integer))", "CCLB min of nothing fails");
+         Same ("(contains 2 [1 2 3])", "CCLB contains an integer");
+         Same ("(contains 7 [1 2 3])", "CCLB contains (absent)");
+         Same ("(contains ""b"" [""a"" ""b""])", "CCLB contains a string");
+         Same ("(contains false [true true])", "CCLB contains a Boolean");
+         Same ("(contains (at ""q"" 1) [(at ""pq"" 1) (at ""pq"" 2)])", "CCLB contains a character");
+         Same ("(type Color (variant (Red) (Green) (Blue))) (contains Color.Green [Color.Red Color.Green])",
+               "CCLB contains an enumeration member");
+         Same ("(join "", "" [""a"" ""b"" ""c""])", "CCLB join");
+         Same ("(join """" (list-of String))", "CCLB join nothing");
+         Same ("(range 1 5)", "CCLB range");
+         Same ("(range 5 1)", "CCLB an empty range");
+         Same ("(range -2 2)", "CCLB a range across zero");
+         Same ("(range 1 5000)", "CCLB a range past the region fails");
+         Same ("(range -9223372036854775807 9223372036854775807)", "CCLB a range past any span fails");
+         Same ("(split "","" ""a,b,,c"")", "CCLB split on a separator");
+         Same ("(split """" ""  hello   world "")", "CCLB split into words");
+         Same ("(split "","" """")", "CCLB split empty text");
+         Same ("(split "", "" ""a, b, c"")", "CCLB split on a longer separator");
+         Same ("(split "","" "","")", "CCLB split a lone separator");
+         Same ("(sum (range 1 100))", "CCLB sum of a range");
+         Same ("(length (split "" "" ""a b c""))", "CCLB length of a split");
+         Same ("(join ""-"" (sort (split "","" ""c,a,b"")))", "CCLB split, sort and join");
+         Same ("(->> (range 1 10) reverse (first 3))", "CCLB a list pipeline");
+         Same ("(let ((xs (range 1 6))) (+ (min xs) (max xs)))", "CCLB built-ins on a local");
+         Same ("(sort (range 1 300))", "CCLB fuel per element runs out in both");
+         --  The value arena (step 4): records, payload variants, fields,
+         --  matches, lists of records, list fields and recursive types.
+         declare
+            Shapes : constant String :=
+              "(type C (record (a Integer) (s String))) " &
+              "(type K (variant (A) (B Integer) (Boxed C))) " &
+              "(type R (record (xs (List Integer)) (cs (List C)))) " &
+              "(type Color (variant (Red) (Green))) " &
+              "(type P (record (c Color) (k K) (on Boolean))) ";
+            Trees : constant String :=
+              "(type Launch (record (name String) (after (List Launch)))) " &
+              "(type Tree (variant (Leaf Integer) (Node (List Tree)))) ";
+         begin
+            Same (Shapes & "(C 1 ""x"")", "CCLB a record");
+            Same (Shapes & "(field (C 7 ""x"") a)", "CCLB a field");
+            Same (Shapes & "(field (C 7 ""xyz"") s)", "CCLB a String field");
+            Same (Shapes & "(length (field (C 7 ""xyz"") s))", "CCLB a String field is text");
+            Same (Shapes & "K.A", "CCLB a payload variant's unit member");
+            Same (Shapes & "(K.B 2)", "CCLB a scalar payload in a payload variant");
+            Same (Shapes & "(K.Boxed (C 3 ""z""))", "CCLB a record payload");
+            Same (Shapes & "(P Color.Green K.A true)", "CCLB nested members");
+            Same (Shapes & "(P Color.Red (K.Boxed (C 1 ""q"")) false)", "CCLB nested records");
+            Same (Shapes & "(match (K.Boxed (C 3 ""z"")) ((K.A) 0) ((K.B n) n) ((K.Boxed c) (field c a)))",
+                  "CCLB match on a record payload");
+            Same (Shapes & "(match (K.B 9) ((K.A) 0) ((K.B n) n) ((K.Boxed c) (field c a)))",
+                  "CCLB match on a scalar payload");
+            Same (Shapes & "(match K.A ((K.A) 5) ((K.B n) n) ((K.Boxed c) (field c a)))",
+                  "CCLB match on a unit member");
+            Same (Shapes & "[(C 1 ""x"") (C 2 ""y"")]", "CCLB a list of records");
+            Same (Shapes & "[K.A (K.B 2) (K.Boxed (C 3 ""z""))]", "CCLB a list of payload variants");
+            Same (Shapes & "(R [1 2] [(C 1 ""x"")])", "CCLB list fields");
+            Same (Shapes & "(R (list-of Integer) (list-of C))", "CCLB empty list fields");
+            Same (Shapes & "(length (field (R [5 6 7] (list-of C)) xs))", "CCLB a list field's length");
+            Same (Shapes & "(field (at [(C 1 ""x"") (C 9 ""y"")] 2) a)", "CCLB a field of a list element");
+            Same (Shapes & "(reverse [(C 1 ""x"") (C 2 ""y"")])", "CCLB reverse keeps records");
+            Same (Shapes & "(first 1 (skip 1 [(C 1 ""x"") (C 9 ""y"")]))", "CCLB first and skip keep records");
+            Same (Shapes & "(let ((c (C 4 ""l""))) (+ (field c a) (length (field c s))))", "CCLB a record in a local");
+            Same (Shapes & "(if true (C 1 ""t"") (C 2 ""f""))", "CCLB records in branches");
+            Same (Trees & "(let ((a (Launch ""a"" (list-of Launch)))) (Launch ""b"" [a a]))",
+                  "CCLB a record holding a list of itself");
+            Same (Trees & "(Tree.Node [(Tree.Leaf 1) (Tree.Node [(Tree.Leaf 2)])])", "CCLB a recursive variant");
+         end;
+         --  Range checks (step 5): fields, payloads, arguments and results.
+         declare
+            Ranges : constant String :=
+              "(type Priority (range 1 10)) " &
+              "(type L (record (name String) (pri Priority))) " &
+              "(type V (variant (Some Priority) (None))) " &
+              "(define (bump (p Priority)) Priority (+ p 1)) ";
+         begin
+            Same (Ranges & "(L ""a"" (+ 5 5))", "CCLB a computed field inside its range");
+            Same (Ranges & "(L ""a"" (+ 5 6))", "CCLB a computed field outside its range fails");
+            Same (Ranges & "(+ (field (L ""a"" 7) pri) 100)", "CCLB a range field reads as an Integer");
+            Same (Ranges & "(V.Some (+ 1 1))", "CCLB a range payload");
+            Same (Ranges & "(V.Some (+ 9 2))", "CCLB a range payload outside fails");
+            Same (Ranges & "(bump 9)", "CCLB a range parameter and result");
+            Same (Ranges & "(bump 10)", "CCLB a range result outside fails");
+            Same (Ranges & "(bump (- 1 1))", "CCLB a range argument outside fails");
+         end;
+         --  Functions over any value a run holds.
+         declare
+            Shapes : constant String :=
+              "(type C (record (a Integer) (s String))) " &
+              "(define (greet (s String)) String (concat ""hi "" s)) " &
+              "(define (total (xs (List Integer))) Integer (sum xs)) " &
+              "(define (label (c C)) String (field c s)) " &
+              "(define (pair (n Integer)) C (C n (to-string n))) ";
+         begin
+            Same (Shapes & "(greet ""bo"")", "CCLB a String parameter and result");
+            Same (Shapes & "(total [1 2 3])", "CCLB a list parameter");
+            Same (Shapes & "(label (C 1 ""zed""))", "CCLB a record parameter");
+            Same (Shapes & "(pair 7)", "CCLB a record result");
+            Same (Shapes & "(field (pair 7) s)", "CCLB a field of a function's record");
+         end;
+         --  Function values and captures (step 6a).
+         declare
+            Funs : constant String :=
+              "(define (square (n Integer)) Integer (* n n)) " &
+              "(define (twice (f (Function (Integer) Integer)) (x Integer)) Integer (f (f x))) " &
+              "(type Priority (range 1 10)) " &
+              "(define (inc (p Priority)) Priority (+ p 1)) " &
+              "(define (lift (f (Function (Priority) Priority)) (p Priority)) Priority (f p)) " &
+              "(define (raw (f (Function (Priority) Priority)) (n Integer)) Integer (f n)) ";
+         begin
+            Same (Funs & "(twice square 3)", "CCLB a named function as a value");
+            Same (Funs & "(twice (fn ((n Integer)) (+ n 1)) 5)", "CCLB a lambda as an argument");
+            Same (Funs & "(let ((k 3)) (twice (fn ((n Integer)) (* n k)) 2))", "CCLB a lambda with a capture");
+            Same (Funs & "(let ((a 2)) (let ((b 7)) (twice (fn ((n Integer)) (+ (* n a) b)) 1)))",
+                  "CCLB a lambda with two captures");
+            Same (Funs & "(let ((s ""ab"")) (length (concat s s)))", "CCLB a string beside function values");
+            Same (Funs & "(let ((f square)) (f 9))", "CCLB a function value in a local");
+            Same (Funs & "(lift inc 4)", "CCLB a range checked through a value call");
+            Same (Funs & "(raw inc 11)", "CCLB a range argument outside fails through a value");
+            Same (Funs & "(lift inc 10)", "CCLB a range result outside fails through a value");
+            Same (Funs & "square", "CCLB a function value result");
+            --  Higher-order built-ins (step 6b): resumable List_Apply.
+            Same (Funs & "(each square [1 2 3])", "CCLB each with a named function");
+            Same (Funs & "(each (fn ((n Integer)) (+ n 1)) [1 2 3])", "CCLB each with a lambda");
+            Same (Funs & "(let ((k 10)) (each (fn ((n Integer)) (* n k)) (range 1 4)))", "CCLB each with a capture");
+            Same (Funs & "(each (fn ((n Integer)) (to-string n)) [7 8])", "CCLB each changes the element type");
+            Same (Funs & "(where (fn ((n Integer)) (> n 2)) [1 2 3 4])", "CCLB where");
+            Same (Funs & "(where (fn ((n Integer)) false) [1 2])", "CCLB where keeps nothing");
+            Same (Funs & "(fold (fn ((t Integer) (n Integer)) (+ t n)) 0 [1 2 3 4])", "CCLB fold");
+            Same (Funs & "(fold (fn ((t String) (n Integer)) (concat t (to-string n))) """" [1 2 3])",
+                  "CCLB fold with a String accumulator");
+            Same (Funs & "(any (fn ((n Integer)) (> n 2)) [1 5 2])", "CCLB any");
+            Same (Funs & "(any (fn ((n Integer)) (> n 9)) [1 5 2])", "CCLB any (none)");
+            Same (Funs & "(all (fn ((n Integer)) (> n 0)) [1 5 2])", "CCLB all");
+            Same (Funs & "(all (fn ((n Integer)) (> n 1)) [1 5 2])", "CCLB all (not all)");
+            Same (Funs & "(count (fn ((n Integer)) (> n 1)) [1 5 2])", "CCLB count");
+            Same (Funs & "(sort-by (fn ((n Integer)) (- 0 n)) [3 1 2])", "CCLB sort-by an Integer key");
+            Same (Funs & "(sort-by (fn ((s String)) (reverse s)) [""ba"" ""ab"" ""ca""])", "CCLB sort-by a String key");
+            Same (Funs & "(each square (list-of Integer))", "CCLB each over nothing");
+            Same (Funs & "(fold (fn ((t Integer) (n Integer)) (+ t n)) 7 (list-of Integer))", "CCLB fold over nothing");
+            Same (Funs & "(each (fn ((n Integer)) (sum (each (fn ((m Integer)) (* m n)) [1 2]))) [1 2 3])",
+                  "CCLB nested applies");
+            Same (Funs & "(sum (each (fn ((n Integer)) (twice square n)) [1 2]))", "CCLB a call inside an applied function");
+            Same (Funs & "(each (fn ((n Integer)) n) (range 1 300))", "CCLB fuel runs out while applying");
+            Same (Funs & "(each inc [3 11])", "CCLB a range parameter checked per element");
+            Same ("(type C (record (a Integer) (s String))) (each (fn ((n Integer)) (C n ""k"")) (range 1 3))",
+                  "CCLB each builds records");
+            Same ("(type C (record (a Integer) (s String))) " &
+                  "(sort-by (fn ((c C)) (field c a)) [(C 3 ""z"") (C 1 ""x"")])", "CCLB sort-by orders records");
+         end;
          --  Both fail at the same bounds: a string over 8 KiB, and a text
          --  result over 1 KiB.
          Same ("(let ((a ""0123456789abcdef0123456789abcdef"")) " &
@@ -1492,10 +1746,6 @@ procedure Main is
                "(let ((e (concat d d))) (let ((f (concat e e))) (let ((g (concat f f))) " &
                "(let ((h (concat g g))) (let ((i (concat h h))) (length (concat i ""!"")))))))))))",
                "CCLB text past 8 KiB fails as in the interpreter");
-         Same ("(let ((a ""0123456789abcdef0123456789abcdef"")) " &
-               "(let ((b (concat a a))) (let ((c (concat b b))) (let ((d (concat c c))) " &
-               "(let ((e (concat d d))) (let ((f (concat e e))) (concat f ""!"")))))))",
-               "CCLB a text result past 1 KiB fails as in the interpreter");
          Same ("(< 2 2)", "CCLB less, equal operands");
          Same ("(<= 2 2)", "CCLB less or equal");
          Same ("(> 3 2)", "CCLB greater");
@@ -1636,6 +1886,291 @@ procedure Main is
          Verify (Tampered, Checked, Error);
          Check (Error = Invalid_Constant, "reject a pool entry outside the pool text");
       end;
+
+      --  Characters, to-string and built-ins: a module round trip, the exact
+      --  index status, and tampered programs the verifier must refuse.
+      CCL.Language.Analyze
+        ("(type Color (variant (Red) (Green))) " &
+         "(concat (to-string Color.Green) (concat (to-string (at ""x7"" 2)) (upper ""ok"")))", Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Check (Compiled.Status /= CCL.Compiler.Compilation_Succeeded,
+             "to-string refuses a character, as the type checker does");
+      CCL.Language.Analyze
+        ("(type Color (variant (Red) (Green))) " &
+         "(if (= (at ""x7"" 2) (at ""77"" 1)) (concat (to-string Color.Green) (upper (to-string 7))) ""no"")",
+         Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Check (Compiled.Status = CCL.Compiler.Compilation_Succeeded, "compile characters and to-string");
+      declare
+         Encoded : CCL.Format.Byte_Array;
+         Encoded_Length : CCL.Format.Module_Length;
+         Format_Status : CCL.Format.Format_Error;
+         Format_Validation : Validation_Error;
+         Decoded : Validated_Program;
+         Limits : CCL.Format.Resource_Limits;
+         Tampered : Program;
+
+         --  Tampered with the first instruction whose Op is From changed.
+         procedure Tamper (From : Op_Code; To : Op_Code; Immediate : Integer_64 := 0;
+                           Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type) is
+         begin
+            Tampered := Compiled.Program;
+            for PC in Instruction_Index loop
+               exit when Program_Length (PC) >= Tampered.Length;
+               if Tampered.Code (PC).Op = From then
+                  Tampered.Code (PC).Op := To;
+                  Tampered.Code (PC).Immediate := Immediate;
+                  Tampered.Code (PC).Data_Type := Data_Type;
+                  exit;
+               end if;
+            end loop;
+         end Tamper;
+      begin
+         CCL.Format.Encode (Compiled.Program, (Fuel => 64, Memory => 0, In_Flight => 0),
+                            Encoded, Encoded_Length, Format_Status, Format_Validation);
+         Check (Format_Status = CCL.Format.Format_Valid, "encode characters and to-string");
+         CCL.Format.Decode (Encoded, Encoded_Length, Decoded, Limits, Format_Status, Format_Validation);
+         Check (Format_Status = CCL.Format.Format_Valid, "decode characters and to-string");
+         if Format_Status = CCL.Format.Format_Valid then
+            Execute (Decoded, 64, Outcome);
+            Check (Outcome.Status = Completed and then Outcome.Result_Value.Kind = Text_Value and then
+                   Outcome.Result_Text_Value.Data (1 .. Outcome.Result_Text_Value.Length) = "Green7",
+                   "run characters and to-string decoded from a module");
+         end if;
+         Tamper (Text_Builtin, Text_Builtin, Immediate => 99);
+         Verify (Tampered, Checked, Error);
+         Check (Error = Invalid_Builtin, "reject a built-in naming no operation");
+         Tamper (Variant_To_Text, Variant_To_Text, Data_Type => CCL.Types.Integer_Type);
+         Verify (Tampered, Checked, Error);
+         Check (Error = Invalid_Data_Type, "reject to-string of a type that is no enumeration");
+         Tamper (Integer_To_Text, Variant_To_Text,
+                 Data_Type => Compiled.Program.Code (0).Data_Type);
+         Verify (Tampered, Checked, Error);
+         Check (Error /= Valid, "reject to-string of an integer as an enumeration");
+         Tamper (Equal_Character, Equal_Integer);
+         Verify (Tampered, Checked, Error);
+         Check (Error = Type_Mismatch, "reject characters compared as integers");
+         Tamper (Text_At, Length_Text);
+         Verify (Tampered, Checked, Error);
+         Check (Error /= Valid, "reject at rewritten to length");
+      end;
+      --  Lists: a module round trip and tampered programs.
+      CCL.Language.Analyze ("(let ((xs [""a"" ""b"" ""c""])) (if (= (length xs) 3) [(at xs 3) (at xs 1)] xs))",
+                            Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Check (Compiled.Status = CCL.Compiler.Compilation_Succeeded, "compile lists");
+      declare
+         Encoded : CCL.Format.Byte_Array;
+         Encoded_Length : CCL.Format.Module_Length;
+         Format_Status : CCL.Format.Format_Error;
+         Format_Validation : Validation_Error;
+         Decoded : Validated_Program;
+         Limits : CCL.Format.Resource_Limits;
+         Tampered : Program;
+         Other_List : CCL.Types.Type_Reference;
+         Specialized : CCL.Types.List_Result;
+
+         procedure Tamper (From : Op_Code; Immediate : Integer_64; Data_Type : CCL.Types.Type_Reference) is
+         begin
+            Tampered := Compiled.Program;
+            for PC in Instruction_Index loop
+               exit when Program_Length (PC) >= Tampered.Length;
+               if Tampered.Code (PC).Op = From then
+                  Tampered.Code (PC).Immediate := Immediate;
+                  Tampered.Code (PC).Data_Type := Data_Type;
+                  exit;
+               end if;
+            end loop;
+         end Tamper;
+         List_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
+      begin
+         for PC in Instruction_Index loop
+            exit when Program_Length (PC) >= Compiled.Program.Length;
+            if Compiled.Program.Code (PC).Op = New_List then
+               List_Type := Compiled.Program.Code (PC).Data_Type; exit;
+            end if;
+         end loop;
+         CCL.Format.Encode (Compiled.Program, (Fuel => 64, Memory => 0, In_Flight => 0),
+                            Encoded, Encoded_Length, Format_Status, Format_Validation);
+         Check (Format_Status = CCL.Format.Format_Valid, "encode lists");
+         CCL.Format.Decode (Encoded, Encoded_Length, Decoded, Limits, Format_Status, Format_Validation);
+         Check (Format_Status = CCL.Format.Format_Valid, "decode lists");
+         if Format_Status = CCL.Format.Format_Valid then
+            Execute (Decoded, 64, Outcome);
+            Check (Outcome.Status = Completed and then Outcome.Result_Value.Kind = List_Value and then
+                   Outcome.List_Total = 2 and then Outcome.List_Text.Data (1 .. Outcome.List_Text.Length) = "ca",
+                   "run lists decoded from a module");
+         end if;
+         --  A list of another element type where this one is expected.
+         Tampered := Compiled.Program;
+         CCL.Types.Specialize_List (Tampered.Data_Types, CCL.Types.Integer_Type, Other_List, Specialized);
+         Check (Specialized in CCL.Types.List_Specialized | CCL.Types.List_Already_Specialized,
+                "specialize a second list type");
+         for PC in Instruction_Index loop
+            exit when Program_Length (PC) >= Tampered.Length;
+            if Tampered.Code (PC).Op = Fill_List then
+               Tampered.Code (PC).Data_Type := Other_List; exit;
+            end if;
+         end loop;
+         Verify (Tampered, Checked, Error);
+         Check (Error = Type_Mismatch, "reject a text element filled into a list of integers");
+         Tamper (List_At, 0, CCL.Types.String_Type);
+         Verify (Tampered, Checked, Error);
+         Check (Error = Invalid_Data_Type, "reject at on a type that is no list");
+         Tamper (New_List, Integer_64 (MAX_LIST_ELEMENTS) + 1, List_Type);
+         Verify (Tampered, Checked, Error);
+         Check (Error = Invalid_Data_Type, "reject a list longer than the region");
+         Tamper (Fill_List, 0, List_Type);
+         Verify (Tampered, Checked, Error);
+         Check (Error = Invalid_Data_Type, "reject filling position zero");
+         Tamper (Length_List, 1, List_Type);
+         Verify (Tampered, Checked, Error);
+         Check (Error = Invalid_Data_Type, "reject a length with an immediate");
+         --  Past the reserved length: the verifier cannot know the length,
+         --  the machine refuses the write.
+         Tamper (Fill_List, 4, List_Type);
+         Verify (Tampered, Checked, Error);
+         Check (Error = Valid, "verify a fill past the reserved length");
+         if Error = Valid then
+            Execute (Checked, 64, Outcome);
+            Check (Outcome.Status = Invalid_Bytecode, "refuse a fill past the reserved length");
+         end if;
+      end;
+      --  List built-ins: an unknown operation, and one on a list it does not fit.
+      CCL.Language.Analyze ("(join "","" (sort [""b"" ""a""]))", Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Check (Compiled.Status = CCL.Compiler.Compilation_Succeeded, "compile list built-ins");
+      declare
+         Tampered : Program := Compiled.Program;
+         Sort_At : Natural := Natural'Last;
+      begin
+         for PC in Instruction_Index loop
+            exit when Program_Length (PC) >= Tampered.Length;
+            if Tampered.Code (PC).Op = List_Builtin and then Sort_At = Natural'Last then
+               Sort_At := Natural (PC);
+            end if;
+         end loop;
+         Check (Sort_At /= Natural'Last, "find the compiled sort");
+         if Sort_At /= Natural'Last then
+            Tampered.Code (Instruction_Index (Sort_At)).Immediate := 99;
+            Verify (Tampered, Checked, Error);
+            Check (Error = Invalid_Builtin, "reject a list built-in naming no operation");
+            Tampered := Compiled.Program;
+            Tampered.Code (Instruction_Index (Sort_At)).Immediate :=
+              Integer_64 (CCL.List_Operations.Operation'Enum_Rep (CCL.List_Operations.Sum_Items));
+            Verify (Tampered, Checked, Error);
+            Check (Error = Invalid_Builtin, "reject sum over a list of strings");
+         end if;
+      end;
+      --  A text result past 1 KiB: the REPL refuses it; compiled code completes
+      --  without carrying the characters (a host exports the full text).
+      declare
+         Program : constant String :=
+           "(let ((a ""0123456789abcdef0123456789abcdef"")) " &
+           "(let ((b (concat a a))) (let ((c (concat b b))) (let ((d (concat c c))) " &
+           "(let ((e (concat d d))) (let ((f (concat e e))) (concat f ""!"")))))))";
+         Interpreted : CCL.Language.Interpretation_Result;
+      begin
+         CCL.Language.Interpret (Program, 256, Interpreted);
+         Check (Interpreted.Status = CCL.Language.Evaluation_Text_Storage_Exhausted,
+                "the REPL refuses a text result past 1 KiB");
+         CCL.Language.Analyze (Program, Analysis);
+         CCL.Compiler.Compile (Analysis, Compiled);
+         Verify (Compiled.Program, Checked, Error);
+         if Error = Valid then
+            Execute (Checked, 256, Outcome);
+            Check (Outcome.Status = Completed and then Outcome.Result_Value.Kind = Text_Value and then
+                   not Outcome.Has_Result_Text, "compiled code completes without carrying a long text");
+         else
+            Check (False, "verify a long text result");
+         end if;
+      end;
+      --  A record program through the module format.
+      CCL.Language.Analyze
+        ("(type Priority (range 1 10)) (type L (record (name String) (pri Priority))) " &
+         "(type K (variant (A) (Boxed L))) (K.Boxed (L ""m"" (+ 2 3)))", Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Check (Compiled.Status = CCL.Compiler.Compilation_Succeeded, "compile records with a range field");
+      declare
+         Encoded : CCL.Format.Byte_Array;
+         Encoded_Length : CCL.Format.Module_Length;
+         Format_Status : CCL.Format.Format_Error;
+         Format_Validation : Validation_Error;
+         Decoded : Validated_Program;
+         Limits : CCL.Format.Resource_Limits;
+      begin
+         CCL.Format.Encode (Compiled.Program, (Fuel => 64, Memory => 0, In_Flight => 0),
+                            Encoded, Encoded_Length, Format_Status, Format_Validation);
+         Check (Format_Status = CCL.Format.Format_Valid, "encode records");
+         CCL.Format.Decode (Encoded, Encoded_Length, Decoded, Limits, Format_Status, Format_Validation);
+         Check (Format_Status = CCL.Format.Format_Valid, "decode records");
+         if Format_Status = CCL.Format.Format_Valid then
+            Execute (Decoded, 64, Outcome);
+            Check (Outcome.Status = Completed and then Outcome.Has_Literal and then
+                   Outcome.Literal.Data (1 .. Outcome.Literal.Length) = "(K.Boxed (L ""m"" 5))",
+                   "run records decoded from a module");
+         end if;
+      end;
+      --  Function values and List_Apply through the module format.
+      CCL.Language.Analyze
+        ("(let ((k 3)) (fold (fn ((t Integer) (n Integer)) (+ t (* n k))) 0 [1 2 3]))", Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Check (Compiled.Status = CCL.Compiler.Compilation_Succeeded, "compile a closure applied by fold");
+      declare
+         Encoded : CCL.Format.Byte_Array;
+         Encoded_Length : CCL.Format.Module_Length;
+         Format_Status : CCL.Format.Format_Error;
+         Format_Validation : Validation_Error;
+         Decoded : Validated_Program;
+         Limits : CCL.Format.Resource_Limits;
+      begin
+         CCL.Format.Encode (Compiled.Program, (Fuel => 256, Memory => 0, In_Flight => 0),
+                            Encoded, Encoded_Length, Format_Status, Format_Validation);
+         Check (Format_Status = CCL.Format.Format_Valid, "encode a closure");
+         CCL.Format.Decode (Encoded, Encoded_Length, Decoded, Limits, Format_Status, Format_Validation);
+         Check (Format_Status = CCL.Format.Format_Valid, "decode a closure");
+         if Format_Status = CCL.Format.Format_Valid then
+            Execute (Decoded, 256, Outcome);
+            Check (Outcome.Status = Completed and then Outcome.Result_Value = Integer_Constant (18),
+                   "run a closure decoded from a module");
+         end if;
+      end;
+      --  A value without a literal: the REPL refuses to show it, compiled code
+      --  completes (a host takes such a value through Export_Result).
+      declare
+         Program : constant String := "(type W (record (c Character))) (W (at ""x"" 1))";
+         Interpreted : CCL.Language.Interpretation_Result;
+      begin
+         CCL.Language.Interpret (Program, 256, Interpreted);
+         Check (Interpreted.Status /= CCL.Language.Succeeded, "the REPL has no literal for a Character field");
+         CCL.Language.Analyze (Program, Analysis);
+         CCL.Compiler.Compile (Analysis, Compiled);
+         Verify (Compiled.Program, Checked, Error);
+         Check (Error = Valid, "verify a record with a Character field");
+         if Error = Valid then
+            Execute (Checked, 256, Outcome);
+            Check (Outcome.Status = Completed and then Outcome.Has_Value and then not Outcome.Has_Literal,
+                   "compiled code completes without a literal");
+         end if;
+      end;
+      CCL.Language.Analyze ("(at [1 2] 3)", Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Verify (Compiled.Program, Checked, Error);
+      if Error = Valid then
+         Execute (Checked, 64, Outcome);
+         Check (Outcome.Status = Index_Out_Of_Range, "list at past the end reports the index status");
+      else
+         Check (False, "verify list at past the end");
+      end if;
+      CCL.Language.Analyze ("(at ""abc"" 4)", Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Verify (Compiled.Program, Checked, Error);
+      if Error = Valid then
+         Execute (Checked, 64, Outcome);
+         Check (Outcome.Status = Index_Out_Of_Range, "at past the end reports the index status");
+      else
+         Check (False, "verify at past the end");
+      end if;
 
       CCL.Language.Analyze ("(if false 1 (+ 20 22))", Analysis);
       CCL.Compiler.Compile (Analysis, Compiled);

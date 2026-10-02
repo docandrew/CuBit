@@ -1,0 +1,14 @@
+project Adapter is
+ for Source_Dirs use ("adapter", "build/source", "../../userspace/lib/observatory", "../../userspace/lib/compositor");
+ for Source_Files use ("adapter_tests.adb", "cubit.ads", "cubit-messages.ads", "cubit-messages.adb",
+ "cubit-memory_grants.ads", "cubit-memory_grants.adb", "cubit-metric_records.ads", "cubit-metric_records.adb", "cubit-metric_protocol.ads",
+ "observatory_metric_summaries.ads", "observatory_metric_summaries.adb", "observatory_metric_queries.ads", "observatory_metric_queries.adb",
+ "observatory_query_lifetime.ads", "observatory_query_lifetime.adb", "observatory_metric_observer.ads", "observatory_metric_observer.adb",
+ "compositor_requests.ads", "compositor_requests.adb");
+ for Object_Dir use "build/adapter/obj";
+ for Exec_Dir use "build/adapter";
+ for Main use ("adapter_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+ end Compiler;
+end Adapter;

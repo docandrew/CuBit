@@ -1,0 +1,10 @@
+project Presentation is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("presentation_tests.adb", "compositor_presentation.ads", "compositor_presentation.adb");
+   for Object_Dir use "build/presentation/obj";
+   for Exec_Dir use "build/presentation";
+   for Main use ("presentation_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Presentation;

@@ -1,0 +1,11 @@
+project Access_Tests is
+   for Source_Dirs use (".", "fixture", "../../kernel/src");
+   for Source_Files use ("access_checks.adb", "config.ads", "capabilities.ads",
+     "capabilities-operations.ads", "capabilities-operations.adb",
+     "device_memory_admission.ads", "device_memory_admission.adb");
+   for Object_Dir use "build-access";
+   for Main use ("access_checks.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Access_Tests;

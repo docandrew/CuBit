@@ -46,7 +46,17 @@ for d, _, files in os.walk(overlay):
         src = os.path.join(d, name)
         dst = os.path.join(root, os.path.relpath(src, overlay))
         os.makedirs(os.path.dirname(dst), exist_ok=True)
-        shutil.copyfile(src, dst)
+        # Preserve mtimes for identical overlays. Touching font_list.rs on
+        # every shell edit otherwise rebuilds most of Servo unnecessarily.
+        content = open(src, "rb").read()
+        if name == "Cargo.toml" and b"__CUBIT_FONTS__" in content:
+            import json
+            fonts = os.path.realpath(os.path.join(os.path.dirname(__file__), "../rust/fonts"))
+            content = content.replace(b'"__CUBIT_FONTS__"', json.dumps(fonts).encode())
+        if not os.path.exists(dst) or content != open(dst, "rb").read():
+            with open(dst, "wb") as output:
+                output.write(content)
+
 FREETYPE_OSES = 'any(target_os = "linux", target_os = "android", target_os = "freebsd")'
 FREETYPE_OSES_CUBIT = 'any(target_os = "linux", target_os = "android", target_os = "freebsd", target_os = "cubit")'
 edit("components/shared/fonts/font_identifier.rs", FREETYPE_OSES, FREETYPE_OSES_CUBIT, 1)
@@ -108,11 +118,9 @@ edit("components/paint/painter.rs",
         let painter_id = PainterId::next();
         let (mut webrender_renderer, webrender_api_sender) = webrender::create_webrender_instance(""", 1)
 edit("components/paint/painter.rs",
+     "                shared_font_namespace: Some(painter_id.into()),",
      """                shared_font_namespace: Some(painter_id.into()),
-                ..Default::default()""",
-     """                shared_font_namespace: Some(painter_id.into()),
-                clear_caches_with_quads: !software_gl,
-                ..Default::default()""", 1)
+                clear_caches_with_quads: !software_gl,""", 1)
 
 # Client storage without a granted config directory: a CuBit program has
 # no ambient /tmp, so use Servo's own in-memory engine (its fallback when a
@@ -213,5 +221,71 @@ edit("components/net/connector.rs",
             } else {
                 rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned())
             };""", 1)
+
+# Repair a prior local build's unsupported internal limit before exact edits.
+painter_path = os.path.join(root, "components/paint/painter.rs")
+painter_source = open(painter_path, encoding="utf-8").read()
+if "max_internal_texture_size: if software_gl { Some(1024) } else { None }" in painter_source:
+    edit("components/paint/painter.rs",
+         "max_internal_texture_size: if software_gl { Some(1024) } else { None }",
+         "max_internal_texture_size: if software_gl { Some(2048) } else { None }", 1)
+
+painter_source = open(painter_path, encoding="utf-8").read()
+old_limit = "max_internal_texture_size: if software_gl { Some(2048) } else { None },"
+with_image_limit = old_limit + '\n                #[cfg(target_os = "cubit")]\n                image_tiling_threshold: if software_gl { 1024 } else { 4096 },'
+if old_limit in painter_source and with_image_limit not in painter_source:
+    edit("components/paint/painter.rs", old_limit, with_image_limit, 1)
+
+# SWGL advertises 32768px textures, but CuBit's owned mapping limit is 16MiB.
+# Even a 2048x2048 RGBA atlas exceeds that once malloc adds metadata. Bound
+# software atlas/target dimensions through WebRender's existing options;
+# hardware contexts keep upstream defaults. This is not a whole-engine cap.
+edit("components/paint/painter.rs",
+     "                clear_caches_with_quads: !software_gl,\n                ..Default::default()",
+     """                clear_caches_with_quads: !software_gl,
+                #[cfg(target_os = "cubit")]
+                max_internal_texture_size: if software_gl { Some(2048) } else { None },
+                #[cfg(target_os = "cubit")]
+                image_tiling_threshold: if software_gl { 1024 } else { 4096 },
+                #[cfg(target_os = "cubit")]
+                texture_cache_config: if software_gl {
+                    webrender::TextureCacheConfig {
+                        color8_linear_texture_size: 1024,
+                        color8_glyph_texture_size: 1024,
+                        alpha8_glyph_texture_size: 1024,
+                        ..webrender::TextureCacheConfig::DEFAULT
+                    }
+                } else {
+                    webrender::TextureCacheConfig::DEFAULT
+                },
+                ..Default::default()""", 1)
+
+# CuBit intentionally rejects MAP_SHARED file mappings. The upstream font
+# reader maps then copies bytes; single-process FontData can own a read Vec
+# directly, preserving scoped file access and avoiding that extra copy.
+edit("components/shared/fonts/font_identifier.rs",
+     """            let file = File::open(Path::new(&*self.path)).ok()?;
+            let mmap = unsafe { Mmap::map(&file).ok()? };
+            let data = FontData::from_bytes(&mmap);""",
+     """            #[cfg(target_os = "cubit")]
+            let data = FontData::from_vec(std::fs::read(Path::new(&*self.path)).ok()?);
+            #[cfg(not(target_os = "cubit"))]
+            let data = {
+                let file = File::open(Path::new(&*self.path)).ok()?;
+                let mmap = unsafe { Mmap::map(&file).ok()? };
+                FontData::from_bytes(&mmap)
+            };""", 1)
+
+# FreeType retains an Arc<Mmap> for both the face and table provider. Keep
+# that ownership and face-index contract while selecting a private read-only
+# mapping on CuBit, whose libc deliberately does not implement MAP_SHARED.
+edit("components/fonts/platform/freetype/font.rs",
+     """            .and_then(|file| unsafe { Mmap::map(&file) })""",
+     """            .and_then(|file| unsafe {
+                #[cfg(target_os = "cubit")]
+                { memmap2::MmapOptions::new().map_copy_read_only(&file) }
+                #[cfg(not(target_os = "cubit"))]
+                { Mmap::map(&file) }
+            })""", 1)
 
 print("servo patched")

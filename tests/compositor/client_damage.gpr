@@ -1,0 +1,10 @@
+project Client_Damage is
+   for Source_Dirs use (".", "../../userspace/lib/ui");
+   for Source_Files use ("client_damage_tests.adb", "client_frame_damage.ads", "client_frame_damage.adb");
+   for Object_Dir use "build/client-damage/obj";
+   for Exec_Dir use "build/client-damage";
+   for Main use ("client_damage_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Client_Damage;

@@ -1,0 +1,31 @@
+--- a/src/intel/dev/intel_kmd.h
++++ b/src/intel/dev/intel_kmd.h
+@@ -37,6 +37,7 @@
+    INTEL_KMD_TYPE_I915,
+    INTEL_KMD_TYPE_XE,
+    INTEL_KMD_TYPE_STUB, /* Only used by ANV to run tests */
++   INTEL_KMD_TYPE_CUBIT, /* Capability-backed native service; no DRM fd. */
+    INTEL_KMD_TYPE_LAST
+ };
+ 
+--- a/src/intel/vulkan/anv_wsi.c
++++ b/src/intel/vulkan/anv_wsi.c
+@@ -56,7 +56,7 @@
+       return result;
+ 
+    struct wsi_device *wsi_device = &physical_device->wsi_device;
+-   wsi_device->supports_modifiers = true;
++   wsi_device->supports_modifiers = !DETECT_OS_CUBIT;
+    /* Only allow protected content on display */
+    for (uint32_t i = 0; i < ARRAY_SIZE(wsi_device->supports_protected); i++) {
+       wsi_device->supports_protected[i] =
+@@ -68,7 +68,9 @@
+ 
+    physical_device->vk.wsi_device = wsi_device;
+ 
++#if !defined(__cubit__)
+    wsi_device_setup_syncobj_fd(wsi_device, physical_device->local_fd);
++#endif
+ 
+    return VK_SUCCESS;
+ }

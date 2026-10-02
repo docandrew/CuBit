@@ -15,6 +15,7 @@ package Intel_GPU_Application_Image.Publication is
      (Object : in out State; Source : VM.Image; Backing : Tables.Mappings;
       Allocation : Intel_GPU_Buffer_Reply.Backing;
       Reservations : in out Intel_GPU_GGTT_Reservations.Ledger;
-      Status : out Result);
+      Status : out Result;
+      Scratch : Tables.Scratch_Mappings := [others => (0, 0)]);
    function GPU_Address (Object : State) return Unsigned_64;
 end Intel_GPU_Application_Image.Publication;

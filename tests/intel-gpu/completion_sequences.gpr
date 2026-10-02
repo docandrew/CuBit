@@ -1,0 +1,9 @@
+project Completion_Sequences is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-completion-sequences";
+   for Main use ("initial_completion_tests.adb", "context_init_tests.adb",
+                 "initial_ring_publish_tests.adb", "arbitration_command_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Completion_Sequences;

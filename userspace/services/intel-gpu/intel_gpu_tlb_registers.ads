@@ -13,6 +13,9 @@ package Intel_GPU_TLB_Registers with SPARK_Mode is
    -- Same documented field layout: Vol2c p1334 (PDF1364).
    -- ADL-N uses Linux's ADL-P platform and Wa_2207587034 OA request.
    OA_Offset : constant Interfaces.Unsigned_32 := 16#CEEC#;
+   -- Vol2c p1333 (PDF1363), GUC_TLB_INV_CR. Same field layout, but a
+   -- separate GuC translation domain: not the RCS/OA invalidation request.
+   GuC_Offset : constant Interfaces.Unsigned_32 := 16#CEE8#;
    type Bit is mod 2 with Size => 1;
    type Bits_31 is mod 2 ** 31 with Size => 31;
    type GFX_Invalidate_Register is record
@@ -32,4 +35,18 @@ package Intel_GPU_TLB_Registers with SPARK_Mode is
    -- before issuance is not evidence that any translation was invalidated.
    function Pending (Raw : Interfaces.Unsigned_32) return Boolean is
      (Decode (Raw).Request /= 0);
+   type GuC_Invalidate_Register is record
+      Request : Bit := 0;
+      Reserved : Bits_31 := 0;
+   end record with Size => 32, Bit_Order => System.Low_Order_First;
+   for GuC_Invalidate_Register use record
+      Request at 0 range 0 .. 0;
+      Reserved at 0 range 1 .. 31;
+   end record;
+   function Decode_GuC is new Ada.Unchecked_Conversion
+     (Interfaces.Unsigned_32, GuC_Invalidate_Register);
+   function Encode_GuC is new Ada.Unchecked_Conversion
+     (GuC_Invalidate_Register, Interfaces.Unsigned_32);
+   function GuC_Pending (Raw : Interfaces.Unsigned_32) return Boolean is
+     (Decode_GuC (Raw).Request /= 0);
 end Intel_GPU_TLB_Registers;

@@ -10,6 +10,8 @@ with CPU_Topology.Boot;
 with Multiboot2_Info;
 with Firmware_Tables;
 with Firmware_Tables.HPET;
+with Firmware_Tables.Provisioning;
+with BuddyAllocator;
 
 with TextIO; use TextIO;
 
@@ -68,7 +70,7 @@ package body acpi is
             for I in Name'Range loop Name (I) := Character'Val (Prefix (I - 1)); end loop;
         end;
         if (Expected /= "" and then Name /= Expected) or else
-          Length < 36 or else Length > 1024 * 1024 or else
+          Length < 36 or else Length > Unsigned_32 (Positive'Last) or else
           not Multiboot.Firmware_Readable (Physical, Unsigned_64 (Length))
         then return False; end if;
         declare
@@ -78,6 +80,190 @@ package body acpi is
             return Firmware_Tables.Read_Table (Raw, Name).Status = Firmware_Tables.Accepted;
         end;
     end Admit_Table;
+    Source_Inventory : Firmware_Tables.Catalog.State;
+    -- One checked allocator reservation backs one typed snapshot construction.
+    -- No allocator call is hidden in the pool callback, so ordinary exhaustion
+    -- can fail closed before GNAT initializes the allocated object.
+    package Capture_Storage is
+    type Capture_Pool is limited record
+        Base : System.Address := System.Null_Address;
+        Capacity : Storage_Count := 0;
+        Consumed : Boolean := False;
+    end record;
+    pragma Simple_Storage_Pool_Type (Capture_Pool);
+    procedure Allocate
+      (Pool : in out Capture_Pool; Address : out System.Address;
+       Size, Alignment : Storage_Count);
+    procedure Deallocate
+      (Pool : in out Capture_Pool; Address : System.Address;
+       Size, Alignment : Storage_Count);
+    function Storage_Size (Pool : Capture_Pool) return Storage_Count;
+    end Capture_Storage;
+    package body Capture_Storage is
+    procedure Allocate
+      (Pool : in out Capture_Pool; Address : out System.Address;
+       Size, Alignment : Storage_Count) is
+    begin
+        if Pool.Consumed or else Pool.Base = System.Null_Address
+          or else Size > Pool.Capacity or else Alignment <= 0
+          or else To_Integer (Pool.Base) mod Integer_Address (Alignment) /= 0
+        then
+            raise Storage_Error with "invalid ACPI snapshot reservation";
+        end if;
+        Address := Pool.Base;
+        Pool.Consumed := True;
+    end Allocate;
+    procedure Deallocate
+      (Pool : in out Capture_Pool; Address : System.Address;
+       Size, Alignment : Storage_Count) is
+    begin
+        -- Boot-lifetime ownership: no recapture or deallocation is supported.
+        raise Program_Error with "ACPI snapshot lifetime violation";
+    end Deallocate;
+    function Storage_Size (Pool : Capture_Pool) return Storage_Count is
+      (Pool.Capacity);
+    end Capture_Storage;
+    use Capture_Storage;
+    Snapshot_Pool : Capture_Pool;
+    type Snapshot_Access is access Firmware_Tables.Snapshots.State;
+    for Snapshot_Access'Simple_Storage_Pool use Snapshot_Pool;
+    Boot_Snapshot : Snapshot_Access := null;
+    Capture_Attempted : Boolean := False;
+    use type Firmware_Tables.Snapshots.Phase;
+    function Table_Snapshot_State return Firmware_Tables.Snapshots.Phase is
+      (if Boot_Snapshot /= null then Firmware_Tables.Snapshots.Current (Boot_Snapshot.all)
+       elsif Capture_Attempted then Firmware_Tables.Snapshots.Failed
+       else Firmware_Tables.Snapshots.Empty);
+    function Snapshot_Table_Count return Natural is
+      (if Boot_Snapshot = null then 0
+       else Firmware_Tables.Snapshots.Count (Boot_Snapshot.all));
+
+    function Table_Inventory_State return Firmware_Tables.Catalog.Phase is
+      (Firmware_Tables.Catalog.Current (Source_Inventory));
+    function Table_Count return Natural is
+      (Firmware_Tables.Catalog.Count (Source_Inventory));
+    function Table_Source (Index : Positive)
+      return Firmware_Tables.Catalog.Descriptor is
+      (Firmware_Tables.Catalog.Item (Source_Inventory, Index));
+    procedure Capture_Tables is
+        use Firmware_Tables.Provisioning;
+        -- Allocator policy, not a firmware format limit. Object metadata must
+        -- also fit this block; check its actual representation before reserving.
+        Block_Limit : constant Storage_Count :=
+          BuddyAllocator.blockSize (BuddyAllocator.Order'Last);
+        Budget : constant Positive := Positive
+          (Storage_Count'Min (Block_Limit, Storage_Count (Positive'Last)));
+        Layout : constant Plan := Select_Capacity
+          (Source_Inventory, Firmware_Tables.Catalog.Max_Tables, Budget, Budget);
+        Success : Boolean;
+    begin
+        if Capture_Attempted then return; end if;
+        Capture_Attempted := True;
+        if Layout.Status /= Approved then
+            println ("ACPI: table inventory exceeds snapshot allocation policy");
+            return;
+        end if;
+        declare
+            subtype Sized_Snapshot is Firmware_Tables.Snapshots.State
+              (Layout.Needed.Tables, Positive (Layout.Needed.Bytes), Layout.Needed.Largest);
+            Required : constant Storage_Count :=
+              Storage_Count ((Sized_Snapshot'Object_Size + 7) / 8);
+            Order : BuddyAllocator.Order;
+            Block : System.Address;
+        begin
+            if Required > Block_Limit then
+                println ("ACPI: snapshot metadata exceeds allocator block limit");
+                return;
+            end if;
+            Order := BuddyAllocator.getOrder (Required);
+            BuddyAllocator.alloc (Order, Block);
+            if Block = BuddyAllocator.NO_BLOCK_AVAILABLE then
+                println ("ACPI: snapshot allocation failed");
+                return;
+            end if;
+            Snapshot_Pool.Base := Block;
+            Snapshot_Pool.Capacity := BuddyAllocator.blockSize (Order);
+            -- Initialize the entire reserved block, including allocator rounding
+            -- and record padding. This kernel object itself is never granted.
+            declare
+                Raw : Firmware_Tables.Bytes (1 .. Natural (Snapshot_Pool.Capacity))
+                  with Import, Address => Block;
+            begin
+                Raw := (others => 0);
+            end;
+            Boot_Snapshot := new Sized_Snapshot;
+        end;
+        Firmware_Tables.Snapshots.Begin_Snapshot (Boot_Snapshot.all, Table_Count);
+        if Table_Snapshot_State /= Firmware_Tables.Snapshots.Building then return; end if;
+        for I in 1 .. Table_Count loop
+            declare
+                D : constant Firmware_Tables.Catalog.Descriptor := Table_Source (I);
+            begin
+                if not Multiboot.Firmware_Readable (D.Physical, Unsigned_64 (D.Extent)) then
+                    Firmware_Tables.Snapshots.Reject (Boot_Snapshot.all);
+                    exit;
+                end if;
+                declare
+                    Source : Firmware_Tables.Bytes (1 .. D.Extent) with Import,
+                      Address => Virtmem.P2Va (Integer_Address (D.Physical));
+                begin
+                    Firmware_Tables.Snapshots.Append
+                      (Boot_Snapshot.all, D, Source, Success);
+                end;
+            end;
+            if not Success then exit; end if;
+        end loop;
+        Firmware_Tables.Snapshots.Seal (Boot_Snapshot.all);
+    end Capture_Tables;
+
+    procedure Copy_Table
+      (Index : Positive; Destination : out Firmware_Tables.Bytes;
+       Result : out Table_Copy_Status) is
+        Success : Boolean;
+    begin
+        Destination := (others => 0);
+        Result := Snapshot_Unavailable;
+        if Table_Snapshot_State /= Firmware_Tables.Snapshots.Ready then return; end if;
+        Result := No_Table;
+        if Index > Snapshot_Table_Count then return; end if;
+        Firmware_Tables.Snapshots.Copy (Boot_Snapshot.all, Index, Destination, Success);
+        Result := (if Success then Copied else Buffer_Too_Small);
+    end Copy_Table;
+
+    function Table_Page_Exposure (Index : Positive)
+      return Firmware_Tables.Exposure.Plan is
+      (Firmware_Tables.Exposure.Describe (Source_Inventory, Index));
+    function Table_Backing_Is_Reclaim_RAM (Index : Positive) return Boolean is
+        Span : constant Firmware_Tables.Exposure.Window :=
+          Firmware_Tables.Exposure.Page_Window (Table_Source (Index));
+    begin
+        return Multiboot.Firmware_Reclaim_Pages
+          (Span.First, Span.Pages * Firmware_Tables.Exposure.Page_Size);
+    end Table_Backing_Is_Reclaim_RAM;
+
+    -- Raw adapter: call only after Admit_Table/getRSDT/getXSDT admitted the
+    -- complete immutable extent. Firmware backing remains reserved by the
+    -- allocator; a future export adapter must enforce page exposure/lifetime.
+    procedure Retain_Source (Physical : Unsigned_64) is
+    begin
+        if Physical = 0 then
+            Firmware_Tables.Catalog.Reject (Source_Inventory);
+            return;
+        end if;
+        declare
+            Header : Multiboot2_Info.Bytes (0 .. 35) with Import,
+              Address => Virtmem.P2Va (Integer_Address (Physical));
+            Name : Firmware_Tables.Signature;
+        begin
+            for I in Name'Range loop
+                Name (I) := Character'Val (Header (I - 1));
+            end loop;
+            Firmware_Tables.Catalog.Include (Source_Inventory,
+              (Physical => Physical,
+               Extent => Natural (Multiboot2_Info.Read_32 (Header, 4)),
+               Name => Name, Revision => Header (8)));
+        end;
+    end Retain_Source;
     -- As we go through each of the tables, stash a copy here.
 
     rsdp : RSDPRecord;
@@ -416,6 +602,12 @@ package body acpi is
         ok          : Boolean;
     begin
 
+        if Table_Snapshot_State /= Firmware_Tables.Snapshots.Empty then
+            println ("ACPI: repeated discovery after snapshot construction refused");
+            return False;
+        end if;
+        Firmware_Tables.Catalog.Reset (Source_Inventory);
+
         if Multiboot.Tagged_Boot then
             if handedRoot.Status /= Firmware_Tables.Accepted then
                 println ("ACPI: Multiboot2 root missing");
@@ -509,6 +701,8 @@ package body acpi is
             println(" ACPI Checksum OK.");
         end if;
 
+        Retain_Source (sdtAddr);
+
         -- Iterate over each of the entries after the SDT header.
         for i in 0 .. numEntries-1 loop
 
@@ -533,6 +727,7 @@ package body acpi is
                 if not Admit_Table (Unsigned_64 (entries_i_val)) then
                     println ("ACPI: child table failed admission"); return False;
                 end if;
+                Retain_Source (Unsigned_64 (entries_i_val));
                 declare
                 descHdr : DescriptionHeader with Import, Volatile,
                   Address => Virtmem.P2Va (entries_i_val);
@@ -588,6 +783,7 @@ package body acpi is
                         if not Admit_Table (dsdtPhysical, "DSDT") then
                             println ("ACPI: invalid DSDT"); return False;
                         end if;
+                        Retain_Source (dsdtPhysical);
                         parseDSDT (To_Address(virtmem.P2V(Integer_Address(dsdtPhysical))));
                     end parseFADT;
 
@@ -630,6 +826,11 @@ package body acpi is
             end printRecordHeader;
         end loop;
 
+        Firmware_Tables.Catalog.Seal (Source_Inventory);
+        Capture_Tables;
+        if Table_Snapshot_State /= Firmware_Tables.Snapshots.Ready then
+            println ("ACPI: immutable snapshot unavailable; userspace handoff disabled");
+        end if;
         return True;
     end setup;
 

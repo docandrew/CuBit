@@ -41,8 +41,13 @@ package CuBit.Logging is
    --  Interactive synchronous operations. Never use these in interrupt or
    --  latency-sensitive service paths. Close closes the subscription only;
    --  its buffer/grant stays owned by the Reader for safe reuse.
+   --  Minimum filters by severity inside logstore.
+   --  Records at or above Minimum from Source (a process; Every_Source for
+   --  all). A new subscription first replays matching retained history.
    procedure Subscribe
-     (Item : in out Reader; Result : out CuBit.Log_Protocol.Status);
+     (Item : in out Reader; Result : out CuBit.Log_Protocol.Status;
+      Minimum : CuBit.Log_Records.Severity := CuBit.Log_Records.Trace;
+      Source : Unsigned_64 := CuBit.Log_Protocol.Every_Source);
    procedure Read_Next
      (Item : in out Reader; Value : out CuBit.Log_Protocol.Event;
       Lost : out Unsigned_64; Result : out CuBit.Log_Protocol.Status);

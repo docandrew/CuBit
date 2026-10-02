@@ -2,6 +2,21 @@ with Intel_GPU_VM_Buffer;
 with Intel_GPU_ADLN_PPGTT;
 package body Intel_GPU_Buffer_Requests.Binding is
    package Binder is new Intel_GPU_VM_Buffer (VM);
+   function Closed_Buffer_Disjoint
+     (Object : Service; Image : VM.Image; Session, ID : Unsigned_64)
+      return Boolean is
+      Backing : Intel_GPU_Buffer_Reply.Backing;
+      function Conflicts (Page : Unsigned_64) return Boolean is
+        (Intel_GPU_Buffer_Reply.Overlaps_DMA (Backing, Page, 4096));
+      function Disjoint is new VM.Backing_Disjoint (Conflicts);
+   begin
+      if Object.Failed or else not Owner_Ready or else Session = 0 or else
+        ID = 0 or else ID > Unsigned_64 (Intel_GPU_Buffer_Handles.Handle'Last)
+        or else not VM.Sealed (Image) then return False; end if;
+      Backing := Intel_GPU_Buffer_Handles.Closed_Backing
+        (Object.Handles, Session, Intel_GPU_Buffer_Handles.Handle (ID));
+      return Intel_GPU_Buffer_Reply.Valid (Backing) and then Disjoint (Image);
+   end Closed_Buffer_Disjoint;
    procedure Handle_Update
      (Object : Service; Source : VM.Image; Candidate : in out VM.Image;
       Tables : VM.Backing_Pages; State : in out Coordinator.State;
@@ -159,11 +174,17 @@ package body Intel_GPU_Buffer_Requests.Binding is
       if VM_Session = 0 or else Session_Of (Sender, Stamp) /= VM_Session then return; end if;
       Response (0) := Bad_Request;
       if Request_Label /= Bind_Label or Length /= 4 or Flags /= 0 or Reserved /= 0
-        or (Request (0) and 16#FFFF_FFFF#) /= Version then return; end if;
+        or (Request (0) and 16#FFFF#) /= Version
+        or (Shift_Right (Request (0), 16) and 16#FFFF#) > 1 then return; end if;
       Response (0) := Unavailable;
       if VM.Sealed (Image) or else not Owner_Ready or else Object.Failed then return; end if;
-      Bind (Object, Image, VM_Session, Sender, Stamp, Request (1), Request (2),
-            Shift_Right (Request (0), 32) * 4096, Request (3), Accepted);
+      if (Request (0) and 16#10000#) /= 0 then
+         Unbind (Object, Image, VM_Session, Sender, Stamp, Request (1), Request (2),
+                 Shift_Right (Request (0), 32) * 4096, Request (3), Accepted);
+      else
+         Bind (Object, Image, VM_Session, Sender, Stamp, Request (1), Request (2),
+               Shift_Right (Request (0), 32) * 4096, Request (3), Accepted);
+      end if;
       Response := (if Accepted then [OK, Version, Request (2), Request (3)]
                    else [Denied, Version, 0, 0]);
    end Handle;

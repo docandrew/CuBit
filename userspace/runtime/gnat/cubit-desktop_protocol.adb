@@ -293,6 +293,7 @@ package body CuBit.Desktop_Protocol with SPARK_Mode is
          when Key_Pressed | Key_Released =>
            Item.Payload0 <= 127 and Item.Payload1 <= 15,
          when Text_Entered => Item.Payload0 <= 255 and Item.Payload1 = 0,
+         when Close_Requested => Item.Payload0 = 0 and Item.Payload1 = 0,
          when Surface_Configured =>
            Item.Payload0 <= Unsigned_64 (Pixel_Extent'Last) and
            Item.Payload1 <= Unsigned_64 (Pixel_Extent'Last),

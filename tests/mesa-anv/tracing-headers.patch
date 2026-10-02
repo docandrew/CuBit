@@ -1,0 +1,12 @@
+--- a/src/intel/ds/intel_driver_ds.cc
++++ b/src/intel/ds/intel_driver_ds.cc
+@@ -25,7 +25,9 @@
+ #include <stdarg.h>
+ #include <string>
+ 
++#ifdef HAVE_PERFETTO
+ #include "common/intel_gem.h"
++#endif
+ #include "perf/intel_perf.h"
+ 
+ #include "util/hash_table.h"

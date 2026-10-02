@@ -19,6 +19,8 @@
   (service log-observer 21 read-write)
   (service clock-control 22 read-write)
   (service tls 23 read-write)
+  (service metrics 24 read-write)
+  (service metrics-observer 25 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification mouse 10 publish-and-manage)
   (notification ipc-test-registration 14 publish-and-manage)

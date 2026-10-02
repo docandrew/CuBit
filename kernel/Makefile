@@ -541,7 +541,7 @@ prove-appearance:
 		--mode=all --level=1 --timeout=5 -j2
 
 .PHONY : desktop-check prepare-desktop-protocol test-desktop-protocol prove-desktop-protocol
-desktop-check: user_runtime ccl-manifest
+desktop-check: user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/desktop-check/build
 	$(call compile_ccl_manifest,../userspace/apps/desktop-check)
 	$(ALR) gprbuild -p -P ../userspace/apps/desktop-check/desktop_check.gpr
@@ -1265,6 +1265,27 @@ devices: user_runtime ccl-manifest ui-fonts-native
 	$(ALR) gprbuild -P ../userspace/apps/devices/devices.gpr
 	cp ../userspace/apps/devices/build/devices.app isodir/boot/devices.app
 
+.PHONY: render-launch-policy
+render-launch-policy: user_runtime ccl-manifest
+	mkdir -p ../tests/mesa-anv/native-launch-policy/build
+	$(call compile_ccl_manifest,../tests/mesa-anv/native-launch-policy)
+	$(ALR) gprbuild -p -P ../tests/mesa-anv/native-launch-policy/fixture.gpr
+	cp ../tests/mesa-anv/native-launch-policy/build/render-denied.app isodir/boot/render-denied.app
+	cp ../tests/mesa-anv/native-launch-policy/build/render-denied.app isodir/boot/render-unavailable.app
+
+.PHONY: mesa-log-test
+mesa-log-test: user_runtime ccl-manifest
+	$(call compile_ccl_manifest,../tests/mesa-anv/native-log)
+	$(ALR) gprbuild -p -P ../tests/mesa-anv/native-log/fixture.gpr
+	cp ../tests/mesa-anv/native-log/build/mesa-log-check.app isodir/boot/mesa-log-check.app
+
+.PHONY: render-session-test
+render-session-test: user_runtime ccl-manifest
+	mkdir -p ../tests/mesa-anv/native-session/build
+	$(call compile_ccl_manifest,../tests/mesa-anv/native-session)
+	$(ALR) gprbuild -p -P ../tests/mesa-anv/native-session/fixture.gpr
+	cp ../tests/mesa-anv/native-session/build/render-session.app isodir/boot/render-session.app
+
 # Build the read-only, authority-scoped filesystem browser.
 .PHONY : files
 .PHONY: gpu-viewer-test
@@ -1401,13 +1422,48 @@ logstore: user_runtime ccl-manifest
 	$(ALR) gprbuild -P ../userspace/services/logstore/logstore.gpr
 	cp ../userspace/services/logstore/build/logstore.svc isodir/boot/logstore.svc
 
+# Observability (docs/metrics-service.md). metrics.svc is not yet in world or
+# generic world images; desktop sessions explicitly include it below.
+.PHONY : metricsvc
+metricsvc: user_runtime ccl-manifest
+	mkdir -p ../userspace/services/metricsvc/build
+	$(call compile_ccl_manifest,../userspace/services/metricsvc)
+	$(ALR) gprbuild -P ../userspace/services/metricsvc/metricsvc.gpr
+	cp ../userspace/services/metricsvc/build/metrics.svc isodir/boot/metrics.svc
+
+.PHONY : metrics-check
+metrics-check: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/metrics-check/build
+	$(call compile_ccl_manifest,../userspace/apps/metrics-check)
+	$(ALR) gprbuild -P ../userspace/apps/metrics-check/metrics_check.gpr
+	cp ../userspace/apps/metrics-check/build/metrics-check.app isodir/boot/metrics-check.app
+
+.PHONY : log-fields-check
+log-fields-check: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/log-fields-check/build
+	$(call compile_ccl_manifest,../userspace/apps/log-fields-check)
+	$(ALR) gprbuild -P ../userspace/apps/log-fields-check/log_fields_check.gpr
+	cp ../userspace/apps/log-fields-check/build/log-fields-check.app isodir/boot/log-fields-check.app
+
+# Standard desktop-session build: nonblocking typed metrics, with a matching
+# startup collector. Keep bare `desktop` for profiles without metrics.svc.
+.PHONY : desktop-metrics
+desktop-metrics: desktop metricsvc
+	cd .. && bash tools/build_desktop_metrics.sh --stage
+
 # Build the userspace desktop compositor/session service prototype
 .PHONY : desktop
 desktop: user_runtime ccl-manifest ui-fonts-native ../userspace/services/desktop/build/wallpaper.o ../userspace/services/desktop/build/wallpaper_cubie.o
 	mkdir -p ../userspace/services/desktop/build
 	$(call compile_ccl_manifest,../userspace/services/desktop)
-	$(ALR) gprbuild -p -P ../userspace/services/desktop/desktop.gpr -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE)
-	cp ../userspace/services/desktop/$(PRESENTATION_BUILD_DIR)/desktop.svc isodir/boot/desktop.svc
+	@python3 ../tools/desktop_build_variant.py --metrics off >/dev/null
+	@if [ "$(CUBIT_COMPOSITOR)" = mesa ]; then \
+	  test -n "$(CUBIT_MESA_BUILD)" || { echo 'Set CUBIT_MESA_BUILD to the existing native Mesa build' >&2; exit 2; }; \
+	  python3 ../tools/build_mesa_desktop.py "$(abspath $(CUBIT_MESA_BUILD))" --metrics off --scenario-output; \
+	else \
+	  $(ALR) gprbuild -p -P ../userspace/services/desktop/desktop.gpr -XCUBIT_COMPOSITOR_METRICS=off -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE); \
+	fi
+	cp ../userspace/services/desktop/$$(python3 ../tools/desktop_build_variant.py --metrics off)/desktop.svc isodir/boot/desktop.svc
 
 ../userspace/services/desktop/build/wallpaper.o: ../assets/wallpapers/wallpaper2.png ../tools/prepare_wallpaper.py
 	mkdir -p ../userspace/services/desktop/build
@@ -1421,7 +1477,12 @@ desktop: user_runtime ccl-manifest ui-fonts-native ../userspace/services/desktop
 
 # Build the userspace display scanout service prototype
 .PHONY : display
+CUBIT_COMPOSITOR ?= legacy
+CUBIT_COMPOSITOR_TIMING ?= off
+CUBIT_COMPOSITOR_STORAGE ?= production
 CUBIT_DISPLAY_TEST_MODE ?= production
+export CUBIT_MESA_BUILD
+export CUBIT_COMPOSITOR CUBIT_COMPOSITOR_TIMING CUBIT_COMPOSITOR_STORAGE CUBIT_DISPLAY_TEST_MODE
 PRESENTATION_BUILD_DIR = $(if $(filter output-rebind,$(CUBIT_DISPLAY_TEST_MODE)),build-output-rebind,$(if $(filter delayed,$(CUBIT_DISPLAY_TEST_MODE)),build-delayed,build))
 display: user_runtime ccl-manifest
 	mkdir -p ../userspace/services/display/build
@@ -1502,7 +1563,7 @@ DESKTOP_BASE_DISK ?= nvme_disk.img
 DESKTOP_SCRATCH_DISK ?= desktop_disk.img
 DESKTOP_CONFIG_SAMPLES := ../userspace/ccl/samples/config-counter.ccl \
 	../userspace/ccl/samples/config-counter-read.ccl
-DESKTOP_OVERLAY := isodir/boot/desktop.svc isodir/boot/display.svc \
+DESKTOP_OVERLAY := isodir/boot/desktop.svc isodir/boot/display.svc isodir/boot/metrics.svc \
 	isodir/boot/netstack.svc isodir/boot/tls.svc isodir/boot/desktop-shell.app \
 	isodir/boot/devices.app isodir/boot/config-inspector.app isodir/boot/files.app \
 	isodir/boot/doom.elf isodir/boot/netsurf.app isodir/boot/ccl-workbench.app \
@@ -1530,7 +1591,7 @@ INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hd
 # staging target so run-desktop can build/copy them into isodir first, then
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
-desktop-session-content: $(INITRD_SERVICES) desktop display logstore \
+desktop-session-content: $(INITRD_SERVICES) desktop-metrics display logstore \
 	desktop-shell devices files config-inspector ccl-workbench config-storage clock timesync tls doom netsurf sameboy
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.ccl, shell.app

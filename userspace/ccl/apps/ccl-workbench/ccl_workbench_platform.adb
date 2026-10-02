@@ -7,7 +7,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Protocols;
-with CuBit.String;
+with Client_Frame_Wakeup;
 with CuBit.UI;
 with CuBit.UI.App;
 with CCL_Workspace;
@@ -76,6 +76,7 @@ package body CCL_Workbench_Platform is
    Click_Origin_Y : Integer_64 := 0;
    Click_Count : Natural range 0 .. 3 := 0;
    Pending_Event : CuBit.UI.App.Input_Event;
+   Handling_Event : CuBit.UI.App.Input_Event;
    Pending_Found : Boolean := False;
    Skip_Empty_Poll : Boolean := False;
    Completions_Seen : Boolean := False;
@@ -135,7 +136,7 @@ package body CCL_Workbench_Platform is
         (Native_Window, Requested_Width, Requested_Height, Flags, OK,
          maximum_width => MAXIMUM_WIDTH,
          maximum_height => MAXIMUM_HEIGHT,
-         title => "CCL Workbench");
+         title => "CCL Workbench", protected_frames => True);
       Native_Open := OK;
       if OK then
          debugPrint ("ccl-workbench: native window ready" & ASCII.LF);
@@ -342,55 +343,45 @@ package body CCL_Workbench_Platform is
          when others =>
             return 0;
       end case;
+      Handling_Event := Event;
+      CuBit.UI.App.Begin_Input_Event (Native_Window, Handling_Event);
       return 1;
    end Window_Poll;
+   procedure Finish_Input is
+   begin
+      CuBit.UI.App.Finish_Input_Event (Native_Window, Handling_Event);
+   end Finish_Input;
 
-   function Window_Present
-     (Handle, Pixels : System.Address;
-      Pitch, X, Y, Width, Height : Integer_32) return Integer_32
-   with Export, Convention => C, External_Name => "ccl_window_present";
-
-   function Window_Present
-     (Handle, Pixels : System.Address;
-      Pitch, X, Y, Width, Height : Integer_32) return Integer_32
+   procedure Begin_Frame
+     (Canvas : in out CuBit.UI.Canvas; Changed : CuBit.UI.Rect;
+      Repair : out CuBit.UI.Rect; Ready : out Boolean)
+   is
+   begin
+      CuBit.UI.App.Begin_Paint (Native_Window, Changed, Repair, Ready);
+      Canvas := CuBit.UI.App.Canvas (Native_Window);
+   end Begin_Frame;
+   function Submit_Frame
+     (Handle : System.Address; Canvas : in out CuBit.UI.Canvas;
+      Rendered : CuBit.UI.Rect) return Boolean
    is
       pragma Unreferenced (Handle);
-      Target : constant CuBit.UI.Canvas := CuBit.UI.App.Canvas (Native_Window);
-      Ignore : System.Address;
-      Bytes_Per_Row : Storage_Count;
-      Damage : CuBit.UI.Rect;
    begin
-      if not Native_Open or else Pixels = System.Null_Address or else
-        Pitch <= 0 or else X < 0 or else Y < 0 or else Width <= 0 or else
-        Height <= 0 or else Target.addr = System.Null_Address
-      then
-         return 1;
-      end if;
-
-      Damage := CuBit.UI.Clamp_Rect
-        (Target,
-         (x => Natural (X), y => Natural (Y),
-          w => Natural (Width), h => Natural (Height)));
-      if CuBit.UI.Is_Empty (Damage) then
-         return 0;
-      end if;
-
-      Bytes_Per_Row := Storage_Count (Damage.w * 4);
-      for Row in Damage.y .. Damage.y + Damage.h - 1 loop
-         Ignore := CuBit.String.memcpy
-           (Target.addr + Storage_Offset
-              (Row * Target.pitch + Damage.x * 4),
-            Pixels + Storage_Offset
-              (Row * Natural (Pitch) + Damage.x * 4),
-            Bytes_Per_Row);
-      end loop;
-      CuBit.UI.App.Present (Native_Window, Damage);
-      if not First_Frame_Presented then
+      CuBit.UI.App.Present (Native_Window, Rendered);
+      Canvas.addr := System.Null_Address;
+      if not CuBit.UI.App.Frame_Pending (Native_Window) and then not First_Frame_Presented then
          debugPrint ("ccl-workbench: first frame presented" & ASCII.LF);
          First_Frame_Presented := True;
       end if;
-      return 0;
-   end Window_Present;
+      return CuBit.UI.App.Is_Open (Native_Window);
+   end Submit_Frame;
+   function Frame_Pending return Boolean is
+     (CuBit.UI.App.Frame_Pending (Native_Window));
+   function Frame_Deadline (Application : Unsigned_64) return Unsigned_64 is
+      Deadline : constant Unsigned_64 := Client_Frame_Wakeup.Deadline
+        (syscall (SYSCALL_GETTIME), (if Application = Unsigned_64'Last then 0 else Application), Frame_Pending);
+   begin
+      return (if Deadline = 0 then Unsigned_64'Last else Deadline);
+   end Frame_Deadline;
 
    procedure Window_Set_Cursor
      (Handle : System.Address; Style : Integer_32)
@@ -439,6 +430,12 @@ package body CCL_Workbench_Platform is
       if Activity = Unavailable then Native_Open := False; end if;
       Pump_Completions;
    end Wait_Events;
+
+   procedure Yield_Input is
+      Ignore : Unsigned_64;
+   begin
+      Ignore := syscall (SYSCALL_YIELD);
+   end Yield_Input;
 
    procedure Window_Wait (May_Block : Integer_32) is
       Ignore : Unsigned_64;

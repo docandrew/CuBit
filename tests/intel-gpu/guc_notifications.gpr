@@ -1,0 +1,9 @@
+project GuC_Notifications is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-guc-notifications";
+   for Main use ("guc_notification_tests.adb", "guc_context_lifecycle_tests.adb",
+                 "guc_context_session_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end GuC_Notifications;

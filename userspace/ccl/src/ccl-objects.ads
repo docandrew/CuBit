@@ -73,8 +73,8 @@ package CCL.Objects with SPARK_Mode is
    function Persistable
      (Types : CCL.Types.Registry; Root : CCL.Types.Type_Reference) return Boolean;
    --  Values one evaluation may hold (the value arena): what Persistable
-   --  allows, plus list fields and lists whose elements are Persistable.
-   --  Only Persistable values cross a host boundary as images.
+   --  allows, plus range types and recursive types (a list of the owner
+   --  itself). Only Persistable values cross a host boundary as images.
    function Storable
      (Types : CCL.Types.Registry; Root : CCL.Types.Type_Reference) return Boolean;
 
@@ -96,6 +96,9 @@ package CCL.Objects with SPARK_Mode is
      ((First => Unsigned_64 (Fields), Second => 0));
    function Variant_Cell (Choice : CCL.Types.Component_Index) return Cell is
      ((First => Unsigned_64 (Choice), Second => 0));
+   --  A list: its element count, then the elements depth first.
+   function Sequence_Cell (Count : Natural) return Cell is
+     ((First => Unsigned_64 (Count), Second => 0));
    Unit_Cell : constant Cell := (0, 0);
    function Integer_Of (Value : Cell) return Integer_64;
 

@@ -1,0 +1,2 @@
+(startup v1
+  (start "native-softpipe.app" (priority 3)))

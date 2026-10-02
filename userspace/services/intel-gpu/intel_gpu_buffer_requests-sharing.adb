@@ -10,6 +10,18 @@ package body Intel_GPU_Buffer_Requests.Sharing is
       end if;
       return 0;
    end Find;
+   function Presentation_Held (Table : Mapping_Table; Session : Unsigned_64)
+      return Boolean is
+   begin
+      if Session = 0 or else Table.Failed or else not Owner_Ready then return True; end if;
+      for Index in 1 .. Table.Used loop
+         if Table.Items (Index).Session = Session and then
+           Table.Items (Index).Presentation and then
+           Views.State (Table.Items (Index).View) not in Views.Empty | Views.Retired
+         then return True; end if;
+      end loop;
+      return False;
+   end Presentation_Held;
    procedure Handle
      (Object : Service; Table : in out Mapping_Table;
       Sender, Stamp : Unsigned_64; Request_Label : Unsigned_32;
@@ -60,6 +72,18 @@ package body Intel_GPU_Buffer_Requests.Sharing is
       Reference := 0;
       if (Presentation and Writable) or else Session = 0 or else Object.Failed or else not Owner_Ready or else
         Table.Failed or else Table.Last_ID = Mapping_ID'Last then return; end if;
+      -- Whole-BO writer/presentation exclusion. Existing writable aliases must
+      -- be confirmed retired before exporting; presentation descendants must
+      -- be confirmed retired before granting a new writer. Read aliases may
+      -- coexist. Failed/uncertain grants never silently remove exclusion.
+      for Candidate in 1 .. Table.Used loop
+         if Table.Items (Candidate).Session = Session and then
+           Table.Items (Candidate).Buffer_ID = ID and then
+           Views.State (Table.Items (Candidate).View) not in Views.Empty | Views.Retired and then
+           ((Presentation and Table.Items (Candidate).Writable) or else
+            (Writable and Table.Items (Candidate).Presentation))
+         then return; end if;
+      end loop;
       if Table.Used < Capacity then
          Table.Used := Table.Used + 1;
          Index := Table.Used;
@@ -75,6 +99,9 @@ package body Intel_GPU_Buffer_Requests.Sharing is
       Table.Last_ID := Table.Last_ID + 1;
       Table.Items (Index).ID := Table.Last_ID;
       Table.Items (Index).Session := Session;
+      Table.Items (Index).Buffer_ID := ID;
+      Table.Items (Index).Writable := Writable;
+      Table.Items (Index).Presentation := Presentation;
       Share (Object, Sender, Stamp, ID, Offset, Bytes, Writable,
              Table.Items (Index).View, Accepted, Presentation);
       if Accepted then
@@ -113,6 +140,44 @@ package body Intel_GPU_Buffer_Requests.Sharing is
          end if;
       end loop;
    end Retire_Session;
+   function Observe_Retirement (Table : Mapping_Table; Session : Unsigned_64)
+      return Retirement_State is
+      Result : Retirement_State := Clear;
+   begin
+      if Session = 0 or else Table.Failed or else not Owner_Ready then
+         return Uncertain;
+      end if;
+      for Index in 1 .. Table.Used loop
+         if Table.Items (Index).Session = Session then
+            case Views.State (Table.Items (Index).View) is
+               when Views.Empty | Views.Retired => null;
+               when Views.Shared | Views.Retiring => Result := Outstanding;
+               when Views.Failed => return Uncertain;
+            end case;
+         end if;
+      end loop;
+      return Result;
+   end Observe_Retirement;
+   function Observe_Buffer_Retirement
+     (Table : Mapping_Table; Session, Buffer_ID : Unsigned_64)
+      return Retirement_State is
+      Result : Retirement_State := Clear;
+   begin
+      if Session = 0 or else Buffer_ID = 0 or else Table.Failed or else
+        not Owner_Ready then return Uncertain; end if;
+      for Index in 1 .. Table.Used loop
+         if Table.Items (Index).Session = Session and then
+           Table.Items (Index).Buffer_ID = Buffer_ID
+         then
+            case Views.State (Table.Items (Index).View) is
+               when Views.Empty | Views.Retired => null;
+               when Views.Shared | Views.Retiring => Result := Outstanding;
+               when Views.Failed => return Uncertain;
+            end case;
+         end if;
+      end loop;
+      return Result;
+   end Observe_Buffer_Retirement;
    procedure Quarantine (Table : in out Mapping_Table) is
    begin
       Table.Failed := True;

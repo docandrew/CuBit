@@ -22,7 +22,8 @@ package Intel_GPU_Application_Image is
    procedure Prepare
      (Object : in out State; Source : VM.Image; Backing : Tables.Mappings;
       Allocation : Intel_GPU_Buffer_Reply.Backing;
-      GGTT_Start, Bytes : Unsigned_64; Success : out Boolean);
+      GGTT_Start, Bytes : Unsigned_64; Success : out Boolean;
+      Scratch : Tables.Scratch_Mappings := [others => (0, 0)]);
    function GPU_Start (Object : State) return Unsigned_64;
    function Retained_Root (Object : State) return Tables.Page_Mapping;
    -- Exact root backing encoded into the prepared context, retained across
@@ -37,9 +38,11 @@ private
    type State is limited record
       Attempted : Boolean := False;
       Publication_Attempted : Boolean := False;
+      Retirement_Attempted : Boolean := False;
       Published : Unsigned_64 := 0;
       Prepared : Unsigned_64 := 0;
       Root : Tables.Page_Mapping := (0, 0);
+      Scratch : Tables.Scratch_Mappings := [others => (0, 0)];
       Allocation : Intel_GPU_Buffer_Reply.Backing;
       Update_Failed, Updating : Boolean := False;
       Table_State : Tables.State;

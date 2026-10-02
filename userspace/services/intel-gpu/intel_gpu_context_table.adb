@@ -79,6 +79,23 @@ package body Intel_GPU_Context_Table is
          Accepted := True;
       end;
    end Release_Work;
+   procedure Deregister_Retired
+     (Object : in out Table; ID : Unsigned_32; Work_Drained : Boolean;
+      Status : out Driver.Result) is
+   begin
+      Status := Driver.Faulted;
+      if not Ready (Object) then return; end if;
+      Status := Driver.Rejected;
+      if not Known (Object, ID) then return; end if;
+      declare I : constant Positive := Natural (ID - First_ID) + 1; begin
+         if not Object.Retired (I) or else Object.Work_Held (I) or else
+           not Work_Drained or else State (Object, ID) /= Life.Disabled
+         then return; end if;
+         Driver.Deregister (Object.Items (I), Admission_Closed => True,
+                            Work_Drained => True, Status => Status);
+         if not Ready (Object) then Status := Driver.Faulted; end if;
+      end;
+   end Deregister_Retired;
    procedure Open
      (Object : in out Table; GPU_Start, Pin_Bias : Unsigned_64;
       Fence_Count : Natural; Quantum_Us, Preemption_Us : Unsigned_32;

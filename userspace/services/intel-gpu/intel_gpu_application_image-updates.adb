@@ -9,10 +9,11 @@ package body Intel_GPU_Application_Image.Updates is
       package Writer is new Intel_GPU_VM_Materialize (VM, Gate, Flush_Page);
       Attempt : Writer.State;
       Mappings : Writer.Mappings;
+      Scratch : Writer.Scratch_Mappings;
       OK : Boolean := False;
    begin
       Success := False;
-      if Object.Update_Failed then return; end if;
+      if Object.Update_Failed or else Object.Retirement_Attempted then return; end if;
       if Object.Updating then Object.Update_Failed := True; return; end if;
       Object.Updating := True;
       if Object.Prepared /= 0 and then Object.Allocation.Ready and then Gate and then
@@ -26,9 +27,12 @@ package body Intel_GPU_Application_Image.Updates is
             then OK := False; end if;
          end loop;
          if OK then
+            for L in Scratch'Range loop
+               Scratch (L) := (Object.Scratch (L).CPU, Object.Scratch (L).DMA);
+            end loop;
             Writer.Publish_Update
               (Attempt, Previous, Candidate, Mappings,
-               (Object.Root.CPU, Object.Root.DMA), OK);
+               (Object.Root.CPU, Object.Root.DMA), OK, Scratch);
          end if;
       end if;
       Success := OK and then Gate;

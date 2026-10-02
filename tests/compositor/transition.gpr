@@ -1,0 +1,11 @@
+project Transition is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("transition_tests.adb", "compositor_transition.ads",
+      "compositor_damage.ads", "compositor_damage.adb");
+   for Object_Dir use "build/transition/obj";
+   for Exec_Dir use "build/transition";
+   for Main use ("transition_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Transition;

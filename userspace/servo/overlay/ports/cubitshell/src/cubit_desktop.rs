@@ -2,231 +2,226 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-//! A window on the CuBit desktop (desktop.svc), as NetSurf's frontend uses
-//! it (userspace/c/netsurf/libnsfb-cubit.c): the browser draws into a
-//! buffer it owns and lends to desktop.svc; only input for its own surface
-//! comes back. No display or global input authority.
+//! Serialized bridge to the native Ada browser shell. Ada owns chrome,
+//! configuration, damage, protected frame leases and all Desktop IPC. Rust
+//! borrows source pixels only for `present`; no grant or destination pointer
+//! is exposed here. The engine/rendering context stays on this thread.
+use std::sync::{Once, OnceLock};
+use std::cell::Cell;
 
-use std::arch::asm;
+static OWNER: OnceLock<std::thread::ThreadId> = OnceLock::new();
+thread_local! { static IN_NATIVE: Cell<bool> = const { Cell::new(false) }; }
 
-const SLOT_DESKTOP: u64 = 21;
+/// The standalone Ada runtime and window owner are single-threaded. Check
+/// every FFI entry, including initialization and RAII cleanup, before entry.
+fn native<T>(call: impl FnOnce() -> T) -> T {
+    let current = std::thread::current().id();
+    assert_eq!(*OWNER.get_or_init(|| current), current, "Servo Ada bridge used off its owner thread");
+    IN_NATIVE.with(|active| {
+        assert!(!active.replace(true), "Servo Ada bridge reentered");
+        struct Leave<'a>(&'a Cell<bool>);
+        impl Drop for Leave<'_> { fn drop(&mut self) { self.0.set(false); } }
+        let _leave = Leave(active);
+        call()
+    })
+}
 
-const SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY: u64 = 41;
-const SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY: u64 = 42;
-const SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY: u64 = 106;
-const SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION: u64 = 108;
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
+pub struct Viewport {
+    pub width: u32,
+    pub height: u32,
+    pub numerator: u32,
+    pub denominator: u32,
+}
 
-const OP_DESKTOP_HELLO: u32 = 0x0800;
-const OP_SURFACE_CREATE: u32 = 0x0810;
-const OP_SURFACE_PRESENT: u32 = 0x0812;
-const OP_SURFACE_ATTACH_BUFFER: u32 = 0x0814;
-const OP_INPUT_POLL: u32 = 0x0821;
-const OP_WINDOW_SET_LIMITS: u32 = 0x0841;
-
-const SURFACE_FLAG_WINDOW: u64 = 2;
-const WINDOW_FLAGS: u64 = 1 | 4 | 16 | 128; // decorated, minimizable, closeable, fixed
-const WINDOW_CHROME_W: u32 = 20;
-const WINDOW_CHROME_H: u32 = 44;
-const PAGE: usize = 4096;
-const MAX_SURFACE_BYTES: usize = 4096 * PAGE;
-const NO_COMPLETION_TOKEN: u64 = !0;
-
-/// CuBit.Messages.Message (48 bytes).
 #[repr(C)]
 #[derive(Default)]
-struct Message {
-    label: u32,
-    length: u8,
-    flags: u8,
-    reserved: u16,
-    authority: u64,
-    words: [u64; 4],
+struct Event { kind: u64, a: u64, b: u64 }
+
+unsafe extern "C" {
+    fn servo_shell_hostinit();
+    fn cubit_servo_stack_check() -> u32;
+    fn cubit_servo_open() -> u32;
+    fn cubit_servo_select_window(id: u32) -> u32;
+    fn cubit_servo_window_error();
+    fn cubit_servo_metrics(result: *mut Viewport);
+    fn cubit_servo_begin_input();
+    fn cubit_servo_poll(result: *mut Event) -> u32;
+    fn cubit_servo_location(text: *mut u8, capacity: u32) -> u32;
+    fn cubit_servo_state(url: *const u8, url_len: u32, title: *const u8, title_len: u32, flags: u32);
+    fn cubit_servo_navigation_error();
+    fn cubit_servo_tab_title(index: u32, title: *const u8, length: u32);
+    fn cubit_servo_tab_parked(index: u32);
+    fn cubit_servo_prepare() -> u32;
+    fn cubit_servo_cancel();
+    fn cubit_servo_present(rgba: *const u8, len: u64, width: u32, height: u32) -> u32;
+    fn cubit_servo_pending() -> u32;
+    fn cubit_servo_close();
 }
 
-unsafe fn syscall4(n: u64, a: u64, b: u64, c: u64, d: u64) -> u64 {
-    let ret: u64;
-    unsafe {
-        asm!("syscall", inlateout("rax") n => ret, in("rdi") a, in("rsi") b,
-             in("rdx") c, in("r10") d, lateout("rcx") _, lateout("r11") _,
-             options(nostack));
-    }
-    ret
-}
-
-fn call(label: u32, words: [u64; 4]) -> Option<Message> {
-    let mut message = Message {
-        label,
-        length: 4,
-        words,
-        ..Default::default()
-    };
-    let ret = unsafe {
-        syscall4(
-            SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY,
-            SLOT_DESKTOP,
-            &mut message as *mut Message as u64,
-            0,
-            0,
-        )
-    };
-    (ret != u64::MAX).then_some(message)
-}
-
-fn pack(low: u32, high: u32) -> u64 {
-    low as u64 | (high as u64) << 32
-}
-
-/// Input for this window, as desktop.svc reports it.
 pub enum Input {
     Move { x: i32, y: i32 },
-    /// Buttons now held (bit 0 left, 1 right, 2 middle) and which changed.
-    Button { down: bool, changed: u64 },
-    Wheel { delta: i32 },
+    Button { down: bool, changed: u64, x: i32, y: i32 },
+    Wheel { delta: i32, x: i32, y: i32 },
     Text(char),
     Key { down: bool, scancode: u8, modifiers: u64 },
+    NewWindow, NewTab(usize), SelectTab(usize), CloseTab { index: usize, next: usize },
+    Navigate(String), Back, Forward, Reload, Configure { released: u64, settings_opened: bool }, Consumed, Close, Leave,
 }
 
+// Rc marker prevents Send/Sync: callbacks and GNAT state are serialized.
+pub const MAX_TABS: usize = 32;
+pub const MAX_WINDOWS: usize = 4;
+
 pub struct Window {
-    surface: u64,
-    buffer: *mut u8,
-    width: u32,
-    height: u32,
-    serial: u64,
+    id: u32,
     buttons: u64,
+    _main_thread: std::marker::PhantomData<std::rc::Rc<()>>,
+}
+
+pub struct Frame<'a> {
+    _window: &'a Window,
+    finished: bool,
+}
+
+impl Frame<'_> {
+    pub fn present(mut self, rgba: &[u8], width: u32, height: u32) -> u32 {
+        let result = self._window.call(|| unsafe { cubit_servo_present(rgba.as_ptr(), rgba.len() as u64, width, height) });
+        self.finished = true;
+        result
+    }
+}
+
+impl Drop for Frame<'_> {
+    fn drop(&mut self) {
+        if !self.finished { self._window.call(|| unsafe { cubit_servo_cancel() }); }
+    }
 }
 
 impl Window {
-    /// A decorated window with a width x height BGRA buffer, or None
-    /// without a desktop capability.
-    pub fn open(width: u32, height: u32) -> Option<Window> {
-        let bytes = width as usize * height as usize * 4;
-        if bytes == 0 || bytes > MAX_SURFACE_BYTES {
-            return None;
-        }
-        let hello = call(OP_DESKTOP_HELLO, [0x0000_0001_0000_0000, 0, 0, 0])?;
-        if hello.words[0] == 0 {
-            return None;
-        }
-        let (outer_w, outer_h) = (width + WINDOW_CHROME_W, height + WINDOW_CHROME_H);
-        let created = call(
-            OP_SURFACE_CREATE,
-            [outer_w as u64, outer_h as u64, SURFACE_FLAG_WINDOW, 0],
-        )?;
-        let surface = created.words[0];
-        if surface == 0 {
-            return None;
-        }
-        call(
-            OP_WINDOW_SET_LIMITS,
-            [surface, pack(outer_w, outer_h), pack(outer_w, outer_h), WINDOW_FLAGS],
-        );
-
-        // Process-lifetime storage, page aligned, lent to desktop.svc.
-        let pages = bytes.div_ceil(PAGE);
-        let layout = std::alloc::Layout::from_size_align(pages * PAGE, PAGE).ok()?;
-        let buffer = unsafe { std::alloc::alloc_zeroed(layout) };
-        if buffer.is_null() {
-            return None;
-        }
-        let slot = unsafe {
-            syscall4(
-                SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
-                SLOT_DESKTOP,
-                buffer as u64,
-                pages as u64,
-                0,
-            )
-        };
-        if slot == u64::MAX {
-            return None;
-        }
-        let generation =
-            unsafe { syscall4(SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION, slot, 0, 0, 0) };
-        if generation == 0 || generation > u32::MAX as u64 {
-            return None;
-        }
-        let attached = call(
-            OP_SURFACE_ATTACH_BUFFER,
-            [
-                surface,
-                slot,
-                generation,
-                width as u64 | (height as u64) << 16 | ((width * 4) as u64) << 32,
-            ],
-        )?;
-        if attached.label != OP_SURFACE_ATTACH_BUFFER || attached.words[0] != 0 {
-            return None;
-        }
-        Some(Window {
-            surface,
-            buffer,
-            width,
-            height,
-            serial: 0,
-            buttons: 0,
+    fn call<T>(&self, call: impl FnOnce() -> T) -> T {
+        native(|| {
+            assert_eq!(unsafe { cubit_servo_select_window(self.id) }, 1,
+                "invalid window or another window owns a frame lease");
+            call()
+        })
+    }
+    pub fn window_error(&self) { self.call(|| unsafe { cubit_servo_window_error() }); }
+    pub fn open() -> Option<Self> {
+        static INIT: Once = Once::new();
+        // Keep the shared font C exports reachable from the Ada archive,
+        // while using Servo's one allocator/runtime for their implementation.
+        std::hint::black_box(cubit_fonts::cubit_font_glyph as *const ());
+        std::hint::black_box(cubit_fonts::cubit_font_raster_mask as *const ());
+        INIT.call_once(|| native(|| unsafe { servo_shell_hostinit() }));
+        if native(|| unsafe { cubit_servo_stack_check() }) != 1 { return None; }
+        let id = native(|| unsafe { cubit_servo_open() });
+        (id != 0).then(|| Self {
+            id, buttons: 0, _main_thread: std::marker::PhantomData,
         })
     }
 
-    pub fn width(&self) -> u32 {
-        self.width
+    pub fn viewport(&self) -> Viewport {
+        let mut result = Viewport::default();
+        self.call(|| unsafe { cubit_servo_metrics(&mut result) });
+        result
     }
 
-    pub fn height(&self) -> u32 {
-        self.height
-    }
-
-    /// Copy a frame (BGRA rows, top first) into the buffer and present it.
-    pub fn present(&self, bgra: &[u8]) {
-        let bytes = self.width as usize * self.height as usize * 4;
-        if bgra.len() < bytes {
-            return;
+    /// Acquire before readback, so pending retirement doesn't cause another
+    /// full pixel copy. Dropping the guard cancels and preserves repair debt.
+    pub fn prepare(&self) -> Option<Frame<'_>> {
+        if self.call(|| unsafe { cubit_servo_prepare() }) != 0 {
+            Some(Frame { _window: self, finished: false })
+        } else {
+            None
         }
-        unsafe { std::ptr::copy_nonoverlapping(bgra.as_ptr(), self.buffer, bytes) };
-        // Desktop present: submit (no reply), a reserved zero fourth word.
-        let tag = OP_SURFACE_PRESENT as u64 | 4 << 32;
-        let ret: u64;
-        unsafe {
-            asm!("syscall",
-                 inlateout("rax") SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY => ret,
-                 in("rdi") SLOT_DESKTOP, in("rsi") tag, in("rdx") self.surface,
-                 in("r10") 0u64, in("r8") pack(self.width, self.height), in("r9") 0u64,
-                 in("r12") NO_COMPLETION_TOKEN,
-                 lateout("rcx") _, lateout("r11") _, options(nostack));
-        }
-        let _ = ret;
     }
 
-    /// The next input event for this window, if any.
+    pub fn pending(&self) -> bool { self.call(|| unsafe { cubit_servo_pending() != 0 }) }
+
+    pub fn begin_input(&mut self) { self.call(|| unsafe { cubit_servo_begin_input() }) }
+
+    pub fn tab_title(&self, index: usize, title: &str) {
+        let mut end = title.len().min(64);
+        while !title.is_char_boundary(end) { end -= 1; }
+        self.call(|| unsafe { cubit_servo_tab_title(index as u32, title.as_ptr(), end as u32) });
+    }
+    pub fn tab_parked(&self, index: usize) {
+        self.call(|| unsafe { cubit_servo_tab_parked(index as u32) });
+    }
+    pub fn navigation_error(&self) { self.call(|| unsafe { cubit_servo_navigation_error() }) }
+
+    pub fn state(&self, url: &str, title: &str, loading: bool, back: bool, forward: bool) {
+        fn bounded(s: &str, max: usize) -> &str {
+            let mut end = s.len().min(max);
+            while !s.is_char_boundary(end) { end -= 1; }
+            &s[..end]
+        }
+        let title = bounded(title, 256);
+        // The bridge blanks overlong URLs instead of presenting a truncated
+        // address as an editable, apparently complete navigation target.
+        self.call(|| unsafe { cubit_servo_state(url.as_ptr(), url.len().min(1025) as u32,
+            title.as_ptr(), title.len() as u32,
+            u32::from(loading) | u32::from(back) << 1 | u32::from(forward) << 2) });
+    }
+
+    /// Exactly one Desktop poll. Consumed chrome events are returned too, so
+    /// a caller's event budget also bounds work spent inside the native shell.
     pub fn poll(&mut self) -> Option<Input> {
-        let reply = call(OP_INPUT_POLL, [self.surface, self.serial, 0, 0])?;
-        if reply.label != OP_INPUT_POLL || reply.length != 4 {
-            return None;
-        }
-        self.serial = reply.words[1];
-        let (a, b) = (reply.words[2], reply.words[3]);
-        match reply.words[0] {
-            1 | 2 if a <= 127 => Some(Input::Key {
-                down: reply.words[0] == 1,
-                scancode: a as u8,
-                modifiers: b,
-            }),
-            3 => Some(Input::Move {
-                x: a as u32 as i32,
-                y: (a >> 32) as u32 as i32,
-            }),
-            4 | 5 => {
-                let changed = self.buttons ^ b;
-                self.buttons = b;
-                Some(Input::Button {
-                    down: reply.words[0] == 4,
-                    changed,
-                })
+        let mut event = Event::default();
+        if self.call(|| unsafe { cubit_servo_poll(&mut event) }) == 0 { return None; }
+        let (x, y) = (event.a as u32 as i32, (event.a >> 32) as u32 as i32);
+        Some(match event.kind {
+            1 | 2 if event.a <= 127 => Input::Key {
+                down: event.kind == 1, scancode: event.a as u8, modifiers: event.b,
             },
-            6 => char::from_u32(a as u32).map(Input::Text),
-            7 => Some(Input::Wheel {
-                delta: b as u32 as i32,
-            }),
-            _ => None,
-        }
+            3 => Input::Move { x, y },
+            4 | 5 => {
+                let changed = self.buttons ^ event.b;
+                self.buttons = event.b;
+                Input::Button { down: event.kind == 4, changed, x, y }
+            },
+            6 => char::from_u32(event.a as u32).map(Input::Text).unwrap_or(Input::Consumed),
+            7 => Input::Wheel { delta: event.b as u32 as i32, x, y },
+            16 => {
+                let mut text = [0u8; 1024];
+                let len = self.call(|| unsafe { cubit_servo_location(text.as_mut_ptr(), text.len() as u32) }) as usize;
+                if len > text.len() { return Some(Input::Consumed); }
+                Input::Navigate(String::from_utf8_lossy(&text[..len]).into_owned())
+            },
+            17 => Input::Back,
+            18 => Input::Forward,
+            19 => Input::Reload,
+            20 | 28 => {
+                let released = self.buttons;
+                self.buttons = 0;
+                Input::Configure { released, settings_opened: event.kind == 28 }
+            },
+            21 => Input::Close,
+            27 => Input::NewWindow,
+            23 => Input::Leave,
+            24 if (1..=MAX_TABS as u64).contains(&event.a) => Input::NewTab(event.a as usize),
+            25 if (1..=MAX_TABS as u64).contains(&event.a) => Input::SelectTab(event.a as usize),
+            26 if (1..=MAX_TABS as u64).contains(&event.a) && event.b <= MAX_TABS as u64 =>
+                Input::CloseTab { index: event.a as usize, next: event.b as usize },
+            _ => Input::Consumed,
+        })
+    }
+}
+
+impl Drop for Window {
+    fn drop(&mut self) { self.call(|| unsafe { cubit_servo_close() }) }
+}
+
+#[cfg(test)]
+mod entry_tests {
+    #[test]
+    fn rejects_other_threads_and_reentrancy() {
+        super::native(|| ());
+        assert!(std::thread::spawn(|| super::native(|| ())).join().is_err());
+        assert!(std::panic::catch_unwind(|| super::native(|| super::native(|| ()))).is_err());
+        // A rejected reentry must not leave the outer guard stuck after unwind.
+        super::native(|| ());
     }
 }

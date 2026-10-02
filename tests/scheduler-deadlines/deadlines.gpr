@@ -1,0 +1,13 @@
+project Deadlines is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("main.adb", "virtual_deadlines.ads", "virtual_deadlines.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=1");
+   end Prove;
+end Deadlines;

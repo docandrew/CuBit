@@ -1,4 +1,9 @@
 package body Compositor_Repaint with SPARK_Mode is
+   procedure Coverage_Lemma
+     (Area, Upcoming, Cursor : D.Box; Drawing_Pending : Boolean; X, Y : Natural) is
+   begin
+      null;
+   end Coverage_Lemma;
    function Full (Extent : D.Box) return D.State
      with Pre => D.Valid (Extent), Post => Queue_Valid (Full'Result, Extent) and
        D.Covers (Full'Result, Extent)

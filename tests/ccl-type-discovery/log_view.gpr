@@ -1,0 +1,5 @@
+project Log_View extends "discovery.gpr" is
+   for Object_Dir use "build/log-view";
+   for Exec_Dir use "build/log-view";
+   for Main use ("log_view_tests.adb");
+end Log_View;

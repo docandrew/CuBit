@@ -4,6 +4,8 @@ with Intel_GPU_DMA_Cache;
 with Intel_GPU_Initial_Ring_Publish;
 with Intel_GPU_Submission_Backing;
 with Intel_GPU_ADLN_L3_Commands;
+with Intel_GPU_Submission_Image;
+with System.Machine_Code;
 package body Intel_GPU_Native_Initial_Ring is
    Base : constant Unsigned_64 := CPU_Base;
    Mapping_Valid : constant Boolean :=
@@ -14,6 +16,8 @@ package body Intel_GPU_Native_Initial_Ring is
    Ring_Bytes : constant Unsigned_32 :=
      Intel_GPU_ADLN_Context_Init.Command_Words'Length * 4;
    Active, Attempted : Boolean := False;
+   Copy_Attempted : Boolean := False;
+   Published_Ready : Boolean := False;
    function Owned return Boolean is
      (Mapping_Valid and then Active and then Owner_Ready and then Exclusive_Ready);
    function Ring_Word (Offset : Unsigned_32) return Boolean is
@@ -86,6 +90,42 @@ package body Intel_GPU_Native_Initial_Ring is
       begin Value := Word; end;
       OK := Owner_Ready;
    end Read_Batch_Result;
+   procedure Prepare_Copy_Source (OK : out Boolean) is
+      package B renames Intel_GPU_Submission_Backing;
+      package I renames Intel_GPU_Submission_Image;
+      Page : constant Unsigned_64 := Base + B.Offsets (B.Completion_Page) - B.First;
+   begin
+      OK := False;
+      if Copy_Attempted then return; end if;
+      Copy_Attempted := True;
+      if not Published_Ready or else not Mapping_Valid or else
+        not Owner_Ready or else not Exclusive_Ready
+      then return; end if;
+      declare
+         Source : Unsigned_32 with Import, Volatile_Full_Access,
+           Address => To_Address (Integer_Address (Page + I.Copy_Source_Offset));
+      begin Source := I.Copy_Probe_Value; end;
+      -- Orders the CPU store before device notification; does not write back
+      -- the cache line. Later marker polling touches a different backing page.
+      System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+      OK := Owner_Ready and then Exclusive_Ready;
+   end Prepare_Copy_Source;
+   procedure Read_Copy_Result (Value : out Unsigned_32; OK : out Boolean) is
+      package B renames Intel_GPU_Submission_Backing;
+      package I renames Intel_GPU_Submission_Image;
+      Page : constant Unsigned_64 := Base + B.Offsets (B.Completion_Page) - B.First;
+   begin
+      Value := Unsigned_32'Last; OK := False;
+      if not Mapping_Valid or else not Owner_Ready then return; end if;
+      if not Intel_GPU_DMA_Cache.Flush_Range (Page, 4096) or else not Owner_Ready
+      then return; end if;
+      declare
+         Result : Unsigned_32 with Import, Volatile_Full_Access,
+           Address => To_Address (Integer_Address (Page + I.Copy_Result_Offset));
+      begin Value := Result; end;
+      OK := Owner_Ready;
+      if not OK then Value := Unsigned_32'Last; end if;
+   end Read_Copy_Result;
    procedure Read_L3_Result (Value, Parameters : out Unsigned_32; OK : out Boolean) is
       package Backing renames Intel_GPU_Submission_Backing;
       Page : constant Unsigned_64 := Base +
@@ -105,7 +145,7 @@ package body Intel_GPU_Native_Initial_Ring is
       begin Value := Word; Parameters := Info; end;
       OK := Owner_Ready;
    end Read_L3_Result;
-   procedure Read_Pixels (Values : out Pixel_Samples; OK : out Boolean) is
+   procedure Sample_Pixels_No_Flush (Values : out Pixel_Samples; OK : out Boolean) is
       package Backing renames Intel_GPU_Submission_Backing;
       Target : constant Unsigned_64 := Base +
         Backing.Offsets (Backing.Offscreen_Buffer) - Backing.First;
@@ -114,16 +154,27 @@ package body Intel_GPU_Native_Initial_Ring is
    begin
       Values := [others => Unsigned_32'Last]; OK := False;
       if not Mapping_Valid or else not Owner_Ready then return; end if;
-      if not Intel_GPU_DMA_Cache.Flush_Range (Target, 16384) or else not Owner_Ready
-      then return; end if;
       for I in Values'Range loop
-         if not Mapping_Valid or else not Owner_Ready then return; end if;
+         if not Mapping_Valid or else not Owner_Ready then
+            Values := [others => Unsigned_32'Last]; return;
+         end if;
          declare
             Word : Unsigned_32 with Import, Volatile_Full_Access,
               Address => To_Address (Integer_Address (Target + Pixel_Offsets (I)));
          begin Values (I) := Word; end;
       end loop;
       OK := Owner_Ready;
+      if not OK then Values := [others => Unsigned_32'Last]; end if;
+   end Sample_Pixels_No_Flush;
+   procedure Read_Pixels (Values : out Pixel_Samples; OK : out Boolean) is
+      package Backing renames Intel_GPU_Submission_Backing;
+      Target : constant Unsigned_64 := Base +
+        Backing.Offsets (Backing.Offscreen_Buffer) - Backing.First;
+   begin
+      Values := [others => Unsigned_32'Last]; OK := False;
+      if not Mapping_Valid or else not Owner_Ready then return; end if;
+      if not Intel_GPU_DMA_Cache.Flush_Range (Target, 16384) then return; end if;
+      Sample_Pixels_No_Flush (Values, OK);
    end Read_Pixels;
    procedure Read_Image (Values : out Target_Image; OK : out Boolean) is
       package Backing renames Intel_GPU_Submission_Backing;
@@ -167,6 +218,7 @@ package body Intel_GPU_Native_Initial_Ring is
       Active := True;
       Writer.Publish (Attempt, Segment, Status);
       Success := Status = Writer.Published;
+      Published_Ready := Success;
       Active := False;
    end Publish;
 end Intel_GPU_Native_Initial_Ring;

@@ -1,0 +1,10 @@
+project Tabs is
+   for Source_Dirs use (".", "../../userspace/servo/native");
+   for Source_Files use ("servo_tabs.ads", "servo_tabs.adb", "servo_tab_geometry.ads", "tabs_tests.adb");
+   for Object_Dir use "build/tabs/obj";
+   for Exec_Dir use "build/tabs";
+   for Main use ("tabs_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Tabs;

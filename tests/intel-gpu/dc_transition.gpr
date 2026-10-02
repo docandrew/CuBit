@@ -1,0 +1,9 @@
+project DC_Transition is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("dc_transition_tests.adb", "intel_gpu_dc_transition.ads", "intel_gpu_dc_transition.adb", "intel_gpu_dc_exit.ads", "intel_gpu_dc_exit.adb", "intel_gpu_dc_write.ads", "intel_gpu_dc_write.adb", "intel_gpu_dc_state.ads", "intel_gpu_dc_state.adb");
+   for Object_Dir use "build-dc-transition";
+   for Main use ("dc_transition_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end DC_Transition;

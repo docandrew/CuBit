@@ -1,0 +1,5 @@
+# Test-only replacement in an isolated headless startup profile.
+# Trusted startup grants registration only for this exact service identity.
+(executable-manifest v1
+  (identity "com.cubit.metrics")
+  (version "0.1.0"))

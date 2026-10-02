@@ -1,0 +1,11 @@
+project Arrays is
+   for Source_Dirs use (".", "../../userspace/ccl/src");
+   for Source_Files use ("main.adb", "integer_arrays.ads", "integer_array_types.ads",
+                         "ccl.ads", "ccl-secondary_arrays.ads", "ccl-secondary_arrays.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Arrays;

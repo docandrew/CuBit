@@ -1,0 +1,16 @@
+project Fixture is
+   -- Hosted mock-transport test of the actual runtime wrapper. This does
+   -- not compile or execute the kernel handlers, GPU driver or hardware.
+   for Source_Dirs use (".", "../../userspace/runtime/gnat");
+   for Source_Files use ("test.adb", "messages.ads", "messages.adb", "cubit.ads",
+     "cubit-capability_grants.ads", "cubit-capability_grants.adb");
+   for Object_Dir use "build";
+   for Main use ("test.adb");
+   package Naming is
+      for Spec ("CuBit.Messages") use "messages.ads";
+      for Body ("CuBit.Messages") use "messages.adb";
+   end Naming;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+end Fixture;

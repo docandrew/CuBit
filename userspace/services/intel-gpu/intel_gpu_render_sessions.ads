@@ -22,6 +22,15 @@ package Intel_GPU_Render_Sessions with SPARK_Mode is
        (Sender /= 0 and Resolve'Result = Stamped_Tag and
         Stamped_Tag > Tag_Base and Stamped_Tag <= Tag_Base + Capacity));
    procedure Close (Object : in out Registry; Sender, Tag : Unsigned_64);
+   -- Read-only cleanup observation only. Must NEVER substitute for Resolve
+   -- in allocation, mapping, binding or submission authorization. Inputs are
+   -- kernel envelope values, not application words. Quarantine fails closed.
+   function Resolve_Retired
+     (Object : Registry; Sender, Stamped_Tag : Unsigned_64) return Unsigned_64
+     with Post => (Resolve_Retired'Result = 0 or else
+       (Sender /= 0 and Resolve_Retired'Result = Stamped_Tag and
+        Stamped_Tag > Tag_Base and Stamped_Tag <= Tag_Base + Capacity and
+        Resolve (Object, Sender, Stamped_Tag) = 0));
    procedure Quarantine (Object : in out Registry);
    -- Sender alone never resolves an old session. PID reuse with a newly
    -- minted tag cannot recover earlier names. No tag/slot reuse or reset.

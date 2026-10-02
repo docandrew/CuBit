@@ -1,0 +1,10 @@
+project Display_Lease is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("display_lease_tests.adb",
+     "intel_gpu_display_lease.ads", "intel_gpu_display_lease.adb");
+   for Object_Dir use "build-display-lease";
+   for Main use ("display_lease_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-O2", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Display_Lease;

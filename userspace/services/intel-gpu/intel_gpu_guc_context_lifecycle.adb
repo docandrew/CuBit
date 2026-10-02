@@ -55,6 +55,9 @@ package body Intel_GPU_GuC_Context_Lifecycle with SPARK_Mode is
       Object.Sending := False;
       case Result is
          when Backpressure =>
+            if Object.Dynamic_Fence and then Object.Next_Notification = 0 then
+               Object.Value := Quarantined; return;
+            end if;
             Object.Value := Object.Before_Send;
             Object.Used (Object.Active) := Object.Previously_Used;
             if Object.Dynamic_Fence then
@@ -137,4 +140,48 @@ package body Intel_GPU_GuC_Context_Lifecycle with SPARK_Mode is
    begin
       Object.Value := Quarantined;
    end Fail;
+   procedure Prepare_Deregister
+     (Object : in out Context; Fence : out Unsigned_16; Accepted : out Boolean) is
+   begin
+      Fence := 0; Accepted := False;
+      if Object.Value /= Disabled or else Object.Sending or else
+        Object.Notification_Sending or else Object.Deregister_Sending or else
+        Object.Credits /= 0 or else
+        Object.Next_Notification > Unsigned_32 (Object.Last)
+      then return; end if;
+      Fence := Unsigned_16 (Object.Next_Notification);
+      Object.Next_Notification := Object.Next_Notification + 1;
+      Object.Value := Deregister_Pending;
+      Object.Deregister_Sending := True;
+      Object.Credits := 3;
+      Accepted := True;
+   end Prepare_Deregister;
+   procedure Deregister_Sent (Object : in out Context; Result : Send_Result) is
+   begin
+      if Object.Value = Quarantined then return; end if;
+      if not Object.Deregister_Sending or else Object.Value /= Deregister_Pending
+        or else Object.Next_Notification <= Unsigned_32 (Object.Base) + 4
+      then Object.Value := Quarantined; return; end if;
+      Object.Deregister_Sending := False;
+      case Result is
+         when Backpressure =>
+            -- Only a transport guarantee of no publication allows rollback.
+            Object.Next_Notification := Object.Next_Notification - 1;
+            Object.Value := Disabled; Object.Credits := 0;
+         when Queued => null;
+         when Uncertain => Object.Value := Quarantined;
+      end case;
+   end Deregister_Sent;
+   procedure Deregistration_Done
+     (Object : in out Context; ID : Unsigned_32; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if ID /= Object.ID or else Object.Value = Quarantined then return; end if;
+      if Object.Value /= Deregister_Pending or else Object.Deregister_Sending
+        or else Object.Sending or else Object.Notification_Sending or else
+        Object.Credits /= 3
+      then Object.Value := Quarantined; return; end if;
+      Object.Value := Deregistered; Object.Credits := 0;
+      Accepted := True;
+   end Deregistration_Done;
 end Intel_GPU_GuC_Context_Lifecycle;

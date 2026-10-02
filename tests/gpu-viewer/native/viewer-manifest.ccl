@@ -1,0 +1,6 @@
+(executable-manifest v1
+  (identity "com.cubit.gpu-probe-viewer-test")
+  (version "0.1.0")
+  (request-service ipc-test read-write test-driver)
+  (request-service ipc-test read-write test-supervisor)
+  (request-service desktop read-write desktop))

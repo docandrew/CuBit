@@ -2,10 +2,17 @@ with Interfaces; use Interfaces;
 package Intel_GPU_GuC_Context_Lifecycle with SPARK_Mode is
    type Phase is (Fresh, Ready, Register_Pending, Registration_Queued,
                   Policy_Pending, Policy_Queued, Enable_Pending, Enabled,
-                  Disable_Pending, Disabled, Quarantined);
+                  Disable_Pending, Disabled, Deregister_Pending, Deregistered,
+                  Quarantined);
    type Operation is (Register_Context, Set_Policy, Enable, Disable);
    type Send_Result is (Backpressure, Queued, Uncertain);
    type Context is limited private;
+   -- Acknowledged scheduling stop only. Neither state authorizes backing
+   -- release or PTE mutation without separate drain, alias and owner checks.
+   -- Pending and quarantined contexts never count as stopped.
+   function Scheduling_Stopped (Value : Phase) return Boolean is
+     (Value in Disabled | Deregistered)
+     with Global => null;
    function State (Object : Context) return Phase;
    function Credits_Held (Object : Context) return Natural;
    function Last_Fence (Object : Context) return Unsigned_16;
@@ -57,6 +64,21 @@ package Intel_GPU_GuC_Context_Lifecycle with SPARK_Mode is
        (if Accepted then State (Object) in Enabled | Disabled and Credits_Held (Object) = 0);
    procedure Fail (Object : in out Context)
      with Post => State (Object) = Quarantined;
+   -- Caller has closed admission and drained all retained work. Only a
+   -- disabled context may request deregistration; consume a fresh fence and
+   -- reserve CT+HXG+ID completion space. Neither success nor Deregistered
+   -- permits reuse without separate CPU-grant/GPU-alias retirement.
+   procedure Prepare_Deregister
+     (Object : in out Context; Fence : out Unsigned_16; Accepted : out Boolean)
+     with Post => (if Accepted then
+       State (Object) = Deregister_Pending and Credits_Held (Object) = 3
+       and Fence <= Last_Fence (Object) else Fence = 0);
+   procedure Deregister_Sent (Object : in out Context; Result : Send_Result)
+     with Post => (if State (Object)'Old = Quarantined then State (Object) = Quarantined);
+   procedure Deregistration_Done
+     (Object : in out Context; ID : Unsigned_32; Accepted : out Boolean)
+     with Post => (if Accepted then
+       State (Object) = Deregistered and Credits_Held (Object) = 0);
 private
    type Sent_Set is array (Operation) of Boolean;
    type Context is limited record
@@ -71,6 +93,7 @@ private
       Sending : Boolean := False;
       Credits : Natural range 0 .. 4 := 0;
       Notification_Sending : Boolean := False;
+      Deregister_Sending : Boolean := False;
       Next_Notification : Unsigned_32 range 0 .. 65536 := 0;
    end record;
 end Intel_GPU_GuC_Context_Lifecycle;

@@ -1,0 +1,909 @@
+--- a/src/intel/perf/intel_perf.c
++++ b/src/intel/perf/intel_perf.c
+@@ -1022,430 +1022,6 @@
+    }
+ }
+ 
+-/* Accumulate 32bits OA counters */
+-static inline void
+-accumulate_uint32(const uint32_t *report0,
+-                  const uint32_t *report1,
+-                  uint64_t *accumulator)
+-{
+-   *accumulator += (uint32_t)(*report1 - *report0);
+-}
+-
+-/* Accumulate 40bits OA counters */
+-static inline void
+-accumulate_uint40(int a_index,
+-                  const uint32_t *report0,
+-                  const uint32_t *report1,
+-                  uint64_t *accumulator)
+-{
+-   const uint8_t *high_bytes0 = (uint8_t *)(report0 + 40);
+-   const uint8_t *high_bytes1 = (uint8_t *)(report1 + 40);
+-   uint64_t high0 = (uint64_t)(high_bytes0[a_index]) << 32;
+-   uint64_t high1 = (uint64_t)(high_bytes1[a_index]) << 32;
+-   uint64_t value0 = report0[a_index + 4] | high0;
+-   uint64_t value1 = report1[a_index + 4] | high1;
+-   uint64_t delta;
+-
+-   if (value0 > value1)
+-      delta = (1ULL << 40) + value1 - value0;
+-   else
+-      delta = value1 - value0;
+-
+-   *accumulator += delta;
+-}
+-
+-/* Accumulate 64bits OA counters */
+-static inline void
+-accumulate_uint64(const uint32_t *report0,
+-                  const uint32_t *report1,
+-                  uint64_t *accumulator)
+-{
+-   *accumulator += *((const uint64_t *)report1) - *((const uint64_t *)report0);
+-}
+-
+-static void
+-gfx8_read_report_clock_ratios(const uint32_t *report,
+-                              uint64_t *slice_freq_hz,
+-                              uint64_t *unslice_freq_hz)
+-{
+-   /* The lower 16bits of the RPT_ID field of the OA reports contains a
+-    * snapshot of the bits coming from the RP_FREQ_NORMAL register and is
+-    * divided this way :
+-    *
+-    * RPT_ID[31:25]: RP_FREQ_NORMAL[20:14] (low squashed_slice_clock_frequency)
+-    * RPT_ID[10:9]:  RP_FREQ_NORMAL[22:21] (high squashed_slice_clock_frequency)
+-    * RPT_ID[8:0]:   RP_FREQ_NORMAL[31:23] (squashed_unslice_clock_frequency)
+-    *
+-    * RP_FREQ_NORMAL[31:23]: Software Unslice Ratio Request
+-    *                        Multiple of 33.33MHz 2xclk (16 MHz 1xclk)
+-    *
+-    * RP_FREQ_NORMAL[22:14]: Software Slice Ratio Request
+-    *                        Multiple of 33.33MHz 2xclk (16 MHz 1xclk)
+-    */
+-
+-   uint32_t unslice_freq = report[0] & 0x1ff;
+-   uint32_t slice_freq_low = (report[0] >> 25) & 0x7f;
+-   uint32_t slice_freq_high = (report[0] >> 9) & 0x3;
+-   uint32_t slice_freq = slice_freq_low | (slice_freq_high << 7);
+-
+-   *slice_freq_hz = slice_freq * 16666667ULL;
+-   *unslice_freq_hz = unslice_freq * 16666667ULL;
+-}
+-
+-void
+-intel_perf_query_result_read_frequencies(struct intel_perf_query_result *result,
+-                                         const struct intel_device_info *devinfo,
+-                                         const uint32_t *start,
+-                                         const uint32_t *end)
+-{
+-   /* Slice/Unslice frequency is only available in the OA reports when the
+-    * "Disable OA reports due to clock ratio change" field in
+-    * OA_DEBUG_REGISTER is set to 1. This is how the kernel programs this
+-    * global register (see drivers/gpu/drm/i915/i915_perf.c)
+-    *
+-    * Documentation says this should be available on Gfx9+ but experimentation
+-    * shows that Gfx8 reports similar values, so we enable it there too.
+-    */
+-   if (devinfo->ver < 8)
+-      return;
+-
+-   gfx8_read_report_clock_ratios(start,
+-                                 &result->slice_frequency[0],
+-                                 &result->unslice_frequency[0]);
+-   gfx8_read_report_clock_ratios(end,
+-                                 &result->slice_frequency[1],
+-                                 &result->unslice_frequency[1]);
+-}
+-
+-static inline bool
+-can_use_mi_rpc_bc_counters(const struct intel_device_info *devinfo)
+-{
+-   return devinfo->ver <= 11;
+-}
+-
+-uint64_t
+-intel_perf_report_timestamp(const struct intel_perf_query_info *query,
+-                            const struct intel_device_info *devinfo,
+-                            const uint32_t *report)
+-{
+-   if (query->perf->devinfo->verx10 >= 200) {
+-      uint64_t data_u64 = *((const uint64_t *)&report[2]);
+-      return data_u64 >> query->perf->oa_timestamp_shift;
+-   }
+-
+-   return report[1] >> query->perf->oa_timestamp_shift;
+-}
+-
+-void
+-intel_perf_query_result_accumulate(struct intel_perf_query_result *result,
+-                                   const struct intel_perf_query_info *query,
+-                                   const uint32_t *start,
+-                                   const uint32_t *end)
+-{
+-   const struct intel_device_info *devinfo = query->perf->devinfo;
+-   int i;
+-
+-   if (query->perf->devinfo->verx10 >= 200) {
+-      if (result->hw_id == INTEL_PERF_INVALID_CTX_ID &&
+-          start[4] != INTEL_PERF_INVALID_CTX_ID)
+-         result->hw_id = start[4];
+-   } else {
+-      if (result->hw_id == INTEL_PERF_INVALID_CTX_ID &&
+-          start[2] != INTEL_PERF_INVALID_CTX_ID)
+-         result->hw_id = start[2];
+-   }
+-
+-   if (result->reports_accumulated == 0)
+-      result->begin_timestamp = intel_perf_report_timestamp(query, devinfo, start);
+-   result->end_timestamp = intel_perf_report_timestamp(query, devinfo, end);
+-   result->reports_accumulated++;
+-
+-   /* oa format handling needs to match with platform version returned in
+-    * intel_perf_get_oa_format()
+-    */
+-   assert(intel_perf_get_oa_format(query->perf) == query->oa_format);
+-   if (query->perf->devinfo->verx10 >= 200) {
+-      /* PEC64u64 */
+-      result->accumulator[query->gpu_time_offset] =
+-         intel_perf_report_timestamp(query, devinfo, end) -
+-         intel_perf_report_timestamp(query, devinfo, start);
+-      accumulate_uint64(start + 6, end + 6, &result->accumulator[query->gpu_clock_offset]);
+-
+-      for (i = 0; i < 64; i++)
+-         accumulate_uint64(start + 8 + (2 * i), end + 8 + (2 * i),
+-                           &result->accumulator[query->pec_offset + i]);
+-   } else if (query->perf->devinfo->verx10 >= 125) {
+-      /* I915_OA_FORMAT_A24u40_A14u32_B8_C8 */
+-      result->accumulator[query->gpu_time_offset] =
+-         intel_perf_report_timestamp(query, devinfo, end) -
+-         intel_perf_report_timestamp(query, devinfo, start);
+-
+-      accumulate_uint32(start + 3, end + 3,
+-                        result->accumulator + query->gpu_clock_offset); /* clock */
+-
+-      /* A0-A3 counters are 32bits */
+-      for (i = 0; i < 4; i++) {
+-         accumulate_uint32(start + 4 + i, end + 4 + i,
+-                           result->accumulator + query->a_offset + i);
+-      }
+-
+-      /* A4-A23 counters are 40bits */
+-      for (i = 4; i < 24; i++) {
+-         accumulate_uint40(i, start, end,
+-                           result->accumulator + query->a_offset + i);
+-      }
+-
+-      /* A24-27 counters are 32bits */
+-      for (i = 0; i < 4; i++) {
+-         accumulate_uint32(start + 28 + i, end + 28 + i,
+-                           result->accumulator + query->a_offset + 24 + i);
+-      }
+-
+-      /* A28-31 counters are 40bits */
+-      for (i = 28; i < 32; i++) {
+-         accumulate_uint40(i, start, end,
+-                           result->accumulator + query->a_offset + i);
+-      }
+-
+-      /* A32-35 counters are 32bits */
+-      for (i = 0; i < 4; i++) {
+-         accumulate_uint32(start + 36 + i, end + 36 + i,
+-                           result->accumulator + query->a_offset + 32 + i);
+-      }
+-
+-      if (can_use_mi_rpc_bc_counters(query->perf->devinfo) ||
+-          !query->perf->sys_vars.query_mode) {
+-         /* A36-37 counters are 32bits */
+-         accumulate_uint32(start + 40, end + 40,
+-                           result->accumulator + query->a_offset + 36);
+-         accumulate_uint32(start + 46, end + 46,
+-                           result->accumulator + query->a_offset + 37);
+-
+-         /* 8x 32bit B counters */
+-         for (i = 0; i < 8; i++) {
+-            accumulate_uint32(start + 48 + i, end + 48 + i,
+-                              result->accumulator + query->b_offset + i);
+-         }
+-
+-         /* 8x 32bit C counters... */
+-         for (i = 0; i < 8; i++) {
+-            accumulate_uint32(start + 56 + i, end + 56 + i,
+-                              result->accumulator + query->c_offset + i);
+-         }
+-      }
+-   } else if (query->perf->devinfo->verx10 >= 120) {
+-      /* I915_OA_FORMAT_A32u40_A4u32_B8_C8 */
+-      result->accumulator[query->gpu_time_offset] =
+-         intel_perf_report_timestamp(query, devinfo, end) -
+-         intel_perf_report_timestamp(query, devinfo, start);
+-
+-      accumulate_uint32(start + 3, end + 3,
+-                        result->accumulator + query->gpu_clock_offset); /* clock */
+-
+-      /* 32x 40bit A counters... */
+-      for (i = 0; i < 32; i++) {
+-         accumulate_uint40(i, start, end,
+-                           result->accumulator + query->a_offset + i);
+-      }
+-
+-      /* 4x 32bit A counters... */
+-      for (i = 0; i < 4; i++) {
+-         accumulate_uint32(start + 36 + i, end + 36 + i,
+-                           result->accumulator + query->a_offset + 32 + i);
+-      }
+-
+-      if (can_use_mi_rpc_bc_counters(query->perf->devinfo) ||
+-          !query->perf->sys_vars.query_mode) {
+-         /* 8x 32bit B counters */
+-         for (i = 0; i < 8; i++) {
+-            accumulate_uint32(start + 48 + i, end + 48 + i,
+-                              result->accumulator + query->b_offset + i);
+-         }
+-
+-         /* 8x 32bit C counters... */
+-         for (i = 0; i < 8; i++) {
+-            accumulate_uint32(start + 56 + i, end + 56 + i,
+-                              result->accumulator + query->c_offset + i);
+-         }
+-      }
+-   } else {
+-      /* I915_OA_FORMAT_A24u40_A14u32_B8_C8 */
+-      result->accumulator[query->gpu_time_offset] =
+-         intel_perf_report_timestamp(query, devinfo, end) -
+-         intel_perf_report_timestamp(query, devinfo, start);
+-
+-      for (i = 0; i < 61; i++) {
+-         accumulate_uint32(start + 3 + i, end + 3 + i,
+-                           result->accumulator + query->a_offset + i);
+-      }
+-   }
+-}
+-
+-#define GET_FIELD(word, field) (((word)  & field ## _MASK) >> field ## _SHIFT)
+-
+-void
+-intel_perf_query_result_read_gt_frequency(struct intel_perf_query_result *result,
+-                                          const struct intel_device_info *devinfo,
+-                                          const uint32_t start,
+-                                          const uint32_t end)
+-{
+-   switch (devinfo->ver) {
+-   case 7:
+-   case 8:
+-      result->gt_frequency[0] = GET_FIELD(start, GFX7_RPSTAT1_CURR_GT_FREQ) * 50ULL;
+-      result->gt_frequency[1] = GET_FIELD(end, GFX7_RPSTAT1_CURR_GT_FREQ) * 50ULL;
+-      break;
+-   case 9:
+-   case 11:
+-   case 12:
+-   case 20:
+-   case 30:
+-      result->gt_frequency[0] = GET_FIELD(start, GFX9_RPSTAT0_CURR_GT_FREQ) * 50ULL / 3ULL;
+-      result->gt_frequency[1] = GET_FIELD(end, GFX9_RPSTAT0_CURR_GT_FREQ) * 50ULL / 3ULL;
+-      break;
+-   default:
+-      UNREACHABLE("unexpected gen");
+-   }
+-
+-   /* Put the numbers into Hz. */
+-   result->gt_frequency[0] *= 1000000ULL;
+-   result->gt_frequency[1] *= 1000000ULL;
+-}
+-
+-void
+-intel_perf_query_result_read_perfcnts(struct intel_perf_query_result *result,
+-                                      const struct intel_perf_query_info *query,
+-                                      const uint64_t *start,
+-                                      const uint64_t *end)
+-{
+-   for (uint32_t i = 0; i < 2; i++) {
+-      uint64_t v0 = start[i] & PERF_CNT_VALUE_MASK;
+-      uint64_t v1 = end[i] & PERF_CNT_VALUE_MASK;
+-
+-      result->accumulator[query->perfcnt_offset + i] = v0 > v1 ?
+-         (PERF_CNT_VALUE_MASK + 1 + v1 - v0) :
+-         (v1 - v0);
+-   }
+-}
+-
+-static uint32_t
+-query_accumulator_offset(const struct intel_perf_query_info *query,
+-                         enum intel_perf_query_field_type type,
+-                         uint8_t index)
+-{
+-   switch (type) {
+-   case INTEL_PERF_QUERY_FIELD_TYPE_SRM_PERFCNT:
+-      return query->perfcnt_offset + index;
+-   case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_A:
+-      return query->a_offset + index;
+-   case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_B:
+-      return query->b_offset + index;
+-   case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_C:
+-      return query->c_offset + index;
+-   case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_PEC:
+-      return query->pec_offset + index;
+-   default:
+-      UNREACHABLE("Invalid register type");
+-      return 0;
+-   }
+-}
+-
+-void
+-intel_perf_query_result_accumulate_fields(struct intel_perf_query_result *result,
+-                                          const struct intel_perf_query_info *query,
+-                                          const void *start,
+-                                          const void *end,
+-                                          bool no_oa_accumulate)
+-{
+-   const struct intel_perf_query_field_layout *layout = &query->perf->query_layout;
+-   const struct intel_device_info *devinfo = query->perf->devinfo;
+-
+-   for (uint32_t r = 0; r < layout->n_fields; r++) {
+-      const struct intel_perf_query_field *field = &layout->fields[r];
+-
+-      if (field->type == INTEL_PERF_QUERY_FIELD_TYPE_MI_RPC) {
+-         intel_perf_query_result_read_frequencies(result, devinfo,
+-                                                start + field->location,
+-                                                end + field->location);
+-         /* no_oa_accumulate=true is used when doing GL perf queries, we
+-          * manually parse the OA reports from the OA buffer and subtract
+-          * unrelated deltas, so don't accumulate the begin/end reports here.
+-          */
+-         if (!no_oa_accumulate) {
+-            intel_perf_query_result_accumulate(result, query,
+-                                               start + field->location,
+-                                               end + field->location);
+-         }
+-      } else {
+-         uint64_t v0, v1;
+-
+-         if (field->size == 4) {
+-            v0 = *(const uint32_t *)(start + field->location);
+-            v1 = *(const uint32_t *)(end + field->location);
+-         } else {
+-            assert(field->size == 8);
+-            v0 = *(const uint64_t *)(start + field->location);
+-            v1 = *(const uint64_t *)(end + field->location);
+-         }
+-
+-         if (field->mask) {
+-            v0 = field->mask & v0;
+-            v1 = field->mask & v1;
+-         }
+-
+-         /* RPSTAT is a bit of a special case because its begin/end values
+-          * represent frequencies. We store it in a separate location.
+-          */
+-         if (field->type == INTEL_PERF_QUERY_FIELD_TYPE_SRM_RPSTAT)
+-            intel_perf_query_result_read_gt_frequency(result, devinfo, v0, v1);
+-         else
+-            result->accumulator[query_accumulator_offset(query, field->type, field->index)] = v1 - v0;
+-      }
+-   }
+-}
+-
+-void
+-intel_perf_query_result_clear(struct intel_perf_query_result *result)
+-{
+-   memset(result, 0, sizeof(*result));
+-   result->hw_id = INTEL_PERF_INVALID_CTX_ID;
+-}
+-
+-void
+-intel_perf_query_result_print_fields(const struct intel_perf_query_info *query,
+-                                     const void *data)
+-{
+-   const struct intel_perf_query_field_layout *layout = &query->perf->query_layout;
+-
+-   for (uint32_t r = 0; r < layout->n_fields; r++) {
+-      const struct intel_perf_query_field *field = &layout->fields[r];
+-      const uint32_t *value32 = data + field->location;
+-
+-      switch (field->type) {
+-      case INTEL_PERF_QUERY_FIELD_TYPE_MI_RPC:
+-         fprintf(stderr, "MI_RPC:\n");
+-         fprintf(stderr, "  TS: 0x%08x\n", *(value32 + 1));
+-         fprintf(stderr, "  CLK: 0x%08x\n", *(value32 + 3));
+-         break;
+-      case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_A:
+-         fprintf(stderr, "A%u: 0x%08x\n", field->index, *value32);
+-         break;
+-      case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_B:
+-         fprintf(stderr, "B%u: 0x%08x\n", field->index, *value32);
+-         break;
+-      case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_C:
+-         fprintf(stderr, "C%u: 0x%08x\n", field->index, *value32);
+-         break;
+-      case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_PEC: {
+-         const uint64_t *value64 = data + field->location;
+-         fprintf(stderr, "PEC%u: 0x%" PRIx64 "\n", field->index, *value64);
+-         break;
+-      }
+-      default:
+-         break;
+-      }
+-   }
+-}
+ 
+ static int
+ intel_perf_compare_query_names(const void *v1, const void *v2)
+--- a/src/intel/perf/intel_perf_results.c
++++ b/src/intel/perf/intel_perf_results.c
+@@ -0,0 +1,452 @@
++/*
++ * Copyright © 2018 Intel Corporation
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice (including the next
++ * paragraph) shall be included in all copies or substantial portions of the
++ * Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
++ * IN THE SOFTWARE.
++ */
++
++#include <inttypes.h>
++#include "intel_perf.h"
++#include "intel_perf_regs.h"
++#include "util/macros.h"
++
++/* Accumulate 32bits OA counters */
++static inline void
++accumulate_uint32(const uint32_t *report0,
++                  const uint32_t *report1,
++                  uint64_t *accumulator)
++{
++   *accumulator += (uint32_t)(*report1 - *report0);
++}
++
++/* Accumulate 40bits OA counters */
++static inline void
++accumulate_uint40(int a_index,
++                  const uint32_t *report0,
++                  const uint32_t *report1,
++                  uint64_t *accumulator)
++{
++   const uint8_t *high_bytes0 = (uint8_t *)(report0 + 40);
++   const uint8_t *high_bytes1 = (uint8_t *)(report1 + 40);
++   uint64_t high0 = (uint64_t)(high_bytes0[a_index]) << 32;
++   uint64_t high1 = (uint64_t)(high_bytes1[a_index]) << 32;
++   uint64_t value0 = report0[a_index + 4] | high0;
++   uint64_t value1 = report1[a_index + 4] | high1;
++   uint64_t delta;
++
++   if (value0 > value1)
++      delta = (1ULL << 40) + value1 - value0;
++   else
++      delta = value1 - value0;
++
++   *accumulator += delta;
++}
++
++/* Accumulate 64bits OA counters */
++static inline void
++accumulate_uint64(const uint32_t *report0,
++                  const uint32_t *report1,
++                  uint64_t *accumulator)
++{
++   *accumulator += *((const uint64_t *)report1) - *((const uint64_t *)report0);
++}
++
++static void
++gfx8_read_report_clock_ratios(const uint32_t *report,
++                              uint64_t *slice_freq_hz,
++                              uint64_t *unslice_freq_hz)
++{
++   /* The lower 16bits of the RPT_ID field of the OA reports contains a
++    * snapshot of the bits coming from the RP_FREQ_NORMAL register and is
++    * divided this way :
++    *
++    * RPT_ID[31:25]: RP_FREQ_NORMAL[20:14] (low squashed_slice_clock_frequency)
++    * RPT_ID[10:9]:  RP_FREQ_NORMAL[22:21] (high squashed_slice_clock_frequency)
++    * RPT_ID[8:0]:   RP_FREQ_NORMAL[31:23] (squashed_unslice_clock_frequency)
++    *
++    * RP_FREQ_NORMAL[31:23]: Software Unslice Ratio Request
++    *                        Multiple of 33.33MHz 2xclk (16 MHz 1xclk)
++    *
++    * RP_FREQ_NORMAL[22:14]: Software Slice Ratio Request
++    *                        Multiple of 33.33MHz 2xclk (16 MHz 1xclk)
++    */
++
++   uint32_t unslice_freq = report[0] & 0x1ff;
++   uint32_t slice_freq_low = (report[0] >> 25) & 0x7f;
++   uint32_t slice_freq_high = (report[0] >> 9) & 0x3;
++   uint32_t slice_freq = slice_freq_low | (slice_freq_high << 7);
++
++   *slice_freq_hz = slice_freq * 16666667ULL;
++   *unslice_freq_hz = unslice_freq * 16666667ULL;
++}
++
++void
++intel_perf_query_result_read_frequencies(struct intel_perf_query_result *result,
++                                         const struct intel_device_info *devinfo,
++                                         const uint32_t *start,
++                                         const uint32_t *end)
++{
++   /* Slice/Unslice frequency is only available in the OA reports when the
++    * "Disable OA reports due to clock ratio change" field in
++    * OA_DEBUG_REGISTER is set to 1. This is how the kernel programs this
++    * global register (see drivers/gpu/drm/i915/i915_perf.c)
++    *
++    * Documentation says this should be available on Gfx9+ but experimentation
++    * shows that Gfx8 reports similar values, so we enable it there too.
++    */
++   if (devinfo->ver < 8)
++      return;
++
++   gfx8_read_report_clock_ratios(start,
++                                 &result->slice_frequency[0],
++                                 &result->unslice_frequency[0]);
++   gfx8_read_report_clock_ratios(end,
++                                 &result->slice_frequency[1],
++                                 &result->unslice_frequency[1]);
++}
++
++static inline bool
++can_use_mi_rpc_bc_counters(const struct intel_device_info *devinfo)
++{
++   return devinfo->ver <= 11;
++}
++
++uint64_t
++intel_perf_report_timestamp(const struct intel_perf_query_info *query,
++                            const struct intel_device_info *devinfo,
++                            const uint32_t *report)
++{
++   if (query->perf->devinfo->verx10 >= 200) {
++      uint64_t data_u64 = *((const uint64_t *)&report[2]);
++      return data_u64 >> query->perf->oa_timestamp_shift;
++   }
++
++   return report[1] >> query->perf->oa_timestamp_shift;
++}
++
++void
++intel_perf_query_result_accumulate(struct intel_perf_query_result *result,
++                                   const struct intel_perf_query_info *query,
++                                   const uint32_t *start,
++                                   const uint32_t *end)
++{
++   const struct intel_device_info *devinfo = query->perf->devinfo;
++   int i;
++
++   if (query->perf->devinfo->verx10 >= 200) {
++      if (result->hw_id == INTEL_PERF_INVALID_CTX_ID &&
++          start[4] != INTEL_PERF_INVALID_CTX_ID)
++         result->hw_id = start[4];
++   } else {
++      if (result->hw_id == INTEL_PERF_INVALID_CTX_ID &&
++          start[2] != INTEL_PERF_INVALID_CTX_ID)
++         result->hw_id = start[2];
++   }
++
++   if (result->reports_accumulated == 0)
++      result->begin_timestamp = intel_perf_report_timestamp(query, devinfo, start);
++   result->end_timestamp = intel_perf_report_timestamp(query, devinfo, end);
++   result->reports_accumulated++;
++
++   /* oa format handling needs to match with platform version returned in
++    * intel_perf_get_oa_format()
++    */
++   assert(intel_perf_get_oa_format(query->perf) == query->oa_format);
++   if (query->perf->devinfo->verx10 >= 200) {
++      /* PEC64u64 */
++      result->accumulator[query->gpu_time_offset] =
++         intel_perf_report_timestamp(query, devinfo, end) -
++         intel_perf_report_timestamp(query, devinfo, start);
++      accumulate_uint64(start + 6, end + 6, &result->accumulator[query->gpu_clock_offset]);
++
++      for (i = 0; i < 64; i++)
++         accumulate_uint64(start + 8 + (2 * i), end + 8 + (2 * i),
++                           &result->accumulator[query->pec_offset + i]);
++   } else if (query->perf->devinfo->verx10 >= 125) {
++      /* I915_OA_FORMAT_A24u40_A14u32_B8_C8 */
++      result->accumulator[query->gpu_time_offset] =
++         intel_perf_report_timestamp(query, devinfo, end) -
++         intel_perf_report_timestamp(query, devinfo, start);
++
++      accumulate_uint32(start + 3, end + 3,
++                        result->accumulator + query->gpu_clock_offset); /* clock */
++
++      /* A0-A3 counters are 32bits */
++      for (i = 0; i < 4; i++) {
++         accumulate_uint32(start + 4 + i, end + 4 + i,
++                           result->accumulator + query->a_offset + i);
++      }
++
++      /* A4-A23 counters are 40bits */
++      for (i = 4; i < 24; i++) {
++         accumulate_uint40(i, start, end,
++                           result->accumulator + query->a_offset + i);
++      }
++
++      /* A24-27 counters are 32bits */
++      for (i = 0; i < 4; i++) {
++         accumulate_uint32(start + 28 + i, end + 28 + i,
++                           result->accumulator + query->a_offset + 24 + i);
++      }
++
++      /* A28-31 counters are 40bits */
++      for (i = 28; i < 32; i++) {
++         accumulate_uint40(i, start, end,
++                           result->accumulator + query->a_offset + i);
++      }
++
++      /* A32-35 counters are 32bits */
++      for (i = 0; i < 4; i++) {
++         accumulate_uint32(start + 36 + i, end + 36 + i,
++                           result->accumulator + query->a_offset + 32 + i);
++      }
++
++      if (can_use_mi_rpc_bc_counters(query->perf->devinfo) ||
++          !query->perf->sys_vars.query_mode) {
++         /* A36-37 counters are 32bits */
++         accumulate_uint32(start + 40, end + 40,
++                           result->accumulator + query->a_offset + 36);
++         accumulate_uint32(start + 46, end + 46,
++                           result->accumulator + query->a_offset + 37);
++
++         /* 8x 32bit B counters */
++         for (i = 0; i < 8; i++) {
++            accumulate_uint32(start + 48 + i, end + 48 + i,
++                              result->accumulator + query->b_offset + i);
++         }
++
++         /* 8x 32bit C counters... */
++         for (i = 0; i < 8; i++) {
++            accumulate_uint32(start + 56 + i, end + 56 + i,
++                              result->accumulator + query->c_offset + i);
++         }
++      }
++   } else if (query->perf->devinfo->verx10 >= 120) {
++      /* I915_OA_FORMAT_A32u40_A4u32_B8_C8 */
++      result->accumulator[query->gpu_time_offset] =
++         intel_perf_report_timestamp(query, devinfo, end) -
++         intel_perf_report_timestamp(query, devinfo, start);
++
++      accumulate_uint32(start + 3, end + 3,
++                        result->accumulator + query->gpu_clock_offset); /* clock */
++
++      /* 32x 40bit A counters... */
++      for (i = 0; i < 32; i++) {
++         accumulate_uint40(i, start, end,
++                           result->accumulator + query->a_offset + i);
++      }
++
++      /* 4x 32bit A counters... */
++      for (i = 0; i < 4; i++) {
++         accumulate_uint32(start + 36 + i, end + 36 + i,
++                           result->accumulator + query->a_offset + 32 + i);
++      }
++
++      if (can_use_mi_rpc_bc_counters(query->perf->devinfo) ||
++          !query->perf->sys_vars.query_mode) {
++         /* 8x 32bit B counters */
++         for (i = 0; i < 8; i++) {
++            accumulate_uint32(start + 48 + i, end + 48 + i,
++                              result->accumulator + query->b_offset + i);
++         }
++
++         /* 8x 32bit C counters... */
++         for (i = 0; i < 8; i++) {
++            accumulate_uint32(start + 56 + i, end + 56 + i,
++                              result->accumulator + query->c_offset + i);
++         }
++      }
++   } else {
++      /* I915_OA_FORMAT_A24u40_A14u32_B8_C8 */
++      result->accumulator[query->gpu_time_offset] =
++         intel_perf_report_timestamp(query, devinfo, end) -
++         intel_perf_report_timestamp(query, devinfo, start);
++
++      for (i = 0; i < 61; i++) {
++         accumulate_uint32(start + 3 + i, end + 3 + i,
++                           result->accumulator + query->a_offset + i);
++      }
++   }
++}
++
++#define GET_FIELD(word, field) (((word)  & field ## _MASK) >> field ## _SHIFT)
++
++void
++intel_perf_query_result_read_gt_frequency(struct intel_perf_query_result *result,
++                                          const struct intel_device_info *devinfo,
++                                          const uint32_t start,
++                                          const uint32_t end)
++{
++   switch (devinfo->ver) {
++   case 7:
++   case 8:
++      result->gt_frequency[0] = GET_FIELD(start, GFX7_RPSTAT1_CURR_GT_FREQ) * 50ULL;
++      result->gt_frequency[1] = GET_FIELD(end, GFX7_RPSTAT1_CURR_GT_FREQ) * 50ULL;
++      break;
++   case 9:
++   case 11:
++   case 12:
++   case 20:
++   case 30:
++      result->gt_frequency[0] = GET_FIELD(start, GFX9_RPSTAT0_CURR_GT_FREQ) * 50ULL / 3ULL;
++      result->gt_frequency[1] = GET_FIELD(end, GFX9_RPSTAT0_CURR_GT_FREQ) * 50ULL / 3ULL;
++      break;
++   default:
++      UNREACHABLE("unexpected gen");
++   }
++
++   /* Put the numbers into Hz. */
++   result->gt_frequency[0] *= 1000000ULL;
++   result->gt_frequency[1] *= 1000000ULL;
++}
++
++void
++intel_perf_query_result_read_perfcnts(struct intel_perf_query_result *result,
++                                      const struct intel_perf_query_info *query,
++                                      const uint64_t *start,
++                                      const uint64_t *end)
++{
++   for (uint32_t i = 0; i < 2; i++) {
++      uint64_t v0 = start[i] & PERF_CNT_VALUE_MASK;
++      uint64_t v1 = end[i] & PERF_CNT_VALUE_MASK;
++
++      result->accumulator[query->perfcnt_offset + i] = v0 > v1 ?
++         (PERF_CNT_VALUE_MASK + 1 + v1 - v0) :
++         (v1 - v0);
++   }
++}
++
++static uint32_t
++query_accumulator_offset(const struct intel_perf_query_info *query,
++                         enum intel_perf_query_field_type type,
++                         uint8_t index)
++{
++   switch (type) {
++   case INTEL_PERF_QUERY_FIELD_TYPE_SRM_PERFCNT:
++      return query->perfcnt_offset + index;
++   case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_A:
++      return query->a_offset + index;
++   case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_B:
++      return query->b_offset + index;
++   case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_C:
++      return query->c_offset + index;
++   case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_PEC:
++      return query->pec_offset + index;
++   default:
++      UNREACHABLE("Invalid register type");
++      return 0;
++   }
++}
++
++void
++intel_perf_query_result_accumulate_fields(struct intel_perf_query_result *result,
++                                          const struct intel_perf_query_info *query,
++                                          const void *start,
++                                          const void *end,
++                                          bool no_oa_accumulate)
++{
++   const struct intel_perf_query_field_layout *layout = &query->perf->query_layout;
++   const struct intel_device_info *devinfo = query->perf->devinfo;
++
++   for (uint32_t r = 0; r < layout->n_fields; r++) {
++      const struct intel_perf_query_field *field = &layout->fields[r];
++
++      if (field->type == INTEL_PERF_QUERY_FIELD_TYPE_MI_RPC) {
++         intel_perf_query_result_read_frequencies(result, devinfo,
++                                                start + field->location,
++                                                end + field->location);
++         /* no_oa_accumulate=true is used when doing GL perf queries, we
++          * manually parse the OA reports from the OA buffer and subtract
++          * unrelated deltas, so don't accumulate the begin/end reports here.
++          */
++         if (!no_oa_accumulate) {
++            intel_perf_query_result_accumulate(result, query,
++                                               start + field->location,
++                                               end + field->location);
++         }
++      } else {
++         uint64_t v0, v1;
++
++         if (field->size == 4) {
++            v0 = *(const uint32_t *)(start + field->location);
++            v1 = *(const uint32_t *)(end + field->location);
++         } else {
++            assert(field->size == 8);
++            v0 = *(const uint64_t *)(start + field->location);
++            v1 = *(const uint64_t *)(end + field->location);
++         }
++
++         if (field->mask) {
++            v0 = field->mask & v0;
++            v1 = field->mask & v1;
++         }
++
++         /* RPSTAT is a bit of a special case because its begin/end values
++          * represent frequencies. We store it in a separate location.
++          */
++         if (field->type == INTEL_PERF_QUERY_FIELD_TYPE_SRM_RPSTAT)
++            intel_perf_query_result_read_gt_frequency(result, devinfo, v0, v1);
++         else
++            result->accumulator[query_accumulator_offset(query, field->type, field->index)] = v1 - v0;
++      }
++   }
++}
++
++void
++intel_perf_query_result_clear(struct intel_perf_query_result *result)
++{
++   memset(result, 0, sizeof(*result));
++   result->hw_id = INTEL_PERF_INVALID_CTX_ID;
++}
++
++void
++intel_perf_query_result_print_fields(const struct intel_perf_query_info *query,
++                                     const void *data)
++{
++   const struct intel_perf_query_field_layout *layout = &query->perf->query_layout;
++
++   for (uint32_t r = 0; r < layout->n_fields; r++) {
++      const struct intel_perf_query_field *field = &layout->fields[r];
++      const uint32_t *value32 = data + field->location;
++
++      switch (field->type) {
++      case INTEL_PERF_QUERY_FIELD_TYPE_MI_RPC:
++         fprintf(stderr, "MI_RPC:\n");
++         fprintf(stderr, "  TS: 0x%08x\n", *(value32 + 1));
++         fprintf(stderr, "  CLK: 0x%08x\n", *(value32 + 3));
++         break;
++      case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_A:
++         fprintf(stderr, "A%u: 0x%08x\n", field->index, *value32);
++         break;
++      case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_B:
++         fprintf(stderr, "B%u: 0x%08x\n", field->index, *value32);
++         break;
++      case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_C:
++         fprintf(stderr, "C%u: 0x%08x\n", field->index, *value32);
++         break;
++      case INTEL_PERF_QUERY_FIELD_TYPE_SRM_OA_PEC: {
++         const uint64_t *value64 = data + field->location;
++         fprintf(stderr, "PEC%u: 0x%" PRIx64 "\n", field->index, *value64);
++         break;
++      }
++      default:
++         break;
++      }
++   }
++}
+--- a/src/intel/perf/meson.build
++++ b/src/intel/perf/meson.build
+@@ -20,7 +20,9 @@
+   intel_hw_metrics_xml_files += 'oa-@0@.xml'.format(hw)
+ endforeach
+ 
+-intel_perf_sources = [
++intel_perf_sources = ['intel_perf_results.c']
++if host_machine.system() != 'cubit'
++intel_perf_sources += [
+   'i915/intel_perf.c',
+   'i915/intel_perf.h',
+   'xe/intel_perf.c',
+@@ -31,6 +33,7 @@
+   'intel_perf_query.c',
+   'intel_perf_mdapi.c',
+ ]
++endif
+ 
+ intel_perf_sources += custom_target(
+   'intel-perf-sources',

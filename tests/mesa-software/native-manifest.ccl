@@ -1,0 +1,3 @@
+(executable-manifest v1
+  (identity "com.cubit.softpipe-check")
+  (version "0.1.0"))

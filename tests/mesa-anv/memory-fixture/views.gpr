@@ -1,0 +1,20 @@
+project Views extends "memory.gpr" is
+   for Source_Dirs use (".", "../../../userspace/services/intel-gpu",
+     "../../../userspace/runtime/gnat");
+   for Source_Files use ("view_tests.adb", "messages_mock.ads", "messages_mock.adb", "memory_mock.ads",
+     "cubit-capability_grants.ads", "cubit-capability_grants.adb",
+     "memory_mock.adb", "cubit.ads", "cubit-grant_references.ads",
+     "intel_gpu_buffer_views.ads", "intel_gpu_buffer_views.adb",
+     "intel_gpu_buffer_handles.ads", "intel_gpu_buffer_handles.adb",
+     "intel_gpu_physical_extents.ads", "intel_gpu_physical_extents.adb",
+     "intel_gpu_buffer_reply.ads", "intel_gpu_buffer_reply.adb",
+     "intel_gpu_buffer_backing.ads");
+   for Object_Dir use "build-views";
+   for Main use ("view_tests.adb");
+   package Naming is
+      for Spec ("CuBit.Messages") use "messages_mock.ads";
+      for Body ("CuBit.Messages") use "messages_mock.adb";
+      for Spec ("CuBit.Memory_Grants") use "memory_mock.ads";
+      for Body ("CuBit.Memory_Grants") use "memory_mock.adb";
+   end Naming;
+end Views;

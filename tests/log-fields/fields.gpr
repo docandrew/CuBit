@@ -1,0 +1,13 @@
+project Fields is
+   for Source_Dirs use (".", "build/source");
+   for Source_Files use
+     ("main.adb", "cubit.ads", "cubit-protocols.ads",
+      "cubit-log_records.ads", "cubit-log_records.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Fields;

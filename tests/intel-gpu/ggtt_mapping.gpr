@@ -1,0 +1,16 @@
+project GGTT_Mapping is
+   for Source_Dirs use (".", "ggtt-fixture", "../../userspace/services/intel-gpu");
+   for Source_Files use ("ggtt_mapping_tests.adb", "cubit.ads", "cubit-messages.ads",
+     "cubit-messages.adb", "intel_gpu_ggtt_mapping.ads", "intel_gpu_ggtt_mapping.adb",
+     "intel_gpu_ggtt_access.ads", "intel_gpu_ggtt_access.adb",
+     "intel_gpu_pci_power.ads", "intel_gpu_pci_power.adb",
+     "intel_gpu_ggtt.ads", "intel_gpu_ggtt.adb",
+     "intel_gpu_pci_interrupts.ads", "intel_gpu_pci_interrupts.adb",
+     "intel_gpu_probe.ads", "intel_gpu_probe.adb",
+     "intel_gpu_resources.ads", "intel_gpu_resources.adb");
+   for Object_Dir use "build-ggtt-mapping";
+   for Main use ("ggtt_mapping_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end GGTT_Mapping;

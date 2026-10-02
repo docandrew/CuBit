@@ -1,0 +1,10 @@
+project Input_Budget is
+   for Source_Dirs use (".", "../../userspace/lib/ui");
+   for Source_Files use ("client_input_budget.ads", "client_input_budget.adb", "input_budget_tests.adb");
+   for Object_Dir use "build/input-budget/obj";
+   for Exec_Dir use "build/input-budget";
+   for Main use ("input_budget_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Input_Budget;

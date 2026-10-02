@@ -1,4 +1,5 @@
 with CCL.Text_Operations;
+with CCL.List_Operations;
 with Interfaces;
 with CCL.Catalog;
 with CCL.VM;
@@ -27,12 +28,13 @@ is
    --  Records and variants with payloads that one evaluation builds live in
    --  a bounded arena: nodes whose components are stored values, never
    --  pointers (docs/ccl-driver-manifests.md, "Value model").
-   MAX_VALUE_NODES : constant := 512;
-   MAX_VALUE_SLOTS : constant := 2_048;
+   MAX_VALUE_NODES : constant := CCL.VM.MAX_VALUE_NODES;
+   MAX_VALUE_SLOTS : constant := CCL.VM.MAX_VALUE_SLOTS;
    --  Lists (docs/ccl-repl.md, "Lists"): elements across all lists of one
-   --  evaluation, and elements a result can carry out.
-   MAX_LIST_ELEMENTS : constant := 4_096;
-   MAX_LIST_RESULT   : constant := 64;
+   --  evaluation, and elements a result can carry out. Shared with compiled
+   --  code, so both fail at the same point.
+   MAX_LIST_ELEMENTS : constant := CCL.VM.MAX_LIST_ELEMENTS;
+   MAX_LIST_RESULT   : constant := CCL.VM.MAX_LIST_RESULT;
 
    --  Shared, bounded frontend representation.  Both direct interpretation
    --  and CCLB compilation consume this tree, so syntax and type semantics
@@ -147,6 +149,45 @@ is
          when Replace_Builtin => CCL.Text_Operations.Replace,
          when others => CCL.Text_Operations.Parse_Int)
      with Pre => Is_Text_Operation (Operation);
+   --  The list built-ins that take no function, with shared algorithms
+   --  (CCL.List_Operations), which compiled code runs too. On a String
+   --  subject first, last, skip, reverse and contains are text operations;
+   --  split takes a String subject and makes a list.
+   function Is_List_Operation (Operation : Builtin_Operation) return Boolean is
+     (Operation in First_Builtin | Last_Builtin | Skip_Builtin | Reverse_Builtin |
+        Sort_Builtin | Sum_Builtin | Min_Builtin | Max_Builtin | Contains_Builtin |
+        Join_Builtin | Range_Builtin | Split_Builtin);
+   function List_Operation_Of (Operation : Builtin_Operation)
+     return CCL.List_Operations.Operation is
+     (case Operation is
+         when First_Builtin => CCL.List_Operations.First_Items,
+         when Last_Builtin => CCL.List_Operations.Last_Items,
+         when Skip_Builtin => CCL.List_Operations.Skip_Items,
+         when Reverse_Builtin => CCL.List_Operations.Reverse_Items,
+         when Sort_Builtin => CCL.List_Operations.Sort_Items,
+         when Sum_Builtin => CCL.List_Operations.Sum_Items,
+         when Min_Builtin => CCL.List_Operations.Min_Items,
+         when Max_Builtin => CCL.List_Operations.Max_Items,
+         when Contains_Builtin => CCL.List_Operations.Contains_Item,
+         when Join_Builtin => CCL.List_Operations.Join_Items,
+         when Range_Builtin => CCL.List_Operations.Range_Items,
+         when others => CCL.List_Operations.Split_Text)
+     with Pre => Is_List_Operation (Operation);
+   --  The built-ins that apply a function to each element.
+   function Is_Apply_Operation (Operation : Builtin_Operation) return Boolean is
+     (Operation in Each_Builtin | Where_Builtin | Fold_Builtin | Any_Builtin | All_Builtin |
+        Count_Builtin | Sort_By_Builtin);
+   function Apply_Operation_Of (Operation : Builtin_Operation)
+     return CCL.List_Operations.Apply_Operation is
+     (case Operation is
+         when Each_Builtin => CCL.List_Operations.Each_Items,
+         when Where_Builtin => CCL.List_Operations.Where_Items,
+         when Fold_Builtin => CCL.List_Operations.Fold_Items,
+         when Any_Builtin => CCL.List_Operations.Any_Items,
+         when All_Builtin => CCL.List_Operations.All_Items,
+         when Count_Builtin => CCL.List_Operations.Count_Items,
+         when others => CCL.List_Operations.Sort_By_Items)
+     with Pre => Is_Apply_Operation (Operation);
    function Builtin_Arity (Operation : Builtin_Operation) return Natural is
      (case Operation is
         when No_Builtin => 0,
@@ -335,11 +376,9 @@ is
    --  A list result: its elements as values (Integer, Boolean; a Character
    --  as its code; an enumeration member as its position) or, for strings,
    --  as consecutive slices of List_Text ending at List_Text_Ends.
-   subtype List_Result_Count is Natural range 0 .. MAX_LIST_RESULT;
-   type List_Result_Values is
-     array (1 .. MAX_LIST_RESULT) of CCL.VM.Value;
-   type List_Result_Ends is
-     array (1 .. MAX_LIST_RESULT) of Natural range 0 .. MAX_TEXT_BYTES;
+   subtype List_Result_Count is CCL.VM.List_Result_Count;
+   subtype List_Result_Values is CCL.VM.List_Result_Values;
+   subtype List_Result_Ends is CCL.VM.List_Result_Ends;
 
    type Analysis_Status is
      (Analysis_Succeeded,

@@ -26,3 +26,8 @@ servo = { workspace = true }
 surfman = { workspace = true }
 swgl = "0.70"
 url = { workspace = true }
+
+[target.'cfg(target_os = "cubit")'.dependencies]
+# Expanded by patch_servo.py for the selected Servo checkout. Use the same
+# rasterizer with Servo's Rust runtime, not a second no_std allocator/panic ABI.
+cubit-fonts = { path = "__CUBIT_FONTS__" }

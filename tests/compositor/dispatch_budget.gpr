@@ -1,0 +1,10 @@
+project Dispatch_Budget is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("dispatch_budget_tests.adb", "compositor_dispatch_budget.ads", "compositor_dispatch_budget.adb");
+   for Object_Dir use "build/dispatch-budget/obj";
+   for Exec_Dir use "build/dispatch-budget";
+   for Main use ("dispatch_budget_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Dispatch_Budget;

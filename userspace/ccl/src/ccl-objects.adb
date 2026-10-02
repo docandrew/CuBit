@@ -46,12 +46,19 @@ package body CCL.Objects with SPARK_Mode is
       --  not just the active one: a dormant handler is not persistable data.
       for Ref in Declared_Type'First .. Last (Types) loop
          D := Describe (Types, Ref);
-         Allowed (Ref) := D.Form in Product | Sum;
-         for I in 1 .. D.Count loop
-            if D.Parts (I).Payload >= Ref or else not Allowed (D.Parts (I).Payload) then
-               Allowed (Ref) := False;
-            end if;
-         end loop;
+         if D.Form = Sequence then
+            --  A list of earlier, persistable elements that are not lists:
+            --  a count, then the elements depth first.
+            Allowed (Ref) := D.Count = 1 and then D.Parts (1).Payload < Ref and then
+              Allowed (D.Parts (1).Payload) and then Describe (Types, D.Parts (1).Payload).Form /= Sequence;
+         else
+            Allowed (Ref) := D.Form in Product | Sum;
+            for I in 1 .. D.Count loop
+               if D.Parts (I).Payload >= Ref or else not Allowed (D.Parts (I).Payload) then
+                  Allowed (Ref) := False;
+               end if;
+            end loop;
+         end if;
       end loop;
       return Allowed (Root);
    end Persistable;
@@ -207,7 +214,18 @@ package body CCL.Objects with SPARK_Mode is
                   when Declared_Type =>
                      D := Describe (Contract.Types, Expected);
                      case D.Form is
-                        when Primitive | Resource | Sequence | Callable | Bounded => return False;
+                        when Primitive | Resource | Callable | Bounded => return False;
+                        when Sequence =>
+                           --  Each element takes at least one cell, so a count
+                           --  past the cells left is malformed (and the work
+                           --  stack never holds more than the cells left).
+                           if D.Count /= 1 or else
+                             C.First > Unsigned_64 (Natural (Object.Used_Cells) - I)
+                           then return False; end if;
+                           for E in 1 .. Natural (C.First) loop
+                              Work_Stacks.Push (Work, D.Parts (1).Payload, Status);
+                              if Status /= Work_Stacks.Stack_Ok then return False; end if;
+                           end loop;
                         when Product =>
                            if C.First /= Unsigned_64 (D.Count) then return False; end if;
                            for P in reverse 1 .. D.Count loop

@@ -1,0 +1,8 @@
+# Toolkit applications using protected presentation buffers.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "devices.app" (priority 3))
+  (start "config-inspector.app" (priority 3))
+  (start "boot-logs.app" (priority 3)))

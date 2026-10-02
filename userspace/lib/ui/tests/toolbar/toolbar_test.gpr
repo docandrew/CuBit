@@ -1,7 +1,7 @@
 with "../../fonts_host.gpr";
 project Toolbar_Test is
    for Languages use ("Ada");
-   for Source_Dirs use (".", "../..", "../../../theme");
+   for Source_Dirs use (".", "../..", "../../../theme", "../../../compositor", "../../../display", "../../../../allocator/src");
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use ("main.adb");

@@ -1,0 +1,941 @@
+--- a/src/intel/vulkan/anv_kmd_backend.h
++++ b/src/intel/vulkan/anv_kmd_backend.h
+@@ -24,6 +24,7 @@
+ #pragma once
+ 
+ #include <stdint.h>
++#include <time.h>
+ 
+ #include "vulkan/vulkan_core.h"
+ #include "vk_sync.h"
+@@ -33,8 +34,12 @@
+ 
+ struct anv_bo;
+ enum anv_bo_alloc_flags;
++enum isl_tiling;
+ struct anv_cmd_buffer;
+ struct anv_device;
++struct anv_physical_device;
++struct vk_device;
++struct intel_pagefault_buffer;
+ struct anv_queue;
+ struct anv_query_pool;
+ struct anv_async_submit;
+@@ -73,6 +78,79 @@
+ };
+ 
+ struct anv_kmd_backend {
++   VkResult (*get_physical_parameters)(struct anv_physical_device *device);
++   VkResult (*init_memory_types)(struct anv_physical_device *device);
++   /* Optional platform external-memory operations. CuBit must not interpret
++    * Linux file descriptors as native object authority.
++    */
++   uint32_t (*import_bo_fd)(struct anv_device *device, int fd);
++   int (*export_bo_fd)(struct anv_device *device, uint32_t handle);
++   VkResult (*import_bo_flags)(struct anv_device *device, struct anv_bo *bo,
++                               enum anv_bo_alloc_flags flags, uint32_t *out);
++   VkResult (*get_bo_tiling)(struct anv_device *device, struct anv_bo *bo,
++                             enum isl_tiling *tiling_out);
++   VkResult (*set_bo_tiling)(struct anv_device *device, struct anv_bo *bo,
++                             uint32_t stride, enum isl_tiling tiling);
++   /* Optional fixed-address mapping for a suballocation; absence disables
++    * EXT_map_memory_placed. Failure must leave map_out unchanged.
++    */
++   VkResult (*map_placed_slab)(struct anv_device *device, struct anv_bo *bo,
++                               uint64_t offset, size_t size, void *placed_addr,
++                               void **map_out);
++   /* Bound reported system RAM using this backend's memory-budget policy. */
++   uint64_t (*restrict_sys_heap_size)(struct anv_physical_device *device,
++                                     uint64_t reported_size);
++   /* Refresh measured availability; false retains the last valid snapshot. */
++   bool (*refresh_memory_info)(struct anv_physical_device *device);
++   /* Publish only synchronization types implemented by this transport. */
++   VkResult (*init_sync_types)(struct anv_physical_device *device);
++   /* Any published engine_info uses the common free()-based ownership. */
++   VkResult (*init_engine_info)(struct anv_physical_device *device);
++   /* Select only relocation/sparse mechanisms implemented by the backend. */
++   void (*init_addressing)(struct anv_physical_device *device);
++   /* Optional probes: absent callbacks mean unsupported, not assumed. */
++   bool (*supports_protected_context)(struct anv_physical_device *device);
++   bool (*probe_timestamp)(struct anv_physical_device *device);
++   bool (*supports_vm_faults)(struct anv_physical_device *device);
++   /* Open the device transport and install its synchronization provider.
++    * On failure, release everything acquired by this operation.
++    */
++   VkResult (*open_device)(struct anv_device *device);
++   /* Both run after context/queue cleanup. abort_device handles a later
++    * creation failure; close_device handles normal device destruction.
++    * Backends may use the same function where those lifetimes coincide.
++    */
++   void (*abort_device)(struct anv_device *device);
++   void (*close_device)(struct anv_device *device);
++   /* Create/destroy the backend execution context or address space.
++    * Setup failure must not leave resources requiring destroy_context;
++    * successful setup is paired with exactly one destroy_context call.
++    */
++   VkResult (*setup_context)(struct anv_device *device,
++                             const VkDeviceCreateInfo *create_info,
++                             uint32_t num_queues);
++   bool (*destroy_context)(struct anv_device *device);
++   /* A successful queue-engine creation is paired with destroy_engine.
++    * Creation failure must release any partially acquired backend resources.
++    */
++   VkResult (*create_engine)(struct anv_device *device, struct anv_queue *queue,
++                             const VkDeviceQueueCreateInfo *create_info);
++   void (*destroy_engine)(struct anv_device *device, struct anv_queue *queue);
++   VkResult (*check_status)(struct vk_device *device);
++   bool (*read_timestamp)(struct anv_device *device, uint64_t *value);
++   /* Optional correlated render/CPU sampling; NULL selects separate reads. */
++   bool (*read_correlated_timestamp)(struct anv_device *device,
++                                     clockid_t cpu_clock,
++                                     uint64_t *cpu, uint64_t *gpu,
++                                     uint64_t *cpu_delta);
++   struct intel_pagefault_buffer *(*get_vm_faults)(struct anv_device *device);
++   /* Optional CPU dependency resolution, called before device->mutex.
++    * Must not submit, signal, or consume binary waits. */
++   VkResult (*wait_queue_dependencies)(struct anv_device *device,
++                                        uint32_t wait_count,
++                                        const struct vk_sync_wait *waits,
++                                        uint64_t abs_timeout_ns);
++
+    /*
+     * Create a gem buffer.
+     * Return the gem handle in case of success otherwise returns 0.
+@@ -131,6 +203,29 @@
+ };
+ 
+ const struct anv_kmd_backend *anv_kmd_backend_get(enum intel_kmd_type type);
++VkResult anv_drm_open_device(struct anv_device *device);
++VkResult anv_drm_get_bo_tiling(struct anv_device *device, struct anv_bo *bo,
++                              enum isl_tiling *tiling_out);
++VkResult anv_drm_set_bo_tiling(struct anv_device *device, struct anv_bo *bo,
++                              uint32_t stride, enum isl_tiling tiling);
++VkResult anv_drm_map_placed_slab(struct anv_device *device, struct anv_bo *bo,
++                                uint64_t offset, size_t size, void *placed_addr,
++                                void **map_out);
++bool anv_drm_refresh_memory_info(struct anv_physical_device *device);
++VkResult anv_drm_init_sync_types(struct anv_physical_device *device);
++VkResult anv_drm_init_engine_info(struct anv_physical_device *device);
++void anv_drm_init_addressing(struct anv_physical_device *device);
++uint64_t anv_drm_restrict_sys_heap_size(struct anv_physical_device *device,
++                                       uint64_t reported_size);
++bool anv_drm_supports_protected_context(struct anv_physical_device *device);
++bool anv_drm_probe_timestamp(struct anv_physical_device *device);
++void anv_drm_abort_device(struct anv_device *device);
++void anv_drm_close_device(struct anv_device *device);
++bool anv_drm_read_timestamp(struct anv_device *device, uint64_t *value);
++bool anv_drm_read_correlated_timestamp(struct anv_device *device,
++                                       clockid_t cpu_clock,
++                                       uint64_t *cpu, uint64_t *gpu,
++                                       uint64_t *cpu_delta);
+ 
+ /* Internal functions, should only be called by anv_kmd_backend_get() */
+ const struct anv_kmd_backend *anv_i915_kmd_backend_get(void);
+--- a/src/intel/vulkan/anv_device.c
++++ b/src/intel/vulkan/anv_device.c
+@@ -26,8 +26,6 @@
+ #include <stdbool.h>
+ #include <fcntl.h>
+ #include "drm-uapi/drm_fourcc.h"
+-#include "drm-uapi/drm.h"
+-#include <xf86drm.h>
+ 
+ #include "anv_private.h"
+ #include "anv_measure.h"
+@@ -41,14 +39,10 @@
+ #include "vk_common_entrypoints.h"
+ #include "vk_util.h"
+ #include "vk_deferred_operation.h"
+-#include "vk_drm_syncobj.h"
+ #include "common/intel_aux_map.h"
+ #include "common/intel_common.h"
+ #include "common/intel_debug_identifier.h"
+ 
+-#include "i915/anv_device.h"
+-#include "xe/anv_device.h"
+-
+ #include "genxml/gen70_pack.h"
+ #include "genxml/genX_bits.h"
+ #include "wsi_common_private.h"
+@@ -256,32 +250,20 @@
+                                const VkDeviceCreateInfo *pCreateInfo,
+                                const uint32_t num_queues)
+ {
+-   switch (device->info->kmd_type) {
+-   case INTEL_KMD_TYPE_I915:
+-      return anv_i915_device_setup_context(device, pCreateInfo, num_queues);
+-   case INTEL_KMD_TYPE_XE:
+-      return anv_xe_device_setup_vm(device);
+-   default:
+-      UNREACHABLE("Missing");
+-      return VK_ERROR_UNKNOWN;
+-   }
++   if (device->kmd_backend == NULL ||
++       device->kmd_backend->setup_context == NULL ||
++       device->kmd_backend->destroy_context == NULL)
++      return VK_ERROR_INITIALIZATION_FAILED;
++   return device->kmd_backend->setup_context(device, pCreateInfo, num_queues);
+ }
+ 
+ static bool
+ anv_device_destroy_context_or_vm(struct anv_device *device)
+ {
+-   switch (device->info->kmd_type) {
+-   case INTEL_KMD_TYPE_I915:
+-      if (device->physical->has_vm_control)
+-         return anv_i915_device_destroy_vm(device);
+-      else
+-         return intel_gem_destroy_context(device->fd, device->context_id);
+-   case INTEL_KMD_TYPE_XE:
+-      return anv_xe_device_destroy_vm(device);
+-   default:
+-      UNREACHABLE("Missing");
++   if (device->kmd_backend == NULL ||
++       device->kmd_backend->destroy_context == NULL)
+       return false;
+-   }
++   return device->kmd_backend->destroy_context(device);
+ }
+ 
+ static VkResult
+@@ -811,39 +793,22 @@
+    }
+ 
+    anv_device_set_physical(device, physical_device);
+-   device->kmd_backend = anv_kmd_backend_get(device->info->kmd_type);
++   device->kmd_backend = physical_device->kmd_backend;
+ 
+-   /* XXX(chadv): Can we dup() physicalDevice->fd here? */
+-   device->fd = open(physical_device->path, O_RDWR | O_CLOEXEC);
+-   if (device->fd == -1) {
++   if (device->kmd_backend == NULL ||
++       device->kmd_backend->open_device == NULL ||
++       device->kmd_backend->abort_device == NULL ||
++       device->kmd_backend->close_device == NULL ||
++       device->kmd_backend->check_status == NULL) {
+       result = vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+       goto fail_device;
+    }
+-
+-   if (intel_virtio_init_fd(device->fd) < 0) {
+-      result = VK_ERROR_INCOMPATIBLE_DRIVER;
+-      goto fail_fd;
+-   }
+-
+-   switch (device->info->kmd_type) {
+-   case INTEL_KMD_TYPE_I915:
+-      device->vk.check_status = anv_i915_device_check_status;
+-      break;
+-   case INTEL_KMD_TYPE_XE:
+-      device->vk.check_status = anv_xe_device_check_status;
+-      break;
+-   default:
+-      UNREACHABLE("Missing");
+-   }
+-
+-   device->vk.copy_sync_payloads = vk_drm_syncobj_copy_payloads;
++   result = device->kmd_backend->open_device(device);
++   if (result != VK_SUCCESS)
++      goto fail_device;
++   device->vk.check_status = device->kmd_backend->check_status;
+    device->vk.command_buffer_ops = &anv_cmd_buffer_ops;
+ 
+-   if (physical_device->info.is_virtio)
+-      device->vk.sync = intel_virtio_sync_provider(device->fd);
+-   else
+-      vk_device_set_drm_fd(&device->vk, device->fd);
+-
+    uint32_t num_queues = 0;
+    for (uint32_t i = 0; i < pCreateInfo->queueCreateInfoCount; i++)
+       num_queues += pCreateInfo->pQueueCreateInfos[i].queueCount;
+@@ -1356,8 +1321,7 @@
+  fail_context_id:
+    anv_device_destroy_context_or_vm(device);
+  fail_fd:
+-   intel_virtio_unref_fd(device->fd);
+-   close(device->fd);
++   device->kmd_backend->abort_device(device);
+  fail_device:
+    vk_device_finish(&device->vk);
+  fail_alloc:
+@@ -1510,7 +1474,7 @@
+       }
+    }
+ 
+-   close(device->fd);
++   device->kmd_backend->close_device(device);
+ 
+    vk_device_finish(&device->vk);
+    vk_free(&device->vk.alloc, device);
+@@ -1529,21 +1493,6 @@
+    return vk_error(NULL, VK_ERROR_LAYER_NOT_PRESENT);
+ }
+ 
+-VkResult
+-anv_device_wait(struct anv_device *device, struct anv_bo *bo,
+-                int64_t timeout)
+-{
+-   int ret = anv_gem_wait(device, bo->gem_handle, &timeout);
+-   if (ret == -1 && errno == ETIME) {
+-      return VK_TIMEOUT;
+-   } else if (ret == -1) {
+-      /* We don't know the real error. */
+-      return vk_device_set_lost(&device->vk, "gem wait failed: %m");
+-   } else {
+-      return VK_SUCCESS;
+-   }
+-}
+-
+ static struct util_vma_heap *
+ anv_vma_heap_for_flags(struct anv_device *device,
+                        enum anv_bo_alloc_flags alloc_flags)
+@@ -2317,8 +2266,8 @@
+    uint32_t d, increment;
+    uint64_t begin, end;
+    uint64_t max_clock_period = 0;
+-   const enum intel_kmd_type kmd_type = device->physical->info.kmd_type;
+-   const bool has_correlate_timestamp = kmd_type == INTEL_KMD_TYPE_XE;
++   const bool has_correlate_timestamp = device->kmd_backend != NULL &&
++      device->kmd_backend->read_correlated_timestamp != NULL;
+    const VkTimeDomainKHR default_cpu_time_domain = anv_get_default_cpu_time_domain();
+    const clockid_t default_cpu_clock_id = vk_time_domain_to_clockid(default_cpu_time_domain);
+    clockid_t cpu_clock_id = -1;
+@@ -2352,14 +2301,9 @@
+                cpu_clock_id = vk_time_domain_to_clockid(next);
+ 
+             uint64_t cpu_timestamp, gpu_timestamp, cpu_delta_timestamp, cpu_end_timestamp;
+-            if (!intel_gem_read_correlate_cpu_gpu_timestamp(device->fd,
+-                                                            kmd_type,
+-                                                            INTEL_ENGINE_CLASS_RENDER,
+-                                                            0 /* engine_instance */,
+-                                                            cpu_clock_id,
+-                                                            &cpu_timestamp,
+-                                                            &gpu_timestamp,
+-                                                            &cpu_delta_timestamp))
++            if (!device->kmd_backend->read_correlated_timestamp(
++                   device, cpu_clock_id, &cpu_timestamp,
++                   &gpu_timestamp, &cpu_delta_timestamp))
+                return vk_device_set_lost(&device->vk, "Failed to read correlate timestamp %m");
+ 
+             cpu_end_timestamp = cpu_timestamp + cpu_delta_timestamp;
+@@ -2396,9 +2340,9 @@
+       increment = 1;
+       switch (current) {
+       case VK_TIME_DOMAIN_DEVICE_KHR:
+-         if (!intel_gem_read_render_timestamp(device->fd,
+-                                              device->info->kmd_type,
+-                                              &pTimestamps[d])) {
++         if (device->kmd_backend == NULL ||
++             device->kmd_backend->read_timestamp == NULL ||
++             !device->kmd_backend->read_timestamp(device, &pTimestamps[d])) {
+             return vk_device_set_lost(&device->vk, "Failed to read the "
+                                       "TIMESTAMP register: %m");
+          }
+@@ -2494,12 +2438,8 @@
+ struct intel_pagefault_buffer *
+ anv_device_alloc_get_vm_faults(struct anv_device *device)
+ {
+-   if (!device->physical->can_get_vm_faults)
++   if (!device->physical->can_get_vm_faults ||
++       device->kmd_backend == NULL || device->kmd_backend->get_vm_faults == NULL)
+       return NULL;
+-   switch (device->info->kmd_type) {
+-   case INTEL_KMD_TYPE_XE:
+-      return anv_xe_device_alloc_get_vm_faults(device);
+-   default:
+-      return NULL;
+-   }
++   return device->kmd_backend->get_vm_faults(device);
+ }
+--- a/src/intel/vulkan/anv_gem.c
++++ b/src/intel/vulkan/anv_gem.c
+@@ -31,8 +31,263 @@
+ 
+ #include "anv_private.h"
+ #include "common/intel_gem.h"
++#include "common/intel_common.h"
+ 
+ #include "i915/anv_gem.h"
++#include "vk_drm_syncobj.h"
++#include "util/os_misc.h"
++#include "util/os_mman.h"
++
++VkResult
++anv_drm_get_bo_tiling(struct anv_device *device,
++                         struct anv_bo *bo,
++                         enum isl_tiling *tiling_out)
++{
++   int i915_tiling = anv_gem_get_tiling(device, bo->gem_handle);
++   if (i915_tiling < 0) {
++      return vk_errorf(device, VK_ERROR_INVALID_EXTERNAL_HANDLE,
++                       "failed to get BO tiling: %m");
++   }
++
++   *tiling_out = isl_tiling_from_i915_tiling(i915_tiling);
++
++   return VK_SUCCESS;
++}
++
++VkResult
++anv_drm_set_bo_tiling(struct anv_device *device,
++                         struct anv_bo *bo,
++                         uint32_t row_pitch_B,
++                         enum isl_tiling tiling)
++{
++   assert(bo->slab_parent == NULL);
++   int ret = anv_gem_set_tiling(device, bo->gem_handle, row_pitch_B,
++                                isl_tiling_to_i915_tiling(tiling));
++   if (ret) {
++      return vk_errorf(device, VK_ERROR_OUT_OF_DEVICE_MEMORY,
++                       "failed to set BO tiling: %m");
++   }
++
++   return VK_SUCCESS;
++}
++
++VkResult
++anv_drm_map_placed_slab(struct anv_device *device,
++                     struct anv_bo *bo,
++                     uint64_t offset,
++                     size_t size,
++                     void *placed_addr,
++                     void **map_out)
++{
++   int prime_handle = anv_gem_handle_to_fd(device, bo->gem_handle);
++   VkResult result = VK_SUCCESS;
++
++   if (prime_handle < 0) {
++      return vk_errorf(device, VK_ERROR_MEMORY_MAP_FAILED,
++                       "anv_gem_handle_to_fd() before mmap failed: %m");
++   }
++
++   offset += (bo->offset - bo->slab_parent->offset);
++   void *map = os_mmap(placed_addr,
++                       size,
++                       PROT_READ | PROT_WRITE,
++                       MAP_FIXED | MAP_SHARED,
++                       prime_handle,
++                       offset);
++   if (map == MAP_FAILED) {
++      result = vk_errorf(device, VK_ERROR_MEMORY_MAP_FAILED, "mmap failed: %m");
++      goto end;
++   }
++
++   assert(placed_addr == NULL || map == placed_addr);
++   assert(map != NULL);
++   VG(VALGRIND_MALLOCLIKE_BLOCK(map, size, 0, 1));
++
++   if (map_out)
++      *map_out = map;
++
++end:
++   close(prime_handle);
++   return result;
++}
++
++/* This function restricts the maximum size of system memory heap. The
++ * reasoning is that if we allow all the RAM to be used by graphics, nothing
++ * will remain for the rest of the system.
++ *
++ * In practice, applications should really be using VK_EXT_memory_budget
++ * instead of relying on our heuristics.
++ *
++ * The i915.ko driver has always reported 100% of the total available RAM.
++ * The xe.ko driver changed its behavior after commit d2d5f6d57884 ("drm/xe:
++ * Increase the XE_PL_TT watermark"), so we need to detect that and make a
++ * choice based on it.
++ */
++uint64_t
++anv_drm_restrict_sys_heap_size(struct anv_physical_device *device,
++                           uint64_t kmd_reported_sram)
++{
++   if (device->info.kmd_type == INTEL_KMD_TYPE_XE) {
++      uint64_t sys_reported_sram;
++      if (!os_get_total_physical_memory(&sys_reported_sram))
++         return kmd_reported_sram;
++
++      /* From what I could gather, kmd_reported_sram always seems to be
++       * exactly half of sys_reported_sram in older Kernels, but let's leave
++       * some room for imprecision here in case the interfaces chosen to
++       * report memory end up changing, accounting things differently somehow.
++       *
++       * If we detect an older Kernel (i.e., kmd_reported_sram == ~50% of
++       * sys_reported_sram) we just return the values reported by the KMD
++       * since they are already restricted. If we detect a newer Kernel, we
++       * deal with the value below, along with i915.ko (which is expected to
++       * always report 100% of SRAM).
++       */
++      uint64_t ratio = kmd_reported_sram * 10 / sys_reported_sram;
++      assert(ratio <= 11);
++      if (ratio <= 6)
++         return kmd_reported_sram;
++   }
++
++   const char *env_limit = os_get_option("ANV_SYS_MEM_LIMIT");
++   if (env_limit) {
++      int64_t limit_percent = debug_parse_num_option(env_limit, 75);
++      if (limit_percent < 10)
++         limit_percent = 10;
++      else if (limit_percent > 100)
++         limit_percent = 100;
++
++      return kmd_reported_sram * limit_percent / 100;
++   }
++
++   if (kmd_reported_sram <= 4ull * 1024ull * 1024ull * 1024ull)
++      return kmd_reported_sram / 2;
++   else
++      return kmd_reported_sram * 3 / 4;
++}
++
++void
++anv_drm_init_addressing(struct anv_physical_device *device)
++{
++   device->uses_relocs = device->info.kmd_type != INTEL_KMD_TYPE_XE;
++
++   /* While xe.ko can use both vm_bind and TR-TT, i915.ko only has TR-TT. */
++   if (!ANV_DEBUG(NO_SPARSE)) {
++      if (device->info.kmd_type == INTEL_KMD_TYPE_XE) {
++         if (ANV_DEBUG(SPARSE_TRTT))
++            device->sparse_type = ANV_SPARSE_TYPE_TRTT;
++         else
++            device->sparse_type = ANV_SPARSE_TYPE_VM_BIND;
++      } else {
++         if (device->info.ver >= 12)
++            device->sparse_type = ANV_SPARSE_TYPE_TRTT;
++      }
++   }
++   if (device->sparse_type == ANV_SPARSE_TYPE_NOT_SUPPORTED) {
++      if (device->instance->drirc.features.fake_sparse)
++         device->sparse_type = ANV_SPARSE_TYPE_FAKE;
++   }
++}
++
++bool
++anv_drm_supports_protected_context(struct anv_physical_device *device)
++{
++   return intel_gem_supports_protected_context(device->local_fd, device->info.kmd_type);
++}
++
++bool
++anv_drm_probe_timestamp(struct anv_physical_device *device)
++{
++   uint64_t ignored;
++   return intel_gem_read_render_timestamp(device->local_fd, device->info.kmd_type, &ignored);
++}
++
++VkResult
++anv_drm_init_engine_info(struct anv_physical_device *device)
++{
++   device->engine_info = intel_engine_get_info(device->local_fd, device->info.kmd_type);
++   intel_common_update_device_info(device->local_fd, &device->info);
++   /* Legacy Linux without engine queries uses the existing queue fallback. */
++   return VK_SUCCESS;
++}
++
++VkResult
++anv_drm_init_sync_types(struct anv_physical_device *device)
++{
++   if (device->info.is_virtio) {
++      struct util_sync_provider *sync = intel_virtio_sync_provider(device->local_fd);
++      device->sync_syncobj_type = vk_drm_syncobj_get_type_from_provider(sync);
++   } else {
++      device->sync_syncobj_type = vk_drm_syncobj_get_type(device->local_fd);
++   }
++
++   const unsigned required = VK_SYNC_FEATURE_TIMELINE | VK_SYNC_FEATURE_CPU_WAIT;
++   if (!vk_sync_type_is_drm_syncobj(&device->sync_syncobj_type) ||
++       (device->sync_syncobj_type.features & required) != required)
++      return VK_ERROR_INITIALIZATION_FAILED;
++
++   device->sync_types[0] = &device->sync_syncobj_type;
++   device->sync_types[1] = NULL;
++   device->vk.supported_sync_types = device->sync_types;
++   return VK_SUCCESS;
++}
++
++bool
++anv_drm_refresh_memory_info(struct anv_physical_device *device)
++{
++   return intel_device_info_update_memory_info(&device->info, device->local_fd);
++}
++
++bool
++anv_drm_read_timestamp(struct anv_device *device, uint64_t *value)
++{
++   return intel_gem_read_render_timestamp(device->fd, device->info->kmd_type, value);
++}
++
++bool
++anv_drm_read_correlated_timestamp(struct anv_device *device,
++                                  clockid_t cpu_clock,
++                                  uint64_t *cpu, uint64_t *gpu,
++                                  uint64_t *cpu_delta)
++{
++   return intel_gem_read_correlate_cpu_gpu_timestamp(
++      device->fd, device->info->kmd_type, INTEL_ENGINE_CLASS_RENDER,
++      0, cpu_clock, cpu, gpu, cpu_delta);
++}
++
++void
++anv_drm_close_device(struct anv_device *device)
++{
++   close(device->fd);
++   device->fd = -1;
++}
++
++void
++anv_drm_abort_device(struct anv_device *device)
++{
++   intel_virtio_unref_fd(device->fd);
++   anv_drm_close_device(device);
++}
++
++VkResult
++anv_drm_open_device(struct anv_device *device)
++{
++   device->fd = open(device->physical->path, O_RDWR | O_CLOEXEC);
++   if (device->fd == -1)
++      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
++
++   if (intel_virtio_init_fd(device->fd) < 0) {
++      anv_drm_abort_device(device);
++      return VK_ERROR_INCOMPATIBLE_DRIVER;
++   }
++
++   device->vk.copy_sync_payloads = vk_drm_syncobj_copy_payloads;
++   if (device->info->is_virtio)
++      device->vk.sync = intel_virtio_sync_provider(device->fd);
++   else
++      vk_device_set_drm_fd(&device->vk, device->fd);
++   return VK_SUCCESS;
++}
+ 
+ /**
+  * On error, \a timeout_ns holds the remaining time.
+--- a/src/intel/vulkan/i915/anv_kmd_backend.c
++++ b/src/intel/vulkan/i915/anv_kmd_backend.c
+@@ -26,6 +26,8 @@
+ #include "anv_private.h"
+ 
+ #include "i915/anv_batch_chain.h"
++#include "i915/anv_device.h"
++#include "i915/anv_queue.h"
+ 
+ #include "drm-uapi/i915_drm.h"
+ #include "intel/common/i915/intel_gem.h"
+@@ -344,10 +346,42 @@
+    return bo_flags;
+ }
+ 
++static bool
++i915_destroy_context(struct anv_device *device)
++{
++   if (device->physical->has_vm_control)
++      return anv_i915_device_destroy_vm(device);
++   return intel_gem_destroy_context(device->fd, device->context_id);
++}
++
+ const struct anv_kmd_backend *
+ anv_i915_kmd_backend_get(void)
+ {
+    static const struct anv_kmd_backend i915_backend = {
++      .get_physical_parameters = anv_i915_physical_device_get_parameters,
++      .init_memory_types = anv_i915_physical_device_init_memory_types,
++      .map_placed_slab = anv_drm_map_placed_slab,
++      .import_bo_fd = anv_gem_fd_to_handle,
++      .export_bo_fd = anv_gem_handle_to_fd,
++      .import_bo_flags = anv_gem_import_bo_alloc_flags_to_bo_flags,
++      .get_bo_tiling = anv_drm_get_bo_tiling,
++      .set_bo_tiling = anv_drm_set_bo_tiling,
++      .create_engine = anv_i915_create_engine,
++      .destroy_engine = anv_i915_destroy_engine,
++      .restrict_sys_heap_size = anv_drm_restrict_sys_heap_size,
++      .refresh_memory_info = anv_drm_refresh_memory_info,
++      .init_sync_types = anv_drm_init_sync_types,
++      .init_engine_info = anv_drm_init_engine_info,
++      .init_addressing = anv_drm_init_addressing,
++      .supports_protected_context = anv_drm_supports_protected_context,
++      .probe_timestamp = anv_drm_probe_timestamp,
++      .open_device = anv_drm_open_device,
++      .abort_device = anv_drm_abort_device,
++      .close_device = anv_drm_close_device,
++      .setup_context = anv_i915_device_setup_context,
++      .destroy_context = i915_destroy_context,
++      .check_status = anv_i915_device_check_status,
++      .read_timestamp = anv_drm_read_timestamp,
+       .gem_create = i915_gem_create,
+       .gem_create_userptr = i915_gem_create_userptr,
+       .gem_close = i915_gem_close,
+--- a/src/intel/vulkan/xe/anv_kmd_backend.c
++++ b/src/intel/vulkan/xe/anv_kmd_backend.c
+@@ -24,8 +24,11 @@
+ #include <sys/mman.h>
+ 
+ #include "common/xe/intel_engine.h"
++#include "common/xe/intel_gem.h"
+ 
+ #include "anv_private.h"
++#include "xe/anv_device.h"
++#include "xe/anv_queue.h"
+ 
+ #include "xe/anv_batch_chain.h"
+ 
+@@ -439,10 +442,53 @@
+    return 0;
+ }
+ 
++static bool
++xe_supports_vm_faults(struct anv_physical_device *device)
++{
++   return xe_gem_supports_get_vm_faults(device->local_fd);
++}
++
++static VkResult
++xe_setup_context(struct anv_device *device,
++                  const VkDeviceCreateInfo *create_info,
++                  uint32_t num_queues)
++{
++   (void)create_info;
++   (void)num_queues;
++   return anv_xe_device_setup_vm(device);
++}
++
+ const struct anv_kmd_backend *
+ anv_xe_kmd_backend_get(void)
+ {
+    static const struct anv_kmd_backend xe_backend = {
++      .get_physical_parameters = anv_xe_physical_device_get_parameters,
++      .init_memory_types = anv_xe_physical_device_init_memory_types,
++      .map_placed_slab = anv_drm_map_placed_slab,
++      .import_bo_fd = anv_gem_fd_to_handle,
++      .export_bo_fd = anv_gem_handle_to_fd,
++      .import_bo_flags = anv_gem_import_bo_alloc_flags_to_bo_flags,
++      .get_bo_tiling = anv_drm_get_bo_tiling,
++      .set_bo_tiling = anv_drm_set_bo_tiling,
++      .create_engine = anv_xe_create_engine,
++      .destroy_engine = anv_xe_destroy_engine,
++      .restrict_sys_heap_size = anv_drm_restrict_sys_heap_size,
++      .refresh_memory_info = anv_drm_refresh_memory_info,
++      .init_sync_types = anv_drm_init_sync_types,
++      .init_engine_info = anv_drm_init_engine_info,
++      .init_addressing = anv_drm_init_addressing,
++      .supports_protected_context = anv_drm_supports_protected_context,
++      .probe_timestamp = anv_drm_probe_timestamp,
++      .supports_vm_faults = xe_supports_vm_faults,
++      .open_device = anv_drm_open_device,
++      .abort_device = anv_drm_abort_device,
++      .close_device = anv_drm_close_device,
++      .setup_context = xe_setup_context,
++      .destroy_context = anv_xe_device_destroy_vm,
++      .check_status = anv_xe_device_check_status,
++      .read_timestamp = anv_drm_read_timestamp,
++      .read_correlated_timestamp = anv_drm_read_correlated_timestamp,
++      .get_vm_faults = anv_xe_device_alloc_get_vm_faults,
+       .gem_create = xe_gem_create,
+       .gem_create_userptr = xe_gem_create_userptr,
+       .gem_close = xe_gem_close,
+--- a/src/intel/vulkan/anv_queue.c
++++ b/src/intel/vulkan/anv_queue.c
+@@ -27,9 +27,6 @@
+ 
+ #include "anv_private.h"
+ 
+-#include "i915/anv_queue.h"
+-#include "xe/anv_queue.h"
+-
+ #include "vk_common_entrypoints.h"
+ 
+ static VkResult
+@@ -37,31 +34,20 @@
+                   struct anv_queue *queue,
+                   const VkDeviceQueueCreateInfo *pCreateInfo)
+ {
+-   switch (device->info->kmd_type) {
+-   case INTEL_KMD_TYPE_I915:
+-      return anv_i915_create_engine(device, queue, pCreateInfo);
+-   case INTEL_KMD_TYPE_XE:
+-      return anv_xe_create_engine(device, queue, pCreateInfo);
+-   default:
+-      UNREACHABLE("Missing");
+-      return VK_ERROR_UNKNOWN;
+-   }
++   const struct anv_kmd_backend *backend = device->kmd_backend;
++   if (backend == NULL || backend->create_engine == NULL ||
++       backend->destroy_engine == NULL)
++      return VK_ERROR_INITIALIZATION_FAILED;
++   return backend->create_engine(device, queue, pCreateInfo);
+ }
+ 
+ static void
+ anv_destroy_engine(struct anv_queue *queue)
+ {
+    struct anv_device *device = queue->device;
+-   switch (device->info->kmd_type) {
+-   case INTEL_KMD_TYPE_I915:
+-      anv_i915_destroy_engine(device, queue);
+-      break;
+-   case INTEL_KMD_TYPE_XE:
+-      anv_xe_destroy_engine(device, queue);
+-      break;
+-   default:
+-      UNREACHABLE("Missing");
+-   }
++   /* Creation requires this immutable backend's matching cleanup hook. */
++   assert(device->kmd_backend && device->kmd_backend->destroy_engine);
++   device->kmd_backend->destroy_engine(device, queue);
+ }
+ 
+ VkResult
+--- a/src/intel/vulkan/anv_allocator.c
++++ b/src/intel/vulkan/anv_allocator.c
+@@ -1803,36 +1803,10 @@
+                      void *placed_addr,
+                      void **map_out)
+ {
+-   int prime_handle = anv_gem_handle_to_fd(device, bo->gem_handle);
+-   VkResult result = VK_SUCCESS;
+-
+-   if (prime_handle < 0) {
+-      return vk_errorf(device, VK_ERROR_MEMORY_MAP_FAILED,
+-                       "anv_gem_handle_to_fd() before mmap failed: %m");
+-   }
+-
+-   offset += (bo->offset - bo->slab_parent->offset);
+-   void *map = os_mmap(placed_addr,
+-                       size,
+-                       PROT_READ | PROT_WRITE,
+-                       MAP_FIXED | MAP_SHARED,
+-                       prime_handle,
+-                       offset);
+-   if (map == MAP_FAILED) {
+-      result = vk_errorf(device, VK_ERROR_MEMORY_MAP_FAILED, "mmap failed: %m");
+-      goto end;
+-   }
+-
+-   assert(placed_addr == NULL || map == placed_addr);
+-   assert(map != NULL);
+-   VG(VALGRIND_MALLOCLIKE_BLOCK(map, size, 0, 1));
+-
+-   if (map_out)
+-      *map_out = map;
+-
+-end:
+-   close(prime_handle);
+-   return result;
++   const struct anv_kmd_backend *backend = device->kmd_backend;
++   if (backend == NULL || backend->map_placed_slab == NULL)
++      return vk_error(device, VK_ERROR_MEMORY_MAP_FAILED);
++   return backend->map_placed_slab(device, bo, offset, size, placed_addr, map_out);
+ }
+ 
+ VkResult
+@@ -2032,6 +2006,11 @@
+                      uint64_t client_address,
+                      struct anv_bo **bo_out)
+ {
++   const struct anv_kmd_backend *backend = device->kmd_backend;
++   if (backend == NULL || backend->import_bo_fd == NULL ||
++       backend->import_bo_flags == NULL)
++      return vk_error(device, VK_ERROR_INVALID_EXTERNAL_HANDLE);
++
+    assert(!(alloc_flags & (ANV_BO_ALLOC_MAPPED |
+                            ANV_BO_ALLOC_HOST_CACHED |
+                            ANV_BO_ALLOC_HOST_COHERENT |
+@@ -2042,7 +2021,7 @@
+ 
+    pthread_mutex_lock(&cache->mutex);
+ 
+-   uint32_t gem_handle = anv_gem_fd_to_handle(device, fd);
++   uint32_t gem_handle = backend->import_bo_fd(device, fd);
+    if (!gem_handle) {
+       pthread_mutex_unlock(&cache->mutex);
+       return vk_error(device, VK_ERROR_INVALID_EXTERNAL_HANDLE);
+@@ -2051,7 +2030,7 @@
+    struct anv_bo *bo = anv_device_lookup_bo(device, gem_handle);
+ 
+    uint32_t bo_flags;
+-   VkResult result = anv_gem_import_bo_alloc_flags_to_bo_flags(device, bo,
++   VkResult result = backend->import_bo_flags(device, bo,
+                                                                alloc_flags,
+                                                                &bo_flags);
+    if (result != VK_SUCCESS) {
+@@ -2129,6 +2108,10 @@
+ anv_device_export_bo(struct anv_device *device,
+                      struct anv_bo *bo, int *fd_out)
+ {
++   const struct anv_kmd_backend *backend = device->kmd_backend;
++   if (backend == NULL || backend->export_bo_fd == NULL)
++      return vk_error(device, VK_ERROR_INVALID_EXTERNAL_HANDLE);
++
+    assert(anv_device_lookup_bo(device, bo->gem_handle) == bo);
+ 
+    /* This BO must have been flagged external in order for us to be able
+@@ -2137,7 +2120,7 @@
+     */
+    assert(anv_bo_is_external(bo));
+ 
+-   int fd = anv_gem_handle_to_fd(device, bo->gem_handle);
++   int fd = backend->export_bo_fd(device, bo->gem_handle);
+    if (fd < 0)
+       return vk_error(device, VK_ERROR_TOO_MANY_OBJECTS);
+ 
+@@ -2151,15 +2134,10 @@
+                          struct anv_bo *bo,
+                          enum isl_tiling *tiling_out)
+ {
+-   int i915_tiling = anv_gem_get_tiling(device, bo->gem_handle);
+-   if (i915_tiling < 0) {
+-      return vk_errorf(device, VK_ERROR_INVALID_EXTERNAL_HANDLE,
+-                       "failed to get BO tiling: %m");
+-   }
+-
+-   *tiling_out = isl_tiling_from_i915_tiling(i915_tiling);
+-
+-   return VK_SUCCESS;
++   const struct anv_kmd_backend *backend = device->kmd_backend;
++   if (backend == NULL || backend->get_bo_tiling == NULL)
++      return vk_error(device, VK_ERROR_INVALID_EXTERNAL_HANDLE);
++   return backend->get_bo_tiling(device, bo, tiling_out);
+ }
+ 
+ VkResult
+@@ -2168,15 +2146,10 @@
+                          uint32_t row_pitch_B,
+                          enum isl_tiling tiling)
+ {
+-   assert(bo->slab_parent == NULL);
+-   int ret = anv_gem_set_tiling(device, bo->gem_handle, row_pitch_B,
+-                                isl_tiling_to_i915_tiling(tiling));
+-   if (ret) {
+-      return vk_errorf(device, VK_ERROR_OUT_OF_DEVICE_MEMORY,
+-                       "failed to set BO tiling: %m");
+-   }
+-
+-   return VK_SUCCESS;
++   const struct anv_kmd_backend *backend = device->kmd_backend;
++   if (backend == NULL || backend->set_bo_tiling == NULL)
++      return vk_error(device, VK_ERROR_FEATURE_NOT_PRESENT);
++   return backend->set_bo_tiling(device, bo, row_pitch_B, tiling);
+ }
+ 
+ static bool
+--- a/src/intel/vulkan/anv_batch_chain.c
++++ b/src/intel/vulkan/anv_batch_chain.c
+@@ -1623,6 +1623,16 @@
+       return VK_SUCCESS;
+    }
+ 
++   /* CPU dependency waits must precede device->mutex: the producer queue
++    * may need that same mutex. Linux backends leave this callback NULL. */
++   if (device->kmd_backend->wait_queue_dependencies) {
++      result = device->kmd_backend->wait_queue_dependencies(
++         device, submit->wait_count, submit->waits, UINT64_MAX);
++      if (result != VK_SUCCESS)
++         return result;
++   }
++
++
+    /* Flush the trace points first before taking the lock as the flushing
+     * might try to take that same lock.
+     */

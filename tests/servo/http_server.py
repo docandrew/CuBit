@@ -19,17 +19,44 @@ PAGE = b"""<!doctype html>
 </body></html>
 """
 
+BROWSER_A = b"""<!doctype html><meta charset="utf-8">
+<title>CuBitBrowserA</title>
+<body style="background:white;margin:24px;font:18px sans-serif"
+ onkeydown="if(event.key==='Escape')document.title='CuBitBrowserRestoredA';if(event.key==='F2')document.title='CuBitBrowserRetained:'+document.getElementById('entry').value">
+<h1>Servo browser input</h1>
+<p>The native address field navigated to this page.</p>
+<input id="entry" aria-label="Browser input test"
+ style="position:absolute;left:24px;top:136px;width:200px;height:24px;box-sizing:border-box"
+ onclick="document.title='CuBitBrowserPointerFocus'"
+ oninput="document.title='CuBitBrowserTyped:'+this.value">
+<p><a href="/browser-b">Visit the second page</a></p>
+<div style="width:300px;height:80px;background:#2a7"></div>
+"""
+BROWSER_B = b"""<!doctype html><meta charset="utf-8">
+<title>CuBitBrowserB</title>
+<body style="background:white;margin:24px;font:18px sans-serif;min-height:1600px"
+ onkeydown="if(event.key==='Escape')document.title='CuBitBrowserRestoredB'">
+<h1>History and reload</h1><p>Second page in browser navigation regression.</p>
+<div style="width:300px;height:80px;background:#37c"></div>
+<script>
+onwheel=event=>{document.title='CuBitBrowserWheel:'+Math.sign(event.deltaY);};
+onscroll=()=>{if(scrollY>0)document.title='CuBitBrowserScrolled';};
+onresize=()=>{document.title='CuBitBrowserResize:'+innerWidth+'x'+innerHeight;};
+</script>
+"""
+
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path != "/servo-test.html":
+        page = {"/servo-test.html": PAGE, "/browser-a": BROWSER_A, "/browser-b": BROWSER_B}.get(self.path)
+        if page is None:
             self.send_error(404)
             return
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(PAGE)))
+        self.send_header("Content-Length", str(len(page)))
         self.end_headers()
-        self.wfile.write(PAGE)
+        self.wfile.write(page)
         print(f"servo-http: served {self.path}", flush=True)
 
     def log_message(self, *args):

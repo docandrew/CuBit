@@ -1,0 +1,5 @@
+(executable-manifest v1
+  (identity "com.cubit.observatory")
+  (version "0.1.0")
+  (request-service desktop read-write desktop)
+  (request-service metrics-observer read-write metrics-observer))

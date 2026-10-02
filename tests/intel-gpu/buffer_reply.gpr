@@ -1,0 +1,11 @@
+project Buffer_Reply is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("buffer_reply_tests.adb", "intel_gpu_buffer_reply.ads",
+     "intel_gpu_physical_extents.ads", "intel_gpu_physical_extents.adb",
+     "intel_gpu_buffer_reply.adb", "intel_gpu_buffer_backing.ads");
+   for Object_Dir use external ("BUFFER_REPLY_OBJECT_DIR", "build-buffer-reply");
+   for Main use ("buffer_reply_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Buffer_Reply;

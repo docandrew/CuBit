@@ -13,6 +13,17 @@ package Process.Owned_Memory is
    procedure Protect (PID : ProcessID; Base, Bytes, Mode : Unsigned_64;
                       Success : out Boolean);
 
+   -- CPU-only growable storage: reserve page-aligned virtual capacity without
+   -- RAM, then commit bounded prefixes at an exact expected offset. Committed
+   -- addresses never move. No GPU mapping or DMA authority is created.
+   procedure Reserve (PID : ProcessID; Bytes : Unsigned_64; Base : out Unsigned_64);
+   procedure Commit_Prefix (PID : ProcessID; Base, Offset, Bytes : Unsigned_64;
+                            Success : out Boolean);
+   -- Retire all committed chunks before releasing the address reservation.
+   -- A failed chunk retirement retains the reservation and its backing.
+   procedure Release_Reservation (PID : ProcessID; Base, Bytes : Unsigned_64;
+                                  Success : out Boolean);
+
    -- Legacy physical mappers must hold this lock from alias admission through
    -- publication. Order: mailbox/grant -> owned-memory -> address-space -> buddy.
    procedure Lock;

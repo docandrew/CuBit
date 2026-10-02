@@ -46,6 +46,8 @@ with Intel_GPU_Buffer_Reply;
 with Intel_GPU_PCI_Interrupts;
 with Intel_GPU_PCI_IRQ_Disable;
 with Intel_GPU_GGTT_Access;
+with Intel_GPU_Broker_Request;
+with Intel_Render_Broker;
 
 procedure main is
    use ASCII;
@@ -195,6 +197,19 @@ procedure main is
    Intel_Inspection_PID : Unsigned_64 := 0;
    package GP renames Native_GPU_Probe_Protocol;
    package CG renames CuBit.Capability_Grants;
+   -- These slots remain reserved for the broker's retained lifetime. Slot27
+   -- holds RTC port authority; slot31 is GPU control and slot57 the viewer.
+   function GPU_Launch_Reply_Slot (ID : Positive) return CapabilitySlot is
+     (if ID <= 11 then CapabilitySlot (15 + ID)
+      elsif ID <= 14 then CapabilitySlot (16 + ID)
+      elsif ID = 15 then 32 else 56);
+   package GPU_Launch is new Intel_Render_Broker
+     (31, 16#4750_1000#, 16#4750_1FFF#, GPU_Launch_Reply_Slot);
+   GPU_Launches : GPU_Launch.Broker;
+   Launch_Receipt : aliased CompletionEntry;
+   Request_Found, Receipt_Consumed : Boolean;
+   Launch_Now : Unsigned_64;
+   Launch_Activity : Activity_Result;
    GPU_Viewer_PID : Unsigned_64 := 0;
    GPU_Viewer_Target : CG.Recipient;
    GPU_Viewer_Ready, GPU_Viewer_Desktop_Bound : Boolean := False;
@@ -945,12 +960,17 @@ procedure main is
          then
             ignore := reply (sender,
               (tag => (16#F002#, 0, 0, 0), authorityTag => 0, words => [others => 0]));
-         elsif rdyMsg.tag = (Intel_GPU_Buffer_Backing.Request_Label, 2, 0, 0) and then
+         elsif rdyMsg.tag = (Intel_GPU_Buffer_Backing.Budget_Request_Label, 4, 0, 0) and then
            sender = Intel_Inspection_PID and then sender /= 0 and then
-           rdyMsg.authorityTag = 16#4947# and then
-           rdyMsg.words (0) in 1 .. Unsigned_64 (Intel_GPU_Buffer_Backing.Slot'Last) and then
-           rdyMsg.words (1) in 1 .. Unsigned_64 (Intel_GPU_Buffer_Backing.Page_Count'Last) and then
-           rdyMsg.words (2 .. 3) = [0, 0]
+           rdyMsg.authorityTag = 16#4947# and then rdyMsg.words = [1, 0, 0, 0]
+         then
+            ignore := reply (sender,
+              (tag => (16#F002#, 0, 0, 0), authorityTag => 0, words => [others => 0]));
+         elsif Intel_GPU_Buffer_Backing.Valid_Allocation_Request
+           (rdyMsg.tag.label, rdyMsg.tag.length, rdyMsg.tag.flags, rdyMsg.tag.reserved,
+            rdyMsg.words (0), rdyMsg.words (1), rdyMsg.words (2), rdyMsg.words (3)) and then
+           sender = Intel_Inspection_PID and then sender /= 0 and then
+           rdyMsg.authorityTag = 16#4947#
          then
             ignore := reply (sender,
               (tag => (16#F002#, 0, 0, 0), authorityTag => 0, words => [others => 0]));
@@ -2798,7 +2818,8 @@ begin
                Grant_Intel_Firmware (Child);
                mintCap (Child, CAP_ENDPOINT, myPID, 16#4947#, RIGHT_READ or RIGHT_WRITE, 15);
                mintCap (Child, CAP_DEVICE_MEM, Plan.Physical_Base, Plan.Bytes, RIGHT_READ, 4);
-               grantEndpoint (myPID, Child, 31, myPID);
+               mintCap (myPID, CAP_ENDPOINT, Child, Intel_GPU_Boot.Broker_Tag,
+                 RIGHT_READ or RIGHT_WRITE or RIGHT_GRANT, 31);
                -- Optional boot diagnostic, created suspended. Capture its
                -- incarnation before installing any authority; never look up
                -- the PID again to grant Desktop access after startup.
@@ -2973,6 +2994,11 @@ begin
                RIGHT_WRITE or RIGHT_GRANT, 9);
 
       assignCPU (procmgrPID, "procmgr.svc");
+      -- Trusted launcher policy endpoint, not inherited by applications.
+      mintCap (procmgrPID, CAP_ENDPOINT, myPID,
+               Intel_GPU_Broker_Request.Authority_Tag,
+               RIGHT_READ or RIGHT_WRITE,
+               Intel_GPU_Broker_Request.Launcher_Endpoint_Slot);
       sendWildcardACL (procmgrPID);
       sendWildcardACLConfig (procmgrPID);
       mintCap (procmgrPID, CAP_ENDPOINT, myPID, 0,
@@ -2992,8 +3018,48 @@ begin
    debugPrint ("devmgr: startup complete, entering service loop" & LF);
 
    loop
-      receive (from, msg);
-      if msg.tag.label = GP.Desktop_Binding_Label then
+      -- One completion, one admission step and one request per iteration:
+      -- incoming device traffic cannot starve pending GPU launch completion.
+      Launch_Now := syscall (SYSCALL_GETTIME);
+      if Poll_Completion (Launch_Receipt'Address) = 1 then
+         GPU_Launch.Complete
+           (GPU_Launches, Launch_Receipt, Launch_Now, Receipt_Consumed);
+         if not Receipt_Consumed then
+            -- This is currently devmgr's only completion-token owner;
+            -- hardware bootstrap submits with NO_COMPLETION_TOKEN.
+            debugPrint ("devmgr: unexpected async completion" & LF);
+         end if;
+      end if;
+      GPU_Launch.Step (GPU_Launches, Launch_Now);
+      Poll_Service_Request (from, msg, Request_Found);
+      if not Request_Found then
+         if not GPU_Launch.Runnable (GPU_Launches) then
+            Launch_Activity := Wait_For_Activity_Until
+              (GPU_Launch.Next_Deadline (GPU_Launches));
+            if Launch_Activity = Unavailable then
+               -- Exceptional kernel failure, not periodic broker polling.
+               ret := syscall (SYSCALL_SLEEP, 1);
+            end if;
+         end if;
+      elsif msg.tag.label = Intel_GPU_Broker_Request.Label then
+         declare
+            ID : GPU_Launch.Ticket;
+         begin
+            Launch_Now := syscall (SYSCALL_GETTIME);
+            GPU_Launch.Begin_Request
+              (GPU_Launches, procmgrPID, from, msg.authorityTag, msg,
+               Launch_Now,
+               (if Launch_Now > Unsigned_64'Last - 5_000 then Launch_Now
+                else Launch_Now + 5_000), ID);
+            if ID = 0 then
+               ret := reply (from,
+                 (tag => (Intel_GPU_Broker_Request.Label, 4, 0, 0),
+                  authorityTag => 0,
+                  words => [Intel_GPU_Broker_Request.Version, 1,
+                            msg.words (3), 0]));
+            end if;
+         end;
+      elsif msg.tag.label = GP.Desktop_Binding_Label then
          declare
             Code : Unsigned_64 := 1;
             Desktop_PID : constant Unsigned_64 :=
@@ -3413,11 +3479,11 @@ begin
             ret := Unsigned_64 (reply (from,
               (tag => (16#F001#, 0, 0, 0), authorityTag => 0, words => [others => 0])));
          end if;
-      elsif msg.tag = (Intel_GPU_Buffer_Backing.Request_Label, 2, 0, 0) and then
+      elsif Intel_GPU_Buffer_Backing.Valid_Allocation_Request
+        (msg.tag.label, msg.tag.length, msg.tag.flags, msg.tag.reserved,
+         msg.words (0), msg.words (1), msg.words (2), msg.words (3)) and then
         Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
-        msg.authorityTag = 16#4947# and then msg.words (2 .. 3) = [0, 0] and then
-        msg.words (0) in 1 .. Unsigned_64 (Intel_GPU_Buffer_Backing.Slot'Last) and then
-        msg.words (1) in 1 .. Unsigned_64 (Intel_GPU_Buffer_Backing.Page_Count'Last)
+        msg.authorityTag = 16#4947#
       then
          declare
             View : Intel_GPU_Buffer_Reply.Extent_View;
@@ -3426,13 +3492,65 @@ begin
             Buffer_Allocations.Acquire_Buffer
               (Intel_Buffer_Pool, Intel_Inspection_PID, Intel_GPU_Buffer_Backing.Slot (msg.words (0)),
                Intel_GPU_Buffer_Backing.Page_Count (msg.words (1)),
+               Unsigned_32 (msg.words (2)),
                View, Granted);
             if Granted then
                Intel_Buffer_Arena_Granted := True;
                ret := Unsigned_64 (reply (from,
                  (tag => (16#F004#, 4, 0, 0), authorityTag => 0,
                   words => [Intel_GPU_Buffer_Reply.CPU_Address (View),
-                    Intel_GPU_Buffer_Reply.Byte_Count (View), Intel_Inspection_PID, msg.words (0)])));
+                    Intel_GPU_Buffer_Reply.Byte_Count (View), Intel_Inspection_PID,
+                    Intel_GPU_Buffer_Backing.Allocation_Key
+                      (Intel_GPU_Buffer_Backing.Slot (msg.words (0)),
+                       Unsigned_32 (msg.words (2)))])));
+            else
+               ret := Unsigned_64 (reply (from,
+                 (tag => (16#F001#, 0, 0, 0), authorityTag => 0, words => [others => 0])));
+            end if;
+         end;
+      elsif msg.tag.label = Intel_GPU_Buffer_Backing.Retire_Request_Label then
+         declare
+            Granted : Boolean := False;
+         begin
+            if Intel_GPU_Buffer_Backing.Retirement_Authorized
+              (msg.tag.label, msg.tag.length, msg.tag.flags, msg.tag.reserved,
+               Intel_GPU_Buffer_Backing.Budget_Words (msg.words), Unsigned_64 (from),
+               msg.authorityTag, Intel_Inspection_PID, Intel_Buffer_Arena_Granted)
+            then
+               -- Only the trusted driver can certify hardware/CPU retirement.
+               -- This releases an exact-generation arena slice, never DMA RAM.
+               Buffer_Allocations.Retire_Buffer
+                 (Intel_Buffer_Pool, Intel_Inspection_PID,
+                  Intel_GPU_Buffer_Backing.Slot (msg.words (0)),
+                  Unsigned_32 (msg.words (1)), True, Granted);
+            end if;
+            if Granted then
+               ret := Unsigned_64 (reply (from,
+                 (tag => (Intel_GPU_Buffer_Backing.Retire_Request_Label, 4, 0, 0),
+                  authorityTag => 0, words => [0,
+                    Intel_GPU_Buffer_Backing.Allocation_Key
+                      (Intel_GPU_Buffer_Backing.Slot (msg.words (0)), Unsigned_32 (msg.words (1))),
+                    Intel_Inspection_PID, 0])));
+            else
+               ret := Unsigned_64 (reply (from,
+                 (tag => (16#F001#, 0, 0, 0), authorityTag => 0, words => [others => 0])));
+            end if;
+         end;
+      elsif msg.tag = (Intel_GPU_Buffer_Backing.Budget_Request_Label, 4, 0, 0) and then
+        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        msg.authorityTag = 16#4947# and then msg.words = [1, 0, 0, 0]
+      then
+         declare
+            Usage : constant Buffer_Allocations.Budget :=
+              Buffer_Allocations.Memory_Budget (Intel_Buffer_Pool);
+            Data : constant Intel_GPU_Buffer_Backing.Budget_Words :=
+              Intel_GPU_Buffer_Backing.Budget_Reply
+                (Usage.Known, Usage.Capacity, Usage.Retained, Usage.Unassigned_Slots);
+         begin
+            if Data (0) = 1 then
+               ret := Unsigned_64 (reply (from,
+                 (tag => (Intel_GPU_Buffer_Backing.Budget_Request_Label, 4, 0, 0),
+                  authorityTag => 0, words => [Data (0), Data (1), Data (2), Data (3)])));
             else
                ret := Unsigned_64 (reply (from,
                  (tag => (16#F001#, 0, 0, 0), authorityTag => 0, words => [others => 0])));

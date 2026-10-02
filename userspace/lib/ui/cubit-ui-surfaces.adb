@@ -55,17 +55,23 @@ package body CuBit.UI.Surfaces is
       result : Canvas;
    begin
       if p.width = 0 or else p.height = 0 or else
-        parent.addr = System.Null_Address
+        parent.addr = System.Null_Address or else
+        parent.width > Client_Canvas_Geometry.Logical_Edge'Last - parent.originX or else
+        parent.height > Client_Canvas_Geometry.Logical_Edge'Last - parent.originY
       then
          return result;  --  empty canvas: every draw is a no-op
       end if;
       result :=
-        (addr => parent.addr + Storage_Offset (p.y * parent.pitch + p.x * 4),
+        (addr => parent.addr + Storage_Offset (Client_Canvas_Geometry.Relative (parent.originY, p.y, parent.densityNumerator, parent.densityDenominator) * parent.pitch +
+          Client_Canvas_Geometry.Relative (parent.originX, p.x, parent.densityNumerator, parent.densityDenominator) * 4),
          width => p.width,
          height => p.height,
          pitch => parent.pitch,
          clipEnabled => p.clipEnabled,
-         clip => p.clip);
+         clip => p.clip,
+         densityNumerator => parent.densityNumerator,
+         densityDenominator => parent.densityDenominator,
+         originX => parent.originX + p.x, originY => parent.originY + p.y);
       return result;
    end View;
 

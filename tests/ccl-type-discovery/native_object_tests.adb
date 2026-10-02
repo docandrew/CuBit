@@ -1,3 +1,4 @@
+with GNAT.Source_Info;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Types; use CCL.Types;
@@ -46,14 +47,16 @@ procedure Native_Object_Tests is
    Links : Linkage_Table;
    Limits : F.Resource_Limits;
    Checks : Natural := 0;
+   --  Scalar object results, more than a small store would hold.
+   SCALAR_CALLS : constant := 16;
    use type CCL.Objects.Catalog.Publication_Result;
    use type CCL.Language.Analysis_Status;
    use type CCL.Compiler.Compilation_Status;
    use type F.Format_Error;
-   procedure Check (OK : Boolean) is
+   procedure Check (OK : Boolean; Where : String := GNAT.Source_Info.Source_Location) is
    begin
       Checks := Checks + 1;
-      if not OK then raise Program_Error with "native object VM check" & Checks'Image; end if;
+      if not OK then raise Program_Error with "native object VM check" & Checks'Image & " at " & Where; end if;
    end Check;
    procedure Compile (Source : String) is
    begin
@@ -125,7 +128,7 @@ begin
    N.Complete_Object (Checked, Machine, Contract, Input, True);
    Advance; Check (Outcome.Status = Waiting_For_Host and Outcome.Requested_Binding = 78);
    N.Inspect (Checked, Machine, Inspection);
-   Check (Inspection.Waiting_Argument.Kind = Object_Value and Inspection.Waiting_Argument.Object /= 0);
+   Check (Inspection.Waiting_Argument.Kind = Object_Value and Inspection.Waiting_Argument.Node /= 0);
    N.Export_Argument (Checked, Machine, Contract, Output, Good); Check (Good and Output = Input);
    Input.Text (1) := 'y'; -- mutate the original host buffer, not just a copy
    N.Export_Argument (Checked, Machine, Contract, Output, Good);
@@ -156,7 +159,7 @@ begin
    Initialize (Checked, 256, Scalar_Machine);
    Continue_Execution (Checked, Scalar_Machine, Outcome); Check (Outcome.Status = Waiting_For_Host);
    Complete_Host_Call (Checked, Scalar_Machine,
-     (Kind => Object_Value, Data_Type => Code.Imports (0).Result_Data_Type, Object => 1, others => <>), True);
+     (Kind => Object_Value, Data_Type => Code.Imports (0).Result_Data_Type, Node => 1, others => <>), True);
    Continue_Execution (Checked, Scalar_Machine, Outcome); Check (Outcome.Status = Invalid_Bytecode);
    declare
       Injected : Local_Value_Array := [others => <>];
@@ -172,15 +175,19 @@ begin
       Candidate.Local_Kinds (0) := Object_Value;
       Candidate.Local_Data_Types (0) := Code.Imports (0).Result_Data_Type;
       Verify (Candidate, Initial, Validity); Check (Validity = Valid);
-      Injected (0) := (Kind => Object_Value, Data_Type => Candidate.Local_Data_Types (0), Object => 1, others => <>);
+      Injected (0) := (Kind => Object_Value, Data_Type => Candidate.Local_Data_Types (0), Node => 1, others => <>);
       Initialize_With_Locals (Initial, 32, Injected, 1, Scalar_Machine, Good); Check (not Good);
    end;
+   --  Each result is copied into the value arena. This record carries a
+   --  full-size string, so the text region holds this many of them; the next
+   --  object call is refused before the host acts.
    declare
       function Echoes (Count : Natural) return String is
         (if Count = 0 then "(objects.get)" else "(objects.echo " & Echoes (Count - 1) & ")");
       Calls : Natural := 0;
+      Fitting : constant := MAX_TEXT_BYTES / Maximum_Text_Bytes;
    begin
-      Compile (Echoes (MAX_OBJECT_VALUES));
+      Compile (Echoes (Fitting));
       N.Initialize (Checked, 256, Machine);
       loop
          Advance;
@@ -188,7 +195,7 @@ begin
          Calls := Calls + 1;
          N.Complete_Object (Checked, Machine, Contract, Input, True);
       end loop;
-      Check (Outcome.Status = Object_Storage_Exhausted and Calls = MAX_OBJECT_VALUES);
+      Check (Outcome.Status = Object_Storage_Exhausted and Calls = Fitting);
       N.Export_Result (Checked, Machine, Contract, Output, Good); Check (not Good);
       N.Stop (Machine);
    end;
@@ -246,15 +253,17 @@ begin
    Corrupt := Empty (Wrong);
    Append_Text (Corrupt, String'(1 .. Maximum_Text_Bytes => 'x'), Built); Check (Built = Added);
    Check (Good and Output = Corrupt);
+   --  Projections read the arena; they allocate nothing.
    declare
+      Projections : constant := 16;
       function Fields (Count : Positive) return String is
         (if Count = 1 then "(if (field s enabled) 1 0)"
          else "(+ (if (field s enabled) 1 0) " & Fields (Count - 1) & ")");
    begin
-      Compile ("(let ((s (objects.get))) " & Fields (MAX_OBJECT_VALUES + 1) & ")");
+      Compile ("(let ((s (objects.get))) " & Fields (Projections) & ")");
       N.Initialize (Checked, 256, Machine); Advance;
       N.Complete_Object (Checked, Machine, Contract, Input, True); Advance;
-      Check (Outcome.Status = Completed and Outcome.Result_Value = Integer_Constant (MAX_OBJECT_VALUES + 1));
+      Check (Outcome.Status = Completed and Outcome.Result_Value = Integer_Constant (Projections));
    end;
    -- Nested sum payloads reuse the owner's cursor and can themselves be
    -- projected. Nullary alternatives must not leave a payload on the stack.
@@ -291,16 +300,77 @@ begin
          Check (Outcome.Status = Completed and Outcome.Result_Value = Boolean_Constant (Present));
       end loop;
    end;
-   -- Native scalar images use the same typed completion API but do not spend
-   -- aggregate snapshot slots. Preflight observes state without executing it.
+   --  A list of records from the host (the REPL log viewer's shape): copied
+   --  into the arena and list region, read, and exported back unchanged.
+   declare
+      Entry_Type, Entries_Type : Type_Reference;
+      Specialized : CCL.Types.List_Result;
+      Entries : Binding;
+      Recent : CCL.Objects.Image;
+      procedure Add_Entry (Text : String; Level : Integer_64) is
+      begin
+         Append (Recent, Product_Cell (2), Built); Check (Built = Added);
+         Append_Text (Recent, Text, Built); Check (Built = Added);
+         Append (Recent, Integer_Cell (Level), Built); Check (Built = Added);
+      end Add_Entry;
+   begin
+      Define (Types, (Identifier => Named ("Entry"), Form => Product, Count => 2,
+        Parts => [1 => (Named ("text"), CCL.Types.String_Type),
+                  2 => (Named ("level"), CCL.Types.Integer_Type), others => <>]), Entry_Type, Declared);
+      Check (Declared = Defined);
+      CCL.Types.Specialize_List (Types, Entry_Type, Entries_Type, Specialized);
+      Check (Specialized in CCL.Types.List_Specialized | CCL.Types.List_Already_Specialized);
+      Check (Persistable (Types, Entries_Type));
+      Bind (Types, Entries_Type, [41, 42, 43, 44], Entries, Good); Check (Good);
+      Catalog := Empty_Catalog;
+      Initialize (Grants);
+      Publish_Schema (Catalog, Entries, Published); Check (Published = CCL.Objects.Catalog.Published);
+      Define_Interface ("logs", 1, 0, [111, 112, 113, 114], Interface_Item, Error); Check (Error = Catalog_Valid);
+      Define_Host_Operation ("recent", 0,
+        (Result => CCL.Host_Values.Object_Value, Result_Schema => Identity (Entries), others => <>), Op, Error);
+      Check (Error = Catalog_Valid);
+      Add_Operation (Interface_Item, Op, Error); Check (Error = Catalog_Valid);
+      Publish (Catalog, Interface_Item, Error); Check (Error = Catalog_Valid);
+      Resolve (Catalog, "logs.recent", Resolved, Good); Check (Good);
+      Install (Grants, Resolved, 79, Installed); Check (Installed = Grant_Added);
+      Recent := Empty (Entries);
+      Append (Recent, Sequence_Cell (3), Built); Check (Built = Added);
+      Add_Entry ("boot", 1);
+      Add_Entry ("link up", 2);
+      Add_Entry ("ready", 1);
+      Check (Validate (Recent, Entries));
+      Compile ("(length (logs.recent))");
+      N.Initialize (Checked, 64, Machine); Advance; Check (Outcome.Status = Waiting_For_Host);
+      N.Complete_Object (Checked, Machine, Entries, Recent, True); Advance;
+      Check (Outcome.Status = Completed and Outcome.Result_Value = Integer_Constant (3));
+      Compile ("(field (at (logs.recent) 2) text)");
+      N.Initialize (Checked, 64, Machine); Advance;
+      N.Complete_Object (Checked, Machine, Entries, Recent, True); Advance;
+      Check (Outcome.Status = Completed and Outcome.Has_Result_Text and
+             Outcome.Result_Text_Value.Data (1 .. Outcome.Result_Text_Value.Length) = "link up");
+      Compile ("(logs.recent)");
+      N.Initialize (Checked, 64, Machine); Advance;
+      N.Complete_Object (Checked, Machine, Entries, Recent, True); Advance;
+      Check (Outcome.Status = Completed and Outcome.Has_Literal and
+             Outcome.Literal.Data (1 .. Outcome.Literal.Length) =
+               "[(Entry ""boot"" 1) (Entry ""link up"" 2) (Entry ""ready"" 1)]");
+      N.Export_Result (Checked, Machine, Entries, Output, Good);
+      Check (Good and Output = Recent);
+      --  A count past the cells left is malformed.
+      Corrupt := Recent;
+      Corrupt.Cells (1) := Sequence_Cell (Natural (Recent.Used_Cells));
+      Check (not Validate (Corrupt, Entries));
+   end;
+   -- Native scalar images use the same typed completion API but take no
+   -- arena. Preflight observes state without executing it.
    for Boolean_Result in Boolean loop
-      Code := (Length => 3 * (MAX_OBJECT_VALUES + 1), Imports_Length => 1, others => <>);
+      Code := (Length => 3 * (SCALAR_CALLS + 1), Imports_Length => 1, others => <>);
       Code.Imports (0) := (Result => (if Boolean_Result then Boolean_Value else Integer_Value),
         Authority => Observe_Authority, Binding => 77, others => <>);
-      for Call in 0 .. MAX_OBJECT_VALUES loop
+      for Call in 0 .. SCALAR_CALLS loop
          Code.Code (Instruction_Index (3 * Call)) := (Op => Push_Integer, others => <>);
          Code.Code (Instruction_Index (3 * Call + 1)) := (Op => Invoke_Import, others => <>);
-         Code.Code (Instruction_Index (3 * Call + 2)) := (Op => (if Call = MAX_OBJECT_VALUES then Halt else Drop), others => <>);
+         Code.Code (Instruction_Index (3 * Call + 2)) := (Op => (if Call = SCALAR_CALLS then Halt else Drop), others => <>);
       end loop;
       Verify (Code, Checked, Validity); Check (Validity = Valid);
       Bind (Types, (if Boolean_Result then CCL.Types.Boolean_Type else CCL.Types.Integer_Type),
@@ -313,7 +383,7 @@ begin
       N.Initialize (Checked, 256, Machine);
       Check (N.Pending_Call (Checked, Machine).Status = No_Result and
         not N.Accepts_Object_Result (Checked, Machine, Contract));
-      for Call in 0 .. MAX_OBJECT_VALUES loop
+      for Call in 0 .. SCALAR_CALLS loop
          Advance; Check (Outcome.Status = Waiting_For_Host);
          Check (N.Pending_Call (Checked, Machine) = Outcome);
          Check (N.Accepts_Object_Result (Checked, Machine, Contract) and

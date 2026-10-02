@@ -1,0 +1,19 @@
+--  CCL.Resource_Sections: SPARK proof (level 1) and the hosted decode tool
+--  used by test-manifests.py.
+project Resources is
+   for Languages use ("Ada");
+   for Source_Dirs use ("../../userspace/ccl/src", "resource-decode");
+   for Source_Files use
+     ("ccl.ads", "ccl-scheduling_limits.ads", "ccl-resource_sections.ads",
+      "ccl-resource_sections.adb", "resource_decode.adb");
+   for Object_Dir use "build/resources";
+   for Exec_Dir use "build/resources";
+   for Main use ("resource_decode.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=1", "--checks-as-errors=on");
+   end Prove;
+end Resources;

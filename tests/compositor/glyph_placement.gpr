@@ -1,0 +1,10 @@
+project Glyph_Placement is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use ("compositor_glyph_placement.ads", "compositor_glyph_placement.adb", "compositor_affine.ads", "compositor_affine.adb", "compositor_transform.ads", "compositor_transform.adb", "glyph_placement_tests.adb", "compositor_glyph_layout.ads", "compositor_glyph_layout.adb", "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb");
+   for Object_Dir use "build/glyph-placement/obj";
+   for Exec_Dir use "build/glyph-placement";
+   for Main use ("glyph_placement_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Glyph_Placement;

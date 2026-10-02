@@ -1,0 +1,4 @@
+(executable-manifest v1
+  (identity "com.cubit.test.render-launch-policy")
+  (version "1")
+  (request-render read-write render))

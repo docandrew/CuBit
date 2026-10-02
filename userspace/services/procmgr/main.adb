@@ -28,19 +28,37 @@ with CuBit.TLS_Protocol;
 with CuBit.TLS_Scopes;
 with CuBit.Authority_Policy;
 with CuBit.Log_Protocol;
+with CuBit.Metric_Protocol;
 with CuBit.Authority; use CuBit.Authority;
 with CuBit.Memory_Grants;
 with CuBit.Filesystems;
 with Windowed_Reads;
 with CuBit.File_Access;
 with CuBit.Network_Authority;
+with CuBit.Render_Authority;
 with CuBit.Launch_Policy; use CuBit.Launch_Policy;
+with CuBit.Capability_Grants;
+with Intel_GPU_Broker_Request;
+with Intel_Render_Launch_Client;
 
 procedure main is
    use ASCII;
    --  Never reuse issuance identities within this bootstrap issuer lifetime.
    --  Independent procmgr restart requires an epoch protocol, not yet supported.
    Next_Log_Issuance : Unsigned_32 := 1;
+   --  Same rule for metrics.svc publisher/observer tags; zero = exhausted.
+   Next_Metric_Issuance : Unsigned_32 := 1;
+   package GPU_Grants renames CuBit.Capability_Grants;
+   package Render_Launch is new Intel_Render_Launch_Client
+     (Intel_GPU_Broker_Request.Launcher_Endpoint_Slot,
+      16#4750_2000#, 16#4750_2FFF#);
+   Render_Launcher : Render_Launch.Launcher;
+   Render_Source_Slot : constant CapabilitySlot := 58;
+   Failed_Launch_Control_Slot : constant CapabilitySlot := 59;
+   type Render_Request is record
+      Requested, Valid : Boolean := False;
+      Destination : CapabilitySlot := 0;
+   end record;
 
    --  IPC label constants
    OP_SPAWN   : constant Unsigned_32 := 16#0100#;
@@ -723,6 +741,7 @@ procedure main is
      (childPID      : Unsigned_64;
       elfSize       : Unsigned_64;
       streamBitmask : in out Unsigned_64;
+      render : in out Render_Request;
       approveNetwork : Network_Approval := No_Network;
       systemStartup : Boolean := False;
       approveLogViewer : Boolean := False)
@@ -823,6 +842,18 @@ procedure main is
 
                         rightsMask := Unsigned_64 (rights);
 
+                        if reqType = CuBit.Render_Authority.Manifest_Request then
+                           -- A render endpoint is admitted by devmgr, never
+                           -- minted by the generic service-capability path.
+                           render.Valid := not render.Requested and then
+                             rightsMask = 3 and then slotNum in 1 .. 62 and then
+                             param0 = 0 and then param1 = 0 and then
+                             readU8 (entryBase + 3) = 0;
+                           render.Requested := True;
+                           if render.Valid then
+                              render.Destination := CapabilitySlot (slotNum);
+                           end if;
+                        else
                         case reqType is
                            when CuBit.Network_Authority.Manifest_Request =>
                               declare
@@ -925,11 +956,17 @@ procedure main is
                                    Unsigned_64 (param0) = DRIVER_LOGSTORE;
                                  isClockControl : constant Boolean :=
                                    Unsigned_64 (param0) = CuBit.Clock_Control.Service_Role;
+                                 isMetricObserver : constant Boolean :=
+                                   Unsigned_64 (param0) = CuBit.Metric_Protocol.Observer_Service_Role;
+                                 isMetricPublisher : constant Boolean :=
+                                   Unsigned_64 (param0) = CuBit.Metric_Protocol.Publisher_Service_Role;
                                  use CuBit.Authority_Policy;
                                  Authority : constant Bootstrap_Authority :=
                                    (if isAudioControl then Master_Audio
                                     elsif isClockControl then Clock_Adjustment
                                     elsif isLogObserver then Log_Observation
+                                    elsif isMetricObserver then Metric_Observation
+                                    elsif isMetricPublisher then Metric_Publication
                                     else Log_Publication);
                                  Approval : constant Decision := Evaluate
                                    (Requested => True,
@@ -944,7 +981,8 @@ procedure main is
                                  -- narrowly selected system log viewer. This
                                  -- exception grants observation only, not the
                                  -- other startup-only authorities.
-                                 if (isAudioControl or isLogObserver or isClockControl)
+                                 if (isAudioControl or isLogObserver or isClockControl
+                                     or isMetricObserver)
                                    and then Approval /= Approved
                                  then
                                     recordAuthority
@@ -961,6 +999,8 @@ procedure main is
                                        (if isAudioControl then DRIVER_MIXER
                                         elsif isClockControl then DRIVER_CLOCK
                                         elsif isLogObserver then DRIVER_LOGSTORE
+                                        elsif isMetricObserver then
+                                          CuBit.Metric_Protocol.Publisher_Service_Role
                                         else Unsigned_64 (param0)));
                                     exit when driverPID /= 0;
                                     ignore := syscall (
@@ -990,7 +1030,22 @@ procedure main is
                                        Next_Log_Issuance := Next_Log_Issuance + 1;
                                     end if;
                                  end if;
-                                 if (isLogObserver or isLogPublisher)
+                                 if (isMetricObserver or isMetricPublisher)
+                                   and then Next_Metric_Issuance /= 0
+                                 then
+                                    Issued_Tag :=
+                                      (if isMetricObserver
+                                       then CuBit.Metric_Protocol.Observer_Tag
+                                         (Unsigned_64 (Next_Metric_Issuance))
+                                       else CuBit.Metric_Protocol.Publisher_Tag
+                                         (Unsigned_64 (Next_Metric_Issuance)));
+                                    --  Never wrap: exhaustion denies issuance.
+                                    Next_Metric_Issuance :=
+                                      (if Next_Metric_Issuance = Unsigned_32'Last
+                                       then 0 else Next_Metric_Issuance + 1);
+                                 end if;
+                                 if (isLogObserver or isLogPublisher
+                                     or isMetricObserver or isMetricPublisher)
                                    and then Issued_Tag = 0
                                  then
                                     recordAuthority
@@ -999,7 +1054,7 @@ procedure main is
                                        AUTH_REASON_MINT_FAILED,
                                        CAP_TYPE_ENDPOINT, True, False,
                                        rightsMask, Unsigned_64 (param0), 0);
-                                    debugPrint ("procmgr: log issuance exhausted" & LF);
+                                    debugPrint ("procmgr: telemetry issuance exhausted" & LF);
                                  elsif driverPID /= 0 then
                                     mintRecorded
                                       (childPID, CAP_TYPE_ENDPOINT, driverPID,
@@ -1086,6 +1141,7 @@ procedure main is
                               debugPrint (
                                  "procmgr: unknown req type" & LF);
                         end case;
+                        end if;
                      end loop;
                      end if;
 
@@ -1699,6 +1755,7 @@ procedure main is
       sandboxMode : Unsigned_8 := SANDBOX_NONE;
       cwd         : String := "";
       approveNetwork : Network_Approval := No_Network;
+      approveRender : Boolean := False;
       systemStartup : Boolean := False;
       startupRole : CCL.Configurations.Startup_Role := CCL.Configurations.Application)
       return Unsigned_64
@@ -1710,18 +1767,41 @@ procedure main is
       pkgId         : String (1 .. 128);
       pkgIdLen      : Natural := 0;
       streamBitmask : Unsigned_64 := 0;
+      Render : Render_Request;
       -- Transitional installed-system-app policy, like Desktop_Approval for
       -- browsers. Exact boot-namespace name, never a supplied path/identity;
       -- assumes the system executable namespace is administrator-controlled.
       -- Do not propagate this as systemStartup or honor caller-supplied flags.
+      --  The CCL Workbench's REPL reads logs too: (logs.recent "service").
       Log_Viewer_Approved : constant Boolean :=
-        name = "boot-logs.app" and then requester /= 0 and then
+        (name = "boot-logs.app" or else name = "ccl-workbench.app")
+        and then requester /= 0 and then
         sandboxMode = SANDBOX_NONE and then cwd'Length = 0 and then
         requester = getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP);
       use type CCL.Configurations.Startup_Role;
+      procedure Stop_Suspended_Child is
+         Result : Unsigned_64;
+      begin
+         -- Use existing explicit policy authority to obtain WRITE only for
+         -- this rejected child, not a wildcard process-kill capability.
+         -- The kernel stamps the referenced process generation; a retained
+         -- stale slot cannot authorize killing a later occupant of its PID.
+         Result := syscall (SYSCALL_POLICY_MINT_CAPABILITY,
+           syscall (SYSCALL_GETPID), CAP_TYPE_PROCESS, newPID, 0, 2,
+           Unsigned_64 (Failed_Launch_Control_Slot));
+         if Result = Unsigned_64'Last then
+            debugPrint ("procmgr: failed launch process cleanup rejected" & LF);
+            return;
+         end if;
+         Result := syscall (SYSCALL_KILL, newPID);
+         if Result /= 0 then
+            debugPrint ("procmgr: failed launch process cleanup rejected" & LF);
+         else
+            debugPrint ("procmgr: failed launch child stop requested" & LF);
+         end if;
+      end Stop_Suspended_Child;
       procedure Discard_Authorized_Child is
          type Policy_Service is (Files, Configuration);
-         Ignore : Unsigned_64;
       begin
          --  Revoke before releasing the PID. capCall overwrites its message
          --  with a reply: construct a fresh request for EACH policy service.
@@ -1742,7 +1822,7 @@ procedure main is
                end;
             end if;
          end loop;
-         Ignore := syscall (SYSCALL_KILL, newPID);
+         Stop_Suspended_Child;
       end Discard_Authorized_Child;
    begin
       if startupRole = CCL.Configurations.Config_Storage and then
@@ -1834,7 +1914,7 @@ procedure main is
       --  Parse .cubit.caps manifest (streams fallback if no .cubit.streams)
       t0 := syscall (SYSCALL_GETTIME);
       parseAndGrantManifest
-        (newPID, elfSize, streamBitmask, approveNetwork, systemStartup,
+        (newPID, elfSize, streamBitmask, Render, approveNetwork, systemStartup,
          approveLogViewer => Log_Viewer_Approved);
       t1 := syscall (SYSCALL_GETTIME);
 
@@ -2017,6 +2097,23 @@ procedure main is
          end;
       end if;
 
+      --  Metrics registration authority belongs only to the trusted startup
+      --  service. Self-declared package identity alone cannot replace it.
+      if systemStartup and then pkgIdLen = 17 and then
+        pkgId (1 .. 17) = "com.cubit.metrics"
+      then
+         declare
+            ignore : Unsigned_64;
+         begin
+            mintRecorded
+              (newPID, CAP_TYPE_NOTIFICATION,
+               CuBit.Metric_Protocol.Publisher_Service_Role,
+               0, 2, CAP_SLOT_SERVICE_REG, AUTH_SOURCE_IDENTITY_POLICY,
+               AUTH_REASON_PACKAGE_ID, False, ignore);
+            debugPrint ("procmgr: minted metrics ntf cap" & LF);
+         end;
+      end if;
+
       --  A recycled PID must not inherit the previous occupant's service
       --  policy or open handles, including when this ELF has no access section.
       --  The child is still suspended: failure to establish default-deny is
@@ -2024,7 +2121,6 @@ procedure main is
       declare
          resetMessage : Message := NULL_MESSAGE;
          resetTag : MessageTag;
-         ignored : Unsigned_64;
       begin
          resetMessage.tag :=
            (label => CuBit.Filesystems.OP_REVOKE_ACL, length => 1,
@@ -2033,7 +2129,7 @@ procedure main is
          resetTag := capCall (CAP_SLOT_FS_LOCAL, resetMessage);
          if resetTag.label /= CuBit.Filesystems.REPLY_OK then
             debugPrint ("procmgr: filesystem policy reset failed" & LF);
-            ignored := syscall (SYSCALL_KILL, newPID);
+            Stop_Suspended_Child;
             return 0;
          end if;
          -- Config scopes are also keyed by PID. Reset even when the new ELF
@@ -2051,7 +2147,7 @@ procedure main is
                resetTag := capCall (CAP_SLOT_CONFIG_LOCAL, Config_Reset);
                if resetTag.label /= CuBit.Filesystems.REPLY_OK then
                   debugPrint ("procmgr: config policy reset failed" & LF);
-                  ignored := syscall (SYSCALL_KILL, newPID);
+                  Stop_Suspended_Child;
                   return 0;
                end if;
             end if;
@@ -2069,7 +2165,7 @@ procedure main is
                resetTag := capCall (CAP_SLOT_TLS_LOCAL, TLS_Reset);
                if resetTag.label /= REPLY_OK then
                   debugPrint ("procmgr: tls policy reset failed" & LF);
-                  ignored := syscall (SYSCALL_KILL, newPID);
+                  Stop_Suspended_Child;
                   return 0;
                end if;
             end;
@@ -2156,6 +2252,80 @@ procedure main is
                Discard_Authorized_Child;
                return 0;
             end if;
+         end;
+      end if;
+
+      if Render.Requested then
+         declare
+            use type Render_Launch.Phase;
+            ID : Render_Launch.Ticket := 0;
+            Child : GPU_Grants.Recipient;
+            Receipt : aliased CompletionEntry;
+            Consumed, Accepted : Boolean := False;
+            Now : Unsigned_64 := syscall (SYSCALL_GETTIME);
+            Deadline : Unsigned_64 := Now;
+            Ignore : Unsigned_64;
+            Activity : Activity_Result;
+            type Inspection_Words is array (0 .. 5) of Unsigned_64;
+            Data : aliased Inspection_Words := [others => 0];
+         begin
+            -- Only a trusted startup plan may supply this approval today.
+            -- Public spawn requests never propagate it. Destinations occupied
+            -- by another manifest grant are rejected by kernel delegation.
+            if systemStartup and then approveRender and then Render.Valid and then
+              Now <= Unsigned_64'Last - 6_000
+            then
+               Deadline := Now + 6_000;
+               Ignore := syscall (SYSCALL_POLICY_MINT_CAPABILITY,
+                 syscall (SYSCALL_GETPID), CAP_TYPE_ENDPOINT, newPID, 0, 9,
+                 Unsigned_64 (Render_Source_Slot));
+               if Ignore /= Unsigned_64'Last then
+                  Child := GPU_Grants.Capture (Render_Source_Slot);
+                  Render_Launch.Start (Render_Launcher, True, Child,
+                    Render_Source_Slot, Render.Destination, ID);
+               end if;
+               if Render_Launch.State (Render_Launcher, ID) = Render_Launch.Pending then
+                  debugPrint ("procmgr: render admission submitted; child suspended" & LF);
+               end if;
+               -- Startup already executes sequential policy handshakes. Do
+               -- not resume this child while its render admission is pending.
+               -- This is the sole completion-token owner in procmgr today.
+               while Render_Launch.State (Render_Launcher, ID) = Render_Launch.Pending loop
+                  Now := syscall (SYSCALL_GETTIME);
+                  exit when Now >= Deadline;
+                  if Poll_Completion (Receipt'Address) = 1 then
+                     Render_Launch.Complete (Render_Launcher, Receipt, Consumed);
+                     if not Consumed then
+                        debugPrint ("procmgr: unexpected render completion" & LF);
+                     end if;
+                  else
+                     Activity := Wait_For_Activity_Until (Deadline);
+                     exit when Activity = Unavailable;
+                  end if;
+               end loop;
+               Accepted := Render_Launch.State (Render_Launcher, ID) = Render_Launch.Admitted;
+               if Accepted then
+                  -- Record actual installed kernel authority, not a guessed
+                  -- GPU PID or a tag reconstructed from application input.
+                  Ignore := syscall (SYSCALL_INSPECT_CAPABILITY, newPID,
+                    Unsigned_64 (Render.Destination),
+                    Unsigned_64 (To_Integer (Data'Address)));
+                  Accepted := Ignore = 1 and then Data (0) = CAP_TYPE_ENDPOINT and then
+                    Data (1) = 3 and then Data (3) /= 0;
+               end if;
+            end if;
+            recordAuthority (newPID, Unsigned_64 (Render.Destination),
+              AUTH_SOURCE_CONFIG_POLICY, AUTH_REASON_MANIFEST_REQUEST,
+              CAP_TYPE_ENDPOINT, True, Accepted, 3, Data (3), Data (2));
+            if not Accepted then
+               -- Timeout is NOT remote cancellation or retirement. The
+               -- launcher/broker keep their slots and tokens; this child is
+               -- discarded and a late success can never resume it here.
+               debugPrint ("procmgr: render admission denied; child not resumed" & LF);
+               Discard_Authorized_Child;
+               return 0;
+            end if;
+            debugPrint ("procmgr: render admission complete" & LF);
          end;
       end if;
 
@@ -2322,6 +2492,7 @@ procedure main is
             debugPrint ("/" & Unsigned_32'Image (Unsigned_32 (Plan.Plan.Launch_Count)) & ": " & Name & LF);
             PID := spawnByName
               (Name, Unsigned_64 (Item.Priority), systemStartup => True, startupRole => Item.Role,
+               approveRender => Item.Approve_Render,
                approveNetwork =>
                  (if Item.Approval = Approve_Declared then Declared_Network
                   else No_Network));

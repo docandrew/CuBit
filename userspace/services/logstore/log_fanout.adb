@@ -1,5 +1,10 @@
 with CuBit.Log_Protocol; use CuBit.Log_Protocol;
 package body Log_Fanout with SPARK_Mode is
+   use type CuBit.Log_Records.Severity;
+   function Wanted
+     (Client : Subscriber; Value : Event) return Boolean is
+     (CuBit.Log_Records.Level (Value.Data) >= Client.Minimum and then
+      (Client.Source = Every_Source or else Value.Source = Client.Source));
    procedure Advance_Time (Item : in out Broker; Now_Ms : Unsigned_64) is
    begin
       Item.Now_Ms := Unsigned_64'Max (Item.Now_Ms, Now_Ms);
@@ -27,13 +32,17 @@ package body Log_Fanout with SPARK_Mode is
    begin
       Append (Item.Recent, Value);
       for Client of Item.Clients loop
-         if Client.Owner /= 0 then Append (Client.Pending, Value); end if;
+         if Client.Owner /= 0 and then Wanted (Client, Value) then
+            Append (Client.Pending, Value);
+         end if;
       end loop;
    end Publish;
 
    procedure Subscribe
      (Item : in out Broker; Caller, Authority_Tag : Unsigned_64;
-      Handle : out Unsigned_64; Result : out Status) is
+      Handle : out Unsigned_64; Result : out Status;
+      Minimum : CuBit.Log_Records.Severity := CuBit.Log_Records.Trace;
+      Source : Unsigned_64 := Every_Source) is
    begin
       Handle := 0;
       Result := Denied;
@@ -45,6 +54,8 @@ package body Log_Fanout with SPARK_Mode is
          if Client.Owner = Caller and then Client.Authority_Tag = Authority_Tag then
             Handle := Client.Handle;
             Client.Last_Use := Item.Now_Ms;
+            Client.Minimum := Minimum;
+            Client.Source := Source;
             Result := OK;
             return;
          end if;
@@ -54,8 +65,23 @@ package body Log_Fanout with SPARK_Mode is
          if Client.Owner = 0 then
             Handle := Item.Next_Handle;
             Item.Next_Handle := Item.Next_Handle + 1;
-            Client := (Owner => Caller, Authority_Tag => Authority_Tag,
-                       Last_Use => Item.Now_Ms, Handle => Handle, Pending => Item.Recent);
+            Client.Owner := Caller;
+            Client.Authority_Tag := Authority_Tag;
+            Client.Last_Use := Item.Now_Ms;
+            Client.Handle := Handle;
+            Client.Minimum := Minimum;
+            Client.Source := Source;
+            Client.Pending.Head := 0;
+            Client.Pending.Used := 0;
+            Client.Pending.Lost := Item.Recent.Lost;
+            for Offset in 0 .. Item.Recent.Used - 1 loop
+               if Wanted (Client, Item.Recent.Data
+                            ((Item.Recent.Head + Offset) mod Capacity))
+               then
+                  Append (Client.Pending, Item.Recent.Data
+                            ((Item.Recent.Head + Offset) mod Capacity));
+               end if;
+            end loop;
             -- Replay starts with a Gap if the retained boot history wrapped.
             -- Preserve Recent.Lost so a late viewer does not falsely report
             -- complete history. Existing subscriptions retain their own loss.

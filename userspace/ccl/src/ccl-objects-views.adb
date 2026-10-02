@@ -80,7 +80,16 @@ package body CCL.Objects.Views with SPARK_Mode is
                when Declared_Type =>
                   D := Types.Describe (Contract.Types, Next.Kind);
                   case D.Form is
-                     when Primitive | Resource | Sequence | Callable | Bounded => return;
+                     when Primitive | Resource | Callable | Bounded => return;
+                     when Sequence =>
+                        --  Validate bounded the count by the cells left.
+                        if D.Count /= 1 or else Object.Value.Cells (Seen).First > Unsigned_64 (Maximum_Cells) then
+                           return;
+                        end if;
+                        for E in 1 .. Natural (Object.Value.Cells (Seen).First) loop
+                           Work_Stacks.Push (Work, (Enter_Value, D.Parts (1).Payload, 1), Status);
+                           if Status /= Work_Stacks.Stack_Ok then return; end if;
+                        end loop;
                      when Product =>
                         for P in reverse 1 .. D.Count loop
                            Work_Stacks.Push (Work, (Enter_Value, D.Parts (P).Payload, 1), Status);
@@ -147,6 +156,26 @@ package body CCL.Objects.Views with SPARK_Mode is
       end loop;
       return No_Value;
    end Field;
+   function Length (Object : Snapshot; Position : Cursor) return Element_Count is
+     (if Is_Valid (Object, Position) and then Describe (Object, Position).Form = Sequence and then
+        Object.Value.Cells (Position.Position).First <= Unsigned_64 (Maximum_Cells)
+      then Element_Count (Object.Value.Cells (Position.Position).First) else 0);
+   function Element
+     (Object : Snapshot; Position : Cursor; Index : Positive) return Cursor
+   is
+      Previous : Position_Count := Position.Position;
+   begin
+      if not Is_Valid (Object, Position) or else Index > Length (Object, Position) then
+         return No_Value;
+      end if;
+      --  Like Field: step over the earlier elements' subtrees.
+      for E in 1 .. Index loop
+         if Previous >= Object.Entries (Position.Position).Last then return No_Value; end if;
+         if E = Index then return (Object.Epoch, Previous + 1); end if;
+         Previous := Object.Entries (Previous + 1).Last;
+      end loop;
+      return No_Value;
+   end Element;
    function Payload (Object : Snapshot; Position : Cursor) return Cursor is
      (if Is_Valid (Object, Position) and then Describe (Object, Position).Form = Sum and then
         Position.Position < Object.Entries (Position.Position).Last

@@ -18,6 +18,13 @@ package body Intel_GPU_GuC_Context_Event with SPARK_Mode is
            Payload (Payload'First + 2) > 1 then return Result; end if;
          return (Scheduling_Done, Fence, Payload (Payload'First + 1),
                  Payload (Payload'First + 2), 0, 0);
+      elsif Message_Type = 1 and then (Header and 16#FFFF#) = 16#4600# then
+         -- Linux v6.16 guc_actions_abi.h / intel_guc_fwif.h and
+         -- intel_guc_deregister_done_process_msg: HXG + one context ID.
+         -- Pinned ABI: reject extra data/reserved bits, not a success prefix.
+         if Header /= 16#90004600# or else Payload'Length /= 2 or else
+           Payload (Payload'First + 1) >= 65535 then return Result; end if;
+         return (Deregister_Done, Fence, Payload (Payload'First + 1), 0, 0, 0);
       elsif Message_Type in 1 | 3 | 5 | 7 then
          Result.Tag := Other_Message; Result.Fence := Fence;
       end if;

@@ -18,6 +18,7 @@ package CuBit.UI.Input is
    INPUT_POINTER_WHEEL : constant Unsigned_64 := 7;
    INPUT_CONFIGURE     : constant Unsigned_64 := 8;
    INPUT_RESYNC        : constant Unsigned_64 := 9;
+   INPUT_CLOSE_REQUEST : constant Unsigned_64 := 10;
 
    type Input_Event is record
       kind     : Unsigned_64 := INPUT_NONE;

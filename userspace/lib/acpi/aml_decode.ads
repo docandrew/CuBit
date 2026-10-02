@@ -45,6 +45,31 @@ package AML_Decode with SPARK_Mode, Pure is
          when others => null;
       end case;
    end record;
+   subtype Field_Bit_Length is Natural range 0 .. 16#0FFF_FFFF#;
+   type Field_Length_Result (Kind : Status := Truncated) is record
+      case Kind is
+         when Accepted =>
+            Encoding_Bytes : Positive range 1 .. 4;
+            Bits : Field_Bit_Length;
+         when others => null;
+      end case;
+   end record;
+   -- PkgLength encoding interpreted as a bit count, not a byte extent. Zero
+   -- and nonminimal encodings are valid. No region access/allocation occurs.
+   function Read_Field_Length (Data : Bytes) return Field_Length_Result with
+     Post => Read_Field_Length'Result.Kind in Accepted | Truncated | Malformed
+       and then (if Read_Field_Length'Result.Kind = Accepted then
+         Read_Field_Length'Result.Encoding_Bytes <= Data'Length
+         and then Read_Field_Length'Result.Encoding_Bytes = Natural (Data (Data'First)) / 64 + 1
+         and then Read_Field_Length'Result.Bits =
+           (if Read_Field_Length'Result.Encoding_Bytes = 1
+            then Natural (Data (Data'First)) mod 64
+            else Natural (Data (Data'First)) mod 16
+              + Natural (Data (Data'First + 1)) * 16
+              + (if Read_Field_Length'Result.Encoding_Bytes >= 3
+                 then Natural (Data (Data'First + 2)) * 4096 else 0)
+              + (if Read_Field_Length'Result.Encoding_Bytes = 4
+                 then Natural (Data (Data'First + 3)) * 1048576 else 0)));
 
    --  Zero/One/Ones and Byte/Word/DWord/QWord constants only. Width is
    --  selected from the admitted DSDT revision, never the SSDT revision.

@@ -4,6 +4,8 @@
   (version "0.1.0")
   (request-service desktop read-write desktop)
   (request-service clock read-write clock)
+  # The REPL's (logs.recent "service"): read-only log observation.
+  (request-service log-observer read-write log-observer)
   # Development inspector: global non-secret Config read, never write/admin.
   (request-service config read-write config)
   (config-scope (rights read) all)

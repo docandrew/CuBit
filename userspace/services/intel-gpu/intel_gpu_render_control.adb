@@ -1,5 +1,24 @@
 package body Intel_GPU_Render_Control with SPARK_Mode is
    package Sessions renames Intel_GPU_Render_Sessions;
+   function Is_Broker
+     (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Boolean is
+     (Object.Broker /= 0 and then Sender = Object.Broker and then
+      Stamped_Tag = Object.Broker_Tag);
+   function Session_Status
+     (Object : Controller; Sender, Stamped_Tag : Unsigned_64; Ready : Boolean;
+      Request_Label : Unsigned_32; Length, Flags : Unsigned_8;
+      Reserved : Unsigned_16; Request : Words) return Words is
+   begin
+      if Resolve (Object, Sender, Stamped_Tag) = 0 then
+         return [Denied, Version, 0, 0];
+      elsif Request_Label /= Status_Label or else Length /= 4 or else
+        Flags /= 0 or else Reserved /= 0 or else Request /= [Version, 0, 0, 0]
+      then
+         return [Bad_Request, Version, 0, 0];
+      else
+         return [(if Ready then OK else Unavailable), Version, 0, 0];
+      end if;
+   end Session_Status;
    procedure Bind
      (Object : in out Controller; Broker, Broker_Tag : Unsigned_64) is
    begin
@@ -16,15 +35,15 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
      (Object : in out Controller; Sender, Stamped_Tag : Unsigned_64;
       Ready : Boolean; Request_Label : Unsigned_32;
       Length, Flags : Unsigned_8; Reserved : Unsigned_16;
-      Request : Words; Response : out Words) is
+      Request : Words; Response : out Words;
+      Recipient_Ready : Boolean := False) is
       Recipient : constant Unsigned_64 := Request (1);
       PID : constant Unsigned_64 := Recipient mod 2 ** 32;
       Tag : Unsigned_64 := Request (2);
       Accepted : Boolean;
    begin
       Response := [Denied, Version, 0, 0];
-      if Object.Broker = 0 or Sender /= Object.Broker or
-        Stamped_Tag /= Object.Broker_Tag then return; end if;
+      if not Is_Broker (Object, Sender, Stamped_Tag) then return; end if;
       Response (0) := Bad_Request;
       if Request_Label /= Label or Length /= 4 or Flags /= 0 or Reserved /= 0 or
         Request (0) /= Version or PID = 0 or Recipient / 2 ** 32 = 0 or
@@ -44,7 +63,7 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
          then return; end if;
          if Request (3) = Activate then
             Response (0) := Unavailable;
-            if not Ready then return; end if;
+            if not Ready or else not Recipient_Ready then return; end if;
             Sessions.Finalize (Object.Sessions, PID, Tag, True, Accepted);
             Response (0) := Bad_State;
             if not Accepted then return; end if;
@@ -54,9 +73,42 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
       end if;
       Response := [OK, Version, Tag, 0];
    end Handle;
+   function Activation_Identity
+     (Object : Controller; Sender, Stamped_Tag : Unsigned_64;
+      Request_Label : Unsigned_32; Length, Flags : Unsigned_8;
+      Reserved : Unsigned_16; Request : Words) return Unsigned_64 is
+      Tag : constant Unsigned_64 := Request (2);
+   begin
+      if Object.Broker = 0 or else Sender /= Object.Broker or else
+        Stamped_Tag /= Object.Broker_Tag or else Request_Label /= Label or else
+        Length /= 4 or else Flags /= 0 or else Reserved /= 0 or else
+        Request (0) /= Version or else Request (3) /= Activate or else
+        Tag <= Sessions.Tag_Base or else Tag > Sessions.Tag_Base + Sessions.Capacity
+      then return 0; end if;
+      if Request (1) = Object.Recipients (Positive (Tag - Sessions.Tag_Base))
+      then return Request (1); end if;
+      return 0;
+   end Activation_Identity;
    function Resolve
      (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Unsigned_64 is
      (Sessions.Resolve (Object.Sessions, Sender, Stamped_Tag));
+   function Resolve_Retired
+     (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Unsigned_64 is
+     (Sessions.Resolve_Retired (Object.Sessions, Sender, Stamped_Tag));
+   procedure Close_Own
+     (Object : in out Controller; Sender, Stamped_Tag : Unsigned_64;
+      Request_Label : Unsigned_32; Length, Flags : Unsigned_8;
+      Reserved : Unsigned_16; Request : Words; Response : out Words) is
+      Tag : constant Unsigned_64 := Resolve (Object, Sender, Stamped_Tag);
+   begin
+      Response := [Denied, Version, 0, 0];
+      if Tag = 0 then return; end if;
+      Response (0) := Bad_Request;
+      if Request_Label /= Close_Own_Label or Length /= 4 or Flags /= 0 or
+        Reserved /= 0 or Request /= [Version, 0, 0, 0] then return; end if;
+      Sessions.Close (Object.Sessions, Sender, Tag);
+      Response := [OK, Version, Tag, 0];
+   end Close_Own;
    function Recipient_Identity
      (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Unsigned_64 is
       Tag : constant Unsigned_64 := Resolve (Object, Sender, Stamped_Tag);

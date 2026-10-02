@@ -17,6 +17,15 @@ package Intel_GPU_Submission_Image with SPARK_Mode is
    -- No scanout mapping, format/tiling state or drawing command is implied.
    Offscreen_VA : constant Unsigned_64 := Intel_GPU_Submission_Backing.Offscreen_GPU_VA;
    Batch_Probe_Value : constant Unsigned_32 := 16#43554249#;
+   Copy_Source_Offset : constant := 256;
+   Copy_Result_Offset : constant := 128;
+   Copy_Probe_Value : constant Unsigned_32 := 16#43504348#;
+   pragma Compile_Time_Error
+     (Copy_Source_Offset mod 128 /= 0 or Copy_Result_Offset mod 128 /= 0 or
+      Copy_Source_Offset < 128 or Copy_Result_Offset < 128 or
+      Copy_Source_Offset = Copy_Result_Offset or
+      Copy_Source_Offset + 128 > 4096 or Copy_Result_Offset + 128 > 4096,
+      "copy diagnostic must use distinct owned lines outside marker/L3 data");
    Byte_Count : constant := Natural
      (Intel_GPU_Submission_Backing.After_Last - Intel_GPU_Submission_Backing.First);
    type Image_Words is array (Natural range 0 .. Byte_Count / 4 - 1) of Unsigned_32;
@@ -29,7 +38,10 @@ package Intel_GPU_Submission_Image with SPARK_Mode is
    -- context backing extent, not its parent firmware allocation base.
    -- GGTT_Start is the RESERVED80KiB GPU range.
    -- Ring starts empty; batch stores a fixed probe at Completion_VA through
-   -- the private PPGTT then ends. It is not queued here. Completion and separate
+   -- the private PPGTT, copies the visibility source to its result, then ends.
+   -- Source/result offsets256/128 are disjoint from marker/L3 data on ADL-N
+   -- cache lines. The source is filled by the CPU only after publication.
+   -- It is not queued here. Completion and separate
    -- engine HWSP are zero. Engine HWSP is NOT mapped in the private PPGTT
    -- or the context/ring GGTT range; it requires its own GGTT publication.
    -- The four offscreen pages are zeroed and mapped only in private PPGTT.
@@ -48,7 +60,9 @@ package Intel_GPU_Submission_Image with SPARK_Mode is
      with Post => (if not Build'Result.Valid then
        (for all Word of Build'Result.Words => Word = 0));
    -- Page addresses describe retained backing; no physical adjacency required.
-   function Build (Pages : Backing_Pages; GGTT_Start : Unsigned_64) return Image;
+   function Build (Pages : Backing_Pages; GGTT_Start : Unsigned_64) return Image
+     with Post => (if not Build'Result.Valid then
+       (for all Word of Build'Result.Words => Word = 0));
    -- Application context using a separately materialized VM root. The owner
    -- supplies this root, never a request payload. It must retain ALL VM pages
    -- disjoint from this extent; numeric checks can only exclude root overlap.
@@ -58,5 +72,7 @@ package Intel_GPU_Submission_Image with SPARK_Mode is
      with Post => (if not Build_For_VM'Result.Valid then
        (for all Word of Build_For_VM'Result.Words => Word = 0));
    function Build_For_VM
-     (Pages : Backing_Pages; GGTT_Start, Root_DMA : Unsigned_64) return Image;
+     (Pages : Backing_Pages; GGTT_Start, Root_DMA : Unsigned_64) return Image
+     with Post => (if not Build_For_VM'Result.Valid then
+       (for all Word of Build_For_VM'Result.Words => Word = 0));
 end Intel_GPU_Submission_Image;

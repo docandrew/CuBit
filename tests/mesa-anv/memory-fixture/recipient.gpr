@@ -1,0 +1,12 @@
+project Recipient extends "memory.gpr" is
+   for Source_Dirs use (".", "../../../userspace/runtime/gnat");
+   for Source_Files use ("recipient_tests.adb", "messages_mock.ads",
+     "messages_mock.adb", "cubit.ads", "cubit-capability_grants.ads",
+     "cubit-capability_grants.adb");
+   for Object_Dir use "build-recipient";
+   for Main use ("recipient_tests.adb");
+   package Naming is
+      for Spec ("CuBit.Messages") use "messages_mock.ads";
+      for Body ("CuBit.Messages") use "messages_mock.adb";
+   end Naming;
+end Recipient;

@@ -1,0 +1,21 @@
+project Memory is
+   for Languages use ("Ada", "C");
+   for Source_Dirs use (".", "../../../userspace/mesa/anv",
+     "../../../userspace/runtime/gnat");
+   for Source_Files use ("memory_tests.adb", "messages_mock.ads", "messages_mock.adb",
+     "memory_mock.ads", "memory_mock.adb", "cubit.ads",
+     "cubit-grant_references.ads", "native_gpu_memory.ads", "native_gpu_memory.adb",
+     "memory_c_test.c");
+   for Object_Dir use "build";
+   for Main use ("memory_tests.adb");
+   package Naming is
+      for Spec ("CuBit.Messages") use "messages_mock.ads";
+      for Body ("CuBit.Messages") use "messages_mock.adb";
+      for Spec ("CuBit.Memory_Grants") use "memory_mock.ads";
+      for Body ("CuBit.Memory_Grants") use "memory_mock.adb";
+   end Naming;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+      for Default_Switches ("C") use ("-std=c11", "-Wall", "-Wextra", "-Werror");
+   end Compiler;
+end Memory;

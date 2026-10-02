@@ -10,9 +10,10 @@ package body Compositor_Pool with SPARK_Mode is
          S.Failed := True;
          return;
       end if;
-      if S.R.Buffer /= 1 and S.D.Buffer /= 1 then B := 1;
-      elsif S.R.Buffer /= 2 and S.D.Buffer /= 2 then B := 2;
-      else B := 3;
+      if Free (S, 1) then B := 1;
+      elsif Free (S, 2) then B := 2;
+      elsif Free (S, 3) then B := 3;
+      else return;
       end if;
       S.Sequence := S.Sequence + 1;
       S.W := (B, S.Generation, S.Sequence);
@@ -49,4 +50,17 @@ package body Compositor_Pool with SPARK_Mode is
       else S.Failed := True;
       end if;
    end Retire_Display;
+   procedure Latch_Display
+     (S : in out State; T, Previous : Ticket; Confirmed : Boolean) is
+   begin
+      if not S.Failed and T /= None and T = S.D and Previous = S.F and Confirmed then
+         S.F := S.D;
+         S.D := None;
+      else S.Failed := True; end if;
+   end Latch_Display;
+   procedure Retire_Front (S : in out State; T : Ticket; Confirmed : Boolean) is
+   begin
+      if not S.Failed and T /= None and T = S.F and Confirmed then S.F := None;
+      else S.Failed := True; end if;
+   end Retire_Front;
 end Compositor_Pool;

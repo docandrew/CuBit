@@ -1,0 +1,11 @@
+project ADS_Engines is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("ads_engines_tests.adb", "intel_gpu_ads_engines.ads",
+                         "intel_gpu_ads_engines.adb", "intel_gpu_adln_inventory.ads",
+                         "intel_gpu_adln_inventory.adb");
+   for Object_Dir use "build-ads-engines";
+   for Main use ("ads_engines_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end ADS_Engines;

@@ -1,0 +1,8 @@
+project PTE is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Object_Dir use "build-pte";
+   for Main use ("pte_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwa", "-gnatwe", "-O2");
+   end Compiler;
+end PTE;

@@ -103,9 +103,25 @@ procedure Read_Source_Tests is
       Check (Lisp.Status = L.Views.Converted);
       L.Interpret (Lisp.Rendered.Data (1 .. Lisp.Rendered.Length), 1024, Result);
       Check (Result.Status = L.Succeeded and Result.Result_Value = CCL.VM.Integer_Constant (Expected));
+      --  Compiled code that accepts the program agrees with the interpreter
+      --  (some forms, such as anonymous functions, compile from step 6 on).
       L.Analyze (Program, Analysis);
       CCL.Compiler.Compile (Analysis, Compiled);
-      Check (Compiled.Status /= CCL.Compiler.Compilation_Succeeded);
+      if Compiled.Status = CCL.Compiler.Compilation_Succeeded then
+         declare
+            Checked : CCL.VM.Validated_Program;
+            Error : CCL.VM.Validation_Error;
+            Ran : CCL.VM.Execution_Result;
+         begin
+            CCL.VM.Verify (Compiled.Program, Checked, Error);
+            Check (CCL.VM."=" (Error, CCL.VM.Valid));
+            if CCL.VM."=" (Error, CCL.VM.Valid) then
+               CCL.VM.Execute (Checked, 1024, Ran);
+               Check (CCL.VM."=" (Ran.Status, CCL.VM.Completed) and then
+                      CCL.VM."=" (Ran.Result_Value, CCL.VM.Integer_Constant (Expected)));
+            end if;
+         end;
+      end if;
    end Pure;
    procedure Reject (Program : String) is
    begin

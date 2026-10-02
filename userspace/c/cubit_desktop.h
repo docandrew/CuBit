@@ -11,11 +11,12 @@ static inline int cubit_desktop_input_reply_valid(
 {
     uint64_t kind = words[0], first = words[2], second = words[3];
     if ((expected != 0x0821 && expected != 0x0822) || label != expected ||
-        length != 4 || flags > 1 || reserved || kind > 9)
+        length != 4 || flags > 1 || reserved || kind > 10)
         return 0;
     switch (kind) {
     case 0: return first == 0 && second == 0 && flags == 0;
     case 1: case 2: return first <= 127 && second <= 15;
+    case 10: return first == 0 && second == 0;
     case 6: return first <= 255 && second == 0;
     case 8: return first <= 65535 && second <= 65535;
     default:

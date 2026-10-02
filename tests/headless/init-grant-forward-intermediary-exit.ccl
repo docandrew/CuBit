@@ -1,0 +1,6 @@
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "grant-forward-owner.app" (priority 5))
+  (start "grant-forward-reader.app" (priority 5))
+  (start "grant-forward-intermediary_exit.app" (priority 5))
+)

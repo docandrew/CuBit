@@ -379,7 +379,12 @@ int ccl_window_present(void *handle, const uint32_t *pixels, int pitch,
         state->screenshot_path = NULL;
     }
     SDL_RenderPresent(state->renderer);
-    if (state->frames_left > 0) --state->frames_left;
+    if (state->frames_left > 0 && --state->frames_left == 0) {
+        /* The bounded preview must also wake the event-driven wait after its
+         * final frame. Poll's frame-limit check alone cannot wake SDL_WaitEvent. */
+        SDL_Event finished = { .type = SDL_QUIT };
+        if (SDL_PushEvent(&finished) < 0) return 1;
+    }
     return 0;
 }
 

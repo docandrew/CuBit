@@ -1,0 +1,14 @@
+project ADS_Observe is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("ads_observe_tests.adb", "intel_gpu_ads_observe.ads",
+     "intel_gpu_ads_observe.adb", "intel_gpu_ads_system_info.ads",
+     "intel_gpu_ads_system_info.adb", "intel_gpu_ads_engines.ads",
+     "intel_gpu_ads_engines.adb", "intel_gpu_adln_inventory.ads",
+     "intel_gpu_adln_inventory.adb", "intel_gpu_adln_steering.ads",
+     "intel_gpu_adln_steering.adb");
+   for Object_Dir use "build-ads-observe";
+   for Main use ("ads_observe_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end ADS_Observe;

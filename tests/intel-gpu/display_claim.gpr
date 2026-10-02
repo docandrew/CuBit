@@ -1,0 +1,19 @@
+project Display_Claim is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu",
+     "../../userspace/runtime/gnat");
+   for Source_Files use ("display_claim_tests.adb",
+     "intel_gpu_display_claim.ads", "intel_gpu_display_claim.adb",
+     "intel_gpu_display_pages.ads", "intel_gpu_reset_pages.ads",
+     "intel_gpu_parent_writes.ads", "intel_gpu_display_topology.ads",
+     "intel_gpu_display_topology.adb", "cubit.ads", "cubit-log_protocol.ads",
+     "cubit-log_records.ads", "cubit-log_records.adb", "cubit-protocols.ads");
+   for Object_Dir use "build-display-claim";
+   for Exec_Dir use "build-display-claim";
+   for Main use ("display_claim_tests.adb");
+   package Compiler is
+      -- Do not pick CuBit's freestanding system.ads when compiling the shared
+      -- protocol sources with the hosted GNAT runtime.
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-O2", "-I-");
+   end Compiler;
+end Display_Claim;

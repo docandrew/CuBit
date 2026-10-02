@@ -1,7 +1,9 @@
+with Interfaces;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Render_Sessions;
 with Intel_GPU_VM_Image;
 with Intel_GPU_Buffer_Backing;
+with Intel_GPU_Application_Lifetime;
 package Intel_GPU_Application_State is
    -- Native service-owned storage. Keep the multi-megabyte offline VM images
    -- at library scope, not on the service thread's stack. Serialized access;
@@ -10,10 +12,12 @@ package Intel_GPU_Application_State is
    package VM is new Intel_GPU_VM_Image (Table_Pages);
    type Context_Record is limited record
       Attempted : Boolean := False;
-      Parent, Context, Tables : Intel_GPU_Buffer_Reply.Backing;
+      -- Exact supervisor slot/generation ticket, captured before allocation.
+      -- Retain through cancellation/failure; address equality is not identity.
+      Parent_Ticket : Interfaces.Unsigned_64 := 0;
+      Parent, Context, Tables, Scratch : Intel_GPU_Buffer_Reply.Backing;
       Source : VM.Image;
-      -- Allocated and VM initialized only: NOT sealed/published/registered.
-      Ready : Boolean := False;
+      Life : Intel_GPU_Application_Lifetime.Phase := Intel_GPU_Application_Lifetime.Empty;
    end record;
    type Context_Array is array
      (1 .. Intel_GPU_Render_Sessions.Capacity) of Context_Record;

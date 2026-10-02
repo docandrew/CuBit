@@ -4,7 +4,8 @@ project Procmgr is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".", "../../ccl/src", "../../lib/config");
+    for Source_Dirs use (".", "../../ccl/src", "../../lib/config",
+      "../../lib/display", "../intel-gpu");
 
     for Main use ("main.adb");
 

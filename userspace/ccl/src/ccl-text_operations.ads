@@ -91,6 +91,27 @@ package CCL.Text_Operations with SPARK_Mode => On is
                Replacement'Length <= MAX_STRING and then Result'Length = MAX_STRING,
         Post => (if Status = Done then Length <= Result'Length);
 
+   --  split's scanner: the next piece of Subject from Position. With a
+   --  separator, the pieces between separators, empty ones included, and
+   --  always a last piece; with an empty separator, the runs of non-blank
+   --  characters (words). Finished becomes True after the last piece;
+   --  Found is False when there was none left.
+   procedure Next_Piece
+     (Subject, Separator : String; Position : in out Positive;
+      Finished : in out Boolean; Low : out Positive; High : out Natural;
+      Found : out Boolean)
+   with Pre => Subject'First = 1 and then Separator'First = 1 and then
+               Subject'Length <= MAX_STRING and then Separator'Length <= MAX_STRING and then
+               Position <= Subject'Length + 1,
+        Post => Position <= Subject'Length + 1 and then
+                (if Found then High <= Subject'Length and then Low <= High + 1);
+
+   --  An integer's decimal text (to-string): a sign when negative, then
+   --  up to 19 digits.
+   MAX_INTEGER_IMAGE : constant := 20;
+   function Decimal_Image (Value : Integer_64) return String
+   with Post => Decimal_Image'Result'Length in 1 .. MAX_INTEGER_IMAGE;
+
    --  Optional blanks and sign, then decimal digits: Invalid_Number or
    --  Overflow otherwise.
    procedure Parse_Integer (Subject : String; Value : out Integer_64; Status : out Outcome)

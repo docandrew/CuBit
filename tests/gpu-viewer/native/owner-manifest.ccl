@@ -1,0 +1,3 @@
+(executable-manifest v1
+  (identity "com.cubit.ipctest.server")
+  (version "0.1.0"))

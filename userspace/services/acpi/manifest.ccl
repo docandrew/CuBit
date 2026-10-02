@@ -1,0 +1,5 @@
+# No raw hardware authority. Startup must install a provider-bound endpoint
+# and configure the service using a kernel-stamped bootstrap capability.
+(executable-manifest v1
+  (identity "com.cubit.acpi")
+  (version "0.1.0"))

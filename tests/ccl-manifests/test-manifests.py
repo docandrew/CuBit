@@ -298,6 +298,28 @@ class Manifests(unittest.TestCase):
         self.reject(source.replace('focus)', 'events)'), catalog, 'DUPLICATE_BINDING')
         self.reject(source.replace('framebuffer)', 'Bad_name)'), catalog, 'INVALID_BINDING_NAME')
 
+    def test_render_request_is_distinct_from_scanout_service(self):
+        catalog = '''(service-catalog v1 (application-slots 24 62)
+          (service gpu 17 read-write))'''
+        source = '''(executable-manifest v1 (identity "test") (version "1")
+          (request-service gpu read-write scanout)
+          (request-render read-write render))'''
+        result = self.compile(source, catalog)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.sections(result.stdout)['.cubit.caps'],
+                         struct.pack('<IHH', 0x43424954, 1, 2) +
+                         struct.pack('<BBHIQ', 2, 3, 24, 17, 0) +
+                         struct.pack('<BBHIQ', 11, 3, 25, 0, 0))
+        for rights in ('read', 'write', 'publish'):
+            self.reject(source.replace('request-render read-write',
+                                       'request-render ' + rights),
+                        catalog, 'UNKNOWN_RIGHTS')
+        self.reject(source.replace('render))', 'scanout))'), catalog,
+                    'DUPLICATE_BINDING')
+        self.reject(source.replace('(request-service gpu read-write scanout)',
+                                   '(request-render read-write second)'),
+                    catalog, 'DUPLICATE_FIELD')
+
     def test_explicit_broad_access_and_config_domain(self):
         source = '''(executable-manifest v1 (identity "test") (version "1")
           (filesystem-scope (rights read) all)

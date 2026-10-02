@@ -1,0 +1,11 @@
+project Glyph_Cache is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use ("compositor_identity.ads", "glyph_cache_tests.adb", "glyph_cache_model.ads", "compositor_glyph_cache.ads", "compositor_glyph_cache.adb",
+     "compositor_glyph_layout.ads", "compositor_glyph_layout.adb", "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb");
+   for Object_Dir use "build/glyph-cache/obj";
+   for Exec_Dir use "build/glyph-cache";
+   for Main use ("glyph_cache_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Glyph_Cache;

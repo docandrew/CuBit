@@ -1,4 +1,5 @@
 with CCL.Text_Operations;
+with CCL.List_Operations;
 with Interfaces;
 with CCL.Ownership;
 with CCL.Host_Values;
@@ -21,6 +22,8 @@ is
 
    type Local_Binding is record
       Identifier : CCL.Language.Name;
+      --  Its static type (a call through a function value needs it).
+      Kind       : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
       Local      : CCL.Ownership.Binding_Id := 0;
       On_Stack : Boolean := False;
       Stack_Level : Natural := 0;
@@ -56,12 +59,16 @@ is
         (Kind : CCL.Types.Type_Reference; Value : out CCL.VM.Value_Kind;
          Data_Type : out CCL.Types.Type_Reference; Supported : out Boolean) is
       begin
-         Value := CCL.VM.Integer_Value; Data_Type := CCL.Types.Invalid_Type; Supported := True;
-         if Kind = CCL.Language.Integer_Type then null;
-         elsif Kind = CCL.Language.Boolean_Type then Value := CCL.VM.Boolean_Value;
-         elsif CCL.Types.Is_Scalar_Sum (Program.Data_Types, Kind) then
-            Value := CCL.VM.Variant_Value; Data_Type := Kind;
-         else Supported := False; end if;
+         --  Any value a run holds, in its in-run representation.
+         Value := CCL.VM.Kind_For_Type (Program.Data_Types, Kind);
+         Data_Type := CCL.VM.Reference_For_Type (Program.Data_Types, Kind);
+         Supported :=
+           (case Value is
+               when CCL.VM.Integer_Value | CCL.VM.Boolean_Value | CCL.VM.Text_Value |
+                    CCL.VM.Character_Value | CCL.VM.Variant_Value | CCL.VM.Function_Value => True,
+               when CCL.VM.List_Value => CCL.VM.Supported_List (Program.Data_Types, Kind),
+               when CCL.VM.Object_Value => CCL.VM.Node_Type (Program.Data_Types, Kind),
+               when CCL.VM.Resource_Value => False);
       end Function_Kind;
 
       procedure Find_Local
@@ -87,6 +94,7 @@ is
             Failed_Position := Position;
          end if;
       end Fail;
+
 
       procedure Read_Node
         (Index : CCL.Language.Node_Reference;
@@ -124,6 +132,41 @@ is
             Program.Length := CCL.VM.Program_Length'Succ (Program.Length);
          end if;
       end Emit;
+
+      --  A value entering a position of type Target: a range type checks its
+      --  bounds, as the interpreter does (Check_Range).
+      procedure Enter (Target : CCL.Types.Type_Reference) is
+      begin
+         if CCL.Types.Is_Range (Program.Data_Types, Target) then
+            Emit (CCL.VM.Check_Range, Data_Type => Target);
+         end if;
+      end Enter;
+
+      --  The value of the binding Identifier, of type Kind, pushed above
+      --  Stack_Base operands: copied from the stack or a local, or moved
+      --  when it is a resource.
+      procedure Emit_Name
+        (Identifier : CCL.Language.Name; Kind : CCL.Types.Type_Reference;
+         Stack_Base : Natural; Index : CCL.Language.Node_Reference)
+      is
+         Binding : Local_Binding;
+         Found : Boolean;
+      begin
+         Find_Local (Identifier, Binding, Found);
+         if not Found then
+            Fail (Malformed_Typed_Tree, Index);
+         elsif Binding.On_Stack then
+            if Stack_Base <= Binding.Stack_Level then
+               Fail (Malformed_Typed_Tree, Index);
+            else
+               Emit (CCL.VM.Copy_Stack, Immediate => Interfaces.Integer_64 (Stack_Base - Binding.Stack_Level - 1));
+            end if;
+         elsif CCL.Types.Describe (Program.Data_Types, Kind).Form = CCL.Types.Resource then
+            Emit (CCL.VM.Move_Local, Local => Binding.Local);
+         else
+            Emit (CCL.VM.Copy_Local, Local => Binding.Local);
+         end if;
+      end Emit_Name;
 
       procedure Mark_Target
         (Position : out CCL.VM.Instruction_Index;
@@ -191,13 +234,20 @@ is
                Emit_Node (Item.Second, Depth + 1, In_Conditional_Branch, Stack_Base);
                return; -- a declaration has no executable source-map range
             when CCL.Language.Variant_Literal | CCL.Language.Variant_Construct =>
-               if not CCL.Types.Is_Scalar_Sum (Program.Data_Types, Item.Declared_Kind) then
+               --  A scalar sum is a Variant_Value; any other variant is a
+               --  node (or, for a unit member, an Object_Value without one).
+               if not CCL.Types.Is_Scalar_Sum (Program.Data_Types, Item.Declared_Kind) and then
+                 not CCL.VM.Node_Type (Program.Data_Types, Item.Declared_Kind)
+               then
                   Fail (Unsupported_Form, Index); return;
                end if;
                if Item.Kind = CCL.Language.Variant_Construct then
                   Emit_Node (Item.First, Depth + 1, In_Conditional_Branch, Stack_Base);
+                  Enter (CCL.Types.Describe (Program.Data_Types, Item.Declared_Kind).Parts (Item.Alternative).Payload);
                end if;
-               Emit (CCL.VM.Make_Variant, Data_Type => Item.Declared_Kind, Alternative => Item.Alternative);
+               Emit ((if CCL.Types.Is_Scalar_Sum (Program.Data_Types, Item.Declared_Kind)
+                      then CCL.VM.Make_Variant else CCL.VM.Make_Node),
+                     Data_Type => Item.Declared_Kind, Alternative => Item.Alternative);
             when CCL.Language.Match_Form =>
                if Program.Matches_Length = CCL.VM.Maximum_Matches then
                   Fail (Too_Many_Matches, Index); return;
@@ -226,7 +276,8 @@ is
                            Fail (Too_Many_Locals, Arm); exit;
                         end if;
                         Environment (Environment_Length) :=
-                          (Identifier => N.Identifier, On_Stack => True, Stack_Level => Stack_Base, others => <>);
+                          (Identifier => N.Identifier, Kind => D.Parts (N.Alternative).Payload,
+                           On_Stack => True, Stack_Level => Stack_Base, others => <>);
                         Environment_Length := Environment_Length + 1;
                      end if;
                      Emit_Node (N.First, Depth + 1, True, Stack_Base + (if Has_Payload then 1 else 0));
@@ -273,6 +324,7 @@ is
                   if Initializer.Static_Kind = CCL.Language.Integer_Type then Emit (CCL.VM.Equal_Integer);
                   elsif Initializer.Static_Kind = CCL.Language.Boolean_Type then Emit (CCL.VM.Equal_Boolean);
                   elsif Initializer.Static_Kind = CCL.Language.String_Type then Emit (CCL.VM.Equal_Text);
+                  elsif Initializer.Static_Kind = CCL.Language.Character_Type then Emit (CCL.VM.Equal_Character);
                   else Emit (CCL.VM.Equal_Variant, Data_Type => Initializer.Static_Kind); end if;
                else
                   Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
@@ -326,20 +378,10 @@ is
             when CCL.Language.Name_Reference =>
                Find_Local (Item.Identifier, Binding, Found);
                if not Found and then Item.Names_Function then
-                  --  A named function as a value: parity step 4.
-                  Fail (Unsupported_Form, Index, Item.Source_Position); return;
-               end if;
-               Local := Binding.Local;
-               if Found then
-                  if Binding.On_Stack then
-                     if Stack_Base <= Binding.Stack_Level then Fail (Malformed_Typed_Tree, Index);
-                     else Emit (CCL.VM.Copy_Stack, Immediate => Interfaces.Integer_64 (Stack_Base - Binding.Stack_Level - 1));
-                     end if;
-                  elsif CCL.Types.Describe (Program.Data_Types, Item.Static_Kind).Form = CCL.Types.Resource then
-                     Emit (CCL.VM.Move_Local, Local => Local);
-                  else Emit (CCL.VM.Copy_Local, Local => Local); end if;
+                  --  A named function as a value: no captures.
+                  Emit (CCL.VM.Make_Closure, Interfaces.Integer_64 (Item.Function_Id), Data_Type => Item.Static_Kind);
                else
-                  Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
+                  Emit_Name (Item.Identifier, Item.Static_Kind, Stack_Base, Index);
                end if;
 
             when CCL.Language.Let_Form =>
@@ -359,8 +401,14 @@ is
                         Fail (Too_Many_Locals, Index, Item.Source_Position);
                      else
                         Emit_Node (Item.First, Depth + 1, In_Conditional_Branch, Stack_Base);
+                        --  The initializer restores the environment it saw;
+                        --  checked again here rather than assumed.
+                        if Environment_Length = CCL.Language.MAX_BINDINGS then
+                           Fail (Too_Many_Locals, Index, Item.Source_Position); return;
+                        end if;
                         Environment (Environment_Length) :=
-                          (Identifier => Item.Identifier, On_Stack => True, Stack_Level => Stack_Base, others => <>);
+                          (Identifier => Item.Identifier, Kind => Initializer.Static_Kind,
+                           On_Stack => True, Stack_Level => Stack_Base, others => <>);
                         Environment_Length := Environment_Length + 1;
                         Emit_Node (Item.Second, Depth + 1, In_Conditional_Branch, Stack_Base + 1);
                         Environment_Length := Entry_Environment_Length;
@@ -384,7 +432,12 @@ is
                         when CCL.Language.Integer_Type => CCL.VM.Integer_Value,
                         when CCL.Language.Boolean_Type => CCL.VM.Boolean_Value,
                         when CCL.Language.String_Type => CCL.VM.Text_Value,
-                        when others => (if CCL.Types.Describe (Program.Data_Types, Initializer.Static_Kind).Form = CCL.Types.Resource
+                        when CCL.Language.Character_Type => CCL.VM.Character_Value,
+                        when others => (if CCL.VM.Supported_List (Program.Data_Types, Initializer.Static_Kind)
+                          then CCL.VM.List_Value
+                          elsif CCL.Types.Is_Function (Program.Data_Types, Initializer.Static_Kind)
+                          then CCL.VM.Function_Value
+                          elsif CCL.Types.Describe (Program.Data_Types, Initializer.Static_Kind).Form = CCL.Types.Resource
                           then CCL.VM.Resource_Value
                           elsif CCL.Types.Is_Scalar_Sum (Program.Data_Types, Initializer.Static_Kind)
                           then CCL.VM.Variant_Value else CCL.VM.Object_Value));
@@ -396,7 +449,8 @@ is
                      Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
                   else
                      if Initializer.Static_Kind not in
-                       CCL.Language.Integer_Type | CCL.Language.Boolean_Type | CCL.Language.String_Type
+                       CCL.Language.Integer_Type | CCL.Language.Boolean_Type | CCL.Language.String_Type |
+                       CCL.Language.Character_Type
                      then
                         Program.Local_Data_Types (Local) := Initializer.Static_Kind;
                      end if;
@@ -411,7 +465,7 @@ is
                      Emit (CCL.VM.Initialize_Local, Local => Local);
                      if Status = Compilation_Succeeded then
                         Environment (Environment_Length) :=
-                          (Identifier => Item.Identifier, Local => Local, others => <>);
+                          (Identifier => Item.Identifier, Kind => Initializer.Static_Kind, Local => Local, others => <>);
                         Environment_Length := Environment_Length + 1;
                         Emit_Node
                           (Item.Second, Depth + 1,
@@ -552,18 +606,60 @@ is
 
             when CCL.Language.Function_Call =>
                if Item.Calls_Value then
-                  --  Function values arrive with lambdas (parity step 4).
-                  Fail (Unsupported_Form, Index, Item.Source_Position);
+                  --  Through a function-typed binding: the value, the
+                  --  arguments (range-checked against its type), the call.
+                  Find_Local (Item.Identifier, Binding, Found);
+                  if not Found or else not CCL.Types.Is_Function (Program.Data_Types, Binding.Kind) then
+                     Fail (Malformed_Typed_Tree, Index, Item.Source_Position); return;
+                  end if;
+                  declare
+                     D : constant CCL.Types.Description := CCL.Types.Describe (Program.Data_Types, Binding.Kind);
+                  begin
+                     Emit_Name (Item.Identifier, Binding.Kind, Stack_Base, Index);
+                     for P in 1 .. Item.Argument_Count loop
+                        Emit_Node (Item.Arguments (P), Depth + 1, In_Conditional_Branch, Stack_Base + P);
+                        if P < D.Count then
+                           Enter (D.Parts (P).Payload);
+                        end if;
+                     end loop;
+                     Emit (CCL.VM.Call_Value, Data_Type => Binding.Kind);
+                  end;
                else
                   --  Arguments left to right become the callee's parameters.
-                  for P in 1 .. Item.Argument_Count loop
-                     Emit_Node (Item.Arguments (P), Depth + 1, In_Conditional_Branch, Stack_Base + P - 1);
-                  end loop;
+                  declare
+                     Callee : constant CCL.Language.Function_Declaration :=
+                       CCL.Language.Analysis_Function (Analysis, Item.Function_Id);
+                  begin
+                     for P in 1 .. Item.Argument_Count loop
+                        Emit_Node (Item.Arguments (P), Depth + 1, In_Conditional_Branch, Stack_Base + P - 1);
+                        if P <= Callee.Count then
+                           Enter (Callee.Parameters (P).Kind);
+                        end if;
+                     end loop;
+                  end;
                   Emit (CCL.VM.Call_Function, Immediate => Interfaces.Integer_64 (Item.Function_Id));
                end if;
 
-            when CCL.Language.Handler_Form | CCL.Language.Record_Construct =>
+            when CCL.Language.Handler_Form =>
                Fail (Unsupported_Form, Index, Item.Source_Position);
+
+            when CCL.Language.Record_Construct =>
+               --  The fields in order, then the node (step 4). Range-typed
+               --  fields wait for compiled range checks (step 5).
+               declare
+                  D : constant CCL.Types.Description := CCL.Types.Describe (Program.Data_Types, Item.Declared_Kind);
+               begin
+                  if not CCL.VM.Node_Type (Program.Data_Types, Item.Declared_Kind) or else
+                    D.Form /= CCL.Types.Product
+                  then
+                     Fail (Unsupported_Form, Index, Item.Source_Position); return;
+                  end if;
+                  for P in 1 .. D.Count loop
+                     Emit_Node (Item.Components (P), Depth + 1, In_Conditional_Branch, Stack_Base + P - 1);
+                     Enter (D.Parts (P).Payload);
+                  end loop;
+                  Emit (CCL.VM.Make_Node, Data_Type => Item.Declared_Kind);
+               end;
 
             when CCL.Language.Not_Equal_Form | CCL.Language.Less_Form |
                  CCL.Language.Less_Equal_Form | CCL.Language.Greater_Form |
@@ -579,6 +675,7 @@ is
                   if Initializer.Static_Kind = CCL.Language.Integer_Type then Emit (CCL.VM.Equal_Integer);
                   elsif Initializer.Static_Kind = CCL.Language.Boolean_Type then Emit (CCL.VM.Equal_Boolean);
                   elsif Initializer.Static_Kind = CCL.Language.String_Type then Emit (CCL.VM.Equal_Text);
+                  elsif Initializer.Static_Kind = CCL.Language.Character_Type then Emit (CCL.VM.Equal_Character);
                   else Emit (CCL.VM.Equal_Variant, Data_Type => Initializer.Static_Kind); end if;
                   Emit (CCL.VM.Not_Boolean);
                elsif Initializer.Static_Kind /= CCL.Language.Integer_Type then
@@ -627,33 +724,102 @@ is
                end if;
 
             when CCL.Language.Builtin_Form =>
-               --  A string built-in: its operands, then the subject (last
-               --  in source), then the shared operation. List built-ins
-               --  arrive with lists in CCLB.
+               --  A string or list built-in: its operands, then the subject
+               --  (last in source), then the shared operation. Built-ins
+               --  that take a function arrive with function values (step 6).
                declare
                   Subject : CCL.Language.Node;
+                  List_Type : CCL.Types.Type_Reference;
                begin
-                  if Item.Argument_Count = 0 or else
-                    not CCL.Language.Is_Text_Operation (Item.Builtin)
-                  then
+                  if Item.Argument_Count = 0 then
                      Fail (Unsupported_Form, Index, Item.Source_Position); return;
                   end if;
                   Read_Node (Item.Arguments (Item.Argument_Count), Subject);
-                  if Subject.Static_Kind /= CCL.Language.String_Type then
+                  List_Type := (if Item.Builtin in CCL.Language.Range_Builtin | CCL.Language.Split_Builtin
+                                then Item.Static_Kind else Subject.Static_Kind);
+                  if not (CCL.Language.Is_Text_Operation (Item.Builtin) and then
+                          Subject.Static_Kind = CCL.Language.String_Type) and then
+                    not ((CCL.Language.Is_List_Operation (Item.Builtin) or else
+                          CCL.Language.Is_Apply_Operation (Item.Builtin)) and then
+                         CCL.VM.Supported_List (Program.Data_Types, List_Type))
+                  then
                      Fail (Unsupported_Form, Index, Item.Source_Position); return;
                   end if;
                   for P in 1 .. Item.Argument_Count loop
                      Emit_Node (Item.Arguments (P), Depth + 1, In_Conditional_Branch, Stack_Base + P - 1);
                   end loop;
-                  Emit (CCL.VM.Text_Builtin, Interfaces.Integer_64
-                    (CCL.Text_Operations.Operation'Enum_Rep (CCL.Language.Text_Operation_Of (Item.Builtin))));
+                  if CCL.Language.Is_Apply_Operation (Item.Builtin) then
+                     --  Applies a function to each element (resumable in the VM).
+                     Emit (CCL.VM.List_Apply, Interfaces.Integer_64
+                       (CCL.List_Operations.Apply_Operation'Enum_Rep (CCL.Language.Apply_Operation_Of (Item.Builtin))),
+                       Data_Type => List_Type);
+                  elsif CCL.Language.Is_Text_Operation (Item.Builtin) and then
+                    Subject.Static_Kind = CCL.Language.String_Type
+                  then
+                     Emit (CCL.VM.Text_Builtin, Interfaces.Integer_64
+                       (CCL.Text_Operations.Operation'Enum_Rep (CCL.Language.Text_Operation_Of (Item.Builtin))));
+                  else
+                     Emit (CCL.VM.List_Builtin, Interfaces.Integer_64
+                       (CCL.List_Operations.Operation'Enum_Rep (CCL.Language.List_Operation_Of (Item.Builtin))),
+                       Data_Type => List_Type);
+                  end if;
                end;
 
-            when CCL.Language.List_Construct | CCL.Language.Lambda_Form =>
-               --  Implemented by the direct interpreter (the REPL's path).
-               --  CCLB lowering needs verifier-checked opcodes first, so it
-               --  fails explicitly rather than approximating.
-               Fail (Unsupported_Form, Index, Item.Source_Position);
+            when CCL.Language.List_Construct =>
+               --  Reserve the whole literal, then fill it element by element
+               --  across the chained chunks: the stack holds the list and one
+               --  element, however long the literal.
+               if not CCL.VM.Supported_List (Program.Data_Types, Item.Static_Kind) then
+                  --  Lists of records arrive with the value arena (step 4).
+                  Fail (Unsupported_Form, Index, Item.Source_Position); return;
+               end if;
+               declare
+                  Chunk : CCL.Language.Node_Reference := Index;
+                  Part : CCL.Language.Node;
+                  Total : Natural range 0 .. CCL.VM.MAX_LIST_ELEMENTS := 0;
+               begin
+                  for Step in 0 .. CCL.Language.MAX_AST_NODES loop
+                     exit when Chunk = CCL.Language.NO_NODE;
+                     Read_Node (Chunk, Part);
+                     if Part.Kind /= CCL.Language.List_Construct or else
+                       Part.Element_Count > CCL.VM.MAX_LIST_ELEMENTS - Total
+                     then
+                        Fail (Malformed_Typed_Tree, Index, Item.Source_Position); return;
+                     end if;
+                     Total := Total + Part.Element_Count;
+                     Chunk := Part.Second;
+                  end loop;
+                  Emit (CCL.VM.New_List, Interfaces.Integer_64 (Total), Data_Type => Item.Static_Kind);
+                  Chunk := Index;
+                  Total := 0;
+                  for Step in 0 .. CCL.Language.MAX_AST_NODES loop
+                     exit when Chunk = CCL.Language.NO_NODE or else Status /= Compilation_Succeeded;
+                     Read_Node (Chunk, Part);
+                     for P in 1 .. Part.Element_Count loop
+                        pragma Loop_Invariant (Total <= CCL.VM.MAX_LIST_ELEMENTS);
+                        --  The first pass bounded the total; checked again.
+                        if Total = CCL.VM.MAX_LIST_ELEMENTS then
+                           Fail (Malformed_Typed_Tree, Index, Item.Source_Position); return;
+                        end if;
+                        Total := Total + 1;
+                        Emit_Node (Part.Components (P), Depth + 1, In_Conditional_Branch, Stack_Base + 1);
+                        Emit (CCL.VM.Fill_List, Interfaces.Integer_64 (Total), Data_Type => Item.Static_Kind);
+                     end loop;
+                     Chunk := Part.Second;
+                  end loop;
+               end;
+
+            when CCL.Language.Lambda_Form =>
+               --  The lifted function's captures, by value, then the value.
+               declare
+                  Lifted : constant CCL.Language.Function_Declaration :=
+                    CCL.Language.Analysis_Function (Analysis, Item.Function_Id);
+               begin
+                  for C in 1 .. Lifted.Captured loop
+                     Emit_Name (Lifted.Captures (C).Identifier, Lifted.Captures (C).Kind, Stack_Base + C - 1, Index);
+                  end loop;
+                  Emit (CCL.VM.Make_Closure, Interfaces.Integer_64 (Item.Function_Id), Data_Type => Item.Static_Kind);
+               end;
 
             when CCL.Language.String_Literal =>
                --  A pool constant; equal literals share one entry.
@@ -670,6 +836,7 @@ is
                            Used := K.First + K.Length - 1;
                         end if;
                         if Found = Program.Constants_Length and then K.Length = Text'Length and then
+                          K.Length <= CCL.VM.MAX_CONSTANT_BYTES - K.First + 1 and then
                           Program.Constant_Text (K.First .. K.First + K.Length - 1) = Text
                         then
                            Found := C;
@@ -697,11 +864,38 @@ is
 
             when CCL.Language.String_Length_Form =>
                Emit_Node (Item.First, Depth + 1, In_Conditional_Branch, Stack_Base);
-               Emit (CCL.VM.Length_Text);
+               Read_Node (Item.First, Initializer);
+               if Initializer.Static_Kind = CCL.Language.String_Type then
+                  Emit (CCL.VM.Length_Text);
+               elsif CCL.VM.Supported_List (Program.Data_Types, Initializer.Static_Kind) then
+                  Emit (CCL.VM.Length_List, Data_Type => Initializer.Static_Kind);
+               else
+                  Fail (Unsupported_Form, Index, Item.Source_Position);
+               end if;
 
-            when CCL.Language.String_Index_Form | CCL.Language.To_String_Form =>
-               --  Characters and to-string arrive with the next text step.
-               Fail (Unsupported_Form, Index, Item.Source_Position);
+            when CCL.Language.String_Index_Form =>
+               Read_Node (Item.First, Initializer);
+               if Initializer.Static_Kind /= CCL.Language.String_Type and then
+                 not CCL.VM.Supported_List (Program.Data_Types, Initializer.Static_Kind)
+               then
+                  Fail (Unsupported_Form, Index, Item.Source_Position); return;
+               end if;
+               Emit_Node (Item.First, Depth + 1, In_Conditional_Branch, Stack_Base);
+               Emit_Node (Item.Second, Depth + 1, In_Conditional_Branch, Stack_Base + 1);
+               if Initializer.Static_Kind = CCL.Language.String_Type then
+                  Emit (CCL.VM.Text_At);
+               else
+                  Emit (CCL.VM.List_At, Data_Type => Initializer.Static_Kind);
+               end if;
+
+            when CCL.Language.To_String_Form =>
+               Emit_Node (Item.First, Depth + 1, In_Conditional_Branch, Stack_Base);
+               Read_Node (Item.First, Initializer);
+               if Initializer.Static_Kind = CCL.Language.Integer_Type then
+                  Emit (CCL.VM.Integer_To_Text);
+               else
+                  Emit (CCL.VM.Variant_To_Text, Data_Type => Initializer.Static_Kind);
+               end if;
 
             when CCL.Language.Invalid_Node =>
                Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
@@ -765,10 +959,17 @@ is
             Entry_PC : CCL.VM.Instruction_Index;
             Ok : Boolean;
          begin
+            --  An anonymous function's captures are bound ahead of its
+            --  parameters (lambda lifting): to the VM, leading parameters.
             Function_Kind (Decl.Result_Kind, Target.Result, Target.Result_Data_Type, Supported);
+            for C in 1 .. Decl.Captured loop
+               exit when not Supported;
+               Function_Kind (Decl.Captures (C).Kind, Target.Kinds (C), Target.Data_Types (C), Supported);
+            end loop;
             for P in 1 .. Decl.Count loop
                exit when not Supported;
-               Function_Kind (Decl.Parameters (P).Kind, Target.Kinds (P), Target.Data_Types (P), Supported);
+               Function_Kind (Decl.Parameters (P).Kind, Target.Kinds (Decl.Captured + P),
+                              Target.Data_Types (Decl.Captured + P), Supported);
             end loop;
             if not Supported then
                Fail (Unsupported_Form, CCL.Language.NO_NODE); exit;
@@ -776,17 +977,24 @@ is
             Mark_Target (Entry_PC, Ok);
             exit when not Ok;
             Target.Entry_PC := Entry_PC;
-            Target.Count := Decl.Count;
+            Target.Captures := Decl.Captured;
+            Target.Count := Decl.Captured + Decl.Count;
             Program.Functions (F - 1) := Target;
             Program.Functions_Length := F;
             Environment_Length := 0;
-            for P in 1 .. Decl.Count loop
-               Environment (P - 1) :=
-                 (Identifier => Decl.Parameters (P).Identifier, On_Stack => True,
-                  Stack_Level => P - 1, others => <>);
+            for C in 1 .. Decl.Captured loop
+               Environment (C - 1) :=
+                 (Identifier => Decl.Captures (C).Identifier, Kind => Decl.Captures (C).Kind,
+                  On_Stack => True, Stack_Level => C - 1, others => <>);
             end loop;
-            Environment_Length := Decl.Count;
-            Emit_Node (Decl.Body_Node, 0, False, Decl.Count);
+            for P in 1 .. Decl.Count loop
+               Environment (Decl.Captured + P - 1) :=
+                 (Identifier => Decl.Parameters (P).Identifier, Kind => Decl.Parameters (P).Kind,
+                  On_Stack => True, Stack_Level => Decl.Captured + P - 1, others => <>);
+            end loop;
+            Environment_Length := Decl.Captured + Decl.Count;
+            Emit_Node (Decl.Body_Node, 0, False, Decl.Captured + Decl.Count);
+            Enter (Decl.Result_Kind);
             Emit (CCL.VM.Return_Function);
          end;
       end loop;

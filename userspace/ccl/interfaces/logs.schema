@@ -1,0 +1,4 @@
+Severity = Trace | Debug | Information | Warning | Error | Critical
+LogEntry = (time: Integer, severity: Severity, source: Integer, message: String)
+LogEntries = List(LogEntry)
+recent(service: String) -> LogEntries

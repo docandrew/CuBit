@@ -1,0 +1,11 @@
+[package]
+name = "cubit-mesa-software-smoke"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+ash = "=0.38.0"
+libloading = "=0.8.9"
+
+[workspace]

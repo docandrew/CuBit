@@ -1,0 +1,14 @@
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Glyph_Memory is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat", "../../userspace/allocator/src");
+   for Source_Files use ("compositor_identity.ads", "glyph_memory_tests.adb", "compositor_glyph_memory.ads", "compositor_glyph_memory.adb",
+     "compositor_glyph_arena.ads", "compositor_glyph_arena.adb", "heap_extents.ads", "heap_extents.adb",
+     "compositor_glyph_ffi.ads", "compositor_glyph_ffi.adb", "compositor_glyph_layout.ads", "compositor_glyph_layout.adb",
+     "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb");
+   for Object_Dir use "build/glyph-memory/obj";
+   for Exec_Dir use "build/glyph-memory";
+   for Main use ("glyph_memory_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Glyph_Memory;

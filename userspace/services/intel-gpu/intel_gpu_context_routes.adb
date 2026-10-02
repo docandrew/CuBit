@@ -30,7 +30,7 @@ package body Intel_GPU_Context_Routes with SPARK_Mode is
    begin
       case Item.Tag is
          when Events.Malformed => return (Invalid_Message, No_Context);
-         when Events.Scheduling_Done =>
+         when Events.Scheduling_Done | Events.Deregister_Done =>
             if Contains (Object, Item.ID) then ID := Item.ID; end if;
          when Events.Request_Failure => ID := Owner (Object, Fence);
          when Events.Other_Message => null;

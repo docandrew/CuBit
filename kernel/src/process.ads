@@ -338,14 +338,29 @@ package Process is
 
     subtype CompletionIndex is Natural range 0 .. COMPLETION_QUEUE_SIZE - 1;
 
+    type CompletionPadding is array (0 .. 6) of Unsigned_8
+        with Component_Size => 8, Size => 56;
+
     type CompletionEntry is record
         requestId : Unsigned_64;        -- Kernel-generated request identity
         token : Unsigned_64;        -- Client-chosen opaque ID (like io_uring user_data)
         msg   : Message;            -- Reply from server
-        from  : ProcessID;          -- Server PID that replied
+        from  : Unsigned_64;        -- Wire PID, not the internal PID subtype
         status : Unsigned_64 := COMPLETION_OK;
         valid : Boolean := False;
+        reserved : CompletionPadding := (others => 0);
     end record;
+    for CompletionEntry use record
+        requestId at 0 range 0 .. 63;
+        token at 8 range 0 .. 63;
+        msg at 16 range 0 .. 383;
+        from at 64 range 0 .. 63;
+        status at 72 range 0 .. 63;
+        valid at 80 range 0 .. 7;
+        reserved at 81 range 0 .. 55;
+    end record;
+    for CompletionEntry'Size use 88 * 8;
+    for CompletionEntry'Alignment use 8;
 
     type CompletionRing is array (CompletionIndex) of CompletionEntry;
 
@@ -353,9 +368,10 @@ package Process is
         requestId => NO_REQUEST_ID,
         token => 0,
         msg   => NULL_MESSAGE,
-        from  => NO_PROCESS,
+        from  => Unsigned_64 (NO_PROCESS),
         status => COMPLETION_OK,
-        valid => False
+        valid => False,
+        reserved => (others => 0)
     );
 
     type CompletionOwners is array (CompletionIndex) of ThreadID;

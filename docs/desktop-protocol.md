@@ -453,3 +453,248 @@ presentations and 138 input requests, within the existing 20/160 budgets.
 DOOM received injected key events and produced active mixer periods alongside
 display submissions. These results check integration and bounded repaint/IPC
 activity, not audio fidelity, p99 latency or full compositor correctness.
+
+## Immutable publication extension (implementation in progress, 2026-10-01)
+
+`CuBit.Desktop_Protocol.Publication` defines the portable wire codec for the
+upcoming native-density client path. Desktop implements configuration queries,
+grant staging, publication and retirement queries. Toolkit adoption, configure
+events and capability negotiation remain outstanding.
+The configuration handler and its adversarial test now pass the rebuilt native
+CuBit/QEMU `desktop-protocol` regression. This run uses the legacy, unit-scale
+backend; native mixed-output density selection still needs an integration run. The legacy protocol revision and toolkit
+behavior are unchanged. A successful configuration query is not negotiation
+of toolkit support for immutable publication; that requires toolkit adoption
+and an explicit capability/version handshake.
+
+The promoted codec passes all 128 SPARK checks (58 runtime, 9 assertions,
+37 functional contracts, 24 termination), with zero unproved or justified checks.
+Encoder round-trip contracts and successful decoder validity are proved;
+ghost recovery lemmas introduce no assumed facts or native decoding overhead.
+The persistent hosted regression passes 28,074 admitted density/layout cases,
+independent wire examples, identity limits and malformed-message checks.
+Evidence: `/tmp/cubit-publication-integrated-hosted.log` and the summary under
+`tests/desktop-protocol/build/publication/obj/gnatprove/gnatprove.out`.
+The same codec compiles with the freestanding runtime compiler
+(`/tmp/cubit-publication-promoted-native-final.log`). These results do not prove
+IPC caller identity, actual grant retirement or producer immutability.
+
+Every extension message has four words, zero flags and zero reserved header.
+Surface names are nonzero 64-bit values, configuration epochs and publication
+tickets are nonzero 31-bit values matching the nonwrapping SPARK surface policy.
+Grant identity uses `Grant_References`' canonical packed slot/generation word;
+it is not an address or authority. All replies use word 0 for status. Failure
+replies have three zero payload words; unknown statuses never decode as success.
+
+| Label | Request words 0–3 | Successful reply words 0–3 |
+| --- | --- | --- |
+| `0x0860` configuration | surface, 0, 0, 0 | 0, epoch, logical extent/density, physical layout |
+| `0x0861` stage | surface, epoch, packed grant, 0 | 0, epoch, newly issued ticket, 0 |
+| `0x0862` publish | surface, packed epoch/ticket, input watermark, damage | 0, epoch, ticket, 0 |
+| `0x0863` retirement query | surface, ticket, 0, 0 | 0, retired epoch, retired ticket, 0 |
+
+Logical extent/density packs width and height into bits 0–15 and 16–31,
+numerator and denominator into bits 32–39 and 40–47. Bits 48–63 must be zero.
+Density components are 1–16. Physical layout packs width/height in the low
+16-bit fields and byte pitch in bits 32–63. The codec requires positive extents,
+physical extent exactly `ceil(logical × numerator / denominator)`, four-byte
+pitch alignment, enough row bytes and the existing 16MiB buffer limit. The
+layout is BGRA8888. Stage derives its layout from the service's configuration;
+it cannot smuggle a different pitch through a descriptor.
+
+Publish word 1 stores the epoch in bits 0–31 and ticket in bits 32–63.
+Both halves must be nonzero 31-bit identities; the old unpacked request is
+rejected. Word 2 preserves the complete unsigned 64-bit handled-input watermark.
+Zero means unknown/no completed input. This is untrusted correlation metadata,
+not memory authority or evidence that an input changed visible pixels. Clients
+and Desktop must be rebuilt together for this wire change. Receipts are unchanged.
+
+Publish damage packs physical source x/y/width/height into successive 16-bit
+fields. Four zeros mean full source damage. Mixed zero extents and empty damage
+away from the origin are rejected, using the existing damage predicate. Clipping
+to the actual buffer and mapping damage to logical/output coordinates remain
+service responsibilities. Partial damage describes pixels changed since the
+previous visible publication, not since an arbitrary recycled buffer's old
+contents; producers must repair old-buffer damage or redraw the whole candidate.
+
+A successful publish receipt accepts the frame; it is **not permission to write
+that buffer again**. Retirement succeeds only after the exact ticket's renderer
+and grant readers are confirmed gone. `Bad_State` means not yet retired. Clients
+must authenticate the reply endpoint and compare the returned epoch/ticket with
+the outstanding request before granting write ownership. The service must keep
+bounded retirement receipts long enough for a querying client to learn the
+result before that slot is admitted again. Decode success alone does not prove
+retirement, ownership, producer completion, or protection against a malicious
+client that continues writing its own mapping.
+
+Desktop now connects the two-slot `Compositor_Surface_State` to real grant
+acquisition, publication, renderer import invalidation and retirement receipts.
+The client must finish producing pixels before publishing. Configuration changes
+preserve the previous visible pixels and move an obsolete candidate into
+retirement without dropping its epoch/ticket identity. Actual reader/grant
+retirement is required before admitting reuse. Close seals admission before
+draining retained references. Toolkit buffers still need
+reclaimable allocation, density-aware drawing and explicit write eligibility.
+The existing mutable attach path cannot be described as satisfying these rules.
+
+### Configuration service integration checkpoint
+
+Desktop authenticates a configuration query against the kernel-supplied caller
+and the surface owner before changing any configuration state. It computes the
+full logical client extent, subtracting window decoration without clipping the
+result to the output. For the native output path, the existing proved density
+selector chooses the greatest density among intersecting outputs, with primary
+output fallback. The legacy path reports unit scale. `Compositor_Density.Plan`
+admits the physical layout against the existing per-buffer budget.
+
+The actual surface record now holds `Compositor_Surface_State.State` and the
+last accepted configuration. Its proved `Configure` transition issues a new
+generation only when the cached configuration changes; repeated queries preserve
+the generation. This currently runs on query, not yet as unsolicited scale-change
+notification. Querying does not attach or replace the visible source. Exhausted
+generations and unrepresentable layouts fail explicitly. These are integrations
+of existing proved policies; the imperative service glue is not a whole-service
+SPARK proof.
+
+`desktop-check` adds malformed-header/payload rejection, owner/foreign/missing
+object checks, stable repeated-query checks and resize generation checks. Both
+changed native main units compile (`/tmp/cubit-configuration-units.log`). The
+first full attempt stopped in a shared CCL manifest build mismatch
+(`/tmp/cubit-configuration-native-run.log`). After that dependency became
+buildable, the complete native rebuild and 60-second CuBit/QEMU regression
+passed: `/tmp/cubit-configuration-retry{,-run}.log`. The serial log contains
+both `DESKTOP-CONFIGURATION-CHECK: complete` and the suite's final
+`DESKTOP-PROTOCOL-CHECK: PASS`; the runner's fault scan also passed. This checks
+real IPC, authorization rejection and resize generation behavior on the
+unit-scale legacy backend, not crisp toolkit rendering or mixed-output query
+transitions. Staged Desktop/Display match their default builds, and GRUB is
+unchanged.
+
+After promoting the fully proved codec, a fresh Desktop/desktop-check rebuild
+and 60-second native regression also passed
+(`/tmp/cubit-publication-integrated-native.log` and `.serial`): configuration
+completion at serial line 649, final protocol PASS at line 660, and a successful
+runner fault scan. This has the same unit-scale configuration-only scope.
+
+### Grant staging and retirement integration
+
+Each surface has two fixed publication slots. Stage authenticates the caller,
+refreshes the current configuration and requires its exact generation. The
+proved state policy admits an empty slot with no existing candidate, then
+Desktop acquires the configured physical byte range read-only from that owner.
+A failed acquisition discards the reservation and returns it to empty; no ticket
+is exposed as successful. An already-acquired grant identity cannot be staged
+again. Successful staging stores the mapping, full configuration and ticket
+without making any pixels visible. It adds no pixel copy or pixel allocation.
+
+A changed configuration moves stale candidates into retirement. The owner can
+query a ticket; only a retiring ticket triggers renderer-source invalidation
+followed by returning the grant acquisition through `Compositor_Readers`.
+Uncertain release terminates the compositor instead of reporting reuse as safe.
+Confirmed release empties the policy slot and stores an exact epoch/ticket
+receipt. Each slot keeps its latest receipt until its next completed retirement,
+so duplicate queries are repeatable within that bounded history. A candidate
+still admitted for publication returns `Bad_State`, never a reuse receipt.
+Destroy, goodbye and dead-client cleanup also close the policy and drain held
+slots. Legacy attachment and presentation are rejected after a successful stage;
+a legacy attached surface cannot enter publication mode.
+
+The imperative handler and foreign grant/renderer calls are outside the SPARK
+proof boundary. Their policy and release-order helpers are proved separately.
+The grant only restricts Desktop's mapping: clients must still honor immutable
+ownership of their own writable pages, including aliases. The staging checkpoint
+predates the publication integration below; capability negotiation and toolkit
+migration remain outstanding. Global client-memory admission and hardware fence
+binding remain outstanding.
+
+The native `desktop-protocol` regression now executes 140 stage/resize/retire
+cycles through real CuBit IPC and grants. It checks short-grant rejection,
+foreign-owner rejection, malformed staging, monotonically increasing tickets,
+duplicate candidate rejection, pending and repeatable exact retirement receipts,
+stale generations, legacy attach/present exclusion and destruction with a held
+candidate. The final grant revocation confirms no acquisition remains.
+The rebuilt 90-second CuBit/QEMU run passes the entire protocol suite and final
+fault scan: `/tmp/cubit-stage-grants-final.log` and `.serial` (grant marker 652,
+final PASS 664). Source hashes are in `/tmp/cubit-stage-grants-source.json`.
+The first run exposed undersized test storage after Desktop's existing minimum
+size clamp; the corrected fixture respects that clamp without weakening service
+validation. This is the legacy backend with unpublished candidates, not a test
+of Mesa reader fences, displayed immutable client pixels or physical latency.
+
+### Publication and committed source geometry
+
+Publish authenticates the caller, refreshes the current configuration and
+requires the exact candidate epoch/ticket. `Surface_State.Present` makes that
+candidate visible and moves the previous visible slot into retirement. The
+service updates only the drawing reference; it allocates no pixels and copies
+no frame. Duplicate publication, stale identities and attempts to retire the
+visible buffer are rejected. Old slots remain acquired until confirmed retirement
+or terminal surface cleanup. The visible fields alias a slot, so destruction
+releases slot loans exactly once rather than also taking the legacy release path.
+
+The drawing reference stores committed logical width/height independently of
+physical source width/height. Native Mesa output drawing and the proved CPU
+sampler use the logical rectangle with physical source dimensions. Resizing a
+surface preserves that committed geometry until another frame is published;
+newly exposed client areas are cleared. A unit-scale source retains the existing
+row-copy fallback; a density-mismatched source uses the same proved sampler for
+the legacy target as well. No new whole-service SPARK proof is claimed.
+
+Publication now maps clipped physical-source damage into outward-rounded
+logical client damage with `Compositor_Source_Damage`. The first frame, an
+explicit full-damage request or changed logical/physical source dimensions
+repaints the full client. Existing scheduling coalesces pending logical damage
+and the per-output geometry maps it into each target. Producer write
+exclusion, hardware fence completion, toolkit repaint/retirement ownership,
+configure notifications, capability negotiation and mixed-output native tests
+remain required for the full desktop goal.
+
+Native evidence, 2026-10-01: the rebuilt CuBit/QEMU `desktop-protocol` run
+passes 12 visible two-buffer replacements, malformed/stale/duplicate/foreign
+publish rejection, denial of visible-buffer retirement, resize ownership
+preservation and destruction with both retained slots. Final grant revocation
+confirms every loan was released. The independent monitor screenshot observer
+checks the distinct final frame at 312×166: all 51,792 RGB pixels match, at
+output position (120,130). Previous frames use different colors, so an old
+visible frame cannot satisfy this check. The complete protocol suite and runner
+fault scan pass; QEMU finishes its configured 90-second timeout normally.
+Evidence: `/tmp/cubit-publish-native.log`, `.serial`,
+`/tmp/cubit-publish-pixels.log`, and `/tmp/cubit-publish-source.json`.
+This uses the legacy unit-scale backend. It proves neither mixed-output scaling,
+Mesa import/fence behavior, physical scanout latency nor 240Hz operation.
+
+### Partial source damage proof (2026-10-01)
+
+`Compositor_Source_Damage.Axis` proves conservative and tight integer edges:
+`floor(low × logical / physical)` and `ceil(high × logical / physical)`.
+Cross-product postconditions show no changed source interval is omitted and
+that each edge adds less than one logical pixel. `Map` clips to the actual
+source, returns empty for no intersection and proves exact rectangle semantics
+in terms of those axis contracts. Arithmetic uses bounded 64-bit intermediates;
+source and logical dimensions are limited to 65,535.
+
+The persistent proof passes all 22 checks, zero unproved or justified. Hosted
+tests cover 191,731 tight intervals and 602,420 nearest-neighbor output-sample
+checks, plus clipped, empty, full and maximum-dimension rectangles. Reproduce
+with `tests/compositor/source_damage.gpr`, its `source_damage_tests` executable
+and `gnatprove -u compositor_source_damage.adb --level=2 -j1 --report=all` in
+Nix/Alire. Evidence is `/tmp/cubit-partial-integrated.log` and the proof summary
+under `tests/compositor/build/source-damage/obj/gnatprove/gnatprove.out`.
+
+This policy assumes nearest-neighbor client sampling, matching the current
+CPU sampler and Mesa bridge. Filtered sampling or spatial effects need an
+appropriate filter footprint before using this damage mapping. The service's
+world-coordinate translation and actual drawing remain integration boundaries.
+The native rebuild passes. The first native regression attempt stopped before
+boot because the shared CCL image catalog exceeded its planner's item bound.
+After the catalog tool was repaired, the complete native retry passed.
+
+Native partial-damage evidence: `/tmp/cubit-partial-final.log`,
+`/tmp/cubit-partial-final.serial` and `/tmp/cubit-partial-final-pixels.log`.
+The 13th publication changes only a 13×11 source patch; the independent observer
+verifies all 51,792 RGB pixels of the final 312×166 image, including unchanged
+surroundings. The full protocol suite and final fault scan pass. Source hashes
+are saved in `/tmp/cubit-partial-source.json`. At unit scale that request maps
+to 143 logical pixels; the test verifies output correctness, not total repaint
+work or frame time, which can also include accumulated damage and buffer repair.
+Mixed-DPI native and hardware performance measurements remain outstanding.

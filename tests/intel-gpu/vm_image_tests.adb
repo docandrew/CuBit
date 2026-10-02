@@ -1,0 +1,479 @@
+with Ada.Text_IO;
+with Interfaces; use Interfaces;
+with Intel_GPU_ADLN_PPGTT; use Intel_GPU_ADLN_PPGTT;
+with Intel_GPU_VM_Image;
+procedure VM_Image_Tests is
+   package VM is new Intel_GPU_VM_Image (32);
+   use VM;
+   Backing : Backing_Pages;
+   Object : Image;
+   OK : Boolean;
+   type Addresses is array (Positive range <>) of Unsigned_64;
+   type Saved_Page is array (Table_Index) of Unsigned_64;
+   type Saved_Image is array (Page_Number) of Saved_Page;
+   -- Independent walk through exported page words, not Lookup or Locate.
+   function Read_Leaf (GPU : Unsigned_64) return Unsigned_64 is
+      DMA : Unsigned_64 := Root_DMA (Object);
+      Word : Unsigned_64;
+      P : Natural;
+      Shift : Natural := 39;
+   begin
+      for Depth in 1 .. 4 loop
+         P := 0;
+         for Candidate in 1 .. Used (Object) loop
+            if Page_DMA (Object, Candidate) = DMA then P := Candidate; exit; end if;
+         end loop;
+         pragma Assert (P /= 0);
+         Word := Entry_Value (Object, P,
+           Natural (Shift_Right (GPU, Shift) and 511));
+         if Word = 0 then return 0; end if;
+         if Depth = 4 then return Word; end if;
+         pragma Assert ((Word and 4095) = 3);
+         DMA := Word and not Unsigned_64'(4095);
+         Shift := Shift - 9;
+      end loop;
+      raise Program_Error;
+   end Read_Leaf;
+   procedure Reject
+     (GPU, DMA : Unsigned_64; Mode : Page_Access := Read_Write) is
+      Before : Saved_Image;
+      Count : constant Natural := Used (Object);
+      Root : constant Unsigned_64 := Root_DMA (Object);
+   begin
+      for P in Page_Number loop
+         for I in Table_Index loop Before (P) (I) := Entry_Value (Object, P, I); end loop;
+      end loop;
+      Map_Page (Object, GPU, DMA, Write_Back, Mode, OK);
+      pragma Assert (not OK and Used (Object) = Count and Root_DMA (Object) = Root);
+      for P in Page_Number loop
+         for I in Table_Index loop
+            pragma Assert (Before (P) (I) = Entry_Value (Object, P, I));
+         end loop;
+      end loop;
+   end Reject;
+begin
+   -- Cache policy is a property of backing, not just of one GPU alias.
+   -- Reject conflicts atomically, including at the end of a multi-page map.
+   for Existing in Cache_Policy loop
+      for Requested in Cache_Policy loop
+         declare
+            Alias_Image : Image;
+            Before : Saved_Image;
+            Count : Natural;
+            Pool : Backing_Pages;
+         begin
+            for P in Page_Number loop Pool (P) := Unsigned_64 (P) * 4096; end loop;
+            Initialize (Alias_Image, Pool, OK); pragma Assert (OK);
+            Map_Page (Alias_Image, 4096, 16#100000#, Existing, Read_Write, OK);
+            pragma Assert (OK);
+            Count := Used (Alias_Image);
+            for P in Page_Number loop
+               for I in Table_Index loop
+                  Before (P) (I) := Entry_Value (Alias_Image, P, I);
+               end loop;
+            end loop;
+            Map_Pages (Alias_Image, 2 ** 39,
+              [16#200000#, 16#100000#], Requested, Read_Write, OK);
+            pragma Assert (OK = (Existing = Requested));
+            if not OK then
+               pragma Assert (Used (Alias_Image) = Count);
+               for P in Page_Number loop
+                  for I in Table_Index loop
+                     pragma Assert (Entry_Value (Alias_Image, P, I) = Before (P) (I));
+                  end loop;
+               end loop;
+            else
+               pragma Assert (Lookup (Alias_Image, 2 ** 39 + 4096) =
+                 Encode_Leaf (16#100000#, Existing, Read_Write));
+            end if;
+         end;
+      end loop;
+   end loop;
+   for P in Page_Number loop Backing (P) := Unsigned_64 (P) * 4096; end loop;
+   Map_Page (Object, 4096, 16#100000#, Write_Back, Read_Write, OK);
+   pragma Assert (not OK);
+   Seal (Object, OK); pragma Assert (not OK);
+   Initialize (Object, Backing, OK); pragma Assert (OK and Used (Object) = 1);
+   Seal (Object, OK); pragma Assert (not OK and not Sealed (Object));
+   -- Reject aliases to every reserved table page, including unused capacity.
+   for DMA of Backing loop Reject (4096, DMA); end loop;
+   for GPU of Addresses'[0, 1, 4095, 2 ** 48, Unsigned_64'Last] loop
+      Reject (GPU, 16#100000#);
+   end loop;
+   for DMA of Addresses'[0, 1, 4095, 2 ** 32, Unsigned_64'Last] loop
+      Reject (4096, DMA);
+   end loop;
+   Reject (4096, 16#100000#, Read_Only);
+   -- Both sides of each paging boundary, including upper raw48 addresses.
+   for GPU of Addresses'[4096, 2 ** 21 - 4096, 2 ** 21,
+                         2 ** 30 - 4096, 2 ** 30,
+                         2 ** 39 - 4096, 2 ** 39,
+                         2 ** 47, 2 ** 48 - 4096] loop
+      Map_Page (Object, GPU, 16#100000#, Uncached, Read_Write, OK);
+      pragma Assert (OK and Read_Leaf (GPU) = 16#10001B#);
+      pragma Assert (Lookup (Object, GPU + 17) = Read_Leaf (GPU));
+      Reject (GPU, 16#200000#);
+   end loop;
+   pragma Assert (Read_Leaf (8192) = 0);
+   pragma Assert (Read_Leaf (2 ** 47 + 4096) = 0);
+   -- A fully populated leaf needs no further directory allocations.
+   declare Before : constant Natural := Used (Object); begin
+      for I in 2 .. 510 loop
+         Map_Page (Object, Unsigned_64 (I) * 4096, 16#200000#,
+                   Write_Combining, Read_Write, OK);
+         pragma Assert (OK and Read_Leaf (Unsigned_64 (I) * 4096) = 16#20000B#);
+      end loop;
+      pragma Assert (Used (Object) = Before);
+   end;
+   Initialize (Object, Backing, OK); pragma Assert (not OK);
+   Seal (Object, OK); pragma Assert (OK and Sealed (Object));
+   Reject (8192 * 512, 16#300000#);
+   Seal (Object, OK); pragma Assert (OK);
+   -- Exhaustion cannot leak directories or damage already mapped data.
+   declare
+      package Tiny is new Intel_GPU_VM_Image (4);
+      Small : Tiny.Image;
+      Pages : constant Tiny.Backing_Pages := [4096, 8192, 12288, 16384];
+   begin
+      Tiny.Initialize (Small, Pages, OK); pragma Assert (OK);
+      Tiny.Map_Page (Small, 4096, 16#100000#, Write_Back, Read_Write, OK);
+      pragma Assert (OK and Tiny.Used (Small) = 4);
+      for GPU of Addresses'[2 ** 21, 2 ** 30, 2 ** 39, 2 ** 47] loop
+         Tiny.Map_Page (Small, GPU, 16#200000#, Write_Back, Read_Write, OK);
+         pragma Assert (not OK and Tiny.Used (Small) = 4);
+         pragma Assert (Tiny.Lookup (Small, 4096) = 16#100003#);
+         pragma Assert (Tiny.Lookup (Small, GPU) = 0);
+      end loop;
+      Tiny.Map_Page (Small, 8192, 16#200000#, Write_Back, Read_Write, OK);
+      pragma Assert (OK);
+   end;
+   -- With two pages left, a new PML4 branch needs three and must not consume
+   -- either page. A subsequent PDP branch needs exactly two and still fits.
+   declare
+      package Six is new Intel_GPU_VM_Image (6);
+      Small : Six.Image;
+      Pages : constant Six.Backing_Pages := [4096, 8192, 12288, 16384, 20480, 24576];
+   begin
+      Six.Initialize (Small, Pages, OK); pragma Assert (OK);
+      Six.Map_Page (Small, 4096, 16#100000#, Write_Back, Read_Write, OK);
+      pragma Assert (OK and Six.Used (Small) = 4);
+      Six.Map_Page (Small, 2 ** 39, 16#200000#, Write_Back, Read_Write, OK);
+      pragma Assert (not OK and Six.Used (Small) = 4);
+      pragma Assert (Six.Entry_Value (Small, 1, 1) = 0);
+      Six.Map_Page (Small, 2 ** 30, 16#200000#, Write_Through, Read_Write, OK);
+      pragma Assert (OK and Six.Used (Small) = 6);
+      pragma Assert (Six.Lookup (Small, 2 ** 30) = 16#200013#);
+   end;
+   -- Exercise every index in each level without relying on the driver's
+   -- Locate helper to calculate the expected words.
+   for Shift of Addresses'[39, 30, 21, 12] loop
+      for Index in Table_Index loop
+         declare
+            package Four is new Intel_GPU_VM_Image (4);
+            Single : Four.Image;
+            Pages : constant Four.Backing_Pages := [4096, 8192, 12288, 16384];
+            GPU : constant Unsigned_64 :=
+              Shift_Left (Unsigned_64 (Index), Natural (Shift)) +
+              (if Shift = 12 and Index /= 0 then 0 else 4096);
+            Bits : Natural := 39;
+         begin
+            Four.Initialize (Single, Pages, OK); pragma Assert (OK);
+            Four.Map_Page (Single, GPU, 16#100000#, Write_Back, Read_Write, OK);
+            pragma Assert (OK and Four.Used (Single) = 4);
+            for P in 1 .. 4 loop
+               for I in Table_Index loop
+                  pragma Assert (Four.Entry_Value (Single, P, I) =
+                    (if I /= Natural (Shift_Right (GPU, Bits) and 511) then 0
+                     elsif P = 4 then 16#100003# else Pages (P + 1) + 3));
+               end loop;
+               if P < 4 then Bits := Bits - 9; end if;
+            end loop;
+         end;
+      end loop;
+   end loop;
+   -- Invalid pool initialization never becomes usable or retries in-place.
+   for P in Page_Number loop
+      declare Bad : Backing_Pages := Backing; Broken : Image; begin
+         Bad (P) := 0;
+         Initialize (Broken, Bad, OK); pragma Assert (not OK);
+         Initialize (Broken, Backing, OK); pragma Assert (not OK);
+         pragma Assert (Used (Broken) = 0 and Root_DMA (Broken) = 0);
+      end;
+      for Q in Page_Number loop
+         if P /= Q then
+            declare Bad : Backing_Pages := Backing; Broken : Image; begin
+               Bad (P) := Bad (Q);
+               Initialize (Broken, Bad, OK); pragma Assert (not OK);
+            end;
+         end if;
+      end loop;
+   end loop;
+   -- Whole-buffer transactions cross every directory boundary, with arbitrary
+   -- array lower bounds and physically discontiguous pages.
+   for Boundary of Addresses'[2 ** 21, 2 ** 30, 2 ** 39, 2 ** 47] loop
+      declare
+         Range_Image : Image;
+         Pages : constant Data_Pages (7 .. 9) :=
+           [16#300000#, 16#100000#, 16#200000#];
+      begin
+         Initialize (Range_Image, Backing, OK); pragma Assert (OK);
+         Map_Pages (Range_Image, Boundary - 4096, Pages,
+                    Write_Back, Read_Write, OK);
+         pragma Assert (OK);
+         for I in Pages'Range loop
+            pragma Assert (Lookup (Range_Image,
+              Boundary - 4096 + Unsigned_64 (I - Pages'First) * 4096) = Pages (I) + 3);
+         end loop;
+         pragma Assert (Lookup (Range_Image, Boundary - 8192) = 0);
+         pragma Assert (Lookup (Range_Image, Boundary + 8192) = 0);
+      end;
+   end loop;
+   -- Reject a bad DMA page at EVERY position, including after a directory
+   -- boundary. Existing mappings and every exported table word stay intact.
+   for Bad_Index in 1 .. 513 loop
+      declare
+         Range_Image : Image;
+         Pages : Data_Pages (1 .. 513) := [others => 16#300000#];
+         Before : Saved_Image;
+         Count : Natural;
+      begin
+         Initialize (Range_Image, Backing, OK); pragma Assert (OK);
+         Map_Page (Range_Image, 2 ** 39, 16#100000#, Write_Back, Read_Write, OK);
+         pragma Assert (OK);
+         Count := Used (Range_Image);
+         for P in Page_Number loop
+            for I in Table_Index loop
+               Before (P) (I) := Entry_Value (Range_Image, P, I);
+            end loop;
+         end loop;
+         Pages (Bad_Index) := Backing (32);
+         Map_Pages (Range_Image, 4096, Pages, Write_Back, Read_Write, OK);
+         pragma Assert (not OK and Used (Range_Image) = Count);
+         for P in Page_Number loop
+            for I in Table_Index loop
+               pragma Assert (Entry_Value (Range_Image, P, I) = Before (P) (I));
+            end loop;
+         end loop;
+         Pages (Bad_Index) := 16#300000#;
+         Map_Pages (Range_Image, 4096, Pages, Write_Back, Read_Write, OK);
+         pragma Assert (OK and Used (Range_Image) = Count + 4);
+         for I in Pages'Range loop
+            pragma Assert (Lookup (Range_Image, Unsigned_64 (I) * 4096) = 16#300003#);
+         end loop;
+      end;
+   end loop;
+   declare
+      Range_Image : Image;
+      Empty : Data_Pages (1 .. 0);
+      Before : Saved_Image;
+      Count : Natural;
+   begin
+      Initialize (Range_Image, Backing, OK); pragma Assert (OK);
+      Map_Page (Range_Image, 2 ** 21, 16#100000#, Write_Back, Read_Write, OK);
+      pragma Assert (OK);
+      Count := Used (Range_Image);
+      for P in Page_Number loop
+         for I in Table_Index loop Before (P) (I) := Entry_Value (Range_Image, P, I); end loop;
+      end loop;
+      -- Collision on the last page must not publish the earlier free page.
+      Map_Pages (Range_Image, 2 ** 21 - 4096,
+                 [16#200000#, 16#300000#], Write_Back, Read_Write, OK);
+      pragma Assert (not OK);
+      Map_Pages (Range_Image, 4096, Empty, Write_Back, Read_Write, OK);
+      pragma Assert (not OK);
+      Map_Pages (Range_Image, 2 ** 48 - 4096,
+                 [16#200000#, 16#300000#], Write_Back, Read_Write, OK);
+      pragma Assert (not OK and Used (Range_Image) = Count);
+      for P in Page_Number loop
+         for I in Table_Index loop
+            pragma Assert (Entry_Value (Range_Image, P, I) = Before (P) (I));
+         end loop;
+      end loop;
+      Map_Pages (Range_Image, 2 ** 48 - 8192,
+                 [16#200000#, 16#300000#], Write_Back, Read_Write, OK);
+      pragma Assert (OK and Lookup (Range_Image, 2 ** 48 - 4096) = 16#300003#);
+   end;
+   declare
+      package Four is new Intel_GPU_VM_Image (4);
+      Range_Image : Four.Image;
+      Pages : constant Four.Backing_Pages := [4096, 8192, 12288, 16384];
+   begin
+      Four.Initialize (Range_Image, Pages, OK); pragma Assert (OK);
+      Four.Map_Pages (Range_Image, 2 ** 21 - 4096,
+                      [16#100000#, 16#200000#], Write_Back, Read_Write, OK);
+      pragma Assert (not OK and Four.Used (Range_Image) = 1);
+      for I in Table_Index loop
+         pragma Assert (Four.Entry_Value (Range_Image, 1, I) = 0);
+      end loop;
+      Four.Map_Pages (Range_Image, 4096,
+                      [16#100000#, 16#200000#], Write_Back, Read_Write, OK);
+      pragma Assert (OK and Four.Used (Range_Image) = 4);
+   end;
+   for Policy in Cache_Policy loop
+      declare
+         package Small is new Intel_GPU_VM_Image (5);
+         Image : Small.Image;
+         Target : Unsigned_64 := 20480;
+         function Conflict (Page : Unsigned_64) return Boolean is
+           (Page = Target or else Page = 16#300000#);
+         function Disjoint is new Small.Backing_Disjoint (Conflict);
+      begin
+         pragma Assert (not Disjoint (Image));
+         pragma Assert (not Small.DMA_Disjoint (Image, 16#100000#, 4096));
+         Small.Initialize (Image, [4096, 8192, 12288, 16384, 20480], OK);
+         pragma Assert (OK);
+         -- Unused reserved backing must also be excluded.
+         pragma Assert (not Small.DMA_Disjoint (Image, 20480, 4096));
+         pragma Assert (not Disjoint (Image));
+         Target := 16#100000#;
+         pragma Assert (Disjoint (Image));
+         Small.Map_Page (Image, 4096, 16#100000#, Policy, Read_Write, OK);
+         pragma Assert (OK);
+         pragma Assert (not Disjoint (Image));
+         Target := 16#200000#;
+         pragma Assert (Disjoint (Image));
+         pragma Assert (not Small.DMA_Disjoint (Image, 16#100000#, 4096));
+         pragma Assert (not Small.DMA_Disjoint (Image, 16#FF000#, 8192));
+         pragma Assert (Small.DMA_Disjoint (Image, 16#FF000#, 4096));
+         pragma Assert (Small.DMA_Disjoint (Image, 16#101000#, 4096));
+         pragma Assert (Small.DMA_Disjoint (Image, 2 ** 32 - 4096, 4096));
+         pragma Assert (not Small.DMA_Disjoint (Image, 2 ** 32 - 4096, 8192));
+         pragma Assert (not Small.DMA_Disjoint (Image, 0, 4096));
+         pragma Assert (not Small.DMA_Disjoint (Image, 16#101001#, 4096));
+         pragma Assert (not Small.DMA_Disjoint (Image, 16#101000#, 0));
+         pragma Assert (not Small.DMA_Disjoint (Image, 16#101000#, 4095));
+         pragma Assert (not Small.DMA_Disjoint (Image, 16#101000#, Unsigned_64'Last));
+      end;
+   end loop;
+   -- Unmap is a whole-range transaction on an unpublished image. A stale
+   -- owner expectation at any position must preserve every table word.
+   for Boundary of Addresses'[2 ** 21, 2 ** 30, 2 ** 39, 2 ** 48 - 4096] loop
+      for Policy in Cache_Policy loop
+         declare
+            U : Image;
+            Data : constant Data_Pages := [7 => 16#100000#, 8 => 16#200000#, 9 => 16#300000#];
+            Wrong : Data_Pages (Data'Range);
+            Before : Saved_Image;
+            GPU : constant Unsigned_64 := Boundary - 8192;
+            Count : Natural;
+         begin
+            Initialize (U, Backing, OK); pragma Assert (OK);
+            Map_Pages (U, GPU, Data, Policy, Read_Write, OK); pragma Assert (OK);
+            Count := Used (U);
+            for P in Page_Number loop
+               for I in Table_Index loop Before (P) (I) := Entry_Value (U, P, I); end loop;
+            end loop;
+            for Bad in Data'Range loop
+               Wrong := Data; Wrong (Bad) := 16#400000#;
+               Unmap_Pages (U, GPU, Wrong, OK); pragma Assert (not OK);
+               pragma Assert (Used (U) = Count);
+               for P in Page_Number loop
+                  for I in Table_Index loop
+                     pragma Assert (Before (P) (I) = Entry_Value (U, P, I));
+                  end loop;
+               end loop;
+            end loop;
+            Unmap_Pages (U, GPU + 1, Data, OK); pragma Assert (not OK);
+            Unmap_Pages (U, 2 ** 48 - 4096, Data, OK); pragma Assert (not OK);
+            Unmap_Pages (U, GPU, Data_Pages'(1 .. 0 => 0), OK); pragma Assert (not OK);
+            Unmap_Pages (U, GPU, Data, OK); pragma Assert (OK and Used (U) = Count);
+            for I in Data'Range loop
+               pragma Assert (Lookup (U, GPU + Unsigned_64 (I - Data'First) * 4096) = 0);
+               pragma Assert (DMA_Disjoint (U, Data (I), 4096));
+            end loop;
+            Seal (U, OK); pragma Assert (not OK);
+            Unmap_Pages (U, GPU, Data, OK); pragma Assert (not OK);
+            -- Empty directories remain reusable; no extra table allocation.
+            Map_Pages (U, GPU, Data, Policy, Read_Write, OK);
+            pragma Assert (OK and Used (U) = Count);
+            -- Remove a subset; the remaining leaf still permits sealing.
+            Unmap_Pages (U, GPU, Data_Pages'[Data (7), Data (8)], OK);
+            pragma Assert (OK and Lookup (U, GPU + 8192) /= 0);
+            Seal (U, OK); pragma Assert (OK);
+            Unmap_Pages (U, GPU + 8192, Data_Pages'[Data (9)], OK);
+            pragma Assert (not OK and Lookup (U, GPU + 8192) /= 0);
+         end;
+      end loop;
+   end loop;
+   declare
+      U : Image;
+   begin
+      Unmap_Pages (U, 4096, Data_Pages'[16#100000#], OK);
+      pragma Assert (not OK);
+      Initialize (U, Backing, OK); pragma Assert (OK);
+      Map_Pages (U, 4096, Data_Pages'[16#100000#, 16#100000#], Write_Back, Read_Write, OK);
+      pragma Assert (OK);
+      Unmap_Pages (U, 4096, Data_Pages'[16#100000#], OK); pragma Assert (OK);
+      pragma Assert (Lookup (U, 4096) = 0 and Lookup (U, 8192) = 16#100003#);
+      pragma Assert (not DMA_Disjoint (U, 16#100000#, 4096));
+      Unmap_Pages (U, 8192, Data_Pages'[16#100000#], OK); pragma Assert (OK);
+      pragma Assert (DMA_Disjoint (U, 16#100000#, 4096));
+      Seal (U, OK); pragma Assert (not OK);
+   end;
+   declare
+      Source, Target, Third : Image;
+      Fresh, Newer : Backing_Pages;
+      Snapshot : Saved_Image;
+      Locations : constant Addresses := [4096, 2 ** 21, 2 ** 30, 2 ** 39, 2 ** 48 - 4096];
+      procedure Reject_Update (Pages : Backing_Pages) is
+         Bad : Image;
+      begin
+         Prepare_Update (Bad, Source, Pages, OK);
+         pragma Assert (not OK and Used (Bad) = 0 and Root_DMA (Bad) = 0);
+         for P in Page_Number loop
+            for I in Table_Index loop pragma Assert (Entry_Value (Bad, P, I) = 0); end loop;
+         end loop;
+         -- Failed candidates cannot be retried as if no attempt occurred.
+         Prepare_Update (Bad, Source, Fresh, OK); pragma Assert (not OK);
+      end Reject_Update;
+   begin
+      for P in Page_Number loop
+         Fresh (P) := 16#400000# + Unsigned_64 (P) * 4096;
+         Newer (P) := 16#800000# + Unsigned_64 (P) * 4096;
+      end loop;
+      Initialize (Source, Backing, OK); pragma Assert (OK);
+      Reject_Update (Fresh); -- source is not sealed
+      for GPU of Locations loop
+         Map_Page (Source, GPU, 16#100000#, Write_Back, Read_Write, OK);
+         pragma Assert (OK);
+      end loop;
+      Seal (Source, OK); pragma Assert (OK);
+      for P in Page_Number loop
+         for I in Table_Index loop Snapshot (P) (I) := Entry_Value (Source, P, I); end loop;
+      end loop;
+      Reject_Update (Backing); -- includes reserved source tables
+      for Position in Page_Number loop
+         declare Bad : Backing_Pages := Fresh; begin
+            Bad (Position) := 16#100000#; Reject_Update (Bad); -- data alias
+            Bad := Fresh; Bad (Position) := 1; Reject_Update (Bad);
+         end;
+      end loop;
+      declare Bad : Backing_Pages := Fresh; begin
+         Bad (Bad'Last) := Bad (Bad'First); Reject_Update (Bad);
+      end;
+      Prepare_Update (Target, Source, Fresh, OK);
+      pragma Assert (OK and not Sealed (Target) and Used (Target) = Used (Source));
+      pragma Assert (Root_DMA (Target) = Fresh (1));
+      for GPU of Locations loop
+         pragma Assert (Lookup (Target, GPU) = Lookup (Source, GPU));
+      end loop;
+      -- Mutable candidate diverges without touching any source word.
+      Unmap_Pages (Target, 4096, Data_Pages'[16#100000#], OK); pragma Assert (OK);
+      Map_Page (Target, 4096, 16#200000#, Write_Back, Read_Write, OK); pragma Assert (OK);
+      for P in Page_Number loop
+         for I in Table_Index loop pragma Assert (Entry_Value (Source, P, I) = Snapshot (P) (I)); end loop;
+      end loop;
+      Seal (Target, OK); pragma Assert (OK);
+      Prepare_Update (Third, Target, Newer, OK); pragma Assert (OK);
+      pragma Assert (Lookup (Third, 4096) = 16#200003#);
+      pragma Assert (Lookup (Source, 4096) = 16#100003#);
+      pragma Assert (Root_DMA (Third) = Newer (1));
+      Prepare_Update (Target, Source, Fresh, OK); pragma Assert (not OK);
+   end;
+   Ada.Text_IO.Put_Line ("VM update candidate PASS: rebased directories, retained leaves, disjoint backing, source immutability and two generations (not GPU published)");
+   Ada.Text_IO.Put_Line ("VM unmap PASS: expected backing, atomic rejection, boundaries, aliases, empty seal, remap, sealed denial (offline only)");
+   Ada.Text_IO.Put_Line
+     ("VM image PASS: independent 4-level walk, 48-bit boundaries, capacity, aliases, atomic rejection and seal (offline only)");
+   Ada.Text_IO.Put_Line
+     ("VM range PASS: discontiguous DMA, 513 failure positions, collision, overflow and atomic capacity rejection");
+end VM_Image_Tests;

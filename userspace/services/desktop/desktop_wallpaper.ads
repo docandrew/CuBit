@@ -1,5 +1,6 @@
 with System;
 with CuBit.Appearance;
+with CuBit.Display_Geometry;
 
 package Desktop_Wallpaper is
    Source_Width : constant := 2048;
@@ -20,4 +21,13 @@ package Desktop_Wallpaper is
       Width, Height, Pitch : Positive;
       X, Y, W, H : Natural;
       Style : CuBit.Appearance.Preferences := CuBit.Appearance.Default);
+   -- Caller owns Pitch * Screen.Height writable bytes in the acquired target.
+   -- Samples the immutable asset directly; no intermediate preview allocation.
+   procedure Paint_Output
+     (Target : System.Address; Pitch : Positive;
+      Screen : CuBit.Display_Geometry.Output;
+      Bounds : CuBit.Display_Geometry.Logical_Rectangle;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
+      Style : CuBit.Appearance.Preferences := CuBit.Appearance.Default)
+     with Pre => Pitch / 4 >= Natural (Screen.Width);
 end Desktop_Wallpaper;

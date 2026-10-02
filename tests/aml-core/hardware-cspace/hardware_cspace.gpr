@@ -1,0 +1,10 @@
+project Hardware_Cspace is
+ for Source_Dirs use (".", "../../../kernel/src", "../../../shared/hardware");
+ for Source_Files use ("config.ads", "capabilities.ads", "hardware_authority.ads", "hardware_catalog.ads", "hardware_catalog.adb", "hardware_grants.ads", "hardware_grants.adb", "hardware_grants-cspace.ads", "hardware_grants-cspace.adb", "hardware_cspace_tests.adb");
+ for Object_Dir use "../build/hardware-cspace/obj";
+ for Exec_Dir use "../build/hardware-cspace";
+ for Main use ("hardware_cspace_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato");
+ end Compiler;
+end Hardware_Cspace;

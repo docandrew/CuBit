@@ -1,0 +1,2 @@
+(startup v1
+  (start "native-opengl.app" (priority 3)))

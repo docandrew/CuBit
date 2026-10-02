@@ -1,0 +1,9 @@
+project Snapshots is
+ for Source_Dirs use (".", "../../../shared/firmware");
+ for Object_Dir use "../build/snapshots/obj";
+ for Exec_Dir use "../build/snapshots";
+ for Main use ("snapshot_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato");
+ end Compiler;
+end Snapshots;

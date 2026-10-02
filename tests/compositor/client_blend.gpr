@@ -1,0 +1,10 @@
+project Client_Blend is
+   for Source_Dirs use (".", "../../userspace/lib/ui");
+   for Source_Files use ("client_glyph_blend_tests.adb", "client_glyph_blend.ads", "client_glyph_blend.adb");
+   for Object_Dir use "build/client-blend/obj";
+   for Exec_Dir use "build/client-blend";
+   for Main use ("client_glyph_blend_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Client_Blend;

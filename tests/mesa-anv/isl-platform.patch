@@ -1,0 +1,27 @@
+--- a/src/intel/isl/isl_drm.c
++++ b/src/intel/isl/isl_drm.c
+@@ -25,12 +25,15 @@
+ #include <stdlib.h>
+ 
+ #include "drm-uapi/drm_fourcc.h"
++#if !defined(__cubit__)
+ #include "drm-uapi/i915_drm.h"
++#endif
+ 
+ #include "isl.h"
+ #include "dev/intel_device_info.h"
+ #include "dev/intel_debug.h"
+ 
++#if !defined(__cubit__)
+ uint32_t
+ isl_tiling_to_i915_tiling(enum isl_tiling tiling)
+ {
+@@ -77,6 +80,8 @@
+    UNREACHABLE("Invalid i915 tiling");
+ }
+ 
++#endif
++
+ /** Sentinel is DRM_FORMAT_MOD_INVALID. */
+ const struct isl_drm_modifier_info
+ isl_drm_modifier_info_list[] = {

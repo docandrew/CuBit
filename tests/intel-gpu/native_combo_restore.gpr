@@ -1,0 +1,9 @@
+project Native_Combo_Restore is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("native_combo_restore_tests.adb", "intel_gpu_native_combo_restore.ads", "intel_gpu_native_combo_restore.adb", "intel_gpu_combo_restore.ads", "intel_gpu_combo_restore.adb", "intel_gpu_native_combo_state.ads", "intel_gpu_native_combo_state.adb", "intel_gpu_phy_pages.ads", "intel_gpu_phy_pages.adb", "intel_gpu_combo_phy.ads", "intel_gpu_combo_phy.adb", "intel_gpu_phy_registers.ads");
+   for Object_Dir use "build-native-combo-restore";
+   for Main use ("native_combo_restore_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Native_Combo_Restore;

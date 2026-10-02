@@ -1,0 +1,32 @@
+--- a/src/intel/vulkan/anv_physical_device_common.c
++++ b/src/intel/vulkan/anv_physical_device_common.c
+@@ -451,16 +451,29 @@
+    assert(device->memory.type_count <= VK_MAX_MEMORY_TYPES);
+ 
++   bool host_coherent = false, device_local = false;
+    for (unsigned i = 0; i < device->memory.type_count; i++) {
+       VkMemoryPropertyFlags props = device->memory.types[i].propertyFlags;
++      const VkMemoryPropertyFlags host = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
++                                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
++      host_coherent |= (props & host) == host;
++      device_local |= (props & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
+       if ((props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) &&
+           !(props & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
+ #ifdef SUPPORT_INTEL_INTEGRATED_GPUS
+          device->memory.need_flush = true;
+ #else
+          return vk_errorf(device, VK_ERROR_INITIALIZATION_FAILED,
+                           "Memory configuration requires flushing, but it's not implemented for this architecture");
+ #endif
+    }
+ 
++   /* Vulkan requires both a DEVICE_LOCAL type and a HOST_VISIBLE |
++    * HOST_COHERENT type. Explicit flush support alone is insufficient.
++    * Check all backends before exposing physical-device memory properties.
++    */
++   if (!host_coherent || !device_local)
++      return vk_errorf(device, VK_ERROR_INITIALIZATION_FAILED,
++                       "Backend lacks required Vulkan memory types");
++
+    return VK_SUCCESS;
+ }

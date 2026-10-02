@@ -1,0 +1,11 @@
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Glyph_FFI is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use ("glyph_ffi_tests.adb", "compositor_glyph_ffi.ads", "compositor_glyph_ffi.adb", "compositor_glyph_layout.ads", "compositor_glyph_layout.adb", "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb");
+   for Object_Dir use "build/glyph-ffi/obj";
+   for Exec_Dir use "build/glyph-ffi";
+   for Main use ("glyph_ffi_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Glyph_FFI;

@@ -46,7 +46,7 @@ package body CuBit.UI.Trees is
       box : constant CuBit.UI.Rect := (x => x, y => y, w => 9, h => 9);
    begin
       CuBit.UI.Fill_Rect (c, box, colors.field);
-      CuBit.UI.Stroke_Rect (c, box, colors.shadow, colors.highlight);
+      CuBit.UI.Stroke_Rect (c, box, colors.muted, colors.muted);
       CuBit.UI.Fill_Rect
         (c, (x => x + 2, y => y + 4, w => 5, h => 1), colors.text);
       if not expanded then
@@ -195,7 +195,8 @@ package body CuBit.UI.Trees is
            (clipped, bounds.x + indent + 4, centerY - 4, colors, expanded);
       end if;
 
-      iconX := bounds.x + indent + 17;
+      --  Only branches reserve space for a disclosure box.
+      iconX := bounds.x + indent + (if hasChildren then 17 else 4);
       if icon /= No_Icon then
          Draw_Item_Icon
            (clipped, iconX,

@@ -10,6 +10,8 @@ with System;
 with CuBit.Grant_References;
 with CuBit.Messages;
 with CuBit.Async_Requests;
+with Client_Frame_Pair;
+with Client_Input_Provenance;
 
 with CuBit.UI;
 with CuBit.UI.Input;
@@ -58,8 +60,11 @@ package CuBit.UI.App is
 
    type Pointer_Interaction is private;
 
-   type Window is private;
+   type Window is limited private;
 
+   -- Protected frames are enabled per client during migration. Raw-renderer
+   -- callers retain the existing attachment path until their density handling
+   -- is adapted. Run manages acquisition, repair and publication automatically.
    procedure Open
       (win : in out Window;
        width, height : Natural;
@@ -67,7 +72,8 @@ package CuBit.UI.App is
        ok : out Boolean;
        maximum_width : Natural := 0;
        maximum_height : Natural := 0;
-       title : String := "Application");
+       title : String := "Application";
+       protected_frames : Boolean := False);
 
    procedure Set_Title (win : Window; title : String);
 
@@ -119,6 +125,12 @@ package CuBit.UI.App is
    --  with the last input reply. It is a drain hint, never authority or an
    --  assertion that a later event cannot arrive.
    function Input_May_Remain (win : Window) return Boolean;
+   -- Explicit handler boundaries, not delivery acknowledgements. Custom event
+   -- loops must bracket each consumed event to opt into input/frame tracing.
+   -- Incorrect ordering disables attribution until the window is reopened.
+   procedure Begin_Input_Event (win : in out Window; event : Input_Event);
+   procedure Finish_Input_Event (win : in out Window; event : Input_Event);
+   procedure Cancel_Paint (win : in out Window);
 
    --  Wheel deltas use a signed 32-bit wire field in payload1. Decode it
    --  without a range-checked modular-to-signed conversion in each app.
@@ -130,8 +142,14 @@ package CuBit.UI.App is
    procedure Set_Pointer_Cursor
       (win : Window; cursor : CuBit.UI.Pointer_Cursor_Style);
 
+   -- Managed callers acquire before drawing and repaint the returned repair
+   -- rectangle from retained state. Canvas is null outside the paint interval.
+   function Frame_Pending (win : Window) return Boolean;
+   procedure Begin_Paint
+     (win : in out Window; changed : CuBit.UI.Rect;
+      repair : out CuBit.UI.Rect; ready : out Boolean);
    procedure Present
-      (win : Window; damage : CuBit.UI.Rect);
+      (win : in out Window; damage : CuBit.UI.Rect);
 
    procedure Apply_Pointer_Event
        (interaction : in out Pointer_Interaction;
@@ -190,7 +208,14 @@ private
       controlsValid : Boolean := True;
    end record;
 
-   type Window is record
+   type Window is limited record
+      frames : Client_Frame_Pair.Owner;
+      protectedFrames : Boolean := False;
+      deferredDamage : CuBit.UI.Rect := (others => 0);
+      firstManagedFrame : Boolean := False;
+      provenance : Client_Input_Provenance.State;
+      provenanceHealthy : Boolean := True;
+      densityNumerator, densityDenominator : Positive := 1;
       surfaceId : Unsigned_64 := 0;
       flags : Unsigned_64 := 0;
       bufferAddr : System.Address := System.Null_Address;

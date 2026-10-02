@@ -756,7 +756,7 @@ package body Syscall.Admin is
                     println ("POLICY_MINT_CAPABILITY: invalid capability type");
                     retval := reterr;
                     return;
-                elsif not Capabilities.isOrdinarilyDerivable
+                elsif not Capabilities.isPolicyMintable
                   (Capabilities.CapabilityType'Val (Natural (arg1)))
                 then
                     println

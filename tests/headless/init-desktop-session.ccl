@@ -13,5 +13,7 @@
   # (outbound TCP with DNS); each client still needs its own tls-scope.
   (start "tls.svc" (priority 5) (network approve-declared))
   (start "display.svc" (priority 5))
+  # Collect below applications and Desktop; publishers never wait for it.
+  (start "metrics.svc" (priority 2))
   (start "desktop.svc" (priority 4))
 )

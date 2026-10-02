@@ -1,3 +1,6 @@
+with Compositor_Image_Sampling;
+with Compositor_Sampling;
+with Compositor_Text;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
@@ -9,6 +12,24 @@ package body Desktop_Wallpaper is
      with Import, Convention => C, External_Name => "cubit_desktop_wallpaper";
    Cubie_Source : constant Pixels (0 .. Cubie_Width * Cubie_Height - 1)
      with Import, Convention => C, External_Name => "cubit_desktop_wallpaper_cubie";
+
+   function Blend (A, B : Unsigned_32; Fraction : Natural)
+     return Unsigned_32
+   is
+      Result : Unsigned_32 := 16#FF00_0000#;
+      Channel : Unsigned_32;
+   begin
+      --  Integer bilinear filtering; only exposed damage is resampled.
+      for Component in 0 .. 2 loop
+         Channel :=
+           ((Shift_Right (A, Component * 8) and 255) *
+              Unsigned_32 (256 - Fraction) +
+            (Shift_Right (B, Component * 8) and 255) *
+              Unsigned_32 (Fraction) + 128) / 256;
+         Result := Result or Shift_Left (Channel, Component * 8);
+      end loop;
+      return Result;
+   end Blend;
 
    procedure Render
      (Target : System.Address;
@@ -43,23 +64,7 @@ package body Desktop_Wallpaper is
         (if Style.Backdrop = Cubie then Cubie_Source (Y * Image_Width + X)
          else Source (Y * Image_Width + X)) with Inline;
 
-      function Blend (A, B : Unsigned_32; Fraction : Natural)
-        return Unsigned_32
-      is
-         Result : Unsigned_32 := 16#FF00_0000#;
-         Channel : Unsigned_32;
-      begin
-         --  Integer bilinear filtering; only exposed damage is resampled.
-         for Component in 0 .. 2 loop
-            Channel :=
-              ((Shift_Right (A, Component * 8) and 255) *
-                 Unsigned_32 (256 - Fraction) +
-               (Shift_Right (B, Component * 8) and 255) *
-                 Unsigned_32 (Fraction) + 128) / 256;
-            Result := Result or Shift_Left (Channel, Component * 8);
-         end loop;
-         return Result;
-      end Blend;
+
    begin
       if W = 0 or else H = 0 then
          return;
@@ -128,4 +133,59 @@ package body Desktop_Wallpaper is
          end loop;
       end loop;
    end Paint;
+   procedure Paint_Output
+     (Target : System.Address; Pitch : Positive;
+      Screen : CuBit.Display_Geometry.Output;
+      Bounds : CuBit.Display_Geometry.Logical_Rectangle;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
+      Style : Preferences := Default)
+   is
+      package G renames CuBit.Display_Geometry;
+      package S renames Compositor_Image_Sampling;
+      use type G.Pixel_Edge, S.Wide;
+      W : constant S.Wide := S.Wide (Bounds.Right) - S.Wide (Bounds.Left);
+      H : constant S.Wide := S.Wide (Bounds.Bottom) - S.Wide (Bounds.Top);
+      Area : constant G.Physical_Rectangle := Compositor_Text.Clip (Screen, Bounds, Damage);
+      IW : constant S.Extent := (if Style.Backdrop = Cubie then Cubie_Width else Source_Width);
+      IH : constant S.Extent := (if Style.Backdrop = Cubie then Cubie_Height else Source_Height);
+      Background : constant Unsigned_32 :=
+        (if Style.Backdrop = Ocean then 16#FF20_4058#
+         elsif Style.Scheme = Alloy_Dark then 16#FF20_282E# else 16#FF54_5D63#);
+      Plan : S.Layout;
+      Point : Compositor_Sampling.Fine_Sample;
+      Q : S.Sample;
+      Color : Unsigned_32;
+      function Read_Source (X, Y : S.Index) return Unsigned_32 is
+        (if Style.Backdrop = Cubie then Cubie_Source (Y * IW + X)
+         else Source (Y * IW + X));
+   begin
+      if W not in 1 .. S.Wide (S.Extent'Last) or else
+        H not in 1 .. S.Wide (S.Extent'Last) or else
+        Area.Left >= Area.Right or else Area.Top >= Area.Bottom
+      then return; end if;
+      Plan := S.Prepare (S.Extent (W), S.Extent (H), IW, IH,
+        (case Style.Position is when Fill => S.Fill, when Fit => S.Fit, when Center => S.Center));
+      for Y in Area.Top .. Area.Bottom - 1 loop
+         for X in Area.Left .. Area.Right - 1 loop
+            Point := Compositor_Sampling.Fine_Map (Screen, (X, Y), Bounds,
+              Compositor_Sampling.Fine_Extent (W * 256), Compositor_Sampling.Fine_Extent (H * 256));
+            if Point.Valid then
+               Color := Background;
+               if Style.Backdrop in Wallpaper | Cubie then
+                  Q := S.At_Point (Plan, S.From_Centre (Point.X, S.Extent (W)),
+                                        S.From_Centre (Point.Y, S.Extent (H)));
+                  if Q.Valid then
+                     Color := Blend
+                       (Blend (Read_Source (Q.X0, Q.Y0), Read_Source (Q.X1, Q.Y0), Q.FX),
+                        Blend (Read_Source (Q.X0, Q.Y1), Read_Source (Q.X1, Q.Y1), Q.FX), Q.FY);
+                  end if;
+               end if;
+               declare
+                  Pixel : Unsigned_32 with Import, Address => Target +
+                    Storage_Offset (Natural (Y) * Pitch + Natural (X) * 4);
+               begin Pixel := Color; end;
+            end if;
+         end loop;
+      end loop;
+   end Paint_Output;
 end Desktop_Wallpaper;

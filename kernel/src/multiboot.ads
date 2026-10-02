@@ -191,6 +191,9 @@ is
     -- Only retained firmware regions (or legacy firmware below 1 MiB), never
     -- ordinary allocatable RAM. Called after boot map publication.
     function Firmware_Readable (Base, Length : Unsigned_64) return Boolean;
+    -- Entire aligned range is unambiguously ACPI-reclaim RAM in the boot map.
+    -- This does not establish cache attributes, pins, or mapping authority.
+    function Firmware_Reclaim_Pages (Base, Length : Unsigned_64) return Boolean;
     
     -- Fixed kernel workspace, independent of untrusted mmap_length. The
     -- decoder itself accepts caller-sized output; this is a boot resource budget.

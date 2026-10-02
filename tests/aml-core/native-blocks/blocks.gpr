@@ -1,0 +1,12 @@
+project Blocks is
+   for Source_Dirs use (".", "../../../userspace/services/acpi",
+     "../../../userspace/services/acpi/native", "../../../userspace/lib/acpi",
+     "../../../shared/firmware");
+   for Object_Dir use "../build/blocks/obj";
+   for Exec_Dir use "../build/blocks";
+   for Main use ("block_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Blocks;

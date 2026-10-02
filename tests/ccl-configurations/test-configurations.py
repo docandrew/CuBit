@@ -30,6 +30,23 @@ class Configurations(unittest.TestCase):
         if diagnostic:
             self.assertIn(diagnostic, result.stderr)
 
+    def test_render_requires_explicit_approval(self):
+        base = '(startup v1 (start "render.app" (priority 5) %s))'
+        for clause in ('', '(render deny)'):
+            result = self.compile(base % clause)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, 'render.app pri=5\n')
+        result = self.compile(base % '(render approve-declared)')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'render.app pri=5 render=declared\n')
+        for clause in ('(render all)', '(render true)', '(render 1)',
+                       '(render)', '(render approve-declared extra)'):
+            self.reject(base % clause)
+        for first in ('deny', 'approve-declared'):
+            for second in ('deny', 'approve-declared'):
+                self.reject(base % f'(render {first}) (render {second})',
+                            'DUPLICATE_FIELD')
+
     def test_all_existing_profiles(self):
         fixtures = sorted(FIXTURES.rglob('*.conf'))
         self.assertEqual(len(fixtures), 28)

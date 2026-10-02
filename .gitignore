@@ -71,3 +71,10 @@ userspace/apps/display-check/build-gpu-clear-failure/
 /tests/region-transition/build-release/
 /tests/region-transition/build-layout/
 /userspace/mesa/build/
+# GNAT build products: binder/compiler output captures and stack-usage reports.
+*.stdout
+*.stderr
+*.cswi
+*.su
+/userspace/services/desktop/build-*/
+/tests/free-block-set/build-*/

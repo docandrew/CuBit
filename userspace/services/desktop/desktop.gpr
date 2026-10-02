@@ -20,15 +20,34 @@ project Desktop is
         when "on" => Backend_Suffix := Backend_Suffix & "-timing";
     end case;
 
+    type Metrics_Type is ("off", "on");
+    Metrics : Metrics_Type := external ("CUBIT_COMPOSITOR_METRICS", "off");
+    Metrics_Directory := "metrics-" & Metrics;
+    Manifest_Directory := "build";
+    case Metrics is
+        when "off" => null;
+        when "on" =>
+            Backend_Suffix := Backend_Suffix & "-metrics";
+            Manifest_Directory := "build-metrics-manifest";
+    end case;
+
+    type Storage_Type is ("production", "limited");
+    Storage : Storage_Type := external ("CUBIT_COMPOSITOR_STORAGE", "production");
+    Storage_Directory := "storage-" & Storage;
+    case Storage is
+        when "production" => null;
+        when "limited" => Backend_Suffix := Backend_Suffix & "-limited-storage";
+    end case;
+
     type Test_Mode_Type is ("production", "delayed");
     Test_Mode : Test_Mode_Type := external ("CUBIT_DISPLAY_TEST_MODE", "production");
     case Test_Mode is
         when "production" =>
             for Object_Dir use "build" & Backend_Suffix;
-            for Source_Dirs use ("../../lib/display", "../../lib/compositor", Backend_Directory, Timing_Directory, ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/production");
+            for Source_Dirs use ("../../lib/display", "../../lib/compositor", "../../allocator/src", Backend_Directory, Timing_Directory, Storage_Directory, Metrics_Directory, Manifest_Directory & "/generated", ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/production");
         when "delayed" =>
             for Object_Dir use "build-delayed" & Backend_Suffix;
-            for Source_Dirs use ("../../lib/display", "../../lib/compositor", Backend_Directory, Timing_Directory, ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/test-delayed");
+            for Source_Dirs use ("../../lib/display", "../../lib/compositor", "../../allocator/src", Backend_Directory, Timing_Directory, Storage_Directory, Metrics_Directory, Manifest_Directory & "/generated", ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/test-delayed");
     end case;
 
     for Main use ("main.adb");
@@ -82,7 +101,7 @@ project Desktop is
             "-lgnat-user",
             "-T", "../../c/link.ld",
             "../../c/build/crt0.o",
-            "build/manifest.o",
+            Manifest_Directory & "/manifest.o",
             "build/wallpaper.o",
             "build/wallpaper_cubie.o"
         );

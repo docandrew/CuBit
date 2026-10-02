@@ -1,4 +1,11 @@
 package body Intel_GPU_VM_Image is
+   function Revision (Object : Image) return Unsigned_64 is (Object.Epoch);
+   function Direct_Successor (Object, Candidate : Image) return Boolean is
+     (Object.Valid and then Object.Frozen and then Candidate.Valid and then
+      Candidate.Frozen and then Candidate.Predecessor_Root /= 0 and then
+      Candidate.Predecessor_Root = Object.DMA (1) and then
+      Candidate.Predecessor_Epoch = Object.Epoch and then
+      Candidate.DMA (1) /= Object.DMA (1) and then Object.Epoch /= Unsigned_64'Last);
    use Intel_GPU_ADLN_PPGTT;
    type Path is array (Positive range 1 .. 4) of Table_Index;
    function Indices (GPU : Unsigned_64) return Path is
@@ -14,18 +21,25 @@ package body Intel_GPU_VM_Image is
       return 0;
    end Child;
    procedure Initialize
-     (Object : in out Image; Backing : Backing_Pages; Accepted : out Boolean) is
+     (Object : in out Image; Backing : Backing_Pages; Accepted : out Boolean;
+      Scratch : Intel_GPU_PPGTT_Scratch.Backing_Pages := [others => 0]) is
    begin
       Accepted := False;
-      if Object.Attempted then return; end if;
+      if Object.Attempted or else Object.Epoch = Unsigned_64'Last then return; end if;
+      Object.Epoch := Object.Epoch + 1;
       Object.Attempted := True;
+      if (for some Page of Scratch => Page /= 0) and then
+        not Intel_GPU_PPGTT_Scratch.Valid (Scratch) then return; end if;
       for P in Page_Number loop
          if not Valid_DMA_Page (Backing (P)) then return; end if;
+         if Intel_GPU_PPGTT_Scratch.Contains (Scratch, Backing (P)) then return; end if;
          for Q in Page_Number'First .. P - 1 loop
             if Backing (P) = Backing (Q) then return; end if;
          end loop;
       end loop;
       Object.DMA := Backing;
+      Object.Scratch := Scratch;
+      Object.Levels (1) := 3;
       Object.Count := 1;
       Object.Valid := True;
       Accepted := True;
@@ -36,7 +50,8 @@ package body Intel_GPU_VM_Image is
       Next : Natural;
    begin
       Accepted := False;
-      if Target.Attempted then return; end if;
+      if Target.Attempted or else Target.Epoch = Unsigned_64'Last then return; end if;
+      Target.Epoch := Target.Epoch + 1;
       Target.Attempted := True;
       if not Source.Valid or else not Source.Frozen then return; end if;
       -- Include unused reserved source tables and every mapped data page.
@@ -59,9 +74,12 @@ package body Intel_GPU_VM_Image is
          end loop;
       end loop;
       Target.DMA := Backing;
+      Target.Scratch := Source.Scratch;
+      Target.Levels := Source.Levels;
       Target.Count := Source.Count;
       Target.Mapped_Pages := Source.Mapped_Pages;
       Target.Predecessor_Root := Source.DMA (1);
+      Target.Predecessor_Epoch := Source.Epoch;
       Target.Valid := True;
       Accepted := True;
    end Prepare_Update;
@@ -94,6 +112,7 @@ package body Intel_GPU_VM_Image is
       -- by retaining the previous missing prefix at each level.
       for I in Data'Range loop
          if Encode_Leaf (Data (I), Policy, Access_Mode) = 0 then return; end if;
+         if Intel_GPU_PPGTT_Scratch.Contains (Object.Scratch, Data (I)) then return; end if;
          for Page of Object.DMA loop
             if Data (I) = Page then return; end if;
          end loop;
@@ -146,6 +165,7 @@ package body Intel_GPU_VM_Image is
             if Object.Entries (Current) (Route (Depth)) = 0 then
                Object.Count := Object.Count + 1;
                Next := Object.Count;
+               Object.Levels (Next) := 3 - Depth;
                Object.Entries (Current) (Route (Depth)) :=
                  Encode_Directory (Object.DMA (Next));
             else
@@ -223,6 +243,9 @@ package body Intel_GPU_VM_Image is
       for Page of Object.DMA loop
          if Conflicts (Page) then return False; end if;
       end loop;
+      for Page of Object.Scratch loop
+         if Page /= 0 and then Conflicts (Page) then return False; end if;
+      end loop;
       -- These are exclusively builder-produced 4KiB directory/leaf entries.
       -- Both refer to DMA pages; include both rather than guessing their type
       -- from low flags (WB leaves and directories have identical low bits).
@@ -237,7 +260,15 @@ package body Intel_GPU_VM_Image is
    end Backing_Disjoint;
    function Entry_Value
      (Object : Image; Page : Page_Number; Index : Table_Index) return Unsigned_64 is
-     (if Page <= Object.Count then Object.Entries (Page) (Index) else 0);
+     (if Page > Object.Count then 0
+      elsif Object.Entries (Page) (Index) /= 0 then Object.Entries (Page) (Index)
+      else Intel_GPU_PPGTT_Scratch.Fallback (Object.Scratch, Object.Levels (Page)));
+   function Scratch_DMA
+     (Object : Image; L : Intel_GPU_PPGTT_Scratch.Level) return Unsigned_64 is
+     (if Object.Valid then Object.Scratch (L) else 0);
+   function Scratch_Entry
+     (Object : Image; L : Intel_GPU_PPGTT_Scratch.Table_Level) return Unsigned_64 is
+     (if Object.Valid then Intel_GPU_PPGTT_Scratch.Fill (Object.Scratch, L) else 0);
    function Lookup (Object : Image; GPU : Unsigned_64) return Unsigned_64 is
       Route : Path;
       Current : Natural := 1;

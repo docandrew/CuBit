@@ -1,5 +1,196 @@
 # Mesa ANV: first CuBit OS-boundary audit
 
+## Current hardware gate, 2026-10-02
+
+The NUC now reports `MESA-DEVICE create=0` and triangle cycle 1/3 beginning
+on that device. Logical-device creation is physically confirmed. The first
+image `AllocateMemory` fails; the window and cycle report `-2`
+(`VK_ERROR_OUT_OF_DEVICE_MEMORY`) and stop without replay. No Mesa drawing
+result has been observed. This error does not itself prove exhausted RAM.
+The red-on-black window reported by the user is the earlier driver-only demo;
+the Mesa probe expects a red triangle over a blue clear color.
+
+v14 (`kernel/cubit_live_mesa_triangle_repeat_v14.img`, SHA256
+`ea035b47912a24bf513a3536434cde9f25c9cc3ed6b3235232d5a78d05579ecf`)
+preserves the Mesa/GPU implementation and adds test-only diagnostic pacing and
+a final `MESA-LOG bridge dropped(hex)=...` summary. The collector allows a
+64-record burst and replenishes one credit per 100 ms. The probe waits 125 ms
+between new valid records; it does not replay rejected publications or change
+the production budget. A native 80-record regression passes with zero drops,
+as do the complete 90-second native gate and exact-image USB/UEFI boot checks.
+QEMU does not validate physical Intel rendering. Rate limiting remains a
+possible explanation for the old missing messages, not an established cause.
+Viewer/service history-loss counters do not count rejected publications.
+
+The allocation audit found a concrete adapter mismatch: common upstream ANV
+adds `AUX_TT_ALIGNED` for auxiliary-map GPU VA alignment and `AUX_CCS` for
+metadata backing. `anv_allocator.c` expands the allocation size before
+`gem_create` and handles GPU VA alignment itself; the i915 backend allocates
+ordinary backing. Our native adapter rejected both flags. It now accepts
+them only with `has_aux_map` and an initialized auxiliary-map context. Other
+unsupported flags remain rejected. Hosted actual-adapter tests verify the
+gates and exact byte forwarding without adding metadata twice, alongside
+the existing concurrent allocation and retained-lifetime regressions.
+The NUC v15 run still fails image allocation with `-2`: size 16448 bytes,
+alignment 65536, memory type 0, allowed-type mask 1. The auxiliary flag
+correction alone did not resolve this failure; its precise cause remains
+unconfirmed. The requested image size is below the adapter's 16 MiB limit,
+but this does not establish backend backing availability or GPU VA space.
+All 61 configured native static archives and the three-cycle window probe
+link passed. The exact v15 image passed four-CPU UEFI USB-flash/no-PS2 boot
+and collector/clock log delivery in QEMU, not Intel rendering.
+Image: `kernel/cubit_live_mesa_triangle_repeat_v15.img`, SHA256
+`8037dd36ca3f294e0da778e09a90148b4f19ff3422ddd2eb655c7d3a1f09149d`.
+
+v16 adds probe-only linker wrappers for the actual common user BO request
+and result, failed backing-allocation IPC, and failed GPU VA allocation.
+Disassembly verifies the real callsites route through these wrappers. They
+call the originals once and preserve results, without retry or policy changes.
+Native link and exact-image four-CPU USB/UEFI boot/log-delivery checks pass;
+physical Intel allocation remains unverified. Image:
+`kernel/cubit_live_mesa_triangle_repeat_v16.img`, SHA256
+`290d51c287f41fc8935648cd5e019623975d3b5878cb11d127750d9f999bae8f`.
+Collect `MESA-INIT allocation:*` records with the triangle failure. They use
+the existing `result=` field for scalar diagnostic values as well as statuses.
+
+The physical v16 result is backing request 20480 bytes, status 3: a validated
+GPU-service `Unavailable` reply, not malformed IPC or rejection at the Mesa
+adapter flags gate. This status alone does not distinguish exhausted slots,
+pending retirement, owner failure, or failed backing acquisition.
+v17 retains the exact service rejection branch as an observational enum,
+without changing replies, admission, retirement or retry behavior. It logs
+`intel-gpu: allocation unavailable reason=...` and, for deferred failure,
+`intel-gpu: allocation backing stage=...`. Hosted request/race/reuse tests and
+native driver compilation pass. Packaged driver/app bytes match build outputs;
+exact-image four-CPU USB/UEFI boot and log delivery pass, not Intel execution.
+Image: `kernel/cubit_live_mesa_triangle_repeat_v17.img`, SHA256
+`809b90c784c1463f8d9ce7629c3846b5681b9aa8c79084578bfe6a69916742f8`.
+
+Next hardware gates are successful image allocation, Mesa triangle
+submission/readback/presentation and three-cycle retirement. Do not infer
+Mesa rendering, general WSI, accelerated Desktop, or full driver readiness
+from the driver-only triangle or successful hosted tests.
+
+### Confirmed allocation-slot exhaustion and growable registry direction
+
+The subsequent NUC report is `allocation unavailable reason 5`.
+`Intel_GPU_Buffer_Requests.Allocation_Outcome` ordinal 5 is `Slots_Exhausted`.
+That branch runs after finding no reusable application slot and observing
+`Attempted = Intel_GPU_Buffer_Backing.Slot'Last` (16). It rejects the request
+before backing acquisition. This establishes allocation-record exhaustion,
+not physical-memory or GPU-virtual-address exhaustion. Private bootstrap,
+context and page-table allocations share the ticket namespace with app BOs.
+
+The user requests growth as needed, not another small fixed allocation ceiling.
+The implementation is not yet growable. The coordinated replacement needs:
+
+1. **Identity independent of committed capacity.** Public handles still use
+   `(ID - 1) mod Capacity`. Internal tickets have now been migrated to an
+   immutable low32 slot/high32 generation-minus-one layout, including deferred
+   retirement admission and supervisor retirement-generation decoding. Public
+   handle strides cannot become the current growable size. Choose
+   an immutable identity encoding or monotonic identity lookup, retain full
+   identity/session validation, and retire an identity namespace on overflow
+   rather than wrapping. An index alone is never authority.
+2. **Chunked metadata growth.** Allocate and initialize additional record
+   chunks on demand without moving existing records. Publish a chunk only
+   after initialization succeeds; failed growth must leave existing allocations
+   and identities unchanged. Metadata backing must not recursively require
+   a free GPU BO record. Keep metadata allocation failure an explicit result,
+   not an exception escaping a service or kernel boundary.
+3. **Separate budgets.** Track authorized GPU backing bytes, registry metadata
+   bytes, and per-session outstanding objects separately. Growing bookkeeping
+   does not expand DMA authority, grant more physical RAM, or change the GPU VA
+   contract. The existing 32 MiB backing arena is a distinct bootstrap limit,
+   not evidence of a growable physical-memory allocator.
+4. **End-to-end admission.** Update supervisor backing records, driver request
+   records, public handles and dependent mapping/binding registries together.
+   The current Ada and C budget decoders assume exactly sixteen slots and
+   infer retained-byte bounds from that number; replace that assumption with
+   an explicit versioned budget contract. Advertise policy limits separately
+   from instantaneous free space. Avoid keeping the obsolete bootstrap ABI
+   as a second fallback path.
+5. **Retirement and bounded work.** Growth must not mark closed, pending,
+   quarantined or GPU-visible storage reusable. Reuse still requires all
+   existing GPU/TLB/CPU retirement evidence and the supervisor acknowledgement.
+   Replace whole-capacity scans with bounded/incremental work as tables grow;
+   neither a larger free list nor reclamation may monopolize the service loop.
+
+Validation must exercise allocations across multiple growth boundaries with
+old handles/bindings still live, failure at each metadata-growth stage,
+cross-session/stale-handle rejection, generation exhaustion, delayed and lost
+retirement acknowledgements, independent byte/object quotas, and truthful Mesa
+budget decoding. Follow with the native CuBit boot/IPC gates and the physical
+three-cycle Mesa triangle test. Hosted tests and QEMU cannot establish Intel
+rendering success. No larger fixed ceiling is presented as completing this
+dynamic-allocation work.
+
+The first identity migration passes hosted allocation lifecycle/race tests,
+2048 deferred-retirement candidates, and simulated VM-update/private-table
+reuse regressions. Slot/generation decoding includes the maximum supported
+generation. These are not physical GPU results or a completed growable
+allocator; native driver compilation is pending shared build-lock availability.
+The registry remains sixteen entries and its backing arena remains32MiB.
+Large discrete-GPU VRAM and terabyte-scale host memory must be represented as
+separate resource domains with64-bit sizes and checked arithmetic, not inferred
+from metadata table capacity or the current bootstrap arena.
+
+## CPU state-table backing, 2026-10-01
+
+Native hardware feedback reaches successful physical-device enumeration and
+session attachment, but logical-device creation returns `-3`. Independently,
+the actual ANV CPU state-table probe fails on CuBit at Linux `memfd_create`
+(syscall 319). This identifies a real porting gap, not proof that it is the
+only remaining device-creation failure.
+
+`native-state-table.patch` replaces only the three CPU backing operations on
+CuBit. Upstream indexing, free lists and synchronization remain unchanged.
+The adapter reserves `BLOCK_POOL_MEMFD_SIZE` bytes of CPU virtual address space
+(currently 1 GiB), then commits a page-aligned prefix in chunks no larger than
+16 MiB. Saved entry pointers remain valid without copying or remapping old
+views. This is CPU metadata, not GPU BO allocation or GPU address-space setup.
+Successful partial commits are retained after a later failure; logical capacity
+is published only after the requested prefix is backed. Failed retirement
+retains the reservation rather than claiming the backing was released.
+
+The common runtime exports reserve/commit-prefix/release operations backed by
+current-process-owned kernel reservations. Native reservation regression has
+passed eight growth/retirement cycles, including interleaved allocations and
+rejected malformed requests. Pure arithmetic policy has eight proved checks;
+this does not prove the kernel mapping or concurrency implementation.
+The production Mesa helper also passes hosted mocked-syscall failure injection
+for reserve failure, partial commit/retry and failed retirement. Full native
+Mesa libraries and the actual CPU probe link successfully. The adapted ANV
+probe now passes in native CuBit: initialization, growth, stable saved pointers
+and lifecycle, followed by the 90-second four-CPU headless gate and final fault
+scan (`/tmp/cubit-mesa-state-table-fixed.serial.log`). Hardware logical-device
+creation remains a separate gate; this CPU regression does not establish GPU
+rendering.
+
+The backing failure fixture is included in the repeatable hosted suite:
+
+```sh
+nix develop -c python3 tests/mesa-anv/test-native-memory-policy.py \
+  tests/mesa-anv/target/state-table-native.sthIHk/build
+```
+
+The 2026-10-01 run passed five production adapter compilations and ten hosted
+fixtures. Backing cases include oversized initialization, failed initial commit
+plus failed release, partial-growth retry, page rounding, shrink rejection,
+same-size no-recommit, retained failed retirement and successful retry. The
+fixture never dereferences its mock address and does not emulate a GPU.
+
+The native CPU probe additionally passes four pthread workers released through
+a common start gate, with periodic yields and 1,024 allocations per worker.
+After all joins, all 4,096 saved pointers still address the current table and
+retain their distinct tags. The 90-second four-CPU TCG run and final fault scan
+pass (`/tmp/cubit-mesa-concurrent-table.serial.log`). This exercises actual ANV
+allocation with CuBit threads and backing; it is regression evidence, not a
+proof over all possible interleavings or hardware GPU execution. v12's GPU app
+is unchanged by these test-only additions.
+
+The dated sections below record earlier stages and their then-current limits.
+
 Full rebuild of `target/unmap-preparation.KEeT8M/build` subsequently completed:
 all 61 configured native archives, 1138 Ninja steps. Optional Linux-service
 symbol checks and allocator dispatch regressions pass. The real instance link

@@ -1,0 +1,14 @@
+project GGTT_Reservations is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("ggtt_reservations_tests.adb",
+     "intel_gpu_ggtt_reservations.ads", "intel_gpu_ggtt_reservations.adb",
+     "intel_gpu_va_placement.ads", "intel_gpu_va_placement.adb",
+     "intel_gpu_ggtt.ads", "intel_gpu_ggtt.adb");
+   for Object_Dir use "build-ggtt-reservations";
+   for Exec_Dir use "build-ggtt-reservations";
+   for Main use ("ggtt_reservations_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-O2");
+   end Compiler;
+end GGTT_Reservations;

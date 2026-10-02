@@ -1,0 +1,6 @@
+# Native ext3 interoperability check (tests/filesystem-journal/native).
+(executable-manifest v1
+  (identity "com.cubit.journal-check")
+  (version "0.1.0")
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read write create) "@nvme:0/journal"))

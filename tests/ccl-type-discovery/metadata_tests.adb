@@ -48,9 +48,15 @@ begin
    -- A general aggregate result comes out as its canonical literal.
    Check (Interpreted.Status = CCL.Language.Succeeded and Interpreted.Has_Literal and
           Interpreted.Literal.Data (1 .. Interpreted.Literal.Length) = "MaybeDocument.Missing");
+   --  Compiled code builds the same value in its arena and prints the same
+   --  literal (docs/ccl-bytecode-format.md, step 4).
    CCL.Language.Analyze ("MaybeDocument.Missing", Catalog, Analysis);
    CCL.Compiler.Compile (Analysis, Compiled);
-   Check (Compiled.Status = CCL.Compiler.Unsupported_Form);
+   Check (Compiled.Status = CCL.Compiler.Compilation_Succeeded);
+   CCL.VM.Verify (Compiled.Program, Program, Valid); Check (Valid = CCL.VM.Valid);
+   CCL.VM.Execute (Program, 4096, Executed);
+   Check (Executed.Status = CCL.VM.Completed and Executed.Has_Literal and
+          Executed.Literal.Data (1 .. Executed.Literal.Length) = "MaybeDocument.Missing");
    Define (Source, (Identifier => Named ("TextReading"), Form => Sum, Count => 1,
      Parts => [1 => (Named ("Value"), String_Type), others => <>]), Ref, Defined_As);
    Check (Defined_As = Defined);
@@ -64,7 +70,11 @@ begin
    Check (Interpreted.Status = CCL.Language.Succeeded and Interpreted.Has_Literal and
           Interpreted.Literal.Data (1 .. Interpreted.Literal.Length) = "(TextReading.Value ""hello"")");
    CCL.Language.Analyze ("(TextReading.Value ""hello"")", Catalog, Analysis);
-   CCL.Compiler.Compile (Analysis, Compiled); Check (Compiled.Status = CCL.Compiler.Unsupported_Form);
+   CCL.Compiler.Compile (Analysis, Compiled); Check (Compiled.Status = CCL.Compiler.Compilation_Succeeded);
+   CCL.VM.Verify (Compiled.Program, Program, Valid); Check (Valid = CCL.VM.Valid);
+   CCL.VM.Execute (Program, 4096, Executed);
+   Check (Executed.Status = CCL.VM.Completed and Executed.Has_Literal and
+          Executed.Literal.Data (1 .. Executed.Literal.Length) = "(TextReading.Value ""hello"")");
    CCL.Language.Interpret
      ("(match (TextReading.Value ""hello"") ((TextReading.Value text) (length text)))", 4096, Catalog, Interpreted);
    Check (Interpreted.Status = CCL.Language.Succeeded and Interpreted.Result_Value = CCL.VM.Integer_Constant (5));

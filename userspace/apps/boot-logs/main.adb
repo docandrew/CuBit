@@ -3,10 +3,12 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Desktop_Protocol;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.App;
 with CuBit.UI.State;
 with CuBit.UI.Controls;
+with CuBit.UI.Input;
 procedure Main is
    package P renames CuBit.Log_Protocol;
    use type P.Status;
@@ -15,11 +17,12 @@ procedure Main is
    Controls : CuBit.UI.Controls.Control_Map;
    Reader : CuBit.Logging.Reader;
    Status : P.Status := P.Unavailable;
+   Reported_Status : P.Status := P.Unavailable;
    Records : array (1 .. 512) of CuBit.Log_Records.Log_Record;
    Count, Page : Natural := 0;
    Lost_Records : Unsigned_64 := 0;
    Viewer_Dropped : Unsigned_64 := 0;
-   Rows : constant Positive := 25;
+   Rows : Positive := 25;
    Due, Turn_Page : Unsigned_64 := 0;
    Opened : Boolean;
    procedure Render (Win : in out CuBit.UI.App.Window; Damage : Rect) is
@@ -29,12 +32,15 @@ procedure Main is
    begin
       Fill_Rect (C, CuBit.UI.App.Full_Rect (Win), Colors.panel);
       Draw_UI_Text (C, 12, 10, "Boot diagnostics - pages rotate automatically every 8 seconds", Colors.text, Colors.panel);
-      Draw_UI_Text (C, 12, 580, "Page" & Natural'Image (Page + 1) &
+      Draw_UI_Text (C, 12, CuBit.UI.App.Height (Win) - 30, "Page" & Natural'Image (Page + 1) &
         "  Records" & Natural'Image (Count) & "  Service lost" & Unsigned_64'Image (Lost_Records) &
         "  Viewer dropped" & Unsigned_64'Image (Viewer_Dropped),
         Colors.text, Colors.panel);
       if Status = P.Denied then
          Draw_UI_Text (C, 12, 36, "Log read authority denied", Colors.danger, Colors.panel);
+      elsif Status not in P.OK | P.Empty | P.Gap then
+         Draw_UI_Text (C, 12, 36, "Logstore read failed: " & P.Status'Image (Status) &
+           " (retrying)", Colors.danger, Colors.panel);
       elsif Count = 0 then
          Draw_UI_Text (C, 12, 36, "Waiting for driver startup records via logstore...", Colors.text, Colors.panel);
       else
@@ -48,7 +54,15 @@ procedure Main is
    end Render;
    procedure Handle_Event (Win : in out CuBit.UI.App.Window;
      Event : CuBit.UI.App.Input_Event; Dirty : in out Rect; Running : in out Boolean) is
-   begin null; end Handle_Event;
+   begin
+      if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
+         Running := False;
+      elsif Event.kind = CuBit.UI.Input.INPUT_CONFIGURE then
+         Rows := Positive'Max (1, (CuBit.UI.App.Height (Win) - 80) / 21);
+         Page := Natural'Min (Page, (if Count = 0 then 0 else (Count - 1) / Rows));
+         Dirty := CuBit.UI.App.Full_Rect (Win);
+      end if;
+   end Handle_Event;
    function Deadline return Unsigned_64 is (Due);
    procedure Tick (Win : in out CuBit.UI.App.Window; Dirty : in out Rect; Running : in out Boolean) is
       Event : P.Event;
@@ -86,16 +100,27 @@ procedure Main is
          Turn_Page := Now + 8000;
          Dirty := CuBit.UI.App.Full_Rect (Win);
       end if;
+      if Status /= Reported_Status then
+         debugPrint ("boot-logs: reader status=" & P.Status'Image (Status) & ASCII.LF);
+         Reported_Status := Status;
+         Dirty := CuBit.UI.App.Full_Rect (Win);
+      end if;
    end Tick;
    procedure Run is new CuBit.UI.App.Run
      (UI, Controls, Render => Render, Handle_Event => Handle_Event,
       Next_Deadline => Deadline, On_Deadline => Tick);
 begin
-   CuBit.UI.App.Open (Win, 950, 610, CuBit.UI.App.WINDOW_FLAG_DECORATED,
-     Opened, title => "CuBit boot diagnostics");
+   CuBit.UI.App.Open (Win, 950, 610,
+     CuBit.Desktop_Protocol.Feature_Bits
+       ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
+         CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
+         CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
+         others => False]),
+     Opened, title => "CuBit boot diagnostics", protected_frames => True);
    if Opened then
       Due := syscall (SYSCALL_GETTIME) + 1;
       debugPrint ("boot-logs: window ready" & ASCII.LF);
       Run (Win);
+      CuBit.UI.App.Close (Win);
    end if;
 end Main;

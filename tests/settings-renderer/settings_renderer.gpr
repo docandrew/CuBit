@@ -1,0 +1,21 @@
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Settings_Renderer is
+   for Source_Dirs use (".", "../../userspace/services/desktop",
+     "../../userspace/lib/ui", "../../userspace/lib/theme", "../../userspace/lib/display",
+     "../../userspace/ccl/tools/ccl-ui-preview/host", "../../userspace/lib/compositor", "../../userspace/allocator/src");
+   for Source_Files use ("renderer_tests.adb", "wallpaper_trap.adb", "desktop_wallpaper.ads",
+     "desktop_settings.ads", "desktop_settings.adb", "cubit.ads", "cubit-ui.ads", "cubit-ui.adb",
+     "font8x16.ads", "cubit-fonts.ads", "cubit-fonts.adb", "cubit-theme.ads",
+     "cubit-appearance.ads", "cubit-appearance.adb", "cubit-display_geometry.ads",
+     "cubit-display_geometry.adb", "cubit-display_layouts.ads", "cubit-display_layouts.adb",
+     "cubit-display_arrangement.ads", "cubit-display_arrangement.adb", "client_glyph_blend.ads", "client_glyph_blend.adb", "client_glyphs.ads", "client_glyphs.adb", "client_canvas_geometry.ads", "client_canvas_geometry.adb", "compositor_glyph_cache.ads", "compositor_glyph_cache.adb", "compositor_glyph_storage.ads", "compositor_glyph_storage.adb", "compositor_glyph_memory.ads", "compositor_glyph_memory.adb", "compositor_glyph_arena.ads", "compositor_glyph_arena.adb", "compositor_glyph_layout.ads", "compositor_glyph_layout.adb", "compositor_glyph_ffi.ads", "compositor_glyph_ffi.adb", "compositor_glyph_software.ads", "compositor_glyph_software.adb", "compositor_glyph_placement.ads", "compositor_glyph_placement.adb", "compositor_affine.ads", "compositor_affine.adb", "heap_extents.ads", "heap_extents.adb", "compositor_identity.ads");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("renderer_tests.adb");
+   package Naming is
+      for Body ("Desktop_Wallpaper") use "wallpaper_trap.adb";
+   end Naming;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+end Settings_Renderer;

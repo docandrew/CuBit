@@ -1,8 +1,7 @@
 with Interfaces; use Interfaces;
 with System;
 with CCL.Catalog;
-with CCL.Interfaces.Clock;
-with CCL_Config_Bindings;
+with CCL_Host_Environment;
 with CCL.Interfaces.Workbench_UI;
 with CCL.UI_Labels;
 with CCL.UI_Buttons;
@@ -18,6 +17,7 @@ with CCL.Ownership;
 with CCL.VM;
 with CCL_Execution;
 with CCL_Workbench_Platform;
+with Client_Input_Budget;
 with CCL_Workspace;
 with CCL.Sessions;
 with CCL.Periodic_Programs;
@@ -52,7 +52,6 @@ package body CCL_Workbench is
    use type CCL.Compiler.Compilation_Status;
    use type CCL.Language.Views.Surface;
    use type CCL.Language.Views.Conversion_Status;
-   use type CCL.Host_Values.Value_Kind;
    use type CCL.Debug_Maps.Validation_Error;
    use type CCL.VM.Validation_Error;
    use type CCL.VM.Execution_Status;
@@ -102,7 +101,6 @@ package body CCL_Workbench is
 
    --  Runtime-local bindings, deliberately outside the language/compiler.
    --  Native clock uses its endpoint; UI bindings control one host-owned label.
-   CLOCK_HOST_BINDING : constant Unsigned_32 := 16#0001_0001#;
    UI_BINDINGS : constant array (CCL.UI_Labels.Operation) of Unsigned_32 :=
      [CCL.UI_Labels.Set_Value => 16#0002_0001#,
       CCL.UI_Labels.Set_Visible => 16#0002_0002#,
@@ -123,15 +121,9 @@ package body CCL_Workbench is
    OUTPUT_HORIZONTAL : constant CuBit.UI.Controls.Control_ID := 3;
    Output_Line, Output_Column, Output_Max_Line : Natural := 1;
    Output_Pointer_Down, Output_Focused : Boolean := False;
-   type Pixel_Buffer is
-     array (Natural range 0 .. MAXIMUM_WIDTH * MAXIMUM_HEIGHT - 1)
-     of aliased Unsigned_32;
-   Pixels : aliased Pixel_Buffer := [others => 0];
-
    Canvas : CuBit.UI.Canvas :=
-     (addr => Pixels'Address, width => WIDTH, height => HEIGHT,
-      pitch => MAXIMUM_WIDTH * 4,
-      clipEnabled => False, clip => (others => 0));
+     (addr => System.Null_Address, width => WIDTH, height => HEIGHT,
+      pitch => 0, clipEnabled => False, clip => (others => 0), others => <>);
    function Colors return CuBit.UI.Theme is (CuBit.UI.Current_Theme);
    Visible_Interfaces : CCL.Catalog.Interface_Catalog;
    Granted_Interfaces : CCL.Catalog.Granted_Bindings;
@@ -464,10 +456,6 @@ package body CCL_Workbench is
       Maximum_Width, Maximum_Height : Integer_32;
       Width, Height : access Integer_32) return Integer_32
    with Import, Convention => C, External_Name => "ccl_window_prepare_frame";
-   function Window_Present
-     (Handle, Pixels : System.Address;
-      Pitch, X, Y, Width, Height : Integer_32) return Integer_32
-   with Import, Convention => C, External_Name => "ccl_window_present";
    procedure Window_Set_Cursor
      (Handle : System.Address; Style : Integer_32)
    with Import, Convention => C, External_Name => "ccl_window_set_cursor";
@@ -484,6 +472,17 @@ package body CCL_Workbench is
    procedure Window_Close (Handle : System.Address)
    with Import, Convention => C, External_Name => "ccl_window_close";
 
+   --  The window platform's monotonic clock, for clock.monotonic-ms.
+   function Live_Clock (Available : out Boolean) return Unsigned_64 is
+      Answered : aliased Integer_32 := 0;
+      Milliseconds : constant Unsigned_64 := Window_Clock_Monotonic (Answered'Access);
+   begin
+      Available := Answered /= 0;
+      return Milliseconds;
+   end Live_Clock;
+   --  Every system interface; the Workbench adds only its ui.* ones.
+   package Host is new CCL_Host_Environment (Live_Clock);
+
    type Live_Context is record
       Label : CCL.UI_Labels.Model;
       Output : CCL.UI_Outputs.Model;
@@ -499,13 +498,11 @@ package body CCL_Workbench is
      (Context : in out Live_Context; Binding : Unsigned_32;
       Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result)
    is
-      Available : aliased Integer_32 := 0;
-      Milliseconds : Unsigned_64;
    begin
       Reply.Value := CCL.Host_Values.Integer_Constant (0);
       Reply.Success := False;
-      if CCL_Config_Bindings.Handles (Binding) then
-         CCL_Config_Bindings.Invoke (Binding, Argument, Reply);
+      if Host.Handles (Binding) then
+         Host.Invoke (Binding, Argument, Reply);
          return;
       end if;
       for Op in CCL.UI_Outputs.Operation loop
@@ -537,14 +534,6 @@ package body CCL_Workbench is
             return;
          end if;
       end loop;
-      if Binding /= CLOCK_HOST_BINDING or else
-        Argument.Kind /= CCL.Host_Values.Integer_Value or else Argument.Integer /= 0
-      then
-         return;
-      end if;
-      Milliseconds := Window_Clock_Monotonic (Available'Access);
-      Reply.Success := Available /= 0 and then Milliseconds <= Unsigned_64 (Integer_64'Last);
-      if Reply.Success then Reply.Value := CCL.Host_Values.Integer_Constant (Integer_64 (Milliseconds)); end if;
    end Invoke_Live;
 
    procedure Render_Output is
@@ -964,24 +953,8 @@ package body CCL_Workbench is
    begin
       CCL.Catalog.Initialize (Visible_Interfaces);
       CCL.Catalog.Initialize (Granted_Interfaces);
-      CCL_Config_Bindings.Install (Visible_Interfaces, Granted_Interfaces, Config_Installed);
-      if not Config_Installed then raise Program_Error with "invalid Config inspector catalog"; end if;
-      CCL_Execution.Install (Visible_Interfaces, Granted_Interfaces, Config_Installed);
-      if not Config_Installed then raise Program_Error with "invalid typed Config catalog"; end if;
-      CCL.Interfaces.Clock.Publish (Visible_Interfaces, Error);
-      if Error /= CCL.Catalog.Catalog_Valid then
-         raise Program_Error with "invalid hosted CCL interface catalog";
-      end if;
-      CCL.Interfaces.Clock.Resolve_Monotonic_Ms
-        (Visible_Interfaces, Resolved, Found);
-      if not Found then
-         raise Program_Error with "hosted clock interface not discoverable";
-      end if;
-      CCL.Catalog.Install
-        (Granted_Interfaces, Resolved, CLOCK_HOST_BINDING, Grant);
-      if Grant /= CCL.Catalog.Grant_Added then
-         raise Program_Error with "hosted clock authority not installed";
-      end if;
+      Host.Install (Visible_Interfaces, Granted_Interfaces, Config_Installed);
+      if not Config_Installed then raise Program_Error with "invalid CCL host environment"; end if;
       CCL.Interfaces.Workbench_UI.Publish (Visible_Interfaces, Error);
       if Error /= CCL.Catalog.Catalog_Valid then
          raise Program_Error with "invalid Workbench UI descriptor";
@@ -2366,7 +2339,9 @@ package body CCL_Workbench is
             return "int" & Integer_64'Image (Item.Integer);
          when CCL.VM.Boolean_Value =>
             return "bool " & (if Item.Boolean then "true" else "false");
-         when CCL.VM.Variant_Value | CCL.VM.Object_Value | CCL.VM.Resource_Value =>
+         when CCL.VM.Variant_Value | CCL.VM.Object_Value | CCL.VM.Resource_Value |
+              CCL.VM.Text_Value | CCL.VM.Character_Value | CCL.VM.List_Value |
+              CCL.VM.Function_Value =>
             return CCL.VM.Value_Image (Compiled_Artifact.Program.Data_Types, Item);
       end case;
    end Value_Text;
@@ -3113,6 +3088,36 @@ package body CCL_Workbench is
          "bounded document • proved viewport");
    end Render_Pointer_Feedback;
 
+   type Paint_Kind is (All_Content, Output_Only, Label_Only, Button_And_Label,
+                       REPL_Only, Dialog_Only, Pointer_Only);
+   function Paint (Handle : System.Address; Changed : CuBit.UI.Rect;
+                   Kind : Paint_Kind := All_Content) return Boolean is
+      use type CuBit.UI.Rect;
+      Repair : CuBit.UI.Rect;
+      Ready : Boolean;
+   begin
+      CCL_Workbench_Platform.Begin_Frame (Canvas, Changed, Repair, Ready);
+      if not Ready then return True; end if; -- debt remains for a timed retry
+      Canvas := CuBit.UI.With_Clip (Canvas, Repair);
+      if Kind = All_Content or else Repair /= Changed then
+         Render; -- repair older candidate content from current application state
+      else
+         case Kind is
+            when All_Content => null;
+            when Output_Only => Render_Output;
+            when Label_Only => Render_Live_Label;
+            when Button_And_Label =>
+               CuBit.UI.Fill_Rect (Canvas, Repair, Colors.face);
+               Render_Live_Label;
+               Render_Handler_Button;
+            when REPL_Only => CCL_REPL_View.Draw (REPL, Canvas, REPL_Bounds, Colors);
+            when Dialog_Only => CuBit.UI.File_Dialogs.Draw (Canvas, File_Dialog, Colors);
+            when Pointer_Only => Render_Pointer_Feedback;
+         end case;
+      end if;
+      return CCL_Workbench_Platform.Submit_Frame (Handle, Canvas, Repair);
+   end Paint;
+
 procedure Run is
 begin
    CCL_Workbench_Platform.Activate;
@@ -3179,6 +3184,8 @@ begin
       Surface_Width : aliased Integer_32 := Integer_32 (WIDTH);
       Surface_Height : aliased Integer_32 := Integer_32 (HEIGHT);
       Running : Boolean := Handle /= System.Null_Address;
+      Input_Batch : Client_Input_Budget.Batch;
+      Input_Drained : Boolean := False;
       Dragging : Boolean := False;
       type Scrollbar_Axis is
         (No_Scrollbar, Vertical_Scrollbar, Horizontal_Scrollbar);
@@ -3356,11 +3363,19 @@ begin
       Prepare_Surface;
       if not Running then raise Program_Error; end if;
       while Running loop
+         Input_Batch := Client_Input_Budget.Open (Window_Ticks);
+         Input_Drained := False;
          while Running and then
-           Window_Poll
-             (Handle, Kind'Access, Code'Access, Modifiers'Access,
-              Mouse_X'Access, Mouse_Y'Access) /= 0
+           Client_Input_Budget.Can_Poll (Input_Batch, Window_Ticks)
          loop
+            Client_Input_Budget.Charge (Input_Batch);
+            if Window_Poll
+              (Handle, Kind'Access, Code'Access, Modifiers'Access,
+               Mouse_X'Access, Mouse_Y'Access) = 0
+            then
+               Input_Drained := True;
+               exit;
+            end if;
             Previous_Hover := Current_Hover_Target;
             --  All semantic input other than free pointer motion may update
             --  application state. Plain motion is handled below by comparing
@@ -3426,12 +3441,7 @@ begin
                end if;
                --  Output interaction never edits the source or REPL, and
                --  does not repaint their expensive text areas.
-               Render_Output;
-               if Window_Present (Handle, Pixels'Address,
-                 Integer_32 (MAXIMUM_WIDTH * 4),
-                 Integer_32 (Output_Bounds.x), Integer_32 (Output_Bounds.y),
-                 Integer_32 (Output_Bounds.w), Integer_32 (Output_Bounds.h)) /= 0
-               then Running := False; end if;
+               if not Paint (Handle, Output_Bounds, Output_Only) then Running := False; end if;
                Needs_Render := False;
             elsif Output_Focused and then
               Kind in 2 .. 10 | 16 .. 21 | 23 .. 24 | 27 .. 33
@@ -4032,6 +4042,7 @@ begin
                when others => null;
             end case;
             end if;
+            CCL_Workbench_Platform.Finish_Input;
             exit when REPL_Only_Render;
             --  Immediate-mode controls must observe every pointer edge and
             --  captured drag position before a later event can overwrite it.
@@ -4189,15 +4200,7 @@ begin
             if Updated and then not Needs_Render and then
               not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
             then
-               Render_Live_Label;
-               declare
-                  Damage : constant CuBit.UI.Rect := Live_Label_Bounds;
-               begin
-                  exit when Window_Present
-                    (Handle, Pixels'Address, Integer_32 (MAXIMUM_WIDTH * 4),
-                     Integer_32 (Damage.x), Integer_32 (Damage.y),
-                     Integer_32 (Damage.w), Integer_32 (Damage.h)) /= 0;
-               end;
+               exit when not Paint (Handle, Live_Label_Bounds, Label_Only);
             end if;
          end;
          if CCL.UI_Buttons.Changed (Live_Button) and then
@@ -4205,11 +4208,7 @@ begin
          then
             --  Restore both the previous and current label positions.
             declare Area : constant CuBit.UI.Rect := (366, CLIENT_TITLE_HEIGHT + 25, Canvas.width - 374, 27); begin
-               CuBit.UI.Fill_Rect (Canvas, Area, Colors.face);
-               Render_Live_Label;
-               Render_Handler_Button;
-               exit when Window_Present (Handle, Pixels'Address, Integer_32 (MAXIMUM_WIDTH * 4),
-                 Integer_32 (Area.x), Integer_32 (Area.y), Integer_32 (Area.w), Integer_32 (Area.h)) /= 0;
+               exit when not Paint (Handle, Area, Button_And_Label);
             end;
             Needs_Render := True; -- also update Stop's enabled state
             REPL_Only_Render := False;
@@ -4217,71 +4216,40 @@ begin
          if CCL.UI_Labels.Changed (Live_Host.Label) and then
            not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
          then
-            Render_Live_Label;
-            declare Damage : constant CuBit.UI.Rect := Live_Label_Bounds; begin
-               exit when Window_Present
-                 (Handle, Pixels'Address, Integer_32 (MAXIMUM_WIDTH * 4),
-                  Integer_32 (Damage.x), Integer_32 (Damage.y),
-                  Integer_32 (Damage.w), Integer_32 (Damage.h)) /= 0;
-            end;
+            exit when not Paint (Handle, Live_Label_Bounds, Label_Only);
          end if;
          if CCL.UI_Outputs.Changed (Live_Host.Output) then
             Dialog_Background_Dirty := True;
             if not CuBit.UI.File_Dialogs.Is_Open (File_Dialog) then
-               Render_Output;
-               exit when Window_Present
-                 (Handle, Pixels'Address, Integer_32 (MAXIMUM_WIDTH * 4),
-                  Integer_32 (Output_Bounds.x), Integer_32 (Output_Bounds.y),
-                  Integer_32 (Output_Bounds.w), Integer_32 (Output_Bounds.h)) /= 0;
+               exit when not Paint (Handle, Output_Bounds, Output_Only);
             end if;
          end if;
-         if Needs_Render then
+         if Needs_Render or else CCL_Workbench_Platform.Frame_Pending then
             declare
-               Damage : CuBit.UI.Rect := (0, 0, Canvas.width, Canvas.height);
+               Damage : CuBit.UI.Rect :=
+                 (if Needs_Render then (0, 0, Canvas.width, Canvas.height) else (0, 0, 0, 0));
+               Kind : Paint_Kind := All_Content;
             begin
-               if REPL_Visible and then REPL_Only_Render and then
-                 not REPL_Full_Render and then
-                 not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
+               if Needs_Render and then REPL_Visible and then REPL_Only_Render and then
+                 not REPL_Full_Render and then not CuBit.UI.File_Dialogs.Is_Open (File_Dialog)
                then
-                  CCL_REPL_View.Draw (REPL, Canvas, REPL_Bounds, Colors);
-                  Damage := REPL_Bounds;
-               elsif CuBit.UI.File_Dialogs.Is_Open (File_Dialog) and then
+                  Damage := REPL_Bounds; Kind := REPL_Only;
+               elsif Needs_Render and then CuBit.UI.File_Dialogs.Is_Open (File_Dialog) and then
                  not Dialog_Background_Dirty
                then
-                  CuBit.UI.File_Dialogs.Draw (Canvas, File_Dialog, Colors);
                   Damage := CuBit.UI.File_Dialogs.Bounds (Canvas.width, Canvas.height);
-               else
-                  Render;
+                  Kind := Dialog_Only;
                end if;
-               exit when Window_Present
-                 (Handle, Pixels'Address, Integer_32 (MAXIMUM_WIDTH * 4),
-                  Integer_32 (Damage.x), Integer_32 (Damage.y),
-                  Integer_32 (Damage.w), Integer_32 (Damage.h)) /= 0;
+               exit when not Paint (Handle, Damage, Kind);
             end;
             Needs_Render := False;
             REPL_Only_Render := False;
             REPL_Full_Render := False;
             Needs_Pointer_Feedback := False;
          elsif Needs_Pointer_Feedback then
-            Render_Pointer_Feedback;
-            --  These are disjoint small regions. Presenting them separately
-            --  avoids turning their bounding union into nearly a full frame.
-            exit when Window_Present
-              (Handle, Pixels'Address, Integer_32 (MAXIMUM_WIDTH * 4),
-               Integer_32 (Inspector_Splitter.x),
-               Integer_32 (Inspector_Splitter.y),
-               Integer_32 (Inspector_Splitter.w),
-               Integer_32 (Inspector_Splitter.h)) /= 0;
-            exit when Window_Present
-              (Handle, Pixels'Address, Integer_32 (MAXIMUM_WIDTH * 4),
-               Integer_32 (Disassembly_Splitter.x),
-               Integer_32 (Disassembly_Splitter.y),
-               Integer_32 (Disassembly_Splitter.w),
-               Integer_32 (Disassembly_Splitter.h)) /= 0;
-            exit when Window_Present
-              (Handle, Pixels'Address, Integer_32 (MAXIMUM_WIDTH * 4),
-               0, Integer_32 (Canvas.height - 26),
-               Integer_32 (Canvas.width), 26) /= 0;
+            exit when not Paint (Handle, Inspector_Splitter, Pointer_Only);
+            exit when not Paint (Handle, Disassembly_Splitter, Pointer_Only);
+            exit when not Paint (Handle, (0, Canvas.height - 26, Canvas.width, 26), Pointer_Only);
             Needs_Pointer_Feedback := False;
          end if;
          if Active_Source_Scrollbar /= No_Scrollbar and then
@@ -4304,7 +4272,13 @@ begin
             then
                Wakeup := Unsigned_64'Min (Wakeup, Next_Scrollbar_Repeat);
             end if;
-            if (VM_Continuous and not CCL_Execution.Waiting_For_IO) or else
+            Wakeup := CCL_Workbench_Platform.Frame_Deadline (Wakeup);
+            if not Input_Drained then
+               -- A budget or semantic barrier stopped this batch. Render and
+               -- service local work before polling again; never sleep while
+               -- an unobserved input backlog may remain.
+               CCL_Workbench_Platform.Yield_Input;
+            elsif (VM_Continuous and not CCL_Execution.Waiting_For_IO) or else
               CCL.UI_Buttons.Pending (Live_Button) > 0
             then
                Window_Wait (0); -- VM has runnable work; yield between slices.

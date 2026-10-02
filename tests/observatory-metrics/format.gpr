@@ -1,0 +1,9 @@
+project Format_Budget is
+   for Source_Dirs use ("format", "../../userspace/lib/observatory");
+   for Object_Dir use "build/format/obj";
+   for Exec_Dir use "build/format";
+   for Main use ("format_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+end Format_Budget;

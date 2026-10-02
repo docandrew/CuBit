@@ -1,0 +1,15 @@
+project ADS_Register_Image is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("ads_register_image_tests.adb", "intel_gpu_ads_register_image.ads",
+                         "intel_gpu_ads_register_image.adb", "intel_gpu_adln_regset.ads",
+                         "intel_gpu_adln_regset.adb", "intel_gpu_adln_engine_settings.ads",
+                         "intel_gpu_adln_engine_settings.adb", "intel_gpu_adln_inventory.ads",
+                         "intel_gpu_adln_inventory.adb", "intel_gpu_adln_steering.ads",
+                         "intel_gpu_adln_steering.adb", "intel_gpu_ads_regset.ads",
+                         "intel_gpu_ads_regset.adb");
+   for Object_Dir use "build-ads-register-image";
+   for Main use ("ads_register_image_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end ADS_Register_Image;

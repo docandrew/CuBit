@@ -1,3 +1,4 @@
+with Interfaces;
 with Ada.Text_IO;
 with CCL.Types;
 with CCL.Resources;
@@ -173,29 +174,66 @@ begin
    Check (Outcome = R.Succeeded, "reserve exhaustion fixture");
    R.Publish (Owner, Factory, True, Ref, Outcome);
    Check (Outcome = R.Succeeded, "publish exhaustion fixture");
-   Candidate := Template;
-   Candidate.Length := 3 + 3 * (MAX_OBJECT_VALUES + 1) + 2;
-   for I in 0 .. MAX_OBJECT_VALUES loop
-      Candidate.Code (Instruction_Index (3 + 3 * I)) := (Op => Push_Integer, others => <>);
-      Candidate.Code (Instruction_Index (4 + 3 * I)) := (Op => Invoke_Import, Import => 1, others => <>);
-      Candidate.Code (Instruction_Index (5 + 3 * I)) := (Op => Drop, others => <>);
-   end loop;
-   Candidate.Code (Instruction_Index (Candidate.Length - 2)) := (Op => Invoke_Import, Import => 3, others => <>);
-   Candidate.Code (Instruction_Index (Candidate.Length - 1)) := (Op => Halt, others => <>);
-   Verify (Candidate, Checked, Error); Check (Error = Valid, "admit bounded object pressure");
-   N.Initialize (Checked, 256, Machine); Advance;
-   N.Complete_Resource (Checked, Machine, Owner, Ref, Good); Check (Good, "pressure fixture factory");
-   for I in 1 .. MAX_OBJECT_VALUES loop
+   --  Results live in the value arena: an object import is admitted only
+   --  when the arena can hold the largest value of its result type. A deep
+   --  record (7 records of 16 one-field records: 120 nodes) fits four times
+   --  in 512 nodes; the fifth call is refused before the host acts.
+   declare
+      Leaf, Middle, Top : T.Type_Reference;
+      Deep_Contract : O.Binding;
+      Deep : O.Image;
+      Calls : constant := 5;
+   begin
+      T.Define (Types, (Identifier => T.Named ("Leaf"), Form => T.Product, Count => 1,
+        Parts => [1 => (T.Named ("x"), T.Integer_Type), others => <>]), Leaf, Defined);
+      Check (Defined = T.Defined, "define leaf record");
+      T.Define (Types, (Identifier => T.Named ("Middle"), Form => T.Product, Count => 16,
+        Parts => [for P in T.Component_Index => (T.Named ("m" & Character'Val (Character'Pos ('a') + P - 1)), Leaf)]),
+        Middle, Defined);
+      Check (Defined = T.Defined, "define middle record");
+      T.Define (Types, (Identifier => T.Named ("Top"), Form => T.Product, Count => 7,
+        Parts => [for P in T.Component_Index =>
+                    (if P <= 7 then (T.Named ("t" & Character'Val (Character'Pos ('a') + P - 1)), Middle)
+                     else (others => <>))]),
+        Top, Defined);
+      Check (Defined = T.Defined, "define deep record");
+      O.Bind (Types, Top, [9, 10, 11, 12], Deep_Contract, Good); Check (Good, "bind deep record");
+      Deep := O.Empty (Deep_Contract);
+      O.Append (Deep, O.Product_Cell (7), Built);
+      for M in 1 .. 7 loop
+         O.Append (Deep, O.Product_Cell (16), Built);
+         for L in 1 .. 16 loop
+            O.Append (Deep, O.Product_Cell (1), Built);
+            O.Append (Deep, O.Integer_Cell (Interfaces.Integer_64 (L)), Built);
+         end loop;
+      end loop;
+      Check (Built = O.Added and then O.Validate (Deep, Deep_Contract), "valid deep image");
+      Candidate := Template;
+      Candidate.Data_Types := Types;
+      Candidate.Imports (1).Result_Data_Type := Top;
+      Candidate.Length := 3 + 3 * Calls + 2;
+      for I in 0 .. Calls - 1 loop
+         Candidate.Code (Instruction_Index (3 + 3 * I)) := (Op => Push_Integer, others => <>);
+         Candidate.Code (Instruction_Index (4 + 3 * I)) := (Op => Invoke_Import, Import => 1, others => <>);
+         Candidate.Code (Instruction_Index (5 + 3 * I)) := (Op => Drop, others => <>);
+      end loop;
+      Candidate.Code (Instruction_Index (Candidate.Length - 2)) := (Op => Invoke_Import, Import => 3, others => <>);
+      Candidate.Code (Instruction_Index (Candidate.Length - 1)) := (Op => Halt, others => <>);
+      Verify (Candidate, Checked, Error); Check (Error = Valid, "admit bounded object pressure");
+      N.Initialize (Checked, 256, Machine); Advance;
+      N.Complete_Resource (Checked, Machine, Owner, Ref, Good); Check (Good, "pressure fixture factory");
+      for I in 1 .. Calls - 1 loop
+         Advance;
+         Check (Step.Status = Waiting_For_Host and then Step.Request_Receiver = Ref, "offer object read");
+         N.Acknowledge_Host_Submission (Checked, Machine, True);
+         N.Complete_Object (Checked, Machine, Deep_Contract, Deep, True);
+      end loop;
       Advance;
-      Check (Step.Status = Waiting_For_Host and then Step.Request_Receiver = Ref, "offer object read");
-      N.Acknowledge_Host_Submission (Checked, Machine, True);
-      N.Complete_Object (Checked, Machine, Contract, Input, True);
-   end loop;
-   Advance;
-   Check (Step.Status = Object_Storage_Exhausted, "reject capacity before host effect");
-   Check (N.Pending_Call (Checked, Machine).Status = No_Result, "no pending operation at exhaustion");
-   Advance;
-   Check (Step.Status = Object_Storage_Exhausted, "exhausted owned call stays well formed");
+      Check (Step.Status = Object_Storage_Exhausted, "reject capacity before host effect");
+      Check (N.Pending_Call (Checked, Machine).Status = No_Result, "no pending operation at exhaustion");
+      Advance;
+      Check (Step.Status = Object_Storage_Exhausted, "exhausted owned call stays well formed");
+   end;
    N.Stop (Machine);
    R.Begin_Use (Owner, Ref, Collection, Call, Outcome); Check (Outcome = R.Succeeded, "host can clean up after exhaustion");
    R.Finish_Use (Owner, Call, False, Outcome); Check (Outcome = R.Succeeded, "retire exhausted run resource");

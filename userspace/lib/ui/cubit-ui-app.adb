@@ -13,11 +13,14 @@ with CuBit.Desktop_Protocol;
 with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
 with CuBit.UI.Theme_Data;
+with Client_Frame_Wakeup;
 
 package body CuBit.UI.App is
    use ASCII;
    package DP renames CuBit.Desktop_Protocol;
    package MG renames CuBit.Memory_Grants;
+   package FP renames Client_Frame_Pair;
+   package IP renames Client_Input_Provenance;
    use type DP.Status_Code;
 
    use type DP.Operation;
@@ -59,12 +62,14 @@ package body CuBit.UI.App is
    function Canvas (win : Window) return CuBit.UI.Canvas is
    begin
       return
-        (addr        => win.bufferAddr,
+        (addr        => (if win.protectedFrames then FP.Address (win.frames) else win.bufferAddr),
          width       => win.width,
          height      => win.height,
          pitch       => win.pitch,
+         densityNumerator => win.densityNumerator,
+         densityDenominator => win.densityDenominator,
          clipEnabled => False,
-         clip        => (others => 0));
+         clip        => (others => 0), others => <>);
    end Canvas;
 
    function Canvas
@@ -119,81 +124,116 @@ package body CuBit.UI.App is
       return value;
    end Content_Size_From_Surface;
 
-   procedure Attach_Buffer
-      (win : in out Window;
-       width, height : Natural;
-       ok : out Boolean)
-   is
-      request : Message;
-      layout : constant DP.Buffer_Layout :=
-        (DP.Positive_Extent (width), DP.Positive_Extent (height), width * 4);
-   begin
-      request := CuBit.Desktop_Messages.From_Wire
-        (DP.Encode_Attachment
-           ((DP.Live_Surface_Name (win.surfaceId), win.bufferGrant, layout)));
-      request.tag := capCall (CAP_SLOT_DESKTOP, request);
-      ok := request.tag.label = DP.Code (DP.Attach_Buffer) and then
-        request.tag.length = 1 and then request.words (0) = 0;
-      if ok then
-         win.width := width;
-         win.height := height;
-         win.pitch := layout.Pitch;
-      end if;
-   end Attach_Buffer;
-
    procedure Ensure_Buffer
-      (win : in out Window;
-       width, height : Natural;
-       ok : out Boolean)
+      (win : in out Window; width, height : Natural; ok : out Boolean)
    is
-      raw : Unsigned_64;
-      pages : Unsigned_64;
+      raw, pages : Unsigned_64;
       created, revoked : Boolean;
-      candidate : Window := win;
+      candidateAddr : System.Address := win.bufferAddr;
+      candidateGrant : MG.Grant_Reference := win.bufferGrant;
       replacing : Boolean := False;
+      request : Message;
+      config : FP.Pub.Configuration_Result;
    begin
       ok := False;
-      if win.surfaceId = 0 or else
-        width not in 1 .. Natural (DP.Positive_Extent'Last) or else
-        height not in 1 .. Natural (DP.Positive_Extent'Last)
-      then
+      if win.surfaceId = 0 then return; end if;
+      if win.protectedFrames then
+         FP.Configure (win.frames, DP.Live_Surface_Name (win.surfaceId), ok);
+         if ok then
+            config := FP.Configuration (win.frames);
+            win.width := Natural (config.Value.Width);
+            win.height := Natural (config.Value.Height);
+            win.pitch := config.Value.Layout.Pitch;
+            win.densityNumerator := config.Value.Numerator;
+            win.densityDenominator := config.Value.Denominator;
+         end if;
          return;
       end if;
-      -- Validate before allocation or mutation, using the same wire policy.
-      if not DP.Valid_Layout
-        ((DP.Positive_Extent (width), DP.Positive_Extent (height), width * 4))
-      then
-         return;
-      end if;
+      if width not in 1 .. Natural (DP.Positive_Extent'Last) or else
+         height not in 1 .. Natural (DP.Positive_Extent'Last) or else
+         not DP.Valid_Layout ((DP.Positive_Extent (width), DP.Positive_Extent (height), width * 4))
+      then return; end if;
       pages := (Unsigned_64 (width) * 4 * Unsigned_64 (height) + 4095) / 4096;
-
       if win.bufferPages = 0 or else pages > win.bufferPages then
          raw := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
-         if raw = Unsigned_64'Last then
-            return;
-         end if;
-         candidate.bufferAddr := To_Address (Integer_Address (Align_Up_Page (raw)));
-         MG.Create_Via_Capability
-           (CAP_SLOT_DESKTOP, candidate.bufferAddr, Natural (pages), False,
-            candidate.bufferGrant, created);
-         if not created then
-            return;
-         end if;
-         candidate.bufferPages := pages;
+         if raw = Unsigned_64'Last then return; end if;
+         candidateAddr := To_Address (Integer_Address (Align_Up_Page (raw)));
+         MG.Create_Via_Capability (CAP_SLOT_DESKTOP, candidateAddr, Natural (pages), False,
+                                   candidateGrant, created);
+         if not created then return; end if;
          replacing := True;
       end if;
-
-      Attach_Buffer (candidate, width, height, ok);
+      request := CuBit.Desktop_Messages.From_Wire
+        (DP.Encode_Attachment ((DP.Live_Surface_Name (win.surfaceId), candidateGrant,
+           (DP.Positive_Extent (width), DP.Positive_Extent (height), width * 4))));
+      request.tag := capCall (CAP_SLOT_DESKTOP, request);
+      ok := DP.Decode_Status (CuBit.Desktop_Messages.To_Wire (request), DP.Attach_Buffer) = DP.Success;
       if ok then
-         if replacing and then win.bufferPages /= 0 then
-            -- The accepted replacement released the compositor's old loan.
-            MG.Revoke (win.bufferGrant, revoked);
-         end if;
-         win := candidate;
-      elsif replacing then
-         MG.Revoke (candidate.bufferGrant, revoked);
+         if replacing and win.bufferPages /= 0 then MG.Revoke (win.bufferGrant, revoked); end if;
+         win.bufferAddr := candidateAddr; win.bufferGrant := candidateGrant;
+         if replacing then win.bufferPages := pages; end if;
+         win.width := width; win.height := height; win.pitch := width * 4;
+      elsif replacing then MG.Revoke (candidateGrant, revoked);
       end if;
    end Ensure_Buffer;
+
+   function Frame_Pending (win : Window) return Boolean is
+     (win.protectedFrames and then
+       (FP.Pending (win.frames) or else not CuBit.UI.Is_Empty (win.deferredDamage)));
+   procedure Begin_Input_Event (win : in out Window; event : Input_Event) is
+      Accepted : Boolean;
+   begin
+      if not win.protectedFrames or else not win.provenanceHealthy then return; end if;
+      if event.serial = 0 or else event.serial > win.lastEvent then
+         win.provenanceHealthy := False; return;
+      end if;
+      IP.Begin_Event (win.provenance, event.serial, Accepted);
+      win.provenanceHealthy := Accepted;
+   end Begin_Input_Event;
+   procedure Finish_Input_Event (win : in out Window; event : Input_Event) is
+      Accepted : Boolean;
+   begin
+      if not win.protectedFrames or else not win.provenanceHealthy then return; end if;
+      IP.Finish_Event (win.provenance, event.serial, Accepted);
+      win.provenanceHealthy := Accepted;
+   end Finish_Input_Event;
+   procedure Cancel_Paint (win : in out Window) is
+      Ignored : Unsigned_64;
+   begin
+      if win.protectedFrames then FP.Cancel_Paint (win.frames); end if;
+      IP.End_Paint (win.provenance, False, Ignored);
+   end Cancel_Paint;
+
+   procedure Begin_Paint
+     (win : in out Window; changed : CuBit.UI.Rect;
+      repair : out CuBit.UI.Rect; ready : out Boolean)
+   is
+      clipped : CuBit.UI.Rect;
+      debt, changedDebt : FP.Debt.Box;
+      Captured : Boolean;
+   begin
+      ready := False; repair := (others => 0);
+      if not Is_Open (win) then return; end if;
+      if not win.protectedFrames then
+         repair := CuBit.UI.Clamp_Rect (Canvas (win), changed);
+         ready := not CuBit.UI.Is_Empty (repair);
+         return;
+      end if;
+      clipped := CuBit.UI.Clamp_Rect (Canvas (win), changed);
+      win.deferredDamage := CuBit.UI.Union_Rect (win.deferredDamage, clipped);
+      Ensure_Buffer (win, win.width, win.height, ready);
+      if not ready then return; end if;
+      clipped := CuBit.UI.Clamp_Rect (Canvas (win), win.deferredDamage);
+      changedDebt := (if CuBit.UI.Is_Empty (clipped) then FP.Debt.Empty else
+        (clipped.x, clipped.y, clipped.x + clipped.w, clipped.y + clipped.h));
+      FP.Begin_Paint (win.frames, changedDebt, debt, ready);
+      win.deferredDamage := (others => 0);
+      if ready then
+         repair := (debt.Left, debt.Top, debt.Right - debt.Left, debt.Bottom - debt.Top);
+         IP.Begin_Paint (win.provenance, Captured);
+         win.provenanceHealthy := win.provenanceHealthy and Captured;
+      end if;
+   end Begin_Paint;
 
    procedure Refresh_Theme;
 
@@ -204,7 +244,8 @@ package body CuBit.UI.App is
        ok : out Boolean;
        maximum_width : Natural := 0;
        maximum_height : Natural := 0;
-       title : String := "Application")
+       title : String := "Application";
+       protected_frames : Boolean := False)
    is
       hello : Message;
       info : Message;
@@ -216,9 +257,22 @@ package body CuBit.UI.App is
       maxW : Unsigned_64 := 0;
       maxH : Unsigned_64 := 0;
       attached : Boolean;
+      Fresh_Provenance : IP.State;
    begin
       ok := False;
-      win := (others => <>);
+      if Input_Wait_Pending (win) then return; end if;
+      if Is_Open (win) then Close (win); end if;
+      if Is_Open (win) then return; end if;
+      FP.Reset (win.frames, attached);
+      if not attached then return; end if;
+      win.protectedFrames := protected_frames;
+      win.sentBye := False;
+      win.width := 0; win.height := 0; win.pitch := 0;
+      win.densityNumerator := 1; win.densityDenominator := 1;
+      win.lastEvent := 0; win.inputMayRemain := False;
+      win.deferredDamage := (others => 0);
+      win.firstManagedFrame := False;
+      win.provenance := Fresh_Provenance; win.provenanceHealthy := True;
       win.flags := flags;
       -- Validate the public API before adding chrome or converting into the
       -- wire's bounded geometry. Bad caller input leaves the window unopened.
@@ -518,13 +572,28 @@ package body CuBit.UI.App is
    end Set_Pointer_Cursor;
 
    procedure Present
-      (win : Window; damage : CuBit.UI.Rect)
+      (win : in out Window; damage : CuBit.UI.Rect)
    is
       request : Message;
       tag : MessageTag;
       r : constant CuBit.UI.Rect := CuBit.UI.Clamp_Rect (Canvas (win), damage);
+      accepted : Boolean;
+      Watermark : Unsigned_64;
    begin
       if win.surfaceId = 0 or else CuBit.UI.Is_Empty (r) then
+         Cancel_Paint (win);
+         return;
+      end if;
+
+      if win.protectedFrames then
+         Watermark := (if win.provenanceHealthy and IP.Painting (win.provenance)
+                       then IP.Frozen (win.provenance) else 0);
+         FP.Publish (win.frames, (r.x, r.y, r.x + r.w, r.y + r.h), accepted, Watermark);
+         IP.End_Paint (win.provenance, accepted, Watermark);
+         if accepted and then not win.firstManagedFrame then
+            win.firstManagedFrame := True;
+            debugPrint ("ui-app: protected frame published" & LF);
+         end if;
          return;
       end if;
 
@@ -736,16 +805,27 @@ package body CuBit.UI.App is
       pointer : Pointer_Interaction;
       pendingEvent : Input_Event;
       hasPendingEvent : Boolean := False;
+      procedure Paint (Damage : CuBit.UI.Rect) is
+         Repair : CuBit.UI.Rect;
+         Ready : Boolean;
+      begin
+         Begin_Paint (win, Damage, Repair, Ready);
+         if not Ready then return; end if;
+         Render (win, Repair);
+         if CuBit.UI.State.Followup_Render_Requested (ui) then
+            Cancel_Paint (win);
+            Begin_Paint (win, Full_Rect (win), Repair, Ready);
+            if not Ready then return; end if;
+            Render (win, Repair);
+         end if;
+         Present (win, Repair);
+      end Paint;
    begin
       if not Is_Open (win) then
          return;
       end if;
 
-      Render (win, Full_Rect (win));
-      if CuBit.UI.State.Followup_Render_Requested (ui) then
-         Render (win, Full_Rect (win));
-      end if;
-      Present (win, Full_Rect (win));
+      Paint (Full_Rect (win));
 
       while running loop
          declare
@@ -786,10 +866,12 @@ package body CuBit.UI.App is
                      dirtyEvents := dirtyEvents + 1;
                   end if;
 
+                  Begin_Input_Event (win, event);
                   Apply_Pointer_Event
                     (pointer, ui, controls, win, event, dirty,
                      pointerRepaint);
                   Handle_Event (win, event, dirty, running);
+                  Finish_Input_Event (win, event);
                   exit when not running;
                   --  Keyboard, wheel, configuration, and application-defined
                   --  events may change which controls exist or where they are
@@ -815,17 +897,10 @@ package body CuBit.UI.App is
                end;
             end loop;
 
-            if not CuBit.UI.Is_Empty (dirty) then
-               Render (win, dirty);
-               if CuBit.UI.State.Followup_Render_Requested (ui) then
-                  --  A grouped selection may be changed by an item rendered
-                  --  after the previously selected item. Repaint the stable
-                  --  post-action tree once before presentation so both old
-                  --  and new selection visuals cannot survive together.
-                  dirty := Full_Rect (win);
-                  Render (win, dirty);
-               end if;
-               Present (win, dirty);
+            if not CuBit.UI.Is_Empty (dirty) or else
+              (win.protectedFrames and then (FP.Pending (win.frames) or else not CuBit.UI.Is_Empty (win.deferredDamage)))
+            then
+               Paint (dirty);
             end if;
 
             if running and then not hasPendingEvent then
@@ -836,36 +911,25 @@ package body CuBit.UI.App is
                --  input replies at once, while a later arrival resolves the
                --  installed one-use waiter.
                declare
-                  deadline : constant Interfaces.Unsigned_64 := Next_Deadline;
+                  appDeadline : constant Unsigned_64 := Next_Deadline;
+                  now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+                  deadline : constant Unsigned_64 := Client_Frame_Wakeup.Deadline
+                    (now, appDeadline, win.protectedFrames and then (FP.Pending (win.frames) or else not CuBit.UI.Is_Empty (win.deferredDamage)));
                   timerDirty : CuBit.UI.Rect := (others => 0);
                begin
-                  if deadline /= 0 and then
-                    syscall (SYSCALL_GETTIME) >= deadline
-                  then
-                     --  Already due: service it before waiting, so a steady
-                     --  stream of input cannot starve timed work.
+                  if appDeadline /= 0 and then now >= appDeadline then
                      On_Deadline (win, timerDirty, running);
-                     if running and then not CuBit.UI.Is_Empty (timerDirty) then
-                        Render (win, timerDirty);
-                        Present (win, timerDirty);
-                     end if;
+                     if running and then not CuBit.UI.Is_Empty (timerDirty) then Paint (timerDirty); end if;
                   elsif deadline = 0 then
                      Wait_Input (win, pendingEvent, hasPendingEvent);
-                     if not hasPendingEvent then
-                        --  INPUT_WAIT returns no event only if the surface is
-                        --  no longer owned by this process. Avoid a spin.
-                        running := False;
-                     end if;
+                     if not hasPendingEvent then running := False; end if;
                   else
                      Wait_Input_Until (win, deadline, pendingEvent, hasPendingEvent);
-                     if not hasPendingEvent then
-                        --  Expiry (or a lost surface, which the next wait
-                        --  without a deadline reports).
+                     if not hasPendingEvent and then appDeadline /= 0 and then
+                       syscall (SYSCALL_GETTIME) >= appDeadline
+                     then
                         On_Deadline (win, timerDirty, running);
-                        if running and then not CuBit.UI.Is_Empty (timerDirty) then
-                           Render (win, timerDirty);
-                           Present (win, timerDirty);
-                        end if;
+                        if running and then not CuBit.UI.Is_Empty (timerDirty) then Paint (timerDirty); end if;
                      end if;
                   end if;
                end;
@@ -878,19 +942,24 @@ package body CuBit.UI.App is
       reply : Message;
       revoked : Boolean;
    begin
+      Cancel_Paint (win);
       if win.sentBye then
+         if win.protectedFrames then FP.Close (win.frames, revoked); end if;
          return;
       end if;
 
+      -- Close this surface only; sibling windows share the process endpoint.
+      -- Failure retains the window and every uncertain frame loan for retry.
+      if win.surfaceId = 0 then return; end if;
       reply := CuBit.Desktop_Messages.From_Wire
-        (DP.Encode_Empty_Request (DP.Goodbye));
+        (DP.Encode_Destroy ((Surface => DP.Surface_Name (win.surfaceId))));
       reply.tag := capCall (CAP_SLOT_DESKTOP, reply);
-      if DP.Decode_Status (CuBit.Desktop_Messages.To_Wire (reply), DP.Goodbye) /= DP.Success then
-         debugPrint ("ui-app: desktop goodbye failed; retaining window state" & LF);
+      if DP.Decode_Status (CuBit.Desktop_Messages.To_Wire (reply), DP.Destroy_Surface) /= DP.Success then
+         debugPrint ("ui-app: surface destroy failed; retaining window state" & LF);
          return;
       end if;
-      if win.bufferPages /= 0 then
-         MG.Revoke (win.bufferGrant, revoked);
+      if win.protectedFrames then FP.Close (win.frames, revoked);
+      elsif win.bufferPages /= 0 then MG.Revoke (win.bufferGrant, revoked);
       end if;
       win.bufferPages := 0;
       win.bufferAddr := System.Null_Address;

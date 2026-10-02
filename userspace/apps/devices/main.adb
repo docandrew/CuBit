@@ -679,6 +679,15 @@ procedure main is
          maxScroll := visibleKeyCount - visibleRows;
       end if;
       treeScroll := Natural'Min (treeScroll, maxScroll);
+      --  Retained scrollbar input must be consumed before mapping rows to
+      --  nodes. Applying it after drawing leaves old rows in this frame;
+      --  a later row-only hover repaint then mixes two scroll positions.
+      if maxScroll > 0 then
+         CuBit.UI.Widgets.Vertical_Scrollbar
+           (c, ui, controls, CONTROL_SCROLLBAR, scrollBounds, treeContent,
+            colors, 0, visibleKeyCount - 1, treeScroll, scrollResult,
+            pageSize => Positive'Max (1, visibleRows), retainedInput => True);
+      end if;
       Item (NODE_COMPUTER, "This computer", 0, True, computerExpanded,
             CuBit.UI.Trees.Computer_Icon);
       if computerExpanded then
@@ -720,12 +729,6 @@ procedure main is
          end if;
       end if;
 
-      if maxScroll > 0 then
-         CuBit.UI.Widgets.Vertical_Scrollbar
-           (c, ui, controls, CONTROL_SCROLLBAR, scrollBounds, treeContent,
-            colors, 0, maxScroll, treeScroll, scrollResult,
-            retainedInput => True);
-      end if;
       Draw_Details (c, detailPane);
 
       CuBit.UI.Draw_Status_Bar
@@ -868,7 +871,7 @@ begin
         CuBit.UI.App.WINDOW_FLAG_CLOSEABLE;
    begin
       CuBit.UI.App.Open
-        (win, INITIAL_WIDTH, INITIAL_HEIGHT, flags, ok, title => "Devices");
+        (win, INITIAL_WIDTH, INITIAL_HEIGHT, flags, ok, title => "Devices", protected_frames => True);
       if not ok then
          ignore := syscall (SYSCALL_EXIT, 1);
          return;

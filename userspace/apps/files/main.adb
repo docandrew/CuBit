@@ -720,7 +720,7 @@ begin
         CuBit.UI.App.WINDOW_FLAG_CLOSEABLE;
    begin
       CuBit.UI.App.Open
-        (win, INITIAL_WIDTH, INITIAL_HEIGHT, flags, ok, title => "Files");
+        (win, INITIAL_WIDTH, INITIAL_HEIGHT, flags, ok, title => "Files", protected_frames => True);
       if not ok then
          ignore := syscall (SYSCALL_EXIT, 1);
          return;

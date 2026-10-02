@@ -2,7 +2,9 @@ with CCL.Declarations;
 
 --  Pure, bounded image planning. Artifact lookup is not host file access.
 package CCL.Images with SPARK_Mode => On is
-   MAX_ITEMS : constant := 64;
+   -- Host-side image catalogs include optional hardware fixtures as well as
+   -- normal images. Keep a finite limit, with room beyond the 65-entry catalog.
+   MAX_ITEMS : constant := 128;
    MAX_PATH : constant := 192;
    type Text is record
       Length : Natural range 0 .. MAX_PATH := 0;

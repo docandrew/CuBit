@@ -1,0 +1,77 @@
+--- a/src/intel/dev/intel_device_info.c
++++ b/src/intel/dev/intel_device_info.c
+@@ -1665,6 +1665,19 @@
+    return true;
+ }
+ 
++bool
++intel_device_info_init_runtime_defaults(int pci_id,
++                                        struct intel_device_info *devinfo)
++{
++   struct intel_device_info defaults = {0};
++   if (!devinfo || !intel_device_info_init_common(pci_id, false, &defaults))
++      return false;
++   /* Backend identity and measured runtime fields must follow discovery. */
++   defaults.kmd_type = INTEL_KMD_TYPE_INVALID;
++   *devinfo = defaults;
++   return true;
++}
++
+ static void
+ intel_device_info_apply_workarounds(struct intel_device_info *devinfo)
+ {
+@@ -1859,6 +1872,20 @@
+    return 512;
+ }
+ 
++void
++intel_device_info_finalize_runtime(struct intel_device_info *devinfo)
++{
++   init_max_scratch_ids(devinfo);
++
++   for (enum intel_engine_class engine = INTEL_ENGINE_CLASS_RENDER;
++        engine < ARRAY_SIZE(devinfo->engine_class_prefetch); engine++)
++      devinfo->engine_class_prefetch[engine] =
++            intel_device_info_calc_engine_prefetch(devinfo, engine);
++
++   intel_device_info_init_was(devinfo);
++   intel_device_info_apply_workarounds(devinfo);
++}
++
+ static void
+ intel_device_info_update_after_hwconfig(struct intel_device_info *devinfo)
+ {
+@@ -2004,15 +2031,7 @@
+    assert(devinfo->subslice_total >= 1 || devinfo->ver <= 7);
+    devinfo->subslice_total = MAX2(devinfo->subslice_total, 1);
+ 
+-   init_max_scratch_ids(devinfo);
+-
+-   for (enum intel_engine_class engine = INTEL_ENGINE_CLASS_RENDER;
+-        engine < ARRAY_SIZE(devinfo->engine_class_prefetch); engine++)
+-      devinfo->engine_class_prefetch[engine] =
+-            intel_device_info_calc_engine_prefetch(devinfo, engine);
+-
+-   intel_device_info_init_was(devinfo);
+-   intel_device_info_apply_workarounds(devinfo);
++   intel_device_info_finalize_runtime(devinfo);
+ 
+    return true;
+ }
+--- a/src/intel/dev/intel_device_info.h
++++ b/src/intel/dev/intel_device_info.h
+@@ -186,6 +186,14 @@
+ }
+ 
+ bool intel_get_device_info_from_fd(int fh, struct intel_device_info *devinfo, int min_ver, int max_ver);
++/* Backend initialization only: no runtime workarounds or KMD identity.
++ * Output is unchanged on failure. Does not expose a usable device. */
++bool intel_device_info_init_runtime_defaults(int pci_id,
++                                             struct intel_device_info *devinfo);
++/* After backend discovery/hwconfig and memory adjustment. Requires initialized
++ * device defaults and nonempty validated runtime topology. Not discovery or
++ * authority validation; call once on a fresh device description. */
++void intel_device_info_finalize_runtime(struct intel_device_info *devinfo);
+ bool intel_get_device_info_from_pci_id(int pci_id,
+                                        struct intel_device_info *devinfo);
+ bool intel_get_device_info_for_build(int pci_id,

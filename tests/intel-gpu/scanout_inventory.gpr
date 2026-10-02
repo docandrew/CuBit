@@ -1,0 +1,9 @@
+project Scanout_Inventory is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("intel_gpu_cursor_control.ads", "scanout_inventory_tests.adb", "intel_gpu_display_presence.ads", "intel_gpu_display_presence.adb", "intel_gpu_scanout_inventory.ads", "intel_gpu_scanout_inventory.adb", "intel_gpu_scanout_range.ads", "intel_gpu_scanout_range.adb", "intel_gpu_plane_control.ads", "intel_gpu_plane_decode.ads", "intel_gpu_plane_decode.adb", "intel_gpu_cursor_decode.ads", "intel_gpu_cursor_decode.adb", "intel_gpu_ggtt.ads", "intel_gpu_ggtt.adb");
+   for Object_Dir use "build-scanout-inventory";
+   for Main use ("scanout_inventory_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Scanout_Inventory;

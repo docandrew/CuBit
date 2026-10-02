@@ -1,8 +1,8 @@
-with CCL.Objects.Views;
+with CCL.Objects;
 
--- Optional, out-of-line storage for native object programs. Scalar machines
--- do not acquire a large object pool. Keep this single-owner machine alive
--- across asynchronous calls; no borrowed IPC frame or host pointer is retained.
+-- The host boundary for programs whose imports take or return native object
+-- images. Keep this single-owner machine alive across asynchronous calls; no
+-- borrowed IPC frame or host pointer is retained.
 package CCL.VM.Native_Objects with SPARK_Mode is
    type Machine is limited private;
    procedure Initialize (Item : Validated_Program; Fuel : Natural; State : in out Machine)
@@ -29,7 +29,8 @@ package CCL.VM.Native_Objects with SPARK_Mode is
      (Item : Validated_Program; State : Machine; Contract : CCL.Objects.Binding)
       return Boolean with Pre => Is_Valid (Item);
    -- Non-mutating host preflight before submitting an effect or consuming a
-   -- completion. Scalar native images are unboxed; aggregates retain snapshots.
+   -- completion. Scalar native images are unboxed; aggregates are copied into
+   -- the value arena.
    -- Neither function authenticates an IPC receipt or associates two lifetimes.
    -- Trusted host completion only: authenticate/correlate the IPC receipt to
    -- this pending call and run before invoking this API. Contract must be the
@@ -62,15 +63,13 @@ package CCL.VM.Native_Objects with SPARK_Mode is
    -- cannot present a guessed index or a reference from another machine.
    -- Contract is independently approved metadata, not an authority grant.
    procedure Stop (State : in out Machine);
-   -- Releases local snapshots, not an in-flight service operation. The host
+   -- Releases the machine's values, not an in-flight service operation. The host
    -- still owns any grants/completion tokens and must drain/retire those safely.
 private
-   subtype Stored_Index is Object_Position range 1 .. MAX_OBJECT_VALUES;
-   type Object_Array is array (Stored_Index) of CCL.Objects.Views.Snapshot;
+   --  Records and payload variants live in the core machine's value arena:
+   --  a completed image is copied in, an exported value copied out.
    type Machine is limited record
       Core : Machine_State;
-      Objects : Object_Array;
-      Used : Object_Position := 0;
       Initialized : Boolean := False;
    end record;
 end CCL.VM.Native_Objects;

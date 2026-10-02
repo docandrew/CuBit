@@ -1,0 +1,2 @@
+(startup v1
+  (start "native-mesa-sync.app" (priority 3)))

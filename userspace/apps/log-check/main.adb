@@ -7,6 +7,12 @@ with CuBit.Memory_Grants;
 
 procedure Main is
    package P renames CuBit.Log_Protocol;
+   --  Records published in the delivery check: within one publisher's rate
+   --  burst, so none is rate-limited. (Overflowing an observer queue takes
+   --  CuBit.Log_Protocol.Observer_Queue_Records of them, minutes at the
+   --  sustained publication rate; the explicit Gap on overflow is covered by
+   --  the hosted Log_Fanout tests and proofs, tests/log-fanout.)
+   Delivered : constant := 19;
    package L renames CuBit.Log_Records;
    package G renames CuBit.Memory_Grants;
    use type P.Status;
@@ -275,12 +281,11 @@ begin
    Tag := capCall (P.Observer_Slot, Msg);
    Check (Tag.label = P.Status'Enum_Rep (P.Denied), "retired query rejected");
 
-   for I in 1 .. 19 loop
+   --  Every record arrives, in order, from this publisher, with no gap.
+   for I in 1 .. Delivered loop
       Publish_Record;
    end loop;
-   CuBit.Logging.Read_Next (Reader, Value, Lost, Result);
-   Check (Result = P.Gap and then Lost = 3, "explicit overflow gap");
-   for I in 1 .. 16 loop
+   for I in 1 .. Delivered loop
       CuBit.Logging.Read_Next (Reader, Value, Lost, Result);
       Check (Result = P.OK and then
              Value.Source = syscall (SYSCALL_GETPID) and then
