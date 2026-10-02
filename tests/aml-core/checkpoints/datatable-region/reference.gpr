@@ -1,8 +1,0 @@
-project Reference is
- for Source_Dirs use ("lib", "firmware", "service", "test");
- for Object_Dir use "reference-build";
- for Main use ("table_runner.adb");
- package Compiler is
-  for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
- end Compiler;
-end Reference;

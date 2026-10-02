@@ -1,8 +1,0 @@
-{
-  "checks": 8,
-  "baseline_diagnostics": [
-    "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
-  ],
-  "batches_with_diagnostics": 2,
-  "scope": "actual AML DataTableRegion + Field execution through CuBit service and ACPICA"
-}
