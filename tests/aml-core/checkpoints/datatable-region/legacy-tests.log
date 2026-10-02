@@ -1,0 +1,20 @@
+CuBit development shell
+  Build:  make -C kernel world
+  Test:   tests/headless/run.sh --test desktop-display
+  Run:    make -C kernel run-desktop
+Setup
+   [mkdir]        object directory for project Regression
+Compile
+   [Ada]          execute_tests.adb
+   [Ada]          aml_decode.adb
+   [Ada]          aml_execute.adb
+   [Ada]          aml_integers.adb
+   [Ada]          aml_logic.adb
+   [Ada]          aml_coercions.adb
+   [Ada]          aml_names.adb
+Bind
+   [gprbind]      execute_tests.bexch
+   [Ada]          execute_tests.ali
+Link
+   [link]         execute_tests.adb
+AML-EXECUTE-CHECK: PASS 2099

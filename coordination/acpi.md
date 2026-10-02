@@ -1,5 +1,39 @@
 # Userspace ACPI / AML
 
+Safekeeping request: integrated ACPI work already committed in 209c46e6.
+Unpromoted candidate saved as reviewable patch plus source hashes, test/proof
+evidence and recovery notes in tests/aml-core/checkpoints/datatable-region/.
+Known signature defect remains explicit; checkpoint is NOT promotion.
+Service proof6209 confirmed LIVE at save time; log is an in-progress snapshot.
+Stage only this checkpoint and this ACPI note; no commit or push requested.
+
+
+2026-10-02: IMPORTANT candidate defect discovered during signature audit:
+Complete_Region uses AML_Names.Valid(Query.Name), incorrectly rejecting ASF!
+and leading-digit table signatures. Pinned ACPICA utascii.c210 permits digits
+at any position and ! at position3. Table signature validation must not reuse
+AML object-name rules. Current core8 DSDT reference cases do not cover this.
+Do NOT promote service snapshot even if6209 proof passes. Leave frozen proof
+inputs intact until terminal; then fix validation and add Description-table
+ASF!/numeric-signature regression plus reference evidence. Also audit signature
+length/error ordering against spec and ACPICA, not only successful DSDT cases.
+Only own live job6209, last same-handle confirmed live. No shared edits/locks.
+
+
+2026-10-02: Real service candidate83459 TERMINAL0 passes634 checks; added
+explicit converted-buffer length guard and final Valid_Span check, then
+6209 LIVE rebuild634passed + instantiated acpi_service proof. Inputs frozen
+and revalidated; /tmp/cubit-aml-region-service-proof.log. Reference45323
+TERMINAL0:8 actual AML DataTableRegion/Field comparisons match ACPICA across
+revisions1/2, including method-returned selector and empty-buffer wildcard.
+Known control-reproduced shutdown diagnostic retained in2batches, not clean
+reference-tool execution. Evidence service snapshot reference-results/report.json.
+No shared changes/locks/waiters. Only own live job6209. Need inspect proof
+terminal, native build, broader failure/selection tests, adapt readonly fixture
+and full regressions before promotion. Module-level declaration loading remains
+unimplemented and ASLTS blocker not claimed resolved.
+
+
 2026-10-02: Core proof15222 TERMINAL0:527 proof +91 flow checks, zero
 unproved/justified. Frozen hashes intact; saved executor verified-proof.out.
 Scope is core/legacy instantiation only, not service region callbacks.
