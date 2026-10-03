@@ -10,7 +10,7 @@
 --  and feeds the result to the HDA driver. Each client gets a shared ring
 --  buffer (grant region) for zero-copy PCM transfer.
 --
---  Ring buffer layout (per client, 2 pages = 8KB):
+--  Ring buffer layout (per client, 3 pages = 12KB):
 --    Offset 0x000: Header (64 bytes)
 --      +0x00  writePtr    : U32  (producer advances after writing)
 --      +0x04  readPtr     : U32  (consumer advances after reading)
@@ -25,6 +25,7 @@
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with CuBit.Audio_Control;
+with CuBit.Audio_Ring;
 
 package Mixer is
    Master : CuBit.Audio_Control.State;
@@ -105,14 +106,19 @@ package Mixer is
    type StreamTable is array (0 .. MAX_STREAMS - 1) of StreamInfo;
 
    streams : StreamTable;
+   -- Counts represent source frames in outstanding device periods. A period
+   -- remains pending until the authenticated HDA completion for that slot.
+   subtype Period_Slot is Natural range 0 .. 31;
+   function Buffered_Frames (Index : Natural) return Unsigned_64;
+   function Device_Frames (Index : Natural) return Unsigned_64;
 
    ---------------------------------------------------------------------------
    --  Grant / ring buffer constants
    ---------------------------------------------------------------------------
-   RING_PAGES     : constant Unsigned_64 := 2;
-   RING_TOTAL     : constant Unsigned_32 := 8192;  --  2 pages
-   RING_HDR_SIZE  : constant Unsigned_32 := 64;     --  Header occupies 64 bytes
-   RING_DATA_SIZE : constant Unsigned_32 := RING_TOTAL - RING_HDR_SIZE;
+   RING_PAGES     : constant Unsigned_64 := CuBit.Audio_Ring.Page_Count;
+   RING_TOTAL     : constant Unsigned_32 := CuBit.Audio_Ring.Allocation_Bytes;
+   RING_HDR_SIZE  : constant Unsigned_32 := CuBit.Audio_Ring.Header_Bytes;
+   RING_DATA_SIZE : constant Unsigned_32 := CuBit.Audio_Ring.Data_Bytes;
 
    GRANT_REGION_BASE : constant Unsigned_64 := 16#4000_0000_0000#;
    GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096;
@@ -167,6 +173,7 @@ package Mixer is
    --  directly to one HDA PCM DMA period.  Returns number of frames mixed.
    function mixPeriod (mixBuf     : in out MixBuffer;
                        periodAddr : Unsigned_64;
+                       Slot : Period_Slot;
                        maxFrames  : Natural) return Natural;
 
 end Mixer;

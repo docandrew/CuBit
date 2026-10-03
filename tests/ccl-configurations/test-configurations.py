@@ -82,6 +82,17 @@ class Configurations(unittest.TestCase):
                 self.assertEqual(result.stdout, expected)
                 self.assertFalse((ROOT / relative).exists(), 'old source .conf still present')
 
+    def test_live_graphics_diagnostics_menu(self):
+        result = self.compile((ROOT / 'tests/hardware/system-live.ccl').read_text())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        settings = dict(line.split('=', 1) for line in result.stdout.splitlines())
+        self.assertEqual(settings['logs.minimum-level'], 'Severity.Information')
+        self.assertEqual(settings['desktop.launch.96-logs'],
+                         '(launch v1 (label "Logs") (program "logs.app") (icon files))')
+        self.assertEqual(settings['desktop.launch.12-console'],
+                         '(launch v1 (label "CCL Console") (program "ccl-console.app") (icon uilab))')
+        self.assertIn('desktop.launch.95-boot-logs', settings)
+
     def test_real_ccl_field_expressions(self):
         result = self.compile('''# Ordinary CCL, no host callbacks
           (system-config v1

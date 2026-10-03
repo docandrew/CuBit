@@ -20,7 +20,12 @@ package Intel_GPU_VM_Buffer is
    procedure Bind_Range
      (Object : in out VM.Image; Backing : Intel_GPU_Buffer_Reply.Extent_View;
       GPU, Offset, Bytes : Interfaces.Unsigned_64;
-      Accepted : out Boolean);
+      Accepted : out Boolean;
+      Access_Mode : Intel_GPU_ADLN_PPGTT.Page_Access := Intel_GPU_ADLN_PPGTT.Read_Write);
+   -- Access must come from the authenticated backing-use contract, not a
+   -- CPU grant's flags. ADLN currently rejects Read_Only due to the Gen12
+   -- read-only fault restriction; never silently widen it to Read_Write.
+   -- The default retains ordinary owner-buffer binding behavior only.
    -- Verify every page of a byte slice against a sealed retained VM image.
    -- No mutation or DMA address output. The image must describe the currently
    -- published generation; this does not inspect hardware tables or commands.

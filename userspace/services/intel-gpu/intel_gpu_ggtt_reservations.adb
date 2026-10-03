@@ -11,6 +11,11 @@ package body Intel_GPU_GGTT_Reservations with SPARK_Mode is
             Object.Claims (J).Limit <= Object.Claims (I).First or else
             Object.Claims (I).Limit <= Object.Claims (J).First)));
    function Count (Object : Ledger) return Natural is (Object.Used);
+   procedure Forget_Detached (Object : in out Ledger; Slot : Positive) is
+   begin
+      Object.Claims (Slot) := Object.Claims (Object.Used);
+      Object.Used := Object.Used - 1;
+   end Forget_Detached;
    function Claims (Object : Ledger) return Claim_Model is
      ((Values => Object.Claims));
    function Preserves

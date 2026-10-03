@@ -16,6 +16,7 @@ bench = false
 [features]
 default = []
 bundled = ["servo/bundled"]
+media = ["servo/media-gstreamer", "dep:gstreamer"]
 
 [dependencies]
 dpi = { workspace = true }
@@ -30,4 +31,8 @@ url = { workspace = true }
 [target.'cfg(target_os = "cubit")'.dependencies]
 # Expanded by patch_servo.py for the selected Servo checkout. Use the same
 # rasterizer with Servo's Rust runtime, not a second no_std allocator/panic ABI.
+gstreamer = { workspace = true, optional = true }
+aws-lc-rs = { workspace = true }
+aws-lc-sys = { version = "=0.45.0", default-features = false }
+time = { workspace = true }
 cubit-fonts = { path = "__CUBIT_FONTS__" }

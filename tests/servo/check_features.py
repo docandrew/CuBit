@@ -11,10 +11,15 @@ def check(events):
     assert len(starts) == 1, 'missing/duplicate feature phase'
     phase = events[starts[0]:]
     markers = [e['marker'] for e in phase if e['event'] == 'callback']
-    for index in range(2, 17):
+    first = phase[0].get('first_tab_id', 2)
+    count = phase[0].get('live_tabs', 20)
+    assert isinstance(first, int) and first >= 2
+    assert isinstance(count, int) and count >= 20
+    last = first + count - 2
+    for index in range(first, last + 1):
         assert f'CUBITSHELL-BROWSER: tab new {index}' in markers
         assert f'CUBITSHELL-BROWSER: tab close {index}' in markers
-    for index in (15, 16):
+    for index in (last - 1, last):
         assert markers.count(f'CUBITSHELL-BROWSER: tab select {index}') >= 2
     assert markers.count('CUBITSHELL-BROWSER: window opened') == 4
     assert markers.count('CUBITSHELL-BROWSER: window limit') == 1
@@ -25,10 +30,10 @@ def check(events):
     tabs = [e for e in phase if e['event'] == 'tabs-overflow-pass']
     windows = [e for e in phase if e['event'] == 'windows-isolation-reuse-pass']
     assert len(tabs) == len(windows) == 1
-    assert tabs[0]['live_tabs'] == 16 and windows[0]['windows'] == 4
+    assert tabs[0]['live_tabs'] == count and windows[0]['windows'] == 4
     assert tabs[0]['seconds'] < windows[0]['seconds']
     assert any(e['event'] == 'reopened-browser-closed' for e in phase)
-    return {'live_tabs': 16, 'overflow_orientations': 2, 'simultaneous_windows': 4,
+    return {'live_tabs': count, 'overflow_orientations': 2, 'simultaneous_windows': 4,
             'capacity_rejection': 'PASS', 'isolated_close_and_reuse': 'PASS'}
 
 

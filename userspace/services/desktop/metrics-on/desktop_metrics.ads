@@ -2,11 +2,14 @@ with Interfaces;
 with CuBit.Messages;
 with Compositor_Frame_Trace;
 with Compositor_Stage_Metrics;
+with Compositor_Work_Metrics;
 with Desktop_Metric_Publisher;
 with CCL_Manifest_Bindings;
 package Desktop_Metrics with SPARK_Mode => Off is
    Enabled : constant Boolean := True;
    package Publisher is new Desktop_Metric_Publisher (CCL_Manifest_Bindings.Slot_metrics);
+   procedure Record_Work
+     (Kind : Compositor_Work_Metrics.Work_Kind; Pixels, Now : Interfaces.Unsigned_64) renames Publisher.Record_Work;
    procedure Record_Stage
      (Stage : Compositor_Stage_Metrics.Stage; First, Last : Interfaces.Unsigned_64) renames Publisher.Record_Stage;
    procedure Record_Completion (Frame : Compositor_Frame_Trace.Record_Value) renames Publisher.Record_Completion;

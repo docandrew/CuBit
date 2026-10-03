@@ -78,3 +78,10 @@ userspace/apps/display-check/build-gpu-clear-failure/
 *.su
 /userspace/services/desktop/build-*/
 /tests/free-block-set/build-*/
+# Isolated Intel allocation regression/proof outputs (not source fixtures).
+/tests/intel-gpu/budget-accounting.*/
+/tests/intel-gpu/prefix-geometry.*/
+/tests/intel-gpu/prefix-proof.*/
+/tests/intel-gpu/prefix-transport.*/
+/tests/intel-gpu/transport-proof-tmp.*/
+/tests/intel-gpu/demand-backing.*/

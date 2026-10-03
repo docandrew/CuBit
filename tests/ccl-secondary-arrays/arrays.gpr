@@ -1,3 +1,4 @@
+with "../../userspace/ccl/cubit_shared.gpr";
 project Arrays is
    for Source_Dirs use (".", "../../userspace/ccl/src");
    for Source_Files use ("main.adb", "integer_arrays.ads", "integer_array_types.ads",

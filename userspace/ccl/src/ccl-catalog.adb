@@ -580,7 +580,7 @@ is
          end loop;
       end if;
 
-      if Item.Count = CCL.VM.MAX_IMPORTS then
+      if Item.Count = MAX_GRANTS then
          Result := Grant_Full;
       else
          Item.Entries (Item.Count) :=

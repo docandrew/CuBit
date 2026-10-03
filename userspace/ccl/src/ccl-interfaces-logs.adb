@@ -2,9 +2,10 @@ with CCL.Host_Values;
 with CCL.VM;
 with CCL.Objects.Catalog;
 
+with CCL.Interface_Sources;
+
 package body CCL.Interfaces.Logs with SPARK_Mode is
    use type CCL.Catalog.Catalog_Error;
-   use type CCL.Types.Definition_Result;
    use type CCL.Types.List_Result;
    use type CCL.Objects.Build_Result;
    use type CCL.Objects.Catalog.Publication_Result;
@@ -12,46 +13,27 @@ package body CCL.Interfaces.Logs with SPARK_Mode is
    --  Fields of a LogEntry, in order.
    ENTRY_FIELDS : constant := 4;
 
-   --  A member's CCL name, as logs.schema spells it.
-   function Member_Name (Level : Severity) return String is
-     (case Level is
-         when Trace => "Trace", when Debug => "Debug", when Information => "Information",
-         when Warning => "Warning", when Error => "Error", when Critical => "Critical");
 
    procedure Define_Types
      (Types : in out CCL.Types.Registry; Entries : out CCL.Types.Type_Reference;
-      Contract : out CCL.Objects.Binding; Accepted : out Boolean)
+      Contract, Severity_Contract : out CCL.Objects.Binding; Accepted : out Boolean)
    is
-      Unbound : CCL.Objects.Binding;
-      Levels, Log_Entry : CCL.Types.Type_Reference;
-      Defined : CCL.Types.Definition_Result;
       Specialized : CCL.Types.List_Result;
-      Members : CCL.Types.Component_Array := [others => (others => <>)];
+      Unbound : CCL.Objects.Binding;
+      function Named (Name : String) return CCL.Types.Type_Reference is
+        (CCL.Interface_Sources.Named_Type (Types, Name));
    begin
       Entries := CCL.Types.Invalid_Type;
       Contract := Unbound;
-      for Level in Severity loop
-         Members (Severity'Pos (Level) + 1) := (CCL.Types.Named (Member_Name (Level)), CCL.Types.Unit_Type);
-      end loop;
-      CCL.Types.Define
-        (Types, (Identifier => CCL.Types.Named ("Severity"), Form => CCL.Types.Sum,
-                 Count => Severity'Pos (Severity'Last) + 1, Parts => Members), Levels, Defined);
-      Accepted := Defined = CCL.Types.Defined;
-      if not Accepted then return; end if;
-      CCL.Types.Define
-        (Types, (Identifier => CCL.Types.Named ("LogEntry"), Form => CCL.Types.Product,
-                 Count => ENTRY_FIELDS,
-                 Parts => [1 => (CCL.Types.Named ("time"), CCL.Types.Integer_Type),
-                           2 => (CCL.Types.Named ("severity"), Levels),
-                           3 => (CCL.Types.Named ("source"), CCL.Types.Integer_Type),
-                           4 => (CCL.Types.Named ("message"), CCL.Types.String_Type),
-                           others => <>]), Log_Entry, Defined);
-      Accepted := Defined = CCL.Types.Defined;
-      if not Accepted then return; end if;
-      CCL.Types.Specialize_List (Types, Log_Entry, Entries, Specialized);
-      Accepted := Specialized in CCL.Types.List_Specialized | CCL.Types.List_Already_Specialized;
+      Severity_Contract := Unbound;
+      CCL.Interface_Sources.Declare_Types (TYPE_SOURCE, Types, Accepted);
       if Accepted then
-         CCL.Objects.Bind (Types, Entries, SCHEMA_KEY, Contract, Accepted);
+         CCL.Types.Specialize_List (Types, Named ("LogEntry"), Entries, Specialized);
+         Accepted := Specialized in CCL.Types.List_Specialized | CCL.Types.List_Already_Specialized;
+      end if;
+      if Accepted then CCL.Objects.Bind (Types, Entries, SCHEMA_KEY, Contract, Accepted); end if;
+      if Accepted then
+         CCL.Objects.Bind (Types, Named ("Severity"), SEVERITY_KEY, Severity_Contract, Accepted);
       end if;
    end Define_Types;
 
@@ -60,35 +42,79 @@ package body CCL.Interfaces.Logs with SPARK_Mode is
    is
       Types : CCL.Types.Registry := CCL.Catalog.Visible_Types (Item);
       Entries : CCL.Types.Type_Reference;
-      Contract : CCL.Objects.Binding;
+      Contract, Severity_Contract : CCL.Objects.Binding;
       Accepted : Boolean;
       Published : CCL.Objects.Catalog.Publication_Result;
       Descriptor : CCL.Catalog.Interface_Descriptor;
-      Operation : CCL.Catalog.Operation_Descriptor;
+      Entry_Operation : CCL.Catalog.Operation_Descriptor;
+      --  Reading logs, or what logstore keeps, observes; changing what it
+      --  keeps controls.
+      function Contract_Of (Op : Operation) return CCL.Host_Values.Import_Declaration is
+        (case Op is
+            when Recent =>
+              (Argument => CCL.Host_Values.Text_Value, Argument_Text_Limit => MAX_SERVICE_NAME,
+               Result => CCL.Host_Values.Object_Value, Result_Schema => SCHEMA_KEY,
+               Authority => CCL.VM.Observe_Authority, others => <>),
+            when Minimum =>
+              (Argument => CCL.Host_Values.Integer_Value,
+               Result => CCL.Host_Values.Object_Value, Result_Schema => SEVERITY_KEY,
+               Authority => CCL.VM.Observe_Authority, others => <>),
+            when Set_Minimum =>
+              (Argument => CCL.Host_Values.Object_Value, Argument_Schema => SEVERITY_KEY,
+               Result => CCL.Host_Values.Object_Value, Result_Schema => SEVERITY_KEY,
+               Authority => CCL.VM.Control_Authority, others => <>));
+      function Parameters (Op : Operation) return Natural is (if Op = Minimum then 0 else 1);
    begin
       Error := CCL.Catalog.Invalid_Host_Contract;
-      Define_Types (Types, Entries, Contract, Accepted);
+      Define_Types (Types, Entries, Contract, Severity_Contract, Accepted);
       if not Accepted then return; end if;
       CCL.Catalog.Publish_Schema (Item, Contract, Published);
       if Published not in CCL.Objects.Catalog.Published | CCL.Objects.Catalog.Already_Published then
          return;
       end if;
+      CCL.Catalog.Publish_Schema (Item, Severity_Contract, Published);
+      if Published not in CCL.Objects.Catalog.Published | CCL.Objects.Catalog.Already_Published then
+         return;
+      end if;
       CCL.Catalog.Define_Interface ("logs", 1, 0, DIGEST, Descriptor, Error);
-      if Error = CCL.Catalog.Catalog_Valid then
-         CCL.Catalog.Define_Host_Operation
-           ("recent", 1,
-            (Argument => CCL.Host_Values.Text_Value, Argument_Text_Limit => MAX_SERVICE_NAME,
-             Result => CCL.Host_Values.Object_Value, Result_Schema => SCHEMA_KEY,
-             Authority => CCL.VM.Observe_Authority, others => <>),
-            Operation, Error);
-      end if;
-      if Error = CCL.Catalog.Catalog_Valid then
-         CCL.Catalog.Add_Operation (Descriptor, Operation, Error);
-      end if;
+      for Op in Operation loop
+         exit when Error /= CCL.Catalog.Catalog_Valid;
+         CCL.Catalog.Define_Host_Operation (Name (Op), Parameters (Op), Contract_Of (Op), Entry_Operation, Error);
+         if Error = CCL.Catalog.Catalog_Valid then
+            CCL.Catalog.Add_Operation (Descriptor, Entry_Operation, Error);
+         end if;
+      end loop;
       if Error = CCL.Catalog.Catalog_Valid then
          CCL.Catalog.Publish (Item, Descriptor, Error);
       end if;
    end Publish;
+
+   procedure Severity_Value
+     (Contract : CCL.Objects.Binding; Level : Severity; Result : out CCL.Objects.Image; Built : out Boolean)
+   is
+      Step : CCL.Objects.Build_Result;
+   begin
+      Result := CCL.Objects.Empty (Contract);
+      CCL.Objects.Append (Result, CCL.Objects.Variant_Cell (Severity'Pos (Level) + 1), Step);
+      --  A member without a payload still carries its Unit payload cell.
+      if Step = CCL.Objects.Added then
+         CCL.Objects.Append (Result, CCL.Objects.Unit_Cell, Step);
+      end if;
+      Built := Step = CCL.Objects.Added and then CCL.Objects.Validate (Result, Contract);
+   end Severity_Value;
+
+   procedure Severity_Of
+     (Contract : CCL.Objects.Binding; Value : CCL.Objects.Image; Level : out Severity; Found : out Boolean)
+   is
+      Choice : Unsigned_64;
+   begin
+      Level := Severity'First;
+      Found := CCL.Objects.Validate (Value, Contract);
+      if not Found then return; end if;
+      Choice := Value.Cells (1).First;
+      Found := Choice in 1 .. Severity'Pos (Severity'Last) + 1;
+      if Found then Level := Severity'Val (Choice - 1); end if;
+   end Severity_Of;
 
    procedure Start (Contract : CCL.Objects.Binding; Image : out CCL.Objects.Image) is
       Built : CCL.Objects.Build_Result;

@@ -1,3 +1,5 @@
+with CCL.Streams;
+with CuBit.Failures;
 with CCL.Text_Operations;
 with CCL.List_Operations;
 with Interfaces;
@@ -5,6 +7,7 @@ with CCL.Catalog;
 with CCL.VM;
 with CCL.Host_Values;
 with CCL.Types;
+with CCL.Types.Shapes;
 with CCL.Objects;
 with CCL.Resource_Policies;
 
@@ -91,7 +94,10 @@ is
       Handler_Form,
       List_Construct,
       Lambda_Form,
-      Builtin_Form);
+      Builtin_Form,
+      --  (stream T n): the session's stream n, whose elements are T
+      --  (docs/ccl-streams.md). Integer_Value holds n.
+      Stream_Reference);
 
    subtype Static_Type is CCL.Types.Type_Reference;
 
@@ -106,7 +112,9 @@ is
       --  Strings: the subject string is the last operand.
       Upper_Builtin, Lower_Builtin, Trim_Builtin, Starts_With_Builtin,
       Ends_With_Builtin, Index_Of_Builtin, Replace_Builtin, Split_Builtin,
-      Join_Builtin, Parse_Int_Builtin);
+      Join_Builtin, Parse_Int_Builtin,
+      --  Views of a stream the session holds (docs/ccl-streams.md).
+      Latest_Builtin, Window_Builtin, Arrived_Builtin, Lost_Builtin);
    function Builtin_Name (Operation : Builtin_Operation) return String is
      (case Operation is
         when No_Builtin => "", when Each_Builtin => "each",
@@ -122,7 +130,19 @@ is
         when Trim_Builtin => "trim", when Starts_With_Builtin => "starts-with",
         when Ends_With_Builtin => "ends-with", when Index_Of_Builtin => "index-of",
         when Replace_Builtin => "replace", when Split_Builtin => "split",
-        when Join_Builtin => "join", when Parse_Int_Builtin => "parse-int");
+        when Join_Builtin => "join", when Parse_Int_Builtin => "parse-int",
+        when Latest_Builtin => "latest", when Window_Builtin => "window",
+        when Arrived_Builtin => "arrived", when Lost_Builtin => "lost");
+   --  The stream views: the stream is the last operand.
+   function Is_Stream_View (Operation : Builtin_Operation) return Boolean is
+     (Operation in Latest_Builtin .. Lost_Builtin);
+   function Stream_View_Of (Operation : Builtin_Operation) return CCL.Streams.View_Kind is
+     (case Operation is
+         when Latest_Builtin => CCL.Streams.Latest_View,
+         when Window_Builtin => CCL.Streams.Window_View,
+         when Arrived_Builtin => CCL.Streams.Arrived_View,
+         when others => CCL.Streams.Lost_View)
+     with Pre => Is_Stream_View (Operation);
    --  The string built-ins with a shared implementation (CCL.Text_Operations),
    --  which the interpreter and compiled code both call. On a String subject
    --  first, last, skip, reverse and contains are these; on a list they are
@@ -192,7 +212,8 @@ is
      (case Operation is
         when No_Builtin => 0,
         when Sum_Builtin | Reverse_Builtin | Sort_Builtin | Min_Builtin | Max_Builtin |
-             Upper_Builtin | Lower_Builtin | Trim_Builtin | Parse_Int_Builtin => 1,
+             Upper_Builtin | Lower_Builtin | Trim_Builtin | Parse_Int_Builtin |
+             Latest_Builtin | Arrived_Builtin | Lost_Builtin => 1,
         when Fold_Builtin | Replace_Builtin => 3,
         when others => 2);
    --  Builtins whose subject (last operand) may be a String as well as a list.
@@ -237,6 +258,9 @@ is
    end record;
    type Function_Array is array (Function_Index) of Function_Declaration;
 
+   --  Per record field: how a construction gave it. The evaluator sees only
+   --  positional components; views use these to print the source's spelling.
+   type Field_Flags is array (CCL.Types.Component_Index) of Boolean with Pack;
    type Node is record
       Kind            : Node_Kind := Invalid_Node;
       Static_Kind     : Static_Type := Invalid_Type;
@@ -262,6 +286,9 @@ is
       Argument_Count  : Parameter_Count := 0;
       Arguments       : Argument_Array := [others => NO_NODE];
       Components      : Component_Node_Array := [others => NO_NODE];
+      --  Record_Construct: fields given as :name value, and fields left out
+      --  and filled from their defaults.
+      Named_Fields, Defaulted_Fields : Field_Flags := [others => False];
       --  List_Construct: how many Components are elements.
       Element_Count   : CCL.Types.Component_Count := 0;
       --  Name_Reference naming a defined function (a function value), or a
@@ -315,7 +342,15 @@ is
       Evaluation_Invalid_Number,
       --  A REPL value binding whose value has no literal form to keep
       --  (too long, or a kind the session cannot store).
-      Session_Value_Not_Kept);
+      Session_Value_Not_Kept,
+      --  A stream view the session could not answer: not a stream it holds,
+      --  latest before the first element, or a window outside
+      --  1 .. CCL.Streams.Maximum_Window.
+      Stream_Unavailable,
+      Stream_Empty,
+      Stream_Window_Out_Of_Range,
+      --  The session's elements do not have the type the evaluation named.
+      Stream_Element_Mismatch);
 
    type Diagnostic_Code is
      (No_Diagnostic,
@@ -337,6 +372,7 @@ is
       Expected_String,
       Expected_Comparable,
       Expected_Printable,
+      Expected_Stream,
       Invalid_Type_Declaration,
       Invalid_Variant_Payload,
       Invalid_Match_Pattern,
@@ -362,15 +398,38 @@ is
       Host_Object_Type_Mismatch,
       List_Element_Mismatch,
       Unsupported_List_Element,
+      Unsupported_Stream_Element,
+      Stream_Not_Data,
       Empty_List_Needs_Type,
       Lambda_Parameter_Needs_Type,
       Lambda_Capture_Unsupported,
-      Too_Many_Captures);
+      Too_Many_Captures,
+      --  A record field's default is not a constant of the field's type.
+      Invalid_Field_Default,
+      --  Named construction (Type field => value ...).
+      Unknown_Field_Argument,
+      Repeated_Field_Argument,
+      Missing_Field_Argument,
+      Positional_After_Named);
 
    type Text_Result is record
       Length : Natural range 0 .. MAX_TEXT_BYTES := 0;
       Data   : String (1 .. MAX_TEXT_BYTES) :=
         [others => Character'Val (0)];
+   end record;
+   --  A result's CCL literal ((Process 1 "init" ...) and lists of them):
+   --  larger than a host text value, so a full table fits one result.
+   MAX_LITERAL_BYTES : constant := 4_096;
+   type Literal_Text is record
+      Length : Natural range 0 .. MAX_LITERAL_BYTES := 0;
+      Data   : String (1 .. MAX_LITERAL_BYTES) := [others => Character'Val (0)];
+   end record;
+
+   --  A type as source writes it: Integer, P, (List P).
+   MAX_TYPE_TEXT : constant := 128;
+   type Type_Text is record
+      Length : Natural range 0 .. MAX_TYPE_TEXT := 0;
+      Data : String (1 .. MAX_TYPE_TEXT) := [others => ' '];
    end record;
 
    --  A list result: its elements as values (Integer, Boolean; a Character
@@ -401,6 +460,8 @@ is
 
    function Analysis_Root
      (Result : Analysis_Result) return Node_Reference;
+   function Analysis_Diagnostic_Subject
+     (Result : Analysis_Result) return Name;
    function Analysis_Types (Result : Analysis_Result) return CCL.Types.Registry;
    function Analysis_Resource_Policies (Result : Analysis_Result)
      return CCL.Resource_Policies.Policy_Table;
@@ -434,6 +495,9 @@ is
       Diagnostic     : Diagnostic_Code := No_Diagnostic;
       --  One-based source position; zero means no source diagnostic.
       Diagnostic_Position : Source_Position := 0;
+      --  The name a diagnostic is about, when it has one: the field a
+      --  record construction left out, named twice or does not have.
+      Diagnostic_Subject : Name;
       Has_Value      : Boolean := False;
       Has_Text       : Boolean := False;
       Has_Character  : Boolean := False;
@@ -462,7 +526,19 @@ is
       Has_Literal : Boolean := False;
       Literal_Type : Static_Type := Invalid_Type;
       Literal_Type_Name : Name;
-      Literal : Text_Result := (others => <>);
+      Literal : Literal_Text := (others => <>);
+      --  Its rows' record type and fields, for a table (Count = 0: none).
+      Literal_Shape : CCL.Types.Shapes.Row_Shape := (others => <>);
+      --  A stream the session holds: its handle, and its element type as
+      --  written. It has no literal; the session keeps it as (stream T n).
+      Has_Stream : Boolean := False;
+      Stream : CCL.Streams.Handle := CCL.Streams.No_Handle;
+      Stream_Element : Type_Text := (others => <>);
+      --  A service call that produced no value (Host_Call_Failed,
+      --  Host_Authority_Denied): which operation, and why, with how to
+      --  allow it when the host says (docs/ccl-errors.md).
+      Failed_Operation : Name;
+      Failure : CuBit.Failures.Failure;
       Fuel_Remaining : Natural := 0;
    end record;
 
@@ -470,7 +546,7 @@ is
      (Item.Status = Succeeded and then Item.Has_Value and then
       not Item.Has_Text and then not Item.Has_Character and then
       not Item.Has_List and then not Item.Has_Function and then
-      not Item.Has_Literal and then
+      not Item.Has_Literal and then not Item.Has_Stream and then
       CCL.Types."=" (Item.Variant_Type, Invalid_Type));
 
    procedure Interpret
@@ -511,6 +587,11 @@ is
         (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
          Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result);
       Allow_Text : Boolean := True;
+      --  Answers stream views (docs/ccl-streams.md). Reply arrives as
+      --  No_Such_Stream; a host without streams leaves it so.
+      with procedure Read_Stream
+        (Context : in out Host_Context; Request : CCL.Streams.View_Request;
+         Reply : in out CCL.Streams.View_Reply) is null;
    procedure Interpret_With_Values
      (Source : String; Fuel : Natural;
       Visible_Interfaces : CCL.Catalog.Interface_Catalog;
@@ -522,6 +603,7 @@ is
       Status : Interpretation_Status := Parse_Failed;
       Diagnostic : Diagnostic_Code := No_Diagnostic;
       Diagnostic_Position : Source_Position := 0;
+      Diagnostic_Subject : Name;
       Fuel_Remaining : Natural := 0;
       Has_Value : Boolean := False;
       Value : CCL.Objects.Image;
@@ -560,6 +642,9 @@ private
          Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result);
       Export_Native : Boolean := False;
       with procedure Deliver_Native (Value : CCL.Objects.Image) is null;
+      with procedure Read_Stream
+        (Context : in out Host_Context; Request : CCL.Streams.View_Request;
+         Reply : in out CCL.Streams.View_Reply) is null;
    procedure Process_Source_With_Host
      (Source : String; Fuel : Natural;
       Visible_Interfaces : CCL.Catalog.Interface_Catalog;
@@ -579,6 +664,7 @@ private
       Status              : Analysis_Status := Analysis_Parse_Failed;
       Diagnostic          : Diagnostic_Code := No_Diagnostic;
       Diagnostic_Position : Natural range 0 .. MAX_SOURCE_LENGTH + 1 := 0;
+      Diagnostic_Subject  : Name;
       Tree                : Syntax_Tree;
       Source_Length : Natural range 0 .. MAX_SOURCE_LENGTH := 0;
       Source_Text : String (1 .. MAX_SOURCE_LENGTH) := [others => ' '];

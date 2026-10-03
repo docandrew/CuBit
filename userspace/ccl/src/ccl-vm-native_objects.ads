@@ -1,4 +1,5 @@
 with CCL.Objects;
+with CCL.Streams;
 
 -- The host boundary for programs whose imports take or return native object
 -- images. Keep this single-owner machine alive across asynchronous calls; no
@@ -36,6 +37,13 @@ package CCL.VM.Native_Objects with SPARK_Mode is
    -- this pending call and run before invoking this API. Contract must be the
    -- approved binding pinned by that import, never metadata from its reply.
    -- The VM validates type/data; it does not authenticate raw IPC messages.
+   --  Answer a run suspended on a stream view (Execution_Result's
+   --  Stream_Requested). Elements are admitted only as the program's own
+   --  T or List<T>; a count is an Integer. A refusal stops the run with
+   --  the matching Stream_ status.
+   procedure Complete_Stream_View
+     (Item : Validated_Program; State : in out Machine; Reply : CCL.Streams.View_Reply)
+     with Pre => Is_Valid (Item);
    procedure Complete_Scalar
      (Item : Validated_Program; State : in out Machine; Response : Value; Accepted : Boolean)
      with Pre => Is_Valid (Item);

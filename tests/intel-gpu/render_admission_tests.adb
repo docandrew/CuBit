@@ -6,6 +6,33 @@ procedure Render_Admission_Tests is
    package GPU renames Intel_GPU_Render_Control;
    Target : constant Unsigned_64 := 7 * 2 ** 32 + 42;
 begin
+   -- Tags are opaque, not CSPACE indices. Only the explicit, authenticated
+   -- reserve slot selects the dedicated driver recipient range.
+   for Slot in Unsigned_64 range 0 .. 64 loop
+      declare
+         Item : Transaction;
+         Used : Boolean;
+      begin
+         Start (Item, Target);
+         Prepare (Item, 1, Used); pragma Assert (Used);
+         Submitted (Item, True);
+         Complete (Item, 1, True, [0, 1, 17, Slot], Used);
+         pragma Assert (Used);
+         if Slot in 40 .. 55 then
+            pragma Assert (State (Item) = Delegate_Ready and Session (Item) = 17);
+            pragma Assert (Unsigned_64 (Driver_Recipient_Slot (Item)) = Slot);
+            Delegated (Item, True);
+            Prepare (Item, 2, Used); pragma Assert (Used);
+            Submitted (Item, True);
+            Complete (Item, 2, True, [0, 1, 17, Slot], Used);
+            pragma Assert (State (Item) = Quarantined);
+            pragma Assert (Unsigned_64 (Driver_Recipient_Slot (Item)) = Slot);
+         else
+            pragma Assert (State (Item) = Quarantined);
+            pragma Assert (Session (Item) = 0 and Driver_Recipient_Slot (Item) = 0);
+         end if;
+      end;
+   end loop;
    for Cancel_At in 0 .. 3 loop
       declare
          Item : Transaction;
@@ -34,6 +61,7 @@ begin
          Start (Item, Target);
          Exchange (Cancel_At = 1);
          pragma Assert (Identity (Item) = Target and Session (Item) /= 0);
+         pragma Assert (Driver_Recipient_Slot (Item) = 40);
          if Cancel_At = 1 then
             pragma Assert (State (Item) = Abort_Ready);
          else

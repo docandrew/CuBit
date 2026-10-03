@@ -288,7 +288,11 @@ completion, pixel-read center `FFFF0000` with matching corners, and final
 scheduling disable COMPLETE. These pixels are offscreen; passing software
 Mesa on QEMU does not prove this Intel path.
 
-The main driver now also retains context-ID/range ownership records in
+Historical implementation (superseded on 2026-10-03 by the diagnostic FAST-ID
+stream described in `intel-gpu-context-registration.md`; the unused range and
+route units and their dedicated tests/proof fixtures have been removed):
+
+The main driver then retained context-ID/range ownership records in
 `Intel_GPU_Context_Routes`. Registration rejects duplicate IDs, overlapping
 ranges, ranges with fewer than four fences, zero fences and full tables.
 There is no removal operation; failed contexts retain their routing identity.

@@ -1,5 +1,11 @@
 package body Intel_GPU_Render_Control with SPARK_Mode is
    package Sessions renames Intel_GPU_Render_Sessions;
+   function Storage_Index (Object : Controller; Tag : Unsigned_64)
+                          return Sessions.Slot_Index is
+     (Sessions.Storage_Index (Object.Sessions, Tag));
+   function Issued_Tag (Object : Controller; Index : Sessions.Slot_Index)
+                        return Unsigned_64 is
+     (Sessions.Issued_Tag (Object.Sessions, Index));
    function Is_Broker
      (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Boolean is
      (Object.Broker /= 0 and then Sender = Object.Broker and then
@@ -26,7 +32,7 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
       -- Even invalid bootstrap input consumes the one binding attempt.
       Object.Bound := True;
       if Broker = 0 or else Broker_Tag = 0 or else
-        Broker_Tag in Sessions.Tag_Base + 1 .. Sessions.Tag_Base + Sessions.Capacity
+        Broker_Tag in Sessions.Tag_Base + 1 .. Sessions.Tag_Last
       then return; end if;
       Object.Broker := Broker;
       Object.Broker_Tag := Broker_Tag;
@@ -40,6 +46,7 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
       Recipient : constant Unsigned_64 := Request (1);
       PID : constant Unsigned_64 := Recipient mod 2 ** 32;
       Tag : Unsigned_64 := Request (2);
+      Index : Sessions.Slot_Index;
       Accepted : Boolean;
    begin
       Response := [Denied, Version, 0, 0];
@@ -54,12 +61,15 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
          if not Ready then return; end if;
          Sessions.Reserve (Object.Sessions, PID, Tag);
          if Tag = 0 then return; end if;
-         Object.Recipients (Positive (Tag - Sessions.Tag_Base)) := Recipient;
+         Index := Sessions.Storage_Index (Object.Sessions, Tag);
+         if Index = 0 then return; end if;
+         Object.Recipients (Index) := Recipient;
       else
-         if Tag <= Sessions.Tag_Base or Tag > Sessions.Tag_Base + Sessions.Capacity
+         if Tag <= Sessions.Tag_Base or Tag > Sessions.Tag_Last
          then return; end if;
          Response (0) := Bad_State;
-         if Object.Recipients (Positive (Tag - Sessions.Tag_Base)) /= Recipient
+         Index := Sessions.Storage_Index (Object.Sessions, Tag);
+         if Index = 0 or else Object.Recipients (Index) /= Recipient
          then return; end if;
          if Request (3) = Activate then
             Response (0) := Unavailable;
@@ -71,21 +81,23 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
             Sessions.Close (Object.Sessions, PID, Tag);
          end if;
       end if;
-      Response := [OK, Version, Tag, 0];
+      Response := [OK, Version, Tag,
+        (if Request (3) = Reserve then 39 + Unsigned_64 (Index) else 0)];
    end Handle;
    function Activation_Identity
      (Object : Controller; Sender, Stamped_Tag : Unsigned_64;
       Request_Label : Unsigned_32; Length, Flags : Unsigned_8;
       Reserved : Unsigned_16; Request : Words) return Unsigned_64 is
       Tag : constant Unsigned_64 := Request (2);
+      Index : constant Sessions.Slot_Index := Sessions.Storage_Index (Object.Sessions, Tag);
    begin
       if Object.Broker = 0 or else Sender /= Object.Broker or else
         Stamped_Tag /= Object.Broker_Tag or else Request_Label /= Label or else
         Length /= 4 or else Flags /= 0 or else Reserved /= 0 or else
         Request (0) /= Version or else Request (3) /= Activate or else
-        Tag <= Sessions.Tag_Base or else Tag > Sessions.Tag_Base + Sessions.Capacity
+        Index = 0
       then return 0; end if;
-      if Request (1) = Object.Recipients (Positive (Tag - Sessions.Tag_Base))
+      if Request (1) = Object.Recipients (Index)
       then return Request (1); end if;
       return 0;
    end Activation_Identity;
@@ -112,16 +124,17 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
    function Recipient_Identity
      (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Unsigned_64 is
       Tag : constant Unsigned_64 := Resolve (Object, Sender, Stamped_Tag);
+      Index : constant Sessions.Slot_Index := Sessions.Storage_Index (Object.Sessions, Tag);
    begin
-      if Tag = 0 then return 0; end if;
-      return Object.Recipients (Positive (Tag - Sessions.Tag_Base));
+      if Tag = 0 or else Index = 0 then return 0; end if;
+      return Object.Recipients (Index);
    end Recipient_Identity;
    procedure Reject_Delivery
      (Object : in out Controller; Identity, Tag : Unsigned_64) is
+      Index : constant Sessions.Slot_Index := Sessions.Storage_Index (Object.Sessions, Tag);
    begin
-      if Tag <= Sessions.Tag_Base or else Tag > Sessions.Tag_Base + Sessions.Capacity
-        or else Identity = 0 then return; end if;
-      if Object.Recipients (Positive (Tag - Sessions.Tag_Base)) = Identity then
+      if Index = 0 or else Identity = 0 then return; end if;
+      if Object.Recipients (Index) = Identity then
          Sessions.Close (Object.Sessions, Identity mod 2 ** 32, Tag);
       end if;
    end Reject_Delivery;

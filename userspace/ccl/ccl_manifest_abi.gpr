@@ -1,10 +1,14 @@
---  Host-build only the pure wire-ABI units, not the CuBit GNAT runtime.
+--  Host-build only the pure wire-ABI units (and CuBit.Failures), not the
+--  CuBit GNAT runtime.
 project CCL_Manifest_ABI is
    for Source_Dirs use ("../runtime/gnat");
    for Source_Files use
      ("cubit.ads", "cubit-render_authority.ads",
       "cubit-network_authority.ads", "cubit-network_authority.adb",
-      "cubit-tls_scopes.ads", "cubit-tls_scopes.adb");
+      "cubit-tls_scopes.ads", "cubit-tls_scopes.adb",
+      "cubit-failures.ads", "cubit-failures.adb",
+      "cubit-launch_authority.ads", "cubit-launch_authority.adb",
+      "cubit-file_access.ads", "cubit-file_access.adb");
    for Object_Dir use "build/manifest-abi";
    package Compiler is
       for Default_Switches ("Ada") use

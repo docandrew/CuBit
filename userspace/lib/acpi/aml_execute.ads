@@ -74,7 +74,7 @@ package AML_Execute with SPARK_Mode, Pure is
    -- Immutable external data travels explicitly through recursive calls. A
    -- limited formal prevents copying the backing store into executor frames.
    generic
-      type Context is private;
+      type Context is limited private;
       type Read_Context (<>) is limited private;
       with function Context_Valid (Environment : Context) return Boolean;
       with procedure Lookup
@@ -101,18 +101,32 @@ package AML_Execute with SPARK_Mode, Pure is
       with procedure Materialize
         (Environment : in out Context; Kind : Literal_Kind; Data : AML_Decode.Bytes;
          Binding : out Binding_Result);
+      -- Reserve before evaluating selectors so duplicates and recursive lookup
+      -- observe declaration order. End_Call owns cleanup after any failure.
+      with procedure Reserve_Region
+        (Environment : in out Context; Scope : Natural; Path : AML_Names.Name_Result;
+         Token : out Natural; Status : out Execution_Status);
+      with procedure Complete_Region
+        (Environment : in out Context; Input : aliased Read_Context; Token : Natural;
+         Width : AML_Decode.Integer_Width; Signature, OEM, Table_ID : Datum;
+         Status : out Execution_Status);
+      -- Platform supplies a fresh monotonic reading in 100 ns units at each
+      -- opcode evaluation. Unavailable clocks fail explicitly.
+      with procedure Read_Timer
+        (Environment : in out Context; Value : out AML_Decode.Integer_Value;
+         Available : out Boolean);
    procedure Execute_With_Input
      (Code : AML_Decode.Bytes; Width : AML_Decode.Integer_Width;
       Args : Value_Arguments; Argument_Count : Natural; Budget : Natural;
       Input : aliased Read_Context; Environment : in out Context; Scope : Natural; Result_Out : out Execution_Result;
       Calls_Left : Call_Budget := 32; Current_Sync : Sync_Level := 0)
-     with Global => null, Always_Terminates,
+     with Always_Terminates,
           Pre => Argument_Count <= 7 and then not Result_Out'Constrained
             and then Context_Valid (Environment),
           Post => Result_Out.Charged <= Budget and then Context_Valid (Environment),
           Subprogram_Variant => (Decreases => Calls_Left, Decreases => Natural'(3));
    generic
-      type Context is private;
+      type Context is limited private;
       with function Context_Valid (Environment : Context) return Boolean;
       with function Lookup
         (Environment : Context; Scope : Natural; Path : AML_Names.Name_Result;

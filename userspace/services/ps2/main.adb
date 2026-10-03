@@ -20,6 +20,7 @@ with System; use System;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Input; use CuBit.Input;
 with PS2_Boot_Probe;
+with Input_Pending;
 
 procedure main is
    use ASCII;
@@ -40,9 +41,9 @@ procedure main is
    mouseConsumer : Unsigned_64 := 0;
 
    keyboardSequence : Source_Sequence := 0;
-   pointerSequence  : Source_Sequence := 0;
    keyboardResyncPending : Boolean := False;
-   pointerResyncPending  : Boolean := False;
+   pointerPending : Input_Pending.Queue;
+   pointerOverflowReported : Boolean := False;
 
    ---------------------------------------------------------------------------
    --  outb / inb wrappers
@@ -185,10 +186,39 @@ procedure main is
    --  refreshConsumers - re-read registered consumer PIDs from sysinfo
    ---------------------------------------------------------------------------
    procedure refreshConsumers is
+      previousMouse : constant Unsigned_64 := mouseConsumer;
    begin
       kbdConsumer := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_KEYBOARD);
       mouseConsumer := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_MOUSE);
+      if mouseConsumer /= previousMouse then
+         Input_Pending.Reset (pointerPending);
+      end if;
    end refreshConsumers;
+
+   -- A failed nonblocking send leaves the exact head packet intact. Source
+   -- sequence numbers describe reports, not transport attempts. No allocation,
+   -- blocking send, or unbounded drain occurs in this publication path.
+   procedure flushPointer is
+      pending : Input_Pending.Item;
+      report : Source_Report;
+   begin
+      for Attempt in 1 .. Input_Pending.Capacity loop
+         exit when mouseConsumer = 0 or else
+           Input_Pending.Count (pointerPending) = 0;
+         pending := Input_Pending.Element (pointerPending, 0);
+         report :=
+           (sourceAuthorityTag => 0,
+            sequence => pending.Sequence,
+            generation => 1,
+            device => RELATIVE_POINTER,
+            delivery => ACCUMULABLE_DISPLACEMENT,
+            flags => (RESYNCHRONIZE => pending.Recover),
+            payload => pending.Payload,
+            snapshot => Pointer_Snapshot (pending.Payload, pending.Observed_Ms));
+         exit when not trySendEvent (mouseConsumer, Encode (report));
+         Input_Pending.Acknowledge (pointerPending);
+      end loop;
+   end flushPointer;
 
    ---------------------------------------------------------------------------
    --  handleKeyboard - read keyboard byte and forward to consumer
@@ -224,8 +254,7 @@ procedure main is
       dz      : Unsigned_64;
       flags   : Unsigned_64;
       packed  : Unsigned_64;
-      accepted : Boolean;
-      report   : Source_Report;
+      lost : Boolean;
    begin
       --  Sync check: byte 0 has an always-one bit.  Overflow reports cannot
       --  express a trustworthy displacement, so discard them as well.  This
@@ -294,18 +323,12 @@ procedure main is
                or Shift_Left (dz and 16#FF#, 32)
                or Shift_Left (flags and 16#FF#, 40);
 
-            pointerSequence := Next_Sequence (pointerSequence);
-            report :=
-              (sourceAuthorityTag => 0,
-               sequence    => pointerSequence,
-               generation  => 1,
-               device      => RELATIVE_POINTER,
-               delivery    => ACCUMULABLE_DISPLACEMENT,
-               flags       => (RESYNCHRONIZE => pointerResyncPending),
-               payload     => packed,
-               snapshot    => buttons);
-            accepted := trySendEvent (mouseConsumer, Encode (report));
-            pointerResyncPending := not accepted;
+            Input_Pending.Append (pointerPending, packed, lost, syscall (SYSCALL_GETTIME));
+            if lost and then not pointerOverflowReported then
+               debugPrint ("ps2: pointer retention overflow; resynchronizing" & LF);
+               pointerOverflowReported := True;
+            end if;
+            flushPointer;
          end if;
       end if;
    end handleMouse;
@@ -378,10 +401,30 @@ begin
 
    --  Main event loop
    loop
-      --  Block until IRQ 33 or 44 fires
-      event := Wait_Event;
+      if Input_Pending.Count (pointerPending) = 0 then
+         -- No retry timer when idle: ordinary input is interrupt-driven.
+         event := Wait_Event;
+      else
+         -- The final refused packet must be retried even if the mouse stops.
+         -- A one-millisecond deadline is a retry bound, not a latency promise.
+         declare
+            now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+            activity : Activity_Result;
+         begin
+            activity := Wait_For_Activity_Until
+              (Input_Pending.Wake_Deadline
+                 (pointerPending, now, Unsigned_64'Last));
+            if activity = Unavailable then
+               ignore := syscall (SYSCALL_SLEEP, 1);
+            end if;
+            for I in 1 .. MAX_INPUT_BYTES_PER_BATCH loop
+               exit when not Poll_Event (event);
+            end loop;
+         end;
+      end if;
 
       refreshConsumers;
+      flushPointer;
 
       loop
          for i in 1 .. MAX_INPUT_BYTES_PER_BATCH loop
@@ -403,5 +446,6 @@ begin
          status := inb (STATUS_PORT);
          exit when (status and 16#01#) = 0;
       end loop;
+      flushPointer;
    end loop;
 end main;

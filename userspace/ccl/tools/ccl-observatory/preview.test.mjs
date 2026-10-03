@@ -18,7 +18,7 @@ test('static preview exposes only its loopback asset allowlist', async t => {
     req.on('error', reject); req.end();
   });
   await t.test('HTML and full ES module dependency chain are available', async () => {
-    for (const path of ['/', '/app.js', '/style.css', '/three.module.js', '/three.core.js', '/OrbitControls.js', '/LICENSE-three.txt']) {
+    for (const path of ['/', '/app.js', '/wire.js', '/highlight.js', '/console.js', '/units.js', '/style.css', '/three.module.js', '/three.core.js', '/OrbitControls.js', '/LICENSE-three.txt']) {
       const res = await get(path);
       assert.equal(res.status, 200, path);
       assert.ok(res.body.length > 0, path);

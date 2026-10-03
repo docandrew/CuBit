@@ -94,7 +94,7 @@ class Images(unittest.TestCase):
                     apps = {row[5].removeprefix("apps/") for row in rows if row[5].startswith("apps/")}
                     self.assertEqual(apps, (stage1 | stage2 | {"sameboy.app", "sameboy/00.gb", "doom1.wad", "config-storage.svc", "cubitshell.app",
                                                             "intel-gpu.drv", "firmware/intel/tgl_guc_70.bin", "mesa-cube.app",
-                                                            "boot-logs.app", "gpu-viewer.app"})
+                                                            "boot-logs.app", "logs.app", "ccl-console.app", "gpu-viewer.app"})
                                      - {"devmgr.svc", "filesystem.svc", "ramdisk.drv", "ps2.drv", "xhci.drv",
                                         "ata.drv", "nvme.drv", "storage-check.app"})
                     self.assertFalse(any("network-check" in row[2] or "ccl-control" in row[2] for row in rows))
@@ -108,6 +108,18 @@ class Images(unittest.TestCase):
                     self.assertEqual({row[5] for row in mesa}, {"apps/mesa-cube.app", "licenses/mesa"})
                     self.assertEqual(len(mesa), 2)
                     self.assertTrue(all(row[0] == "OPTICAL" for row in mesa))
+
+    def test_graphics_profiles_include_diagnostics_and_console(self):
+        for name in ('laptop-usb', 'render-session', 'mesa-device',
+                     'mesa-triangle', 'mesa-triangle-window', 'desktop-mesa-startup'):
+            with self.subTest(profile=name):
+                _, rows, _ = realizer.compile_plan(
+                    ROOT / 'images/artifacts.ccl', ROOT / f'images/{name}.ccl')
+                for artifact in ('logs', 'ccl-console'):
+                    matches = [row for row in rows if row[2] == artifact]
+                    self.assertEqual(len(matches), 1)
+                    self.assertEqual((matches[0][0], matches[0][5]),
+                                     ('OPTICAL', f'apps/{artifact}.app'))
 
     def test_mesa_device_profile_is_opt_in(self):
         catalog = ROOT / "images/artifacts.ccl"

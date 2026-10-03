@@ -115,7 +115,6 @@ end Test;
       package Life renames Intel_GPU_GuC_Context_Lifecycle;
       use type Life.Phase;
       Context : Life.Context;
-      Fence, Disable_Fence : Unsigned_16 := 0;
       Accepted : Boolean;
       Publications, Invalidations, Resumes : Natural := 0;
       function Owner return Boolean is (Life.State (Context) /= Life.Quarantined);
@@ -129,7 +128,7 @@ end Test;
       use type Update.Result;
       procedure Queue (Action : Life.Operation) is
       begin
-         Life.Prepare (Context, Action, Fence, Accepted); pragma Assert (Accepted);
+         Life.Prepare (Context, Action, Accepted); pragma Assert (Accepted);
          Life.Sent (Context, Life.Queued);
       end Queue;
       procedure Drain (OK : out Boolean) is
@@ -137,13 +136,12 @@ end Test;
          pragma Assert (not Update.Can_Submit (Object) and Life.State (Context) = Life.Enabled);
          -- GPU flush completion remains a fixture assumption, not implied by
          -- this real scheduling lifecycle or its scheduling-done message.
-         Life.Prepare (Context, Life.Disable, Fence, Accepted);
+         Life.Prepare (Context, Life.Disable, Accepted);
          pragma Assert (Accepted);
-         Disable_Fence := Fence;
          Life.Sent (Context, Life.Backpressure);
          pragma Assert (Life.State (Context) = Life.Enabled);
-         Life.Prepare (Context, Life.Disable, Fence, Accepted);
-         pragma Assert (Accepted and Fence = Disable_Fence);
+         Life.Prepare (Context, Life.Disable, Accepted);
+         pragma Assert (Accepted);
          Life.Sent (Context, (if Mode = Disable_Uncertain then Life.Uncertain else Life.Queued));
          pragma Assert (Life.State (Context) =
            (if Mode = Disable_Uncertain then Life.Quarantined else Life.Disable_Pending));
@@ -167,7 +165,9 @@ end Test;
          pragma Assert (Life.State (Context) = Life.Disabled and Publications = Invalidations + 1);
          Invalidations := Invalidations + 1;
          if Mode = Late_Disable_Error then
-            Life.Failed_Request (Context, Disable_Fence, Accepted); pragma Assert (Accepted);
+            -- Model a failure already classified by the CT dispatcher.
+            Life.Fail (Context);
+            pragma Assert (Life.State (Context) = Life.Quarantined);
          end if;
          OK := True; -- owner check must catch the asynchronously failed context
       end Invalidate;
@@ -183,7 +183,7 @@ end Test;
          OK := Life.State (Context) = Life.Enabled;
       end Resume;
    begin
-      Life.Initialize (Context, 7, 100, 120, True);
+      Life.Initialize (Context, 7, True);
       Queue (Life.Register_Context); Queue (Life.Set_Policy); Queue (Life.Enable);
       Life.Scheduling_Done (Context, 7, 1, Accepted); pragma Assert (Accepted);
       Update.Execute (Object, 0, Status);
@@ -222,6 +222,6 @@ begin
       Test (Retirement => Stage);
    end loop;
    for Mode in Scenario loop Composed (Mode); end loop;
-   Ada.Text_IO.Put_Line ("VM/GuC lifecycle PASS: disable/enable acknowledgments, backpressure fence reuse, wrong/missing events, late failure, repeated update cycles (no transport or GPU)");
+   Ada.Text_IO.Put_Line ("VM/GuC lifecycle PASS: disable/enable acknowledgments, backpressure retry, wrong/missing events, late failure, repeated update cycles (no transport or GPU)");
    Ada.Text_IO.Put_Line ("VM update PASS: exclusion through all stages, ordered callbacks, stale/nested denial, retirement/failure quarantine, repeated generations (mock hardware)");
 end VM_Update_Tests;

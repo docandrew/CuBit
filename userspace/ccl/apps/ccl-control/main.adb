@@ -1,11 +1,13 @@
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Logging;
 with CBOR;
 with CCL.Control;
 with CCL.Sessions;
 with Control_Transport;
 with Control_HTTP;
 with Control_Wire;
+with Control_Presentation;
 with Control_Host;
 
 procedure Main is
@@ -53,19 +55,23 @@ procedure Main is
       if not Valid then
          Control_Transport.Write_All (Control_HTTP.Error_Response, Success); return;
       end if;
-      -- Fresh bounded evaluation state per submission. No remote session or
-      -- user identity is implicitly granted authority by this lab adapter.
+      -- Inspection runs in a fresh bounded session. A tab's session
+      -- (Query.Session) keeps its definitions and streams in Control_Host;
+      -- it separates tabs and grants no authority (no login yet).
       CCL.Sessions.Initialize (Session);
-      if Query.Op = CCL.Control.Evaluate_Expression then
+      if Query.Op = CCL.Control.Complete_Expression then
          Result := (Observed => Host, others => <>);
-         Control_Host.Evaluate (Query.Source (1 .. Query.Length), Result.Outcome);
+         Control_Host.Complete (Query.Session, Query.Source (1 .. Query.Length), Result.Completion);
+      elsif Query.Op in CCL.Control.Evaluate_Expression | CCL.Control.Present_Expression then
+         Result := (Observed => Host, others => <>);
+         Control_Host.Evaluate (Query.Session, Query.Source (1 .. Query.Length), Result.Outcome);
       elsif Query.Op in CCL.Control.Start_Monitor | CCL.Control.Stop_Monitor |
-        CCL.Control.Inspect_Monitor
+        CCL.Control.Inspect_Monitor | CCL.Control.Present_Monitor
       then
          Result := (Observed => Host, others => <>);
          case Query.Op is
             when CCL.Control.Start_Monitor =>
-               Control_Host.Start_Monitor (Query.Source (1 .. Query.Length), Result.Accepted);
+               Control_Host.Start_Monitor (Query.Session, Query.Source (1 .. Query.Length), Result.Accepted);
             when CCL.Control.Stop_Monitor =>
                Control_Host.Stop_Monitor (Query.Target, Result.Accepted);
             when others => Result.Accepted := True;
@@ -76,7 +82,13 @@ procedure Main is
          Control_Host.Read_Clock (Host.Clock_Available, Host.Monotonic_Ms);
          CCL.Control.Execute (Session, Query.Op, Query.Source (1 .. Query.Length), Host, Result);
       end if;
-      Control_Wire.Encode (Query, Result, Encoded);
+      if Query.Op in CCL.Control.Present_Expression | CCL.Control.Read_Image_Rows |
+        CCL.Control.Present_Monitor | CCL.Control.Complete_Expression
+      then
+         Control_Presentation.Encode (Query, Result, Encoded);
+      else
+         Control_Wire.Encode (Query, Result, Encoded);
+      end if;
       if Encoded.Length = 0 then
          Control_Transport.Write_All (Control_HTTP.Error_Response, Success); return;
       end if;
@@ -90,6 +102,7 @@ procedure Main is
    end Serve;
 begin
    debugPrint ("ccl-control: DEVELOPMENT PLAINTEXT; own bindings only" & ASCII.LF);
+   CuBit.Logging.Announce ("ccl-control: started (development plaintext listener)", Success);
    Host.Process_Id := syscall (SYSCALL_GETPID);
    Host.Clock_Process := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_CLOCK);
    Control_Host.Initialize (Success);

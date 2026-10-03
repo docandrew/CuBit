@@ -2,13 +2,14 @@ with Compositor_Identity;
 with Compositor_Glyph_Layout;
 generic
    Last_Identity : Compositor_Identity.Positive_Value := Compositor_Identity.Positive_Value'Last;
+   Maximum_Readers : Positive := 32;
 package Compositor_Glyph_Cache with SPARK_Mode, Pure is
    subtype Serial_Number is Compositor_Identity.Value;
    use type Serial_Number;
    package L renames Compositor_Glyph_Layout;
    subtype Slot is Positive range 1 .. 128;
    subtype Search_Result is Natural range 0 .. Slot'Last;
-   subtype Reader_Slot is Positive range 1 .. 32;
+   subtype Reader_Slot is Positive range 1 .. Maximum_Readers;
    subtype Byte_Count is Natural range 0 .. Slot'Last * L.Maximum_Bytes;
    type Key is record
       Face : Natural range 0 .. 1 := 0;
@@ -49,6 +50,7 @@ package Compositor_Glyph_Cache with SPARK_Mode, Pure is
    function Reads_Slot (S : State; R : Lease; I : Slot) return Boolean;
    function Free_Reader (S : State; I : Reader_Slot) return Boolean;
    function Same_Readers (Before, After : State) return Boolean with Ghost;
+   function Same_Glyphs (Before, After : State) return Boolean with Ghost;
    function Keeps_Readers (Before, After : State) return Boolean with Ghost;
    function Keeps_Others (Before, After : State; I : Reader_Slot) return Boolean with Ghost;
    -- Fresh cache owner only. Never reset an existing owner or route its old
@@ -93,7 +95,7 @@ package Compositor_Glyph_Cache with SPARK_Mode, Pure is
    -- Completion must identify the exact acquisition, not just the glyph slot.
    -- Unknown completion leaves the lease active and the mask non-evictable.
    procedure Complete (S : in out State; R : Lease; Quiescent : Boolean)
-     with Pre => Valid (S), Post => Valid (S) and then Limit (S) = Limit (S'Old) and then Keeps_Others (S'Old, S, R.Position) and then Charged (S) = Charged (S'Old) and then
+     with Pre => Valid (S), Post => Valid (S) and then Same_Glyphs (S, S'Old) and then Limit (S) = Limit (S'Old) and then Keeps_Others (S'Old, S, R.Position) and then Charged (S) = Charged (S'Old) and then
        Sequence (S) = Sequence (S'Old) and then Read_Sequence (S) = Read_Sequence (S'Old) and then
        (if not Active (S'Old, R) or else not Quiescent then S = S'Old
         else not Active (S, R) and then Reader_Count (S) = Reader_Count (S'Old) - 1);
@@ -141,6 +143,7 @@ private
      with Pre => N <= Reader_Slot'Last, Subprogram_Variant => (Decreases => N),
        Post => Read_Prefix'Result <= N and then
          (if (for all I in 1 .. N => V (I).Identity = 0) then Read_Prefix'Result = 0);
+   function Same_Glyphs (Before, After : State) return Boolean is (Before.Masks = After.Masks);
    function Charged (S : State) return Byte_Count is (Prefix (S.Masks, Slot'Last));
    function Limit (S : State) return Byte_Count is (S.Budget);
    function Sequence (S : State) return Serial_Number is (S.Issued);

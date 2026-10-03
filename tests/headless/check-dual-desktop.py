@@ -151,28 +151,56 @@ with socket.socket(socket.AF_UNIX) as connection:
     time.sleep(0.3)
     # CCL Workbench is the first Apps entry; exercise an actual native client.
     hmp("sendkey ret")
-    while "ccl-workbench: native window ready" not in log.read_text(errors="replace"):
+    # Window creation precedes client pixels; do not capture the placeholder.
+    while "ccl-workbench: first frame presented" not in log.read_text(errors="replace"):
         require(time.monotonic() < deadline, "Workbench launch deadline")
         time.sleep(0.05)
-    original = capture("opened")
+    # First-frame publication can precede scanout. This fixture's Workbench
+    # has a large white source pane; the Desktop placeholder has none. Wait
+    # for those real client pixels before injecting a drag or saving its oracle.
+    client_deadline = min(deadline, time.monotonic() + 15)
+    while True:
+        original = capture("opened")
+        client = region(original[0], 110, 170, 500, 160)
+        white = sum(client[i:i + 3] == b"\xff\xff\xff"
+                    for i in range(0, len(client), 3))
+        if white >= 1000:
+            break
+        require(time.monotonic() < client_deadline, "Workbench client image not visible")
     require(region(original[0], 100, 120, 550, 260) !=
             region(baseline[0], 100, 120, 550, 260), "Workbench did not open")
     move(180, 90)
     hmp("mouse_button 1")
     move(main_width - 144, 90)
-    spanning = capture("spanning")
-    # Window moved 700 pixels; check both halves of its client interior.
-    require(region(original[0], 110, 130, 90, 200) ==
-            region(spanning[0], main_width - 214, 130, 90, 200), "primary window fragment wrong")
-    require(region(original[0], 350, 130, 300, 200) ==
-            region(spanning[1], 26, 130, 300, 200), "secondary window fragment wrong")
+    # Window moved 700 pixels; require both exact fragments to reach scanout.
+    drag_deadline = min(deadline, time.monotonic() + 15)
+    while True:
+        spanning = capture("spanning")
+        primary_ok = (region(original[0], 110, 130, 90, 200) ==
+                      region(spanning[0], main_width - 214, 130, 90, 200))
+        secondary_ok = (region(original[0], 350, 130, 300, 200) ==
+                        region(spanning[1], 26, 130, 300, 200))
+        if primary_ok and secondary_ok:
+            break
+        require(time.monotonic() < drag_deadline,
+                "primary window fragment wrong" if not primary_ok else
+                "secondary window fragment wrong")
     move(main_width + 156, 90)
     hmp("mouse_button 0")
-    secondary = capture("secondary")
-    require(region(secondary[0], 80, 60, main_width - 80, main_height - 98) ==
-            region(baseline[0], 80, 60, main_width - 80, main_height - 98), "old window/cursor paint not restored")
-    require(region(original[0], 110, 130, 500, 200) ==
-            region(secondary[1], 86, 130, 500, 200), "window not fully on secondary")
+    # Release admission precedes output presentation. Require both exact
+    # restoration and moved pixels, with the same bounded observation window.
+    secondary_deadline = min(deadline, time.monotonic() + 15)
+    while True:
+        secondary = capture("secondary")
+        restored_ok = (region(secondary[0], 80, 60, main_width - 80, main_height - 98) ==
+                       region(baseline[0], 80, 60, main_width - 80, main_height - 98))
+        moved_ok = (region(original[0], 110, 130, 500, 200) ==
+                    region(secondary[1], 86, 130, 500, 200))
+        if restored_ok and moved_ok:
+            break
+        require(time.monotonic() < secondary_deadline,
+                "old window/cursor paint not restored" if not restored_ok else
+                "window not fully on secondary")
     # New double-click sequence after the drag's release has aged out.
     time.sleep(0.6)
     click()
@@ -198,7 +226,22 @@ with socket.socket(socket.AF_UNIX) as connection:
         hmp("sendkey up")
         time.sleep(0.12)
     hmp("sendkey ret")
-    appearance = capture("settings-appearance")
+    # The open-menu pixels also differ from wallpaper. Require the actual
+    # default Alloy Settings preview, not merely any changed rectangle.
+    settings_deadline = min(deadline, time.monotonic() + 15)
+    while True:
+        appearance = capture("settings-appearance")
+        preview_ready = True
+        for row in range(20):
+            alpha = row * 255 // 19
+            expected = bytes((a * 255 + (b - a) * alpha + 127) // 255
+                             for a, b in zip((0x47, 0x76, 0x8E), (0x29, 0x4E, 0x68)))
+            if region(appearance[0], 400, 193 + row, 47, 1) != expected * 47:
+                preview_ready = False
+                break
+        if preview_ready:
+            break
+        require(time.monotonic() < settings_deadline, "Settings preview not visible")
     require(region(appearance[0], 120, 180, 550, 170) !=
             region(baseline[0], 120, 180, 550, 170), "Settings did not open")
     move(154, 180)
@@ -209,11 +252,16 @@ with socket.socket(socket.AF_UNIX) as connection:
     hmp("sendkey shift-tab")
     time.sleep(0.15)
     hmp("sendkey ret")
-    returned = capture("settings-returned")
     # Focus moved from the Light button to the Appearance tab; compare content
     # below that button, not its intentionally changed keyboard-focus border.
-    require(region(returned[0], 120, 210, 550, 140) ==
-            region(appearance[0], 120, 210, 550, 140), "Settings keyboard tab navigation failed")
+    # The input and scanout are asynchronous. Wait for this exact restoration,
+    # rather than treating one fixed-delay capture as completed presentation.
+    returned_deadline = min(deadline, time.monotonic() + 15)
+    while True:
+        returned = capture("settings-returned")
+        if region(returned[0], 120, 210, 550, 140) == region(appearance[0], 120, 210, 550, 140):
+            break
+        require(time.monotonic() < returned_deadline, "Settings keyboard tab navigation failed")
     if os.environ.get("CUBIT_TEST_ARRANGEMENT") == "1":
         import math
         import re
@@ -287,12 +335,12 @@ with socket.socket(socket.AF_UNIX) as connection:
         require(restored[1] == baseline[1], "secondary cursor artifacts after vertical seam crossing")
         # Settings is intentionally fixed-size. Launch a real resizable client
         # on the relocated primary and exercise its work-area calculation.
-        ready_before = log.read_text(errors="replace").count("ccl-workbench: native window ready")
+        ready_before = log.read_text(errors="replace").count("ccl-workbench: first frame presented")
         hmp("sendkey meta_l")
         time.sleep(0.3)
         hmp("sendkey ret")
         until = time.monotonic() + 10
-        while log.read_text(errors="replace").count("ccl-workbench: native window ready") <= ready_before:
+        while log.read_text(errors="replace").count("ccl-workbench: first frame presented") <= ready_before:
             require(time.monotonic() < until, "Workbench launch on rearranged primary failed")
             time.sleep(0.05)
         capture("settings-above-client-opened")
@@ -301,9 +349,15 @@ with socket.socket(socket.AF_UNIX) as connection:
         click()
         time.sleep(0.08)
         click()
-        full = capture("settings-above-maximized")
-        require(region(full[0], 4, 4, 600, 20) != region(baseline[0], 4, 4, 600, 20),
-                "maximize ignored primary Y origin")
+        # The title-double log is input acceptance, not presentation. Under
+        # softpipe/TCG the resized frame can outlast the ordinary settle delay.
+        maximize_deadline = min(deadline, time.monotonic() + 15)
+        while True:
+            full = capture("settings-above-maximized")
+            if region(full[0], 4, 4, 600, 20) != region(baseline[0], 4, 4, 600, 20):
+                break
+            require(time.monotonic() < maximize_deadline,
+                    "maximize ignored primary Y origin")
         move(origins[0][0] + main_width - 21, origins[0][1] + 12)
         click()
         capture("settings-above-client-closed")
@@ -362,12 +416,12 @@ with socket.socket(socket.AF_UNIX) as connection:
                     region(displays[0], 0, main_height - 36, 100, 36), "old primary retained taskbar")
             require(region(changed[1], 0, side_height - 36, 100, 36) ==
                     region(displays[0], 0, main_height - 36, 100, 36), "new primary lacks Apps button")
-            ready_before = log.read_text(errors="replace").count("ccl-workbench: native window ready")
+            ready_before = log.read_text(errors="replace").count("ccl-workbench: first frame presented")
             hmp("sendkey meta_l")
             time.sleep(0.3)
             hmp("sendkey ret")
             until = time.monotonic() + 10
-            while log.read_text(errors="replace").count("ccl-workbench: native window ready") <= ready_before:
+            while log.read_text(errors="replace").count("ccl-workbench: first frame presented") <= ready_before:
                 require(time.monotonic() < until, "launch on new primary failed")
                 time.sleep(0.05)
             opened = capture("settings-primary-client")
@@ -377,18 +431,27 @@ with socket.socket(socket.AF_UNIX) as connection:
             click()
             time.sleep(0.08)
             click()
-            maximized = capture("settings-primary-maximized")
-            require(region(maximized[1], 4, 4, 600, 20) !=
-                    region(baseline[1], 4, 4, 600, 20), "new-primary maximize failed")
+            maximize_deadline = min(deadline, time.monotonic() + 15)
+            while True:
+                maximized = capture("settings-primary-maximized")
+                if region(maximized[1], 4, 4, 600, 20) != region(baseline[1], 4, 4, 600, 20):
+                    break
+                require(time.monotonic() < maximize_deadline, "new-primary maximize failed")
             select_screen(0)
             make_primary()
             apply_primary(1)
-            restored = capture("settings-primary-restored")
-            require(region(restored[0], 0, main_height - 36, 100, 36) ==
-                    region(displays[0], 0, main_height - 36, 100, 36), "primary taskbar not restored")
-            require(region(restored[1], 200, side_height - 30, 400, 20) !=
-                    region(maximized[1], 200, side_height - 30, 400, 20),
-                    "maximized window did not reclaim former taskbar area")
+            restore_deadline = min(deadline, time.monotonic() + 15)
+            while True:
+                restored = capture("settings-primary-restored")
+                taskbar_ok = (region(restored[0], 0, main_height - 36, 100, 36) ==
+                              region(displays[0], 0, main_height - 36, 100, 36))
+                workarea_ok = (region(restored[1], 200, side_height - 30, 400, 20) !=
+                               region(maximized[1], 200, side_height - 30, 400, 20))
+                if taskbar_ok and workarea_ok:
+                    break
+                require(time.monotonic() < restore_deadline,
+                        "primary taskbar not restored" if not taskbar_ok else
+                        "maximized window did not reclaim former taskbar area")
             print("PASS native primary: preview/Revert/Apply, taskbar migration, new-client placement "
                   "and maximized work-area adjustment", flush=True)
             if os.environ.get("CUBIT_TEST_SCALING") == "1":

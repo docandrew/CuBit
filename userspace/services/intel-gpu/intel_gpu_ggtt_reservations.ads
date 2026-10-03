@@ -7,8 +7,10 @@ package Intel_GPU_GGTT_Reservations with SPARK_Mode is
    -- entire interval and exclude firmware/platform reservations. Protect
    -- scanout with retained claims or the mandatory publication exclusion gate;
    -- Space_Free alone does not consult display state or hardware PTEs.
-   -- No reset/release exists during bring-up: even failed publications retain
-   -- their ranges. Never replace a ledger while DMA can still reference it.
+   -- No reset or bookkeeping-only release exists. The Reclamation child may
+   -- remove an exact claim only after its hardware retirement transaction.
+   -- Failed publications retain their ranges. Never replace a ledger while
+   -- DMA can still reference it.
    type Ledger is limited private;
    -- Proof-only ledger invariant: admitted claims are nonempty, contained in
    -- the admitted aperture and pairwise disjoint. This does not establish
@@ -68,6 +70,7 @@ package Intel_GPU_GGTT_Reservations with SPARK_Mode is
           (if Status = Reserved then Last_Claim_Is (Object, First, Bytes)
            else First = 0);
 private
+   use type Intel_GPU_VA_Placement.Extent;
    subtype Extent is Intel_GPU_VA_Placement.Extent;
    subtype Extents is Intel_GPU_VA_Placement.Extents (1 .. 64);
    type Claim_Model is record
@@ -80,4 +83,18 @@ private
       Used : Natural range 0 .. 64 := 0;
       Claims : Extents;
    end record;
+   -- Private bookkeeping primitive for the hardware-gated Reclamation child.
+   -- Slot has no external identity. The caller must have detached this exact
+   -- claim; the contract proves only the serialized ledger transformation.
+   procedure Forget_Detached (Object : in out Ledger; Slot : Positive)
+   with Pre => Valid (Object) and then Slot <= Object.Used,
+        Post => Valid (Object) and then
+          Object.Used = Object.Used'Old - 1 and then
+          Object.Ready = Object.Ready'Old and then
+          Object.Table_Bytes = Object.Table_Bytes'Old and then
+          Object.Aperture = Object.Aperture'Old and then
+          (for all I in 1 .. Object.Used =>
+             Object.Claims (I) =
+               (if I = Slot then Object.Claims'Old (Object.Used'Old)
+                else Object.Claims'Old (I)));
 end Intel_GPU_GGTT_Reservations;

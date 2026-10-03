@@ -7,7 +7,7 @@ with CBOR;
 --  Names use bytes like native CCL strings (no implied Unicode normalization).
 package CCL.Objects.Schemas.Persistence with SPARK_Mode is
    Maximum_Encoded_Bytes : constant :=
-     64 + Types.Maximum_Declarations * (64 + Types.Maximum_Components * 48);
+     64 + Maximum_Image_Definitions * (64 + Types.Maximum_Components * 48);
    subtype Encoded_Length is Natural range 0 .. Maximum_Encoded_Bytes;
    type Packet is record
       Length : Encoded_Length := 0;

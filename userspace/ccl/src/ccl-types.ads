@@ -5,7 +5,7 @@ with Interfaces;
 --  (Complete_Self_List): no recursive layouts or other forward references.
 package CCL.Types with SPARK_Mode is
    Maximum_Name_Length : constant := 32;
-   Maximum_Declarations : constant := 32;
+   Maximum_Declarations : constant := 48;
    Maximum_Components : constant := 16;
    Maximum_Value_Cells : constant := 256;
 
@@ -42,7 +42,10 @@ package CCL.Types with SPARK_Mode is
    --  Bounded: a range subtype of Integer, (type Priority (range 1 10)). Its
    --  values are Integers; the type constrains the positions (fields,
    --  payloads, parameters, results) that hold them. Bounds: Low_Of, High_Of.
-   type Shape is (Primitive, Product, Sum, Resource, Sequence, Callable, Bounded);
+   --  Stream: Stream<T>, a live source held by a session; Parts (1) is its
+   --  element type, always persistable data (docs/ccl-streams.md). A stream
+   --  value is a handle, never a record field or a list element.
+   type Shape is (Primitive, Product, Sum, Resource, Sequence, Callable, Bounded, Stream);
    --  In a product these are fields; in a sum they are alternatives whose
    --  payload type may itself be a product. Unit is the empty product.
    --  Resource is an opaque live reference, not a constructible record or an
@@ -126,6 +129,35 @@ package CCL.Types with SPARK_Mode is
           Ref /= Invalid_Type and Item = Item'Old
         else Ref = Invalid_Type and Item = Item'Old);
    function Is_List (Item : Registry; Ref : Type_Reference) return Boolean;
+   --  The registry's List<Element>, if it has been specialized
+   --  (Invalid_Type otherwise).
+   function List_Of (Item : Registry; Element : Type_Reference) return Type_Reference
+     with Post => List_Of'Result = Invalid_Type or else Is_List (Item, List_Of'Result);
+
+   --  Materialize Stream<Element> (spelled Stream-Element). The element must
+   --  be persistable data: no streams, functions, handlers or resources.
+   type Stream_Result is
+     (Stream_Specialized, Stream_Already_Specialized, Invalid_Stream_Element,
+      Stream_Name_Too_Long, Stream_Registry_Full);
+   procedure Specialize_Stream
+     (Item : in out Registry; Element : Type_Reference;
+      Ref : out Type_Reference; Result : out Stream_Result)
+   with Global => null,
+     Post =>
+       (if Result = Stream_Specialized then Ref = Last (Item) and
+          Last (Item) = Last (Item'Old) + 1
+        elsif Result = Stream_Already_Specialized then
+          Ref /= Invalid_Type and Item = Item'Old
+        else Ref = Invalid_Type and Item = Item'Old);
+   function Is_Stream (Item : Registry; Ref : Type_Reference) return Boolean;
+   --  The element type of a stream type (Invalid_Type for other types).
+   function Stream_Element (Item : Registry; Ref : Type_Reference) return Type_Reference;
+
+   --  Values that may cross a host boundary as images (and be stream
+   --  elements): scalars, strings, characters, records, variants and lists
+   --  of earlier non-list types, all of them backward references.
+   --  CCL.Objects.Persistable is this.
+   function Persistable (Item : Registry; Root : Type_Reference) return Boolean;
 
    --  The one forward reference a declaration may make: a list of itself
    --  (a Launch's (after (List Launch))). The declaration is defined with a
@@ -179,6 +211,30 @@ package CCL.Types with SPARK_Mode is
    --  The element type of a list type (Invalid_Type for other types).
    function Element_Of (Item : Registry; Ref : Type_Reference) return Type_Reference;
 
+   --  A record field's default (docs/ccl-launch-parameters.md): a constant of
+   --  the field's type, so filling it in runs no code. A construction may
+   --  leave out a field that has one. Defaults are kept beside the type, not
+   --  in its description: they are not part of its layout or encoding.
+   type Default_Kind is
+     (No_Default, Integer_Default, Boolean_Default, Alternative_Default, Empty_List_Default);
+   type Field_Default is record
+      Kind : Default_Kind := No_Default;
+      --  Integer_Default: the value (an Integer or range field).
+      --  Boolean_Default: 1 for true, 0 for false.
+      --  Alternative_Default: the position of a nullary alternative of the
+      --  field's enum or variant.
+      Value : Interfaces.Integer_64 := 0;
+   end record;
+   No_Field_Default : constant Field_Default := (Kind => No_Default, Value => 0);
+   --  Whether Default is a constant of the field's type (Payload).
+   function Default_Fits (Item : Registry; Payload : Type_Reference; Default : Field_Default) return Boolean;
+   type Default_Result is (Default_Set, Not_A_Field, Default_Mismatch);
+   procedure Set_Default
+     (Item : in out Registry; Ref : Type_Reference; Field : Component_Index;
+      Default : Field_Default; Result : out Default_Result)
+   with Global => null, Post => (if Result /= Default_Set then Item = Item'Old);
+   function Default_Of (Item : Registry; Ref : Type_Reference; Field : Component_Index) return Field_Default;
+
    type Import_Result is
      (Imported, Invalid_Root, Conflicting_Definition, Import_Full);
    --  Import the named root and its transitive dependencies only. Existing
@@ -193,11 +249,14 @@ private
    type Definition_Array is array (Declared_Type) of Description;
    type Layout_Array is array (Declared_Type) of Cell_Count;
    type Bound_Array is array (Declared_Type) of Bound;
+   type Field_Defaults is array (Component_Index) of Field_Default;
+   type Default_Array is array (Declared_Type) of Field_Defaults;
    type Registry is record
       Used : Registry_Bound := Unit_Type;
       Definitions : Definition_Array := [others => (others => <>)];
       Layouts : Layout_Array := [others => 0];
       Lows, Highs : Bound_Array := [others => 0];
+      Defaults : Default_Array := [others => [others => No_Field_Default]];
    end record;
    function Last (Item : Registry) return Registry_Bound is (Item.Used);
 end CCL.Types;

@@ -46,7 +46,7 @@ procedure Host_Object_Tests is
          Check (CCL.Host_Values.Matches (Argument, Contract));
          State.Stored := Argument.Object;
       else Check (Binding = 2); end if;
-      Reply := (Value => CCL.Host_Values.Object_Constant (State.Stored), Success => True);
+      Reply := (Value => CCL.Host_Values.Object_Constant (State.Stored), Success => True, Why => <>);
       case State.Mode is
          when None => null;
          when Wrong_Key => Reply.Value.Object.Schema := Other_Key;

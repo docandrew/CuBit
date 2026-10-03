@@ -12,6 +12,7 @@ TOOL = ROOT / 'userspace/ccl/build/manifest/ccl-manifest'
 CATALOG = (ROOT / 'userspace/ccl/catalogs/bootstrap-services.ccl').read_text()
 DECODER = ROOT / 'tests/ccl-manifests/build/resources/resource_decode'
 SOURCE = (ROOT / 'userspace/ccl/apps/ccl-vm/manifest.ccl').read_text()
+SCHEMA = ROOT / 'userspace/ccl/interfaces/executable-manifest.ccl'
 
 
 class Manifests(unittest.TestCase):
@@ -26,7 +27,8 @@ class Manifests(unittest.TestCase):
         manifest.write_text(source)
         definitions.write_text(catalog)
         result = subprocess.run([TOOL, definitions, manifest, '--ada-output',
-                                 self.directory / 'ccl_manifest_bindings.ads'], capture_output=True,
+                                 self.directory / 'ccl_manifest_bindings.ads', '--schema', SCHEMA],
+                                capture_output=True,
                                 text=True, timeout=5)
         self.assertNotIn('raised ', result.stderr, result.stderr)
         return result
@@ -56,6 +58,87 @@ class Manifests(unittest.TestCase):
                            check=True, capture_output=True)
             sections[name] = output.read_bytes()
         return sections
+
+    TLS_TYPED = """(Executable_Manifest
+  identity => "com.cubit.tls"
+  version => "0.1.0"
+  requests => [
+    (service "config" "config")
+    (service "clock" "clock")
+    (network Network_Action.TCP_Connect "0.0.0.0" 0 1 65535 true 8 "tcp")]
+  scopes => [
+    (filesystem [File_Right.Read] "@nvme:0/tls/")
+    (config [File_Right.Read] "tls.")])
+"""
+    TLS_KEYWORDS = """(executable-manifest v1
+  (identity "com.cubit.tls")
+  (version "0.1.0")
+  (request-service config read-write config)
+  (request-service clock read-write clock)
+  (request-network tcp-connect (ipv4 "0.0.0.0" 0) (ports 1 65535) (dns allow) (connections 8) tcp)
+  (filesystem-scope (rights read) "@nvme:0/tls/")
+  (config-scope (rights read) "tls."))
+"""
+
+    def test_typed_manifest_matches_keywords(self):
+        catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
+        typed = self.compile(self.TLS_TYPED, catalog)
+        self.assertEqual(typed.returncode, 0, typed.stderr)
+        typed_bindings = (self.directory / 'ccl_manifest_bindings.ads').read_text()
+        keywords = self.compile(self.TLS_KEYWORDS, catalog)
+        self.assertEqual(keywords.returncode, 0, keywords.stderr)
+        self.assertEqual(self.sections(typed.stdout), self.sections(keywords.stdout))
+        self.assertEqual(typed_bindings, (self.directory / 'ccl_manifest_bindings.ads').read_text())
+
+    def test_typed_manifest_named_fields_and_defaults(self):
+        catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
+        named = self.TLS_TYPED.replace(
+            '(service "clock" "clock")',
+            '(Request.Service (Service_Request binding => "clock" service => "clock"))')
+        self.assertEqual(self.sections(self.compile(named, catalog).stdout),
+                         self.sections(self.compile(self.TLS_TYPED, catalog).stdout))
+
+    def test_typed_manifest_explains_failures(self):
+        catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
+        for change, message in [
+                (('"clock" "clock"', '"clok" "clock"'),
+                 'requests entry 2: the catalog has no service named "clok"; did you mean "clock"? Fix: write "clock".'),
+                (('[File_Right.Read] "@nvme', '[File_Right.Reed] "@nvme'),
+                 '"File_Right.Reed": no such name. Fix: use one of: File_Right.Read, File_Right.Write, '
+                 'File_Right.Execute, File_Right.Create.'),
+                (('"tcp")', '"Tcp")'), 'requests entry 3: binding "Tcp" is not a lowercase kebab name.'),
+                (('"@nvme:0/tls/"', '"@nvme:0/../tls"'), 'scopes entry 1: INVALID_PATH'),
+                (('identity => "com.cubit.tls"\n', ''), 'line 1, column 2: field identity: '
+                 'This field has no default, so the construction must give it'),
+                (('version =>', 'verison =>'), 'field verison: This record has no field by that name')]:
+            with self.subTest(change=change):
+                result = self.compile(self.TLS_TYPED.replace(*change), catalog)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, '')
+                self.assertIn(message, result.stderr)
+
+    def test_typed_may_launch_matches_launch_authority_layout(self):
+        catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
+        names = ['logstore.svc', 'spawn-child.app']
+        source = self.TLS_TYPED.replace(
+            '  scopes =>', '  may_launch => [%s]\n  scopes =>' % ' '.join('(Launch "%s")' % n for n in names))
+        result = self.compile(source, catalog)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        fixture = subprocess.run(['python3', ROOT / 'tests/process-spawn/launch-table.py', *names],
+                                 capture_output=True, text=True, check=True).stdout
+        expected = b'LNCH' + struct.pack('<HH', 1, len(names)) + b''.join(
+            bytes([len(n)]) + n.encode() for n in names)
+        self.assertEqual(self.sections(result.stdout)['.cubit.launch'], expected)
+        self.assertEqual(self.sections(fixture)['.cubit.launch'], expected)
+        for change, message in [
+                ('(Launch "logstore.svc")', 'may_launch entry 2: program "logstore.svc" is listed twice'),
+                ('(Launch "a b")', 'may_launch entry 2: program "a b" is not 1 to 64 printable'),
+                ('(Launch "as" ["as"])', 'may_launch entry 2: invoked_as aliases need the next launch table')]:
+            with self.subTest(change=change):
+                bad = source.replace('(Launch "spawn-child.app")', change)
+                failed = self.compile(bad, catalog)
+                self.assertEqual(failed.returncode, 1)
+                self.assertIn(message, failed.stderr)
 
     def test_existing_elf_bytes_unchanged(self):
         legacy = self.directory / 'legacy.o'

@@ -2,6 +2,7 @@
 (executable-manifest v1
   (identity "com.cubit.desktop")
   (version "0.1.0")
+  (request-service logstore read-write logstore)
   (request-service config read-write config)
   (config-scope (rights read write) "desktop.appearance.")
   # The Apps menu entries (Desktop_Launch).

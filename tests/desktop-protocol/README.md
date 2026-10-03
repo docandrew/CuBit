@@ -1,5 +1,25 @@
 # Desktop protocol checks
 
+## C attachment global grant identity
+
+```sh
+nix develop -c bash -c '
+  test_binary=$(mktemp /tmp/cubit-desktop-attach.XXXXXX)
+  cc -Wall -Wextra -Werror tests/desktop-protocol/attach_c.c -o "$test_binary"
+  "$test_binary"
+'
+```
+
+This executes the production C attachment helper with real message types and
+mocked syscalls. It checks global slots across the old 4095 boundary (including
+the native failure's slot 143360), the maximum global slot, rejection above the
+namespace, and invalid generations. Valid identities must reach the call
+unchanged. It does not prove kernel authentication or grant lifetime.
+
+The native USB-image regression independently reproduced attachment failure at
+slot 143360 before the correction and successful DOOM initialization afterwards.
+That is software desktop integration in CuBit/QEMU, not Intel hardware rendering.
+
 From the repository root, using the Nix environment:
 
 ```sh

@@ -4,6 +4,7 @@ project Client is
       "../../userspace/ccl/src", "../../userspace/runtime/gnat", "../../userspace/services/config");
    for Source_Files use
      ("cubit-async_requests.ads", "cubit-async_requests.adb") &
+     ("cubit-failures.ads", "cubit-failures.adb") &
      ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
      ("client_tests.adb", "dispatch_tests.adb", "receiver_tests.adb", "startup_tests.adb",
       "config_worker_startup.ads", "config_worker_startup.adb", "config_object_client.ads", "config_object_client.adb",

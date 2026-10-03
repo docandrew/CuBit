@@ -52,9 +52,11 @@ bool cubit_gpu_query_device(cubit_gpu_query_call call, void *endpoint,
 bool cubit_gpu_query_timestamp(cubit_gpu_query_call call, void *endpoint,
                                uint32_t *hz);
 
-/* Shared backing pool observation, never a reservation or per-client quota.
- * Failure clears all fields. Closing buffers currently reclaims neither bytes
- * nor tickets. Zero tickets means no allocations even with free byte space. */
+/* Version2 shared backing observation, never a reservation or per-client quota.
+ * Byte capacity and free records are independent. Failure clears all fields.
+ * Closing alone reclaims neither bytes nor records; retirement is separate.
+ * Zero records prevents allocation even with free bytes. max_allocation is an
+ * upper bound (currently 16 MiB), not a contiguous-space guarantee. */
 struct cubit_gpu_budget_snapshot {
    uint64_t total, retained, available, max_allocation;
    uint32_t unused_tickets;

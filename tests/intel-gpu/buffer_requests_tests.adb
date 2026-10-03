@@ -4,6 +4,7 @@ with Intel_GPU_Render_Sessions;
 with Intel_GPU_Buffer_Backing;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Buffer_Requests;
+with Intel_GPU_Buffer_Handles;
 with Intel_GPU_Buffer_Requests.Binding;
 with Intel_GPU_VM_Image;
 with Intel_GPU_VM_Materialize;
@@ -60,7 +61,7 @@ begin
    declare
       type Generations is array (Positive range <>) of Unsigned_64;
    begin
-      for Index in Layout.Slot loop
+      for Index in 1 .. Layout.Bootstrap_Slots loop
          for Generation of Generations'(1, 2, 128, Unsigned_64 (Unsigned_32'Last)) loop
             declare
                ID : constant Buffers.Ticket :=
@@ -79,6 +80,37 @@ begin
    pragma Assert (Accepted);
    Sessions.Reserve (Registry, 43, Second);
    Sessions.Finalize (Registry, 43, Second, True, Accepted);
+   declare
+      use Intel_GPU_Buffer_Handles;
+      Pool : Buffers.Service;
+      Deferred : Buffers.Ticket;
+      Response : Buffers.Words;
+      Consumed : Boolean;
+      Name : Unsigned_64;
+   begin
+      pragma Assert (Buffers.Close_Diagnostic (Pool, 42, First + 1, 1) = Session_Unavailable);
+      pragma Assert (Buffers.Close_Diagnostic (Pool, 42, First, 0) = Invalid_Handle);
+      pragma Assert (Buffers.Close_Diagnostic (Pool, 42, First, 2 ** 32) = Invalid_Handle);
+      Buffers.Handle (Pool, 42, First, Buffers.Label, 4, 0, 0,
+        [1, Buffers.Create, 4096, 0], Response, Deferred);
+      Buffers.Complete (Pool, Deferred, Allocate (1, 1), Response, Consumed);
+      pragma Assert (Consumed and Response (0) = Buffers.OK);
+      Name := Response (2);
+      pragma Assert (Buffers.Close_Diagnostic (Pool, 42, First, Name) = Close_Ready);
+      pragma Assert (Buffers.Close_Diagnostic (Pool, 43, Second, Name) = Foreign_Session);
+      Buffers.Handle (Pool, 43, Second, Buffers.Label, 4, 0, 0,
+        [1, Buffers.Close, Name, 0], Response, Deferred);
+      pragma Assert (Response (0) = Buffers.Denied);
+      Buffers.Handle (Pool, 42, First, Buffers.Label, 4, 0, 0,
+        [1, Buffers.Close, Name, 0], Response, Deferred);
+      pragma Assert (Response (0) = Buffers.OK);
+      pragma Assert (Buffers.Close_Diagnostic (Pool, 42, First, Name) = Already_Closed);
+      Buffers.Quarantine (Pool);
+      pragma Assert (Buffers.Close_Diagnostic (Pool, 42, First, Name) = Registry_Quarantined);
+   end;
+   -- Preserve the allocation-call baseline used by the existing suite.
+   Calls := 0;
+   Ada.Text_IO.Put_Line ("Close request diagnostics PASS: authenticated envelope, full-width handle, foreign/closed/quarantine reasons");
    declare
       Pool : Buffers.Service;
       Original_ID, Deferred : Buffers.Ticket;
@@ -225,7 +257,7 @@ begin
       pragma Assert (not Buffers.Pending_For (Pool, First));
       pragma Assert (Buffers.Ticket_Session (Pool, Deferred) = First);
       pragma Assert (Buffers.Ticket_Session (Pool, 3) = 0);
-      for Expected in 3 .. Layout.Slot'Last loop
+      for Expected in 3 .. Layout.Bootstrap_Slots loop
          Buffers.Reserve_Private (Pool, 0, Private_ID);
          pragma Assert (Private_ID = Unsigned_64 (Expected));
          Buffers.Finish_Private (Pool, Private_ID, Consumed); pragma Assert (Consumed);
@@ -577,7 +609,7 @@ begin
    end;
    declare
       package Last_Slot is new Intel_GPU_Buffer_Requests
-        (Resolve, Owner_Ready, First_Slot => Layout.Slot'Last);
+        (Resolve, Owner_Ready, First_Slot => Layout.Bootstrap_Slots);
       Last_Object : Last_Slot.Service;
       Last_Reply : Last_Slot.Words;
       Deferred : Last_Slot.Ticket;
@@ -585,10 +617,10 @@ begin
    begin
       Last_Slot.Handle (Last_Object, 43, Second, Last_Slot.Label, 4, 0, 0,
                        [Last_Slot.Version, Last_Slot.Create, 4096, 0], Last_Reply, Deferred);
-      pragma Assert (Deferred = Unsigned_64 (Layout.Slot'Last));
+      pragma Assert (Deferred = Unsigned_64 (Layout.Bootstrap_Slots));
       for Generation in Unsigned_64 range 1 .. 32 loop
          declare Forged : constant Last_Slot.Ticket := Deferred + Generation * Last_Slot.Ticket_Stride; begin
-            pragma Assert (Last_Slot.Ticket_Slot (Forged) = Layout.Slot'Last);
+            pragma Assert (Last_Slot.Ticket_Slot (Forged) = Layout.Bootstrap_Slots);
             pragma Assert (Last_Slot.Ticket_Session (Last_Object, Forged) = 0);
             Last_Slot.Complete (Last_Object, Forged, (Ready => False), Last_Reply, Consumed);
             pragma Assert (not Consumed and Last_Slot.Pending_For (Last_Object, Second));
@@ -641,6 +673,7 @@ begin
       Handle := Response (2);
       for Cycle in 1 .. 128 loop
          pragma Assert (not Buffers.Closed_At (Pool, Buffers.Ticket_Slot (Current)).Ready);
+         pragma Assert (not Buffers.Can_Retire (Pool, Second, Current));
          Buffers.Acknowledge_Retirement (Pool, Second, Current, True, Accepted);
          pragma Assert (not Accepted); -- still open
          Buffers.Handle (Pool, 43, Second, Buffers.Label, 4, 0, 0,
@@ -656,11 +689,17 @@ begin
          end;
          Buffers.Acknowledge_Retirement (Pool, Second, Current, False, Accepted);
          pragma Assert (not Accepted);
+         pragma Assert (Buffers.Can_Retire (Pool, Second, Current));
+         pragma Assert (not Buffers.Can_Retire (Pool, First, Current));
+         pragma Assert (not Buffers.Can_Retire (Pool, Second, 0));
+         pragma Assert (not Buffers.Can_Retire
+           (Pool, Second, Current + Buffers.Ticket_Stride));
          Buffers.Acknowledge_Retirement (Pool, First, Current, True, Accepted);
          pragma Assert (not Accepted);
          Buffers.Acknowledge_Retirement (Pool, Second, Current, True, Accepted);
          pragma Assert (Accepted);
          pragma Assert (not Buffers.Closed_At (Pool, Buffers.Ticket_Slot (Current)).Ready);
+         pragma Assert (not Buffers.Can_Retire (Pool, Second, Current));
          Buffers.Acknowledge_Retirement (Pool, Second, Current, True, Accepted);
          pragma Assert (not Accepted);
          Buffers.Reject_Delivery (Pool, Current); -- cannot erase retirement tombstone
@@ -993,6 +1032,55 @@ begin
    end;
    Ada.Text_IO.Put_Line ("Cross-session app tickets PASS:128 owners reuse acknowledged slot; stale handle/completion/close rejected");
    declare
+      Admission : Boolean := True;
+      Device_Owned : Boolean := True;
+      function Cleanup_Owner return Boolean is (Device_Owned);
+      function Cleanup_Session (Sender, Stamp : Unsigned_64) return Unsigned_64 is
+        (if Admission and Sender = 42 and Stamp = 1000 then 1000 else 0);
+      package Cleanup is new Intel_GPU_Buffer_Requests (Cleanup_Session, Cleanup_Owner);
+      Pool : Cleanup.Service;
+      Current, Ignored : Cleanup.Ticket;
+      Response : Cleanup.Words;
+      Consumed, Ack : Boolean;
+      Handle : Unsigned_64;
+   begin
+      Cleanup.Handle (Pool, 42, 1000, Cleanup.Label, 4, 0, 0,
+        [1, Cleanup.Create, 4096, 0], Response, Current);
+      Cleanup.Complete (Pool, Current, Allocate (Cleanup.Ticket_Slot (Current), 1),
+        Response, Consumed);
+      pragma Assert (Consumed and Response (0) = Cleanup.OK);
+      Handle := Response (2);
+      -- Teardown closes even an app that departed without a close RPC.
+      Admission := False;
+      Cleanup.Retire_Session (Pool, 1000);
+      pragma Assert (Cleanup.Closed_At (Pool, Cleanup.Ticket_Slot (Current)).Ready);
+      Cleanup.Handle (Pool, 42, 1000, Cleanup.Label, 4, 0, 0,
+        [1, Cleanup.Create, 4096, 0], Response, Ignored);
+      pragma Assert (Ignored = 0 and Response (0) = Cleanup.Denied);
+      Cleanup.Handle (Pool, 42, 1000, Cleanup.Label, 4, 0, 0,
+        [1, Cleanup.Close, Handle, 0], Response, Ignored);
+      pragma Assert (Ignored = 0 and Response (0) = Cleanup.Denied);
+      pragma Assert (Cleanup.Can_Retire (Pool, 1000, Current));
+      Cleanup.Acknowledge_Retirement (Pool, 1000, Current, False, Ack);
+      pragma Assert (not Ack);
+      Cleanup.Acknowledge_Retirement (Pool, 1001, Current, True, Ack);
+      pragma Assert (not Ack);
+      Cleanup.Acknowledge_Retirement (Pool, 1000, Current + Cleanup.Ticket_Stride, True, Ack);
+      pragma Assert (not Ack);
+      Device_Owned := False;
+      Cleanup.Acknowledge_Retirement (Pool, 1000, Current, True, Ack);
+      pragma Assert (not Ack);
+      Device_Owned := True;
+      -- True is supplied by a trusted coordinator only after hardware/CPU and
+      -- allocator receipts; this hosted test proves metadata gates, not DMA.
+      Cleanup.Acknowledge_Retirement (Pool, 1000, Current, True, Ack);
+      pragma Assert (Ack and not Cleanup.Can_Retire (Pool, 1000, Current));
+      Cleanup.Acknowledge_Retirement (Pool, 1000, Current, True, Ack);
+      pragma Assert (not Ack);
+      pragma Assert (not Admission);
+   end;
+   Ada.Text_IO.Put_Line ("Revoked-session cleanup PASS: exact trusted receipt retires BO without restoring app admission");
+   declare
       Authorized : Unsigned_64 := 1000;
       function Cancel_Owner return Boolean is (True);
       function Cancel_Session (Sender, Stamp : Unsigned_64) return Unsigned_64 is
@@ -1073,4 +1161,129 @@ begin
    end;
    Ada.Text_IO.Put_Line ("Cross-session cancellation PASS:128 reused-slot cancellation/revocation/allocation-failure/reply-loss cases; failed backing retained");
    Ada.Text_IO.Put_Line ("GPU buffer requests PASS: sessions, opaque handles, retirement, allocation races, deferred-update revalidation");
+   declare
+      Available : Boolean := True;
+      function Owner return Boolean is (Available);
+      function Session (Sender, Stamp : Unsigned_64) return Unsigned_64 is
+        (if Sender = 7 and Stamp = 8 then 99 else 0);
+      package Growth is new Intel_GPU_Buffer_Requests (Session, Owner);
+      type RAM is array (Natural range 0 .. 2047) of Unsigned_64;
+      Tickets, Handles : RAM := [others => 16#CAFE#] with Alignment => 4096;
+      Ticket_Base : constant Unsigned_64 := Unsigned_64 (To_Integer (Tickets'Address));
+      Handle_Base : constant Unsigned_64 := Unsigned_64 (To_Integer (Handles'Address));
+      Object : Growth.Service;
+      ID, Other : Growth.Ticket;
+      Response : Growth.Words;
+      OK, Consumed : Boolean;
+      Name : Unsigned_64;
+      Before : Positive;
+      Admitted : Positive;
+   begin
+      Growth.Reserve_Private (Object, 99, ID, Reclaimable => True);
+      Growth.Extend_Tickets (Object, Ticket_Base, 4096, OK);
+      pragma Assert (not OK and Growth.Record_Capacity (Object) = 16);
+      Growth.Extend_Handles (Object, Handle_Base, 4096, OK);
+      pragma Assert (not OK and Growth.Handle_Capacity (Object) = 16);
+      Growth.Finish_Private (Object, ID, Consumed);
+      pragma Assert (Consumed);
+      Growth.Acknowledge_Private_Retirement (Object, 99, ID, True, OK);
+      pragma Assert (OK);
+      Growth.Extend_Tickets (Object, Ticket_Base, 4096, OK);
+      pragma Assert (OK and Growth.Record_Capacity (Object) > 16);
+      pragma Assert (Growth.Committed_Slots (Object) = 16);
+      Growth.Admit_Slots (Object, 17, (others => 1000), OK);
+      pragma Assert (not OK); -- handle storage has not grown yet
+      Growth.Extend_Handles (Object, Handle_Base, 4096, OK);
+      pragma Assert (OK and Growth.Handle_Capacity (Object) > 16);
+      for Missing in 1 .. 4 loop
+         declare
+            Limits : Growth.Supporting_Capacities := (others => 1000);
+         begin
+            case Missing is
+               when 1 => Limits.Backing := 16;
+               when 2 => Limits.Replacements := 16;
+               when 3 => Limits.Retirement := 16;
+               when 4 => Limits.Update_Index := 16;
+               when others => null;
+            end case;
+            Growth.Admit_Slots (Object, 17, Limits, OK);
+            pragma Assert (not OK and Growth.Committed_Slots (Object) = 16);
+         end;
+      end loop;
+      Growth.Admit_Slots (Object, 17, (others => 1000), OK);
+      pragma Assert (OK and Growth.Committed_Slots (Object) = 17);
+      Growth.Admit_Slots (Object, 16, (others => 1000), OK);
+      pragma Assert (not OK and Growth.Committed_Slots (Object) = 17);
+      Growth.Handle (Object, 7, 8, Growth.Label, 4, 0, 0,
+        [1, Growth.Create, 4096, 0], Response, ID);
+      pragma Assert (ID = 2);
+      Growth.Admit_Slots (Object, 18, (others => 1000), OK);
+      pragma Assert (not OK and Growth.Committed_Slots (Object) = 17);
+      Before := Growth.Record_Capacity (Object);
+      Growth.Extend_Tickets (Object, Ticket_Base, 8192, OK);
+      pragma Assert (not OK and Growth.Record_Capacity (Object) = Before);
+      Growth.Complete (Object, ID, Intel_GPU_Buffer_Reply.From_Linear
+        (16#1000_1000#, Layout.CPU_Base + 4096, 4096, 16#1000_0000#), Response, Consumed);
+      pragma Assert (Consumed and Response (0) = Growth.OK);
+      Name := Response (2);
+      Growth.Extend_Tickets (Object, Ticket_Base, 8192, OK);
+      pragma Assert (OK and Growth.Ticket_Session (Object, ID) = 99);
+      Growth.Extend_Handles (Object, Handle_Base, 8192, OK);
+      pragma Assert (OK);
+      Admitted := Positive'Min (64, Positive'Min
+        (Growth.Record_Capacity (Object), Growth.Handle_Capacity (Object)));
+      Growth.Admit_Slots (Object, Admitted, (others => 1000), OK);
+      pragma Assert (OK and Growth.Committed_Slots (Object) = Admitted);
+      -- Growth must preserve the retirement receipt of the original private
+      -- slot, not just active application handles. Reuse is generation-tagged.
+      Growth.Reserve_Private (Object, 99, Other, Reclaimable => True);
+      pragma Assert (Other = 1 + Growth.Ticket_Stride);
+      pragma Assert (Growth.Ticket_Session (Object, 1) = 0);
+      pragma Assert (Growth.Ticket_Session (Object, Other) = 99);
+      Growth.Finish_Private (Object, 1, Consumed);
+      pragma Assert (not Consumed and Growth.Pending_For (Object, 99));
+      Growth.Finish_Private (Object, Other, Consumed); pragma Assert (Consumed);
+      Growth.Acknowledge_Private_Retirement (Object, 99, 1, True, OK);
+      pragma Assert (not OK);
+      Growth.Acknowledge_Private_Retirement (Object, 100, Other, True, OK);
+      pragma Assert (not OK);
+      Growth.Acknowledge_Private_Retirement (Object, 99, Other, True, OK);
+      pragma Assert (OK);
+      Growth.Handle (Object, 7, 8, Growth.Label, 4, 0, 0,
+        [1, Growth.Close, Name, 0], Response, Other);
+      pragma Assert (Response (0) = Growth.OK and Growth.Can_Retire (Object, 99, ID));
+      for Index in 3 .. Positive'Min (64, Positive'Min
+        (Growth.Record_Capacity (Object), Growth.Handle_Capacity (Object))) loop
+         Growth.Handle (Object, 7, 8, Growth.Label, 4, 0, 0,
+           [1, Growth.Create, 4096, 0], Response, Other);
+         pragma Assert (Other = Unsigned_64 (Index));
+         Growth.Complete (Object, Other, Intel_GPU_Buffer_Reply.From_Linear
+           (16#1000_0000# + Unsigned_64 (Index - 1) * 4096,
+            Layout.CPU_Base + Unsigned_64 (Index - 1) * 4096,
+            4096, 16#1000_0000#), Response, Consumed);
+         pragma Assert (Consumed and Response (0) = Growth.OK);
+      end loop;
+      pragma Assert (Other > 16);
+      pragma Assert (Growth.Ticket_Session (Object, Unsigned_64 (Layout.Slot'Last)) = 0);
+      pragma Assert (not Growth.Closed_At (Object, Layout.Slot'Last).Ready);
+      pragma Assert (not Growth.Can_Retire (Object, 99, Unsigned_64 (Layout.Slot'Last)));
+      Before := Growth.Record_Capacity (Object);
+      Available := False;
+      Growth.Admit_Slots (Object, Admitted, (others => 1000), OK);
+      pragma Assert (not OK and Growth.Committed_Slots (Object) = Admitted);
+      Growth.Extend_Tickets (Object, Ticket_Base, 12288, OK);
+      pragma Assert (not OK and Growth.Record_Capacity (Object) = Before);
+      Available := True;
+      Growth.Quarantine (Object);
+      Growth.Admit_Slots (Object, Admitted, (others => 1000), OK);
+      pragma Assert (not OK and Growth.Committed_Slots (Object) = Admitted);
+      Growth.Extend_Tickets (Object, Ticket_Base, 12288, OK);
+      pragma Assert (not OK);
+      Growth.Extend_Handles (Object, Handle_Base, 12288, OK);
+      pragma Assert (not OK);
+      for I in 1024 .. Tickets'Last loop
+         pragma Assert (Tickets (I) = 16#CAFE# and Handles (I) = 16#CAFE#);
+      end loop;
+   end;
+   Ada.Text_IO.Put_Line ("Request growth PASS: allocations beyond bootstrap, pending/revoked/quarantined rejection, old identities retained, uncommitted max-index rejected");
 end Buffer_Requests_Tests;

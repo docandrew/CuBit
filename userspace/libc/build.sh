@@ -41,13 +41,16 @@ cp "$here/../c/cubit_streams.c" "$here/../c/cubit.h" "$here/../c/cubit_net_chann
 # The proved channel-ring and datagram-record code (CuBit.Channel_Rings,
 # CuBit.Datagram_Rings, tests/channel-rings) and their C entry points: C,
 # C++ and Rust programs keep their network channel rings and listener
-# records with it (src/cubit/net.c). Pure code: no Ada run-time library.
+# records with it (src/cubit/net.c). Also the proved launch-block validator
+# (CuBit.Launch_Arguments, tests/launch-arguments) that the start code and
+# posix_spawn use. Pure code: no Ada run-time library.
 gnat_gcc=$(dirname "$(command -v gnat)")/gcc
 ada_obj=$build/ada
 rm -rf "$ada_obj"
 mkdir -p "$ada_obj"
 for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gnat/cubit-channel_rings_c.adb" \
-    "$here/../runtime/gnat/cubit-datagram_rings.adb" "$here/../runtime/gnat/cubit-datagram_rings_c.adb"; do
+    "$here/../runtime/gnat/cubit-datagram_rings.adb" "$here/../runtime/gnat/cubit-datagram_rings_c.adb" \
+    "$here/../runtime/gnat/cubit-launch_arguments.adb" "$here/../runtime/gnat/cubit-launch_arguments_c.adb"; do
     (cd "$ada_obj" && "$gnat_gcc" -c -O2 -g -gnatp -gnatn -fno-pic -ffunction-sections \
         -I"$here/../runtime/gnat" "$unit")
 done

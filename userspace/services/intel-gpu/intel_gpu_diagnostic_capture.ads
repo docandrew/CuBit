@@ -1,4 +1,5 @@
 with Interfaces;
+with CuBit.Log_Records;
 generic
    Capacity : Positive;
    Maximum_Length : Positive;
@@ -9,12 +10,14 @@ package Intel_GPU_Diagnostic_Capture with SPARK_Mode is
    type Captured_Record is record
       Text : String (1 .. Maximum_Length) := [others => ' '];
       Length : Text_Length := 0;
+      Level : CuBit.Log_Records.Severity := CuBit.Log_Records.Information;
    end record;
    type Queue is limited private;
    function Count (Item : Queue) return Natural;
    function Lost (Item : Queue) return Interfaces.Unsigned_64;
    function Latest (Item : Queue) return Captured_Record;
-   procedure Append (Item : in out Queue; Text : String)
+   procedure Append (Item : in out Queue; Text : String;
+     Level : CuBit.Log_Records.Severity := CuBit.Log_Records.Information)
      with Pre => Text'Length in 1 .. Maximum_Length,
        Post => Count (Item) in 1 .. Capacity;
    -- Returns a private copy; a publisher owns its separate immutable loan.

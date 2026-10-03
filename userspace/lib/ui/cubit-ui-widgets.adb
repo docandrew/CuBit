@@ -588,8 +588,17 @@ package body CuBit.UI.Widgets is
       end if;
       if bounds.w < 20 or else bounds.h < 12 then return; end if;
       offset := 0;
-      x := bounds.x + 7 + offset;
+      x := bounds.x + (if caption'Length = 0 then (bounds.w - 10) / 2 else 7) + offset;
       y := bounds.y + (bounds.h - 10) / 2 + offset;
+      if icon = Navigate_Reload then
+         -- Open clockwise ring, drawn with the same two-pixel stroke as arrows.
+         CuBit.UI.Fill_Rect (pc, (x + 2, y, 6, 2), fg);
+         CuBit.UI.Fill_Rect (pc, (x, y + 2, 2, 6), fg);
+         CuBit.UI.Fill_Rect (pc, (x + 2, y + 8, 6, 2), fg);
+         CuBit.UI.Fill_Rect (pc, (x + 8, y + 6, 2, 2), fg);
+         CuBit.UI.Fill_Rect (pc, (x + 8, y, 2, 5), fg);
+         CuBit.UI.Fill_Rect (pc, (x + 5, y + 3, 5, 2), fg);
+      else
       CuBit.UI.Fill_Rect (pc, (x, y + 4, 10, 2), fg);
       for step in 0 .. 4 loop
          CuBit.UI.Fill_Rect
@@ -599,6 +608,7 @@ package body CuBit.UI.Widgets is
            (pc, (x + (if icon = Navigate_Back then step else 8 - step),
                  y + 4 + step, 2, 2), fg);
       end loop;
+      end if;
       if caption'Length > 0 and then bounds.w > 26 then
          CuBit.UI.Draw_UI_Text_Transparent
            (CuBit.UI.With_Clip

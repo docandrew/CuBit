@@ -1,3 +1,4 @@
+with CuBit.Failures;
 with Interfaces;
 with CCL.VM;
 with CCL.Imports;
@@ -39,6 +40,8 @@ package CCL.Host_Values with SPARK_Mode => On is
    type Call_Result is record
       Value : CCL.Host_Values.Value;
       Success : Boolean := False;
+      --  Only when Success is False: what to tell the person.
+      Why : CuBit.Failures.Failure;
    end record;
    function Integer_Constant (Item : Interfaces.Integer_64) return Value is
      ((Kind => Integer_Value, Integer => Item));
@@ -76,6 +79,10 @@ package CCL.Host_Values with SPARK_Mode => On is
       -- repurpose persistence schema keys or program-local ownership tags.
       Authority : CCL.VM.Authority_Class := CCL.VM.No_Authority;
       Binding : Interfaces.Unsigned_32 := 0;
+      --  The result is a stream of Result (with Result_Schema): the host
+      --  opens it in the session's table and replies with its handle, an
+      --  Integer_Value (docs/ccl-streams.md).
+      Result_Stream : Boolean := False;
       Ownership_Argument : Boolean := False;
       Local : CCL.Ownership.Binding_Id := 0;
       Transfer : CCL.Imports.Transfer_Mode := CCL.Imports.Copy_Argument;
@@ -124,10 +131,13 @@ package CCL.Host_Values with SPARK_Mode => On is
          Item.Argument not in Resource_Value | Handler_Value) and
       (if Item.Argument = Resource_Value then Item.Ownership_Argument and
          Item.Transfer /= CCL.Imports.Copy_Argument) and
-      Item.Result /= Handler_Value);
+      Item.Result /= Handler_Value and
+      (if Item.Result_Stream then
+         Item.Result in Integer_Value | Boolean_Value | Text_Value | Object_Value and
+         not Has_Resources (Item) and not Item.Ownership_Argument));
    function Scalar_Only (Item : Import_Declaration) return Boolean is
      (Well_Formed (Item) and not Has_Resources (Item) and Item.Argument in Integer_Value | Boolean_Value and
-      Item.Result in Integer_Value | Boolean_Value);
+      Item.Result in Integer_Value | Boolean_Value and not Item.Result_Stream);
    procedure To_Bytecode
      (Item : Import_Declaration; Types : CCL.Types.Registry;
       Argument_Type, Result_Type : CCL.Types.Type_Reference;

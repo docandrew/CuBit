@@ -9,11 +9,11 @@ package Compositor_Metric_Batch_Policy with SPARK_Mode, Pure is
    subtype Count is CuBit.Metric_Records.Record_Count;
    Capacity : constant := CuBit.Metric_Records.Maximum_Records;
    Flush_Interval_Us : constant Tick := 100_000;
-   Declaration_Count : constant := 6;
+   Declaration_Count : constant := 8;
    type Append_Kind is (Describe_Output_0, Describe_Output_1,
                        Describe_Input, Describe_Request, Describe_Draw, Describe_Submit,
-                       Measurement, Full);
-   subtype Description is Append_Kind range Describe_Output_0 .. Describe_Submit;
+                       Describe_Scene_Pixels, Describe_Repair_Pixels, Measurement, Full);
+   subtype Description is Append_Kind range Describe_Output_0 .. Describe_Repair_Pixels;
    type State is private;
    function Used (S : State) return Count;
    function First (S : State) return Tick;
@@ -53,6 +53,8 @@ private
          when 3 => Describe_Request,
          when 4 => Describe_Draw,
          when 5 => Describe_Submit,
+         when 6 => Describe_Scene_Pixels,
+         when 7 => Describe_Repair_Pixels,
          when Declaration_Count .. Capacity - 1 => Measurement,
          when Capacity => Full);
    function Due (S : State; Now : Tick) return Boolean is

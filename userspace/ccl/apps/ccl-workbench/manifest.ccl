@@ -2,10 +2,16 @@
 (executable-manifest v1
   (identity "com.cubit.ccl-workbench")
   (version "0.1.0")
+  # One "started" record (CuBit.Logging.Announce).
+  (request-service logstore read-write logstore)
   (request-service desktop read-write desktop)
   (request-service clock read-write clock)
   # The REPL's (logs.recent "service"): read-only log observation.
   (request-service log-observer read-write log-observer)
+  # (logs.set-minimum ...) / the Logs "Keep" box: what logstore keeps.
+  (request-service log-control read-write log-control)
+  # (proc.list): see what runs, through procmgr's observer role.
+  (request-service process-observer read-write process-observer)
   # Development inspector: global non-secret Config read, never write/admin.
   (request-service config read-write config)
   (config-scope (rights read) all)

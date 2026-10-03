@@ -14,10 +14,12 @@ package body Intel_GPU_Buffer_Views is
       Recipient : CuBit.Messages.CapabilitySlot;
       Identity : Unsigned_64;
       Offset, Bytes : Unsigned_64; Writable : Boolean;
+      Attempted : out Boolean;
       Presentation : Boolean := False)
    is
       Success : Boolean;
    begin
+      Attempted := False;
       if Object.Current /= Empty then return; end if;
       Object.Current := Failed;
       if (Presentation and Writable) or else not Intel_GPU_Buffer_Reply.Valid (Backing) or else Bytes = 0 or else
@@ -29,6 +31,7 @@ package body Intel_GPU_Buffer_Views is
       if not CuBit.Capability_Grants.Endpoint_Matches (Recipient, Identity) then
          return;
       end if;
+      Attempted := True;
       if Presentation then
          Grants.Create_Forwardable_Via_Capability
            (Recipient, System.Storage_Elements.To_Address
@@ -44,21 +47,40 @@ package body Intel_GPU_Buffer_Views is
    end Share_Backing;
 
    procedure Share
-     (Object : in out View; Buffers : Intel_GPU_Buffer_Handles.Registry;
+     (Object : in out View; Buffers : in out Intel_GPU_Buffer_Handles.Registry;
       Session : Intel_GPU_Buffer_Handles.Session_ID;
       ID : Intel_GPU_Buffer_Handles.Handle;
       Recipient : CuBit.Messages.CapabilitySlot; Identity : Unsigned_64;
       Offset, Bytes : Unsigned_64; Writable : Boolean;
       Presentation : Boolean := False) is
+      Attempted, Returned : Boolean;
    begin
-      Share_Backing (Object, Intel_GPU_Buffer_Handles.Resolve (Buffers, Session, ID),
-        Recipient, Identity, Offset, Bytes, Writable, Presentation);
+      if Object.Current /= Empty then return; end if;
+      Intel_GPU_Buffer_Handles.Retain_Backing
+        (Buffers, Session, ID, Object.Backing_Reference, Object.Pinned);
+      if not Object.Pinned then Object.Current := Failed; return; end if;
+      -- Acquire the lifetime reference BEFORE exposing any grant. Creation
+      -- failure may be ambiguous: retain rather than guess that no alias lives.
+      Share_Backing (Object, Intel_GPU_Buffer_Handles.Referenced_Backing
+        (Buffers, Object.Backing_Reference),
+        Recipient, Identity, Offset, Bytes, Writable, Attempted, Presentation);
+      if not Attempted then
+         -- No kernel creation was attempted, so this reference has no users.
+         -- Invalid requests must not permanently consume allocation backing.
+         Intel_GPU_Buffer_Handles.Return_Reference
+           (Buffers, Object.Backing_Reference, True, Returned);
+         if Returned then
+            Object.Pinned := False;
+            Object.Current := Retired;
+         end if;
+      end if;
    end Share;
 
    procedure Share_Completed
      (Object : in out View; Recipient : CuBit.Messages.CapabilitySlot;
       Identity : Unsigned_64) is
       Before, After : Intel_GPU_Buffer_Reply.Backing;
+      Attempted : Boolean;
    begin
       if Object.Current /= Empty then return; end if;
       Before := Completed_Backing;
@@ -66,7 +88,7 @@ package body Intel_GPU_Buffer_Views is
          Object.Current := Failed; return;
       end if;
       Share_Backing (Object, Before, Recipient, Identity, 0, Before.Bytes,
-        Writable => False, Presentation => True);
+        Writable => False, Attempted => Attempted, Presentation => True);
       if Object.Current /= Shared then return; end if;
       After := Completed_Backing;
       if not Intel_GPU_Buffer_Reply.Valid (After) or else
@@ -77,16 +99,38 @@ package body Intel_GPU_Buffer_Views is
 
    procedure Poll_Retirement (Object : in out View) is
    begin
-      if Object.Current = Retiring and then
+      if Object.Current = Retiring and then not Object.Pinned and then
          Grants.Retirement_Confirmed (Object.Reference)
       then
          Object.Current := Retired;
       end if;
    end Poll_Retirement;
 
+   procedure Poll_Retirement
+     (Object : in out View; Buffers : in out Intel_GPU_Buffer_Handles.Registry)
+   is
+      Accepted : Boolean;
+   begin
+      if Object.Current = Retiring and then Object.Pinned and then
+        Grants.Retirement_Confirmed (Object.Reference)
+      then
+         Intel_GPU_Buffer_Handles.Return_Reference
+           (Buffers, Object.Backing_Reference, References_Retired => True,
+            Accepted => Accepted);
+         if not Accepted then
+            Object.Current := Failed;
+            return;
+         end if;
+         Object.Pinned := False;
+         Object.Current := Retired;
+      else
+         Poll_Retirement (Object);
+      end if;
+   end Poll_Retirement;
+
    procedure Recycle (Object : in out View; Accepted : out Boolean) is
    begin
-      Accepted := Object.Current = Retired;
+      Accepted := Object.Current = Retired and then not Object.Pinned;
       if Accepted then
          Object.Current := Empty;
          -- The previous reference is no longer published and Share replaces it.
@@ -106,5 +150,12 @@ package body Intel_GPU_Buffer_Views is
          end if;
       end if;
       Poll_Retirement (Object);
+   end Retire;
+
+   procedure Retire
+     (Object : in out View; Buffers : in out Intel_GPU_Buffer_Handles.Registry) is
+   begin
+      Retire (Object);
+      Poll_Retirement (Object, Buffers);
    end Retire;
 end Intel_GPU_Buffer_Views;

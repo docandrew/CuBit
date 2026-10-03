@@ -26,10 +26,16 @@ package Log_Fanout with SPARK_Mode is
       Handle : out Unsigned_64; Result : out CuBit.Log_Protocol.Status;
       Minimum : CuBit.Log_Records.Severity := CuBit.Log_Records.Trace;
       Source : Unsigned_64 := CuBit.Log_Protocol.Every_Source);
+   --  The next queued event for a subscription, taken by logstore on the
+   --  owner's behalf to write into its stream. Renew counts this as the
+   --  owner's use for the lease; logstore's draining passes False, so only
+   --  the reader's own calls keep a subscription alive.
    procedure Read_Next
      (Item : in out Broker; Caller, Authority_Tag, Handle : Unsigned_64;
       Value : out CuBit.Log_Protocol.Event; Lost : out Unsigned_64;
-      Result : out CuBit.Log_Protocol.Status);
+      Result : out CuBit.Log_Protocol.Status; Renew : Boolean := True);
+   --  Whether Handle names a live subscription (not closed, not expired).
+   function Active (Item : Broker; Handle : Unsigned_64) return Boolean;
    procedure Close
      (Item : in out Broker; Caller, Authority_Tag, Handle : Unsigned_64;
       Result : out CuBit.Log_Protocol.Status);

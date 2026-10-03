@@ -18,21 +18,21 @@ procedure Budget_Query_Tests is
                   B.Budget_Request_Label, 4, 0, 0, Data, Consumed);
    end Reply;
 begin
-   pragma Assert (P.Valid_Request (P.Label, 4, 0, 0, [1, 0, 0, 0]));
+   pragma Assert (P.Valid_Request (P.Label, 4, 0, 0, [B.Budget_Version, 0, 0, 0]));
    for I in 0 .. 3 loop
       declare
-         Invalid : B.Budget_Words := [1, 0, 0, 0];
+         Invalid : B.Budget_Words := [B.Budget_Version, 0, 0, 0];
       begin
          Invalid (I) := Invalid (I) + 1;
          pragma Assert (not P.Valid_Request (P.Label, 4, 0, 0, Invalid));
       end;
    end loop;
    for I in Unsigned_8 loop
-      pragma Assert (P.Valid_Request (P.Label, I, 0, 0, [1,0,0,0]) = (I = 4));
-      pragma Assert (P.Valid_Request (P.Label, 4, I, 0, [1,0,0,0]) = (I = 0));
+      pragma Assert (P.Valid_Request (P.Label, I, 0, 0, [B.Budget_Version,0,0,0]) = (I = 4));
+      pragma Assert (P.Valid_Request (P.Label, 4, I, 0, [B.Budget_Version,0,0,0]) = (I = 0));
    end loop;
-   pragma Assert (not P.Valid_Request (P.Label + 1, 4, 0, 0, [1,0,0,0]));
-   pragma Assert (not P.Valid_Request (P.Label, 4, 0, 1, [1,0,0,0]));
+   pragma Assert (not P.Valid_Request (P.Label + 1, 4, 0, 0, [B.Budget_Version,0,0,0]));
+   pragma Assert (not P.Valid_Request (P.Label, 4, 0, 1, [B.Budget_Version,0,0,0]));
    pragma Assert (P.Response ((others => <>)) = B.Budget_Words'(P.Unavailable,0,0,0));
    Q.Start (Object, 0, False, Token); pragma Assert (Token = 0);
    Q.Start (Object, Unsigned_64'Last, True, Token); pragma Assert (Token = 0);

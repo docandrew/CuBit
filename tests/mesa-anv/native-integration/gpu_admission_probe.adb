@@ -4,7 +4,6 @@ with Intel_Render_Admission;
 with Intel_Render_Admission_Native;
 with Intel_Render_Admission_Dispatch;
 with Intel_GPU_Render_Control;
-with Intel_GPU_Render_Sessions;
 with Intel_GPU_Device_Query;
 with Native_GPU_Query;
 with Native_GPU_Buffers;
@@ -29,6 +28,7 @@ package body GPU_Admission_Probe is
       Remote_Request : Message := NULL_MESSAGE;
       Receipt : aliased CompletionEntry;
       Identity : Unsigned_64;
+      Stored : Natural;
       Recipient_Ready : Boolean := False;
    begin
       if not Bound then
@@ -86,9 +86,11 @@ package body GPU_Admission_Probe is
             [Request.words (0), Request.words (1),
              Request.words (2), Request.words (3)]);
          if Identity /= 0 then
-            Recipient_Ready := CuBit.Capability_Grants.Endpoint_Matches
-              (CapabilitySlot (39 + Request.words (2) -
-                 Intel_GPU_Render_Sessions.Tag_Base), Identity);
+            Stored := GPU.Storage_Index (Controller, Request.words (2));
+            if Stored /= 0 then
+               Recipient_Ready := CuBit.Capability_Grants.Endpoint_Matches
+                 (CapabilitySlot (39 + Stored), Identity);
+            end if;
          end if;
          GPU.Handle (Controller, Unsigned_64 (Sender), Request.authorityTag,
         True, Request.tag.label, Request.tag.length, Request.tag.flags,
@@ -116,10 +118,19 @@ package body GPU_Admission_Probe is
       Token : Unsigned_64 := 16#AD11_0000#;
       Used : Boolean;
       Saw_Reservation, Saw_Abort : Boolean := False;
+      Saw_Recipient_Slot : Boolean := False;
       Passed : Boolean := True;
       Ignored : Unsigned_64;
    begin
-      Native.Start (Item, Target, Slot, 37, 32);
+      -- The self endpoint is inspectable but deliberately lacks GRANT. Use
+      -- it rather than an absent fixture slot: reach actual kernel delegation
+      -- denial, not only the adapter's Endpoint_Matches precheck.
+      Passed := CuBit.Capability_Grants.Endpoint_Matches
+        (CapabilitySlot (CAP_SLOT_SELF),
+         CuBit.Capability_Grants.Incarnation (Target));
+      debugPrint ("GPU-ADMISSION-IPC self endpoint inspected=" &
+        Boolean'Image (Passed) & ASCII.LF);
+      Native.Start (Item, Target, Slot, CapabilitySlot (CAP_SLOT_SELF), 32);
       for Poll in 1 .. 5_000 loop
          case Native.State (Item) is
             when Core.Reserve_Ready | Core.Abort_Ready =>
@@ -150,12 +161,22 @@ package body GPU_Admission_Probe is
               Unsigned_64'Image (Receipt.status) & " from=" &
               Unsigned_64'Image (Receipt.from) & " code=" &
               Unsigned_64'Image (Receipt.msg.words (0)) & ASCII.LF);
+            if Native.State (Item) = Core.Reserve_Pending and
+              Receipt.status = COMPLETION_OK and
+              Receipt.msg.words (0) = GPU.OK
+            then
+               Saw_Recipient_Slot := Receipt.msg.words (3) in 40 .. 55;
+               Passed := Passed and Saw_Recipient_Slot;
+               debugPrint ("GPU-ADMISSION-IPC reserve recipient slot=" &
+                 Unsigned_64'Image (Receipt.msg.words (3)) & ASCII.LF);
+            end if;
             Native.Complete (Item, Receipt, Used);
             Passed := Passed and Used;
          end if;
          Ignored := syscall (SYSCALL_SLEEP, 1);
       end loop;
-      Passed := Passed and Saw_Reservation and Saw_Abort and
+      Passed := Passed and Saw_Reservation and Saw_Recipient_Slot and
+        Saw_Abort and
         Native.State (Item) = Core.Failed;
       if not Passed then
          debugPrint ("GPU-ADMISSION-IPC state=" &

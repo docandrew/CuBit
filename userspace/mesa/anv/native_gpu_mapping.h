@@ -39,7 +39,9 @@ uint32_t cubit_cpu_mapping_release(struct cubit_cpu_mapping *record, bool replac
  * submission when it becomes true, including on pending internal unmap. Poll
  * can finish cleanup but does not make that device usable again.
  * At capacity, confirmed-retired tombstones are discarded; outstanding records
- * retain their relative order. This reclaims bookkeeping only, not GPU memory
+ * retain their relative order. If still full, host bookkeeping doubles with
+ * checked arithmetic. Host allocation failure performs no mapping IPC and
+ * leaves outstanding borrows usable. This reclaims bookkeeping only, not GPU memory
  * or endpoint authority. Duplicate unmap is idempotent only while its tombstone
  * remains; callers must never unmap a stale pointer after another map operation.
  */
@@ -49,7 +51,16 @@ struct cubit_cpu_mapping_tracker {
    uint32_t used;
    bool lost;
    struct cubit_cpu_mapping records[CUBIT_CPU_MAPPING_CAPACITY];
+   /* Host bookkeeping only; NULL uses inline records. Growth may relocate
+    * records under the caller's lock, never the mappings they describe. */
+   struct cubit_cpu_mapping *grown;
+   uint32_t capacity;
 };
+static inline struct cubit_cpu_mapping *
+cubit_cpu_tracker_records(struct cubit_cpu_mapping_tracker *tracker)
+{
+   return tracker->grown ? tracker->grown : tracker->records;
+}
 uint32_t cubit_cpu_tracker_map(struct cubit_cpu_mapping_tracker *tracker,
    uint32_t handle, uint64_t offset, uint64_t grant_bytes, uint32_t writable,
    uint64_t *address);
@@ -64,6 +75,7 @@ uint32_t cubit_cpu_tracker_unmap_wait(struct cubit_cpu_mapping_tracker *tracker,
    uint32_t handle, uint64_t address, uint64_t grant_bytes, bool replace,
    uint32_t polls, void (*wait_pending)(void));
 void cubit_cpu_tracker_poll(struct cubit_cpu_mapping_tracker *tracker);
-/* Stops new work and drains known records. False means retain the tracker;
+/* Stops new work and drains known records. Confirmed drain releases dynamic
+ * host bookkeeping only. False means retain the tracker and all its storage;
  * it does not authorize releasing BO backing or GPU VM bindings either way. */
 bool cubit_cpu_tracker_drain(struct cubit_cpu_mapping_tracker *tracker);

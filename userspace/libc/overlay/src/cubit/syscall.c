@@ -36,6 +36,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include "syscall.h"
@@ -155,7 +156,9 @@ static long sys_mmap(unsigned long addr, unsigned long len, long prot,
 	if ((flags & MAP_TYPE) != MAP_PRIVATE) return -ENOTSUP;
 	if (flags & ~(MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK | MAP_NORESERVE))
 		return -ENOTSUP;
-	if (len > 16UL * 1024 * 1024) return -ENOMEM;
+	/* Match Process.Owned_Memory.Maximum_Bytes; large browser buffers
+	 * must not be rejected at the former 16 MiB boundary. */
+	if (len > 256UL * 1024 * 1024) return -ENOMEM;
 	(void)addr;
 	if (!(flags & MAP_ANONYMOUS)) {
 		/* A file: a private copy of its bytes (read-only use is what
@@ -436,7 +439,15 @@ hidden long __cubit_syscall(long n, long a, long b, long c, long d, long e, long
 	case SYS_close:
 		return __cubit_fd_close((int)a);
 	case SYS_ioctl:
-		return -ENOTTY;                 /* no terminals: streams are not ttys */
+		if (b == FIONBIO) {
+			long flags = __cubit_fd_fcntl((int)a, F_GETFL, 0);
+			if (flags < 0) return flags;
+			if (!c) return -EFAULT;
+			if (*(const int *)c) flags |= O_NONBLOCK;
+			else flags &= ~O_NONBLOCK;
+			return __cubit_fd_fcntl((int)a, F_SETFL, flags);
+		}
+		return -ENOTTY;                 /* unsupported device/terminal ioctl */
 	case SYS_fstat:
 		return __cubit_fd_fstat((int)a, (struct stat *)b);
 	case SYS_lseek:
@@ -513,7 +524,16 @@ hidden long __cubit_syscall(long n, long a, long b, long c, long d, long e, long
 		return cubit(CUBIT_RELEASE_OWNED_MEMORY, a, b, 0, 0, 0) == 0
 			? 0 : -EINVAL;
 	case SYS_madvise:
-		return 0;
+		/* Advisory no-ops only. In particular, do not claim fork-related
+		 * mapping semantics: AWS-LC probes support with invalid advice.
+		 * DONTNEED still does not reclaim backing (tracked port limitation). */
+		switch (c) {
+		case MADV_NORMAL: case MADV_RANDOM: case MADV_SEQUENTIAL:
+		case MADV_WILLNEED: case MADV_DONTNEED: case MADV_FREE:
+			return 0;
+		default:
+			return -EINVAL;
+		}
 	case SYS_mprotect:
 		if (c != PROT_NONE && c != PROT_READ && c != (PROT_READ | PROT_WRITE))
 			return -ENOSYS;

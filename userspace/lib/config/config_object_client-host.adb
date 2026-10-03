@@ -57,7 +57,7 @@ package body Config_Object_Client.Host is
         (Description, Object.Output.Valid, Object.Output.Code, Object.Output.Revision,
          Object.Output.Value, Value, Accepted);
       if not Accepted then State := Type_Mismatch; return; end if;
-      Item := (Value => CCL.Host_Values.Object_Constant (Value), Success => True);
+      Item := (Value => CCL.Host_Values.Object_Constant (Value), Success => True, Why => <>);
       State := Outcome_Ready;
       Consume_Result (Object);
    end Take_Read_Outcome;

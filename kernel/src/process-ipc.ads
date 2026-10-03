@@ -272,7 +272,8 @@ package Process.IPC is
     -- Only the granter (caller) can revoke.
     -- @param id - ID of the grant to revoke
     ---------------------------------------------------------------------------
-    procedure revokeGrant (id : GrantID);
+    -- success reports whether an active owned grant was found under grantLock.
+    procedure revokeGrant (id : GrantID; success : out Boolean);
 
     ---------------------------------------------------------------------------
     -- revokeAllGrants
@@ -323,6 +324,11 @@ package Process.IPC is
     procedure revokeGrantReference
       (reference : Memory_Grants.Reference;
        success   : out Boolean);
+
+    -- Called once after reserving a PID, before resetting/publishing its
+    -- process record. Does not allocate. Refuses to discard any active grant.
+    function initializeGrantLife
+      (pid : ProcessID; life : Memory_Grants.Process_Generation) return Boolean;
 
     -- Called by process teardown.  When acquired grants remain, retain the
     -- PID until teardown is complete and the final acquisition is returned.

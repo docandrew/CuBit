@@ -54,13 +54,14 @@ procedure Function_Tests is
       Analyze (Source, Analyzed);
       Check (Analysis_Status_Of (Analyzed) /= Analysis_Succeeded);
       Check (Analysis_Diagnostic (Analyzed) = Handler_Result_Not_Exportable);
-      -- The diagnostic belongs to the checked program root, not a nested
-      -- handler node or an absent-node sentinel. Leading spaces are retained.
-      Check (Analysis_Diagnostic_Position (Analyzed) = 3);
+      -- The diagnostic belongs to the program's result expression (after its
+      -- declarations), not a nested handler node or an absent-node sentinel.
+      -- Leading spaces are retained.
+      Check (Analysis_Diagnostic_Position (Analyzed) = Source'Length - Expression'Length + 1);
       Interpret (Source, 4096, Executed);
       Check (Executed.Status = Type_Check_Failed and then not Executed.Has_Value);
       Check (Executed.Diagnostic = Handler_Result_Not_Exportable);
-      Check (Executed.Diagnostic_Position = 3);
+      Check (Executed.Diagnostic_Position = Source'Length - Expression'Length + 1);
    end Reject_Exported_Handler;
    type Host_State is record
       Called : Boolean := False;

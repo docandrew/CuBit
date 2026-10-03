@@ -15,7 +15,7 @@ cubit_gpu_native_query_call(void *endpoint,
    const bool budget = request->label == 0x0a2e;
    if (native->slot > 63 || (!budget && request->label != 0x0a20) ||
        request->length != 4 || request->flags || request->reserved ||
-       request->words[0] != 1 || request->words[1] > (budget ? 0 : 4) ||
+       request->words[0] != (budget ? 2 : 1) || request->words[1] > (budget ? 0 : 4) ||
        request->words[2] || request->words[3])
       return false;
    struct cubit_gpu_query_message result = {.label = request->label, .length = 4};

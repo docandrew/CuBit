@@ -284,11 +284,29 @@ package body Fixture is
             Ignore := syscall (SYSCALL_EXIT);
             loop null; end loop;
          end if;
-         MG.Return_Acquisition (Parent, OK); Check (OK, "exit root return");
+         -- Keep a direct root reader as well as the forwarded child across
+         -- owner teardown. The grant store must outlive the owner's process
+         -- address space and continue accepting returns from its borrowers.
          Check (Call (Owner_Cap, Exit_Owner) = 1, "owner exit requested");
          Check (Call (Reader_Cap, Await_Owner_Exit) = 1, "reader survives owner exit");
          Check (syscall (SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION, Child.slot) = 0,
                 "child retired after owner exit");
+         declare
+            View : Bytes (0 .. 8191) with Import, Address => Mapped, Volatile;
+         begin
+            for Index in View'Range loop
+               Check (View (Index) = (if Index < 4096 then 16#A3# else 16#C9#),
+                 "direct root survives owner death and child retirement");
+            end loop;
+         end;
+         MG.Acquire_Via_Capability
+           (Owner_Cap, Parent, 0, 8192, MG.Read_Access, Denied_Address, OK);
+         Check (not OK, "dead owner denies new root reader");
+         MG.Return_Acquisition (Parent, OK);
+         Check (OK, "direct root return after owner death");
+         MG.Return_Acquisition (Parent, OK);
+         Check (not OK, "duplicate dead-owner root return denied");
+         debugPrint ("GRANT-FORWARD-OWNER-ROOT-DRAIN: PASS" & ASCII.LF);
          debugPrint ("GRANT-FORWARD-OWNER-EXIT: PASS" & ASCII.LF);
          Ignore := syscall (SYSCALL_EXIT);
          loop null; end loop;

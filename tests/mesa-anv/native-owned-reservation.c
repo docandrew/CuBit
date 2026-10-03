@@ -6,6 +6,7 @@
 #include <string.h>
 
 int cubit_test_owned_reservations(void);
+int cubit_test_gpu_metadata(void);
 
 static unsigned long call(unsigned long n, unsigned long a,
                           unsigned long b, unsigned long c)
@@ -65,5 +66,5 @@ int cubit_test_owned_reservations(void)
    }
    const char *pass = "TEST: PASS native owned reservation growth and retirement (NO GPU)\n";
    cubit_debug_write(pass, strlen(pass));
-   return 0;
+   return cubit_test_gpu_metadata();
 }

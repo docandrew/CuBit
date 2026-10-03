@@ -18,6 +18,9 @@ from cubitize import cubitize_crate, writable  # noqa: E402
 import shutil
 
 FIXES = {
+    # Shader and pixel attribution only while explicit GL timer queries are active.
+    "swgl-0.70.0": {'edits': [('src/gl.cc', '#include <stdio.h>', '#include <stdio.h>\n#include <cubit/debug.h>', 'once'), ('src/gl.cc', '#ifdef PRINT_TIMINGS\n  uint64_t start = get_time_value();\n#endif\n\n  ctx->shaded_rows = 0;', '#ifdef PRINT_TIMINGS\n  uint64_t start = get_time_value();\n#endif\n\n  // CuBit diagnostics: only query-enabled draws pay for extra timestamps.\n  const bool penny_trace_draw = ctx->time_elapsed_query != 0;\n  const uint64_t penny_draw_start = penny_trace_draw ? get_time_value() : 0;\n\n  ctx->shaded_rows = 0;', 'once'), ('src/gl.cc', '  if (ctx->samples_passed_query) {\n    Query& q = ctx->queries[ctx->samples_passed_query];', '  if (penny_trace_draw) {\n    const uint64_t elapsed = get_time_value() - penny_draw_start;\n    if (elapsed >= 5000000) {\n      char message[512];\n      int length = snprintf(message, sizeof(message), "PENNY-SWGL: shader=%s instances=%d pixels=%d rows=%d target=%dx%d ms=%.3f\\n",\n             ctx->programs[ctx->current_program].impl->get_name(),\n             instancecount, ctx->shaded_pixels, ctx->shaded_rows,\n             colortex.width, colortex.height, double(elapsed) / 1000000.0);\n      if (length > 0) {\n        cubit_debug_write(message, size_t(length) < sizeof(message) ? size_t(length) : sizeof(message) - 1);\n      }\n    }\n  }\n\n  if (ctx->samples_passed_query) {\n    Query& q = ctx->queries[ctx->samples_passed_query];', 'once')], 'migrations': [('src/gl.cc', '  if (penny_trace_draw) {\n    const uint64_t elapsed = get_time_value() - penny_draw_start;\n    if (elapsed >= 5000000) {\n      printf("PENNY-SWGL: shader=%s instances=%d pixels=%d rows=%d target=%dx%d ms=%.3f\\n",\n             ctx->programs[ctx->current_program].impl->get_name(),\n             instancecount, ctx->shaded_pixels, ctx->shaded_rows,\n             colortex.width, colortex.height, double(elapsed) / 1000000.0);\n    }\n  }\n\n  if (ctx->samples_passed_query) {\n    Query& q = ctx->queries[ctx->samples_passed_query];', '  if (ctx->samples_passed_query) {\n    Query& q = ctx->queries[ctx->samples_passed_query];'), ('src/gl.cc', '  if (penny_trace_draw) {\n    const uint64_t elapsed = get_time_value() - penny_draw_start;\n    if (elapsed >= 5000000) {\n      char message[512];\n      int length = snprintf(message, sizeof(message), "PENNY-SWGL: shader=%s instances=%d pixels=%d rows=%d target=%dx%d ms=%.3f\\n",\n             ctx->programs[ctx->current_program].impl->get_name(),\n             instancecount, ctx->shaded_pixels, ctx->shaded_rows,\n             colortex.width, colortex.height, double(elapsed) / 1000000.0);\n      if (length > 0) {\n        cubit_debug_write(message, min(size_t(length), sizeof(message) - 1));\n      }\n    }\n  }\n\n  if (ctx->samples_passed_query) {\n    Query& q = ctx->queries[ctx->samples_passed_query];', '  if (ctx->samples_passed_query) {\n    Query& q = ctx->queries[ctx->samples_passed_query];')]},
+
     # The C ABI: struct layouts, constants, symbols.
     "libc-0.2.189": {"cubitize": True},
 
@@ -120,6 +123,89 @@ FIXES = {
 }
 
 
+
+# SWGL has no GLES varying limit: reconstruct invariant shadow clip data once
+# per vertex instead of once per pixel. Keep the upstream hardware shader path.
+FIXES["swgl-0.70.0"]["edits"] += [
+    ("res/ps_quad_box_shadow.glsl", "#ifdef WR_VERTEX_SHADER",
+     """#ifdef SWGL
+flat varying highp vec4 vPennyClipTL;
+flat varying highp vec4 vPennyClipTR;
+flat varying highp vec4 vPennyClipBR;
+flat varying highp vec4 vPennyClipBL;
+flat varying highp vec3 vPennyPlaneTL;
+flat varying highp vec3 vPennyPlaneTR;
+flat varying highp vec3 vPennyPlaneBR;
+flat varying highp vec3 vPennyPlaneBL;
+flat varying highp vec4 vPennyBounds;
+#endif
+
+#ifdef WR_VERTEX_SHADER""", "once"),
+    ("res/ps_quad_box_shadow.glsl",
+     """    vElemCenter_Radius_BL = vec4(elem_p0.x + r_bl.x, elem_p1.y - r_bl.y, r_bl);""",
+     """    vElemCenter_Radius_BL = vec4(elem_p0.x + r_bl.x, elem_p1.y - r_bl.y, r_bl);
+#ifdef SWGL
+    vec2 c_tl = vElemCenter_Radius_TL.xy;
+    vec2 c_tr = vElemCenter_Radius_TR.xy;
+    vec2 c_br = vElemCenter_Radius_BR.xy;
+    vec2 c_bl = vElemCenter_Radius_BL.xy;
+    vec2 n_tl = -r_tl.yx;
+    vec2 n_tr = vec2(r_tr.y, -r_tr.x);
+    vec2 n_br = r_br.yx;
+    vec2 n_bl = vec2(-r_bl.y, r_bl.x);
+    vPennyClipTL = vec4(c_tl, inverse_radii_squared(r_tl));
+    vPennyClipTR = vec4(c_tr, inverse_radii_squared(r_tr));
+    vPennyClipBR = vec4(c_br, inverse_radii_squared(r_br));
+    vPennyClipBL = vec4(c_bl, inverse_radii_squared(r_bl));
+    vPennyPlaneTL = vec3(n_tl, dot(n_tl, vec2(c_tl.x - r_tl.x, c_tl.y)));
+    vPennyPlaneTR = vec3(n_tr, dot(n_tr, vec2(c_tr.x, c_tr.y - r_tr.y)));
+    vPennyPlaneBR = vec3(n_br, dot(n_br, vec2(c_br.x + r_br.x, c_br.y)));
+    vPennyPlaneBL = vec3(n_bl, dot(n_bl, vec2(c_bl.x, c_bl.y + r_bl.y)));
+    vPennyBounds = vec4(c_tl - r_tl, c_br + r_br);
+#endif""", "once"),
+    ("res/ps_quad_box_shadow.glsl",
+     """    float aa_range = compute_aa_range(local_pos);
+
+    vec2 c_tl""",
+     """    float aa_range = compute_aa_range(local_pos);
+
+#ifdef SWGL
+    float elem_dist = distance_to_rounded_rect(
+        local_pos,
+        vPennyPlaneTL, vPennyClipTL,
+        vPennyPlaneTR, vPennyClipTR,
+        vPennyPlaneBR, vPennyClipBR,
+        vPennyPlaneBL, vPennyClipBL,
+        vPennyBounds
+    );
+#else
+    vec2 c_tl""", "once"),
+    ("res/ps_quad_box_shadow.glsl",
+     """        elem_bounds
+    );""",
+     """        elem_bounds
+    );
+#endif""", "once"),
+]
+
+
+
+# A constant gradient offset across a row has no next stop boundary to cross.
+# Dividing the negative distance to the prior stop by zero made subSpan clamp
+# to one pixel, defeating the existing vectorized full-span implementation.
+FIXES["swgl-0.70.0"]["edits"] += [
+    ("src/swgl_ext.h",
+     """      float offsetRange =
+          delta > 0.0f ? nextOffset - offset.x : prevOffset - offset.x;
+      subSpan = min(subSpan, offsetRange / delta);""",
+     """      if (delta != 0.0f) {
+        float offsetRange =
+            delta > 0.0f ? nextOffset - offset.x : prevOffset - offset.x;
+        subSpan = min(subSpan, offsetRange / delta);
+      }""", "once"),
+]
+
+
 def apply(registry, out):
     lines = []
     for crate, fix in FIXES.items():
@@ -150,6 +236,12 @@ def apply(registry, out):
                 "#elif defined(__wasi__)")
             if corrected != text:
                 open(memory, "w", encoding="utf-8").write(corrected)
+        # Explicitly migrate superseded edits before checking final replacements.
+        for path, old, new in fix.get("migrations", []):
+            p = os.path.join(dst, path)
+            s = open(p, encoding="utf-8").read()
+            if old in s:
+                open(p, "w", encoding="utf-8").write(s.replace(old, new, 1))
         # Apply newly added exact edits to an existing patched checkout too.
         # Identical replacements preserve timestamps and Cargo's build cache.
         for path, old, new, how in fix.get("edits", []):

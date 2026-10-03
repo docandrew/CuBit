@@ -22,6 +22,9 @@ with PerCpuData;
 with PerCPUData;
 with Process;
 with Process.IPC;
+with Process.User_Memory;
+with Process_Launch;
+with User_Buffer_Copy;
 with Spinlocks;
 with Process_Lifetime;
 with Sysinfo;
@@ -990,6 +993,8 @@ package body Syscall.Admin is
                         end if;
                     end loop;
 
+                    -- Launch arguments can no longer be installed.
+                    Process.proctab(targetPID).launch := Process_Launch.Started;
                     Process.resume (targetPID);
                     print ("RESUME: resumed PID ");
                     println (Integer (targetPID));
@@ -1002,6 +1007,110 @@ package body Syscall.Admin is
             Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
         end;
     end handleResume;
+
+    ---------------------------------------------------------------------------
+    -- handleInstallLaunchArguments
+    ---------------------------------------------------------------------------
+    procedure handleInstallLaunchArguments
+       (callerPID        : Process.ProcessID;
+        arg0, arg1, arg2 : Unsigned_64;
+        retval           : out Unsigned_64) with
+        SPARK_Mode => Off   -- page-table and process-table integration
+    is
+        use type Process.ProcessState;
+        use type Process.Page_Allocation_Result;
+        use type Process_Launch.Launch_Phase;
+        targetPID : Process.ProcessID;
+    begin
+        retval := reterr;
+        if arg0 = 0 or else arg0 > Unsigned_64 (Process.ProcessID'Last) then
+            println ("LAUNCH-ARGS: invalid target PID");
+            return;
+        elsif arg2 not in Process_Launch.Argument_Bytes or else
+              not User_Buffer_Copy.Valid_Range (arg1, arg2)
+        then
+            println ("LAUNCH-ARGS: invalid source range");
+            return;
+        end if;
+        targetPID := Process.ProcessID (arg0);
+
+        declare
+            procedure performLocked is
+                pages : constant Process_Launch.Argument_Pages :=
+                    Process_Launch.Page_Count (arg2);
+                frames : Process.FrameLists.List renames
+                    Process.proctab(targetPID).frames;
+                storage : System.Address;
+                result : Process.Page_Allocation_Result;
+                copied : Boolean;
+                offset, count : Unsigned_64;
+            begin
+                if not Process.proctab(targetPID).admitted or else
+                   Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime)
+                then
+                    return;
+                elsif not hasCapProcessFor (callerPID, targetPID,
+                                            Capabilities.RIGHT_EXECUTE)
+                then
+                    println ("LAUNCH-ARGS: denied, no RIGHT_EXECUTE");
+                    return;
+                elsif Process.threadOf (targetPID).state /= Process.SUSPENDED or else
+                      Process.proctab(targetPID).launch /= Process_Launch.Unstarted
+                then
+                    println ("LAUNCH-ARGS: target already started or has arguments");
+                    return;
+                end if;
+
+                Process.lockAddressSpace (targetPID);
+                -- The frame list's capacity bounds tracked frames; nodes are
+                -- supplied on demand (as for heap growth).
+                if frames.capacity > Natural'Last - pages then
+                    Process.unlockAddressSpace (targetPID);
+                    return;
+                end if;
+                frames.capacity := frames.capacity + pages;
+                for page in 0 .. pages - 1 loop
+                    Process.tryAddPage
+                      (proc    => Process.proctab(targetPID),
+                       mapTo   => To_Address
+                                    (Integer_Address (Process_Launch.Arguments_Base) +
+                                     Integer_Address (page) *
+                                       Process_Launch.Page_Bytes),
+                       storage => storage,
+                       result  => result,
+                       flags   => Virtmem.PG_USERDATARO);
+                    if result /= Process.Page_Added then
+                        Process.unlockAddressSpace (targetPID);
+                        println ("LAUNCH-ARGS: page allocation rejected");
+                        return;
+                    end if;
+                    -- Fresh frames are zeroed; copy this page's share.
+                    offset := Unsigned_64 (page) * Process_Launch.Page_Bytes;
+                    count := Unsigned_64'Min (arg2 - offset,
+                                              Process_Launch.Page_Bytes);
+                    Process.User_Memory.Copy
+                      (callerPID, arg1 + offset, storage,
+                       Storage_Count (count), copied);
+                    if not copied then
+                        Process.unlockAddressSpace (targetPID);
+                        println ("LAUNCH-ARGS: source unreadable");
+                        return;
+                    end if;
+                end loop;
+                Process.unlockAddressSpace (targetPID);
+
+                -- First dispatch enters user mode with RDI = length.
+                Process.threadOf (targetPID).kernelStack.interruptFrame.rdi := arg2;
+                Process.proctab(targetPID).launch :=
+                    Process_Launch.Arguments_Installed;
+                retval := 0;
+            end performLocked;
+        begin
+            Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
+            performLocked;
+            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
+        end;
+    end handleInstallLaunchArguments;
 
     ---------------------------------------------------------------------------
     -- handleKill

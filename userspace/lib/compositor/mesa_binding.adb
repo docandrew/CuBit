@@ -25,6 +25,17 @@ package body Mesa_Binding with SPARK_Mode => Off is
         when 2 => Compositor_Policy.Failed_Quiescent,
         when others => Compositor_Policy.Access_Unknown);
    end Render_View;
+   procedure Fill_View (Library : in out Context; Target : System.Address;
+                        Left, Top, Width, Height, Color : Compositor_Formats.Word;
+                        Result : out Compositor_Policy.Completion) is
+      Code : constant Mesa_FFI.Word := Mesa_FFI.Fill (Library.Pointer, Target, Left, Top, Width, Height, Color);
+   begin
+      Result := (case Code is
+        when 0 => Compositor_Policy.Rendered,
+        when 1 => Compositor_Policy.Rejected,
+        when 2 => Compositor_Policy.Failed_Quiescent,
+        when others => Compositor_Policy.Access_Unknown);
+   end Fill_View;
    procedure Release_View (Library : in out Context; View : System.Address; Safe : out Boolean) is
       use type Mesa_FFI.Word;
    begin

@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 mkdir -p tests/config-activation/build/source
-cp userspace/runtime/gnat/cubit.ads userspace/runtime/gnat/cubit-config_inspection.ad? tests/config-activation/build/source/
+cp userspace/runtime/gnat/cubit.ads userspace/runtime/gnat/cubit-config_inspection.ad? userspace/runtime/gnat/cubit-failures.ad? tests/config-activation/build/source/
 cd kernel
 alr exec -- gprbuild -p -P ../tests/config-activation/activation.gpr
 ../tests/config-activation/build/activation_tests

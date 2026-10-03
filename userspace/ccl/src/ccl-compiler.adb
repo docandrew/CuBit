@@ -1,6 +1,7 @@
 with CCL.Text_Operations;
 with CCL.List_Operations;
 with Interfaces;
+with CCL.Streams;
 with CCL.Ownership;
 with CCL.Host_Values;
 with CCL.Types;
@@ -231,7 +232,8 @@ is
                Emit (CCL.VM.Project_Field, Immediate => Interfaces.Integer_64 (Item.Alternative),
                  Data_Type => Initializer.Static_Kind);
             when CCL.Language.Type_Definition =>
-               Emit_Node (Item.Second, Depth + 1, In_Conditional_Branch, Stack_Base);
+               --  Declarations are siblings: the rest of the program is not nested.
+               Emit_Node (Item.Second, Depth, In_Conditional_Branch, Stack_Base);
                return; -- a declaration has no executable source-map range
             when CCL.Language.Variant_Literal | CCL.Language.Variant_Construct =>
                --  A scalar sum is a Variant_Value; any other variant is a
@@ -299,6 +301,13 @@ is
                   Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
                else
                   Emit (CCL.VM.Push_Integer, Item.Integer_Value);
+               end if;
+
+            when CCL.Language.Stream_Reference =>
+               if not CCL.Types.Is_Stream (Program.Data_Types, Item.Static_Kind) then
+                  Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
+               else
+                  Emit (CCL.VM.Push_Stream, Item.Integer_Value, Data_Type => Item.Static_Kind);
                end if;
 
             when CCL.Language.Boolean_Literal =>
@@ -437,6 +446,8 @@ is
                           then CCL.VM.List_Value
                           elsif CCL.Types.Is_Function (Program.Data_Types, Initializer.Static_Kind)
                           then CCL.VM.Function_Value
+                          elsif CCL.Types.Is_Stream (Program.Data_Types, Initializer.Static_Kind)
+                          then CCL.VM.Integer_Value
                           elsif CCL.Types.Describe (Program.Data_Types, Initializer.Static_Kind).Form = CCL.Types.Resource
                           then CCL.VM.Resource_Value
                           elsif CCL.Types.Is_Scalar_Sum (Program.Data_Types, Initializer.Static_Kind)
@@ -540,8 +551,10 @@ is
                if not Import_Lowered then
                   Fail (Unsupported_Form, Index, Item.Source_Position);
                elsif (Item.Host_Call.Import.Result = CCL.Host_Values.Integer_Value and then
+                   not Item.Host_Call.Import.Result_Stream and then
                    Item.Static_Kind /= CCL.Language.Integer_Type) or else
                  (Item.Host_Call.Import.Result = CCL.Host_Values.Boolean_Value and then
+                   not Item.Host_Call.Import.Result_Stream and then
                    Item.Static_Kind /= CCL.Language.Boolean_Type)
                then
                   Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
@@ -601,7 +614,8 @@ is
 
             when CCL.Language.Function_Definition =>
                --  Bodies are compiled after the main code, one region each.
-               Emit_Node (Item.Second, Depth + 1, In_Conditional_Branch, Stack_Base);
+               --  Declarations are siblings: the rest of the program is not nested.
+               Emit_Node (Item.Second, Depth, In_Conditional_Branch, Stack_Base);
                return; -- a declaration has no executable source-map range
 
             when CCL.Language.Function_Call =>
@@ -735,6 +749,23 @@ is
                      Fail (Unsupported_Form, Index, Item.Source_Position); return;
                   end if;
                   Read_Node (Item.Arguments (Item.Argument_Count), Subject);
+                  if CCL.Language.Is_Stream_View (Item.Builtin) then
+                     --  (window n s): n, then the stream; others: the stream.
+                     if not CCL.Types.Is_Stream (Program.Data_Types, Subject.Static_Kind) or else
+                       CCL.VM.Stream_View_Type
+                         (Program.Data_Types, Subject.Static_Kind,
+                          CCL.Language.Stream_View_Of (Item.Builtin)) = CCL.Types.Invalid_Type
+                     then
+                        Fail (Unsupported_Form, Index, Item.Source_Position); return;
+                     end if;
+                     for P in 1 .. Item.Argument_Count loop
+                        Emit_Node (Item.Arguments (P), Depth + 1, In_Conditional_Branch, Stack_Base + P - 1);
+                     end loop;
+                     Emit (CCL.VM.Stream_View, Interfaces.Integer_64
+                       (CCL.Streams.View_Kind'Enum_Rep (CCL.Language.Stream_View_Of (Item.Builtin))),
+                       Data_Type => Subject.Static_Kind);
+                     return;
+                  end if;
                   List_Type := (if Item.Builtin in CCL.Language.Range_Builtin | CCL.Language.Split_Builtin
                                 then Item.Static_Kind else Subject.Static_Kind);
                   if not (CCL.Language.Is_Text_Operation (Item.Builtin) and then

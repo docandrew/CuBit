@@ -15,24 +15,25 @@ package body Mesa_Triangle_Surface is
       Message.tag := M.capCall (M.CapabilitySlot (Desktop_Slot), Message);
       return CuBit.Desktop_Messages.To_Wire (Message);
    end Send;
-   function Create return Unsigned_64 is
+   function Create (Width, Height : Unsigned_32) return Unsigned_64 is
       Created : D.Creation_Result;
    begin
+      if Width not in 1 .. 4096 or else Height not in 1 .. 4096 then return 0; end if;
       if D.Decode_Hello_Result (Send (D.Encode_Hello (D.Current_Revision))).Status /=
         D.Success then return 0; end if;
       Created := D.Decode_Creation_Result
-        (Send (D.Encode_Create ((64, 64, D.Window_Surface))));
-      --  Desktop may enlarge the decorated window. The independent 64x64
+        (Send (D.Encode_Create ((D.Pixel_Extent (Width), D.Pixel_Extent (Height), D.Window_Surface))));
+      --  Desktop may enlarge the decorated window. The independent image
       --  attachment stays unscaled at the client origin; composition clips
       --  reads to its extent and fills the unused client area itself.
       if Created.Status /= D.Success then return 0; end if;
       return Unsigned_64 (Created.Surface);
    end Create;
-   function Present (Surface : Unsigned_64) return Unsigned_32 is
+   function Present (Surface : Unsigned_64; Width, Height : Unsigned_32) return Unsigned_32 is
    begin
-      if Surface = 0 then return 1; end if;
+      if Surface = 0 or else Width not in 1 .. 4096 or else Height not in 1 .. 4096 then return 1; end if;
       return (if Send (D.Encode_Present
-        ((D.Live_Surface_Name (Surface), (0, 0, 64, 64)))) =
+        ((D.Live_Surface_Name (Surface), (0, 0, D.Pixel_Extent (Width), D.Pixel_Extent (Height))))) =
         D.Encode_Status (D.Present_Surface, D.Success) then 0 else 1);
    end Present;
    function Destroy (Surface : Unsigned_64) return Unsigned_32 is

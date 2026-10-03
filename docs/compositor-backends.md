@@ -47,6 +47,66 @@ remains the default; no 240 Hz or physical latency claim is made.
 
 ## Implementation and ownership
 
+### Private Vulkan image backing (2026-10-02)
+
+`Vulkan_Image_Owner` and the narrow `vulkan_owned_image.c` boundary now prepare
+private optimal-tiling BGRA8/R8 images, query their actual memory requirements,
+reserve bytes through the proven storage ledger, and only then allocate/bind
+Mesa backing. Eight live/uncertain allocations share a caller-supplied budget.
+Held readers prevent release; uncertain binding/release retains the full charge.
+This is private image ownership, not external image import or display authority.
+
+The focused owner proof passes 59 results with no unproved/justified checks.
+Hosted policy and injected foreign-call failures pass. Three images allocated
+through the production owner render 178,176 checked pixels using real hosted
+Mesa Vulkan and retire with no remaining charge or validation errors. The full
+existing submission regression still passes 712 queues and 546,816 pixel checks;
+its larger glyph fixture retains its separate test allocator. The individual
+image owner now compiles against CuBit's Ada runtime and musl Mesa ABI.
+
+`Vulkan_Owned_Targets` additionally couples three backing images to their views:
+clean allocation/view failure rolls back; uncertain view state retains backing;
+published targets retire only after the bound submission and GPU/display-role
+gate permits view destruction. An unrelated idle context cannot authorize
+retirement; the foreign binding verifies matching device and present queue,
+command and fence handles before publication. The combined proof report passes 578 results including
+unchanged dependencies, with zero unproved/justified checks. A real hosted Mesa
+fixture renders 2,304 exact RGB pixels through all three owned targets and checks
+that a simulated held front retains backing even after GPU completion. Final
+retirement refunds the budget. Its independent binding fault suite rejects
+18 malformed/aliased/context-mismatched sets without partial publication.
+The complete bundle now compiles in an isolated snapshot against copied CuBit
+runtime and existing musl/Mesa headers, with input hashes verified before/after.
+This is component compilation, not a native link, boot or Intel execution gate.
+Desktop activation and native driver/display retirement remain pending.
+See [owned-image contracts and evidence](../tests/compositor/vulkan-owned-images.md).
+
+### Desktop output-pixel fill capture (2026-10-02)
+
+Desktop already supplies physical rectangles to its fill renderer. The Vulkan
+scene now accepts these through `Append_Physical_Fill`, preserving exact output
+coordinates instead of applying DPI/rotation/origin again. Logical and physical
+fills share the same bounded damage replay; scene size and draw limits do not
+grow and no pixel allocation/copy is added. The combined proof has 558 results,
+zero unproved/justified; actual hosted Mesa checks 55,296 exact pixels across
+72 scenes/six scales/four rotations, and final CuBit component compilation passes
+in an isolated snapshot. Native Desktop capture/submission and presentation
+remain unconnected. See [physical-fill scope and evidence](../tests/compositor/physical-fills.md).
+
+### Captured-scene recording boundary (2026-10-02)
+
+`Vulkan_Scene_Recording.Record_Scene` now assembles owned-target/context/epoch
+and source preflight, render-pass begin/replay/end, safe cancellation of
+unsubmitted failures, and quarantine on uncertain failure. Its `Recorded`
+outcome retains the rendering writer and active repaint plan; it neither queues
+nor presents the frame. The existing `Vulkan_Frame` submit/fence-poll stages
+remain responsible for making it GPU-ready. The combined proof passes 702
+results including unchanged dependencies, and the actual Mesa target-bundle
+fixture now uses this assembly with repaint-aware buffer acquisition and real
+fence completion. Nine fault/lifetime cases and isolated CuBit component
+compilation pass. Desktop's synchronous completion handoff still needs native
+backend integration. See [recording contracts and evidence](../tests/compositor/scene-recording.md).
+
 Desktop still owns windows, input, damage, decorations and application grants.
 `Desktop_Composition.Plan` supplies overflow-safe source/target/damage clipping.
 `Desktop_Compositor` selects a legacy or Mesa implementation at build time.
@@ -3811,3 +3871,1647 @@ ownership tests and the native Mesa target oracle exercise retained fronts,
 stale identities and allocation backpressure. Direct Display/GPU transport is
 still pending; the native oracle supplies simulated latch/retirement evidence.
 See [front-retention.md](../tests/compositor/front-retention.md).
+
+Explicit newest-ready replacement is also available in the pool. With
+`Replace_Ready => True`, a fresh-work producer may reclaim only the completed
+ready allocation when three slots are occupied. Front and pending remain held,
+and the reclaimed slot receives a new serial. Default eager Desktop acquisition
+is unchanged; it cannot drop a ready frame without new scene work. The updated
+policy has 28 proved/flow results and hosted coverage for 8,000 replacements.
+The direct-front Mesa oracle exercises actual target writes with simulated
+presentation evidence; the production direct-target adapter remains pending.
+
+## Vulkan opaque-copy integration primitive (2026-10-02)
+
+The new `Vulkan_Copy_Binding` reuses `Desktop_Composition.Plan` to record opaque,
+unscaled client regions through a narrow `vkCmdCopyImage` foreign adapter.
+Hosted Mesa executes the real Ada/C path with exact-pixel and synchronization
+validation; the planner/binding have 41 SPARK results, none unproved. This
+primitive is not selected by Desktop and does not establish imported-image
+authority, submission completion, direct scanout, DPI sampling or GPU blending.
+See [vulkan-copy.md](../tests/compositor/vulkan-copy.md) for proof boundaries,
+reproduction commands, exact evidence and remaining native integration.
+
+## Vulkan affine renderer (2026-10-02)
+
+The new affine renderer records scaled/rotated, damage-clipped BGRA and R8-mask
+draws through Vulkan, with opaque or premultiplied-over pipelines. SPARK supplies
+the existing rational transform. A real 125% texel-edge failure prompted exact
+integer-checked nearest sampling instead of interpolated floating UVs. Hosted
+normal and forced-fallback shaders each pass 178,176 pixel checks with zero
+validation errors. Native Ada/musl compilation passes. Desktop selection, image
+import, GPU command lifetimes, scanout and hardware performance are still pending.
+See [vulkan-affine.md](../tests/compositor/vulkan-affine.md) for scope and proof
+boundaries; this is not an accelerated CuBit desktop claim.
+
+## Vulkan submission ownership (2026-10-02)
+
+`Vulkan_Submission` now wraps actual hosted queue/fence operations and affine
+draw admission and one render pass per frame. Drawing requires an active pass
+with matching output dimensions; sealing requires an ended pass. It allows one
+pending submission, caps attempts at 4096, rejects partial frames, and keeps
+uncertain/pending resources held. A fixed 136-entry source table accepts edits
+only while idle and uses generation-tagged tickets to reject stale references.
+All command transitions preserve those registrations; command quiescence is
+separate from permission to destroy a controller with retained sources. The
+production C provider allocates 136 descriptors once, creates BGRA8/R8 image
+views on import, and releases them through that SPARK gate. Its 63 SPARK results are discharged; the real
+Mesa oracle passes 232 submissions and 178176 pixel
+checks with retained pool writers and zero validation errors. Native compilation
+passes; Desktop/native GPU activation remains pending. See
+[vulkan-submission.md](../tests/compositor/vulkan-submission.md) for exact proof,
+foreign and scanout boundaries. The separate affine transform proof completed
+with155 results (15flow/140prover), none unproved or justified.
+
+## Vulkan output frame adapter (2026-10-02)
+
+`Vulkan_Frame` connects actual command/fence results to the three-buffer pool.
+Scene selection follows the acquired writer's index. Pending/uncertain work
+retains that writer; only confirmed GPU completion publishes a ready target.
+Every transition preserves the visible front and pending display ticket. A
+full pool defers ordinary admission; explicit fresh work may replace only ready.
+
+The combined pool/frame/submission proof has 122 results, none unproved. The
+hosted oracle now renders into three distinct Vulkan targets and verifies
+354,048 nonwriter pixels remain unchanged while simulated display events lag
+behind rendering. Native compilation and the existing affine/pool regressions
+pass. Native writable-target leases, real latch/retirement transport and Desktop
+backend selection remain pending; no physical scanout or latency claim follows.
+
+## Managed Vulkan targets (2026-10-02)
+
+The compositor now has a fixed three-target view/framebuffer provider and a
+SPARK owner that prevents teardown until the matching allocation epoch is idle,
+source registrations are released, and writer/ready/pending/front roles are empty.
+Ready candidates can be explicitly discarded on output disable without releasing
+pending or visible allocations. Unknown foreign outcomes retain resources.
+
+The four-unit pool/frame/submission/target-owner proof has 135 results, none
+unproved. Hosted Mesa exercises the actual provider, all six partial-construction
+rollback points, and three-image rendering with retained nonwriter pixels. Native
+Ada/musl compilation passes. The provider accepts already-authorized local images;
+creating native writable image leases and binding them into Desktop still requires
+the Display/GPU integration contract. Physical presentation remains unmeasured.
+
+
+## Vulkan accumulated repaint (2026-10-02)
+
+Three-target damage history now follows actual frame admission and GPU
+completion, retaining changes arriving during a paint and all work after
+cancellation or uncertain completion. The real hosted Mesa fixture preserves
+target contents and repaints 96 opaque scenes with 15,240 pixels of work versus
+73,728 full-frame pixels; complete target comparisons and nonwriter retention
+checks pass. An independent 600-cycle pixel-history oracle covers saturation,
+cancellation and in-flight changes. The layered extension below now exercises background/all-layer replay within
+each damaged region. These are hosted
+correctness/work-count results; native GPU activation and physical latency
+measurement remain pending. See `tests/compositor/vulkan-submission.md`.
+
+
+## Vulkan layered damage replay (2026-10-02)
+
+The bounded SPARK frame controller now replays each layer over the active target's
+captured damage, preserving source ownership and rejecting the whole frame on
+failure or budget exhaustion. A real Mesa oracle restores damaged background
+and replays moving, hidden and reordered translucent layers; 96 new scenes pass
+full-output composition and nonwriter-retention comparisons. The combined proof
+report has 234 results with zero unproved checks. Scene snapshot ownership,
+complete layer enumeration and old/new geometry damage remain caller obligations.
+This closes the opaque-only test gap, not native Desktop activation or physical
+presentation measurement. See `tests/compositor/vulkan-submission.md`.
+
+
+## Bounded Vulkan scene snapshot (2026-10-02)
+
+`Vulkan_Scene` captures up to 512 ordered layers and output geometry, rejects
+late edits or overflow, and preflights every source generation before replay.
+The 20,512-byte metadata state does not copy pixels or own imported allocations.
+Actual hosted layered rendering now uses these sealed snapshots; capacity,
+stale-source and failure tests pass, with 269 combined SPARK results and no
+unproved checks. Source tickets remain local to their submission context.
+Desktop still has a synchronous live-scene renderer; complete command capture
+and native lease/completion integration are required before selecting Vulkan.
+
+
+## Mixed Vulkan scene sources (2026-10-02)
+
+The captured-scene oracle now retains separate BGRA image and R8 mask imports
+through GPU completion and composes them in one ordered scene. Full-output and
+nonwriter comparisons pass for all 424 submissions. Source preflight explicitly
+proves zero added draw attempts when any captured ticket is invalid; combined
+policy proof results are 271 with none unproved. Coverage is synthetic; connecting
+native glyph storage and complete Desktop commands remains integration work.
+
+
+## Production Vulkan background restoration (2026-10-02)
+
+The scene controller now restores captured damage itself using an opaque RGB
+fill primitive, replacing the fixture-only clears. Fill admission, target bounds,
+source preflight and failure/budget handling are SPARK-controlled; the foreign
+adapter only emits `vkCmdClearAttachments`. It needs no source image or pixel
+copy. All 424 real hosted Vulkan submissions pass the pixel oracle, native
+compilation passes, and the combined proof report has 292 results with none
+unproved. Complete Desktop primitive capture and native GPU activation remain
+pending; gradients still use Desktop's existing row-based software path.
+
+
+## Ordered Vulkan solid rectangles (2026-10-02)
+
+Captured scenes now interleave opaque solid rectangles with sampled images and
+R8 masks. The SPARK fill path maps logical bounds through output scaling/rotation
+and clips to accumulated target damage, without creating a source texture.
+The real hosted oracle covers six scales, four rotations and nonzero origins;
+all 448 submissions pass full-output and nonwriter comparisons. Solid errors
+and overload stop the frame, native compilation passes, and the combined proof
+report has 317 results with none unproved. Complete Desktop capture and native
+GPU integration remain pending.
+
+
+## Desktop retained-target fills (2026-10-02)
+
+Desktop's physical-output `fillRect` now calls `Desktop_Compositor.Draw_Fill`
+before its existing CPU loop. The Mesa backend reuses a retained writable target
+and the existing completion state machine; its narrow foreign adapter calls
+Gallium `clear_render_target` and flushes synchronous softpipe. No source view,
+source texture, intermediate pixel buffer or extra pixel copy is introduced.
+All packed BGRA bytes are preserved, including Desktop's existing alpha-byte
+convention. The Vulkan opaque fill path retains its explicit opaque semantics.
+
+An empty clip completes without a foreign call. Known-quiescent failure disables
+the Mesa path and allows the original CPU fill to overwrite the entire requested
+rectangle. Unknown access forbids fallback/retirement and requests compositor
+restart. The legacy backend explicitly declines the new operation; its normal
+CPU path remains in place. The default build selection is still legacy.
+
+Hosted text modes 0..6 and fill modes 7..10 pass. The backend proof report has
+476 results (123 flow, 353 prover), zero unproved or justified checks; the report
+includes unchanged earlier project results. Target mapping authority, the C ABI
+and synchronous Mesa completion remain trusted boundaries. Desktop main is not
+claimed as wholly SPARK-proved. The native CuBit softpipe oracle passes 32
+packed-BGRA fill cases, including padding preservation and empty clips, followed
+by the existing affine, glyph and buffer-lifetime checks. The final Desktop build
+also passes the 180-second QEMU interaction gate: 194,673 geometric pixels,
+keyboard resume/pause, a complete animated retired-buffer-reuse cycle and Escape
+shutdown. Animation is solely a test stimulus; desktop interaction stays instant.
+
+Evidence is retained under `tests/compositor/build/desktop-fill-evidence/`. The
+passing proof log is `desktop-fill-policy-v2.log`; the earlier file named
+`desktop-fill-policy-final.log` records a failed pre-fix proof attempt. The native
+oracle preceded the semantically equivalent callback-constant refactor; the
+Desktop interaction binary includes it. An initial interaction attempt used a
+stale cube fixture without keyboard animation controls; rebuilding that fixture
+against the existing Mesa libraries resolved the missing markers. These are
+CuBit integration tests under QEMU with Mesa softpipe. Native GPU acceleration,
+physical presentation timing and hardware throughput remain unverified. No
+latency or throughput improvement is claimed from this interface change.
+
+
+## Coalesced Desktop gradients (2026-10-02)
+
+Settings gradients now group adjacent logical rows with the same 8-bit blend
+weight into one existing fill operation. The original unclipped rectangle still
+sets the color origin; clipping only limits the emitted band. No intermediate
+image, pixel copy or new foreign interface is needed. A full gradient requires
+at most 256 fills instead of one per logical row (2,160 to 256 for a tall 4K
+logical rectangle). Physical-output geometry and rotation continue through the
+same fill path. Equal-color overlap from outward edge rounding is unchanged.
+
+`Compositor_Gradient.Run_Last` uses a logarithmic bounded search. SPARK proves
+termination, arithmetic safety, the returned range, equal weight for every row in the band, and
+that the following row has a different weight. The gradient's integer weight
+formula is monotone; regression tests independently visit every row in every
+emitted band for heights 1 through 4,096, including all possible clipped starts,
+and check exact coverage, maximality and the 256-operation bound. Existing
+16,777,216 channel cases and maximum-extent checks also pass. All 42 proof
+results pass without justified or unproved checks. Native Mesa Desktop builds
+and links. Evidence: `tests/compositor/build/gradient-band-evidence/`.
+
+This is a backend-call reduction, not a measured frame-time improvement. The
+previous native interactive cube test predates this gradient-only change;
+Settings-specific native visual validation remains outstanding.
+
+
+Native Settings evidence update: `check-settings-gradient.py` verifies all 20
+rows of the default Alloy preview gradient (940 pixels) in the actual CuBit
+scanout against independent signed-channel interpolation. It passes. The larger
+dual-output fixture reached Settings appearance/display navigation and above
+arrangement, but its fixed settling delays raced client publication and resize
+presentation under TCG. Late capture confirmed correct maximize geometry in the
+same VM. Full fractional-DPI completion is still pending; these partial results
+are not a passing end-to-end gate or a latency claim.
+
+The all-rows contract was strengthened after the native Desktop binary was
+built, without changing the executable algorithm. Production proof and hosted
+assertion-enabled regressions were rerun successfully; their evidence is
+`all-rows-proof.log`, `all-rows-gnatprove.out` and the separate source hash file.
+
+
+Final native gate: `dual-primary.log` ends with `headless: PASS desktop-dual-output` (exit 0). The Mesa Desktop passes the complete mixed-output
+suite: window fragments, exact background/cursor restoration, Settings pages,
+above/left/below/offset arrangements, primary migration, maximized work areas,
+125%/150% scaling, minimum logical workspace rejection, primary reflow and
+mixed-scale seams. QEMU was explicitly closed after all observer suites passed;
+the harness then passed its serial-marker and fault checks. The 300-second value
+was a deadline, not a claimed 300-second soak. No hardware timing is inferred.
+
+The fixture now waits for actual Workbench pane pixels before capturing its drag
+reference, preserves both exact fragment comparisons with a bounded wait, and
+waits for the expected maximize pixels on both relocated/new primary cases.
+Publication markers remain useful diagnostics but are not presentation fences.
+The readiness signature is specific to this fixture's default light Workbench
+source pane. `settings-125.png` is a native 125% primary-output capture.
+
+
+## Pixel primitive routing correction (2026-10-02, native gate pending)
+
+The rectangle-fill backend hook also affected `putPixel`, because physical-output
+pixel primitives use `fillRect` for scaled clipping. That unintentionally sent
+each icon and fallback-font sample through Mesa clear/flush. `putPixel` now
+explicitly selects the existing direct CPU fill after the same physical clip;
+ordinary rectangle calls still use the backend. No intermediate pixel storage
+or copies are introduced. This is the current synchronous CPU-writable output
+path; future GPU-only targets require complete icon/font/image submission and
+must not inherit CPU access assumptions. Native compilation passes. The full
+mixed-output/DPI gate subsequently passed with the pointer-retention fix
+described below; no frame-time improvement is claimed yet.
+
+
+## Vulkan gradient command capture (2026-10-02)
+
+`Vulkan_Scene.Append_Gradient` lowers a vertical opaque RGB gradient into at most
+256 ordered solid-band entries using the proved grouping policy. Entries reuse
+the existing solid replay path; they introduce no image allocation, import or
+pixel copy. Empty bounds add nothing. An invalid span, sealed scene or exhausted
+512-entry scene rejects the snapshot, retaining prior metadata for safe cleanup;
+no captured prefix may be published as a complete frame. The draw-attempt cap
+continues to apply independently during replay.
+
+Hosted tests verify every captured row against independent signed-channel color
+interpolation at heights 1, 2, 255, 256, 257, 2160 and 4096, nonzero/negative
+origins, contiguous coverage, capacity-prefix retention, extreme spans, empty
+bounds and sealed-scene rejection. All existing submission mock tests pass.
+Focused SPARK proof has 78 results (13 flow, 65 prover), none unproved/justified.
+Evidence is `tests/compositor/build/scene-gradient-evidence/`. Native Ada compilation passes. The hosted real-Mesa Vulkan oracle now executes
+472 queue submissions, including 24 added gradient scenes at six scales and
+four rotations with heights from 1 through 4096 and nonzero output origins. An
+independent ungrouped logical-row painter checks 9,032 gradient pixels exactly,
+including outward-rounded edge overlaps; all 362,496 output pixels and 722,688
+nonwriter pixels pass. Vulkan reports zero validation errors. Desktop does not
+yet select this Vulkan scene backend; these are hosted rendering results, not
+native CuBit GPU or display-timing measurements.
+
+
+Pixel-routing validation status: native build succeeds and the full mixed-output
+run reaches primary migration/restoration. The subsequent scaling click missed
+because the actual pointer was at x=360 after the fixture believed it had moved
+to x=80. Serial later reports x=928 for an intended x=648 click. This persistent
+280-pixel offset needs input/injection diagnosis; increasing presentation delays
+alone is not sufficient evidence. The VM ended at its normal timeout with a
+failed observer. The earlier pre-routing full DPI pass remains valid for that
+binary. The latest change subsequently passed the complete gate with bounded
+pointer retention, as recorded below.
+
+
+## Pointer backpressure retention (2026-10-02)
+
+The 280-pixel offset above was consistent with four rejected -70 X source
+reports; the serial trace records four mailbox refusals followed by a source
+sequence gap. PS/2 and xHCI pointer publishers now retain up to 32 exact reports
+through transient publication refusal. A shared SPARK deadline policy adds a
+one-millisecond retry only while reports remain pending, preserving earlier
+USB storage/log deadlines. A final refused packet can therefore be retried
+without another device IRQ. This timer is not an input-latency guarantee.
+
+The queue uses 792 bytes on x86-64 and no heap or pixel storage. Reports are
+removed only after accepted publication. Local overflow discards stale pending
+history, retains the newest report/button snapshot and explicitly flags
+recovery; it cannot reconstruct discarded movement or clicks. The kernel
+`event_drop` metric counts admission refusals, including successful later
+retries; source sequence gaps distinguish actual missing reports.
+
+The shared policy has 28 SPARK analysis results (7 flow, 21 prover), zero
+unproved/justified checks. Native PS/2 and xHCI compile/link pass. A hosted
+fault harness executes the actual PS/2 main loop and typed encoder against
+simulated port/IPC boundaries: transient refusal with final timed retry,
+40-report overflow, and consumer replacement all pass. The native CuBit compositor DPI regression now passes: primary migration,
+125%/150% scaling, mixed seams, arrangement, split dragging/maximizing and exact
+background/cursor restoration. Evidence is `tests/input-pending/build/evidence/dual-final.log`.
+The VM was stopped after all four observer suites passed; its 300-second
+argument was a deadline, not a soak duration. That run recorded no mailbox
+refusals. A separate native CuBit loopback oracle now fills the real 32-entry
+mailbox and passes transient refusal (six reports retained/delivered), local
+overflow (40 reports reduce to eight newest with explicit recovery), exact
+authority/sequence/payload checks and final deadline wake without new source
+input. Evidence is `tests/input-pending/build/native.06pF1E/serial.log`.
+This is real kernel IPC in a disposable single-process fixture, not HID or
+cross-process isolation coverage. Native USB runtime fault validation remains
+pending. No hardware latency or 240 Hz claim follows from this TCG run.
+See `tests/input-pending/README.md` for commands and proof boundaries.
+
+
+## Ordered GPU clip commands (2026-10-02)
+
+`Vulkan_Scene` accepts `Set_Clip` and `Reset_Clip` commands. A set command uses
+its existing logical `Surface` rectangle to replace the active clip; callers
+capture the already-intersected widget/window clip, not an implicit stack.
+Reset restores the physical output. Neither command draws, imports a source,
+allocates pixels or expands the command record; the bounded 512-entry scene
+remains 24,608 bytes. Commands share the existing capacity/rejection policy.
+
+Replay transforms the clip for the output and intersects it with target damage.
+Texture drawing retains the original surface geometry and sampling transform;
+only its scissor changes. Solid/gradient replay intersects the same clip without
+changing gradient color origin. Background restoration precedes all clip commands.
+Empty, inverted and off-output clips suppress layer pixels. Source leases remain
+preflighted and retained even for clipped-away texture commands.
+
+The regression suite passes ten clip cases, including texture/solid/gradient
+scissors, sampling dimensions, reset/replacement, empty regions and invalid
+source/mask/tint metadata. The complete existing mock suite passes. Focused
+scene/frame SPARK analysis reports 342 results (126 flow, 216 prover), zero
+unproved/justified checks. Evidence: `tests/compositor/build/scene-clip-evidence/`.
+Real hosted Mesa Vulkan now passes 616 queue submissions and 473,088 output
+pixel checks. The 144 added clipped scenes cover six viewport modes at six scales
+and four rotations: ordinary viewport, empty, inverted, offscreen, reset before
+the final layer, and replacement before the final layer. An independent outward
+edge oracle gates otherwise unchanged texture sampling and an independent
+ungrouped gradient row painter. It checks 84,512 clipped-background pixels,
+1,370 visible clipped-solid pixels and 22,832 gradient pixels with zero tolerance;
+the existing premultiplied blend tolerance remains for blended texture pixels.
+All 943,872 nonwriter target pixels remain unchanged and Vulkan reports zero
+validation errors. Final native Ada/runtime compilation also passes.
+
+These are hosted llvmpipe GPU-command tests plus native compilation. Display
+latches in the fixture remain simulated. Desktop does not yet select the Vulkan
+backend or import native GPU-authorized source/output images through this path;
+no physical display timing or zero-copy scanout claim follows.
+
+
+## Native activation gates (2026-10-02)
+
+The hosted renderer is not ready to become Desktop's selected native backend
+merely by linking Vulkan. Current code establishes these integration constraints:
+
+* Desktop's manifest intentionally has no `request-render`. In procmgr's
+  `Render.Requested` branch, only `Render_Launch.Admitted` resumes that child;
+  rejection, timeout and uncertain replies discard it. Adding a mandatory
+  render request directly to Desktop would remove the boot-time software
+  fallback on machines without an admitted provider. Acceleration must use a
+  separately admitted optional renderer or a separately designed optional
+  admission contract. The existing mandatory launcher must remain fail-closed;
+  timeout is not a negative grant/retirement acknowledgment.
+* `anv_cubit_memory.h` explicitly leaves external-memory, userptr and placed-map
+  callbacks unset; `anv_cubit_memory.c` rejects imported/scanout allocation
+  classes. These are missing native mechanisms, not compositor switches.
+* `Native_GPU_Presentation`/`cubit_presenter_attach_completed_linear` forwards
+  completed coherent linear CPU-readable pixels through terminal read-only
+  grants. This preserves the current Desktop sender/owner boundary. It supplies
+  neither external Vulkan image import nor a GPU render-target/scanout lease.
+* `cubit_vulkan_source_request` assumes an already-authorized same-device image
+  in shader-readable layout. `cubit_vulkan_target_request` assumes three already
+  authorized, writable and mutually nonaliasing image leases. Their descriptor
+  and framebuffer constructors must not be treated as capability importers.
+
+The graphics-side integration handoff must establish authenticated BO/image
+import, format/layout/stride and adapter compatibility, a ready dependency
+before sampling, source-reader release after GPU completion, and output-writer
+admission plus independent display retirement. CPU mappings remain optional;
+they cannot be substituted for GPU authority. An uncertain worker/device failure
+retains its image leases and prevents reuse; destroying a process or accepting
+PRESENT is not evidence of GPU/scanout quiescence. Any software fallback must
+use targets it can actually acquire safely.
+
+The next Desktop-side work is complete primitive capture and frame admission
+against that provider contract. A staged activation must first demonstrate
+successful native admission/import/render/retirement, then unavailable-provider
+software startup and faults with retained source/output backing. Existing
+hosted image handles and simulated display latches are insufficient for that
+activation decision. No new native wire operation or permission was invented by
+this audit.
+
+
+Current-source native check: `render-launch-policy` passed under CuBit/QEMU
+(four CPUs, 1 GiB, 70-second run). The unapproved render child and approved-but-
+unavailable render child were both denied and stopped; exactly one admission
+request was submitted. Desktop reached its internal shell and Devices published
+its native window afterward. Evidence is
+`tests/compositor/build/native-admission-audit.log` and its serial log. This
+verifies the existing separate-child denial path and surviving software UI;
+it does not implement optional render admission inside Desktop or successful
+native GPU composition.
+
+The required-request acceptance decision now passes through the pure SPARK
+`CuBit.Render_Startup` policy. Its contracts distinguish required and optional
+requests, render and software-only attempts, authenticated admission outcomes,
+and inspected capability state. Procmgr now also decodes explicit optional
+rendering (type 11, param0 1; existing required requests use param0 0). Without
+approval it starts software-only; after failed approved admission it stops the
+captured child before at most one fresh software-only attempt. Software startup
+requires successful inspection of an empty render destination. Unknown flags,
+malformed requests and optional Config-storage launches are rejected. The CCL
+compiler spelling is pending its owner's integration; Desktop does not request
+optional rendering yet. The hosted 320 decision and 49 incarnation cases pass,
+as do 11 SPARK analysis results with zero unproved or justified checks.
+See [the startup policy boundary](../tests/render-startup/README.md) for the
+remaining caller obligations and native integration evidence. In particular,
+stop acceptance cannot release uncertain broker resources, and a software
+retry must create a fresh child rather than resume the failed GPU attempt.
+The production required-request integration subsequently passed the native
+`render-launch-policy` gate (four-CPU TCG, 1 GiB, 70 seconds): two denied children,
+one admission submission, two stop requests and a functioning Devices window.
+Its wrapper's post-test hash check detected a concurrent CCL source change;
+procmgr and the startup policy were unchanged. The startup README records that
+provenance limitation, and this is not an optional-retry or native GPU test.
+
+The subsequent optional-render native gate passed for 90 seconds under four-CPU
+TCG with 1 GiB. It covers unapproved direct software startup, unavailable-provider
+failure followed by exactly one fresh software child, occupied-slot rejection,
+malformed flags, and both existing mandatory denials. The two running software
+children inspected their render slots as empty and matched accepted captured
+incarnations; the failed GPU incarnation never executed. Devices opened after
+the checks. There were two admission submissions, four denied attempts, five
+child-stop requests and one retry. Evidence and the corrected fixture packaging
+and failure-propagation defects are recorded in `tests/render-startup/README.md`.
+This establishes the native optional launch path, not a GPU-enabled Desktop,
+successful hardware admission, late-grant fault recovery or physical latency.
+
+### Exact-color gradient bands (2026-10-02)
+
+Desktop Settings and Vulkan scene capture now merge adjacent bands with identical
+final RGB bytes through `Compositor_Gradient.Color_Run_Last`. The original
+integer blend, gradient origin, clipping and single-row behavior are preserved.
+The helper allocates no pixel storage and adds no image copies or foreign calls.
+For tested 2,160-row gradients, a flat color uses one fill instead of 256 and
+`#202020` to `#303030` uses 17; black to white still uses 256. The Vulkan scene's
+fixed capacity is unchanged, and tests show those first two gradients fit in one
+and 17 remaining slots respectively. These are command-count reductions, not
+measured frame-rate or physical-latency improvements.
+
+The scalar oracle checks 270 clipped cases and 117,570 exact pixels; existing
+channel and gradient tests also pass. Focused SPARK analysis has 60 results and
+zero unproved/justified checks. Actual hosted Mesa Vulkan passes 712 submissions
+and 546,816 output pixels, including the scaled/rotated gradient suite, with
+zero validation errors. Native Mesa Desktop passed all four mixed-output suites:
+primary-output changes, 125%/150% scaling, arrangements and exact cursor/window
+restoration. The independent Settings scanout oracle checked 940 gradient pixels
+across all 20 rows exactly. This four-CPU TCG/1 GiB functional test used the
+established two-second settling allowance; it is not a hardware timing result.
+See [gradient evidence](../tests/compositor/gradient-color.md), including the
+earlier premature capture and its same-VM delayed-presentation evidence.
+
+### Opaque text background batches
+
+`drawUIText` fills one background rectangle for each contiguous batch of up to
+32 glyph cells before submitting the foreground mask batch. Previously it filled
+each cell separately before submitting those same masks. `Compositor_Text` checks
+positive cell dimensions, equal vertical bounds, adjacent horizontal edges and
+containment in the combined rectangle. A rejected batch keeps individual fills;
+transparent text does not gain a background fill. The existing failed-backend
+fallback/repaint/restart paths remain in force and may repaint backgrounds.
+No pixel buffer, image copy or dynamic allocation is added.
+
+For a successful full opaque batch this reduces background fill calls from 32
+to 1 (and on the Mesa path, the corresponding clear/flush pairs). This is a call
+count reduction, not a measured latency or frame-rate result. Legacy unselected
+text still uses its existing per-glyph path. Native Vulkan text capture remains
+separate unfinished work.
+
+`tests/compositor/text_background.gpr` checks exact old/new pixel coverage for
+1,536 batches across six DPI scales, all four rotations, output boundaries,
+logical clipping and lengths 1/2/31/32: 8,847,360 pixel comparisons. Malformed
+cells, empty batches, ignored tail entries and extreme signed edges are also
+checked. The focused `compositor_text` proof reports 38 results (5 flow,
+33 prover), none unproved or justified. This proves the local policy contracts
+and safety checks; output mapping/pixel equivalence is regression-tested here,
+not a whole-Desktop proof. Commands:
+
+```
+nix develop -c gprbuild -p -P tests/compositor/text_background.gpr
+nix develop -c tests/compositor/build/text-background/text_background_tests
+# From kernel, in nix develop:
+alr exec -- gnatprove -P ../tests/compositor/text_background.gpr -u compositor_text.ads --mode=all --level=2 --report=all --checks-as-errors=on -j1
+```
+
+Evidence and source hashes are under
+`tests/compositor/build/text-background-evidence/`. The production Mesa Desktop
+compile/link passed. All 11 existing hosted text/fill backend fault cases passed.
+The first native multi-output run reached Mesa text and surface rendering but
+stopped at an early Settings keyboard-restoration capture: 58,267 pixels differed.
+A settled capture from that same VM matched the entire 231,000-byte reference
+region exactly (`settled-restoration.json`). The shared observer now waits up to 15 seconds for that exact restoration
+without changing the pixel assertion. The subsequent `dual-final` CuBit run
+passed all four observer suites: primary-output migration, 125%/150% DPI,
+arrangements, split-window dragging/maximization and exact cursor/background
+restoration. It used the production Mesa Desktop, four QEMU TCG CPUs and 1 GiB
+RAM; the VM was quit after all suites passed, before its 300-second deadline.
+This is native software-rendering correctness evidence, not a hardware-GPU,
+240 Hz, physical-latency or sustained-soak measurement.
+
+### Vulkan glyph scene commands
+
+`Vulkan_Scene.Glyph_Mask` retains a source ticket and logical cell in the same
+24,608-byte bounded scene. Replay uses `Compositor_Glyph_Placement.Plan` to place
+an output-density raster at unit scale, then intersects its cell, ordered scene
+clip and active damage. This avoids resampling a ceil-rounded raster back into a
+logical line box. Glyph commands require both mask and premultiplied-over modes;
+invalid commands reject the snapshot. Source-generation preflight includes glyphs,
+including clipped-away glyphs. The existing eight damage attempts per layer,
+512 scene entries and 4,096 submission attempts remain authoritative.
+
+The existing audited R8 Vulkan draw interface is reused. No rasterizer, new
+foreign function, pixel allocation or pixel copy is added. The caller must supply
+a retained R8 source rasterized for this output's density with dimensions from
+`Compositor_Glyph_Layout.Plan`. These commands do not import CPU glyph storage,
+select cache entries, establish image authority or implement GPU cache eviction.
+Native glyph-image ownership and complete Desktop capture remain unfinished.
+
+The hosted submission fixture checks 240 glyph cases across six scales and four
+rotations: unit raster sampling, snapped origin, cell/scene clipping, empty cells,
+invalid mask/blend/source metadata, stale generations, foreign rejection and
+retention through cancellation. The focused SPARK run for scene/frame/submission/
+affine binding reports 351 results (129 flow, 222 prover), none unproved or
+justified. Native CuBit-runtime compilation also passes.
+
+The real hosted Vulkan suite now adds 96 glyph scenes using six R8 images whose
+actual dimensions match the requested raster density, across four rotations,
+cell/viewport clips, empty clips and negative origins. An independent integer
+pixel-space oracle computes snapped origins, unscaled texel indices and half-open
+pixel-centre cell inclusion. All 19,336 covered glyph pixels pass with at most
+one channel value of blend-rounding tolerance; outside-coverage background is
+exact. The complete suite passes 712 actual submissions and 546,816 output pixel
+checks with zero Vulkan validation errors. These are synthetic coverage rasters,
+not a test of font outline rasterization. Display retirement remains simulated;
+this is Linux Mesa rendering, not native CuBit GPU execution or latency evidence.
+
+Two initial fixture mistakes were corrected without changing production policy:
+source-request width/height describe the output viewport, not the sampled image;
+and text cells use pixel-centre inclusion, unlike outward-rounded damage. The
+original failures are retained beside the passing evidence.
+Logs and source hashes: `tests/compositor/build/glyph-scene-evidence/`.
+
+### Glyph keys and retained Vulkan sources
+
+`Vulkan_Glyph_Sources` associates 128 existing font/character/rational-density
+keys with generation-checked submission source tickets. Its fixed metadata is
+4,096 bytes on hosted x86-64. It reuses `Compositor_Glyph_Cache` key equality and
+`Compositor_Glyph_Layout` raster geometry; no pixels are copied or allocated.
+Lookup scans at most 128 entries and cannot return an invalidated generation.
+Equivalent scales such as 5/4 and 10/8 match, while another face/code/density does
+not. Binding is idle-only, validates the supplied raster layout and rejects
+renaming a live entry or duplicating a live key/source ticket. Forgetting metadata
+requires confirmed source retirement and an idle submission; pending/unknown work
+cannot make an entry reusable. Other entries' complete identities are preserved.
+
+`Vulkan_Scene.Append_Glyph` resolves that association and checks the scene's output
+density before capturing a glyph. Missing, stale or wrong-density keys reject the
+snapshot without adding a partial command. The lower-level `Append` interface is
+still available to callers that already hold prepared source geometry; native
+Desktop glyph capture should use the typed entry point.
+
+These are owner-local metadata contracts, not a GPU image importer or an atlas.
+The association must stay with the same fresh submission owner throughout its
+lifetime. The foreign image owner must truthfully supply an authorized R8 image
+with the claimed raster/density, keep it immutable while registered and satisfy
+GPU-ready dependencies before sampling. The table supplies neither that authority
+nor upload completion. Native image allocation/import and Desktop activation
+remain outstanding.
+
+Validation covers all 128 entries, equivalent and mismatched keys, invalid layout,
+duplicate/live-source rejection, generation replacement, typed capture, recording,
+sealed, pending and quarantined states. The combined SPARK report contains 479
+results (164 flow, 315 prover), none unproved or justified. Native-runtime compile
+passes. The real hosted Vulkan oracle now uses typed capture for all 96 glyph
+scenes, repeatedly releasing/re-registering the source and changing density;
+all 712 submissions, 546,816 output pixel checks and 19,336 covered glyph pixels
+pass with zero Vulkan validation errors. Physical display retirement remains
+simulated and this does not measure native Intel performance. Evidence and source
+hashes: `tests/compositor/build/glyph-source-evidence/`.
+
+
+### Exact physical clips in retained GPU scenes
+
+Vulkan_Scene now supports Set_Physical_Clip and a typed Append_Physical_Clip
+constructor. Desktop_GPU_Scene.Set_Clip exposes it to the retained scene owner.
+This preserves Desktop's already-transformed physical pixel edges without a
+lossy conversion back through logical coordinates. Logical Set_Clip remains
+available for callers that have logical rectangles. Both replace the current
+clip; Reset_Clip restores the output bounds. Physical clips are intersected
+with output damage during replay. Empty/reversed clips suppress drawing;
+oversized clips are safely bounded by the output. Invalid raw physical edges,
+source identities, blend flags or tints reject the complete scene at capture.
+No pixel storage, image upload, extra draw command or foreign interface is
+introduced by a clip command itself.
+
+Hosted regression tests cover 60 combinations of physical clip geometry,
+rotation and fractional scale, plus five malformed clip representations.
+The real Mesa wallpaper fixture now exercises full, partial and empty physical
+clips across 384 style/DPI/rotation frames: 2359296 pixels match exactly,
+including opaque background outside the clip. Image pins and front/pending
+presentation protection remain exercised; cleanup and Vulkan validation pass.
+Selected clean SPARK reports are retained in tests/compositor/build as
+physical-clip-scene-proof.out and physical-clip-owner-proof.out. The scene report
+passes 132 checks (20 flow, 112 prover), none unproved or justified.
+
+This is the clipping operation needed by the future Desktop GPU drawing adapter.
+Main still has direct software drawing paths; this change alone does not wire
+GPU scene capture into main, import client images, share targets with Display,
+or establish native GPU rendering or physical latency.
+
+
+### Desktop drawing request adapter
+
+Desktop_GPU_Scene.Drawing captures physical fills, logical images and batches
+of up to 32 text cells into the existing retained scene. Every request supplies
+its complete physical clip, so an earlier drawing request cannot accidentally
+clip a later one. Fills clamp to the output; images retain the existing
+source ticket and choose opaque/premultiplied/straight-alpha drawing explicitly.
+Text uses the captured output's scale and the existing two font faces.
+Empty or offscreen requests add no commands/readers or uploads. A cold visible
+glyph stops capture for one asynchronous upload; Finish/Discard retires the
+snapshot before a fresh capture. Missing visible sources, invalid blend flags
+or layer exhaustion reject the complete frame, not a partially drawn prefix.
+
+The adapter adds no foreign interface, pixel allocation or pixel copy. Its
+work remains bounded by 32 cells per text call and the existing scene layer
+capacity. Clip commands consume layer capacity too; this is a functional
+capture adapter, not a demonstrated full-desktop throughput envelope.
+
+Selected SPARK analysis passes 21 checks (9 flow, 12 prover), none unproved or
+justified. Hosted tests cover cold/pending/uncertain glyph lifetimes, repeated
+text requests sharing one reader, physical fills, empty/offscreen batches,
+independent clips, image pins, invalid sources/blends and whole-frame overflow.
+The real font fixture now exercises this adapter with 32-cell batches having
+one visible cell and 31 offscreen cells: two faces at 100/125/150/200 percent,
+49152 exact pixels, only eight glyph allocations and accounted cleanup.
+The companion real affine fixture checks 233472 pixels; validation reports zero
+errors. Evidence is retained in tests/compositor/build/gpu-drawing-*.log and
+ gpu-drawing-proof.out. Native archive source inventory includes the adapter.
+
+Main's drawing facade and frame scopes are not yet wired to this adapter.
+Image requests accept renderer source tickets, not CPU addresses or client
+memory grants. Client GPU imports, authenticated Display target sharing and
+hardware presentation/performance remain required integration work.
+
+
+### Renderer begin and nonblocking retry
+
+Desktop now begins each selected-renderer output scope before consuming damage
+or repaint metadata. Deferred starts preserve those sets and writer ownership.
+Pending damage on a writable output participates in the bounded one-millisecond
+renderer retry, preventing indefinite idle when no completion event exists yet.
+Pending completion only polls; it never begins or redraws the held frame.
+The software fallback still starts and completes synchronously. No new pixel
+buffers, copies, queues or foreign calls are introduced.
+
+Native CuBit/QEMU checks cover three deferred starts per output, held completion,
+fresh damage in the next frame and prohibition of indefinite idle during begin
+deferral. Primary, fractional DPI, arrangement and Desktop interaction groups
+pass. Eleven hosted software text/fill fault modes pass. Selected Mesa facade
+SPARK analysis passes 84 checks (45 flow/39 prover); legacy passes 25 flow checks, none
+unproved or justified. The main event loop remains an audited integration
+boundary; proof does not establish foreign completion truth or hardware timing.
+See tests/compositor/desktop-frame-completion.md and build/output-begin-* evidence.
+
+The current read-only begin/completion contracts describe the software backends.
+A GPU backend must expose its actual mutable ownership state, handle whole-frame
+recapture after cold uploads, and use authenticated client/Display image sharing.
+The begin hook alone does not make private Vulkan targets Desktop output buffers.
+
+
+### Whole-frame recapture after renderer retry
+
+Desktop now handles Retry separately from successful rendering. A quiescent
+renderer can discard an incomplete capture (for example, after a cold glyph
+upload) without publishing it. Desktop retires only the matched render writer,
+marks its pixels for full repair, restores captured damage alongside fresh input,
+and acquires a fresh writer ticket. It neither allocates a Display token nor
+changes the displayed front. No pixel allocation, copy or extra queued frame is
+introduced. Unknown renderer ownership still takes the unsafe path.
+
+Compositor_Damage.Restore passes selected SPARK analysis: 34 checks, 11 flow and
+23 prover, none unproved or justified. Hosted tests cover 1,000 retries and 32,000
+fresh updates. Native injected retries on both outputs preserve damage/fronts,
+mark a deliberately corrupted target for full repair and recapture before
+publication; primary,
+fractional scaling, arrangement and Desktop interaction observers pass. See
+[frame-retry.md](../tests/compositor/frame-retry.md) for reproduction and limits.
+GPUScene's real cold-upload Retry still needs wiring to the selected facade and
+authenticated GPU target sharing. This verifies software control flow, not GPU
+completion truth or hardware performance.
+
+
+### Read-only GPU capture admission
+
+Desktop_GPU_Scene checks the device owner's typed capture admission before
+accepting a frame. Wrong physical output dimensions, unconfigured targets,
+missing pipeline or orderly stopping reject capture without glyph rasterization,
+uploads or image readers. Pending render/upload work defers capture. Quarantined
+ownership reports uncertainty. A completed ready target remains replaceable
+while front and pending presentation targets stay protected.
+
+Preflight reads metadata only. It does not reserve a target, poll device health,
+submit work or authorize image sharing. Render still revalidates and acquires a
+writer when submitting, because the state may change after capture begins.
+A successful query refers only to the currently configured first target set;
+matching dimensions do not authenticate another output or grant scanout rights.
+
+The two scene lifecycle scenarios and ten presentation scenarios pass. Repeated
+queries leave submission-FFI call counts, charged bytes, front and pending
+identities unchanged. The real hosted Mesa/font fixture passes 49,152 exact
+pixels plus the 233,472-pixel affine fixture with zero validation errors. Native
+Ada/musl compilation produces the 76-object GPU component archive with resolved
+compositor bridge symbols; this is not a native GPU execution or scanout result.
+Fresh proof output and exact publication/native source hashes are retained in
+`tests/compositor/build/capture-admission-*` and the recorded native snapshot.
+No hardware latency or refresh claim follows from these checks.
+
+
+## Client source retirement
+
+Desktop now retains client grant acquisitions independently of Surface records.
+A fixed 24-entry SPARK table reserves metadata before acquisition, preserves it
+while the renderer reports Busy, and frees it only after renderer retirement and
+confirmed kernel return. Window closure and replacement can clear visible aliases
+without losing pending loans. Publication retirement receipts remain pending
+until that exact loan is released; table exhaustion returns Resources_Exhausted.
+No pixel copies or new pixel storage are introduced.
+
+The policy and typed software facades are proved; legacy main integration is
+tested, not a whole-service proof. Native CuBit/QEMU tests exercised 11 actual
+loans, 33 injected busy observations and three pending detachments, with mixed
+DPI and dual-output interaction checks passing. The injection delays evidence
+from a synchronous software renderer; it does not establish GPU fence truth,
+hardware scanout or a latency result. Output-target teardown remains separate.
+See [source-retirement evidence and commands](../tests/compositor/source-retirement.md).
+
+
+### Deferred output retirement and layout restoration
+
+Desktop output teardown now advances a bounded SPARK retirement policy across
+event-loop passes. Renderer completion, matching Display presentation retirement,
+lease release, grant revocation and grant confirmation precede storage release.
+Busy retains ownership without blocking the event loop; uncertain retirement
+quarantines storage. Both software backends use the typed retirement interface.
+Old completion identities remain until the global drain commits. Shutdown waits
+for retirement, and compatible physical outputs preserve accepted DPI/placement
+on reopening. Native scaled-reopen, shutdown and partial-setup recovery tests
+pass, alongside 24 controlled caller scenarios and policy/interface proofs.
+
+This is software-path and lifetime-policy integration, not selection of a live
+GPU compositor or a hardware latency result. See
+[`output-retirement.md`](../tests/compositor/output-retirement.md) for native
+reproduction, fault coverage, evidence identities and proof boundaries.
+
+
+### Asynchronous output lease release
+
+Output teardown now submits Display lease release asynchronously after renderer
+and presentation retirement. A proved per-output request policy permits one
+accepted request, retries confirmed nonpublication under backpressure, and
+requires an exact successful completion before grant revocation. The collector
+also routes replies for partially configured, disabled outputs. Invalid replies
+quarantine ownership; stale tokens remain protected by the global retirement
+watermark. Information/acquire RPCs on reopening remain synchronous.
+
+Native tests pass held real lease replies with input during normal drain,
+fractional-DPI reopen, shutdown, and partial-setup recovery. Both software
+backend variants link. This is not GPU-fence or physical-latency evidence. See
+[`output-retirement.md`](../tests/compositor/output-retirement.md#asynchronous-display-lease-release)
+for the kernel nonpublication assumption, proof scope, and reproduction commands.
+
+
+### Logical GPU fill placement
+
+`Desktop_GPU_Scene.Drawing.Logical_Fill` now accepts a desktop-space rectangle
+and an explicit physical damage clip. It uses the shared output geometry for
+outward edge rounding, scale, origin and rotation, intersects damage once in
+physical space, and captures a physical fill. It resets the prior draw clip
+through the existing Fill operation. Empty intersections consume no layers;
+capture admission and whole-frame rejection remain the existing owner policy.
+No pixel storage, copy, foreign call or unbounded queue is added.
+
+Selected SPARK analysis of the drawing adapter passes 25 checks (11 flow,
+14 prover), with none unproved or justified. The hosted mixed-drawing test
+independently inverse-maps physical pixel squares and checks overlap with the
+scaled logical rectangle: 3,072 configurations cover all 256 supported scale
+ratios, four rotations and three signed origins, totaling 2,359,296 pixel
+checks. It also checks empty/reversed rectangles and damage, prior-clip
+isolation, no image/glyph readers, and rejection outside capture. Existing
+cold-upload, pending/uncertain reader and overflow regressions pass.
+Evidence: `tests/compositor/build/logical-fill-evidence-r1/`.
+
+Reproduce in the Nix development environment using the kernel Alire toolchain:
+`gprbuild -p -P ../tests/compositor/desktop_gpu_drawing.gpr`, then run both
+mixed-tests and tests executables (the latter with scenarios 0 and 1).
+Selected proof uses the same project and `-u desktop_gpu_scene-drawing.adb`.
+This is hosted adapter validation. Desktop Main does not yet call this adapter;
+GPU frame-scope integration, client imports, shared scanout and hardware
+performance evidence remain outstanding.
+
+
+### Full Desktop capture: shadow capacity gate
+
+The live traversal cannot be connected by replacing every `putPixel` call with
+`Logical_Fill`. `test-desktop-shadow-capture.py` extracts the current
+`drawDappledShadow` body and depth from Desktop Main, then executes it through
+the real retained drawing adapter with hosted device-boundary mocks. The
+fixture uses a 1920x1080 output and unit scale; it does not allocate real GPU
+images or execute Vulkan commands. A metadata mock is explicitly adapted from
+its original 32x24 fixture dimensions and both versions are hashed.
+
+Observed capture costs for one shadow (window origin 100,100):
+
+| Window | Pixel calls | Captured layers | First rejected pixel |
+| --- | ---: | ---: | ---: |
+| 64x64 | 187 | 374 | none |
+| 320x200 | 775 | 512 | 257 |
+| 640x480 | 1,675 | 512 | 257 |
+| 800x600 | 2,095 | 512 | 257 |
+
+This is an integration blocker for naive pixel lowering, not a performance
+measurement or a fault in the existing CPU renderer. The bounded GPU owner
+rejects the complete overflowing scene, retires its snapshot, and retains no
+image/glyph readers; teardown returns the mock allocation charge to zero.
+Increasing the layer limit would preserve thousands of commands per shadow.
+The next drawing connection must represent the checker shadow procedurally or
+with an equivalently bounded primitive, preserving logical anchoring, DPI,
+rotation, damage clipping and whole-frame failure semantics. Per-pixel CPU
+paths for icons and cursor also require explicit GPU representations before
+whole-frame capture can be activated.
+
+Reproduce: `nix-shell tests/compositor/vulkan-affine-shell.nix --run
+'python3 tests/compositor/test-desktop-shadow-capture.py'`.
+Passing evidence: `tests/compositor/build/shadow-capture-dtvvblcq/`.
+The earlier `shadow-capture-8opuaxm8` run failed on the original metadata mock's
+32x24 assertion; it did not reach capture and is not passing evidence.
+
+
+### Bounded shadow geometry
+
+`Compositor_Shadow` now describes the existing dappled shadow as exactly two
+logical checker rectangles. `Build` proves the strip coordinates, empty cases
+and explicit rejection when the shadow would exceed the logical coordinate
+range. `Paints` computes coverage in constant work per native pixel, with no
+pixel list, texture, allocation or scene-size dependence.
+
+Coverage preserves the union of the old outward-rounded logical cells. This
+matters at fractional DPI: sampling the checker at a pixel center is not
+equivalent, because adjacent logical cells may overlap a native pixel. The
+inverse coverage predicate checks the range of intersecting logical cells;
+two consecutive cells necessarily include an even checker cell. Pattern parity
+remains anchored in desktop logical coordinates after output rotation/origin.
+
+Selected SPARK analysis passes 50 checks (8 flow, 42 prover), none unproved or
+justified, including the exact strip-construction postcondition. Coverage
+arithmetic is proved free of runtime errors; its pixel equivalence is supported
+by the independent regression, not a claimed quantified shader proof.
+`test-shadow-geometry.py` extracts the actual Desktop shadow traversal and uses
+its per-cell `Display_Geometry.Damage` writes as the reference bitmap. All 256
+scale ratios, four rotations, three signed output origins and widths 1 through
+8 pass 18,874,368 pixel checks; coordinate extremes, empty/reversed windows,
+zero depth, overflow rejection and out-of-output pixels are also checked.
+Evidence: `tests/compositor/build/shadow-geometry-4po4zo1k/`.
+
+Run in Nix: `python3 tests/compositor/test-shadow-geometry.py`.
+The generated project is an isolated source snapshot. The runner rejects
+unproved/justified checks and detects production input changes during the run.
+This geometry is not yet a live GPU shadow: descriptor-free Vulkan pipeline,
+scene replay, exact GPU-pixel tests and Desktop integration remain next.
+
+
+### Descriptor-free Vulkan checker primitive
+
+`vulkan_checker.c/.h/.frag` supplies one opaque checker rectangle draw through
+the existing Vulkan device/render-pass model. It reuses the affine fullscreen
+vertex shader and adds a separate fragment pipeline with no descriptors,
+sampler, source image, pixel texture or upload. Two calls can represent the
+shadow strips from `Compositor_Shadow`; damage can scissor each call. CPU
+recording is constant work and performs no waits or per-pixel command loop.
+
+The shader uses 32-bit inverse integer coverage, matching the proved-safe
+SPARK coverage arithmetic. The C boundary validates geometry/ranges, scale,
+rotation, clip and dispatch availability before emitting commands. Handle
+provenance, active render-pass/target agreement, exclusive recording and
+quiescent destruction remain caller obligations. Recording success establishes
+no GPU completion, latch or retirement. Vulkan allocation/compiler/driver and
+shader execution remain trusted boundaries; the shader is regression-validated,
+not SPARK-proved. The separate pipeline leaves the existing three-pipeline
+affine ABI unchanged.
+
+`test-vulkan-checker.py` builds and validates Vulkan 1.0 SPIR-V, then executes
+6,144 actual hosted lavapipe frames: all 256 scale ratios, four rotations,
+three signed origins and full/partial scissors. A forward per-logical-cell
+oracle checks 4,718,592 exact pixels, including 4,462,096 preserved background
+pixels. No image descriptor is bound. Vulkan synchronization validation reports
+zero errors. Boundary tests cover 40 malformed requests (zero command calls),
+11 missing dispatch functions, five partial creation failures including a
+published pipeline handle on error, and a positive recording control. Tracked
+layout/shader/pipeline allocations all retire after creation failures.
+
+Passing evidence: `tests/compositor/build/vulkan-checker-35w7wx9n/`.
+Reproduce in `vulkan-affine-shell.nix` with
+`python3 tests/compositor/test-vulkan-checker.py`.
+The same frozen C source compiles with the existing CuBit musl cross compiler
+and Mesa Vulkan headers (`native-compile.json`); this is compilation only.
+
+The primitive is not yet integrated into the SPARK device resource owner,
+submission accounting, scene capture/replay, or Desktop Main. Those lifetime
+and error paths must be proved/tested before enabling live shadow capture.
+These hosted results do not demonstrate Intel acceleration or hardware timing.
+
+
+### Checker submission accounting
+
+`Vulkan_Submission.Checkers` adds the procedural rectangle to the existing
+bounded command-admission and cancellation policy. Each attempt is charged
+before the foreign call; empty clipped geometry records nothing. A mismatched
+output size, exhausted budget or foreign rejection invalidates the complete
+frame. Replay intersects each of at most eight damage regions with the UI clip
+and stops on the first failure. Source registrations remain unchanged.
+`Vulkan_Checker_FFI` is a narrow borrowed-submission plus 64-byte request adapter;
+its device-side implementation/lifetime wiring is still outstanding.
+
+Analysis passes 587 checks including existing dependent units, none unproved
+or justified; the new child contributes 25 proved checks (7 Draw_Output,
+18 Replay). Hosted tests cover exact signed C request fields, clipping, empty
+and mismatched rectangles, all nonzero status classes used by the fixture,
+4,096-command exhaustion, cancellation quarantine, eight-region replay and
+failure after a three-command prefix. Twenty thousand delayed polls cover
+both image-backed and procedural-only submissions, confirming the quiescence
+gate remains closed even when there are no image tickets. This tests the
+submission gate, not a claim the real checker pipeline owner is connected.
+
+Final hosted evidence: `tests/compositor/build/checker-submission-_do9pm1r/`.
+Reproduce in Nix with `python3 tests/compositor/test-checker-submission.py`.
+The same production Ada units compile against CuBit's native runtime; evidence
+is `tests/compositor/build/checker-submission-9cawjl_p/native-compile.json`.
+Neither check is a native linked or booted checker path.
+
+Next integration must add checker creation/destruction to the existing
+`vulkan_device_storage.c` pipeline group, authenticate the borrowed submission
+in `cubit_vulkan_device_checker_record`, and update shader/native/hosted build
+inventories together. The old pipeline closes only after `Can_Destroy`; failed
+source-provider destruction must continue retaining both pipelines. Then bind
+scene capture/replay to these calls and validate real held GPU work before Main
+activation. No existing production build path depends on the new child yet.
+
+
+### Checker pipeline group integration
+
+The real device adapter now owns the checker alongside the affine pipeline and
+source provider under the existing SPARK context child. Checker creation failure
+cleans the affine pipeline; source-provider creation failure cleans both.
+Provider shutdown failure retains both pipelines. Successful close destroys the
+checker before affine after the existing owner has established quiescence.
+`cubit_vulkan_device_checker_record` authenticates the exact private submission,
+live admitted device/pipeline and immutable output extent before dispatching.
+No new capability, image import, pixel storage or completion signal is added.
+
+The shared shader generator, hosted target-bundle project and native GPU scene
+inventory now include the checker and its SPARK submission child. A complete
+native Ada/musl archive builds with all compositor Vulkan symbols resolved
+internally. This checks compilation/elaboration/archive closure, not final
+service linking or execution on CuBit.
+
+The real Vulkan target-bundle suite passes unchanged pixel/retirement/upload
+regressions. A private instrumented copy additionally calls the actual device
+checker adapter on all three owned target images: 2,304 exact pixels, rejected
+wrong-context/wrong-extent requests, zero Vulkan validation errors. This checks
+C device dispatch into Vulkan; full scene-driven SPARK checker replay remains
+next. Direct checker shader coverage across 6,144 frames remains recorded in
+the preceding section.
+
+Hosted device-adapter fault tests exercise clean failures at affine, checker
+and provider creation, provider-close retention, draw rejection propagation,
+seven context/extent guards and ordered successful cleanup. The existing
+source/upload metadata suite also passes. Fixture-driven retry of a failed
+provider close is not automatic production quarantine recovery.
+
+Reproduce in Nix with `test-checker-device-group.py` and
+`test-checker-device-pixels.py` under `tests/compositor/`. Existing shared-output
+`test-vulkan-target-bundle.sh` still requires `coordination/build.lock`.
+Validation summary and exact eight edited source hashes:
+`tests/compositor/build/checker-group-validated-r1/validation.json`.
+Native archive: `tests/compositor/build/desktop-gpu-native-_xj_tb9x/`.
+Real adapter pixels: `tests/compositor/build/checker-device-pixels-pjnfht9r/`.
+The initial fault fixture failed from flattened header paths before compilation;
+its corrected version preserves the repository header layout.
+
+
+### Bounded shadow capture through the Desktop GPU scene
+
+`Desktop_GPU_Scene.Drawing.Shadow` converts the existing checker shadow into
+at most three scene layers: one physical clip and two logical checker strips.
+Invisible strips emit nothing. The checker layers replay through the existing
+bounded Vulkan submission owner and device-owned checker pipeline. Capture
+requires no image import, glyph reader, shadow texture or per-pixel command
+list. A failed append invalidates the entire frame; partially captured shadows
+are never submitted as a successful frame.
+
+The clip-insertion contract specifies its exact layer increment and preserves
+image and glyph reader counts. Shadow loop invariants preserve those reader
+counts and distinguish the state before the single clip has been inserted.
+These contracts describe resource and work bounds, not GPU execution time.
+
+Hosted drawing regressions pass empty/offscreen capture, signed origins,
+three-layer capture, pending retirement, overflow and partial-capture rejection.
+The real Vulkan scene oracle passes real fonts plus shadows at 100%, 125%,
+150% and 200% scale: 49,152 exact pixels, completion-gated source imports and
+accounted cleanup. Its reference computes coverage independently as the union
+of forward-mapped logical checker cells. The accompanying affine suite checks
+233,472 pixels and reports zero Vulkan validation errors.
+
+Evidence: `tests/compositor/build/shadow-scene-real-iiuinz1_/result.json`;
+reproduce with `test-shadow-scene-real.py` in the Vulkan Nix shell. The updated
+checker ABI/fault suite passes 587 analysis checks with zero unproved or
+justified checks in `tests/compositor/build/checker-submission-46teujhz/`.
+It includes command exhaustion, recording failure and 20,000 held completion
+polls with and without source images.
+
+The native Ada/musl archive passes with 796 hashed inputs and 80 objects:
+`tests/compositor/build/desktop-gpu-native-nn3tfo3r/result.json`, archive SHA256
+`acafa5fba956eabcc3b843faf5f081098dbe63564498388bfdf8bab5ac3e2ed9`.
+An initial invocation outside `kernel/alr exec` failed with mismatched Ada
+exception mechanisms; the prescribed native toolchain invocation passed.
+This remains compilation, elaboration and symbol-closure evidence. Desktop
+Main does not yet call this GPU scene, and this test does not establish native
+GPU execution, shared scanout, physical latency or throughput.
+
+The final scene/owner/drawing SPARK run passes all 248 checks (68 flow,
+180 prover), with zero unproved or justified checks. `Shadow` has 14 proved
+checks and the strengthened `Set_Clip` contract has two. Report:
+`tests/compositor/build/desktop-gpu-drawing/obj/checker-scene-proof-r3/gnatprove/gnatprove.out`.
+
+
+### Embedded icon staging and atlas subregion groundwork
+
+`Desktop_Icon_Pixels` writes straight-alpha embedded icon bytes directly into
+an upload staging array. It validates image shape, format, capacity and the
+complete destination span before the first store; destination indexing uses
+wide arithmetic. It allocates no intermediate pixel buffer. The final SPARK
+run passes 22 checks with zero unproved or justified checks. The first proof
+identified five unresolved destination-index/array-length checks; the explicit
+span check and bounded array precondition replace that version.
+
+`Desktop_Icon_Mapping` is a narrow trusted writable-address alias, with null,
+alignment and short-buffer checks. The caller must still establish mapping
+validity, exclusive access and disjointness from immutable assets. The typed
+writer performs the actual indexing. `Desktop_Icon_Upload` uses the existing
+write ticket and transfer completion machinery, cancelling invalid writes.
+Its policy proof and mock transfer tests cover busy backpressure, complete-only
+import and uncertain transfer retention. This is not yet a resident icon cache.
+
+Final writer/mapping evidence: `tests/compositor/build/icon-staging-g4lq95gr/`.
+The oracle checks all 13 icons with 8,064,000 pixel/padding comparisons, plus
+null/misaligned/short mapping rejection. Upload policy evidence:
+`tests/compositor/build/icon-upload-f75sj2g_/` (595 checks including dependencies;
+24 chunks, 240 pending polls, wrong-shape cancellation, uncertainty retention).
+The source table still has eight general-image slots, so allocating an image
+per icon is not an acceptable complete residency solution.
+
+The Vulkan affine renderer now has `cubit_vulkan_record_affine_region`, accepting
+a nonempty source texel rectangle and its image dimensions. The C boundary
+rejects out-of-bounds rectangles before recording; the shader samples in local
+rectangle coordinates and adds the atlas origin after clamping. Existing calls
+use the whole source image. Affine and backdrop push constants both use the
+updated 96-byte layout (region at byte 80); no additional pipeline or descriptor
+is required. Descriptor dimensions and image lifetime remain caller obligations.
+
+`tests/compositor/test-affine-regions.py` compares full-image draws and a fixed
+7x9 subregion at (2,3) against an independent CPU oracle. Each passes 233,472
+pixels across six scales, four rotations, three blending/mask modes and three
+origins, with zero Vulkan validation errors. Evidence:
+`tests/compositor/build/affine-regions-pmxfevi9/`. This is hosted lavapipe;
+additional malformed-window and region-edge tests, SPARK region policy, scene
+binding, atlas upload/residency and Desktop activation remain required.
+
+The integrated native archive builds with icon units and the region-capable
+renderer: 805 hashed inputs, 85 objects, evidence
+`tests/compositor/build/desktop-gpu-native-8xadj8bj/result.json`, SHA256
+`69034e1c63f2d0483c401b6cd222aacf44b33dfd7285b7183023e65485779a51`.
+This checks native compilation/elaboration/archive closure, not a running GPU
+Desktop. Existing owned-target, sampled-source, upload and checker Vulkan
+regressions pass in `tests/compositor/build/checker-device-pixels-lvz_s33v/`.
+
+The region boundary fixture additionally rejects 11 malformed windows with
+zero recorded commands and checks the exact 96-byte push payload for region
+and whole-image draws. It is included in `test-affine-regions.py`. The dedicated
+backdrop suite passes both normal and forced-division shader variants, each
+with 161,280 exact wallpaper pixels and 233,472 affine pixels, zero validation
+errors. Its original boundary fixture expected 68 bytes; it now checks 96 bytes
+and verifies that the reserved/region words are zero for wallpaper draws.
+Evidence: `/tmp/cubit-affine-regions-boundary-r1.log` and
+`/tmp/cubit-affine-regions-backdrop-r2.log`. No SPARK region binding or Desktop
+atlas residency is implied by these C/shader tests.
+
+
+### SPARK atlas region binding and bounded submission
+
+`Compositor_Source_Region` defines the six-word C representation and validates
+nonempty rectangles within source image dimensions (each at most 65535).
+`Vulkan_Affine_Binding.Regions` rejects invalid windows and blend requests
+before empty-destination elision, then reuses the proved affine geometry and
+transform builders. `Vulkan_Region_FFI` is the narrow foreign call boundary.
+Descriptor dimension agreement and native object validity remain trusted
+caller obligations; the rectangle itself grants no memory authority.
+
+`Vulkan_Submission.Regions` uses existing command admission, source tickets,
+target dimensions and native context matching. Every admitted attempt consumes
+the normal budget. Rejection invalidates the whole frame. The source table is
+unchanged, and pending or uncertain work retains the complete atlas backing.
+There is no independent subregion lifetime or early release.
+
+The final proof run passes 576 checks (182 flow, 394 prover), zero unproved or
+justified checks. Hosted tests cover 92,416 region geometries, all six ABI words,
+invalid windows/blending, foreign failure statuses, source/context/target
+rejection, command exhaustion, 10,000 pending completion polls and cancellation
+quarantine. Evidence: `tests/compositor/build/region-binding-g3167mrd/`;
+reproduce with `tests/compositor/test-region-binding.py` under Nix.
+
+The production SPARK region binding also passes a real Vulkan pixel oracle,
+with 233,472 comparisons across scales/rotations/origins and alpha modes.
+RGBA draws use the atlas window; mask draws retain their existing whole-source
+path. Evidence: `tests/compositor/build/region-binding-real-lgr4g354/`, runner
+`tests/compositor/test-region-binding-real.py`. This checks the binding, not
+scene replay or native CuBit GPU execution.
+
+The native archive includes the new region units and resolves their foreign
+symbol: `tests/compositor/build/desktop-gpu-native-wunwljig/result.json`, 812
+hashed inputs, 89 objects, SHA256
+`1513b27d06faf6b780c08009beedc691781a6af4f344316d44f20bd699ddfa7e`.
+Scene capture/replay, CPU reader pinning, atlas packing/residency and Desktop
+activation remain required before icons use this path in a running desktop.
+
+
+### Retained atlas regions in the Desktop scene
+
+`Vulkan_Scene.Append_Region` captures a validated source window and source ticket.
+Only that operation admits region kinds; ordinary `Append` rejects them. The
+private region table adds a bounded 12 KiB of metadata per scene (512 entries of
+24 bytes), with no pixel allocation. Append and seal contracts preserve prior
+region metadata. Source preflight includes region tickets before background or
+layer recording. Replay uses the existing bounded damage list and region
+submission policy; stale sources and failed draws reject the complete frame.
+
+`Desktop_GPU_Scene.Drawing.Image_Region` emits at most two layers and pins the
+whole source through the existing CPU reader table. One hundred captured windows
+into one atlas use one reader. Pending completion blocks release and close;
+failed partial capture retires its reader through whole-frame discard.
+
+Validation passes two separate proof gates: scene/binding/replay has 778 checks
+with zero unproved or justified checks; the drawing unit has 46 with zero
+unproved or justified checks. Evidence:
+`tests/compositor/build/region-binding-cxuqj9x5/` and
+`tests/compositor/build/desktop-gpu-drawing/obj/region-scene-proof-r1/gnatprove/gnatprove.out`.
+Hosted tests cover metadata preservation, stale-source rejection before any draw,
+invalid direct region insertion, capacity exhaustion, deduplicated readers and
+pending/partial-failure retirement.
+
+`test-region-scene-real.py` extends the retained wallpaper oracle with subregion
+images using the production Desktop capture and scene replay path. Two actual
+retained Vulkan images provide the sources. Across 384 style/DPI/rotation frames,
+2,359,296 full-scene pixels match exactly, alongside held-front/pending-target
+exclusion and accounted cleanup. The associated affine suite checks 233,472
+pixels with zero Vulkan validation errors. The first fixture used output geometry
+before capture initialized it; private tracing confirmed the GPU source texel,
+and the corrected reference derives geometry independently before capture.
+Final evidence: `tests/compositor/build/region-scene-real-cu0kvdg_/`.
+
+The final native archive is
+`tests/compositor/build/desktop-gpu-native-p7llwtm6/result.json` (812 inputs,
+89 objects), SHA256
+`ecaf6932e437553cec28d69131c0e9c6614a02f4435dfab76d2ad397fd8b4b3d`.
+This is compilation/elaboration/archive closure, not native GPU execution.
+Icon atlas packing, upload/residency, source-slot budgeting and Desktop Main
+activation remain. No 240 Hz or physical input-to-photon result is implied.
+
+
+### Packed icon assets and dedicated source capacity (2026-10-03)
+
+`Desktop_Icon_Pixels.Atlases` packs eight 24x24 application icons into a
+24x192 image and five 9x9 window controls into a 9x45 image: 20,052 BGRA
+source bytes in total. It samples the original tables directly into a bounded
+mapped staging chunk, including chunks crossing icon boundaries. No CPU atlas
+allocation or per-frame pixel copy is introduced. Real device allocations may
+include alignment and staging overhead; 20,052 is not total GPU memory usage.
+The staging suite checks 11,651,868 atlas pixel/guard cases in addition to the
+8,064,000 existing single-icon cases. The original atlas owner run proves 637
+checks with no unproved/justified checks; mocked transfers cover pending fences,
+96/7 bounded chunks, 1,000 cache hits without reupload, reader retirement gates,
+and uncertain completion retaining its charge. These are hosted tests, not live
+CuBit icon rendering.
+
+Source metadata now has 140 entries: glyphs 0..127, backdrops 128..129,
+icon atlases 130..131, and eight client-image slots 132..139. Backdrop and atlas
+owner parameter subtypes enforce their respective partitions. Generic low-level
+source import still permits every slot; future client integration must use the
+client subtype. This is an internal resource convention, not a capability boundary.
+Both C descriptor/backing tables and Ada submission/reader tables cover the same
+capacity. The shared allocation ledger has 144 entries (140 sources, three
+render targets, one upload buffer); context ownership has 143 child entries
+(one target bundle, one pipeline, 140 sources, one upload buffer).
+The configured byte ceiling is unchanged: extra entries do not eagerly allocate
+pixels or override byte-budget rejection.
+
+The full-capacity hosted fixture successfully uploads, imports, retains and
+retires all 140 sources with an exact 144-allocation test budget. The C metadata
+boundary suite also passes at the new last-valid/first-invalid slot.
+`test-source-partition.py` provides isolated output directories for capacity,
+strided-upload and submission regressions plus selected SPARK owner proofs.
+The expanded-capacity chain completed successfully: 959 selected startup/context/
+image-owner analysis checks, no unproved or justified checks, plus strided upload
+and submission regressions (1,000 lifecycles, 10,000 pending polls and the 4,096
+command cap). The rerun atlas-owner suite also passes its 637 checks and all
+three lifecycle scenarios in `icon-atlas-owner-xbmtr5zo`. Capacity evidence is
+`source-partition-ma0mi1ab`; that run used the temporary driver containing the
+same test/proof commands, before publication of the wrapper with hash checks.
+The native archive `desktop-gpu-native-dldsa6k5` compiles 91 objects from 816
+recorded inputs, SHA256
+`6cf01796a1de8d7ce6ab00358cac6848922d4f5d2f8bae83af4a55ee62f5a8ca`.
+This verifies Ada elaboration and musl bridge compilation, not final linking,
+booting or hardware rendering. Full Desktop activation remains outstanding.
+
+
+The real-Vulkan atlas fixture now passes in `icon-atlas-real-206ge3is`:
+`test-icon-atlas-real.py` exercises production atlas owners, mapped uploads,
+source-region capture, straight-alpha blending and scene replay. Across 384
+frames it compares 2,359,296 framebuffer pixels exactly against an independent
+CPU sampling reference using original per-icon tables. It varies all 13 assets,
+four scales, four rotations and three clips (including empty). Only two upload
+chunks and two source-image creations occur for the entire run; cleanup retires
+both images and refunds accounted storage. The first two frames retain distinct
+front/pending targets, which the remaining 382 frames must exclude.
+The accompanying affine oracle passes 233,472 pixels with zero validation errors.
+An early fixture incorrectly required an image reader for an empty clip; corrected
+expectations require zero readers there. Two compilation-only fixture corrections
+added explicit extent conversion and operator visibility. No production rendering
+change was necessary to pass. This is hosted llvmpipe execution, not live CuBit
+or Intel GPU performance evidence. Main still needs complete scene-capture and
+whole-frame fallback integration before GPU activation.
+
+
+### Whole-output completion and fallback gate (2026-10-03)
+
+`Desktop_GPU_Scene.Complete_Output` provides the completion decision needed
+by Desktop's output pump. It distinguishes publishable completion, pending work,
+a complete software repaint, and unsafe state. Both completion and repaint
+prove `Software_Ready`: the scene is idle and the renderer permits reader
+retirement. A low-level rejected operation alone does not establish this:
+calling `Finish` in the wrong phase can reject while previous work remains live.
+The adapter never treats that rejection as CPU fallback permission.
+
+A rejected capture is discarded as a whole. Cold uploads retain their pending
+state; software repaint is allowed only after their readers retire. Repeated
+finish/cancel calls while uploading or submitted return pending without another
+submission. Observation calls cannot finish an active capture. Closed or
+quarantined scenes return unsafe. Display front-buffer retirement remains a
+separate requirement: renderer completion does not release the scanned-out image.
+
+`test-gpu-output.py`, evidence `gpu-output-pkz2jjqs`, passes 669 analysis checks
+(234 flow, 435 prover), none unproved or justified. Hosted tests cover cold
+glyph uploads, repeated finish/cancel, pending readers, 200 glyph draws sharing
+one lease, layer overflow, clean repaint and uncertain completion retaining
+resources. The real icon fixture now uses this adapter for all 384 frames:
+`icon-atlas-real-1r7405sa` passes 2,359,296 exact pixels, two initialization
+uploads, front/pending target exclusions and full cleanup. Native archive
+`desktop-gpu-native-2e9ii7vu` builds 91 objects from 816 inputs, SHA256
+`a6d3bc37e6b0025a923d1c06cd52a6c3aa1c867b43590b6281a1238e0e82f206`.
+These establish local policy, hosted execution and native compile/elaboration
+closure. The Desktop_Compositor facade/Main does not yet invoke the adapter;
+GPU target/source integration and live activation remain outstanding.
+
+
+### Cursor regions share the control atlas (2026-10-03)
+
+The second atlas now contains both window controls and all five existing cursor
+shapes. Its dimensions are 25x161; application icons remain 24x192. Total raw
+BGRA source storage is 34,532 bytes (including transparent padding), superseding
+the earlier 20,052-byte icon-only arrangement. This is not total allocated GPU
+memory: alignment, staging and metadata remain separately accounted. There are
+still two atlas source slots and no extra image allocated for cursor movement.
+Cursor rows are 45, 73, 97, 115 and 140. Actual shape sizes and hotspots remain in
+the original generated `Desktop_Cursors` table, which was not modified.
+
+`Cursor_Region` provides the rectangular source window. The staging writer
+copies original premultiplied cursor bytes directly into the mapped chunk and
+zeroes unused padding; controls retain straight alpha. Blend mode belongs to
+individual draws, so sharing the texture does not convert either format.
+The hosted real Vulkan fixture `test-icon-atlas-real.py --cursors` uses original
+cursor metadata for position/hotspot and checks premultiplied blending, partial
+output clipping, four DPI scales and four rotations. Evidence
+`icon-atlas-real-gpjbzod_` passes 384 frames/2,359,296 exact pixels; the ordinary
+icon regression `icon-atlas-real-093v3wpj` passes the same counts after repacking.
+Each run creates two source images, uploads two initial chunks, excludes held
+front/pending targets for 382 later frames and retires all accounted resources.
+Each accompanying affine oracle passes 233,472 pixels and zero validation errors.
+
+The native archive `desktop-gpu-native-7ktmdnlx` builds 92 objects successfully.
+Staging and owner proof/regression validation is still running at this checkpoint.
+These are retained asset preparation and hosted scene tests; native Main has not
+yet switched its cursor path to this GPU atlas. Hardware cursor planes, late
+pointer sampling and physical cursor latency are not established by these tests.
+
+
+### Shared proved cursor hotspot geometry (2026-10-03)
+
+`Compositor_Cursor.Build` computes complete signed logical bounds from pointer
+position, dimensions and hotspot. It rejects invalid hotspots or edges outside
+the logical coordinate range using wide intermediate arithmetic. Its postcondition
+proves all four edges for an accepted shape; it does not silently shift a cursor
+at an output boundary. Scaling, rotation and physical clipping remain with the
+existing output geometry/sampling routines.
+
+Desktop Main now uses this function for cursor origins and the native-output
+cursor surface. This is an integration into the current software/Mesa drawing
+path; it does not activate GPU capture. Native Desktop compiles and binds under
+the shared build lock (`/tmp/cubit-cursor-main-native-r1.log`), without final
+linking, booting or staging a replacement binary.
+The focused proof passes eight checks, none unproved/justified, and 605 independent
+wide-integer cases cover all five shapes, negative origins, coordinate limits,
+invalid hotspots and maximum dimensions (`cursor-geometry-lfvkndz8`).
+The Vulkan cursor fixture now uses the same production function while retaining
+independent hotspot arithmetic in its CPU reference. `icon-atlas-real-6v336edv`
+passes 384 frames/2,359,296 exact pixels, two initial uploads and retained-target
+lifetime checks; its affine suite passes 233,472 pixels with zero validation errors.
+The separate large-table atlas-staging proof remains running and is not credited
+by this smaller geometry proof.
+
+
+### Cursor atlas proof closure and native software regression (2026-10-03)
+
+The outstanding staging run completed with 60 checks and no unproved/justified
+checks, plus 8,064,000 single-icon and 17,354,892 atlas pixel/guard comparisons.
+The expanded owner suite passes 637 checks and the 96/81-chunk initialization,
+1,000 cache-hit, reader-retirement and uncertain-completion scenarios.
+A reviewed modular implementation is now published: a private `Cursor_Value`
+function separates raw immutable-table lookup from the atlas row loop. It adds
+no assumption, foreign code, allocation or format conversion. The child-package
+proof passes all 41 checks; all 15 snapshot Ada source/test inputs match the
+published checkout byte-for-byte (`cursor-modular-8p4q6cc1/published-inputs.json`).
+The same 17,354,892 comparisons pass for that implementation. These counts cover
+different selected units; they are not an additive whole-program proof total.
+Real Vulkan pixels and native archive compilation pass again after publication.
+
+The current legacy Desktop with the shared cursor-geometry integration was
+linked to a private executable and booted in native CuBit/QEMU, four virtual CPUs,
+TCG, 1 GiB. Three keyboard-driven Apps-menu cycles each changed 115,274 pixels
+and restored the checked region exactly on close. Evidence is
+`cursor-native-boot-6mtf7ow0/boot-evidence/result.json`; binary SHA256
+`f146cf4ce29b828cb11ce0700eb005bd5034db121f7693ff368394e0633e6e92`.
+The kernel, initrd, Display, clock and logstore were recorded prebuilt seeds;
+this is not a whole-system current-source rebuild. The test leaves the cursor
+at its initial position, so it establishes boot/UI regression only, not pointer
+motion, scaled-output interaction, GPU activation or hardware performance.
+No staged service was replaced. The captured menu screenshot is
+`cursor-native-boot-6mtf7ow0/boot-evidence/menu-0.png`.
+
+
+### Native cursor-motion restoration regression (2026-10-03)
+
+The reusable boot runner now accepts `--cursor-motion`. It sends native mouse
+movement through QEMU's PS/2 path, without mutating Desktop state. Eight square
+round trips exercise 32 moves between logical coordinates (80,80), (144,80),
+(144,144), (80,144) and the start. At each settled observation, all changed pixels
+must lie inside the original and current 19x28 arrow footprints; returning to the
+start must exactly restore the checked desktop region. The region excludes the
+live clock/taskbar. Three keyboard-driven menu open/close cycles remain covered.
+
+The published runner passes in
+`cursor-native-boot-6mtf7ow0/motion-published/result.json`, using the private
+legacy Desktop binary SHA recorded above and hashed boot seeds. Invocation:
+
+```sh
+nix-shell tests/compositor/vulkan-affine-shell.nix --run 'python3 tests/compositor/test-desktop-vulkan-boot.py --cursor-motion tests/compositor/build/cursor-native-boot-6mtf7ow0 kernel/isodir/boot NEW_EVIDENCE_DIRECTORY'
+```
+
+This is native CuBit under four-vCPU TCG/QEMU with 1 GiB, at 1x scale. The runner
+waits up to eight seconds for each settled frame; it neither samples every
+scanout nor measures input latency. It does not establish transient tear-free
+presentation, overload behavior, Intel GPU rendering or NUC cursor correctness.
+It provides a repeatable regression for persistent cursor trails and damage
+outside the expected footprints. No staged Desktop service was replaced.
+
+
+### Native 125 percent cursor regression and screenshot (2026-10-03)
+
+`test-desktop-vulkan-boot.py --scaled-cursor-motion` opens compositor Settings
+through native input, selects Displays, increases scale and applies 5/4. The
+serial log must confirm the new scale before image checks begin. Sixteen mouse
+moves over four round trips then exercise cursor footprints at logical 16/40
+positions. The oracle permits differences only within the outward-rounded old
+and new footprints and requires exact restoration on return. It also retains
+three menu open/close checks. The published runner passes in
+`cursor-native-boot-6mtf7ow0/scaled-published/result.json`, using the same fresh
+private legacy Desktop and recorded boot seeds as the earlier regression.
+The authentic screenshot is `scaled-published/settings-scale-5-4.png` under that
+fixture directory. This is a 1024x768 CuBit/QEMU software-output test, not a
+resized screenshot or hardware rendering evidence.
+
+The first private attempt selected the wrong menu item; corrected navigation
+uses the existing fixture's two upward steps. A requested QEMU scanout hint of
+1600x1000 did not change the active native primary mode, which reported 1024x768;
+that hint is not credited as a larger-output test. The published test uses the
+confirmed output size. Its first invocation also failed before boot due to a
+literal percent sign in argparse help; the corrected invocation passed.
+
+The default legacy backend still selects logical-backbuffer scaling because
+Main's `nativeScene` depends on `Desktop_Compositor.Selected`. The screenshot
+therefore demonstrates native scale application and cursor damage correctness,
+not final per-output font raster quality. Density-aware software scene selection
+needs further integration; the Mesa-selected fallback already contains the
+physical-output glyph path. No changes to that selection were made here.
+
+
+### Software output density (2026-10-03 integration)
+
+The legacy backend now selects the same per-output scene traversal used by
+Mesa fallback. It renders into each output's writable pool buffer instead of
+allocating a logical scene and scaling its completed pixels. Text uses
+`Compositor_Software_Text`, the existing density-keyed glyph cache and raster
+storage, and the existing SPARK software painter. No Mesa context is required.
+The owner admits at most 128 glyphs and 512 KiB of raster payload, with one
+synchronous read lease and bounded eviction attempts. That payload bound is
+not a claim about total process memory. Fonts remain rasterized by the existing
+font FFI; writable target mappings and physical alias exclusion remain trusted
+obligations of the output owner. The new target bridge checks image shape and
+capacity before exposing its pixel array.
+
+A partially painted text batch requests scene replay before publication, so
+previous glyphs are not blended twice. Output start and completion check that
+the synchronous text reader has retired. Native QEMU testing applied 125%
+through Settings and passed sixteen cursor moves, four exact restoration
+roundtrips and three menu restoration cycles. This is software correctness
+and DPI evidence, not GPU activation, physical tearing or latency evidence.
+The final recovery owner passed 164 SPARK checks (45 flow, 119 prover), with
+none unproved. The legacy facade passed 40 checks and hosted first/later-glyph
+fault tests. A persistent raster failure disables retained text, allowing the
+existing basic glyph fallback to finish the scene replay. Invalid targets are
+rejected before rasterization and do not disable the cache.
+
+The source-matched private executable in
+`tests/compositor/build/software-dpi-native-ovgfbqzp` passed both native runs:
+32 cursor moves/eight round trips at 100%, and 16 moves/four round trips at
+125%, with three menu restoration cycles each. Its manifest records changed
+source hashes; each boot records the explicit prebuilt kernel/service seeds.
+The runs overlapped and establish correctness only. Native injected raster failure subsequently passed in
+`tests/compositor/build/software-raster-fault-3ku3q71a`: a private linker wrapper
+allowed one retained glyph raster call, then failed every later call. Serial
+recorded exactly one scene replay, one basic CPU text fallback and one Desktop
+startup, with no restart. Settings at 125%, sixteen cursor moves and three menu
+restoration cycles still passed. The production font library was unchanged.
+The reusable gate is `tests/compositor/test-desktop-software-fault.py` (Nix).
+Mixed-output integration and updated performance measurements remain separate
+gates.
+
+
+The software DPI path also passed the existing 180-second native mixed-output
+regression (QEMU TCG, four vCPUs, 1 GiB): 1024×768 plus 1280×720 outputs,
+125%/150% scaling, unchanged physical modes, cursor restoration across mixed
+scales, split-window dragging, per-output maximize, primary taskbar/client
+migration, and above/left/below/offset arrangement. Logs and screenshots are
+recorded in `tests/compositor/build/software-dpi-native-ovgfbqzp/mixed-evidence`.
+This run is functional evidence, not a frame-time or input-latency benchmark.
+
+
+### Software client row-copy path (2026-10-03)
+
+`Compositor_Row_Copy.Plan` admits only unrotated, rationally unit-scale,
+opaque source images whose pixel dimensions equal their logical dimensions.
+It intersects output bounds, surface bounds and damage, and proves both source
+and target row ranges plus their coordinate correspondence. Other cases retain
+the existing sampler. Main copies admitted rows directly between the same
+acquired source and writable output mappings; no intermediate pixel allocation
+or additional copy is introduced. Physical mapping authority and alias exclusion
+remain trusted, as in the previous per-pixel bridge.
+
+The planner passed 24 SPARK checks and 952,952 pixel comparisons against the
+existing sampler, including clipped and negative origins. The metrics-enabled
+native build passed Observatory's four-worker overload workload (26 updates,
+visible graph/table and pause interactions, close during worker overlap, all
+workers finishing). For one-frame, no-input intervals with the same 425,600
+client-damage pixels and 426,132 scene-render pixels, the earlier build averaged
+244.91 ms across 11 samples and the row-copy build 110.43 ms across 14 samples.
+This is an exploratory shared-host QEMU TCG comparison, not causal isolation,
+WCET, hardware frame-rate, or physical latency evidence. It changes coordinate
+calculation cost, not required client-copy byte volume. Reproduce the summary
+with `tests/compositor/summarize-client-redraw.py`; retained data and baseline
+binary are in `tests/compositor/build/software-row-comparison`.
+
+Do not compare the new native path's `repair_px` directly with the old logical
+path's repair-only count: native `renderOutput` counts required scene rendering
+in that field. Separate redundant repair and required scene work before using
+those counters to claim a repair regression or improvement.
+
+
+Native diagnostics now report `scene_px` separately from `repair_px`. The
+counter split passed a native Observatory run (39 updates); all intervals with
+positive scene work reported zero separate repair work on the native-output
+path. Evidence is in `software-row-comparison/counter-evidence`. This split is
+currently in diagnostic log fields; typed metrics publish stage durations and
+release measurements, with typed pixel-work records still to be added.
+
+## Unrotated scaled-client sampling (2026-10-03)
+
+The native CPU fallback now computes the source Y coordinate once per damage
+row on unrotated outputs, using the existing proved `Compositor_Sampling.Axis`.
+X still uses the same centre-based axis formula for each pixel. The unit-scale
+row-copy fast path remains first; rotated outputs retain `Map`. For a fully
+covered W-by-H region this changes axis evaluations from 2*W*H to W*H+H,
+without extra storage or changing pixel-transfer volume. Mapped address
+validity and source/output nonaliasing remain trusted bridge obligations.
+
+`test-separable-sampling.py` compares validity and coordinates with `Map` over
+5,356,800 pixels: every scale numerator/denominator from 1 through 16, negative
+output and surface origins, and a 29-by-23 physical client in a 17-by-13 logical
+surface. It also proves the sampler (48 checks, zero unproved). This is finite
+regression coverage plus the sampler's existing contracts, not a proof of the
+whole Desktop memory bridge. Native metrics Desktop compilation and the 180-second native CuBit/QEMU
+mixed-output gate passed, covering 125/150% scaling, primary switching,
+above/left/below/offset arrangements, split dragging, per-monitor maximize and
+cursor/wallpaper restoration. Evidence is retained in
+`tests/compositor/build/separable-native-evidence/`. No timing improvement is
+claimed yet.
+
+## Fully covered wallpaper (2026-10-03)
+
+During a native shell scene, wallpaper is omitted only when one visible,
+non-minimized, non-excluded window covers the complete physical damage clip.
+The test uses the window's original body rectangle (a conservative subset if
+`drawWindow` expands a small window), clamps it to the logical workspace, and
+uses the same `Compositor_Text.Clip` as the subsequent opaque window fill.
+Client alpha or attachment state is irrelevant: the window background itself
+is opaque. Shell-free scenes, partial coverage and the legacy scene path retain
+wallpaper drawing. Shadows outside the body do not qualify as occlusion.
+
+This introduces no region fragmentation, image allocation or queue. Eligibility
+is bounded by the fixed surface table. The existing SPARK clip supplies geometry;
+Main's agreement between eligibility and later opaque drawing is an integration
+assumption tested natively, not a newly proved whole-scene property. Scene-pixel
+metrics count damage area and will not decrease merely because one underlying
+layer was skipped. A one-time diagnostic identifies actual culling activation.
+Native compilation and the 180-second native mixed-output gate passed. The
+activation diagnostic confirms culling was exercised; scaling, primary changes,
+arrangement, window movement and wallpaper/cursor restoration all passed.
+Source/binary/observer hashes matched before and after the run. Evidence is in
+`tests/compositor/build/wallpaper-cull-native-evidence/`. This establishes
+functional regression coverage, not a hardware bandwidth or latency result.
+
+The current culling build also passed the published native persistent-font-
+failure fixture (`software-raster-fault-943z89nr`): one partial-text scene replay,
+one Desktop startup, functional basic text fallback, 16 cursor moves/four
+round trips at 125% DPI and three exact menu restoration cycles. Culling was
+observed after fallback activated. The injected fault occurred before the first
+cull, so this run does not prove recovery from a fault during a culled redraw.
+
+The targeted follow-up `test-culled-software-fault.py` passed in native CuBit
+(`culled-raster-fault-b2noula7`). A private extended project overlays Main only
+to reset a test trigger at each scene pass and arm it at wallpaper culling.
+The private C font wrapper permits one raster in that pass, then fails and
+latches failure. Production Main and staged binaries are unchanged by this
+fixture. The log establishes culling before the one text replay/fallback;
+16 cursor moves/four round trips at 125% and three menu restoration cycles
+passed with a single Desktop startup. This closes the culled-pass font-failure
+regression gap; it is software recovery evidence, not GPU failure coverage.
+
+## Default software checkpoint staged (2026-10-03)
+
+The normal legacy, production-storage, metrics-off/timing-off Desktop is now
+staged for `run-desktop-fast`. Both the default build artifact and
+`kernel/isodir/boot/desktop.svc` have SHA-256
+`540753787e4c369cce68a7bcc9076ec7b2b9513030d56ebe99e6e9856e030c14`.
+The exact binary passed native 125% DPI cursor/menu restoration before
+publication. It includes density-aware software text, row copying, separable
+scaled sampling and fully covered wallpaper culling, without fault hooks.
+
+Previous binaries, source hashes, test evidence and the publication record are
+retained locally in `tests/compositor/build/software-checkpoint-hf87kw6f/`.
+This stages Desktop only, not a rebuilt ISO or hardware image. The separately
+tested metrics-enabled binary remains opt-in; the default build continues to
+use its existing metrics-off configuration. Hardware GPU presentation and
+physical latency/refresh-rate acceptance remain outstanding.
+
+## Desktop diagnostics through logstore (2026-10-03)
+
+Desktop now requests the logstore publication capability in its manifest. Its
+local `debugPrint` adapter retains stdout output and frames complete lines for
+logstore using `CuBit.Text_To_Log`. Renderer selection/fallback messages,
+startup diagnostics and other Main diagnostics therefore become visible in
+Apps → Logs (Desktop source, or search `desktop:`), without serial access.
+This is enabled in the normal build independently of the opt-in metrics variant.
+
+`Desktop_Logs` retains at most 32 records and the existing asynchronous SDK
+owns one in-flight page. Publication uses the shared unique request sequence;
+only matching completions reach the publisher. Pumping follows input/render
+work. No collector wait, retry loop or unbounded queue is introduced. Overflow
+and oversized/invalid lines increment a saturating local loss count; when the
+queue drains, a warning includes that count and the SDK's publication-loss
+count. Records are limited to the existing 512-byte log format. A failed
+submission disables further publication while preserving serial output; an
+uncertain grant remains owned by the process-lived SDK publisher. These are
+best-effort diagnostics, not a lossless audit trail.
+
+Hosted `test-desktop-logs.py` covers split CRLF framing, busy retention, foreign
+completions, 32-record overflow, oversized lines and unavailable-collector
+behavior. `test-desktop-logs-native.py` retrieves Desktop startup and renderer
+records through the actual native boot-log reader. The SDK/transport adapter
+is regression-tested, not represented as a new whole-service SPARK proof.

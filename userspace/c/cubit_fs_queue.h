@@ -58,6 +58,8 @@ enum {
 	FS_QUEUE_OPEN_DIRECTORY = 11,
 	FS_QUEUE_CLOSE_DIRECTORY = 12,
 	FS_QUEUE_PARK = 13,
+	/* Pairs of a directory page and its inspection page (metadata). */
+	FS_QUEUE_READ_DIRECTORY_INSPECTED = 14,
 	FS_TOKEN_AT = 0,
 	FS_OPERATION_AT = 8,
 	FS_OPTIONS_AT = 12,

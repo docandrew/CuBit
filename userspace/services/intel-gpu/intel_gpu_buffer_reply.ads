@@ -1,6 +1,7 @@
 with Interfaces; use Interfaces;
 with Intel_GPU_Buffer_Backing;
 with Intel_GPU_Physical_Extents;
+with Intel_GPU_Extent_Directory;
 package Intel_GPU_Buffer_Reply with SPARK_Mode is
    package Layout renames Intel_GPU_Buffer_Backing;
    type Words is array (Natural range 0 .. 3) of Unsigned_64;
@@ -9,8 +10,12 @@ package Intel_GPU_Buffer_Reply with SPARK_Mode is
    -- Admission is geometric; only authenticated retained supervisor replies
    -- may supply Map and Arena_ID at the live transport boundary.
    type Extent_View is private;
+   -- Internal borrowed geometry: the limited directory owner and its committed
+   -- metadata MUST outlive this view and all slices/BOs made from it. Never
+   -- serialize a view or reconstruct one from a client address. Quarantine
+   -- invalidates lookups but does not release physical backing.
    function From_Extents
-     (Map : Intel_GPU_Physical_Extents.Map; Arena_ID, Offset, Bytes : Unsigned_64)
+     (Map : Intel_GPU_Extent_Directory.Borrowed_View; Arena_ID, Offset, Bytes : Unsigned_64)
       return Extent_View;
    function Valid (Object : Extent_View) return Boolean;
    function Slice (Parent : Extent_View; Offset, Bytes : Unsigned_64) return Extent_View;
@@ -79,7 +84,7 @@ private
    type Extent_View is record
       Accepted : Boolean := False;
       Identity, First, Length : Unsigned_64 := 0;
-      Map : Intel_GPU_Physical_Extents.Map;
+      Map : Intel_GPU_Extent_Directory.Borrowed_View;
       Linear_Base : Unsigned_64 := 0;
    end record;
 end Intel_GPU_Buffer_Reply;

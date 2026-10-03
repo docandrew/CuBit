@@ -20,7 +20,7 @@ struct adapter {
     struct sw_winsys winsys;
     struct pipe_screen *screen;
     struct pipe_context *pipe;
-    void *vs, *fs, *mask_fs, *blend[2], *raster, *depth, *elements, *sampler;
+    void *vs, *fs, *mask_fs, *blend[3], *raster, *depth, *elements, *sampler;
     unsigned fault;
 };
 struct imported {
@@ -78,7 +78,7 @@ void cubit_mesa_destroy(void *opaque)
         if(a->vs) p->delete_vs_state(p,a->vs);
         if(a->fs) p->delete_fs_state(p,a->fs);
         if(a->mask_fs) p->delete_fs_state(p,a->mask_fs);
-        for(unsigned i=0;i<2;++i) if(a->blend[i]) p->delete_blend_state(p,a->blend[i]);
+        for(unsigned i=0;i<3;++i) if(a->blend[i]) p->delete_blend_state(p,a->blend[i]);
         if(a->raster) p->delete_rasterizer_state(p,a->raster);
         if(a->depth) p->delete_depth_stencil_alpha_state(p,a->depth);
         if(a->elements) p->delete_vertex_elements_state(p,a->elements);
@@ -115,6 +115,8 @@ void *cubit_mesa_create(void)
     b.rt[0].rgb_src_factor=b.rt[0].alpha_src_factor=PIPE_BLENDFACTOR_ONE;
     b.rt[0].rgb_dst_factor=b.rt[0].alpha_dst_factor=PIPE_BLENDFACTOR_INV_SRC_ALPHA;
     a->blend[1]=p->create_blend_state(p,&b);
+    b.rt[0].rgb_src_factor=PIPE_BLENDFACTOR_SRC_ALPHA;
+    a->blend[2]=p->create_blend_state(p,&b);
     struct pipe_rasterizer_state r={.scissor=true,.half_pixel_center=true,.line_width=1,.point_size=1};
     struct pipe_depth_stencil_alpha_state d={0};
     struct pipe_vertex_element e[2]={
@@ -126,7 +128,7 @@ void *cubit_mesa_create(void)
         .min_mip_filter=PIPE_TEX_MIPFILTER_NONE,.unnormalized_coords=false};
     a->raster=p->create_rasterizer_state(p,&r); a->depth=p->create_depth_stencil_alpha_state(p,&d);
     a->elements=p->create_vertex_elements_state(p,2,e); a->sampler=p->create_sampler_state(p,&sampler);
-    if(!a->vs||!a->fs||!a->blend[0]||!a->blend[1]||!a->raster||!a->depth||!a->elements||!a->sampler) {
+    if(!a->vs||!a->fs||!a->blend[0]||!a->blend[1]||!a->blend[2]||!a->raster||!a->depth||!a->elements||!a->sampler) {
         failure("drawing state creation failed");goto fail;
     }
     p->bind_vs_state(p,a->vs);p->bind_fs_state(p,a->fs);
@@ -205,7 +207,7 @@ static void begin_vertices(struct adapter *a,struct imported *t,uint32_t over,bo
     struct pipe_viewport_state vp={
         .scale={t->target.image.width/2.0f,t->target.image.height/2.0f,1},
         .translate={t->target.image.width/2.0f,t->target.image.height/2.0f,0}};
-    p->bind_blend_state(p,a->blend[over?1:0]);
+    p->bind_blend_state(p,a->blend[over]);
     p->set_framebuffer_state(p,&fb);p->set_viewport_states(p,0,1,&vp);
 }
 static void emit_vertices(struct adapter *a,struct imported *s,
@@ -237,6 +239,7 @@ static uint32_t draw_vertices(struct adapter *a, struct imported *t, struct impo
                               uint32_t clip_w, uint32_t clip_h, uint32_t over,
                               const float *tint)
 {
+    if(over>2 || (tint && over!=1)) return 1;
     if(tint && !a->mask_fs) {
         a->mask_fs=create_mask_shader(a->pipe);
         if(!a->mask_fs) return 2;
@@ -254,7 +257,7 @@ uint32_t cubit_mesa_draw(void *opaque,void *dst,void *src,const struct cubit_mes
     return 2;
 #endif
     struct adapter *a=opaque;struct imported *t=dst,*s=src;
-    if(!a||!s||!t||!d||s->owner!=a||t->owner!=a||!t->target.image.writable||s==t||s->mask||t->mask) return 1;
+    if(!a||!s||!t||!d||s->owner!=a||t->owner!=a||!t->target.image.writable||s==t||s->mask||t->mask||d->over>1) return 1;
     if(a->fault||s->target.maps||t->target.maps) return 3;
     const float x0=2.0f*d->dx/t->target.image.width-1, y0=2.0f*d->dy/t->target.image.height-1;
     const float x1=x0+2.0f*d->dw/t->target.image.width, y1=y0+2.0f*d->dh/t->target.image.height;
@@ -282,7 +285,7 @@ static uint32_t check_affine(void *opaque,void *dst,void *src,const struct cubit
        !d->logical_w||d->logical_w>UINT32_C(2147483648)||
        !d->logical_h||d->logical_h>UINT32_C(2147483648)||
        !d->numerator||d->numerator>16||!d->denominator||d->denominator>16||
-       d->rotation>3||d->over>1||d->clip_x>=w||d->clip_y>=h||
+       d->rotation>3||d->over>2||d->clip_x>=w||d->clip_y>=h||
        !d->clip_w||d->clip_w>w-d->clip_x||!d->clip_h||d->clip_h>h-d->clip_y) return 1;
     if(a->fault||s->target.maps||t->target.maps) return 3;
     /* SPARK supplies exact rational corners, including inverse rotation.
@@ -369,5 +372,25 @@ uint32_t cubit_mesa_draw_mask_batch(void *opaque,void *dst,
         if(source->target.maps) return 3;
     }
     if(a->fault) failure("batch map/unmap fault");
+    return a->fault?2:0;
+}
+
+uint32_t cubit_mesa_fill(void *opaque,void *dst,uint32_t left,uint32_t top,
+                         uint32_t width,uint32_t height,uint32_t color)
+{
+    struct adapter *a=opaque;struct imported *t=dst;
+    if(!a||!t||t->owner!=a||!t->target.image.writable||t->mask||
+       left>=t->target.image.width||top>=t->target.image.height||
+       !width||width>t->target.image.width-left||!height||height>t->target.image.height-top)return 1;
+    if(a->fault||t->target.maps)return 3;
+#ifdef CUBIT_MESA_FAIL_DRAW
+    return 2;
+#endif
+    struct pipe_surface surface={.texture=t->resource,.format=PIPE_FORMAT_B8G8R8A8_UNORM};
+    const union pipe_color_union value={.f={((color>>16)&255)/255.0f,((color>>8)&255)/255.0f,
+        (color&255)/255.0f,((color>>24)&255)/255.0f}};
+    a->pipe->clear_render_target(a->pipe,&surface,&value,left,top,width,height,false);
+    a->pipe->flush(a->pipe,NULL,0); /* softpipe completion, not an asynchronous GPU contract */
+    if(t->target.maps)return 3;
     return a->fault?2:0;
 }

@@ -2,7 +2,7 @@ with Interfaces; use Interfaces;
 
 --  Portable identity only: a reference is not authority or an address.
 package CuBit.Grant_References with Pure, SPARK_Mode is
-   Maximum_Slot : constant Unsigned_64 := 4095;
+   Maximum_Slot : constant Unsigned_64 := 256 * 4096 - 1;
    Maximum_Generation : constant Unsigned_64 :=
      Unsigned_64 (Unsigned_32'Last);
    subtype Global_Slot is Unsigned_64 range 0 .. Maximum_Slot;

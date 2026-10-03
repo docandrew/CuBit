@@ -1,4 +1,5 @@
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Grant_References;
 package body Native_GPU_Buffers is
    function Memory_Contract (Slot : Unsigned_64) return Unsigned_32 is
       Expected : constant MessageTag := (16#0A20#, 4, 0, 0);
@@ -208,11 +209,10 @@ package body Native_GPU_Buffers is
          if Msg.words (2) /= 0 or Msg.words (3) /= 0 then return 5; end if;
          return Unsigned_32 (Msg.words (0));
       end if;
-      -- Canonical grant reference: generation32/nonzero, slot32 in0..4095.
+      -- Use the shared codec, including its admitted namespace bound.
       -- Acquisition independently authenticates this reference in the kernel.
       if Msg.words (2) = 0 or Msg.words (2) > Unsigned_64 (Unsigned_32'Last) or
-        Shift_Right (Msg.words (3), 32) = 0 or
-        (Msg.words (3) and 16#FFFF_FFFF#) > 4095 then return 5; end if;
+        not CuBit.Grant_References.Valid_Wire (Msg.words (3)) then return 5; end if;
       Mapping.all := Unsigned_32 (Msg.words (2));
       Reference.all := Msg.words (3);
       return 0;

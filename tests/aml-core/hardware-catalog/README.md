@@ -16,7 +16,12 @@ and rejects stale inventory epochs. Can_Select uses the shared per-resource
 attenuation predicate and requires the selected resource to belong to the
 specified category. Group/token arguments must eventually come from an
 already-authenticated kernel capability; passing them as user assertions would
-not provide security. Parent-child revocation linkage is still unimplemented.
+not provide security. `Hardware_Grants` implements parent-child revocation
+linkage, and `Hardware_Grants.Cspace` checks installed capability type, registry
+identity, generation and rights before reserving an access. Those separate
+policy units are exercised by the hardware-grants and hardware-cspace targets;
+this catalog target alone does not validate them. Boot admission, current-caller
+syscall dispatch, synchronization and real hardware access remain unwired.
 
 Trusted platform admission must establish resource ownership and safe operation
 semantics independently. Valid only checks metadata geometry and masks. Revoke

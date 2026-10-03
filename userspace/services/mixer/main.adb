@@ -20,6 +20,7 @@ with CuBit.Memory_Grants; use CuBit.Memory_Grants;
 with Mixer;
 with Mixer_Control;
 with CuBit.Audio_Control;
+with CuBit.Audio_Periods;
 with CuBit.Benchmark_Clock;
 with CuBit.Timing_Histograms;
 
@@ -38,6 +39,7 @@ procedure main is
    OP_AUDIO_SET_PAN  : constant Unsigned_32 := 16#0504#;
    OP_AUDIO_SET_FMT  : constant Unsigned_32 := 16#0505#;
    OP_AUDIO_WAKE     : constant Unsigned_32 := 16#0506#;
+   OP_AUDIO_PLAYBACK : constant Unsigned_32 := 16#0509#;
    OP_AUDIO_HW_INIT  : constant Unsigned_32 := 16#0510#;
    OP_AUDIO_HW_START : constant Unsigned_32 := 16#0511#;
    OP_AUDIO_HW_STOP  : constant Unsigned_32 := 16#0512#;
@@ -192,7 +194,7 @@ procedure main is
 
       target := dmaRingAddr + Unsigned_64 (slot) * Unsigned_64 (periodBytes);
       Before := Clock.Read_Counter;
-      mixFrames := Mixer.mixPeriod (mixBuf, target, Mixer.MIX_FRAMES);
+      mixFrames := Mixer.mixPeriod (mixBuf, target, slot, Mixer.MIX_FRAMES);
       After := Clock.Read_Counter;
       if After >= Before then
          Timing.Add (Mix_Timing, After - Before);
@@ -230,7 +232,9 @@ procedure main is
       ctlMsg.tag := capCall (CAP_SLOT_HDA, ctlMsg);
       if ctlMsg.tag.label = REPLY_OK then
          hdaRunning := True;
-         lastPeriodSequence := 0;
+         --  HDA returns its pre-start completion baseline. Old queued events
+         --  must not release/refill periods belonging to this new run.
+         lastPeriodSequence := ctlMsg.words (0);
       else
          debugPrint ("mixer: HDA start failed" & LF);
       end if;
@@ -269,7 +273,7 @@ begin
    end if;
 
    --  Pre-allocate ring buffers for all stream slots via sbrk.
-   --  Each slot gets RING_PAGES (2) pages of page-aligned memory.
+   --  Each slot gets RING_PAGES (3) pages of page-aligned memory.
    declare
       PAGE_SIZE : constant Unsigned_64 := 4096;
       totalBytes : constant Unsigned_64 :=
@@ -319,8 +323,8 @@ begin
          gid <= MAXIMUM_GLOBAL_SLOT and then
          generation >= 1 and then generation <= MAXIMUM_GENERATION and then
          bytes = Unsigned_64 (Mixer.MIX_FRAMES * 4) and then
-         count > 0 and then count <= 32 and then
-         bytes * count <= 4096
+         count >= 2 and then count <= 32 and then
+         bytes * count <= 32 * 1024
       then
          grantReference :=
            (slot       => Global_Grant_Slot (gid),
@@ -390,13 +394,22 @@ begin
                  (msg.words (1) - lastPeriodSequence - 1);
             end if;
             if msg.words (1) > lastPeriodSequence then
+               declare
+                  Number : constant Natural := Natural (Unsigned_64'Min
+                    (msg.words (1) - lastPeriodSequence, Unsigned_64 (periodCount - 1)));
+               begin
+                  for Offset in 0 .. Number - 1 loop
+                     mixIntoPeriod (CuBit.Audio_Periods.Refill
+                       (Natural (msg.words (0)), periodCount, Number, Offset));
+                  end loop;
+               end;
                lastPeriodSequence := msg.words (1);
                if msg.tag.length = 4 and then msg.words (3) /= 0 and then
                  Received_At >= msg.words (3)
                then
                   Timing.Add (Publication_Timing, Received_At - msg.words (3));
                end if;
-               mixIntoPeriod (Natural (msg.words (0)));
+
             end if;
          end if;
 
@@ -454,6 +467,17 @@ begin
                      sendReply (REPLY_ERR);
                   end if;
                end openStream;
+
+            when OP_AUDIO_PLAYBACK => -- Owner-scoped ring and device backlog query.
+               declare
+                  Index : constant Natural := Natural (msg.words (0));
+                  Buffered : constant Unsigned_64 := Mixer.Buffered_Frames (Index);
+               begin
+                  if Buffered = Unsigned_64'Last then sendReply (REPLY_ERR);
+                  else sendReply (REPLY_OK, Buffered, Mixer.Device_Frames (Index),
+                    Unsigned_64 (periodCount * Mixer.MIX_FRAMES));
+                  end if;
+               end;
 
             when OP_AUDIO_CLOSE =>
                --  words(0) = streamId

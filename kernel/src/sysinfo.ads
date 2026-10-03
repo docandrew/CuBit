@@ -59,6 +59,10 @@ package Sysinfo is
     MEM_FREE              : constant QueryID := 1600;
     MEM_TOTAL             : constant QueryID := 1601;
 
+    -- Caller-owned physical frames in bytes; excludes borrowed mappings,
+    -- page-table frames and allocations owned by other services. Not RSS.
+    MEM_OWNED_SELF         : constant QueryID := 1602;
+
     REGISTERED_DRIVER     : constant QueryID := 2000;
 
     subtype DriverID is QueryID range 0..127;

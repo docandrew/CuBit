@@ -38,6 +38,7 @@ package body Desktop_Launch is
       Append (Items, Make ("CCL Workbench", "ccl-workbench.app", UILab));
       Append (Items, Make ("DOOM", "doom.elf", Doom, Single => True));
       Append (Items, Make ("Devices", "devices.app", Files));
+      Append (Items, Make ("Penny", "cubitshell.app", Penny));
       Append (Items, Make ("NetSurf", "netsurf.app", Files));
       Append (Items, Make ("Files", "files.app", Files));
       Append (Items, Make ("SameBoy", "sameboy.app", Doom));
@@ -163,6 +164,7 @@ package body Desktop_Launch is
             elsif Is_Word (F, L, "doom") then Item.Icon := Desktop_Icons.Doom;
             elsif Is_Word (F, L, "security") then Item.Icon := Desktop_Icons.Security;
             elsif Is_Word (F, L, "files") then Item.Icon := Desktop_Icons.Files;
+            elsif Is_Word (F, L, "penny") then Item.Icon := Desktop_Icons.Penny;
             else return;
             end if;
          elsif Is_Word (F, L, "single-instance") then

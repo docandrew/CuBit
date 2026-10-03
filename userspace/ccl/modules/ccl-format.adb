@@ -60,6 +60,7 @@ is
          when CCL.Types.Sequence => SHAPE_SEQUENCE,
          when CCL.Types.Callable => SHAPE_CALLABLE,
          when CCL.Types.Bounded => SHAPE_BOUNDED,
+         when CCL.Types.Stream => SHAPE_STREAM,
          when CCL.Types.Primitive => 0);
 
    function Op_Number (Item : Op_Code) return Unsigned_8 is
@@ -852,7 +853,7 @@ is
                Own : constant CCL.Types.Type_Reference := CCL.Types.Unit_Type + CCL.Types.Type_Reference (T);
             begin
                Expect_Array (5);
-               Get_Unsigned (Value, SHAPE_BOUNDED);
+               Get_Unsigned (Value, SHAPE_STREAM);
                Shape := Natural (Value);
                Get_Name (Item.Identifier);
                Get_Array (Parts, CCL.Types.Maximum_Components);
@@ -864,6 +865,7 @@ is
                   when SHAPE_SEQUENCE => CCL.Types.Sequence,
                   when SHAPE_CALLABLE => CCL.Types.Callable,
                   when SHAPE_BOUNDED => CCL.Types.Bounded,
+                  when SHAPE_STREAM => CCL.Types.Stream,
                   when others => CCL.Types.Primitive);
                Item.Count := Parts;
                for P in 1 .. Parts loop

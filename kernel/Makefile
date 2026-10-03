@@ -704,6 +704,9 @@ test-ccl-remote:
 	../tests/ccl-remote/build/main
 	../tests/ccl-remote/build/host_tests
 	../tests/ccl-remote/build/periodic_tests
+	# The Observatory decodes these exact bytes (wire.test.mjs).
+	../tests/ccl-remote/build/wire_vectors > ../tests/ccl-remote/build/wire-vectors.json
+	cmp ../tests/ccl-remote/build/wire-vectors.json ../userspace/ccl/tools/ccl-observatory/wire-vectors.json
 
 .PHONY: prove-ccl-interpreter-host
 prove-ccl-interpreter-host:
@@ -1008,6 +1011,14 @@ ccl-workbench: user_runtime ccl-manifest ui-fonts-native
 	$(ALR) gprbuild -P ../userspace/ccl/apps/ccl-workbench/ccl_workbench.gpr
 	cp ../userspace/ccl/apps/ccl-workbench/build/ccl-workbench.app isodir/boot/ccl-workbench.app
 
+# Native CCL console: a full-window REPL over the Workbench's host environment.
+.PHONY : ccl-console
+ccl-console: user_runtime ccl-manifest ui-fonts-native
+	mkdir -p ../userspace/ccl/apps/ccl-console/build
+	$(call compile_ccl_manifest,../userspace/ccl/apps/ccl-console)
+	$(ALR) gprbuild -P ../userspace/ccl/apps/ccl-console/ccl_console.gpr
+	cp ../userspace/ccl/apps/ccl-console/build/ccl-console.app isodir/boot/ccl-console.app
+
 # Test-only service used to exercise CCL's typed host-import IPC adapter.
 .PHONY : ccl-test-host
 ccl-test-host: user_runtime ccl-manifest
@@ -1308,6 +1319,14 @@ gpu-viewer: user_runtime ccl-manifest
 	$(ALR) gprbuild -P ../userspace/apps/gpu-viewer/gpu_viewer.gpr
 	cp ../userspace/apps/gpu-viewer/build/gpu-viewer.app isodir/boot/gpu-viewer.app
 
+.PHONY : logs
+# The Logs app (docs/logs-app.md): every service's records, live.
+logs: user_runtime ccl-manifest ui-fonts-native
+	mkdir -p ../userspace/apps/logs/build
+	$(call compile_ccl_manifest,../userspace/apps/logs)
+	$(ALR) gprbuild -P ../userspace/apps/logs/logs.gpr
+	cp ../userspace/apps/logs/build/logs.app isodir/boot/logs.app
+
 .PHONY : boot-logs
 boot-logs: user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/boot-logs/build
@@ -1567,7 +1586,8 @@ DESKTOP_OVERLAY := isodir/boot/desktop.svc isodir/boot/display.svc isodir/boot/m
 	isodir/boot/netstack.svc isodir/boot/tls.svc isodir/boot/desktop-shell.app \
 	isodir/boot/devices.app isodir/boot/config-inspector.app isodir/boot/files.app \
 	isodir/boot/doom.elf isodir/boot/netsurf.app isodir/boot/ccl-workbench.app \
-	isodir/boot/config-storage.svc
+	isodir/boot/ccl-console.app isodir/boot/logs.app isodir/boot/config-storage.svc \
+	$(SERVO_DISK_CONTENTS)
 DESKTOP_SAMPLE_ARGS = $(foreach sample,$(DESKTOP_CONFIG_SAMPLES),--file "work/$(notdir $(sample))=$(sample)")
 
 .PHONY : prepare-desktop-disk
@@ -1592,7 +1612,7 @@ INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hd
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
 desktop-session-content: $(INITRD_SERVICES) desktop-metrics display logstore \
-	desktop-shell devices files config-inspector ccl-workbench config-storage clock timesync tls doom netsurf sameboy
+	desktop-shell devices files config-inspector ccl-workbench ccl-console logs config-storage clock timesync tls doom netsurf sameboy
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.ccl, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -1650,7 +1670,7 @@ initrd: $(INITRD_SERVICES) ccl-image ../images/development-initrd.ccl $(CCL_IMAG
 # desktop and diagnostic UI before AHCI or any other block driver works.
 LAPTOP_LIVE_STAGE1 := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hda \
 	mixer ps2 xhci config netmgr procmgr devmgr
-LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench devices files config-inspector boot-logs \
+LAPTOP_LIVE_STAGE2 := logstore clock display desktop ccl-workbench ccl-console logs devices files config-inspector boot-logs \
 	storage-check doom sameboy
 LAPTOP_LIVE_RW_DISK := laptop_live_rw.img
 # All runnable examples belong in the live workspace. The image regression

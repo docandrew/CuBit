@@ -10,14 +10,13 @@ procedure VM_Update_Dispatch_Tests is
    use type Life.Phase;
    type Injection is (Unrelated, Late_Failure, Malformed, Retention_Overflow);
    procedure Test (Mode : Injection; At_Stage : Positive) is
-      Last_Fence, Disable_Fence : Unsigned_16 := 0;
       Calls, Retained : Natural := 0;
       function Device_Ready return Boolean is (True);
-      procedure Queue (Payload : Events.Words; Fence : Unsigned_16;
+      procedure Queue (Payload : Events.Words;
                        Result : out Life.Send_Result) is
       begin
          pragma Assert (Payload'Length > 0);
-         Last_Fence := Fence; Result := Life.Queued;
+         Result := Life.Queued;
       end Queue;
       procedure Retain (Payload : Events.Words; Fence : Unsigned_16;
                         Success : out Boolean) is
@@ -63,7 +62,7 @@ procedure VM_Update_Dispatch_Tests is
             when Unrelated | Retention_Overflow =>
                Driver.Dispatch (Context, [0 => 16#90000042#], 99, Result);
             when Late_Failure =>
-               Driver.Dispatch (Context, [0 => 16#E0000001#], Disable_Fence, Result);
+               Driver.Dispatch (Context, [0 => 16#E0000001#], 16#8000#, Result);
             when Malformed =>
                Driver.Dispatch (Context, [16#90001002#, 7, 2], 0, Result);
          end case;
@@ -74,7 +73,7 @@ procedure VM_Update_Dispatch_Tests is
       begin
          -- GPU flush/completion is assumed here; scheduling ACK alone does
          -- not establish it. Transport framing is also outside this fixture.
-         Submit (Life.Disable); Disable_Fence := Last_Fence;
+         Submit (Life.Disable);
          Acknowledge (0);
          pragma Assert (Driver.State (Context) = Life.Disabled);
          Pump; OK := True;
@@ -96,7 +95,7 @@ procedure VM_Update_Dispatch_Tests is
          Pump; OK := True;
       end Resume;
    begin
-      Driver.Initialize (Context, 7, 16#200000#, 4096, 100, 65535,
+      Driver.Initialize (Context, 7, 16#200000#, 4096,
                          1000, 500000, False);
       Submit (Life.Register_Context); Submit (Life.Set_Policy);
       Submit (Life.Enable); Acknowledge (1);

@@ -151,6 +151,29 @@ begin
          Present (S, Got); pragma Assert (Got = C); Latch (C);
          pragma Assert (Valid (S));
       end loop;
+      -- New input may replace ready work while front and pending stay held.
+      for Cycle in 1 .. 1_000 loop
+         Acquire (S, A); Paint (A); Complete_CPU (A); Present (S, Got);
+         Acquire (S, B); Paint (B); Complete_CPU (B);
+         for Update in 1 .. 8 loop
+            Previous := B;
+            Acquire (S, B, Replace_Ready => True);
+            pragma Assert (B.Buffer = Previous.Buffer and B.Serial > Previous.Serial);
+            pragma Assert (Front (S) = Visible and Displayed (S) = A and Ready (S) = None);
+            Paint (B); Complete_CPU (B);
+            pragma Assert (Ready (S) = B);
+         end loop;
+         Latch (A); Present (S, Got); pragma Assert (Got = B); Latch (Got);
+      end loop;
+      -- Failed quiescent rendering after reclamation has no old ready pixels
+      -- to resurrect; the front and already pending frame remain held.
+      Acquire (S, A); Paint (A); Complete_CPU (A); Present (S, Got);
+      Acquire (S, B); Paint (B); Complete_CPU (B);
+      Acquire (S, C, Replace_Ready => True); Paint (C);
+      Start_Render (S, C); Finish_Render (S, C, Failed_Quiescent);
+      pragma Assert (Ready (S) = None and Front (S) = Visible and Displayed (S) = A);
+      Latch (A);
+      Ada.Text_IO.Put_Line ("pool-latest: PASS 8000 ready replacements, front/pending exclusion and failed-render retention");
       Retire_Front (S, Visible, True);
       pragma Assert (Front (S) = None and not Faulted (S));
       for Fault in 1 .. 9 loop

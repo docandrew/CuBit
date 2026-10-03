@@ -21,15 +21,17 @@ package body Control_Wire with SPARK_Mode is
          R : constant Decode_All_Result := Decoding.Decode_All_Strict
            (Data, Check_UTF8 => True, Max_String_Len => Max_Source, Max_Depth => 1);
       begin
-         if R.Status /= OK or else R.Count not in 5 .. 6 or else
+         if R.Status /= OK or else R.Count not in 6 .. 8 or else
            R.Items (1).Kind /= MT_Array or else R.Items (1).Arr_Count /= UInt64 (R.Count - 1) or else
-           R.Items (2).Kind /= MT_Unsigned_Integer or else R.Items (2).UInt_Value /= 1 or else
+           R.Items (2).Kind /= MT_Unsigned_Integer or else R.Items (2).UInt_Value /= Protocol_Version or else
            R.Items (3).Kind /= MT_Unsigned_Integer or else R.Items (3).UInt_Value = 0 or else
-           R.Items (4).Kind /= MT_Unsigned_Integer or else R.Items (4).UInt_Value not in 1 .. 6 or else
-           R.Items (5).Kind /= MT_Text_String or else R.Items (5).TS_Ref.Length > Max_Source
+           R.Items (4).Kind /= MT_Unsigned_Integer or else
+           R.Items (5).Kind /= MT_Unsigned_Integer or else
+           R.Items (5).UInt_Value not in 1 .. CCL.Control.Operation'Enum_Rep (CCL.Control.Operation'Last) or else
+           R.Items (6).Kind /= MT_Text_String or else R.Items (6).TS_Ref.Length > Max_Source
          then return; end if;
          declare
-            Ref : constant String_Ref := R.Items (5).TS_Ref;
+            Ref : constant String_Ref := R.Items (6).TS_Ref;
          begin
             if Ref.First < Data'First or else Ref.First > Data'Last + 1 or else
               Ref.Length > Data'Last - Ref.First + 1 then return; end if;
@@ -44,18 +46,30 @@ package body Control_Wire with SPARK_Mode is
             end loop;
          end;
          Value.Id := R.Items (3).UInt_Value;
-         Value.Op := CCL.Control.Operation'Enum_Val (R.Items (4).UInt_Value);
+         Value.Session := R.Items (4).UInt_Value;
+         Value.Op := CCL.Control.Operation'Enum_Val (R.Items (5).UInt_Value);
          if Value.Op in CCL.Control.Start_Monitor | CCL.Control.Stop_Monitor |
-           CCL.Control.Inspect_Monitor
+           CCL.Control.Inspect_Monitor | CCL.Control.Present_Monitor
          then
-            if R.Count /= 6 or else R.Items (6).Kind /= MT_Unsigned_Integer then return; end if;
-            Value.Target := R.Items (6).UInt_Value;
+            if R.Count /= 7 or else R.Items (7).Kind /= MT_Unsigned_Integer then return; end if;
+            Value.Target := R.Items (7).UInt_Value;
             Valid := (if Value.Op = CCL.Control.Stop_Monitor then Value.Target /= 0
                       else Value.Target = 0) and then
               (Value.Op = CCL.Control.Start_Monitor or else Value.Length = 0);
+         elsif Value.Op = CCL.Control.Read_Image_Rows then
+            --  [2, id, session, 8, "", imageId, firstRow]
+            if R.Count /= 8 or else R.Items (7).Kind /= MT_Unsigned_Integer or else
+              R.Items (8).Kind /= MT_Unsigned_Integer
+            then return; end if;
+            Value.Target := R.Items (7).UInt_Value;
+            Value.Row := R.Items (8).UInt_Value;
+            Valid := Value.Length = 0 and then Value.Target /= 0 and then
+              Value.Row < Max_Image_Side;
          else
-            Valid := R.Count = 5 and then
-              (Value.Op = CCL.Control.Evaluate_Expression or else Value.Length = 0);
+            Valid := R.Count = 6 and then
+              (Value.Op in CCL.Control.Evaluate_Expression | CCL.Control.Present_Expression |
+                 CCL.Control.Complete_Expression or else
+               Value.Length = 0);
          end if;
       end;
    end Decode;
@@ -133,6 +147,10 @@ package body Control_Wire with SPARK_Mode is
             Number (List_Type_Code);
          elsif Item.Has_Function then
             Number (Function_Type_Code);
+         elsif Item.Has_Stream then
+            --  A session's stream handle is not portable: its description
+            --  travels in the display text, with no scalar (code 0).
+            Number (0);
          else
          case CCL.Sessions.Result_Type (Item) is
             when CCL.Language.Invalid_Type => Number (0);
@@ -142,7 +160,11 @@ package body Control_Wire with SPARK_Mode is
             when CCL.Language.Character_Type => Number (4);
             --  Snapshot-local enum identities and owner-local handler code
             --  have no portable wire schema yet. Never export them as integers.
-            when others => Failed := True;
+            --  A record or payload variant travels as its canonical literal
+            --  in the display text, with no scalar (code 0); operation 7
+            --  presents it typed.
+            when others =>
+               if Item.Has_Literal then Number (0); else Failed := True; end if;
          end case;
          end if;
          Number (Interfaces.Unsigned_64 (Item.Diagnostic_Position));
@@ -155,8 +177,10 @@ package body Control_Wire with SPARK_Mode is
         when CCL.Control.Read_Clock => 5,
         when CCL.Control.Evaluate_Expression => (if Value.Outcome.Has_List then 11 else 8),
         when CCL.Control.Start_Monitor | CCL.Control.Stop_Monitor |
-             CCL.Control.Inspect_Monitor => 15));
-      Number (1); Number (Query.Id); Number (CCL.Control.Operation'Enum_Rep (Query.Op));
+             CCL.Control.Inspect_Monitor => 15,
+        when CCL.Control.Present_Expression | CCL.Control.Read_Image_Rows |
+             CCL.Control.Present_Monitor | CCL.Control.Complete_Expression => 0));
+      Number (Protocol_Version); Number (Query.Id); Number (CCL.Control.Operation'Enum_Rep (Query.Op));
       case Query.Op is
          when CCL.Control.Inspect_Bindings =>
             Number (Value.Observed.Process_Id); Number (Value.Observed.Network_Process);
@@ -179,6 +203,10 @@ package body Control_Wire with SPARK_Mode is
             Text (CCL.Periodic_Programs.Source_Text (Value.Monitor));
             Outcome (CCL.Periodic_Programs.Last_Result (Value.Monitor));
             Number (CCL.Periodic_Programs.Next_Deadline (Value.Monitor));
+         when CCL.Control.Present_Expression | CCL.Control.Read_Image_Rows |
+              CCL.Control.Present_Monitor | CCL.Control.Complete_Expression =>
+            --  Encoded by Control_Presentation, outside this proved codec.
+            Failed := True;
       end case;
       if Failed then Data.Length := 0; end if;
    end Encode;

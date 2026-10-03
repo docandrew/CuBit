@@ -42,4 +42,30 @@ package body Servo_Frame_Copy with SPARK_Mode is
          end loop;
       end loop;
    end Paint;
+   procedure Paint_BGRA
+     (Source : Bytes; Source_Pitch : Positive;
+      Target : in out Pixels; Pitch : Positive; Area : Rectangle)
+   is
+      S, D : Natural;
+   begin
+      for Y in 0 .. Area.Height - 1 loop
+         pragma Loop_Invariant
+           (for all I in Target'Range =>
+              (if not Client_Glyph_Blend.Inside (I, Pitch, Area)
+               then Target (I) = Target'Loop_Entry (I)));
+         for X in 0 .. Area.Width - 1 loop
+            pragma Loop_Invariant
+              (for all I in Target'Range =>
+                 (if not Client_Glyph_Blend.Inside (I, Pitch, Area)
+                  then Target (I) = Target'Loop_Entry (I)));
+            S := (Area.Height - 1 - Y) * Source_Pitch + X * 4;
+            D := Offset (Target'Length, Pitch, Area, X, Y);
+            pragma Assert (Client_Glyph_Blend.Inside (D, Pitch, Area));
+            Store (Target, D, 16#FF00_0000# or
+              Shift_Left (Unsigned_32 (Source (S + 2)), 16) or
+              Shift_Left (Unsigned_32 (Source (S + 1)), 8) or
+              Unsigned_32 (Source (S)));
+         end loop;
+      end loop;
+   end Paint_BGRA;
 end Servo_Frame_Copy;

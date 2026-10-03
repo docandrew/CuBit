@@ -8,7 +8,7 @@
 --  Each `desktop.launch.<key>` setting is one entry, in key order (so keys
 --  like "10-workbench", "40-browser" order the menu). A value is CCL:
 --
---    (launch v1 (label "Servo") (program "cubitshell.app") (icon files))
+--    (launch v1 (label "Penny") (program "cubitshell.app") (icon penny))
 --    (launch v1 (label "DOOM") (program "doom.elf") (icon doom)
 --      (single-instance))
 --    (launch v1 (label "Settings") (internal settings))

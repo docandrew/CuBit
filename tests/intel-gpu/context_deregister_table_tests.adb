@@ -11,14 +11,12 @@ procedure Context_Deregister_Table_Tests is
    use type Life.Operation;
    Owner, Lose_On_Queue : Boolean := False;
    Calls : Natural := 0;
-   Last_Fence : Unsigned_16 := 0;
    Outcome : Life.Send_Result := Life.Queued;
    function Ready return Boolean is (Owner);
-   procedure Queue (Payload : Events.Words; Fence : Unsigned_16;
+   procedure Queue (Payload : Events.Words;
                     Result : out Life.Send_Result) is
    begin
       Calls := Calls + 1;
-      Last_Fence := Fence;
       if Payload (Payload'First) = 16#20004503# then
          pragma Assert (Payload'Length = 2 and Payload (Payload'First + 1) = 1);
       end if;
@@ -30,7 +28,7 @@ procedure Context_Deregister_Table_Tests is
       pragma Unreferenced (Payload, Fence);
    begin Success := True; end Retain;
    package Driver is new Intel_GPU_GuC_Context_Session (Ready, Queue, Retain);
-   package Pool is new Intel_GPU_Context_Table (2, 100, 115, Driver, Ready, Retain);
+   package Pool is new Intel_GPU_Context_Table (2, Driver, Ready, Retain);
    use type Driver.Result;
    use type Pool.Dispatch_Result;
 begin
@@ -50,9 +48,9 @@ begin
          end Reject;
       begin
          Owner := True; Lose_On_Queue := False; Outcome := Life.Queued;
-         Pool.Open (T, 16#200000#, 4096, 8, 1000, 500000, False, A, OK, 42);
+         Pool.Open (T, 16#200000#, 4096, 1000, 500000, False, A, OK, 42);
          pragma Assert (OK and A = 1);
-         Pool.Open (T, 16#210000#, 4096, 8, 1000, 500000, False, B, OK, 43);
+         Pool.Open (T, 16#210000#, 4096, 1000, 500000, False, B, OK, 43);
          pragma Assert (OK);
          Reject (Pool.No_Context); Reject (A);
          for Action in Life.Register_Context .. Life.Enable loop
@@ -86,7 +84,7 @@ begin
                if Scenario = 5 then
                   pragma Assert (Status = Driver.Faulted and Calls = Before);
                else
-                  pragma Assert (Calls = Before + 1 and Last_Fence = 104);
+                  pragma Assert (Calls = Before + 1);
                   if Scenario in 3 .. 4 then
                      pragma Assert (Status = Driver.Faulted and Pool.State (T, A) = Life.Quarantined);
                   else
@@ -94,13 +92,16 @@ begin
                         pragma Assert (Status = Driver.Backpressure and Pool.State (T, A) = Life.Disabled);
                         Outcome := Life.Queued;
                         Pool.Deregister_Retired (T, A, True, Status);
-                        pragma Assert (Last_Fence = 104 and Calls = Before + 2);
+                        pragma Assert (Calls = Before + 2);
                      end if;
                      pragma Assert (Status = Driver.Queued and Pool.State (T, A) = Life.Deregister_Pending);
                      Reject (A); -- Never republish an outstanding request.
                      if Scenario = 6 then
-                        Pool.Dispatch (T, [16#E0000000#], 104, ID, Delivery);
-                        pragma Assert (Delivery = Pool.Context_Fault);
+                        Pool.Dispatch (T, [16#E0000000#], 16#8000#, ID, Delivery);
+                        pragma Assert (Delivery = Pool.Transport_Fault);
+                        pragma Assert (Pool.Failed (T) and
+                          Pool.State (T, A) = Life.Quarantined and
+                          Pool.State (T, B) = Life.Quarantined);
                      else
                         Pool.Dispatch (T, [16#90004600#, A], 0, ID, Delivery);
                         pragma Assert (Delivery = Pool.Delivered and ID = A);
@@ -117,7 +118,7 @@ begin
                               Pool.Dispatch
                                 (T, [16#90001002#, B,
                                      (if Action = Life.Enable then 1 else 0)],
-                                 Last_Fence, ID, Delivery);
+                                 0, ID, Delivery);
                               pragma Assert (Delivery = Pool.Delivered);
                            end if;
                         end loop;
@@ -125,7 +126,8 @@ begin
                           (Life.Scheduling_Stopped (Pool.State (T, A)) and
                            Life.Scheduling_Stopped (Pool.State (T, B)));
                         Reject (A);
-                        pragma Assert (Pool.Owns_Fence (T, 104) and Pool.Count (T) = 2);
+                        pragma Assert (Pool.Count (T) = 2 and
+                          Pool.State (T, A) = Life.Deregistered);
                         Pool.Dispatch (T, [16#90004600#, A], 0, ID, Delivery);
                         pragma Assert (Delivery = Pool.Context_Fault);
                      end if;
@@ -133,7 +135,7 @@ begin
                end if;
          end case;
          pragma Assert (Pool.Session_Context (T, 42) = Pool.No_Context);
-         if Scenario not in 4 .. 5 then
+         if Scenario not in 4 .. 6 then
             pragma Assert (Pool.Session_Context (T, 43) = B and not Pool.Failed (T));
          end if;
       end;

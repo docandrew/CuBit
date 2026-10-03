@@ -1,4 +1,5 @@
 with Interfaces; use Interfaces;
+with CuBit.Failures;
 with CuBit.Messages;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
@@ -10,10 +11,24 @@ with CCL.Interfaces.Logs;
 --  which replays that process's retained records; the newest that fit one
 --  result are kept, and the subscription is closed again.
 package body CCL_Log_IO is
+   procedure Announce (Text : String) is
+      Published : Boolean;
+   begin
+      CuBit.Logging.Announce (Text, Published);
+   end Announce;
    package P renames CuBit.Log_Protocol;
    package L renames CuBit.Log_Records;
    package Logs renames CCL.Interfaces.Logs;
+   package Failures renames CuBit.Failures;
    use type P.Status;
+
+   function Spelling (Status : P.Status) return String is
+     (case Status is
+         when P.OK => "ok", when P.Denied => "denied",
+         when P.Invalid_Request => "invalid request", when P.Exhausted => "no subscription free",
+         when P.Empty => "empty", when P.Gap => "records lost",
+         when P.Unavailable => "unavailable", when P.Rate_Limited => "rate limited",
+         when P.Below_Minimum => "below the minimum logstore keeps");
 
    function Logstore return Unsigned_64 is (CuBit.Service_Names.Process_Of ("logstore"));
 
@@ -46,9 +61,26 @@ package body CCL_Log_IO is
          when L.Information => Logs.Information, when L.Warning => Logs.Warning,
          when L.Error => Logs.Error, when L.Critical => Logs.Critical);
 
+   --  A log store status as a failure: Denied is a grant question, the
+   --  rest say what the store reported.
+   function Refusal (Status : P.Status; Context : String) return Failures.Failure is
+     (case Status is
+         when P.Denied => Failures.Failed
+           (Failures.Not_Granted, Context,
+            "the program's manifest must request the log-observer service " &
+            "(request-service log-observer read-write log-observer)"),
+         when P.Exhausted | P.Rate_Limited => Failures.Failed
+           (Failures.Exhausted, Context & " (" & Spelling (Status) & ")",
+            "close another log subscription or try again shortly"),
+         when P.Unavailable => Failures.Failed
+           (Failures.Unavailable, Context & " (the log store is not running)"),
+         when others => Failures.Failed
+           (Failures.Refused, Context & " (" & Spelling (Status) & ")"));
+
    procedure Recent
      (Service : String; Contract : CCL.Objects.Binding;
-      Image : out CCL.Objects.Image; Success : out Boolean)
+      Image : out CCL.Objects.Image; Success : out Boolean;
+      Why : out CuBit.Failures.Failure)
    is
       Source : constant Unsigned_64 := Source_Of (Service);
       Reader : CuBit.Logging.Reader;
@@ -64,14 +96,17 @@ package body CCL_Log_IO is
    begin
       Logs.Start (Contract, Image);
       Success := Source /= 0;
+      Why := (others => <>);
       if not Success then
-         CuBit.Messages.debugPrint ("ccl-workbench: logs.recent: no process named " & Service & ASCII.LF);
+         Why := Failures.Failed
+           (Failures.Not_Found, "no running service is named """ & Service & """",
+            "name a running service, or give its process number");
          return;
       end if;
       CuBit.Logging.Subscribe (Reader, Result, Source => Source);
       Success := Result = P.OK;
       if not Success then
-         CuBit.Messages.debugPrint ("ccl-workbench: logs.recent: subscribe " & P.Status'Image (Result) & ASCII.LF);
+         Why := Refusal (Result, "the log store would not let this program observe " & Service);
          return;
       end if;
       --  The replay holds at most a queue's worth of records.
@@ -87,7 +122,7 @@ package body CCL_Log_IO is
       Success := Result = P.Empty;
       CuBit.Logging.Close (Reader, Closed);
       if not Success then
-         CuBit.Messages.debugPrint ("ccl-workbench: logs.recent: read " & P.Status'Image (Result) & ASCII.LF);
+         Why := Refusal (Result, "the log store stopped replaying " & Service);
          return;
       end if;
       --  Oldest held first. Add stops when the image is full; the records it
@@ -119,4 +154,40 @@ package body CCL_Log_IO is
          end loop;
       end;
    end Recent;
+
+   procedure Minimum
+     (Level : out Logs.Severity; Success : out Boolean; Why : out CuBit.Failures.Failure)
+   is
+      Kept : L.Severity;
+      Result : P.Status;
+   begin
+      CuBit.Logging.Get_Minimum (Kept, Result);
+      Level := Logs.Severity'Val (L.Severity'Pos (Kept));
+      Success := Result = P.OK;
+      Why := (if Success then (others => <>)
+              else Refusal (Result, "the log store would not say what it keeps"));
+   end Minimum;
+
+   procedure Set_Minimum
+     (Level : Logs.Severity; Previous : out Logs.Severity;
+      Success : out Boolean; Why : out CuBit.Failures.Failure)
+   is
+      Before : L.Severity;
+      Result : P.Status;
+   begin
+      CuBit.Logging.Set_Minimum (L.Severity'Val (Logs.Severity'Pos (Level)), Before, Result);
+      Previous := Logs.Severity'Val (L.Severity'Pos (Before));
+      Success := Result = P.OK;
+      if Success then
+         Why := (others => <>);
+      elsif Result in P.Denied | P.Unavailable then
+         --  No log-control endpoint in its slot reads as unavailable too.
+         Why := Failures.Failed
+           (Failures.Not_Granted, "changing what the log store keeps is not granted to this program",
+            "the program's manifest must request the log-control service " &
+            "(request-service log-control read-write log-control)");
+      else
+         Why := Refusal (Result, "the log store did not change what it keeps");
+      end if;
+   end Set_Minimum;
 end CCL_Log_IO;

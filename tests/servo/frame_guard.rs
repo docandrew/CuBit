@@ -5,6 +5,8 @@ pub fn cubit_font_glyph() {}
 pub fn cubit_font_raster_mask() {}
 #[path = "../../userspace/servo/overlay/ports/cubitshell/src/cubit_desktop.rs"]
 mod desktop;
+#[path = "../../userspace/servo/overlay/ports/cubitshell/src/tab_model.rs"]
+mod tab_model;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
 static OPEN_ALLOWED: AtomicBool = AtomicBool::new(true);
 static ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -23,7 +25,10 @@ static CLOSES: AtomicUsize = AtomicUsize::new(0);
     assert!(ACTIVE.swap(false, SeqCst), "cancel without active lease");
     CANCELS.fetch_add(1, SeqCst);
 }
-#[no_mangle] extern "C" fn cubit_servo_present(_: *const u8, _: u64, _: u32, _: u32) -> u32 {
+#[no_mangle] extern "C" fn cubit_servo_present(pixels: *const u8, length: u64, width: u32, height: u32, stride: u32) -> u32 {
+    assert_eq!((length, width, height, stride), (8, 1, 1, 8));
+    assert!(!pixels.is_null());
+    assert_eq!(unsafe { std::slice::from_raw_parts(pixels, 4) }, &[3, 2, 1, 255]);
     assert!(ACTIVE.swap(false, SeqCst));
     PRESENTS.fetch_add(1, SeqCst);
     1
@@ -49,7 +54,8 @@ fn main() {
         drop(frame);
         assert!(!ACTIVE.load(SeqCst));
         let frame = window.prepare().unwrap();
-        assert_eq!(frame.present(&[0; 4], 1, 1), 1);
+        let pixels = [3, 2, 1, 255, 99, 99, 99, 99];
+        assert_eq!(unsafe { frame.present_bgra(pixels.as_ptr(), 8, 1, 1, 8) }, 1);
         assert!(!ACTIVE.load(SeqCst));
     }
     assert_eq!(CANCELS.load(SeqCst), 1000);

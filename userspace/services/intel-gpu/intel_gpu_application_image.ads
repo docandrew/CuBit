@@ -39,6 +39,7 @@ private
       Attempted : Boolean := False;
       Publication_Attempted : Boolean := False;
       Retirement_Attempted : Boolean := False;
+      Address_Released, Receipt_Forgotten : Boolean := False;
       Published : Unsigned_64 := 0;
       Prepared : Unsigned_64 := 0;
       Root : Tables.Page_Mapping := (0, 0);

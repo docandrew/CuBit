@@ -56,3 +56,10 @@ uint32_t cubit_font_raster_mask(const struct request *r,void *pixels,struct metr
 
 uint32_t cubit_mesa_draw_affine(void *a,void *b,void *c,const struct cubit_mesa_affine *d,const struct cubit_mesa_quad *q)
 {(void)a;(void)b;(void)c;(void)d;(void)q;return 0;}
+
+uint32_t cubit_mesa_fill(void *a,void *b,uint32_t l,uint32_t t,uint32_t w,uint32_t h,uint32_t c)
+{
+    struct view *target=b;assert(a==counts && target->live && target->image.writable);
+    assert(l+w<=target->image.width && t+h<=target->image.height);(void)c;
+    counts[3]++;return fault==7?0:fault==9?2:fault==10?3:1;
+}

@@ -1,24 +1,78 @@
 package body Intel_GPU_Buffer_Requests is
+   function Close_Diagnostic
+     (Object : Service; Sender, Stamp, ID : Unsigned_64)
+      return Intel_GPU_Buffer_Handles.Close_Check is
+      package Handles renames Intel_GPU_Buffer_Handles;
+   begin
+      if ID > Unsigned_64 (Handles.Handle'Last) then
+         return Handles.Invalid_Handle;
+      end if;
+      return Handles.Check_Close
+        (Object.Handles, Session_Of (Sender, Stamp), Handles.Handle (ID));
+   end Close_Diagnostic;
    package Layout renames Intel_GPU_Buffer_Backing;
    package Handles renames Intel_GPU_Buffer_Handles;
+   function Record_Capacity (Object : Service) return Positive is
+     (Records.Capacity (Object.Items));
+   function Committed_Slots (Object : Service) return Positive is
+     (Object.Admitted);
+   function Next_Fresh_Slot (Object : Service) return Natural is
+     (if Object.Attempted = Layout.Slot'Last then 0 else Object.Attempted + 1);
+   function Handle_Capacity (Object : Service) return Natural is
+     (Handles.Record_Capacity (Object.Handles));
+   procedure Admit_Slots
+     (Object : in out Service; Count : Positive;
+      Supporting : Supporting_Capacities; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if Object.Failed or else Object.Pending /= 0 or else
+        Object.Private_Pending /= 0 or else not Owner_Ready or else
+        Count < Object.Admitted or else Count > Record_Capacity (Object) or else
+        Count > Handle_Capacity (Object) or else
+        Count > Supporting.Backing or else Count > Supporting.Replacements or else
+        Count > Supporting.Retirement or else Count > Supporting.Update_Index
+      then return; end if;
+      Object.Admitted := Count;
+      Accepted := True;
+   end Admit_Slots;
+   procedure Extend_Tickets
+     (Object : in out Service; Base, Bytes : Unsigned_64; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if Object.Failed or else Object.Pending /= 0 or else
+        Object.Private_Pending /= 0 or else not Owner_Ready then return; end if;
+      Records.Extend (Object.Items, Base, Bytes, Accepted);
+   end Extend_Tickets;
+   procedure Extend_Handles
+     (Object : in out Service; Base, Bytes : Unsigned_64; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if Object.Failed or else Object.Pending /= 0 or else
+        Object.Private_Pending /= 0 or else not Owner_Ready then return; end if;
+      Handles.Extend_Storage (Object.Handles, Base, Bytes, Accepted);
+   end Extend_Handles;
    function Last_Allocation (Object : Service) return Allocation_Outcome is
      (Object.Outcome);
    function Ticket_Session (Object : Service; ID : Ticket) return Unsigned_64 is
-     (if ID = 0 or else Object.Identities (Ticket_Slot (ID)) /= ID then 0
-      else Object.Owners (Ticket_Slot (ID)));
+     (if ID = 0 or else Ticket_Slot (ID) > Committed_Slots (Object) or else
+       Records.Get (Object.Items, Ticket_Slot (ID)).Identity /= ID then 0
+      else Records.Get (Object.Items, Ticket_Slot (ID)).Owner);
    function Pending_For (Object : Service; Session : Unsigned_64) return Boolean is
      (Session /= 0 and then
        ((Object.Pending /= 0 and then Ticket_Session (Object, Object.Pending) = Session)
         or else (Object.Private_Pending /= 0 and then
           Ticket_Session (Object, Object.Private_Pending) = Session)));
    function Closed_At (Object : Service; Index : Layout.Slot) return Closed_Allocation is
-      ID : constant Ticket := Object.Identities (Index);
-      Issued : Issued_Result renames Object.Issued (Index);
+      ID : Ticket;
+      Issued : Issued_Result;
    begin
+      if Index > Committed_Slots (Object) then return (Ready => False); end if;
+      ID := Records.Get (Object.Items, Index).Identity;
+      Issued := Records.Get (Object.Items, Index).Issued;
       if Object.Failed or else not Owner_Ready or else
         Object.Pending /= 0 or else Object.Private_Pending /= 0 or else
-        Object.Reusable (Index) or else ID = 0 or else Ticket_Slot (ID) /= Index or else
-        Issued.Session = 0 or else Issued.Session /= Object.Owners (Index) or else
+        Records.Get (Object.Items, Index).Reusable or else ID = 0 or else Ticket_Slot (ID) /= Index or else
+        Issued.Session = 0 or else Issued.Session /= Records.Get (Object.Items, Index).Owner or else
         Issued.Handle = 0 or else
         not Handles.Closed_Backing (Object.Handles, Issued.Session, Issued.Handle).Ready
       then return (Ready => False); end if;
@@ -34,23 +88,32 @@ package body Intel_GPU_Buffer_Requests is
         Object.Private_Pending /= 0 or else not Owner_Ready or else
         (Reclaimable and then Session = 0) then return; end if;
       if Reclaimable then
-         for Index in Layout.Slot loop
-            if Object.Private_Reusable (Index) then
-               Object.Private_Pending := Object.Identities (Index) + Ticket_Stride;
-               Object.Identities (Index) := Object.Private_Pending;
-               Object.Owners (Index) := Session;
-               Object.Private_Reusable (Index) := False;
+         for Index in 1 .. Committed_Slots (Object) loop
+            if Records.Get (Object.Items, Index).Private_Reusable then
+               Object.Private_Pending := Records.Get (Object.Items, Index).Identity + Ticket_Stride;
+               Records.Put (Object.Items, Index,
+           (Records.Get (Object.Items, Index) with delta Identity => Object.Private_Pending));
+               Records.Put (Object.Items, Index,
+           (Records.Get (Object.Items, Index) with delta Owner => Session));
+               Records.Put (Object.Items, Index,
+           (Records.Get (Object.Items, Index) with delta Private_Reusable => False));
+               Records.Put (Object.Items, Index,
+                 (Records.Get (Object.Items, Index) with delta
+                  Private_Closed => False, Private_Reclaimable => True));
                ID := Object.Private_Pending;
                return;
             end if;
          end loop;
       end if;
-      if Object.Attempted = Layout.Slot'Last then return; end if;
+      if Object.Attempted >= Committed_Slots (Object) then return; end if;
       Object.Attempted := Object.Attempted + 1;
       Object.Private_Pending := Ticket (Object.Attempted);
-      Object.Identities (Object.Attempted) := Object.Private_Pending;
-      Object.Owners (Object.Attempted) := Session;
-      Object.Private_Reclaimable (Object.Attempted) := Reclaimable;
+      Records.Put (Object.Items, Object.Attempted,
+           (Records.Get (Object.Items, Object.Attempted) with delta Identity => Object.Private_Pending));
+      Records.Put (Object.Items, Object.Attempted,
+           (Records.Get (Object.Items, Object.Attempted) with delta Owner => Session));
+      Records.Put (Object.Items, Object.Attempted,
+           (Records.Get (Object.Items, Object.Attempted) with delta Private_Reclaimable => Reclaimable));
       ID := Object.Private_Pending;
    end Reserve_Private;
    procedure Acknowledge_Private_Retirement
@@ -60,13 +123,16 @@ package body Intel_GPU_Buffer_Requests is
    begin
       Accepted := False;
       if Object.Failed or else not References_Retired or else not Owner_Ready or else
+        Index > Committed_Slots (Object) or else
         Session = 0 or else ID = 0 or else ID > Ticket'Last - Ticket_Stride or else
         Object.Pending /= 0 or else Object.Private_Pending /= 0 or else
-        Object.Identities (Index) /= ID or else Object.Owners (Index) /= Session or else
-        not Object.Private_Reclaimable (Index) or else Object.Private_Reusable (Index) or else
-        Object.Issued (Index).Handle /= 0 or else Object.Reusable (Index)
+        Records.Get (Object.Items, Index).Identity /= ID or else Records.Get (Object.Items, Index).Owner /= Session or else
+        Records.Get (Object.Items, Index).Context_Parent or else
+        not Records.Get (Object.Items, Index).Private_Reclaimable or else Records.Get (Object.Items, Index).Private_Reusable or else
+        Records.Get (Object.Items, Index).Issued.Handle /= 0 or else Records.Get (Object.Items, Index).Reusable
       then return; end if;
-      Object.Private_Reusable (Index) := True;
+      Records.Put (Object.Items, Index,
+           (Records.Get (Object.Items, Index) with delta Private_Reusable => True));
       Accepted := True;
    end Acknowledge_Private_Retirement;
    procedure Finish_Private
@@ -109,27 +175,33 @@ package body Intel_GPU_Buffer_Requests is
       end if;
       Object.Pending_Previous := 0;
       Object.Pending_Previous_Session := 0;
-      for I in Layout.Slot loop
-         if Object.Reusable (I) then
-            Object.Pending_Previous := Object.Issued (I).Handle;
-            Object.Pending_Previous_Session := Object.Issued (I).Session;
-            Object.Pending := Object.Identities (I) + Ticket_Stride;
-            Object.Identities (I) := Object.Pending;
-            Object.Owners (I) := Session;
-            Object.Reusable (I) := False;
-            Object.Issued (I) := (others => <>);
+      for I in 1 .. Committed_Slots (Object) loop
+         if Records.Get (Object.Items, I).Reusable then
+            Object.Pending_Previous := Records.Get (Object.Items, I).Issued.Handle;
+            Object.Pending_Previous_Session := Records.Get (Object.Items, I).Issued.Session;
+            Object.Pending := Records.Get (Object.Items, I).Identity + Ticket_Stride;
+            Records.Put (Object.Items, I,
+           (Records.Get (Object.Items, I) with delta Identity => Object.Pending));
+            Records.Put (Object.Items, I,
+           (Records.Get (Object.Items, I) with delta Owner => Session));
+            Records.Put (Object.Items, I,
+           (Records.Get (Object.Items, I) with delta Reusable => False));
+            Records.Put (Object.Items, I,
+           (Records.Get (Object.Items, I) with delta Issued => (others => <>)));
             exit;
          end if;
       end loop;
       if Object.Pending = 0 then
-         if Object.Attempted = Layout.Slot'Last then
+         if Object.Attempted >= Committed_Slots (Object) then
             Object.Outcome := Slots_Exhausted;
             return;
          end if;
          Object.Attempted := Object.Attempted + 1;
          Object.Pending := Ticket (Object.Attempted);
-         Object.Identities (Object.Attempted) := Object.Pending;
-         Object.Owners (Object.Attempted) := Session;
+         Records.Put (Object.Items, Object.Attempted,
+           (Records.Get (Object.Items, Object.Attempted) with delta Identity => Object.Pending));
+         Records.Put (Object.Items, Object.Attempted,
+           (Records.Get (Object.Items, Object.Attempted) with delta Owner => Session));
       end if;
       Object.Cancelled := False;
       Object.Pending_Session := Session;
@@ -181,49 +253,70 @@ package body Intel_GPU_Buffer_Requests is
       end if;
       Response := [OK, Version, Unsigned_64 (Handle_ID), Backing.Bytes];
       Object.Outcome := Allocation_Ready;
-      Object.Issued (Ticket_Slot (ID)) := (Object.Pending_Session, Handle_ID);
+      Records.Put (Object.Items, Ticket_Slot (ID),
+           (Records.Get (Object.Items, Ticket_Slot (ID)) with delta Issued => (Object.Pending_Session, Handle_ID)));
    end Complete;
    procedure Reject_Delivery (Object : in out Service; ID : Ticket) is
       Accepted : Boolean;
    begin
-      if ID = 0 or else Object.Identities (Ticket_Slot (ID)) /= ID or else
-        Object.Reusable (Ticket_Slot (ID)) then return; end if;
-      Handles.Close (Object.Handles, Object.Issued (Ticket_Slot (ID)).Session,
-                     Object.Issued (Ticket_Slot (ID)).Handle, Accepted);
-      Object.Issued (Ticket_Slot (ID)) := (others => <>);
+      if ID = 0 or else Ticket_Slot (ID) > Committed_Slots (Object) or else
+        Records.Get (Object.Items, Ticket_Slot (ID)).Identity /= ID or else
+        Records.Get (Object.Items, Ticket_Slot (ID)).Reusable then return; end if;
+      Handles.Close (Object.Handles, Records.Get (Object.Items, Ticket_Slot (ID)).Issued.Session,
+                     Records.Get (Object.Items, Ticket_Slot (ID)).Issued.Handle, Accepted);
+      Records.Put (Object.Items, Ticket_Slot (ID),
+           (Records.Get (Object.Items, Ticket_Slot (ID)) with delta Issued => (others => <>)));
    end Reject_Delivery;
+   function Can_Retire
+     (Object : Service; Session : Unsigned_64; ID : Ticket) return Boolean is
+      Index : constant Layout.Slot := Ticket_Slot (ID);
+   begin
+      if Object.Failed or else not Owner_Ready or else
+        Index > Committed_Slots (Object) or else
+        Session = 0 or else ID = 0 or else ID > Ticket'Last - Ticket_Stride or else
+        Object.Pending /= 0 or else Object.Private_Pending /= 0 or else
+        Records.Get (Object.Items, Index).Identity /= ID or else Records.Get (Object.Items, Index).Owner /= Session or else
+        Records.Get (Object.Items, Index).Reusable or else Records.Get (Object.Items, Index).Issued.Session /= Session or else
+        Records.Get (Object.Items, Index).Issued.Handle = 0 or else
+        not Handles.Can_Issue (Object.Handles) or else
+        not Handles.Can_Release_Backing (Object.Handles, Session, Records.Get (Object.Items, Index).Issued.Handle)
+      then return False; end if;
+      return True;
+   end Can_Retire;
    procedure Acknowledge_Retirement
      (Object : in out Service; Session : Unsigned_64; ID : Ticket;
       References_Retired : Boolean; Accepted : out Boolean) is
       Index : constant Layout.Slot := Ticket_Slot (ID);
    begin
       Accepted := False;
-      if Object.Failed or else not References_Retired or else not Owner_Ready or else
-        Session = 0 or else ID = 0 or else ID > Ticket'Last - Ticket_Stride or else
-        Object.Pending /= 0 or else Object.Private_Pending /= 0 or else
-        Object.Identities (Index) /= ID or else Object.Owners (Index) /= Session or else
-        Object.Reusable (Index) or else Object.Issued (Index).Session /= Session or else
-        Object.Issued (Index).Handle = 0 or else
-        not Handles.Can_Issue (Object.Handles) or else
-        not Handles.Closed_Backing (Object.Handles, Session, Object.Issued (Index).Handle).Ready
+      if not References_Retired or else not Can_Retire (Object, Session, ID)
       then return; end if;
       Handles.Release_Retired_Backing
-        (Object.Handles, Session, Object.Issued (Index).Handle, True, Accepted);
-      if Accepted then Object.Reusable (Index) := True; end if;
+        (Object.Handles, Session, Records.Get (Object.Items, Index).Issued.Handle, True, Accepted);
+      if Accepted then Records.Put (Object.Items, Index,
+           (Records.Get (Object.Items, Index) with delta Reusable => True)); end if;
    end Acknowledge_Retirement;
    procedure Retire_Session (Object : in out Service; Session : Unsigned_64) is
    begin
       Handles.Close_Session (Object.Handles, Session);
-      for I in Layout.Slot loop
-         if Object.Owners (I) = Session then
+      for I in 1 .. Committed_Slots (Object) loop
+         if Records.Get (Object.Items, I).Owner = Session then
+            if Records.Get (Object.Items, I).Context_Parent then
+               Records.Put (Object.Items, I,
+                 (Records.Get (Object.Items, I) with delta Context_Closed => True));
+            end if;
             -- Already retired application backing stays reusable. Live or
             -- uncertain allocations never acquired this flag. Old handles
             -- remain closed and replacement authenticates its new session.
             -- Confirmed private retirement has already discarded the old VM
             -- image and received the exact supervisor acknowledgement. Keep
             -- that reusable slot, but never promote an uncertain allocation.
-            if not Object.Private_Reusable (I) then
-               Object.Private_Reclaimable (I) := False;
+            if not Records.Get (Object.Items, I).Private_Reusable then
+               Records.Put (Object.Items, I,
+                 (Records.Get (Object.Items, I) with delta
+                  Private_Closed => Records.Get (Object.Items, I).Private_Closed or else
+                    Records.Get (Object.Items, I).Private_Reclaimable,
+                  Private_Reclaimable => False));
             end if;
          end if;
       end loop;

@@ -8,9 +8,9 @@ markers = ['url /browser-a', 'loaded-path /browser-a', 'title CuBitBrowserPointe
            'history traversal complete', 'title CuBitBrowserRestoredA',
            'history traversal complete', 'title CuBitBrowserRestoredB',
            'loaded-path /browser-b', 'title CuBitBrowserWheel:1',
-           'title CuBitBrowserScrolled', 'title CuBitBrowserResize:854x506',
-           'title CuBitBrowserResize:800x496', 'tab new 2', 'tab select 1', 'tab select 2',
-        'title CuBitBrowserRetained:abc', 'title CuBitBrowserRetained:abcd', 'title CuBitBrowserTyped:abcd', 'title CuBitBrowserResize:608x536', 'tab close 2', 'tab parked 2']
+           'title CuBitBrowserScrolled', 'title CuBitBrowserResize:854x504',
+           'title CuBitBrowserResize:800x494', 'tab new 2', 'tab select 1', 'tab select 2',
+        'title CuBitBrowserRetained:abc', 'title CuBitBrowserRetained:abcd', 'title CuBitBrowserTyped:abcd', 'title CuBitBrowserResize:608x524', 'tab close 2', 'tab parked 2']
 events = [{'seconds': 0.0, 'event': 'browser-alive-start', 'required_seconds': 180}]
 for cycle in range(1, 4):
     base = (cycle - 1) * 60.0

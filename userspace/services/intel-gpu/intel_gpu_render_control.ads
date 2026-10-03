@@ -36,6 +36,16 @@ package Intel_GPU_Render_Control with SPARK_Mode is
         Facts.GPU_Stopped and Facts.Grants_Retired);
    type Words is array (Natural range 0 .. 3) of Unsigned_64;
    type Controller is limited private;
+   -- Issued-record metadata, including retired/quarantined records. This is
+   -- NOT authorization: authenticate the kernel envelope with Resolve before
+   -- admitting work. Zero rejects unissued identities, not just bad ranges.
+   function Storage_Index (Object : Controller; Tag : Unsigned_64)
+                          return Intel_GPU_Render_Sessions.Slot_Index;
+   function Issued_Tag
+     (Object : Controller; Index : Intel_GPU_Render_Sessions.Slot_Index)
+      return Unsigned_64
+     with Post => (if Issued_Tag'Result /= 0 then
+       Index /= 0 and Storage_Index (Object, Issued_Tag'Result) = Index);
    -- Check the kernel sender/stamp before any backend MMIO observation.
    function Is_Broker
      (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Boolean;
@@ -50,11 +60,13 @@ package Intel_GPU_Render_Control with SPARK_Mode is
      with Post => (Activation_Identity'Result = 0 or else
        (Activation_Identity'Result = Request (1) and
         Request (2) > Intel_GPU_Render_Sessions.Tag_Base and
-        Request (2) <= Intel_GPU_Render_Sessions.Tag_Base + Intel_GPU_Render_Sessions.Capacity));
+        Request (2) <= Intel_GPU_Render_Sessions.Tag_Last));
    -- Request [version, captured generation32/PID32, session-tag, operation].
    -- Reserve uses tag zero. Activate follows successful endpoint delegation;
    -- Abort retires a reservation/active session without freeing GPU backing.
-   -- Response [status, version, session-tag-or-zero, zero].
+   -- Response [status, version, session-tag-or-zero, recipient-slot-or-zero].
+   -- Successful Reserve returns the dedicated driver recipient slot40..55.
+   -- All other replies return slot zero. Never derive a slot from the tag.
    -- Ready is supplied by the actual allocation/submission backend, not by
    -- the request or by merely observing firmware/engine startup.
    -- Supervisor must keep the captured recipient and selected source endpoint

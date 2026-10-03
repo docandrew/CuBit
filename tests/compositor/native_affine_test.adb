@@ -55,7 +55,7 @@ begin
                         when 2 => D.Numerator := 17;
                         when 3 => D.Denominator := 0;
                         when 4 => D.Rotation := 4;
-                        when 5 => D.Over := 2;
+                        when 5 => D.Over := 3; -- 2 now selects straight-alpha source-over
                         when 6 => D.Clip_X := TI.Width;
                         when 7 => D.Clip_Y := TI.Height;
                         when 8 => D.Clip_W := 0;

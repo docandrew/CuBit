@@ -5,6 +5,7 @@ package Compositor_Affine with SPARK_Mode, Pure is
    subtype Word is Interfaces.Unsigned_32;
    subtype Signed is Interfaces.Integer_64;
    use type Word, Signed;
+   -- Over: 0 replaces, 1 premultiplied source-over, 2 straight source-over.
    type Draw is record
       Origin_X, Origin_Y : Signed := 0;
       Logical_W, Logical_H, Numerator, Denominator, Rotation : Word := 0;
@@ -15,7 +16,7 @@ package Compositor_Affine with SPARK_Mode, Pure is
       D.Origin_Y in -(2 ** 31) .. 2 ** 31 and then
       D.Logical_W in 1 .. 2 ** 31 and then D.Logical_H in 1 .. 2 ** 31 and then
       D.Numerator in 1 .. 16 and then D.Denominator in 1 .. 16 and then
-      D.Rotation <= 3 and then D.Over <= 1 and then
+      D.Rotation <= 3 and then D.Over <= 2 and then
       Signed (D.Clip_X) < Signed (Width) and then Signed (D.Clip_Y) < Signed (Height) and then
       Signed (D.Clip_W) in 1 .. Signed (Width) - Signed (D.Clip_X) and then
       Signed (D.Clip_H) in 1 .. Signed (Height) - Signed (D.Clip_Y));
@@ -26,7 +27,7 @@ package Compositor_Affine with SPARK_Mode, Pure is
       end case;
    end record;
    function Plan (Screen : G.Output; Surface : G.Logical_Rectangle;
-                  Over : Boolean := False) return Result
+                  Over : Boolean := False; Straight_Alpha : Boolean := False) return Result
      with Post => (if Plan'Result.Visible then
        Valid (Plan'Result.Value, Screen.Width, Screen.Height));
    function Same_Transform (L, R : Draw) return Boolean is

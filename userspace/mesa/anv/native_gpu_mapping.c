@@ -2,6 +2,8 @@
 #include "native_gpu_buffers.h"
 #include "native_gpu_memory.h"
 #include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
 
 uint32_t
 cubit_cpu_mapping_release(struct cubit_cpu_mapping *r, bool replace)
@@ -66,26 +68,42 @@ cubit_cpu_tracker_map(struct cubit_cpu_mapping_tracker *t, uint32_t handle,
    *address = 0;
    if (!t || t->lost)
       return 5;
-   if (t->used == CUBIT_CPU_MAPPING_CAPACITY) {
+   const uint32_t capacity = t->grown ? t->capacity : CUBIT_CPU_MAPPING_CAPACITY;
+   struct cubit_cpu_mapping *records = cubit_cpu_tracker_records(t);
+   if (t->used == capacity) {
       /* Only the tracker owns these records, under its caller's lock. Move
        * outstanding records in order so reverse lookup still selects the
        * newest borrow. A retired tombstone has no remaining transport work;
        * dropping it does NOT reclaim BOs, GPU addresses or endpoint slots. */
       uint32_t retained = 0;
       for (uint32_t i = 0; i < t->used; i++) {
-         if (t->records[i].state != CUBIT_MAP_RETIRED) {
+         if (records[i].state != CUBIT_MAP_RETIRED) {
             if (retained != i)
-               t->records[retained] = t->records[i];
+               records[retained] = records[i];
             retained++;
          }
       }
       for (uint32_t i = retained; i < t->used; i++)
-         t->records[i] = (struct cubit_cpu_mapping){0};
+         records[i] = (struct cubit_cpu_mapping){0};
       t->used = retained;
    }
-   if (t->used >= CUBIT_CPU_MAPPING_CAPACITY)
-      return 5;
-   struct cubit_cpu_mapping *r = &t->records[t->used++];
+   if (t->used >= capacity) {
+      /* No IPC or lifetime change until bookkeeping is available. Existing
+       * borrows survive OOM; a later map may try again without replaying IPC. */
+      if (capacity > UINT32_MAX / 2 ||
+          (uint64_t)capacity * 2 > SIZE_MAX / sizeof(*records))
+         return 5;
+      const uint32_t next = capacity * 2;
+      struct cubit_cpu_mapping *grown = calloc(next, sizeof(*grown));
+      if (!grown)
+         return 5;
+      memcpy(grown, records, t->used * sizeof(*grown));
+      free(t->grown);
+      t->grown = grown;
+      t->capacity = next;
+      records = grown;
+   }
+   struct cubit_cpu_mapping *r = &records[t->used++];
    const uint32_t result = cubit_cpu_mapping_open(r, t->slot, handle, offset, bytes, writable);
    if (result != 0) {
       t->lost = true;
@@ -107,7 +125,7 @@ tracker_unmap_attempt(struct cubit_cpu_mapping_tracker *t, uint32_t handle,
     * As with Vulkan, callers must not unmap a stale pointer after remapping. */
    bool retired_match = false;
    for (uint32_t i = t->used; i > 0; i--) {
-      struct cubit_cpu_mapping *r = &t->records[i - 1];
+      struct cubit_cpu_mapping *r = &cubit_cpu_tracker_records(t)[i - 1];
       if (address && r->lookup_address == address && r->bo_handle == handle &&
           r->bytes == bytes) {
          if (r->state == CUBIT_MAP_RETIRED) {
@@ -157,8 +175,8 @@ cubit_cpu_tracker_poll(struct cubit_cpu_mapping_tracker *t)
    if (!t)
       return;
    for (uint32_t i = 0; i < t->used; i++) {
-      if (t->records[i].state == CUBIT_MAP_RETIRING &&
-          cubit_cpu_mapping_release(&t->records[i], false) == 5)
+      if (cubit_cpu_tracker_records(t)[i].state == CUBIT_MAP_RETIRING &&
+          cubit_cpu_mapping_release(&cubit_cpu_tracker_records(t)[i], false) == 5)
          t->lost = true;
    }
 }
@@ -171,8 +189,14 @@ cubit_cpu_tracker_drain(struct cubit_cpu_mapping_tracker *t)
    t->lost = true;
    bool done = true;
    for (uint32_t i = 0; i < t->used; i++) {
-      if (cubit_cpu_mapping_release(&t->records[i], false) != 0)
+      if (cubit_cpu_mapping_release(&cubit_cpu_tracker_records(t)[i], false) != 0)
          done = false;
+   }
+   if (done && t->grown) {
+      free(t->grown);
+      t->grown = NULL;
+      t->capacity = t->used = 0;
+      memset(t->records, 0, sizeof(t->records));
    }
    return done;
 }

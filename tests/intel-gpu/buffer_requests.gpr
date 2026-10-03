@@ -1,6 +1,6 @@
 project Buffer_Requests is
    for Source_Dirs use (".", "../../userspace/services/intel-gpu");
-   for Object_Dir use "build-buffer-requests";
+   for Object_Dir use external ("BUFFER_REQUESTS_OBJECT_DIR", "build-buffer-requests");
    for Main use ("buffer_requests_tests.adb");
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");

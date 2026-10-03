@@ -232,6 +232,48 @@ begin
       end loop;
    end loop;
    Put_Line ("PASS actual LinkedLists: 816 range detaches, rejection atomicity, node conservation");
+   -- Every insertion position; exact node identity, order and free count.
+   for Size in 1 .. 16 loop
+      for Position in 1 .. Size loop
+         declare
+            Other : Lists.List;
+            Target, Moved : Lists.NodePtr;
+            Free_Before : Natural;
+         begin
+            Lists.create (L, 32);
+            Lists.create (Other, 1);
+            Lists.insertBack (Other, 999);
+            for I in 1 .. Size loop
+               Lists.insertBack (L, I); Model (I) := I;
+            end loop;
+            Length := Size;
+            Free_Before := Lists.nodeSlab.numFree;
+            Lists.moveFrontBefore (L, null, OK);
+            pragma Assert (not OK);
+            Check_List;
+            Lists.moveFrontBefore (L, Other.head, OK);
+            pragma Assert (not OK and Other.head.element = 999);
+            Check_List;
+            Target := L.head;
+            Moved := L.head;
+            for I in 2 .. Position loop Target := Target.next; end loop;
+            Lists.moveFrontBefore (L, Target, OK);
+            pragma Assert (OK and Lists.nodeSlab.numFree = Free_Before);
+            if Position > 2 then
+               for I in 1 .. Position - 2 loop Model (I) := I + 1; end loop;
+               Model (Position - 1) := 1;
+               pragma Assert (Target.prev = Moved);
+            end if;
+            Check_List;
+            Lists.clear (L); Lists.clear (Other);
+            Length := 0;
+            Lists.moveFrontBefore (L, null, OK);
+            pragma Assert (not OK);
+            Check_List;
+         end;
+      end loop;
+   end loop;
+   Put_Line ("PASS actual LinkedLists: 136 head relocations, foreign/null rejection, no allocation");
    Lists.teardown;
    pragma Assert (BuddyAllocator.Live_Blocks = 0 and then Spinlocks.Locks_Held = 0);
    Put_Line ("PASS actual LinkedLists: failure atomicity, bidirectional links, 20000 model operations");

@@ -1,0 +1,13 @@
+project Driver is
+   for Source_Dirs use ("driver-fixture", "../../userspace/services/ps2",
+     "../../userspace/lib/input", "../../userspace/runtime/gnat");
+   for Source_Files use ("driver_tests.adb", "main.adb", "cubit.ads",
+     "cubit-messages.ads", "cubit-messages.adb", "cubit-input.ads", "cubit-input.adb",
+     "input_pending.ads", "input_pending.adb", "ps2_boot_probe.ads", "ps2_boot_probe.adb");
+   for Object_Dir use "build/driver-obj";
+   for Exec_Dir use "build/driver";
+   for Main use ("driver_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Driver;

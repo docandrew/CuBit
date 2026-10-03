@@ -19,7 +19,7 @@ procedure Broker_Tests is
    procedure Receipt (Token : Unsigned_64) is
    begin
       B.Complete (Object,
-        (Token, 77, 0, ((16#0A21#, 4, 0, 0), [0, 1, Base + 1, 0]), True),
+        (Token, 77, 0, ((16#0A21#, 4, 0, 0), [0, 1, Base + 1, (if Token = 1000 then 40 else 0)]), True),
         1, Used);
       pragma Assert (Used);
    end Receipt;
@@ -69,7 +69,7 @@ begin
       procedure Fresh_Receipt (Token : Unsigned_64) is
       begin
          B.Complete (Fresh,
-           (Token, 77, 0, ((16#0A21#, 4, 0, 0), [0, 1, Base + 1, 0]), True),
+           (Token, 77, 0, ((16#0A21#, 4, 0, 0), [0, 1, Base + 1, (if Token = 1000 then 40 else 0)]), True),
            2, Used);
          pragma Assert (Used);
       end Fresh_Receipt;
@@ -103,7 +103,7 @@ begin
         B.Next_Deadline (Fresh) = Unsigned_64'Last);
       -- Late reserve success must abort, never send launch success.
       B.Complete (Fresh,
-        (1000, 77, 0, ((16#0A21#, 4, 0, 0), [0, 1, Base + 1, 0]), True),
+        (1000, 77, 0, ((16#0A21#, 4, 0, 0), [0, 1, Base + 1, 40]), True),
         11, Used);
       B.Step (Fresh, 11);
       pragma Assert (Used and Last_Token = 1002 and Reply_Count = Before);

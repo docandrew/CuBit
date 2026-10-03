@@ -79,10 +79,82 @@ class WorkspaceTests(unittest.TestCase):
     def test_reject_symlinks_and_path_escape(self):
         dest = self.root / "dest"
         dest.mkdir()
-        (self.root / "link").symlink_to("source.adb")
+        (self.root / "link").symlink_to("/etc/passwd")
         for name in ("link", "../outside", "/etc/passwd"):
             with self.assertRaises(ValueError):
                 workspace.copy_input(self.root, dest, name, "source")
+
+    def test_internal_source_link_is_independent_regular_copy(self):
+        dest = self.root / "dest"
+        dest.mkdir()
+        (self.root / "link").symlink_to("source.adb")
+        entry = workspace.copy_input(self.root, dest, "link", "source")
+        self.assertEqual(entry["source_link"], "source.adb")
+        self.assertEqual(entry["resolved_path"], "source.adb")
+        self.assertFalse((dest / "link").is_symlink())
+        self.assertNotEqual((dest / "link").stat().st_ino,
+                            (self.root / "source.adb").stat().st_ino)
+        workspace.verify_input(self.root, entry)
+        (dest / "link").write_text("private edit")
+        self.assertEqual((self.root / "source.adb").read_text(), "uncommitted source\n")
+
+    def test_same_contents_retarget_is_rejected(self):
+        dest = self.root / "dest"
+        dest.mkdir()
+        link = self.root / "link"
+        link.symlink_to("source.adb")
+        entry = workspace.copy_input(self.root, dest, "link", "source")
+        (self.root / "equal.adb").write_bytes((self.root / "source.adb").read_bytes())
+        link.unlink()
+        link.symlink_to("equal.adb")
+        with self.assertRaisesRegex(RuntimeError, "changed"):
+            workspace.verify_input(self.root, entry)
+
+    def test_link_retarget_during_copy_is_rejected(self):
+        dest = self.root / "dest"
+        dest.mkdir()
+        link = self.root / "link"
+        link.symlink_to("source.adb")
+        (self.root / "equal.adb").write_bytes((self.root / "source.adb").read_bytes())
+        original = workspace.shutil.copy2
+        def retarget(source, target):
+            original(source, target)
+            link.unlink()
+            link.symlink_to("equal.adb")
+        with patch.object(workspace.shutil, "copy2", side_effect=retarget):
+            with self.assertRaisesRegex(RuntimeError, "changed"):
+                workspace.copy_input(self.root, dest, "link", "source")
+
+    def test_full_snapshot_materializes_internal_source_link(self):
+        (self.root / "link").symlink_to("source.adb")
+        with patch.object(workspace, "source_paths",
+                          return_value=["source.adb", "link"]):
+            dest = self.create()
+        report = json.loads((dest / workspace.MARKER).read_text())
+        self.assertTrue(report["complete"])
+        self.assertFalse((dest / "link").is_symlink())
+        link_entry = next(e for e in report["inputs"] if e["path"] == "link")
+        self.assertEqual(link_entry["resolved_path"], "source.adb")
+
+    def test_directory_and_dangling_links_rejected(self):
+        dest = self.root / "dest"
+        dest.mkdir()
+        (self.root / "directory").symlink_to("build-old")
+        (self.root / "dangling").symlink_to("does-not-exist")
+        with self.assertRaises(ValueError):
+            workspace.copy_input(self.root, dest, "directory", "source")
+        with self.assertRaises(FileNotFoundError):
+            workspace.copy_input(self.root, dest, "dangling", "source")
+
+    def test_seed_links_and_linked_parents_still_rejected(self):
+        dest = self.root / "dest"
+        dest.mkdir()
+        (self.root / "link").symlink_to("source.adb")
+        with self.assertRaises(ValueError):
+            workspace.copy_input(self.root, dest, "link", "seed-artifact")
+        (self.root / "parent").symlink_to(self.root, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            workspace.copy_input(self.root, dest, "parent/source.adb", "source")
 
     def test_mutation_rejected_and_incomplete_snapshot_retained(self):
         original = workspace.shutil.copy2

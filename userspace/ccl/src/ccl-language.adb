@@ -15,6 +15,7 @@ is
    use type CCL.Types.Definition_Result;
    use type CCL.Host_Values.Value_Kind;
    use type CCL.VM.Value_Kind;
+   use type CCL.Streams.View_Kind;
    use type CCL.Checked_Arithmetic.Arithmetic_Error;
    use type CCL.Imports.Transfer_Mode;
    use type CCL.Imports.Cancellation_Mode;
@@ -101,6 +102,9 @@ is
 
    function Analysis_Diagnostic
      (Result : Analysis_Result) return Diagnostic_Code is (Result.Diagnostic);
+
+   function Analysis_Diagnostic_Subject
+     (Result : Analysis_Result) return Name is (Result.Diagnostic_Subject);
 
    function Analysis_Diagnostic_Position
      (Result : Analysis_Result) return Natural is
@@ -205,6 +209,7 @@ is
       Declaring : Name;
       Self_List_Read : Boolean := False;
       Diagnostic_Position : Natural range 0 .. MAX_SOURCE_LENGTH + 1 := 0;
+      Diagnostic_Subject : Name;
       subtype Diagnostic_Source_Position is
         Positive range 1 .. MAX_SOURCE_LENGTH + 1;
 
@@ -342,6 +347,65 @@ is
          Ok := True;
       end Read_Integer_Value;
 
+      --  A record field's default: an integer, true or false, a qualified
+      --  nullary alternative (Color.Red), or [] for an empty list. Define
+      --  checks that it is a constant of the field's type.
+      procedure Read_Default (Payload : Static_Type; Default : out CCL.Types.Field_Default) is
+         Value : Integer_64;
+         Item : Name;
+         Ok : Boolean;
+         Owner : Static_Type;
+         Choice : CCL.Types.Component_Count;
+      begin
+         Default := CCL.Types.No_Field_Default;
+         if Source (Source'First + Cursor) = '[' then
+            Cursor := Cursor + 1;
+            Expect (']', Ok);
+            if Ok then
+               Default := (Kind => CCL.Types.Empty_List_Default, Value => 0);
+            end if;
+         elsif Source (Source'First + Cursor) = '-' or else
+           Source (Source'First + Cursor) in '0' .. '9'
+         then
+            Read_Integer_Value (Value, Ok);
+            if Ok then
+               Default := (Kind => CCL.Types.Integer_Default, Value => Value);
+            end if;
+         else
+            Read_Name (Item, Ok);
+            if not Ok then
+               Diagnostic := Invalid_Field_Default;
+            elsif Name_Is (Item, "true") or else Name_Is (Item, "false") then
+               Default := (Kind => CCL.Types.Boolean_Default, Value => (if Name_Is (Item, "true") then 1 else 0));
+            else
+               CCL.Types.Resolve_Alternative (Tree.Types, Item, Owner, Choice);
+               if Choice = 0 or else Owner /= Payload then
+                  Diagnostic := Invalid_Field_Default;
+               else
+                  Default := (Kind => CCL.Types.Alternative_Default, Value => Integer_64 (Choice));
+               end if;
+            end if;
+         end if;
+      end Read_Default;
+
+      --  Whether the next tokens are a name and =>, as in (Limits name => "a"):
+      --  the start of a named association. Moves nothing.
+      function Named_Association_Ahead return Boolean is
+         Probe : Natural := Cursor;
+      begin
+         if Probe >= Source'Length or else not Is_Name_Character (Source (Source'First + Probe)) then
+            return False;
+         end if;
+         while Probe < Source'Length and then Is_Name_Character (Source (Source'First + Probe)) loop
+            Probe := Probe + 1;
+         end loop;
+         while Probe < Source'Length and then Source (Source'First + Probe) in ' ' | ASCII.HT | ASCII.LF | ASCII.CR loop
+            Probe := Probe + 1;
+         end loop;
+         return Probe + 1 < Source'Length and then Source (Source'First + Probe .. Source'First + Probe + 1) = "=>"
+           and then (Probe + 2 = Source'Length or else not Is_Name_Character (Source (Source'First + Probe + 2)));
+      end Named_Association_Ahead;
+
       procedure Parse_Integer (Index : out Node_Reference) is
          Item : Integer_64;
          Ok : Boolean;
@@ -465,6 +529,24 @@ is
                   end if;
                end;
                return;
+            elsif Good and then Name_Is (Token, "Stream") then
+               --  (Stream T): a live source of T elements (docs/ccl-streams.md).
+               declare
+                  Element : Static_Type;
+                  Specialized : CCL.Types.Stream_Result;
+               begin
+                  Read_Type (Element, Depth => Depth + 1);
+                  if Diagnostic /= No_Diagnostic then return; end if;
+                  Expect (')', Good);
+                  if not Good then return; end if;
+                  CCL.Types.Specialize_Stream (Tree.Types, Element, Kind, Specialized);
+                  if Specialized not in CCL.Types.Stream_Specialized |
+                    CCL.Types.Stream_Already_Specialized
+                  then
+                     Diagnostic := Unsupported_Stream_Element;
+                  end if;
+               end;
+               return;
             elsif not Good or else not Name_Is (Token, "Function") then
                Diagnostic := Expected_Type_Name; return;
             end if;
@@ -529,6 +611,7 @@ is
          Choice : CCL.Types.Component_Count;
          Record_Type : Static_Type;
          Components : Component_Node_Array := [others => NO_NODE];
+         List_Start : constant Natural := Cursor;
       begin
          Index := NO_NODE;
          if Depth >= MAX_NESTING then
@@ -935,6 +1018,34 @@ is
                Add_Node ((Kind => List_Construct, Element_Count => 0,
                           Declared_Kind => List_Type, others => <>), Index);
             end;
+         elsif Name_Is (Operator_Name, "stream") then
+            --  (stream T n): stream n of this session, whose elements are T.
+            --  n names an entry in the session's own table and grants
+            --  nothing; every element read is checked against T.
+            declare
+               Element, Stream_Type : Static_Type;
+               Specialized : CCL.Types.Stream_Result;
+            begin
+               Read_Type (Element, Depth => Depth + 1);
+               if Diagnostic /= No_Diagnostic then return; end if;
+               CCL.Types.Specialize_Stream (Tree.Types, Element, Stream_Type, Specialized);
+               if Specialized not in CCL.Types.Stream_Specialized |
+                 CCL.Types.Stream_Already_Specialized
+               then
+                  Diagnostic := Unsupported_Stream_Element; return;
+               end if;
+               Parse_Expression (Depth + 1, A);
+               if Diagnostic /= No_Diagnostic then return; end if;
+               if A = NO_NODE or else Tree.Nodes (A).Kind /= Integer_Literal then
+                  Diagnostic := Expected_Stream; return;
+               elsif Tree.Nodes (A).Integer_Value not in 1 .. CCL.Streams.Maximum_Handle then
+                  Diagnostic := Value_Out_Of_Range; return;
+               end if;
+               Expect (')', Ok);
+               if not Ok then return; end if;
+               Add_Node ((Kind => Stream_Reference, Declared_Kind => Stream_Type,
+                          Integer_Value => Tree.Nodes (A).Integer_Value, others => <>), Index);
+            end;
          elsif Name_Is (Operator_Name, "to-string") then
             Parse_Expression (Depth + 1, A);
             Expect (')', Ok);
@@ -955,15 +1066,100 @@ is
             Record_Type := CCL.Types.Find (Tree.Types, Operator_Name);
             if CCL.Types.Describe (Tree.Types, Record_Type).Form = CCL.Types.Product then
                if Host_Found then Diagnostic := Duplicate_Declaration; return; end if;
-               for P in 1 .. CCL.Types.Describe (Tree.Types, Record_Type).Count loop
-                  Parse_Expression (Depth + 1, Components (P));
-                  if Diagnostic /= No_Diagnostic then return; end if;
-               end loop;
-               Expect (')', Ok);
-               if Ok then
-                  Add_Node ((Kind => Record_Construct, Identifier => Operator_Name,
-                    Declared_Kind => Record_Type, Components => Components, others => <>), Index);
-               end if;
+               --  Positional fields first, then :name value pairs in any
+               --  order; a field left out takes its default. The node is
+               --  positional either way (docs/ccl-launch-parameters.md).
+               declare
+                  Shape : constant CCL.Types.Description := CCL.Types.Describe (Tree.Types, Record_Type);
+                  Given, Named_Fields, Defaulted_Fields : Field_Flags := [others => False];
+                  Position : CCL.Types.Component_Count := 0;
+                  Field_Name : Name;
+                  Field : CCL.Types.Component_Count;
+                  Field_Start : Natural;
+               begin
+                  --  Positional fields, then field => value pairs (Ada's named
+                  --  association; positional ones may not follow).
+                  loop
+                     Skip_Trivia;
+                     exit when Cursor >= Source'Length or else Source (Source'First + Cursor) = ')';
+                     Field_Start := Cursor;
+                     if Named_Association_Ahead then
+                        Read_Name (Field_Name, Ok);
+                        Skip_Trivia;
+                        Cursor := Cursor + 2;
+                        Field := 0;
+                        for P in 1 .. Shape.Count loop
+                           if Names_Equal (Shape.Parts (P).Identifier, Field_Name) then Field := P; end if;
+                        end loop;
+                        if Field = 0 or else Given (Field) then
+                           Diagnostic := (if Field = 0 then Unknown_Field_Argument else Repeated_Field_Argument);
+                           Diagnostic_Position := To_Diagnostic_Position (Field_Start);
+                           Diagnostic_Subject := Field_Name;
+                           return;
+                        end if;
+                        Parse_Expression (Depth + 1, Components (Field));
+                        if Diagnostic /= No_Diagnostic then return; end if;
+                        Given (Field) := True;
+                        Named_Fields (Field) := True;
+                     else
+                        if (for some F of Named_Fields => F) then
+                           Diagnostic := Positional_After_Named;
+                           Diagnostic_Position := To_Diagnostic_Position (Field_Start);
+                           return;
+                        end if;
+                        exit when Position = Shape.Count;
+                        Position := Position + 1;
+                        Parse_Expression (Depth + 1, Components (Position));
+                        if Diagnostic /= No_Diagnostic then return; end if;
+                        Given (Position) := True;
+                     end if;
+                  end loop;
+                  for P in 1 .. Shape.Count loop
+                     if not Given (P) then
+                        Defaulted_Fields (P) := True;
+                        case CCL.Types.Default_Of (Tree.Types, Record_Type, P).Kind is
+                           when CCL.Types.No_Default =>
+                              Diagnostic := Missing_Field_Argument;
+                              Diagnostic_Position := To_Diagnostic_Position (List_Start);
+                              Diagnostic_Subject := Shape.Parts (P).Identifier;
+                              return;
+                           when CCL.Types.Integer_Default =>
+                              Add_Node ((Kind => Integer_Literal,
+                                         Integer_Value => CCL.Types.Default_Of (Tree.Types, Record_Type, P).Value,
+                                         others => <>), Components (P));
+                           when CCL.Types.Boolean_Default =>
+                              Add_Node ((Kind => Boolean_Literal,
+                                         Boolean_Value => CCL.Types.Default_Of (Tree.Types, Record_Type, P).Value = 1,
+                                         others => <>), Components (P));
+                           when CCL.Types.Alternative_Default =>
+                              declare
+                                 Owner : constant CCL.Types.Description :=
+                                   CCL.Types.Describe (Tree.Types, Shape.Parts (P).Payload);
+                                 Member : constant Name := Owner.Parts (CCL.Types.Component_Index
+                                   (CCL.Types.Default_Of (Tree.Types, Record_Type, P).Value)).Identifier;
+                              begin
+                                 if Owner.Identifier.Length + 1 + Member.Length > MAX_NAME_LENGTH then
+                                    Diagnostic := Invalid_Field_Default; return;
+                                 end if;
+                                 Add_Node ((Kind => Name_Reference,
+                                            Identifier => CCL.Types.Named
+                                              (CCL.Types.Image (Owner.Identifier) & "." & CCL.Types.Image (Member)),
+                                            others => <>), Components (P));
+                              end;
+                           when CCL.Types.Empty_List_Default =>
+                              Add_Node ((Kind => List_Construct, Element_Count => 0,
+                                         Declared_Kind => Shape.Parts (P).Payload, others => <>), Components (P));
+                        end case;
+                        if Diagnostic /= No_Diagnostic then return; end if;
+                     end if;
+                  end loop;
+                  Expect (')', Ok);
+                  if Ok then
+                     Add_Node ((Kind => Record_Construct, Identifier => Operator_Name,
+                       Declared_Kind => Record_Type, Components => Components,
+                       Named_Fields => Named_Fields, Defaulted_Fields => Defaulted_Fields, others => <>), Index);
+                  end if;
+               end;
             elsif Choice > 0 then
                if Host_Found then Diagnostic := Duplicate_Declaration; return; end if;
                if CCL.Types.Describe (Tree.Types, Variant_Type).Parts (Choice).Payload = Unit_Type then
@@ -1163,6 +1359,8 @@ is
          Definition_Status : CCL.Types.Definition_Result;
          Is_Enum, Is_Record : Boolean;
          Self_Parts : array (CCL.Types.Component_Index) of Boolean := [others => False];
+         Defaults : array (CCL.Types.Component_Index) of CCL.Types.Field_Default :=
+           [others => CCL.Types.No_Field_Default];
       begin
          Index := NO_NODE;
          if Diagnostic /= No_Diagnostic then return; end if;
@@ -1207,7 +1405,8 @@ is
                       Source_Position => To_Diagnostic_Position (Start),
                       Source_End_Position => To_Diagnostic_Position (Cursor), others => <>), Index);
                   if Diagnostic /= No_Diagnostic then return; end if;
-                  Parse_Program (Depth + 1, Tail);
+                  --  Declarations are siblings: the rest of the program is not nested.
+                  Parse_Program (Depth, Tail);
                   Tree.Nodes (Index).Second := Tail;
                   return;
                end;
@@ -1249,6 +1448,13 @@ is
                      elsif not CCL.Objects.Storable (Tree.Types, Definition.Parts (Definition.Count).Payload) then
                         Diagnostic := Invalid_Variant_Payload; return;
                      end if;
+                     Skip_Trivia;
+                     if Is_Record and then Cursor < Source'Length and then
+                       Source (Source'First + Cursor) /= ')'
+                     then
+                        Read_Default (Definition.Parts (Definition.Count).Payload, Defaults (Definition.Count));
+                        if Diagnostic /= No_Diagnostic then return; end if;
+                     end if;
                   elsif Is_Record then
                      Diagnostic := Expected_Type_Name; return;
                   end if;
@@ -1262,10 +1468,28 @@ is
             if not Ok then return; end if;
             Expect (')', Ok);
             if not Ok then return; end if;
+            --  A stream handle is never part of a record or variant.
+            for P in 1 .. Definition.Count loop
+               if CCL.Types.Is_Stream (Tree.Types, Definition.Parts (P).Payload) then
+                  Diagnostic := Stream_Not_Data; return;
+               end if;
+            end loop;
             CCL.Types.Define (Tree.Types, Definition, Defined_Type, Definition_Status);
             if Definition_Status /= CCL.Types.Defined then
                Diagnostic := Invalid_Type_Declaration; return;
             end if;
+            for P in 1 .. Definition.Count loop
+               if CCL.Types."/=" (Defaults (P).Kind, CCL.Types.No_Default) then
+                  declare
+                     Set : CCL.Types.Default_Result;
+                  begin
+                     CCL.Types.Set_Default (Tree.Types, Defined_Type, P, Defaults (P), Set);
+                     if CCL.Types."/=" (Set, CCL.Types.Default_Set) then
+                        Diagnostic := Invalid_Field_Default; return;
+                     end if;
+                  end;
+               end if;
+            end loop;
             --  Complete each (List Self) field now that Self exists.
             for P in 1 .. Definition.Count loop
                if Self_Parts (P) then
@@ -1292,7 +1516,8 @@ is
                 Source_Position => To_Diagnostic_Position (Start),
                 Source_End_Position => To_Diagnostic_Position (Cursor), others => <>), Index);
             if Diagnostic /= No_Diagnostic then return; end if;
-            Parse_Program (Depth + 1, Tail);
+            --  Declarations are siblings: the rest of the program is not nested.
+                  Parse_Program (Depth, Tail);
             Tree.Nodes (Index).Second := Tail;
             return;
          elsif not Name_Is (Token, "define") then
@@ -1335,16 +1560,17 @@ is
          Expect (')', Ok);
          if not Ok then return; end if;
          Tree.Functions (Id) := Decl;
-         --  Publish the slot reserved before parsing the body, rather than
-         --  reading a count through the recursively updated syntax tree.
-         Tree.Function_Count := Id + 1;
+         --  The body's lambdas took the slots after Id: never hand them out
+         --  again (a later lambda would overwrite one).
+         Tree.Function_Count := Natural'Max (Tree.Function_Count, Id + 1);
          Add_Node
            ((Kind => Function_Definition, Function_Id => Id,
              First => Decl.Body_Node,
              Source_Position => To_Diagnostic_Position (Start),
              Source_End_Position => To_Diagnostic_Position (Cursor), others => <>), Index);
          if Diagnostic /= No_Diagnostic then return; end if;
-         Parse_Program (Depth + 1, Tail);
+         --  Declarations are siblings: the rest of the program is not nested.
+                  Parse_Program (Depth, Tail);
          Tree.Nodes (Index).Second := Tail;
       end Parse_Program;
 
@@ -1362,7 +1588,7 @@ is
          Name_Is (Item, "type") or else Name_Is (Item, "define") or else Name_Is (Item, "handler") or else Name_Is (Item, "let") or else
          Name_Is (Item, "match") or else
          Name_Is (Item, "field") or else
-         Name_Is (Item, "fn") or else Name_Is (Item, "list") or else
+         Name_Is (Item, "fn") or else Name_Is (Item, "list") or else Name_Is (Item, "stream") or else
          Name_Is (Item, "if") or else Name_Is (Item, "not") or else
          Name_Is (Item, "true") or else Name_Is (Item, "false") or else
          Name_Is (Item, "+") or else Name_Is (Item, "add") or else
@@ -1554,7 +1780,8 @@ is
                   end;
                end if;
                Visible_Types := Tree.Nodes (Index).Declared_Kind;
-               Check_Node (Tree.Nodes (Index).Second, Depth + 1, Kind);
+               --  Declarations are siblings: the rest of the program is not nested.
+               Check_Node (Tree.Nodes (Index).Second, Depth, Kind);
             when Variant_Literal =>
                Kind := Tree.Nodes (Index).Declared_Kind;
             when Variant_Construct =>
@@ -1668,7 +1895,7 @@ is
                   if Count = 0 then
                      Diagnostic := Function_Arity_Mismatch; return;
                   end if;
-                  if Operation /= Range_Builtin then
+                  if Operation /= Range_Builtin and then not Is_Stream_View (Operation) then
                      List_Type := Operand_Types (Count);
                      if List_Type = String_Type and then Takes_Text (Operation) then
                         Element_Type := Character_Type;
@@ -1789,6 +2016,26 @@ is
                            Diagnostic := Expected_Integer; return;
                         end if;
                         CCL.Types.Specialize_List (Tree.Types, Integer_Type, Kind, Specialized);
+                     when Latest_Builtin .. Lost_Builtin =>
+                        --  (latest s) : T, (window n s) : List<T>,
+                        --  (arrived s), (lost s) : Integer.
+                        if not CCL.Types.Is_Stream (Tree.Types, Operand_Types (Count)) then
+                           Diagnostic := Expected_Stream; return;
+                        end if;
+                        Element_Type := CCL.Types.Stream_Element (Tree.Types, Operand_Types (Count));
+                        case Stream_View_Of (Operation) is
+                           when CCL.Streams.Latest_View => Kind := Element_Type;
+                           when CCL.Streams.Window_View =>
+                              if Operand_Types (1) /= Integer_Type then
+                                 Diagnostic := Expected_Integer; return;
+                              end if;
+                              CCL.Types.Specialize_List (Tree.Types, Element_Type, Kind, Specialized);
+                              if Specialized not in CCL.Types.List_Specialized |
+                                CCL.Types.List_Already_Specialized
+                              then Diagnostic := Unsupported_List_Element; end if;
+                           when CCL.Streams.Arrived_View | CCL.Streams.Lost_View =>
+                              Kind := Integer_Type;
+                        end case;
                      when No_Builtin => Diagnostic := Unknown_Form;
                   end case;
                end;
@@ -1945,7 +2192,7 @@ is
                      --  Publish only after checking the body: no self calls or
                      --  forward calls, and therefore no recursive call graph.
                      Visible_Functions := Tree.Nodes (Index).Function_Id + 1;
-                     Check_Node (Tree.Nodes (Index).Second, Depth + 1, Kind);
+                     Check_Node (Tree.Nodes (Index).Second, Depth, Kind);
                   end if;
                end;
             when Function_Call | Handler_Form =>
@@ -2019,6 +2266,7 @@ is
                   end;
                end if;
             when Integer_Literal => Kind := Integer_Type;
+            when Stream_Reference => Kind := Tree.Nodes (Index).Declared_Kind;
             when Boolean_Literal => Kind := Boolean_Type;
             when String_Literal => Kind := String_Type;
             when Name_Reference =>
@@ -2277,7 +2525,19 @@ is
                              when CCL.Host_Values.Object_Value | CCL.Host_Values.Resource_Value => Host_Object_Type_Mismatch);
                         end if;
                      end if;
-                     if Diagnostic = No_Diagnostic then Kind := Result_Type; end if;
+                     if Diagnostic = No_Diagnostic and then Op.Import.Result_Stream then
+                        --  A source: the result is a stream of Result_Type.
+                        declare
+                           Specialized : CCL.Types.Stream_Result;
+                        begin
+                           CCL.Types.Specialize_Stream (Tree.Types, Result_Type, Kind, Specialized);
+                           if Specialized not in CCL.Types.Stream_Specialized |
+                             CCL.Types.Stream_Already_Specialized
+                           then Diagnostic := Unsupported_Stream_Element; end if;
+                        end;
+                     elsif Diagnostic = No_Diagnostic then
+                        Kind := Result_Type;
+                     end if;
                   end if;
                end;
             when Invalid_Node => Diagnostic := Unexpected_Token;
@@ -2401,9 +2661,12 @@ is
          end if;
       end Copy_String;
 
+      --  Only persistable values cross to a host, and their components and
+      --  elements are earlier types, so the recursion ends (by type order,
+      --  as Copy_In's does).
       procedure Append_Runtime
         (Value : in out CCL.Objects.Image; Item : Runtime_Value; Good : out Boolean)
-        with Subprogram_Variant => (Decreases => Item.Node)
+        with Subprogram_Variant => (Decreases => Item.Kind)
       is
          Built : CCL.Objects.Build_Result := CCL.Objects.Invalid_Image;
          Text : String (1 .. MAX_TEXT_BYTES) := [others => ' '];
@@ -2428,7 +2691,7 @@ is
                   exit when not Good;
                   Component (Item, P, Part, Good);
                   exit when not Good;
-                  if Part.Node >= Item.Node then
+                  if Part.Kind >= Item.Kind then
                      Good := False;
                      exit;
                   end if;
@@ -2442,6 +2705,36 @@ is
          end if;
          if Item.Object_Owner /= 0 then
             Object_Views.Append_Value (Objects (Item.Object_Owner), Item.Object_Position, Value, Built);
+         elsif CCL.Types.Is_List (Tree.Types, Item.Kind) then
+            --  A list: its count, then each element depth first.
+            D := CCL.Types.Describe (Tree.Types, Item.Kind);
+            declare
+               Count : constant Natural := List_Regions.Length (Item.Items);
+               Element : List_Element;
+               Read : List_Regions.Operation_Result;
+               Part : Runtime_Value;
+            begin
+               CCL.Objects.Append (Value, CCL.Objects.Sequence_Cell (Count), Built);
+               Good := Built = CCL.Objects.Added and then D.Count = 1;
+               if Good and then D.Parts (1).Payload < Item.Kind then
+                  for I in 1 .. Count loop
+                     exit when not Good or else I > List_Regions.Array_Index'Last;
+                     List_Regions.Read (List_Region, Item.Items, List_Regions.Array_Index (I), Element, Read);
+                     Good := Read = List_Regions.Operation_Ok;
+                     exit when not Good;
+                     Part := (Kind => D.Parts (1).Payload, Scalar => Element.Scalar, Text => Element.Text,
+                              Character_Item => Element.Character_Item, Alternative => Element.Alternative,
+                              Node => Element.Node, others => <>);
+                     Append_Runtime (Value, Part, Good);
+                  end loop;
+               else
+                  Good := False;
+               end if;
+               if not Good and then Eval_Status = Succeeded then
+                  Eval_Status := Evaluation_Object_Storage_Exhausted;
+               end if;
+               return;
+            end;
          else
             case Item.Kind is
                when Integer_Type => CCL.Objects.Append (Value, CCL.Objects.Integer_Cell (Item.Scalar.Integer), Built);
@@ -2501,12 +2794,12 @@ is
       subtype Print_Level is Natural range 0 .. 1;
       procedure Print_Value
         (Item : Runtime_Value; Bound : Print_Bound; Level : Print_Level;
-         Output : in out Text_Result; Good : in out Boolean)
+         Output : in out Literal_Text; Good : in out Boolean)
         with Subprogram_Variant => (Decreases => Bound, Decreases => Level)
       is
          procedure Add (Text : String) is
          begin
-            if Good and then Text'Length <= MAX_TEXT_BYTES - Output.Length then
+            if Good and then Text'Length <= MAX_LITERAL_BYTES - Output.Length then
                Output.Data (Output.Length + 1 .. Output.Length + Text'Length) := Text;
                Output.Length := Output.Length + Text'Length;
             else
@@ -2733,6 +3026,12 @@ is
          elsif Kind not in CCL.Types.Declared_Type or else CCL.Types.Is_Scalar_Sum (Tree.Types, Kind) then
             --  Scalars and scalar variants hold no reference to the image.
             Load_View (Owner, Position, Item, Good);
+         elsif CCL.Types.Is_Range (Tree.Types, Kind) then
+            --  A range (Bytes, Timestamp) is an Integer at run time; the
+            --  image was validated against its bounds when it was captured.
+            Item.Kind := Integer_Type;
+            Item.Scalar := Integer_Scalar
+              (CCL.Objects.Integer_Of (Object_Views.Scalar (Objects (Owner), Position)));
          elsif D.Form = CCL.Types.Sequence then
             declare
                Count : constant Object_Views.Element_Count := Object_Views.Length (Objects (Owner), Position);
@@ -2807,6 +3106,71 @@ is
             end;
          end if;
       end Copy_In;
+
+      --  A view of a stream the session holds (docs/ccl-streams.md). The
+      --  reader's elements are admitted only as this evaluation's own Kind
+      --  (T or List<T>), then copied in like a host result.
+      procedure Read_Stream_View
+        (Operation : Builtin_Operation; Count_Value, Stream_Value : Runtime_Value;
+         Kind : Static_Type; Item : out Runtime_Value; Good : out Boolean)
+        with Pre => Is_Stream_View (Operation)
+      is
+         Request : CCL.Streams.View_Request;
+         Reply : CCL.Streams.View_Reply;
+         Owner : Object_Index;
+      begin
+         Item := (others => <>);
+         Good := False;
+         if Stream_Value.Scalar.Integer not in 1 .. CCL.Streams.Maximum_Handle then
+            Eval_Status := Stream_Unavailable; return;
+         end if;
+         Request := (Stream => CCL.Streams.Handle (Stream_Value.Scalar.Integer),
+                     View => Stream_View_Of (Operation), Count => 1);
+         if Request.View = CCL.Streams.Window_View then
+            if Count_Value.Scalar.Integer not in 1 .. CCL.Streams.Maximum_Window then
+               Eval_Status := Stream_Window_Out_Of_Range; return;
+            end if;
+            Request.Count := CCL.Streams.Window_Length (Count_Value.Scalar.Integer);
+         end if;
+         Read_Stream (Context, Request, Reply);
+         case Reply.Status is
+            when CCL.Streams.No_Such_Stream => Eval_Status := Stream_Unavailable; return;
+            when CCL.Streams.Stream_Empty => Eval_Status := Stream_Empty; return;
+            when CCL.Streams.View_Answered => null;
+         end case;
+         if not CCL.Streams.Returns_Elements (Request.View) then
+            Item.Kind := Integer_Type;
+            Item.Scalar := Integer_Scalar (Reply.Total);
+            Good := True;
+            return;
+         end if;
+         if Objects_Used = MAX_OBJECT_VALUES then
+            Eval_Status := Evaluation_Object_Storage_Exhausted; return;
+         end if;
+         Objects_Used := Objects_Used + 1;
+         Owner := Objects_Used;
+         Object_Views.Capture_Local (Objects (Owner), Tree.Types, Kind, Reply.Elements, Good);
+         if not Good then
+            Eval_Status := Stream_Element_Mismatch; return;
+         end if;
+         if Kind in CCL.Types.Declared_Type and then not CCL.Types.Is_Scalar_Sum (Tree.Types, Kind) then
+            Copy_In (Owner, Object_Views.Root (Objects (Owner)), Kind, Item, Good);
+         else
+            Load_View (Owner, Object_Views.Root (Objects (Owner)), Item, Good);
+         end if;
+         --  A scalar keeps nothing of the reply, so a cell reading latest
+         --  over and over does not use up the evaluation's object slots.
+         if Good and then (Kind in Integer_Type | Boolean_Type | Character_Type or else
+                           CCL.Types.Is_Scalar_Sum (Tree.Types, Kind))
+         then
+            Object_Views.Clear (Objects (Owner));
+            Objects_Used := Objects_Used - 1;
+            Item.Object_Owner := 0;
+         end if;
+         if not Good and then Eval_Status = Succeeded then
+            Eval_Status := Stream_Element_Mismatch;
+         end if;
+      end Read_Stream_View;
 
       --  Order of two region strings (list elements), compared character by
       --  character without copying.
@@ -3118,7 +3482,7 @@ is
             when Type_Definition | Function_Definition =>
                --  Definitions are checked before execution; only the final
                --  expression executes, never an unused function body.
-               Evaluate_Node (Tree.Nodes (Index).Second, Depth + 1, Item, Ok);
+               Evaluate_Node (Tree.Nodes (Index).Second, Depth, Item, Ok);
             when Function_Call =>
                declare
                   --  A call through a value takes its function from the binding.
@@ -3167,6 +3531,12 @@ is
                end;
             when Integer_Literal =>
                Item.Kind := Integer_Type;
+               Item.Scalar := Integer_Scalar
+                 (Tree.Nodes (Node_Index (Index)).Integer_Value);
+               Ok := True;
+            when Stream_Reference =>
+               --  A handle: opaque, never printed as a literal.
+               Item.Kind := Tree.Nodes (Node_Index (Index)).Declared_Kind;
                Item.Scalar := Integer_Scalar
                  (Tree.Nodes (Node_Index (Index)).Integer_Value);
                Ok := True;
@@ -3684,6 +4054,7 @@ is
                         if not Granted then
                            Eval_Status := Host_Authority_Denied; Good := False;
                         elsif Operation.Import.Result = CCL.Host_Values.Object_Value and then
+                          not Operation.Import.Result_Stream and then
                           not Supported_Object (Tree.Nodes (Index).Static_Kind)
                         then
                            if Objects_Used = MAX_OBJECT_VALUES then
@@ -3696,6 +4067,19 @@ is
                            Invoke (Context, Binding, Argument, Reply);
                            if not Reply.Success then
                               Eval_Status := Host_Call_Failed; Good := False;
+                              Result.Failed_Operation := Tree.Nodes (Node_Index (Index)).Identifier;
+                              Result.Failure := Reply.Why;
+                           elsif Operation.Import.Result_Stream then
+                              --  A source replies with the handle of the stream
+                              --  it opened in the session's table.
+                              if Reply.Value.Kind = CCL.Host_Values.Integer_Value and then
+                                Reply.Value.Integer in 1 .. CCL.Streams.Maximum_Handle
+                              then
+                                 Item.Kind := Tree.Nodes (Node_Index (Index)).Static_Kind;
+                                 Item.Scalar := Integer_Scalar (Reply.Value.Integer);
+                              else
+                                 Eval_Status := Host_Result_Type_Mismatch; Good := False;
+                              end if;
                            elsif not Matches_Host
                              (Reply.Value, Operation.Import.Result, Operation.Import.Result_Text_Limit,
                               Operation.Import.Result_Schema)
@@ -3724,9 +4108,14 @@ is
                                     if Reserved_Object /= 0 then
                                        Object_Views.Capture (Objects (Reserved_Object), Contract, Reply.Value.Object, Good);
                                        if Good then
-                                          if CCL.Types.Is_List (Tree.Types, Tree.Nodes (Node_Index (Index)).Static_Kind) then
-                                             --  A list is copied in: its elements are this
-                                             --  evaluation's values, not views of the image.
+                                          if Tree.Nodes (Node_Index (Index)).Static_Kind in CCL.Types.Declared_Type and then
+                                            not CCL.Types.Is_Scalar_Sum (Tree.Types, Tree.Nodes (Node_Index (Index)).Static_Kind)
+                                          then
+                                             --  Lists and records are copied in: their parts become
+                                             --  this evaluation's values, not views of the image,
+                                             --  so they print, compare and pass on like any value
+                                             --  built here. Text and scalars stay views (a host
+                                             --  String may be longer than an evaluation's text).
                                              Copy_In (Reserved_Object, Object_Views.Root (Objects (Reserved_Object)),
                                                       Tree.Nodes (Node_Index (Index)).Static_Kind, Item, Good);
                                           else
@@ -3752,7 +4141,10 @@ is
                                              else Integer_Scalar (VM_Value.Integer));
                                        end if;
                                     end if;
-                                    if not Good then Eval_Status := Host_Result_Type_Mismatch; end if;
+                                    --  A copy that ran out of storage keeps its more specific status.
+                                    if not Good and then Eval_Status = Succeeded then
+                                       Eval_Status := Host_Result_Type_Mismatch;
+                                    end if;
                               end case;
                            end if;
                         end if;
@@ -3855,6 +4247,12 @@ is
                      exit when not Good;
                   end loop;
                   if not Good or else Count = 0 then Ok := False; return; end if;
+                  if Is_Stream_View (Operation) then
+                     Read_Stream_View (Operation, Operands (1), Operands (Count),
+                                       Tree.Nodes (Index).Static_Kind, Item, Good);
+                     Ok := Good;
+                     return;
+                  end if;
                   if Operation /= Range_Builtin and then Operands (Count).Kind = String_Type then
                      Text_Builtin (Operation, Operands (1), Operands (2), Operands (Count),
                                    Tree.Nodes (Index).Static_Kind, Item, Good);
@@ -4075,6 +4473,11 @@ is
 
                               procedure Get (List : List_Regions.Array_Value; I : Positive; E : out List_Element) is
                               begin
+                                 if I > List_Regions.Array_Index'Last then
+                                    E := Null_List_Element;
+                                    Eval_Status := Evaluation_Index_Error; Good := False;
+                                    return;
+                                 end if;
                                  List_Regions.Read (List_Region, List, List_Regions.Array_Index (I), E, Placed);
                                  if Placed /= List_Regions.Operation_Ok then
                                     E := Null_List_Element;
@@ -4083,6 +4486,10 @@ is
                               end Get;
                               procedure Put (List : List_Regions.Array_Value; I : Positive; E : List_Element) is
                               begin
+                                 if I > List_Regions.Array_Index'Last then
+                                    Eval_Status := Evaluation_Index_Error; Good := False;
+                                    return;
+                                 end if;
                                  List_Regions.Write (List_Region, List, List_Regions.Array_Index (I), E, Placed);
                                  if Placed /= List_Regions.Operation_Ok then
                                     Eval_Status := Evaluation_Index_Error; Good := False;
@@ -4157,9 +4564,10 @@ is
                               end if;
                               if Good then Finish (Source_List.Kind); end if;
                            end;
-                        when Upper_Builtin .. Split_Builtin | Parse_Int_Builtin =>
-                           --  Text subjects returned above; a list subject is
-                           --  a checker error.
+                        when Upper_Builtin .. Split_Builtin | Parse_Int_Builtin |
+                             Latest_Builtin .. Lost_Builtin =>
+                           --  Text subjects and stream views returned above; a
+                           --  list subject is a checker error.
                            Eval_Status := Host_Contract_Unsupported; Good := False;
                         when No_Builtin => Good := False;
                      end case;
@@ -4275,6 +4683,20 @@ is
       --  Lists whose elements are records or variants with payloads leave
       --  as literals; the flat result form carries scalars, text and
       --  enumeration members.
+      --  A stream element type as source writes it: Integer, P, (List P).
+      --  A list's element is an earlier type, so Kind decreases.
+      function Type_Source (Kind : Static_Type) return String
+        with Subprogram_Variant => (Decreases => Kind)
+      is
+      begin
+         if CCL.Types.Is_List (Tree.Types, Kind) and then
+           CCL.Types.Element_Of (Tree.Types, Kind) < Kind
+         then
+            return "(List " & Type_Source (CCL.Types.Element_Of (Tree.Types, Kind)) & ")";
+         end if;
+         return CCL.Types.Image (CCL.Types.Describe (Tree.Types, Kind).Identifier);
+      end Type_Source;
+
       function Compound_Elements (Kind : Static_Type) return Boolean is
         (CCL.Types.Describe (Tree.Types, CCL.Types.Element_Of (Tree.Types, Kind)).Form =
            CCL.Types.Product
@@ -4372,6 +4794,7 @@ is
             Result.Diagnostic_Position :=
               (if Diagnostic_Position > 0 then Diagnostic_Position
                else To_Diagnostic_Position (Cursor));
+            Result.Diagnostic_Subject := Diagnostic_Subject;
             return;
          end if;
 
@@ -4430,7 +4853,24 @@ is
             when Integer_Type | Boolean_Type =>
                Result.Result_Value := To_VM (Value.Scalar);
             when CCL.Types.Declared_Type =>
-               if CCL.Types.Is_List (Tree.Types, Value.Kind) and then
+               if CCL.Types.Is_Stream (Tree.Types, Value.Kind) then
+                  declare
+                     Element : constant String :=
+                       Type_Source (CCL.Types.Stream_Element (Tree.Types, Value.Kind));
+                  begin
+                     if Value.Scalar.Integer not in 1 .. CCL.Streams.Maximum_Handle or else
+                       Element'Length not in 1 .. MAX_TYPE_TEXT
+                     then
+                        Result.Status := Host_Contract_Unsupported; Result.Has_Value := False;
+                     else
+                        Result.Has_Stream := True;
+                        Result.Stream := CCL.Streams.Handle (Value.Scalar.Integer);
+                        Result.Stream_Element.Length := Element'Length;
+                        Result.Stream_Element.Data (1 .. Element'Length) := Element;
+                        Result.Result_Value := To_VM (Value.Scalar);
+                     end if;
+                  end;
+               elsif CCL.Types.Is_List (Tree.Types, Value.Kind) and then
                  not Compound_Elements (Value.Kind)
                then
                   Export_List (Value, Result);
@@ -4442,6 +4882,7 @@ is
                      Result.Has_Literal := True;
                      Result.Literal_Type := Value.Kind;
                      Result.Literal_Type_Name := CCL.Types.Describe (Tree.Types, Value.Kind).Identifier;
+                     Result.Literal_Shape := CCL.Types.Shapes.Shape_Of (Tree.Types, Value.Kind);
                   else
                      Result.Literal := (others => <>);
                      Result.Status := Host_Contract_Unsupported; Result.Has_Value := False;
@@ -4457,6 +4898,7 @@ is
                      Result.Has_Literal := True;
                      Result.Literal_Type := Value.Kind;
                      Result.Literal_Type_Name := CCL.Types.Describe (Tree.Types, Value.Kind).Identifier;
+                     Result.Literal_Shape := CCL.Types.Shapes.Shape_Of (Tree.Types, Value.Kind);
                   else
                      Result.Literal := (others => <>);
                      Result.Status := Host_Contract_Unsupported; Result.Has_Value := False;
@@ -4538,6 +4980,29 @@ is
       end loop;
    end Admit;
 
+   --  Admit refused an operation before anything ran: name it, and say
+   --  why in the person's terms (docs/ccl-errors.md).
+   procedure Explain_Refusal (Tree : Syntax_Tree; Result : in out Interpretation_Result) is
+   begin
+      for N of Tree.Nodes loop
+         if N.Kind = Host_Import_Form and then N.Source_Position = Result.Diagnostic_Position then
+            Result.Failed_Operation := N.Identifier;
+            exit;
+         end if;
+      end loop;
+      Result.Failure :=
+        (if Result.Status = Host_Authority_Denied then
+            CuBit.Failures.Failed
+              (CuBit.Failures.Not_Granted,
+               "this program's grants do not include it, so nothing was run",
+               "the program's manifest must request the service that provides it, " &
+               "and the system must grant that request")
+         else
+            CuBit.Failures.Failed
+              (CuBit.Failures.Unavailable,
+               "this interpreter cannot carry its arguments or results"));
+   end Explain_Refusal;
+
    procedure Interpret_With_Values
      (Source : String; Fuel : Natural;
       Visible_Interfaces : CCL.Catalog.Interface_Catalog;
@@ -4547,7 +5012,8 @@ is
    is
       Analysis : Analysis_Result;
       Tree : Syntax_Tree;
-      procedure Run is new Process_Source_With_Host (Host_Context, Invoke);
+      procedure Run is new Process_Source_With_Host
+        (Host_Context, Invoke, Read_Stream => Read_Stream);
    begin
       Analyze (Source, Visible_Interfaces, Analysis);
       Result := (Fuel_Remaining => Fuel, others => <>);
@@ -4559,7 +5025,10 @@ is
       end if;
       Tree := Analysis.Tree;
       Admit (Tree, Grants, Allow_Text, Result.Status, Result.Diagnostic_Position);
-      if Result.Status /= Succeeded then return; end if;
+      if Result.Status /= Succeeded then
+         Explain_Refusal (Tree, Result);
+         return;
+      end if;
       Run (Source, Fuel, Visible_Interfaces, Grants, Context, True, False, True, Result, Tree);
    end Interpret_With_Values;
 
@@ -4592,6 +5061,7 @@ is
          Result.Status := (if Analysis.Status = Analysis_Type_Check_Failed then Type_Check_Failed else Parse_Failed);
          Result.Diagnostic := Analysis.Diagnostic;
          Result.Diagnostic_Position := Analysis.Diagnostic_Position;
+         Result.Diagnostic_Subject := Analysis.Diagnostic_Subject;
          return;
       end if;
       Tree := Analysis.Tree;
@@ -4692,6 +5162,7 @@ is
                when others => Analysis_Parse_Failed),
          Diagnostic => Outcome.Diagnostic,
          Diagnostic_Position => Outcome.Diagnostic_Position,
+         Diagnostic_Subject => Outcome.Diagnostic_Subject,
          Tree => Tree, others => <>);
       for Ref in CCL.Types.Type_Reference loop
          Result.Resource_Policies (Ref) := CCL.Catalog.Resource_Policy (Visible_Interfaces, Ref);

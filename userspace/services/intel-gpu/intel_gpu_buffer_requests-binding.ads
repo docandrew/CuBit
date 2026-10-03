@@ -32,6 +32,27 @@ package Intel_GPU_Buffer_Requests.Binding is
       VM_Session, Sender, Stamp : Unsigned_64; Request_Label : Unsigned_32;
       Length, Flags : Unsigned_8; Reserved : Unsigned_16;
       Request : Words; Response : out Words);
+   generic
+      with package Coordinator is new Intel_GPU_VM_Update (<>);
+      Remove : Boolean;
+      with procedure Capture
+        (Backing : Intel_GPU_Buffer_Reply.Backing;
+         GPU, Offset, Bytes, Revision : Unsigned_64; Accepted : out Boolean);
+   procedure Handle_In_Place
+     (Object : Service; Source : in out VM.Image;
+      State : in out Coordinator.State;
+      VM_Session, Sender, Stamp : Unsigned_64; Request_Label : Unsigned_32;
+      Length, Flags : Unsigned_8; Reserved : Unsigned_16;
+      Request : Words; Response : out Words);
+   -- Allocation-free authenticated bind/unbind. Remove selects the operation;
+   -- mismatched requests reject before Capture. Capture stores only validated
+   -- owned backing/range for this serialized transaction; it must not allocate
+   -- or publish. For bind it also checks existing-directory/empty-leaf
+   -- eligibility before execution. Coordinator callbacks edit Source's retained
+   -- tables, invalidate and commit metadata before successful completion.
+   -- No private replacement-table ticket or candidate image is required.
+   -- Capture and callbacks must preserve session/BO lifetime and exclusion.
+   -- Failure after effects or reply loss requires quarantine, never replay.
    -- Serialized transaction handler, not native dispatch enablement. Coordinator
    -- callbacks must use THIS candidate, retain both generations, and complete
    -- drain/publication/invalidation/resume. Success contains the committed epoch.

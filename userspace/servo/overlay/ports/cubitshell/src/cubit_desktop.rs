@@ -9,6 +9,7 @@
 use std::sync::{Once, OnceLock};
 use std::cell::Cell;
 
+static INIT: Once = Once::new();
 static OWNER: OnceLock<std::thread::ThreadId> = OnceLock::new();
 thread_local! { static IN_NATIVE: Cell<bool> = const { Cell::new(false) }; }
 
@@ -39,26 +40,54 @@ pub struct Viewport {
 #[derive(Default)]
 struct Event { kind: u64, a: u64, b: u64 }
 
+#[repr(C)]
+#[derive(Default)]
+pub struct InputStats {
+    pub batch_enabled: u64,
+    pub channel_disabled: u64,
+    pub successful_fetches: u64,
+    pub fetched_events: u64,
+    pub delivered_events: u64,
+    pub fallback_polls: u64,
+    pub cache_rejections: u64,
+}
+const _: () = assert!(std::mem::size_of::<InputStats>() == 56);
+
 unsafe extern "C" {
     fn servo_shell_hostinit();
     fn cubit_servo_stack_check() -> u32;
+    fn cubit_servo_memory_owned() -> u64;
+    fn cubit_servo_config_scope_check() -> u32;
     fn cubit_servo_open() -> u32;
     fn cubit_servo_select_window(id: u32) -> u32;
     fn cubit_servo_window_error();
     fn cubit_servo_metrics(result: *mut Viewport);
+    fn cubit_servo_input_statistics(result: *mut InputStats);
     fn cubit_servo_begin_input();
     fn cubit_servo_poll(result: *mut Event) -> u32;
     fn cubit_servo_location(text: *mut u8, capacity: u32) -> u32;
+    fn cubit_servo_security(text: *const u8, length: u32);
     fn cubit_servo_state(url: *const u8, url_len: u32, title: *const u8, title_len: u32, flags: u32);
     fn cubit_servo_navigation_error();
-    fn cubit_servo_tab_title(index: u32, title: *const u8, length: u32);
-    fn cubit_servo_tab_parked(index: u32);
+    fn cubit_servo_tab_capacity() -> u32;
+    fn cubit_servo_tabs(value: *const crate::tab_model::native::Snapshot) -> u32;
     fn cubit_servo_prepare() -> u32;
     fn cubit_servo_cancel();
-    fn cubit_servo_present(rgba: *const u8, len: u64, width: u32, height: u32) -> u32;
+    fn cubit_servo_present(bgra: *const u8, len: u64, width: u32, height: u32, stride: u32) -> u32;
     fn cubit_servo_pending() -> u32;
     fn cubit_servo_close();
 }
+
+pub fn initialize_native() {
+    INIT.call_once(|| native(|| unsafe { servo_shell_hostinit() }));
+}
+
+pub fn config_scope_check() -> u32 {
+    INIT.call_once(|| native(|| unsafe { servo_shell_hostinit() }));
+    native(|| unsafe { cubit_servo_config_scope_check() })
+}
+
+pub fn memory_owned() -> u64 { native(|| unsafe { cubit_servo_memory_owned() }) }
 
 pub enum Input {
     Move { x: i32, y: i32 },
@@ -66,12 +95,11 @@ pub enum Input {
     Wheel { delta: i32, x: i32, y: i32 },
     Text(char),
     Key { down: bool, scancode: u8, modifiers: u64 },
-    NewWindow, NewTab(usize), SelectTab(usize), CloseTab { index: usize, next: usize },
-    Navigate(String), Back, Forward, Reload, Configure { released: u64, settings_opened: bool }, Consumed, Close, Leave,
+    NewWindow, NewTab, SelectTab(u64), CycleTab(bool), CloseTab(u64),
+    Navigate(String), Back, Forward, Reload, Configure { settings_opened: bool }, Consumed, Close, Leave,
 }
 
 // Rc marker prevents Send/Sync: callbacks and GNAT state are serialized.
-pub const MAX_TABS: usize = 32;
 pub const MAX_WINDOWS: usize = 4;
 
 pub struct Window {
@@ -86,8 +114,18 @@ pub struct Frame<'a> {
 }
 
 impl Frame<'_> {
-    pub fn present(mut self, rgba: &[u8], width: u32, height: u32) -> u32 {
-        let result = self._window.call(|| unsafe { cubit_servo_present(rgba.as_ptr(), rgba.len() as u64, width, height) });
+    /// Copy a prepared SWGL framebuffer synchronously into the native lease.
+    ///
+    /// # Safety
+    /// `bgra` must remain allocated for `len` bytes for this call; each pixel
+    /// must be initialized BGRA in bottom-up rows with the supplied stride.
+    /// It must not alias the native destination. No SWGL operation may mutate
+    /// or resize its storage until this call returns. Row padding is not read.
+    pub unsafe fn present_bgra(mut self, bgra: *const u8, len: u64,
+                              width: u32, height: u32, stride: u32) -> u32 {
+        let result = self._window.call(|| unsafe {
+            cubit_servo_present(bgra, len, width, height, stride)
+        });
         self.finished = true;
         result
     }
@@ -109,7 +147,6 @@ impl Window {
     }
     pub fn window_error(&self) { self.call(|| unsafe { cubit_servo_window_error() }); }
     pub fn open() -> Option<Self> {
-        static INIT: Once = Once::new();
         // Keep the shared font C exports reachable from the Ada archive,
         // while using Servo's one allocator/runtime for their implementation.
         std::hint::black_box(cubit_fonts::cubit_font_glyph as *const ());
@@ -120,6 +157,12 @@ impl Window {
         (id != 0).then(|| Self {
             id, buttons: 0, _main_thread: std::marker::PhantomData,
         })
+    }
+
+    pub fn input_statistics(&self) -> (u32, InputStats) {
+        let mut result = InputStats::default();
+        self.call(|| unsafe { cubit_servo_input_statistics(&mut result) });
+        (self.id, result)
     }
 
     pub fn viewport(&self) -> Viewport {
@@ -142,17 +185,19 @@ impl Window {
 
     pub fn begin_input(&mut self) { self.call(|| unsafe { cubit_servo_begin_input() }) }
 
-    pub fn tab_title(&self, index: usize, title: &str) {
-        let mut end = title.len().min(64);
-        while !title.is_char_boundary(end) { end -= 1; }
-        self.call(|| unsafe { cubit_servo_tab_title(index as u32, title.as_ptr(), end as u32) });
+    pub fn tab_capacity(&self) -> usize {
+        self.call(|| unsafe { cubit_servo_tab_capacity() }) as usize
     }
-    pub fn tab_parked(&self, index: usize) {
-        self.call(|| unsafe { cubit_servo_tab_parked(index as u32) });
+    pub fn tabs(&self, value: &crate::tab_model::native::Snapshot) {
+        assert_eq!(self.call(|| unsafe { cubit_servo_tabs(value) }), 1, "invalid tab projection");
     }
     pub fn navigation_error(&self) { self.call(|| unsafe { cubit_servo_navigation_error() }) }
 
-    pub fn state(&self, url: &str, title: &str, loading: bool, back: bool, forward: bool) {
+    pub fn security(&self, text: &str) {
+        self.call(|| unsafe { cubit_servo_security(text.as_ptr(), text.len().min(12288) as u32) });
+    }
+
+    pub fn state(&self, url: &str, title: &str, loading: bool, back: bool, forward: bool, marks: u32, seconds: u32) {
         fn bounded(s: &str, max: usize) -> &str {
             let mut end = s.len().min(max);
             while !s.is_char_boundary(end) { end -= 1; }
@@ -163,7 +208,8 @@ impl Window {
         // address as an editable, apparently complete navigation target.
         self.call(|| unsafe { cubit_servo_state(url.as_ptr(), url.len().min(1025) as u32,
             title.as_ptr(), title.len() as u32,
-            u32::from(loading) | u32::from(back) << 1 | u32::from(forward) << 2) });
+            u32::from(loading) | u32::from(back) << 1 | u32::from(forward) << 2 |
+            (marks & 15) << 3 | seconds.min(0x00ff_ffff) << 8) });
     }
 
     /// Exactly one Desktop poll. Consumed chrome events are returned too, so
@@ -194,17 +240,16 @@ impl Window {
             18 => Input::Forward,
             19 => Input::Reload,
             20 | 28 => {
-                let released = self.buttons;
                 self.buttons = 0;
-                Input::Configure { released, settings_opened: event.kind == 28 }
+                Input::Configure { settings_opened: event.kind == 28 }
             },
             21 => Input::Close,
             27 => Input::NewWindow,
             23 => Input::Leave,
-            24 if (1..=MAX_TABS as u64).contains(&event.a) => Input::NewTab(event.a as usize),
-            25 if (1..=MAX_TABS as u64).contains(&event.a) => Input::SelectTab(event.a as usize),
-            26 if (1..=MAX_TABS as u64).contains(&event.a) && event.b <= MAX_TABS as u64 =>
-                Input::CloseTab { index: event.a as usize, next: event.b as usize },
+            24 => Input::NewTab,
+            25 if event.a != 0 => Input::SelectTab(event.a),
+            26 if event.a != 0 => Input::CloseTab(event.a),
+            29 => Input::CycleTab(event.a != 0),
             _ => Input::Consumed,
         })
     }

@@ -14,6 +14,7 @@ with XHCI;
 with XHCI_Capabilities;
 with Optical_Service;
 with USB_Keyboards;
+with Input_Pending;
 
 procedure main is
    use ASCII;
@@ -27,7 +28,7 @@ procedure main is
    msg    : Message;
    initResult : XHCI.Init_Result;
    ignore : Unsigned_64;
-   mouseConsumer : Unsigned_64;
+   mouseConsumer : Unsigned_64 := 0;
    buttons : Unsigned_8;
    deltaX  : Integer;
    deltaY  : Integer;
@@ -40,11 +41,11 @@ procedure main is
    interruptEnabled : Boolean := False;
    interruptDriven : Boolean := False;
    lastButtons : Unsigned_8 := 0;
-   pointerSequence : Source_Sequence := 0;
-   pointerResyncPending : Boolean := False;
+   pointerPending : Input_Pending.Queue;
+   pointerOverflowReported : Boolean := False;
+   pointerNeedsSnapshot : Boolean := True;
    packed : Unsigned_64;
-   accepted : Boolean;
-   inputReport : Source_Report;
+   pointerLost : Boolean;
    diagnostics : XHCI.Boot_Mouse_Diagnostics;
    diagnosticsStartMs : Unsigned_64 := 0;
    diagnosticsCountdown : Natural := 64;
@@ -59,6 +60,36 @@ procedure main is
    keyboardSequence : Source_Sequence := 0;
    keyboardResync : Boolean := False;
    use type USB_Keyboards.Decode_Result;
+
+   procedure Refresh_Pointer_Consumer is
+      previous : constant Unsigned_64 := mouseConsumer;
+   begin
+      mouseConsumer := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_MOUSE);
+      if previous /= mouseConsumer then
+         Input_Pending.Reset (pointerPending);
+         pointerNeedsSnapshot := True;
+      end if;
+   end Refresh_Pointer_Consumer;
+
+   procedure Flush_Pointer is
+      pending : Input_Pending.Item;
+      report : Source_Report;
+   begin
+      for Attempt in 1 .. Input_Pending.Capacity loop
+         exit when mouseConsumer = 0 or else
+           Input_Pending.Count (pointerPending) = 0;
+         pending := Input_Pending.Element (pointerPending, 0);
+         report :=
+           (sourceAuthorityTag => 0, sequence => pending.Sequence,
+            generation => 1, device => RELATIVE_POINTER,
+            delivery => ACCUMULABLE_DISPLACEMENT,
+            flags => [RESYNCHRONIZE => pending.Recover],
+            payload => pending.Payload,
+            snapshot => Pointer_Snapshot (pending.Payload, pending.Observed_Ms));
+         exit when not trySendEvent (mouseConsumer, Encode (report));
+         Input_Pending.Acknowledge (pointerPending);
+      end loop;
+   end Flush_Pointer;
 
    procedure Send_Key (Usage : Unsigned_8; Released : Boolean) is
       -- HID usage to existing desktop set-1 boundary; bit 8 means E0 prefix.
@@ -355,11 +386,14 @@ begin
       end if;
       XHCI.Poll_Boot_Mouse
         (buttons, deltaX, deltaY, deltaZ, reportReady, eventAvailable);
+      if reportReady or else Input_Pending.Count (pointerPending) > 0 then
+         Refresh_Pointer_Consumer;
+         Flush_Pointer;
+      end if;
       if reportReady then
-         mouseConsumer := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_MOUSE);
          if mouseConsumer /= 0 and then
             (deltaX /= 0 or else deltaY /= 0 or else deltaZ /= 0 or else
-             buttons /= lastButtons)
+             buttons /= lastButtons or else pointerNeedsSnapshot)
          then
             --  The desktop's existing event ABI uses PS/2 Y orientation
             --  (positive upward); USB HID uses positive downward.
@@ -367,19 +401,13 @@ begin
               Shift_Left (Pack_Signed_12 (deltaX), 8) or
               Shift_Left (Pack_Signed_12 (-deltaY), 20) or
               Shift_Left (Unsigned_64 (deltaZ mod 256), 32);
-            pointerSequence := Next_Sequence (pointerSequence);
-            inputReport :=
-              (sourceAuthorityTag => 0,
-               sequence    => pointerSequence,
-               generation  => 1,
-               device      => RELATIVE_POINTER,
-               delivery    => ACCUMULABLE_DISPLACEMENT,
-               flags       => [RESYNCHRONIZE => pointerResyncPending],
-               payload     => packed,
-               snapshot    => Unsigned_64 (buttons));
-            accepted := trySendEvent
-              (mouseConsumer, Encode (inputReport));
-            pointerResyncPending := not accepted;
+            Input_Pending.Append (pointerPending, packed, pointerLost, syscall (SYSCALL_GETTIME));
+            if pointerLost and then not pointerOverflowReported then
+               Boot_Log.Write ("xhci: pointer retention overflow; resynchronizing" & LF);
+               pointerOverflowReported := True;
+            end if;
+            Flush_Pointer;
+            pointerNeedsSnapshot := False;
             lastButtons := buttons;
          end if;
       end if;
@@ -392,15 +420,24 @@ begin
          not irqAvailable
       then
          if interruptDriven then
-            --  Wake for either a storage request or an IRQ, with a bounded
-            --  timeout for the outstanding USB command. Never poll on a timer.
+            -- IRQ/storage/log deadlines remain authoritative. Retained input
+            -- adds a retry deadline only while publication is backpressured.
             declare
                D : Unsigned_64 := XHCI.Optical_Deadline;
             begin
                if Boot_Log.Deadline /= 0 and then (D = 0 or else Boot_Log.Deadline < D) then
                   D := Boot_Log.Deadline;
                end if;
+               if Input_Pending.Count (pointerPending) > 0 then
+                  D := Input_Pending.Wake_Deadline
+                    (pointerPending, syscall (SYSCALL_GETTIME), D);
+               end if;
                activity := Wait_For_Activity_Until (D);
+               if activity = Unavailable and then
+                  Input_Pending.Count (pointerPending) > 0
+               then
+                  ignore := syscall (SYSCALL_SLEEP, 1);
+               end if;
             end;
          else
             ignore := syscall (SYSCALL_SLEEP, 1);

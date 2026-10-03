@@ -14,11 +14,12 @@ package body Intel_GPU_Diagnostics is
    Summary_Due : Boolean := False;
    Grant_Token : constant Unsigned_64 := 16#4947_0001#;
    Publish_Token : constant Unsigned_64 := 16#4947_0002#;
-   procedure Capture (Text : String) is
+   procedure Capture (Text : String;
+     Level : CuBit.Log_Records.Severity := CuBit.Log_Records.Information) is
    begin
       debugPrint (Text & ASCII.LF);
       if Text'Length in 1 .. 512 then
-         Buffering.Append (Buffer, Text);
+         Buffering.Append (Buffer, Text, Level);
          Summary_Due := True;
       end if;
    end Capture;
@@ -42,9 +43,12 @@ package body Intel_GPU_Diagnostics is
       if not Found and then not Summary_Due then return; end if;
       declare
          Record_Value : constant CuBit.Log_Records.Decoded := CuBit.Log_Records.Make
-           (if Found then Value.Text (1 .. Value.Length) else
+           ((if Found then Value.Text (1 .. Value.Length) else
             "intel-gpu: diagnostic capture overflow" & Unsigned_64'Image (Buffering.Lost (Buffer)) &
-            " publication losses" & Unsigned_64'Image (CuBit.Logging.Dropped (Writer)));
+            " publication losses" & Unsigned_64'Image (CuBit.Logging.Dropped (Writer))),
+            (if Found then Value.Level
+             elsif Buffering.Lost (Buffer) /= 0 or else CuBit.Logging.Dropped (Writer) /= 0
+             then CuBit.Log_Records.Warning else CuBit.Log_Records.Debug));
       begin
          if not Found then Summary_Due := False; end if;
          if not Record_Value.Success then return; end if;
@@ -72,7 +76,7 @@ package body Intel_GPU_Diagnostics is
                 (Receipt.status = COMPLETION_OK, CuBit.Logging.Pending (Writer),
                  Unsigned_64 (Receipt.msg.tag.label), Unsigned_64 (Receipt.msg.tag.length),
                  Unsigned_64 (Receipt.msg.tag.flags), Unsigned_64 (Receipt.msg.tag.reserved),
-                 Receipt.msg.words = [0, 0, 0, 0])
+                 Receipt.msg.words (0), Receipt.msg.words (1 .. 3) = [0, 0, 0])
             then Phase := Ready;
             else Phase := Stopped; end if;
          else

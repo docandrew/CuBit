@@ -1,7 +1,8 @@
 package body Compositor_Pool with SPARK_Mode is
    function Open (New_Epoch : Live_ID) return State is
      ((Generation => New_Epoch, others => <>));
-   procedure Acquire (S : in out State; T : out Ticket) is
+   procedure Acquire
+     (S : in out State; T : out Ticket; Replace_Ready : Boolean := False) is
       B : Live_Slot;
    begin
       T := None;
@@ -13,6 +14,9 @@ package body Compositor_Pool with SPARK_Mode is
       if Free (S, 1) then B := 1;
       elsif Free (S, 2) then B := 2;
       elsif Free (S, 3) then B := 3;
+      elsif Replace_Ready and S.R /= None then
+         B := S.R.Buffer;
+         S.R := None;
       else return;
       end if;
       S.Sequence := S.Sequence + 1;
@@ -34,6 +38,12 @@ package body Compositor_Pool with SPARK_Mode is
       else S.Failed := True;
       end if;
    end Finish_Render;
+   procedure Discard_Ready (S : in out State; T : Ticket) is
+   begin
+      if not S.Failed and T /= None and T = S.R then S.R := None;
+      else S.Failed := True;
+      end if;
+   end Discard_Ready;
    procedure Present (S : in out State; T : out Ticket) is
    begin
       T := None;

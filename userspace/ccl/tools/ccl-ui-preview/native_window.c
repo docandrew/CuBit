@@ -1,4 +1,4 @@
-/* HOSTED/LINUX Workbench adapter only.  CuBit presents the same shared canvas
+/* HOSTED/LINUX CCL desktop adapter only.  CuBit presents the same shared canvas
  * through display-service IPC and does not link SDL. */
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
@@ -20,6 +20,51 @@ struct ccl_window {
     int canvas_height;
     SDL_Cursor *cursors[5];
     int pointer_cursor;
+};
+
+/* CCL_Desktop_Platform.Window_Event: the same names and values. */
+enum ccl_event {
+    CCL_EVENT_NO_EVENT = 0,
+    CCL_EVENT_CLOSE_REQUEST = 1,
+    CCL_EVENT_TEXT_INPUT = 2,
+    CCL_EVENT_BACKSPACE = 3,
+    CCL_EVENT_ENTER = 4,
+    CCL_EVENT_LEFT = 5,
+    CCL_EVENT_RIGHT = 6,
+    CCL_EVENT_HOME = 7,
+    CCL_EVENT_END_KEY = 8,
+    CCL_EVENT_DELETE = 9,
+    CCL_EVENT_SELECT_ALL = 10,
+    CCL_EVENT_POINTER_DOWN = 11,
+    CCL_EVENT_POINTER_DRAG = 12,
+    CCL_EVENT_POINTER_UP = 13,
+    CCL_EVENT_DOUBLE_CLICK = 14,
+    CCL_EVENT_TRIPLE_CLICK = 15,
+    CCL_EVENT_UP = 16,
+    CCL_EVENT_DOWN = 17,
+    CCL_EVENT_WHEEL_UP = 18,
+    CCL_EVENT_WHEEL_DOWN = 19,
+    CCL_EVENT_PAGE_UP = 20,
+    CCL_EVENT_PAGE_DOWN = 21,
+    CCL_EVENT_ESCAPE = 22,
+    CCL_EVENT_UNDO = 23,
+    CCL_EVENT_REDO = 24,
+    CCL_EVENT_RUN_SOURCE = 25,
+    CCL_EVENT_POINTER_HOVER = 26,
+    CCL_EVENT_WHEEL_LEFT = 27,
+    CCL_EVENT_WHEEL_RIGHT = 28,
+    CCL_EVENT_MATCH_PARENTHESIS = 29,
+    CCL_EVENT_SELECT_TO_PARENTHESIS = 30,
+    CCL_EVENT_ADD_NEXT_OCCURRENCE = 31,
+    CCL_EVENT_OPEN_FIND = 32,
+    CCL_EVENT_FIND_NEXT = 33,
+    CCL_EVENT_OPEN_SOURCE = 34,
+    CCL_EVENT_SAVE_SOURCE = 35,
+    CCL_EVENT_TAB = 36,
+    CCL_EVENT_TOGGLE_REPL = 37,
+    CCL_EVENT_TOGGLE_WATCH = 38,
+    CCL_EVENT_COMPLETE_OPERATION = 39,
+    CCL_EVENT_TOGGLE_SYNTAX = 40
 };
 
 enum {
@@ -50,6 +95,19 @@ static unsigned int ccl_count_click(struct ccl_window *state, int x, int y)
     return state->click_count;
 }
 
+/* The application's window title, from CCL_Desktop_Platform.Activate. */
+static char ccl_window_title[96] = "CCL - Linux preview";
+
+void ccl_window_set_title(const char *title, int length)
+{
+    static const char suffix[] = " - Linux preview";
+    int limit = (int)sizeof(ccl_window_title) - (int)sizeof(suffix);
+    if (length < 0) length = 0;
+    if (length > limit) length = limit;
+    SDL_memcpy(ccl_window_title, title, (size_t)length);
+    SDL_memcpy(ccl_window_title + length, suffix, sizeof(suffix));
+}
+
 void *ccl_window_open(int width, int height)
 {
     struct ccl_window *state = NULL;
@@ -71,7 +129,7 @@ void *ccl_window_open(int width, int height)
     }
     have_display_bounds = SDL_GetDisplayUsableBounds(0, &display_bounds) == 0;
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
-    state->window = SDL_CreateWindow("CCL Workbench - Linux preview",
+    state->window = SDL_CreateWindow(ccl_window_title,
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width,
         window_height, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     if (state->window == NULL) goto fail;
@@ -194,27 +252,24 @@ int ccl_window_prepare_frame(void *handle, int minimum_width,
     return 0;
 }
 
-/* Event kinds include 23 undo, 24 redo, 25 run source, 29 matching
- * parenthesis, 30 select through matching parenthesis, and 31 add the next
- * occurrence to the editor selection, 32 open find, and 33 find next. */
 int ccl_window_poll(void *handle, int *kind, unsigned int *character,
                     unsigned int *modifiers, int *x, int *y)
 {
     SDL_Event event;
     struct ccl_window *state = handle;
     SDL_Keymod mods;
-    if (state->frames_left == 0) { *kind = 1; return 1; }
+    if (state->frames_left == 0) { *kind = CCL_EVENT_CLOSE_REQUEST; return 1; }
     while (SDL_PollEvent(&event) != 0) {
         if (event.type == SDL_QUIT) {
             if (state->debug_input)
                 fprintf(stderr, "close event type=%u\n", event.type);
-            *kind = 1; return 1;
+            *kind = CCL_EVENT_CLOSE_REQUEST; return 1;
         }
         if (event.type == SDL_TEXTINPUT && (unsigned char)event.text.text[0] < 128) {
             if (state->debug_input)
                 fprintf(stderr, "text input byte=%u ('%c')\n",
                         (unsigned char)event.text.text[0], event.text.text[0]);
-            *kind = 2; *character = (unsigned char)event.text.text[0];
+            *kind = CCL_EVENT_TEXT_INPUT; *character = (unsigned char)event.text.text[0];
             *modifiers = 0; return 1;
         }
         if (event.type == SDL_MOUSEBUTTONDOWN &&
@@ -231,11 +286,11 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
                          ((mods & KMOD_CTRL) != 0 ? 2u : 0u) |
                          ((mods & KMOD_ALT) != 0 ? 4u : 0u);
             if (click_count == 3)
-                *kind = 15;
+                *kind = CCL_EVENT_TRIPLE_CLICK;
             else if (click_count == 2)
-                *kind = 14;
+                *kind = CCL_EVENT_DOUBLE_CLICK;
             else
-                *kind = 11;
+                *kind = CCL_EVENT_POINTER_DOWN;
             return 1;
         }
         if (event.type == SDL_MOUSEMOTION) {
@@ -243,7 +298,7 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
             if (state->debug_input)
                 fprintf(stderr, "mouse motion window=%d,%d logical=%d,%d\n",
                         event.motion.x, event.motion.y, *x, *y);
-            *kind = (event.motion.state & SDL_BUTTON_LMASK) != 0 ? 12 : 26;
+            *kind = (event.motion.state & SDL_BUTTON_LMASK) != 0 ? CCL_EVENT_POINTER_DRAG : CCL_EVENT_POINTER_HOVER;
             return 1;
         }
         if (event.type == SDL_MOUSEBUTTONUP &&
@@ -252,7 +307,7 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
             if (state->debug_input)
                 fprintf(stderr, "mouse up window=%d,%d logical=%d,%d\n",
                         event.button.x, event.button.y, *x, *y);
-            *kind = 13; return 1;
+            *kind = CCL_EVENT_POINTER_UP; return 1;
         }
         if (event.type == SDL_MOUSEWHEEL) {
             mods = SDL_GetModState();
@@ -261,11 +316,11 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
                          ((mods & KMOD_ALT) != 0 ? 4u : 0u);
             if (event.wheel.x != 0 || (*modifiers & 1u) != 0) {
                 if (event.wheel.x != 0)
-                    *kind = event.wheel.x > 0 ? 28 : 27;
+                    *kind = event.wheel.x > 0 ? CCL_EVENT_WHEEL_RIGHT : CCL_EVENT_WHEEL_LEFT;
                 else
-                    *kind = event.wheel.y > 0 ? 27 : 28;
+                    *kind = event.wheel.y > 0 ? CCL_EVENT_WHEEL_LEFT : CCL_EVENT_WHEEL_RIGHT;
             } else {
-                *kind = event.wheel.y > 0 ? 18 : 19;
+                *kind = event.wheel.y > 0 ? CCL_EVENT_WHEEL_UP : CCL_EVENT_WHEEL_DOWN;
             }
             return 1;
         }
@@ -279,61 +334,60 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
                      ((mods & KMOD_CTRL) != 0 ? 2u : 0u) |
                      ((mods & KMOD_ALT) != 0 ? 4u : 0u);
         if (event.key.keysym.sym == SDLK_z && (*modifiers & 2u) != 0) {
-            *kind = (*modifiers & 1u) != 0 ? 24 : 23; return 1;
+            *kind = (*modifiers & 1u) != 0 ? CCL_EVENT_REDO : CCL_EVENT_UNDO; return 1;
         }
         if (event.key.keysym.sym == SDLK_y && (*modifiers & 2u) != 0) {
-            *kind = 24; return 1;
+            *kind = CCL_EVENT_REDO; return 1;
         }
         if (event.key.keysym.sym == SDLK_d && (*modifiers & 2u) != 0) {
-            *kind = 31; return 1;
+            *kind = CCL_EVENT_ADD_NEXT_OCCURRENCE; return 1;
         }
         if (event.key.keysym.sym == SDLK_f && (*modifiers & 2u) != 0) {
-            *kind = 32; return 1;
+            *kind = CCL_EVENT_OPEN_FIND; return 1;
         }
-        if (event.key.keysym.sym == SDLK_F3) { *kind = 33; return 1; }
-        /* Shared CCL_Workbench_Platform event numbers. */
+        if (event.key.keysym.sym == SDLK_F3) { *kind = CCL_EVENT_FIND_NEXT; return 1; }
         if (event.key.keysym.sym == SDLK_SPACE && (*modifiers & 2u) != 0) {
-            *kind = 39; return 1;
+            *kind = CCL_EVENT_COMPLETE_OPERATION; return 1;
         }
-        if (event.key.keysym.sym == SDLK_TAB) { *kind = 36; return 1; }
-        if (event.key.keysym.sym == SDLK_F6) { *kind = 37; return 1; }
-        if (event.key.keysym.sym == SDLK_F7) { *kind = 38; return 1; }
-        if (event.key.keysym.sym == SDLK_F8) { *kind = 40; return 1; }
+        if (event.key.keysym.sym == SDLK_TAB) { *kind = CCL_EVENT_TAB; return 1; }
+        if (event.key.keysym.sym == SDLK_F6) { *kind = CCL_EVENT_TOGGLE_REPL; return 1; }
+        if (event.key.keysym.sym == SDLK_F7) { *kind = CCL_EVENT_TOGGLE_WATCH; return 1; }
+        if (event.key.keysym.sym == SDLK_F8) { *kind = CCL_EVENT_TOGGLE_SYNTAX; return 1; }
         if (event.key.keysym.sym == SDLK_o && (*modifiers & 2u) != 0) {
-            *kind = 34; return 1;
+            *kind = CCL_EVENT_OPEN_SOURCE; return 1;
         }
         if (event.key.keysym.sym == SDLK_s && (*modifiers & 2u) != 0) {
-            *kind = 35; return 1;
+            *kind = CCL_EVENT_SAVE_SOURCE; return 1;
         }
         if (event.key.keysym.sym == SDLK_F5 ||
             ((event.key.keysym.sym == SDLK_RETURN ||
               event.key.keysym.sym == SDLK_KP_ENTER) &&
              (*modifiers & 2u) != 0)) {
-            *kind = 25; return 1;
+            *kind = CCL_EVENT_RUN_SOURCE; return 1;
         }
         if (event.key.keysym.sym == SDLK_RIGHTBRACKET &&
             (*modifiers & 2u) != 0) {
-            *kind = (*modifiers & 1u) != 0 ? 30 : 29; return 1;
+            *kind = (*modifiers & 1u) != 0 ? CCL_EVENT_SELECT_TO_PARENTHESIS : CCL_EVENT_MATCH_PARENTHESIS; return 1;
         }
         if (event.key.keysym.sym == SDLK_BACKSLASH &&
             (*modifiers & 3u) == 3u) {
-            *kind = 29; return 1;
+            *kind = CCL_EVENT_MATCH_PARENTHESIS; return 1;
         }
-        if (event.key.keysym.sym == SDLK_ESCAPE) { *kind = 22; return 1; }
-        if (event.key.keysym.sym == SDLK_BACKSPACE) { *kind = 3; return 1; }
+        if (event.key.keysym.sym == SDLK_ESCAPE) { *kind = CCL_EVENT_ESCAPE; return 1; }
+        if (event.key.keysym.sym == SDLK_BACKSPACE) { *kind = CCL_EVENT_BACKSPACE; return 1; }
         if (event.key.keysym.sym == SDLK_RETURN ||
-            event.key.keysym.sym == SDLK_KP_ENTER) { *kind = 4; return 1; }
-        if (event.key.keysym.sym == SDLK_LEFT) { *kind = 5; return 1; }
-        if (event.key.keysym.sym == SDLK_RIGHT) { *kind = 6; return 1; }
-        if (event.key.keysym.sym == SDLK_HOME) { *kind = 7; return 1; }
-        if (event.key.keysym.sym == SDLK_END) { *kind = 8; return 1; }
-        if (event.key.keysym.sym == SDLK_DELETE) { *kind = 9; return 1; }
-        if (event.key.keysym.sym == SDLK_UP) { *kind = 16; return 1; }
-        if (event.key.keysym.sym == SDLK_DOWN) { *kind = 17; return 1; }
-        if (event.key.keysym.sym == SDLK_PAGEUP) { *kind = 20; return 1; }
-        if (event.key.keysym.sym == SDLK_PAGEDOWN) { *kind = 21; return 1; }
+            event.key.keysym.sym == SDLK_KP_ENTER) { *kind = CCL_EVENT_ENTER; return 1; }
+        if (event.key.keysym.sym == SDLK_LEFT) { *kind = CCL_EVENT_LEFT; return 1; }
+        if (event.key.keysym.sym == SDLK_RIGHT) { *kind = CCL_EVENT_RIGHT; return 1; }
+        if (event.key.keysym.sym == SDLK_HOME) { *kind = CCL_EVENT_HOME; return 1; }
+        if (event.key.keysym.sym == SDLK_END) { *kind = CCL_EVENT_END_KEY; return 1; }
+        if (event.key.keysym.sym == SDLK_DELETE) { *kind = CCL_EVENT_DELETE; return 1; }
+        if (event.key.keysym.sym == SDLK_UP) { *kind = CCL_EVENT_UP; return 1; }
+        if (event.key.keysym.sym == SDLK_DOWN) { *kind = CCL_EVENT_DOWN; return 1; }
+        if (event.key.keysym.sym == SDLK_PAGEUP) { *kind = CCL_EVENT_PAGE_UP; return 1; }
+        if (event.key.keysym.sym == SDLK_PAGEDOWN) { *kind = CCL_EVENT_PAGE_DOWN; return 1; }
         if (event.key.keysym.sym == SDLK_a && (*modifiers & 2u) != 0) {
-            *kind = 10; return 1;
+            *kind = CCL_EVENT_SELECT_ALL; return 1;
         }
     }
     return 0;
@@ -357,7 +411,7 @@ int ccl_window_present(void *handle, const uint32_t *pixels, int pitch,
     if (SDL_UpdateTexture(state->texture, &damage, source, pitch) != 0 ||
         SDL_RenderClear(state->renderer) != 0 ||
         SDL_RenderCopy(state->renderer, state->texture, NULL, NULL) != 0) {
-        fprintf(stderr, "CCL Workbench presentation failed: %s\n", SDL_GetError());
+        fprintf(stderr, "CCL presentation failed: %s\n", SDL_GetError());
         return 1;
     }
     if (state->screenshot_path != NULL) {
@@ -438,6 +492,18 @@ uint64_t ccl_window_clock_monotonic(int *success)
 }
 
 int ccl_window_has_system_chrome(void) { return 0; }
+
+/* console.title: the window's title, as the console sets it. */
+void ccl_window_retitle(void *handle, const char *text, int length)
+{
+    struct ccl_window *state = handle;
+    char title[96];
+    if (state == NULL || text == NULL || length <= 0) return;
+    if (length > (int)sizeof(title) - 1) length = (int)sizeof(title) - 1;
+    SDL_memcpy(title, text, (size_t)length);
+    title[length] = '\0';
+    SDL_SetWindowTitle(state->window, title);
+}
 
 void ccl_window_close(void *handle)
 {

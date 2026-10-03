@@ -1,6 +1,6 @@
 project Storage is
    for Source_Dirs use (".", "../../userspace/lib/compositor");
-   for Source_Files use ("storage_tests.adb", "storage_model.ads", "compositor_storage.ads", "compositor_storage.adb");
+   for Source_Files use ("storage_tests.adb", "storage_gpu_model.ads", "storage_model.ads", "compositor_storage.ads", "compositor_storage.adb");
    for Object_Dir use "build/storage/obj";
    for Exec_Dir use "build/storage";
    for Main use ("storage_tests.adb");

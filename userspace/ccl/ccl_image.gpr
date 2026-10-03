@@ -1,3 +1,4 @@
+with "cubit_shared.gpr";
 project CCL_Image is
    for Languages use ("Ada");
    for Source_Dirs use ("src", "tools/ccl-image");

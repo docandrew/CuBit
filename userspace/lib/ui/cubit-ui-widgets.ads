@@ -145,7 +145,7 @@ package CuBit.UI.Widgets is
        retainedInput : Boolean := False;
        quiet : Boolean := False);
 
-   type Navigation_Icon is (Navigate_Back, Navigate_Forward);
+   type Navigation_Icon is (Navigate_Back, Navigate_Forward, Navigate_Reload);
    procedure Navigation_Button
       (c : CuBit.UI.Canvas;
        st : in out CuBit.UI.State.UI_State;

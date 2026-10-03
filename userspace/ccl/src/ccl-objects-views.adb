@@ -80,7 +80,9 @@ package body CCL.Objects.Views with SPARK_Mode is
                when Declared_Type =>
                   D := Types.Describe (Contract.Types, Next.Kind);
                   case D.Form is
-                     when Primitive | Resource | Callable | Bounded => return;
+                     --  A range is one Integer cell (Validate checked its bounds).
+                     when Bounded => null;
+                     when Primitive | Resource | Callable | Stream => return;
                      when Sequence =>
                         --  Validate bounded the count by the cells left.
                         if D.Count /= 1 or else Object.Value.Cells (Seen).First > Unsigned_64 (Maximum_Cells) then
@@ -184,7 +186,8 @@ package body CCL.Objects.Views with SPARK_Mode is
      (if Is_Valid (Object, Position) then Object.Entries (Position.Position).Choice else 0);
    function Scalar (Object : Snapshot; Position : Cursor) return Cell is
      (if Is_Valid (Object, Position) and then
-        Type_Of (Object, Position) in Integer_Type | Boolean_Type | Character_Type | Unit_Type
+        (Type_Of (Object, Position) in Integer_Type | Boolean_Type | Character_Type | Unit_Type or else
+         Types.Is_Range (Object.Contract.Types, Type_Of (Object, Position)))
       then Object.Value.Cells (Position.Position) else Unit_Cell);
    procedure Append_Value
      (Object : Snapshot; Position : Cursor; Value : in out Image;

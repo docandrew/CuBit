@@ -3,7 +3,7 @@ project Settings_Renderer is
    for Source_Dirs use (".", "../../userspace/services/desktop",
      "../../userspace/lib/ui", "../../userspace/lib/theme", "../../userspace/lib/display",
      "../../userspace/ccl/tools/ccl-ui-preview/host", "../../userspace/lib/compositor", "../../userspace/allocator/src");
-   for Source_Files use ("renderer_tests.adb", "wallpaper_trap.adb", "desktop_wallpaper.ads",
+   for Source_Files use ("renderer_tests.adb", "wallpaper_trap.adb", "compositor_image_sampling.ads", "compositor_image_sampling.adb", "desktop_backdrop_style.ads", "desktop_wallpaper.ads",
      "desktop_settings.ads", "desktop_settings.adb", "cubit.ads", "cubit-ui.ads", "cubit-ui.adb",
      "font8x16.ads", "cubit-fonts.ads", "cubit-fonts.adb", "cubit-theme.ads",
      "cubit-appearance.ads", "cubit-appearance.adb", "cubit-display_geometry.ads",

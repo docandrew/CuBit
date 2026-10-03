@@ -3,7 +3,10 @@ with CCL.Catalog; use CCL.Catalog;
 with CCL.Catalog.Completion; use CCL.Catalog.Completion;
 with CCL.Interfaces.Clock;
 with CCL.VM;
+with CCL.Language;
 with CCL.Call_Context;
+with CCL.Completions;
+with CCL.Hints;
 with Interfaces; use Interfaces;
 
 procedure Main is
@@ -117,5 +120,34 @@ begin
          pragma Assert (Matches.Items (I).Length = Maximum_Qualified_Name);
       end loop;
    end loop;
+   --  The language's own words describe themselves like host operations:
+   --  while their arguments are typed and once their name is finished.
+   declare
+      use type CCL.Completions.Origin;
+      Fresh : Interface_Catalog;
+      Hinted : CCL.Completions.Result;
+      function Shown return String is
+        (CCL.Completions.Describe (Hinted.Signature, Hinted.Signature_Origin));
+   begin
+      Initialize (Fresh);
+      CCL.Interfaces.Clock.Publish (Fresh, Error);
+      pragma Assert (Error = Catalog_Valid);
+      CCL.Completions.Complete (Fresh, "(each ", ' ', Hinted);
+      pragma Assert (Hinted.Signature_Visible and then Hinted.Signature_Origin /= CCL.Completions.Host_Operation);
+      pragma Assert (Shown = CCL.Hints.Hint ("each") and then Shown (1 .. 11) = "(each f xs)");
+      CCL.Completions.Complete (Fresh, "(sort-by", ' ', Hinted);
+      pragma Assert (Hinted.Signature_Visible and then Shown = CCL.Hints.Hint ("sort-by"));
+      CCL.Completions.Complete (Fresh, "(let ((x 1)) (window ", ' ', Hinted);
+      pragma Assert (Hinted.Signature_Visible and then Shown = CCL.Hints.Hint ("window"));
+      CCL.Completions.Complete (Fresh, "(clock.monotonic-ms ", ' ', Hinted);
+      pragma Assert (Hinted.Signature_Visible and then Hinted.Signature_Origin = CCL.Completions.Host_Operation);
+      pragma Assert (Shown = CCL.Completions.Signature_Image (Hinted.Signature));
+      --  Every built-in has a hint.
+      for Operation in CCL.Language.Builtin_Operation range
+        CCL.Language.Builtin_Operation'Succ (CCL.Language.No_Builtin) .. CCL.Language.Builtin_Operation'Last
+      loop
+         pragma Assert (CCL.Hints.Hint (CCL.Language.Builtin_Name (Operation))'Length > 0);
+      end loop;
+   end;
    Put_Line ("PASS: bounded catalog completion, exact contracts, isolation, full capacity");
 end Main;

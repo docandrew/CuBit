@@ -7,9 +7,19 @@ generic
      (Sender, Stamp : Unsigned_64; Slot : out CuBit.Messages.CapabilitySlot;
       Identity : out Unsigned_64);
 package Intel_GPU_Buffer_Requests.Sharing is
-   Capacity : constant := 64;
+   Initial_Capacity : constant := 64;
    subtype Mapping_ID is Unsigned_32;
    type Mapping_Table is limited private;
+   function Record_Capacity (Table : Mapping_Table) return Positive;
+   function Needs_Growth (Table : Mapping_Table) return Boolean;
+   -- Trusted, retained CPU metadata, disjoint from the table, BO backing and
+   -- every other registry. Stable base and committed prefix; at most64KiB
+   -- added per call. Initializes only new typed entries, never moves live
+   -- limited grant/pin tokens. Caller must serialize mutation and retain the
+   -- entire mapping for the table lifetime. Not a client-provided address.
+   procedure Extend_Storage
+     (Table : in out Mapping_Table; Base, Bytes : Unsigned_64;
+      Accepted : out Boolean);
    Map_Label : constant Unsigned_32 := 16#0A23#;
    Map_Read : constant Unsigned_64 := 0;
    Map_Write : constant Unsigned_64 := 1;
@@ -25,7 +35,7 @@ package Intel_GPU_Buffer_Requests.Sharing is
    -- A nonzero Created is a dispatcher cleanup ticket: if reply delivery
    -- fails, call Reject_Delivery even though the app never saw the mapping ID.
    procedure Handle
-     (Object : Service; Table : in out Mapping_Table;
+     (Object : in out Service; Table : in out Mapping_Table;
       Sender, Stamp : Unsigned_64; Request_Label : Unsigned_32;
       Length, Flags : Unsigned_8; Reserved : Unsigned_16;
       Request : Words; Response : out Words; Created : out Mapping_ID);
@@ -33,21 +43,21 @@ package Intel_GPU_Buffer_Requests.Sharing is
    -- retired view slots may be recycled under a fresh ID; uncertain/live views
    -- remain retained. Exhaustion fails without granting more.
    procedure Map
-     (Object : Service; Table : in out Mapping_Table;
+     (Object : in out Service; Table : in out Mapping_Table;
       Sender, Stamp, ID, Offset, Bytes : Unsigned_64; Writable : Boolean;
       Mapping : out Mapping_ID; Reference : out Unsigned_64;
       Presentation : Boolean := False);
    -- Authenticated client retirement/poll. Accepted=False for foreign/unknown
    -- IDs. Retired means this grant is gone, NOT that GPU work/backing is free.
    procedure Retire
-     (Table : in out Mapping_Table; Sender, Stamp : Unsigned_64;
+     (Object : in out Service; Table : in out Mapping_Table; Sender, Stamp : Unsigned_64;
       Mapping : Mapping_ID; Accepted : out Boolean;
       State : out Intel_GPU_Buffer_Views.View_State);
    -- Trusted dispatcher lifecycle hooks, never application-supplied IDs.
-   procedure Reject_Delivery (Table : in out Mapping_Table; Mapping : Mapping_ID);
+   procedure Reject_Delivery (Object : in out Service; Table : in out Mapping_Table; Mapping : Mapping_ID);
    -- Close admission first so no subsequent request resolves this session.
    -- This hook drains its grants; it does not edit the admission controller.
-   procedure Retire_Session (Table : in out Mapping_Table; Session : Unsigned_64);
+   procedure Retire_Session (Object : in out Service; Table : in out Mapping_Table; Session : Unsigned_64);
    type Retirement_State is (Clear, Outstanding, Uncertain);
    -- Trusted dispatcher observation, not caller authentication. Clear means
    -- no outstanding grant in this table for Session, not closed admission,
@@ -70,8 +80,8 @@ package Intel_GPU_Buffer_Requests.Sharing is
    -- A read-only grant alone is not a GPU-write exclusion mechanism.
    function Presentation_Held (Table : Mapping_Table; Session : Unsigned_64)
       return Boolean;
-   procedure Quarantine (Table : in out Mapping_Table);
-   procedure Poll (Table : in out Mapping_Table);
+   procedure Quarantine (Object : in out Service; Table : in out Mapping_Table);
+   procedure Poll (Object : in out Service; Table : in out Mapping_Table);
    -- Dispatcher-owned view; caller supplies only its BO handle and range.
    -- Authenticate against the same registry that created the handle. No
    -- backing address or mutable handle registry escapes this interface.
@@ -79,7 +89,7 @@ package Intel_GPU_Buffer_Requests.Sharing is
    -- The dispatcher must retire a successful view if reply delivery fails,
    -- and track all live views through session teardown before reclaiming RAM.
    procedure Share
-     (Object : Service; Sender, Stamp, ID, Offset, Bytes : Unsigned_64;
+     (Object : in out Service; Sender, Stamp, ID, Offset, Bytes : Unsigned_64;
       Writable : Boolean; View : in out Intel_GPU_Buffer_Views.View;
       Accepted : out Boolean; Presentation : Boolean := False);
 private
@@ -91,9 +101,11 @@ private
       Presentation : Boolean := False;
       View : Intel_GPU_Buffer_Views.View;
    end record;
-   type Entries is array (Positive range 1 .. Capacity) of Mapping_Entry;
+   type Entries is array (Positive range 1 .. Initial_Capacity) of Mapping_Entry;
    type Mapping_Table is limited record
-      Used : Natural range 0 .. Capacity := 0;
+      Used : Natural := 0;
+      Available : Positive := Initial_Capacity;
+      Storage_Base, Storage_Bytes : Unsigned_64 := 0;
       Last_ID : Mapping_ID := 0;
       Failed : Boolean := False;
       Items : Entries;

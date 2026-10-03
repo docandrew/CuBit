@@ -6,13 +6,16 @@ with Log_Budgets;
 with CuBit.Grant_References;
 with CuBit.Authority_Policy; use CuBit.Authority_Policy;
 with CuBit.Log_Records;
+with CuBit.Log_Streams;
+with CuBit.Channel_Rings;
+with CuBit.Datagram_Rings;
 procedure Main is
    Store : Log_Fanout.Broker;
    First, Second, Other, Replacement, Lost : Unsigned_64;
    Result : Status;
    Value : Event;
    Expected : Event :=
-     (Source => 30, Publication_Tag => Publisher_Authority_Tag,
+     (Source => 30, Node => This_Node, Publication_Tag => Publisher_Authority_Tag,
       Monotonic_Ms => 123, Data => CuBit.Log_Records.Empty_Record);
    Empty_Value : constant Event := (others => <>);
    procedure Read (Caller, Handle : Unsigned_64) is
@@ -188,6 +191,70 @@ begin
    pragma Assert (Result = OK and Other /= First);
    Log_Fanout.Advance_Time (Store, Unsigned_64'Last);
    Read (99, Other); pragma Assert (Result = Denied);
+   --  A reader's stream: events and gaps through a Datagram_Rings ring and
+   --  back, across wrap-around; malformed entries are refused.
+   declare
+      package S renames CuBit.Log_Streams;
+      package R renames CuBit.Channel_Rings;
+      package D renames CuBit.Datagram_Rings;
+      use type D.Put_Result;
+      use type D.Take_Result;
+      use type S.Entry_Kind;
+      use type R.Count;
+      Ring : R.Bytes (0 .. S.RING_BYTES - 1) := [others => 0];
+      P : R.Producer := R.New_Producer (S.RING_BYTES);
+      C : R.Consumer := R.New_Consumer (S.RING_BYTES);
+      Entry_Bytes, Got : S.Entry_Buffer;
+      Length : S.Entry_Length;
+      Taken_Length : Natural;
+      Truncated, Valid, Accepted : Boolean;
+      Put : D.Put_Result;
+      Take : D.Take_Result;
+      Kind : S.Entry_Kind;
+      Back : Event;
+      Gap_Count : Unsigned_64;
+      Sent : Event :=
+        (Source => 41, Node => (High => 16#0123_4567_89AB_CDEF#, Low => 16#FEDC_BA98_7654_3210#),
+         Publication_Tag => Publisher_Authority_Tag, Monotonic_Ms => 0,
+         Data => CuBit.Log_Records.Make ("stream record", CuBit.Log_Records.Warning).Value);
+   begin
+      for Round in 1 .. 3_000 loop
+         Sent.Monotonic_Ms := Unsigned_64 (Round);
+         if Round mod 97 = 0 then
+            S.Encode_Gap (Unsigned_64 (Round), Entry_Bytes, Length);
+         else
+            S.Encode_Event (Sent, Entry_Bytes, Length);
+         end if;
+         D.Put (P, Ring, Entry_Bytes (0 .. Length - 1), Put);
+         pragma Assert (Put = D.Put);
+         R.Accept_Produced (C, P.Produced, Accepted);
+         pragma Assert (Accepted);
+         D.Take (C, Ring, Got, Taken_Length, Truncated, Take);
+         pragma Assert (Take = D.Taken and not Truncated and Taken_Length = Length);
+         R.Accept_Consumed (P, C.Consumed, Accepted);
+         pragma Assert (Accepted);
+         S.Decode (Got, Taken_Length, Kind, Back, Gap_Count, Valid);
+         pragma Assert (Valid);
+         if Round mod 97 = 0 then
+            pragma Assert (Kind = S.Gap_Entry and Gap_Count = Unsigned_64 (Round));
+         else
+            pragma Assert (Kind = S.Event_Entry and Back = Sent and Gap_Count = 0);
+         end if;
+      end loop;
+      --  Wrapped many times over: 3000 entries of about 90 bytes in 64 KiB.
+      pragma Assert (R.Distance (0, P.Produced) > R.Count (4 * S.RING_BYTES));
+      S.Encode_Event (Sent, Entry_Bytes, Length);
+      Entry_Bytes (0) := 7;
+      S.Decode (Entry_Bytes, Length, Kind, Back, Gap_Count, Valid);
+      pragma Assert (not Valid and Back = Empty_Value);
+      S.Encode_Event (Sent, Entry_Bytes, Length);
+      S.Decode (Entry_Bytes, Length - 1, Kind, Back, Gap_Count, Valid);
+      pragma Assert (not Valid);
+      S.Encode_Gap (0, Entry_Bytes, Length);
+      S.Decode (Entry_Bytes, Length, Kind, Back, Gap_Count, Valid);
+      pragma Assert (not Valid and Gap_Count = 0);
+      Put_Line ("PASS: log streams carry events and gaps through a wrapping ring; malformed entries refused");
+   end;
    Put_Line ("PASS: policy matrix, log fan-out gates, independent recipients, loss, launch tags, stale handles and lease expiration");
    --  Severity-filtered subscriptions (observability agent, 2026-10-01).
    declare
@@ -196,7 +263,7 @@ begin
       Filtered : Log_Fanout.Broker;
       Low, High : Unsigned_64;
       function At_Level (Level : L.Severity; Ms : Unsigned_64) return Event is
-        (Source => 30, Publication_Tag => Publisher_Authority_Tag,
+        (Source => 30, Node => This_Node, Publication_Tag => Publisher_Authority_Tag,
          Monotonic_Ms => Ms, Data => L.Make ("x", Level).Value);
    begin
       Log_Fanout.Publish (Filtered, At_Level (L.Debug, 1));
@@ -260,7 +327,7 @@ begin
       From_70 : constant Times := [1, 3, 5];
       From_80 : constant Times := [2, 4];
       function From (Source, Ms : Unsigned_64) return Event is
-        (Source => Source, Publication_Tag => Publisher_Authority_Tag,
+        (Source => Source, Node => This_Node, Publication_Tag => Publisher_Authority_Tag,
          Monotonic_Ms => Ms, Data => L.Make ("y").Value);
    begin
       Log_Fanout.Publish (Sourced, From (70, 1));

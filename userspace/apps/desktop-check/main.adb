@@ -1,3 +1,4 @@
+with Desktop_Input_Batch;
 with Desktop_Frame_Pair;
 with Desktop_Density_Text;
 with Client_Frame_Damage;
@@ -972,7 +973,7 @@ begin
       Check (Decode_Resize_Result (Send (Wire)).Status = Invalid_Request, "short resize rejected");
       Wire := Encode_Limits (Limits); Wire.Reserved := 1;
       Check (Decode_Limits_Result (Send (Wire)).Status = Invalid_Request, "reserved limits rejected");
-      Wire := Encode_Limits (Limits); Wire.Words (3) := 256;
+      Wire := Encode_Limits (Limits); Wire.Words (3) := Feature_Bits ([others => True]) + 1;
       Check (Decode_Limits_Result (Send (Wire)).Status = Invalid_Request, "unknown features rejected");
       Wire := Encode_Limits (Limits); Wire.Words (2) := 119;
       Check (Decode_Limits_Result (Send (Wire)).Status = Invalid_Request, "contradictory limits rejected");
@@ -1084,6 +1085,12 @@ begin
                       Held.slot) = 0, "destroy returns held acquisition");
    end if;
    Check_Input_Boundaries;
+   declare
+      Batch_OK : Boolean;
+   begin
+      Desktop_Input_Batch (Batch_OK);
+      Check (Batch_OK, "native input batch transport");
+   end;
    Check_Input_Overflow;
    Check_Session_Boundaries;
    Created := Decode_Creation_Result (Send (Encode_Create ((320, 200, Plain_Surface))));

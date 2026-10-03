@@ -48,7 +48,11 @@ package CCL.Objects.Schemas with SPARK_Mode is
       Parts at 48 range 0 .. 16 * 40 * 8 - 1;
       Padding at 688 range 0 .. 80 * 8 - 1;
    end record;
-   type Definition_Array is array (1 .. Types.Maximum_Declarations) of Native_Definition
+   --  One image carries a root's whole closure, at most this many
+   --  definitions: an IPC wire size fixed apart from how many types one
+   --  evaluation's registry may hold (Types.Maximum_Declarations).
+   Maximum_Image_Definitions : constant := 32;
+   type Definition_Array is array (1 .. Maximum_Image_Definitions) of Native_Definition
      with Component_Size => 768 * 8;
    type Image is record
       Key : Schema_Key := No_Schema;

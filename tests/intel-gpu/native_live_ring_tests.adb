@@ -169,6 +169,49 @@ begin
       pragma Assert (not OK and RAM (1031) = 888);
       pragma Assert (Munmap (Second_Map, 81920) = 0);
    end;
+   declare
+      Wrapping : Native.Channel;
+      Before : Words;
+      Old_Tail, New_Tail, Length, Start : Unsigned_32;
+      Wrapped : Boolean;
+      Wrap_Count : Natural := 0;
+   begin
+      RAM := [others => 16#A5A5A5A5#]; RAM (1031) := 384;
+      Selected_Base := Unsigned_64 (Base); Owner := True; Coherent := True;
+      for Seq in Unsigned_32 range 2 .. 4097 loop
+         Marker := Unsigned_64 (Seq - 1);
+         Old_Tail := Native.Tail (Wrapping);
+         Length := (if Seq mod 2 = 0 then 384 else 120);
+         Wrapped := Old_Tail > 16320 - Length;
+         Start := (if Wrapped then 0 else Old_Tail);
+         Before := RAM;
+         if Seq mod 2 = 0 then
+            Native.Append (Wrapping, Intel_GPU_ADLN_Context_Init.Build_Batch
+              (True, 0, Seq, 16#208000#), OK);
+         else
+            Native.Append (Wrapping, Intel_GPU_ADLN_Barrier.Build (Seq), OK);
+         end if;
+         New_Tail := Native.Tail (Wrapping);
+         pragma Assert (OK and New_Tail = Start + Length and RAM (1031) = New_Tail);
+         pragma Assert (Native.Sequence (Wrapping) = Seq);
+         if Wrapped then
+            Wrap_Count := Wrap_Count + 1;
+            for I in Natural (Old_Tail / 4) .. 4095 loop
+               pragma Assert (RAM (16384 + I) = 0);
+            end loop;
+         end if;
+         for I in RAM'Range loop
+            if I /= 1031 and then not
+              (I in 16384 + Natural (Start / 4) .. 16384 + Natural (New_Tail / 4) - 1) and then
+              not (Wrapped and then I >= 16384 + Natural (Old_Tail / 4))
+            then
+               pragma Assert (RAM (I) = Before (I));
+            end if;
+         end loop;
+      end loop;
+      pragma Assert (Wrap_Count > 60);
+      Ada.Text_IO.Put_Line ("Native mixed wrap PASS:4096 segments, padding, exact write bounds, unchanged head/context/HWSP; simulated completions");
+   end;
    Owner := False;
    pragma Assert (Munmap (Mapping, 81920) = 0);
    Native.Append (Native_Channel, Intel_GPU_ADLN_Context_Init.Build (True, 0, 13), OK);

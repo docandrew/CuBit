@@ -50,9 +50,15 @@ begin
    Check (not Parses ("(launch v1 (label ""a\""b"") (program ""a.app""))", Item), "escapes are rejected");
    Check (not Parses ("", Item), "empty value is rejected");
 
+   Check (Parses ("(launch v1 (label ""Penny"") (program ""cubitshell.app"") (icon penny))", Item)
+          and then Item.Icon = Desktop_Icons.Penny, "Penny icon configuration");
    Items := Defaults;
-   Check (Items.Count = 8 and then Label_Of (Items.Entries (1)) = "CCL Workbench"
-          and then Items.Entries (7).Kind = Internal_Settings, "built-in list");
+   Check (Items.Count = 9 and then Label_Of (Items.Entries (1)) = "CCL Workbench"
+          and then Items.Entries (8).Kind = Internal_Settings, "built-in list");
+   Check (Label_Of (Items.Entries (4)) = "Penny" and then
+          Program_Of (Items.Entries (4)) = "cubitshell.app" and then
+          Items.Entries (4).Icon = Desktop_Icons.Penny and then
+          Program_Of (Items.Entries (5)) = "netsurf.app", "Penny and NetSurf separate entries");
    declare
       First : constant Entry_Info := Items.Entries (1);
    begin

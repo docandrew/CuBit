@@ -1,3 +1,4 @@
+with "../../userspace/ccl/cubit_shared.gpr";
 --  CCL.Resource_Sections: SPARK proof (level 1) and the hosted decode tool
 --  used by test-manifests.py.
 project Resources is

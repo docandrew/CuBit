@@ -28,13 +28,6 @@ package body Compositor_Image_Sampling with SPARK_Mode is
       return P;
    end Prepare;
 
-   type Axis_Sample (Valid : Boolean := False) is record
-      case Valid is
-         when True => First, Last : Index; Weight : Fraction;
-         when False => null;
-      end case;
-   end record;
-
    function Axis (Point : Position; Origin : Offset; Size : Draw_Extent;
                   Pixels : Extent) return Axis_Sample
      with Post => (if Axis'Result.Valid then
@@ -51,9 +44,14 @@ package body Compositor_Image_Sampling with SPARK_Mode is
         Fraction (Coordinate mod 256));
    end Axis;
 
+   function Horizontal (P : Layout; X : Position) return Axis_Sample is
+     (Axis (X, P.X, P.W, P.SW));
+   function Vertical (P : Layout; Y : Position) return Axis_Sample is
+     (Axis (Y, P.Y, P.H, P.SH));
+
    function At_Point (P : Layout; X, Y : Position) return Sample is
-      AX : constant Axis_Sample := Axis (X, P.X, P.W, P.SW);
-      AY : constant Axis_Sample := Axis (Y, P.Y, P.H, P.SH);
+      AX : constant Axis_Sample := Horizontal (P, X);
+      AY : constant Axis_Sample := Vertical (P, Y);
    begin
       if not AX.Valid or else not AY.Valid then return (Valid => False); end if;
       return (True, AX.First, AX.Last, AY.First, AY.Last, AX.Weight, AY.Weight);

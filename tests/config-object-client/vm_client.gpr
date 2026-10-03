@@ -7,7 +7,7 @@ project VM_Client extends "client.gpr" is
       "ccl-objects-catalog.ads", "ccl-objects-catalog.adb",
       "ccl-host_values.ads", "ccl-host_values.adb",
       "ccl-handler_references.ads", "ccl-handler_references.adb",
-      "ccl-vm.ads", "ccl-vm.adb", "ccl-ownership.ads", "ccl-ownership.adb",
+      "ccl-vm.ads", "ccl-vm.adb", "ccl-streams.ads", "ccl-types-shapes.ads", "ccl-types-shapes.adb", "ccl-ownership.ads", "ccl-ownership.adb",
       "ccl-resources.ads", "ccl-resources.adb",
       "ccl-resource_policies.ads", "ccl-resource_policies.adb",
       "ccl-vm-resource_values.ads", "ccl-vm-resource_values.adb",

@@ -1,10 +1,12 @@
 with Ada.Command_Line;
+with Ada.Directories;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
 with Ada.Text_IO;
 with Ada.Characters.Handling;
 with Interfaces;
 with CCL.Manifests;
+with CuBit.Failures;
 with CCL.Language;
 
 --  Linux-hosted file boundary only. No process execution or network access.
@@ -17,10 +19,36 @@ procedure Main is
    use type Interfaces.Unsigned_8;
    Input : Ada.Streams.Stream_IO.File_Type;
    Bytes : Ada.Streams.Stream_Element_Array
-     (1 .. CCL.Manifests.MAX_DECLARATION_LENGTH);
+     (1 .. CCL.Language.MAX_SOURCE_LENGTH);
    Last : Ada.Streams.Stream_Element_Offset;
    Source, Catalog_Source : String (1 .. CCL.Manifests.MAX_DECLARATION_LENGTH);
    Source_Length, Catalog_Length : Natural;
+   --  interfaces/executable-manifest.ccl: the CCL declarations typed
+   --  manifests are checked against, found beside the catalogs directory.
+   Schema_Source : String (1 .. CCL.Language.MAX_SOURCE_LENGTH);
+   Schema_Length : Natural := 0;
+   --  CATALOG MANIFEST, then options as pairs: --ada-output FILE,
+   --  --rust-output FILE, --schema FILE.
+   function Option (Name : String) return String is
+   begin
+      for Index in 3 .. Argument_Count - 1 loop
+         if Argument (Index) = Name and then (Index - 3) mod 2 = 0 then
+            return Argument (Index + 1);
+         end if;
+      end loop;
+      return "";
+   end Option;
+   function Options_Valid return Boolean is
+     (Argument_Count >= 2 and then Argument_Count mod 2 = 0 and then
+      (for all Index in 3 .. Argument_Count =>
+         (Index - 3) mod 2 = 1 or else
+         Argument (Index) in "--ada-output" | "--rust-output" | "--schema"));
+   --  The schema's default home: interfaces/ beside the catalogs directory.
+   function Schema_Path return String is
+     (if Option ("--schema")'Length > 0 then Option ("--schema")
+      else Ada.Directories.Containing_Directory
+             (Ada.Directories.Containing_Directory (Ada.Directories.Full_Name (Argument (1)))) &
+           "/interfaces/executable-manifest.ccl");
    Result : CCL.Manifests.Compilation_Result;
    Ada_Output : Ada.Text_IO.File_Type;
    Hex : constant String := "0123456789abcdef";
@@ -30,7 +58,7 @@ procedure Main is
       Text := [others => ' '];
       Length := 0;
       Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path);
-      if Ada.Streams.Stream_IO.Size (Input) > Bytes'Length then
+      if Ada.Streams.Stream_IO.Size (Input) > Ada.Streams.Stream_IO.Count (Text'Length) then
          Ada.Streams.Stream_IO.Close (Input);
          raise Ada.Streams.Stream_IO.Use_Error;
       end if;
@@ -54,7 +82,7 @@ procedure Main is
 
    procedure Emit_Ada is
    begin
-      Create (Ada_Output, Out_File, Argument (4));
+      Create (Ada_Output, Out_File, Option ("--ada-output"));
       Put_Line (Ada_Output, "-- Generated with the ELF manifest; do not edit.");
       if Result.Binding_Count > 0 then
          Put_Line (Ada_Output, "with Interfaces;");
@@ -78,7 +106,7 @@ procedure Main is
    procedure Emit_Rust is
       Output : Ada.Text_IO.File_Type;
    begin
-      Create (Output, Out_File, Argument (4));
+      Create (Output, Out_File, Option ("--rust-output"));
       Put_Line (Output, "// Generated with the ELF manifest; do not edit.");
       for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
          declare
@@ -96,20 +124,34 @@ procedure Main is
       Close (Output);
    end Emit_Rust;
 begin
-   if Argument_Count not in 2 | 4 or else
-     (Argument_Count = 4 and then
-      Argument (3) not in "--ada-output" | "--rust-output")
-   then
+   if not Options_Valid then
       Put_Line (Standard_Error,
-        "usage: ccl-manifest CATALOG.ccl MANIFEST.ccl [--ada-output bindings.ads | --rust-output bindings.rs] > manifest.S");
+        "usage: ccl-manifest CATALOG.ccl MANIFEST.ccl [--ada-output bindings.ads | --rust-output bindings.rs] " &
+        "[--schema executable-manifest.ccl] > manifest.S");
       Set_Exit_Status (Failure);
       return;
    end if;
    Read_Source (Argument (1), Catalog_Source, Catalog_Length);
    Read_Source (Argument (2), Source, Source_Length);
+   if Ada.Directories.Exists (Schema_Path) then
+      Read_Source (Schema_Path, Schema_Source, Schema_Length);
+   end if;
    CCL.Manifests.Compile
-     (Source (1 .. Source_Length), Catalog_Source (1 .. Catalog_Length), Result);
-   if not Result.Success then
+     (Source (1 .. Source_Length), Catalog_Source (1 .. Catalog_Length), Result,
+      Schema_Source (1 .. Schema_Length));
+   if not Result.Success and then CuBit.Failures."/=" (Result.Why.Why, CuBit.Failures.Unspecified) then
+      --  A typed manifest says which entry is wrong and how to fix it.
+      declare
+         Detail : constant String := Result.Why.Detail (1 .. Result.Why.Detail_Length);
+      begin
+         Put_Line (Standard_Error, Argument (2) & ": " & Detail &
+                   (if Detail'Length > 0 and then Detail (Detail'Last) in '.' | '?' then "" else ".") &
+                   (if Result.Why.Remedy_Length > 0
+                    then " Fix: " & Result.Why.Remedy (1 .. Result.Why.Remedy_Length) & "." else ""));
+      end;
+      Set_Exit_Status (Failure);
+      return;
+   elsif not Result.Success then
       Put_Line (Standard_Error,
         Argument (if Result.In_Catalog then 1 else 2) &
         ": character" & Natural'Image (Result.Position) & ": " &
@@ -118,8 +160,8 @@ begin
       Set_Exit_Status (Failure);
       return;
    end if;
-   if Argument_Count = 4 then
-      if Argument (3) = "--rust-output" then Emit_Rust;
+   if Option ("--ada-output")'Length > 0 or else Option ("--rust-output")'Length > 0 then
+      if Option ("--rust-output")'Length > 0 then Emit_Rust;
       else Emit_Ada;
       end if;
    end if;
@@ -128,6 +170,7 @@ begin
    Emit (".cubit.access", Result.Access_Scopes);
    Emit (".cubit.streams", Result.Streams);
    Emit (".cubit.resources", Result.Resources);
+   Emit (".cubit.launch", Result.Launch);
    Put_Line (".section .note.GNU-stack,"""",@progbits");
 exception
    when Ada.Streams.Stream_IO.Name_Error | Ada.Streams.Stream_IO.Use_Error =>

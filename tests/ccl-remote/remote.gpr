@@ -1,8 +1,9 @@
+with "../../userspace/ccl/cubit_shared.gpr";
 project Remote is
    for Source_Dirs use (".", "../../userspace/ccl/src", "../../userspace/ccl/remote", external ("CBOR_ADA_SRC") & "/src");
    for Object_Dir use "build";
    for Exec_Dir use "build";
-   for Main use ("main.adb", "host_tests.adb", "periodic_tests.adb");
+   for Main use ("main.adb", "host_tests.adb", "periodic_tests.adb", "wire_vectors.adb");
    package Compiler is
       for Default_Switches ("Ada") use ("-O2", "-g", "-gnat2022", "-gnata", "-gnato", "-gnatVa", "-I-");
    end Compiler;

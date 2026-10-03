@@ -36,8 +36,17 @@ with tempfile.TemporaryDirectory(prefix="cubit-servo-overlay-") as directory:
         assert all((p.read_bytes(), p.stat().st_mtime_ns) == before for p, before in snapshot.items())
         # New graphics/font edits must work from upstream originals as well
         # as from the previously patched cache used by the native build.
-        paths = ["components/paint/painter.rs", "components/shared/fonts/font_identifier.rs",
-                 "components/fonts/platform/freetype/font.rs"]
+        paths = ["components/shared/profile/time.rs", "components/paint/painter.rs", "components/shared/fonts/font_identifier.rs",
+                 "components/fonts/platform/freetype/font.rs",
+                 "components/shared/embedder/lib.rs",
+                 "components/script/dom/document/document.rs",
+                 "components/script/event_loop/script_thread.rs",
+                 "components/servo/servo.rs", "components/servo/webview.rs",
+                 "components/servo/webview_delegate.rs", "components/net/connector.rs",
+                 "components/constellation/constellation.rs",
+                 "components/script/dom/html/embedded_content/htmlmediaelement.rs",
+                 "components/media/backends/gstreamer/lib.rs",
+                 "components/media/backends/gstreamer/player.rs"]
         expected = {name: (private / name).read_bytes() for name in paths}
         for name in paths:
             (private / name).write_bytes(subprocess.check_output(
@@ -47,4 +56,4 @@ with tempfile.TemporaryDirectory(prefix="cubit-servo-overlay-") as directory:
     finally:
         builtins.open = original_open
         sys.argv = original_argv
-print("SERVO-OVERLAY-PATCH: PASS existing cache, upstream graphics/fonts, second-run bytes/mtime stable")
+print("SERVO-OVERLAY-PATCH: PASS existing cache, upstream graphics/fonts/TLS, second-run bytes/mtime stable")

@@ -140,6 +140,24 @@ begin
             if Storage (Previous.Buffer) /= Held then return False; end if;
             P.Acquire (Pool, Busy);
             if Busy /= P.None or else P.Faulted (Pool) then return False; end if;
+            -- New scene revisions replace only the completed ready allocation.
+            for Revision in 1 .. 4 loop
+               Busy := P.Ready (Pool);
+               P.Acquire (Pool, T, Replace_Ready => True);
+               if T = P.None or else T.Buffer /= Busy.Buffer or else
+                 T.Serial <= Busy.Serial or else T.Buffer = Previous.Buffer or else
+                 T.Buffer = Sent.Buffer
+               then return False; end if;
+               Foreground := 16#FF40_0000# or Shift_Left (Unsigned_32 (Frame), 8) or Unsigned_32 (Revision);
+               P.Start_Render (Pool, T);
+               if not Draw_Box (Handles (T.Buffer), FG, (0, 0, 32, 32)) then return False; end if;
+               P.Finish_Render (Pool, T, P.Completed);
+               for Pixel of Storage (T.Buffer) loop
+                  if Pixel /= Foreground then return False; end if;
+               end loop;
+               if Storage (Previous.Buffer) /= Held then return False; end if;
+            end loop;
+            Foreground := 16#FF20_4000# or Unsigned_32 (Frame);
          end if;
          for Pixel of Storage (Sent.Buffer) loop
             if Pixel /= Foreground then return False; end if;

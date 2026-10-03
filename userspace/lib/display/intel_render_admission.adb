@@ -48,7 +48,8 @@ package body Intel_Render_Admission with SPARK_Mode is
       if not Consumed then return; end if;
       Async.Release (Item.Pending);
       if not Envelope_OK or Reply (0) > 4 or Reply (1) /= 1 or
-        Reply (3) /= 0 or
+        (if Prior = Reserve_Pending and Reply (0) = 0 then
+           Reply (3) not in 40 .. 55 else Reply (3) /= 0) or
         (Reply (0) /= 0 and Reply (2) /= 0) then
          Item.Current := Quarantined;
          return;
@@ -66,6 +67,7 @@ package body Intel_Render_Admission with SPARK_Mode is
       case Prior is
          when Reserve_Pending =>
             Item.Tag := Reply (2);
+            Item.Driver_Slot := Recipient_Slot (Reply (3));
             Item.Current := (if Item.Stopped then Abort_Ready
                              else Delegate_Ready);
          when Activate_Pending =>

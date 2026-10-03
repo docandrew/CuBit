@@ -1,5 +1,173 @@
 # Intel probe foundation (Linux-hosted)
 
+## Asynchronous table retirement dispatcher
+
+The asynchronous `Table_Provenance.Retirement.Dispatcher` component is covered by
+`table_dispatcher_tests.adb` (explicit main through `vm_growth.gpr`). It drives
+the production ledger over 150 records/three tickets, delayed exact acknowledgments,
+and submit/poll/ownership failures at each ticket. Each step invokes at most one
+transport callback or one bounded ledger sweep. A wrong ledger is rejected even
+with the same session/generation; acknowledged groups clear while unacknowledged
+references remain. Failure cannot replay or reopen. Backend polling must provide
+its own deadline and classify uncertain expiry as failure. This is hosted
+regression evidence, not SPARK proof or native dispatcher integration.
+
+## Growable CPU table mirrors
+
+```sh
+nix develop -c bash -c '
+  mirror_test_dir=$(mktemp -d /tmp/cubit-vm-mirrors.XXXXXX)
+  cd kernel
+  alr exec -- gprbuild -p -P ../tests/intel-gpu/vm_growth.gpr \
+    -XVM_GROWTH_OBJECT_DIR="$mirror_test_dir" \
+    vm_table_store_tests.adb vm_metadata_growth_tests.adb
+  "$mirror_test_dir/vm_table_store_tests"
+  "$mirror_test_dir/vm_metadata_growth_tests"
+'
+```
+
+`Intel_GPU_VM_Image` now stores table words through `VM_Table_Store`, with a
+configurable bootstrap and a separate maximum table quota. `Extend_Metadata`
+accepts a trusted, already committed, stable CPU reservation in increments up to
+64 KiB. It changes neither GPU mappings nor image revision. Old table indices
+and contents remain stable; failed capacity checks do not partially map a range.
+The store test grows four to 132 mirrors, verifies untouched uncommitted suffixes,
+quota/geometry rejection, and independent copying. The actual image test grows
+four to 100 mirrors, uses 99 tables for 96 sparse mappings, and exercises cloning,
+adoption, retirement and reuse without cross-image aliasing.
+
+These are CPU metadata tests, not GPU backing allocation or hardware validation.
+The caller must authenticate/disjointly reserve the metadata memory and retain
+it for the image lifetime. This is an unproved trusted-memory boundary. Native
+instantiation now starts with four CPU mirrors. Initial-context and replacement
+readiness gates drive asynchronous extension to the existing 64-table quota,
+committing at most 64 KiB per allocator turn (last increment 48 KiB).
+`context_mirror_growth_tests`, `update_storage_tests`, and
+`update_mirror_failure_tests` exercise the allocator compositions, including
+commit/ownership failures without replay. These changes compile natively but
+are not yet in the v47 image or hardware-tested. GPU physical table backing and
+fixed-size DMA/level/receipt arrays remain separate integration work; the physical
+64-table reservation has not been reduced or made dynamically growable.
+
+## Growth provenance callback revocation
+
+```sh
+nix develop -c bash -c '
+  growth_test_dir=$(mktemp -d /tmp/cubit-growth-ownership.XXXXXX)
+  cd kernel
+  alr exec -- gprbuild -p -P ../tests/intel-gpu/vm_growth.gpr \
+    -XVM_GROWTH_OBJECT_DIR="$growth_test_dir" vm_growth_ownership_tests.adb
+  "$growth_test_dir/vm_growth_ownership_tests"
+'
+```
+
+The production incremental directory writer is exercised over host RAM. The
+fixture first measures a successful transaction, then revokes exclusion inside
+each provenance callback while returning a positive lookup result (9,286
+boundaries in the stepped writer). It also revokes ownership between each step
+and attempts premature commit at each step (6,174 additional rejection cases).
+No read/write/flush may occur after revocation; failed publication cannot be
+replayed or adopted even after authority is restored. This exposed a missing
+post-callback exclusion check in the original synchronous writer (negative control: "write
+after ownership revocation"). It does not prove hardware ordering, native
+incremental-growth integration, or general thread safety; callers must still
+serialize the transaction and retain all uncertain backing.
+
+The writer now exposes `Start`, `Step`, and `Pending`, replacing the synchronous
+publication API. `Start` preflights without memory IO; `Step` performs at most
+one read/write/flush callback, checked by the tests. The receipt stores its plan
+and cursor across service-loop turns. Source epoch/root and ownership are checked
+again on each turn; failure consumes the attempt. Planning and final metadata
+adoption still walk the configured capacity; this is bounded hardware IO, not a
+claim of constant-time planning or native dispatcher integration.
+
+## Whole-context allocation identity
+
+The application-image integration fixture is also required after changes to
+the retirement child: build `submission_buffer.gpr` and run
+`build-submission-buffer/submission_buffer_tests` from this directory under Nix.
+Its 29 publication/retirement paths assert exact address release and reject
+stale image operations after a new claim reuses the same VA. It executes real
+Application_Image code over host RAM/mock PTEs, not GPU hardware.
+
+Under Nix, build `gprbuild -p -P tests/intel-gpu/context_tickets.gpr` and run
+`tests/intel-gpu/build/context-tickets/context_tickets_tests`. It covers 128
+context-parent owner/generation transitions, sixteen combinations of pending
+allocation/quarantine/device loss/missing retirement evidence, revoked-session
+cleanup, pinned/table-kind separation and stale/duplicate acknowledgment.
+This is metadata-only: supervisor release, hardware reference retirement and
+reusable native session admission are not established by this fixture.
+
+## Retirement dispatcher ordering
+
+`nix develop -c python3 tests/intel-gpu/test-retirement-dispatch.py` compiles
+the actual driver request-poll guard and checks 48 input combinations. While a
+supervisor retirement is pending, no client request may be consumed or stale
+`Found` flag dispatched. Both metadata gates are covered too. A negative
+control removes the pending-retirement guard and must fail. This is hosted
+control-flow coverage, not proof of hardware completion or kernel revocation.
+
+## GGTT address reclamation transaction
+
+Run under Nix:
+
+```sh
+gprbuild -p -P tests/intel-gpu/ggtt_reclamation.gpr
+tests/intel-gpu/build/ggtt-reclamation/ggtt_reclamation_tests
+tests/intel-gpu/build/ggtt-reclamation/ggtt_retire_tests
+gprbuild -p -P tests/intel-gpu/ggtt_reuse.gpr
+tests/intel-gpu/build/ggtt-reuse/ggtt_reuse_tests
+```
+
+The new reservations child has no bookkeeping-only release entry point. Its
+one-shot transaction scratch-remaps the exact claim, verifies PTE readback,
+waits for invalidation, and checks ownership before removing that claim.
+The 4,512 hosted cases cover all ledger sizes/removal positions, all ten I/O
+failure points and twenty ownership gates at every full-ledger position,
+malformed inputs, preservation of other claims/PTEs, and same-address replay.
+The original lower-level retirement primitive still retains its claims.
+
+These are mock-PTE regression tests, not hardware validation. The private
+ledger transformation called after successful retirement is now separately
+SPARK-proved: exact swap removal, preserved other extents/aperture, count
+decrement and the complete ledger invariant. The ledger proof reports 65
+analysis results with none unproved or justified; `Forget_Detached` has seven
+proved checks. Evidence snapshot: `build/reclaim-proof.DDG5pI/gnatprove.out`.
+The callback-driven transaction itself remains outside SPARK; this proof
+does not establish hardware quiescence or that cleanup authority is valid.
+The child is wired into native image retirement and compiles/links natively,
+but has not been hardware-tested. The additional reuse fixture runs 1,024
+cycles through the actual publisher/reclaimer over mock PTEs, with different
+backing, neighboring claims, nonzero scratch entries and stale attempts.
+Physical backing,
+CPU grants, supervisor tickets and session identity are not released by it.
+The exclusive serialized owner and truthful hardware callbacks remain trusted
+requirements; tests do not establish those facts on a running machine.
+
+## Native allocation and mapping checks
+
+These separate fixtures boot CuBit under QEMU; they do not emulate Intel GPU
+execution. With a current built `kernel/cubit_kernel`, run:
+
+```sh
+flock --exclusive coordination/build.lock nix develop -c bash tests/intel-gpu/native/run-demand.sh mappings
+```
+
+The `mappings` fixture uses production sharing, metadata reservation/commit and
+record-growth code with real kernel self-grants. It fills the initial 64 records
+while retiring temporary grants, keeps a reader alive during forced growth to
+128 records, uses record 65, then grows to 256 with readers in both storage
+tiers. Closing the BO must retain both grants until their readers return; stale
+grant access and mapping the closed name must fail. Only two grants are live at
+once: this tests stable metadata growth, not removal of the kernel's current
+16-grant owner limit or automatic growth under many simultaneous mappings.
+The privileged loopback fixture also does not establish cross-process isolation
+or GPU retirement. Unique evidence directories contain the serial log and
+kernel/fixture binary hashes. Existing `memory`, `ipc` and `views` modes cover
+backing allocation, real allocation transport and forwarded-view retention.
+
+## Hosted register and policy checks
+
 Native pipe and primary-plane adapters (2026-09-28): build `native_pipe.gpr`
 and `native_plane.gpr`, then run `build-native-pipe/native_pipe_tests` and
 `build-native-plane/native_plane_tests` in Nix. These compile the actual native

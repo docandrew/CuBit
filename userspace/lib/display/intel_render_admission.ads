@@ -13,6 +13,11 @@ package Intel_Render_Admission with SPARK_Mode is
    function State (Item : Transaction) return Phase;
    function Identity (Item : Transaction) return Unsigned_64;
    function Session (Item : Transaction) return Unsigned_64;
+   subtype Recipient_Slot is Natural range 0 .. 55
+     with Static_Predicate => Recipient_Slot = 0 or Recipient_Slot in 40 .. 55;
+   function Driver_Recipient_Slot (Item : Transaction) return Recipient_Slot
+     with Post => Driver_Recipient_Slot'Result = 0 or else
+       Driver_Recipient_Slot'Result in 40 .. 55;
    function Cancelled (Item : Transaction) return Boolean;
    procedure Start (Item : in out Transaction; Captured : Unsigned_64);
    -- Ready request payload for label0A21, length4, flags/reserved0.
@@ -49,11 +54,14 @@ private
    type Transaction is limited record
       Current : Phase := Idle;
       Target, Tag : Unsigned_64 := 0;
+      Driver_Slot : Recipient_Slot := 0;
       Stopped : Boolean := False;
       Pending : CuBit.Async_Requests.Tracker;
    end record;
    function State (Item : Transaction) return Phase is (Item.Current);
    function Identity (Item : Transaction) return Unsigned_64 is (Item.Target);
    function Session (Item : Transaction) return Unsigned_64 is (Item.Tag);
+   function Driver_Recipient_Slot (Item : Transaction) return Recipient_Slot is
+     (Item.Driver_Slot);
    function Cancelled (Item : Transaction) return Boolean is (Item.Stopped);
 end Intel_Render_Admission;

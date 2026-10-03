@@ -997,6 +997,95 @@ that a second acquisition of the same slot cannot resubmit. This is hosted
 regression evidence for the adapter, not live supervisor IPC, logger completion
 demultiplexing, hardware execution, or a proof of the transport implementation.
 
+### Sustained submission: transaction identity audit (2026-10-03)
+
+The former context lifetime fence reservation was not sustainable. The original
+`guc_context_lifecycle_tests` characterized a 256-ID interval: four initial
+controls leave 252 IDs; the serialized enable/notify/disable path consumes
+three per repeat. Cleanup-aware admission permits 83 repeats and leaves three
+IDs, from which deregistration succeeds. This is **not** a Mesa cycle count:
+setup batches and multiple submissions per frame consume additional IDs.
+
+Do not replace this with a pending-request table that expects a success reply
+for every command. `Intel_GPU_GuC_Context_Request` emits HXG FAST_REQUEST for
+registration, policy, scheduling mode, work notification and deregistration.
+The Intel-authored [HXG ABI documentation](https://codebrowser.dev/linux/linux/drivers/gpu/drm/i915/gt/uc/abi/guc_messages_abi.h.html)
+specifies no normal confirmation for fast requests, but permits a failure
+response when a request cannot be accepted. A missing success reply therefore
+cannot distinguish successful fast-request consumption from a lost command.
+
+The [Linux CT implementation](https://codebrowser.dev/linux/linux/drivers/gpu/drm/i915/gt/uc/intel_guc_ct.c.html)
+uses a transport-wide fence counter for both nonblocking and synchronous sends;
+the synchronous path adds a pending request before publication and removes it
+after response handling. That is not our permanent per-context range scheme.
+This inspection used Codebrowser's displayed source (previously identified as
+v6.19-rc8-185-g2687c848e578), not a verified v6.16 snapshot.
+
+Before the migration below, CuBit receive routing distinguished two identities:
+
+- `Intel_GPU_Context_Routes.Select_Destination` routes scheduling/deregister
+  events by the context ID in the payload, ignoring their CT fence for routing.
+- Request failures route by the reserved fence interval, then
+  `Context_Lifecycle.Failed_Request` checks whether that fence was attempted.
+  Reusing an interval without changing this logic can blame a newer context
+  for an old failure. A host-only generation counter cannot disambiguate two
+  wire messages containing the same reused 16-bit ID.
+
+Before replacing the range ledger, establish fast-request retirement/error
+attribution separately from synchronous pending requests. In particular, a
+ring-head advance, a scheduling acknowledgement and a GPU memory completion
+marker are different evidence; none should be substituted for another without
+an ABI guarantee. Timeout or uncertain publication must not release an ID
+under an assumed acknowledgement. Preserve context-event lifetime protection
+and bounded outstanding work independently of CT fence wrap. The required
+wrap/error-ordering policy remains unresolved; this audit does not authorize
+recycling, change wire encodings, or claim hardware validation.
+
+Follow-up inspection of Linux `ct_handle_response`, `ct_handle_hxg`, and
+`ct_handle_msg` shows that a reply without a pending request is diagnosed as
+unsolicited (`-ENOKEY`); the message is logged and freed. This path does not
+establish a per-context failed-request owner or itself reset the transport.
+Do not describe a CuBit-wide quarantine policy as copied from Linux.
+
+The CuBit alternative evaluated during this audit was to reserve disjoint wire-ID namespaces
+for synchronous requests and fast requests, make fast-request IDs diagnostic
+only, and treat any fast-request failure as a transport-wide fault. A delayed
+failure could then cause a conservative stop, but could not falsely complete
+or release a newer allocation. The implementation update below adopts this
+policy. Its review must include every receive consumer (including the
+boot log-control roundtrip at fence 42), close submission admission on the
+fault, retain backing, and verify that no success/event path treats a fast
+ID as completion authority. Context IDs still require independent retirement;
+this proposal does not permit their reuse. Tests must cross the 16-bit wrap
+with multiple contexts, inject delayed failures before/after wrap, and keep
+synchronous replies disjoint. Runtime reset/recovery remains separate work.
+
+### Implemented transport-ID migration (2026-10-03)
+
+The shared driver no longer reserves lifetime fence intervals per context.
+`Intel_GPU_GuC_Fast_Fences` assigns diagnostic IDs in `8000..FFFF` across all
+context controls, wrapping without granting completion or memory authority.
+Guaranteed nonpublication permits retry of the same ID; uncertain publication
+stops the stream. The synchronous boot probe remains in the low half at 42.
+Scheduling and deregistration events route by payload context ID. A FAST
+failure quarantines the entire context table, including delayed failures;
+this conservative CuBit policy differs from Linux's unsolicited-response log.
+
+The lifecycle, session and table APIs now carry state and admission facts,
+not logical fence budgets. VM holds, authenticated session ownership, drain
+evidence, scheduling acknowledgments and backing retirement remain separate
+requirements. Context IDs are still retained, not recycled by this migration.
+
+Fresh shared-source hosted builds pass the twelve relevant regression
+executables, including notification/control repetition, wait/drain failures,
+two-context routing, VM materialization/invalidation failure retention and
+FAST-ID wrap/error handling. The lifecycle test completes 131072 full repeat
+cycles and deregisters instead of expecting the old 83-repeat ceiling.
+The native driver also compiles and links in the private snapshot. These are
+hosted regression and native build results, not hardware validation. The NUC
+cycle-19 backing-allocation failure is a separate unresolved issue; no claim
+is made that this migration fixes it.
+
 Primary implementation references (Intel register/command semantics still
 require the generation-appropriate PRM; this audit introduces no new encoding):
 
@@ -1008,3 +1097,137 @@ require the generation-appropriate PRM; this audit introduces no new encoding):
 - https://github.com/torvalds/linux/blob/v6.16/drivers/gpu/drm/i915/gt/intel_ring.h
 - https://github.com/torvalds/linux/blob/v6.16/drivers/gpu/drm/i915/gt/intel_gt.c
 - https://github.com/torvalds/linux/blob/v6.16/drivers/gpu/drm/i915/i915_pci.c
+
+## Page-table reuse and remaining growth work (2026-10-03)
+
+v45 reuses existing leaf tables for eligible authenticated live binds. It retains
+the exclusion, completed invalidation and delayed metadata-commit rules used by
+unbind. Missing directories still select replacement-table allocation; the
+32 MiB backing quota and fixed VM metadata capacity have not been redesigned.
+Hosted insertion/removal and host-RAM writer tests pass. Native compilation and
+QEMU USB boot/Logs/Console checks pass, but QEMU VGA does not validate this Intel
+path. The 256-cycle NUC result remains outstanding.
+
+The subsequent Linux source audit checked the Codebrowser snapshot, not a
+verified v6.16 checkout (the version-pinned raw fetch failed):
+
+- `__gen8_ppgtt_alloc` reuses existing children; a missing child comes from the
+  stash and is initialized with level-appropriate scratch entries before its
+  parent link is installed. It then descends to populate further levels.
+  This is initialized-child-before-link, not a requirement to construct the
+  entire final subtree before linking any node.
+  [gen8_ppgtt.c](https://codebrowser.dev/linux/linux/drivers/gpu/drm/i915/gt/gen8_ppgtt.c.html)
+- `__set_pd_entry` publishes through `write_dma_entry`, which writes and flushes
+  the entry. `ppgtt_bind_vma` allocates the VA range when necessary, inserts data
+  entries, and ends with a write barrier. These details do not replace CuBit's
+  ownership, TLB completion or backing-retirement obligations.
+  [intel_ppgtt.c](https://codebrowser.dev/linux/linux/drivers/gpu/drm/i915/gt/intel_ppgtt.c.html)
+
+CuBit's next growth implementation must distinguish the metadata image root
+from the actual stable root retained by `Application_Image`. After replacement,
+they need not have the same DMA address. Existing leaf-only insertion avoids
+this distinction; new top-level links cannot simply write `Source.Page_DMA(1)`.
+They must target the retained root mapping and verify its expected entry.
+
+Before linking a newly allocated table, initialize all 512 entries with the
+correct scratch/fault fallback, establish visibility, and retain its exact
+backing identity. Preserve existing directories and live leaves. Partial
+publication must quarantine and retain every possibly reachable new table;
+neither an allocation failure nor a failed flush grants rollback/reuse authority.
+These are implementation requirements, not completed native growth support.
+
+### Directory growth components (not enabled in native dispatch)
+
+`VM_Image.Growth` now describes missing directories. Its `Backing` child
+validates newly owned pages and resolves parent links through the explicitly
+retained hardware root. `Backing.Writer` initializes, flushes and verifies all
+new table entries before linking them; its one-shot receipt permits software
+image adoption only after publication and confirmed invalidation under exclusion.
+No application data leaves are added by this operation. Source metadata capacity
+and the current DMA encoder's below-4GiB policy remain unchanged.
+
+`Table_Provenance` uses the growable record store for immutable table IDs and
+generation-qualified allocation tickets/offsets. Lookups reauthenticate backing
+and reject changed CPU/DMA addresses. Its `IO` child supplies volatile CPU access
+through those records. Ticket scans are bounded to 64 records per call; scans
+retain reference evidence even when lookup authority has been revoked. Neither
+the ledger nor a successful scan authorizes backing release. Alias validation,
+serialized lifetime and actual cache/TLB completion remain caller obligations.
+
+Table IDs also carry a ledger generation, captured by the owner rather than
+refreshed at lookup time. After grouped retirement has acknowledged every ticket
+and swept all references, `Retirement.Reopen` can retain the CPU metadata capacity
+while advancing that generation. Failed/incomplete retirement cannot reopen;
+generation wrap is rejected. Old-generation installs, lookups, retirement starts
+and volatile IO fail even when session, table index and physical address repeat.
+The native replacement-table path now calls the bounded `Recycle_Confirmed`
+adapter after its exact allocator acknowledgement and retired-image check,
+before acknowledging the ticket as reusable. The adapter accepts only a single
+ticket with at most64 records; larger/multi-ticket trees need stepped group
+retirement. Initial and replacement table accesses use captured ledger
+generations. This wiring is compile/link-checked and the adapter is hosted-tested
+for256 generations; it has not yet been booted on Intel hardware. It avoids
+requiring permanently new metadata for every reuse.
+
+Hosted regression command (output location may be overridden):
+
+```sh
+nix develop -c bash -c 'cd kernel && alr exec -- gprbuild -p -P ../tests/intel-gpu/vm_growth.gpr -XVM_GROWTH_OBJECT_DIR=/tmp/cubit-shared-vm-growth-obj -j2 && /tmp/cubit-shared-vm-growth-obj/vm_growth_tests && /tmp/cubit-shared-vm-growth-obj/vm_growth_backing_tests && /tmp/cubit-shared-vm-growth-obj/vm_growth_writer_tests && /tmp/cubit-shared-vm-growth-obj/table_provenance_tests'
+```
+
+Tests cover topology arithmetic, backing rejection, partial-write failure,
+ownership loss, gated metadata adoption, real volatile host-memory access, and
+stable IDs across metadata extension. Cache flush/TLB evidence is simulated;
+this is neither physical Intel validation nor a SPARK proof.
+
+Native integration must replace `Capture_Removal`'s one-ticket/256KiB mapping
+reconstruction and connect grouped retirement of every table allocation. Keep
+the grown-table path disabled until that ownership connection exists, including
+failure quarantine and retention of the original root/scratch allocation.
+
+### Pinned v6.16 retirement audit
+
+The upstream subtree is now available locally from the version-pinned archive
+(SHA256 `f8bb490be23623db4603657f62218269d9e167e42983c2cc0f77896e8b104707`).
+This replaces the earlier unpinned-source limitation for the following findings:
+
+- In `gt/gen8_ppgtt.c`, `__gen8_ppgtt_clear` restores scratch leaf entries,
+  updates usage counts, and can remove an empty directory or a covered subtree.
+  `release_pd_entry` in `gt/intel_ppgtt.c` detaches a last-reference child under
+  the parent lock; `clear_pd_entry` writes/flushed scratch, clears the software
+  child pointer and decrements parent usage. `free_px` drops the table's GEM
+  object reference. These calls alone are not a model of physical reuse safety.
+- `ppgtt_unbind_vma` clears the range, then calls `vma_invalidate_tlb`. The latter
+  records per-GT invalidation sequence requirements rather than performing an
+  immediate synchronous hardware flush. `gem/i915_gem_pages.c` checks those
+  requirements in `flush_tlb_invalidate` before releasing object pages.
+- `i915_vma_resource.c` separately tracks pending unbind ranges in a per-VM
+  interval tree, with an unbind fence and retained scatter-gather backing.
+  Detaching a mapping, retiring its work, and releasing backing are distinct.
+
+Sources: [gen8_ppgtt.c](https://kernel.googlesource.com/pub/scm/linux/kernel/git/torvalds/linux/+/refs/tags/v6.16/drivers/gpu/drm/i915/gt/gen8_ppgtt.c),
+[intel_ppgtt.c](https://kernel.googlesource.com/pub/scm/linux/kernel/git/torvalds/linux/+/refs/tags/v6.16/drivers/gpu/drm/i915/gt/intel_ppgtt.c),
+[i915_vma.c](https://kernel.googlesource.com/pub/scm/linux/kernel/git/torvalds/linux/+/refs/tags/v6.16/drivers/gpu/drm/i915/i915_vma.c),
+[i915_gem_pages.c](https://kernel.googlesource.com/pub/scm/linux/kernel/git/torvalds/linux/+/refs/tags/v6.16/drivers/gpu/drm/i915/gem/i915_gem_pages.c),
+[i915_vma_resource.c](https://kernel.googlesource.com/pub/scm/linux/kernel/git/torvalds/linux/+/refs/tags/v6.16/drivers/gpu/drm/i915/i915_vma_resource.c).
+
+CuBit deliberately retains empty directories today. Reusing them fixes repeated
+binds within existing topology, but a workload visiting new address ranges can
+still exhaust the bounded image. Dynamic backing alone does not solve that.
+Remaining integration requirements are:
+
+1. Per-table ticket provenance for ordinary access and partial-publication
+   quarantine, not just one current allocation ticket.
+2. Context-wide retirement of every referenced allocation only after confirmed
+   GPU/address-space retirement and CPU-grant clearance; supervisor acknowledgement
+   must match the exact ticket generation before reuse.
+3. Empty-subtree pruning or an explicit bounded cache policy, with a receipt
+   separating parent detachment, TLB retirement and backing release. Do not free
+   a table merely because its last data leaf was cleared.
+4. Scalable image metadata and stable identities across growth/reclamation.
+   Existing table IDs are not currently recycled; adding reclamation cannot
+   silently reuse them while publication or retirement receipts refer to them.
+
+This audit does not establish that Linux's entire lifetime mechanism has been
+ported or proved. CuBit's synchronous invalidation/exclusion gate remains in
+place; no change to the v45 hardware artifact follows from these findings.

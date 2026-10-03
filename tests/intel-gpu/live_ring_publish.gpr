@@ -1,8 +1,9 @@
 project Live_Ring_Publish is
    for Source_Dirs use (".", "../../userspace/services/intel-gpu");
-   for Object_Dir use "build-live-ring-publish";
+   for Object_Dir use external ("LIVE_RING_OBJECT_DIR", "build-live-ring-publish");
    for Main use ("live_ring_publish_tests.adb", "native_live_ring_tests.adb",
-                 "native_initial_ring_tests.adb");
+                 "native_initial_ring_tests.adb", "ring_exhaustion_submit_tests.adb",
+                 "ring_reservation_tests.adb");
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
    end Compiler;

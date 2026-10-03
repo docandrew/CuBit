@@ -5,11 +5,13 @@ package body Intel_GPU_Diagnostic_Capture with SPARK_Mode is
    function Latest (Item : Queue) return Captured_Record is (Item.Last);
    function Next (Index : Slot) return Slot is
      (if Index = Slot'Last then 0 else Index + 1);
-   procedure Append (Item : in out Queue; Text : String) is
+   procedure Append (Item : in out Queue; Text : String;
+     Level : CuBit.Log_Records.Severity := CuBit.Log_Records.Information) is
       Tail : Slot;
       Value : Captured_Record;
    begin
       Value.Length := Text'Length;
+      Value.Level := Level;
       Value.Text (1 .. Value.Length) := Text;
       Item.Last := Value;
       if Item.Used = Capacity then

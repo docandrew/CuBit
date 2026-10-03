@@ -1,5 +1,6 @@
 with Interfaces;
 with CCL.Language;
+with CuBit.Failures;
 
 --  Pure executable-declaration frontend. This emits requests, never grants.
 --  Field expressions use the existing CCL evaluator without a host adapter.
@@ -7,9 +8,11 @@ package CCL.Manifests with SPARK_Mode => On is
    MAX_DECLARATION_LENGTH : constant := 4_096;
    MAX_SECTION_BYTES : constant := 2_048;
    MAX_BINDINGS : constant := 32;
+   MAX_NAME_TEXT : constant := 64;
+   subtype Binding_Name_Length is Natural range 0 .. MAX_NAME_TEXT;
    type Binding_Name is record
-      Length : Natural range 0 .. 64 := 0;
-      Data : String (1 .. 64) := [others => ' '];
+      Length : Binding_Name_Length := 0;
+      Data : String (1 .. MAX_NAME_TEXT) := [others => ' '];
    end record;
    type Named_Binding is record
       Name : Binding_Name;
@@ -33,7 +36,8 @@ package CCL.Manifests with SPARK_Mode => On is
       Too_Many_Scopes, Duplicate_Scope, Unknown_Stream, Invalid_Stream_Pages,
       Duplicate_Stream, Invalid_Network_Scope, Unknown_Notification,
       Invalid_Notification_ID, Invalid_Device_Match, Duplicate_Device_Match,
-      Missing_Device_Match, Invalid_Device_Resource, Invalid_Scheduling);
+      Missing_Device_Match, Invalid_Device_Resource, Invalid_Scheduling,
+      Invalid_Launch);
    type Compilation_Result is record
       Success : Boolean := False;
       Diagnostic : Diagnostic_Code := No_Error;
@@ -42,9 +46,14 @@ package CCL.Manifests with SPARK_Mode => On is
       Expression_Diagnostic : CCL.Language.Diagnostic_Code :=
         CCL.Language.No_Diagnostic;
       Identity, Capabilities, Access_Scopes, Streams, Resources : Section;
+      --  .cubit.launch: the programs this executable may start (CuBit.Launch_Authority).
+      Launch : Section;
       Binding_Count : Natural range 0 .. MAX_BINDINGS := 0;
       Bindings : Binding_Array := [others => (others => <>)];
+      --  Which entry is wrong, why, and what would fix it (typed manifests).
+      Why : CuBit.Failures.Failure;
    end record;
+   --  Schema_Source: interfaces/executable-manifest.ccl, needed for typed manifests.
    procedure Compile
-     (Source, Catalog_Source : String; Result : out Compilation_Result);
+     (Source, Catalog_Source : String; Result : out Compilation_Result; Schema_Source : String := "");
 end CCL.Manifests;

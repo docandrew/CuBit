@@ -126,6 +126,11 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
    --  on write-back), or is delegated as a reader's would be. A handle
    --  that cannot read is closed instead (answer REPLY_ERR).
    Queue_Park : constant := 13;
+   --  As Queue_Read_Directory, in pairs of a Directory.Page.V1 and its
+   --  Directory.Inspection.V1 page (CuBit.Filesystems,
+   --  DIRECTORY_INSPECTED_BYTES each): a listing with each entry's metadata.
+   --  Length = bytes of pairs wanted; the answer's value is pairs filled.
+   Queue_Read_Directory_Inspected : constant := 14;
 
    --  Byte offsets within a request and an answer (the token first).
    Token_At        : constant := 0;

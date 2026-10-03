@@ -1,0 +1,18 @@
+with "../../userspace/ccl/cubit_shared.gpr";
+--  Hosted tests of the CCL console view: events in, results and frames out.
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Console_Tests is
+   for Source_Dirs use (".", "../../userspace/ccl/src", "../../userspace/ccl/tools/ccl-ui-preview", "../../userspace/ccl/tools/ccl-ui-preview/host",
+                        "../../userspace/lib/ui", "../../userspace/lib/theme",
+                        "../../userspace/lib/compositor", "../../userspace/lib/display",
+                        "../../userspace/allocator/src");
+   --  The root package CuBit comes with cubit_shared.gpr (the runtime\'s).
+   for Excluded_Source_Files use ("cubit.ads");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb", "vectors.adb", "units_vectors.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwJ");
+      for Switches ("main.adb") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Console_Tests;

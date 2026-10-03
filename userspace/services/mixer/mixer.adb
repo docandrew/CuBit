@@ -11,6 +11,9 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 
 package body Mixer is
+   type Pending_Table is array (streams'Range, Period_Slot) of Natural range 0 .. 256;
+   Pending : Pending_Table := (others => (others => 0));
+
    Master_Gain : Integer_64 := 65_536;
 
    function toVolume is new Ada.Unchecked_Conversion (Unsigned_32, Volume);
@@ -126,6 +129,9 @@ package body Mixer is
       --  Revoke the grant
       revokeGrant (streams (streamIdx).grantId);
 
+      for Slot in Period_Slot loop
+         Pending (streamIdx, Slot) := 0;
+      end loop;
       streams (streamIdx).active := False;
       streams (streamIdx).pid := 0;
    end closeStream;
@@ -254,8 +260,33 @@ package body Mixer is
    ---------------------------------------------------------------------------
    --  mixPeriod - mix all active output streams into one HDA DMA period
    ---------------------------------------------------------------------------
+   function Buffered_Frames (Index : Natural) return Unsigned_64 is
+      W, R, Used : Unsigned_32;
+   begin
+      if Index not in streams'Range or else not streams (Index).active then
+         return Unsigned_64'Last;
+      end if;
+      W := readAtomicU32 (streams (Index).ringAddr);
+      R := readAtomicU32 (streams (Index).ringAddr + 4);
+      Used := W - R;
+      if Used > RING_DATA_SIZE or else W mod 4 /= 0 or else R mod 4 /= 0 then
+         return Unsigned_64'Last;
+      end if;
+      return Unsigned_64 (Used / 4);
+   end Buffered_Frames;
+
+   function Device_Frames (Index : Natural) return Unsigned_64 is
+      Total : Unsigned_64 := 0;
+   begin
+      for Slot in Period_Slot loop
+         Total := Total + Unsigned_64 (Pending (Index, Slot));
+      end loop;
+      return Total;
+   end Device_Frames;
+
    function mixPeriod (mixBuf     : in out MixBuffer;
                        periodAddr : Unsigned_64;
+                       Slot : Period_Slot;
                        maxFrames  : Natural) return Natural
    is
       type SampleArray is array (Natural range <>) of Integer_16
@@ -277,8 +308,10 @@ package body Mixer is
 
       --  Accumulate from all active output streams
       for i in streams'Range loop
+         Pending (i, Slot) := 0;
          if streams (i).active and streams (i).direction = 0 then
             framesRead := readAndMix (i, mixBuf, maxFrames);
+            Pending (i, Slot) := framesRead;
             if framesRead > maxRead then
                maxRead := framesRead;
             end if;

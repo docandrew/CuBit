@@ -12,6 +12,7 @@ with CuBit.Messages;
 with CuBit.Async_Requests;
 with Client_Frame_Pair;
 with Client_Input_Provenance;
+with Client_Input_Batch_Cache;
 
 with CuBit.UI;
 with CuBit.UI.Input;
@@ -65,6 +66,8 @@ package CuBit.UI.App is
    -- Protected frames are enabled per client during migration. Raw-renderer
    -- callers retain the existing attachment path until their density handling
    -- is adapted. Run manages acquisition, repair and publication automatically.
+   -- batched_input opts synchronous Poll/Wait into bounded batch delivery.
+   -- Asynchronous Submit_Input_Wait is unavailable in this mode.
    procedure Open
       (win : in out Window;
        width, height : Natural;
@@ -73,7 +76,8 @@ package CuBit.UI.App is
        maximum_width : Natural := 0;
        maximum_height : Natural := 0;
        title : String := "Application";
-       protected_frames : Boolean := False);
+       protected_frames : Boolean := False;
+       batched_input : Boolean := False);
 
    procedure Set_Title (win : Window; title : String);
 
@@ -125,6 +129,27 @@ package CuBit.UI.App is
    --  with the last input reply. It is a drain hint, never authority or an
    --  assertion that a later event cannot arrive.
    function Input_May_Remain (win : Window) return Boolean;
+   -- Event-thread-only observation; no fetch, take, acknowledgment or IPC.
+   function Cached_Input_Count (win : Window) return Natural;
+   -- Consume at most one cached event on the event thread; never fetch/wait for
+   -- input. Configure/resync application retains its normal theme/buffer work.
+   -- Invalid cache is cleared without advancing the acknowledged serial;
+   -- a subsequent ordinary poll can recover the server-retained input.
+   procedure Poll_Cached_Input
+     (win : in out Window; event : out Input_Event; found : out Boolean);
+
+   type Input_Diagnostics is record
+      Batch_Enabled, Channel_Disabled : Boolean := False;
+      Successful_Fetches, Fetched_Events, Delivered_Events : Unsigned_64 := 0;
+      Fallback_Polls, Cache_Rejections : Unsigned_64 := 0;
+   end record;
+   -- Read-only, allocation-free snapshot. Counters saturate, reset on Open,
+   -- and remain readable after Close. Fetched events have passed validation;
+   -- Delivered_Events counts events actually consumed from the local cache.
+   -- Channel_Disabled is process-wide and sticky until process exit.
+   -- Like other Window operations, call on the window's owning event thread.
+   function Input_Statistics (win : Window) return Input_Diagnostics;
+
    -- Explicit handler boundaries, not delivery acknowledgements. Custom event
    -- loops must bracket each consumed event to opt into input/frame tracing.
    -- Incorrect ordering disables attribution until the window is reopened.
@@ -226,6 +251,9 @@ private
       pitch : Natural := 0;
       lastEvent : Unsigned_64 := 0;
       inputMayRemain : Boolean := False;
+      batchedInput : Boolean := False;
+      inputCache : Client_Input_Batch_Cache.State;
+      inputStats : Input_Diagnostics;
       inputRequest : CuBit.Async_Requests.Tracker;
       sentBye : Boolean := False;
    end record;

@@ -1,3 +1,4 @@
+with CCL_Log_IO;
 with Interfaces; use Interfaces;
 with System;
 with CCL.Catalog;
@@ -16,12 +17,14 @@ with CCL.Debug_Maps;
 with CCL.Ownership;
 with CCL.VM;
 with CCL_Execution;
-with CCL_Workbench_Platform;
+with CCL_Desktop_Platform;
+with CCL_Window;
 with Client_Input_Budget;
 with CCL_Workspace;
 with CCL.Sessions;
 with CCL.Periodic_Programs;
 with CCL_REPL_View;
+with CCL_REPL_Commands;
 with CuBit.File_Selection;
 with CuBit.UI.File_Dialogs;
 with CuBit.UI;
@@ -40,6 +43,8 @@ with CuBit.UI.Widgets;
 --  Shared CCL Workbench. Rendering uses the CuBit UI canvas; the selected
 --  platform adapter is the only presentation, input, and host-service edge.
 package body CCL_Workbench is
+   package Platform renames CCL_Desktop_Platform;
+   use type Platform.Window_Event;
    use type System.Address;
    use type CCL.Language.Interpretation_Status;
    use type CCL.Callbacks.Events.Enqueue_Result;
@@ -79,12 +84,9 @@ package body CCL_Workbench is
    MAX_SOURCE_STYLE_SPANS : constant Positive := SOURCE_CAPACITY;
    BYTECODE_ROW_HEIGHT : constant Positive := CuBit.UI.Code_Text_Height + 3;
    WORKSPACE_MARGIN : constant Natural := 8;
-   function Window_Has_System_Chrome return Integer_32
-   with Import, Convention => C,
-        External_Name => "ccl_window_has_system_chrome";
 
    CLIENT_TITLE_HEIGHT : constant Natural :=
-     (if Window_Has_System_Chrome /= 0 then 0 else 22);
+     (if CCL_Window.Has_System_Chrome /= 0 then 0 else 22);
    WORKSPACE_TOP : constant Natural := CLIENT_TITLE_HEIGHT + 60;
    WORKSPACE_BOTTOM : constant Natural := 38;
    MINIMUM_INSPECTOR_WIDTH : constant Natural := 170;
@@ -443,39 +445,11 @@ package body CCL_Workbench is
       end if;
    end Toolbar_Hint;
 
-   function Window_Open (Width, Height : Integer_32) return System.Address
-   with Import, Convention => C, External_Name => "ccl_window_open";
-   function Window_Poll
-     (Handle : System.Address; Kind : access Integer_32;
-      Code, Modifiers : access Unsigned_32;
-      X, Y : access Integer_32) return Integer_32
-   with Import, Convention => C, External_Name => "ccl_window_poll";
-   function Window_Prepare_Frame
-     (Handle : System.Address;
-      Minimum_Width, Minimum_Height : Integer_32;
-      Maximum_Width, Maximum_Height : Integer_32;
-      Width, Height : access Integer_32) return Integer_32
-   with Import, Convention => C, External_Name => "ccl_window_prepare_frame";
-   procedure Window_Set_Cursor
-     (Handle : System.Address; Style : Integer_32)
-   with Import, Convention => C, External_Name => "ccl_window_set_cursor";
-   procedure Window_Wait (May_Block : Integer_32)
-   with Import, Convention => C, External_Name => "ccl_window_wait";
-   procedure Window_Wait_Until (Deadline : Unsigned_64)
-   with Import, Convention => C, External_Name => "ccl_window_wait_until";
-   function Window_Ticks return Interfaces.Unsigned_64
-   with Import, Convention => C, External_Name => "ccl_window_ticks";
-   function Window_Clock_Monotonic
-     (Success : access Integer_32) return Interfaces.Unsigned_64
-   with Import, Convention => C,
-        External_Name => "ccl_window_clock_monotonic";
-   procedure Window_Close (Handle : System.Address)
-   with Import, Convention => C, External_Name => "ccl_window_close";
 
    --  The window platform's monotonic clock, for clock.monotonic-ms.
    function Live_Clock (Available : out Boolean) return Unsigned_64 is
       Answered : aliased Integer_32 := 0;
-      Milliseconds : constant Unsigned_64 := Window_Clock_Monotonic (Answered'Access);
+      Milliseconds : constant Unsigned_64 := CCL_Window.Clock_Monotonic (Answered'Access);
    begin
       Available := Answered /= 0;
       return Milliseconds;
@@ -491,7 +465,7 @@ package body CCL_Workbench is
    function Live_Now (Context : Live_Context) return Unsigned_64 is
       pragma Unreferenced (Context);
    begin
-      return Window_Ticks;
+      return CCL_Window.Ticks;
    end Live_Now;
 
    procedure Invoke_Live
@@ -566,108 +540,18 @@ package body CCL_Workbench is
    procedure Interpret_Live is new CCL.Language.Interpret_With_Values
      (Live_Context, Invoke_Live);
    procedure Submit_Live is new CCL.Sessions.Submit_With_Values (Live_Context, Invoke_Live);
-   --  The REPL, plus workspace commands (the Workbench owns the workspace,
-   --  so these live here, not in the session engine):
-   --    :files        the .ccl files in the workspace
-   --    :save NAME    the session's definitions as a new file (never replaces)
-   --    :load NAME    a file's definitions into the session
-   procedure Submit_REPL
+   procedure Submit_Granted
      (Item : in out CCL.Sessions.Session; Source : String;
-      Fuel : CCL.Sessions.Fuel_Budget; Outcome : out CCL.Language.Interpretation_Result)
-   is
-      First : Natural := Source'First;
-      Last : Natural := Source'Last;
-      function Command (Word : String) return Boolean is
-        (Last - First + 1 >= Word'Length and then Source (First .. First + Word'Length - 1) = Word and then
-         (Last - First + 1 = Word'Length or else Source (First + Word'Length) = ' '));
-      --  The argument after the command word, with ".ccl" added if missing.
-      function File_Argument (Word : String) return String is
-         From : Natural := First + Word'Length;
-      begin
-         while From <= Last and then Source (From) = ' ' loop From := From + 1; end loop;
-         if From > Last then return ""; end if;
-         return (if Last - From + 1 > 4 and then Source (Last - 3 .. Last) = ".ccl"
-                 then Source (From .. Last) else Source (From .. Last) & ".ccl");
-      end File_Argument;
-      function Failure (Result : CCL_Workspace.Storage_Result) return String is
-        (case Result is
-           when CCL_Workspace.Conflict => "a file with that name exists; choose a new name",
-           when CCL_Workspace.Not_Found => "no such file in the workspace",
-           when CCL_Workspace.Invalid_Name => "invalid name (letters, digits, - and _, ending .ccl)",
-           when CCL_Workspace.Unavailable => "no workspace in this session",
-           when CCL_Workspace.Limit_Reached => "the workspace or file is full",
-           when CCL_Workspace.Access_Denied => "the workspace refused access",
-           when others => "workspace I/O failed");
+      Fuel : CCL.Sessions.Fuel_Budget; Outcome : out CCL.Language.Interpretation_Result;
+      Shown : String := "");
+   procedure Submit_Granted
+     (Item : in out CCL.Sessions.Session; Source : String;
+      Fuel : CCL.Sessions.Fuel_Budget; Outcome : out CCL.Language.Interpretation_Result;
+      Shown : String := "") is
    begin
-      while First <= Last and then Source (First) = ' ' loop First := First + 1; end loop;
-      while Last >= First and then Source (Last) = ' ' loop Last := Last - 1; end loop;
-      if Command (":files") then
-         declare
-            Files : CuBit.File_Selection.File_List;
-            Result : CCL_Workspace.Storage_Result;
-            Names : String (1 .. 900) := [others => ' '];
-            Used : Natural := 0;
-         begin
-            CCL_Workspace.List_Files (Files, Result);
-            if Result /= CCL_Workspace.Succeeded then
-               CCL.Sessions.Note (Item, Source, Failure (Result), Outcome);
-               return;
-            end if;
-            for I in 1 .. Files.Count loop
-               declare
-                  Name : constant String := CuBit.File_Selection.Value (Files.Names (I));
-               begin
-                  exit when Name'Length + 2 > Names'Length - Used;
-                  if Used > 0 then Names (Used + 1 .. Used + 2) := ", "; Used := Used + 2; end if;
-                  Names (Used + 1 .. Used + Name'Length) := Name;
-                  Used := Used + Name'Length;
-               end;
-            end loop;
-            CCL.Sessions.Note
-              (Item, Source, (if Used = 0 then "no .ccl files in " & CCL_Workspace.Location
-                              else Names (1 .. Used)), Outcome);
-         end;
-      elsif Command (":save") then
-         declare
-            Name : constant String := File_Argument (":save");
-            Result : CCL_Workspace.Storage_Result;
-         begin
-            if not CCL_Workspace.Valid_Source_Name (Name) then
-               CCL.Sessions.Note (Item, Source, Failure (CCL_Workspace.Invalid_Name), Outcome);
-            elsif CCL.Sessions.Kept_Definitions (Item) = 0 then
-               CCL.Sessions.Note (Item, Source, "no definitions to save (values are not saved)", Outcome);
-            else
-               CCL_Workspace.Save_New (Name, CCL.Sessions.Definitions_Source (Item), Result);
-               CCL.Sessions.Note
-                 (Item, Source,
-                  (if Result = CCL_Workspace.Succeeded then "saved" &
-                     Natural'Image (CCL.Sessions.Kept_Definitions (Item)) & " definitions to " & Name
-                   else Failure (Result)), Outcome);
-            end if;
-         end;
-      elsif Command (":load") then
-         declare
-            Name : constant String := File_Argument (":load");
-            Text : CCL_Workspace.Source_Buffer;
-            Length : CCL_Workspace.Source_Length;
-            Result : CCL_Workspace.Storage_Result;
-         begin
-            if not CCL_Workspace.Valid_Source_Name (Name) then
-               CCL.Sessions.Note (Item, Source, Failure (CCL_Workspace.Invalid_Name), Outcome);
-               return;
-            end if;
-            CCL_Workspace.Load (Name, Text, Length, Result);
-            if Result /= CCL_Workspace.Succeeded then
-               CCL.Sessions.Note (Item, Source, Failure (Result), Outcome);
-            else
-               Submit_Live (Item, Text (1 .. Length), Fuel, Granted_Interfaces, Live_Host, Outcome,
-                            Shown => Source);
-            end if;
-         end;
-      else
-         Submit_Live (Item, Source, Fuel, Granted_Interfaces, Live_Host, Outcome);
-      end if;
-   end Submit_REPL;
+      Submit_Live (Item, Source, Fuel, Granted_Interfaces, Live_Host, Outcome, Shown);
+   end Submit_Granted;
+   procedure Submit_REPL is new CCL_REPL_Commands (Submit_Granted);
    procedure Handle_REPL_Event is new CCL_REPL_View.Handle_With_Executor (Submit_REPL);
    procedure Pump_Live is new CCL.Periodic_Programs.Evaluate_Values_Due
      (Live_Context, Live_Now, Invoke_Live);
@@ -682,11 +566,11 @@ package body CCL_Workbench is
    begin
       if Watching then
          CCL.Periodic_Programs.Stop (Live_Program);
-         CCL_Workbench_Platform.Live_Label_Changed (CCL_Workbench_Platform.Stopped);
+         CCL_Desktop_Platform.Live_Label_Changed (CCL_Desktop_Platform.Stopped);
       else
          if not Prepare_Source (View) then return; end if;
          CCL.Periodic_Programs.Load
-           (Live_Program, View.Canonical.Data (1 .. View.Canonical.Length), Window_Ticks,
+           (Live_Program, View.Canonical.Data (1 .. View.Canonical.Length), CCL_Window.Ticks,
             1_000, CCL.Periodic_Programs.Default_Fuel, Result);
          if Result /= CCL.Periodic_Programs.Loaded then
             Set_Result
@@ -697,7 +581,7 @@ package body CCL_Workbench is
                   when others => "Watch: previous invocation is still active");
             return;
          end if;
-         CCL_Workbench_Platform.Live_Label_Changed (CCL_Workbench_Platform.Started);
+         CCL_Desktop_Platform.Live_Label_Changed (CCL_Desktop_Platform.Started);
       end if;
    end Toggle_Watch;
 
@@ -3096,7 +2980,7 @@ package body CCL_Workbench is
       Repair : CuBit.UI.Rect;
       Ready : Boolean;
    begin
-      CCL_Workbench_Platform.Begin_Frame (Canvas, Changed, Repair, Ready);
+      CCL_Desktop_Platform.Begin_Frame (Canvas, Changed, Repair, Ready);
       if not Ready then return True; end if; -- debt remains for a timed retry
       Canvas := CuBit.UI.With_Clip (Canvas, Repair);
       if Kind = All_Content or else Repair /= Changed then
@@ -3115,12 +2999,13 @@ package body CCL_Workbench is
             when Pointer_Only => Render_Pointer_Feedback;
          end case;
       end if;
-      return CCL_Workbench_Platform.Submit_Frame (Handle, Canvas, Repair);
+      return CCL_Desktop_Platform.Submit_Frame (Handle, Canvas, Repair);
    end Paint;
 
 procedure Run is
 begin
-   CCL_Workbench_Platform.Activate;
+   CCL_Log_IO.Announce ("ccl-workbench: started");
+   CCL_Desktop_Platform.Activate (Name => "ccl-workbench", Title => "CCL Workbench");
    Initialize_Visible_Interfaces;
    CCL_REPL_View.Initialize (REPL, Visible_Interfaces);
    declare
@@ -3175,8 +3060,9 @@ begin
    Result_Text (1 .. Result_Last) := "ready";
    declare
       Handle : constant System.Address :=
-        Window_Open (Integer_32 (WIDTH), Integer_32 (HEIGHT));
+        CCL_Window.Open (Integer_32 (WIDTH), Integer_32 (HEIGHT));
       Kind : aliased Integer_32 := 0;
+      Polled : Platform.Window_Event := Platform.No_Event;
       Code : aliased Unsigned_32 := 0;
       Modifiers : aliased Unsigned_32 := 0;
       Mouse_X : aliased Integer_32 := 0;
@@ -3264,7 +3150,7 @@ begin
          Old_Width : constant Natural := Canvas.width;
          Old_Height : constant Natural := Canvas.height;
       begin
-         if Window_Prepare_Frame
+         if CCL_Window.Prepare_Frame
            (Handle, Integer_32 (WIDTH), Integer_32 (HEIGHT),
             Integer_32 (MAXIMUM_WIDTH),
             Integer_32 (MAXIMUM_HEIGHT),
@@ -3288,14 +3174,14 @@ begin
          Event : Dialog_Event;
       begin
          Event.Kind :=
-           (case Kind is
-               when 2 => Text_Input, when 3 => Backspace, when 4 => Enter,
-               when 5 => Left, when 6 => Right, when 7 => Home, when 8 => End_Key,
-               when 9 => Delete, when 10 => Select_All, when 11 | 15 => Pointer_Down,
-               when 12 => Pointer_Drag, when 13 => Pointer_Up, when 14 => Double_Click,
-               when 16 => Up, when 17 => Down, when 18 => Wheel_Up, when 19 => Wheel_Down,
-               when 20 => Page_Up, when 21 => Page_Down, when 22 => Escape,
-               when CCL_Workbench_Platform.Tab_Event => Tab,
+           (case Polled is
+               when Platform.Text_Input => Text_Input, when Platform.Backspace => Backspace, when Platform.Enter => Enter,
+               when Platform.Left => Left, when Platform.Right => Right, when Platform.Home => Home, when Platform.End_Key => End_Key,
+               when Platform.Delete => Delete, when Platform.Select_All => Select_All, when Platform.Pointer_Down | Platform.Triple_Click => Pointer_Down,
+               when Platform.Pointer_Drag => Pointer_Drag, when Platform.Pointer_Up => Pointer_Up, when Platform.Double_Click => Double_Click,
+               when Platform.Up => Up, when Platform.Down => Down, when Platform.Wheel_Up => Wheel_Up, when Platform.Wheel_Down => Wheel_Down,
+               when Platform.Page_Up => Page_Up, when Platform.Page_Down => Page_Down, when Platform.Escape => Escape,
+               when Platform.Tab => Tab,
                when others => No_Event);
          if Code <= 127 then Event.Character_Value := Character'Val (Code); end if;
          Event.X := Pointer_X;
@@ -3328,21 +3214,21 @@ begin
          Submitted : Boolean;
       begin
          Event.Kind :=
-           (case Kind is
-               when 2 => Text_Input, when 3 => Backspace, when 4 | 25 => Submit,
-               when 5 => Left, when 6 => Right, when 7 => Home, when 8 => End_Key,
-               when 9 => Delete, when 10 => Select_All, when 11 | 14 | 15 => Pointer_Down,
-               when 12 => Pointer_Drag, when 13 => Pointer_Up,
-               when 16 => Previous, when 17 => Next, when 18 => Wheel_Up, when 19 => Wheel_Down,
-               when CCL_Workbench_Platform.Complete_Operation_Event => Complete,
-               when CCL_Workbench_Platform.Tab_Event => Accept_Completion,
+           (case Polled is
+               when Platform.Text_Input => Text_Input, when Platform.Backspace => Backspace, when Platform.Enter | Platform.Run_Source => Submit,
+               when Platform.Left => Left, when Platform.Right => Right, when Platform.Home => Home, when Platform.End_Key => End_Key,
+               when Platform.Delete => Delete, when Platform.Select_All => Select_All, when Platform.Pointer_Down | Platform.Double_Click | Platform.Triple_Click => Pointer_Down,
+               when Platform.Pointer_Drag => Pointer_Drag, when Platform.Pointer_Up => Pointer_Up,
+               when Platform.Up => Previous, when Platform.Down => Next, when Platform.Wheel_Up => Wheel_Up, when Platform.Wheel_Down => Wheel_Down,
+               when Platform.Complete_Operation => Complete,
+               when Platform.Tab => Accept_Completion,
                when others => No_Event);
          if Code <= 127 then Event.Character_Value := Character'Val (Code); end if;
          Event.X := Pointer_X; Event.Y := Pointer_Y;
          Event.Shift := (Modifiers and 1) /= 0;
          Event.Control := (Modifiers and 2) /= 0;
          Handle_REPL_Event (REPL, Event, REPL_Bounds, Submitted);
-         if Submitted then CCL_Workbench_Platform.REPL_Completed (CCL_REPL_View.Latest_Result (REPL)); end if;
+         if Submitted then CCL_Desktop_Platform.REPL_Completed (CCL_REPL_View.Latest_Result (REPL)); end if;
       end Handle_REPL;
 
       procedure Toggle_REPL is
@@ -3363,24 +3249,25 @@ begin
       Prepare_Surface;
       if not Running then raise Program_Error; end if;
       while Running loop
-         Input_Batch := Client_Input_Budget.Open (Window_Ticks);
+         Input_Batch := Client_Input_Budget.Open (CCL_Window.Ticks);
          Input_Drained := False;
          while Running and then
-           Client_Input_Budget.Can_Poll (Input_Batch, Window_Ticks)
+           Client_Input_Budget.Can_Poll (Input_Batch, CCL_Window.Ticks)
          loop
             Client_Input_Budget.Charge (Input_Batch);
-            if Window_Poll
+            if CCL_Window.Poll
               (Handle, Kind'Access, Code'Access, Modifiers'Access,
                Mouse_X'Access, Mouse_Y'Access) = 0
             then
                Input_Drained := True;
                exit;
             end if;
+            Polled := Platform.Event_Of (Kind);
             Previous_Hover := Current_Hover_Target;
             --  All semantic input other than free pointer motion may update
             --  application state. Plain motion is handled below by comparing
             --  semantic hover regions.
-            if Kind /= 26 then
+            if Polled /= Platform.Pointer_Hover then
                Needs_Render := True;
                REPL_Only_Render := False;
             end if;
@@ -3388,103 +3275,103 @@ begin
                Pointer_X := Natural (Mouse_X);
                Pointer_Y := Natural (Mouse_Y);
                Pointer_Known := True;
-               if Kind in 11 | 14 | 15 then
+               if Polled in Platform.Pointer_Down | Platform.Double_Click | Platform.Triple_Click then
                   Output_Focused := CuBit.UI.Point_In_Rect
                     (Pointer_X, Pointer_Y, Output_Bounds);
                end if;
                if Output_Pointer_Down or else
-                 (Kind in 11 | 14 | 15 and then
+                 (Polled in Platform.Pointer_Down | Platform.Double_Click | Platform.Triple_Click and then
                   CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, Output_Bounds))
                then
                   --  The output pane owns independent widget capture.
-                  if Kind in 11 | 14 | 15 then
+                  if Polled in Platform.Pointer_Down | Platform.Double_Click | Platform.Triple_Click then
                      CuBit.UI.State.Resynchronize_Pointer
                        (Workbench_UI, Pointer_X, Pointer_Y, False);
                   end if;
                elsif CuBit.UI.File_Dialogs.Is_Open (File_Dialog) or else REPL_Visible then
                   null; -- Modal input must never reach the background widgets.
-               elsif Kind = 11 or else Kind = 14 or else Kind = 15 then
+               elsif Polled = Platform.Pointer_Down or else Polled = Platform.Double_Click or else Polled = Platform.Triple_Click then
                   CuBit.UI.State.Set_Pointer
                     (Workbench_UI, Pointer_X, Pointer_Y, True,
                      pressed => True);
-               elsif Kind = 12 then
+               elsif Polled = Platform.Pointer_Drag then
                   CuBit.UI.State.Set_Pointer
                     (Workbench_UI, Pointer_X, Pointer_Y, True);
-               elsif Kind = 13 then
+               elsif Polled = Platform.Pointer_Up then
                   CuBit.UI.State.Set_Pointer
                     (Workbench_UI, Pointer_X, Pointer_Y, False,
                      released => True);
-               elsif Kind = 26 then
+               elsif Polled = Platform.Pointer_Hover then
                   CuBit.UI.State.Set_Pointer
                     (Workbench_UI, Pointer_X, Pointer_Y, False);
                end if;
             end if;
-            if CuBit.UI.File_Dialogs.Is_Open (File_Dialog) and then Kind /= 1 then
+            if CuBit.UI.File_Dialogs.Is_Open (File_Dialog) and then Polled /= Platform.Close_Request then
                Handle_File_Dialog;
-            elsif (Kind in 11 | 14 | 15 | 18 | 19 and then
+            elsif (Polled in Platform.Pointer_Down | Platform.Double_Click | Platform.Triple_Click | Platform.Wheel_Up | Platform.Wheel_Down and then
               CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, Output_Bounds)) or else
-              (Kind in 12 | 13 and then Output_Pointer_Down) or else
-              (Kind = 26 and then not Output_Pointer_Down and then
+              (Polled in Platform.Pointer_Drag | Platform.Pointer_Up and then Output_Pointer_Down) or else
+              (Polled = Platform.Pointer_Hover and then not Output_Pointer_Down and then
                CuBit.UI.Controls.Hit (Output_Controls,
                  Output_UI.pointer.x, Output_UI.pointer.y) /=
                CuBit.UI.Controls.Hit (Output_Controls, Pointer_X, Pointer_Y))
             then
-               if Kind in 18 | 19 then
+               if Polled in Platform.Wheel_Up | Platform.Wheel_Down then
                   CuBit.UI.Apply_Wheel_Scroll
                     (Output_Line, 1, Output_Max_Line,
-                     (if Kind = 18 then 1 else -1), 3);
+                     (if Polled = Platform.Wheel_Up then 1 else -1), 3);
                else
-                  Output_Pointer_Down := Kind in 11 | 12 | 14 | 15;
+                  Output_Pointer_Down := Polled in Platform.Pointer_Down | Platform.Pointer_Drag | Platform.Double_Click | Platform.Triple_Click;
                   CuBit.UI.State.Set_Pointer
                     (Output_UI, Pointer_X, Pointer_Y, Output_Pointer_Down,
-                     pressed => Kind in 11 | 14 | 15, released => Kind = 13);
+                     pressed => Polled in Platform.Pointer_Down | Platform.Double_Click | Platform.Triple_Click, released => Polled = Platform.Pointer_Up);
                end if;
                --  Output interaction never edits the source or REPL, and
                --  does not repaint their expensive text areas.
                if not Paint (Handle, Output_Bounds, Output_Only) then Running := False; end if;
                Needs_Render := False;
             elsif Output_Focused and then
-              Kind in 2 .. 10 | 16 .. 21 | 23 .. 24 | 27 .. 33
+              Polled in Platform.Text_Input .. Platform.Select_All | Platform.Up .. Platform.Page_Down | Platform.Undo .. Platform.Redo | Platform.Wheel_Left .. Platform.Find_Next
             then
                null; -- read-only output cannot mutate the source behind it
-            elsif Kind = CCL_Workbench_Platform.Toggle_REPL_Event then
+            elsif Polled = Platform.Toggle_REPL then
                Toggle_REPL;
-            elsif Kind = CCL_Workbench_Platform.Toggle_Watch_Event then
+            elsif Polled = Platform.Toggle_Watch then
                Toggle_Watch;
-            elsif Kind = CCL_Workbench_Platform.Toggle_Syntax_Event then
+            elsif Polled = Platform.Toggle_Syntax then
                Toggle_Syntax (Format_Only => (Modifiers and 1) /= 0);
-            elsif not REPL_Visible and then Kind in 11 | 14 | 15 and then
+            elsif not REPL_Visible and then Polled in Platform.Pointer_Down | Platform.Double_Click | Platform.Triple_Click and then
               CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, Syntax_Toggle)
             then
                Syntax_Toggle_Pressed := True;
-            elsif Kind = 13 and then Syntax_Toggle_Pressed then
+            elsif Polled = Platform.Pointer_Up and then Syntax_Toggle_Pressed then
                if CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, Syntax_Toggle) then Toggle_Syntax; end if;
                Syntax_Toggle_Pressed := False;
-            elsif Kind in 11 | 14 | 15 and then
+            elsif Polled in Platform.Pointer_Down | Platform.Double_Click | Platform.Triple_Click and then
               CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, REPL_Toggle)
             then
                REPL_Toggle_Pressed := True;
-            elsif Kind = 13 and then REPL_Toggle_Pressed then
+            elsif Polled = Platform.Pointer_Up and then REPL_Toggle_Pressed then
                if CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, REPL_Toggle) then Toggle_REPL; end if;
                REPL_Toggle_Pressed := False;
-            elsif REPL_Visible and then Kind = 22 then
+            elsif REPL_Visible and then Polled = Platform.Escape then
                Toggle_REPL;
             elsif REPL_Visible and then
-              (Kind in 2 .. 10 | 16 .. 21 | 23 .. 25 | 27 .. 33 | 36 or else
-               Kind = CCL_Workbench_Platform.Complete_Operation_Event or else
-               (Kind in 11 | 14 | 15 and then
+              (Polled in Platform.Text_Input .. Platform.Select_All | Platform.Up .. Platform.Page_Down | Platform.Undo .. Platform.Run_Source | Platform.Wheel_Left .. Platform.Find_Next | Platform.Tab or else
+               Polled = Platform.Complete_Operation or else
+               (Polled in Platform.Pointer_Down | Platform.Double_Click | Platform.Triple_Click and then
                 CuBit.UI.Point_In_Rect (Pointer_X, Pointer_Y, REPL_Bounds)) or else
-               (Kind in 12 .. 13 and then REPL_Pointer_Down))
+               (Polled in Platform.Pointer_Drag .. Platform.Pointer_Up and then REPL_Pointer_Down))
             then
-               if Kind in 11 | 14 | 15 then REPL_Pointer_Down := True;
-               elsif Kind = 13 then REPL_Pointer_Down := False;
+               if Polled in Platform.Pointer_Down | Platform.Double_Click | Platform.Triple_Click then REPL_Pointer_Down := True;
+               elsif Polled = Platform.Pointer_Up then REPL_Pointer_Down := False;
                end if;
                Handle_REPL;
                REPL_Only_Render := True;
             else
-            case Kind is
-               when 1 => Running := False;
-               when 2 =>
+            case Polled is
+               when Platform.Close_Request => Running := False;
+               when Platform.Text_Input =>
                   if Find_Active and then Code >= 32 and then Code <= 126 then
                      CuBit.UI.Editor.Insert
                        (Find_Query, String'(1 => Character'Val (Code)), Changed);
@@ -3492,13 +3379,13 @@ begin
                      Insert_Source
                        (String'(1 => Character'Val (Code)), Changed);
                   end if;
-               when 3 =>
+               when Platform.Backspace =>
                   if Find_Active then
                      CuBit.UI.Editor.Backspace (Find_Query, Changed);
                   else
                      Backspace_Source (Changed);
                   end if;
-               when 4 =>
+               when Platform.Enter =>
                   if Find_Active then
                      Find_Next_Query;
                   else
@@ -3506,24 +3393,24 @@ begin
                        (String'(1 => ASCII.LF), Changed,
                         Source_Histories.Other_Edit);
                   end if;
-               when 5 | 6 =>
+               when Platform.Left | Platform.Right =>
                   Extend := (Modifiers and 1) /= 0;
                   By_Word := (Modifiers and 2) /= 0;
                   if Find_Active then
                      CuBit.UI.Editor.Move
                        (Find_Query,
-                        (if By_Word and then Kind = 6 then
+                        (if By_Word and then Polled = Platform.Right then
                             CuBit.UI.Editor.Move_Word_Right
                          elsif By_Word then CuBit.UI.Editor.Move_Word_Left
-                         elsif Kind = 6 then CuBit.UI.Editor.Move_Right
+                         elsif Polled = Platform.Right then CuBit.UI.Editor.Move_Right
                          else CuBit.UI.Editor.Move_Left),
                         Extend_Selection => Extend);
                   else
                      Move_Source_Horizontal
-                       (Right => Kind = 6, By_Word => By_Word,
+                       (Right => Polled = Platform.Right, By_Word => By_Word,
                         Extend_Selection => Extend);
                   end if;
-               when 7 =>
+               when Platform.Home =>
                   if Find_Active then
                      CuBit.UI.Editor.Move
                        (Find_Query, CuBit.UI.Editor.Move_Start,
@@ -3533,7 +3420,7 @@ begin
                        (To_End => False,
                         Extend_Selection => (Modifiers and 1) /= 0);
                   end if;
-               when 8 =>
+               when Platform.End_Key =>
                   if Find_Active then
                      CuBit.UI.Editor.Move
                        (Find_Query, CuBit.UI.Editor.Move_End,
@@ -3543,19 +3430,19 @@ begin
                        (To_End => True,
                         Extend_Selection => (Modifiers and 1) /= 0);
                   end if;
-               when 9 =>
+               when Platform.Delete =>
                   if Find_Active then
                      CuBit.UI.Editor.Delete_Forward (Find_Query, Changed);
                   else
                      Delete_Source_Forward (Changed);
                   end if;
-               when 10 =>
+               when Platform.Select_All =>
                   if Find_Active then
                      CuBit.UI.Editor.Select_All (Find_Query);
                   else
                      Select_All_Source;
                   end if;
-               when 11 | 14 | 15 =>
+               when Platform.Pointer_Down | Platform.Double_Click | Platform.Triple_Click =>
                   Active_Source_Scrollbar := No_Scrollbar;
                   Next_Scrollbar_Repeat := 0;
                   if Mouse_X >= 0 and then Mouse_Y >= 0 and then
@@ -3750,7 +3637,7 @@ begin
                      Active_Source_Scrollbar := Horizontal_Scrollbar;
                      Dragging := False;
                   end if;
-               when 12 =>
+               when Platform.Pointer_Drag =>
                   if Active_Resize /= No_Resize and then Mouse_X >= 0 then
                      declare
                         Pointer : constant Natural := Natural (Mouse_X);
@@ -3845,7 +3732,7 @@ begin
                            Extend_Selection => True);
                      end if;
                   end if;
-               when 13 =>
+               when Platform.Pointer_Up =>
                   if Open_Button_Pressed and then Mouse_X >= 0 and then Mouse_Y >= 0 and then
                     CuBit.UI.Point_In_Rect (Natural (Mouse_X), Natural (Mouse_Y), Open_Button_Bounds)
                   then
@@ -3941,33 +3828,33 @@ begin
                   Dragging := False;
                   Active_Source_Scrollbar := No_Scrollbar;
                   Next_Scrollbar_Repeat := 0;
-               when 16 | 17 =>
+               when Platform.Up | Platform.Down =>
                   if (Modifiers and 6) = 6 or else
                     (Modifiers and 3) = 3
                   then
                      Add_Source_Cursor_Vertically
-                       ((if Kind = 16 then
+                       ((if Polled = Platform.Up then
                            CuBit.UI.Editor.Documents.Up
                          else CuBit.UI.Editor.Documents.Down));
                   else
                      Move_Source_Vertical
-                       ((if Kind = 16 then
+                       ((if Polled = Platform.Up then
                            CuBit.UI.Editor.Documents.Up
                          else CuBit.UI.Editor.Documents.Down),
                         Extend_Selection => (Modifiers and 1) /= 0);
                   end if;
-               when 18 =>
+               when Platform.Wheel_Up =>
                   CuBit.UI.Editor.Viewports.Scroll_Lines
                     (Source_View, -3,
                      CuBit.UI.Editor.Documents.Line_Count (Source));
-               when 19 =>
+               when Platform.Wheel_Down =>
                   CuBit.UI.Editor.Viewports.Scroll_Lines
                     (Source_View, 3,
                      CuBit.UI.Editor.Documents.Line_Count (Source));
-               when 20 | 21 =>
+               when Platform.Page_Up | Platform.Page_Down =>
                   CuBit.UI.Editor.Viewports.Scroll_Lines
                     (Source_View,
-                     (if Kind = 20 then
+                     (if Polled = Platform.Page_Up then
                          -Integer
                            (CuBit.UI.Editor.Viewports.Line_Capacity
                               (Source_View))
@@ -3975,20 +3862,20 @@ begin
                         (CuBit.UI.Editor.Viewports.Line_Capacity
                            (Source_View))),
                      CuBit.UI.Editor.Documents.Line_Count (Source));
-               when 27 | 28 =>
+               when Platform.Wheel_Left | Platform.Wheel_Right =>
                   CuBit.UI.Editor.Viewports.Scroll_Columns
-                    (Source_View, (if Kind = 27 then -3 else 3),
+                    (Source_View, (if Polled = Platform.Wheel_Left then -3 else 3),
                      Maximum_Source_Columns);
-               when 29 | 30 =>
+               when Platform.Match_Parenthesis | Platform.Select_To_Parenthesis =>
                   Jump_To_Matching_Paren
-                    (Extend_Selection => Kind = 30);
-               when 31 =>
+                    (Extend_Selection => Polled = Platform.Select_To_Parenthesis);
+               when Platform.Add_Next_Occurrence =>
                   if not Find_Active then
                      Select_Next_Occurrence;
                   end if;
-               when 32 =>
+               when Platform.Open_Find =>
                   Open_Find;
-               when 33 =>
+               when Platform.Find_Next =>
                   if Find_Active or else
                     CuBit.UI.Editor.Length (Find_Query) > 0
                   then
@@ -3996,7 +3883,7 @@ begin
                   else
                      Open_Find;
                   end if;
-               when 22 =>
+               when Platform.Escape =>
                   if Find_Active then
                      Find_Active := False;
                   else
@@ -4004,7 +3891,7 @@ begin
                      Collapse_Source_Cursors;
                      Reveal_Source_Cursor;
                   end if;
-               when 23 =>
+               when Platform.Undo =>
                   if not Find_Active and then
                     Source_Histories.Can_Undo (Source_History)
                   then
@@ -4015,7 +3902,7 @@ begin
                      Invalidate_Run_Result;
                      Reveal_Source_Cursor;
                   end if;
-               when 24 =>
+               when Platform.Redo =>
                   if not Find_Active and then
                     Source_Histories.Can_Redo (Source_History)
                   then
@@ -4026,28 +3913,28 @@ begin
                      Invalidate_Run_Result;
                      Reveal_Source_Cursor;
                   end if;
-               when CCL_Workbench_Platform.Open_Source_Event =>
+               when Platform.Open_Source =>
                   Open_Source;
-               when CCL_Workbench_Platform.Save_Source_Event =>
+               when Platform.Save_Source =>
                   Save_Source;
-               when 25 =>
+               when Platform.Run_Source =>
                   if (Modifiers and 2) /= 0 then
                      Compile_Source;
                      if Has_Verified and VM_Has_State and CCL_Execution.Can_Replace then Start_Bytecode; end if;
                   else Run_Source; end if;
-               when 26 =>
+               when Platform.Pointer_Hover =>
                   if Current_Hover_Target /= Previous_Hover then
                      Needs_Pointer_Feedback := True;
                   end if;
                when others => null;
             end case;
             end if;
-            CCL_Workbench_Platform.Finish_Input;
+            CCL_Desktop_Platform.Finish_Input;
             exit when REPL_Only_Render;
             --  Immediate-mode controls must observe every pointer edge and
             --  captured drag position before a later event can overwrite it.
-            exit when Kind = 11 or else Kind = 12 or else Kind = 13 or else
-              Kind = 14 or else Kind = 15;
+            exit when Polled = Platform.Pointer_Down or else Polled = Platform.Pointer_Drag or else Polled = Platform.Pointer_Up or else
+              Polled = Platform.Double_Click or else Polled = Platform.Triple_Click;
          end loop;
          exit when not Running;
          declare
@@ -4066,7 +3953,7 @@ begin
             Desired : constant Integer_32 := Desired_Pointer_Cursor;
          begin
             if Desired /= Last_Pointer_Cursor then
-               Window_Set_Cursor (Handle, Desired);
+               CCL_Window.Set_Cursor (Handle, Desired);
                Last_Pointer_Cursor := Desired;
             end if;
          end;
@@ -4076,7 +3963,7 @@ begin
             CuBit.UI.State.Active_Scrollbar_Part (Workbench_UI) =
               CuBit.UI.Scrollbar_Increment) and then
            Next_Scrollbar_Repeat /= 0 and then
-           Window_Ticks >= Next_Scrollbar_Repeat
+           CCL_Window.Ticks >= Next_Scrollbar_Repeat
          then
             Needs_Render := True;
             declare
@@ -4126,7 +4013,7 @@ begin
                end if;
                if New_Value /= Old_Value then
                   Next_Scrollbar_Repeat :=
-                    Window_Ticks + SCROLL_REPEAT_INTERVAL;
+                    CCL_Window.Ticks + SCROLL_REPEAT_INTERVAL;
                else
                   Active_Source_Scrollbar := No_Scrollbar;
                   Next_Scrollbar_Repeat := 0;
@@ -4190,9 +4077,9 @@ begin
                Needs_Render := True;
                REPL_Only_Render := False;
                Dialog_Background_Dirty := True;
-               CCL_Workbench_Platform.Live_Label_Changed (CCL_Workbench_Platform.Faulted);
+               CCL_Desktop_Platform.Live_Label_Changed (CCL_Desktop_Platform.Faulted);
             elsif Updated and then CCL.Periodic_Programs.Completed_Runs (Live_Program) <= 2 then
-               CCL_Workbench_Platform.Live_Label_Changed (CCL_Workbench_Platform.Sampled);
+               CCL_Desktop_Platform.Live_Label_Changed (CCL_Desktop_Platform.Sampled);
             end if;
             if Updated and then REPL_Only_Render then
                REPL_Only_Render := False;
@@ -4224,7 +4111,7 @@ begin
                exit when not Paint (Handle, Output_Bounds, Output_Only);
             end if;
          end if;
-         if Needs_Render or else CCL_Workbench_Platform.Frame_Pending then
+         if Needs_Render or else CCL_Desktop_Platform.Frame_Pending then
             declare
                Damage : CuBit.UI.Rect :=
                  (if Needs_Render then (0, 0, Canvas.width, Canvas.height) else (0, 0, 0, 0));
@@ -4260,7 +4147,7 @@ begin
               CuBit.UI.Scrollbar_Increment)
          then
             Next_Scrollbar_Repeat :=
-              Window_Ticks + SCROLL_REPEAT_DELAY;
+              CCL_Window.Ticks + SCROLL_REPEAT_DELAY;
          end if;
          declare
             Wakeup : Unsigned_64 := CCL.Periodic_Programs.Next_Deadline (Live_Program);
@@ -4272,27 +4159,27 @@ begin
             then
                Wakeup := Unsigned_64'Min (Wakeup, Next_Scrollbar_Repeat);
             end if;
-            Wakeup := CCL_Workbench_Platform.Frame_Deadline (Wakeup);
+            Wakeup := CCL_Desktop_Platform.Frame_Deadline (Wakeup);
             if not Input_Drained then
                -- A budget or semantic barrier stopped this batch. Render and
                -- service local work before polling again; never sleep while
                -- an unobserved input backlog may remain.
-               CCL_Workbench_Platform.Yield_Input;
+               CCL_Desktop_Platform.Yield_Input;
             elsif (VM_Continuous and not CCL_Execution.Waiting_For_IO) or else
               CCL.UI_Buttons.Pending (Live_Button) > 0
             then
-               Window_Wait (0); -- VM has runnable work; yield between slices.
+               CCL_Window.Wait (0); -- VM has runnable work; yield between slices.
             elsif Wakeup /= Unsigned_64'Last then
-               Window_Wait_Until (Wakeup);
+               CCL_Window.Wait_Until (Wakeup);
             else
-               Window_Wait (1);
+               CCL_Window.Wait (1);
             end if;
          end;
       end loop;
       CCL.Periodic_Programs.Stop (Live_Program);
       CCL.UI_Buttons.Close (Live_Button);
       CCL_Execution.Stop;
-      Window_Close (Handle);
+      CCL_Window.Close (Handle);
    end;
 end Run;
 end CCL_Workbench;

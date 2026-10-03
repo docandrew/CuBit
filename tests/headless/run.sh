@@ -45,7 +45,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, rust-std, libc, servo, bench-spread, timesync, tls-probe, tls-service, netsurf-https, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, rust-std, libc, processes, servo, bench-spread, timesync, tls-probe, tls-service, netsurf-https, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
@@ -274,7 +274,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|rust-std|libc|servo|bench-spread|timesync|tls-probe|tls-service|netsurf-https|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary|bench-latency)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|rust-std|libc|processes|servo|bench-spread|timesync|tls-probe|tls-service|netsurf-https|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary|bench-latency)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -469,6 +469,12 @@ case "$TEST_NAME" in
     ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-workbench.ccl"
         ;;
+    ccl-console)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-console.ccl"
+        ;;
+    logs)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-logs.ccl"
+        ;;
     capability-security)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-capability-security.ccl"
         ;;
@@ -530,6 +536,10 @@ case "$TEST_NAME" in
     libc)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-libc.ccl"
         ;;
+    processes)
+        # docs/process-arguments.md: launch arguments, posix_spawn, waitpid.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-processes.ccl"
+        ;;
     servo)
         # Servo (docs/servo-port.md): an 85 MB program whose heap grows
         # eagerly; fonts are installed on the disk below.
@@ -590,6 +600,9 @@ case "$TEST_NAME" in
         ;;
     render-launch-policy)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-render-launch-policy.ccl"
+        if [ "${CUBIT_RENDER_OPTIONAL_TEST:-0}" = 1 ]; then
+            INIT_PROFILE="$ROOT_DIR/tests/render-startup/native/init.ccl"
+        fi
         ;;
     mesa-log-bridge)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-mesa-log-bridge.ccl"
@@ -865,6 +878,8 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "ccl-workbench" ] ||
        [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
        [ "$TEST_NAME" = "ccl-workspace" ] ||
+       [ "$TEST_NAME" = "ccl-console" ] ||
+       [ "$TEST_NAME" = "logs" ] ||
        [ "$TEST_NAME" = "input-stream" ] ||
        [ "$TEST_NAME" = "managed-ui" ] ||
        [ "$TEST_NAME" = "devices" ] ||
@@ -950,9 +965,14 @@ if [ -n "$INIT_PROFILE" ]; then
     fi
     if [ "$TEST_NAME" = "ccl-vm" ] || [ "$TEST_NAME" = "ccl-workbench" ] ||
        [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
-       [ "$TEST_NAME" = "ccl-workspace" ]; then
+       [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
+       [ "$TEST_NAME" = "logs" ]; then
         if [ "$TEST_NAME" = "ccl-vm" ]; then
             CCL_IMAGES="ccl-vm.app ccl-test-host.svc clock.svc"
+        elif [ "$TEST_NAME" = "ccl-console" ]; then
+            CCL_IMAGES="ccl-console.app clock.svc desktop.svc display.svc logstore.svc"
+        elif [ "$TEST_NAME" = "logs" ]; then
+            CCL_IMAGES="logs.app clock.svc desktop.svc display.svc"
         else
             CCL_IMAGES="ccl-workbench.app clock.svc desktop.svc display.svc"
             if [ "${CUBIT_DESKTOP_METRICS_TEST:-0}" = 1 ]; then
@@ -966,6 +986,18 @@ if [ -n "$INIT_PROFILE" ]; then
                 fi
             fi
             debugfs -w -R "mkdir work" "$TEMP_DISK" >/dev/null 2>&1
+        fi
+        if [ "$TEST_NAME" = "ccl-console" ]; then
+            # A picture for (image.load "picture.qoi"): every QOI chunk kind.
+            CONSOLE_PICTURE="${TMPDIR:-/tmp}/cubit-console-picture-$$.qoi"
+            python3 "$ROOT_DIR/tests/ccl-console/make-picture.py" "$CONSOLE_PICTURE"
+            debugfs -w -R "mkdir work" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "rm work/picture.qoi" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $CONSOLE_PICTURE work/picture.qoi" "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install the console picture" >&2
+                exit 1
+            fi
+            rm -f "$CONSOLE_PICTURE"
         fi
         for CCL_IMAGE_NAME in $CCL_IMAGES; do
             CCL_IMAGE="$KERNEL_DIR/isodir/boot/$CCL_IMAGE_NAME"
@@ -994,6 +1026,9 @@ if [ -n "$INIT_PROFILE" ]; then
         fi
         if [ "$TEST_NAME" = "render-launch-policy" ]; then
             DEVICE_TEST_IMAGES="$DEVICE_TEST_IMAGES render-denied.app render-unavailable.app"
+            if [ "${CUBIT_RENDER_OPTIONAL_TEST:-0}" = 1 ]; then
+                DEVICE_TEST_IMAGES="$DEVICE_TEST_IMAGES render-software.app render-fallback.app render-occupied.app render-invalid.app"
+            fi
         fi
         for DEVICE_TEST_IMAGE_NAME in $DEVICE_TEST_IMAGES; do
             DEVICE_TEST_IMAGE="$KERNEL_DIR/isodir/boot/$DEVICE_TEST_IMAGE_NAME"
@@ -1134,6 +1169,24 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$THREADS_IMAGE $THREADS_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $THREADS_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "processes" ]; then
+        # The children link the current libc (crt1 builds argv from the
+        # launch block); stage-1 services, procmgr included, come from initrd.
+        if ! make -C "$KERNEL_DIR" libc >/dev/null ||
+           ! bash "$ROOT_DIR/tests/process-spawn/build.sh" "$KERNEL_DIR/isodir/boot" >/dev/null; then
+            echo "headless: failed to build the processes test programs" >&2
+            exit 1
+        fi
+        for PROCESS_IMAGE in logstore.svc args-check.app spawn-check.app \
+          ada-args-check.app rust-args-check.app greedy-check.app; do
+            debugfs -w -R "rm $PROCESS_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$PROCESS_IMAGE $PROCESS_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $PROCESS_IMAGE" >&2
                 exit 1
             fi
         done
@@ -1580,7 +1633,8 @@ fi
 if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
    [ "$TEST_NAME" = "config-tree" ] ||
    [ "$TEST_NAME" = "display-grants-virtio-vga" ] ||
-   [ "$TEST_NAME" = "ccl-workspace" ] ||
+   [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
+   [ "$TEST_NAME" = "logs" ] ||
    [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
    [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
    [ "$TEST_NAME" = "desktop-doom" ]; then
@@ -1630,7 +1684,8 @@ if [ "$TEST_NAME" = "managed-ui" ]; then
 fi
 if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
    [ "$TEST_NAME" = "desktop-protocol" ] ||
-   [ "$TEST_NAME" = "ccl-workspace" ] ||
+   [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
+   [ "$TEST_NAME" = "logs" ] ||
    [ "$TEST_NAME" = "desktop-doom" ] ||
    { [ "$TEST_NAME" = "servo" ] && [ -n "${SERVO_DESKTOP:-}" ]; }; then
     if ! command -v nc >/dev/null 2>&1; then
@@ -2047,6 +2102,233 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                     done
                 fi
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+        elif [ "$TEST_NAME" = "logs" ]; then
+            # The Logs app: let boot records arrive, then a live frame, a
+            # Warning-and-above frame (4) and a search for logstore.
+            for ((attempt = 0; attempt < 150; attempt++)); do
+                grep -F "logs: window ready" "$SERIAL_LOG" >/dev/null && break
+                sleep 0.1
+            done
+            {
+                sleep 4
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-logs-live.ppm"
+                sleep 0.5
+                printf 'sendkey 4\n'
+                sleep 1
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-logs-warnings.ppm"
+                sleep 0.5
+                printf 'sendkey 1\n'
+                sleep 0.3
+                for key in slash l o g s t o r e; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.3
+                done
+                sleep 1
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-logs-search.ppm"
+                sleep 0.5
+            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+        elif [ "$TEST_NAME" = "ccl-console" ]; then
+            console_ready=0
+            for ((attempt = 0; attempt < 150; attempt++)); do
+                if grep -F "ccl-console: first frame presented" "$SERIAL_LOG" >/dev/null; then
+                    console_ready=1
+                    break
+                fi
+                sleep 0.1
+            done
+            if [ "$console_ready" -ne 1 ]; then
+                echo "headless: console input target did not appear" >&2
+                exit 1
+            fi
+            type_keys() {
+                for key in "$@"; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.3
+                done
+            }
+            if [ "${CCL_CONSOLE_DEMO:-}" = ps ]; then
+            # What runs on the guest (CCL_CONSOLE_DEMO=ps): :ps, then the
+            # largest by memory.
+            {
+                sleep 0.5
+                type_keys shift-semicolon p s
+                printf 'sendkey ret\n'
+                sleep 2
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-ps.ppm"
+                sleep 0.5
+            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            elif [ "${CCL_CONSOLE_DEMO:-}" = errors ]; then
+            # Refusals on the guest (CCL_CONSOLE_DEMO=errors): a place outside the
+            # console's filesystem scope, a mistyped service, a bad name.
+            {
+                sleep 0.5
+                type_keys shift-semicolon c d
+                printf 'sendkey ret\n'
+                sleep 1
+                # (fs.list (Place "@nvme:0" ""))
+                type_keys shift-9 f s dot l i s t spc shift-9 shift-p l a c e spc \
+                          shift-apostrophe shift-2 n v m e shift-semicolon 0 shift-apostrophe spc \
+                          shift-apostrophe shift-apostrophe shift-0 shift-0
+                printf 'sendkey ret\n'
+                sleep 1.5
+                # (logs.recent "netstak")
+                type_keys shift-9 l o g s dot r e c e n t spc shift-apostrophe n e t s t a k \
+                          shift-apostrophe shift-0
+                printf 'sendkey ret\n'
+                sleep 1.5
+                # (fs.enter (Child here "../etc"))
+                type_keys shift-9 f s dot e n t e r spc shift-9 shift-c h i l d spc h e r e spc \
+                          shift-apostrophe dot dot slash e t c shift-apostrophe shift-0 shift-0
+                printf 'sendkey ret\n'
+                sleep 2
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-errors.ppm"
+                sleep 0.5
+            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            elif [ "${CCL_CONSOLE_DEMO:-}" = logs ]; then
+            # What logstore keeps (CCL_CONSOLE_DEMO=logs): read it, lower it
+            # to Debug through log-control, read it again.
+            {
+                sleep 0.5
+                # (logs.minimum)
+                type_keys shift-9 l o g s dot m i n i m u m shift-0
+                printf 'sendkey ret\n'
+                sleep 1
+                # (logs.set-minimum Severity.Debug)
+                type_keys shift-9 l o g s dot s e t minus m i n i m u m spc \
+                          shift-s e v e r i t y dot shift-d e b u g shift-0
+                printf 'sendkey ret\n'
+                sleep 1
+                type_keys shift-9 l o g s dot m i n i m u m shift-0
+                printf 'sendkey ret\n'
+                sleep 1.5
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-logs.ppm"
+                sleep 0.5
+            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            elif [ -n "${CCL_CONSOLE_DEMO:-}" ]; then
+            # A short demo session (CCL_CONSOLE_DEMO=1): places, a live stream,
+            # then the whole transcript in BASIC. Screendumps only; no markers.
+            {
+                sleep 0.5
+                type_keys shift-semicolon c d
+                printf 'sendkey ret\n'
+                sleep 1
+                type_keys shift-semicolon l s
+                printf 'sendkey ret\n'
+                sleep 1.5
+                # (define t (timer.every 100))
+                type_keys shift-9 d e f i n e spc t spc shift-9 t i m e r dot e v e r y spc 1 0 0 \
+                          shift-0 shift-0
+                printf 'sendkey ret\n'
+                sleep 1
+                # (image.plot (each (fn ((x Integer)) (% x 1000)) (window 60 t)))
+                type_keys shift-9 i m a g e dot p l o t spc shift-9 e a c h spc shift-9 f n spc \
+                          shift-9 shift-9 x spc shift-i n t e g e r shift-0 shift-0 spc \
+                          shift-9 shift-5 spc x spc 1 0 0 0 shift-0 shift-0 spc \
+                          shift-9 w i n d o w spc 6 0 spc t shift-0 shift-0 shift-0
+                printf 'sendkey ret\n'
+                sleep 1
+                type_keys shift-semicolon w a t c h
+                printf 'sendkey ret\n'
+                sleep 4
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-lisp.ppm"
+                sleep 0.5
+                printf 'sendkey f8\n'
+                sleep 2
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-basic.ppm"
+                sleep 0.5
+            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            else
+            {
+                sleep 0.5
+                # An open form continues on a new line: (+ 20 <Enter> 22) <Enter>
+                type_keys shift-9 shift-equal spc 2 0
+                printf 'sendkey ret\n'
+                sleep 0.3
+                type_keys 2 2 shift-0
+                printf 'sendkey ret\n'
+                sleep 0.5
+                # Completion: (so <Tab> accepts "sort ", then (list 3 1 2))
+                type_keys shift-9 s o
+                printf 'sendkey tab\n'
+                sleep 0.3
+                type_keys shift-9 l i s t spc 3 spc 1 spc 2 shift-0 shift-0
+                printf 'sendkey ret\n'
+                sleep 0.5
+                # A service's logs, typed: (>= (length (logs.recent "desktop")) 0)
+                type_keys shift-9 shift-dot equal spc shift-9 l e n g t h spc shift-9 \
+                          l o g s dot r e c e n t spc shift-apostrophe d e s k t o p \
+                          shift-apostrophe shift-0 shift-0 spc 0 shift-0
+                printf 'sendkey ret\n'
+                sleep 0.6
+                # A service's logs as a table: (logs.recent "clock")
+                type_keys shift-9 l o g s dot r e c e n t spc shift-apostrophe c l o c k \
+                          shift-apostrophe shift-0
+                printf 'sendkey ret\n'
+                sleep 0.8
+                # A picture file from the workspace: (image.load "picture.qoi")
+                type_keys shift-9 i m a g e dot l o a d spc shift-apostrophe p i c t u r e dot q o i \
+                          shift-apostrophe shift-0
+                printf 'sendkey ret\n'
+                sleep 0.8
+                # Data as a picture: (image.plot (list 3 1 4 1 5 9 2 6))
+                type_keys shift-9 i m a g e dot p l o t spc shift-9 l i s t spc 3 spc 1 spc 4 \
+                          spc 1 spc 5 spc 9 spc 2 spc 6 shift-0 shift-0
+                printf 'sendkey ret\n'
+                sleep 0.8
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-console.ppm"
+                sleep 0.5
+                # Streams (docs/ccl-streams.md): a timer, a window of it, and a
+                # live plot that redraws as ticks arrive.
+                # (define t (timer.every 100))
+                type_keys shift-9 d e f i n e spc t spc shift-9 t i m e r dot e v e r y spc 1 0 0 \
+                          shift-0 shift-0
+                printf 'sendkey ret\n'
+                sleep 0.8
+                # (window 6 t)
+                type_keys shift-9 w i n d o w spc 6 spc t shift-0
+                printf 'sendkey ret\n'
+                sleep 0.8
+                # (image.plot (each (fn ((x Integer)) (% x 1000)) (window 60 t)))
+                type_keys shift-9 i m a g e dot p l o t spc shift-9 e a c h spc shift-9 f n spc \
+                          shift-9 shift-9 x spc shift-i n t e g e r shift-0 shift-0 spc \
+                          shift-9 shift-5 spc x spc 1 0 0 0 shift-0 shift-0 spc \
+                          shift-9 w i n d o w spc 6 0 spc t shift-0 shift-0 shift-0
+                printf 'sendkey ret\n'
+                sleep 0.8
+                # :watch makes the newest cell live.
+                type_keys shift-semicolon w a t c h
+                printf 'sendkey ret\n'
+                sleep 3
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-console-streams.ppm"
+                sleep 0.5
+                # The console programs itself (console.*, interfaces/console.schema).
+                type_keys shift-semicolon u n w a t c h
+                printf 'sendkey ret\n'
+                sleep 0.5
+                # (console.title "Live from CCL")
+                type_keys shift-9 c o n s o l e dot t i t l e spc shift-apostrophe shift-l i v e spc \
+                          f r o m spc shift-c shift-c shift-l shift-apostrophe shift-0
+                printf 'sendkey ret\n'
+                sleep 0.6
+                # (console.stats)
+                type_keys shift-9 c o n s o l e dot s t a t s shift-0
+                printf 'sendkey ret\n'
+                sleep 0.6
+                # (console.notation Notation.Basic): the transcript reads in BASIC.
+                type_keys shift-9 c o n s o l e dot n o t a t i o n spc shift-n o t a t i o n dot \
+                          shift-b a s i c shift-0
+                printf 'sendkey ret\n'
+                sleep 1
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-console-basic.ppm"
+                sleep 0.5
+                # console.theme(Theme.Daylight), typed in BASIC.
+                type_keys c o n s o l e dot t h e m e shift-9 shift-t h e m e dot shift-d a y l i g h t shift-0
+                printf 'sendkey ret\n'
+                sleep 1
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-console-daylight.ppm"
+                sleep 0.5
+            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            fi
         elif [ "$TEST_NAME" = "files" ]; then
             # Files is the first native client of the shared resizable table
             # header.  Exercise an actual captured drag through QEMU's i8042
@@ -2669,6 +2951,39 @@ CXX: PASS
 "
         python3 "$ROOT_DIR/userspace/libc/tests/check-protection-faults.py" "$SERIAL_LOG" || exit 1
         ;;
+    processes)
+        required_markers="
+args-check: no launch block gives argv {cubit-program} PASS
+spawn-check: waitpid without children is ECHILD PASS
+args-check: argv, environment and writable strings PASS
+spawn-check: argv, environment and exit status 42 reach parent PASS
+spawn-check: absolute program name PASS
+spawn-check: three children, exit codes 0, 255 and 300 (low 8 bits) via waitpid(-1) PASS
+spawn-check: WNOHANG while the child runs PASS
+spawn-check: then its exit code 5 PASS
+spawn-check: faulting child reported as stopped (WIFSIGNALED) PASS
+args-check: 1000 arguments PASS
+spawn-check: 1000 arguments PASS
+spawn-check: oversized arguments are E2BIG PASS
+spawn-check: missing program is ENOENT PASS
+spawn-check: a program the manifest does not name is EACCES (Not_Granted) PASS
+spawn-check: a child asking for more authority than its launcher is EACCES PASS
+spawn-check: fork is ENOSYS PASS
+spawn-check: execve is ENOSYS PASS
+spawn-check: system is ENOSYS PASS
+spawn-check: popen is ENOSYS PASS
+ada-args-check: Ada.Command_Line PASS
+spawn-check: Ada.Command_Line arguments and Set_Exit_Status 43 PASS
+rust-args-check: std::env::args and env::var PASS
+spawn-check: Rust std::env::args, env::var and exit code 44 PASS
+spawn-check: all children collected PASS
+PROCESS-SPAWN: PASS
+"
+        if grep -qF 'PROCESS-SPAWN: FAIL' "$SERIAL_LOG"; then
+            echo "headless: processes test reported a failure" >&2
+            exit 1
+        fi
+        ;;
     servo)
         if [ -n "${SERVO_DESKTOP:-}" ]; then
             required_markers="
@@ -2827,7 +3142,10 @@ TEST: PASS tls-service
         required_markers="GRANT-FORWARD-INTERMEDIARY-EXIT: PASS"
         ;;
     grant-forward-owner-exit)
-        required_markers="GRANT-FORWARD-OWNER-EXIT: PASS"
+        required_markers="
+GRANT-FORWARD-OWNER-ROOT-DRAIN: PASS
+GRANT-FORWARD-OWNER-EXIT: PASS
+"
         ;;
     gpu-viewer)
         required_markers="
@@ -2917,6 +3235,30 @@ virtio-gpu: page flipping active
 ccl-workbench: native window ready
 ccl-workbench: first frame presented
 ui-app: protected frame published
+"
+        ;;
+    logs)
+        required_markers="
+clock: registered
+desktop: active outputs= 1 primary= 0
+logs: window ready
+ui-app: protected frame published
+"
+        ;;
+    ccl-console)
+        required_markers="
+clock: registered
+display: backend virtio-gpu
+desktop: active outputs= 1 primary= 0
+ccl-console: native window ready
+ccl-console: first frame presented
+ui-app: protected frame published
+ccl-console: REPL completed: Integer: 42
+ccl-console: REPL completed: List<Integer>: [1, 2, 3]
+ccl-console: REPL completed: Boolean: true
+ccl-console: REPL completed: List<LogEntry>: [(LogEntry
+ccl-console: REPL completed: Image: (Image 160 100
+ccl-console: REPL completed: Image: (Image 320 120
 "
         ;;
     ccl-workspace)
@@ -3056,6 +3398,7 @@ DPI-CLIENT: closed
 desktop: internal shell active
 DESKTOP-DENSITY-TEXT-CHECK: PASS scales=5 faces=2
 DESKTOP-FRAME-PAIR-CHECK: PASS frames=12 resize=1
+DESKTOP-INPUT-BATCH-CHECK: PASS batches=2 events=12 fallback=1
 DESKTOP-PROTOCOL-CHECK: PASS
 desktop: dead client buffer acquisition released
 "
@@ -3442,7 +3785,8 @@ if [ "$TEST_NAME" = "files" ]; then
 fi
 
 if { [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
-     [ "$TEST_NAME" = "ccl-workspace" ] ||
+     [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
+     [ "$TEST_NAME" = "logs" ] ||
      [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
      [ "$TEST_NAME" = "desktop-doom" ] ||
      [ "$TEST_NAME" = "virtio-vga-primary" ]; } &&
@@ -3469,7 +3813,12 @@ if [ "$TEST_NAME" = "devices" ]; then
 fi
 
 if [ "$TEST_NAME" = "render-launch-policy" ]; then
-    if [ "$(grep -Fc 'procmgr: render admission denied; child not resumed' "$SERIAL_LOG")" -ne 2 ] ||
+    if [ "${CUBIT_RENDER_OPTIONAL_TEST:-0}" = 1 ]; then
+        if ! python3 "$ROOT_DIR/tests/render-startup/native/check.py" "$SERIAL_LOG"; then
+            echo "headless: optional render startup check failed" >&2
+            exit 1
+        fi
+    elif [ "$(grep -Fc 'procmgr: render admission denied; child not resumed' "$SERIAL_LOG")" -ne 2 ] ||
        [ "$(grep -Fc 'procmgr: render admission submitted; child suspended' "$SERIAL_LOG")" -ne 1 ] ||
        [ "$(grep -Fc 'procmgr: failed launch child stop requested' "$SERIAL_LOG")" -ne 2 ] ||
        grep -F 'KILL: denied' "$SERIAL_LOG" >/dev/null ||

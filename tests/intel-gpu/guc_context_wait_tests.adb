@@ -15,10 +15,10 @@ procedure GuC_Context_Wait_Tests is
    Runnable : Unsigned_32 := 1;
    Resuming : Boolean := False;
    function Ready return Boolean is (Owner);
-   procedure Queue (Payload : Events.Words; Fence : Unsigned_16;
+   procedure Queue (Payload : Events.Words;
                     Result : out Life.Send_Result) is
    begin
-      pragma Assert (Payload'Length > 0 and Fence in 100 .. 65535);
+      pragma Assert (Payload'Length > 0);
       Sends := Sends + 1;
       Result := (if Scenario = 1 and Sends = 3 then Life.Backpressure else Life.Queued);
       if Scenario = 10 and Sends = (if Resuming then 1 else 3)
@@ -50,7 +50,7 @@ procedure GuC_Context_Wait_Tests is
          when 6 => Status := Receiver.Corrupt; return;
          when 7 =>
             Status := Receiver.Received; Item.Length := 1;
-            Item.Fence := 100; Item.Payload (1) := 16#E0000001#; return;
+            Item.Fence := 16#8000#; Item.Payload (1) := 16#E0000001#; return;
          when 8 => Clock := 0; return;
          when others => null;
       end case;
@@ -100,7 +100,7 @@ begin
          Clock := 0; Owner := True; Runnable := 1;
          Clock_Reads := 0; Dispatches := 0;
          if Case_ID = 8 then Clock := 100; end if;
-         Driver.Initialize (Object, 7, 16#200000#, 4096, 100, 65535, 1000, 500000, False);
+         Driver.Initialize (Object, 7, 16#200000#, 4096, 1000, 500000, False);
          Waiter.Execute (Object, Life.Enable, 10, Status);
          pragma Assert (Status = Waiter.Rejected and Sends = 0 and Polls = 0);
          Driver.Submit (Object, Life.Register_Context, Submitted);
@@ -140,7 +140,7 @@ begin
          end if;
       end;
    end loop;
-   -- Re-enabling must retain every failure fence, not merely accept the new
+   -- Re-enabling must retain every failure guard, not merely accept the new
    -- starting state. Establish Disabled using real session transitions first.
    for Case_ID in 2 .. 11 loop
       declare
@@ -149,7 +149,7 @@ begin
       begin
          Scenario := 0; Owner := True; Clock := 0;
          Sends := 0; Polls := 0; Clock_Reads := 0; Runnable := 1;
-         Driver.Initialize (Object, 7, 16#200000#, 4096, 100, 65535, 1000, 500000, False);
+         Driver.Initialize (Object, 7, 16#200000#, 4096, 1000, 500000, False);
          Driver.Submit (Object, Life.Register_Context, Submitted);
          Driver.Submit (Object, Life.Set_Policy, Submitted);
          Waiter.Execute (Object, Life.Enable, 10, Status);

@@ -8,7 +8,7 @@ cubit_gpu_query_budget(cubit_gpu_query_call call, void *endpoint,
       return false;
    *out = (struct cubit_gpu_budget_snapshot){0};
    const struct cubit_gpu_query_message request = {
-      .label = 0x0a2e, .length = 4, .words = {1, 0, 0, 0},
+      .label = 0x0a2e, .length = 4, .words = {2, 0, 0, 0},
    };
    struct cubit_gpu_query_message reply = {0};
    if (!call || !call(endpoint, &request, &reply) ||
@@ -17,11 +17,10 @@ cubit_gpu_query_budget(cubit_gpu_query_call call, void *endpoint,
       return false;
    const uint64_t total = reply.words[1], retained = reply.words[2];
    const uint64_t slots = reply.words[3], max_slice = UINT64_C(16) * 1024 * 1024;
-   /* v1 bootstrap allocator: sixteen lifetime tickets, each 1..4096 pages.
-    * Validate bounds before subtraction/multiplication, including hostile u64. */
-   if (total != UINT64_C(32) * 1024 * 1024 || retained > total ||
-       retained % 4096 || slots > 16 || retained < (16 - slots) * 4096 ||
-       retained > (16 - slots) * max_slice)
+   /* v2: owned backing and free records are independent budgets. The current
+    * per-allocation ceiling remains 16 MiB, not a VRAM/system-RAM limit. */
+   if (!total || total % 4096 || retained > total ||
+       retained % 4096 || slots > UINT64_C(2147483647))
       return false;
    const uint64_t available = total - retained;
    *out = (struct cubit_gpu_budget_snapshot) {

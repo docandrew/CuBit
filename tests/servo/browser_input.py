@@ -125,8 +125,8 @@ def expect(marker, action):
 
 
 def click_input():
-    # Unit-scale fixture: page origin(102,216), input at page(24,136).
-    move_to(180, 364)
+    # Unit-scale fixture: page origin(102,194), input at page(24,136).
+    move_to(180, 342)
     command("mouse_button 1")
     time.sleep(0.2)
     command("mouse_button 0")
@@ -186,7 +186,7 @@ def toggle_layout():
     expect("CUBITSHELL-BROWSER: settings opened", open_settings)
     before = text().count("CUBITSHELL-BROWSER: tab new")
     key("ctrl-t")
-    click_at(124, 192)  # Background new-tab button must also be blocked.
+    click_at(124, 181)  # Background new-tab button must also be blocked.
     click_at(352, 396)
     time.sleep(0.5)
     if text().count("CUBITSHELL-BROWSER: tab new") != before:
@@ -201,7 +201,7 @@ def toggle_layout():
 
 
 def cycle(number):
-    record("cycle-start", cycle=number)
+    record("cycle-start", cycle=number, tab_id=number + 1)
     expect("CUBITSHELL-BROWSER: title CuBitBrowserA", lambda: navigate("/browser-a"))
     expect("CUBITSHELL-BROWSER: title CuBitBrowserPointerFocus", click_input)
     expect("CUBITSHELL-BROWSER: title CuBitBrowserTyped:abc", lambda: type_text("abc"))
@@ -214,16 +214,16 @@ def cycle(number):
     clicks = text().count("CUBITSHELL-BROWSER: title CuBitBrowserPointerFocus")
     key("f10")
     key("right")
-    click_at(180, 364)  # Dismiss the menu over the page input; no click-through.
+    click_at(180, 342)  # Dismiss the menu over the page input; no click-through.
     time.sleep(0.5)
     if text().count("CUBITSHELL-BROWSER: title CuBitBrowserPointerFocus") != clicks:
         fail("menu outside dismissal clicked through to page")
     record("menubar-input-pass")
     expect("CUBITSHELL-BROWSER: title CuBitBrowserB", lambda: navigate("/browser-b"))
-    history(lambda: click_at(132, 156), "/browser-a", "CuBitBrowserRestoredA")
-    history(lambda: click_at(210, 156), "/browser-b", "CuBitBrowserRestoredB")
+    history(lambda: click_at(123, 149), "/browser-a", "CuBitBrowserRestoredA")
+    history(lambda: click_at(157, 149), "/browser-b", "CuBitBrowserRestoredB")
     expect("CUBITSHELL-BROWSER: loaded-path /browser-b", menu_reload)
-    move_to(180, 364)
+    move_to(180, 342)
     scrolled = text().count("CUBITSHELL-BROWSER: title CuBitBrowserScrolled")
     # QEMU ui/ui-hmp-cmds.c maps negative dz to WHEEL_DOWN (one notch,
     # independent of magnitude). Verify the page sees positive DOM deltaY.
@@ -233,36 +233,36 @@ def cycle(number):
     # UI.App.Open sets 800x600 as the minimum client size. Enlarge
     # within the 1024x768 output work area, then restore for the next cycle.
     move_to(900, 714)
-    expect("CUBITSHELL-BROWSER: title CuBitBrowserResize:854x482", lambda: resize(60, 12))
+    expect("CUBITSHELL-BROWSER: title CuBitBrowserResize:854x504", lambda: resize(60, 12))
     move_to(958, 724)  # inside the new border, whose exclusive edge is (960,726)
-    expect("CUBITSHELL-BROWSER: title CuBitBrowserResize:800x472", lambda: resize(-58, -10))
-    expect("CUBITSHELL-BROWSER: tab new 2", lambda: menu_new_tab() if number % 2 else key("ctrl-t"))
+    expect("CUBITSHELL-BROWSER: title CuBitBrowserResize:800x494", lambda: resize(-58, -10))
+    expect(f"CUBITSHELL-BROWSER: tab new {number + 1}", lambda: menu_new_tab() if number % 2 else key("ctrl-t"))
     expect("CUBITSHELL-BROWSER: title CuBitBrowserA", lambda: navigate("/browser-a"))
     expect("CUBITSHELL-BROWSER: title CuBitBrowserPointerFocus", click_input)
     expect("CUBITSHELL-BROWSER: title CuBitBrowserTyped:abc", lambda: type_text("abc"))
     expect("CUBITSHELL-BROWSER: tab select 1", lambda: key("ctrl-shift-tab"))
     expect("CUBITSHELL-BROWSER: title CuBitBrowserRestoredB", lambda: key("esc"))
-    expect("CUBITSHELL-BROWSER: tab select 2", lambda: click_at(440, 192))
+    expect(f"CUBITSHELL-BROWSER: tab select {number + 1}", lambda: click_at(440, 181))
     expect("CUBITSHELL-BROWSER: title CuBitBrowserRetained:abc", lambda: key("f2"))
     # Same tabs in a side rail. Require active page interaction after remapping.
-    expect("CUBITSHELL-BROWSER: title CuBitBrowserResize:608x512", toggle_layout)
-    expect("CUBITSHELL-BROWSER: title CuBitBrowserPointerFocus", lambda: click_at(372, 324))
+    expect("CUBITSHELL-BROWSER: title CuBitBrowserResize:608x524", toggle_layout)
+    expect("CUBITSHELL-BROWSER: title CuBitBrowserPointerFocus", lambda: click_at(372, 312))
     expect("CUBITSHELL-BROWSER: title CuBitBrowserTyped:abcd", lambda: type_text("d"))
     vertical_capture = capture.with_name(capture.stem + "-vertical.ppm")
     command(f'screendump "{vertical_capture}"')
-    expect("CUBITSHELL-BROWSER: tab select 1", lambda: click_at(155, 228))
+    expect("CUBITSHELL-BROWSER: tab select 1", lambda: click_at(155, 207))
     expect("CUBITSHELL-BROWSER: title CuBitBrowserRestoredB", lambda: key("esc"))
-    expect("CUBITSHELL-BROWSER: tab select 2", lambda: click_at(155, 264))
+    expect(f"CUBITSHELL-BROWSER: tab select {number + 1}", lambda: click_at(155, 237))
     expect("CUBITSHELL-BROWSER: title CuBitBrowserRetained:abcd", lambda: key("f2"))
-    expect("CUBITSHELL-BROWSER: title CuBitBrowserResize:800x472", toggle_layout)
+    expect("CUBITSHELL-BROWSER: title CuBitBrowserResize:800x494", toggle_layout)
     if number % 2:
         # Closing the inactive tab's child button must not select its parent.
-        expect("CUBITSHELL-BROWSER: tab select 1", lambda: click_at(160, 192))
-        select_two_before = text().count("CUBITSHELL-BROWSER: tab select 2")
-    expect("CUBITSHELL-BROWSER: tab close 2", lambda: click_at(574, 192) if number % 2 else key("ctrl-w"))
-    if number % 2 and text().count("CUBITSHELL-BROWSER: tab select 2") != select_two_before:
+        expect("CUBITSHELL-BROWSER: tab select 1", lambda: click_at(160, 181))
+        select_two_before = text().count(f"CUBITSHELL-BROWSER: tab select {number + 1}")
+    expect(f"CUBITSHELL-BROWSER: tab close {number + 1}", lambda: click_at(571, 181) if number % 2 else key("ctrl-w"))
+    if number % 2 and text().count(f"CUBITSHELL-BROWSER: tab select {number + 1}") != select_two_before:
         fail("close child also selected its inactive parent tab")
-    wait("CUBITSHELL-BROWSER: tab parked 2", number - 1)
+    wait(f"CUBITSHELL-BROWSER: tab parked {number + 1}")
     record("idle-start", cycle=number)
     time.sleep(3)
     expect("CUBITSHELL-BROWSER: title CuBitBrowserRestoredB", lambda: key("esc"))
@@ -275,7 +275,10 @@ def cycle(number):
 
 
 def extended_features():
-    record("features-start")
+    first_id = cycles + 2
+    live_tabs = 65
+    last_id = first_id + live_tabs - 2
+    record("features-start", first_tab_id=first_id, live_tabs=live_tabs)
     def ping_original():
         # Servo suppresses unchanged titles. Produce a fresh DOM title before
         # asking Escape to restore it; an already-restored title is no oracle.
@@ -284,23 +287,21 @@ def extended_features():
                lambda: command("mouse_move 0 0 -1"))
         expect("CUBITSHELL-BROWSER: title CuBitBrowserRestoredB", lambda: key("esc"))
     # More than eight live views, with actual horizontal and vertical overflow.
-    for index in range(2, 17):
+    for index in range(first_id, last_id + 1):
         expect(f"CUBITSHELL-BROWSER: tab new {index}", lambda: key("ctrl-t"))
     command(f'screendump "{capture.with_name(capture.stem + "-overflow.ppm")}"')
-    expect("CUBITSHELL-BROWSER: tab select 15", lambda: click_at(850, 192))
-    expect("CUBITSHELL-BROWSER: tab select 16", lambda: click_at(884, 192))
-    expect("CUBITSHELL-BROWSER: viewport 608x512", toggle_layout)
-    expect("CUBITSHELL-BROWSER: tab select 15", lambda: click_at(230, 192))
-    expect("CUBITSHELL-BROWSER: tab select 16", lambda: click_at(260, 192))
-    expect("CUBITSHELL-BROWSER: viewport 800x472", toggle_layout)
-    for index in range(16, 1, -1):
-        if index < 16:
-            expect(f"CUBITSHELL-BROWSER: tab select {index}", lambda: key("ctrl-shift-tab"))
+    expect(f"CUBITSHELL-BROWSER: tab select {last_id - 1}", lambda: click_at(850, 181))
+    expect(f"CUBITSHELL-BROWSER: tab select {last_id}", lambda: click_at(884, 181))
+    expect("CUBITSHELL-BROWSER: viewport 608x524", toggle_layout)
+    expect(f"CUBITSHELL-BROWSER: tab select {last_id - 1}", lambda: click_at(230, 181))
+    expect(f"CUBITSHELL-BROWSER: tab select {last_id}", lambda: click_at(260, 181))
+    expect("CUBITSHELL-BROWSER: viewport 800x494", toggle_layout)
+    for index in range(last_id, first_id - 1, -1):
         parked = text().count(f"CUBITSHELL-BROWSER: tab parked {index}")
         expect(f"CUBITSHELL-BROWSER: tab close {index}", lambda: key("ctrl-w"))
         wait(f"CUBITSHELL-BROWSER: tab parked {index}", parked)
     ping_original()
-    record("tabs-overflow-pass", live_tabs=16)
+    record("tabs-overflow-pass", live_tabs=live_tabs, first_tab_id=first_id)
     # Exercise capacity, isolated close, and reuse of a retired window slot.
     for count in range(2, 5):
         ready = text().count("CUBITSHELL-BROWSER: window ready")
@@ -336,8 +337,8 @@ wait("CUBITSHELL-BROWSER: aligned allocator PASS cycles=32")
 wait("CUBITSHELL-BROWSER: frame cancel PASS cycles=2")
 wait("ui-app: protected frame published")
 # Failed previous fixtures may have left a saved vertical preference.
-if "CUBITSHELL-BROWSER: initial viewport 608x512" in text():
-    expect("CUBITSHELL-BROWSER: viewport 800x472", toggle_layout)
+if "CUBITSHELL-BROWSER: initial viewport 608x524" in text():
+    expect("CUBITSHELL-BROWSER: viewport 800x494", toggle_layout)
 alive_start = time.monotonic()
 stability_seconds = int(os.environ.get("SERVO_BROWSER_STABILITY_SECONDS", "180"))
 assert 0 <= stability_seconds <= 3600
@@ -354,18 +355,19 @@ record("browser-alive-complete", seconds_observed=round(alive_seconds, 3), cycle
 if os.environ.get("SERVO_BROWSER_FEATURES") == "1":
     extended_features()
 # Leave the saved preference vertical, then reopen through the launcher.
-expect("CUBITSHELL-BROWSER: title CuBitBrowserResize:608x512", toggle_layout)
+expect("CUBITSHELL-BROWSER: title CuBitBrowserResize:608x524", toggle_layout)
 closing = True
 key("ctrl-w")
 wait("CUBITSHELL: closed")
 record("closed", cycles=cycles)
 previous_pass = text().count("CUBITSHELL: PASS")
-previous_viewport = text().count("CUBITSHELL-BROWSER: initial viewport 608x512")
+previous_viewport = text().count("CUBITSHELL-BROWSER: initial viewport 608x524")
 key("meta_l")
-for item in ["down", "down", "down", "down", "ret"]:
+# The seeded Config menu includes CCL Console; Penny is its sixth entry.
+for item in ["down", "down", "down", "down", "down", "ret"]:
     key(item)
 wait("CUBITSHELL: PASS", previous_pass, seconds=120)
-wait("CUBITSHELL-BROWSER: initial viewport 608x512", previous_viewport)
+wait("CUBITSHELL-BROWSER: initial viewport 608x524", previous_viewport)
 record("preference-reopen-pass")
 previous_close = text().count("CUBITSHELL: closed")
 key("ctrl-w")

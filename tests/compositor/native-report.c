@@ -46,7 +46,7 @@ void compositor_affine_report(void)
 
 void compositor_output_report(void)
 {
-    const char *msg="COMPOSITOR-OUTPUT: PASS 128 cached affine requests, 8 damage clips, 2 output slots, exact pixels, target mismatch rejected without writes\n";
+    const char *msg="COMPOSITOR-OUTPUT: PASS 384 cached copy/premultiplied/straight requests, 8 damage clips, 2 output slots, exact copy/premultiplied and <=1 straight blend tolerance, target mismatch rejected without writes\n";
     cubit_debug_write(msg,strlen(msg));
 }
 
@@ -84,6 +84,6 @@ void compositor_glyph_owner_report(void)
 
 void compositor_front_report(void)
 {
-    const char msg[] = "COMPOSITOR-FRONT: PASS 64 simulated latches, native Mesa writes, held front/pending pixels stable, 3-target backpressure\n";
+    const char msg[] = "COMPOSITOR-FRONT: PASS 64 simulated latches, native Mesa writes, held front/pending pixels stable, 3-target backpressure, 252 ready replacements\n";
     cubit_debug_write(msg, sizeof msg - 1);
 }

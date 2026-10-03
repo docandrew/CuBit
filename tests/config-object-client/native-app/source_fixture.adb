@@ -112,7 +112,7 @@ package body Source_Fixture is
          Taken : Boolean;
       begin
          State.Calls := State.Calls + 1;
-         Reply := (Value => CCL.Host_Values.Boolean_Constant (False), Success => False);
+         Reply := (Value => CCL.Host_Values.Boolean_Constant (False), Success => False, Why => <>);
          if Binding = Operation'Enum_Rep (Get_Value) then
             C.Get (Client, Next_Token, Sent);
             if not Complete (Sent) then return; end if;

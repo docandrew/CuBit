@@ -1,6 +1,91 @@
 with Intel_GPU_VM_Materialize;
+with System.Storage_Elements; use System.Storage_Elements;
 package body Intel_GPU_Application_Image.Updates is
    function Failed (Object : State) return Boolean is (Object.Update_Failed);
+   procedure Write_Leaf
+     (Object : in out State; Source : VM.Image; Backing : Tables.Mappings;
+      Table_DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;
+      Expected, Replacement : Unsigned_64; Inserting : Boolean;
+      Success : out Boolean)
+   is
+      Page : Natural := 0;
+      Encoded_Data : Boolean := False;
+      Data_DMA : constant Unsigned_64 := Replacement / 4096 * 4096;
+      function Gate return Boolean is
+        (not Object.Update_Failed and then not Object.Retirement_Attempted and then
+         Object.Prepared /= 0 and then Owner_Ready and then Exclusive);
+      type Words is array (Intel_GPU_ADLN_PPGTT.Table_Index) of Unsigned_64;
+   begin
+      Success := False;
+      if not Gate or else Object.Updating then
+         Object.Update_Failed := True; return;
+      end if;
+      if not VM.Sealed (Source) then
+         Object.Update_Failed := True; return;
+      end if;
+      if Inserting then
+         for Policy in Intel_GPU_ADLN_PPGTT.Cache_Policy loop
+            Encoded_Data := Encoded_Data or else
+              (Replacement /= 0 and then Replacement =
+               Intel_GPU_ADLN_PPGTT.Encode_Leaf
+                 (Data_DMA, Policy, Intel_GPU_ADLN_PPGTT.Read_Write));
+         end loop;
+         if not Encoded_Data or else Expected /= VM.Scratch_Entry (Source, 1) then
+            Object.Update_Failed := True; return;
+         end if;
+         for P in VM.Page_Number loop
+            if Data_DMA = VM.Page_DMA (Source, P) or else Data_DMA = Backing (P).DMA then
+               Object.Update_Failed := True; return;
+            end if;
+         end loop;
+         for Mapping of Object.Scratch loop
+            if Data_DMA = Mapping.DMA then
+               Object.Update_Failed := True; return;
+            end if;
+         end loop;
+      elsif Expected = 0 or else Replacement /= VM.Scratch_Entry (Source, 1) then
+         Object.Update_Failed := True; return;
+      end if;
+      for P in 2 .. VM.Used (Source) loop
+         if VM.Page_DMA (Source, P) = Table_DMA then Page := P; exit; end if;
+      end loop;
+      if Page = 0 or else not VM.Leaf_Table (Source, Page) or else
+        Backing (Page).DMA /= Table_DMA or else
+        Backing (Page).CPU = 0 or else Backing (Page).CPU mod 4096 /= 0 or else
+        Backing (Page).CPU > 2 ** 47 - 4096 or else
+        VM.Entry_Value (Source, Page, Index) /= Expected or else
+        Overlap (Backing (Page).CPU, Object.Allocation.CPU_Address, Object.Allocation.Bytes)
+      then Object.Update_Failed := True; return; end if;
+      Object.Updating := True;
+      declare
+         Destination : Words with Import, Volatile,
+           Address => To_Address (Integer_Address (Backing (Page).CPU));
+      begin
+         if Gate and then Destination (Index) = Expected then
+            Destination (Index) := Replacement;
+            Success := Gate and then Flush_Page (Backing (Page).CPU) and then
+              Gate and then Destination (Index) = Replacement and then Gate;
+         end if;
+      end;
+      Object.Updating := False;
+      if not Success then Object.Update_Failed := True; end if;
+   end Write_Leaf;
+   procedure Remove_Leaf
+     (Object : in out State; Source : VM.Image; Backing : Tables.Mappings;
+      Table_DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;
+      Expected, Replacement : Unsigned_64; Success : out Boolean) is
+   begin
+      Write_Leaf (Object, Source, Backing, Table_DMA, Index,
+                  Expected, Replacement, False, Success);
+   end Remove_Leaf;
+   procedure Insert_Leaf
+     (Object : in out State; Source : VM.Image; Backing : Tables.Mappings;
+      Table_DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;
+      Expected, Replacement : Unsigned_64; Success : out Boolean) is
+   begin
+      Write_Leaf (Object, Source, Backing, Table_DMA, Index,
+                  Expected, Replacement, True, Success);
+   end Insert_Leaf;
    procedure Publish_Tables
      (Object : in out State; Previous, Candidate : VM.Image;
       Backing : Tables.Mappings; Success : out Boolean) is

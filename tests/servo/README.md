@@ -250,3 +250,91 @@ The final v28 focused native gate passes for 180 seconds including the final
 fault scan, `menu-modal-keyboard-handoff-pass`, `menubar-input-pass`, and Config
 reopen. This follows v27's full 16-tab/four-window menu integration gate. The
 final built authority audit passes in `/tmp/cubit-servo-v28-authority.json`.
+
+### Penny TLS inspector
+
+`run-tls-inspector.py` boots a private native desktop disk, verifies the exact
+SHA-256 fingerprint and identity of the local TLS fixture, checks wrong-host,
+expired and untrusted certificate rejection, and verifies that HTTP navigation
+clears the previous TLS details. It opens View -> Connection information and
+captures screenshots. It reads the generated `tests/tls/build/pki` fixtures;
+run `tests/tls/make-pki.sh` first if needed. Private roots combine the host's CA
+bundle with the fixture CA. No production trust settings are changed.
+
+Run in Nix under `coordination/build.lock`, after building Penny. Optional
+`PENNY_PUBLIC_SITES` is a whitespace-separated URL list, for example
+`https://www.wikipedia.org/ https://duckduckgo.com/ https://github.com/ https://news.ycombinator.com/`.
+Public-site outcomes and screenshots are observational: a successful TLS
+handshake alone does not establish that all page features rendered correctly.
+The script prints its private artifact directory and writes `public-results.json`.
+
+Set `PENNY_ONLY_SITE=https://github.com/` to boot directly into one public site
+in a fresh process, without synthetic address input or preceding tabs. This
+helps distinguish site behavior from resources retained by previous tabs.
+Use an ignored build directory for `TMPDIR` if the shared `/tmp` quota is full.
+
+### Connection endurance and staged-component interaction
+
+`run-connection-endurance.py` boots a disposable native image with the current
+staged services and Penny binary. It fetches response-checked content from 40
+local HTTP/1.1 origins twice, with persistent connections, one-second pacing and
+an eight-second per-fetch timeout. Its `results.json` records each request's
+page-clock duration and success status, plus total host elapsed time. This deliberately
+crosses Penny's 32-connection grant to catch idle-pool retention. It does not
+change the production grant or measure physical hardware performance.
+
+`run-interaction.py` runs the existing `browser_input.py` sustained interaction
+oracle against staged components, without rebuilding unrelated services first.
+Set `SERVO_BROWSER_FEATURES=1` to include 20 tabs, four windows, capacity denial,
+close/reuse and Config reopen. Both runners keep disposable disks, serial logs,
+screenshots and input binary hashes under the printed artifact directory.
+
+```sh
+mkdir -p tests/servo/build/perf-tmp
+flock --exclusive --nonblock --conflict-exit-code 75 coordination/build.lock \
+  env TMPDIR="$PWD/tests/servo/build/perf-tmp" nix develop -c \
+  python3 tests/servo/run-connection-endurance.py
+flock --exclusive --nonblock --conflict-exit-code 75 coordination/build.lock \
+  env TMPDIR="$PWD/tests/servo/build/perf-tmp" SERVO_BROWSER_FEATURES=1 \
+  nix develop -c python3 tests/servo/run-interaction.py
+```
+
+The opt-in `/servo/perf-check` flag enables bounded page-title result callbacks
+and a five-second `CUBITSHELL-MEMORY` sample. `owned_bytes` is the kernel's
+current caller-owned physical-frame charge; `sampled_peak_bytes` is the maximum
+observed sample, not an exact allocation high-water mark or RSS. Imported/shared
+mappings, page tables and service-owned buffers are not included. The startup
+oracle maps, touches and unmaps 2 MiB before Servo worker threads start, requiring
+both a charge increase and release. Production launches do not sample or log.
+
+The initial 16-connection baseline completed 48 requests over 24 origins with
+33 failures visible in `progress.png`; its final HTTP report also stalled when
+connections were exhausted. That run was stopped through the harness's cleanup
+and does not establish clean browser shutdown or per-request timing. The revised
+harness reports through diagnostic title callbacks, so networking failure cannot
+hide the results. Its larger 40-origin workload also crosses the new budget.
+
+The current compact vertical strip fits 16 rows at the default window size;
+therefore the overflow regression now opens 20 tabs. Historical 16-tab results
+above used the taller strip. The resized viewport oracle is 854×504, restoring
+to 800×494; neither correction changes production layout.
+
+`run-socket-endurance.py` exercises native Rust std/CuBit libc sockets before
+initializing Servo. It uses a local raw echo peer, 128 sequential lifetimes,
+256 lifetimes on eight threads, 32 simultaneously held sockets, excess refusal,
+idle exchange and post-close recovery. This isolates the shared socket path from
+HTTP pooling, TLS, DOM and rendering. Its packet capture and exact echo checks
+are diagnostic evidence, not a full network-stack proof.
+
+
+JavaScript workload fixture: serve `js-benchmark.html` and `js-benchmark.js`
+together over local HTTP. `?autorun=1` enables fixture execution; otherwise the
+page waits for its button. Six fixed workloads cover integer arithmetic, typed
+arrays, objects, JSON, regular expressions and sorting. Each result is checked
+against independent Python-derived answers, with one warmup and five timed
+samples. `nix develop -c python3 tests/servo/test_js_benchmark.py` validates the
+fixture using Node; this is not native SpiderMonkey performance evidence.
+The native perf flag can collect the `CuBitBrowserPerfJS` title markers without
+relying on a network upload. Preserve the fixture hash, exact binary, engine/JIT
+mode and hardware/virtualization with every result. These microbenchmarks do
+not replace page-load, responsiveness, media or matched-platform comparisons.

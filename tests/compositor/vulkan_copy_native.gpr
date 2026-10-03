@@ -1,0 +1,11 @@
+project Vulkan_Copy_Native is
+   for Languages use ("Ada");
+   for Source_Dirs use ("../../userspace/lib/compositor");
+   for Source_Files use ("vulkan_copy_binding.ads", "vulkan_copy_binding.adb", "vulkan_copy_ffi.ads", "vulkan_copy_ffi.adb",
+      "desktop_composition.ads", "desktop_composition.adb");
+   for Runtime ("Ada") use "../../userspace/runtime";
+   for Object_Dir use "build/vulkan-copy-native";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+end Vulkan_Copy_Native;

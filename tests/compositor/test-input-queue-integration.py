@@ -49,6 +49,7 @@ procedure Input_Integration is
       events : PendingInputQueue;
       snapshot : InputSnapshot;
       nextSerial : Unsigned_64 := 1;
+      exposedThrough : Unsigned_64 := 0;
       pendingClose : Unsigned_64 := 0;
    end record;
    subtype SurfaceInputChannel is Channel;
@@ -99,24 +100,24 @@ begin
       declare Other : constant Channel := inputChannels(1); begin
          enqueueInput(INPUT_POINTER_DOWN,11,100,1);
          enqueueInput(INPUT_KEY_DOWN,11,42,4);
-         for I in 1 .. 30 loop enqueueInput(INPUT_TEXT,11,Unsigned_64(I),0); end loop;
+         for I in 1 .. IQ.Capacity-2 loop enqueueInput(INPUT_TEXT,11,Unsigned_64(I),0); end loop;
          enqueueInput(INPUT_POINTER_UP,11,700,0);
          pragma Assert(inputQueueOverflows=1 and inputChannels(0).snapshot.generation=1);
          pragma Assert(inputChannels(1)=Other);
          dequeueInput(11,0,Found,E);
-         pragma Assert(Found and E.kind=INPUT_RESYNC and E.serial=33 and E.target=11);
+         pragma Assert(Found and E.kind=INPUT_RESYNC and E.serial=Unsigned_64(IQ.Capacity+1) and E.target=11);
          pragma Assert(E.payload0=700 and E.payload1=Shift_Left(Unsigned_64'(4),32));
          pragma Assert(not hasInputAfter(11,E.serial));
       end;
       enqueueInput(INPUT_TEXT,11,98,0);
-      dequeueInput(11,34,Found,E);
+      dequeueInput(11,Unsigned_64(IQ.Capacity+2),Found,E);
       pragma Assert(not Found and not hasInputAfter(11,0));
       dequeueInput(22,0,Found,E);
       pragma Assert(Found and E.kind=INPUT_TEXT and E.payload0=99);
       -- Counter saturation does not turn a known loss into zero.
       Reset; inputQueueOverflows:=Unsigned_64'Last;
       inputChannels(0).snapshot.generation:=Unsigned_64'Last;
-      for I in 1 .. 33 loop enqueueInput(INPUT_TEXT,11,1,0); end loop;
+      for I in 1 .. IQ.Capacity+1 loop enqueueInput(INPUT_TEXT,11,1,0); end loop;
       pragma Assert(inputQueueOverflows=Unsigned_64'Last and
         inputChannels(0).snapshot.generation=Unsigned_64'Last);
    end loop;

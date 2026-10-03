@@ -1,4 +1,6 @@
 with Ada.Text_IO;
+with Intel_GPU_Extent_Directory;
+with Extent_Directory_Fixture;
 with Interfaces; use Interfaces;
 with Intel_GPU_Buffer_Backing;
 with Intel_GPU_Physical_Extents;
@@ -15,14 +17,78 @@ procedure Buffer_Reply_Tests is
    type Values is array (Positive range <>) of Unsigned_64;
 begin
    declare
+      package L renames Intel_GPU_Buffer_Backing;
+      Block : constant Unsigned_64 := Intel_GPU_Physical_Extents.Block_Bytes;
+      function Valid (Bytes, DMA : Unsigned_64; CPU : Unsigned_64 := L.CPU_Base)
+        return Boolean is (L.Heap_Geometry_Valid (Bytes, DMA, CPU));
+   begin
+      pragma Assert (Valid (L.Default_Heap.Byte_Quota, L.Default_Heap.DMA_Limit));
+      pragma Assert (Valid (24 * 1024 ** 3, 2 ** 48));
+      pragma Assert (Valid (2 ** 40, 2 ** 48));
+      pragma Assert (Valid (2 ** 47 - L.CPU_Base, 2 ** 48));
+      pragma Assert (not Valid (2 ** 47 - L.CPU_Base + Block, 2 ** 48));
+      pragma Assert (not Valid (Unsigned_64'Last, 2 ** 48));
+      pragma Assert (not Valid (0, 2 ** 48));
+      pragma Assert (not Valid (Block + 1, 2 ** 48));
+      pragma Assert (not Valid (Block, Block));
+      pragma Assert (not Valid (Block, 2 ** 48 + 1));
+      pragma Assert (not Valid (Block, 2 ** 48, 0));
+      pragma Assert (not Valid (Block, 2 ** 48, L.CPU_Base + 1));
+      pragma Assert (not Valid (Block, 2 ** 48, 2 ** 47));
+      pragma Assert (not Valid (Block, 2 ** 48, Unsigned_64'Last));
+   end;
+   declare
+      package L renames Intel_GPU_Buffer_Backing;
+      Block : constant Unsigned_64 := Intel_GPU_Physical_Extents.Block_Bytes;
+      W : L.Budget_Words := [0, 7, 0, 0];
+      function Admit
+        (Label : Unsigned_32 := L.Extent_Request_Label;
+         Length : Unsigned_8 := 2; Flags : Unsigned_8 := 0; Reserved : Unsigned_16 := 0;
+         Sender : Unsigned_64 := 7; Authority : Unsigned_64 := 16#4947#;
+         Owner : Unsigned_64 := 7; Committed : Unsigned_64 := 600 * Block;
+         Granted : Boolean := True) return Boolean is
+        (L.Extent_Request_Authorized (Label, Length, Flags, Reserved, W,
+           Sender, Authority, Owner, Committed, Granted));
+   begin
+      for Index in 0 .. 599 loop
+         W (0) := Unsigned_64 (Index);
+         pragma Assert (Admit);
+         pragma Assert (L.CPU_Base + W (0) * Block < 2 ** 47);
+      end loop;
+      W (0) := 600; pragma Assert (not Admit);
+      W (0) := Unsigned_64'Last; pragma Assert (not Admit);
+      W (0) := 16;
+      pragma Assert (not Admit (Committed => 16 * Block));
+      pragma Assert (Admit (Committed => 17 * Block));
+      pragma Assert (not Admit (Label => 0));
+      pragma Assert (not Admit (Length => 3));
+      pragma Assert (not Admit (Flags => 1));
+      pragma Assert (not Admit (Reserved => 1));
+      pragma Assert (not Admit (Sender => 8));
+      pragma Assert (not Admit (Authority => 0));
+      pragma Assert (not Admit (Owner => 0));
+      pragma Assert (not Admit (Granted => False));
+      pragma Assert (not Admit (Committed => 0));
+      pragma Assert (not Admit (Committed => 17 * Block + 1));
+      pragma Assert (not Admit (Committed => Unsigned_64'Last));
+      pragma Assert (not Admit (Committed => 2 ** 47 - L.CPU_Base + Block));
+      W (1) := 8; pragma Assert (not Admit); W (1) := 7;
+      W (2) := 1; pragma Assert (not Admit); W (2) := 0;
+      W (3) := 1; pragma Assert (not Admit);
+   end;
+   pragma Assert (Extent_View'Object_Size <= 64 * 8);
+   pragma Assert (Backing'Object_Size <= 96 * 8);
+   declare
       package E renames Intel_GPU_Physical_Extents;
       Bases : E.Addresses;
-      Map : E.Map;
+      Map : Intel_GPU_Extent_Directory.Borrowed_View;
+      Owner, Other : aliased Intel_GPU_Extent_Directory.Directory;
       OK : Boolean;
       View, Part : Extent_View;
    begin
       for I in E.Block_Index loop Bases (I) := 16#4000_0000# - Unsigned_64 (I) * 2 * E.Block_Bytes; end loop;
-      E.Admit (Bases, Map, OK); pragma Assert (OK);
+      Extent_Directory_Fixture.Initialize (Owner, Bases);
+      Map := Intel_GPU_Extent_Directory.Borrow (Owner);
       View := From_Extents (Map, 7, 0, E.Capacity);
       pragma Assert (Valid (View) and CPU_Address (View) = Layout.CPU_Base);
       for I in 0 .. 8191 loop
@@ -53,8 +119,11 @@ begin
       pragma Assert (not Valid (From_Extents (Map, 0, 0, 4096)));
       pragma Assert (not Same_Arena (View, From_Extents (Map, 8, 0, 4096)));
       Bases (0) := 16#6000_0000#;
-      E.Admit (Bases, Map, OK); pragma Assert (OK);
+      Extent_Directory_Fixture.Initialize (Other, Bases);
+      Map := Intel_GPU_Extent_Directory.Borrow (Other);
       pragma Assert (not Same_Arena (View, From_Extents (Map, 7, 0, 4096)));
+      Intel_GPU_Extent_Directory.Quarantine (Owner);
+      pragma Assert (not Valid (View) and Page_Address (View, 0) = 0);
    end;
    declare
       Parent : Backing := From_Linear (Base, Layout.CPU_Base, 256 * 4096, Base);
@@ -99,7 +168,7 @@ begin
       pragma Assert (Page_Address (Parent, 0) = 0);
       pragma Assert (not Slice (Parent, 0, 4096).Ready);
    end;
-   for Index in Layout.Slot loop
+   for Index in 1 .. Layout.Bootstrap_Slots loop
       for Pages in Layout.Page_Count loop
          declare
             Bytes : constant Unsigned_64 := Unsigned_64 (Pages) * 4096;

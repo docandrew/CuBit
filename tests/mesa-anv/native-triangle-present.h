@@ -4,8 +4,11 @@
 #include "native_gpu_presenter.h"
 #include "native_gpu_mapping.h"
 extern uint64_t cubit_test_desktop_slot(void);
-extern uint64_t cubit_test_triangle_create(void);
-extern uint32_t cubit_test_triangle_present(uint64_t surface);
+extern uint64_t cubit_test_triangle_create(uint32_t width,uint32_t height);
+extern uint32_t cubit_test_triangle_present(uint64_t surface,uint32_t width,uint32_t height);
+#ifndef CUBIT_TEST_FRAME_SIZE
+#define CUBIT_TEST_FRAME_SIZE 64
+#endif
 extern uint32_t cubit_test_triangle_destroy(uint64_t surface);
 
 static VkResult triangle_export_rejected(const char *reason, VkResult result)
@@ -21,7 +24,8 @@ present_completed_triangle(VkDevice handle, VkDeviceMemory allocation,
 {
    ANV_FROM_HANDLE(anv_device, device, handle);
    ANV_FROM_HANDLE(anv_device_memory, memory, allocation);
-   if (!device || !memory || bytes!=16384 || width!=64 || height!=64 || pitch!=256)
+   if (!device || !memory || bytes!=(uint64_t)CUBIT_TEST_FRAME_SIZE*CUBIT_TEST_FRAME_SIZE*4 ||
+       width!=CUBIT_TEST_FRAME_SIZE || height!=CUBIT_TEST_FRAME_SIZE || pitch!=CUBIT_TEST_FRAME_SIZE*4)
       return triangle_export_rejected("invalid completed-buffer shape",VK_ERROR_INITIALIZATION_FAILED);
    if (anv_cubit_check_status(&device->vk)!=VK_SUCCESS)
       return triangle_export_rejected("device unhealthy after unmap",VK_ERROR_DEVICE_LOST);
@@ -39,14 +43,14 @@ present_completed_triangle(VkDevice handle, VkDeviceMemory allocation,
    if (bo->slab_parent || bo->from_host_ptr || anv_bo_is_external(bo) ||
        bo->map || !bo->gem_handle || bo->size<bytes || bo->actual_size<bytes)
       return triangle_export_rejected("BO not standalone unmapped owned backing",VK_ERROR_FEATURE_NOT_PRESENT);
-   uint64_t surface=cubit_test_triangle_create();
+   uint64_t surface=cubit_test_triangle_create(width,height);
    if (!surface) return triangle_export_rejected("Desktop surface creation failed",VK_ERROR_INITIALIZATION_FAILED);
    struct cubit_presenter presenter={0};
    uint32_t attached=cubit_presenter_attach_completed_linear(&presenter,
       cubit_test_render_slot(),cubit_test_desktop_slot(),bo->gem_handle,
       surface,0,width,height,pitch);
    VkResult result=VK_ERROR_UNKNOWN;
-   if (!attached && !cubit_test_triangle_present(surface)) {
+   if (!attached && !cubit_test_triangle_present(surface,width,height)) {
       report("MESA-TRIANGLE Desktop presented (retaining Vulkan allocation)\n");
       usleep(5000000);
       result=VK_SUCCESS;

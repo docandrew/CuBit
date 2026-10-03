@@ -1,3 +1,4 @@
+with CuBit.Logging;
 with CCL_Manifest_Bindings;
 ------------------------------------------------------------------------------
 --  CuBit Files
@@ -694,8 +695,10 @@ procedure main is
      (ui => ui, controls => controls,
       Render => Render, Handle_Event => Handle_Event);
 
+   Announced : Boolean;
 begin
    debugPrint ("files: starting read-only filesystem browser" & LF);
+   CuBit.Logging.Announce ("files: started (read-only browser)", Announced);
    rawBuffer := syscall (SYSCALL_SBRK, 2 * PAGE_SIZE);
    if rawBuffer /= Unsigned_64'Last then
       pageAddress := (rawBuffer + PAGE_SIZE - 1) and not (PAGE_SIZE - 1);

@@ -7,6 +7,32 @@ package body Intel_GPU_Buffer_Memory is
    package Layout renames Intel_GPU_Buffer_Backing;
    package Replies renames Intel_GPU_Buffer_Reply;
    use type Replies.Outcome;
+   procedure Configure_Heap
+     (Object : in out Pool; Byte_Quota, DMA_Limit, Metadata_Bytes : Unsigned_64;
+      Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if Object.Configured or else Object.Active or else Object.Broken or else
+        Object.Serial /= 0 or else not Owner_Ready or else
+        not Layout.Heap_Geometry_Valid (Byte_Quota, DMA_Limit, Layout.CPU_Base) or else
+        Metadata_Bytes = 0 or else
+        Metadata_Bytes mod Extent_Storage.Page_Bytes /= 0
+      then return; end if;
+      Object.Heap_Limit := Byte_Quota;
+      Object.DMA_Limit := DMA_Limit;
+      Object.Metadata_Limit := Metadata_Bytes;
+      Object.Configured := True;
+      Accepted := True;
+   end Configure_Heap;
+   function Record_Capacity (Object : Pool) return Positive is
+     (Records.Capacity (Object.Items));
+   procedure Extend_Records
+     (Object : in out Pool; Base, Bytes : Unsigned_64; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if Object.Active or else Object.Broken or else not Owner_Ready then return; end if;
+      Records.Extend (Object.Items, Base, Bytes, Accepted);
+   end Extend_Records;
    function Last_Stage (Object : Pool) return Allocation_Stage is (Object.Stage);
    function Pending (Object : Pool) return Boolean is (Object.Active);
    function Retirement_Confirmed
@@ -19,6 +45,7 @@ package body Intel_GPU_Buffer_Memory is
    procedure Cancel (Object : in out Pool) is
    begin
       Object.Active := False; Object.Broken := True;
+      Object.Waiting_Metadata := False;
       Object.Current := (Ready => False);
       Intel_GPU_Extent_Replies.Cancel (Object.Assembly);
    end Cancel;
@@ -40,6 +67,11 @@ package body Intel_GPU_Buffer_Memory is
    function Submit_Extent (Object : in out Pool) return Boolean is
       Request : Message := NULL_MESSAGE;
    begin
+      if Object.Extent_Index >= Intel_GPU_Extent_Replies.Metadata_Capacity (Object.Assembly) then
+         Object.Waiting_Metadata := True;
+         Object.Stage := Awaiting_Extent_Metadata;
+         return True;
+      end if;
       Request.tag := (Layout.Extent_Request_Label, 2, 0, 0);
       Request.words := [Unsigned_64 (Object.Extent_Index), Object.Arena_ID, 0, 0];
       return Submit_Message (Object, Request);
@@ -51,16 +83,18 @@ package body Intel_GPU_Buffer_Memory is
       Started := False;
       if Object.Active then return; end if;
       Object.Current := (Ready => False);
-      if Object.Broken or Object.Attempted (Index) then return; end if;
+      if Object.Broken or else Index > Record_Capacity (Object) or else
+        Records.Get (Object.Items, Index).Attempted then return; end if;
       Object.Stage := Owner_Check;
       if not Owner_Ready then
-         Object.Broken := (for some Tried of Object.Attempted => Tried);
+         Object.Broken := (for some I in 1 .. Records.Capacity (Object.Items) => Records.Get (Object.Items, I).Attempted);
          return;
       end if;
-      Object.Attempted (Index) := True;
+      Records.Put (Object.Items, Index,
+        (Records.Get (Object.Items, Index) with delta Attempted => True));
       Object.Broken := True;
       Object.Index := Index; Object.Pages := Pages;
-      Object.Generation := Object.Slot_Generations (Index);
+      Object.Generation := Records.Get (Object.Items, Index).Generation;
       Object.Retiring := False;
       Object.Started_At := syscall (SYSCALL_GETTIME);
       Object.Previous := Object.Started_At;
@@ -77,9 +111,10 @@ package body Intel_GPU_Buffer_Memory is
    begin
       Started := False;
       if Object.Active or else Object.Broken or else not All_References_Retired or else
-        not Object.Attempted (Index) or else not Object.Items (Index).Ready or else
+        Index > Record_Capacity (Object) or else
+        not Records.Get (Object.Items, Index).Attempted or else not Records.Get (Object.Items, Index).Backing.Ready or else
         Generation = 0 or else Generation = Unsigned_32'Last or else
-        Generation /= Object.Slot_Generations (Index)
+        Generation /= Records.Get (Object.Items, Index).Generation
       then return; end if;
       if not Owner_Ready then Cancel (Object); return; end if;
       Object.Current := (Ready => False);
@@ -97,6 +132,8 @@ package body Intel_GPU_Buffer_Memory is
    end Retire;
    procedure Tick (Object : in out Pool) is
       Now : Unsigned_64;
+      State : Extent_Storage.View;
+      OK : Boolean;
    begin
       if not Object.Active then return; end if;
       Now := syscall (SYSCALL_GETTIME);
@@ -104,13 +141,42 @@ package body Intel_GPU_Buffer_Memory is
         Now - Object.Started_At >= 30_000 or else not Owner_Ready
       then Cancel (Object); return; end if;
       Object.Previous := Now;
+      if not Object.Waiting_Metadata then return; end if;
+      State := Extent_Storage.Snapshot (Object.Extent_Metadata);
+      case State.Phase is
+         when Extent_Storage.Empty =>
+            Extent_Storage.Open (Object.Extent_Metadata, Object.Metadata_Limit, OK);
+            if not OK then Cancel (Object); end if;
+         when Extent_Storage.Reserved | Extent_Storage.Ready =>
+            if State.Published > Object.Metadata_Published then
+               Intel_GPU_Extent_Replies.Extend_Metadata
+                 (Object.Assembly, State.Base, State.Published, OK);
+               if not OK then Cancel (Object); return; end if;
+               Object.Metadata_Published := State.Published;
+               if Object.Extent_Index < Intel_GPU_Extent_Replies.Metadata_Capacity (Object.Assembly) then
+                  Object.Waiting_Metadata := False;
+                  Object.Stage := Awaiting_Reply;
+                  if not Submit_Extent (Object) then Cancel (Object); end if;
+               end if;
+            elsif State.Published >= Object.Metadata_Limit then
+               Cancel (Object);
+            else
+               Extent_Storage.Request (Object.Extent_Metadata,
+                 State.Published + Unsigned_64'Min
+                   (Extent_Storage.Step_Bytes, Object.Metadata_Limit - State.Published), OK);
+               if not OK then Cancel (Object); end if;
+            end if;
+         when Extent_Storage.Growing =>
+            Extent_Storage.Step (Object.Extent_Metadata);
+         when Extent_Storage.Failed => Cancel (Object);
+      end case;
    end Tick;
    procedure Complete
      (Object : in out Pool; Receipt : CompletionEntry; Consumed : out Boolean) is
       Candidate : Replies.Backing;
       Accepted : Boolean;
    begin
-      Consumed := Object.Active and then
+      Consumed := Object.Active and then not Object.Waiting_Metadata and then
         Receipt.token = Object.Completion_Token;
       if not Consumed then return; end if;
       Tick (Object);
@@ -122,9 +188,12 @@ package body Intel_GPU_Buffer_Memory is
            Receipt.msg.words /=
              [0, Layout.Allocation_Key (Object.Index, Object.Generation), Object.Arena_ID, 0]
          then Cancel (Object); return; end if;
-         Object.Items (Object.Index) := (Ready => False);
-         Object.Attempted (Object.Index) := False;
-         Object.Slot_Generations (Object.Index) := Object.Generation + 1;
+         Records.Put (Object.Items, Object.Index,
+        (Records.Get (Object.Items, Object.Index) with delta Backing => (Ready => False)));
+         Records.Put (Object.Items, Object.Index,
+        (Records.Get (Object.Items, Object.Index) with delta Attempted => False));
+         Records.Put (Object.Items, Object.Index,
+        (Records.Get (Object.Items, Object.Index) with delta Generation => Object.Generation + 1));
          Object.Active := False; Object.Broken := False; Object.Retiring := False;
          Object.Stage := Retired;
          return;
@@ -134,12 +203,17 @@ package body Intel_GPU_Buffer_Memory is
          Intel_GPU_Extent_Replies.Accept_Reply
            (Object.Assembly, Intel_GPU_Extent_Replies.Words (Receipt.msg.words), Accepted);
          if not Accepted then Cancel (Object); return; end if;
-         if Object.Extent_Index < Intel_GPU_Physical_Extents.Block_Index'Last then
+         if not Intel_GPU_Extent_Directory.Valid
+           (Intel_GPU_Extent_Replies.Result (Object.Assembly)) then
             Object.Extent_Index := Object.Extent_Index + 1;
             if not Submit_Extent (Object) then Cancel (Object); end if;
             return;
          end if;
          Object.Mapping := Intel_GPU_Extent_Replies.Result (Object.Assembly);
+         Intel_GPU_Diagnostics.Capture
+           ("intel-gpu: backing snapshot bytes=" & Unsigned_64'Image
+              (Intel_GPU_Extent_Directory.Byte_Count (Object.Mapping)) &
+            " arena quota=" & Unsigned_64'Image (Object.Heap_Limit));
          Object.Fetching := False;
       else
          if Receipt.msg.tag = (16#F002#, 0, 0, 0) and then
@@ -163,36 +237,53 @@ package body Intel_GPU_Buffer_Memory is
            Receipt.msg.words (1) /= Unsigned_64 (Object.Pages) * 4096 or else
            Receipt.msg.words (0) < Layout.CPU_Base or else
            Receipt.msg.words (0) mod 4096 /= 0 or else
-           Receipt.msg.words (0) - Layout.CPU_Base > Layout.Capacity - Receipt.msg.words (1) or else
+           Receipt.msg.words (1) > Object.Heap_Limit or else
+           Receipt.msg.words (0) - Layout.CPU_Base > Object.Heap_Limit - Receipt.msg.words (1) or else
            (Object.Arena_ID /= 0 and then Object.Arena_ID /= Receipt.msg.words (2))
          then Cancel (Object); return; end if;
          Object.Requested_CPU := Receipt.msg.words (0);
          Object.Requested_Bytes := Receipt.msg.words (1);
          Object.Arena_ID := Receipt.msg.words (2);
-         if not Intel_GPU_Physical_Extents.Ready (Object.Mapping) then
-            Intel_GPU_Extent_Replies.Start
-              (Object.Assembly, Layout.CPU_Base, Object.Arena_ID, Accepted);
+         if Object.Requested_CPU - Layout.CPU_Base + Object.Requested_Bytes >
+           Intel_GPU_Extent_Directory.Byte_Count (Object.Mapping) then
+            declare
+               package E renames Intel_GPU_Physical_Extents;
+               Required : constant Natural := Natural
+                 ((Object.Requested_CPU - Layout.CPU_Base + Object.Requested_Bytes - 1) /
+                    E.Block_Bytes + 1);
+            begin
+               Object.Extent_Index := Natural
+                 (Intel_GPU_Extent_Directory.Byte_Count (Object.Mapping) / E.Block_Bytes);
+               if not Intel_GPU_Extent_Directory.Valid (Object.Mapping) then
+                  Intel_GPU_Extent_Replies.Start
+                    (Object.Assembly, Layout.CPU_Base, Object.Arena_ID, Accepted, Required,
+                     Object.Heap_Limit, Object.DMA_Limit);
+               else
+                  Intel_GPU_Extent_Replies.Extend (Object.Assembly, Required, Accepted);
+               end if;
+            end;
             if not Accepted then Cancel (Object); return; end if;
             Object.Fetching := True;
-            Object.Extent_Index := 0;
             if not Submit_Extent (Object) then Cancel (Object); end if;
             return;
          end if;
       end if;
       Candidate := Replies.From_View (Replies.From_Extents
-        (Object.Mapping, Object.Arena_ID,
+        (Intel_GPU_Extent_Replies.Result (Object.Assembly), Object.Arena_ID,
          Object.Requested_CPU - Layout.CPU_Base, Object.Requested_Bytes));
       if not Replies.Valid (Candidate) then Cancel (Object); return; end if;
       -- All accepted buffers share one immutable, nonaliasing backing map.
       -- Disjoint CPU slices then imply disjoint backing, without requiring
       -- neighboring CPU pages to be physically adjacent.
       Object.Stage := Validate_Backing;
-      for Other of Object.Items loop
+      for I in 1 .. Records.Capacity (Object.Items) loop
+         declare Other : constant Replies.Backing := Records.Get (Object.Items, I).Backing; begin
          if Other.Ready and then
            (not Replies.Same_Arena (Other, Candidate) or else
             (Candidate.CPU_Address < Other.CPU_Address + Other.Bytes and then
              Other.CPU_Address < Candidate.CPU_Address + Candidate.Bytes))
          then Cancel (Object); return; end if;
+         end;
       end loop;
       declare
          type Memory_Words is array (Natural range <>) of Unsigned_64;
@@ -217,7 +308,8 @@ package body Intel_GPU_Buffer_Memory is
          end loop;
       end;
       if not Owner_Ready then Cancel (Object); return; end if;
-      Object.Items (Object.Index) := Candidate;
+      Records.Put (Object.Items, Object.Index,
+        (Records.Get (Object.Items, Object.Index) with delta Backing => Candidate));
       Object.Stage := Granted;
       Object.Broken := False;
       Object.Current := Candidate;
@@ -237,7 +329,8 @@ package body Intel_GPU_Buffer_Memory is
       for Poll in 1 .. 30_000 loop
          Tick (Object);
          exit when not Pending (Object);
-         if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 then
+         if not Object.Waiting_Metadata and then
+           Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 then
             Complete (Object, Receipt, Consumed);
             if not Consumed then Cancel (Object); end if;
          end if;

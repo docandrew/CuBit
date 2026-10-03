@@ -20,6 +20,51 @@ package body Desktop_Compositor with SPARK_Mode,
    end Disable;
    function Selected return Boolean is (True);
    function Software_Text return Boolean is (Glyphs.Software_Active (Text));
+   procedure Begin_Output
+     (Target : System.Address; Screen : CuBit.Display_Geometry.Output;
+      Secondary : Boolean; Result : out Output_Start) is
+      pragma Unreferenced (Target, Screen, Secondary);
+   begin
+      Result := (if Mesa_Cache.Can_Retire (Cache) then Started else Start_Unsafe);
+   end Begin_Output;
+   procedure Draw_Fill
+     (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Area : CuBit.Display_Geometry.Physical_Rectangle; Color : Compositor_Formats.Word;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean) is
+      use type CuBit.Display_Geometry.Pixel_Edge, Compositor_Formats.Word;
+      Target_Index : constant Mesa_Cache.Target_Slot := (if Secondary then 1 else 0);
+      OK : Boolean;
+   begin
+      Drawn := False; Must_Restart := not Mesa_Cache.Can_Retire (Cache);
+      if Must_Restart then return; end if;
+      if Area.Left >= Area.Right or Area.Top >= Area.Bottom then Drawn := True; return; end if;
+      if not Mesa_Cache.Attempted (Cache) then Mesa_Cache.Initialize (Cache, True); end if;
+      Mesa_Cache.Ensure (Cache, Target_Index, Target, Target_Bytes, OK);
+      if OK then
+         declare
+            Width : constant Compositor_Formats.Word := Compositor_Formats.Word (Area.Right - Area.Left);
+            Height : constant Compositor_Formats.Word := Compositor_Formats.Word (Area.Bottom - Area.Top);
+            function Fits_Views (Source, Target : Compositor_Formats.Image) return Boolean is
+              (Target.Writable = 1 and Compositor_Formats.Word (Area.Right) <= Target.Width and
+               Compositor_Formats.Word (Area.Bottom) <= Target.Height);
+            procedure Draw_Views (Library : in out Mesa_Binding.Context; Target, Source : System.Address;
+                                  Result : out Compositor_Policy.Completion) is
+            begin
+               Mesa_Binding.Fill_View (Library, Target,
+                 Compositor_Formats.Word (Area.Left), Compositor_Formats.Word (Area.Top),
+                 Width, Height, Color, Result);
+            end Draw_Views;
+            procedure Execute is new Mesa_Cache.Render_Checked (Fits_Views, Draw_Views);
+         begin
+            -- The retained target is the sole operand. No source read occurs.
+            Execute (Cache, Target_Index, Target_Index, Drawn);
+         end;
+      end if;
+      Must_Restart := not Mesa_Cache.Can_Retire (Cache);
+      if not Drawn and not Must_Restart then
+         declare Safe : Boolean; begin Disable (Safe); Must_Restart := not Safe; end;
+      end if;
+   end Draw_Fill;
    procedure Draw_Text
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output; Items : Compositor_Text.Glyphs;
@@ -104,9 +149,10 @@ package body Desktop_Compositor with SPARK_Mode,
       Screen : CuBit.Display_Geometry.Output;
       Surface : CuBit.Display_Geometry.Logical_Rectangle;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Secondary : Boolean; Drawn, Must_Restart : out Boolean) is
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean;
+      Over : Boolean := False; Straight_Alpha : Boolean := False) is
       use type Compositor_Formats.Word, System.Address;
-      Full : constant Compositor_Affine.Result := Compositor_Affine.Plan (Screen, Surface);
+      Full : constant Compositor_Affine.Result := Compositor_Affine.Plan (Screen, Surface, Over, Straight_Alpha);
       P : constant Compositor_Affine.Result :=
         (if Full.Visible then Compositor_Affine.Clip (Full.Value, Screen.Width, Screen.Height, Damage)
          else (Visible => False));
@@ -150,20 +196,30 @@ package body Desktop_Compositor with SPARK_Mode,
          end;
       end if;
    end Draw_Output;
-   procedure Forget_Source (Pixels : System.Address; Safe : out Boolean) is
+   procedure Complete_Output
+     (Target : System.Address; Secondary, Poll : Boolean; Result : out Render_Completion) is
+      pragma Unreferenced (Target, Secondary, Poll);
+   begin
+      Result := (if Mesa_Cache.Can_Retire (Cache) then Complete else Unsafe);
+   end Complete_Output;
+   procedure Forget_Source (Pixels : System.Address; Result : out Source_Release) is
+      Safe : Boolean;
    begin
       Safe := Mesa_Cache.Can_Retire (Cache);
       if Safe then
          Mesa_Cache.Forget_Source (Cache, Pixels);
          Safe := Mesa_Cache.Can_Retire (Cache);
       end if;
+      Result := (if Safe then Source_Retired else Source_Unsafe);
    end Forget_Source;
-   procedure Forget_Targets (Safe : out Boolean) is
+   procedure Forget_Targets (Result : out Target_Release) is
+      Safe : Boolean;
    begin
       Safe := Mesa_Cache.Can_Retire (Cache);
       if Safe then
          Mesa_Cache.Forget_Targets (Cache);
          Safe := Mesa_Cache.Can_Retire (Cache) and then Mesa_Cache.Targets_Clear (Cache);
       end if;
+      Result := (if Safe then Targets_Retired else Targets_Unsafe);
    end Forget_Targets;
 end Desktop_Compositor;

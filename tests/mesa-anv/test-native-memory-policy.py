@@ -46,10 +46,22 @@ def main():
     tests = root / 'tests/mesa-anv'
     native = root / 'userspace/mesa/anv'
     fixtures = {
+        'transport-failure-capture': [tests / 'transport-failure-capture-test.c'],
+        'cleanup-status': [native / 'anv_cubit_memory.c', tests / 'cleanup-status-test.c'],
+        'service-probe-progress': [tests / 'service-probe-progress-test.c'],
+        'service-device': [root / 'userspace/mesa/service-device.c',
+                           tests / 'service-device-test.c'],
+        'launch-session': [tests / 'launch-session-test.c'],
+        'mapping-lifetime': [native / 'native_gpu_mapping.c',
+                             tests / 'mapping-lifetime-test.c'],
         'memory-info': [native / 'cubit-device-query.c', native / 'cubit-memory-info.c',
                         tests / 'memory-info-test.c'],
         'session-attach': [native / 'anv_cubit_memory.c', tests / 'session-attach-test.c'],
+        'session-status': [native / 'anv_cubit_memory.c', tests / 'session-status-test.c'],
         'memory-lifecycle': [native / 'anv_cubit_memory.c', tests / 'memory-lifecycle-test.c'],
+        'submission-lifecycle': [native / 'anv_cubit_memory.c', tests / 'submission-lifecycle-test.c'],
+        'concurrent-submission': [native / 'anv_cubit_memory.c', tests / 'concurrent-submission-test.c'],
+        'slab-submission': [native / 'anv_cubit_memory.c', tests / 'slab-submission-test.c'],
         'state-table-backing': [native / 'anv_cubit_state_table.c',
                                 tests / 'state-table-backing-test.c'],
     }
@@ -80,8 +92,15 @@ def main():
                            '-c', str(source), '-o', str(obj)], cwd=cwd, check=True)
             objects.append(str(obj))
         binary = directory / 'test'
-        subprocess.run(['cc', '-Wl,--gc-sections', *objects, '-o', str(binary)], check=True)
-        subprocess.run([str(binary)], check=True, timeout=60)
+        wrappers = (['-Wl,--wrap=calloc', '-Wl,--wrap=realloc']
+                    if name in ('memory-lifecycle', 'session-attach') else [])
+        subprocess.run(['cc', '-Wl,--gc-sections', *wrappers, *objects, '-o', str(binary)], check=True)
+        if name == 'service-device':
+            # Static production owner is deliberately never reset/reused.
+            for scenario in range(19):
+                subprocess.run([str(binary), str(scenario)], check=True, timeout=60)
+        else:
+            subprocess.run([str(binary)], check=True, timeout=60)
     print(f'PASS: five adapter compiles, {len(fixtures)} hosted fixtures; '
           'NOT native or hardware execution')
 

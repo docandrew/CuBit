@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Log;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -133,7 +134,7 @@ procedure Main is
       Channel_Call (Open_Label, Unsigned_8 (Scheme_Length), Stream.Arena,
                     Unsigned_64 (Stream.Buffer), 0, 0, Reply);
       if Reply.tag.label /= OK_Label then
-         debugPrint ("timesync: cannot open " & Scheme (1 .. Scheme_Length) & LF);
+         CuBit.Log.Warning ("timesync: cannot open " & Scheme (1 .. Scheme_Length));
          return;
       end if;
       Stream.Handle := Reply.words (0);
@@ -155,7 +156,7 @@ procedure Main is
       end if;
       Channels.Close (Stream, Network_Slot);
       if not Reached then
-         debugPrint ("timesync: no reply from " & Scheme (1 .. Scheme_Length) & LF);
+         CuBit.Log.Warning ("timesync: no reply from " & Scheme (1 .. Scheme_Length));
       end if;
    end Query;
 
@@ -180,7 +181,7 @@ procedure Main is
    begin
       Setting ("time.servers", Text, Length, Found);
       if not Found then
-         debugPrint ("timesync: time.servers not set; not synchronizing" & LF);
+         CuBit.Log.Warning ("timesync: time.servers not set; not synchronizing");
          return False;
       end if;
       if Length /= Last_Length or else Text (1 .. Length) /= Last_Setting (1 .. Length) then
@@ -190,7 +191,7 @@ procedure Main is
       end if;
       Server_List.Parse (Text (1 .. Length), Servers, Count, Parsed);
       if not Parsed then
-         debugPrint ("timesync: time.servers is malformed; not synchronizing" & LF);
+         CuBit.Log.Warning ("timesync: time.servers is malformed; not synchronizing");
          return False;
       end if;
       for I in 1 .. Count loop
@@ -205,8 +206,8 @@ procedure Main is
                   Usable := Usable + 1;
                   Estimates (Usable) := One;
                elsif Reached then
-                  debugPrint ("timesync: server " & Servers (I).Host (1 .. Servers (I).Length) &
-                              " reply rejected: " & SNTP.Name (Status) & LF);
+                  CuBit.Log.Info ("timesync: server " & Servers (I).Host (1 .. Servers (I).Length) &
+                              " reply rejected: " & SNTP.Name (Status));
                   if Status = SNTP.Kiss_Of_Death then
                      Kissed (I) := True;
                   end if;
@@ -216,8 +217,8 @@ procedure Main is
       end loop;
       SNTP.Combine (Estimates, Usable, Combined, Agreeing, Agreed);
       if not Agreed then
-         debugPrint ("timesync: no majority agreement among" & Usable'Image &
-                     " usable replies" & LF);
+         CuBit.Log.Warning ("timesync: no majority agreement among" & Usable'Image &
+                     " usable replies");
          return False;
       end if;
       CuBit.Clocks.Read (Before, Before_OK);
@@ -229,18 +230,18 @@ procedure Main is
           Authenticated => False),
          Result, Quality, Submitted);
       if not Submitted then
-         debugPrint ("timesync: clock refused the adjustment request" & LF);
+         CuBit.Log.Warning ("timesync: clock refused the adjustment request");
          return False;
       end if;
-      debugPrint ("timesync: " & Agreeing'Image & " of" & Count'Image &
+      CuBit.Log.Info ("timesync: " & Agreeing'Image & " of" & Count'Image &
                   " servers agree, uncertainty" & Combined.Uncertainty_MS'Image &
-                  " ms; clock: " & Name (Result) & LF);
+                  " ms; clock: " & Name (Result));
       if Result = Stepped then
          CuBit.Clocks.Read (After, After_OK);
          if Before_OK and then After_OK then
-            debugPrint ("timesync: clock stepped from UTC" & Before.UTC_Seconds'Image &
+            CuBit.Log.Info ("timesync: clock stepped from UTC" & Before.UTC_Seconds'Image &
                         " to" & After.UTC_Seconds'Image & " quality " &
-                        CuBit.Clocks.Name (After.Quality) & LF);
+                        CuBit.Clocks.Name (After.Quality));
          end if;
       end if;
       return Result = Stepped;
@@ -249,27 +250,30 @@ procedure Main is
    Ignore : Unsigned_64;
    Wait_Seconds : Unsigned_64;
 begin
-   debugPrint ("timesync: starting" & LF);
+   --  timesync sleeps between polls: no event loop, so records go out as written.
+   CuBit.Log.Set_Delivery (CuBit.Log.Immediate);
+   CuBit.Log.Info ("timesync: started");
    if Allocation = Unsigned_64'Last then
-      debugPrint ("timesync: buffer allocation failed" & LF);
+      CuBit.Log.Warning ("timesync: buffer allocation failed");
       return;
    end if;
    if Stream_Allocation = Unsigned_64'Last then
-      debugPrint ("timesync: channel allocation failed" & LF);
+      CuBit.Log.Warning ("timesync: channel allocation failed");
       return;
    end if;
    Channels.Create_Arena
      (Arena, Network_Slot, To_Address (Integer_Address (Stream_Allocation)),
       Ring_Size, Ring_Size, 1, Granted);
    if not Granted then
-      debugPrint ("timesync: no network authority; exiting" & LF);
+      CuBit.Log.Warning ("timesync: no network authority; exiting");
       return;
    end if;
    Channels.Prepare (Stream, Arena, 0, 0, Network_Slot);
    Nonces.Initialize (Hardware_Nonces);
    if not Hardware_Nonces then
-      debugPrint ("timesync: RDRAND unavailable; using weaker TSC-derived nonces" & LF);
+      CuBit.Log.Warning ("timesync: RDRAND unavailable; using weaker TSC-derived nonces");
    end if;
+   CuBit.Log.Info ("timesync: network ready; first poll in 3 s");
    --  Give netmgr a moment to configure the interface before the first poll.
    Ignore := syscall (SYSCALL_SLEEP, 3_000);
    loop

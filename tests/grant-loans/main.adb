@@ -1,6 +1,7 @@
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Memory_Grants; use Memory_Grants;
+with Memory_Grants.Loans;
 with Loan_Proof;
 procedure Main is
    package L renames Loan_Proof.Production;
@@ -18,6 +19,70 @@ procedure Main is
    Loan : L.Loan_Reference;
    Result : L.Reservation_Result;
    Applied : Boolean;
+   generic
+      with package Policy is new Memory_Grants.Loans (<>);
+   procedure Independent_Capacity;
+
+   procedure Independent_Capacity is
+      use type Policy.Reservation_Result, Policy.State, Policy.Loan_Reference;
+      S : Policy.State;
+      Refs : array (Policy.Loan_Index) of Policy.Loan_Reference;
+      Extra, Old : Policy.Loan_Reference;
+      R : Policy.Reservation_Result;
+      Ok : Boolean;
+   begin
+      Policy.Configure (S, (0, 1), 1, Borrowed_Read_Only,
+                        Policy.Forward_Once, Ok);
+      Check (Ok);
+      for Ref of Refs loop
+         Policy.Reserve (S, (0, 1, Borrowed_Read_Only), Ref, R);
+         Check (R = Policy.Reserved);
+         Policy.Publish (S, Ref, Ok);
+         Check (Ok);
+         Policy.Acquire (S, Ref, Ok);
+         Check (Ok);
+      end loop;
+      declare
+         Saved : constant Policy.State := S;
+      begin
+         Policy.Reserve (S, (0, 1, Borrowed_Read_Only), Extra, R);
+         Check (R = Policy.Full and S = Saved and Extra = Policy.No_Loan);
+      end;
+      --  A draining child still occupies its slot. Only confirmed retirement
+      --  permits reuse, with a fresh reference even at the singleton boundary.
+      Old := Refs (Refs'First);
+      Policy.Revoke (S, Old, Ok);
+      Check (Ok);
+      Policy.Finish_Retirement (S, Old, Ok);
+      Check (not Ok);
+      Policy.Reserve (S, (0, 1, Borrowed_Read_Only), Extra, R);
+      Check (R = Policy.Full);
+      Policy.Return_Reader (S, Old, Ok);
+      Check (Ok);
+      Policy.Finish_Retirement (S, Old, Ok);
+      Check (Ok);
+      Policy.Reserve (S, (0, 1, Borrowed_Read_Only), Extra, R);
+      Check (R = Policy.Reserved and Extra /= Old);
+      Refs (Refs'First) := Extra;
+      Policy.Acquire (S, Old, Ok);
+      Check (not Ok);
+      Policy.Close (S);
+      Policy.Release_Parent (S, Ok);
+      Check (not Ok);
+      for I in Refs'Range loop
+         if I /= Refs'First then
+            Policy.Return_Reader (S, Refs (I), Ok);
+            Check (Ok);
+         end if;
+         Policy.Finish_Retirement (S, Refs (I), Ok);
+         Check (Ok);
+      end loop;
+      Policy.Release_Parent (S, Ok);
+      Check (Ok and not Policy.Holds_Parent (S));
+   end Independent_Capacity;
+
+   procedure Singleton_Capacity is new Independent_Capacity (Loan_Proof.Singleton);
+   procedure Wide_Capacity is new Independent_Capacity (Loan_Proof.Wide);
    procedure Check_Stale (S : in out L.State; Ref : L.Loan_Reference) is
       Saved : constant L.State := S;
       Ok : Boolean;
@@ -301,5 +366,7 @@ begin
    Capacity_And_Lifetimes;
    Exhaustion;
    Event_Orders;
+   Singleton_Capacity;
+   Wide_Capacity;
    Put_Line ("PASS grant loans:" & Checks'Image & " checks");
 end Main;

@@ -53,7 +53,14 @@ is in `tests/grant-forward`.
 
 One dedicated kernel parent hold is retained for the whole scope. Child loans
 are nonempty page subranges and cannot add write permission. There are at most
-16 children; reservation counters never wrap. References bind parent slot and
+16 children in the native/default instance; this per-parent fanout is the
+independent `Maximum_Children` generic parameter, not `Grants_Per_Process`.
+Growing the grant namespace must not implicitly enlarge every forwarding scope.
+Hosted tests also fill 1- and 64-child instances, retain readers across closure,
+and check full-table rejection, delayed retirement, reuse and stale references.
+The proof audit requires the lifetime contracts in both additional instances.
+This does not increase the native kernel's 16-grant owner limit or implement
+dynamic kernel grant storage. Reservation counters never wrap. References bind parent slot and
 generation, child slot and reservation sequence. Rejected operations preserve
 the complete state. A scope is configured once, cannot reopen after retirement,
 and must never be reset or recreated under the same parent grant identity.

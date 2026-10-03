@@ -47,7 +47,7 @@ procedure Log_View_Tests is
          Logs.Add (Image, 20, Logs.Error, 7, "link down", Added); Check (Added, "add error");
          Logs.Add (Image, 30, Logs.Information, 7, "link up", Added); Check (Added, "add up");
       end if;
-      Reply := (Value => CCL.Host_Values.Object_Constant (Image), Success => True);
+      Reply := (Value => CCL.Host_Values.Object_Constant (Image), Success => True, Why => <>);
    end Invoke;
    procedure Run is new Interpret_With_Values (Host, Invoke);
    procedure Evaluate (Source : String) is

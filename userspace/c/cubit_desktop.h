@@ -38,7 +38,10 @@ static inline int cubit_desktop_attach_buffer(uint64_t surface, uint64_t slot,
 {
     cubit_async_message_t message = {0};
     long generation;
-    if (!surface || slot > 4095 || !width || !height ||
+    /* Global namespace, matching CuBit.Grant_References.Maximum_Slot:
+     * 256 process owners with 4096 local slots each. Kernel ownership and
+     * generation checks remain authoritative; do not mask to a local slot. */
+    if (!surface || slot > 256u * 4096u - 1u || !width || !height ||
         width > 65535 || height > 65535 || pitch < width * 4 ||
         pitch > (16u * 1024u * 1024u) / height)
         return -1;

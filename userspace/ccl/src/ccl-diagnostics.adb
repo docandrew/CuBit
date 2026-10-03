@@ -21,7 +21,8 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Expected_String => "Expected a String expression",
          when Expected_Comparable => "Equality requires two Integers or two members of the same enum type",
          when Expected_Printable => "to-string expects an Integer or enum member",
-         when Invalid_Type_Declaration => "Invalid type declaration: use 1 to 16 uniquely named alternatives and a unique type name (at most 32 types)",
+         when Expected_Stream => "Expected a stream: (stream T n), or a name bound to one",
+         when Invalid_Type_Declaration => "Invalid type declaration: use 1 to 16 uniquely named alternatives and a unique type name (at most 48 types)",
          when Invalid_Variant_Payload => "Variant payload must match its declared Integer or Boolean type",
          when Invalid_Match_Pattern => "Match patterns must name alternatives of the input type and bind exactly their payloads",
          when Nonexhaustive_Match => "Match must handle every alternative",
@@ -46,10 +47,21 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Handler_Result_Not_Exportable => "Pass the handler to a service; it cannot be returned from this invocation",
          when List_Element_Mismatch => "Every element of a list must have the same type",
          when Unsupported_List_Element => "Lists of this element type are not supported yet",
+         when Unsupported_Stream_Element =>
+            "A stream carries data: scalars, strings, records, variants or lists of them",
+         when Stream_Not_Data =>
+            "A stream is a live source a session holds, not data: it cannot be a field or payload",
          when Empty_List_Needs_Type => "An empty list needs a declared element type",
          when Lambda_Parameter_Needs_Type => "Give each fn parameter a type: (fn ((x Integer)) ...)",
          when Lambda_Capture_Unsupported => "A fn body can capture only scalar, String, Character or enumeration values; pass lists and functions as parameters",
-         when Too_Many_Captures => "A fn body can capture at most 4 enclosing values; pass the rest as parameters");
+         when Too_Many_Captures => "A fn body can capture at most 4 enclosing values; pass the rest as parameters",
+         when Invalid_Field_Default =>
+           "A field's default must be a constant of its type: an Integer within its range, true or false, " &
+           "an enum member such as Color.Red, or [] for a list",
+         when Unknown_Field_Argument => "This record has no field by that name",
+         when Repeated_Field_Argument => "This field is already given, by position or by name",
+         when Missing_Field_Argument => "This field has no default, so the construction must give it",
+         when Positional_After_Named => "Positional values come before named ones (field => value)");
    end Message;
 
    function Message (Status : CCL.Language.Interpretation_Status) return String is
@@ -75,7 +87,11 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Evaluation_Depth_Exhausted => "Execution call/expression depth limit exceeded",
          when Evaluation_List_Storage_Exhausted => "Execution list storage exhausted",
          when Evaluation_Invalid_Number => "Text is not a decimal integer",
-         when Session_Value_Not_Kept => "Value cannot be kept in the session (too long or not storable); define a function instead");
+         when Session_Value_Not_Kept => "Value cannot be kept in the session (too long or not storable); define a function instead",
+         when Stream_Unavailable => "This session holds no such stream",
+         when Stream_Empty => "Nothing has arrived on the stream yet",
+         when Stream_Window_Out_Of_Range => "A window holds 1 to 255 elements",
+         when Stream_Element_Mismatch => "The stream's elements are not of the type named");
    end Message;
    function Message (Status : CCL.VM.Execution_Status) return String is
       use CCL.VM;
@@ -94,6 +110,10 @@ package body CCL.Diagnostics with SPARK_Mode is
          when List_Storage_Exhausted => "List storage exhausted",
          when Range_Error => "Value outside its range type",
          when Call_Depth_Exhausted => "Calls nested too deeply",
+         when Stream_Unavailable => "This session holds no such stream",
+         when Stream_Empty => "Nothing has arrived on the stream yet",
+         when Stream_Window_Out_Of_Range => "A window holds 1 to 255 elements",
+         when Stream_Element_Mismatch => "The stream's elements are not of the type named",
          when Invalid_Bytecode => "Invalid bytecode",
          when Waiting_For_Host => "Waiting for service",
          when Host_Call_Failed => "Service call failed",

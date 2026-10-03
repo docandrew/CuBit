@@ -1,3 +1,4 @@
+with "../../userspace/ccl/cubit_shared.gpr";
 project Persistence is
    CBOR_Source := external ("CBOR_ADA_SRC");
    for Source_Dirs use (".", "../../userspace/ccl/src",

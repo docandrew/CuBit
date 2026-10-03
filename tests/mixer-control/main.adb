@@ -47,6 +47,20 @@ begin
    pragma Assert (not Check (16#0500#, 2, [48_000, 16#1_0000_0002#, 0, 0]));
    pragma Assert (not Check (16#0500#, 2, [48_000, 2, 0, 0], 0));
    pragma Assert (not Check (16#0500#, 2, [48_000, 2, 0, 0], Unsigned_64'Last));
+   for Caller in Unsigned_64 range 0 .. 100 loop
+      for Len in Unsigned_8 loop
+         for Index in Unsigned_64 range 0 .. 3 loop
+            pragma Assert (Check (16#0509#, Len, [Index, 0, 0, 0], Caller) =
+              (Len = 1 and then ((Index = 0 and Caller = 42) or (Index = 1 and Caller = 73))));
+         end loop;
+      end loop;
+   end loop;
+   pragma Assert (not Check (16#0509#, 1, [Unsigned_64'Last, 0, 0, 0]));
+   pragma Assert (not Check (16#0509#, 1, [0, 1, 0, 0]));
+   pragma Assert (not Check (16#0509#, 1, [0, 0, 1, 0]));
+   pragma Assert (not Check (16#0509#, 1, [0, 0, 0, 1]));
+   pragma Assert (not Check (16#0509#, 1, [0, 0, 0, 0], Flags => 1));
+   pragma Assert (not Check (16#0509#, 1, [0, 0, 0, 0], Reserved => 1));
    for Len in Unsigned_8 loop
       pragma Assert
         (Check (16#0502#, Len, [0, 65_536, 0, 0]) = (Len = 2));

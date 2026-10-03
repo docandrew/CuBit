@@ -1,0 +1,12 @@
+project Vulkan_Affine_Native is
+   for Languages use ("Ada");
+   for Source_Dirs use ("../../userspace/lib/compositor", "../../userspace/lib/display");
+   for Source_Files use ("compositor_glyph_placement.ads", "compositor_glyph_placement.adb", "compositor_glyph_layout.ads", "compositor_glyph_layout.adb", "compositor_text.ads", "compositor_text.adb", "vulkan_affine_binding.ads", "vulkan_affine_binding.adb", "vulkan_affine_ffi.ads", "vulkan_affine_ffi.adb",
+      "compositor_affine.ads", "compositor_affine.adb", "compositor_transform.ads", "compositor_transform.adb",
+      "cubit-display_geometry.ads", "cubit-display_geometry.adb");
+   for Runtime ("Ada") use "../../userspace/runtime";
+   for Object_Dir use "build/vulkan-affine-native";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+end Vulkan_Affine_Native;

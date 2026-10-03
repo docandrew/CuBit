@@ -777,6 +777,14 @@ package body Process is
             return NO_PROCESS;
         end if;
 
+        if not IPC.initializeGrantLife
+          (pid, Memory_Grants.Process_Generation (Process_Table.Generation_Of (pid)))
+        then
+            -- Retain the reserved identity on an inconsistent lifetime instead
+            -- of erasing records or recycling backing still held by readers.
+            return NO_PROCESS;
+        end if;
+
         -- Clear the proctab entry before populating fields. The entry may
         -- contain stale data from a previously killed process. Preserve the
         -- capability generation counter so recycled PIDs don't reset to
@@ -805,12 +813,9 @@ package body Process is
             -- Grant generations are namespaced by this life (the PID's
             -- ledger generation), so references to an earlier process
             -- with this PID never match (docs/threads.md).
-            for slot in GrantID loop
-                proctab(pid).grants(slot).generation :=
-                  Memory_Grants.Life_Base (Memory_Grants.Process_Generation
-                    (Process_Table.Generation_Of (pid)));
-                proctab(pid).grants(slot).reusable := True;
-            end loop;
+            -- Grant records live outside this memset-reset process record.
+            -- initializeGrantLife captured the life before this reset; new
+            -- blocks receive its generation only when grants are admitted.
         end;
 
         proctab(pid).pid          := pid;
@@ -821,6 +826,9 @@ package body Process is
             proctab(pid).parentGeneration := generationOf (ppid);
         end if;
         proctab(pid).name         := name;
+        -- The record was zeroed: set the launch state explicitly.
+        proctab(pid).launch       := Process_Launch.Unstarted;
+        proctab(pid).termination  := (kind => Process_Launch.Stopped, code => 0);
         threadOf (pid).mode         := USER;
         threadOf (pid).state        := SUSPENDED;
         threadOf (pid).priority     := priority;
@@ -1685,7 +1693,24 @@ package body Process is
         parent : constant ProcessID := proctab(pid).ppid;
         parentGen : constant Capabilities.Generation :=
             proctab(pid).parentGeneration;
+        termination : constant Process_Launch.Termination_Report :=
+            proctab(pid).termination;
+        -- Captured before Invalidate bumps it for the next occupant.
+        lifeGeneration : constant Capabilities.Generation := generationOf (pid);
         exitMsg : Message := NULL_MESSAGE;
+
+        -- EVENT_CHILD_EXIT: PID, termination kind, exit code, generation.
+        procedure setExitReport is
+        begin
+            exitMsg.tag := (label => IPC_Labels.EVENT_CHILD_EXIT,
+                            length => Process_Launch.Child_Exit_Words,
+                            flags => 0, reserved => 0);
+            exitMsg.words(0) := Unsigned_64(pid);
+            exitMsg.words(1) :=
+                Process_Launch.Termination_Kind'Enum_Rep (termination.kind);
+            exitMsg.words(2) := termination.code;
+            exitMsg.words(3) := Unsigned_64 (lifeGeneration);
+        end setExitReport;
     begin
         println ("Process.reclaimProcess: stopped PID" & Integer'Image (Integer (pid)));
         -- Worker owns its own stack and runs on kernel page tables. The
@@ -1801,9 +1826,7 @@ package body Process is
         -- Report completed retirement, not merely a requested stop. Bind the
         -- notification to the original parent's generation, never a reused PID.
         if parent /= NO_PROCESS and then parentGen /= 0 then
-            exitMsg.tag := (label => IPC_Labels.EVENT_CHILD_EXIT,
-                            length => 1, flags => 0, reserved => 0);
-            exitMsg.words(0) := Unsigned_64(pid);
+            setExitReport;
             IPC.sendRetirementEvent (parent, parentGen, exitMsg);
         end if;
 
@@ -1821,14 +1844,30 @@ package body Process is
                ProcessID (manager) /= parent and then
                ProcessID (manager) /= pid
             then
-                exitMsg.tag := (label => IPC_Labels.EVENT_CHILD_EXIT,
-                                length => 1, flags => 0, reserved => 0);
-                exitMsg.words(0) := Unsigned_64(pid);
+                setExitReport;
                 IPC.sendRetirementEvent
                   (ProcessID (manager), generationOf (ProcessID (manager)), exitMsg);
             end if;
         end tellManager;
     end reclaimProcess;
+
+    ---------------------------------------------------------------------------
+    -- recordExit
+    ---------------------------------------------------------------------------
+    procedure recordExit (pid : ProcessID; code : Process_Launch.Exit_Code) is
+    begin
+        if pid = NO_PROCESS then return; end if;
+        -- killProcess requests stop on every thread under this lock, so the
+        -- main thread's state says whether an ending already began.
+        Spinlocks.enterCriticalSection (lock);
+        if proctab(pid).admitted and then
+           not Process_Lifetime.Closing (threadOf (pid).lifetime)
+        then
+            proctab(pid).termination :=
+                (kind => Process_Launch.Exited, code => code);
+        end if;
+        Spinlocks.exitCriticalSection (lock);
+    end recordExit;
 
     ---------------------------------------------------------------------------
     -- kill

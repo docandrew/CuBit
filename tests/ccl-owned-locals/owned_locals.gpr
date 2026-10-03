@@ -1,3 +1,4 @@
+with "../../userspace/ccl/cubit_shared.gpr";
 project Owned_Locals is
    for Source_Dirs use (".", "../../userspace/ccl/src", "../../userspace/ccl/modules", external ("CBOR_ADA_SRC") & "/src");
    for Object_Dir use "build";

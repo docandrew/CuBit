@@ -1,4 +1,3 @@
-with Intel_GPU_Render_Sessions;
 package body Intel_Render_Admission_Native is
    package Core renames Intel_Render_Admission;
    package Grants renames CuBit.Capability_Grants;
@@ -36,10 +35,9 @@ package body Intel_Render_Admission_Native is
       if State (Item) = Core.Delegate_Ready then
          if not Item.Recipient_Installed then
             Session := Core.Session (Item.Transaction);
-            -- Do not turn an arbitrary service reply into a CSPACE index.
-            if Session <= Intel_GPU_Render_Sessions.Tag_Base or else
-              Session > Intel_GPU_Render_Sessions.Tag_Base +
-                Intel_GPU_Render_Sessions.Capacity
+            -- The authenticated reservation names a dedicated recipient slot.
+            -- Never infer CSPACE layout from the opaque session identity.
+            if Session = 0 or else Core.Driver_Recipient_Slot (Item.Transaction) not in 40 .. 55
             then
                Core.Delegated (Item.Transaction, False);
                return;
@@ -55,7 +53,7 @@ package body Intel_Render_Admission_Native is
             end if;
             Result := Grants.Delegate_Endpoint
               (Item.Driver, Item.Application_Source,
-               CapabilitySlot (39 + Session - Intel_GPU_Render_Sessions.Tag_Base),
+               CapabilitySlot (Core.Driver_Recipient_Slot (Item.Transaction)),
                1, Session);
             Item.Recipient_Installed := Result = 0;
             if not Item.Recipient_Installed then

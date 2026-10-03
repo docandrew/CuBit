@@ -21,7 +21,8 @@ is
       Seek_File, Read_Directory_Page, Rename_File, Close_Directory,
       Open_Child_Directory, Rewind_Directory, Flush_File,
       Read_File_At, Write_File_At, Resize_File, Unlink_Path,
-      Make_Directory, Remove_Directory, Set_Access_Profile,
+      Make_Directory, Remove_Directory, Read_Directory_Inspected,
+      Set_Access_Profile,
       Revoke_Access_Profile, Release_Owner);
    for Filesystem_Operation use
      (Open_File             => 16#0001#,
@@ -42,6 +43,7 @@ is
       Unlink_Path           => 16#0010#,
       Make_Directory        => 16#0011#,
       Remove_Directory      => 16#0012#,
+      Read_Directory_Inspected => 16#0013#,
       Set_Access_Profile    => 16#0080#,
       Revoke_Access_Profile => 16#0081#,
       Release_Owner         => 16#0082#);
@@ -69,6 +71,11 @@ is
    OP_UNLINK     : constant Unsigned_32 := 16#0010#;
    OP_MKDIR      : constant Unsigned_32 := 16#0011#;
    OP_RMDIR      : constant Unsigned_32 := 16#0012#;
+   --  READ_DIRECTORY_INSPECTED: as READ_DIRECTORY_PAGE, over a grant of
+   --  DIRECTORY_INSPECTED_BYTES: a Directory.Page.V1, then on the next page
+   --  one Entry_Inspection per listed entry, in order (an ls with metadata
+   --  in one request instead of one per file).
+   OP_READ_DIRECTORY_INSPECTED : constant Unsigned_32 := 16#0013#;
    OP_SET_ACL    : constant Unsigned_32 := 16#0080#;
    OP_REVOKE_ACL : constant Unsigned_32 := 16#0081#;
    --  A process has exited (procmgr only; words 0 = its PID): its handles
@@ -181,6 +188,50 @@ is
      array (Directory_Page_Entry_Index) of Directory_Entry
        with Component_Size => DIRECTORY_ENTRY_BYTES * 8;
 
+   --  Directory.Inspection.V1: what the volume records about each entry.
+   --  Valid says which fields were filled; a volume without a field leaves
+   --  it zero and its bit clear. Times are milliseconds since the Unix
+   --  epoch; Mode is the stored permission and type bits.
+   DIRECTORY_INSPECTED_BYTES : constant := 2 * DIRECTORY_PAGE_BYTES;
+   DIRECTORY_INSPECTION_BYTES : constant := 64;
+   INSPECTED_SIZE  : constant Unsigned_32 := 1;
+   INSPECTED_TIMES : constant Unsigned_32 := 2;
+   INSPECTED_MODE  : constant Unsigned_32 := 4;
+   INSPECTED_LINKS : constant Unsigned_32 := 8;
+   INSPECTED_OWNER : constant Unsigned_32 := 16;
+
+   type Entry_Inspection is record
+      valid      : Unsigned_32;
+      mode       : Unsigned_32;
+      sizeBytes  : Unsigned_64;
+      modifiedMs : Unsigned_64;
+      createdMs  : Unsigned_64;
+      accessedMs : Unsigned_64;
+      links      : Unsigned_32;
+      owner      : Unsigned_32;
+      group      : Unsigned_32;
+      reserved   : Unsigned_32;
+      reserved2  : Unsigned_64;
+   end record with Convention => C, Size => DIRECTORY_INSPECTION_BYTES * 8;
+
+   for Entry_Inspection use record
+      valid      at 0  range 0 .. 31;
+      mode       at 4  range 0 .. 31;
+      sizeBytes  at 8  range 0 .. 63;
+      modifiedMs at 16 range 0 .. 63;
+      createdMs  at 24 range 0 .. 63;
+      accessedMs at 32 range 0 .. 63;
+      links      at 40 range 0 .. 31;
+      owner      at 44 range 0 .. 31;
+      group      at 48 range 0 .. 31;
+      reserved   at 52 range 0 .. 31;
+      reserved2  at 56 range 0 .. 63;
+   end record;
+
+   type Directory_Inspections is
+     array (Directory_Page_Entry_Index) of Entry_Inspection
+       with Component_Size => DIRECTORY_INSPECTION_BYTES * 8;
+
    type Open_Options is mod 2 ** 64;
    OPEN_READ_ONLY  : constant Open_Options := 0;
    OPEN_WRITE_ONLY : constant Open_Options := 1;
@@ -269,6 +320,13 @@ is
       pathLength : Path_Byte_Count) return CuBit.Messages.Message;
 
    function Read_Directory_Page_Request
+     (handle : Directory_Handle;
+      loan   : CuBit.Memory_Grants.Grant_Reference)
+      return CuBit.Messages.Message;
+
+   --  The next page with each entry's metadata: the loan covers
+   --  DIRECTORY_INSPECTED_BYTES (the page, then its Directory_Inspections).
+   function Read_Directory_Inspected_Request
      (handle : Directory_Handle;
       loan   : CuBit.Memory_Grants.Grant_Reference)
       return CuBit.Messages.Message;

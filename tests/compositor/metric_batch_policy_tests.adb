@@ -11,7 +11,7 @@ begin
       B.Accepted (S, 500);
       pragma Assert (B.Next (S) = B.Describe_Output_1 and not B.Due (S, 200_000));
       B.Accepted (S, 501);
-      for Kind in B.Describe_Input .. B.Describe_Submit loop
+      for Kind in B.Describe_Input .. B.Describe_Repair_Pixels loop
          pragma Assert (B.Next (S) = Kind and B.Samples (S) = 0);
          B.Accepted (S, 501);
       end loop;

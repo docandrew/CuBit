@@ -2650,7 +2650,13 @@ procedure main is
    end handleRewindDirectory;
 
    --  Return one Directory.Page.V1 into a fixed one-page writable grant.
-   procedure handleReadDirectoryPage (sender : ProcessID; msg : Message) is
+   --  Inspected: OP_READ_DIRECTORY_INSPECTED, whose grant carries a second
+   --  page of Entry_Inspection records after the listing.
+   procedure handleReadDirectoryPage
+     (sender : ProcessID; msg : Message; inspected : Boolean := False)
+   is
+      grantBytes : constant Natural :=
+        (if inspected then DIRECTORY_INSPECTED_BYTES else DIRECTORY_PAGE_BYTES);
       handle : constant Integer :=
         resolveHandle (msg.words (0), sender, DIRECTORY_OBJECT);
       grantAddr : System.Address := System.Null_Address;
@@ -2672,7 +2678,7 @@ procedure main is
       end if;
 
       acquireClientMemory
-        (sender, msg.words (1), msg.words (3), DIRECTORY_PAGE_BYTES,
+        (sender, msg.words (1), msg.words (3), Unsigned_64 (grantBytes),
          CuBit.Memory_Grants.Write_Access, grantAddr, grantOk);
       if not grantOk then
          sendReply (sender, REPLY_ACCESS_DENIED, 0);
@@ -2680,7 +2686,7 @@ procedure main is
       end if;
 
       declare
-         rawPage : String (1 .. DIRECTORY_PAGE_BYTES)
+         rawPage : String (1 .. grantBytes)
            with Import, Address => grantAddr;
          header : Directory_Page_Header
            with Import, Address => grantAddr;
@@ -2767,6 +2773,53 @@ procedure main is
          header.snapshot :=
            (if files (handle).filesystemKind = CPIO_ARCHIVE then 0 else
               Unsigned_64 (extras (handle).directoryInode.generationNumber));
+
+         if inspected and then replyLabel = REPLY_OK then
+            declare
+               inspections : Directory_Inspections
+                 with Import, Address => grantAddr + Storage_Offset (DIRECTORY_PAGE_BYTES);
+               --  Ext2 keeps seconds since the epoch.
+               MS_PER_SECOND : constant := 1_000;
+               function Ms (seconds : Unsigned_32) return Unsigned_64 is
+                 (Unsigned_64 (seconds) * MS_PER_SECOND);
+            begin
+               for index in 0 .. entryCount - 1 loop
+                  if files (handle).filesystemKind = CPIO_ARCHIVE then
+                     inspections (index).valid := INSPECTED_SIZE;
+                     inspections (index).sizeBytes := pageEntries (index).sizeBytes;
+                  elsif files (handle).filesystemKind = EXT2_FILESYSTEM and then
+                    pageEntries (index).objectHint in 1 .. Unsigned_64 (Unsigned_32'Last)
+                  then
+                     declare
+                        ino : Ext2.Inode;
+                        inodeStatus : Ext2.Read_Status;
+                     begin
+                        Ext2.readInode
+                          (Contexts (files (handle).volume).Fs,
+                           Unsigned_32 (pageEntries (index).objectHint), ino, inodeStatus);
+                        if inodeStatus = Ext2.Read_Complete then
+                           inspections (index) :=
+                             (valid => INSPECTED_SIZE or INSPECTED_TIMES or INSPECTED_MODE or
+                                       INSPECTED_LINKS or INSPECTED_OWNER,
+                              mode => Unsigned_32 (ino.typeAndPermissions),
+                              sizeBytes => Ext2.fileSize (ino),
+                              modifiedMs => Ms (ino.modifiedTime),
+                              createdMs => Ms (ino.creationTime),
+                              accessedMs => Ms (ino.accessedTime),
+                              links => Unsigned_32 (ino.numHardLinks),
+                              owner => Unsigned_32 (ino.uid),
+                              group => Unsigned_32 (ino.gid),
+                              reserved => 0, reserved2 => 0);
+                           --  The listing's own size field, now known.
+                           pageEntries (index).sizeBytes := inspections (index).sizeBytes;
+                           pageEntries (index).flags :=
+                             pageEntries (index).flags or DIRECTORY_ENTRY_SIZE_VALID;
+                        end if;
+                     end;
+                  end if;
+               end loop;
+            end;
+         end if;
       end;
 
       returnClientMemory (msg.words (1), msg.words (3), returned);
@@ -3479,24 +3532,29 @@ procedure main is
             m.tag := (label => OP_CLOSE_DIRECTORY, length => 1, flags => 0, reserved => 0);
             m.words (0) := r.Handle;
             handleCloseDirectory (owner, m);
-         when FQ.Queue_Read_Directory =>
-            --  Consecutive pages, each built by the page handler.
+         when FQ.Queue_Read_Directory | FQ.Queue_Read_Directory_Inspected =>
+            --  Consecutive pages (or page and inspection pairs), each built
+            --  by the page handler.
             declare
+               inspected : constant Boolean := r.Operation = FQ.Queue_Read_Directory_Inspected;
+               stride : constant Natural :=
+                 (if inspected then DIRECTORY_INSPECTED_BYTES else DIRECTORY_PAGE_BYTES);
                pages : constant Natural :=
-                 (if inArena then Natural (r.Length / DIRECTORY_PAGE_BYTES) else 0);
+                 (if inArena then Natural (r.Length / Unsigned_64 (stride)) else 0);
                filled : Natural := 0;
                label : Unsigned_32 := REPLY_OK;
             begin
                for p in 0 .. pages - 1 loop
                   curArena := clientQueues (q).arena +
-                    Storage_Offset (r.Arena_Offset) + Storage_Offset (p * DIRECTORY_PAGE_BYTES);
-                  curArenaBytes := DIRECTORY_PAGE_BYTES;
-                  m.tag := (label => OP_READ_DIRECTORY_PAGE, length => 4, flags => 0,
-                            reserved => 0);
+                    Storage_Offset (r.Arena_Offset) + Storage_Offset (p * stride);
+                  curArenaBytes := Unsigned_64 (stride);
+                  m.tag := (label => (if inspected then OP_READ_DIRECTORY_INSPECTED
+                                      else OP_READ_DIRECTORY_PAGE),
+                            length => 4, flags => 0, reserved => 0);
                   m.words := [0 => r.Handle, 1 => 0,
                               2 => Unsigned_64 (PROTOCOL_VERSION), 3 => 1];
                   capturing := True;
-                  handleReadDirectoryPage (owner, m);
+                  handleReadDirectoryPage (owner, m, inspected);
                   capturing := False;
                   if capturedLabel /= REPLY_OK then
                      if filled = 0 then
@@ -3794,6 +3852,8 @@ begin
             handleOpenDirectory (sender, msg);
          when OP_READ_DIRECTORY_PAGE =>
             handleReadDirectoryPage (sender, msg);
+         when OP_READ_DIRECTORY_INSPECTED =>
+            handleReadDirectoryPage (sender, msg, inspected => True);
          when OP_CLOSE_DIRECTORY =>
             handleCloseDirectory (sender, msg);
          when OP_OPEN_CHILD_DIRECTORY =>

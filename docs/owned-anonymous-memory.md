@@ -7,7 +7,7 @@ It is not GPU memory allocation, executable/JIT memory, or a general unmap API.
 
 | Operation | Arguments | Result |
 | --- | --- | --- |
-| 115, allocate | byte count, 1 through 16 MiB | page-aligned base, or zero |
+| 115, allocate | byte count, 1 through 256 MiB | page-aligned base, or zero |
 | 116, release | original base and byte count | zero, or unsigned 64-bit Last |
 | 117, protect | page-aligned base, bytes, mode (0 NONE, 1 RO, 3 RW) | zero, or unsigned 64-bit Last |
 
@@ -19,8 +19,8 @@ legacy mapping destinations cannot overlap that aperture. No caller-chosen
 physical address, permissions or target PID is accepted.
 
 Backing is allocated one page at a time, recorded in the process frame list,
-and subject to its existing frame quota. A bounded global table holds 4096
-allocation descriptors. Allocation failure rolls back the completed prefix;
+and subject to its existing frame quota. Mapping records are allocated on demand in per-process tables, bounded at
+65,536 records per process (see `tests/owned-record-table/README.md`). Allocation failure rolls back the completed prefix;
 failed cleanup quarantines its inventory. Address-space and registry locks
 serialize allocation and release. There is no throughput or latency claim for
 the linear descriptor search or per-page allocation path.

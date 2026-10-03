@@ -30,17 +30,43 @@ modes.add_argument('--authorized-discovery', action='store_true',
                    help='link real manifest-authorized Mesa discovery (no logical device or GPU work)')
 parser.add_argument('--logical-device', action='store_true',
                     help='extend authorized discovery with one real Mesa device lifecycle')
+parser.add_argument('--service-link-check', action='store_true',
+                    help='retain the opaque admitted-service startup bridge (link-only, not invoked)')
+parser.add_argument('--service-smoke', action='store_true',
+                    help='invoke the admitted-service bridge for native startup/render/retirement')
 parser.add_argument('--transfer-smoke', action='store_true',
                     help='submit a real Vulkan fill/barrier/fence and check mapped readback')
 parser.add_argument('--triangle-smoke', action='store_true',
                     help='compile/draw/read back a real offscreen Vulkan triangle')
+parser.add_argument('--compositor-smoke', action='store_true',
+                    help='exercise production compositor submission and a green fill over the triangle')
+parser.add_argument('--teapot-smoke', action='store_true',
+                    help='use the 256x256 vertex-buffer/depth teapot; shader-dir must contain teapot-assets.h')
+parser.add_argument('--scene-link-check', type=Path,
+                    help='link and retain the complete native Ada scene bridge from a verified private snapshot; does not execute it')
+parser.add_argument('--scene-smoke', action='store_true',
+                    help='wire the verified scene bridge to the completed triangle/teapot source (requires --scene-link-check snapshot)')
 parser.add_argument('--present-triangle', action='store_true',
                     help='opt-in native Desktop window after verified triangle completion')
-parser.add_argument('--triangle-cycles', type=int, default=1, choices=range(1, 17),
+parser.add_argument('--triangle-cycles', type=int, default=1, choices=range(1, 1025),
                     help='complete render/consume/cleanup cycles on one device (default 1)')
 parser.add_argument('--shader-dir', type=Path,
                     help='validated output of build-triangle-shaders.py')
 args = parser.parse_args()
+if args.service_smoke:
+    if not (args.authorized_discovery and args.logical_device and args.retain_transport):
+        parser.error('--service-smoke requires authorized discovery, logical device and transport')
+    args.service_link_check = True
+if args.service_link_check and not (args.authorized_discovery and args.retain_transport):
+    parser.error('--service-link-check requires authorized discovery and retained transport')
+if args.scene_smoke and (not args.scene_link_check or not args.triangle_smoke):
+    parser.error('--scene-smoke requires --scene-link-check and --triangle-smoke')
+if args.compositor_smoke and not args.triangle_smoke:
+    parser.error('--compositor-smoke requires --triangle-smoke')
+if args.teapot_smoke and (not args.triangle_smoke or args.compositor_smoke):
+    parser.error('--teapot-smoke requires --triangle-smoke and excludes --compositor-smoke')
+if args.scene_link_check and (not args.authorized_discovery or not args.retain_transport or args.compositor_smoke):
+    parser.error('--scene-link-check requires authorized discovery/transport and excludes the C-only compositor smoke')
 if args.snapshot_discovery and (not args.no_provider or not args.retain_transport):
     parser.error('--snapshot-discovery requires --no-provider --retain-transport')
 if args.state_table_probe and (not args.no_provider or not args.retain_transport):
@@ -116,6 +142,7 @@ if args.authorized_discovery or args.snapshot_discovery or args.state_table_prob
     entry, = [e for e in entries if e['file'].endswith('/vulkan/anv_kmd_backend.c')]
 if args.authorized_discovery:
     subprocess.run(policy.compiler_command(entry) +
+                   (['-DCUBIT_TEST_SERVICE=1'] if args.service_smoke else []) +
                    (['-DCUBIT_TEST_LOGICAL_DEVICE=1'] if args.logical_device else []) +
                    (['-DCUBIT_TEST_TRANSFER=1'] if args.transfer_smoke else []) +
                    (['-DCUBIT_TEST_TRIANGLE=1',
@@ -123,6 +150,9 @@ if args.authorized_discovery:
                      '-I' + str(args.shader_dir.resolve())]
                     if args.triangle_smoke else []) +
                    (['-DCUBIT_TEST_PRESENT_TRIANGLE=1'] if args.present_triangle else []) +
+                   (['-DCUBIT_TEST_COMPOSITOR=1'] if args.compositor_smoke else []) +
+                   (['-DCUBIT_TEST_SCENE=1'] if args.scene_smoke else []) +
+                   (['-DCUBIT_TEST_TEAPOT=1', '-DCUBIT_TEST_FRAME_SIZE=256'] if args.teapot_smoke else []) +
                    ['-I' + str(root / 'userspace/mesa/anv'), '-c',
                     str(root / 'tests/mesa-anv/native-authorized-discovery.c'),
                     '-o', str(obj)], cwd=entry['directory'], check=True)
@@ -162,6 +192,17 @@ if args.reservation_probe:
                    str(root / 'tests/mesa-anv/native-owned-reservation.c'),
                    '-o', str(reservation_probe)], check=True)
     native_objects.append(str(reservation_probe))
+    subprocess.run(['gnatmake', '-q', '-c', '-gnatA', '-gnat2022', '-O2',
+                    '-mno-red-zone', '-fno-pic', '-mno-sse', '-mno-sse2',
+                    '--RTS=' + str(root / 'userspace/runtime'),
+                    '-I' + str(root / 'userspace/services/intel-gpu'),
+                    '-I' + str(root / 'tests/mesa-anv'),
+                    str(root / 'tests/mesa-anv/gpu_metadata_probe.adb')],
+                   cwd=out, check=True)
+    for unit in ('gpu_metadata_probe', 'intel_gpu_metadata_arena',
+                 'intel_gpu_metadata_initialize', 'intel_gpu_metadata_platform',
+                 'intel_gpu_record_growth', 'intel_gpu_record_store'):
+        native_objects.append(str(out / (unit + '.o')))
 if args.state_table_probe:
     state_probe = out / 'native-state-table.o'
     subprocess.run(policy.compiler_command(entry) + ['-c',
@@ -234,6 +275,59 @@ if args.retain_transport:
 # Put the aggregate FIRST so its constituent archives below are only searched
 # for genuinely unresolved dependencies, not extracted twice.
 # These are regression assertions, NOT a per-command retention allowlist.
+scene_inputs = {}
+scene_symbols = []
+if args.scene_link_check:
+    snapshot = args.scene_link_check.resolve()
+    scene_manifest = json.loads((snapshot / 'inputs.json').read_text())
+    if json.loads((snapshot / 'result.json').read_text()).get('status') != 'PASS':
+        raise SystemExit('Scene snapshot did not complete its component build')
+    for original, info in scene_manifest.items():
+        copied = (snapshot / info['copy']).resolve()
+        if not copied.is_relative_to(snapshot) or hashlib.sha256(copied.read_bytes()).hexdigest() != info['sha256']:
+            raise SystemExit('Scene snapshot input changed: ' + original)
+    runtime_name = 'userspace/runtime/adalib/libgnat-user.a'
+    if hashlib.sha256((root / runtime_name).read_bytes()).hexdigest() != scene_manifest[runtime_name]['sha256']:
+        raise SystemExit('Scene archive runtime differs from native app runtime')
+    scene_archive = snapshot / 'libcubit-native-scene.a'
+    scene_inputs[str(scene_archive)] = hashlib.sha256(scene_archive.read_bytes()).hexdigest()
+    # Generate shader headers privately; pair them with the same affine C
+    # implementation used by the component snapshot, never a mixed interface.
+    for name in ('vulkan_affine.c', 'vulkan_affine.h'):
+        relative = 'userspace/lib/compositor/' + name
+        if hashlib.sha256((root / relative).read_bytes()).hexdigest() != scene_manifest[relative]['sha256']:
+            raise SystemExit('Affine shader generator needs a matching scene snapshot: ' + name)
+    shader_output = out / 'scene-shaders'
+    subprocess.run([sys.executable, str(root / 'tests/compositor/build-vulkan-affine-shaders.py'),
+                    str(shader_output)], check=True)
+    for generated in shader_output.iterdir():
+        scene_inputs[str(generated)] = hashlib.sha256(generated.read_bytes()).hexdigest()
+    for name in ('vulkan_submission_native', 'vulkan_targets', 'vulkan_owned_image',
+                 'vulkan_owned_target_binding', 'vulkan_affine', 'vulkan_sources'):
+        adapter = snapshot / 'userspace/lib/compositor' / (name + '.c')
+        adapter_obj = out / ('scene-' + name + '.o')
+        subprocess.run(policy.compiler_command(entry) + ['-I' + str(shader_output), '-c',
+                       str(adapter), '-o', str(adapter_obj)], cwd=entry['directory'], check=True)
+        native_objects.append(str(adapter_obj))
+        scene_inputs[str(adapter)] = hashlib.sha256(adapter.read_bytes()).hexdigest()
+    archives.append(scene_archive)
+    scene_symbols = ['compositor_sceneinit'] + ['cubit_native_scene_' + name for name in
+        ('open', 'begin', 'record', 'submit', 'poll', 'cancel', 'release', 'close')]
+    retain_flags.extend('-Wl,--undefined=' + name for name in scene_symbols)
+
+service_symbols = []
+if args.service_link_check:
+    service_obj = out / 'service-device.o'
+    subprocess.run(policy.compiler_command(entry) +
+                   ['-I' + str(root / 'userspace/mesa/anv'), '-c',
+                    str(root / 'userspace/mesa/service-device.c'), '-o', str(service_obj)],
+                   cwd=entry['directory'], check=True)
+    native_objects.append(str(service_obj))
+    service_symbols = ['cubit_mesa_service_start', 'cubit_mesa_service_device',
+                       'cubit_mesa_service_status',
+                       'cubit_mesa_service_close']
+    retain_flags.extend('-Wl,--undefined=' + name for name in service_symbols)
+
 required_dispatch = [
     'vk_common_GetPhysicalDeviceProperties2',
     # vk_device_init adds these common implementations through another weak
@@ -248,7 +342,13 @@ command = ["bash", str(wrapper), "cpp", *manifest_args, str(obj), *native_object
            "-Wl,--build-id=sha1", "-Wl,--start-group",
            "-Wl,--whole-archive", str(archive), "-Wl,--no-whole-archive",
            *[str(path) for path in archives if path != archive.resolve()], "-Wl,--end-group",
-           "-o", str(out / ('mesa-triangle-window-repeat.app' if args.present_triangle and args.triangle_cycles > 1
+           "-o", str(out / ('mesa-service.app' if args.service_smoke
+                           else 'mesa-scene-teapot.app' if args.scene_smoke and args.teapot_smoke
+                           else 'mesa-scene-triangle.app' if args.scene_smoke
+                           else 'mesa-scene-link-check.app' if args.scene_link_check
+                           else 'mesa-teapot-window.app' if args.teapot_smoke and args.present_triangle
+                           else 'mesa-teapot.app' if args.teapot_smoke
+                           else 'mesa-triangle-window-repeat.app' if args.present_triangle and args.triangle_cycles > 1
                            else 'mesa-triangle-repeat.app' if args.triangle_smoke and args.triangle_cycles > 1
                            else 'mesa-triangle-window.app' if args.present_triangle
                            else 'mesa-triangle.app' if args.triangle_smoke
@@ -265,7 +365,7 @@ if result.returncode == 0:
     # Check these required roots in the final ELF, not merely in an archive.
     defined = {line.split()[-1] for line in subprocess.check_output(
         ['nm', '--defined-only', command[-1]], text=True).splitlines() if line.split()}
-    absent = sorted(set(required_dispatch) - defined)
+    absent = sorted(set(required_dispatch + scene_symbols + service_symbols) - defined)
     if absent:
         raise SystemExit('Missing required static dispatch implementations: ' + ', '.join(absent))
     def digest(path):
@@ -280,6 +380,18 @@ if result.returncode == 0:
         'required_dispatch_symbols': required_dispatch,
         'triangle_cycles': args.triangle_cycles if args.triangle_smoke else 0,
         'present_triangle': args.present_triangle,
+        'compositor_smoke': args.compositor_smoke,
+        'teapot_smoke': args.teapot_smoke,
+        'scene_link_only': bool(args.scene_link_check) and not args.scene_smoke,
+        'scene_smoke': args.scene_smoke,
+        'service_link_only': args.service_link_check and not args.service_smoke,
+        'service_smoke': args.service_smoke,
+        'service_symbols': service_symbols,
+        'service_sha256': {name: digest(root / 'userspace/mesa' / name)
+                           for name in ('service-device.c', 'service-device.h',
+                                        'launch-session.h', 'device-bootstrap.h')}
+                          if args.service_link_check else {},
+        'scene_sha256': scene_inputs,
         'transport_sha256': transport_inputs,
         'archives_sha256': {str(path): digest(path) for path in archives},
         'objects_sha256': {str(path): digest(path) for path in

@@ -204,6 +204,7 @@ package CuBit.Messages is
    SYSINFO_GPU_SECOND_DMA_PHYS : constant Unsigned_64 := 1708;
    SYSINFO_NUM_CPUS           : constant Unsigned_64 := 1400;
    SYSINFO_MONOTONIC_DIAGNOSTIC : constant Unsigned_64 := 1402;
+   SYSINFO_MEM_OWNED_SELF     : constant Unsigned_64 := 1602;
    SYSINFO_EVENT_DROPS_SELF   : constant Unsigned_64 := 1401;
    SYSINFO_REGISTERED_DRIVER  : constant Unsigned_64 := 2000;
 

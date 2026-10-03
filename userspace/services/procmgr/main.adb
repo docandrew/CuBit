@@ -31,11 +31,18 @@ with CuBit.Log_Protocol;
 with CuBit.Metric_Protocol;
 with CuBit.Authority; use CuBit.Authority;
 with CuBit.Memory_Grants;
+with CuBit.Process_Observer;
+with CuBit.Grant_References;
+with CuBit.Launch_Arguments;
+with CuBit.Child_Exits;
+with CuBit.Launch_Authority;
+with CuBit.Failures;
 with CuBit.Filesystems;
 with Windowed_Reads;
 with CuBit.File_Access;
 with CuBit.Network_Authority;
 with CuBit.Render_Authority;
+with CuBit.Render_Startup;
 with CuBit.Launch_Policy; use CuBit.Launch_Policy;
 with CuBit.Capability_Grants;
 with Intel_GPU_Broker_Request;
@@ -58,10 +65,13 @@ procedure main is
    type Render_Request is record
       Requested, Valid : Boolean := False;
       Destination : CapabilitySlot := 0;
+      Demand : CuBit.Render_Startup.Requirement := CuBit.Render_Startup.Required;
    end record;
 
    --  IPC label constants
    OP_SPAWN   : constant Unsigned_32 := 16#0100#;
+   OP_LAUNCH  : constant Unsigned_32 := CuBit.Launch_Arguments.Launch_Operation;
+   SYSCALL_INSTALL_LAUNCH_ARGUMENTS : constant Unsigned_64 := 126;
    --  The kernel's retirement notice (kernel/src/ipc_labels.ads).
    EVENT_CHILD_EXIT : constant Unsigned_32 := 16#0103#;
    REPLY_OK     : constant Unsigned_32 := 16#F000#;
@@ -133,6 +143,52 @@ procedure main is
    TLS_Policy_PID : Unsigned_64 := 0;
    TLS_Grant : CuBit.Memory_Grants.Grant_Reference;
    TLS_Policy_Ready : Boolean := False;
+
+   --  OP_LAUNCH: the validated launch block of the request being served
+   --  (procmgr's own copy, never the requester's grant), installed into
+   --  each child Spawn_Attempt creates for it. Zero bytes: no block.
+   launchBlock : CuBit.Launch_Arguments.Block
+     (1 .. CuBit.Launch_Arguments.Maximum_Block_Bytes) := [others => 0];
+   pendingArgumentBytes : CuBit.Launch_Arguments.Block_Length := 0;
+
+   --  Launch authority (CuBit.Launch_Authority), per process: the programs it
+   --  may start (its .cubit.launch table; none without one) and what it was
+   --  granted, so a child it starts can be held to a subset of that.
+   package LAuth renames CuBit.Launch_Authority;
+   type Held_Scope is record
+      Service, Rights : Unsigned_8 := 0;
+      Length : Natural range 0 .. LAuth.Maximum_Prefix_Bytes := 0;
+      Prefix : String (1 .. LAuth.Maximum_Prefix_Bytes) := [others => ' '];
+   end record;
+   type Held_Scope_Array is
+     array (1 .. CuBit.File_Access.Maximum_Entries) of Held_Scope;
+   --  Service roles below this are tracked as held; others never pass on.
+   TRACKED_SERVICE_ROLES : constant := 64;
+   type Launch_State is record
+      Table        : LAuth.Table_Bytes (1 .. LAuth.Maximum_Table_Bytes) :=
+                       [others => 0];
+      Table_Length : LAuth.Table_Length := 0;
+      Services     : Unsigned_64 := 0;
+      Scope_Count  : Natural range 0 .. CuBit.File_Access.Maximum_Entries := 0;
+      Scopes       : Held_Scope_Array;
+   end record;
+   MAX_LAUNCH_PID : constant := 255;
+   launchStates : array (Unsigned_64 range 1 .. MAX_LAUNCH_PID) of Launch_State;
+   --  The OP_LAUNCH requester whose authority bounds the child being
+   --  spawned (0: none), and whether the child asked for more.
+   attenuateFor : Unsigned_64 := 0;
+   attenuationRefused : Boolean := False;
+   --  The launched child's generation (CuBit.Child_Exits), for the reply.
+   launchedGeneration : Unsigned_64 := 0;
+
+   procedure resetLaunchState (pid : Unsigned_64) is
+   begin
+      if pid in launchStates'Range then
+         launchStates (pid).Table_Length := 0;
+         launchStates (pid).Services := 0;
+         launchStates (pid).Scope_Count := 0;
+      end if;
+   end resetLaunchState;
 
    ---------------------------------------------------------------------------
    --  printDec - print a small unsigned number in decimal
@@ -278,6 +334,131 @@ procedure main is
       end loop;
       return False;
    end processListed;
+
+   --  What only procmgr knows about each process it started, for the
+   --  process-observer role (CuBit.Process_Observer): manifest identity,
+   --  launcher and start time. Cleared when the process retires.
+   package PO renames CuBit.Process_Observer;
+   type Process_Record is record
+      Valid : Boolean := False;
+      Identity : String (1 .. PO.Identity_Bytes) := [others => ' '];
+      Identity_Length : Natural range 0 .. PO.Identity_Bytes := 0;
+      Launcher : Unsigned_64 := 0;
+      Started : Unsigned_64 := 0;
+   end record;
+   MAX_RECORDED_PID : constant := 255;
+   processRecords : array (Unsigned_64 range 1 .. MAX_RECORDED_PID) of Process_Record;
+   --  Observer issuances never wrap: exhaustion denies the role.
+   Next_Process_Issuance : Unsigned_32 := 1;
+
+   procedure noteProcess (pid, launcher : Unsigned_64; identity : String) is
+      Length : constant Natural := Natural'Min (identity'Length, PO.Identity_Bytes);
+   begin
+      if pid not in processRecords'Range then return; end if;
+      processRecords (pid) := (Valid => True, Identity => [others => ' '], Identity_Length => Length,
+                               Launcher => launcher, Started => syscall (SYSCALL_GETTIME));
+      processRecords (pid).Identity (1 .. Length) := identity (identity'First .. identity'First + Length - 1);
+   end noteProcess;
+
+   --  List: the kernel's table joined with processRecords, written into one
+   --  page the caller lends. Only a holder of the observer tag may ask.
+   procedure handleProcessList (sender : ProcessID; msg : Message) is
+      Reference : CuBit.Memory_Grants.Grant_Reference;
+      Mapped : System.Address;
+      Ok, Returned : Boolean;
+      Count, Written, Total : Natural := 0;
+      replyMsg : Message := NULL_MESSAGE;
+      ignore : Unsigned_64;
+      procedure Answer (Result : PO.Status) is
+      begin
+         replyMsg.tag := (label => Unsigned_32 (PO.Status'Enum_Rep (Result)), length => 3, flags => 0, reserved => 0);
+         replyMsg.words := [0 => Unsigned_64 (PO.Status'Enum_Rep (Result)), 1 => Unsigned_64 (Written),
+                            2 => Unsigned_64 (Total), others => 0];
+         ignore := reply (sender, replyMsg);
+      end Answer;
+   begin
+      if not PO.Is_Observer (msg.authorityTag) then
+         Answer (PO.Denied);
+         return;
+      end if;
+      if msg.tag.length < 1 or else not CuBit.Grant_References.Valid_Wire (msg.words (0)) then
+         Answer (PO.Invalid_Request);
+         return;
+      end if;
+      Reference := CuBit.Grant_References.Decode (msg.words (0));
+      CuBit.Memory_Grants.Acquire
+        (Reference, Unsigned_64 (sender), 0, PO.Page_Bytes, CuBit.Memory_Grants.Write_Access, Mapped, Ok);
+      if not Ok then
+         Answer (PO.Invalid_Request);
+         return;
+      end if;
+      declare
+         Page : array (0 .. PO.Page_Bytes - 1) of Unsigned_8 with Import, Address => Mapped;
+         Listed : constant Unsigned_64 :=
+           syscall (SYSCALL_PROCLIST, Unsigned_64 (To_Integer (processList'Address)), Process_List_Bytes);
+         procedure Put (At_Byte : Natural; Value : Unsigned_64; Bytes : Positive) is
+         begin
+            for I in 0 .. Bytes - 1 loop
+               Page (At_Byte + I) := Unsigned_8 (Shift_Right (Value, 8 * I) and 16#FF#);
+            end loop;
+         end Put;
+      begin
+         Page := [others => 0];
+         if Listed /= Unsigned_64'Last then
+            Count := Natural (Unsigned_64'Min (Listed, Process_List_Bytes / Process_Entry_Bytes));
+         end if;
+         for I in 0 .. Count - 1 loop
+            declare
+               E : constant Natural := I * Process_Entry_Bytes;
+               Pid : constant Unsigned_64 :=
+                 Unsigned_64 (processList (E)) or Shift_Left (Unsigned_64 (processList (E + 1)), 8);
+               Name_Length : Natural := 0;
+               SUSPENDED_STATE : constant := 10;
+            begin
+               for J in 0 .. PO.Name_Bytes - 1 loop
+                  if processList (E + 8 + J) not in 0 | 32 then Name_Length := J + 1; end if;
+               end loop;
+               --  Reserved slots are suspended and never named.
+               if not (Name_Length = 0 and then processList (E + 2) = SUSPENDED_STATE) then
+                  Total := Total + 1;
+                  if Written < PO.Page_Records then
+                     declare
+                        R : constant Natural := Written * PO.Record_Bytes;
+                     begin
+                        Put (R + PO.Pid_Offset, Pid, 4);
+                        Page (R + PO.State_Offset) := processList (E + 2);
+                        Page (R + PO.CPU_Offset) := processList (E + 3);
+                        Page (R + PO.Priority_Offset) := processList (E + 4);
+                        Page (R + PO.Priority_Offset + 1) := processList (E + 5);
+                        for J in 0 .. 3 loop
+                           Page (R + PO.Frames_Offset + J) := processList (E + 24 + J);
+                        end loop;
+                        Page (R + PO.Name_Length_Offset) := Unsigned_8 (Name_Length);
+                        for J in 0 .. Name_Length - 1 loop
+                           Page (R + PO.Name_Offset + J) := processList (E + 8 + J);
+                        end loop;
+                        if Pid in processRecords'Range and then processRecords (Pid).Valid then
+                           declare
+                              Known : Process_Record renames processRecords (Pid);
+                           begin
+                              Put (R + PO.Launcher_Offset, Known.Launcher, 4);
+                              Put (R + PO.Started_Offset, Known.Started, 8);
+                              Page (R + PO.Identity_Length_Offset) := Unsigned_8 (Known.Identity_Length);
+                              for J in 1 .. Known.Identity_Length loop
+                                 Page (R + PO.Identity_Offset + J - 1) := Character'Pos (Known.Identity (J));
+                              end loop;
+                           end;
+                        end if;
+                        Written := Written + 1;
+                     end;
+                  end if;
+               end if;
+            end;
+         end loop;
+      end;
+      CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
+      Answer ((if Count = 0 then PO.Unavailable else PO.OK));
+   end handleProcessList;
 
    procedure clearAuthorityForPID (pid : Unsigned_64) is
    begin
@@ -737,6 +918,30 @@ procedure main is
    --  Parse the .cubit.caps section from the ELF in elfBuf and mint
    --  capabilities into the child process via SYSCALL_POLICY_MINT_CAPABILITY.
    ---------------------------------------------------------------------------
+   --  Whether the launcher being attenuated for holds what this manifest
+   --  request asks: the same service role, or the child's own streams and
+   --  resource limits. Devices, notifications, framebuffer, render and
+   --  network are never passed to a launched child.
+   function launcherHolds (reqType : Unsigned_8; role : Unsigned_32)
+     return Boolean is
+   begin
+      if reqType = REQ_STREAM or else reqType = REQ_RESOURCE then
+         return True;
+      elsif reqType = REQ_SERVICE and then role < TRACKED_SERVICE_ROLES then
+         return (launchStates (attenuateFor).Services and
+                 Shift_Left (Unsigned_64'(1), Natural (role))) /= 0;
+      end if;
+      return False;
+   end launcherHolds;
+
+   procedure noteService (pid : Unsigned_64; role : Unsigned_32) is
+   begin
+      if pid in launchStates'Range and then role < TRACKED_SERVICE_ROLES then
+         launchStates (pid).Services := launchStates (pid).Services or
+           Shift_Left (Unsigned_64'(1), Natural (role));
+      end if;
+   end noteService;
+
    procedure parseAndGrantManifest
      (childPID      : Unsigned_64;
       elfSize       : Unsigned_64;
@@ -744,7 +949,9 @@ procedure main is
       render : in out Render_Request;
       approveNetwork : Network_Approval := No_Network;
       systemStartup : Boolean := False;
-      approveLogViewer : Boolean := False)
+      approveLogViewer : Boolean := False;
+      approveProcessViewer : Boolean := False;
+      approveLogControl : Boolean := False)
    is
       --  ELF64 header field offsets
       e_shoff_off     : constant := 40;  -- Section header table offset
@@ -842,16 +1049,24 @@ procedure main is
 
                         rightsMask := Unsigned_64 (rights);
 
-                        if reqType = CuBit.Render_Authority.Manifest_Request then
+                        if attenuateFor /= 0
+                          and then not launcherHolds (reqType, param0)
+                        then
+                           attenuationRefused := True;
+                           debugPrint ("procmgr: launched child requests " &
+                             "authority its launcher does not hold" & LF);
+                        elsif reqType = CuBit.Render_Authority.Manifest_Request then
                            -- A render endpoint is admitted by devmgr, never
                            -- minted by the generic service-capability path.
                            render.Valid := not render.Requested and then
                              rightsMask = 3 and then slotNum in 1 .. 62 and then
-                             param0 = 0 and then param1 = 0 and then
+                             param0 in 0 .. 1 and then param1 = 0 and then
                              readU8 (entryBase + 3) = 0;
                            render.Requested := True;
                            if render.Valid then
                               render.Destination := CapabilitySlot (slotNum);
+                              render.Demand := (if param0 = 1 then CuBit.Render_Startup.Optional
+                                                else CuBit.Render_Startup.Required);
                            end if;
                         else
                         case reqType is
@@ -960,6 +1175,10 @@ procedure main is
                                    Unsigned_64 (param0) = CuBit.Metric_Protocol.Observer_Service_Role;
                                  isMetricPublisher : constant Boolean :=
                                    Unsigned_64 (param0) = CuBit.Metric_Protocol.Publisher_Service_Role;
+                                 isProcessObserver : constant Boolean :=
+                                   Unsigned_64 (param0) = CuBit.Process_Observer.Observer_Service_Role;
+                                 isLogControl : constant Boolean :=
+                                   Unsigned_64 (param0) = CuBit.Log_Protocol.Control_Service_Role;
                                  use CuBit.Authority_Policy;
                                  Authority : constant Bootstrap_Authority :=
                                    (if isAudioControl then Master_Audio
@@ -967,12 +1186,16 @@ procedure main is
                                     elsif isLogObserver then Log_Observation
                                     elsif isMetricObserver then Metric_Observation
                                     elsif isMetricPublisher then Metric_Publication
+                                    elsif isProcessObserver then Process_Observation
+                                    elsif isLogControl then Log_Control
                                     else Log_Publication);
                                  Approval : constant Decision := Evaluate
                                    (Requested => True,
                                     Installation_Approved => Bootstrap_Approves
                                       (Authority, systemStartup) or else
-                                      (isLogObserver and then approveLogViewer),
+                                      (isLogObserver and then approveLogViewer) or else
+                                      (isProcessObserver and then approveProcessViewer) or else
+                                      (isLogControl and then approveLogControl),
                                     Session_Approved => True,
                                     Issuer_Allowed => True);
                                  Issued_Tag : Unsigned_64 := 0;
@@ -982,7 +1205,7 @@ procedure main is
                                  -- exception grants observation only, not the
                                  -- other startup-only authorities.
                                  if (isAudioControl or isLogObserver or isClockControl
-                                     or isMetricObserver)
+                                     or isMetricObserver or isProcessObserver or isLogControl)
                                    and then Approval /= Approved
                                  then
                                     recordAuthority
@@ -998,9 +1221,10 @@ procedure main is
                                        SYSINFO_REGISTERED_DRIVER,
                                        (if isAudioControl then DRIVER_MIXER
                                         elsif isClockControl then DRIVER_CLOCK
-                                        elsif isLogObserver then DRIVER_LOGSTORE
+                                        elsif isLogObserver or isLogControl then DRIVER_LOGSTORE
                                         elsif isMetricObserver then
                                           CuBit.Metric_Protocol.Publisher_Service_Role
+                                        elsif isProcessObserver then DRIVER_PROCMGR
                                         else Unsigned_64 (param0)));
                                     exit when driverPID /= 0;
                                     ignore := syscall (
@@ -1011,12 +1235,15 @@ procedure main is
                                     Issued_Tag := CuBit.Audio_Control.Authority_Tag;
                                  elsif isClockControl then
                                     Issued_Tag := CuBit.Clock_Control.Authority_Tag;
-                                 elsif (isLogObserver or isLogPublisher)
+                                 elsif (isLogObserver or isLogPublisher or isLogControl)
                                    and then Next_Log_Issuance /= 0
                                  then
                                     if isLogObserver then
                                        Issued_Tag := CuBit.Log_Protocol.Observer_Tag_Base +
                                          Unsigned_64 (Next_Log_Issuance);
+                                    elsif isLogControl then
+                                       Issued_Tag := CuBit.Log_Protocol.Control_Tag
+                                         (Unsigned_64 (Next_Log_Issuance));
                                     else
                                        Issued_Tag := CuBit.Log_Protocol.Publisher_Tag
                                          (CuBit.Log_Protocol.Bootstrap_Budget,
@@ -1044,8 +1271,14 @@ procedure main is
                                       (if Next_Metric_Issuance = Unsigned_32'Last
                                        then 0 else Next_Metric_Issuance + 1);
                                  end if;
-                                 if (isLogObserver or isLogPublisher
-                                     or isMetricObserver or isMetricPublisher)
+                                 if isProcessObserver and then Next_Process_Issuance /= 0 then
+                                    Issued_Tag := CuBit.Process_Observer.Observer_Tag (Next_Process_Issuance);
+                                    Next_Process_Issuance :=
+                                      (if Next_Process_Issuance = Unsigned_32'Last
+                                       then 0 else Next_Process_Issuance + 1);
+                                 end if;
+                                 if (isLogObserver or isLogPublisher or isLogControl
+                                     or isMetricObserver or isMetricPublisher or isProcessObserver)
                                    and then Issued_Tag = 0
                                  then
                                     recordAuthority
@@ -1062,6 +1295,9 @@ procedure main is
                                        AUTH_SOURCE_MANIFEST,
                                        AUTH_REASON_MANIFEST_REQUEST, True,
                                        ignore);
+                                    if ignore /= Unsigned_64'Last then
+                                       noteService (childPID, param0);
+                                    end if;
                                     debugPrint (
                                        "procmgr: minted svc cap" & LF);
                                  else
@@ -1451,6 +1687,54 @@ procedure main is
                            end loop;
                         end if;
 
+                        --  A launched child's scopes must each be covered by
+                        --  one its launcher holds; record what this process
+                        --  holds for the children it may start.
+                        for j in 0 .. Natural (count) - 1 loop
+                           if attenuateFor /= 0 then
+                              declare
+                                 Launcher : Launch_State renames
+                                   launchStates (attenuateFor);
+                                 Covered : Boolean := False;
+                              begin
+                                 for h in 1 .. Launcher.Scope_Count loop
+                                    Covered := Covered or else LAuth.Scope_Covered
+                                      (Launcher.Scopes (h).Service,
+                                       Launcher.Scopes (h).Rights,
+                                       Launcher.Scopes (h).Prefix
+                                         (1 .. Launcher.Scopes (h).Length),
+                                       locals (j).service, locals (j).rights,
+                                       locals (j).prefix
+                                         (1 .. Natural (locals (j).prefixLen)));
+                                 end loop;
+                                 if not Covered then
+                                    attenuationRefused := True;
+                                    debugPrint ("procmgr: launched child scope " &
+                                      "not held by its launcher: " &
+                                      locals (j).prefix
+                                        (1 .. Natural (locals (j).prefixLen)) & LF);
+                                    policyReady := False;
+                                    return;
+                                 end if;
+                              end;
+                           end if;
+                           if childPID in launchStates'Range then
+                              declare
+                                 Held : Launch_State renames
+                                   launchStates (childPID);
+                              begin
+                                 if Held.Scope_Count < Held.Scopes'Last then
+                                    Held.Scope_Count := Held.Scope_Count + 1;
+                                    Held.Scopes (Held.Scope_Count) :=
+                                      (Service => locals (j).service,
+                                       Rights => locals (j).rights,
+                                       Length => Natural (locals (j).prefixLen),
+                                       Prefix => locals (j).prefix);
+                                 end if;
+                              end;
+                           end if;
+                        end loop;
+
                         --  Count entries per service
                         for j in 0 .. Natural (count) - 1 loop
                            if locals (j).service = SERVICE_CONFIG then
@@ -1748,8 +2032,66 @@ procedure main is
    --  Read ELF from filesystem, spawn suspended, grant manifest caps, resume.
    --  Returns PID on success, 0 on failure.
    ---------------------------------------------------------------------------
-   function spawnByName
-     (name        : String;
+   ---------------------------------------------------------------------------
+   --  loadLaunchTable
+   --  Keep pid's .cubit.launch table (from the ELF in elfBuf) if it is well
+   --  formed; without one, the process may start nothing with OP_LAUNCH.
+   ---------------------------------------------------------------------------
+   procedure loadLaunchTable (elfSize : Unsigned_64; pid : Unsigned_64) is
+      e_shoff : Unsigned_64;
+      e_shnum : Unsigned_16;
+   begin
+      if pid not in launchStates'Range or else elfSize < 64 then
+         return;
+      end if;
+      e_shoff := readU64 (40);
+      e_shnum := readU16 (60);
+      if readU16 (58) /= 64 or else e_shoff = 0 or else e_shnum = 0
+        or else e_shoff > elfSize
+        or else Unsigned_64 (e_shnum) > (elfSize - e_shoff) / 64
+      then
+         return;
+      end if;
+      for i in 0 .. Unsigned_16'(e_shnum - 1) loop
+         declare
+            shBase    : constant Unsigned_64 := e_shoff + Unsigned_64 (i) * 64;
+            sh_offset : constant Unsigned_64 := readU64 (shBase + 24);
+            sh_size   : constant Unsigned_64 := readU64 (shBase + 32);
+         begin
+            if readU32 (shBase + 4) = SHT_PROGBITS
+              and then sh_size >= LAuth.Header_Bytes
+              and then sh_offset <= elfSize
+              and then sh_size <= elfSize - sh_offset
+              and then readU32 (sh_offset) = LAuth.Magic
+            then
+               if sh_size > LAuth.Maximum_Table_Bytes then
+                  debugPrint ("procmgr: launch table too large" & LF);
+                  return;
+               end if;
+               declare
+                  Length : constant LAuth.Table_Length := Natural (sh_size);
+                  Source : constant LAuth.Table_Bytes (1 .. Length)
+                    with Import, Address => elfBuf + Storage_Offset (sh_offset);
+               begin
+                  if LAuth.Valid (Source) then
+                     launchStates (pid).Table (1 .. Length) := Source;
+                     launchStates (pid).Table_Length := Length;
+                  else
+                     debugPrint ("procmgr: invalid launch table" & LF);
+                  end if;
+               end;
+               return;
+            end if;
+         end;
+      end loop;
+   end loadLaunchTable;
+
+   function Spawn_Attempt
+     (Force_Software : Boolean;
+      Prior_Incarnation : Unsigned_64;
+      Retry : out Boolean;
+      Identity : out Unsigned_64;
+      name        : String;
       priority    : Unsigned_64;
       requester   : Unsigned_64 := 0;
       sandboxMode : Unsigned_8 := SANDBOX_NONE;
@@ -1768,16 +2110,31 @@ procedure main is
       pkgIdLen      : Natural := 0;
       streamBitmask : Unsigned_64 := 0;
       Render : Render_Request;
+      Captured_Child : GPU_Grants.Recipient;
+      Stop_Accepted : Boolean := False;
+      use type CuBit.Render_Startup.Requirement, CuBit.Render_Startup.Attempt;
       -- Transitional installed-system-app policy, like Desktop_Approval for
       -- browsers. Exact boot-namespace name, never a supplied path/identity;
       -- assumes the system executable namespace is administrator-controlled.
       -- Do not propagate this as systemStartup or honor caller-supplied flags.
-      --  The CCL Workbench's REPL reads logs too: (logs.recent "service").
+      --  The CCL Workbench's and console's REPLs read logs too:
+      --  (logs.recent "service").
       Log_Viewer_Approved : constant Boolean :=
-        (name = "boot-logs.app" or else name = "ccl-workbench.app")
+        (name = "boot-logs.app" or else name = "ccl-workbench.app" or else
+         name = "ccl-console.app" or else name = "logs.app")
         and then requester /= 0 and then
         sandboxMode = SANDBOX_NONE and then cwd'Length = 0 and then
         requester = getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP);
+      --  The CCL Console's and Workbench's :ps / (proc.list) see what runs,
+      --  under the same narrow desktop-launched exception.
+      Process_Viewer_Approved : constant Boolean :=
+        (name = "ccl-workbench.app" or else name = "ccl-console.app" or else name = "logs.app")
+        and then requester /= 0 and then
+        sandboxMode = SANDBOX_NONE and then cwd'Length = 0 and then
+        requester = getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP);
+      --  Logs, the console and the Workbench may change what logstore keeps
+      --  (log-control), under the same desktop-launched exception.
+      Log_Control_Approved : constant Boolean := Process_Viewer_Approved;
       use type CCL.Configurations.Startup_Role;
       procedure Stop_Suspended_Child is
          Result : Unsigned_64;
@@ -1786,9 +2143,22 @@ procedure main is
          -- this rejected child, not a wildcard process-kill capability.
          -- The kernel stamps the referenced process generation; a retained
          -- stale slot cannot authorize killing a later occupant of its PID.
-         Result := syscall (SYSCALL_POLICY_MINT_CAPABILITY,
-           syscall (SYSCALL_GETPID), CAP_TYPE_PROCESS, newPID, 0, 2,
-           Unsigned_64 (Failed_Launch_Control_Slot));
+         Stop_Accepted := False;
+         if GPU_Grants.Valid (Captured_Child) then
+            -- The control capability was captured before admission. Never
+            -- remint it by PID after waiting: the PID may have been reused.
+            if GPU_Grants.Incarnation (GPU_Grants.Capture (Failed_Launch_Control_Slot)) /=
+              GPU_Grants.Incarnation (Captured_Child)
+            then
+               debugPrint ("procmgr: failed launch process cleanup rejected" & LF);
+               return;
+            end if;
+            Result := 0;
+         else
+            Result := syscall (SYSCALL_POLICY_MINT_CAPABILITY,
+              syscall (SYSCALL_GETPID), CAP_TYPE_PROCESS, newPID, 0, 2,
+              Unsigned_64 (Failed_Launch_Control_Slot));
+         end if;
          if Result = Unsigned_64'Last then
             debugPrint ("procmgr: failed launch process cleanup rejected" & LF);
             return;
@@ -1797,6 +2167,7 @@ procedure main is
          if Result /= 0 then
             debugPrint ("procmgr: failed launch process cleanup rejected" & LF);
          else
+            Stop_Accepted := True;
             debugPrint ("procmgr: failed launch child stop requested" & LF);
          end if;
       end Stop_Suspended_Child;
@@ -1825,6 +2196,8 @@ procedure main is
          Stop_Suspended_Child;
       end Discard_Authorized_Child;
    begin
+      Retry := False;
+      Identity := 0;
       if startupRole = CCL.Configurations.Config_Storage and then
         (not systemStartup or Config_Storage_Selected)
       then
@@ -1888,6 +2261,48 @@ procedure main is
       printDec (Unsigned_32 (t1 - t0));
       debugPrint ("ms" & LF);
 
+      --  Launch arguments go in before anything else, while the child has
+      --  never run; the kernel accepts them only then, and only once.
+      if pendingArgumentBytes > 0 then
+         declare
+            Installed : constant Unsigned_64 := syscall
+              (SYSCALL_INSTALL_LAUNCH_ARGUMENTS, newPID,
+               Unsigned_64 (To_Integer (launchBlock'Address)),
+               Unsigned_64 (pendingArgumentBytes));
+         begin
+            if Installed /= 0 then
+               debugPrint ("procmgr: launch arguments not installed" & LF);
+               Stop_Suspended_Child;
+               return 0;
+            end if;
+         end;
+      end if;
+      resetLaunchState (newPID);
+      loadLaunchTable (elfSize, newPID);
+      if attenuateFor /= 0 then
+         --  Capture the child's incarnation now, before any policy step:
+         --  the launcher matches its exit event by PID and generation.
+         declare
+            Minted : constant Unsigned_64 := syscall
+              (SYSCALL_POLICY_MINT_CAPABILITY, syscall (SYSCALL_GETPID),
+               CAP_TYPE_PROCESS, newPID, 0, 3,
+               Unsigned_64 (Failed_Launch_Control_Slot));
+         begin
+            if Minted /= Unsigned_64'Last then
+               Captured_Child := GPU_Grants.Capture (Failed_Launch_Control_Slot);
+            end if;
+            if not GPU_Grants.Valid (Captured_Child)
+              or else GPU_Grants.Process_ID (Captured_Child) /= newPID
+            then
+               debugPrint ("procmgr: launched child identity unavailable" & LF);
+               Stop_Suspended_Child;
+               return 0;
+            end if;
+            launchedGeneration :=
+              GPU_Grants.Incarnation (Captured_Child) / 2 ** 32;
+         end;
+      end if;
+
       --  PIDs are reusable.  Never attribute records retained from an earlier
       --  process generation to the new child.
       clearAuthorityForPID (newPID);
@@ -1913,14 +2328,30 @@ procedure main is
 
       --  Parse .cubit.caps manifest (streams fallback if no .cubit.streams)
       t0 := syscall (SYSCALL_GETTIME);
+      noteProcess (newPID, requester, pkgId (1 .. pkgIdLen));
       parseAndGrantManifest
         (newPID, elfSize, streamBitmask, Render, approveNetwork, systemStartup,
-         approveLogViewer => Log_Viewer_Approved);
+         approveLogViewer => Log_Viewer_Approved,
+         approveProcessViewer => Process_Viewer_Approved,
+         approveLogControl => Log_Control_Approved);
       t1 := syscall (SYSCALL_GETTIME);
 
       debugPrint ("procmgr: manifest took ");
       printDec (Unsigned_32 (t1 - t0));
       debugPrint ("ms" & LF);
+
+      -- A software retry must retain explicit executable opt-in. Reject
+      -- malformed requests and Config storage roles before external attachment.
+      if (Force_Software and then not Render.Requested) or else
+        (Render.Requested and then
+         (not Render.Valid or else
+          (Render.Demand = CuBit.Render_Startup.Optional and then
+           startupRole /= CCL.Configurations.Application) or else
+          (Force_Software and then Render.Demand /= CuBit.Render_Startup.Optional)))
+      then
+         Stop_Suspended_Child;
+         return 0;
+      end if;
 
       --  Mint CAP_NOTIFICATION for logstore driver registration
       if pkgIdLen = 18 then
@@ -2179,7 +2610,7 @@ procedure main is
          parseAndSendACL (newPID, elfSize, Policy_Ready,
                           sandboxMode, cwd, name,
                           networkApproved => approveNetwork /= No_Network);
-         if not Policy_Ready then
+         if not Policy_Ready or else attenuationRefused then
             -- Child has never run. Remove partial service-side installation
             -- BEFORE killing it, while its PID is still occupied; cleanup
             -- must not accidentally address a later occupant of that PID.
@@ -2257,9 +2688,8 @@ procedure main is
 
       if Render.Requested then
          declare
-            use type Render_Launch.Phase;
+            use type Render_Launch.Phase, CuBit.Render_Startup.Decision;
             ID : Render_Launch.Ticket := 0;
-            Child : GPU_Grants.Recipient;
             Receipt : aliased CompletionEntry;
             Consumed, Accepted : Boolean := False;
             Now : Unsigned_64 := syscall (SYSCALL_GETTIME);
@@ -2268,11 +2698,39 @@ procedure main is
             Activity : Activity_Result;
             type Inspection_Words is array (0 .. 5) of Unsigned_64;
             Data : aliased Inspection_Words := [others => 0];
+            Mode : constant CuBit.Render_Startup.Attempt :=
+              (if Force_Software then CuBit.Render_Startup.Software_Only else
+               CuBit.Render_Startup.Initial_Attempt
+                 (Render.Demand, systemStartup and approveRender));
+            Next : CuBit.Render_Startup.Decision;
+            Slot_State : CuBit.Render_Startup.Capability := CuBit.Render_Startup.Unknown;
          begin
+            -- Capture the child and its stop authority before any broker
+            -- request. The software retry is a distinct captured incarnation.
+            Ignore := syscall (SYSCALL_POLICY_MINT_CAPABILITY,
+              syscall (SYSCALL_GETPID), CAP_TYPE_PROCESS, newPID, 0, 3,
+              Unsigned_64 (Failed_Launch_Control_Slot));
+            if Ignore = Unsigned_64'Last then
+               Discard_Authorized_Child;
+               return 0;
+            end if;
+            Captured_Child := GPU_Grants.Capture (Failed_Launch_Control_Slot);
+            Identity := GPU_Grants.Incarnation (Captured_Child);
+            if not GPU_Grants.Valid (Captured_Child) or else
+              GPU_Grants.Process_ID (Captured_Child) /= newPID or else
+              (Force_Software and then
+               not CuBit.Render_Startup.Fresh_Retry (Prior_Incarnation, Identity))
+            then
+               Discard_Authorized_Child;
+               return 0;
+            end if;
+            debugPrint ("procmgr: render attempt incarnation=" & Unsigned_64'Image (Identity) &
+              " software=" & Boolean'Image (Mode = CuBit.Render_Startup.Software_Only) & LF);
             -- Only a trusted startup plan may supply this approval today.
             -- Public spawn requests never propagate it. Destinations occupied
             -- by another manifest grant are rejected by kernel delegation.
-            if systemStartup and then approveRender and then Render.Valid and then
+            if Mode = CuBit.Render_Startup.With_Render and then
+              systemStartup and then approveRender and then Render.Valid and then
               Now <= Unsigned_64'Last - 6_000
             then
                Deadline := Now + 6_000;
@@ -2280,8 +2738,7 @@ procedure main is
                  syscall (SYSCALL_GETPID), CAP_TYPE_ENDPOINT, newPID, 0, 9,
                  Unsigned_64 (Render_Source_Slot));
                if Ignore /= Unsigned_64'Last then
-                  Child := GPU_Grants.Capture (Render_Source_Slot);
-                  Render_Launch.Start (Render_Launcher, True, Child,
+                  Render_Launch.Start (Render_Launcher, True, Captured_Child,
                     Render_Source_Slot, Render.Destination, ID);
                end if;
                if Render_Launch.State (Render_Launcher, ID) = Render_Launch.Pending then
@@ -2317,15 +2774,40 @@ procedure main is
             recordAuthority (newPID, Unsigned_64 (Render.Destination),
               AUTH_SOURCE_CONFIG_POLICY, AUTH_REASON_MANIFEST_REQUEST,
               CAP_TYPE_ENDPOINT, True, Accepted, 3, Data (3), Data (2));
-            if not Accepted then
+            if Mode = CuBit.Render_Startup.Software_Only then
+               Ignore := syscall (SYSCALL_INSPECT_CAPABILITY, newPID,
+                 Unsigned_64 (Render.Destination), Unsigned_64 (To_Integer (Data'Address)));
+               if Ignore = 1 then
+                  Slot_State := (if Data (0) = 0 then CuBit.Render_Startup.Empty
+                                 else CuBit.Render_Startup.Other);
+               end if;
+            elsif Accepted then
+               Slot_State := CuBit.Render_Startup.Render_Endpoint;
+            end if;
+            Next := CuBit.Render_Startup.Decide
+              (Render.Demand, Mode,
+               systemStartup and approveRender and Render.Valid,
+               (case Render_Launch.State (Render_Launcher, ID) is
+                  when Render_Launch.Absent => CuBit.Render_Startup.Not_Requested,
+                  when Render_Launch.Pending => CuBit.Render_Startup.Pending,
+                  when Render_Launch.Rejected => CuBit.Render_Startup.Rejected,
+                  when Render_Launch.Admitted => CuBit.Render_Startup.Admitted,
+                  when Render_Launch.Uncertain => CuBit.Render_Startup.Uncertain),
+               Slot_State);
+            if Next not in CuBit.Render_Startup.Resume_Render | CuBit.Render_Startup.Resume_Software then
                -- Timeout is NOT remote cancellation or retirement. The
                -- launcher/broker keep their slots and tokens; this child is
                -- discarded and a late success can never resume it here.
                debugPrint ("procmgr: render admission denied; child not resumed" & LF);
                Discard_Authorized_Child;
+               Retry := CuBit.Render_Startup.Retry_Software (Next, Stop_Accepted);
                return 0;
             end if;
-            debugPrint ("procmgr: render admission complete" & LF);
+            if Next = CuBit.Render_Startup.Resume_Render then
+               debugPrint ("procmgr: render admission complete" & LF);
+            else
+               debugPrint ("procmgr: render software-only admitted" & LF);
+            end if;
          end;
       end if;
 
@@ -2333,6 +2815,11 @@ procedure main is
          ignore : Unsigned_64;
       begin
          ignore := syscall (SYSCALL_RESUME, newPID);
+         if ignore /= 0 then
+            debugPrint ("procmgr: child resume rejected" & LF);
+            Discard_Authorized_Child;
+            return 0;
+         end if;
       end;
 
       debugPrint ("procmgr: resumed PID ");
@@ -2361,7 +2848,166 @@ procedure main is
       end if;
 
       return newPID;
+   end Spawn_Attempt;
+
+   function spawnByName
+     (name        : String;
+      priority    : Unsigned_64;
+      requester   : Unsigned_64 := 0;
+      sandboxMode : Unsigned_8 := SANDBOX_NONE;
+      cwd         : String := "";
+      approveNetwork : Network_Approval := No_Network;
+      approveRender : Boolean := False;
+      systemStartup : Boolean := False;
+      startupRole : CCL.Configurations.Startup_Role := CCL.Configurations.Application)
+      return Unsigned_64
+   is
+      Retry : Boolean;
+      Identity, Retry_Identity : Unsigned_64;
+      Result : Unsigned_64;
+   begin
+      Result := Spawn_Attempt
+        (False, 0, Retry, Identity, name, priority, requester, sandboxMode,
+         cwd, approveNetwork, approveRender, systemStartup, startupRole);
+      if Result = 0 and then Retry then
+         -- Exactly one fresh attempt, with no broker request. The failed
+         -- attempt's launcher resources stay retained independently.
+         debugPrint ("procmgr: render retry software with fresh child" & LF);
+         Result := Spawn_Attempt
+           (True, Identity, Retry, Retry_Identity, name, priority, requester,
+            sandboxMode, cwd, approveNetwork, approveRender, systemStartup, startupRole);
+      end if;
+      return Result;
    end spawnByName;
+
+   ---------------------------------------------------------------------------
+   --  handleLaunch
+   --  OP_LAUNCH (CuBit.Launch_Arguments): spawn a program with launch
+   --  arguments. The name and block are copied out of the requester's grant
+   --  first, and the block is validated in procmgr's copy; arguments are
+   --  data and never change what authority the child receives.
+   ---------------------------------------------------------------------------
+   procedure handleLaunch (sender : ProcessID; msg : Message) is
+      package LA renames CuBit.Launch_Arguments;
+      use type LA.Validation;
+      Name_Bytes     : constant Unsigned_64 := msg.words (1);
+      Argument_Bytes : constant Unsigned_64 := msg.words (2);
+      Priority       : constant Unsigned_64 := msg.words (3);
+      Reference : CuBit.Memory_Grants.Grant_Reference;
+      Mapped    : System.Address;
+      Ok, Returned : Boolean;
+      newPID    : Unsigned_64;
+
+      procedure Fail (Reason : LA.Launch_Failure) is
+      begin
+         sendReply (sender, REPLY_ERR, LA.Launch_Failure'Enum_Rep (Reason));
+      end Fail;
+   begin
+      if msg.tag.length /= LA.Launch_Request_Words
+        or else not LA.Request_Valid (Name_Bytes, Argument_Bytes)
+        or else not CuBit.Grant_References.Valid_Wire (msg.words (0))
+      then
+         Fail (LA.Malformed_Request);
+         return;
+      end if;
+      if Unsigned_64 (sender) not in launchStates'Range then
+         Fail (LA.Malformed_Request);
+         return;
+      end if;
+      Reference := CuBit.Grant_References.Decode (msg.words (0));
+      CuBit.Memory_Grants.Acquire
+        (Reference, Unsigned_64 (sender), 0, Name_Bytes + Argument_Bytes,
+         CuBit.Memory_Grants.Read_Access, Mapped, Ok);
+      if not Ok then
+         Fail (LA.Grant_Unavailable);
+         return;
+      end if;
+
+      declare
+         Name_Length : constant LA.Name_Length := LA.Name_Length (Name_Bytes);
+         Arguments_Length : constant LA.Block_Length :=
+           LA.Block_Length (Argument_Bytes);
+         Source_Name : constant String (1 .. Name_Length)
+           with Import, Address => Mapped;
+         Name : constant String (1 .. Name_Length) := Source_Name;
+      begin
+         if Arguments_Length > 0 then
+            declare
+               Source_Block : constant LA.Block (1 .. Arguments_Length)
+                 with Import,
+                      Address => Mapped + Storage_Offset (Name_Length);
+            begin
+               launchBlock (1 .. Arguments_Length) := Source_Block;
+            end;
+         end if;
+         CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
+         if not Returned then
+            debugPrint ("procmgr: launch grant return failed" & LF);
+         end if;
+         if Arguments_Length > 0
+           and then LA.Validate (launchBlock (1 .. Arguments_Length)) /= LA.Valid
+         then
+            debugPrint ("procmgr: launch arguments rejected" & LF);
+            Fail (LA.Arguments_Rejected);
+            return;
+         end if;
+
+         --  Only programs the requester's manifest names, by exact name:
+         --  no search path. Refused before anything is read or runs.
+         declare
+            Launcher : Launch_State renames launchStates (Unsigned_64 (sender));
+         begin
+            if Launcher.Table_Length = 0 or else not LAuth.Contains
+              (Launcher.Table (1 .. Launcher.Table_Length), Name)
+            then
+               debugPrint ("procmgr: " & CuBit.Failures.Explain
+                 ("Starting " & Name,
+                  CuBit.Failures.Failed
+                    (CuBit.Failures.Not_Granted,
+                     "the launcher's manifest does not name it",
+                     "add (may-launch " & '"' & Name & '"' &
+                     ") to the launcher's manifest")) & LF);
+               Fail (LA.Not_Granted);
+               return;
+            end if;
+         end;
+
+         --  The child holds a subset of its launcher's authority: no
+         --  network or startup approvals, and its requests are checked
+         --  against what the launcher holds (attenuateFor).
+         pendingArgumentBytes := Arguments_Length;
+         attenuateFor := Unsigned_64 (sender);
+         attenuationRefused := False;
+         newPID := spawnByName (Name, Priority, Unsigned_64 (sender));
+         pendingArgumentBytes := 0;
+         attenuateFor := 0;
+      end;
+
+      if newPID = 0 and then attenuationRefused then
+         debugPrint ("procmgr: " & CuBit.Failures.Explain
+           ("Starting a program",
+            CuBit.Failures.Failed
+              (CuBit.Failures.Not_Granted,
+               "it asks for authority its launcher does not hold",
+               "grant the launcher that authority, or remove the request " &
+               "from the program's manifest")) & LF);
+         attenuationRefused := False;
+         Fail (LA.Not_Granted);
+      elsif newPID = 0 then
+         Fail (LA.Spawn_Failed);
+      else
+         declare
+            Reply_Message : Message := NULL_MESSAGE;
+            Ignore : Unsigned_64;
+         begin
+            Reply_Message.tag :=
+              (label => REPLY_OK, length => 2, flags => 0, reserved => 0);
+            Reply_Message.words := [0 => newPID, 1 => launchedGeneration,
+                                    others => 0];
+            Ignore := reply (sender, Reply_Message);
+         end;
+      end if;
+   end handleLaunch;
 
    ---------------------------------------------------------------------------
    --  handleSpawn
@@ -2615,10 +3261,21 @@ begin
       case msg.tag.label is
          when OP_SPAWN =>
             handleSpawn (sender, msg);
+         when OP_LAUNCH =>
+            handleLaunch (sender, msg);
+         when CuBit.Process_Observer.List_Label =>
+            handleProcessList (sender, msg);
          when EVENT_CHILD_EXIT =>
             --  A process retired (the kernel tells procmgr of each). Events
             --  are not unforgeable, so act only if it is really gone.
-            if msg.tag.length = 1 and then not processListed (msg.words (0)) then
+            if CuBit.Child_Exits.Valid
+                 (msg.tag.length, msg.words (0), msg.words (1), msg.words (2))
+              and then not processListed (msg.words (0))
+            then
+               resetLaunchState (msg.words (0));
+               if msg.words (0) in processRecords'Range then
+                  processRecords (msg.words (0)) := (others => <>);
+               end if;
                clearAuthorityForPID (msg.words (0));
                releaseNetworkOwner (msg.words (0));
                releaseFilesystemOwner (msg.words (0));

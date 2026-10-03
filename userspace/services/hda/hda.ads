@@ -181,7 +181,7 @@ package HDA is
    --    Page 1:    RIRB (256 entries x 8 bytes = 2KB, padded to 4KB)
    --    Page 2:    BDL (32 entries x 16 bytes = 512 bytes, padded to 4KB)
    --    Pages 3-6: Reserved for future controller-private state
-   --    Page 7:    Four 1KB PCM periods, granted directly to the mixer
+   --    Pages 7-14: Thirty-two 1KB PCM periods, granted directly to the mixer
    DMA_CORB_OFF     : constant Unsigned_64 := 0;
    DMA_RIRB_OFF     : constant Unsigned_64 := 16#1000#;
    DMA_BDL_OFF      : constant Unsigned_64 := 16#2000#;
@@ -193,8 +193,8 @@ package HDA is
    --  PCM buffer size per BDL entry (1024 bytes = 256 frames stereo 16-bit)
    PCM_PERIOD_BYTES  : constant Unsigned_32 := 1024;
    --  Number of cyclic playback periods.
-   NUM_BDL_ENTRIES   : constant := 4;
-   PCM_BUFFER_PAGES  : constant := 1;
+   NUM_BDL_ENTRIES   : constant := 32;
+   PCM_BUFFER_PAGES  : constant := 8;
 
    ---------------------------------------------------------------------------
    --  CORB/RIRB entry types

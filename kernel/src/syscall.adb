@@ -10,6 +10,7 @@ with Process;
 with Process.Futex;
 with Process.Owned_Memory;
 with Process.IPC;
+with Process_Launch;
 with Syscall.IPC;
 with Syscall.Admin;
 with TextIO; use TextIO;
@@ -26,9 +27,12 @@ package body Syscall is
     ---------------------------------------------------------------------------
     -- exit
     ---------------------------------------------------------------------------
-    procedure exitp (currentPID : in Process.ProcessID) with SPARK_Mode => Off
+    procedure exitp (currentPID : in Process.ProcessID;
+                     requestedCode : in Unsigned_64) with SPARK_Mode => Off
     is
     begin
+        Process.recordExit
+          (currentPID, Process_Launch.To_Exit_Code (requestedCode));
         Process.kill (currentPID);
     end exitp;
 
@@ -95,6 +99,7 @@ package body Syscall is
             when 123  => number := SYSCALL_RESERVE_OWNED_MEMORY;
             when 124  => number := SYSCALL_COMMIT_OWNED_MEMORY_PREFIX;
             when 125  => number := SYSCALL_RELEASE_OWNED_RESERVATION;
+            when 126  => number := SYSCALL_INSTALL_LAUNCH_ARGUMENTS;
             when 118  => number := SYSCALL_YIELD;
             when 119  => number := SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND;
             when 120  => number := SYSCALL_POLICY_MINT_CAPABILITY_FOR_INCARNATION;
@@ -228,7 +233,7 @@ package body Syscall is
 
         case syscallNum is
             when SYSCALL_EXIT =>
-                exitp (Process.processOf (percpu.currentThread));
+                exitp (Process.processOf (percpu.currentThread), arg0);
 
             when SYSCALL_KILL =>
                 Admin.handleKill (
@@ -524,6 +529,11 @@ package body Syscall is
             when SYSCALL_RESUME =>
                 Admin.handleResume (
                     Process.processOf (percpu.currentThread), arg0, retval);
+
+            when SYSCALL_INSTALL_LAUNCH_ARGUMENTS =>
+                Admin.handleInstallLaunchArguments (
+                    Process.processOf (percpu.currentThread),
+                    arg0, arg1, arg2, retval);
 
             when SYSCALL_ALLOC_DMA =>
                 IPC.handleAllocDma (

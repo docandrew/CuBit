@@ -1,4 +1,25 @@
 package body Intel_GPU_VM_Image is
+   function Metadata_Capacity (Object : Image) return Positive is
+     (Table_Storage.Capacity (Object.Tables));
+   procedure Extend_Metadata (Object : in out Image; Base, Bytes : Unsigned_64;
+                              Accepted : out Boolean) is
+   begin Table_Storage.Extend (Object.Tables, Base, Bytes, Accepted); end Extend_Metadata;
+   function Raw_Word (Object : Image; Page : Page_Number;
+                      Index : Intel_GPU_ADLN_PPGTT.Table_Index) return Unsigned_64 is
+     (Table_Storage.Word (Object.Tables, Page, Index));
+   function Raw_Page (Object : Image; Page : Page_Number) return Table_Storage.Page is
+      Result : Table_Storage.Page;
+   begin
+      for I in Intel_GPU_ADLN_PPGTT.Table_Index loop Result (I) := Raw_Word (Object, Page, I); end loop;
+      return Result;
+   end Raw_Page;
+   procedure Set_Raw_Word (Object : in out Image; Page : Page_Number;
+                          Index : Intel_GPU_ADLN_PPGTT.Table_Index; Value : Unsigned_64) is
+   begin Table_Storage.Set_Word (Object.Tables, Page, Index, Value); end Set_Raw_Word;
+   procedure Clear_Table (Object : in out Image; Page : Page_Number) is
+   begin Table_Storage.Clear (Object.Tables, Page); end Clear_Table;
+   function Leaf_Table (Object : Image; Page : Page_Number) return Boolean is
+     (Object.Valid and then Page <= Object.Count and then Object.Levels (Page) = 0);
    function Revision (Object : Image) return Unsigned_64 is (Object.Epoch);
    function Direct_Successor (Object, Candidate : Image) return Boolean is
      (Object.Valid and then Object.Frozen and then Candidate.Valid and then
@@ -26,6 +47,7 @@ package body Intel_GPU_VM_Image is
    begin
       Accepted := False;
       if Object.Attempted or else Object.Epoch = Unsigned_64'Last then return; end if;
+      Object.Retired_Receipt := False;
       Object.Epoch := Object.Epoch + 1;
       Object.Attempted := True;
       if (for some Page of Scratch => Page /= 0) and then
@@ -50,7 +72,9 @@ package body Intel_GPU_VM_Image is
       Next : Natural;
    begin
       Accepted := False;
-      if Target.Attempted or else Target.Epoch = Unsigned_64'Last then return; end if;
+      if Target.Attempted or else Target.Epoch = Unsigned_64'Last or else
+        Source.Count > Metadata_Capacity (Target) then return; end if;
+      Target.Retired_Receipt := False;
       Target.Epoch := Target.Epoch + 1;
       Target.Attempted := True;
       if not Source.Valid or else not Source.Frozen then return; end if;
@@ -67,10 +91,10 @@ package body Intel_GPU_VM_Image is
             -- Validated images exclude table/data aliases, so only directory
             -- entries can identify an allocated child table. Never infer an
             -- entry's role from low flags: WB leaves share directory flags.
-            Next := Child (Source, Source.Entries (P) (I));
-            Target.Entries (P) (I) :=
+            Next := Child (Source, Raw_Word (Source, P, I));
+            Set_Raw_Word (Target, P, I,
               (if Next /= 0 then Encode_Directory (Backing (Next))
-               else Source.Entries (P) (I));
+               else Raw_Word (Source, P, I)));
          end loop;
       end loop;
       Target.DMA := Backing;
@@ -121,21 +145,21 @@ package body Intel_GPU_VM_Image is
          Current := 1;
          First_Missing := 0;
          for Depth in 1 .. 3 loop
-            if Object.Entries (Current) (Route (Depth)) = 0 then
+            if Raw_Word (Object, Current, Route (Depth)) = 0 then
                First_Missing := Depth;
                exit;
             end if;
-            Next := Child (Object, Object.Entries (Current) (Route (Depth)));
+            Next := Child (Object, Raw_Word (Object, Current, Route (Depth)));
             if Next = 0 then return; end if;
             Current := Next;
          end loop;
          if First_Missing = 0 then
-            if Object.Entries (Current) (Route (4)) /= 0 then return; end if;
+            if Raw_Word (Object, Current, Route (4)) /= 0 then return; end if;
          else
             for Depth in First_Missing .. 3 loop
                Prefix := Shift_Right (Address, 48 - 9 * Depth);
                if Prefix /= Last_Missing (Depth) then
-                  if Missing = Capacity - Object.Count then return; end if;
+                  if Missing = Metadata_Capacity (Object) - Object.Count then return; end if;
                   Missing := Missing + 1;
                   Last_Missing (Depth) := Prefix;
                end if;
@@ -148,7 +172,7 @@ package body Intel_GPU_VM_Image is
       -- Skip equal-policy entries before searching the requested pages; the
       -- common single-policy image needs just one pass over used table words.
       for P in 1 .. Object.Count loop
-         for Word of Object.Entries (P) loop
+         for Word of Raw_Page (Object, P) loop
             if Word /= 0 and then Word mod 4096 /= 3 + Cache_Bits (Policy) then
                for DMA of Data loop
                   if Word / 4096 = DMA / 4096 then return; end if;
@@ -162,19 +186,19 @@ package body Intel_GPU_VM_Image is
          Route := Indices (GPU + Unsigned_64 (I - Data'First) * 4096);
          Current := 1;
          for Depth in 1 .. 3 loop
-            if Object.Entries (Current) (Route (Depth)) = 0 then
+            if Raw_Word (Object, Current, Route (Depth)) = 0 then
                Object.Count := Object.Count + 1;
                Next := Object.Count;
                Object.Levels (Next) := 3 - Depth;
-               Object.Entries (Current) (Route (Depth)) :=
-                 Encode_Directory (Object.DMA (Next));
+               Set_Raw_Word (Object, Current, Route (Depth),
+                 Encode_Directory (Object.DMA (Next)));
             else
-               Next := Child (Object, Object.Entries (Current) (Route (Depth)));
+               Next := Child (Object, Raw_Word (Object, Current, Route (Depth)));
             end if;
             Current := Next;
          end loop;
-         Object.Entries (Current) (Route (4)) :=
-           Encode_Leaf (Data (I), Policy, Access_Mode);
+         Set_Raw_Word (Object, Current, Route (4),
+           Encode_Leaf (Data (I), Policy, Access_Mode));
       end loop;
       Object.Mapped_Pages := Object.Mapped_Pages + Data'Length;
       Accepted := True;
@@ -201,9 +225,9 @@ package body Intel_GPU_VM_Image is
          Route := Indices (GPU + Unsigned_64 (I - Expected'First) * 4096);
          Current := 1;
          for Depth in 1 .. 3 loop
-            Current := Child (Object, Object.Entries (Current) (Route (Depth)));
+            Current := Child (Object, Raw_Word (Object, Current, Route (Depth)));
          end loop;
-         Object.Entries (Current) (Route (4)) := 0;
+         Set_Raw_Word (Object, Current, Route (4), 0);
       end loop;
       Object.Mapped_Pages := Object.Mapped_Pages - Expected'Length;
       Accepted := True;
@@ -227,6 +251,9 @@ package body Intel_GPU_VM_Image is
      (if Object.Valid then Object.DMA (1) else 0);
    function Page_DMA (Object : Image; Page : Page_Number) return Unsigned_64 is
      (if Page <= Object.Count then Object.DMA (Page) else 0);
+   function Used_Tables_Match (Object : Image; Backing : Backing_Pages) return Boolean is
+     (Object.Valid and then Object.Frozen and then Object.Count > 0 and then
+      (for all P in 1 .. Object.Count => Backing (P) = Object.DMA (P)));
    function DMA_Disjoint (Object : Image; First, Bytes : Unsigned_64) return Boolean is
       function Inside (Page : Unsigned_64) return Boolean is
         (Page >= First and then Page - First < Bytes);
@@ -250,7 +277,7 @@ package body Intel_GPU_VM_Image is
       -- Both refer to DMA pages; include both rather than guessing their type
       -- from low flags (WB leaves and directories have identical low bits).
       for P in 1 .. Object.Count loop
-         for Word of Object.Entries (P) loop
+         for Word of Raw_Page (Object, P) loop
             if Word /= 0 and then Conflicts (Word - Word mod 4096) then
                return False;
             end if;
@@ -261,7 +288,7 @@ package body Intel_GPU_VM_Image is
    function Entry_Value
      (Object : Image; Page : Page_Number; Index : Table_Index) return Unsigned_64 is
      (if Page > Object.Count then 0
-      elsif Object.Entries (Page) (Index) /= 0 then Object.Entries (Page) (Index)
+      elsif Raw_Word (Object, Page, Index) /= 0 then Raw_Word (Object, Page, Index)
       else Intel_GPU_PPGTT_Scratch.Fallback (Object.Scratch, Object.Levels (Page)));
    function Scratch_DMA
      (Object : Image; L : Intel_GPU_PPGTT_Scratch.Level) return Unsigned_64 is
@@ -276,9 +303,9 @@ package body Intel_GPU_VM_Image is
       if not Object.Valid or GPU >= 2 ** 48 then return 0; end if;
       Route := Indices (GPU);
       for Depth in 1 .. 3 loop
-         Current := Child (Object, Object.Entries (Current) (Route (Depth)));
+         Current := Child (Object, Raw_Word (Object, Current, Route (Depth)));
          if Current = 0 then return 0; end if;
       end loop;
-      return Object.Entries (Current) (Route (4));
+      return Raw_Word (Object, Current, Route (4));
    end Lookup;
 end Intel_GPU_VM_Image;

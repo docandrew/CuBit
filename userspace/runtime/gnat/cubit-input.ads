@@ -42,6 +42,25 @@ package CuBit.Input with SPARK_Mode => On is
       snapshot    : Unsigned_64 := 0;
    end record;
 
+   --  Relative-pointer snapshot: buttons in low eight bits, optional driver
+   --  acquisition time in the high 56 bits. Stored time is milliseconds + 1;
+   --  zero means unavailable. No wrap: unrepresentable clocks are unstamped.
+   --  Keyboard snapshots and the four-word wire envelope are unchanged.
+   Maximum_Pointer_Time : constant Unsigned_64 := 16#00FF_FFFF_FFFF_FFFE#;
+   function Pointer_Time (Snapshot : Unsigned_64) return Unsigned_64 is
+     (if Shift_Right (Snapshot, 8) = 0 then Unsigned_64'Last
+      else Shift_Right (Snapshot, 8) - 1);
+   function Pointer_Snapshot
+     (Buttons, Observed_Ms : Unsigned_64) return Unsigned_64 is
+     ((Buttons and 16#FF#) or
+      (if Observed_Ms <= Maximum_Pointer_Time then
+         Shift_Left (Observed_Ms + 1, 8) else 0))
+     with Post =>
+       (Pointer_Snapshot'Result and 16#FF#) = (Buttons and 16#FF#) and
+       Pointer_Time (Pointer_Snapshot'Result) =
+         (if Observed_Ms <= Maximum_Pointer_Time then Observed_Ms
+          else Unsigned_64'Last);
+
    NULL_SOURCE_REPORT : constant Source_Report := (others => <>);
 
    function Encode (report : Source_Report) return CuBit.Messages.Message;

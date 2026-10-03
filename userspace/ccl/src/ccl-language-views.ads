@@ -2,6 +2,8 @@
 --  must pass the existing CCL analyzer before a conversion can be published.
 package CCL.Language.Views with SPARK_Mode => On is
    type Surface is (Lisp, Basic);
+   --  The first line of BASIC source: Detect reads a program as BASIC by it.
+   BASIC_MARKER : constant String := "#!ccl basic";
    --  Pretty-printed views run longer than the canonical source.
    Maximum_View_Length : constant := 2 * CCL.Language.MAX_SOURCE_LENGTH;
    subtype View_Length is Natural range 0 .. Maximum_View_Length;

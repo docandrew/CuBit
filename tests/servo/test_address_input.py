@@ -12,7 +12,7 @@ def between(start, end):
     return source.split(start, 1)[1].split(end, 1)[0]
 
 resync = between('      if Input.kind = App.INPUT_CONFIGURE or else Input.kind = App.INPUT_RESYNC then',
-                 '      if Settings_Open then\n         Settings_Input (Input, Result); return 1;')
+                 '      if Rail_Dragging and then Input.kind not in App.INPUT_POINTER_MOVE |')
 resync = '      if Input.kind = App.INPUT_CONFIGURE or else Input.kind = App.INPUT_RESYNC then' + resync
 focused = between('      if Focused and then Input.kind in App.INPUT_KEY_DOWN | App.INPUT_KEY_UP | App.INPUT_TEXT then',
                   '      if Input.kind in App.INPUT_POINTER_MOVE | App.INPUT_POINTER_DOWN |')

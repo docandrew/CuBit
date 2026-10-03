@@ -53,4 +53,6 @@ uint32_t cubit_mesa_draw(void *context, void *target, void *source,
                          const struct cubit_mesa_draw *draw);
 uint32_t cubit_mesa_release(void *context, void *image);
 void cubit_mesa_destroy(void *context);
+uint32_t cubit_mesa_fill(void *context,void *target,uint32_t left,uint32_t top,
+                         uint32_t width,uint32_t height,uint32_t color);
 #endif

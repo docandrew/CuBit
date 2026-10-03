@@ -14,6 +14,7 @@ with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
 with CuBit.UI.Theme_Data;
 with Client_Frame_Wakeup;
+with Client_Input_Channel;
 
 package body CuBit.UI.App is
    use ASCII;
@@ -245,7 +246,8 @@ package body CuBit.UI.App is
        maximum_width : Natural := 0;
        maximum_height : Natural := 0;
        title : String := "Application";
-       protected_frames : Boolean := False)
+       protected_frames : Boolean := False;
+       batched_input : Boolean := False)
    is
       hello : Message;
       info : Message;
@@ -270,6 +272,9 @@ package body CuBit.UI.App is
       win.width := 0; win.height := 0; win.pitch := 0;
       win.densityNumerator := 1; win.densityDenominator := 1;
       win.lastEvent := 0; win.inputMayRemain := False;
+      win.batchedInput := batched_input;
+      win.inputStats := (Batch_Enabled => batched_input, others => <>);
+      Client_Input_Batch_Cache.Clear (win.inputCache);
       win.deferredDamage := (others => 0);
       win.firstManagedFrame := False;
       win.provenance := Fresh_Provenance; win.provenanceHealthy := True;
@@ -460,7 +465,7 @@ package body CuBit.UI.App is
       request : Message;
    begin
       accepted := False;
-      if win.surfaceId = 0 or else win.sentBye or else
+      if win.surfaceId = 0 or else win.sentBye or else win.batchedInput or else
         not CuBit.Async_Requests.Can_Reserve (win.inputRequest, token)
       then return; end if;
       request := CuBit.Desktop_Messages.From_Wire
@@ -488,6 +493,47 @@ package body CuBit.UI.App is
       if healthy then Apply_Input_Result (win, decoded, event, found); end if;
    end Complete_Input_Wait;
 
+   procedure Add_Input_Count (Value : in out Unsigned_64; Amount : Unsigned_64 := 1) is
+   begin
+      Value := (if Amount > Unsigned_64'Last - Value then Unsigned_64'Last else Value + Amount);
+   end Add_Input_Count;
+
+   function Input_Statistics (win : Window) return Input_Diagnostics is
+      Result : Input_Diagnostics := win.inputStats;
+   begin
+      Result.Channel_Disabled := Client_Input_Channel.Is_Disabled;
+      return Result;
+   end Input_Statistics;
+
+   procedure Take_Cached_Input
+     (win : in out Window; event : out Input_Event; found, valid : out Boolean)
+   is
+      package Cache renames Client_Input_Batch_Cache;
+      Decoded : DP.Input_Result;
+   begin
+      event := (others => <>); found := False; valid := False;
+      if win.surfaceId = 0 or else Input_Wait_Pending (win) or else
+        not win.batchedInput or else Cache.Remaining (win.inputCache) = 0
+      then return; end if;
+      Cache.Take (win.inputCache, win.surfaceId, win.lastEvent, Decoded);
+      if Decoded.Status = DP.Success then
+         valid := True;
+         Add_Input_Count (win.inputStats.Delivered_Events);
+         Apply_Input_Result (win, Decoded, event, found);
+      else
+         Add_Input_Count (win.inputStats.Cache_Rejections);
+         Cache.Clear (win.inputCache);
+      end if;
+   end Take_Cached_Input;
+
+   procedure Poll_Cached_Input
+     (win : in out Window; event : out Input_Event; found : out Boolean)
+   is
+      Valid : Boolean;
+   begin
+      Take_Cached_Input (win, event, found, Valid);
+   end Poll_Cached_Input;
+
    procedure Receive_Input
       (win : in out Window;
        operation : DP.Input_Operation;
@@ -499,6 +545,33 @@ package body CuBit.UI.App is
    begin
       event := (others => <>); found := False;
       if win.surfaceId = 0 or else Input_Wait_Pending (win) then return; end if;
+      if win.batchedInput then
+         declare
+            package Cache renames Client_Input_Batch_Cache;
+            Loaded, Valid : Boolean;
+         begin
+            if Cache.Remaining (win.inputCache) = 0 and then operation = DP.Poll_Input then
+               Client_Input_Channel.Fetch (win.inputCache, win.surfaceId, win.lastEvent, Loaded);
+               if Loaded then
+                  Add_Input_Count (win.inputStats.Successful_Fetches);
+                  Add_Input_Count (win.inputStats.Fetched_Events, Unsigned_64 (Cache.Remaining (win.inputCache)));
+               else
+                  Add_Input_Count (win.inputStats.Fallback_Polls);
+               end if;
+               if Loaded and then Cache.Remaining (win.inputCache) = 0 then
+                  Apply_Input_Result (win, (DP.Success,
+                    (DP.No_Input, win.lastEvent, 0, 0, False)), event, found);
+                  return;
+               end if;
+            end if;
+            if Cache.Remaining (win.inputCache) > 0 then
+               Take_Cached_Input (win, event, found, Valid);
+               if Valid then return; end if;
+               -- Failed cache validation leaves the acknowledged serial intact.
+               -- Ordinary polling retains its existing fallback recovery below.
+            end if;
+         end;
+      end if;
       reply := CuBit.Desktop_Messages.From_Wire
         ((if operation = DP.Poll_Input then
             DP.Encode_Input_Request ((DP.Poll_Input, DP.Live_Surface_Name (win.surfaceId), win.lastEvent))
@@ -536,8 +609,11 @@ package body CuBit.UI.App is
       Receive_Input (win, DP.Wait_Input, event, found, deadline);
    end Wait_Input_Until;
 
+   function Cached_Input_Count (win : Window) return Natural is
+     (Client_Input_Batch_Cache.Remaining (win.inputCache));
+
    function Input_May_Remain (win : Window) return Boolean is
-     (win.inputMayRemain);
+     (win.inputMayRemain or else Client_Input_Batch_Cache.Remaining (win.inputCache) > 0);
 
 
    function Request_Pointer_Cursor
@@ -965,5 +1041,7 @@ package body CuBit.UI.App is
       win.bufferAddr := System.Null_Address;
       win.surfaceId := 0;
       win.sentBye := True;
+      win.batchedInput := False;
+      Client_Input_Batch_Cache.Clear (win.inputCache);
    end Close;
 end CuBit.UI.App;

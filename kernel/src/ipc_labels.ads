@@ -25,6 +25,8 @@ is
     OP_SPAWN   : constant Unsigned_32 := 16#0100#;
     OP_EXIT    : constant Unsigned_32 := 16#0101#;
     OP_WAIT    : constant Unsigned_32 := 16#0102#;
+    -- Spawn with launch arguments (procmgr, docs/process-arguments.md).
+    OP_LAUNCH  : constant Unsigned_32 := 16#0106#;
 
     --  Process lifecycle events (kernel -> userspace)
     EVENT_CHILD_EXIT    : constant Unsigned_32 := 16#0103#;
@@ -90,6 +92,7 @@ is
     OP_AUDIO_GET_VOL  : constant Unsigned_32 := 16#0503#;
     OP_AUDIO_SET_PAN  : constant Unsigned_32 := 16#0504#;
     OP_AUDIO_SET_FMT  : constant Unsigned_32 := 16#0505#;
+    OP_AUDIO_PLAYBACK : constant Unsigned_32 := 16#0509#;
 
     -- Audio operations (mixer ↔ HDA driver)
     OP_AUDIO_HW_INIT  : constant Unsigned_32 := 16#0510#;

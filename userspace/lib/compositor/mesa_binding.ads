@@ -11,6 +11,9 @@ package Mesa_Binding with SPARK_Mode is
    procedure Render_View (Library : in out Context; Target, Source : System.Address;
                          Description : Compositor_Formats.Draw;
                          Result : out Compositor_Policy.Completion) with Global => null;
+   procedure Fill_View (Library : in out Context; Target : System.Address;
+                        Left, Top, Width, Height, Color : Compositor_Formats.Word;
+                        Result : out Compositor_Policy.Completion) with Global => null;
    procedure Release_View (Library : in out Context; View : System.Address; Safe : out Boolean) with Global => null;
    procedure Stop (Library : in out Context) with Global => null;
 private

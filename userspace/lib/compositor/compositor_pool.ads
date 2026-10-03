@@ -35,17 +35,26 @@ package Compositor_Pool with SPARK_Mode, Pure is
        Writer (Open'Result) = None and Ready (Open'Result) = None and
        Displayed (Open'Result) = None and Front (Open'Result) = None;
    -- Busy returns None unchanged. Exhausted/unopened pools become faulted.
-   procedure Acquire (S : in out State; T : out Ticket)
+   -- Replace_Ready is opt-in only when newer scene work will be rendered.
+   -- If all slots are held, reclaim the quiescent ready frame, never front or
+   -- pending. Ordinary eager writer acquisition must leave this False.
+   procedure Acquire
+     (S : in out State; T : out Ticket; Replace_Ready : Boolean := False)
      with Pre => Valid (S), Post => Valid (S) and
        (T /= None) = (not Faulted (S'Old) and Writer (S'Old) = None and
-         Epoch (S'Old) /= 0 and Last_Serial (S'Old) < ID'Last and Has_Free (S'Old)) and
-       Ready (S) = Ready (S'Old) and Displayed (S) = Displayed (S'Old) and
+         Epoch (S'Old) /= 0 and Last_Serial (S'Old) < ID'Last and
+         (Has_Free (S'Old) or (Replace_Ready and Ready (S'Old) /= None))) and
+       (if T = None and not Faulted (S) then S = S'Old) and
+       Ready (S) = (if T /= None and not Has_Free (S'Old) then None else Ready (S'Old)) and
+       Displayed (S) = Displayed (S'Old) and
+       (if T /= None and not Has_Free (S'Old) then T.Buffer = Ready (S'Old).Buffer) and
        Front (S) = Front (S'Old) and Epoch (S) = Epoch (S'Old) and
        (if T /= None then Writable (S, T) and T.Serial > Last_Serial (S'Old) and
           T.Serial = Last_Serial (S) and T.Epoch = Epoch (S)) and
        (if Faulted (S'Old) then Faulted (S) and T = None) and
        (if not Faulted (S'Old) and Writer (S'Old) = None and
-          Epoch (S'Old) /= 0 and Last_Serial (S'Old) < ID'Last and not Has_Free (S'Old)
+          Epoch (S'Old) /= 0 and Last_Serial (S'Old) < ID'Last and not Has_Free (S'Old) and
+          not (Replace_Ready and Ready (S'Old) /= None)
         then S = S'Old);
    procedure Start_Render (S : in out State; T : Ticket)
      with Pre => Valid (S), Post => Valid (S) and
@@ -65,6 +74,16 @@ package Compositor_Pool with SPARK_Mode, Pure is
           Ready (S) = (if Result = Completed then T else Ready (S'Old))
         else Faulted (S) and Writer (S) = Writer (S'Old) and
           Ready (S) = Ready (S'Old));
+   -- Drop a completed unpublished candidate, for example during output disable.
+   -- This never releases a writer, pending presentation, or visible front.
+   procedure Discard_Ready (S : in out State; T : Ticket)
+     with Pre => Valid (S), Post => Valid (S) and
+       Front (S) = Front (S'Old) and Displayed (S) = Displayed (S'Old) and
+       Writer (S) = Writer (S'Old) and Rendering (S) = Rendering (S'Old) and
+       Epoch (S) = Epoch (S'Old) and Last_Serial (S) = Last_Serial (S'Old) and
+       (if not Faulted (S'Old) and T /= None and T = Ready (S'Old)
+        then Ready (S) = None and not Faulted (S)
+        else Ready (S) = Ready (S'Old) and Faulted (S));
    -- One outstanding display frame. No deep FIFO; newest completed frame wins.
    procedure Present (S : in out State; T : out Ticket)
      with Pre => Valid (S), Post => Valid (S) and

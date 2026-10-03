@@ -8,7 +8,7 @@ library project Servo_Shell_Host is
    for Library_Dir use "build/lib";
    for Library_Name use "servo_shell_host";
    for Library_Kind use "static";
-   for Library_Interface use ("servo_shell", "servo_secondary_stack");
+   for Library_Interface use ("servo_shell", "servo_secondary_stack", "servo_tab_projection", "penny_audio_transport");
    for Library_Standalone use "standard";
    for Library_Auto_Init use "false";
    for Runtime ("Ada") use "../../runtime";

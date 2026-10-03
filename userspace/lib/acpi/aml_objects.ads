@@ -1,6 +1,7 @@
 pragma Ada_2022;
 with AML_Decode;
 package AML_Objects with SPARK_Mode, Pure is
+   use type AML_Decode.Byte;
    use type AML_Decode.Integer_Value;
    use type AML_Decode.Bytes;
    Max_Objects : constant := 2048;
@@ -39,6 +40,28 @@ package AML_Objects with SPARK_Mode, Pure is
      with Pre => Valid (Store) and then ID > 0 and then ID <= Count (Store)
        and then Kind (Store, ID) = Package_Object and then Index < Length (Store, ID),
           Post => Element'Result <= Count (Store);
+   function Stored_Byte (Store : State; ID : Object_ID; Index : Natural)
+     return AML_Decode.Byte
+   with Pre => Valid (Store) and then ID > 0 and then ID <= Count (Store)
+     and then Kind (Store, ID) in Byte_Kind and then Index < Length (Store, ID);
+   function Stored_Byte_Updated
+     (Store, Prior : State; ID : Object_ID; Index : Natural;
+      Value : AML_Decode.Byte) return Boolean with Ghost,
+     Pre => Valid (Prior) and then ID > 0 and then ID <= Count (Prior)
+       and then Kind (Prior, ID) in Byte_Kind and then Index < Length (Prior, ID);
+   procedure Set_Stored_Byte
+     (Store : in out State; ID : Object_ID; Index : Natural; Value : AML_Decode.Byte)
+   with Pre => Valid (Store) and then ID > 0 and then ID <= Count (Store)
+       and then Kind (Store, ID) in Byte_Kind and then Index < Length (Store, ID),
+     Post => Valid (Store) and then Usage_Of (Store) = Usage_Of (Store'Old)
+       and then Count (Store) = Count (Store'Old)
+       and then Stored_Byte_Updated (Store, Store'Old, ID, Index, Value)
+       and then Kind (Store, ID) in Byte_Kind
+       and then Length (Store, ID) = Length (Store'Old, ID)
+       and then Stored_Byte (Store, ID, Index) = Value
+       and then (for all J in 1 .. Count (Store) =>
+         Kind (Store, J) = Kind (Store'Old, J)
+         and then Length (Store, J) = Length (Store'Old, J));
    -- Exact frame condition: only this existing integer's payload changes.
    -- Object identity, package links and every allocation counter are retained.
    function Integer_Updated
@@ -78,6 +101,7 @@ package AML_Objects with SPARK_Mode, Pure is
                Count (Store) = Count (Store'Old) + 1 and then ID = Count (Store)
                and then Kind (Store, ID) = Tag
                and then Byte_Data (Store, ID) = Data
+               and then Length (Store, ID) = Data'Length
                and then (for all J in 1 .. Count (Store'Old) => Kind (Store, J) = Kind (Store'Old, J)
                  and then Length (Store, J) = Length (Store'Old, J))
              else Store = Store'Old and ID = 0);
@@ -92,11 +116,18 @@ package AML_Objects with SPARK_Mode, Pure is
                and then (for all J in 1 .. Count (Store'Old) => Kind (Store, J) = Kind (Store'Old, J)
                  and then Length (Store, J) = Length (Store'Old, J))
              else Store = Store'Old and ID = 0);
+   function Element_Updated
+     (Store, Prior : State; ID : Object_ID; Index : Natural; Value : Object_ID)
+     return Boolean with Ghost,
+     Pre => Valid (Prior) and then ID > 0 and then ID <= Count (Prior)
+       and then Kind (Prior, ID) = Package_Object and then Index < Length (Prior, ID);
    procedure Set_Element (Store : in out State; ID : Object_ID; Index : Natural; Value : Object_ID)
      with Pre => Valid (Store) and then ID > 0 and then ID <= Count (Store)
        and then Kind (Store, ID) = Package_Object and then Index < Length (Store, ID)
        and then Value <= Count (Store),
           Post => Valid (Store) and then Count (Store) = Count (Store'Old)
+            and then Usage_Of (Store) = Usage_Of (Store'Old)
+            and then Element_Updated (Store, Store'Old, ID, Index, Value)
             and then Kind (Store, ID) = Package_Object
             and then Length (Store, ID) = Length (Store'Old, ID)
             and then Element (Store, ID, Index) = Value

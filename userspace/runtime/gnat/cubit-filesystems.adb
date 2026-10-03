@@ -202,6 +202,22 @@ is
                       3 => loan.generation));
    end Read_Directory_Page_Request;
 
+   function Read_Directory_Inspected_Request
+     (handle : Directory_Handle;
+      loan   : CuBit.Memory_Grants.Grant_Reference)
+      return CuBit.Messages.Message
+   is
+   begin
+      return
+        (tag      => (label => OP_READ_DIRECTORY_INSPECTED, length => 4,
+                       flags => 0, reserved => 0),
+         authorityTag => 0,
+         words    => (0 => Unsigned_64 (handle),
+                      1 => loan.slot,
+                      2 => Unsigned_64 (PROTOCOL_VERSION),
+                      3 => loan.generation));
+   end Read_Directory_Inspected_Request;
+
    function Close_Directory_Request
      (handle : Directory_Handle) return CuBit.Messages.Message
    is

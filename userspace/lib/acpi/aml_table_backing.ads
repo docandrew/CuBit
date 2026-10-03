@@ -16,7 +16,12 @@ package AML_Table_Backing with SPARK_Mode, Pure is
       Tables : Spans (1 .. Table_Capacity);
       Data : Firmware_Tables.Bytes (1 .. Byte_Capacity) := [others => 0];
    end record;
-   function Valid_Span (Input : aliased State; Index : Positive) return Boolean;
+   function Valid_Span (Input : aliased State; Index : Positive) return Boolean with
+      Post => (if Valid_Span'Result then
+         Index <= Input.Table_Capacity and then
+         Input.Tables (Index).Extent >= Firmware_Tables.Table_Header_Size and then
+         Input.Tables (Index).Offset <= Input.Byte_Capacity and then
+         Input.Tables (Index).Extent <= Input.Byte_Capacity - Input.Tables (Index).Offset);
    -- Matching and selection inspect only owned table headers; an index is not
    -- a hardware capability or a physical address. Malformed inventories fail.
    function Matches_Table

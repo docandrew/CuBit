@@ -2,8 +2,17 @@ with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Intel_GPU_ADLN_PPGTT; use Intel_GPU_ADLN_PPGTT;
 with Intel_GPU_VM_Image;
+with Intel_GPU_VM_Image.Removal;
+with Intel_GPU_VM_Image.Snapshots;
+with Intel_GPU_PPGTT_Scratch;
+with Intel_GPU_VM_Update;
+with Intel_GPU_Buffer_Requests;
+with Intel_GPU_Buffer_Requests.Binding;
+with Intel_GPU_Buffer_Reply;
+with Intel_GPU_Buffer_Backing;
 procedure VM_Image_Tests is
    package VM is new Intel_GPU_VM_Image (32);
+   package Snapshots is new VM.Snapshots;
    use VM;
    Backing : Backing_Pages;
    Object : Image;
@@ -52,6 +61,57 @@ procedure VM_Image_Tests is
       end loop;
    end Reject;
 begin
+   -- Native removal captures a full reserved backing arena, while Page_DMA
+   -- deliberately returns zero for unused tables. Do not reject those slots.
+   declare
+      Sparse, Empty, Successor : Image;
+      Pages, Changed, Next_Pages : Backing_Pages;
+   begin
+      for P in Page_Number loop Pages (P) := 16#100000# + Unsigned_64 (P) * 4096; end loop;
+      pragma Assert (not Used_Tables_Match (Empty, Pages));
+      Initialize (Sparse, Pages, OK); pragma Assert (OK);
+      pragma Assert (not Used_Tables_Match (Sparse, Pages));
+      Map_Page (Sparse, 16#200000#, 16#800000#, Write_Back, Read_Write, OK);
+      pragma Assert (OK);
+      Seal (Sparse, OK); pragma Assert (OK);
+      pragma Assert (Used (Sparse) < Page_Number'Last);
+      pragma Assert (Page_DMA (Sparse, Used (Sparse) + 1) = 0);
+      pragma Assert (Pages (Used (Sparse) + 1) /= 0);
+      pragma Assert (Used_Tables_Match (Sparse, Pages));
+      for P in 1 .. Used (Sparse) loop
+         Changed := Pages; Changed (P) := Changed (P) + 4096;
+         pragma Assert (not Used_Tables_Match (Sparse, Changed));
+      end loop;
+      -- After replacement-table adoption, only the new allocation matches.
+      -- Reserved entries remain nonzero; matching does not mutate revisions.
+      for P in Page_Number loop Next_Pages (P) := Pages (P) + 16#100000#; end loop;
+      Prepare_Update (Successor, Sparse, Next_Pages, OK); pragma Assert (OK);
+      Seal_Update (Successor, OK); pragma Assert (OK);
+      Snapshots.Adopt_Committed (Sparse, Successor, OK); pragma Assert (OK);
+      pragma Assert (Used_Tables_Match (Sparse, Next_Pages));
+      pragma Assert (not Used_Tables_Match (Sparse, Pages));
+      declare
+         Epoch : constant Unsigned_64 := Revision (Sparse);
+      begin
+         for Repeat in 1 .. 100 loop
+            pragma Assert (Used_Tables_Match (Sparse, Next_Pages));
+         end loop;
+         pragma Assert (Revision (Sparse) = Epoch);
+      end;
+      Snapshots.Forget_Retired (Sparse, Revision (Sparse), Root_DMA (Sparse), True, OK);
+      pragma Assert (OK and then not Used_Tables_Match (Sparse, Next_Pages));
+   end;
+   declare
+      package Full_VM is new Intel_GPU_VM_Image (4);
+      Full : Full_VM.Image;
+      Pages : constant Full_VM.Backing_Pages := [16#100000#, 16#101000#, 16#102000#, 16#103000#];
+   begin
+      Full_VM.Initialize (Full, Pages, OK); pragma Assert (OK);
+      Full_VM.Map_Page (Full, 16#200000#, 16#800000#, Write_Back, Read_Write, OK);
+      pragma Assert (OK);
+      Full_VM.Seal (Full, OK); pragma Assert (OK);
+      pragma Assert (Full_VM.Used (Full) = 4 and then Full_VM.Used_Tables_Match (Full, Pages));
+   end;
    -- Cache policy is a property of backing, not just of one GPU alias.
    -- Reject conflicts atomically, including at the end of a multi-page map.
    for Existing in Cache_Policy loop
@@ -308,6 +368,38 @@ begin
       Four.Map_Pages (Range_Image, 4096,
                       [16#100000#, 16#200000#], Write_Back, Read_Write, OK);
       pragma Assert (OK and Four.Used (Range_Image) = 4);
+      -- Full directory capacity must not prevent teardown. Clone the sealed
+      -- source just as a live update does, then churn existing leaf routes.
+      -- This tests the image builder, not GPU/TLB retirement or service IPC.
+      Four.Seal (Range_Image, OK); pragma Assert (OK);
+      declare
+         Candidate : Four.Image;
+         Fresh : constant Four.Backing_Pages :=
+           [16#10000#, 16#11000#, 16#12000#, 16#13000#];
+         Data : constant Four.Data_Pages := [16#100000#, 16#200000#];
+      begin
+         Four.Prepare_Update (Candidate, Range_Image, Fresh, OK);
+         pragma Assert (OK and Four.Used (Candidate) = 4);
+         for Cycle in 1 .. 256 loop
+            Four.Unmap_Pages (Candidate, 4096, Data, OK);
+            pragma Assert (OK and Four.Used (Candidate) = 4);
+            pragma Assert (Four.Lookup (Candidate, 4096) = 0);
+            pragma Assert (Four.Lookup (Candidate, 8192) = 0);
+            -- A different directory really does exhaust this four-page
+            -- builder, without poisoning reuse of the existing directory.
+            Four.Map_Page (Candidate, 2 ** 21, 16#300000#,
+                           Write_Back, Read_Write, OK);
+            pragma Assert (not OK and Four.Used (Candidate) = 4);
+            Four.Map_Pages (Candidate, 4096, Data, Write_Back, Read_Write, OK);
+            pragma Assert (OK and Four.Used (Candidate) = 4);
+            pragma Assert (Four.Lookup (Candidate, 4096) = 16#100003#);
+            pragma Assert (Four.Lookup (Candidate, 8192) = 16#200003#);
+         end loop;
+         Four.Unmap_Pages (Candidate, 4096, Data, OK); pragma Assert (OK);
+         Four.Seal_Update (Candidate, OK); pragma Assert (OK);
+         pragma Assert (Four.Lookup (Range_Image, 4096) = 16#100003#);
+         pragma Assert (Four.Lookup (Range_Image, 8192) = 16#200003#);
+      end;
    end;
    for Policy in Cache_Policy loop
       declare
@@ -470,6 +562,236 @@ begin
       pragma Assert (Root_DMA (Third) = Newer (1));
       Prepare_Update (Target, Source, Fresh, OK); pragma Assert (not OK);
    end;
+   for Fault in 0 .. 4 loop
+      declare
+         T : Image;
+         Hardware : Saved_Image;
+         Writes, Invalidations : Natural := 0;
+         Held : Boolean := True;
+         function Exclusive return Boolean is (Held);
+         procedure Write_Leaf
+           (Table_DMA : Unsigned_64; Index : Table_Index;
+            Expected, Replacement : Unsigned_64; Success : out Boolean) is
+         begin
+            Writes := Writes + 1;
+            Success := False;
+            if Fault = Writes then return; end if;
+            for P in Page_Number loop
+               if Page_DMA (T, P) = Table_DMA then
+                  pragma Assert (Hardware (P) (Index) = Expected);
+                  Hardware (P) (Index) := Replacement;
+                  Success := True;
+                  return;
+               end if;
+            end loop;
+         end Write_Leaf;
+         procedure Invalidate (Success : out Boolean) is
+         begin
+            Invalidations := Invalidations + 1;
+            -- Metadata must not claim removal before completed invalidation.
+            pragma Assert (Lookup (T, 4096) /= 0 and Lookup (T, 8192) /= 0);
+            Success := Fault /= 3;
+            if Fault = 4 then Held := False; end if;
+         end Invalidate;
+         package Removal is new VM.Removal (Exclusive, Write_Leaf, Invalidate);
+         State : Removal.Controller;
+         Epoch, Root : Unsigned_64;
+      begin
+         Initialize (T, Backing, OK); pragma Assert (OK);
+         Map_Pages (T, 4096, Data_Pages'[16#900000#, 16#A00000#],
+           Write_Back, Read_Write, OK); pragma Assert (OK);
+         Seal (T, OK); pragma Assert (OK);
+         Epoch := Revision (T); Root := Root_DMA (T);
+         for P in Page_Number loop
+            for I in Table_Index loop Hardware (P) (I) := Entry_Value (T, P, I); end loop;
+         end loop;
+         Removal.Execute (State, T, Epoch, 4096,
+           Data_Pages'[16#900000#, 16#B00000#], OK);
+         pragma Assert (not OK and Writes = 0 and not Removal.Failed (State));
+         Removal.Execute (State, T, Epoch + 1, 4096,
+           Data_Pages'[16#900000#, 16#A00000#], OK);
+         pragma Assert (not OK and Writes = 0);
+         Removal.Execute (State, T, Epoch, 4096,
+           Data_Pages'[16#900000#, 16#A00000#], OK);
+         pragma Assert (OK = (Fault = 0));
+         pragma Assert (Root_DMA (T) = Root and Sealed (T) and Used (T) = 4);
+         if Fault = 0 then
+            pragma Assert (Revision (T) = Epoch + 1 and Lookup (T, 4096) = 0
+              and Lookup (T, 8192) = 0 and Writes = 2 and Invalidations = 1);
+         else
+            pragma Assert (Removal.Failed (State) and Revision (T) = Epoch
+              and Lookup (T, 4096) /= 0 and Lookup (T, 8192) /= 0);
+            declare
+               Before : constant Natural := Writes;
+            begin
+               Held := True;
+               Removal.Execute (State, T, Epoch, 4096,
+                 Data_Pages'[16#900000#, 16#A00000#], OK);
+               pragma Assert (not OK and Writes = Before);
+            end;
+         end if;
+      end;
+   end loop;
+   declare
+      T : Image;
+      Hardware : Saved_Image;
+      Scratch : constant Intel_GPU_PPGTT_Scratch.Backing_Pages :=
+        [16#D00000#, 16#D01000#, 16#D02000#, 16#D03000#];
+      Writes : Natural := 0;
+      Held : Boolean := False;
+      function Exclusive return Boolean is (Held);
+      procedure Write_Leaf
+        (Table_DMA : Unsigned_64; Index : Table_Index;
+         Expected, Replacement : Unsigned_64; Success : out Boolean) is
+      begin
+         Writes := Writes + 1;
+         Success := False;
+         pragma Assert (Replacement = Intel_GPU_PPGTT_Scratch.Fallback (Scratch, 0));
+         for P in Page_Number loop
+            if Page_DMA (T, P) = Table_DMA then
+               pragma Assert (Hardware (P) (Index) = Expected);
+               Hardware (P) (Index) := Replacement;
+               Success := True;
+               return;
+            end if;
+         end loop;
+      end Write_Leaf;
+      procedure Invalidate (Success : out Boolean) is
+      begin Success := True; end Invalidate;
+      package Removal is new VM.Removal (Exclusive, Write_Leaf, Invalidate);
+      State : Removal.Controller;
+      Count : Natural;
+   begin
+      Initialize (T, Backing, OK, Scratch); pragma Assert (OK);
+      Map_Pages (T, 16#1FF000#, Data_Pages'[16#900000#, 16#A00000#, 16#B00000#],
+        Write_Back, Read_Write, OK); pragma Assert (OK);
+      Seal (T, OK); pragma Assert (OK);
+      Count := Used (T);
+      for P in Page_Number loop
+         for I in Table_Index loop Hardware (P) (I) := Entry_Value (T, P, I); end loop;
+      end loop;
+      Removal.Execute (State, T, Revision (T), 16#1FF000#,
+        Data_Pages'[16#900000#, 16#A00000#], OK);
+      pragma Assert (not OK and Writes = 0 and not Removal.Failed (State));
+      Held := True;
+      Removal.Execute (State, T, Revision (T), 2 ** 48 - 4096,
+        Data_Pages'[16#900000#, 16#A00000#], OK);
+      pragma Assert (not OK and Writes = 0);
+      Removal.Execute (State, T, Revision (T), 16#1FF000#,
+        Data_Pages'[16#900000#, 16#A00000#], OK);
+      pragma Assert (OK and Writes = 2 and Used (T) = Count);
+      pragma Assert (Lookup (T, 16#1FF000#) = 0 and Lookup (T, 16#200000#) = 0
+        and Lookup (T, 16#201000#) = 16#B00003#);
+      for P in Page_Number loop
+         for I in Table_Index loop
+            pragma Assert (Hardware (P) (I) = Entry_Value (T, P, I));
+         end loop;
+      end loop;
+   end;
+   for Fail_Invalidate in Boolean loop
+      declare
+         T : Image;
+         Held : Boolean := True;
+         Invalidated : Boolean := False;
+         Writes : Natural := 0;
+         function Exclusive return Boolean is (Held);
+         procedure Write_Leaf
+           (Table_DMA : Unsigned_64; Index : Table_Index;
+            Expected, Replacement : Unsigned_64; Success : out Boolean) is
+         begin
+            pragma Assert (Table_DMA /= 0 and Index = 1 and Expected = 16#900003#
+              and Replacement = 0 and not Invalidated);
+            Writes := Writes + 1;
+            Success := True;
+         end Write_Leaf;
+         procedure Invalidate (Success : out Boolean) is
+         begin
+            pragma Assert (Lookup (T, 4096) = 16#900003#);
+            Invalidated := not Fail_Invalidate;
+            Success := Invalidated;
+         end Invalidate;
+         package Removal is new VM.Removal (Exclusive, Write_Leaf, Invalidate);
+         R : Removal.Controller;
+         procedure Drain (Success : out Boolean) is
+         begin Success := Held; end Drain;
+         procedure Publish (Success : out Boolean) is
+         begin
+            Removal.Publish (R, T, Revision (T), 4096,
+              Data_Pages'[16#900000#], Success);
+         end Publish;
+         procedure Resume (Success : out Boolean) is
+         begin Removal.Commit (R, T, Invalidated, Success); end Resume;
+         package Coordinator is new Intel_GPU_VM_Update
+           (Exclusive, Drain, Publish, Invalidate, Resume);
+         State : Coordinator.State;
+         Result : Coordinator.Result;
+         use type Coordinator.Result;
+         function Session_Of (Sender, Stamp : Unsigned_64) return Unsigned_64 is
+           (if Sender = 42 and Stamp = 99 then 99 else 0);
+         package Buffers is new Intel_GPU_Buffer_Requests (Session_Of, Exclusive);
+         package Binding is new Buffers.Binding (VM);
+         Service : Buffers.Service;
+         Ticket : Buffers.Ticket;
+         Reply, Request : Buffers.Words;
+         Captures : Natural := 0;
+         procedure Capture
+           (Backing : Intel_GPU_Buffer_Reply.Backing;
+            GPU, Offset, Bytes, Revision : Unsigned_64; Accepted : out Boolean) is
+         begin
+            Captures := Captures + 1;
+            pragma Assert (Backing.Ready and GPU = 4096 and Offset = 0 and Bytes = 4096
+              and Revision = VM.Revision (T)
+              and Intel_GPU_Buffer_Reply.Page_Address (Backing, 0) = 16#900000#);
+            Accepted := True;
+         end Capture;
+         procedure Handle_Removal is new Binding.Handle_In_Place (Coordinator, True, Capture);
+      begin
+         Initialize (T, Backing, OK); pragma Assert (OK);
+         Map_Page (T, 4096, 16#900000#, Write_Back, Read_Write, OK); pragma Assert (OK);
+         Seal (T, OK); pragma Assert (OK);
+         Buffers.Handle (Service, 42, 99, Buffers.Label, 4, 0, 0,
+           [1, Buffers.Create, 4096, 0], Reply, Ticket);
+         pragma Assert (Ticket /= 0);
+         Buffers.Complete (Service, Ticket, Intel_GPU_Buffer_Reply.From_Linear
+           (16#900000#, Intel_GPU_Buffer_Backing.CPU_Base, 4096, 16#900000#), Reply, OK);
+         pragma Assert (OK and Reply (0) = Buffers.OK);
+         Request := [16#10001#, Reply (2), 4096, 4096];
+         Handle_Removal (Service, T, State, 99, 43, 99, Binding.Update_Label,
+           4, 0, 0, Request, Reply);
+         pragma Assert (Reply (0) = Buffers.Denied and Captures = 0 and Writes = 0);
+         Request (0) := 1; -- bind must not accidentally enter the removal path
+         Handle_Removal (Service, T, State, 99, 42, 99, Binding.Update_Label,
+           4, 0, 0, Request, Reply);
+         pragma Assert (Reply (0) = Buffers.Bad_Request and Captures = 0);
+         Request (0) := 16#10001# + 2 ** 32;
+         Handle_Removal (Service, T, State, 99, 42, 99, Binding.Update_Label,
+           4, 0, 0, Request, Reply);
+         pragma Assert (Reply (0) = Buffers.Unavailable and Captures = 0);
+         Request (0) := 16#10001#;
+         Coordinator.Execute (State, 1, Result);
+         pragma Assert (Result = Coordinator.Rejected and Writes = 0);
+         Handle_Removal (Service, T, State, 99, 42, 99, Binding.Update_Label,
+           4, 0, 0, Request, Reply);
+         pragma Assert (Captures = 1);
+         if Fail_Invalidate then
+            pragma Assert (Reply (0) = Buffers.Unavailable
+              and not Coordinator.Can_Submit (State)
+              and Coordinator.Generation (State) = 0 and Lookup (T, 4096) /= 0);
+            Removal.Commit (R, T, False, OK);
+            pragma Assert (not OK and Removal.Failed (R));
+            Removal.Commit (R, T, True, OK);
+            pragma Assert (not OK); -- consumed failure receipt cannot replay
+         else
+            pragma Assert (Reply (0) = Buffers.OK and Reply (2) = 1
+              and Coordinator.Can_Submit (State) and Coordinator.Generation (State) = 1
+              and Lookup (T, 4096) = 0 and not Removal.Failed (R));
+         end if;
+         Coordinator.Execute (State, 0, Result);
+         pragma Assert (Result = Coordinator.Rejected and Writes = 1);
+      end;
+   end loop;
+   Ada.Text_IO.Put_Line ("Allocation-free removal coordinator PASS: wire generation, stale request denial, commit after invalidate, quarantine and non-replay (hosted)");
+   Ada.Text_IO.Put_Line ("Allocation-free removal PASS: whole-range preflight, stable tables, scratch fallback across PT boundary, delayed metadata commit, write/invalidation/authority failures quarantined (hosted callbacks)");
    Ada.Text_IO.Put_Line ("VM update candidate PASS: rebased directories, retained leaves, disjoint backing, source immutability and two generations (not GPU published)");
    Ada.Text_IO.Put_Line ("VM unmap PASS: expected backing, atomic rejection, boundaries, aliases, empty seal, remap, sealed denial (offline only)");
    Ada.Text_IO.Put_Line

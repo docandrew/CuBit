@@ -5,6 +5,15 @@
 #include <assert.h>
 #include <stdio.h>
 static unsigned queries, drains, closes, polls;
+static bool fail_directory, fail_record;
+void *__real_realloc(void *, size_t);
+void *__real_calloc(size_t, size_t);
+void *__wrap_realloc(void *, size_t);
+void *__wrap_calloc(size_t, size_t);
+void *__wrap_realloc(void *ptr, size_t bytes)
+{ return fail_directory ? NULL : __real_realloc(ptr, bytes); }
+void *__wrap_calloc(size_t count, size_t bytes)
+{ return fail_record ? NULL : __real_calloc(count, bytes); }
 static uint32_t health, retirement=4, close_result;
 static uint32_t policy=1;
 static unsigned memory_queries, creates;
@@ -42,6 +51,21 @@ int main(void)
    }
    physical.memory.need_flush=true;
    for(unsigned i=0;i<10;i++) d[i].physical=&physical;
+   /* Host allocation failure precedes authority transfer. The provider still
+    * owns exactly the original pin and no driver request may have occurred. */
+   unsigned failed_notifications=0;
+   struct anv_cubit_endpoint_pin failed_pin={&failed_notifications,retired};
+   for(unsigned failure=0;failure<2;failure++) {
+      fail_directory=failure==0;
+      fail_record=failure==1;
+      assert(anv_cubit_attach_owned_session(&d[0],63,&failed_pin)==
+             VK_ERROR_OUT_OF_HOST_MEMORY);
+      assert(failed_pin.context==&failed_notifications && failed_pin.retired==retired);
+      assert(!failed_notifications && !d[0].cubit_cpu_mappings);
+      assert(!anv_cubit_memory_slot_retained(63));
+      assert(!queries && !memory_queries && !drains && !closes && !polls);
+   }
+   fail_directory=false; fail_record=false;
    assert(anv_cubit_attach_session(NULL,63)==VK_ERROR_INITIALIZATION_FAILED);
    assert(anv_cubit_attach_session(&d[0],64)==VK_ERROR_INITIALIZATION_FAILED);
    assert(!queries && !closes);
@@ -148,5 +172,5 @@ int main(void)
    assert(!pin.retired && notifications==130);
    assert(anv_cubit_memory_poll()==2 && notifications==130);
    assert(anv_cubit_memory_poll()==2 && notifications==130);
-   puts("ANV session attach PASS: health-checked ownership, alias denial, retained failure cleanup (mock IPC)");
+   puts("ANV session attach PASS: allocation-failure pin ownership, health-checked transfer, alias denial, retained failure cleanup (mock IPC)");
 }

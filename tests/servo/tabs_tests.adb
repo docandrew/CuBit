@@ -36,5 +36,15 @@ begin
          end loop;
       end loop;
    end loop;
+   for Width in 800 .. 1024 loop
+      pragma Assert (Servo_Tab_Geometry.Rail (-100, Width) = 128);
+      pragma Assert (Servo_Tab_Geometry.Rail (10_000, Width) = 400);
+      for Rail in Servo_Tab_Geometry.Rail_Size loop
+         P := Servo_Tab_Geometry.Page (Width, 600, True, Rail);
+         pragma Assert (P.X = Rail and P.X + P.W = Width and P.W >= 320);
+         P := Servo_Tab_Geometry.Tab (Width, 0, True, 1, Rail);
+         pragma Assert (P.X + P.W = Rail - 8);
+      end loop;
+   end loop;
    Ada.Text_IO.Put_Line ("Servo tabs PASS: 1000 capacity/parking/reuse/selection cycles and geometry");
 end Tabs_Tests;

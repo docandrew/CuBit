@@ -47,14 +47,14 @@ begin
    -- New folder, save, and two-step deletion through retained pointer actions.
    Click (230, 136);
    Input (INPUT_KEY_DOWN, 16#1C#); pragma Assert (Bookmark_IO_Stub.Saves = 2);
-   Click (462, 386); pragma Assert (Bookmark_IO_Stub.Saves = 2);
-   Click (462, 386); pragma Assert (Bookmark_IO_Stub.Saves = 3);
+   Click (484, 370); pragma Assert (Bookmark_IO_Stub.Saves = 2);
+   Click (484, 370); pragma Assert (Bookmark_IO_Stub.Saves = 3);
    -- A stale editor in another window cannot overwrite newer data.
    Servo_Bookmarks.Handle (Other, (kind => INPUT_KEY_DOWN, payload0 => 16#1C#, others => <>), Result);
    pragma Assert (Bookmark_IO_Stub.Saves = 3);
    Servo_Bookmarks.Open (D, "https://servo.org/", "Servo", False);
    Servo_Bookmarks.Draw (C, D, CuBit_Alloy);
-   Click (548, 386); pragma Assert (Result = Servo_Bookmarks.Navigate);
+   Click (580, 370); pragma Assert (Result = Servo_Bookmarks.Navigate);
    pragma Assert (Servo_Bookmarks.Location (D) = "https://servo.org/");
    Ada.Text_IO.Put_Line ("PASS bookmark dialog: edit/retry, pointer folder creation/deletion, stale-window rejection, open URL");
 end Bookmark_Preview;

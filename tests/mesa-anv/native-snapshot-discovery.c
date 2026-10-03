@@ -8,6 +8,7 @@
 #include <cubit/debug.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 
 int cubit_test_snapshot_discovery(void);
 void cubit_test_mesa_init_stage(const char *, int, int);
@@ -79,6 +80,75 @@ static bool check_triangle_dispatch(void)
    return true;
 }
 
+/* Query real native Mesa capability policy, never an import or device open.
+ * A CPU presentation grant must not accidentally select Linux FD/dma-buf
+ * handling merely because the generic external-memory vocabulary exists. */
+static bool check_external_policy(VkInstance instance, VkPhysicalDevice physical)
+{
+   PFN_vkEnumerateDeviceExtensionProperties extensions = (void *)
+      anv_GetInstanceProcAddr(instance, "vkEnumerateDeviceExtensionProperties");
+   PFN_vkGetPhysicalDeviceExternalBufferProperties buffer = (void *)
+      anv_GetInstanceProcAddr(instance, "vkGetPhysicalDeviceExternalBufferProperties");
+   PFN_vkGetPhysicalDeviceImageFormatProperties2 image = (void *)
+      anv_GetInstanceProcAddr(instance, "vkGetPhysicalDeviceImageFormatProperties2");
+   if (!extensions || !buffer || !image) return false;
+   static VkExtensionProperties properties[512];
+   uint32_t count = 512;
+   if (extensions(physical, NULL, &count, properties) != VK_SUCCESS || count > 512)
+      return false;
+   const char *forbidden[] = {
+      "VK_KHR_external_memory_fd", "VK_KHR_external_fence_fd",
+      "VK_KHR_external_semaphore_fd", "VK_EXT_external_memory_dma_buf",
+      "VK_EXT_external_memory_host", "VK_EXT_external_memory_acquire_unmodified",
+      "VK_EXT_image_drm_format_modifier", "VK_EXT_physical_device_drm",
+   };
+   for (unsigned i = 0; i < count; i++)
+      for (unsigned j = 0; j < sizeof(forbidden) / sizeof(forbidden[0]); j++)
+         if (!strcmp(properties[i].extensionName, forbidden[j])) {
+            log_message("MESA-SNAPSHOT unexpected extension %s\n", forbidden[j]);
+            return false;
+         }
+   const VkExternalMemoryHandleTypeFlagBits types[] = {
+      VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
+      VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
+      VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT,
+   };
+   for (unsigned i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
+      const VkPhysicalDeviceExternalBufferInfo input = {
+         .sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_BUFFER_INFO,
+         .usage=VK_BUFFER_USAGE_TRANSFER_SRC_BIT, .handleType=types[i],
+      };
+      VkExternalBufferProperties output = {
+         .sType=VK_STRUCTURE_TYPE_EXTERNAL_BUFFER_PROPERTIES,
+         .externalMemoryProperties={.externalMemoryFeatures=~0u, .exportFromImportedHandleTypes=~0u},
+      };
+      buffer(physical, &input, &output);
+      if (output.externalMemoryProperties.externalMemoryFeatures ||
+          output.externalMemoryProperties.exportFromImportedHandleTypes)
+         return false;
+      const VkPhysicalDeviceExternalImageFormatInfo external = {
+         .sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO,
+         .handleType=types[i],
+      };
+      VkPhysicalDeviceImageFormatInfo2 format = {
+         .sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2,
+         .pNext=&external, .format=VK_FORMAT_B8G8R8A8_UNORM,
+         .type=VK_IMAGE_TYPE_2D, .tiling=VK_IMAGE_TILING_OPTIMAL,
+         .usage=VK_IMAGE_USAGE_SAMPLED_BIT,
+      };
+      VkImageFormatProperties2 result = {.sType=VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2};
+      if (image(physical, &format, &result) != VK_ERROR_FORMAT_NOT_SUPPORTED)
+         return false;
+      /* Positive control: ordinary private images remain supported. */
+      format.pNext = NULL;
+      if (image(physical, &format, &result) != VK_SUCCESS ||
+          !result.imageFormatProperties.maxExtent.width)
+         return false;
+   }
+   log_message("MESA-SNAPSHOT external policy: 8 extensions absent, 3 handle types rejected, private images supported (NO GPU)\n");
+   return true;
+}
+
 static bool retain(void *context)
 {
    if (context != &budget || references >= 8) return false;
@@ -101,7 +171,8 @@ static bool query(void *context, const struct cubit_gpu_query_message *request,
 {
    if (context != &budget || !references || ++queries > 32 ||
        request->length != 4 || request->flags || request->reserved ||
-       request->words[0] != 1 || request->words[2] || request->words[3])
+       request->words[0] != (request->label == 0xa2e ? 2 : 1) ||
+       request->words[2] || request->words[3])
       return false;
    *reply = (struct cubit_gpu_query_message){ .label = request->label, .length = 4 };
    if (request->label == 0xa2e && request->words[1] == 0) {
@@ -128,7 +199,12 @@ static bool query(void *context, const struct cubit_gpu_query_message *request,
 int cubit_test_snapshot_discovery(void)
 {
    if (!check_triangle_dispatch()) return 1;
-   const VkInstanceCreateInfo create = { .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
+   const VkApplicationInfo app = {
+      .sType=VK_STRUCTURE_TYPE_APPLICATION_INFO, .apiVersion=VK_API_VERSION_1_1,
+   };
+   const VkInstanceCreateInfo create = {
+      .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pApplicationInfo=&app,
+   };
    VkInstance handle = VK_NULL_HANDLE;
    VkResult result = anv_CreateInstance(&create, NULL, &handle);
    log_message("MESA-SNAPSHOT create=%d (NO GPU)\n", result);
@@ -144,6 +220,12 @@ int cubit_test_snapshot_discovery(void)
       PFN_vkEnumeratePhysicalDevices enumerate = (PFN_vkEnumeratePhysicalDevices)
          anv_GetInstanceProcAddr(handle, "vkEnumeratePhysicalDevices");
       result = enumerate ? enumerate(handle, &count, NULL) : VK_ERROR_INITIALIZATION_FAILED;
+      if (result == VK_SUCCESS && count == 1) {
+         VkPhysicalDevice physical = VK_NULL_HANDLE;
+         result = enumerate(handle, &count, &physical);
+         if (result == VK_SUCCESS && (!physical || !check_external_policy(handle, physical)))
+            result = VK_ERROR_INITIALIZATION_FAILED;
+      }
    }
    log_message("MESA-SNAPSHOT enumerate=%d count=%u queries=%u (NO GPU)\n",
                result, count, queries);

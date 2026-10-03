@@ -27,6 +27,26 @@ package Compositor_Damage with SPARK_Mode, Pure is
    function Covers (S : State; R : Box) return Boolean;
    procedure Clear (S : out State)
      with Post => Valid (S) and Count (S) = 0;
+   -- Move pending damage into an empty frame snapshot. Reject without
+   -- mutation when a prior frame still owns the snapshot or no work exists.
+   -- New input can immediately accumulate in Pending while Frame is held.
+   procedure Capture (Pending, Frame : in out State; Accepted : out Boolean)
+     with Pre => Valid (Pending) and Valid (Frame),
+       Post => Valid (Pending) and Valid (Frame) and
+         Accepted = (Count (Pending'Old) > 0 and Count (Frame'Old) = 0) and
+         (if Accepted then Frame = Pending'Old and Count (Pending) = 0
+          else Pending = Pending'Old and Frame = Frame'Old);
+   -- After confirmed renderer quiescence, return an unpublished snapshot to
+   -- incoming damage without losing updates received during rendering. The
+   -- failed writer's repaint history must separately be invalidated.
+   procedure Restore (Pending, Frame : in out State)
+     with Pre => Valid (Pending) and Valid (Frame),
+       Post => Valid (Pending) and Valid (Frame) and Count (Frame) = 0 and
+         (for all I in 1 .. Count (Pending'Old) =>
+            Covers (Pending, Item (Pending'Old, I))) and
+         (for all I in 1 .. Count (Frame'Old) =>
+            Covers (Pending, Item (Frame'Old, I))) and
+         (if Count (Frame'Old) = 0 then Pending = Pending'Old);
    procedure Add (S : in out State; R : Box)
      with Pre => Valid (S) and Valid (R),
        Post => Valid (S) and Count (S) > 0 and Covers (S, R) and

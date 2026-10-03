@@ -1,5 +1,76 @@
 # Native grant transport probe
 
+## Current reservation-reply validation status (2026-10-02)
+
+Positive reciprocal run31915 also completed with exit0 in the same private
+snapshot, after native build47220. Logs are
+`tmp/admission-positive-{boot,serial}.log`; all four admission markers,
+GPU-MEMORY-QUERY-IPC, baseline async-ipc and final fault scan passed. The
+dispatcher recorded four actual activity waits. Eleven admission/dispatcher/
+controller/session/probe files compare equal to main.
+
+The exact five-file fixture delta is retained at `tmp/positive-fixture.patch`
+inside that snapshot. It includes the test app/project hooks plus private
+procmgr bootstrap code, and is for a fresh private snapshot only (not on top
+of the negative preparation helper). The bootstrap is startup/package-gated
+to the IPC client identity, inspecting its existing service endpoint before
+minting self/driver-scoped CSPACE grants and tagged grantable endpoints. Both
+client and departing fixtures share that identity. No global CSPACE grant is
+used, and production procmgr is unchanged. Pressure reply slots24..39 remain
+disjoint from retained recipient slots40..55. The synthetic server still
+binds its broker from the first request: that fixture policy must never be
+copied into the production driver.
+
+This proves native reciprocal endpoint installation, attenuation and session
+authorization/cancellation with a synthetic controller. It does not prove
+GuC execution, GPU resource retirement, safe capability-slot reuse, production
+startup policy, or hardware acceleration. The saved-reply launch probe is not
+part of this run.
+
+`prepare-admission-probe.py WORKSPACE` reproducibly installs the negative
+admission test in a complete `tools/build-workspace.py` snapshot. Invoke it
+under the snapshot's `run` lock, then build `ipctest-server ipctest-client`
+and run `async-ipc` with a fresh scratch ext2 disk. It modifies only the two
+test applications and their project source paths; it does not grant any new
+authority or enable the positive delegation fixture. Require the runner's
+ordinary pass/fault checks AND `GPU-ADMISSION-IPC: PASS async reserve,
+delegation denied, abort` AND the explicit recipient-slot line.
+
+Native run26219 completed with exit0 in
+`.build-workspaces/graphics-admission-reply-qmsr03hg`, with logs
+`tmp/admission-kernel-denial-boot.log` and
+`tmp/admission-kernel-denial-serial.log`. The inspected self endpoint lacks
+GRANT; `GPU-ADMISSION-IPC self endpoint inspected=TRUE` ensures the adapter
+reaches its kernel delegation call rather than failing the endpoint precheck.
+The explicit slot40 reply, abort completion, baseline async-ipc markers and
+runner final fault scan passed. Nine tested admission/control/session/probe
+source files compare equal to the current main checkout. This is real CuBit
+IPC on four QEMU TCG CPUs with a synthetic controller, not successful
+delegation, Intel hardware execution or Mesa rendering. Earlier run64070 also
+passed but used an absent application source: it proves precheck rejection,
+not kernel delegation denial. Do not conflate the two results.
+
+`nix develop -c python3 tests/mesa-anv/native-integration/test-prepare.py`
+passed five preparation/guard tests, including refusing the source checkout,
+an incomplete snapshot, changed inputs, ambiguous anchors and repeated setup.
+All anchors are validated before any file edits. This tests preparation only.
+
+Successful Reserve now returns the driver recipient slot40..55 in reply word3;
+Activate/Abort replies still return zero there. Rebuild both broker and
+controller; historical native PASS evidence below predates this wire change.
+The admission probe now requires a valid explicit slot before its negative
+delegation/abort test can pass, and prints
+`GPU-ADMISSION-IPC reserve recipient slot=`. Both synthetic servers use the
+controller's issued-record lookup for activation endpoint inspection, not
+session-tag arithmetic. These checks do not enable slot reuse.
+
+Both updated probe dependency closures compiled successfully under Nix against
+the native CuBit runtime in `/tmp/cubit-admission-probe-compile.nLZVkk`.
+That was compile-only evidence, superseded for the negative admission path
+by the fresh native runs above. The saved-reply launcher path still
+needs a rebuilt fixture. Do not copy the synthetic server's first-request authorization
+binding into production or relax the real bootstrap policy to run the probe.
+
 ## Launcher and saved-reply broker probe
 
 `GPU_Launch_Probe` exercises `Intel_Render_Launch_Client` and

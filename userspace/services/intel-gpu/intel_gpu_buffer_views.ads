@@ -28,7 +28,7 @@ package Intel_GPU_Buffer_Views is
    -- edits); the kernel then checks the endpoint's generation during creation.
    -- Registry must contain application BOs only (never context/page tables).
    procedure Share
-     (Object : in out View; Buffers : Intel_GPU_Buffer_Handles.Registry;
+     (Object : in out View; Buffers : in out Intel_GPU_Buffer_Handles.Registry;
       Session : Intel_GPU_Buffer_Handles.Session_ID;
       ID : Intel_GPU_Buffer_Handles.Handle;
       Recipient : CuBit.Messages.CapabilitySlot;
@@ -40,6 +40,13 @@ package Intel_GPU_Buffer_Views is
    -- This is CPU sharing authority, not a GPU-completion or scanout fence.
    procedure Retire (Object : in out View);
    procedure Poll_Retirement (Object : in out View);
+   -- Registry-backed exports retain their BO even after name closure. The
+   -- original stable registry must outlive the view. No-registry polling is
+   -- sufficient only for the externally retained Share_Completed probe.
+   procedure Retire
+     (Object : in out View; Buffers : in out Intel_GPU_Buffer_Handles.Registry);
+   procedure Poll_Retirement
+     (Object : in out View; Buffers : in out Intel_GPU_Buffer_Handles.Registry);
    -- Reuse bookkeeping only after the kernel confirms grant retirement.
    -- Caller must replace its public mapping identity before sharing again.
    procedure Recycle (Object : in out View; Accepted : out Boolean);
@@ -49,5 +56,7 @@ private
    type View is limited record
       Current : View_State := Empty;
       Reference : CuBit.Grant_References.Reference;
+      Backing_Reference : Intel_GPU_Buffer_Handles.Retained_Reference;
+      Pinned : Boolean := False;
    end record;
 end Intel_GPU_Buffer_Views;

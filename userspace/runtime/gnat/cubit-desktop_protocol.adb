@@ -286,28 +286,6 @@ package body CuBit.Desktop_Protocol with SPARK_Mode is
       [Unsigned_64 (Item.Surface), Item.After_Serial,
        (if Item.Kind = Wait_Input then Item.Deadline else 0), 0]);
 
-   function Valid_Input_Envelope (Item : Input_Envelope) return Boolean is
-     (case Item.Kind is
-         when No_Input =>
-           Item.Payload0 = 0 and Item.Payload1 = 0 and not Item.More_Pending,
-         when Key_Pressed | Key_Released =>
-           Item.Payload0 <= 127 and Item.Payload1 <= 15,
-         when Text_Entered => Item.Payload0 <= 255 and Item.Payload1 = 0,
-         when Close_Requested => Item.Payload0 = 0 and Item.Payload1 = 0,
-         when Surface_Configured =>
-           Item.Payload0 <= Unsigned_64 (Pixel_Extent'Last) and
-           Item.Payload1 <= Unsigned_64 (Pixel_Extent'Last),
-         when Pointer_Moved | Pointer_Pressed | Pointer_Released |
-              Wheel_Turned | Input_Resynchronized =>
-           Item.Payload0 mod Word_Radix <= Unsigned_64 (Pixel_Coordinate'Last)
-           and Item.Payload0 / Word_Radix <=
-             Unsigned_64 (Pixel_Coordinate'Last) and
-           (case Item.Kind is
-               when Pointer_Moved | Pointer_Pressed | Pointer_Released =>
-                 Item.Payload1 < Word_Radix,
-               when Input_Resynchronized => Item.Payload1 / Word_Radix <= 15,
-               when others => True));
-
    function Decode_Input_Result
      (Wire : Wire_Message; Expected : Input_Operation) return Input_Result
    is

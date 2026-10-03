@@ -3,6 +3,16 @@
 #include "../../userspace/mesa/anv/native_gpu_memory.h"
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
+
+#ifdef CUBIT_TEST_ALLOC_FAILURE
+static bool fail_metadata;
+void *__real_calloc(size_t count, size_t bytes);
+void *__wrap_calloc(size_t count, size_t bytes)
+{
+   return fail_metadata ? NULL : __real_calloc(count, bytes);
+}
+#endif
 
 static uint32_t map_result, acquire_result, return_result, retire_result;
 static unsigned maps, acquires, returns, retires;
@@ -222,15 +232,49 @@ int main(void)
       struct cubit_cpu_mapping_tracker t = {.slot = 63};
       uint64_t address;
       maps = acquires = returns = retires = 0;
-      for (unsigned i = 0; i < CUBIT_CPU_MAPPING_CAPACITY; i++)
+      for (unsigned i = 0; i < 4096; i++) {
          assert(cubit_cpu_tracker_map(&t, 1, 4096, 8192, 1, &address) == 0);
-      assert(cubit_cpu_tracker_map(&t, 1, 4096, 8192, 1, &address) == 5);
-      assert(address == 0 && maps == CUBIT_CPU_MAPPING_CAPACITY);
-      assert(t.used == CUBIT_CPU_MAPPING_CAPACITY && !t.lost);
+         cubit_cpu_tracker_records(&t)[i].bo_offset = i;
+      }
+      assert(t.used == 4096 && t.capacity == 4096 && !t.lost);
+      for (unsigned i = 0; i < t.used; i++)
+         assert(cubit_cpu_tracker_records(&t)[i].bo_offset == i);
+      retire_result = 4;
+      assert(!cubit_cpu_tracker_drain(&t));
+      assert(t.grown && t.used == 4096 && returns == 4096);
+      retire_result = 0;
       assert(cubit_cpu_tracker_drain(&t));
+      assert(!t.grown && t.used == 0 && t.capacity == 0);
+      assert(returns == 4096 && retires == 8192);
       /* Even a full array of retired records cannot revive a lost tracker. */
       assert(cubit_cpu_tracker_map(&t, 1, 4096, 8192, 1, &address) == 5);
-      assert(address == 0 && maps == returns && returns == retires);
+      assert(address == 0 && maps == returns);
    }
-   puts("Mesa mapping lifetime PASS: borrow-once, pending retirement, retired-only reclamation");
+#ifdef CUBIT_TEST_ALLOC_FAILURE
+   {
+      struct cubit_cpu_mapping_tracker t = {.slot = 63};
+      uint64_t address;
+      maps = acquires = returns = retires = 0;
+      map_result = acquire_result = return_result = retire_result = 0;
+      for (unsigned capacity = 64; capacity <= 1024; capacity *= 2) {
+         while (t.used < capacity)
+            assert(cubit_cpu_tracker_map(&t, 1, 4096, 8192, 1, &address) == 0);
+         struct cubit_cpu_mapping *saved = cubit_cpu_tracker_records(&t);
+         fail_metadata = true;
+         assert(cubit_cpu_tracker_map(&t, 1, 4096, 8192, 1, &address) == 5);
+         assert(address == 0 && !t.lost && t.used == capacity);
+         assert(cubit_cpu_tracker_records(&t) == saved);
+         assert(maps == capacity && acquires == capacity && !returns && !retires);
+         for (unsigned i = 0; i < capacity; i++)
+            assert(saved[i].state == CUBIT_MAP_LIVE && saved[i].address == 0x100000);
+         fail_metadata = false;
+         assert(cubit_cpu_tracker_map(&t, 1, 4096, 8192, 1, &address) == 0);
+         assert(t.capacity == capacity * 2 && t.used == capacity + 1);
+      }
+      assert(cubit_cpu_tracker_drain(&t));
+      assert(!t.grown && maps == returns && returns == retires);
+   }
+   puts("Mapping growth OOM PASS: five boundaries, no IPC on failure, existing borrows retained");
+#endif
+   puts("Mesa mapping lifetime PASS: 4096 live mappings, borrow-once, pending retirement, retired-only reclamation");
 }

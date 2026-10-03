@@ -3,7 +3,6 @@ with CuBit.Capability_Grants;
 with Intel_GPU_Broker_Request;
 with Intel_GPU_Broker_Launches;
 with Intel_GPU_Render_Control;
-with Intel_GPU_Render_Sessions;
 with Intel_Render_Broker;
 with Intel_Render_Launch_Client;
 package body GPU_Launch_Probe is
@@ -73,6 +72,7 @@ package body GPU_Launch_Probe is
       Msg, Response : Message := NULL_MESSAGE;
       Payload : GPU.Words;
       Identity, Ignore : Unsigned_64;
+      Stored : Natural;
       Self : constant Unsigned_64 := syscall (SYSCALL_GETPID);
       Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 4_000;
       Activity : Activity_Result;
@@ -108,14 +108,12 @@ package body GPU_Launch_Probe is
             Identity := GPU.Activation_Identity (Controller, From,
               Msg.authorityTag, Msg.tag.label, Msg.tag.length, Msg.tag.flags,
               Msg.tag.reserved, [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)]);
+            Stored := GPU.Storage_Index (Controller, Msg.words (2));
             GPU.Handle (Controller, From, Msg.authorityTag, True,
               Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
               [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Payload,
-              Recipient_Ready => Identity /= 0 and then Msg.words (2) >
-                Intel_GPU_Render_Sessions.Tag_Base and then Msg.words (2) <=
-                Intel_GPU_Render_Sessions.Tag_Base + 16 and then
-                G.Endpoint_Matches (CapabilitySlot (39 + Msg.words (2) -
-                  Intel_GPU_Render_Sessions.Tag_Base), Identity));
+              Recipient_Ready => Identity /= 0 and then Stored /= 0 and then
+                G.Endpoint_Matches (CapabilitySlot (39 + Stored), Identity));
             Response.tag := Msg.tag;
             Response.words := [Payload (0), Payload (1), Payload (2), Payload (3)];
             Ignore := reply (From, Response);

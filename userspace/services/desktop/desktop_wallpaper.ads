@@ -1,12 +1,13 @@
+with Desktop_Backdrop_Style;
 with System;
 with CuBit.Appearance;
 with CuBit.Display_Geometry;
 
 package Desktop_Wallpaper is
-   Source_Width : constant := 2048;
-   Source_Height : constant := 576;
-   Cubie_Width : constant := 2048;
-   Cubie_Height : constant := 1152;
+   Source_Width : constant := Desktop_Backdrop_Style.Wallpaper_Width;
+   Source_Height : constant := Desktop_Backdrop_Style.Wallpaper_Height;
+   Cubie_Width : constant := Desktop_Backdrop_Style.Cubie_Width;
+   Cubie_Height : constant := Desktop_Backdrop_Style.Cubie_Height;
    --  Render the immutable embedded asset into a private, validated display
    --  buffer. Aspect-fill scaling crops centrally without stretching or bars.
    --  No runtime image parser, file I/O or additional full-screen allocation.

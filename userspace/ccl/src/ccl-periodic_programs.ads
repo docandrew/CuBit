@@ -3,6 +3,7 @@ with CCL.Language;
 with CCL.Catalog;
 with CCL.VM;
 with CCL.Host_Values;
+with CCL.Streams;
 
 -- Transport- and UI-independent lifecycle for one bounded recurring program.
 -- The owning host supplies time and performs evaluation with its explicit
@@ -59,6 +60,10 @@ package CCL.Periodic_Programs with SPARK_Mode is
       with procedure Invoke
         (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
          Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result);
+      --  Stream views (docs/ccl-streams.md); none by default.
+      with procedure Read_Stream
+        (Context : in out Host_Context; Request : CCL.Streams.View_Request;
+         Reply : in out CCL.Streams.View_Reply) is null;
    procedure Evaluate_Values_Due
      (Item : in out Program; Catalog : CCL.Catalog.Interface_Catalog;
       Grants : CCL.Catalog.Granted_Bindings; Context : in out Host_Context;

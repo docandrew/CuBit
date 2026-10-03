@@ -1,5 +1,11 @@
 generic
 package Intel_GPU_VM_Image.Snapshots is
+   -- True only after successful Forget_Retired and before another preparation
+   -- attempt. This distinguishes disposed offline receipts from failed/unsealed
+   -- images in cross-context alias scans; it is NOT hardware completion evidence
+   -- or permission to free backing. The coordinator supplies that evidence to
+   -- Forget_Retired before this state can be reached.
+   function Retired (Object : Image) return Boolean;
    -- Update only the service's logical CURRENT image after a successful
    -- VM_Update transaction. No hardware writes, invalidation, reclamation,
    -- allocation or authorization occur here. The serialized caller must keep

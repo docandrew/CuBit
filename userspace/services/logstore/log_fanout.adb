@@ -93,14 +93,16 @@ package body Log_Fanout with SPARK_Mode is
 
    procedure Read_Next
      (Item : in out Broker; Caller, Authority_Tag, Handle : Unsigned_64;
-      Value : out Event; Lost : out Unsigned_64; Result : out Status) is
+      Value : out Event; Lost : out Unsigned_64; Result : out Status; Renew : Boolean := True) is
    begin
       Value := (others => <>); Lost := 0; Result := Denied;
-      if Caller = 0 or else not May_Invoke (Authority_Tag, Read_Next) then return; end if;
+      if Caller = 0 or else not Is_Observer (Authority_Tag) then return; end if;
       for Client of Item.Clients loop
          if Client.Owner = Caller and then Client.Authority_Tag = Authority_Tag
            and then Client.Handle = Handle then
-            Client.Last_Use := Item.Now_Ms;
+            if Renew then
+               Client.Last_Use := Item.Now_Ms;
+            end if;
             if Client.Pending.Lost /= 0 then
                Lost := Client.Pending.Lost; Client.Pending.Lost := 0; Result := Gap;
             elsif Client.Pending.Used = 0 then
@@ -115,6 +117,9 @@ package body Log_Fanout with SPARK_Mode is
          end if;
       end loop;
    end Read_Next;
+
+   function Active (Item : Broker; Handle : Unsigned_64) return Boolean is
+     (Handle /= 0 and then (for some Client of Item.Clients => Client.Owner /= 0 and then Client.Handle = Handle));
 
    procedure Close
      (Item : in out Broker; Caller, Authority_Tag, Handle : Unsigned_64;

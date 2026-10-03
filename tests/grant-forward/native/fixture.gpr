@@ -1,7 +1,14 @@
 project Fixture is
    Role := external ("ROLE", "client");
    for Languages use ("Ada", "C");
-   for Excluded_Source_Files use ("anv_cubit_memory.c", "native_gpu_mapping.c");
+   -- Keep this presenter/lifetime fixture independent of ANV implementation
+   -- files added to the shared source directory (which need Mesa's headers).
+   for Source_Files use
+     (Role & ".adb", "fixture.ads", "fixture.adb", "ccl_manifest_bindings.ads",
+      "native_gpu_presentation.ads", "native_gpu_presentation.adb",
+      "native_gpu_buffers.ads", "native_gpu_buffers.adb",
+      "native_gpu_memory.ads", "native_gpu_memory.adb",
+      "native_gpu_presenter.c", "presenter_probe.c");
    for Source_Dirs use (".", "build/" & Role & "/generated", "../../../userspace/mesa/anv");
    for Object_Dir use "build/" & Role;
    for Exec_Dir use "build/" & Role;

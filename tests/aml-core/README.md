@@ -1725,3 +1725,72 @@ with a recorded reference-tool diagnostic, not an error-free ACPICA run.
 Evidence: `build/acpica-string-conversions/report.json` and retained logs there.
 The standard `run-acpica.sh` builds and runs the fixture; `--runner` supports
 checking a separately built executable. The upstream ASLTS status is unchanged.
+
+2026-10-02 method-time DataTableRegion is now integrated. The executor reserves
+its namespace name before evaluating the signature/OEM/table-ID operands,
+evaluates them left-to-right, applies implicit string conversions, and searches
+validated, service-owned table copies. A successful region can be read through
+the existing read-only Field implementation. Method-owned declarations are
+cleaned up on return or error. This grants no physical-memory or hardware-write
+access. Module-level deferred declarations remain unsupported.
+
+Signature matching accepts the ACPI ASF! exception and leading digits, compares
+the first four signature characters, and checks malformed signatures before OEM
+length errors. Empty OEM/table-ID selectors are wildcards; nonempty selectors
+are checked against the corresponding fixed-width header fields. The backing
+span contract exposes the validated positive extent and capacity bounds needed
+by the region binding proof, and is proved against the backing implementation.
+
+Verification of the frozen production candidate: 175 executor lifecycle checks,
+1,176 service checks, 33,811 table-selection checks, and 26,353 surrounding
+regression checks passed. Core/legacy proof previously passed 527 prover +91
+flow checks; final backing/service instantiation proof passed 2,777 prover +372
+flow checks with no unproved or justified obligations. The same production
+sources compiled and linked in the isolated native ACPI service. These are
+specified proof scopes and compilation evidence, not full AML correctness,
+whole-stack safety or live service integration.
+
+The registered `acpica_datatable_regions.py` fixture checks 17 actual AML
+region/field values and selector outcomes. It preserves the exact ACPICA20260408
+shutdown allocation diagnostic reproduced by a minimal control, and rejects
+other unexpected diagnostics. Status comparisons explicitly map ACPICA errors
+to CuBit's currently coarser error categories. Both new hosted fixtures and the
+reference fixture are registered in the normal test runners.
+
+The selected upstream ASLTS reference collections pass all 12 configurations.
+CuBit still reports 0 passed, 12 unsupported and 339 unselected entrypoints:
+arithmetic/logic now reach Timer (5B33) in STRT after DataTableRegion/Field
+execution; control still exceeds the service's current 64 KiB table limit.
+Timer work remains isolated and is not part of this integration.
+
+
+2026-10-02 AML Timer: the service core is now a generic package with an explicit
+microsecond-clock provider. The public ACPI_Service name remains a package
+instance. Hosted/default builds use an unavailable provider; the native ACPI
+project explicitly selects the syscall-backed instance from native-clock/.
+That directory is excluded from hosted service-boundary source paths. Both
+instance specifications enable SPARK so selecting an instance for proof cannot
+silently skip its bodies. The native syscall wrapper is an explicit trusted
+boundary with externally changing clock state, not a proved hardware clock.
+
+Each Timer evaluation requests a fresh sample. AML_Clock converts microseconds
+to 100 ns units, rejecting unavailable, overflowing or backward readings and
+preserving the last accepted value on failure. Equal readings are allowed.
+The full-width history is kept independently of AML's revision-dependent
+integer normalization. Native clock continuity across suspend is unresolved;
+failed samples produce unsupported execution rather than fabricated time.
+
+Before integration, 43 core regression executables passed (the integer oracle
+fixture path was repaired before resuming the final 18). The clock-enabled
+service instantiation passed 2,805 prover +387 flow checks with no unproved or
+justified checks. The default instance separately passed 376 flow checks.
+The isolated native provider selection compiled and linked the complete service.
+These do not establish live Timer accuracy, suspend/resume behavior or a
+whole-stack bound. Registered clock, executor and combined clock tests cover
+42, 105 and 32 checks respectively; the normal proof runner now names the
+service instance specification and the explicit clock-provider harness.
+
+Debug output work remains isolated. A controlled-clock upstream runner gets
+past Timer and reaches Debug; with the unpromoted Debug implementation it gets
+to CopyObject in RST0. Neither observation counts as an upstream test pass.
+The ordinary hosted table runner still has no clock provider.

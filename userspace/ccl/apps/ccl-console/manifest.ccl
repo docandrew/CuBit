@@ -1,0 +1,23 @@
+# The CCL console: a full-window REPL over the same host environment as the
+# Workbench, so it requests the same authority. Requested authority only;
+# the launch path remains in control.
+(executable-manifest v1
+  (identity "com.cubit.ccl-console")
+  (version "0.1.0")
+  # One "started" record (CuBit.Logging.Announce).
+  (request-service logstore read-write logstore)
+  (request-service desktop read-write desktop)
+  (request-service clock read-write clock)
+  # (logs.recent "service"): read-only log observation.
+  (request-service log-observer read-write log-observer)
+  # (logs.set-minimum ...) / the Logs "Keep" box: what logstore keeps.
+  (request-service log-control read-write log-control)
+  # :ps and (proc.list): see what runs, through procmgr's observer role.
+  (request-service process-observer read-write process-observer)
+  # Global non-secret Config read, never write/admin.
+  (request-service config read-write config)
+  (config-scope (rights read) all)
+  (request-service filesystem read-write filesystem)
+  # :files, :save and :load.
+  (filesystem-scope (rights read write create) "@nvme:0/work")
+  (filesystem-scope (rights read write create) "@mem:0/work"))

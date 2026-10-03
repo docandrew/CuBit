@@ -13,7 +13,7 @@ main = (SOURCE / "main.adb").read_text()
 start = main.index("   function Image_Retirement_Owner return Boolean is")
 end = main.index("   end Image_Retirement_Owner;", start) + len("   end Image_Retirement_Owner;")
 gate = main[start:end]
-query_start = main.index("            declare\n               Index : constant Positive := Positive\n                 (Session - Intel_GPU_Render_Sessions.Tag_Base);", main.index("   procedure Handle_Retirement_Query"))
+query_start = main.index("            declare\n               Index : constant Positive := Stored;", main.index("   procedure Handle_Retirement_Query"))
 query_end = main.index("            end;", query_start) + len("            end;")
 query = main[query_start:query_end]
 prefix = r"""
@@ -29,6 +29,11 @@ procedure Retirement_Gate_Tests is
    package Intel_GPU_Render_Sessions is
       Tag_Base : constant Unsigned_64 := 100;
    end Intel_GPU_Render_Sessions;
+   Render_Admission : Boolean := True;
+   package Intel_GPU_Render_Control is
+      function Issued_Tag (Object : Boolean; Index : Natural) return Unsigned_64 is
+        (if not Object or Index not in 1 .. 4 then 0 else 100 + Unsigned_64 (Index));
+   end Intel_GPU_Render_Control;
    package Intel_GPU_Submission_Image is
       GGTT_Bytes : constant Unsigned_64 := 20 * 4096;
    end Intel_GPU_Submission_Image;
@@ -159,7 +164,7 @@ begin
                   pragma Assert (Facts.Work_Pending =
                     (Pending or (Registered and not Attempted)));
                   pragma Assert (Facts.Uncertain =
-                    (Uncertain or (Registered and Attempted and Status /= Image_Retirement.Detached)));
+                    (Uncertain or (Registered and Attempted and Status /= Image_Retirement.Address_Released)));
                end loop;
             end loop;
          end loop;
@@ -170,7 +175,7 @@ end Retirement_Gate_Tests;
 """
 query_fixture = r"""
    package Image_Retirement is
-      type Result is (Rejected, Quarantined, Detached);
+      type Result is (Rejected, Quarantined, Address_Released);
    end Image_Retirement;
    use type Image_Retirement.Result;
    Application_Registration_Attempted : array (1 .. 4) of Boolean := [others => False];
@@ -182,6 +187,7 @@ query_fixture = r"""
    Facts : Drain_Facts;
    procedure Apply_Query is
       Session : constant Unsigned_64 := 101;
+      Stored : constant Positive := 1;
    begin
 """ + query + "\n   end Apply_Query;\n"
 # Operator visibility belongs to the fixture, not the extracted gate.

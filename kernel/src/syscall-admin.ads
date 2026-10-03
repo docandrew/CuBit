@@ -65,6 +65,19 @@ is
                             arg0      : Unsigned_64;
                             retval    : out Unsigned_64);
 
+    -- SYSCALL_INSTALL_LAUNCH_ARGUMENTS (docs/process-arguments.md):
+    -- arg0 = target PID, arg1 = source address in the caller, arg2 = length.
+    -- The caller needs CAP_PROCESS with RIGHT_EXECUTE for the target, which
+    -- must be suspended and never resumed, without arguments yet. Copies the
+    -- bytes into fresh pages mapped read-only/NX in the target at
+    -- Process_Launch.Arguments_Base and starts its main thread with RDI =
+    -- length. Returns 0, or -1 with nothing installed except pages that stay
+    -- owned by the target (procmgr then discards the child).
+    procedure handleInstallLaunchArguments
+       (callerPID        : Process.ProcessID;
+        arg0, arg1, arg2 : Unsigned_64;
+        retval           : out Unsigned_64);
+
     procedure handleEnableIrq (callerPID  : Process.ProcessID;
                                arg0, arg1, arg2 : Unsigned_64;
                                retval     : out Unsigned_64);

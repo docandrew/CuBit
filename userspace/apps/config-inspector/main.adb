@@ -1,3 +1,4 @@
+with CuBit.Logging;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Config_Inspection;
@@ -281,7 +282,9 @@ procedure Main is
    procedure Run_UI is new CuBit.UI.App.Run
      (ui => UI, controls => Controls, Render => Render, Handle_Event => Handle_Event);
    Opened : Boolean;
+   Announced : Boolean;
 begin
+   CuBit.Logging.Announce ("config-inspector: started (read-only)", Announced);
    Refresh;
    CuBit.UI.App.Open (Win, 860, 560,
      CuBit.UI.App.WINDOW_FLAG_DECORATED or CuBit.UI.App.WINDOW_FLAG_RESIZABLE or

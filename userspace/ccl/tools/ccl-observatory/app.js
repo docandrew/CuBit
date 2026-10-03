@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from '/OrbitControls.js';
-import { encodeRequest, decodeResponse } from '/wire.js';
+import { encodeRequest, decodeResponse, decodePresentation, decodeImageRows, decodeCompletion } from '/wire.js';
+import { card } from '/console.js';
+import { balance } from '/highlight.js';
 
 const $ = id => document.getElementById(id);
 // No relay credentials, browser-side evaluator, or synthetic observations.
@@ -203,11 +205,24 @@ function validateSnapshot(data) {
     throw new Error('Unsupported or invalid observation schema; no topology rendered');
   }
 }
-async function call(operation, source = '', target = 0n) {
+// This tab's session on the guest: its definitions and streams persist
+// between entries. A random 64-bit id kept for the tab; it separates tabs
+// and is not a credential (the lab adapter has no login yet).
+const session = (() => {
+  try {
+    const kept = sessionStorage.getItem('ccl-session');
+    if (kept && /^[1-9][0-9]{0,19}$/.test(kept) && BigInt(kept) < (1n << 64n)) return BigInt(kept);
+  } catch { /* storage unavailable: a new session */ }
+  const words = crypto.getRandomValues(new Uint32Array(2));
+  const id = ((BigInt(words[0]) << 32n) | BigInt(words[1])) || 1n;
+  try { sessionStorage.setItem('ccl-session', id.toString()); } catch { /* kept for this page only */ }
+  return id;
+})();
+async function call(operation, source = '', target = 0n, row = 0n) {
   if (busy) throw new Error('A native request is already in flight.');
   if (!connected && operation !== 'inspect') throw new Error(disconnected);
   if (location.origin !== 'http://127.0.0.1:8787') throw new Error('Open this lab frontend at http://127.0.0.1:8787/');
-  const id = ++requestId, body = encodeRequest(id, operation, source, target);
+  const id = ++requestId, body = encodeRequest(id, session, operation, source, target, row);
   const start = performance.now();
   busy = true; updateControls();
   try {
@@ -225,9 +240,12 @@ async function call(operation, source = '', target = 0n) {
         bytes.set(value, used); used += value.length;
       }
     } finally { await reader.cancel(); }
-    const result = decodeResponse(bytes.subarray(0, used), id, operation);
+    const received = bytes.subarray(0, used);
+    const result = operation === 'present' || operation === 'presentMonitor' ? decodePresentation(received, id, operation) :
+      operation === 'imageRows' ? decodeImageRows(received, id) :
+      operation === 'complete' ? decodeCompletion(received, id) : decodeResponse(received, id, operation);
     $('latency').textContent = `${Math.round(performance.now() - start)} ms`;
-    record(`${operation} #${id} · native CBOR response`);
+    if (!['imageRows', 'presentMonitor', 'complete'].includes(operation)) record(`${operation} #${id} · native CBOR response`);
     return result;
   } catch (error) {
     fail(`Native connection unavailable: ${error.message}`); throw error;
@@ -271,48 +289,143 @@ async function monitorAction(operation) {
 }
 $('start-monitor').onclick = () => monitorAction('startMonitor');
 $('stop-monitor').onclick = () => monitorAction('stopMonitor');
+// The transcript: each entry as the native CCL console shows it, from the
+// same CCL.Presentations description (wire operation 7).
+const actions = {
+  insert(text) {
+    const editor = $('source'), at = editor.selectionStart;
+    editor.setRangeText(text, at, editor.selectionEnd, 'end'); editor.focus();
+  },
+  replace(text) { $('source').value = text; $('source').focus(); },
+  rows: (image, row) => call('imageRows', '', image, row),
+};
+// Live cells, as the native console's :watch. The lab guest has one native
+// periodic slot (1 s); the page only observes it (operation 9).
+let liveCard = null, liveSource = '', liveTimer = 0;
+async function unwatch() {
+  clearInterval(liveTimer); liveTimer = 0;
+  if (monitor && ['Waiting','Executing','Stopping'].includes(monitor.state)) {
+    try { renderMonitor(await call('stopMonitor', '', BigInt(monitor.generation))); } catch (error) { /* reported by call */ }
+  }
+  liveCard = null;
+}
+actions.unwatch = unwatch;
+async function pollLive() {
+  if (busy || !liveCard) return;
+  try {
+    const result = await call('presentMonitor');
+    if (result.monitor.runs === '0') return;
+    const next = card(liveSource, result, 0, actions, { runs: result.monitor.runs });
+    liveCard.replaceWith(next); liveCard = next;
+    if (result.monitor.state !== 'Waiting' && result.monitor.state !== 'Executing') { clearInterval(liveTimer); liveTimer = 0; }
+  } catch (error) { clearInterval(liveTimer); liveTimer = 0; }
+}
+async function watch() {
+  const last = $('transcript').lastElementChild;
+  if (!last) { $('outcome').textContent = 'Nothing to watch yet: run an expression first'; return; }
+  await unwatch();
+  liveSource = last.querySelector('.ccl-source').textContent;
+  const started = await call('startMonitor', liveSource);
+  renderMonitor(started);
+  if (!started.accepted) { $('outcome').textContent = 'The native periodic slot did not accept this entry'; return; }
+  liveCard = last; liveTimer = setInterval(pollLive, 1000);
+  $('outcome').textContent = 'Live inside CuBit, every second  |  :unwatch or click LIVE to stop';
+}
 async function evaluate(event) {
   event.preventDefault();
   if (busy) return;
   const source = $('source').value;
+  if (/^:watch( +[0-9]+)? *$/.test(source.trim())) { $('source').value = ''; await watch(); return; }
+  if (source.trim() === ':unwatch') { $('source').value = ''; await unwatch(); $('outcome').textContent = 'Live cell stopped'; return; }
   if (!/^[\x09\x0a\x0d\x20-\x7e]{0,1024}$/.test(source)) {
     $('outcome').textContent = 'This CCL version accepts up to 1024 ASCII bytes.'; $('outcome').className = 'error'; return;
   }
   try {
-    const result = await call('evaluate', source);
-    if (typeof result.ok !== 'boolean' || typeof result.message !== 'string' || typeof result.type !== 'string') throw new Error('Invalid evaluation response');
-    $('outcome').textContent = `${result.message}\n${result.type} · fuel remaining ${result.fuelRemaining}`;
+    const started = performance.now();
+    const result = await call('present', source);
+    $('transcript').append(card(source, result, Math.round(performance.now() - started), actions));
+    $('transcript').lastElementChild.scrollIntoView({ block: 'nearest' });
+    $('outcome').textContent = result.ok ? '' : `${result.value}`;
     $('outcome').className = result.ok ? 'success' : 'error';
-    if (result.list) $('outcome').append(listTable(result.list));
+    if (result.ok) $('source').value = '';
     if (!result.ok && /^\d{1,4}$/.test(result.position) && Number(result.position) > 0) {
       const pos = Math.min(source.length, Number(result.position) - 1);
       $('source').focus(); $('source').setSelectionRange(pos, Math.min(source.length, pos + 1));
     }
   } catch (error) { $('outcome').textContent = error.message; $('outcome').className = 'error'; }
 }
-// A list result as an indexed table. Built from text nodes only: element text
-// from CuBit is data, never markup.
-function listTable(list) {
-  const table = document.createElement('table');
-  table.className = 'list-result';
-  const head = table.createTHead().insertRow();
-  for (const label of ['#', list.elementType]) {
-    const cell = document.createElement('th'); cell.textContent = label; head.append(cell);
-  }
-  const body = table.createTBody();
-  list.elements.forEach((element, index) => {
-    const row = body.insertRow();
-    row.insertCell().textContent = String(index + 1);
-    row.insertCell().textContent = list.elementType === 'String' ? JSON.stringify(element) : String(element);
-  });
-  if (BigInt(list.total) > BigInt(list.elements.length)) {
-    const caption = table.createCaption();
-    caption.textContent = `first ${list.elements.length} of ${list.total}`;
-  }
-  return table;
-}
 $('command-form').addEventListener('submit', evaluate);
-$('source').addEventListener('keydown', e => { if (e.ctrlKey && e.key === 'Enter') evaluate(e); });
+// Completion, as the native console's: what the guest's CCL.Completions
+// says completes the text before the caret (operation 10).
+let completion = null, completionTimer = 0;
+function closeCompletion() { completion = null; $('completion').hidden = true; }
+function showCompletion() {
+  const list = $('completion');
+  if (!completion || completion.candidates.length === 0) { list.hidden = true; return; }
+  list.replaceChildren(...completion.candidates.map((c, i) => {
+    const row = document.createElement('div');
+    row.className = `completion-row${i === completion.selected ? ' selected' : ''}`;
+    row.setAttribute('role', 'option');
+    const typed = document.createElement('span'); typed.className = 'typed'; typed.textContent = c.name.slice(0, completion.prefixLength);
+    const rest = document.createElement('span'); rest.className = `rest ${c.origin}`; rest.textContent = c.name.slice(completion.prefixLength);
+    const tag = document.createElement('small'); tag.textContent = c.origin;
+    row.append(typed, rest, tag);
+    row.title = c.signature || c.origin;
+    row.onmousedown = e => { e.preventDefault(); acceptCompletion(i); };
+    return row;
+  }));
+  if (completion.beyond) { const more = document.createElement('div'); more.className = 'muted'; more.textContent = 'more - keep typing to narrow'; list.append(more); }
+  list.hidden = false;
+}
+function acceptCompletion(index) {
+  const c = completion?.candidates[index];
+  if (!c) return;
+  const editor = $('source'), at = editor.selectionStart;
+  const after = editor.value[at];
+  editor.setRangeText(c.name.slice(completion.prefixLength) + (after === undefined || !/[\s)]/.test(after) ? ' ' : ''), at, at, 'end');
+  closeCompletion(); editor.focus(); requestCompletion();
+}
+async function requestCompletion() {
+  const editor = $('source'), at = editor.selectionStart, after = editor.value[at];
+  if (!connected || busy || editor.selectionStart !== editor.selectionEnd || (after !== undefined && !/[\s)]/.test(after))) { closeCompletion(); return; }
+  try {
+    const found = await call('complete', editor.value.slice(0, at));
+    completion = { ...found, selected: 0 };
+    $('signature').textContent = found.signature;
+    showCompletion();
+  } catch (error) { closeCompletion(); }
+}
+$('source').addEventListener('input', () => { clearTimeout(completionTimer); completionTimer = setTimeout(requestCompletion, 150); });
+$('source').addEventListener('keydown', e => {
+  if (!completion || $('completion').hidden) {
+    if (e.key === ' ' && e.ctrlKey) { e.preventDefault(); requestCompletion(); }
+    return;
+  }
+  const n = completion.candidates.length;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    completion.selected = (completion.selected + (e.key === 'ArrowDown' ? 1 : n - 1)) % n; showCompletion();
+  } else if ((e.key === 'Tab' || e.key === 'Enter') && !e.shiftKey) {
+    acceptCompletion(completion.selected);
+  } else if (e.key === 'Escape') {
+    closeCompletion();
+  } else return;
+  e.preventDefault(); e.stopImmediatePropagation();
+});
+// As the native console: Enter runs a complete form and continues an open
+// one on a new, indented line; Shift+Enter breaks the line; Ctrl+Enter runs.
+$('source').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const editor = $('source'), before = editor.value.slice(0, editor.selectionStart);
+  if (e.ctrlKey) { evaluate(e); return; }
+  if (e.shiftKey) return;
+  const state = balance(editor.value);
+  if (state === 'open') {
+    e.preventDefault();
+    let depth = 0;
+    for (const c of before) depth += c === '(' ? 1 : c === ')' ? -1 : 0;
+    editor.setRangeText('\n' + '  '.repeat(Math.max(0, Math.min(depth, 16))), editor.selectionStart, editor.selectionEnd, 'end');
+  } else if (state !== 'empty') evaluate(e);
+});
 $('refresh').onclick = refresh;
 $('pause').onclick = () => {
   paused = !paused; $('pause').textContent = paused ? 'Resume updates' : 'Pause updates';

@@ -8,7 +8,7 @@ procedure Readonly_Input_Tests is
    use type AML_Names.Parse_Status;
    use type Integer_Value;
    use type Byte;
-   type Mutable is record
+   type Mutable is limited record
       Active : Natural := 0;
    end record;
    type Backing (Length : Positive) is limited record
@@ -91,8 +91,27 @@ procedure Readonly_Input_Tests is
    begin
       Binding := (Status => Failed_Binding, Failure => Unsupported_Value);
    end Reject_Literal;
+   procedure Reject_Region
+     (Environment : in out Mutable; Scope : Natural; Path : AML_Names.Name_Result;
+      Token : out Natural; Status : out Execution_Status)
+   is
+      pragma Unreferenced (Environment, Scope, Path);
+   begin
+      Token := 0; Status := Unsupported;
+   end Reject_Region;
+   procedure Reject_Completion
+     (Environment : in out Mutable; Input : aliased Backing; Token : Natural;
+      Width : Integer_Width; Signature, OEM, Table_ID : Datum; Status : out Execution_Status)
+   is
+      pragma Unreferenced (Environment, Input, Token, Width, Signature, OEM, Table_ID);
+   begin
+      Status := Unsupported;
+   end Reject_Completion;
+   procedure No_Timer (Environment : in out Mutable; Value : out Integer_Value; Available : out Boolean) is
+      pragma Unreferenced (Environment);
+   begin Value := 0; Available := False; end No_Timer;
    procedure Execute is new Execute_With_Input
-     (Mutable, Backing, Valid, Lookup, Get_Method, Write, Begin_Call, End_Call, Define_Method, Reject_Fields, Reject_Literal);
+     (Mutable, Backing, Valid, Lookup, Get_Method, Write, Begin_Call, End_Call, Define_Method, Reject_Fields, Reject_Literal, Reject_Region, Reject_Completion, No_Timer);
    Input : aliased Backing (1_048_577);
    Environment : Mutable;
    Result : Execution_Result;

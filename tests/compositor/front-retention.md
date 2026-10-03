@@ -71,3 +71,45 @@ The whole gate therefore did not pass, and its dependent Desktop overload run
 was not reached. Both Desktop variants compiled. Rerunning the complete gate
 with sufficient time remains required. This state is included in the user’s
 safekeeping snapshot; it is not a release-completion claim.
+
+Follow-up verification: `/tmp/cubit-front-recheck.log` completed with status 0
+using the unchanged verified compositor binaries and a 240-second harness
+window. The complete Mesa/softpipe oracle and final fault scan passed. The
+subsequent four-worker native Desktop run passed repeated viewer updates, six
+pause cycles, graph/table switching, paging, refresh and close during worker
+overlap. All four workers completed; input hashes and the private base disk
+matched. Retained evidence is `/tmp/cubit-front-retention-evidence/`. This closes
+the timeout checkpoint’s pending integration checks, not the direct GPU
+transport or hardware-performance requirements.
+
+## Replacing stale ready work
+
+`Acquire(..., Replace_Ready => True)` now permits an explicit fresh-work request
+to reclaim the completed ready allocation when front, pending and ready occupy
+all three slots. Free storage is preferred when available. The default remains
+False: eager acquisition must not discard the last ready frame when no newer
+scene work exists. The visible front, pending target and any active renderer
+remain excluded, and reclamation assigns a fresh serial to the same slot.
+
+The producer must invalidate new scene damage before rendering the replacement,
+and mark partial/failed target contents for repair. Once its allocation is
+reclaimed, the superseded ready frame cannot be restored after a failed render.
+The visible and pending frames remain held. This adds no allocation or queue.
+Production Desktop's existing acquisition calls keep the default behavior;
+opt-in is exercised in the direct-front Mesa oracle pending driver integration.
+
+The updated proof has 28 results (18 flow, 10 prover), zero unproved or justified.
+Hosted coverage adds 8,000 ready replacements while checking visible pixels,
+exact reclaimed slots, serial monotonicity and failed-quiescent-render behavior.
+The native oracle now also renders 252 replacements while front and pending
+pixels remain held. This is simulated presentation with real Mesa rendering,
+not evidence of an activated direct-scanout backend.
+
+Ready-replacement native verification completed successfully in
+`/tmp/cubit-ready-native.log`: the complete 240-second Mesa/softpipe gate passed,
+including 252 ready replacements with exact held-pixel checks, followed by the
+four-worker native Desktop test. Repeated updates, six pause cycles, graph/table
+switching, paging, refresh and close completed during worker overlap; all workers
+finished and final fault/hash/base checks passed. Evidence is retained in
+`/tmp/cubit-ready-replacement-evidence/`. This validates the policy and native
+Mesa writer integration, while production direct-target transport remains open.

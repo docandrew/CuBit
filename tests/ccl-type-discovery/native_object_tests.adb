@@ -320,7 +320,7 @@ begin
       Check (Declared = Defined);
       CCL.Types.Specialize_List (Types, Entry_Type, Entries_Type, Specialized);
       Check (Specialized in CCL.Types.List_Specialized | CCL.Types.List_Already_Specialized);
-      Check (Persistable (Types, Entries_Type));
+      Check (CCL.Objects.Persistable (Types, Entries_Type));
       Bind (Types, Entries_Type, [41, 42, 43, 44], Entries, Good); Check (Good);
       Catalog := Empty_Catalog;
       Initialize (Grants);

@@ -1,6 +1,770 @@
 # Mesa ANV: first CuBit OS-boundary audit
 
-## Current hardware gate, 2026-10-02
+## Lifetime admission limit and record lookup, 2026-10-02
+
+### Stored session identities and nonwrapping issuance
+
+`Intel_GPU_Render_Sessions` now stores each issued tag in its record instead
+of deriving its storage index by subtracting `Tag_Base`. An independent
+high-water mark issues tags within `4750_0000_0000_0001` through
+`4750_FFFF_FFFF_FFFF`; exhaustion rejects admission without wrapping or
+changing an existing session. Close and quarantine do not reset the issuer.
+The control endpoint excludes this whole namespace from broker bootstrap tags.
+
+## Continuous-rendering fence limit (2026-10-02)
+
+A separate limit takes priority over session recycling for Desktop rendering.
+`main.adb` allocates256 CT fences per application context. After initial setup,
+`Intel_GPU_Application_Submit.Execute` enables, publishes, notifies, waits for
+the GPU marker, and disables on every submission. Repeated controls and
+notifications consume the lifecycle's monotonic per-context fence interval.
+
+Private run2252 (`tests/intel-gpu/continuous_context.gpr` in qmsr03hg) reproduces
+**84 successful synthetic single-batch cycles, followed by rejection; subsequent
+deregistration cannot reserve a fence either**. All modeled completion events
+succeed, so this is exhaustion rather than a GPU timeout. Real Mesa setup work,
+VM transitions and multiple submissions per visible frame can exhaust it sooner.
+This is a software lifecycle reproduction, not a measured NUC frame count.
+
+Upstream comparison:
+
+- [Intel-authored HXG ABI](https://codebrowser.dev/linux/linux/drivers/gpu/drm/i915/gt/uc/abi/guc_messages_abi.h.html#94)
+  separates fast requests (no success response, failure permitted) from ordinary
+  requests. Scheduling/deregistration completion events are separate messages.
+- [Linux CT fence allocation](https://codebrowser.dev/linux/linux/drivers/gpu/drm/i915/gt/uc/intel_guc_ct.c.html#ct_get_next_fence)
+  uses a transport-level sequence and pending-response handling, not our fixed
+  per-context lifetime partition.
+- [Linux deregistration completion](https://codebrowser.dev/linux/linux/drivers/gpu/drm/i915/gt/uc/intel_guc_submission.c.html#intel_guc_deregister_done_process_msg)
+  gates the old-to-new context registration handoff and destroyed-context ID
+  release. It does not treat a scheduling-disable event as equivalent.
+
+Next implementation must decouple lifetime rendering from one-use fence ranges,
+preserve attribution of late failures, keep synchronous response correlation
+unambiguous, and leave cleanup possible. Do not merely enlarge/wrap the interval
+or reset a counter after a GPU pixel marker: that marker is not a CT failure
+drain. Evaluate transport-level allocation versus stable context-scoped routing
+for failure-only fast requests against the CT ABI before choosing a replacement.
+Context-ID/backing reuse remains a distinct obligation. Main and v33 are unchanged.
+
+### Private fast-request routing prototype
+
+In qmsr03hg, the lifecycle now reserves six permanent failure routes per retained
+context (register, policy, enable, disable, notify, deregister). Repeated fast
+requests reuse only their own context/kind route. No success or GPU completion
+is inferred from a fence; scheduling/deregistration events still require the
+expected context ID, phase and receive credit. A late failure quarantines that
+same retained owner even after many later operations. No route is reassigned
+to another context. Synchronous request/response traffic must never use this
+scheme.
+
+This is an inference from the Intel-authored fast-request semantics and the
+[CTB header ABI](https://codebrowser.dev/linux/linux/drivers/gpu/drm/i915/gt/uc/abi/guc_communication_ctb_abi.h.html#61),
+not a claim that Linux uses these six stable routes or that the ABI explicitly
+guarantees their reuse. All six current context request encoders emit fast
+requests. Actual firmware acceptance still requires hardware testing.
+
+Run78245 completes100,000 modeled enable/notify/disable submissions with only
+six routes, then deregisters and catches a late notification failure. Selected
+lifecycle SPARK reports25 checks (14 flow,11 prover), none unproved/justified.
+Run18470 also passes first/later notification publication versus backpressure
+and uncertain-send tests, wrong-context fence rejection, repeated-control
+backpressure preserving old failure attribution, minimum-span validation, and
+native lifecycle compilation. Initial extended-test run74855 had a missing Ada
+operator visibility clause; it was corrected before the successful run.
+
+Run11797 adds real session/table/routing integration: 120,000 interleaved
+synthetic cycles across two contexts using only six routes each. The queue
+callback checks the actual encoded FAST headers and operation-specific fences.
+Delayed failures for each of the six published routes, after A deregistration,
+quarantine A while B continues; unknown fences are retained. This does not
+exercise physical CT memory or firmware.
+
+Run48814 passes the existing table and deregistration regression suites after
+updating their obsolete monotonic-fence expectations. Run44386 repeats both
+suites and the continuous routing test, verifies that spans smaller than six
+consume neither an ID nor a fence range, and compiles the native context table.
+Session documentation now describes the six retained routes. All of these
+changes remain in the private workspace.
+
+Run3622 extends that fixture through the production CT send/receive code using
+two independent hosted 32-DWORD loopback rings. Every outgoing request and
+incoming synthetic completion/error is framed, published, decoded and compared
+word-for-word before routing. Both rings wrap more than 10,000 times. Callback
+assertions check write/visibility/tail/visibility/notify and read/head-release
+ordering. The 120,000-cycle test passes. Loopback uses our sender as the event
+producer too: it does not model firmware scheduling, native cache visibility,
+DMA, delayed physical writes or concurrency, and is not independent ABI evidence.
+
+Run42416 passes the existing notification, lifecycle, session and deregistration
+regressions with fixed-route expectations, including the last usable six-fence
+interval ending at 65535. Run98222 first stopped at an obsolete notification
+increment assertion; it was updated before the successful rerun. Tests still
+check uncertain publication, stale errors, ownership loss and receive credits.
+The CT send/receive suites also pass callback failure injection, wrapping,
+backpressure, corrupt descriptors, copy-before-release and no replay after a
+broken channel. These tests use callback models, not native memory barriers.
+
+Remaining before promotion: review the isolated lifecycle/table change and
+test sustained submissions on
+the NUC. These are hosted tests and selected contracts, not transport ordering
+or firmware proofs. Production still has the original84-cycle modeled limit.
+
+The private native probe now permits an explicit bounded 1..1024 cycles
+(default one), replacing its old test-only maximum of 16. Both direct-device
+and admitted-service paths count completed cycles only after successful probe
+cleanup and emit a final completed/requested/result summary; failures stop
+without replay. Run47932 checks policy boundaries and Python syntax; run83429
+compiles both 256-cycle native C objects against the configured native Mesa
+headers. Neither was linked, packaged or executed in that run. The intended
+hardware test is 256 offscreen cycles on the same device, exceeding the old
+budget without requiring repeated window interaction. It must be packaged
+with the isolated fence candidate, not the unrelated private cleanup ABI.
+
+The main-tree lifetime capacity is **still 16**, and no production recycle
+operation is enabled.
+This separates identity from storage; it does not establish endpoint cleanup,
+GPU drain, or safe record reuse. Existing initial tags and wire layout remain
+unchanged. Reverse lookup fails closed if a record does not map back to its
+own position.
+
+The test-only child `Intel_GPU_Render_Sessions.Testing` advances the private
+counter near exhaustion (no production seed/reset API). It verifies widely
+separated tags in slots 1–3, lookup and authorization, 32 repeated exhaustion
+attempts preserving active sessions, and retained identity after close and
+quarantine. Hosted session/control regressions pass. Registry SPARK analysis
+has 31 results, none unproved or justified, including the issuer's increment
+and rejection-preservation contract. Native driver-project compilation of
+both modified units passes; this is not a new NUC run or image.
+
+### Endpoint disposal prerequisite (wrapper not implemented)
+
+The new pure `Capabilities.Endpoint_Disposal.Clear_If_Matching` now supplies
+the exact-record table mutation, with a proved postcondition preserving the
+whole table on rejection and all other slots on success. The 1,024-case hosted
+test and selected SPARK proof passed; the unit also compiled with the real
+kernel project. See `tests/endpoint-disposal/README.md`. It has no syscall
+entry point yet, does not authenticate authority or lock processes, and does
+not enable graphics slot reuse. Those obligations remain below.
+
+`CuBit.Capability_Grants` exposes capture, inspection, installation and endpoint
+delegation, but no endpoint disposal call. `Syscall.Admin.handleDelegateEndpoint`
+requires an empty destination and atomically checks source rights, target
+incarnation and CSPACE authority under ascending-PID mailbox locks.
+`Capabilities.Operations.removeCap` merely clears a table slot; its only
+current references are its declaration/body. It is not an authorized userspace
+operation and supplies neither request authentication nor conditional matching.
+Memory-grant revocation is a separate protocol, not endpoint-slot disposal.
+
+Consequently, resetting the graphics registry/dispatcher alone cannot safely
+remove the sixteen-lifetime limit. A future narrowly scoped endpoint-disposal
+operation needs to authenticate the destination process incarnation and CSPACE
+authority, then compare the installed endpoint's object generation, session
+tag and expected attenuated rights before clearing it, under the same locks.
+Both reciprocal endpoints already carry the session tag (driver recipient:
+READ; app render endpoint: READ|WRITE). Fresh nonwrapping session identities
+must survive storage-slot reuse; otherwise a delayed disposal can remove a
+replacement endpoint (ABA). A tag or PID supplied by a caller is not authority.
+
+Disposal must follow GPU deregistration, completed submission/grant retirement,
+and draining broker receipts. Clearing an endpoint does not cancel messages
+already queued, revoke derived endpoints, or prove GPU quiescence. Partial
+installation and uncertain replies need explicit retained cleanup state, not
+an unconditional delete/retry. Before implementation, coordinate the kernel
+admin/runtime ABI with their owners and test stale incarnation/tag, wrong
+rights/authority, late receipts and repeated cleanup. No kernel permission
+change or capability reuse is enabled by this audit.
+
+### Broker reservation slot handoff
+
+The successful control Reserve reply now carries
+`[OK, version, opaque-session-tag, driver-recipient-slot]`, with the slot strictly
+in 40..55. Activate, Abort and error replies retain a zero fourth word.
+The native broker uses that authenticated slot directly after validating the
+captured application endpoint; it no longer imports Render_Sessions or derives
+CSPACE positions from tags. The registry/controller still enforce issued tags.
+This changes the undeployed reservation wire contract: rebuild devmgr and
+intel-gpu together. Mixed old/new implementations fail closed on the changed
+fourth word; there is no compatibility fallback or tag arithmetic recovery.
+This does not enable replacement of occupied capability slots.
+
+Hosted tests exercise slots 0..64, reject the old zero-slot success reply and
+slot-bearing activation replies, and delegate opaque tags through all sixteen
+recipient slots in reverse order. Native-adapter, dispatcher and saved-reply
+broker mock tests pass, including late replies, cancellation, malformed
+envelopes and partial delegation failure. Native Intel and devmgr compile/link
+passed; selected admission/controller SPARK reports 45 results (21 flow,
+24 prover), none justified/unproved. Evidence:
+`tests/intel-gpu/build-render-admission/recipient-slot-proof.log`.
+Subsequent private native IPC runs passed negative and positive reciprocal
+admission (see `tests/endpoint-disposal/README.md` for fixture limits and logs).
+Physical NUC validation of this wire change remains pending. Existing packaged
+v32 is unchanged and internally paired.
+
+The broker audit also found independent lifetime limits in
+`Intel_GPU_Broker_Launches.Ledger` and `Intel_Render_Admission_Dispatch`:
+their `Used` counters never decrease, and an acknowledged launch is not a
+retirement receipt. Neither an Abort reply nor the driver's quiescence reply
+authorizes capability-slot replacement. These ledgers, captured endpoint slots,
+pending completion tokens, and driver cleanup records all need coordinated
+retirement before repeated launches can reuse admission storage.
+
+The current render registry admits at most **16 lifetime reservations**, not
+16 concurrent clients. Abort/failed activation/close keep their identity
+tombstones; successful buffer/context slice retirement does not restore a
+session slot. The process-lifetime Mesa Desktop owner can render repeated
+frames without consuming more sessions, but repeated app launches will
+eventually exhaust admission. This remains a driver-completeness gap.
+
+`Render_Sessions.Storage_Index` now supplies issued-record location separately
+from authorization. Reserved/retired/quarantined records remain locatable for
+cleanup; `Resolve` still requires the active kernel-authenticated sender/tag.
+Unissued tags return zero. Render_Control's recipient-array accesses now use
+this registry lookup instead of deriving the index themselves. No identities
+are reused and capacity has not increased.
+
+The controller now exposes the same metadata lookup to its dispatcher.
+`main.adb` uses it for application recipient selection, private-context start
+and completion, and delayed activation's recipient-capability check. Active
+work still requires the original sender/incarnation checks; completion still
+requires the exact pending ticket. Unissued tags no longer select array slots
+in these paths. Other main/retirement paths and reverse tag construction still
+need migration before reuse can be considered.
+
+Follow-up dispatcher migration also covers application binding, context
+preparation/registration, submission selection, resource-retirement selection,
+activation recipient checking, and `Application_Work_Drained`. Its extracted
+predicate test deliberately uses a nonsequential tag-to-slot mapping and an
+unissued tag inside the old numeric range. A new negative control restores
+tag arithmetic and must fail, alongside the existing deferred-publisher control.
+The subsequent migration covers VM updates, closed-buffer reporting/retirement,
+ordinary and closed-context table retirement selection, session health, and
+retirement queries. Main no longer subtracts Tag_Base to select a session slot.
+All five reverse tag-construction sites in image/context retirement have now
+also migrated to `Render_Control.Issued_Tag`. Main no longer references
+`Tag_Base` at all. The registry still owns the current fixed tag layout;
+the dispatcher no longer invents identities from array indices. Reverse lookup
+returns zero for an unissued slot and retains cleanup identity after quarantine.
+Completion explicitly rejects zero identities so two absent identities cannot
+be accepted merely because they compare equal.
+
+The reverse accessor's round-trip contracts passed selected SPARK analysis
+(50 results: 20 flow, 30 prover, zero justified/unproved) in isolated source
+`/tmp/cubit-session-reverse.kwnvNq`, along with registry/controller tests.
+Actual completion-body fixtures passed 17 parent and 36 table paths, adding
+unissued and zero/zero cases; retirement owner/query gates passed 95/48 checks.
+The five production files were compared byte-for-byte with the tested private
+sources after promotion, and the native Intel service compiled/linked. These
+are software tests and compilation, not physical retirement/reuse evidence.
+
+Follow-up native service compile/link passed. Hosted extracted-code gates
+passed: retired-source scan 256 cases with two negative controls, work-drain
+23,040 with two controls, retirement owner 95 checks and query 48 cases,
+and grouped-alias scan 131,072 with four controls. The query fixture supplies
+the already-validated slot; it does not test the full IPC dispatcher or replace
+the controller authentication tests. Evidence directories include
+`tests/intel-gpu/build/retired-source-scan.d1mgbpot`,
+`work-drain._l8_b3gu` and `grouped-alias-scan._vvzwrf4` under that same build
+directory. No new hardware behavior or safe slot recycling is established.
+
+Follow-up validation: controller/admission tests pass with explicit checks
+across all 16 slots for reservation, activation, wrong sender, retirement,
+quarantine and unissued identities. Native Intel service compile/link passed
+(no staging or hardware execution). Selected SPARK analysis now reports 96
+results: 29 flow, 67 prover, zero justified/unproved. Evidence:
+`tests/intel-gpu/build-render-control/controller-storage-proof.log`.
+
+Hosted registry/controller/admission tests pass, including unissued lookup,
+retired lookup without authorization and quarantine. The full selected
+session/controller SPARK run (including dependencies) reports 95 results,
+28 flow and 67 prover, zero justified/unproved; declaration postconditions
+are included, not excluded by a body-only region. An incompatible
+Inline_For_Proof annotation was removed after the first run rejected it;
+contracts were not weakened. Evidence:
+`tests/intel-gpu/build-render-control/session-index-proof-r2.log` and
+`gnatprove/gnatprove.out`. This proves the selected software properties, not
+hardware retirement or safe session reuse.
+
+Remaining reuse work must be one coordinated lifecycle, not a larger constant:
+
+1. Main's tag/array-index arithmetic is removed. Next audit broker-side tag
+   assumptions and the registry's fixed layout before changing issuance.
+   Recipients currently occupy fixed capability slots 40..55.
+2. Establish explicit disposal of recipient capabilities, pending admission
+   replies, CPU grants, GPU mappings, GuC registrations and all retained
+   context/update receipts. Scheduling disable or quiescence alone is not
+   sufficient to authorize reuse.
+3. Reinitialize per-slot one-shot state only after that complete retirement,
+   issue a fresh nonwrapping public tag and match exact completion identities.
+   Keep uncertain slots quarantined; old client endpoints must stay denied.
+4. Test more than 16 sequential launches, failed/late admissions, PID reuse,
+   stale completions and concurrent clients. Then validate physical rendering
+   and retirement across those launches. Existing three-cycle Mesa tests use
+   one device/session and do not cover this requirement.
+
+## Grouped alias exception regression, 2026-10-02
+
+`test-grouped-alias-scan.py` extracts and compiles both actual native grouped
+teardown alias loops. It checks 131,072 combinations across both context owners,
+both retiring slots, exact current-ticket/root matching, sealed/retired/disjoint
+source facts and other candidate presence/readiness. Successful scans must save
+the owning Source's revision, never another context's revision. Four negative
+controls independently remove owner identity, current-ticket identity, root
+identity and other-candidate checks; all fail the explicit oracle.
+
+The host fixture runs with `-gnatp` and explicit `Check` failures, not disabled
+Ada assertions. An initial fixture-only singleton aggregate compile error was
+corrected without changing driver logic. Passing log:
+`tests/grant-storage/build/grouped-alias-scan-r2.log`; source/scan hashes and
+per-variant outcomes: `tests/intel-gpu/build/grouped-alias-scan.gsb4u3ei/result.json`.
+These mocked observation combinations test native decisions, not the correctness
+of physical alias observations or hardware retirement. v32 remains unchanged.
+
+## v32 NUC checkpoint, 2026-10-02
+
+`kernel/cubit_live_mesa_grouped_teapot_v32.img` is packaged, embedded-binary
+verified, and QEMU boot-gated. SHA256:
+`a84eaba5d3a4a67fe6b0a8a8b6dee86171cb28a2e4ac7395f6c75289d19622aa`.
+Selected driver: `a40853585ad90c4b93c25935ff182372debf7c3c3e6a829070d7a4e59932ad5c`.
+Mesa service app remains `ec9f2a4425c1f7e188bc2c5f14a42fa011cfa3d9571a246ea6f8520848f493fc`.
+Both were extracted from the actual image and compared byte-for-byte. Prior
+staged app/driver copies were restored and compared. Evidence:
+`tests/grant-storage/build/image-v32.oMLctU`, log `image-v32.log`.
+
+QEMU UEFI/four-CPU boot-log delivery and USB Desktop without PS/2 pass. Serial
+lines 730–731 show Intel admission denied and the child not resumed; no Intel
+rendering/retirement execution claim. QEMU artifacts:
+`tests/grant-storage/build/t.N3tusL/cubit-usb-live.76igo3vr`.
+
+Physical expectations remain three service-teapot cycles, health=0, cycle=3
+retired and cleaned, service retirement=0/result=0. New Intel evidence after
+session close: `closed context table retirement acknowledged=TRUE`, followed
+by `context parent slice retirement acknowledged=TRUE` with physical arena
+retained. Capture FALSE acknowledgments or missing final cleanup separately
+from successful rendering. No physical v32 test yet. v31 is preserved, and
+presentation still uses CPU readback rather than a GPU-composited Desktop.
+
+## Native grouped context teardown, 2026-10-02
+
+The native service now polls closed-session replacement tables after GGTT image
+retirement and before parent cleanup. Exact closed-table ticket/session and
+candidate root/revision must match. GPU/CPU retirement uses the existing revoked
+cleanup gate; no app authority is restored. Other current VM sources and retained
+candidates must remain sealed/disjoint or explicitly retired. The only current
+Source alias exempted is the retiring session's exact current table ticket with
+the same sealed root; its independent logical revision is saved for disposal.
+
+After the exact supervisor slot/generation acknowledgment, completion disposes
+the candidate, then that current Source (when applicable), then acknowledges the
+closed-table ticket and clears the replacement record. The original stable
+hardware-root receipt stays in Application_Image until the parent acknowledgment.
+Parent cleanup now accepts an explicitly disposed Source, but still requires no
+current table ticket and no retained replacement records/references. Failures
+quarantine rather than replay. This extends the initial-only path described in
+earlier checkpoint sections below.
+
+The exact native completion bodies pass 32 closed-table fault cases and 15
+parent cases, including distinct candidate/source epochs, already-disposed
+Source, wrong identity/state/acknowledgment, partial-disposal failure and neighbor
+preservation. Evidence: `tests/intel-gpu/build/closed-table-completion.9aozrty0`
+and `tests/intel-gpu/build/context-parent-completion.6l9sytbm`. These boundary
+observations are mocked; they are not hardware/IPC authority proof. Failed or
+unregistered contexts, incomplete update records and uncertain snapshots still
+retain allocations. Session tags remain lifetime-bounded, and committed physical
+arena blocks are not returned to the kernel. No new image has been packaged.
+
+Native compile/link and existing 95 cleanup-gate, 48 query, 48 dispatcher and
+256 alias-scan cases (including negative controls) pass in
+`tests/grant-storage/build/grouped-context-gates.log`. Initial compile log:
+`grouped-context-native.log`. Neither build was staged; v31 is unchanged.
+
+## Closed replacement-table identity, 2026-10-02
+
+Session revocation previously cleared the only record of a private table's
+reclaimable kind. `Buffer_Requests` now preserves a separate `Private_Closed`
+state while still removing live-table reclamation eligibility. The new trusted
+`Closed_Tables` child requires exact ticket/session, closed table kind, device
+ownership, no pending allocation and confirmed reference retirement. It rejects
+context parents, pinned storage, stale/duplicate tickets and live replacements.
+Re-reservation advances the generation, clears closed state and restores the
+ordinary private-table lifecycle. Repeated session close cannot manufacture a
+reusable slot. This is bookkeeping, not hardware or supervisor acknowledgment.
+
+Validation: 128 closed-table generations and 16 injected failure combinations
+pass, along with the existing context/supervisor 256-generation composition and
+full buffer-request regressions. Native driver compile/link passes. Initial
+compile failure used a parent-body-only `Layout` alias in the child; the corrected
+fully qualified subtype passes. Logs: `closed-table-tickets.log` (failure) and
+`closed-table-tickets-r2.log` (passing), under `tests/grant-storage/build`.
+
+The native grouped coordinator is not connected yet. Its ordering must be:
+establish revoked-session GPU/CPU retirement; retire each exact replacement
+allocation; after its supervisor acknowledgment dispose that candidate and,
+when it is the current adopted root, the separately versioned logical Source;
+then acknowledge its closed-table ticket. Only after no replacements remain may
+the parent scratch/root allocation retire. Candidate revision and adopted Source
+revision are not interchangeable. Uncertain/failed snapshots must stay retained.
+
+## Native initial-context parent retirement, 2026-10-02
+
+The native loop now polls a one-shot context-parent cleanup path after image
+GGTT retirement. It requires the released image claim, exact closed context
+ticket, drained work, sealed initial logical root matching the retained hardware
+root, GuC deregistration, clear CPU grants, device ownership and stopped
+scheduling. Other current VM sources and retained update candidates must be
+sealed/disjoint (or explicitly retired where applicable). The request uses the
+existing supervisor completion transport, with normal client dispatch excluded
+while pending.
+
+`Finish_Context_Retirement` validates the exact slot/generation supervisor
+acknowledgment under cleanup authority, not live-app authority. It then forgets
+the logical snapshot, forgets the image receipt, acknowledges the context ticket,
+and clears the parent's backing slices in that order. Any failure quarantines
+the driver/pool; it never retries or resets session identity. The physical arena
+remains committed; only its slice becomes reusable.
+
+This first native path deliberately retains contexts with a current replacement
+table ticket or any retained replacement record belonging to their session.
+Their scratch/root parent cannot be recycled before grouped replacement
+teardown. That extension, failed/unregistered context cleanup, session-slot reuse
+and physical arena trimming remain incomplete; this is not full resource
+reclamation. No image is staged or packaged by this change.
+
+Native driver compile/link passes (`context-parent-native.log`). The exact native
+completion body passes 14 fault-injected host paths, checking ordered receipt
+disposal, quarantine on failures, no early metadata reuse and preservation of a
+neighbor context. Evidence: `tests/intel-gpu/build/context-parent-completion.y9vat8qx`.
+These mocked observations do not prove hardware drain, IPC authority or NUC
+execution; physical validation is still required.
+
+## Context tickets and supervisor arena composition, 2026-10-02
+
+The context-ticket test now combines the actual `Buffer_Requests.Contexts`
+implementation with the supervisor's actual `Extent_Allocator`. Across 256
+closed-session incarnations, slot/generation identities agree; exact retirement
+allows same-address slice reuse, stale/duplicate acknowledgments reject, and an
+adjacent live allocation remains unchanged. The physical allocator callback is
+called once; committed physical backing does not shrink when slices retire.
+Existing 128-generation/16-failure context-ticket regressions also pass. Log:
+`tests/grant-storage/build/context-supervisor-composition.log`.
+
+This uses a host physical-address stub and supplies retirement evidence; it is
+not IPC authentication, actual GPU drain, memory zeroing or native coordinator
+integration. In production `Buffer_Memory` additionally validates the completion
+token, status, exact reply tag and `[0, allocation-key, arena-id, 0]` before
+advancing its generation. The native full-context coordinator remains missing.
+
+Terminology correction: the existing supervisor retirement operation releases
+an arena **slice for reuse**, not physical blocks back to the kernel. Whole
+context cleanup should use that operation first; returning committed physical
+blocks is a separate future arena-trimming/lifetime problem. The permanently
+retained GGTT retirement scratch page is separate from each context parent, so
+scratch-remapped freed GGTT ranges do not depend on that parent's scratch pages.
+
+## Explicit retired VM receipts, 2026-10-02
+
+`VM_Image.Snapshots.Retired` distinguishes successful, acknowledged offline
+receipt disposal from a fresh, mutable or failed image. Only successful
+`Forget_Retired` sets the private latch. `Initialize` and `Prepare_Update` clear
+it before validating a new incarnation, so even failed preparation restores
+fail-closed alias-scan behavior. Duplicate disposal rejects without undoing the
+retired state; stale acknowledgments cannot retire a newer incarnation.
+
+Native `Poll_Table_Retirement` now exempts only this explicit retired state from
+the cross-context alias scan. All attempted, nonretired sources must still be
+sealed and physically disjoint. This removes the cleanup dependency identified
+below without treating arbitrary unsealed sources as safe. The full-context
+coordinator still needs to establish retirement and dispose its source; this
+change does not itself release parent backing or recycle session tags.
+
+Validation: snapshot transitions (including failed re-preparation), 128
+alternating snapshot generations, full VM image/range tests and the simulated
+VM-update/table-reuse pipeline pass. Native driver compile/link passes. Log:
+`tests/grant-storage/build/vm-retired-receipt.log`. No staging/image changes;
+these are hosted regressions, not a hardware retirement or SPARK proof claim.
+
+`test-retired-source-scan.py` compiles the exact native scan with mocked snapshot
+queries and checks all 256 two-context Boolean combinations. Both removing the
+retired exemption and incorrectly skipping all unsealed sources fail assertion
+negative controls. Evidence with source/scan hashes:
+`tests/intel-gpu/build/retired-source-scan.1njwc8hu/result.json`; log
+`tests/grant-storage/build/retired-source-scan.log`. The separate real snapshot
+tests establish when the mocked retired predicate is actually reachable.
+
+## Retired application-image receipt disposal, 2026-10-02
+
+`Application_Image.Retirement.Forget_Backing_Receipt` now permits the trusted
+cleanup coordinator to discard the original GGTT/root receipts after successful
+address retirement and supervisor acknowledgment. It checks the exact GPU
+address and both CPU/DMA root addresses. Premature, mismatched, failed-retirement
+and duplicate acknowledgments reject without changing the receipt. The supplied
+acknowledgment Boolean is a coordinator assertion, not independently verified
+supervisor authority; the eventual caller must validate the full parent ticket
+and generation against the supervisor completion first.
+
+Successful disposal clears the exposed root, scratch and allocation receipts,
+but preserves the consumed preparation/publication/retirement latches. It does
+not permit another publication or update, nor remove a newer claim at the same
+GGTT address. The nested consumed context metadata remains inert. This does not
+free physical memory or dispose logical VM snapshots, and there is no native
+coordinator caller yet.
+
+The full submission-buffer fixture passes all 29 publication/retirement paths,
+including acknowledgment rejection/preservation and successful one-shot disposal,
+plus all 32 scattered-backing interior splits. Native driver compile/link passes.
+Logs: `tests/grant-storage/build/context-receipt-final.log` and
+`tests/grant-storage/build/context-receipt-retirement.log`. These are hosted
+regressions and a native build, not hardware retirement or SPARK proof. No image
+was staged or packaged; v31 remains unchanged.
+
+Integration dependency identified before the explicit retired-state change above:
+`Poll_Table_Retirement` scanned every attempted
+private context and rejects an unsealed `Source`. Forgetting a fully retired
+source therefore needs an explicit, trusted fully-retired state that this scan
+can distinguish from a failed/unsealed live source. Simply skipping all unsealed
+sources would bypass the physical-alias check. Implement that distinction with
+the parent coordinator and test that retiring one context does not prevent
+another context's table retirement. The original hardware root and the adopted
+logical root must still be retired separately.
+
+## Application-image retirement integration regression, 2026-10-02
+
+The full submission-buffer fixture was missed in the earlier reclamation gate:
+it still named the removed `Detached` outcome and expected the released claim
+to remain allocated. This was reproduced as a compile failure before repair
+(`context-image-baseline.log`); it was not a passing test of the new behavior.
+The updated fixture passes all 29 real Application_Image publication/retirement
+paths, including cleanup after app revocation, failed cleanup retaining claims,
+exact successful removal and re-reservation of the same VA. The old image then
+fails both replayed retirement and publication without modifying the new claim.
+The complete hosted submission-buffer suite also passes, including all 32
+interior scattered-backing splits (`context-image-retirement.log`).
+
+This is host RAM/mock MMIO execution, not hardware validation. Parent teardown
+still needs both retained address domains accounted for: `Application_Image`
+retains the original stable hardware root, while the logical VM snapshot can
+adopt a different candidate root after an update. The existing snapshot forget
+operation checks exact revision/root and preserves generation monotonicity;
+zeroing only the context descriptor would not retire all these references.
+
+## Context-parent ticket identity, 2026-10-02
+
+Native `Start_Private_Context` now reserves through
+`Intel_GPU_Buffer_Requests.Contexts`. This explicitly distinguishes whole
+context parents from pinned bootstrap storage, BOs and replacement tables.
+`Retire_Session` closes the context ticket but does not make it reusable.
+The cleanup-only acknowledgment requires the exact session/full-generation
+ticket, closed context kind, no pending allocations, device ownership and
+trusted reference-retirement evidence. It deliberately does not depend on
+restoring the revoked app's request authority. Duplicate/stale acknowledgments
+reject; a subsequent context reservation advances the generation and rebinds
+ownership. Other allocation kinds cannot consume reusable context slots.
+
+The supervisor-release coordinator does NOT call this acknowledgment yet:
+context memory remains retained, and the driver still has sixteen lifetime
+session slots. Native allocation wiring compiled/linked; metadata tests passed
+128 owner/generation transitions and sixteen failure combinations, with the
+existing buffer-request suite also passing. Log:
+`tests/grant-storage/build/context-tickets.log`. These are hosted metadata
+regressions, not SPARK proof or hardware retirement. v31 is unchanged.
+
+## Full-context backing teardown audit, 2026-10-02
+
+Address reclamation does not yet retire the parent allocation. The current
+native path has three concrete barriers that a full cleanup coordinator must
+handle, rather than bypass:
+
+* At audit time `Start_Private_Context` reserved a pinned private ticket (default
+  `Reclaimable=False`); the dedicated context ticket path above now identifies
+  these separately. Its parent owns the context, initial page tables and
+  scratch slices; freeing a slice is not parent retirement.
+* `Retire_Application_Resources` revokes the session and closes its buffers.
+  `Retire_Session` clears unacknowledged private reclaimability. The existing
+  replacement-table acknowledgment path therefore cannot simply be reused for
+  revoked context parents.
+* `Finish_Buffer_Retirement` verifies a live sender/session before acknowledging
+  normal BO/replacement retirement. The service loop leaves client requests in
+  the kernel while `Buffer_Retirement_Pending` is nonzero; changing this guard
+  could admit close/revocation between preflight and supervisor completion.
+
+The next full-context path needs cleanup authority independent of a live app,
+an exact parent slot/generation acknowledgment, retirement of retained VM
+snapshots and aliases, and only then reusable allocation metadata. It must
+not reset session tags or promote pinned allocations with a Boolean shortcut.
+The existing native dispatch ordering excludes the suspected client-close race
+during normal retirement; no speculative live-session guard removal was made.
+`test-retirement-dispatch.py` compiles the exact native dispatch block and
+checks 48 combinations of pending ticket, both metadata gates, stale `Found`
+and poll result. Removing the pending-retirement guard fails the negative
+control. Evidence: `tests/intel-gpu/build/retirement-dispatch.3bnvcu6j/result.json`
+with source/guard hashes. This tests the dispatcher decision, not asynchronous
+kernel revocation or hardware behavior; those remain separate cleanup inputs.
+
+## Reclamation bookkeeping proof, 2026-10-02
+
+The exact ledger mutation is now a private `Forget_Detached` SPARK procedure
+called by the hardware-gated reclamation child. Its contract proves exact
+swap removal, count decrement, unchanged aperture/geometry and preservation
+of the ledger invariant and every other extent. There is no new public raw
+release API. The full ledger unit analysis has 65 results, zero unproved or
+justified, zero flow warnings and no `Assume`; the helper has seven proved
+checks. Source/report snapshot: `tests/intel-gpu/build/reclaim-proof.DDG5pI`.
+
+This proves software bookkeeping conditional on the stated preconditions,
+not the hardware-gated transaction: callback truthfulness, serialization,
+DMA completion and cleanup authority remain outside this proof. v31 predates
+this behavior-preserving helper extraction and remains unchanged.
+
+## v31 NUC checkpoint, 2026-10-02
+
+`kernel/cubit_live_mesa_reclaim_teapot_v31.img` is packaged and boot-gated,
+not yet tested on physical hardware. SHA256:
+`fb1f2ac8ae2db3b0d4bf32042ae14ec8bf6b20ed450333a9808be4dd4f632988`.
+The extracted Intel driver and service-teapot app match the selected binaries
+byte-for-byte; prior staged copies were restored and compared. Evidence:
+`tests/grant-storage/build/image-v31.ZtkF5b`, `image-v31.log` and
+`image-v31-embedded.log`. QEMU UEFI four-CPU boot/log-delivery/no-PS2 gates pass;
+Intel render admission is correctly denied there, so no GPU execution claim.
+
+Physical expectations: three service-teapot cycles, `MESA-SERVICE health=0`
+before each cycle, then `MESA-SERVICE retirement=0` and `result=0`. Intel logs
+should report `retired context GGTT ADDRESS_RELEASED` with `ADDRESS REUSABLE;
+BACKING RETAINED`. This verifies a context-address retirement path, not repeated
+session admission, backing reclamation or a GPU-accelerated Desktop. v30 remains
+the prior unchanged fallback image. Presentation still uses CPU readback.
+
+## Exact GGTT reclamation transaction, 2026-10-02
+
+`Intel_GPU_GGTT_Reservations.Reclamation` adds a one-shot hardware-gated
+address release, not a public bookkeeping-only deletion. It composes the
+existing scratch-remap/readback/invalidation retirement transaction with exact
+claim removal. Any failure retains the claim; other claims are preserved.
+It never releases physical backing or recycles session identities. The child
+is now integrated into native application-image retirement; the native driver
+compiled/linked successfully and is packaged in v31 above, but has not been
+hardware-tested. Existing v30 still retains whole-context claims.
+
+Nix hosted regression passed 4,512 cases, including all removal positions,
+I/O failures, loss at the final post-invalidation gate, and replay after a new
+allocation at the same address. Existing retaining-retirement tests also pass.
+Log: `tests/grant-storage/build/ggtt-reclamation.log`. This is not SPARK proof
+or physical-GPU evidence; callback truthfulness and exclusive serialization
+are explicit assumptions.
+
+Integration audit: retirement latches both GPU address getters to zero,
+updates reject retired objects, publication/preparation cannot repeat, and
+submission checks live identity/lifetime/address equality. GuC deregistration,
+clear CPU grants, stopped scheduling and absence of deferred publishers are
+mandatory before cleanup. Retained context descriptors cannot re-register or
+enable a deregistered lifecycle. Physical backing remains owned; releasing
+this address reservation does not acknowledge supervisor backing retirement.
+
+Native compile/link passed (`ggtt-reclaim-native.log`), alongside 95 cleanup
+gate checks, 48 query cases, 23,040 work-drain cases and the deferred-publisher
+negative control. `ggtt_reuse.gpr` also passed 1,024 cycles through the actual
+publisher and reclaimer, replacing nonzero scratch PTEs with different backing
+each cycle, checking neighboring claims and stale-attempt rejection. These
+cycles use mock PTEs, not GPU execution (`ggtt-reuse.log`). New native success
+log is `retired context GGTT ADDRESS_RELEASED ... (ADDRESS REUSABLE; BACKING
+RETAINED)`. Driver ELF SHA256:
+`c60b8316b09468de17de6e49f61d04e1d1d37f888b741f725fd1d78e0b34bd0d`.
+
+## Context retirement versus reclamation, 2026-10-02
+
+The pre-integration source audit confirmed distinct milestones. Application BO retirement
+has a supervisor-acknowledged reusable path, but whole-context retirement still
+retains the context's parent backing and GGTT reservation. The render registry
+admits at most sixteen lifetime sessions without tag reuse; the GGTT reservation
+ledger held at most sixty-four retained claims without release. The new path
+above releases completed context address claims but not session slots. Repeated frames
+on one VkDevice do not exercise repeated application admission or demonstrate
+unbounded service restart. Do not label the full driver complete based on those
+frame cycles.
+
+`tests/intel-gpu/test-work-drain.py` now compiles the exact
+`Application_Work_Drained` predicate extracted from the native driver. It checks
+23,040 combinations of session bounds, setup, submission phase, ownership/fault,
+and every deferred publisher. The existing image-retirement gate test mocked
+this predicate; this additional test closes that decision-coverage gap. An
+omitted `Private_Pending` guard is rejected by an assertion negative control.
+Run with `nix develop -c python3 tests/intel-gpu/test-work-drain.py`.
+Evidence: `tests/intel-gpu/build/work-drain.2o7qnd5u/result.json`, with exact
+source hashes; generated outputs remain under the ignored build directory.
+
+These are hosted decisions over controlled observations, not SPARK proof or
+proof of actual hardware quiescence. Before enabling context backing/claim
+reclamation, the coordinator must combine this gate with exact deregistration,
+retired CPU grants, GGTT scratch replacement, completed translation invalidation,
+and supervisor acknowledgement. Session/tag reuse additionally requires retiring
+old capability authority and separating generation identity from current array
+indices; merely increasing or resetting the registry is not a solution.
+No reclamation permission or native behavior was changed by this test.
+
+## Current hardware and composition gates, 2026-10-02
+
+The user confirmed native Mesa red/blue triangles on the NUC in v25, including
+`window result=0` and `cycle=3 retired and cleaned`. The allocation failure
+described below is historical, not the current bring-up state. This hardware
+evidence does not establish whole-driver completeness or untrusted-app safety.
+
+The new same-device composition fixture borrows the actual completed Mesa
+image, created with SAMPLED usage, and retains its image/view/backing until the
+Ada scene bridge closes. It transitions that image for shader reads, composes
+it plus a green 8x8 overlay using production Ada scene recording, and records
+the shared compositor readback adapter in the same submission. Completion is
+polled without resubmission. The CPU presentation consumer must retire its
+loans before release/close; uncertain bridge state retains all resources.
+This is not a cross-process GPU-import ABI or whole-Desktop GPU activation.
+
+Reproduce the Linux software-Mesa gates in
+`tests/compositor/vulkan-affine-shell.nix`:
+
+```sh
+python3 tests/mesa-anv/test-scene-host.py tests/compositor/build/native-scene-oahh3gi0
+python3 tests/mesa-anv/test-scene-host.py tests/compositor/build/native-scene-oahh3gi0 --teapot
+```
+
+Both gates passed eight cycles, alternating CPU-consumer acceptance/rejection,
+with 32,768 triangle and 524,288 teapot pixels compared exactly against the
+producer image plus the overlay. Vulkan synchronization validation reported
+zero errors/warnings. Removing SAMPLED usage intentionally fails validation.
+Evidence: `tests/mesa-anv/target/scene-host.fl6t3c70` and
+`tests/mesa-anv/target/scene-host.7dayqya0`. These are hosted tests, not SPARK
+proofs of the foreign adapter or Intel hardware execution.
+
+The refreshed snapshot gates additionally cover one real Ada recording
+cancellation and failures mapping either readback after GPU completion. Each
+failure must retire cleanly, followed by eight exact composed frames. This
+caught an adapter bug: Record could already cancel the writer, while cleanup
+tried Cancel again and quarantined on the resulting rejection. Cleanup now
+first tries Close after Record rejection; Close success proves quiescence,
+whereas Close rejection preserves ownership for explicit cancellation.
+The old adapter timed out with retained status 2 under this injected failure;
+the corrected adapter passes all three recovery sequences with zero validation
+errors. Evidence: `scene-host.qdhspb3u` (triangle/faults) and
+`scene-host.60tq4eo8` (teapot), under `tests/mesa-anv/target`. The corrected native
+app linked in `native-instance-link.upcvoo89`, but is not yet packaged or run
+on Intel hardware. Published v29 remains unchanged and predates this recovery
+fix; its ordinary rendering path is unchanged by the fix.
+
+Native triangle and teapot composition apps compiled/linked against the
+hash-verified frozen Ada bridge and matching runtime. The scene opt-in requests
+Vulkan 1.1, required by the owned-image adapter. The teapot executable is
+`tests/mesa-anv/target/native-instance-link.ob080e78/mesa-scene-teapot.app`,
+SHA256 `21f2adbb6aeab076213b9b8de7fca965234ddeac76d5a39914b09013e177f1f3`.
+Future relinks must not bypass the runtime/snapshot consistency guard.
+
+NUC candidate `kernel/cubit_live_mesa_scene_teapot_v29.img`, SHA256
+`4cacb689929f8b6be0d664be51edefe0610bace4295301453cf76849fb4385ea`, passed
+firmware/Mesa/image audits and QEMU UEFI/4-CPU boot, boot-log delivery and USB
+startup without PS/2. QEMU does not execute the physical Intel GPU path.
+The previous staged app was restored and compared after packaging. v28 remains
+available as the plain teapot baseline. NUC execution of either teapot image
+is not yet confirmed; expected v29 evidence is `MESA-SCENE open=0`,
+`composed pixels=65536 mismatches=0`, `window result=0`, and all three cycles
+retired/cleaned. The green overlay distinguishes composed output from the
+producer-only teapot. Presentation still uses explicit CPU-readable readback.
+
+## Historical allocation failure (v14 and earlier)
 
 The NUC now reports `MESA-DEVICE create=0` and triangle cycle 1/3 beginning
 on that device. Logical-device creation is physically confirmed. The first
@@ -84,12 +848,13 @@ context and page-table allocations share the ticket namespace with app BOs.
 The user requests growth as needed, not another small fixed allocation ceiling.
 The implementation is not yet growable. The coordinated replacement needs:
 
-1. **Identity independent of committed capacity.** Public handles still use
-   `(ID - 1) mod Capacity`. Internal tickets have now been migrated to an
+1. **Identity independent of committed capacity.** Public handles now use
+   monotonic, non-repeating32-bit names, independent of record indices.
+   Exhaustion rejects issuance rather than wrapping. Lookup is still a bounded
+   search over the bootstrap table; growable storage needs an indexed lookup.
+   Internal tickets have now been migrated to an
    immutable low32 slot/high32 generation-minus-one layout, including deferred
-   retirement admission and supervisor retirement-generation decoding. Public
-   handle strides cannot become the current growable size. Choose
-   an immutable identity encoding or monotonic identity lookup, retain full
+   retirement admission and supervisor retirement-generation decoding. Retain full
    identity/session validation, and retire an identity namespace on overflow
    rather than wrapping. An index alone is never authority.
 2. **Chunked metadata growth.** Allocate and initialize additional record
@@ -105,9 +870,9 @@ The implementation is not yet growable. The coordinated replacement needs:
    not evidence of a growable physical-memory allocator.
 4. **End-to-end admission.** Update supervisor backing records, driver request
    records, public handles and dependent mapping/binding registries together.
-   The current Ada and C budget decoders assume exactly sixteen slots and
-   infer retained-byte bounds from that number; replace that assumption with
-   an explicit versioned budget contract. Advertise policy limits separately
+   Ada and C budget-v2 decoders now separate bytes from free-record count;
+   native services and every Mesa artifact must use that same contract before
+   testing. Advertise policy limits separately
    from instantaneous free space. Avoid keeping the obsolete bootstrap ABI
    as a second fallback path.
 5. **Retirement and bounded work.** Growth must not mark closed, pending,
@@ -125,15 +890,158 @@ three-cycle Mesa triangle test. Hosted tests and QEMU cannot establish Intel
 rendering success. No larger fixed ceiling is presented as completing this
 dynamic-allocation work.
 
-The first identity migration passes hosted allocation lifecycle/race tests,
+The internal identity migration passes hosted allocation lifecycle/race tests,
 2048 deferred-retirement candidates, and simulated VM-update/private-table
 reuse regressions. Slot/generation decoding includes the maximum supported
-generation. These are not physical GPU results or a completed growable
-allocator; native driver compilation is pending shared build-lock availability.
+generation. Public-handle migration passes the handle/session/retirement tests
+and an additional mixed sequence:128 reuses followed by fresh records and more
+reuse, with old handles rejected and neighboring live records preserved.
+These are not physical GPU results or a completed growable allocator.
+Native driver compilation and linking pass under the shared build lock; no new
+boot image or hardware result is claimed for this migration.
 The registry remains sixteen entries and its backing arena remains32MiB.
 Large discrete-GPU VRAM and terabyte-scale host memory must be represented as
 separate resource domains with64-bit sizes and checked arithmetic, not inferred
 from metadata table capacity or the current bootstrap arena.
+
+`Intel_GPU_Metadata_Arena` now supplies the reserve/commit growth mechanism
+behind injected platform operations. Each step commits and initializes at most
+64KiB; a requested logical prefix becomes addressable only after all its bytes
+are initialized. Failed growth retains the previous published prefix and any
+new backing, and does not replay uncertain operations. Hosted tests pass ten
+commit/initialization fault points, busy/invalid requests, stable old addresses,
+reservation failure and64-bit quota arithmetic. The1TiB case is a fake-address
+test, not native physical allocation. This primitive is not yet connected to
+the handle/request/supervisor arrays; the sixteen-slot hardware blocker remains.
+
+The native platform adapter binds reserve/commit to `CuBit.Owned_Reservations`,
+not the GPU BO allocator. Its native compile-unit check passes. The bounded
+CPU initialization helper also passes a hosted actual-memory test clearing
+64KiB between untouched sentinel regions, with invalid spans rejected before
+access. This does not yet establish execution of the combined metadata-growth
+path inside CuBit.
+
+The handle registry now accepts a stable, committed CPU metadata extension,
+initializes additional records before publishing capacity, and retains its
+small inline bootstrap records without moving them. Hosted tests connect the
+actual arena and registry across eight growth boundaries with more than128
+live records; old names/backing, neighbor isolation, replacement/retirement and
+uncommitted-tail sentinels remain correct. Imported-memory access is isolated
+in three SPARK-off bodies; no proof of the updated storage abstraction is
+claimed. Native Intel driver and devmgr compilation/linking now pass. The driver request and
+supervisor ticket arrays still have16 slots, and the dispatcher does not yet
+request metadata growth, so this is not an end-to-end fix. Registry lookup and
+overlap scans also remain linear and need indexed/budgeted work before large
+deployment.
+
+The request service's six parallel allocation arrays have been consolidated
+into typed records using `Intel_GPU_Record_Store`. Existing lifecycle/race and
+simulated VM-update tests pass through that implementation. The store itself
+passes eight extension boundaries with more than1024 records, nonzero typed
+defaults, stable old contents, relocation/replay/oversize rejection and tail
+sentinels. The shared slot type remains16 until supervisor, backing-pool,
+deferred-retirement and budget consumers migrate together. Widening it early
+would permit decoded indexes beyond committed metadata; every consumer must
+check committed capacity before record access. No new native/hardware image
+is implied by these hosted results.
+
+Supervisor extent records and driver backing-pool records now use the same
+typed store, replacing their parallel fixed arrays. Hosted extent tests pass
+fragmentation/coalescing,128 generation reuses and view/failure isolation;
+the mocked-transport backing-pool suite passes128 retirement/reinitialization
+cycles, stale/duplicate replies, overlap guards and ownership-loss quarantine.
+Both native services compile/link after adding the generic store to devmgr's
+explicit source list. These tests establish regressions for the migrated
+bootstrap path, not live dynamic growth or a SPARK proof of imported memory.
+
+The dispatcher replacement-table records now also use the typed store; native
+driver compilation/linking passes. Hosted VM-update/private-table reuse and
+2048-candidate deferred-retirement regressions pass, with simulated hardware.
+They do not execute the native dispatcher or demonstrate dynamic growth.
+
+Retirement preflight and acknowledgement now share `Can_Retire`, including
+the registry's actual monotonic-handle issuance policy. This replaces the
+dispatcher's obsolete `handle <= max - 16` check before supervisor retirement.
+Preflight neither reserves an identity nor proves references retired; the
+acknowledgement rechecks local admission and still requires retirement evidence.
+Hosted128-cycle open/closed/reused, stale/zero/cross-session preflight checks
+and existing allocation races pass, as does the native driver build.
+
+Deferred-retirement records now use the growable typed store too, with a
+trusted committed-storage extension API. The queue preserves its cursor across
+growth, visits one record per poll, and rejects uncommitted indices. Hosted
+tests pass the original2048 candidate cases plus four actual-memory extension
+boundaries, preserved candidates/cursor, new-slot polling, no submission replay,
+rejected relocation and untouched uncommitted tail bytes. The old whole-array
+snapshot/contract was removed rather than implying it proves imported storage;
+candidate selection remains a pure SPARK expression, while queue/storage bodies
+are explicitly SPARK-off. No updated queue proof is claimed. Native driver
+compilation/linking now passes for this change.
+
+Application VM-update images are now reached through a sparse retained-reference
+index, independent of the ticket subtype. The16 existing inline images remain
+bootstrap storage; extending the index allocates no images. A trusted owner
+must supply and retain separately initialized images, with duplicate/alias
+rejection and no replacement or implicit release. Hosted tests grow the index
+beyond256 entries with only two supplied images and preserve all references.
+Native driver compilation/linking passes; on-demand image allocation is
+not yet connected. Before increasing the shared slot namespace, wire that
+allocation with explicit lifetimes and committed-capacity admission.
+The extent allocator now maintains an address-ordered list of live
+slices in its records, removing the fixed placement scratch array. Retiring a
+slice unlinks it but preserves its generation tombstone; first-fit gap search
+automatically joins adjacent holes without copying all extents onto the stack.
+Hosted fragmentation/reuse tests and256 removal-mask cases with reversed ticket
+order pass against an independent occupancy oracle. Native devmgr compilation
+and linking pass. Search/retirement are still linear, bounded by current record
+capacity, not an indexed or incrementally scheduled large-scale allocator.
+The supervisor allocator additionally exposes trusted record growth and checks
+committed capacity before accessing allocation or retirement indices. Its
+internal index no longer uses the sixteen-slot wire subtype. Hosted tests now
+retain hundreds of live slices across four metadata boundaries, verify every
+old address, and retire/reuse external record200 without more physical blocks.
+Uncommitted indices and growth after ownership loss are rejected. These use a
+mock physical allocator; native devmgr compilation/linking also passes.
+The driver backing pool now exposes guarded committed-record growth too:
+in-flight, quarantined and revoked pools reject extension, and successful
+extension preserves existing backing and transport identities. Hosted lifecycle
+and growth tests pass, including128 retirement cycles; the native driver builds.
+The allocation wire namespace now accepts positive31-bit slots, but native
+tables still start at sixteen records and the dispatcher does not request
+growth; this is not yet the physical Mesa allocation fix. Main scan loops
+use committed request/replacement capacity, never the namespace maximum.
+The request service now exposes separate ticket/handle metadata extensions and
+checks committed capacity before decoded record access. Fresh allocation and
+reuse scans stop at committed capacity capped by the current wire namespace.
+Hosted tests preserve old ticket/session/handle identities across extensions
+and reject growth while pending, revoked or quarantined. Existing lifecycle
+and race tests and the native driver build pass. Independent partial table
+growth is not advertised as a larger usable namespace; the coordinator must
+finish all required tables before admitting more allocations. Hosted request
+tests now create allocations past16 after extending metadata and reject an
+uncommitted maximum-index lookup. Backing/reply/extent regressions and native
+Intel driver/devmgr builds pass with the expanded namespace.
+Then wire committed-capacity admission and
+incremental growth into both services and consume the version-two budget
+contract in freshly rebuilt Mesa artifacts. No new test image has been produced;
+v17 remains unchanged.
+
+Budget-v2 source migration is complete: supervisor request/reply version2,
+driver public request version2, Mesa decoder/native adapter and Ada IPC call.
+It removes the inferred `(16 - unused) * allocation-size` byte bounds. Admitted
+capacity is positive/page-aligned64-bit, retained bytes cannot exceed it, and
+free-record count is independently bounded by the signed31-bit index namespace.
+Current backing remains32MiB, per-object maximum remains16MiB, and initial
+committed allocation records remain16. Large byte snapshots are codec fixtures, not allocated
+RAM/VRAM. No obsolete-budget fallback is retained.
+
+Nix hosted Ada codecs/asynchronous queries and C UBSan tests pass139281 small
+byte/record combinations, large capacities through2^50, malformed envelopes,
+overflow-bound counts, and explicit old-version rejection before transport.
+Native Intel driver and devmgr compile/link/stage pass. **Existing Mesa app
+binaries have not been rebuilt for v2.** Rebuild/relink the native Mesa probe
+and run native integration before packaging any new image; mixing newly staged
+services with an old Mesa probe will correctly reject its budget request.
 
 ## CPU state-table backing, 2026-10-01
 

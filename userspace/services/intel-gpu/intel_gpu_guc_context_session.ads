@@ -3,12 +3,11 @@ with Intel_GPU_GuC_Context_Event;
 with Intel_GPU_GuC_Context_Lifecycle;
 generic
    -- Serialized, bounded, nonraising callbacks. Exclusive channel ownership;
-   -- caller reserves the entire unique [Fence_Base, Fence_Last] interval and
-   -- four G2H words. The first four fences are controls; the rest are work.
+   -- caller assigns fast-request wire IDs and reserves four G2H words.
+   -- Queue receives no context-local transaction identity.
    with function Owner_Ready return Boolean;
    with procedure Queue
      (Payload : Intel_GPU_GuC_Context_Event.Words;
-      Fence : Interfaces.Unsigned_16;
       Result : out Intel_GPU_GuC_Context_Lifecycle.Send_Result);
    with procedure Retain
      (Payload : Intel_GPU_GuC_Context_Event.Words;
@@ -17,10 +16,10 @@ package Intel_GPU_GuC_Context_Session is
    type Session is limited private;
    type Result is (Rejected, Backpressure, Queued, Handled, Retained, Faulted);
    function State (Object : Session) return Intel_GPU_GuC_Context_Lifecycle.Phase;
+   function Can_Run_And_Retire (Object : Session) return Boolean;
    procedure Initialize
      (Object : in out Session; ID : Interfaces.Unsigned_32;
       GPU_Start, Pin_Bias : Interfaces.Unsigned_64;
-      Fence_Base, Fence_Last : Interfaces.Unsigned_16;
       Quantum_Us, Preemption_Us : Interfaces.Unsigned_32;
       Preempt_To_Idle : Boolean);
    procedure Submit (Object : in out Session;
@@ -40,7 +39,8 @@ package Intel_GPU_GuC_Context_Session is
      (Object : in out Session; Admission_Closed, Work_Drained : Boolean;
       Status : out Result);
    -- Owned, CT-validated frame only. Unrelated valid messages are retained;
-   -- overflow, malformed messages and matching failures quarantine the session.
+   -- overflow, malformed messages and delivered failures quarantine the session.
+   -- The transport dispatcher quarantines all sessions on fast-request failure.
    procedure Dispatch (Object : in out Session;
                        Payload : Intel_GPU_GuC_Context_Event.Words;
                        Fence : Interfaces.Unsigned_16; Status : out Result);

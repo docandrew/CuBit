@@ -15,6 +15,8 @@ package Mesa_FFI with SPARK_Mode => Off is
    function Render (Context, Target, Source : System.Address;
                     Value : access constant Draw) return Word
      with Import, Convention => C, External_Name => "cubit_mesa_draw";
+   function Fill (Context, Target : System.Address; Left, Top, Width, Height, Color : Word) return Word
+     with Import, Convention => C, External_Name => "cubit_mesa_fill";
    function Release (Context, Value : System.Address) return Word
      with Import, Convention => C, External_Name => "cubit_mesa_release";
    procedure Destroy (Context : System.Address)

@@ -75,7 +75,10 @@ Private ROMs are not copied automatically. This is not yet a full `make world`
 workspace: external/ignored port dependencies may require explicit seeding.
 
 The source snapshot and artifacts are regular independent files, never hard
-links or symlinks back into the checkout. Source hashes are rechecked before
+links or symlinks back into the checkout. Internal leaf source symlinks are materialized as regular
+copies, recording link text and resolved in-repository target; both provenance
+and content are rechecked. External/directory links, linked parents, and seed
+artifact symlinks are rejected. Source hashes are rechecked before
 marking it complete; concurrent source editing still requires coordination.
 No Git commit, branch or shared index change is made. Do not run `git` mutations
 inside the snapshot: Git would otherwise discover the enclosing main checkout.

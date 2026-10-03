@@ -1,0 +1,536 @@
+------------------------------------------------------------------------------
+--  CuBit Control Language native desktop adapter
+------------------------------------------------------------------------------
+with Interfaces; use Interfaces;
+with System; use type System.Address;
+with System.Storage_Elements; use System.Storage_Elements;
+
+with CuBit.Messages; use CuBit.Messages;
+with CuBit.Protocols;
+with Client_Frame_Wakeup;
+with CuBit.UI;
+with CuBit.UI.App;
+with CCL_Workspace;
+with CCL_Application;
+with CCL_Native_Execution;
+
+package body CCL_Desktop_Platform is
+   function Code_Of (Event : Window_Event) return Integer_32 is
+     (Window_Event'Enum_Rep (Event));
+
+   --  This application's window title, from Activate.
+   MAXIMUM_TITLE : constant := 64;
+   Title_Text : String (1 .. MAXIMUM_TITLE) := [others => ' '];
+   Title_Length : Natural range 0 .. MAXIMUM_TITLE := 0;
+   function Title return String is (Title_Text (1 .. Title_Length));
+   function Name return String renames CCL_Application.Name;
+
+   procedure Live_Label_Changed (Event : Live_Label_Event) is
+   begin
+      -- Native release builds discard enumeration names; diagnostics must
+      -- retain their meaning without relying on Enum'Image.
+      debugPrint (Name & ": live label " &
+        (case Event is
+            when Started => "STARTED", when Stopped => "STOPPED",
+            when Sampled => "SAMPLED", when Faulted => "FAULTED") & ASCII.LF);
+   end Live_Label_Changed;
+
+   procedure REPL_Completed (Result : String) is
+   begin
+      CuBit.Messages.debugPrint (Name & ": REPL completed: " & Result & ASCII.LF);
+   end REPL_Completed;
+
+   MINIMUM_WIDTH  : constant Natural := 900;
+   MINIMUM_HEIGHT : constant Natural := 400;
+   MAXIMUM_WIDTH  : constant Natural := 1_280;
+   MAXIMUM_HEIGHT : constant Natural := 720;
+   REPLY_OK : constant Unsigned_32 := 16#F000#;
+
+   KEY_BACKSPACE : constant Unsigned_64 := 16#0E#;
+   KEY_TAB       : constant Unsigned_64 := 16#0F#;
+   KEY_SPACE     : constant Unsigned_64 := 16#39#;
+   KEY_ENTER     : constant Unsigned_64 := 16#1C#;
+   KEY_A         : constant Unsigned_64 := 16#1E#;
+   KEY_D         : constant Unsigned_64 := 16#20#;
+   KEY_F         : constant Unsigned_64 := 16#21#;
+   KEY_O         : constant Unsigned_64 := 16#18#;
+   KEY_S         : constant Unsigned_64 := 16#1F#;
+   KEY_Y         : constant Unsigned_64 := 16#15#;
+   KEY_Z         : constant Unsigned_64 := 16#2C#;
+   KEY_RIGHT_BRACKET : constant Unsigned_64 := 16#1B#;
+   KEY_BACKSLASH : constant Unsigned_64 := 16#2B#;
+   KEY_F3        : constant Unsigned_64 := 16#3D#;
+   KEY_F5        : constant Unsigned_64 := 16#3F#;
+   KEY_F6        : constant Unsigned_64 := 16#40#;
+   KEY_F7        : constant Unsigned_64 := 16#41#;
+   KEY_F8        : constant Unsigned_64 := 16#42#;
+   KEY_HOME      : constant Unsigned_64 := 16#47#;
+   KEY_UP        : constant Unsigned_64 := 16#48#;
+   KEY_PAGE_UP   : constant Unsigned_64 := 16#49#;
+   KEY_LEFT      : constant Unsigned_64 := 16#4B#;
+   KEY_RIGHT     : constant Unsigned_64 := 16#4D#;
+   KEY_END       : constant Unsigned_64 := 16#4F#;
+   KEY_DOWN      : constant Unsigned_64 := 16#50#;
+   KEY_PAGE_DOWN : constant Unsigned_64 := 16#51#;
+   KEY_DELETE    : constant Unsigned_64 := 16#53#;
+
+   MULTI_CLICK_MS     : constant Unsigned_64 := 500;
+   MULTI_CLICK_RADIUS : constant Integer_64 := 5;
+
+   Native_Window : aliased CuBit.UI.App.Window;
+   Native_Open : Boolean := False;
+   First_Frame_Presented : Boolean := False;
+   Current_Modifiers : Unsigned_64 := 0;
+   Last_Click_Ms : Unsigned_64 := 0;
+   Click_Origin_X : Integer_64 := 0;
+   Click_Origin_Y : Integer_64 := 0;
+   Click_Count : Natural range 0 .. 3 := 0;
+   Pending_Event : CuBit.UI.App.Input_Event;
+   Handling_Event : CuBit.UI.App.Input_Event;
+   Pending_Found : Boolean := False;
+   Skip_Empty_Poll : Boolean := False;
+   Completions_Seen : Boolean := False;
+
+   procedure Pump_Completions is
+      Receipt : aliased CompletionEntry;
+      Consumed, Healthy, Found : Boolean;
+      Event : CuBit.UI.App.Input_Event;
+   begin
+      Completions_Seen := False;
+      for Count in 1 .. 32 loop
+         exit when Poll_Completion (Receipt'Address) /= 1;
+         Completions_Seen := True;
+         CuBit.UI.App.Complete_Input_Wait (Native_Window, Receipt, Event, Found, Consumed, Healthy);
+         if Consumed then
+            if not Healthy then
+               Native_Open := False;
+            elsif Found then
+               Pending_Event := Event; Pending_Found := True;
+            end if;
+         else
+            CCL_Native_Execution.Deliver (Receipt, Consumed);
+            if not Consumed then debugPrint (Name & ": unclaimed IPC completion" & ASCII.LF); end if;
+         end if;
+      end loop;
+      CCL_Native_Execution.Maintain;
+   end Pump_Completions;
+
+   procedure Activate (Name, Title : String) is
+   begin
+      CCL_Application.Set_Name (Name);
+      Title_Length := Natural'Min (Title'Length, MAXIMUM_TITLE);
+      Title_Text (1 .. Title_Length) := Title (Title'First .. Title'First + Title_Length - 1);
+   end Activate;
+
+   function Window_Open
+     (Width, Height : Integer_32) return System.Address
+   with Export, Convention => C, External_Name => "ccl_window_open";
+
+   function Window_Open
+     (Width, Height : Integer_32) return System.Address
+   is
+      OK : Boolean;
+      Requested_Width : Natural;
+      Requested_Height : Natural;
+      Flags : constant Unsigned_64 :=
+        CuBit.UI.App.WINDOW_FLAG_DECORATED or
+        CuBit.UI.App.WINDOW_FLAG_RESIZABLE or
+        CuBit.UI.App.WINDOW_FLAG_MINIMIZABLE or
+        CuBit.UI.App.WINDOW_FLAG_MAXIMIZABLE or
+        CuBit.UI.App.WINDOW_FLAG_CLOSEABLE;
+   begin
+      if Width <= 0 or else Height <= 0 then
+         return System.Null_Address;
+      end if;
+      Requested_Width := Natural'Max (MINIMUM_WIDTH, Natural (Width));
+      Requested_Height := Natural'Max (MINIMUM_HEIGHT, Natural (Height));
+      CuBit.UI.App.Open
+        (Native_Window, Requested_Width, Requested_Height, Flags, OK,
+         maximum_width => MAXIMUM_WIDTH,
+         maximum_height => MAXIMUM_HEIGHT,
+         title => Title, protected_frames => True);
+      Native_Open := OK;
+      if OK then
+         debugPrint (Name & ": native window ready" & ASCII.LF);
+      else
+         debugPrint (Name & ": native window failed" & ASCII.LF);
+      end if;
+      return (if OK then Native_Window'Address else System.Null_Address);
+   end Window_Open;
+
+   function Window_Has_System_Chrome return Integer_32
+   with Export, Convention => C,
+        External_Name => "ccl_window_has_system_chrome";
+
+   function Window_Has_System_Chrome return Integer_32 is (1);
+
+   function Window_Prepare_Frame
+     (Handle : System.Address;
+      Minimum_Width, Minimum_Height : Integer_32;
+      Maximum_Width, Maximum_Height : Integer_32;
+      Width, Height : access Integer_32) return Integer_32
+   with Export, Convention => C,
+        External_Name => "ccl_window_prepare_frame";
+
+   function Window_Prepare_Frame
+     (Handle : System.Address;
+      Minimum_Width, Minimum_Height : Integer_32;
+      Maximum_Width, Maximum_Height : Integer_32;
+      Width, Height : access Integer_32) return Integer_32
+   is
+      pragma Unreferenced
+        (Handle, Minimum_Width, Minimum_Height, Maximum_Width, Maximum_Height);
+   begin
+      if not Native_Open or else
+        not CuBit.UI.App.Is_Open (Native_Window)
+      then
+         return 1;
+      end if;
+      Width.all := Integer_32 (CuBit.UI.App.Width (Native_Window));
+      Height.all := Integer_32 (CuBit.UI.App.Height (Native_Window));
+      return 0;
+   end Window_Prepare_Frame;
+
+   procedure Decode_Pointer
+     (Packed : Unsigned_64; X, Y : access Integer_32)
+   is
+   begin
+      X.all := Integer_32 (Packed and 16#FFFF_FFFF#);
+      Y.all := Integer_32 (Shift_Right (Packed, 32));
+   end Decode_Pointer;
+
+   function Count_Click (X, Y : Integer_32) return Natural is
+      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      DX : constant Integer_64 := Integer_64 (X) - Click_Origin_X;
+      DY : constant Integer_64 := Integer_64 (Y) - Click_Origin_Y;
+      Continues : constant Boolean :=
+        Click_Count > 0 and then Click_Count < 3 and then
+        Now - Last_Click_Ms <= MULTI_CLICK_MS and then
+        DX >= -MULTI_CLICK_RADIUS and then DX <= MULTI_CLICK_RADIUS and then
+        DY >= -MULTI_CLICK_RADIUS and then DY <= MULTI_CLICK_RADIUS;
+   begin
+      if Continues then
+         Click_Count := Click_Count + 1;
+      else
+         Click_Count := 1;
+         Click_Origin_X := Integer_64 (X);
+         Click_Origin_Y := Integer_64 (Y);
+      end if;
+      Last_Click_Ms := Now;
+      return Click_Count;
+   end Count_Click;
+
+   function Window_Poll
+     (Handle : System.Address; Kind : access Integer_32;
+      Code, Modifiers : access Unsigned_32;
+      X, Y : access Integer_32) return Integer_32
+   with Export, Convention => C, External_Name => "ccl_window_poll";
+
+   function Window_Poll
+     (Handle : System.Address; Kind : access Integer_32;
+      Code, Modifiers : access Unsigned_32;
+      X, Y : access Integer_32) return Integer_32
+   is
+      pragma Unreferenced (Handle);
+      Event : CuBit.UI.App.Input_Event;
+      Found : Boolean;
+      Key : Unsigned_64;
+      Mods : Unsigned_64;
+      Clicks : Natural;
+      Wheel : Unsigned_64;
+   begin
+      Kind.all := Code_Of (No_Event);
+      Code.all := 0;
+      Modifiers.all := 0;
+      X.all := 0;
+      Y.all := 0;
+      Pump_Completions;
+      if not Native_Open then
+         return 0;
+      end if;
+
+      if Pending_Found then
+         Event := Pending_Event;
+         Found := True;
+         Pending_Found := False;
+         Skip_Empty_Poll := not CuBit.UI.App.Input_May_Remain (Native_Window);
+      elsif Skip_Empty_Poll then
+         Skip_Empty_Poll := False;
+         return 0;
+      elsif CuBit.UI.App.Input_Wait_Pending (Native_Window) then
+         return 0;
+      else
+         CuBit.UI.App.Poll_Input (Native_Window, Event, Found);
+      end if;
+      if not Found then
+         return 0;
+      end if;
+
+      case Event.kind is
+         when CuBit.UI.App.INPUT_TEXT =>
+            Kind.all := Code_Of (Text_Input);
+            Code.all := Unsigned_32
+              (Event.payload0 and 16#FFFF_FFFF#);
+         when CuBit.UI.App.INPUT_POINTER_DOWN =>
+            Decode_Pointer (Event.payload0, X, Y);
+            Modifiers.all := Unsigned_32 (Current_Modifiers and 7);
+            Clicks := Count_Click (X.all, Y.all);
+            Kind.all := Code_Of ((if Clicks = 3 then Triple_Click
+                         elsif Clicks = 2 then Double_Click else Pointer_Down));
+         when CuBit.UI.App.INPUT_POINTER_MOVE =>
+            Decode_Pointer (Event.payload0, X, Y);
+            Kind.all := Code_Of ((if (Event.payload1 and 1) /= 0 then Pointer_Drag else Pointer_Hover));
+         when CuBit.UI.App.INPUT_POINTER_UP =>
+            Decode_Pointer (Event.payload0, X, Y);
+            Kind.all := Code_Of (Pointer_Up);
+         when CuBit.UI.App.INPUT_POINTER_WHEEL =>
+            Decode_Pointer (Event.payload0, X, Y);
+            Wheel := Event.payload1 and 16#FFFF_FFFF#;
+            Modifiers.all := Unsigned_32 (Current_Modifiers and 7);
+            if (Current_Modifiers and CuBit.UI.App.KEYMOD_SHIFT) /= 0 then
+               Kind.all := Code_Of ((if (Wheel and 16#8000_0000#) = 0 then Wheel_Left else Wheel_Right));
+            else
+               Kind.all := Code_Of ((if (Wheel and 16#8000_0000#) = 0 then Wheel_Up else Wheel_Down));
+            end if;
+         when CuBit.UI.App.INPUT_CONFIGURE =>
+            --  Returning an otherwise ignored event invalidates the shared
+            --  layout; Prepare_Frame observes the newly attached canvas.
+            Kind.all := Code_Of (No_Event);
+         when CuBit.UI.App.INPUT_KEY_UP =>
+            Current_Modifiers := Event.payload1;
+            return 0;
+         when CuBit.UI.App.INPUT_KEY_DOWN =>
+            Key := Event.payload0;
+            Mods := Event.payload1;
+            Current_Modifiers := Mods;
+            Modifiers.all := Unsigned_32 (Mods and 7);
+            if Key = KEY_O and then (Mods and 2) /= 0 then
+               Kind.all := Code_Of (Open_Source);
+            elsif Key = KEY_S and then (Mods and 2) /= 0 then
+               Kind.all := Code_Of (Save_Source);
+            elsif Key = KEY_Z and then (Mods and 2) /= 0 then
+               Kind.all := Code_Of ((if (Mods and 1) /= 0 then Redo else Undo));
+            elsif Key = KEY_Y and then (Mods and 2) /= 0 then
+               Kind.all := Code_Of (Redo);
+            elsif Key = KEY_D and then (Mods and 2) /= 0 then
+               Kind.all := Code_Of (Add_Next_Occurrence);
+            elsif Key = KEY_F and then (Mods and 2) /= 0 then
+               Kind.all := Code_Of (Open_Find);
+            elsif Key = KEY_F3 then
+               Kind.all := Code_Of (Find_Next);
+            elsif Key = KEY_F6 then
+               Kind.all := Code_Of (Toggle_REPL);
+            elsif Key = KEY_F7 then
+               Kind.all := Code_Of (Toggle_Watch);
+            elsif Key = KEY_F8 then
+               Kind.all := Code_Of (Toggle_Syntax);
+            elsif Key = KEY_SPACE and then (Mods and 2) /= 0 then
+               Kind.all := Code_Of (Complete_Operation);
+            elsif Key = KEY_F5 or else
+              (Key = KEY_ENTER and then (Mods and 2) /= 0)
+            then
+               Kind.all := Code_Of (Run_Source);
+            elsif Key = KEY_RIGHT_BRACKET and then (Mods and 2) /= 0 then
+               Kind.all := Code_Of ((if (Mods and 1) /= 0 then Select_To_Parenthesis else Match_Parenthesis));
+            elsif Key = KEY_BACKSLASH and then (Mods and 3) = 3 then
+               Kind.all := Code_Of (Match_Parenthesis);
+            elsif Key = CuBit.UI.App.KEY_ESC then Kind.all := Code_Of (Escape);
+            elsif Key = KEY_TAB then Kind.all := Code_Of (Tab);
+            elsif Key = KEY_BACKSPACE then Kind.all := Code_Of (Backspace);
+            elsif Key = KEY_ENTER then Kind.all := Code_Of (Enter);
+            elsif Key = KEY_LEFT then Kind.all := Code_Of (Left);
+            elsif Key = KEY_RIGHT then Kind.all := Code_Of (Right);
+            elsif Key = KEY_HOME then Kind.all := Code_Of (Home);
+            elsif Key = KEY_END then Kind.all := Code_Of (End_Key);
+            elsif Key = KEY_DELETE then Kind.all := Code_Of (Delete);
+            elsif Key = KEY_UP then Kind.all := Code_Of (Up);
+            elsif Key = KEY_DOWN then Kind.all := Code_Of (Down);
+            elsif Key = KEY_PAGE_UP then Kind.all := Code_Of (Page_Up);
+            elsif Key = KEY_PAGE_DOWN then Kind.all := Code_Of (Page_Down);
+            elsif Key = KEY_A and then (Mods and 2) /= 0 then
+               Kind.all := Code_Of (Select_All);
+            else
+               return 0;
+            end if;
+         when others =>
+            return 0;
+      end case;
+      Handling_Event := Event;
+      CuBit.UI.App.Begin_Input_Event (Native_Window, Handling_Event);
+      return 1;
+   end Window_Poll;
+   procedure Finish_Input is
+   begin
+      CuBit.UI.App.Finish_Input_Event (Native_Window, Handling_Event);
+   end Finish_Input;
+
+   procedure Begin_Frame
+     (Canvas : in out CuBit.UI.Canvas; Changed : CuBit.UI.Rect;
+      Repair : out CuBit.UI.Rect; Ready : out Boolean)
+   is
+   begin
+      CuBit.UI.App.Begin_Paint (Native_Window, Changed, Repair, Ready);
+      Canvas := CuBit.UI.App.Canvas (Native_Window);
+   end Begin_Frame;
+   function Submit_Frame
+     (Handle : System.Address; Canvas : in out CuBit.UI.Canvas;
+      Rendered : CuBit.UI.Rect) return Boolean
+   is
+      pragma Unreferenced (Handle);
+   begin
+      CuBit.UI.App.Present (Native_Window, Rendered);
+      Canvas.addr := System.Null_Address;
+      if not CuBit.UI.App.Frame_Pending (Native_Window) and then not First_Frame_Presented then
+         debugPrint (Name & ": first frame presented" & ASCII.LF);
+         First_Frame_Presented := True;
+      end if;
+      return CuBit.UI.App.Is_Open (Native_Window);
+   end Submit_Frame;
+   function Frame_Pending return Boolean is
+     (CuBit.UI.App.Frame_Pending (Native_Window));
+   function Frame_Deadline (Application : Unsigned_64) return Unsigned_64 is
+      Deadline : constant Unsigned_64 := Client_Frame_Wakeup.Deadline
+        (syscall (SYSCALL_GETTIME), (if Application = Unsigned_64'Last then 0 else Application), Frame_Pending);
+   begin
+      return (if Deadline = 0 then Unsigned_64'Last else Deadline);
+   end Frame_Deadline;
+
+   procedure Window_Set_Cursor
+     (Handle : System.Address; Style : Integer_32)
+   with Export, Convention => C, External_Name => "ccl_window_set_cursor";
+
+   procedure Window_Set_Cursor
+     (Handle : System.Address; Style : Integer_32)
+   is
+      pragma Unreferenced (Handle);
+   begin
+      if Native_Open and then Style >= 0 and then
+        Style <= Integer_32
+          (CuBit.UI.Pointer_Cursor_Style'Enum_Rep
+             (CuBit.UI.Pointer_Cursor_Style'Last))
+      then
+         CuBit.UI.App.Set_Pointer_Cursor
+           (Native_Window,
+            CuBit.UI.Pointer_Cursor_Style'Enum_Val (Integer (Style)));
+      end if;
+   end Window_Set_Cursor;
+
+   procedure Window_Wait (May_Block : Integer_32)
+   with Export, Convention => C, External_Name => "ccl_window_wait";
+
+   procedure Wait_Events (Deadline : Unsigned_64) is
+      Accepted : Boolean;
+      Activity : Activity_Result;
+      Wakeup : Unsigned_64 := Deadline;
+   begin
+      Pump_Completions;
+      if not Native_Open or Pending_Found or Completions_Seen then return; end if;
+      if not CuBit.UI.App.Input_Wait_Pending (Native_Window) then
+         CuBit.UI.App.Submit_Input_Wait
+           (Native_Window, CCL_Native_Execution.Next_Token, Accepted);
+         if not Accepted then
+            debugPrint (Name & ": asynchronous input wait rejected" & ASCII.LF);
+            Native_Open := False; return;
+         end if;
+      end if;
+      if CCL_Native_Execution.Cleanup_Needs_Retry then
+         Wakeup := Unsigned_64'Min (Wakeup, syscall (SYSCALL_GETTIME) + 10);
+      end if;
+      -- Atomic kernel wait covers BOTH the desktop reply and Config receipts.
+      -- A reply queued between Pump and this call prevents sleeping.
+      Activity := Wait_For_Activity_Until (Wakeup);
+      if Activity = Unavailable then Native_Open := False; end if;
+      Pump_Completions;
+   end Wait_Events;
+
+   procedure Yield_Input is
+      Ignore : Unsigned_64;
+   begin
+      Ignore := syscall (SYSCALL_YIELD);
+   end Yield_Input;
+
+   procedure Window_Wait (May_Block : Integer_32) is
+      Ignore : Unsigned_64;
+   begin
+      if May_Block /= 0 and then Native_Open and then not Pending_Found then
+         Wait_Events (Unsigned_64'Last);
+      else
+         --  Continuous VM execution and scrollbar repeat have local timer
+         --  work. Yield briefly rather than blocking indefinitely.
+         Ignore := syscall (SYSCALL_SLEEP, 1);
+      end if;
+   end Window_Wait;
+
+   procedure Window_Wait_Until (Deadline : Unsigned_64)
+   with Export, Convention => C, External_Name => "ccl_window_wait_until";
+
+   procedure Window_Wait_Until (Deadline : Unsigned_64) is
+   begin
+      if Native_Open and then not Pending_Found then
+         Wait_Events (Deadline);
+      end if;
+   end Window_Wait_Until;
+
+   function Window_Ticks return Unsigned_64
+   with Export, Convention => C, External_Name => "ccl_window_ticks";
+
+   function Window_Ticks return Unsigned_64 is
+     (syscall (SYSCALL_GETTIME));
+
+   function Window_Clock_Monotonic
+     (Success : access Integer_32) return Unsigned_64
+   with Export, Convention => C,
+        External_Name => "ccl_window_clock_monotonic";
+
+   function Window_Clock_Monotonic
+     (Success : access Integer_32) return Unsigned_64
+   is
+      Request : CuBit.Messages.Message := CuBit.Messages.NULL_MESSAGE;
+      Tag : CuBit.Messages.MessageTag;
+   begin
+      Success.all := 0;
+      Request.tag :=
+        (label => CuBit.Protocols.CLOCK_OP_MONOTONIC_MS,
+         length => 1, flags => 0, reserved => 0);
+      Request.words (0) := 0;
+      Tag := capCall (CAP_SLOT_CLOCK, Request);
+      if Tag.label = REPLY_OK and then Tag.length = 1 and then
+        Request.words (0) <= Unsigned_64 (Integer_64'Last)
+      then
+         Success.all := 1;
+         return Request.words (0);
+      end if;
+      return 0;
+   end Window_Clock_Monotonic;
+
+   procedure Window_Set_Title
+     (Handle : System.Address; Text : System.Address; Length : Integer_32)
+   with Export, Convention => C, External_Name => "ccl_window_retitle";
+
+   procedure Window_Set_Title
+     (Handle : System.Address; Text : System.Address; Length : Integer_32)
+   is
+      pragma Unreferenced (Handle);
+   begin
+      if Native_Open and then Length in 1 .. Integer_32 (MAXIMUM_TITLE) then
+         declare
+            Title : String (1 .. Natural (Length)) with Import, Address => Text;
+         begin
+            CuBit.UI.App.Set_Title (Native_Window, Title);
+         end;
+      end if;
+   end Window_Set_Title;
+
+   procedure Window_Close (Handle : System.Address)
+   with Export, Convention => C, External_Name => "ccl_window_close";
+
+   procedure Window_Close (Handle : System.Address) is
+      pragma Unreferenced (Handle);
+   begin
+      if Native_Open then
+         CCL_Workspace.Shutdown;
+         CuBit.UI.App.Close (Native_Window);
+         Native_Open := False;
+      end if;
+   end Window_Close;
+end CCL_Desktop_Platform;

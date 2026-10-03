@@ -19,6 +19,11 @@ def validate(order, maximum, capacity, blocks=1):
         raise ValueError("Intel arena capacity does not match its DMA extents")
 
 
+def require_definition(source, pattern):
+    if not re.search(pattern, re.sub(r"--[^\n]*", "", source), re.IGNORECASE):
+        raise ValueError("unrecognized derived layout definition; update this checker")
+
+
 if __name__ == "__main__":
     root = Path(__file__).resolve().parents[1]
     kernel = (root / "kernel/src/config.ads").read_text()
@@ -27,7 +32,11 @@ if __name__ == "__main__":
     extents = (root / "userspace/services/intel-gpu/intel_gpu_physical_extents.ads").read_text()
     order = number(extents, r"Allocation_Order\s*:\s*constant\s*:=\s*([\d_]+)\s*;")
     blocks = 1 + number(extents, r"subtype\s+Block_Index\s+is\s+Natural\s+range\s+0\s*\.\.\s*([\d_]+)\s*;")
-    mib = number(driver, r"Capacity\s*:\s*constant\s+Unsigned_64\s*:=\s*([\d_]+)\s*\*\s*1024\s*\*\s*1024\s*;")
+    require_definition(driver, r"Capacity\s*:\s*constant\s+Unsigned_64\s*:=\s*Intel_GPU_Physical_Extents\.Capacity\s*;")
+    require_definition(extents, r"Block_Bytes\s*:\s*constant\s+Unsigned_64\s*:=\s*4096\s*\*\s*2\s*\*\*\s*Allocation_Order\s*;")
+    require_definition(extents, r"type\s+Addresses\s+is\s+array\s*\(Block_Index\)\s+of\s+Unsigned_64\s*;")
+    require_definition(extents, r"Capacity\s*:\s*constant\s+Unsigned_64\s*:=\s*Unsigned_64\s*\(Addresses'Length\)\s*\*\s*Block_Bytes\s*;")
+    capacity = blocks * 4096 * (1 << order)
     # Regression: the formerly accepted driver-local layout must fail here.
     try:
         validate(13, 12, 32 * 1024 * 1024)
@@ -35,5 +44,5 @@ if __name__ == "__main__":
         pass
     else:
         raise AssertionError("unsupported-order regression was not rejected")
-    validate(order, maximum, mib * 1024 * 1024, blocks)
-    print(f"Intel DMA layout PASS: {blocks} x order {order}, {mib} MiB, kernel maximum {maximum}")
+    validate(order, maximum, capacity, blocks)
+    print(f"Intel DMA layout PASS: {blocks} x order {order}, {capacity // (1024 * 1024)} MiB, kernel maximum {maximum}")

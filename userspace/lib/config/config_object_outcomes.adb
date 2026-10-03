@@ -84,7 +84,7 @@ package body Config_Object_Outcomes with SPARK_Mode is
       if not Accepted then return; end if;
       CCL.Objects.Values.From_VM (Contract, Types, Value, Image, Accepted);
       if Accepted then
-         Reply := (Value => CCL.Host_Values.Object_Constant (Image), Success => True);
+         Reply := (Value => CCL.Host_Values.Object_Constant (Image), Success => True, Why => <>);
       end if;
    end To_Host;
 end Config_Object_Outcomes;

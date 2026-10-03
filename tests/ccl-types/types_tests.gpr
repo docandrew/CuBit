@@ -1,8 +1,9 @@
+with "../../userspace/ccl/cubit_shared.gpr";
 project Types_Tests is
    for Source_Dirs use (".", "../../userspace/ccl/src", "../../userspace/ccl/modules", external ("CBOR_ADA_SRC") & "/src");
    for Object_Dir use "build";
    for Exec_Dir use "build";
-   for Main use ("registry_tests.adb", "enum_tests.adb", "variant_tests.adb", "variant_rejection_tests.adb", "resource_tests.adb");
+   for Main use ("registry_tests.adb", "enum_tests.adb", "variant_tests.adb", "variant_rejection_tests.adb", "resource_tests.adb", "record_default_tests.adb");
    package Compiler is
       for Default_Switches ("Ada") use
         ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");

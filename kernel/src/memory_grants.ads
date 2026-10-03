@@ -13,7 +13,10 @@ is
     Page_Size              : constant Unsigned_64 := 4096;
     Maximum_Page_Count     : constant Positive := 4096;
     Maximum_Process_Count  : constant Positive := 256;
-    Grants_Per_Process     : constant Positive := 16;
+    -- Namespace capacity, not eagerly allocated records or physical memory.
+    -- 256 owners * 4096 slots * 16 MiB fills [64 TiB, 80 TiB), ending
+    -- exactly before the fixed bootstrap initrd aperture.
+    Grants_Per_Process     : constant Positive := 4096;
     Grant_Slot_Bytes       : constant Unsigned_64 :=
         Unsigned_64 (Maximum_Page_Count) * Page_Size;
 

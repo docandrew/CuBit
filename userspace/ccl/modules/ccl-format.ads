@@ -47,6 +47,7 @@ is
    SHAPE_SEQUENCE : constant := 4;
    SHAPE_CALLABLE : constant := 5;
    SHAPE_BOUNDED  : constant := 6;
+   SHAPE_STREAM   : constant := 7;
 
    --  Fields of one import, instruction and function (fixed-length arrays).
    --  A function: entry, captures, parameters, result kind, result type.

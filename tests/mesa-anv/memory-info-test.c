@@ -153,8 +153,8 @@ int main(void)
             response.words[2]=retained[r]; response.words[3]=tickets;
             for(unsigned fails=0;fails<2;fails++) {
                transport=!fails;
-               bool valid=!fails && retained[r]>=(16-tickets)*UINT64_C(4096) &&
-                  retained[r]<=(16-tickets)*UINT64_C(16777216);
+               /* Byte quota and expandable identity metadata are independent. */
+               bool valid=!fails;
                uint64_t used=MIN2(usages[u],UINT64_C(33554432));
                uint64_t avail=valid && tickets ?
                   MIN2(33554432-retained[r],33554432-used) : 0;
@@ -167,6 +167,42 @@ int main(void)
          }
       }
    }
+   const uint64_t sizes[]={UINT64_C(24)<<30,UINT64_C(1)<<40,
+                          UINT64_C(4)<<40,UINT64_MAX-UINT64_C(4095)};
+   unsigned wide_cases=0;
+   for(unsigned h=0;h<ARRAY_SIZE(sizes);h++) {
+      const uint64_t size=sizes[h];
+      device->memory.heaps[0].size=size;
+      response.words[1]=size;
+      const uint64_t used_values[]={0,4096,size-4096,size,UINT64_MAX};
+      const uint64_t held_values[]={0,4096,size-4096,size};
+      for(unsigned u=0;u<ARRAY_SIZE(used_values);u++) {
+         p_atomic_set(&accounting.used[0],used_values[u]);
+         for(unsigned r=0;r<ARRAY_SIZE(held_values);r++) {
+            response.words[2]=held_values[r];
+            for(unsigned tickets=0;tickets<2;tickets++) {
+               response.words[3]=tickets ? UINT64_C(1000000) : 0;
+               for(unsigned fails=0;fails<2;fails++) {
+                  transport=!fails;
+                  const uint64_t used=MIN2(used_values[u],size);
+                  const uint64_t available=transport && tickets ?
+                     MIN2(size-held_values[r],size-used) : 0;
+                  assert(cubit_mesa_memory_budget(device,call,&response,&budget)==transport);
+                  assert(budget.heapUsage[0]==used);
+                  assert(budget.heapBudget[0]==MAX2(UINT64_C(1),used+available));
+                  assert(budget.heapBudget[0]<=size);
+                  assert(budget.sType==VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT && budget.pNext==device);
+                  for(unsigned i=1;i<VK_MAX_MEMORY_HEAPS;i++)
+                     assert(!budget.heapBudget[i] && !budget.heapUsage[i]);
+                  wide_cases++;
+               }
+            }
+         }
+      }
+   }
+   assert(wide_cases==320);
+   device->memory.heaps[0].size=33554432;
+   response.words[2]=4096; response.words[3]=15;
    p_atomic_set(&accounting.used[0],0);
    transport=true; response.words[1]=16777216;
    assert(!cubit_mesa_memory_budget(device,call,&response,&budget));
@@ -186,6 +222,6 @@ int main(void)
    assert(!memcmp(before,device,sizeof(*before))); /* No shared discovery writes. */
    free(before);
    free(device);
-   puts("ANV memory policy PASS: coherent UMA, explicit-only rejected, 1224 budget boundaries, 16384 concurrent snapshots (mock IPC)");
+   puts("ANV memory policy PASS: coherent UMA, independent budgets, 1224 small + 320 wide budget boundaries, 16384 concurrent snapshots (mock IPC)");
    return 0;
 }

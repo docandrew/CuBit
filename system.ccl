@@ -22,6 +22,8 @@
   # desktop_launch.ads). Entries name programs; what they may do is decided
   # by their manifests and procmgr's launch policy.
   (setting "desktop.launch.10-workbench" "(launch v1 (label \"CCL Workbench\") (program \"ccl-workbench.app\") (icon uilab))")
+  (setting "desktop.launch.12-console" "(launch v1 (label \"CCL Console\") (program \"ccl-console.app\") (icon uilab))")
+  (setting "desktop.launch.14-logs" "(launch v1 (label \"Logs\") (program \"logs.app\") (icon files))")
   (setting "desktop.launch.20-doom" "(launch v1 (label \"DOOM\") (program \"doom.elf\") (icon doom) (single-instance))")
   (setting "desktop.launch.30-devices" "(launch v1 (label \"Devices\") (program \"devices.app\") (icon files))")
   (setting "desktop.launch.40-netsurf" "(launch v1 (label \"NetSurf\") (program \"netsurf.app\") (icon files))")
@@ -35,6 +37,10 @@
   # SNTP servers for timesync.svc (host or host:port). A majority of at least
   # two must agree before the clock is adjusted.
   (setting "time.servers" "time.cloudflare.com 0.pool.ntp.org 1.pool.ntp.org 2.pool.ntp.org")
+  # The least severe log record logstore keeps (a CCL Severity). Debug and
+  # Trace records are discarded unless this is lowered; log-control holders
+  # (Logs, the CCL console and Workbench) can change it while running.
+  (setting "logs.minimum-level" "Severity.Information")
   (setting "scheme.fs.driver" 6)
   (setting "scheme.fs.slot" 1)
   (setting "scheme.ata.driver" 6)

@@ -1,5 +1,7 @@
+with Compositor_Focus;
 with Compositor_Source_Damage;
 with Compositor_Surface_State;
+with Compositor_Source_Loans;
 with Compositor_Density;
 with Compositor_Density_Selection;
 with CuBit.Desktop_Protocol.Publication;
@@ -14,17 +16,26 @@ with Compositor_Workspace;
 ------------------------------------------------------------------------------
 with Desktop_Timing_Policy;
 with Desktop_Metrics;
+with Desktop_Logs;
 with Compositor_Metric_Batch_Policy;
 with Desktop_Storage_Policy;
 with Compositor_Text;
 with Compositor_Sampling;
+with Compositor_Row_Copy;
 with Compositor_Elapsed;
 with Compositor_Stage_Metrics;
+with Compositor_Work_Metrics;
 with Compositor_Frame_Trace;
 with Compositor_Source_Trace;
 with Compositor_Render_Trace;
 with Compositor_Input_Trace;
 with Compositor_Input_Queue;
+with Compositor_Input_Batches;
+with Compositor_Input_Batch_Wire;
+with Compositor_Input_Protocol;
+with Compositor_Input_Acknowledgment;
+with Compositor_Input_Delivery_Pool;
+with Desktop_Input_Transfer;
 with Compositor_Close_Request;
 with Compositor_Dispatch_Budget;
 with CuBit.Monotonic;
@@ -33,7 +44,9 @@ with Compositor_Requests;
 with Compositor_Presentation;
 with Compositor_Pool;
 with Compositor_Repaint;
-with Compositor_Readers;
+with Compositor_Output_Retirement;
+with Compositor_Lease_Request;
+with Compositor_Layout_Restore;
 with Compositor_Storage;
 with CuBit.Display_Pool_Protocol;
 with Interfaces; use Interfaces;
@@ -51,6 +64,7 @@ with CuBit.Clocks;
 with CuBit.Click_Sequences;
 with CuBit.Theme;
 with Desktop_Cursors;
+with Compositor_Cursor;
 with Desktop_Icons;
 with CuBit.Fonts;
 with Desktop_Window_Icons;
@@ -74,6 +88,7 @@ with Compositor_Transition;
 with Desktop_Compositor;
 
 procedure main is
+   procedure debugPrint (Text : String) renames Desktop_Logs.Write;
    package DM renames Desktop_Metrics;
    package Close_Policy renames Compositor_Close_Request;
    package DSP renames CuBit.Display_Protocol;
@@ -240,6 +255,7 @@ procedure main is
    procedure exitCompositor (Status : Integer)
      with Import, Convention => C, External_Name => "_exit", No_Return;
    backBufferReady : Boolean := False;
+   outputDrainRequested, outputReopenPending, shutdownRequested : Boolean := False;
    drawingBackBuffer : Boolean := False;
 
    type Rect is record
@@ -286,9 +302,16 @@ procedure main is
       Started : Unsigned_64 := 0;
       Started_Us : Unsigned_64 := Compositor_Elapsed.Unavailable;
       Transfer : CP.State;
-      Damage : Compositor_Damage.State;
+      Damage, Frame_Damage : Compositor_Damage.State;
    end record;
    presentations : array (Output_Index) of Output_Presentation;
+   package Output_Retirement is new Compositor_Output_Retirement
+     (Positive (BP.Live_Slot'Last));
+   use type Output_Retirement.Phase, Output_Retirement.Grant_Phase;
+   outputRetirement : array (Output_Index) of Output_Retirement.State;
+   package LR renames Compositor_Lease_Request;
+   use type LR.Phase;
+   outputLeaseRequests : array (Output_Index) of LR.State;
    primaryOutput : Output_Index := 0;
    -- Scene layout stays logical. Only this synchronous drawing scope selects
    -- a physical output; it never changes input/window coordinates.
@@ -359,10 +382,23 @@ procedure main is
       POINTER_RESIZE_DIAGONAL => 4);
    for Pointer_Cursor_Style'Size use 8;
 
+   MAX_SURFACES : constant Natural := 8;
+   package Source_Loans is new Compositor_Source_Loans
+     (MAX_SURFACES * (Surface_Policy.Slot'Last + 1));
+   use type Source_Loans.Phase;
+   use type Source_Loans.Ticket;
+   type Source_Loan is record
+      Grant : MG.Grant_Reference;
+      Address : System.Address := System.Null_Address;
+   end record;
+   type Source_Loan_Table is array (Source_Loans.Slot) of Source_Loan;
+   sourceLoanPolicy : Source_Loans.State;
+   sourceLoans : Source_Loan_Table;
    use type Surface_Policy.Phase;
    use type MG.Grant_Reference;
    type Publication_Buffer is record
       Acquired : Boolean := False;
+      Loan : Source_Loans.Ticket := Source_Loans.No_Ticket;
       Grant : MG.Grant_Reference;
       Address : System.Address := System.Null_Address;
       Configuration : Publication.Configuration;
@@ -402,6 +438,7 @@ procedure main is
       publicationPolicy : Surface_Policy.State;
       publicationConfiguration : Publication.Configuration_Result;
       bufferAttached : Boolean := False;
+      bufferLoan : Source_Loans.Ticket := Source_Loans.No_Ticket;
       bufferGrant    : MG.Grant_Reference;
       bufferAddr     : System.Address := System.Null_Address;
       bufferLogicalW : Natural := 0;
@@ -413,7 +450,7 @@ procedure main is
       pointerCursor  : Pointer_Cursor_Style := POINTER_DEFAULT;
    end record;
 
-   MAX_SURFACES : constant Natural := 8;
+   package Focus_Policy is new Compositor_Focus (MAX_SURFACES);
    subtype SurfaceIndex is Natural range 0 .. MAX_SURFACES - 1;
    type SurfaceTable is array (SurfaceIndex) of Surface;
 
@@ -467,6 +504,8 @@ procedure main is
    type SurfaceInputChannel is record
       target   : Unsigned_64 := 0;
       nextSerial : Unsigned_64 := 1;
+      -- Any possibly exposed event is immutable until acknowledged or resynced.
+      exposedThrough : Unsigned_64 := 0;
       pendingClose : Unsigned_64 := 0;
       events   : PendingInputQueue := [others => (others => <>)];
       snapshot : InputSnapshot;
@@ -475,6 +514,11 @@ procedure main is
    type SurfaceInputChannelTable is
      array (SurfaceIndex) of SurfaceInputChannel;
    inputChannels : SurfaceInputChannelTable;
+   -- These states survive channel clearing and surface destruction. Each
+   -- maintenance turn retries one exact retained acquisition at most once.
+   package Input_Transfers is new Compositor_Input_Delivery_Pool
+     (MAX_SURFACES, Desktop_Input_Transfer.Engine);
+   inputTransfers : Input_Transfers.State;
    inputQueueOverflows : Unsigned_64 := 0;
 
    cursorX : Natural := 80;
@@ -656,6 +700,7 @@ procedure main is
    for Pointer_Action'Size use 8;
    dragMode         : Pointer_Action := DRAG_NONE;
    titleClicks : CuBit.Click_Sequences.State;
+   titleClockFromSource : Boolean := False;
    dragSurfaceId    : Unsigned_64 := 0;
    dragOffsetX      : Natural := 0;
    dragOffsetY      : Natural := 0;
@@ -883,6 +928,7 @@ procedure main is
    statsCompletionMs : Unsigned_64 := 0;
    statsDamagePixels : Unsigned_64 := 0;
    statsRepairPixels : Unsigned_64 := 0;
+   statsScenePixels  : Unsigned_64 := 0;
    statsSourceGaps   : Unsigned_64 := 0;
    statsSourceRejects : Unsigned_64 := 0;
    lastEventDrops    : Unsigned_64 := 0;
@@ -1139,10 +1185,20 @@ procedure main is
             " completion_ms=" & Decimal (statsCompletionMs) &
             " px=" & Decimal (statsDamagePixels) &
             " repair_px=" & Decimal (statsRepairPixels) &
+            " scene_px=" & Decimal (statsScenePixels) &
             " cursor_x=" & Decimal (Unsigned_64 (cursorX)) &
             " cursor_y=" & Decimal (Unsigned_64 (cursorY)) & LF);
       end if;
 
+      -- Reuse the existing reporting clock. The store sums Counter deltas;
+      -- submit each interval once, before resetting the local work counters.
+      if DM.Enabled and then not DM.Disabled and then
+        now < Unsigned_64'Last / 1000 and then
+        (statsScenePixels > 0 or else statsRepairPixels > 0)
+      then
+         DM.Record_Work (Compositor_Work_Metrics.Scene_Pixels, statsScenePixels, now * 1000);
+         DM.Record_Work (Compositor_Work_Metrics.Repair_Pixels, statsRepairPixels, now * 1000);
+      end if;
       publishTiming;
       statsStartMs := now;
       statsEvents := 0;
@@ -1164,6 +1220,7 @@ procedure main is
       statsCompletionMs := 0;
       statsDamagePixels := 0;
       statsRepairPixels := 0;
+      statsScenePixels := 0;
       statsSourceGaps := 0;
       statsSourceRejects := 0;
    end maybePrintStats;
@@ -1192,13 +1249,16 @@ procedure main is
       return (addr + 4095) and not Unsigned_64'(4095);
    end alignUpPage;
 
-   procedure fillRect (x, y, w, h : Natural; color : Unsigned_32);
+   procedure fillRect (x, y, w, h : Natural; color : Unsigned_32;
+                       Use_Compositor : Boolean := True);
 
    procedure putPixel (x, y : Natural; color : Unsigned_32) is
       offset : Storage_Offset;
    begin
       if nativeOutputPass then
-         fillRect (x, y, 1, 1, color);
+         -- Pixel primitives already own this synchronous CPU writer. Avoid
+         -- a foreign clear/flush for each icon or fallback-font sample.
+         fillRect (x, y, 1, 1, color, Use_Compositor => False);
          return;
       end if;
       if x < fbWidth and then y < fbHeight then
@@ -1317,21 +1377,18 @@ procedure main is
       return (x => r.x, y => r.y, w => x2 - r.x, h => y2 - r.y);
    end clampRect;
 
-   function cursorHotX return Natural is
+   function cursorShape return DG.Logical_Rectangle is
+      M : constant Desktop_Cursors.Cursor_Metadata := Desktop_Cursors.Metadata (cursorAsset);
+      Shape : constant Compositor_Cursor.Plan := Compositor_Cursor.Build
+        ((DG.Logical_Coordinate (cursorX), DG.Logical_Coordinate (cursorY)),
+         M.Width, M.Height, M.Hotspot_X, M.Hotspot_Y);
    begin
-      return Desktop_Cursors.Metadata (cursorAsset).Hotspot_X;
-   end cursorHotX;
+      if not Shape.Valid then exitCompositor (1); end if;
+      return Shape.Surface;
+   end cursorShape;
 
-   function cursorHotY return Natural is
-   begin
-      return Desktop_Cursors.Metadata (cursorAsset).Hotspot_Y;
-   end cursorHotY;
-
-   function cursorOriginX return Integer is
-     (Integer (cursorX) - Integer (cursorHotX));
-
-   function cursorOriginY return Integer is
-     (Integer (cursorY) - Integer (cursorHotY));
+   function cursorOriginX return Integer is (Integer (cursorShape.Left));
+   function cursorOriginY return Integer is (Integer (cursorShape.Top));
 
    function cursorRect return Rect is
       originX : constant Integer := cursorOriginX;
@@ -1987,7 +2044,9 @@ procedure main is
             return;
          end if;
          DB.Charge_Completion (Batch);
-         if DM.Enabled and then DM.Matches (completion.token) then
+         if Desktop_Logs.Matches (completion.token) then
+            Desktop_Logs.Collect (completion);
+         elsif DM.Enabled and then DM.Matches (completion.token) then
             DM.Collect (completion);
          elsif CR.Token (launchRequest) /= 0 and then completion.token = CR.Token (launchRequest) then
             collectLaunch (completion);
@@ -1997,9 +2056,31 @@ procedure main is
             Desktop_Launch_Refresh.Collect (completion);
          elsif completion.token > retiredThrough then
             matched := False;
+            for Output in Output_Index loop
+               if LR.Token (outputLeaseRequests (Output)) /= 0 and then
+                 completion.token = LR.Token (outputLeaseRequests (Output))
+               then
+                  matched := True;
+                  LR.Complete (outputLeaseRequests (Output), completion.token,
+                    completion.valid and then completion.status = COMPLETION_OK and then
+                    completion.msg.tag.label = OP_DISPLAY_RELEASE and then
+                    completion.msg.tag.length = 1 and then completion.msg.tag.flags = 0 and then
+                    completion.msg.tag.reserved = 0 and then
+                    (for all Word of completion.msg.words => Word = 0));
+                  if LR.Status (outputLeaseRequests (Output)) /= LR.Released then
+                     debugPrint ("desktop: output lease completion uncertain" & LF);
+                     quarantinePresentations;
+                  end if;
+                  exit;
+               end if;
+            end loop;
+            if not matched then
             for P of presentations loop
                if P.Enabled and then completion.token = CP.Token (P.Transfer) then
                   matched := True;
+                  -- Continue validating completions while draining. Display
+                  -- rejects lease release until its active frame retires;
+                  -- the drain guard still prohibits new rendering/submission.
                   declare
                      result : constant PW.Completion_Decoding :=
                        PW.Decode_Completion
@@ -2054,6 +2135,7 @@ procedure main is
                   exit;
                end if;
             end loop;
+            end if;
             if not matched then
                -- No buffer may be reused on an unrecognized completion.
                debugPrint ("desktop: unknown presentation completion" & LF);
@@ -2065,13 +2147,15 @@ procedure main is
 
    procedure pumpOutput (Output : Output_Index) is
       P : Output_Presentation renames presentations (Output);
-      r : constant Rect := damageRectangle (Compositor_Damage.Bounds (P.Damage));
+      r : Rect := (others => 0);
+      Completion : Desktop_Compositor.Render_Completion;
+      Captured : Boolean;
+      use type Desktop_Compositor.Render_Completion;
       request : Message;
       Repair : Compositor_Damage.State;
       Held, Next_Writer : BP.Ticket;
       copiedBytes : Unsigned_64 := 0;
-      envelopeBytes : constant Unsigned_64 :=
-        Unsigned_64 (r.w) * Unsigned_64 (r.h) * 4;
+      envelopeBytes : Unsigned_64 := 0;
       use type DG.Scale_Component;
       procedure copyRegion (r : Rect) is
          ignored : System.Address;
@@ -2126,27 +2210,77 @@ procedure main is
       end copyRegion;
 
    begin
-      if not P.Enabled or else not CP.Writable (P.Transfer) or else isEmpty (r) then
+      if not P.Enabled or else not CP.Writable (P.Transfer) then
          return;
       end if;
       if requestSequence >= Unsigned_64'Last - 1 then
          debugPrint ("desktop: frame identifiers exhausted" & LF);
          quarantinePresentations;
       end if;
-      if not BP.Writable (P.Pool, BP.Writer (P.Pool)) then exitCompositor (1); end if;
-      if not directOutput then
-         RP.Take (P.Repaint, BP.Writer (P.Pool).Buffer, Repair);
-         for I in 1 .. Compositor_Damage.Count (Repair) loop
-            if nativeScene then
-               renderOutput (Output, damageRectangle (Compositor_Damage.Item (Repair, I)));
-            else
-               copyRegion (damageRectangle (Compositor_Damage.Item (Repair, I)));
-            end if;
-         end loop;
+      if BP.Rendering (P.Pool) then
+         -- Pending GPU work owns this writer; only poll, never draw or submit
+         -- it again. New scene/input damage remains in the separate live set.
+         Desktop_Compositor.Complete_Output (P.Buffer, Output = 1, True, Completion);
+      else
+         if Compositor_Damage.Count (P.Damage) = 0 then return; end if;
+         if not BP.Writable (P.Pool, BP.Writer (P.Pool)) then exitCompositor (1); end if;
+         if nativeScene then
+            declare
+               Started : Desktop_Compositor.Output_Start;
+            begin
+               Desktop_Compositor.Begin_Output (P.Buffer, P.Geometry, Output = 1, Started);
+               case Started is
+                  when Desktop_Compositor.Deferred => return;
+                  when Desktop_Compositor.Start_Unsafe =>
+                     debugPrint ("desktop: renderer begin uncertain; writer retained" & LF);
+                     exitCompositor (1);
+                  when Desktop_Compositor.Started => null;
+               end case;
+            end;
+         end if;
+         Compositor_Damage.Capture (P.Damage, P.Frame_Damage, Captured);
+         if not Captured then exitCompositor (1); end if;
+         if not directOutput then
+            RP.Take (P.Repaint, BP.Writer (P.Pool).Buffer, Repair);
+            for I in 1 .. Compositor_Damage.Count (Repair) loop
+               if nativeScene then
+                  renderOutput (Output, damageRectangle (Compositor_Damage.Item (Repair, I)));
+               else
+                  copyRegion (damageRectangle (Compositor_Damage.Item (Repair, I)));
+               end if;
+            end loop;
+         end if;
+         BP.Start_Render (P.Pool, BP.Writer (P.Pool));
+         Desktop_Compositor.Complete_Output (P.Buffer, Output = 1, False, Completion);
       end if;
-      -- CPU/Mesa rendering is synchronous here. Only the quiescent completed
-      -- writer is handed to Display; a different slot becomes the new canvas.
-      BP.Start_Render (P.Pool, BP.Writer (P.Pool));
+      case Completion is
+         when Desktop_Compositor.Pending =>
+            if not nativeScene then exitCompositor (1); end if;
+            return;
+         when Desktop_Compositor.Unsafe =>
+            debugPrint ("desktop: renderer completion uncertain; writer retained" & LF);
+            exitCompositor (1);
+         when Desktop_Compositor.Retry =>
+            -- The renderer has retired every reader/writer, but has no frame
+            -- to publish (for example, a cold glyph upload needs recapture).
+            -- Preserve fresh damage and mark this possibly partial target for
+            -- full repair before reusing it; never send it to Display.
+            if not nativeScene then exitCompositor (1); end if;
+            Held := BP.Writer (P.Pool);
+            if Held = BP.None then exitCompositor (1); end if;
+            BP.Finish_Render (P.Pool, Held, BP.Failed_Quiescent);
+            if BP.Faulted (P.Pool) then exitCompositor (1); end if;
+            RP.Failed_Render (P.Repaint, Held.Buffer);
+            Compositor_Damage.Restore (P.Damage, P.Frame_Damage);
+            BP.Acquire (P.Pool, Next_Writer);
+            if Next_Writer = BP.None then exitCompositor (1); end if;
+            P.Buffer := P.Targets (Next_Writer.Buffer).Address;
+            return;
+         when Desktop_Compositor.Complete => null;
+      end case;
+      r := damageRectangle (Compositor_Damage.Bounds (P.Frame_Damage));
+      if isEmpty (r) then exitCompositor (1); end if;
+      envelopeBytes := Unsigned_64 (r.w) * Unsigned_64 (r.h) * 4;
       BP.Finish_Render (P.Pool, BP.Writer (P.Pool), BP.Completed);
       BP.Present (P.Pool, Held);
       if Held = BP.None then exitCompositor (1); end if;
@@ -2182,7 +2316,7 @@ procedure main is
                0, 0, 0, CP.Session (P.Transfer), CP.Token (P.Transfer), P.Started_Us));
          end if;
          noteTiming (Submit_Call, P.Started_Us);
-         Compositor_Damage.Clear (P.Damage);
+         Compositor_Damage.Clear (P.Frame_Damage);
          statsPresentOps := statsPresentOps + 1;
          if not asyncAnnounced then
             asyncAnnounced := True;
@@ -2206,16 +2340,25 @@ procedure main is
       end if;
    end pumpOutput;
 
+   function renderingPending return Boolean is
+     -- Pending begin work also needs a bounded retry: it has not entered
+     -- BP.Rendering yet, and no completion event is guaranteed to wake us.
+     (for some P of presentations => P.Enabled and then
+        (BP.Rendering (P.Pool) or else
+         (nativeScene and then CP.Writable (P.Transfer) and then
+          Compositor_Damage.Count (P.Damage) > 0)));
+
    procedure pumpPresentation is
    begin
-      if backBufferReady then
+      if backBufferReady and then not outputDrainRequested and then not shutdownRequested then
          for Output in Output_Index loop
             pumpOutput (Output);
          end loop;
       end if;
    end pumpPresentation;
 
-   procedure fillRect (x, y, w, h : Natural; color : Unsigned_32) is
+   procedure fillRect (x, y, w, h : Natural; color : Unsigned_32;
+                       Use_Compositor : Boolean := True) is
       minX : Natural := x;
       minY : Natural := y;
       maxX : Natural := x + w;
@@ -2261,7 +2404,17 @@ procedure main is
          declare
             R : constant DG.Physical_Rectangle := physicalClip
               ((minX, minY, maxX - minX, maxY - minY));
+            O : Output_Presentation renames presentations (activeOutput);
+            Drawn, Must_Restart : Boolean;
          begin
+            if Use_Compositor then
+               Desktop_Compositor.Draw_Fill
+                 ((O.Buffer, Unsigned_32 (O.Geometry.Width), Unsigned_32 (O.Geometry.Height), Unsigned_32 (O.Pitch), 1),
+                  Unsigned_64 (O.Pitch) * Unsigned_64 (O.Geometry.Height), R, color,
+                  activeOutput = 1, Drawn, Must_Restart);
+               if Must_Restart then exitCompositor (1); end if;
+               if Drawn then return; end if;
+            end if;
             minX := Natural (R.Left); minY := Natural (R.Top);
             maxX := Natural (R.Right); maxY := Natural (R.Bottom);
             Target := presentations (activeOutput).Buffer;
@@ -2315,10 +2468,37 @@ procedure main is
       end loop;
    end fillRect;
 
-   procedure drawWallpaper is
+   wallpaperCullAnnounced : Boolean := False;
+   procedure drawWallpaper (Cull_Windows : Boolean := False) is
+      use type DG.Physical_Rectangle;
       Area : Rect := (0, 0, fbWidth, fbHeight);
    begin
       if nativeOutputPass then
+         -- The shell subsequently fills every visible window body opaquely.
+         -- Only skip a complete damage rectangle: no fragmentation, allocation
+         -- or assumption about client opacity. Match fillRect's logical clamp
+         -- and its proved physical clip, including fractional DPI/rotation.
+         if Cull_Windows and then not clipEnabled then
+            for I in surfaces'Range loop
+               if surfaces (I).used and then not surfaces (I).minimized and then
+                 surfaces (I).id /= compositionExcludedSurface and then
+                 (surfaces (I).flags and SURFACE_FLAG_WINDOW) /= 0
+               then
+                  declare
+                     Body_Area : constant Rect := clampRect
+                       ((surfaces (I).x, surfaces (I).y, surfaces (I).w, surfaces (I).h));
+                  begin
+                     if not isEmpty (Body_Area) and then physicalClip (Body_Area) = outputDamage then
+                        if not wallpaperCullAnnounced then
+                           debugPrint ("desktop: fully covered wallpaper skipped" & LF);
+                           wallpaperCullAnnounced := True;
+                        end if;
+                        return;
+                     end if;
+                  end;
+               end if;
+            end loop;
+         end if;
          declare P : Output_Presentation renames presentations (activeOutput); begin
             Desktop_Wallpaper.Paint
               (P.Buffer, Natural (P.Geometry.Width), Natural (P.Geometry.Height),
@@ -2464,6 +2644,31 @@ procedure main is
       end if;
    end premultipliedPixelOver;
 
+   function drawNativeIcon
+     (Pixels : System.Address; Size, X, Y : Natural) return Boolean
+   is
+      Drawn, Must_Restart : Boolean;
+   begin
+      if not nativeOutputPass then return False; end if;
+      declare
+         O : Output_Presentation renames presentations (activeOutput);
+         Damage : constant DG.Physical_Rectangle := physicalClip ((X, Y, Size, Size));
+      begin
+         if Damage.Left >= Damage.Right or else Damage.Top >= Damage.Bottom then return True; end if;
+         -- Embedded icons use straight alpha. Retain the existing immutable
+         -- atlas directly; do not allocate/copy a premultiplied shadow atlas.
+         Desktop_Compositor.Draw_Output
+           ((O.Buffer, Unsigned_32 (O.Geometry.Width), Unsigned_32 (O.Geometry.Height), Unsigned_32 (O.Pitch), 1),
+            (Pixels, Unsigned_32 (Size), Unsigned_32 (Size), Unsigned_32 (Size * 4), 0),
+            Unsigned_64 (O.Pitch) * Unsigned_64 (O.Geometry.Height), Unsigned_64 (Size * Size * 4),
+            O.Geometry, (DG.Logical_Coordinate (X), DG.Logical_Coordinate (Y),
+              DG.Logical_Coordinate (X + Size), DG.Logical_Coordinate (Y + Size)),
+            Damage, activeOutput = 1, Drawn, Must_Restart, Over => True, Straight_Alpha => True);
+         if Must_Restart then exitCompositor (1); end if;
+         return Drawn;
+      end;
+   end drawNativeIcon;
+
    procedure drawIcon
       (id : Desktop_Icons.Icon_ID;
        x, y : Natural;
@@ -2471,6 +2676,7 @@ procedure main is
    is
       pixel : Unsigned_32;
    begin
+      if drawNativeIcon (Desktop_Icons.Pixels (id) (0)'Address, Desktop_Icons.ICON_SIZE, x, y) then return; end if;
       for yy in 0 .. Desktop_Icons.ICON_SIZE - 1 loop
          for xx in 0 .. Desktop_Icons.ICON_SIZE - 1 loop
             pixel := Desktop_Icons.Pixels (id)
@@ -2489,6 +2695,7 @@ procedure main is
    is
       pixel : Unsigned_32;
    begin
+      if drawNativeIcon (Desktop_Window_Icons.Pixels (id) (0)'Address, Desktop_Window_Icons.ICON_SIZE, x, y) then return; end if;
       for yy in 0 .. Desktop_Window_Icons.ICON_SIZE - 1 loop
          for xx in 0 .. Desktop_Window_Icons.ICON_SIZE - 1 loop
             pixel := Desktop_Window_Icons.Pixels (id)
@@ -2641,7 +2848,6 @@ procedure main is
          Count := 0; Chunk_First := Cursor; Chunk_X := cx;
          while Cursor <= s'Last and Count < T.Count'Last and cx < fbWidth loop
             Width := uiTextWidth (s (Cursor .. Cursor));
-            if not transparent then fillRect (cx, y, Width, CuBit.Fonts.Line_Height, bg); end if;
             Count := Count + 1;
             Batch (Count) :=
               (Code => (if Character'Pos (s (Cursor)) in 32 .. 126 then Character'Pos (s (Cursor)) else 63),
@@ -2650,6 +2856,23 @@ procedure main is
             cx := cx + Width; Cursor := Cursor + 1;
          end loop;
          Chunk_Last := Cursor - 1;
+         if not transparent then
+            if T.Can_Join (Batch, Count) then
+               declare R : constant T.G.Logical_Rectangle := T.Background (Batch, Count); begin
+                  fillRect (Natural (R.Left), Natural (R.Top),
+                    Natural (R.Right) - Natural (R.Left),
+                    Natural (R.Bottom) - Natural (R.Top), bg);
+               end;
+            else
+               for I in 1 .. Count loop
+                  declare R : constant T.G.Logical_Rectangle := Batch (I).Cell; begin
+                     fillRect (Natural (R.Left), Natural (R.Top),
+                       Natural (R.Right) - Natural (R.Left),
+                       Natural (R.Bottom) - Natural (R.Top), bg);
+                  end;
+               end loop;
+            end if;
+         end if;
          Desktop_Compositor.Draw_Text
            ((Target, Unsigned_32 (Target_W), Unsigned_32 (Target_H), Unsigned_32 (Target_Pitch), 1),
             Unsigned_64 (Target_Pitch) * Unsigned_64 (Target_H), Screen,
@@ -2843,6 +3066,7 @@ procedure main is
    end noteClientDraw;
 
    procedure drawClientBuffer (s : Surface; x, y, w, h : Natural) is
+      use type DG.Orientation;
       P : Desktop_Composition.Blit_Plan;
       Logical_W : constant Natural :=
         (if S.publicationMode then S.bufferLogicalW else S.bufferW);
@@ -2901,6 +3125,64 @@ procedure main is
             if not mesaFallbackAnnounced then
                debugPrint ("desktop: Mesa unavailable; CPU compositor fallback" & LF);
                mesaFallbackAnnounced := True;
+            end if;
+            -- Opaque 1:1 client pixels need no per-pixel division. The SPARK
+            -- planner clips both mappings; grants and nonaliasing remain the
+            -- same trusted mapping boundary as the general sampler below.
+            declare
+               Rows : constant Compositor_Row_Copy.Region := Compositor_Row_Copy.Plan
+                 (O.Geometry, Surface_Bounds, DG.Physical_Extent (s.bufferW),
+                  DG.Physical_Extent (s.bufferH), Damage);
+               Ignore : System.Address;
+            begin
+               if Rows.Width > 0 then
+                  for Row in 0 .. Rows.Height - 1 loop
+                     Ignore := memcpy
+                       (O.Buffer + Storage_Offset
+                          ((Rows.Target_Y + Row) * O.Pitch + Rows.Target_X * 4),
+                        s.bufferAddr + Storage_Offset
+                          ((Rows.Source_Y + Row) * s.bufferPitch + Rows.Source_X * 4),
+                        Storage_Count (Rows.Width * 4));
+                  end loop;
+                  noteClientDraw (S);
+                  return;
+               end if;
+            end;
+            -- On unrotated outputs the two sampling axes are independent.
+            -- Hoist Y out of the pixel loop; keep the same proved centre-based
+            -- Axis operation for fractional DPI and density-aware clients.
+            if O.Geometry.Rotation = DG.Unrotated then
+               for Y in Natural (Damage.Top) .. Natural (Damage.Bottom) - 1 loop
+                  declare
+                     MY : constant Compositor_Sampling.Axis_Result := Compositor_Sampling.Axis
+                       (DG.Pixel_Index (Y), O.Geometry.Scale, O.Geometry.Y,
+                        Surface_Bounds.Top, Compositor_Sampling.Logical_Size (Logical_H),
+                        DG.Physical_Extent (s.bufferH));
+                  begin
+                     if MY.Valid then
+                        for X in Natural (Damage.Left) .. Natural (Damage.Right) - 1 loop
+                           declare
+                              MX : constant Compositor_Sampling.Axis_Result := Compositor_Sampling.Axis
+                                (DG.Pixel_Index (X), O.Geometry.Scale, O.Geometry.X,
+                                 Surface_Bounds.Left, Compositor_Sampling.Logical_Size (Logical_W),
+                                 DG.Physical_Extent (s.bufferW));
+                           begin
+                              if MX.Valid then
+                                 if Desktop_Timing_Policy.Enabled then Sampled := True; end if;
+                                 declare
+                                    Source : Unsigned_32 with Import, Address => s.bufferAddr +
+                                      Storage_Offset (Natural (MY.Index) * s.bufferPitch + Natural (MX.Index) * 4);
+                                    Target : Unsigned_32 with Import, Address => O.Buffer +
+                                      Storage_Offset (Y * O.Pitch + X * 4);
+                                 begin Target := Source; end;
+                              end if;
+                           end;
+                        end loop;
+                     end if;
+                  end;
+               end loop;
+               if Sampled then noteClientDraw (S); end if;
+               return;
             end if;
             -- Synchronous memory bridge. The proved sampler bounds each source
             -- coordinate; mapped source/target authority remains an FFI assumption.
@@ -2982,6 +3264,7 @@ procedure main is
 
    procedure restoreCursorOverlay is
    begin
+      if outputDrainRequested or else outputReopenPending then cursorSaveValid := False; return; end if;
       if not cursorSaveValid then
          return;
       end if;
@@ -3020,7 +3303,7 @@ procedure main is
       pixel : Unsigned_32;
       background : Unsigned_32;
    begin
-      if isEmpty (r) then
+      if outputDrainRequested or else outputReopenPending or else isEmpty (r) then
          return;
       end if;
 
@@ -3028,12 +3311,24 @@ procedure main is
          declare
             O : Output_Presentation renames presentations (activeOutput);
             Damage : constant DG.Physical_Rectangle := physicalClip (r);
-            Shape : constant DG.Logical_Rectangle :=
-              (DG.Logical_Coordinate (originX), DG.Logical_Coordinate (originY),
-               DG.Logical_Coordinate (originX + Integer (metadata.Width)),
-               DG.Logical_Coordinate (originY + Integer (metadata.Height)));
+            Shape : constant DG.Logical_Rectangle := cursorShape;
+            Drawn, Must_Restart : Boolean;
          begin
             if Damage.Left >= Damage.Right or else Damage.Top >= Damage.Bottom then return; end if;
+            -- The immutable atlas outlives every frame and retained view. Keep
+            -- the cursor in scene order through the renderer facade; the CPU
+            -- loop remains the known-quiescent software fallback.
+            Desktop_Compositor.Draw_Output
+              ((O.Buffer, Unsigned_32 (O.Geometry.Width), Unsigned_32 (O.Geometry.Height), Unsigned_32 (O.Pitch), 1),
+               (Desktop_Cursors.Pixels (metadata.Offset)'Address,
+                Unsigned_32 (metadata.Width), Unsigned_32 (metadata.Height),
+                Unsigned_32 (metadata.Width * 4), 0),
+               Unsigned_64 (O.Pitch) * Unsigned_64 (O.Geometry.Height),
+               Unsigned_64 (metadata.Width * metadata.Height * 4),
+               O.Geometry, Shape, Damage, activeOutput = 1, Drawn, Must_Restart,
+               Over => True);
+            if Must_Restart then exitCompositor (1); end if;
+            if Drawn then return; end if;
             for Y in Natural (Damage.Top) .. Natural (Damage.Bottom) - 1 loop
                for X in Natural (Damage.Left) .. Natural (Damage.Right) - 1 loop
                   declare
@@ -3105,6 +3400,7 @@ procedure main is
    procedure presentCursorOverlay is
       Started : constant Unsigned_64 := timingNow;
    begin
+      if outputDrainRequested or else outputReopenPending then return; end if;
       -- Both helpers queue their exact written footprints. Keep them separate
       -- so a pointer jump does not copy the unchanged rectangle between them.
       restoreCursorOverlay;
@@ -3120,7 +3416,7 @@ procedure main is
 
    procedure flushCursorPresent is
    begin
-      if cursorPresentPending then
+      if cursorPresentPending and then not outputReopenPending and then not shutdownRequested then
          presentCursorOverlay;
       end if;
    end flushCursorPresent;
@@ -3225,11 +3521,21 @@ procedure main is
    begin
       if P.w = 0 or else P.h = 0 then return; end if;
       if R.h = 1 then settingsFill (C, R, TopColor); return; end if;
-      -- Preserve the original gradient origin when clipping its scanlines.
-      for Y in P.y .. P.y + P.h - 1 loop
-         settingsFill (C, (P.x, Y, P.w, 1),
-           Compositor_Gradient.At_Row (TopColor, BottomColor, Y - R.y, R.h));
-      end loop;
+      -- Preserve the original gradient origin. Equal-color rows form one
+      -- fill, bounding a complete gradient to at most 256 backend operations.
+      declare
+         Y : Natural := P.y;
+         Last : Natural;
+      begin
+         while Y < P.y + P.h loop
+            Last := Natural'Min (P.y + P.h - 1,
+              R.y + Compositor_Gradient.Color_Run_Last
+                (TopColor, BottomColor, Y - R.y, R.h));
+            settingsFill (C, (P.x, Y, P.w, Last - Y + 1),
+              Compositor_Gradient.At_Row (TopColor, BottomColor, Y - R.y, R.h));
+            Y := Last + 1;
+         end loop;
+      end;
    end settingsGradient;
 
    procedure settingsText
@@ -3388,13 +3694,7 @@ procedure main is
                      drawClientBuffer (s, c.x, c.y, c.w, c.h);
                   end if;
                end;
-            else
-               drawUIText (x + 18, y + 44, "This is a real child surface.",
-                           C_TEXT, C_WIN);
-               drawUIText (x + 18, y + 70, "Drag title bar to move.",
-                           C_TEXT, C_WIN);
-               drawUIText (x + 18, y + 96, "Drag edges to resize.",
-                           C_TEXT, C_WIN);
+            -- Before the first client buffer, retain the neutral window fill.
             end if;
       end case;
    end drawWindow;
@@ -3576,7 +3876,7 @@ procedure main is
       --  pixels for now; the shell owns policy and talks through the protocol.
       --  Shared client buffers can replace this drawing path later without
       --  changing the surface/session shape.
-      drawWallpaper;
+      drawWallpaper (Cull_Windows => True);
       fillRect (primaryBounds.x, barY, primaryBounds.w, TASKBAR_H, C_BAR);
       strokeRect (primaryBounds.x, barY, primaryBounds.w, TASKBAR_H, C_EDGE, C_SHADOW);
       fillRect (primaryBounds.x, barY, primaryBounds.w, 2, C_ACCENT);
@@ -3653,7 +3953,7 @@ procedure main is
       nativeOutputPass := False;
       clipRect := Saved_Clip; clipEnabled := Saved_Enabled;
       compositionExcludedSurface := Saved_Excluded;
-      statsRepairPixels := Unsigned_64'Min (statsRepairPixels, Unsigned_64'Last - Pixels) + Pixels;
+      statsScenePixels := Unsigned_64'Min (statsScenePixels, Unsigned_64'Last - Pixels) + Pixels;
       declare Finished : constant Unsigned_64 := nowMs; begin
          if Start_Ms /= Unsigned_64'Last and then Finished /= Unsigned_64'Last and then Finished >= Start_Ms then
             statsDrawMs := statsDrawMs + (Finished - Start_Ms);
@@ -4022,7 +4322,7 @@ procedure main is
       full : Boolean;
       damagePixels : Unsigned_64 := 0;
    begin
-      if not framePending then
+      if shutdownRequested or else outputDrainRequested or else outputReopenPending or else not framePending then
          return;
       end if;
       framePending := False;
@@ -4109,22 +4409,21 @@ procedure main is
    procedure restoreSurface (idx : SurfaceIndex; damage : in out Rect);
 
    procedure focusTopmostVisibleWindow (damage : in out Rect) is
+      Eligible : Focus_Policy.Candidates;
+      Chosen : Focus_Policy.Selection;
    begin
-      for i in reverse surfaces'Range loop
-         if surfaces (i).used and then
-            not surfaces (i).minimized and then
-            (surfaces (i).flags and SURFACE_FLAG_WINDOW) /= 0
-         then
-            focusSurface := surfaces (i).id;
-            damage := unionRect
-              (damage, inflateRect (surfaceRect (surfaces (i)), 4));
-            damage := unionRect
-              (damage, inflateRect (taskButtonRect (i), 4));
-            return;
-         end if;
+      for I in surfaces'Range loop
+         Eligible (I) := surfaces (I).used and then not surfaces (I).minimized and then
+           (surfaces (I).flags and SURFACE_FLAG_WINDOW) /= 0;
       end loop;
-
-      focusSurface := 0;
+      Chosen := Focus_Policy.Topmost (Eligible);
+      if Chosen.Found then
+         focusSurface := surfaces (Chosen.Slot).id;
+         damage := unionRect (damage, inflateRect (surfaceRect (surfaces (Chosen.Slot)), 4));
+         damage := unionRect (damage, inflateRect (taskButtonRect (Chosen.Slot), 4));
+      else
+         focusSurface := 0;
+      end if;
    end focusTopmostVisibleWindow;
 
    procedure raiseSurface (idx : SurfaceIndex) is
@@ -4150,6 +4449,23 @@ procedure main is
       surfaces (last) := moved;
    end raiseSurface;
 
+   procedure damagePreviousFocus (New_Focus : Unsigned_64; Damage : in out Rect) is
+      Previous : constant Integer := findSurface (focusSurface);
+   begin
+      if focusSurface = New_Focus or else Previous < 0 then return; end if;
+      declare
+         S : Surface renames surfaces (SurfaceIndex (Previous));
+      begin
+         if S.minimized then return; end if;
+         -- Focus changes both titlebars, even when the windows do not overlap.
+         -- Include the complete title and frame, not just the clicked region.
+         Damage := unionRect (Damage, inflateRect
+           ((S.x, S.y, S.w, Natural'Min (S.h, CLIENT_INSET_TOP)), 4));
+         Damage := unionRect
+           (Damage, inflateRect (taskButtonRect (SurfaceIndex (Previous)), 4));
+      end;
+   end damagePreviousFocus;
+
    procedure focusAndRaiseSurface
       (idx    : SurfaceIndex;
        damage : in out Rect)
@@ -4170,6 +4486,7 @@ procedure main is
       -- A press on the already-focused top window changes no visible state.
       -- Do not put a whole-window repaint between physical click edges.
       if focusSurface = id and then Already_Top then return; end if;
+      damagePreviousFocus (id, damage);
       focusSurface := id;
       raiseSurface (idx);
       raisedIdx := findSurface (id);
@@ -4241,6 +4558,7 @@ procedure main is
    begin
       surfaces (idx).minimized := False;
       surfaces (idx).dirty := True;
+      damagePreviousFocus (surfaces (idx).id, damage);
       focusSurface := surfaces (idx).id;
       bounds := surfaceRect (surfaces (idx));
 
@@ -4288,6 +4606,7 @@ procedure main is
       surfaces (idx).minimized := False;
       surfaces (idx).dirty := True;
       surfaces (idx).serial := surfaces (idx).serial + 1;
+      damagePreviousFocus (surfaces (idx).id, damage);
       focusSurface := surfaces (idx).id;
       newBounds := surfaceRect (surfaces (idx));
 
@@ -4303,87 +4622,127 @@ procedure main is
         (damage, inflateRect (taskbarRect, 2));
    end toggleMaximizeSurface;
 
+   -- Actual acquisitions outlive surface records. Reserve bounded metadata
+   -- before entering the kernel; never lose a loan because a window closes.
+   procedure acquireSourceLoan
+     (Grant : MG.Grant_Reference; Owner : ProcessID; Bytes : Unsigned_64;
+      Address : out System.Address; Loan : out Source_Loans.Ticket;
+      Result : out DP.Status_Code)
+   is
+      Acquired : Boolean;
+   begin
+      Address := System.Null_Address;
+      Source_Loans.Reserve (sourceLoanPolicy, Loan);
+      if Loan = Source_Loans.No_Ticket then
+         Result := DP.Resources_Exhausted;
+         return;
+      end if;
+      MG.Acquire (Grant, Owner, 0, Bytes, MG.Read_Access, Address, Acquired);
+      if not Acquired then
+         Source_Loans.Cancel (sourceLoanPolicy, Loan);
+         Loan := Source_Loans.No_Ticket;
+         Result := DP.Denied;
+         return;
+      end if;
+      sourceLoans (Source_Loans.Index (Loan)) := (Grant, Address);
+      Source_Loans.Activate (sourceLoanPolicy, Loan);
+      Result := DP.Success;
+   end acquireSourceLoan;
+
+   procedure pumpSourceLoan (Loan : Source_Loans.Ticket) is
+      Renderer : Desktop_Compositor.Source_Release;
+      Confirmed : Boolean;
+   begin
+      if Source_Loans.Current (sourceLoanPolicy, Loan) = Source_Loans.Renderer_Pending then
+         Desktop_Compositor.Forget_Source
+           (sourceLoans (Source_Loans.Index (Loan)).Address, Renderer);
+         Source_Loans.Observe_Renderer
+           (sourceLoanPolicy, Loan,
+            (case Renderer is
+               when Desktop_Compositor.Source_Retired => Source_Loans.Retired,
+               when Desktop_Compositor.Source_Busy => Source_Loans.Busy,
+               when Desktop_Compositor.Source_Unsafe => Source_Loans.Uncertain));
+      end if;
+      if Source_Loans.Current (sourceLoanPolicy, Loan) = Source_Loans.Grant_Pending then
+         MG.Return_Acquisition (sourceLoans (Source_Loans.Index (Loan)).Grant, Confirmed);
+         Source_Loans.Observe_Grant (sourceLoanPolicy, Loan, Confirmed);
+         if Confirmed then
+            sourceLoans (Source_Loans.Index (Loan)) := (others => <>);
+         end if;
+      end if;
+      if Source_Loans.Current (sourceLoanPolicy, Loan) = Source_Loans.Quarantined then
+         debugPrint ("desktop: source retirement uncertain; restart required" & LF);
+         exitCompositor (1);
+      end if;
+   end pumpSourceLoan;
+
+   procedure retireSourceLoan (Loan : Source_Loans.Ticket) is
+   begin
+      if Source_Loans.Current (sourceLoanPolicy, Loan) in
+        Source_Loans.Attached | Source_Loans.Renderer_Pending | Source_Loans.Grant_Pending
+      then
+         Source_Loans.Retire (sourceLoanPolicy, Loan);
+         pumpSourceLoan (Loan);
+      end if;
+   end retireSourceLoan;
+
+   procedure pumpSourceRetirements is
+   begin
+      for I in Source_Loans.Slot loop
+         pumpSourceLoan (Source_Loans.At_Slot (sourceLoanPolicy, I));
+      end loop;
+   end pumpSourceRetirements;
+
+   function sourceRetirementPending return Boolean is
+   begin
+      for I in Source_Loans.Slot loop
+         if Source_Loans.Current (sourceLoanPolicy, Source_Loans.At_Slot (sourceLoanPolicy, I)) in
+           Source_Loans.Renderer_Pending | Source_Loans.Grant_Pending
+         then return True; end if;
+      end loop;
+      return False;
+   end sourceRetirementPending;
+
    procedure retirePublicationBuffer
      (S : in out Surface; I : Surface_Policy.Slot)
    is
       Epoch : constant Surface_Policy.Generation := S.publicationPolicy.Buffers (I).Epoch;
       Ticket : constant Natural := S.publicationPolicy.Buffers (I).Ticket;
-      procedure Forget_Renderer (Confirmed : out Boolean) is
-      begin
-         Desktop_Compositor.Forget_Source (S.publicationBuffers (I).Address, Confirmed);
-      end Forget_Renderer;
-      procedure Return_Loan (Index : Positive; Confirmed : out Boolean) is
-         pragma Unreferenced (Index);
-      begin
-         MG.Return_Acquisition (S.publicationBuffers (I).Grant, Confirmed);
-      end Return_Loan;
-      package Readers is new Compositor_Readers (1, Forget_Renderer, Return_Loan);
    begin
       if S.publicationPolicy.Buffers (I).Status /= Surface_Policy.Retiring then
          return;
       end if;
       if S.publicationBuffers (I).Acquired then
-         declare
-            Pending : Readers.State := Readers.Open (True, (1 => True));
-         begin
-            Readers.Retire (Pending);
-            if not Readers.Clear (Pending) then
-               debugPrint ("desktop: publication retirement uncertain; restart required" & LF);
-               exitCompositor (1);
-            end if;
-         end;
+         retireSourceLoan (S.publicationBuffers (I).Loan);
+         if Source_Loans.Current (sourceLoanPolicy, S.publicationBuffers (I).Loan) /=
+           Source_Loans.Released
+         then return; end if;
       end if;
       Surface_Policy.Retire (S.publicationPolicy, I, Ticket, True);
       S.publicationBuffers (I).Acquired := False;
+      S.publicationBuffers (I).Loan := Source_Loans.No_Ticket;
       S.publicationBuffers (I).Address := System.Null_Address;
       S.publicationBuffers (I).Retired :=
         (DP.Success, Publication.Identity (Epoch), Publication.Identity (Ticket));
    end retirePublicationBuffer;
 
-   procedure releaseSurfaceBuffer (s : in out Surface) is
-      procedure Forget_Renderer (Confirmed : out Boolean) is
-      begin
-         Desktop_Compositor.Forget_Source (s.bufferAddr, Confirmed);
-      end Forget_Renderer;
-      procedure Return_Loan (Index : Positive; Confirmed : out Boolean) is
-         pragma Unreferenced (Index);
-      begin
-         MG.Return_Acquisition (s.bufferGrant, Confirmed);
-      end Return_Loan;
-      package Readers is new Compositor_Readers
-        (1, Forget_Renderer, Return_Loan);
+   procedure releaseSurfaceBuffer (S : in out Surface) is
    begin
       if S.publicationMode then
          Surface_Policy.Close (S.publicationPolicy);
          for I in Surface_Policy.Slot loop
             retirePublicationBuffer (S, I);
          end loop;
-         -- The visible fields only alias a slot; its loan was returned above.
-         S.bufferAttached := False;
-         S.bufferAddr := System.Null_Address;
-         S.bufferW := 0; S.bufferH := 0; S.bufferPitch := 0; S.bufferFormat := 0;
-         S.bufferLogicalW := 0; S.bufferLogicalH := 0;
-         return;
+      elsif S.bufferAttached then
+         retireSourceLoan (S.bufferLoan);
       end if;
-      if s.bufferAttached then
-         -- Forget every renderer reference before returning the grant loan.
-         -- Keep the actual attachment record until both confirmations arrive.
-         declare
-            Pending : Readers.State := Readers.Open (True, (1 => True));
-         begin
-            Readers.Retire (Pending);
-            if not Readers.Clear (Pending) then
-               debugPrint ("desktop: surface retirement uncertain; compositor restart required" & LF);
-               exitCompositor (1);
-            end if;
-         end;
-         s.bufferAttached := False;
-         s.bufferAddr := System.Null_Address;
-         s.bufferW := 0;
-         s.bufferH := 0;
-         s.bufferPitch := 0;
-         s.bufferFormat := 0;
-      end if;
+      -- Only visible aliases are cleared. The global table owns every pending
+      -- acquisition even when this entire Surface record is destroyed/reused.
+      S.bufferAttached := False;
+      S.bufferLoan := Source_Loans.No_Ticket;
+      S.bufferAddr := System.Null_Address;
+      S.bufferW := 0; S.bufferH := 0; S.bufferPitch := 0; S.bufferFormat := 0;
+      S.bufferLogicalW := 0; S.bufferLogicalH := 0;
    end releaseSurfaceBuffer;
 
    procedure requestClose (target : Unsigned_64);
@@ -4464,7 +4823,7 @@ procedure main is
             end if;
             if surfaces (i).bufferAttached or else surfaces (i).publicationMode then
                releaseSurfaceBuffer (surfaces (i));
-               debugPrint ("desktop: dead client buffer acquisition released" & LF);
+               debugPrint ("desktop: dead client buffer retirement requested" & LF);
             end if;
             surfaces (i) := (others => <>);
             damage := unionRect (damage, inflateRect (oldBounds, 4));
@@ -4610,7 +4969,7 @@ procedure main is
            WINDOW_FLAG_CLOSEABLE or WINDOW_FLAG_FIXED_SIZE
            else WINDOW_FLAGS_DEFAULT),
          title => (0, ""),
-         bufferAttached => False,
+         bufferAttached => False, bufferLoan => Source_Loans.No_Ticket,
          bufferGrant => <>,
          bufferAddr => System.Null_Address,
          bufferLogicalW => 0, bufferLogicalH => 0,
@@ -4771,7 +5130,9 @@ procedure main is
             (if Close_Policy.May_Coalesce
                (inputChannels (idx).pendingClose,
                 (if IQ.Newest (queue) = -1 then 0
-                 else queue (IQ.Newest (queue)).Serial))
+                 else queue (IQ.Newest (queue)).Serial)) and then
+               (IQ.Newest (queue) = -1 or else
+                queue (IQ.Newest (queue)).Serial > inputChannels (idx).exposedThrough)
              then INPUT_POINTER_MOVE else INPUT_NONE), Result);
          case Result is
             when IQ.Resynchronized =>
@@ -4903,6 +5264,7 @@ procedure main is
       response : Message;
       ignore : Unsigned_64;
    begin
+      Input_Transfers.Poll (inputTransfers);
       for channel of inputChannels loop
          if channel.waiter.active and then channel.waiter.deadline /= 0 and then
            now >= channel.waiter.deadline
@@ -5209,7 +5571,7 @@ procedure main is
        w3    : Unsigned_64 := 0;
        Output : DSP.Output_Number := 0) return Message;
 
-   procedure setupDisplayBuffer (ok : out Boolean);
+   procedure setupDisplayBuffer (ok : out Boolean; Wait_For_Owner : Boolean := True);
    procedure releaseDisplayBuffer;
    procedure activateInternalSession (ok : out Boolean);
 
@@ -5333,6 +5695,80 @@ procedure main is
       use type DP.Status_Code;
       use type DP.Operation;
    begin
+      if request.tag.label = Compositor_Input_Protocol.Label then
+         declare
+            package Batch_Protocol renames Compositor_Input_Protocol;
+            package Batch_Wire renames Compositor_Input_Batch_Wire;
+            package Batches renames Compositor_Input_Batches;
+            package Transfer renames Desktop_Input_Transfer.Engine;
+            use type Transfer.Outcome;
+            Decoded : constant Batch_Protocol.Request_Decoding :=
+              Batch_Protocol.Decode (CuBit.Desktop_Messages.To_Wire (request));
+            Result : Batch_Protocol.Receipt := (Status => DP.Invalid_Request);
+            Index, Channel_Slot : Integer;
+         begin
+            statsRequests := statsRequests + 1;
+            statsInputReq := statsInputReq + 1;
+            if Decoded.Accepted then
+               Index := findSurface (Decoded.Value.Surface);
+               if Index < 0 then Result := (Status => DP.Bad_Object);
+               elsif from = NO_PROCESS or else surfaces (SurfaceIndex (Index)).owner /= from then
+                  Result := (Status => DP.Denied);
+               else
+                  ensureInputChannel (Decoded.Value.Surface, Channel_Slot);
+                  if Channel_Slot < 0 then Result := (Status => DP.Resources_Exhausted);
+                  elsif inputChannels (SurfaceIndex (Channel_Slot)).waiter.active then
+                     Result := (Status => DP.Bad_State);
+                  else
+                     declare
+                        Channel : SurfaceInputChannel renames inputChannels (SurfaceIndex (Channel_Slot));
+                        Close : constant IQ.Event :=
+                          (Channel.pendingClose /= 0, Channel.pendingClose,
+                           DP.Input_Event_Kind'Enum_Rep (DP.Close_Requested),
+                           Decoded.Value.Surface, 0, 0);
+                        Value : constant Batches.Batch := Batches.Snapshot
+                          (Channel.events, Close, Decoded.Value.After);
+                        Delivered : Transfer.Outcome;
+                     begin
+                        if not Batch_Wire.Valid (Value, Decoded.Value.Surface,
+                          Decoded.Value.After, Batches.Capacity)
+                        then Result := (Status => DP.Bad_State);
+                        else
+                           -- Freeze before handing bytes to the grant writer:
+                           -- a failed return or partial write can still expose
+                           -- a serial. Freezing on an acquisition failure is
+                           -- conservative; it neither acknowledges nor drops it.
+                           if Value.Length > 0 then
+                              Channel.exposedThrough := Unsigned_64'Max
+                                (Channel.exposedThrough, Value.Through);
+                           end if;
+                           Input_Transfers.Publish
+                             (inputTransfers, from, Decoded.Value.Surface,
+                              Decoded.Value.Grant,
+                              Batch_Wire.Encode (Value, Decoded.Value.Surface,
+                                Decoded.Value.Identity, Decoded.Value.After), Delivered);
+                           if Delivered = Transfer.Published then
+                              -- Only the client's previous acknowledgment is
+                              -- consumed. This newly published batch remains
+                              -- retryable until a later successful request.
+                              Compositor_Input_Acknowledgment.Apply
+                                (Channel.events, Channel.pendingClose, Decoded.Value.After);
+                              Result := (DP.Success, Decoded.Value.Identity,
+                                Value.Length, Value.Through, Value.More);
+                           elsif Delivered = Transfer.Acquisition_Failed then
+                              Result := (Status => DP.Denied);
+                           else Result := (Status => DP.Resources_Exhausted);
+                           end if;
+                        end if;
+                     end;
+                  end if;
+               end if;
+            end if;
+            replyMsg := CuBit.Desktop_Messages.From_Wire (Batch_Protocol.Encode (Result));
+            ignore := reply (from, replyMsg);
+            return;
+         end;
+      end if;
       if request.tag.label = Publication.Publish_Label then
          declare
             Decoded : constant Publication.Publish_Decoding :=
@@ -5453,7 +5889,9 @@ procedure main is
                            declare
                               Config : constant Publication.Configuration_Result :=
                                 currentPublicationConfiguration (S);
-                              Accepted, Acquired : Boolean;
+                              Accepted : Boolean;
+                              Acquisition : DP.Status_Code;
+                              Loan : Source_Loans.Ticket;
                               Address : System.Address;
                               Duplicate : Boolean := False;
                            begin
@@ -5471,10 +5909,10 @@ procedure main is
                                          (S.publicationPolicy, I,
                                           Surface_Policy.Generation (Staged.Value.Epoch), Accepted);
                                        if Accepted then
-                                          MG.Acquire (Staged.Value.Grant, from, 0,
-                                            DP.Byte_Length (Config.Value.Layout), MG.Read_Access,
-                                            Address, Acquired);
-                                          if Acquired then
+                                          acquireSourceLoan (Staged.Value.Grant, from,
+                                            DP.Byte_Length (Config.Value.Layout), Address, Loan, Acquisition);
+                                          if Acquisition = DP.Success then
+                                             S.publicationBuffers (I).Loan := Loan;
                                              S.publicationMode := True;
                                              S.publicationBuffers (I).Acquired := True;
                                              S.publicationBuffers (I).Grant := Staged.Value.Grant;
@@ -5487,7 +5925,7 @@ procedure main is
                                                S.publicationPolicy.Buffers (I).Ticket);
                                              Surface_Policy.Retire (S.publicationPolicy, I,
                                                S.publicationPolicy.Buffers (I).Ticket, True);
-                                             Result := (Status => DP.Denied);
+                                             Result := (Status => Publication.Failure_Status (Acquisition));
                                           end if;
                                        end if;
                                        exit;
@@ -5735,7 +6173,7 @@ procedure main is
                surfY : Natural := 0;
                displayReady : Boolean := True;
             begin
-               if not backBufferReady then
+               if not backBufferReady and then not outputReopenPending then
                   setupDisplayBuffer (displayReady);
                end if;
 
@@ -5808,7 +6246,7 @@ procedure main is
                      maxH => 0,
                      windowFlags => WINDOW_FLAGS_DEFAULT,
                      title => (0, ""),
-                     bufferAttached => False,
+                     bufferAttached => False, bufferLoan => Source_Loans.No_Ticket,
                      bufferGrant => <>,
                      bufferAddr => System.Null_Address,
                      bufferLogicalW => 0, bufferLogicalH => 0,
@@ -6019,7 +6457,8 @@ procedure main is
                  DP.Decode_Attachment (CuBit.Desktop_Messages.To_Wire (request));
                idx : constant Integer := findSurface (request.words (0));
                mapped : System.Address;
-               acquired : Boolean;
+               Acquisition : DP.Status_Code;
+               Loan : Source_Loans.Ticket;
             begin
                replyMsg.tag := (OP_SURFACE_ATTACH_BUFFER, 1, 0, 0);
                if not decoded.Valid then
@@ -6035,14 +6474,14 @@ procedure main is
                else
                   -- Acquire the new buffer BEFORE releasing the old one.
                   -- Failed validation/acquisition leaves the old attachment intact.
-                  MG.Acquire
-                    (decoded.Value.Grant, from, 0,
-                     DP.Byte_Length (decoded.Value.Layout), MG.Read_Access,
-                     mapped, acquired);
-                  if not acquired then
-                     replyMsg.words (0) := UI_ERR_DENIED;
+                  acquireSourceLoan
+                    (decoded.Value.Grant, from, DP.Byte_Length (decoded.Value.Layout),
+                     mapped, Loan, Acquisition);
+                  if Acquisition /= DP.Success then
+                     replyMsg.words (0) := DP.Status_Code'Enum_Rep (Acquisition);
                   else
                      releaseSurfaceBuffer (surfaces (SurfaceIndex (idx)));
+                     surfaces (SurfaceIndex (idx)).bufferLoan := Loan;
                      surfaces (SurfaceIndex (idx)).bufferGrant := decoded.Value.Grant;
                      surfaces (SurfaceIndex (idx)).bufferAddr := mapped;
                      surfaces (SurfaceIndex (idx)).bufferW :=
@@ -6136,7 +6575,11 @@ procedure main is
                   releaseSurfaceBuffer (surfaces (SurfaceIndex (idx)));
                   surfaces (SurfaceIndex (idx)) := (others => <>);
                   if focusSurface = target then
-                     focusSurface := 0;
+                     -- Select after removal, before accepting more input.
+                     -- The full redraw below includes old/new titlebar state.
+                     declare Focus_Damage : Rect := (others => 0); begin
+                        focusTopmostVisibleWindow (Focus_Damage);
+                     end;
                   end if;
                   result := DP.Success;
                   if anySurfaceUsed then
@@ -6222,7 +6665,9 @@ procedure main is
                end if;
             end loop;
             if focusSurface /= 0 and then findSurface (focusSurface) < 0 then
-               focusSurface := 0;
+               declare Focus_Damage : Rect := (others => 0); begin
+                  focusTopmostVisibleWindow (Focus_Damage);
+               end;
             end if;
             replyMsg := CuBit.Desktop_Messages.From_Wire
               (DP.Encode_Status (DP.Goodbye, DP.Success));
@@ -6417,6 +6862,8 @@ procedure main is
       end Translate;
    begin
       settingsView.Layout_Status := Desktop_Settings.Rejected;
+      -- Logical layout changes do not write or resize the retained targets.
+      -- Keep accepting them while draining; reopening restores this layout.
       if not backBufferReady or else Candidate.Count /= desktopLayout.Count or else
         Candidate.Count = 0 or else DL.Validate (Candidate).Status /= DL.Accepted
       then return; end if;
@@ -6790,8 +7237,11 @@ procedure main is
       (buttons : Unsigned_64;
        dx      : Integer;
        dy      : Integer;
-       dz      : Integer)
+       dz      : Integer;
+       Observed_Ms : Unsigned_64)
    is
+      Source_Clock : constant Boolean := Observed_Ms /= Unsigned_64'Last;
+      Click_Ms : constant Unsigned_64 := (if Source_Clock then Observed_Ms else syscall (SYSCALL_GETTIME));
       oldCursor : constant Rect := cursorRect;
       oldCursorStyle : constant Pointer_Cursor_Style := cursorStyle;
       oldBounds : Rect := (others => 0);
@@ -6821,6 +7271,11 @@ procedure main is
         CuBit.Click_Sequences.Single_Press;
       use type CuBit.Click_Sequences.Press_Kind;
    begin
+      -- Never pair source-acquisition time with legacy processing time.
+      if Source_Clock /= titleClockFromSource then
+         CuBit.Click_Sequences.Reset (titleClicks);
+         titleClockFromSource := Source_Clock;
+      end if;
       if leftTransition then
          statsButtonTransitions := statsButtonTransitions + 1;
       end if;
@@ -6991,7 +7446,7 @@ procedure main is
             if titlePress and then buttons = 1 then
                CuBit.Click_Sequences.Press
                  (titleClicks, CuBit.Click_Sequences.Target_ID (clickedId),
-                  (cursorX, cursorY), syscall (SYSCALL_GETTIME), clickKind);
+                  (cursorX, cursorY), Click_Ms, clickKind);
             else
                CuBit.Click_Sequences.Reset (titleClicks);
             end if;
@@ -7085,7 +7540,7 @@ procedure main is
       then
          if CuBit.Click_Sequences.Needs_Release (titleClicks) then
             CuBit.Click_Sequences.Release
-              (titleClicks, (cursorX, cursorY), syscall (SYSCALL_GETTIME));
+              (titleClicks, (cursorX, cursorY), Click_Ms);
          end if;
          if pointerSurfaceId /= 0 then
             queuePointer (INPUT_POINTER_UP,
@@ -7100,8 +7555,10 @@ procedure main is
               (dragPreviewValid or else dragMode = DRAG_MOVE)
             then
                oldBounds := surfaceRect (surfaces (SurfaceIndex (idx)));
-               newBounds := clampWindowRect
-                 (surfaces (SurfaceIndex (idx)), dragPreviewRect);
+               -- The release packet may carry the final pointer movement.
+               -- Commit that position even when no held-button motion packet
+               -- updated the preview before release.
+               newBounds := previewRectFromPointer (surfaces (SurfaceIndex (idx)));
 
                surfaces (SurfaceIndex (idx)).x := newBounds.x;
                surfaces (SurfaceIndex (idx)).y := newBounds.y;
@@ -7429,7 +7886,9 @@ procedure main is
                else packed and 16#FF#),
             dx      => signed12 (Shift_Right (packed, 8)),
             dy      => signed12 (Shift_Right (packed, 20)),
-            dz      => signed8 (Shift_Right (packed, 32)));
+            dz      => signed8 (Shift_Right (packed, 32)),
+            Observed_Ms => (if sourceAccepted then CuBit.Input.Pointer_Time (sourceReport.snapshot)
+                            else Unsigned_64'Last));
 
          if sourceAccepted and then sourceDiscontinuity then
             forceInputResynchronization;
@@ -7527,83 +7986,136 @@ procedure main is
 
    procedure closeOutput (Output : Output_Index) is
       P : Output_Presentation renames presentations (Output);
-      procedure Release_Lease (Confirmed : out Boolean) is
-         Reply : constant Message := callDisplay (OP_DISPLAY_RELEASE, Output => Output);
-      begin
-         Confirmed := Reply.tag.label = OP_DISPLAY_RELEASE and then
-           Reply.tag.length = 1 and then Reply.tag.flags = 0 and then
-           Reply.tag.reserved = 0 and then Reply.words (0) = 0;
-      end Release_Lease;
-      procedure Retire_Grant (Index : Positive; Confirmed : out Boolean) is
-         Accepted : Boolean;
-      begin
-         MG.Revoke (P.Targets (BP.Live_Slot (Index)).Grant, Accepted);
-         Confirmed := Accepted and then
-           MG.Retirement_Confirmed (P.Targets (BP.Live_Slot (Index)).Grant);
-      end Retire_Grant;
-      package Readers is new Compositor_Readers
-        (Positive (BP.Live_Slot'Last), Release_Lease, Retire_Grant);
-      Grants : Readers.Grant_Set;
-      Renderer_Safe : Boolean;
+      R : Output_Retirement.State renames outputRetirement (Output);
+      Grants : Output_Retirement.Grant_Set;
+      Renderer : Desktop_Compositor.Target_Release;
+      Confirmed : Boolean;
    begin
-      -- Also covers partial setup cleanup before backBufferReady is set.
-      Desktop_Compositor.Forget_Targets (Renderer_Safe);
-      if not Renderer_Safe then exitCompositor (1); end if;
-      for B in BP.Live_Slot loop
-         Grants (Positive (B)) := P.Targets (B).Granted;
-      end loop;
-      declare
-         Pending : Readers.State := Readers.Open (P.Leased, Grants);
-      begin
-         Readers.Retire (Pending);
-         if not Readers.Clear (Pending) then
-            -- Do not discard identities or permit reuse on ambiguous replies,
-            -- rejected revocation or an accepted-but-still-pinned grant.
-            debugPrint ("desktop: output retirement uncertain" & LF);
-            exitCompositor (1);
-         end if;
-      end;
-      if P.Leased then
-         debugPrint ("desktop: output readers retired=" & Output_Index'Image (Output) & LF);
+      if Output_Retirement.Status (R) = Output_Retirement.Idle then
+         for B in BP.Live_Slot loop Grants (Positive (B)) := P.Targets (B).Granted; end loop;
+         R := Output_Retirement.Start (P.Leased, Grants);
+         declare Empty : LR.State; begin outputLeaseRequests (Output) := Empty; end;
       end if;
-      for Target of P.Targets loop
-         releasePixelStorage (Target.Allocation);
-      end loop;
-      P := (others => <>);
-   end closeOutput;
-
-   procedure releaseDisplayBuffer is
-      Targets_Safe : Boolean;
-   begin
-      if not backBufferReady then return; end if;
-      restoreCursorOverlay;
-      -- Target imports may outlive the last draw even when Mesa is quiescent.
-      -- Root-owned output/scene allocations are distinct from client sources.
-      Desktop_Compositor.Forget_Targets (Targets_Safe);
-      if not Targets_Safe then
-         debugPrint ("desktop: Mesa target retirement uncertain" & LF);
+      if Output_Retirement.Status (R) = Output_Retirement.Renderer_Pending then
+         Desktop_Compositor.Forget_Targets (Renderer);
+         Output_Retirement.Observe_Renderer
+           (R, (case Renderer is
+              when Desktop_Compositor.Targets_Retired => Output_Retirement.Retired,
+              when Desktop_Compositor.Targets_Busy => Output_Retirement.Busy,
+              when Desktop_Compositor.Targets_Unsafe => Output_Retirement.Uncertain));
+      end if;
+      if Output_Retirement.Can_Release_Lease
+        (R, Presentation_Retired => not P.Enabled or else CP.Writable (P.Transfer))
+      then
+         if LR.Status (outputLeaseRequests (Output)) = LR.Ready then
+            declare
+               Token : Unsigned_64;
+               Prepared : Boolean;
+               Request : constant Message := CuBit.Desktop_Messages.From_Wire
+                 (DSP.With_Output (DSP.Encode_Lease_Request (DSP.Release_Display), Output));
+            begin
+               CR.Allocate (requestSequence, Token);
+               LR.Prepare (outputLeaseRequests (Output), Token, Prepared);
+               if not Prepared then
+                  debugPrint ("desktop: output lease identifiers exhausted" & LF);
+                  quarantinePresentations;
+               end if;
+               -- A false capSubmit result confirms no request was published.
+               -- Retain the lease and retry once on a later bounded loop pass.
+               LR.Submitted (outputLeaseRequests (Output),
+                 capSubmit (CAP_SLOT_DISPLAY, Request, Token));
+            end;
+         end if;
+         if LR.Status (outputLeaseRequests (Output)) = LR.Released then
+            Output_Retirement.Observe_Lease (R, True);
+         elsif LR.Status (outputLeaseRequests (Output)) = LR.Quarantined then
+            Output_Retirement.Observe_Lease (R, False);
+         end if;
+      end if;
+      if Output_Retirement.Status (R) = Output_Retirement.Grants_Pending then
+         for B in BP.Live_Slot loop
+            if Output_Retirement.Grant_Status (R, Positive (B)) = Output_Retirement.Revoke_Required then
+               MG.Revoke (P.Targets (B).Grant, Confirmed);
+               Output_Retirement.Observe_Revoke (R, Positive (B), Confirmed);
+               exit when Output_Retirement.Status (R) = Output_Retirement.Quarantined;
+            end if;
+            if Output_Retirement.Grant_Status (R, Positive (B)) = Output_Retirement.Confirmation_Pending then
+               Output_Retirement.Observe_Grant
+                 (R, Positive (B), MG.Retirement_Confirmed (P.Targets (B).Grant));
+            end if;
+         end loop;
+      end if;
+      if Output_Retirement.Status (R) = Output_Retirement.Quarantined then
+         debugPrint ("desktop: output retirement uncertain" & LF);
          exitCompositor (1);
       end if;
-      debugPrint ("desktop: renderer targets retired" & LF);
-      for Output in Output_Index loop
-         closeOutput (Output);
-      end loop;
+      if Output_Retirement.Status (R) = Output_Retirement.Storage_Ready then
+         for Target of P.Targets loop releasePixelStorage (Target.Allocation); end loop;
+         Output_Retirement.Observe_Storage (R, True);
+         debugPrint ("desktop: output readers retired=" & Output_Index'Image (Output) & LF);
+      end if;
+      if Output_Retirement.Status (R) /= Output_Retirement.Released then
+         -- Also covers a partial setup before backBufferReady. A delayed
+         -- cleanup suspends all outputs because target imports are global.
+         outputDrainRequested := True;
+         cursorSaveValid := False;
+      elsif not outputDrainRequested then
+         -- Synchronous partial-setup rollback has no submitted frames.
+         P := (others => <>);
+      end if;
+   end closeOutput;
+
+   procedure pumpOutputRetirements is
+   begin
+      if not outputDrainRequested then return; end if;
+      for Output in Output_Index loop closeOutput (Output); end loop;
+      if (for some R of outputRetirement =>
+          Output_Retirement.Status (R) /= Output_Retirement.Released)
+      then return; end if;
+      -- Renderer, lease and grant confirmations have arrived for every output.
+      -- Keep old token identities until this global commit; queued completions
+      -- then fall below the retired watermark, never into a newly opened pool.
       releasePixelStorage (sceneAllocation);
       releasePixelStorage (dragAllocation);
+      for Output in Output_Index loop presentations (Output) := (others => <>); end loop;
+      retiredThrough := requestSequence;
       backBufferAddr := System.Null_Address;
       privateSceneAddr := System.Null_Address;
       dragBaseBufferAddr := System.Null_Address;
       dragBaseReady := False;
       sceneCapacityBytes := 0;
       directOutput := False;
-      debugPrint ("desktop: pixel teardown charged=" & PS.Charged (pixelStorage)'Image & LF);
       backBufferReady := False;
-      retiredThrough := requestSequence;
       drawingBackBuffer := False;
       cursorSaveValid := False;
       framePending := False;
       frameDamage := (others => 0);
-      clearInputQueue;
+      cursorPresentPending := False;
+      outputDrainRequested := False;
+      outputReopenPending := anySurfaceUsed and then not shutdownRequested;
+      debugPrint ("desktop: pixel teardown charged=" & PS.Charged (pixelStorage)'Image & LF);
+      -- Do not clear input queues here: newly created windows may have accepted
+      -- input while old outputs were draining. Their records remain live.
+   end pumpOutputRetirements;
+
+   procedure releaseDisplayBuffer is
+      Empty : Output_Retirement.State;
+   begin
+      if not outputDrainRequested then
+         if not backBufferReady and then
+           (for all P of presentations => not P.Leased and
+              (for all T of P.Targets => T.Allocation = PS.No_Ticket))
+         then return; end if;
+         outputDrainRequested := True;
+         outputReopenPending := False;
+         cursorSaveValid := False;
+         for Output in Output_Index loop
+            if Output_Retirement.Status (outputRetirement (Output)) = Output_Retirement.Released then
+               outputRetirement (Output) := Empty;
+            end if;
+         end loop;
+      end if;
+      pumpOutputRetirements;
    end releaseDisplayBuffer;
 
    function validDisplayInfo (Info : Message) return Boolean is
@@ -7622,7 +8134,7 @@ procedure main is
    end validDisplayInfo;
 
    procedure prepareOutput
-     (Output : Output_Index; Info : Message; Ok : out Boolean)
+     (Output : Output_Index; Info : Message; Ok : out Boolean; Wait_For_Owner : Boolean := True)
    is
       P : Output_Presentation renames presentations (Output);
       Response : Message;
@@ -7632,14 +8144,21 @@ procedure main is
       Granted : Boolean;
    begin
       Ok := False;
+      if outputDrainRequested then return; end if;
+      if Output_Retirement.Status (outputRetirement (Output)) not in
+        Output_Retirement.Idle | Output_Retirement.Released
+      then return; end if;
+      declare Empty : Output_Retirement.State; begin outputRetirement (Output) := Empty; end;
       if not validDisplayInfo (Info) then return; end if;
       -- Output zero retains the bounded shell-to-Desktop handoff retry.
       -- An optional output must not delay startup behind an existing owner.
-      for Attempt in 1 .. (if Output = 0 then 100 else 1) loop
+      for Attempt in 1 .. (if Output = 0 and then Wait_For_Owner then 100 else 1) loop
          Response := callDisplay (OP_DISPLAY_ACQUIRE, Output => Output);
          exit when Response.tag.label = OP_DISPLAY_ACQUIRE and then
            Response.tag.length = 1 and then Response.words (0) = 0;
-         Ignored := syscall (SYSCALL_SLEEP, 2);
+         if Output = 0 and then Wait_For_Owner and then Attempt < 100 then
+            Ignored := syscall (SYSCALL_SLEEP, 2);
+         end if;
       end loop;
       if Response.tag.label /= OP_DISPLAY_ACQUIRE or else
         Response.tag.length /= 1 or else Response.words (0) /= 0
@@ -7691,7 +8210,7 @@ procedure main is
       Ok := True;
    end prepareOutput;
 
-   procedure setupDisplayBuffer (ok : out Boolean) is
+   procedure setupDisplayBuffer (ok : out Boolean; Wait_For_Owner : Boolean := True) is
       First_Info : constant Message := callDisplay (OP_DISPLAY_GET_INFO);
       Second_Info : constant Message := callDisplay (OP_DISPLAY_GET_INFO, Output => 1);
       Prepared : Boolean;
@@ -7702,7 +8221,8 @@ procedure main is
       Total_Width, Total_Height : Natural;
    begin
       ok := False;
-      prepareOutput (0, First_Info, Prepared);
+      if outputDrainRequested then return; end if;
+      prepareOutput (0, First_Info, Prepared, Wait_For_Owner);
       if not Prepared then
          debugPrint ("desktop: display setup failed" & LF);
          return;
@@ -7718,7 +8238,8 @@ procedure main is
                     DP.Buffer_Pitch ((Total_Width + Natural (Second_Info.words (0))) * 4));
          if (if nativeScene then Compositor_Workspace.Valid (Natural (Layout.Width), Natural (Layout.Height))
              else DP.Valid_Layout (Layout)) then
-            prepareOutput (1, Second_Info, Prepared);
+            prepareOutput (1, Second_Info, Prepared, False);
+            if outputDrainRequested then return; end if;
             if Prepared then
                presentations (1).Geometry.X := DG.Output_Origin (Total_Width);
                Total_Width := Natural (Layout.Width);
@@ -7734,6 +8255,26 @@ procedure main is
                presentations (Output).Geometry);
          end if;
       end loop;
+      if outputReopenPending then
+         Candidate := Compositor_Layout_Restore.Choose (desktopLayout, Candidate);
+         Total_Width := 0; Total_Height := 0;
+         for I in 1 .. Candidate.Count loop
+            declare B : constant DG.Logical_Rectangle := DG.Bounds (Candidate.Items (I).Geometry);
+            begin
+               if B.Right <= 0 or B.Bottom <= 0 then
+                  for Output in Output_Index loop closeOutput (Output); end loop;
+                  return;
+               end if;
+               Total_Width := Natural'Max (Total_Width, Natural (B.Right));
+               Total_Height := Natural'Max (Total_Height, Natural (B.Bottom));
+            end;
+         end loop;
+         for Output in Output_Index loop
+            if presentations (Output).Enabled then
+               presentations (Output).Geometry := Candidate.Items (Natural (Output) + 1).Geometry;
+            end if;
+         end loop;
+      end if;
       if DL.Validate (Candidate).Status /= DL.Accepted then
          for Output in Output_Index loop closeOutput (Output); end loop;
          debugPrint ("desktop: disconnected layout rejected" & LF);
@@ -7745,6 +8286,12 @@ procedure main is
          return;
       end if;
       primaryOutput := Output_Index (Choice.Index - 1);
+      if Total_Width not in 1 .. Natural (DP.Positive_Extent'Last) or else
+        Total_Height not in 1 .. Natural (DP.Positive_Extent'Last)
+      then
+         for Output in Output_Index loop closeOutput (Output); end loop;
+         return;
+      end if;
       Layout := (DP.Positive_Extent (Total_Width),
                  DP.Positive_Extent (Total_Height),
                  DP.Buffer_Pitch (Total_Width * 4));
@@ -7828,7 +8375,7 @@ procedure main is
    begin
       ok := False;
 
-      if not backBufferReady then
+      if not backBufferReady and then not outputReopenPending then
          setupDisplayBuffer (displayReady);
       end if;
       if not displayReady then
@@ -7898,7 +8445,7 @@ begin
       end if;
    end;
 
-   while running loop
+   while running or else not shutdownRequested or else outputDrainRequested or else sourceRetirementPending loop
       declare
          eventMsg   : Message;
          eventFound : Boolean := False;
@@ -7985,9 +8532,26 @@ begin
          --  repaint later. Both drains share a finite budget: input floods
          --  must still permit requests and rendering to make progress.
          Drain_Events;
+         if not running and then not shutdownRequested then
+            shutdownRequested := True;
+            outputReopenPending := False;
+            for S of surfaces loop
+               if S.used then releaseSurfaceBuffer (S); end if;
+            end loop;
+            releaseDisplayBuffer;
+         end if;
+         pumpOutputRetirements;
+         if outputReopenPending and then not outputDrainRequested and then not shutdownRequested then
+            declare Ready : Boolean;
+            begin
+               setupDisplayBuffer (Ready, False);
+               outputReopenPending := not Ready;
+               if Ready then scheduleRedraw; end if;
+            end;
+         end if;
          refreshStatus;
          if framePending then refreshPublicationConfigurations; end if;
-         if directOutput and then RP.Preparation_Required
+         if not outputDrainRequested and then directOutput and then RP.Preparation_Required
            (presentations (primaryOutput).Repaint,
             BP.Writer (presentations (primaryOutput).Pool).Buffer,
             Work_Pending => framePending or cursorPresentPending,
@@ -8002,6 +8566,7 @@ begin
          flushFrame;
          flushCursorPresent;
          pumpPresentation;
+         pumpSourceRetirements;
          if DM.Enabled and then DM.Pending then DM.Pump (requestSequence, dispatchNow); end if;
          if DM.Enabled and then DM.Disabled and then not metricsStoppedAnnounced then
             metricsStoppedAnnounced := True;
@@ -8009,13 +8574,16 @@ begin
               " invalid=" & Decimal (DM.Invalid) & " rejected=" & Decimal (DM.Rejected) & LF);
          end if;
          maybePrintStats;
+         Desktop_Logs.Pump (requestSequence);
          expireInputWaiters;
          if DM.Enabled and then DM.Pending then metricsDelayUs := DM.Delay_Us (dispatchNow); end if;
 
-         if not eventFound and then not found then
+         if not eventFound and then not found and then
+           (running or else outputDrainRequested or else sourceRetirementPending) then
             if not framePending and then not cursorPresentPending and then
               nextInputDeadline = 0 and then statusDueMs = 0 and then
-              metricsDelayUs = Unsigned_64'Last
+              metricsDelayUs = Unsigned_64'Last and then not renderingPending and then
+              not sourceRetirementPending and then not outputDrainRequested and then not outputReopenPending
             then
                --  Input, requests and frame completions all wake the same
                --  non-consuming wait; typed dispatch remains above.
@@ -8039,7 +8607,16 @@ begin
                         if nextDueMs = 0 or else Deadline < nextDueMs then nextDueMs := Deadline; end if;
                      end;
                   end if;
-                  if framePending or else cursorPresentPending then
+                  if renderingPending or else sourceRetirementPending or else outputDrainRequested or else outputReopenPending then
+                     -- Bounded fallback until renderer completion has a kernel
+                     -- activity event. Input can wake this wait immediately.
+                     if now < Unsigned_64'Last - 1 then
+                        if nextDueMs = 0 or else now + 1 < nextDueMs then nextDueMs := now + 1; end if;
+                     else mayWait := False;
+                     end if;
+                  end if;
+                  if not outputDrainRequested and then not outputReopenPending and then
+                    (framePending or else cursorPresentPending) then
                      mayWait := False;
                   end if;
 
@@ -8063,8 +8640,6 @@ begin
          end if;
       end;
    end if;
-
-   releaseDisplayBuffer;
 
    if syscall (SYSCALL_EXIT, 0) = Unsigned_64'Last then
       null;

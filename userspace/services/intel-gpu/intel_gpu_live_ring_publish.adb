@@ -1,3 +1,4 @@
+with Intel_GPU_Ring_Reservation;
 package body Intel_GPU_Live_Ring_Publish with SPARK_Mode is
    function State (Object : Channel) return Phase is (Object.Value);
    function Tail (Object : Channel) return Unsigned_32 is (Object.Current_Tail);
@@ -13,6 +14,8 @@ package body Intel_GPU_Live_Ring_Publish with SPARK_Mode is
       OK : Boolean;
       Next_Tail : Unsigned_32;
       Bytes : constant Unsigned_32 := Unsigned_32 (Count) * 4;
+      Plan : Intel_GPU_Ring_Reservation.Plan;
+      use type Intel_GPU_Ring_Reservation.Outcome;
    begin
       Status := Rejected;
       if Object.Value /= Available or else not Segment.Valid then return; end if;
@@ -20,9 +23,6 @@ package body Intel_GPU_Live_Ring_Publish with SPARK_Mode is
         Segment.Words (Marker_Index) /= Object.Current_Sequence + 1 or else
         Segment.Words (Marker_Index + 1) /= 0
       then return; end if;
-      if Object.Current_Tail > Ring_Bytes - Guard_Bytes - Bytes then
-         Status := Full; return;
-      end if;
       -- Latch before the first callback; no retry after any ambiguous access.
       Object.Value := Quarantined;
       if not Owner_Ready then Status := Ownership_Lost; return; end if;
@@ -36,16 +36,32 @@ package body Intel_GPU_Live_Ring_Publish with SPARK_Mode is
       if not Owner_Ready then Status := Ownership_Lost; return; end if;
       if not OK then Status := Read_Failed; return; end if;
       if Saved_Tail /= Object.Current_Tail then Status := Tail_Mismatch; return; end if;
-      Next_Tail := Object.Current_Tail + Bytes;
+      Plan := Intel_GPU_Ring_Reservation.Reserve
+        (Object.Protected_Start, Object.Current_Tail, Bytes);
+      if Plan.Status /= Intel_GPU_Ring_Reservation.Ready then
+         Status := Full; return;
+      end if;
+      Next_Tail := Plan.Tail;
+      if Plan.Padding /= 0 then
+         for I in 0 .. Plan.Padding / 4 - 1 loop
+            if not Owner_Ready then Status := Ownership_Lost; return; end if;
+            Write_Word (Object.Current_Tail + I * 4, 0, OK);
+            if not Owner_Ready then Status := Ownership_Lost; return; end if;
+            if not OK then Status := Write_Failed; return; end if;
+         end loop;
+         OK := Publish_Words (Object.Current_Tail, Plan.Padding);
+         if not Owner_Ready then Status := Ownership_Lost; return; end if;
+         if not OK then Status := Visibility_Failed; return; end if;
+      end if;
       for I in 0 .. Count - 1 loop
          if not Owner_Ready then Status := Ownership_Lost; return; end if;
-         Write_Word (Object.Current_Tail + Unsigned_32 (I) * 4,
+         Write_Word (Plan.Start + Unsigned_32 (I) * 4,
                      Segment.Words (I), OK);
          if not Owner_Ready then Status := Ownership_Lost; return; end if;
          if not OK then Status := Write_Failed; return; end if;
       end loop;
       if not Owner_Ready then Status := Ownership_Lost; return; end if;
-      OK := Publish_Words (Object.Current_Tail, Bytes);
+      OK := Publish_Words (Plan.Start, Bytes);
       if not Owner_Ready then Status := Ownership_Lost; return; end if;
       if not OK then Status := Visibility_Failed; return; end if;
       Write_Tail (Next_Tail, OK);
@@ -55,6 +71,7 @@ package body Intel_GPU_Live_Ring_Publish with SPARK_Mode is
       if not Owner_Ready then Status := Ownership_Lost; return; end if;
       if not OK then Status := Visibility_Failed; return; end if;
       Object.Current_Tail := Next_Tail;
+      Object.Protected_Start := Plan.Start;
       Object.Current_Sequence := Object.Current_Sequence + 1;
       Object.Value := Available;
       Status := Published;

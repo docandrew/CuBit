@@ -3,7 +3,7 @@ import { request } from 'node:http';
 import { connect } from 'node:net';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { encodeRequest, decodeResponse } from '../../userspace/ccl/tools/ccl-observatory/wire.js';
+import { encodeRequest, decodeResponse, decodePresentation, decodeImageRows, decodeCompletion } from '../../userspace/ccl/tools/ccl-observatory/wire.js';
 
 let id = 0n;
 function exchange(body, { origin = 'http://127.0.0.1:8787', method = 'POST', extra = {}, split = false } = {}) {
@@ -21,9 +21,11 @@ function exchange(body, { origin = 'http://127.0.0.1:8787', method = 'POST', ext
     else req.end(body);
   });
 }
+// One browser tab's session: its definitions and streams persist on the guest.
+const session = 0x5eedc0de1234n;
 async function invoke(operation, source='', options={}, target=0n) {
   const queryId = ++id;
-  const r = await exchange(encodeRequest(queryId, operation, source, target), options);
+  const r = await exchange(encodeRequest(queryId, session, operation, source, target), options);
   assert.equal(r.status,200); assert.equal(r.headers['access-control-allow-origin'],'http://127.0.0.1:8787');
   assert.equal(r.headers['content-type'],'application/cbor');
   return decodeResponse(r.body,queryId,operation);
@@ -56,7 +58,7 @@ const formatted = await invoke('evaluate',formattingSource);
 assert.equal(formatted.ok,true);
 assert.match(formatted.message,/^String: [0-9]{2,}:[0-5][0-9]:[0-5][0-9]$/);
 console.log('PASS native inline clock and formatter:',formatted.message);
-assert.equal((await exchange(encodeRequest(++id,'inspect'),{origin:'http://evil.example'})).status,400);
+assert.equal((await exchange(encodeRequest(++id, session, 'inspect'),{origin:'http://evil.example'})).status,400);
 assert.equal((await exchange(Buffer.from([0xff]))).status,400);
 console.log('PASS preflight, fragmented CBOR, integer/string evaluation, diagnostics, clock, rejection');
 // A client that sends no complete header cannot monopolize the endpoint.
@@ -92,3 +94,72 @@ monitor=await invoke('startMonitor',formattingSource);
 assert.equal(monitor.state,'Waiting');
 await invoke('stopMonitor','',{},BigInt(monitor.generation));
 console.log('PASS native persistent widget, idle timer wakeups, stop, stale generation and fault isolation');
+
+// Presentations (operation 7) and image rows (8): what the Observatory's
+// transcript renders, from the native interpreter and image store.
+async function exchangeTyped(operation, source = '', target = 0n, row = 0n) {
+  const queryId = ++id;
+  const r = await exchange(encodeRequest(queryId, session, operation, source, target, row));
+  assert.equal(r.status, 200);
+  return operation === 'imageRows' ? decodeImageRows(r.body, queryId) : decodePresentation(r.body, queryId, operation);
+}
+const shown = await exchangeTyped('present', '(+ 20 22)');
+assert.deepEqual([shown.form, shown.type, shown.value], ['text', 'Integer', '42']);
+const failed = await exchangeTyped('present', '(+ true 1)');
+assert.equal(failed.form, 'failure');
+const plot = await exchangeTyped('present', '(image.plot (list 3 1 4 1 5 9 2 6))');
+assert.equal(plot.form, 'picture'); assert.equal(plot.type, 'Image');
+assert.deepEqual([plot.picture.width, plot.picture.height], [320, 120]);
+assert.equal(plot.picture.id, BigInt(plot.value.match(/^\(Image 320 120 (\d+)\)$/)[1]));
+let rows = 0, bytes = 0;
+while (rows < plot.picture.height) {
+  const band = await exchangeTyped('imageRows', '', plot.picture.id, BigInt(rows));
+  assert.equal(band.known, true); assert.equal(band.firstRow, rows);
+  rows += band.rowCount; bytes += band.rgb.length;
+}
+assert.equal(bytes, 320 * 120 * 3);
+assert.deepEqual(await exchangeTyped('imageRows', '', 1n, 0n), { known: false });
+const heat = await exchangeTyped('present', '(image.heatmap (Grid 3 2 (list 1 2 3 4 5 6)))');
+assert.deepEqual([heat.picture.width, heat.picture.height], [3, 2]);
+const gallery = await exchangeTyped('present', '(list (image.gradient (Size 8 4)) (image.bars (list 3 -1 2)))');
+assert.equal(gallery.form, 'gallery'); assert.equal(gallery.gallery.pictures.length, 2);
+assert.equal((await exchangeTyped('imageRows', '', gallery.gallery.pictures[0].id, 0n)).known, true);
+console.log('PASS native presentations: text, failure, picture, gallery, image rows and expiry');
+
+// A live picture: the native periodic slot re-runs an image entry; the
+// page observes it presented (operation 9), as the web console's :watch.
+let live = await invoke('startMonitor', '(image.bars (list 3 1 4 1 5))');
+assert.equal(live.accepted, true);
+await new Promise(r => setTimeout(r, 2300));
+const observed = await exchangeTyped('presentMonitor');
+assert.ok(BigInt(observed.monitor.runs) >= 2n, 'the live cell re-ran natively');
+assert.equal(observed.form, 'picture');
+assert.equal((await exchangeTyped('imageRows', '', observed.picture.id, 0n)).known, true);
+await invoke('stopMonitor', '', {}, BigInt(live.generation));
+console.log('PASS native live picture: periodic re-runs observed as a presentation');
+
+// Completion from the guest's own catalog (operation 10), as the console's.
+{
+  const queryId = ++id;
+  const r = await exchange(encodeRequest(queryId, session, 'complete', '(image.pl'));
+  assert.equal(r.status, 200);
+  const found = decodeCompletion(r.body, queryId);
+  assert.deepEqual(found.candidates.map(c => c.name), ['image.plot']);
+  console.log('PASS native completion from the guest catalog');
+}
+
+// A tab's session persists on the guest (Control_Wire v2): a stream bound
+// in one request is read in later ones, and another tab cannot see it.
+{
+  assert.equal((await invoke('evaluate', '(define ticks (timer.every 50))')).ok, true);
+  await new Promise(resolve => setTimeout(resolve, 400));
+  const window = await invoke('evaluate', '(length (window 255 ticks))');
+  assert.equal(window.ok, true, window.message);
+  assert.ok(/^Integer: [0-9]+$/.test(window.message) && Number(window.message.slice(9)) >= 3, window.message);
+  const latest = await exchangeTyped('present', '(- (latest ticks) (sum (first 1 (window 2 ticks))))');
+  assert.equal(latest.value, '50');
+  const queryId = ++id;
+  const other = await exchange(encodeRequest(queryId, session + 1n, 'evaluate', '(latest ticks)'));
+  assert.equal(decodeResponse(other.body, queryId, 'evaluate').ok, false);
+  console.log('PASS native session streams: timer.every bound in one request, read in later ones, per tab');
+}

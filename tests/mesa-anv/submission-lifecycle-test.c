@@ -15,6 +15,16 @@ static uint32_t vm_generation, update_status;
 static bool override_generation;
 static uint32_t supplied_generation;
 static unsigned drains, closes, retirement_polls;
+static unsigned submission_failures;
+void cubit_test_mesa_transport_failure(const char *operation, uint32_t status,
+                                       uint32_t handle);
+void cubit_test_mesa_transport_failure(const char *operation, uint32_t status,
+                                       uint32_t handle)
+{
+   if (strcmp(operation, "submit-batch")) return;
+   assert(status == 4 && handle == 17);
+   submission_failures++;
+}
 bool cubit_cpu_tracker_drain(struct cubit_cpu_mapping_tracker *tracker)
 {
    assert(tracker && (tracker->slot == 53 || tracker->slot == 47));
@@ -103,8 +113,10 @@ int main(void)
    assert(submits == 20 && marker == 21);
    fail_submit = 4;
    assert(anv_cubit_submit_bo(&device, &bo, 0x20000, 8, 4096) == VK_ERROR_DEVICE_LOST);
+   assert(submission_failures == 1);
    fail_submit = 0;
    assert(anv_cubit_submit_bo(&device, &bo, 0x20000, 8, 4096) == VK_ERROR_DEVICE_LOST);
+   assert(submission_failures == 1); /* sticky failure must not replay/report */
    assert(submits == 21); /* No retry/revival even if transport recovers. */
    assert(anv_cubit_memory_init(&failed_prepare, 62) == VK_SUCCESS);
    fail_prepare = 4;

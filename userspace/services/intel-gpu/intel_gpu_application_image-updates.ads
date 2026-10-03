@@ -1,9 +1,25 @@
+with Intel_GPU_ADLN_PPGTT;
 generic
    with function Exclusive return Boolean;
    -- Owner holds submission exclusion, GPU flush completion, scheduling
    -- disable acknowledgments, reset serialization and required forcewake.
    -- This predicate checks those conditions; it does not establish them.
 package Intel_GPU_Application_Image.Updates is
+   procedure Insert_Leaf
+     (Object : in out State; Source : VM.Image; Backing : Tables.Mappings;
+      Table_DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;
+      Expected, Replacement : Unsigned_64; Success : out Boolean);
+   -- Empty logical leaf only; Expected is its hardware scratch/fault fallback.
+   -- Replacement must be a supported data PTE, not table or scratch backing.
+   -- Caller authenticates data ownership and preflights the whole range and
+   -- cache aliases. Same exclusion and invalidation obligations as removal.
+   procedure Remove_Leaf
+     (Object : in out State; Source : VM.Image; Backing : Tables.Mappings;
+      Table_DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;
+      Expected, Replacement : Unsigned_64; Success : out Boolean);
+   -- Exclusive in-place removal only. Validates retained table mapping and
+   -- expected leaf, writes scratch/fault fallback, flushes and reads back.
+   -- Caller still MUST complete TLB invalidation before metadata commit/reuse.
    procedure Publish_Tables
      (Object : in out State; Previous, Candidate : VM.Image;
       Backing : Tables.Mappings; Success : out Boolean);

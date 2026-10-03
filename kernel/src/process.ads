@@ -38,6 +38,7 @@ with Capabilities;
 with Config;
 with Descriptors;
 with Execution_Accounting;
+with Process_Launch;
 with Futex_Keys;
 with IPC_Request_Ids;
 with LinkedLists;
@@ -441,8 +442,9 @@ package Process is
     MAX_GRANTS_PER_PROCESS : constant := Memory_Grants.Grants_Per_Process;
     --  16 MiB per grant. Modern display buffers, media paths, and batched I/O
     --  need grants larger than the original 1 MiB filesystem-buffer ceiling.
-    --  With 256 PIDs * 16 grants, this reserves a 64 GiB virtual grant
-    --  aperture at GRANT_REGION_BASE, still below PROCESS_STACK_TOP_VIRT.
+    --  With 256 PIDs * 4096 grants, this reserves a 16 TiB virtual grant
+    --  aperture, ending before the initrd at 0x0000_5000_0000_0000.
+    --  Grant records and page tables are backed only as needed.
     MAX_GRANT_PAGES        : constant := Memory_Grants.Maximum_Page_Count;
 
     subtype GrantID is Natural range 0 .. MAX_GRANTS_PER_PROCESS - 1;
@@ -473,7 +475,6 @@ package Process is
         forwardable  : Boolean := False;
     end record;
 
-    type GrantArray is array (GrantID) of Grant;
 
     -- Grant virtual address region in lower-half user space
     GRANT_REGION_BASE : constant Integer_Address :=
@@ -749,7 +750,6 @@ package Process is
         numPending          : Natural := 0;
         requestSequence     : IPC_Request_Ids.Sequence :=
                                 IPC_Request_Ids.Initial_Sequence;
-        grants              : GrantArray := (others => <>);
         -- Process teardown retains the PID while an acquired grant still
         -- names this owner.  The final return completes PID retirement.
         grantTeardownPending : Boolean := False;
@@ -792,6 +792,14 @@ package Process is
         -- after mailbox locks and grantLock; nothing but allocator and TLB
         -- round locks may be taken while holding it.
         addressSpaceLock    : Spinlocks.Spinlock;
+
+        -- Launch arguments may be installed only before the first resume
+        -- (Process_Launch). The termination report goes out in
+        -- EVENT_CHILD_EXIT; it starts as Stopped and SYSCALL_EXIT, unless
+        -- the process is already stopping, records Exited with its code.
+        launch              : Process_Launch.Launch_Phase :=
+                                  Process_Launch.Unstarted;
+        termination         : Process_Launch.Termination_Report;
     end record;
 
     -- Lock for protecting the proctab
@@ -1169,6 +1177,13 @@ package Process is
     -- Used for self-kill (SYSCALL_EXIT).
     ---------------------------------------------------------------------------
     procedure kill (pid : in ProcessID);
+
+    ---------------------------------------------------------------------------
+    -- recordExit
+    -- Record that pid asked to exit with code (SYSCALL_EXIT), unless it is
+    -- already stopping: the first ending wins. Called before kill.
+    ---------------------------------------------------------------------------
+    procedure recordExit (pid : ProcessID; code : Process_Launch.Exit_Code);
 
     ---------------------------------------------------------------------------
     -- Threads (docs/threads.md)

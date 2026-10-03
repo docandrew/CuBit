@@ -33,35 +33,7 @@ package body CCL.Objects with SPARK_Mode is
       CCL.Types.Correspondence.Resolve (Contract.Types, Contract.Root, Local_Types) = Local_Root);
 
    function Persistable (Types : Registry; Root : Type_Reference) return Boolean is
-      Allowed : array (Type_Reference) of Boolean := [others => False];
-      D : Description;
-   begin
-      if not Known (Types, Root) then return False; end if;
-      Allowed (Integer_Type) := True;
-      Allowed (Boolean_Type) := True;
-      Allowed (String_Type) := True;
-      Allowed (Character_Type) := True;
-      Allowed (Unit_Type) := True;
-      --  Define publishes only backward references. Check every alternative,
-      --  not just the active one: a dormant handler is not persistable data.
-      for Ref in Declared_Type'First .. Last (Types) loop
-         D := Describe (Types, Ref);
-         if D.Form = Sequence then
-            --  A list of earlier, persistable elements that are not lists:
-            --  a count, then the elements depth first.
-            Allowed (Ref) := D.Count = 1 and then D.Parts (1).Payload < Ref and then
-              Allowed (D.Parts (1).Payload) and then Describe (Types, D.Parts (1).Payload).Form /= Sequence;
-         else
-            Allowed (Ref) := D.Form in Product | Sum;
-            for I in 1 .. D.Count loop
-               if D.Parts (I).Payload >= Ref or else not Allowed (D.Parts (I).Payload) then
-                  Allowed (Ref) := False;
-               end if;
-            end loop;
-         end if;
-      end loop;
-      return Allowed (Root);
-   end Persistable;
+     (CCL.Types.Persistable (Types, Root));
 
    --  Whether Payload is the list of Owner itself.
    function Self_List (Types : Registry; Owner, Payload : Type_Reference) return Boolean is
@@ -88,10 +60,14 @@ package body CCL.Objects with SPARK_Mode is
          if D.Form = Bounded then
             --  A range subtype of Integer.
             Allowed (Ref) := True;
+         elsif D.Form = Stream then
+            --  A stream handle, held as a binding; its elements are data.
+            Allowed (Ref) := D.Count = 1 and then D.Parts (1).Payload < Ref
+              and then Persistable (Types, D.Parts (1).Payload);
          elsif D.Form = Sequence then
             Allowed (Ref) := D.Count = 1 and then D.Parts (1).Payload < Ref
               and then Allowed (D.Parts (1).Payload)
-              and then Describe (Types, D.Parts (1).Payload).Form /= Sequence;
+              and then Describe (Types, D.Parts (1).Payload).Form not in Sequence | Stream;
          else
             Allowed (Ref) := D.Form in Product | Sum;
             for I in 1 .. D.Count loop
@@ -99,7 +75,10 @@ package body CCL.Objects with SPARK_Mode is
                   if not Self_List (Types, Ref, D.Parts (I).Payload) then
                      Allowed (Ref) := False;
                   end if;
-               elsif not Allowed (D.Parts (I).Payload) then
+               elsif not Allowed (D.Parts (I).Payload) or else
+                 Describe (Types, D.Parts (I).Payload).Form = Stream
+               then
+                  --  A stream is a session's handle, never a field or payload.
                   Allowed (Ref) := False;
                end if;
             end loop;
@@ -214,7 +193,12 @@ package body CCL.Objects with SPARK_Mode is
                   when Declared_Type =>
                      D := Describe (Contract.Types, Expected);
                      case D.Form is
-                        when Primitive | Resource | Callable | Bounded => return False;
+                        when Bounded =>
+                           --  A range of Integer: within its bounds.
+                           if Integer_Of (C) not in Low_Of (Contract.Types, Expected) ..
+                                                    High_Of (Contract.Types, Expected)
+                           then return False; end if;
+                        when Primitive | Resource | Callable | Stream => return False;
                         when Sequence =>
                            --  Each element takes at least one cell, so a count
                            --  past the cells left is malformed (and the work

@@ -30,6 +30,8 @@ package body CCL.Types with SPARK_Mode is
          Rest := Rest / 10;
          exit when Rest = 0 or else Count = Natural_Digits;
       end loop;
+      --  The loop writes at least one digit.
+      pragma Assert (Count >= 1);
       declare
          Result : String (1 .. Natural_Digits) := [others => '0'];
       begin
@@ -393,9 +395,133 @@ package body CCL.Types with SPARK_Mode is
    function Is_List (Item : Registry; Ref : Type_Reference) return Boolean is
      (Known (Item, Ref) and then Describe (Item, Ref).Form = Sequence);
 
+   function List_Of (Item : Registry; Element : Type_Reference) return Type_Reference is
+   begin
+      for R in Declared_Type'First .. Last (Item) loop
+         if Is_List (Item, R) and then Describe (Item, R).Parts (1).Payload = Element then
+            return R;
+         end if;
+      end loop;
+      return Invalid_Type;
+   end List_Of;
+
+   function Is_Stream (Item : Registry; Ref : Type_Reference) return Boolean is
+     (Known (Item, Ref) and then Describe (Item, Ref).Form = Stream);
+
+   function Stream_Element (Item : Registry; Ref : Type_Reference) return Type_Reference is
+     (if Is_Stream (Item, Ref) then Describe (Item, Ref).Parts (1).Payload
+      else Invalid_Type);
+
+   function Persistable (Item : Registry; Root : Type_Reference) return Boolean is
+      Allowed : array (Type_Reference) of Boolean := [others => False];
+      D : Description;
+   begin
+      if not Known (Item, Root) then return False; end if;
+      Allowed (Integer_Type) := True;
+      Allowed (Boolean_Type) := True;
+      Allowed (String_Type) := True;
+      Allowed (Character_Type) := True;
+      Allowed (Unit_Type) := True;
+      --  Define publishes only backward references. Check every alternative,
+      --  not just the active one: a dormant handler is not persistable data.
+      for Ref in Declared_Type'First .. Last (Item) loop
+         D := Describe (Item, Ref);
+         if D.Form = Bounded then
+            --  A range of Integer (Bytes, Timestamp): one Integer, and
+            --  Validate checks it is within the range.
+            Allowed (Ref) := True;
+         elsif D.Form = Sequence then
+            --  A list of earlier, persistable elements that are not lists:
+            --  a count, then the elements depth first.
+            Allowed (Ref) := D.Count = 1 and then D.Parts (1).Payload < Ref and then
+              Allowed (D.Parts (1).Payload) and then Describe (Item, D.Parts (1).Payload).Form /= Sequence;
+         else
+            Allowed (Ref) := D.Form in Product | Sum;
+            for I in 1 .. D.Count loop
+               if D.Parts (I).Payload >= Ref or else not Allowed (D.Parts (I).Payload) then
+                  Allowed (Ref) := False;
+               end if;
+            end loop;
+         end if;
+      end loop;
+      return Allowed (Root);
+   end Persistable;
+
+   procedure Specialize_Stream
+     (Item : in out Registry; Element : Type_Reference;
+      Ref : out Type_Reference; Result : out Stream_Result)
+   is
+      Candidate : Description;
+      Existing : Type_Reference;
+      Defined_As : Definition_Result;
+   begin
+      Ref := Invalid_Type;
+      Result := Invalid_Stream_Element;
+      if not Persistable (Item, Element) or else Element = Unit_Type then
+         return;
+      end if;
+      Candidate :=
+        (Identifier => Named ("Stream-" & Image (Describe (Item, Element).Identifier)),
+         Form => Stream,
+         Count => 1,
+         Parts => [1 => (Named ("element"), Element), others => <>]);
+      Result := Stream_Name_Too_Long;
+      if not Valid_Name (Candidate.Identifier) then
+         return;
+      end if;
+      Existing := Find (Item, Candidate.Identifier);
+      if Existing /= Invalid_Type then
+         Result := Invalid_Stream_Element;
+         if Same_Description (Describe (Item, Existing), Candidate) then
+            Ref := Existing;
+            Result := Stream_Already_Specialized;
+         end if;
+         return;
+      end if;
+      Define (Item, Candidate, Ref, Defined_As);
+      Result := (if Defined_As = Defined then Stream_Specialized
+                 elsif Defined_As = Registry_Full then Stream_Registry_Full
+                 else Invalid_Stream_Element);
+   end Specialize_Stream;
+
    function Element_Of (Item : Registry; Ref : Type_Reference) return Type_Reference is
      (if Is_List (Item, Ref) then Describe (Item, Ref).Parts (1).Payload
       else Invalid_Type);
+
+   function Default_Fits (Item : Registry; Payload : Type_Reference; Default : Field_Default) return Boolean is
+     (Known (Item, Payload) and then
+      (case Default.Kind is
+          when No_Default => True,
+          when Integer_Default =>
+            Payload = Integer_Type or else
+            (Describe (Item, Payload).Form = Bounded and then
+             Default.Value in Low_Of (Item, Payload) .. High_Of (Item, Payload)),
+          when Boolean_Default => Payload = Boolean_Type and then Default.Value in 0 .. 1,
+          when Alternative_Default =>
+            Describe (Item, Payload).Form = Sum and then
+            Default.Value in 1 .. Interfaces.Integer_64 (Describe (Item, Payload).Count) and then
+            Describe (Item, Payload).Parts (Component_Index (Default.Value)).Payload = Unit_Type,
+          when Empty_List_Default => Is_List (Item, Payload) and then Default.Value = 0));
+
+   procedure Set_Default
+     (Item : in out Registry; Ref : Type_Reference; Field : Component_Index;
+      Default : Field_Default; Result : out Default_Result)
+   is
+   begin
+      Result := Not_A_Field;
+      if Ref not in Declared_Type or else Ref > Item.Used or else
+        Item.Definitions (Ref).Form /= Product or else Field > Item.Definitions (Ref).Count
+      then
+         return;
+      end if;
+      Result := Default_Mismatch;
+      if not Default_Fits (Item, Item.Definitions (Ref).Parts (Field).Payload, Default) then return; end if;
+      Item.Defaults (Ref) (Field) := Default;
+      Result := Default_Set;
+   end Set_Default;
+
+   function Default_Of (Item : Registry; Ref : Type_Reference; Field : Component_Index) return Field_Default is
+     (if Ref in Declared_Type and then Ref <= Item.Used then Item.Defaults (Ref) (Field) else No_Field_Default);
 
    procedure Import_Definition
      (Source : Registry; Root : Type_Reference; Target : in out Registry;
@@ -450,6 +576,12 @@ package body CCL.Types with SPARK_Mode is
                   if Defined_As = Registry_Full then Result := Import_Full; end if;
                   return;
                end if;
+               --  Defaults travel with the type; they only name constants.
+               for Part in 1 .. Translated.Count loop
+                  if Translated.Form = Product then
+                     Staged.Defaults (Candidate) (Part) := Default_Of (Source, Index, Part);
+                  end if;
+               end loop;
             else
                Existing := Describe (Staged, Candidate);
                if Existing.Form /= Translated.Form or Existing.Count /= Translated.Count then return; end if;
@@ -462,6 +594,7 @@ package body CCL.Types with SPARK_Mode is
                for Part in 1 .. Translated.Count loop
                   if not Same (Existing.Parts (Part).Identifier, Translated.Parts (Part).Identifier)
                     or else Existing.Parts (Part).Payload /= Translated.Parts (Part).Payload
+                    or else Default_Of (Staged, Candidate, Part) /= Default_Of (Source, Index, Part)
                   then return; end if;
                end loop;
             end if;

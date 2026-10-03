@@ -1,3 +1,4 @@
+with "../../userspace/ccl/cubit_shared.gpr";
 project Schema_Worker is
    for Source_Dirs use (".", "../../userspace/lib/config", "../../userspace/ccl/src");
    for Source_Files use

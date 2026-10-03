@@ -1,7 +1,7 @@
 package body CCL.Language.Views with SPARK_Mode => On is
    use type CCL.Types.Type_Reference;
    use type CCL.Types.Shape;
-   Marker : constant String := "#!ccl basic";
+   Marker : constant String := BASIC_MARKER;
 
    function Detect (Source : String) return Surface is
      (if Source'Length >= Marker'Length and then
@@ -342,6 +342,28 @@ package body CCL.Language.Views with SPARK_Mode => On is
                if Cursor <= Input.Length and then Input.Data (Cursor) /= ')' then
                   loop
                      Put (" ", Cursor);
+                     Skip;
+                     exit when Failed or else Full or else Cursor > Input.Length;
+                     --  name => value names a record field, in both notations.
+                     declare
+                        Mark : constant Positive := Cursor;
+                        Last : Natural := Cursor - 1;
+                        After : Natural;
+                     begin
+                        while Last < Input.Length and then Basic_Name_Character (Input.Data (Last + 1)) loop
+                           Last := Last + 1;
+                        end loop;
+                        After := Last + 1;
+                        while After <= Input.Length and then White (Input.Data (After)) loop
+                           After := After + 1;
+                        end loop;
+                        if Last >= Mark and then After < Input.Length and then
+                          Input.Data (After .. After + 1) = "=>"
+                        then
+                           Put (Input.Data (Mark .. Last) & " => ", Mark);
+                           Cursor := After + 2;
+                        end if;
+                     end;
                      Expression (Depth + 1);
                      Skip;
                      exit when Failed or else Full or else Cursor > Input.Length or else
@@ -543,6 +565,28 @@ package body CCL.Language.Views with SPARK_Mode => On is
                            Expect ("AS"); Basic_Type (Type_Name);
                            Put (" " & Type_Name.Data (1 .. Type_Name.Length), Cursor);
                         end if;
+                        --  x AS T := default: a constant, so it is copied as written.
+                        Skip;
+                        if Record_Type and then Cursor + 1 <= Input.Length and then
+                          Input.Data (Cursor .. Cursor + 1) = ":="
+                        then
+                           Cursor := Cursor + 2;
+                           Skip;
+                           declare
+                              Mark : constant Positive := Cursor;
+                           begin
+                              while Cursor <= Input.Length and then Input.Data (Cursor) not in ',' | ')'
+                                and then not White (Input.Data (Cursor))
+                              loop
+                                 Cursor := Cursor + 1;
+                              end loop;
+                              if Cursor = Mark then
+                                 Failed := True;
+                              else
+                                 Put (" " & Input.Data (Mark .. Cursor - 1), Mark);
+                              end if;
+                           end;
+                        end if;
                         Put (")", Cursor);
                      end if;
                      Skip;
@@ -712,6 +756,12 @@ package body CCL.Language.Views with SPARK_Mode => On is
                Emit (")");
                return;
             end if;
+            if CCL.Types.Is_Stream (Analysis.Tree.Types, Kind) and then Level <= MAX_NESTING then
+               Emit ((if Style = Lisp then "(Stream " else "STREAM("));
+               Emit_Type (CCL.Types.Stream_Element (Analysis.Tree.Types, Kind), Level + 1);
+               Emit (")");
+               return;
+            end if;
             if not CCL.Types.Is_Function (Analysis.Tree.Types, Kind) or else Level > MAX_NESTING then
                Emit (Type_Name (Kind));
                return;
@@ -726,6 +776,31 @@ package body CCL.Language.Views with SPARK_Mode => On is
             Emit_Type (D.Parts (D.Count).Payload, Level + 1);
             if Style = Lisp then Emit (")"); end if;
          end Emit_Type;
+         --  A field default as its constant is written: 3, true, Color.Red, [].
+         procedure Emit_Default (Payload : Static_Type; Default : CCL.Types.Field_Default) is
+         begin
+            case Default.Kind is
+               when CCL.Types.No_Default => null;
+               when CCL.Types.Integer_Default =>
+                  declare
+                     Image : constant String := Default.Value'Image;
+                  begin
+                     Emit ((if Image (Image'First) = ' ' then Image (Image'First + 1 .. Image'Last) else Image));
+                  end;
+               when CCL.Types.Boolean_Default => Emit ((if Interfaces."=" (Default.Value, 1) then "true" else "false"));
+               when CCL.Types.Alternative_Default =>
+                  declare
+                     Owner : constant CCL.Types.Description := CCL.Types.Describe (Analysis.Tree.Types, Payload);
+                  begin
+                     Identifier (Owner.Identifier); Emit (".");
+                     if Default.Value in 1 .. Interfaces.Integer_64 (Owner.Count) then
+                        Identifier (Owner.Parts (CCL.Types.Component_Index (Default.Value)).Identifier);
+                     end if;
+                  end;
+               when CCL.Types.Empty_List_Default => Emit ("[]");
+            end case;
+         end Emit_Default;
+
          procedure New_Line (Level : Natural) is
          begin
             Emit (String'(1 => ASCII.LF));
@@ -822,6 +897,12 @@ package body CCL.Language.Views with SPARK_Mode => On is
                         Emit ((if Style = Lisp then " " else " AS "));
                         Emit_Type (D.Parts (I).Payload);
                      end if;
+                     if CCL.Types."/=" (CCL.Types.Default_Of (Analysis.Tree.Types, N.Declared_Kind, I).Kind,
+                                        CCL.Types.No_Default)
+                     then
+                        Emit ((if Style = Lisp then " " else " := "));
+                        Emit_Default (D.Parts (I).Payload, CCL.Types.Default_Of (Analysis.Tree.Types, N.Declared_Kind, I));
+                     end if;
                      if not Enum and Style = Lisp then Emit (")"); end if;
                   end loop;
                   Emit ((if Style = Lisp then "))" else ")"));
@@ -896,14 +977,36 @@ package body CCL.Language.Views with SPARK_Mode => On is
                Identifier (N.Identifier);
                Emit (")");
             when Record_Construct =>
-               if Style = Lisp then Emit ("("); end if;
-               Identifier (N.Identifier);
-               if Style = Basic then Emit ("("); end if;
-               for P in 1 .. CCL.Types.Describe (Analysis.Tree.Types, N.Declared_Kind).Count loop
-                  if Style = Lisp then Emit (" "); elsif P > 1 then Emit (", "); end if;
-                  Child (N.Components (P));
-               end loop;
-               Emit (")");
+               --  Positional fields, then named ones; defaulted fields stay
+               --  left out, as the source wrote them.
+               declare
+                  Shape : constant CCL.Types.Description :=
+                    CCL.Types.Describe (Analysis.Tree.Types, N.Declared_Kind);
+                  Emitted : Boolean := False;
+                  procedure Next is
+                  begin
+                     if Style = Lisp then Emit (" "); elsif Emitted then Emit (", "); end if;
+                     Emitted := True;
+                  end Next;
+               begin
+                  if Style = Lisp then Emit ("("); end if;
+                  Identifier (N.Identifier);
+                  if Style = Basic then Emit ("("); end if;
+                  for P in 1 .. Shape.Count loop
+                     if not N.Named_Fields (P) and then not N.Defaulted_Fields (P) then
+                        Next;
+                        Child (N.Components (P));
+                     end if;
+                  end loop;
+                  for P in 1 .. Shape.Count loop
+                     if N.Named_Fields (P) then
+                        Next;
+                        Identifier (Shape.Parts (P).Identifier); Emit (" => ");
+                        Child (N.Components (P));
+                     end if;
+                  end loop;
+                  Emit (")");
+               end;
             when Builtin_Form =>
                if Style = Lisp then Emit ("("); end if;
                Emit (Builtin_Name (N.Builtin));
@@ -975,6 +1078,17 @@ package body CCL.Language.Views with SPARK_Mode => On is
                declare
                   S : constant String := Interfaces.Integer_64'Image (N.Integer_Value);
                begin Emit ((if S (S'First) = ' ' then S (S'First + 1 .. S'Last) else S)); end;
+            when Stream_Reference =>
+               --  (stream T n) / stream(T, n).
+               declare
+                  S : constant String := Interfaces.Integer_64'Image (N.Integer_Value);
+               begin
+                  Emit ((if Style = Lisp then "(stream " else "stream("));
+                  Emit_Type (CCL.Types.Stream_Element (Analysis.Tree.Types, N.Declared_Kind));
+                  Emit ((if Style = Lisp then " " else ", "));
+                  Emit (S (S'First + 1 .. S'Last));
+                  Emit (")");
+               end;
             when Boolean_Literal => Emit ((if N.Boolean_Value then "true" else "false"));
             when String_Literal =>
                Emit ("""");

@@ -1,0 +1,24 @@
+#ifndef CUBIT_VULKAN_UPLOAD_BUFFER_H
+#define CUBIT_VULKAN_UPLOAD_BUFFER_H
+#include <vulkan/vulkan.h>
+#include <stdint.h>
+#define CUBIT_VULKAN_UPLOAD_MAX_BYTES (16u*1024u*1024u)
+/* Private, serialized record on an already-admitted matching device. No external
+ * import/export. Charge actual requirements before Bind. A mapped producer may
+ * write only Capacity bytes and only before submission/after known completion.
+ * All command readers must retire before release. Unknown state is never reset. */
+struct cubit_vulkan_upload_buffer {
+    VkInstance instance; VkPhysicalDevice physical; VkDevice device;
+    PFN_vkGetInstanceProcAddr instance_proc; PFN_vkGetDeviceProcAddr proc;
+    VkBuffer buffer; VkDeviceMemory memory; void *mapped;
+    VkMemoryRequirements requirements;
+    PFN_vkDestroyBuffer destroy; PFN_vkFreeMemory free_memory;
+    PFN_vkUnmapMemory unmap; PFN_vkAllocateMemory allocate;
+    PFN_vkBindBufferMemory bind; PFN_vkMapMemory map;
+    uint32_t capacity,types,stage;
+};
+/* 0 success, 1 confirmed clean rejection, 2 uncertain: retain dependencies. */
+uint32_t cubit_vulkan_upload_prepare(void *,uint32_t,uint64_t *,uint32_t *);
+uint32_t cubit_vulkan_upload_bind(void *,uint64_t,uint32_t,void **);
+uint32_t cubit_vulkan_upload_release(void *);
+#endif

@@ -15,14 +15,14 @@ package Live_Ring_Proof with SPARK_Mode is
      with Import, Global => null;
    procedure Write_Word (Offset, Value : Unsigned_32; OK : out Boolean)
      with Import, Global => null,
-       Pre => Offset >= 384 and Offset < 16384 - 64 and Offset mod 4 = 0;
+       Pre => Offset < 16384 and Offset mod 4 = 0;
    function Publish_Words (Offset, Bytes : Unsigned_32) return Boolean
      with Import, Global => null,
-       Pre => Offset >= 384 and Bytes in 120 | 384 and
-         Offset mod 8 = 0 and Offset <= 16384 - 64 - Bytes;
+       Pre => Offset < 16384 and Bytes > 0 and Bytes <= 16384 and
+         Bytes mod 8 = 0 and Offset mod 8 = 0 and Offset <= 16384 - Bytes;
    procedure Write_Tail (Value : Unsigned_32; OK : out Boolean)
      with Import, Global => null,
-       Pre => Value in 504 .. 16384 - 64 and Value mod 8 = 0;
+       Pre => Value in 120 .. 16384 - 64 and Value mod 8 = 0;
    function Tail_Visible return Boolean with Import, Global => null;
    package Publisher is new Intel_GPU_Live_Ring_Publish
      (Owned, Read_Marker, Read_Tail, Write_Word, Publish_Words,

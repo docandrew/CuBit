@@ -11,7 +11,7 @@ procedure Admission_Native_Tests is
    Target : Recipient;
    Receipt : CompletionEntry;
    Used : Boolean;
-   Session : constant Unsigned_64 := 16#4750_0000_0000_0001#;
+   Session : constant Unsigned_64 := 16#A123_0000_0000_0087#;
 begin
    Inspection := [1, 1, 0, 42, 0, 7];
    Target := Capture (7);
@@ -23,7 +23,7 @@ begin
    pragma Assert (Last_Submit.words = [1, 7 * 2 ** 32 + 42, 0, 0]);
    pragma Assert (Last_Slot = 31 and Last_Token = 100);
    Receipt := (token => 99, from => 77, status => 0,
-               msg => ((16#0A21#, 4, 0, 0), [0, 1, Session, 0]), valid => True);
+               msg => ((16#0A21#, 4, 0, 0), [0, 1, Session, 40]), valid => True);
    Complete (Item, Receipt, Used); pragma Assert (not Used);
    Receipt.token := 100;
    Complete (Item, Receipt, Used);
@@ -42,6 +42,7 @@ begin
    pragma Assert (Last_Submit.words = [1, 7 * 2 ** 32 + 42, Session, 1]);
    Cancel (Item);
    Receipt.token := 101;
+   Receipt.msg.words (3) := 0;
    Complete (Item, Receipt, Used);
    pragma Assert (Used and State (Item) = Core.Abort_Ready);
    Advance (Item, 102);
@@ -54,7 +55,7 @@ begin
          Broken : Broker_Request;
          Bad : CompletionEntry :=
            (token => 200, from => 77, status => 0,
-            msg => ((16#0A21#, 4, 0, 0), [0, 1, 123, 0]), valid => True);
+            msg => ((16#0A21#, 4, 0, 0), [0, 1, 123, 40]), valid => True);
       begin
          Inspection := [1, 11, 0, 77, 0, 9];
          Start (Broken, Target, 31, 30, 4);
@@ -101,7 +102,7 @@ begin
          Tag : constant Unsigned_64 := Session - 1 + Unsigned_64 (Index);
          R : constant CompletionEntry :=
            (token => 350, from => 77, status => 0,
-            msg => ((16#0A21#, 4, 0, 0), [0, 1, Tag, 0]), valid => True);
+            msg => ((16#0A21#, 4, 0, 0), [0, 1, Tag, 56 - Unsigned_64 (Index)]), valid => True);
       begin
          Inspection := [1, 11, 0, 77, 0, 9];
          Start (Mapped, Target, 31, 30, 4);
@@ -111,7 +112,7 @@ begin
          Grant_Result := 0;
          Advance (Mapped, 351);
          pragma Assert (Last_Arguments =
-           [9 * 2 ** 32 + 77, 30, 39 + Unsigned_64 (Index), 1, Tag, 0]);
+           [9 * 2 ** 32 + 77, 30, 56 - Unsigned_64 (Index), 1, Tag, 0]);
          pragma Assert (State (Mapped) = Core.Delegate_Ready and Last_Token = 350);
          Advance (Mapped, 351);
          pragma Assert (Last_Arguments = [7 * 2 ** 32 + 42, 31, 4, 3, Tag, 0]);
@@ -125,13 +126,13 @@ begin
          Partial : Broker_Request;
          R : CompletionEntry :=
            (token => 400, from => 77, status => 0,
-            msg => ((16#0A21#, 4, 0, 0), [0, 1, Session, 0]), valid => True);
+            msg => ((16#0A21#, 4, 0, 0), [0, 1, Session, 40]), valid => True);
       begin
          Inspection := [1, 11, 0, 77, 0, 9];
          Start (Partial, Target, 31, 30, 4);
          Advance (Partial, 400);
-         if Fault = 6 then R.msg.words (2) := Session - 1;
-         elsif Fault = 7 then R.msg.words (2) := Session + 16;
+         if Fault = 6 then R.msg.words (3) := 39;
+         elsif Fault = 7 then R.msg.words (3) := 56;
          end if;
          Complete (Partial, R, Used);
          Inspection := [1, 9, 0, 42, 0, 7];
@@ -157,9 +158,13 @@ begin
                end if;
             end if;
          end if;
-         pragma Assert (State (Partial) = Core.Abort_Ready);
-         Advance (Partial, 402);
-         pragma Assert (Last_Submit.words (3) = 2);
+         if Fault in 6 .. 7 then
+            pragma Assert (State (Partial) = Core.Quarantined);
+         else
+            pragma Assert (State (Partial) = Core.Abort_Ready);
+            Advance (Partial, 402);
+            pragma Assert (Last_Submit.words (3) = 2);
+         end if;
       end;
    end loop;
    Put_Line ("NATIVE-ADMISSION-ADAPTER: PASS mocked IPC and delegation");

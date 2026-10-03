@@ -57,17 +57,38 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def copy_input(root, destination, name, kind):
+def input_origin(root, name, kind):
     relative = Path(name)
     if relative.is_absolute() or ".." in relative.parts:
         raise ValueError(f"unsafe input path: {name}")
     source = root / relative
-    if source.resolve() != source.absolute() or not stat.S_ISREG(source.lstat().st_mode):
+    if source.parent.resolve() != source.parent.absolute():
+        raise ValueError(f"input parent must not contain symlinks: {name}")
+    if source.is_symlink() and kind == "source":
+        resolved = source.resolve(strict=True)
+        if not resolved.is_relative_to(root) or not resolved.is_file():
+            raise ValueError(f"source link must name an internal regular file: {name}")
+        return resolved, dict(source_link=os.readlink(source),
+                              resolved_path=str(resolved.relative_to(root)))
+    if not stat.S_ISREG(source.lstat().st_mode):
         raise ValueError(f"input must be an ordinary, non-symlink file: {name}")
+    return source, {}
+
+
+def verify_input(root, entry):
+    source, origin = input_origin(root, entry["path"], entry["kind"])
+    recorded = {key: entry[key] for key in ("source_link", "resolved_path")
+                if key in entry}
+    if origin != recorded or digest(source) != entry["sha256"]:
+        raise RuntimeError(f"input changed during snapshot: {entry['path']}")
+
+
+def copy_input(root, destination, name, kind):
+    source, origin = input_origin(root, name, kind)
     before = source.stat()
     if before.st_size > 128 * 1024 * 1024:
         raise ValueError(f"input exceeds 128MiB snapshot bound: {name}")
-    target = destination / relative
+    target = destination / name
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, target)
     checksum = digest(target)
@@ -76,7 +97,9 @@ def copy_input(root, destination, name, kind):
         (after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns) or
         digest(source) != checksum):
         raise RuntimeError(f"input changed during snapshot: {name}")
-    return dict(path=name, kind=kind, sha256=checksum, size=after.st_size)
+    entry = dict(path=name, kind=kind, sha256=checksum, size=after.st_size, **origin)
+    verify_input(root, entry)
+    return entry
 
 
 def live_inputs(root):
@@ -118,8 +141,7 @@ def create(root, label, seed_live=False):
             if source_paths(root) != sources:
                 raise RuntimeError("source file set changed during snapshot; retry")
             for entry in report["inputs"]:
-                if digest(root / entry["path"]) != entry["sha256"]:
-                    raise RuntimeError(f"input changed during snapshot: {entry['path']}")
+                verify_input(root, entry)
             (destination / "coordination").mkdir(exist_ok=True)
             (destination / "tmp").mkdir()
             report["complete"] = True

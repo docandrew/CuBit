@@ -2,8 +2,9 @@
 -- adapter; address validity, reader quiescence and physical release are trusted.
 generic
    Last_Identity : Positive := Positive'Last;
+   Slot_Count : Positive := 8;
 package Compositor_Storage with SPARK_Mode, Pure is
-   type Slot is range 1 .. 8;
+   type Slot is new Positive range 1 .. Slot_Count;
    type Ticket is private;
    No_Ticket : constant Ticket;
    type Phase is (Free, Allocating, Live, Releasing, Quarantined);
@@ -70,7 +71,11 @@ private
       Serial : Natural range 0 .. Last_Identity := 0;
       Items : Entries;
    end record;
-   function Total (S : State) return Long_Long_Integer;
+   function Prefix (S : State; N : Natural) return Long_Long_Integer
+     with Pre => N <= Slot_Count,
+       Post => Prefix'Result >= 0 and Prefix'Result <= Long_Long_Integer (N) * Long_Long_Integer (Natural'Last),
+       Subprogram_Variant => (Decreases => N);
+   function Total (S : State) return Long_Long_Integer is (Prefix (S, Slot_Count));
    function Valid (S : State) return Boolean is
      (S.Used <= S.Capacity and Total (S) = Long_Long_Integer (S.Used) and
       (for all I in Slot =>
@@ -89,6 +94,5 @@ private
    function Issued (S : State) return Natural is (S.Serial);
    function Others_Unchanged (S, Before : State; T : Ticket) return Boolean is
      (for all I in Slot => (if I /= T.Position then S.Items (I) = Before.Items (I)));
-   function Open (Byte_Limit : Natural) return State is
-     ((Capacity => Byte_Limit, others => <>));
+
 end Compositor_Storage;

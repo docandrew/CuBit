@@ -31,7 +31,9 @@ interval at 1000 ms and fuel at 4096. Inspect does not create or reload a
 program. Source/result remain inspectable after stop; reboot clears the slot.
 
 Integers are unsigned uint64 on the wire; display text carries the existing CCL
-result image (including signed values). Type codes: invalid/no scalar 0,
+result image (including signed values); a record or payload variant result
+travels as its canonical literal in the display text with type code 0
+(operation 7 presents it typed). Type codes: invalid/no scalar 0,
 Integer 1, Boolean 2, String 3, Character 4, List 5, Function 6 (a function
 value, described by the display text only).
 
@@ -76,3 +78,57 @@ stages it at `/licenses/cbor_ada.txt` in the ISO tree. It is linked into this
 **userspace** app, never the kernel.
 The profile excludes floats; upstream float-proof gaps remain recorded in
 `docs/ccl-cbor-evaluation.md` and are not claimed resolved here.
+
+### Presentations and images
+
+Operations 7 and 8 serve the Observatory's REPL transcript. It renders a
+result exactly as the native CCL console does, from the same
+`CCL.Presentations` description.
+
+**Requests:**
+
+- **7, present:** `[1,id,7,source]`. It evaluates like operation 2.
+- **8, image rows:** `[1,id,8,"",imageId,firstRow]`.
+  - `imageId` is nonzero.
+  - `firstRow` is below 512, the store's largest side.
+
+**Response 7:** `[1,id,7,ok,typeText,valueText,form,diagnosticPosition,fuelRemaining,detail]`.
+
+| form | meaning | detail |
+| --- | --- | --- |
+| 0 failure | `valueText` is the diagnostic | `[]` |
+| 1 text | the value as text, its type in `typeText` | `[]` |
+| 2 table | a record or a list of records | `[rowType, many, total, [[field, typeName, numeric]...], rows]` |
+| 3 picture | an `Image` (interfaces/image.schema) | `[width, height, imageId]` |
+| 4 gallery | a list of `Image`s | `[total, [[width, height, imageId]...]]` (`valueText` empty) |
+
+- **Tables:**
+  - `rows` holds as many whole rows as fit in the response; `total` counts them all.
+  - Each row is one canonical CCL literal per field, so a click can write it back into source.
+  - A table's `valueText` is empty: its rows are the value.
+- **Pictures:**
+  - `imageId` is the content digest of the pixels in the guest's image store (`CCL.Image_Store`).
+  - It grants nothing: it names pixels that the guest itself produced.
+
+**Operation 9, present monitor:** request `[1,id,9,"",0]`. It responds with operation 7's fields for the periodic program's last result, then the program's state and completed runs: `[1,id,9,ok,typeText,valueText,form,position,fuel,detail,state,runs]`. The web console's `:watch` observes a live cell this way: the program runs natively, and the page only reads its result.
+
+**Operation 10, complete:** request `[1,id,10,source]`, where `source` is the text before the caret. It responds with `[1,id,10,prefixLength,[[name,origin,signature]...],beyond,signature]`, from the guest catalog's `CCL.Completions`, which is the native console's completion.
+- `origin` is 0 for a service operation, 1 for a built-in, and 2 for a form.
+- The last `signature` is the called operation's, when the caret is in a call's arguments, and is empty otherwise.
+
+**Response 8:** `[1,id,8,known,width,height,firstRow,rowCount,rgb]`.
+
+- `rgb` is a **byte string**, three bytes a pixel. This is the only byte string the profile admits.
+- It carries `rowCount` whole rows from `firstRow`, as many as fit in 8192 bytes.
+- An id no longer in the store answers `known = false` with zeros and empty bytes. It is never answered with other pixels.
+- Ids are content digests, so a client may cache rows by id for as long as it likes.
+
+Unlike the other operations, these responses nest arrays (at most four deep).
+
+**What is proved and what is tested:**
+
+- `Control_Wire` decodes and validates both requests, and is proved at level 2 with the rest of the codec (`make prove-ccl-remote`).
+- `Control_Presentation` encodes both responses. The presentation model and the image store are not SPARK units, so these encoders are **tested, not proved**:
+  - `tests/ccl-remote/wire_vectors.adb` encodes real evaluations.
+  - `make test-ccl-remote` compares its bytes with `tools/ccl-observatory/wire-vectors.json`.
+  - The browser's decoder must read that file as the console shows it (`wire.test.mjs`).

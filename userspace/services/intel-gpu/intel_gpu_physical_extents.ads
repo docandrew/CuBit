@@ -8,10 +8,15 @@ package Intel_GPU_Physical_Extents with SPARK_Mode, Pure is
    Block_Bytes : constant Unsigned_64 := 4096 * 2 ** Allocation_Order;
    subtype Block_Index is Natural range 0 .. 15;
    type Addresses is array (Block_Index) of Unsigned_64;
-   Capacity : constant Unsigned_64 := 16 * Block_Bytes;
+   Capacity : constant Unsigned_64 := Unsigned_64 (Addresses'Length) * Block_Bytes;
    type Map is private;
    function Ready (Object : Map) return Boolean;
-   procedure Admit (Bases : Addresses; Object : out Map; Success : out Boolean)
+   function Committed_Bytes (Object : Map) return Unsigned_64;
+   -- Snapshots may grow, but all previously committed addresses must agree.
+   -- Identity/authority is checked separately by the owning allocation service.
+   function Compatible (Left, Right : Map) return Boolean;
+   procedure Admit (Bases : Addresses; Object : out Map; Success : out Boolean;
+                    Committed_Blocks : Natural := Addresses'Length)
      with Post => Ready (Object) = Success;
    type Span is record
       Valid : Boolean := False;
@@ -23,8 +28,8 @@ package Intel_GPU_Physical_Extents with SPARK_Mode, Pure is
    function Resolve (Object : Map; Offset, Bytes : Unsigned_64) return Span
      with Post =>
        Resolve'Result.Valid =
-         (Ready (Object) and then Bytes /= 0 and then Offset < Capacity
-          and then Bytes <= Capacity - Offset)
+         (Ready (Object) and then Bytes /= 0 and then Offset < Committed_Bytes (Object)
+          and then Bytes <= Committed_Bytes (Object) - Offset)
        and then
          (if Resolve'Result.Valid then
             Resolve'Result.Bytes > 0 and then
@@ -34,6 +39,7 @@ package Intel_GPU_Physical_Extents with SPARK_Mode, Pure is
 private
    type Map is record
       Accepted : Boolean := False;
+      Count : Natural range 0 .. Addresses'Length := 0;
       Bases : Addresses := [others => 0];
    end record;
 end Intel_GPU_Physical_Extents;

@@ -38,7 +38,32 @@ package Compositor_Image_Sampling with SPARK_Mode, Pure is
           Draw_Height (Prepare'Result) >= Wide (Height)
         else
           Draw_Width (Prepare'Result) <= Wide (Width) and
-          Draw_Height (Prepare'Result) <= Wide (Height));
+          Draw_Height (Prepare'Result) <= Wide (Height)) and then
+       (if Mode /= Center then
+          (if (Wide (Width) * Wide (Image_Height) >=
+               Wide (Height) * Wide (Image_Width)) = (Mode = Fill) then
+             Draw_Width (Prepare'Result) = Wide (Width) and
+             Draw_Height (Prepare'Result) =
+               (Wide (Width) * Wide (Image_Height) + Wide (Image_Width) - 1) / Wide (Image_Width)
+           else
+             Draw_Height (Prepare'Result) = Wide (Height) and
+             Draw_Width (Prepare'Result) =
+               (Wide (Height) * Wide (Image_Width) + Wide (Image_Height) - 1) / Wide (Image_Height)));
+   type Axis_Sample (Valid : Boolean := False) is record
+      case Valid is
+         when True => First, Last : Index; Weight : Fraction;
+         when False => null;
+      end case;
+   end record;
+
+   function Horizontal (P : Layout; X : Position) return Axis_Sample
+     with Post => (if Horizontal'Result.Valid then
+       Horizontal'Result.First < Source_Width (P) and
+       Horizontal'Result.Last < Source_Width (P));
+   function Vertical (P : Layout; Y : Position) return Axis_Sample
+     with Post => (if Vertical'Result.Valid then
+       Vertical'Result.First < Source_Height (P) and
+       Vertical'Result.Last < Source_Height (P));
    type Sample (Valid : Boolean := False) is record
       case Valid is
          when True =>

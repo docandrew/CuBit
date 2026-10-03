@@ -27,7 +27,7 @@ for unit in ('loan_proof', 'memory_grants'):
     if unit == 'loan_proof':
         entities = {int(k): v['name'] for k, v in result['entities'].items()}
         proved = {entities[p['entity']] for p in posts}
-        for instance in ('Production', 'Bounded'):
+        for instance in ('Production', 'Bounded', 'Singleton', 'Wide'):
             for operation in ('Configure', 'Reserve', 'Publish', 'Acquire',
                               'Return_Reader', 'Revoke', 'Finish_Retirement',
                               'Close', 'Release_Parent', 'Open_Forwarding',

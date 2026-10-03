@@ -36,8 +36,11 @@
         <div class="map-foot"><span>DRAG TO ORBIT · SCROLL TO ZOOM · CLICK TO INSPECT</span><span>━━ observed binding &nbsp; ◇ process</span></div>
       </section>
       <section class="console"><div class="console-title"><div><span class="eyebrow">CCL / EXPRESSION EDITOR</span><h2>Ask the system.</h2></div><span id="session-mode" class="tag">Connect to enable evaluation</span></div>
-        <form id="command-form"><label for="source">Expression <span class="muted">· Lisp or BASIC · Ctrl+Enter to evaluate · the session keeps definitions and LET values (:env, :help)</span></label>
+        <div id="transcript" aria-live="polite"></div>
+        <form id="command-form"><label for="source">Expression <span class="muted">· Lisp or BASIC · Enter runs a complete form, continues an open one · Shift+Enter new line · the session keeps definitions and LET values (:env, :help)</span></label>
           <div class="editor-row"><textarea id="source" maxlength="1024" spellcheck="false" rows="18" aria-describedby="editor-resize-hint">range(1, 20) | where(FUNCTION(n) n MOD 3 = 0) | sum</textarea><button id="execute" class="primary" type="submit" disabled title="Requires a native CuBit connection">▶ Evaluate<br><small>inside CuBit</small></button></div>
+          <div id="completion" hidden role="listbox" aria-label="Completions"></div>
+          <div id="signature" class="muted" aria-live="polite"></div>
           <div id="editor-resize-hint" class="muted">Drag the editor’s bottom-right corner to resize.</div></form>
         <div id="outcome" role="status">Connect, then submit an expression to the real CCL interpreter inside CuBit.</div>
         <section class="monitor-panel" aria-label="Native periodic label widget">

@@ -316,7 +316,8 @@ static int opens_outstanding;
 static int wait_outstanding;            /* a WAIT is at netstack */
 static unsigned long wait_deadline;     /* ... when it gives up */
 static uint64_t wait_mask;              /* ... and the sockets it is for */
-static volatile int waiter;             /* a thread blocks for completions */
+static volatile int waiter;             /* one thread owns completion collection */
+static unsigned followers;             /* threads waiting for that collector */
 /* Sockets that waiting threads want to hear about, counted per wait bit. */
 static unsigned interest_count[NET_MAXIMUM_WAIT_BIT + 1];
 static uint64_t interest;
@@ -618,8 +619,7 @@ static void send_shut(struct cubit_tcp *t)
 	t->shut_token = token;
 	t->refs++;
 	UNLOCK(t->lock);
-	if (queue_submit(t->slot, token, NET_QUEUE_SHUT, 0, t->channel, 0) ||
-	    submit((unsigned)t->slot, OP_NET_SHUT, 1, t->channel, 0, 0, 0, token)) return;
+	if (queue_submit(t->slot, token, NET_QUEUE_SHUT, 0, t->channel, 0)) return;
 	LOCK(t->lock);
 	t->shut_token = 0;
 	t->refs--;
@@ -676,7 +676,9 @@ static void dispatch(const struct completion *c)
 	if (match) opened(t, c);
 }
 
-/* Take the completions that have arrived; with block, wait for one. */
+/* Only the submitting collector may consume its kernel WAIT completion.
+ * Opportunistic callers reap the shared control queue, never another IPC
+ * user's thread-local kernel completions. */
 static void drain(int block)
 {
 	struct completion c[8];
@@ -684,27 +686,46 @@ static void drain(int block)
 	if (block) {
 		n = cubit(SYSCALL_WAIT_COMPLETION, (unsigned long)c, 8, 1, 0);
 		if (n > 8) n = 0;
-	} else {
-		while (n < 8 && cubit(SYSCALL_POLL_COMPLETION, (unsigned long)&c[n], 0, 0, 0) == 1)
-			n++;
 	}
 	for (unsigned long i = 0; i < n; i++) dispatch(&c[i]);
 	int answers = reap_answers();
 	if (n || answers) __cubit_readiness_changed();
 }
 
-/* Collect finished OPENs and WAITs without blocking, if any are out and
- * no waiter is collecting them. */
+/* Release collection before waking followers. A follower can wake during
+ * drain, find this collector still active and sleep again. It must get a
+ * second wake after ownership is available, even if no completion arrived. */
+static void release_collector(void)
+{
+	LOCK(net_lock);
+	waiter = 0;
+	int wake = followers != 0;
+	UNLOCK(net_lock);
+	if (wake) __cubit_readiness_changed();
+}
+
+/* Opportunistic collection uses the same ownership as blocking collection:
+ * it must not steal a completion from a thread in WAIT_COMPLETION. */
 static void collect(void)
 {
-	if (!waiter && (opens_outstanding || wait_outstanding || queue_count)) drain(0);
+	LOCK(net_lock);
+	int take = !waiter;
+	if (take) waiter = 1;
+	UNLOCK(net_lock);
+	if (take) {
+		drain(0);
+		release_collector();
+	}
 }
 
 /* A local event (fd.c) while a thread blocks for netstack: end its WAIT so
  * it looks again. */
 hidden void __cubit_net_interrupt(void)
 {
-	if (waiter && wait_outstanding) end_wait();
+	LOCK(net_lock);
+	int interrupt = waiter && wait_outstanding;
+	UNLOCK(net_lock);
+	if (interrupt) end_wait();
 }
 
 hidden uint64_t __cubit_tcp_mask(struct cubit_tcp *t)
@@ -723,10 +744,12 @@ hidden void __cubit_net_wait(int seq, unsigned long deadline, uint64_t mask)
 		/* The waiter's WAIT must cover our sockets: if not, end it so
 		 * the next one does. */
 		int stale = wait_outstanding && (interest & ~wait_mask);
+		followers++;
 		UNLOCK(net_lock);
 		if (stale) end_wait();
 		__cubit_readiness_wait(seq, deadline);
 		LOCK(net_lock);
+		followers--;
 		drop_interest(mask);
 		UNLOCK(net_lock);
 		return;
@@ -747,21 +770,31 @@ hidden void __cubit_net_wait(int seq, unsigned long deadline, uint64_t mask)
 			      WAIT_TOKEN))) {
 		LOCK(net_lock);
 		wait_outstanding = 0;
-		waiter = 0;
 		drop_interest(mask);
 		UNLOCK(net_lock);
+		release_collector();
 		__cubit_readiness_wait(seq, deadline);
 		return;
 	}
 	/* The outstanding WAIT misses a socket or outlasts our deadline: end
 	 * it, and the caller's next wait submits the right one. */
 	if (stale) end_wait();
-	if (__cubit_readiness_seq() == seq) drain(1);
-	else drain(0);
+	if (__cubit_readiness_seq() != seq) end_wait();
+	/* Kernel completions belong to the submitting thread. Do not hand an
+	 * outstanding WAIT to another collector, even when a local event already
+	 * changed the descriptor sequence. Cancel it and harvest its reply here. */
+	for (;;) {
+		drain(1);
+		LOCK(net_lock);
+		int pending = wait_outstanding;
+		UNLOCK(net_lock);
+		if (!pending) break;
+		end_wait();
+	}
 	LOCK(net_lock);
-	waiter = 0;
 	drop_interest(mask);
 	UNLOCK(net_lock);
+	release_collector();
 }
 
 hidden struct cubit_tcp *__cubit_tcp_new(void)
@@ -829,11 +862,11 @@ static long open_channel(struct cubit_tcp *t, int nonblock)
 	t->state = TCP_CONNECTING;
 	t->refs++;
 	UNLOCK(t->lock);
+	/* A queue-full/refused OPEN is backpressure. A direct asynchronous
+	 * fallback would attach the reply to this caller's thread, which may not
+	 * be the thread polling the socket (or may exit before it completes). */
 	if (!queue_submit(t->slot, t->open_token, NET_QUEUE_OPEN, (uint32_t)t->target_len,
-			  arenas[t->arena].handle, (uint32_t)t->index) &&
-	    !submit((unsigned)t->slot, OP_NET_OPEN, (uint8_t)t->target_len,
-		    arenas[t->arena].handle, (uint64_t)t->index, 0, 0,
-		    t->open_token)) {
+			  arenas[t->arena].handle, (uint32_t)t->index)) {
 		LOCK(net_lock);
 		opens_outstanding--;
 		UNLOCK(net_lock);

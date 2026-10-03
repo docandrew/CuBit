@@ -1,4 +1,3797 @@
+2026-10-03 titlebar focus artifact SOURCE FIX COMPLETE; broad goal still paused.
+New damagePreviousFocus in Desktop Main adds previous title/frame and taskbutton
+before focusAndRaiseSurface, restoreSurface and toggleMaximizeSurface mutate focus.
+Existing same-focus/top early exit retained. Explains photo's partial gray title
+under stale teal strip: old title absent from damage while union crosses it.
+New tests/compositor/test-focus-title-damage.py extracts actual helper/raise/focus/
+restore and tests partial overlap, separate windows, reorder, no-op, missing and
+minimized focus. Nix58964 TERM0: fixed passes, removed-call negativecontrol fails;
+existing test-desktop-focus.py passes two negativecontrols too. Evidence directories
+focus-title-damage-uqc69py1 and desktop-focus-routing-quymjjx8 under compositor/build.
+Native metrics-enabled legacy compile/link30294 TERM0 under shared lock:
+/tmp/cubit-focus-title-desktop.svc, /tmp/cubit-focus-title-native.log. Native runtime
+visual regression/NUC confirmation NOT run. No boot binary/ISO/index changes; native
+object cache updated only. All own jobs terminal. New helper is adapter regression
+coverage, not an additional SPARK proof. Source ready for next Desktop image build.
+
+2026-10-03 USER-REQUESTED titlebar focus artifact fix ACTIVE, broader goal paused.
+Own Desktop main focus-damage helper/call sites and new extracted routing test.
+Photo shows partly repainted inactive title. focusAndRaiseSurface damages only
+new focus, omitting old title; restore/maximize have same omission. Will include
+old title/task damage before focus mutation, preserve other agents' input fixes.
+No native build/staging yet. Browser latest note reports own jobs terminal.
+
+2026-10-03 refreshed browser publication coordination: broad goal remains PAUSED.
+No concurrent Desktop Main ownership, source edits, builds, or staging by this
+compositor session. Earlier conditional boundary review still applies to the
+unchanged three-hunk exposure watermark fix with queue32; no new concern from
+the reported logging-runtime rebase. This is not fresh candidate validation.
+Browser reports rebasing onto current runtime and verifying both exact default
+and metrics candidates through logstore and Penny. Retain source/linked-input
+and per-variant staging guards under shared lock; preserve current kernel/ISO/
+user disk and active VM. Prior artifact hashes above are historical, not current
+publication expectations. No compositor goal resumption or outgoing message.
+
+2026-10-03 publication provenance query: READ-ONLY, goal PAUSED.
+This compositor session has NOT rebuilt or staged Desktop since dd73845a;
+recent actions read sources/evidence and update this note only. No own livejobs.
+Confirmed root build/desktop.svc acd382ecb3f0d1c63fde55ea20c51ddfd87a10d7e8479626c0569af14bc8d0d5
+mtime10:49:23; isodir/boot/desktop.svc34f139336743184563f6f615ac9b2fba16a89368d64575f9906a6faca8165722
+mtime10:49:40. IMPORTANT: staged isodir hash EXACTLY MATCHES current Desktop
+build-metrics/desktop.svc. This identifies the matching variant, NOT the actor,
+authorization, active job, or source provenance. No exact hashes/timestamp found
+in coordination notes. Sandbox ps exposes only this invocation, so it CANNOT
+establish host build inactivity. Preserve both artifacts and keep publication
+stopped pending builder provenance; do not replace the old hash guard merely
+because compiled source hashes agree. No outgoing thread message sent.
+
+2026-10-03 private exposure-watermark boundary review: no implementation or staging; goal remains PAUSED.
+Reviewed private penny-input-buffer-lmoby8wv Main against main-before-exposure.adb.
+No boundary objection to the narrow three-hunk change: freeze nonempty validated
+batch Through before Publish; require newest serial > exposedThrough AND existing
+close barrier for coalescing; initialize watermark with the channel. This covers
+partial writes, complete writes with uncertain loan return, and failed replies.
+Acquisition-failure freezing is conservative headroom cost, not acknowledgment.
+The nonempty guard is essential: empty Through equals caller-supplied After and
+must not freeze future events. Monotonic max preserves earlier exposure. Recovery
+retains serial progression and watermark; channel destruction resets both.
+Close latch remains independent and prior-After acknowledgment remains unchanged.
+Conditional code-review acceptance only: retain queue32 for this fix, run actual
+handler/enqueue interleavings with success/acquire/write/return failure, same-After
+retry, empty high-After request, close ordering, overflow/recovery and fresh channel;
+no-freeze negative control must fail. Native and exact-candidate logstore gates,
+source-drift checks and shared publication lock still apply. Main adapter behavior
+is regression evidence, not a new end-to-end SPARK proof. No permission to resume
+the broader goal or stage binaries is inferred from this review. No outgoing
+cross-thread message sent; review recorded here for shared coordination.
+
+2026-10-03 expanded input architecture review, READ-ONLY; goal remains PAUSED.
+Concrete correctness finding (not the Penny keyboard-overflow cause):
+Published batch motion can be silently lost through subsequent coalescing.
+Reproduced actual copied SPARK policies underNix53641 TERM0: Push motionA
+(serial1,payload100), SnapshotAfter0 publishesA butretainsit, Push motionB
+(payload200) replaces same serial1, SnapshotAfter1 returnsnothing, AckAfter1
+clearsB. Clientneverreceives200; noRESYNC. Main batchPublish applies onlyoldAfter
+and IQ.Push has no published-through watermark, so this is a feasible service
+interleaving. Existing localqueue contracts allowit: proof of those contracts
+is not proof of end-to-end delivery semantics. Persistent reproduction/log/
+sourcehashes: tests/compositor/build/input-architecture-review/. Fixpriority1:
+freeze any client-visible serial against mutation; coalesce only unexposed tail
+(or issue a newserial with correctlyspecified supersession). Track monotonic
+published-through perstablechannel on confirmedpublication; account for failed/
+uncertain publication conservatively. Test sameAfter retry, motionAFTERsnapshot
+beforeack, publication failure, motion/buttonbarriers,close,reset andoverflow.
+Largerqueue does NOT fix this bug. Do not publish128 as "inputcorrectnessfixed".
+
+Confirmed architecture limitations, not newly demonstrated corruption:
+- Device ingress: xHCI sends orderedkeyboardreports withsequence; failedsend
+sets keyboardResync, snapshotscurrently0. Desktop tracks authority/device/
+generation/sequence, rejects exactduplicates andresynchronizes gaps. Modifier
+state resets onkeyboardgap ratherthan completeheld-key reconstruction. Pointer
+has boundedpending/coalescing andsnapshot. This review did NOT validate all
+kernel source-authentication paths or PS/2/virtio equivalence; those are open
+cross-device conformance gates, not allegations of a capability flaw.
+- Desktop per-stablesurface32-event history/batch8 andpriorAfter semantics are
+bounded/loss-aware. Deliverypool retains uncertain grants afterchanneldeath.
+Per-turn 500usinput/1000usrequest admission does NOT preempt one handler or
+software scene draw. Main drains input before/after requests but synchronous
+painting/IPC can delay nextdrain. Device-sourcegap andappqueueRESYNC are
+separate counters and must not be conflated.
+- UI.App lastEvent advances when copied into event/localpendingEvent, not after
+Handle_Event. This is a receipt/local-retention ack, not a bug by itself.
+- UI.App.Run renders after dirty nonmotion input torefresh immediate-mode hit
+maps; orderingbarriers are required withcurrentwidgetdesign. This couples
+keystroke handling to synchronouspaint, and configure/resync can also block on
+theme/bufferIPC. Confirmed blockingarchitecture; no WCET provided bypollcaps.
+- Loss recovery is pointer-centric: UI.App andSurfaces clear/resync capture,
+but no common text-edit completeness/loss latch. Netsurf Edit_Location Enter
+callsGo; no INPUT_RESYNC branch found. Penny has explicitAddress_Input_Lost.
+This confirms missingcommon loss policy, NOT a tested wrongURL submission.
+Require injectedgap+droppedcharacters+Enter regression inordinaryeditor/browser
+before attributing concrete user-visible mis-submission.
+
+Recommended fix order / defensible general design:
+1 Freeze published input records as above; add end-to-end snapshot/ack tests.
+2 Define shared input-loss generation/notification contract for apps/widgets:
+cancel transientcaptures; mark affected incompleteedits and require explicit
+recovery for consequential submit. Resync cannot reconstruct missingtext.
+Test ordinary UI.App clients as well as Penny. Do not suppress gap safety.
+3 Keep128 private as measured headroom proposal pendingpriorproof/logstore/
+variant gates. It is orthogonal boundedburstcapacity (+36KiB), not latencyfix.
+4 Separate cheap ordered model/interaction updates from expensive rasterwork.
+Only coalesce motion under documentedbarriers; freeze or refresh hitmap/layout
+on cheapmodelgeneration boundary. Never dispatch usingstalecoordinates. Render
+lateststates on bounded opportunities, withimmutableframe snapshots, bounded
+inflight buffers andoneevent-thread modelowner. Break up longCPUwork or use a
+separate renderer with explicit ownership; do not move UI.App.Window polling
+onto an unsynchronizedworker. Configure/themebufferIPC needs explicit defer/
+completion phases before any genuinely nonblockingeventdispatch claim.
+5 If independent ingress is required, design transport-only boundedspool with
+separateauthority/CQ routing, immutable orderedserials, admission-before-ack,
+explicitoverflow andprocess-exit retirement. Existingonewait asyncAPI rejects
+batchedmode and cannot continuouslydrain a blockedowner; notdrop-in rescue.
+6 Acceptance: device->Desktop->localreceipt->handler->paint->present timestamps,
+occupancy/highwater+source/appgapcounts; exactkey/buttonorder under slowpaints,
+all8clients/flood, focus/resize/close, collectorabsence and grantfailures.
+Report CPUtime separately fromguestwall; no240Hz/1msclaim from queueheadroom.
+
+No productioncode/staging changes made. This review supersedes any interpretation
+of earlier128 ownershipacceptance as whole-input architecture approval.
+
+2026-10-03 Penny128 integration review, read-only; broad goal remains paused.
+Inspected strict audits7604javo/1zfrahql: baseline recovery[0]/resync1 vs128
+no recovery/resync andexact8URLs; bothsurvive. Candidate maximum1593ms paint
+stillshows latencyproblem, notperformancefix. Reviewedslowconsumer fixture:
+8fullqueues,sameAfter immutable retries,ack8/replenish/drain serial+payload+
+target+kind ordering,explicitoverflow. Hostedmatrix resultreports32/128PASS;
+permutation multiplier13 is coprime for both capacities. RootstagedDesktopstill
+dd73845a; rootCapacity32,batch8,poll32. Snapshot manifest.ccl,desktop_logs.adb,
+GPR equalroot. All compiled-root-inputs entries matchroot NOW, but thatmanifest
+records BASELINE queue32 while candidatequeue differs. Treat intendedcapacity
+change explicitly, not as proof all candidatecompiledinputs equalmanifest.
+
+No compositorownership objection to narrowlypublishing Capacity128 plus
+capacity-generalized existingtests/newslowconsumer fixture. Conditions before
+staging from compositor side:
+1. Run applicable SPARK queue/ack/batch contracts at128 with zero unproved
+(or report exactremaining proof gaps); capacity changes quantifier/loopbounds.
+Keep existing closepriority/coalescing/serialexhaustion tests, not only keyflow.
+2. Capture actualcandidate dependency/sourcehashes including queue128, runtime,
+UI, fonts/nativeobjects, GPR+scenario variables, generatedmanifest/bindings and
+linkedinputs. Recheck currentroot underheldlock, allowing only reviewedpatch.
+Do not blanketcopy snapshot sources. If changed inputs affectcandidate, rebuild
+and rerun appropriategate; no automatic need foranother36cycles if exacttested
+binary+dependencies remainvalid. Preserve currentkernel/ISO/Penny artifacts.
+3. Explicit defaultvariant legacy,metrics-off,timing-off,productionstorage,
+productiondisplay mode; no fontfault/testhooks/tracing-only Main. Preserve
+Desktop manifest logstore request and async Desktop_Logs hooks. Verify actual
+candidate through native logobserver startup+retainedsoftwaretext record
+retrieval (existing test-desktop-logs-native observer can be reused); metrics
+must NOT accidentally be enabled without its manifest variant.
+4. Immediatelybeforepublication verify stagedpreviousDesktop hash, savebackup,
+then publish exacttestedcandidate to defaultbuild/desktop.svc and
+kernel/isodir/boot/desktop.svc underlock; verifyhashes andretain manifest+audits.
+No kernel/ISO rebuild or otheragent binary staging required by this change.
+
++36KiB static across8queues is acceptable measured boundedheadroom; do not
+claim it fixes longpaint latency or guarantees arbitraryinputbursts. No wire,
+batchsize, grants, capslots, acksemantics or per-turnpollcap changes approved
+by this review. This is ownership/integration guidance, not an action here;
+Penny remains responsible for its userauthorization and publication workflow.
+No code or binaries changed by compositor.
+
+2026-10-03 Penny buffering review, READ-ONLY; no implementation/staging; goal paused.
+Current source: IQ.Capacity32 per stable surface, MAX_SURFACES8; batch snapshot
+capacity8 is separate. Successful batch Publish applies ONLY previous After;
+newly published events remain server-retained until later acknowledgment.
+Thus local cached events do not buy eight EXTRA server slots. Ordinary input
+Pop has different removal behavior; preserve both transport semantics.
+Overflow emits explicit RESYNC from current authoritative state; adjacent motion
+coalescing only. Never coalesce/drop/reorder key/button transitions or silently
+turn a truncated address into a valid submission. Keep close priority/barriers.
+
+Recommendation: first prototype a larger FIXED server queue in isolation,
+size from measured peak event rate * observed consumer blackout + burst margin
++ retained unacked prefix, counting key-down AND key-up. 128 is a candidate to
+measure, NOT a guarantee. Eight surfaces bound worst-case static cost; compare
+8*(newcapacity-32)*Event'Object_Size/8 using actual compiler layout. Keep batch8,
+wire format, grant extent and per-turn drain cap32 unchanged. Largerqueue's
+linear scans/proof cost need overload measurement; it protects history but does
+not improve one-second key-to-response latency. No finitebuffer coversunbounded
+paint stalls. Prefer measured fixedheadroom before newnegotiation/spill protocol.
+
+If negotiation/spill is needed: use a Desktop-owned bounded record pool with
+per-owner and global reservation caps, charge only on admission, authenticate
+surface owner+incarnation, fail extension atomically without dropping existing
+entries. Preserve one globally ordered serial stream across base/spill; prior
+After acknowledgment alone frees retained entries. No allocation per event.
+Surface destruction releases metadata; quarantined delivery grants stay in the
+existing service-lifetime Input_Transfers pool until confirmed return. Raising
+queuecapacity does not authorize more reply capabilities, loans or transferpages.
+Requiredproof/tests: no serialreuse/reordering, sameAfter retries, wrongowner/
+generation, pool exhaustion/resync, closebarriers, teardown withpendingloan,
+slowconsumer floods acrossall8surfaces and validkeysequencefollowingrecovery.
+
+Existing async bridge: UI.App Submit_Input_Wait/Complete_Input_Wait is ONE
+outstanding wait, explicitly rejects batchedInput, requires completion pumping.
+It can remove one event into a reply but cannot continuously drain while the
+same applicationthread spends1097ms painting; not a drop-in solution. Current
+Client_Input_Channel.Fetch is synchronous, serialized process-lifetime page.
+A worker cannot share UI.App.Window or poll/steal its completionqueue safely.
+Independent ingress would need a transport-only owner, explicit capabilities/
+completionrouting and bounded client spool, acknowledgment only after durable
+local admission, then event-thread application of configure/resync/theme/resize.
+That is a new ownership protocol, not "run Poll_Input on another thread".
+
+Longer-term fix remains shorter/preemptible or separately owned rendering with
+input service opportunities. UI.App cache-only processing can still perform
+configure/resync theme/buffer IPC, so separate those durations in traces. No
+ownership objection to a future narrowly scoped queue experiment after review,
+but this note publishes no code or approval of a blanketcapacityincrease.
+
+2026-10-03 Penny Poll_Cached_Input review: IMPORTANT blocking-contract caveat.
+Reviewed private UI.App Take_Cached_Input/Poll_Cached_Input/Receive_Input.
+No ownership objection to this narrow factoring as a NO-INPUT-FETCH API,
+subject to invalid-cache/ordinary-fallback regression. Cached DP.Success
+still returns through Valid even when found=False; rejection clears cache and
+leaves lastEvent unchanged, preserving ordinary fallback's After value.
+HOWEVER it is NOT no-IPC/nonblocking as described: Take_Cached_Input calls
+Apply_Input_Result; INPUT_CONFIGURE calls Refresh_Theme (capCall perchunk,
+privateApp line390) and Ensure_Buffer (capCall line170); INPUT_RESYNC also
+calls Refresh_Theme. This path exists even with a healthy validated cache.
+The new spec's "Never fetch or wait" must say no input fetch/wait, with explicit
+configure/resync processing can still block, OR broader processing must be
+separated under its own reviewed policy. Do not silently defer theme/resize
+side effects: event payload/geometry and stale-controls behavior depend on them.
+For Penny's deadline rule, claim only no ADDITIONAL INPUT fetch beyond deadline;
+retain handler/paint wall-time caveat. Validate cached configure and resync,
+empty/pendingwait/batchdisabled guards, wrongsurface/After and ordinarypoll
+fallback; measure input-fetch IPC separately from theme/buffer IPC. A/B36cycle
+claim came frompeer, not rerun here. No sharedcode/staging or broadgoalresume.
+
+2026-10-03 Penny cached-drain review (read-only; broad goal remains paused).
+Reviewed private penny-demand-nq9qtuvx Servo_Input_Admission and UI.App getter.
+No compositor ownership objection to eventual source publication of ONLY
+Cached_Input_Count declaration/expression body with event-thread-only comment,
+under shared lock after hash-guarded review; no shared binary staging implied.
+Getter is exact Remaining(inputCache), allocation/IPC/ack-free. Its observation
+supports the proposed sole-consumer usage. Predicate preserves Controls_Stale
+and strict Used<32; uncached work still calls existing Can_Poll. Count is polls,
+not a guarantee of 32 delivered events or bounded handler wall-time.
+CAVEAT: Cached>0 does not by itself guarantee App.Poll_Input performs no IPC.
+Receive_Input falls through to synchronous capCall if Cache.Take rejects, e.g.
+identity/ack mismatch. Current zero rejections supports healthy-path A/B only.
+Keep monitoring Cache_Rejections; do not claim an absolute no-fetch-after-budget
+contract without a cache-only consumption API or an explicit matching-invariant
+proof. Such API/policy changes need a separate narrow review, not hidden in getter.
+Confirmed trace lines973-982 bracket input_resync in1097ms guest-wall paint;
+controls-stop immediatelyafter hascached7. Supports localdrain opportunity,
+not resolution of long-paint/serveroverflow. Preserve stale-control and address
+input-loss guards; publication of getter should not silently change either.
+No code/tests/staging performed and no cross-thread message sent.
+
+2026-10-03 Penny input coordination, READ-ONLY boundary review; goal stays paused.
+No shared UI/input edits or staging in progress by compositor. UI.App owns
+Window.inputCache, delivery/ack bookkeeping and completion routing; Penny owns
+its custom Input_Batch/Controls_Stale/paint scheduling. Cache.Remaining already
+exists as a pure query, while public Input_May_Remain combines cache occupancy
+with the server More_Pending hint. Its current spec comment understates this.
+A narrow diagnostic accessor (Cached_Input_Count(win) returning Natural via
+Client_Input_Batch_Cache.Remaining) is acceptable from compositor ownership
+perspective; no ownership objection to Penny proposing it under the shared lock.
+It must be event-thread-only, no Fetch/Take/ack/grant/poll side effects. This is
+not authorization to alter budgets, bypass Controls_Stale, or stage shared UI.
+Existing fetched-minus-delivered counters are not an exact occupancy API after
+cache clears/rejections/reset; do not substitute that as an invariant.
+Source review: Receive_Input fetches only on empty cache then takes one event.
+Servo Poll checks Controls_Stale and 1ms budget BEFORE App.Poll_Input; budget
+counts32 polls, first always admitted. A slow fetch can therefore consume the
+wall-time budget before subsequent cached events are delivered. Hypothesis,
+not proof of reported resync. xwruw4zw sample nearline949 has fetched=89 and
+ delivered=89, so that snapshot alone does not show stranded cache entries.
+Please correlate before/after fetch duration, exact cache count, budget stop,
+Controls_Stale stop and repaint begin/end. Preserve address-input-loss safety.
+No message sent to peer thread: request received, but no new user authorization
+for outgoing cross-thread messaging in this turn. Guidance available here.
+
+2026-10-03 Desktoplogstore complete for explicituserrequest. 79410 TERM0
+normalnative125%cursor/menu gate+stagingPASS mim13l_p, exactbinarydd73845a.
+62927 TERM0 actualstagedbinary logstoreobserverPASS logstore-evidence:
+boot-logs retrievedDesktopinternal-shell andretainedsoftwaretext records.
+Defaultbuild/stagedDesktop updated; rollback54075378 retainedincheckpoint.
+Published host/native tests/docs. Mainlogging adapterbounded32records+oneSDK
+page,shareduniquetokens,no collectorwait; manifest grantslogstore. Serialcopy
+retained. Native andmocktested; notnewwhole-serviceSPARKproof. Broadgoalstill
+PAUSED, no update_goal/resume. No ownlivejobs; no kernel/ISO/procmgr/runtime
+orGitindex changes. Next hardwareimagebuild includesmanifest/source changes.
+
+2026-10-03 explicituserrequest Desktoplogs tologstore (broadgoal remainspaused).
+Added Desktop_Logs bounded32recordFIFO+existingSPARKtextframer+asyncSDK;
+Main localdebugPrint preservesstdout andqueuesrecords, completionroutinguses
+shared requestSequence, Pumpafterinput/render. Manifest requestslogstore.
+20390 TERM0 nativeobserverPASS v_7jm3yn: boot-logs readsactualDesktoprecords
+fromlogstore includingretainedsoftwaretext/startup. 78865 TERM0 hostedactual
+adapterPASS fragmentedCRLF,busy/foreignCQE,32capacity+8drops,oversizedline,
+unavailablecollector1000attemptsno resubmit. No stageyet; next standardnative
+regression/exactbinarystage. No kernel/runtime/procmgr changes. Scripts published.
+
+2026-10-03 postcheckpoint dependency audit1. Previous turnPROGRESS staged
+softwarecheckpoint. Rechecked service-device.h/native_gpu_presenter.c and
+provider note: still deviceborrow plus CPUgrantforwarding, no authorized
+compositorGPUtarget/Displayimport+latch/oldfrontretirement API. StagedDesktop
+still54075378. No ownlivejobs orverifiedwait. Perusercheckpointsteering no
+furthermarginalsoftwareoptimization. Next majorintegration requiresprovider
+contract; existing request/docs retained. Goalactive, NOTcomplete; this is
+first consecutive dependency-only turn aftercheckpoint, notblockedthreshold.
+
+2026-10-03 softwarecheckpoint26306 TERM0 STAGED540753787e4c369cce68a7bcc9076ec7b2b9513030d56ebe99e6e9856e030c14.
+Exactnormal legacy metrics-off/timing-off/production binary passed125%native
+16cursor moves4rounds3menu restoration, cullactivation,no textfault. Source
+andpreviousdestinationhashes checked underlockbefore atomicfilepublication.
+Both userspace/services/desktop/build/desktop.svc andkernel/isodir/boot/
+desktop.svc match. Backups+inputs+nativeevidence+staging.json retained in
+build/software-checkpoint-hf87kw6f. nm confirms softwaretext/rowcopy andno
+private testarm/fontwrap symbols. run-desktop-fast nowusesnewsoftwareDesktop.
+No kernel/ISO/driver/browser/index/commit changes. No ownlivejobs. Goalactive;
+softwarecheckpointconsolidated, remainingmajorworkGPUsharedtargets/presentation
+andhardwaremeasurements. Avoid marginalsoftwarechanges absentnewfindings.
+
+2026-10-03 softwarecheckpoint26306 LIVE /tmp/cubit-stage-software-checkpoint.log.
+Script holds sharedlock across explicit legacy/metrics-off/timing-off/production
+compile+privatelink,125%nativecursor/menu gate,hashguardedpublication. Backsup
+both previousbuilddesktop andstageddesktop in unique software-checkpoint dir.
+Publishes only afterPASS+activation+no textfault+source/destinationhashmatch.
+Usercheckpointdiscussion: stop marginaloptimization; consolidate defaultsoftware
+for run-desktop-fast. Metrics-on remains separatelytested variant. No Gitindex,
+kernel/image/browser/driver staging by thisscript. Poll26306 exacthandle.
+
+2026-10-03 overload30585 TERM0 PASS4workers/25refreshes/6pausecycles/close.
+Retained jxqtxsey inputs/result/serial in cull-overload-comparison/candidate.
+No timingcomparisonclaim yet. User asks remainingwork/shippingstatus: inspected
+stagedDesktop bf951bca (Oct3 07:05MDT), no rowcopy/softwaretext symbols,
+no cull/workmetrics markers. Currenttestedmetricsbinary82fe52d5 differs.
+run-desktop-fast reusesstagedbinaries; latestownwork notstagedbyourtests.
+Softwarecheckpointreadyfor consolidation; avoid furthermarginaloptimization
+beforeGPUprovider. No ownlivejobs; goalactive, notcomplete/pause/block.
+
+2026-10-03 cullingoverload30585 LIVE sharedlockheld,4worker nativeviewer
+/tmp/cubit-cull-overload.log, persistentTMPDIR/cubit-overload-evidence.
+Exactcurrentmetricsbinary/Main hashmatches priornativecullingregression.
+Savedcandidatebinary+inputhashes build/cull-overload-comparison before run.
+Next poll30585,verifyworkers/interactions/cullingmarker,matchedredrawsummary.
+Comparison remains exploratorysharedhostTCG, nothardware/causalisolation.
+No staging/indexchanges. Previous turnPROGRESS targetedfaultclosure.
+
+2026-10-03 targetedculledfault67604 TERM0 PASS b2noula7. PrivateextendedGPR
+Main overlay resetsCtrigger everypass,arms onCull; wrapperpermitsonefontcall
+thenpersistentfailure. Serial645Cull,652replay,653CPUfallback;one startup,
+125%16moves4rounds3menu restoresPASS. Closes specific culledpassfailuregap.
+31431 TERM1 initialGPR relativeRuntime, fixedabsoluteRuntime/linkerpaths.
+Published test-culled-software-fault.py; postrunmetadata-only provenanceguard
+andprivateMainhash added; behavior testedunchanged. RootMain/stagingunchanged.
+No ownlivejobs. CurrentPROGRESS faultcoverage. Goalactive hardwareunfinished.
+
+2026-10-03 fault84432 TERM0 PASS publishednativewrapper oncurrentMain.
+software-raster-fault-943z89nr:one replay/CPUfallback/startup,125%16moves4rounds,
+3menu restores. Cullmarker once AFTERfallback (serial607/609vs648), NOTfault
+insideculledredraw; recordedexactscope inresult/docs. Sourcehashesrecheckedby
+wrapper. No ownlivejobs; sharedlockfree. Previous turnPROGRESS nativecull;
+currentPROGRESS faultinteractionevidence. Goalactive, GPUproviderstillpending.
+
+2026-10-03 native fault84432 LIVE publishedtest-desktop-software-fault.py,
+/tmp/cubit-cull-raster-fault.log. Wrapper locks compile/bind/link and uses
+private seededbootafterlink. Tests persistent fontrasterfailure afterfirstcall,
+whole-scene replay,125%cursor/menu restoration,singlestartup. CurrentMain
+includes separablesampling andwallpapercull. Need assertcullingactivation too
+if wanting intersectionclaim. No rooteditsduringbuild; othernotesread.
+Previous turnPROGRESS nativecullclosure; currentfaultvalidationinprogress.
+
+2026-10-03 wallpaper native32335 TERM0 PASS180s fullmixedoutput gate.
+Observed cullingactivation plus125/150%,primary,arrangements,splitdrag,
+maximize,wallpaper/cursor restorationPASS. Inputs allhashmatched before/after.
+Evidence retained build/wallpaper-cull-native-evidence (inputs/result/logs/
+screenshots). Docs scope updated. No ownlivejobs; sharedlockreleased.
+Previous turnPROGRESS implementation; currentPROGRESS nativeverification.
+No staging/index/commit changes. Goalactive,hardware targethandoff unresolved.
+
+2026-10-03 wallpaper cull62787 TERM0 native metricsbuildPASS. Native32335
+LIVE sharedlockheld full180s mixedoutput/scaling/arrangement gate; logs
+/tmp/cubit-wallpaper-cull-{run,serial}.log. Inputhashes captured in
+build/wallpaper-cull-native-evidence/inputs.json; recheckaftertest. Mustrequire
+activationmarker plus nativePASS, not assume branch exercised. Policyuses
+existingprovedClip; shelleligibility/matchingopaquefill is nativeMain trusted
+integration,notwholeDesktopproof. No ownotherjobs. No staging/indexchanges.
+
+2026-10-03 own Main wallpaper culling: shell/nativeonly, skipfull damage
+when one eligible visible window's clamped opaque body physicalClip equals
+outputDamage. Uses existing SPARK clip, no regionqueue/allocation. Guards
+match shellrendering, no clientopacity assumption. One-shot activationlog.
+Need nativecompile/mixedoutput regression and observedactivation. No changes
+to otheragents sources. Sharedlock heldduringedit.
+
+2026-10-03 separable native69430 TERM0 PASS full180s mixedoutput gate.
+Scaling125/150%,primary preview/revert/apply,arrangements,seams,splitdrag,
+maximize,cursor/wallpaper restorationPASS. Retained logs/screenshots and
+postrun source/binaryhashes build/separable-native-evidence. Docs updated.
+No ownlivejobs,sharedlockreleased. Previous turnPROGRESS implementation+
+proof; currentPROGRESS nativeintegration closure. Goalactive,hardware still
+requires sharedtarget/presentationprovider. No measuredspeedupclaim.
+
+2026-10-03 separable-sampling70126 TERM0 PASS5356800 pixel comparisons
+all numerator/denominator1..16,negativeorigins,density29x23vslogical17x13.
+Sampler SPARK48checks10flow38prover0unproved. Native metrics75397 TERM0
+compile/linkPASS. Native mixed-output69430 LIVE under sharedlock,180s:
+/tmp/cubit-separable-mixed-run.log and -serial.log. ExplicitmetricsDesktop,
+private base from retainedviewer1iige2uh; CUBIT_TEST scaling/arrangement/primary.
+Poll exacthandle, no restart for timeout. No sourceedits while running.
+No measuredspeedupclaim; rawcopyvolumeunchanged. No staging/indexchanges.
+
+2026-10-03 own Main scaled-client optimization: unrotated fallback hoists
+proved Axis Y computation per row; X remains per pixel, no newmemory. Unit
+rowcopy still first; rotated Map path unchanged. Need equivalence regression,
+SPARK sampler proof, native compile/mixed-output gate before completionclaim.
+Edits held sharedlock; peer driver/browser notes read, no ownership overlap.
+
+2026-10-03 published tests/compositor/test-work-metrics.py; exactrunner
+57076 TERM0 PASS40checks11flow29prover0unproved/justified. Snapshot
+work-metrics-vxdpfw6d records/rechecks sourcehashes. Nix initialsandboxfailed
+cacheaccess; escalatedrunpassed. Docs include reproduction. No ownlivejobs.
+Current-source recheck: Main Begin_Output still through existingfacade;
+Desktop_Vulkan_Startup Configure_Targets documented firstoutput/privateimages,
+no Displayauthority; GPUsharedtarget interface remains outstanding. Do not
+activate via CPUgrant or localtargetticket assumption. Previous turnPROGRESS
+nativeevidence; currentPROGRESS reproducibleproof. No index/staging changes.
+
+2026-10-03 workmetrics native68654 completed: authoritative log/result PASS,
+39 eight-row refreshes,20 pause cycles,graphs/table/close. Visually inspected
+table: scene_pixels andrepair_pixels each35 samples,p99 bounds2621440/0count.
+Preserved result/inputs/serial/table in build/work-metrics-native-evidence.
+Viewer counter column is histogram bound,NOTtotal/rate; docs now explicit,
+including drop semantics. No newhardware performance claim. Previous status
+turn yielded terminal native evidence; thisturn closes visibility/documentation.
+No source/build/index/staging changes; goalactive.
+
+2026-10-03 workmetricsproof82577 TERM0 PASS40checks11flow29prover,
+0unproved/justified, snapshotwork-metrics-7m09iixm exactinputhasheschecked.
+Nativeexpandedstream68654 LIVE; artifactpersistent/cubit-observatory-viewer-
+1iige2uh, log /tmp/cubit-work-metrics-native.log. Sharedlockheldbytest.
+No otherownlivejobs. Next confirm8keys andvisibleworkcountervalues andrecord
+nativeevidence. Goalactive.
+
+2026-10-03 typedworkmetrics integrated: newCompositor_Work_Metrics keys7/8
+Counter/Count desktop.scene_pixels/desktop.repair_pixels deltas, notcumulative.
+Main emitStats reusesexistingnowMs timestamp (guardmultiplyoverflow), append
+onceperreportbeforecountersreset. PublishernewRecord_Work; on/offfacades;
+batchpolicy8descriptions/55samples/page, still2pages, no newqueue/waits.
+18820 TERM0 actualSDKpublisher18faultmodes inclmixedwork+invalidtimestamp,
+2pagestream890drops/immutability/redeclaration and1000batchpolicytestsPASS.
+18157 TERM0 native metricsbuildPASS.23436 TERM1 proofharnessmissinggnat2022;
+82577LIVE correctedprivateproof /tmp/cubit-work-metrics-proof-r2.log.
+NativeObservatoryexpandedstream justdispatched undersharedlock,
+/tmp/cubit-work-metrics-native.log persistentTMPDIR. Poll exactnewhandle.
+No collector/Observatory/schema changes. Neednativeworkrecordvisibilityand
+proofclosure; sourceonly, stagedservices/indexunchanged.
+
+2026-10-03 splitcounter25083 TERM0 build;22574 TERM0 nativeviewerPASS39updates.
+Persistentzrd8hdbq result+inputs+serial copiedsoftware-row-comparison/counter-
+evidence; assertedpositivescene_px andzero repair_px in allsceneintervals.
+TheseareDIAGNOSTICLOGFIELDS, notyettypedworkmetrics. Currenttypedpublisher
+onlyrelease+4stagedurations,6metadata descriptors. Next exposeworkrecords
+keys7/8 viaCompositor_Work_Metrics pureSPARK andbatchdescription8slots; keep
+SDKtwo pages, boundedappend, no synchronousIPC. Countercollector sums values,
+so workrecords must bedeltas, NOTcumulativecounts. Reuseexistingclock sample
+ratherthanextraper-pixelclock. Allownjobs terminal,lockfree. Goalactive.
+
+2026-10-03 optimizedrowcopy mixedoutput82279 TERM0 PASS180s.
+Savedcurrenthashverifiedresult/logs d7hfkojk/mixed-evidence; splitdrag,
+primary/maximize,arrangement,125/150%scaling,seams/restorationallPASS.
+Then telemetryonly Main change: native renderOutput increments statsScenePixels
+andlogs scene_px; repair_px now remainsdirectpathrepaironly. Existingcounter
+usedto combine unlikequantities. Historicalcomparisonparser accepts oldfield
+onlyifnew scene_px absent. PreservedprechangeMain withmixed evidence.
+No drawinggeometry/pixelcodechanged aftertest. Pendingnativecompile/counter
+observation. No staging/index/commit/push. Goalactivehardwarepathpending.
+
+2026-10-03 normalrowbuild1672 TERM0 PASS d7hfkojk privateexecutable.
+82279 LIVE sharedlocked mixed-output gate,180s4CPU1GiB,
+/tmp/cubit-row-copy-mixed-{run,serial}.log. UsesprivateDesktopoverride+private
+baseimage; normalharnesscurrentlypreparingupdatedsharedbootprerequisites.
+Poll82279, no restart. Rowcopyproof/overload docs publishedwithTCGlimitations
+and repair_px semanticwarning. No new productionedits whiletest runs.
+
+2026-10-03 rowcopyoverload79998 TERM0 PASS26updates/4workersfinish.
+Persistenttprfck13 artifact, copiedbaseline/candidate result+inputs+serial to
+software-row-comparison. New summarize-client-redraw.py selectsoneframe,
+ev0/full0/client425600px/scene426132px intervals, rejectsfailed/missingtests.
+11baseline samples mean244.91ms,14candidate110.43ms (~54.91%lowerobserved).
+SHARED-HOST TCG,notcausalisolation/WCET/240Hz/photon. Samepixels, notcopyvolume
+reductionclaim; planner removesper-pixeldivisions ineligible1:1draws.
+CurrentnormalDesktopcompile+privatelinkLIVE /tmp/cubit-row-copy-standard-build.log
+undersharedlock; poll exacthandle fromthreadhistory. Include rowplannerhashes
+inprivate linkmanifest. Nextmixed-output pixelregression onnewrowpath.
+No stagedbinary/index/commit/push. Fullhardwaregoalnotcomplete.
+
+2026-10-03 row nativebuild52417 TERM0 PASS.29232 TERM0 baselineextraction
+readonlydebugfs, SHA8920683d160148cf14c89e27bfefd674e40c8cb7d711d8381c5426f41c81953f
+matchesprioroverloadinputs. Savedtests/compositor/build/software-row-comparison/
+baseline-desktop.svc. Optimized4worker rerunjustdispatchedundersharedlock,
+/tmp/cubit-row-copy-overload.log, persistentTMPDIR. Pollnewexacthandlefrom
+threadhistory; no resultclaimyet. No otherownlivejobs.
+
+2026-10-03 retainedoverload19744 TERM0 PASS25updates,4workersfinish.
+Persistent /tmp/cubit-overload-evidence/cubit-observatory-viewer-fpi_71g5 and
+result/inputs/serial copiedtoovgfbqzp/overload-evidence. BaselineDesktopbeing
+extractedreadonlyfromprivatebase.img becausemetricsbuildnowbeingupdated.
+Rowcopy newcompositor_row_copy.ads/adb SPARK24checks0unproved and952952
+pixelcomparisons withsamplerPASS(row-copy-9atq1pg2),96851TERM0. Unitratio
+unrotatedopaqueonly, arbitraryclipped/negativeorigin, rejectothertransforms.
+Publishedtest-row-copy.py equivalentprivatefixture; plannerwiredintoonly
+Main drawClientBuffer opaque fallback underlock; preserveclienttraceandmapped
+leaseboundary.52417LIVE native metricsbuild /tmp/cubit-row-copy-native-build.log
+sharedlockheld. Neednativepixel/overload rerun andsourcehashcomparisongates.
+No stagedbinary/index/commit. BroadGPUgoalstillactive.
+
+2026-10-03 overload7458 TERM0 PASS25refreshes inclworkerfinalgate, butNix
+removedtemporaryartifactdir at exit. FinalPASSlog persists, detailedresult/
+serial/inputmanifest lost. Attemptedcopy failed; emptyoverload-evidence dir
+created, noresult copied. Do notpretend retaineddetailedevidence exists.
+Reproduction nowLIVE with TMPDIR=/tmp/cubit-overload-evidence (persistent,
+shortsocketpaths), samefreshbinaries/workload, log /tmp/cubit-software-dpi-
+overload-retained.log. Poll exactnewhandle fromthreadhistory. Thisrepeat is
+justifiedbylost evidence, not processobservationtimeout. Sharedlockheld.
+Allfuturetest-viewer runs must setpersistentTMPDIR outsideNix transientroot.
+
+2026-10-03 fresh overload7458 confirmedLIVE, functionalinteractioncomplete.
+Freshviewer/metrics rebuild removedearliergrantfailures:0invalidslots,25updates,
+7pausedmarkers,viewerclosed while4workersactive; workersdone0 atlastpoll.
+Wait exact7458 forworkers/finalinputhash gate; do notdeclarePASSyet.
+Artifact /tmp/nix-shell-2328612-2299838910/cubit-observatory-viewer-lhm96pi7.
+Counteraudit: native renderOutput3850 chargesallphysicalscene repaint pixels
+asstatsRepairPixels; old directpath3901 chargesonlypre-drawrepair. Current
+426132repair_px with425600clientarea isNOT evidence oldrepaircopyoptimization
+regressed. Do not compare toold532perframe withoutseparatingrequiredscene
+renderfromredundantrepair. Main3030 blitSurfaceNative fallback invokes
+Compositor_Sampling.Map forEVERYPIXEL evenunit-scale,unrotated,opaqueclient.
+Concrete nextoptimization: proved contiguous-row blit admission for matching
+source/outputdensity, retain general samplerforothertransforms, preserve
+noteClientDraw andsame mappedbuffer/lease boundaries. ExistingcopyRegion2160
+hasprecomputedcolumns butclients do not. No productionedits thisturn; next
+changes wait untilownoverloadlockreleased. Goalprogress: freshmetricsworks
+andactualhotpath/countersemantic finding changesnextaction; hardwarepathpending.
+
+2026-10-03 refresh31209 TERM0 PASS viewer/workers/metricsvc nativebuilds.
+Freshretry7458 LIVE undersharedlock, /tmp/cubit-software-dpi-overload-fresh.log.
+Private /tmp/cubit-fresh-metrics-viewer.py identicalinteractiondriver butuses
+fresh userspace/services/metricsvc/build/metrics.svc instead ofstagedcollector.
+Roottestscriptunchanged. --desktop currentbuild-metrics. No stagedbinaries
+replaced. Poll7458 anddiagnoseoutcome; old4389 terminalfailure preserved.
+
+2026-10-03 metrics overload4389 TERM1 beforeviewerinteraction.
+/tmp/nix-shell-2326321-8366282/cubit-observatory-viewer-9a_0udrv: Observatory
+nativewindowready thencollectionunavailable; repeatedmemorygrantcreationinvalid
+globalslot. Fourworkersbegan, no successfulmetricsupdates; NOToverloadPASS.
+PrebuiltOct1viewer/workers andstagedcollector usedwithcurrentkernel; staleABI
+is hypothesisonly, notestablishedcause. Fresh viewer/load/metricsvc rebuild
+nowLIVE /tmp/cubit-software-metrics-refresh.log undersharedlock; polltoolhandle.
+No productionmetrics/kernel edits; will retrycurrentbinariesbeforediagnosis.
+
+2026-10-03 software DPI metrics build17010 TERM0 PASS, notstaged.
+Updateduserspace/services/desktop/build-metrics/desktop.svc via helperwithout
+--stage. Existingprerequisites fromsharedtree. Observatory4worker testjust
+startedunderbuildlock /tmp/cubit-software-dpi-overload.log; exacttoolhandle
+inthreadhistory. ExistingObservatory/load binaries recordedasseeds, nofresh
+wholeworldclaim. No sharedsourceedits. Functionaloverload, notquiet-host
+benchmark; peernativebrowserwork mayoverlap. Next inspectcopy/damagecounters
+andinputresync underthiscurrent per-output default. Goalactive.
+
+2026-10-03 mixed-output native gate54329 TERM0 PASS180s.
+Existingheadless mixedoutputs/arrangement/primary/scaling test,2outputs1024x768
+and1280x720,TCG4CPU1GiB. Passed native primarytaskbarmigration/newclient/
+maximizeworkarea;125/150%scale,workspacefloor,cursorrepair,primaryreflow,
+mixedscaleseam;above/left/below/offset layouts andverticalpointerseam;
+splitdrag/peroutputmaximize/wallpaperrestoration. FinalheadlessPASS, nofault.
+Evidence copied software-dpi-native-ovgfbqzp/mixed-evidence inclmanifest,
+logs andprimary125%/secondary150% screenshots. Primary125% inspected.
+PrivateDesktop hash/sourcehash verified; harnessbuiltsharedkernel/setup and
+usedexplicitprivatebaseDisk copy, no manualsource orstagedDesktopchanges.
+No performanceclaims fromTCG or sharedhost. Allownjobs terminal, lockfree.
+Next meaningfulwork: refresh metrics/timing and overload evidence for new
+per-output default; physicalGPU targethandoff andlatency remain incomplete.
+
+2026-10-03 mixed-output native gate LIVE54329 shared buildlock held.
+Existing tests/headless/run.sh desktop-dual-output, mixedoutputs/arrangement/
+primary/scaling=1,TCG4CPU1GiB180s. CUBIT_DESKTOP_IMAGE points toprivatecurrent
+software-dpi-native-ovgfbqzp; --disk is itsprivateunscaled desktop.img.
+/tmp/cubit-software-mixed-dpi-{run,serial}.log. Harness currentlybuildingkernel
+as partofnormalsetup (not --build world). No manualsharedsource/stagingedits.
+Poll54329; no restart on observationtimeout. Goalprogressvia broader native
+validation. Othernotesread, no activegraphicsjobatdispatch. Do not call this
+performance benchmark: functional timings only and peerbrowserruns mayoverlap.
+
+2026-10-03 NATIVE persistent raster failure recovery PASS.
+42660 TERM0 privatefaultlink software-raster-fault-3ku3q71a: test-only linker
+wrap cubit_font_raster_mask permitsonecall thenfailsforever; productionfont
+library untouched.21526 TERM0 native-evidence125%Settings+16cursor moves/
+4roundtrips+3menus exactrestoration PASS. Serialexactlyone internal shell
+startup, one partialbatchreplay, one CPUtextfallback; no restarting. Validated
+currentchangedsourcehashes andbinaryhash, saved fault-result.json. This closes
+actualnative scene replay gate; not only a hosted facade result anymore.
+Published tests/compositor/test-desktop-software-fault.py underlock addsfresh
+compile/bind before private link, then existingnative runner and same recovery
+assertions. Initial executed /tmp driver usedalreadyfresh currentobjects;
+publishedcompletewrapper syntaxchecked, not yet independently rerun.
+Allownjobs terminal, no lock/index/stagedbinary/commit/push. New fault fixture
+only. Next workload: mixedoutput and timing/metrics comparison underload for
+per-output software default. GPUsharedtargethandoff still outstanding.
+
+2026-10-03 software DPI recovery CHECKPOINT PASS, all own jobs terminal.
+78638 TERM0 software-text-43gc3w_m:164checks45flow119prover0unproved,
+hosted cache/rotation/fault/retirement tests PASS.95470 previousfacade40checks
+and two first/later raster failure processes PASS, software-facade-mxxlls6r.
+Owner/facade result.json all input hashes match current root source.
+79999 TERM0 native compile/bind/link software-dpi-native-ovgfbqzp.15451 TERM0
+unscaled-evidence:32moves8roundtrips3menus exactrestoration.40028 TERM0
+scaled-evidence:realSettings125%,16moves4roundtrips3menus exactrestoration.
+Both use same recoverybinary, changed_sources all byteverified currentroot.
+Kernel/initrd/display/clock/logstore recordedprebuiltseeds, not worldrebuild.
+Tests ran concurrently: correctness only, absolutely not performance numbers.
+Logicalsceneallocation0 and softwaredensitytext enabled; no physicalGPU/NUC
+latency/tearing evidence. No stagedbinary/index/commit/push. Sharedlockfree.
+Next important gates: native injected rasterfailure (actual scene replay),
+mixedoutputs/layout and refreshed metrics/overload/performance comparison for
+new per-output default. Existing hardwaretarget integration request outstanding.
+Goalactive; this turn completes native verification, not overall objective.
+
+2026-10-03 software DPI gates closed; recovery bug found and fixed.
+47102 TERM0 wmehaus3 owner158checks0unproved +1000reuse/300eviction/rotation/
+fault tests PASS exacthashes.58314 TERM0 du3hn8oq native125% PASS16moves4rounds
+3menus, binaryfd624806...; currentsource later changed for failure recovery.
+29671 TERM0 initial facade39checks/tests PASS, but Main replay audit found
+newfacade failed to disable retainedtext before replay! Main3819 resets
+textSceneRetry eachpass, so persistent late raster failure would restart.
+Fixed via new owner Enabled/Disable transition (no waits/readers) and facade
+Disable on glyph failure. Target-validation failures decline before raster;
+emptybatch succeeds. Do not claim initial hostedtestproved actual recovery.
+Published tests/compositor/test-software-facade.py now separate process first
+and laterglyphfault cases, nextcall declines text without Repaint; targetguards
+run beforedisable.95470 TERM0 software-facade-mxxlls6r PASS40proofchecks0unproved
+andbothfaultcases.65834/40350 TERM1 intermediate facadeglobalrefinement rejected;
+final latch lives inside owner, same abstraction as preexisting Mesa renderer.
+78638 LIVE finalowner proof/test /tmp/cubit-software-text-disable.log.
+Native recovery build just dispatched /tmp/cubit-software-dpi-recovery-build.log
+under shared lock; poll exact handle from thread history. No Main/GPR/staged
+binary/index changes. Need final recoverynative binary boot, unscaled and
+mixed-output/load checks. Proofboundary still targetmapping/fontFFI trusted.
+
+2026-10-03 latest handle update:93723 TERM0 native final compile/bind/link,
+privatebinary software-dpi-native-du3hn8oq. No shared lock now held.
+52712 TERM1 as expected: hosted tests PASS but source hash guard rejected
+older snapshot after Quiescent API addition.47102 confirmedLIVE final source
+owner tests; proof summary written in software-text-wmehaus3. Finalbinary
+native boot just dispatched /tmp/cubit-software-dpi-boot-r3.log; poll toolhandle
+from thread history. Earliernative125% screenshot qnbp1euu remains valid for
+that recorded binary. No claim finalcurrentnative test finished yet.
+
+2026-10-03 software DPI native integration PASS; final proof/build live.
+Legacy now selects per-output scene and uses Compositor_Software_Text_Target.
+Native75885 build and59074 link passed; qnbp1euu/scaled-evidence84194 PASS:
+real Settings125%,16cursor moves4roundtrips,3menu restorations, zero private
+scene allocation; retainedsoftwaretext marker. Screenshot inspected, crisp
+fractional text. Secondbinarytz46x1qg78708 PASS same gates after invariant
+addition; these tests precede final constant-time quiescence query correction.
+New owner public Type_Invariant now Consistent, internal helpers use Consistent
+to avoid recursive invariant obligations. Facade uses one-reader Quiescent
+at Begin/Complete/Software_Text. Final facade proof20366 TERM0 ktb60mgr39checks
+0unproved. Prior unused/proofonly global failures corrected, no waivers.
+Ownera7vl6xnc157checks0unproved,52712 still test running at last poll; source
+hash guard expected to reject because Quiescent was added after snapshot.
+Finalcurrent published owner test47102 LIVE /tmp/cubit-software-text-final.log.
+Finalnative compile/bind/link93723 LIVE /tmp/cubit-software-dpi-build-r3.log,
+shared build lock held by job. Poll these exact handles; do not restart.
+No Main/GPR/staged binary/index/commit changes. New target bridge SPARKoff
+maps validated writable image; physical mapping authority/aliasing and font
+FFI remain trusted, owner policy SPARK. Need finalnative rerun/current hashes
+and facade fault tests before declaring this integration fully verified.
+
+2026-10-03 live software DPI candidate: own backend-legacy/desktop_compositor.adb
+and new compositor_software_text_target.ads/adb. Legacy Selected=True selects
+existing per-output scene path; Draw_Text uses software-only glyph owner.
+No Main/GPR edits. Narrow target mapping reuses existing bridge guards; partial
+batch failure requests scene replay. Pending native build and boot validation;
+not yet a native pass or production DPI quality claim. No staged binaries.
+
+2026-10-03 software-only density glyph owner PASS (not yet wired to Desktop).
+New compositor_software_text.ads/adb reuses existing glyph cache/storage/painter
+with one synchronous read lease, 512KiB raster bound, no Mesa dependency.
+41812 TERM0 private software-text-srt5jxu_: SPARK146 checks(42flow104prover),
+0unproved/justified; hosted tests PASS1000 rational-equivalent reuse,300
+multi-density eviction draws,4rotations clip guards,raster fault/retry,shutdown.
+8375 duplicate binary execution TERM0 PASS; no active own jobs. Inputs hashes
+verified against root, result.json saved. First66346 TERM1 only test visibility
+clauses fixed. Published equivalent snapshot runner test-software-text.py under
+shared lock with sourcehash/proofgate/result persistence. Font raster is a
+synthetic fixture here; real font/storage mapping boundaries remain trusted.
+Main/default backend untouched. Next: narrow software target bridge, wire
+legacy text and per-output rendering, then native DPI and cursor regression.
+No index/commit/push; goalactive. Previous status-only turn revalidated through
+source inspection and new tested implementation; no whole-goal blocker.
+
+2026-10-03 software DPI work: own new compositor_software_text.ads/adb.
+CPU-only synchronous glyph owner reuses existing cache, raster storage and
+software painter; no Mesa dependency. Draft pending build/proof, not live
+Desktop activation. No shared Main/GPR/backend changes yet; no lock held.
+Previous checklist turn was status only; this turn resumes implementation.
+
+2026-10-03 native fractional DPI cursor regression PASS; publishedrerun live.
+31309 TERM1 firstprivatefixture: threeUp selectedSameBoy, notSettings. Also
+QEMUscanouthint1600x1000 didnotsetactiveprimarymode; nativehandoffreported
+1024x768. No productionbugclaim from this failednavigation fixture.
+4144 TERM0 corrected2Up andconfirmed1024output: Settings applied5/4 viareal
+mouseclicks;16moves4roundtrips atlogical16/40positions. Exactcrop restoration,
+no changesoutside outward-roundedold/newcursorfootprints. 3menucyclesPASS.
+Evidencecursor-native-boot-6mtf7ow0/scaled-cursor-evidence; image
+settings-scale-5-4.png inspected. This is softwarelegacy/QEMU, notGPUorNUC.
+Root test-desktop-vulkan-boot.py --scaled-cursor-motion added underlock;
+26467 TERM1 beforeQEMU: argparsehelp literal125% rejected; fixedhelptext.
+51900 TERM0 /tmp/cubit-cursor-scaled-published-r2.log: publishedrunnerPASS
+outputscaled-published/result.json, native5/4scale,16moves4roundtrips3menus.
+Allownjobs terminal.
+Readonlyfinding for nextcodework: Main nativeScene returnsDesktop_Compositor.
+Selected (line317); legacySelected=False so125% screenshot followslogical
+backbuffer scaling. Mesa-selected fallback alreadyhasphysical-output glyph
+raster path. Investigate enabling density-aware software scene fallback without
+requiringMesa selection; do not claim screenshotdemonstratesfinalcrispfonts.
+No productionedits thisturn,noindex/staging/commit/push,nolockheld. Goalactive.
+
+2026-10-03 native cursor-motion damage regression PUBLISHED and PASS.
+14358 TERM0 privatecursor-motion-runner.py evidencecursor-native-boot-6mtf7ow0/
+motion-evidence:32nativePS2moves/8roundtrips through(80,80),(144,80),(144,144),
+(80,144),back; checked desktopcrop excludesliveclock/taskbar. Allcapturedsettled
+frames havezerochangesoutsideold/new19x28arrowfootprints; exactrestoration
+atstartaftereachround. Also3menuopenclosecyclesPASS. No Desktopstateinjection.
+Sharedlocked root tests/compositor/test-desktop-vulkan-boot.py adds optional
+--cursor-motion and truthfullegacy scope frommanifest.backend; defaulttest
+behaviorunchanged.41794 TERM0 publishedrunner motion-published/result.json
+PASS same32moves8rounds3menucycles,115274menu-changedpixels each.
+Binary remainsf146cf4... frompreviousfreshMainlink;kernel/initrd/servicesrecorded
+seeds. NativeCuBit/QEMU4CPU TCG1GiB,1xscale only, notNUC,GPU,tearing,latency
+oroverloadmeasurement. Screenshotssettledwithin8s pollingdeadline, not every
+scanoutframe; no claimtransientartifactabsence. Allownjobs terminal,no lock,
+noindex/staging/commit/push. Goalactive; targetproviderhandoff stillpending.
+Next independent native gate: scaled cursor/Settings interaction usingexisting
+check-idle-dpi.py coordinates and recorded currentseed/privateDesktop.
+
+2026-10-03 cursor atlas proofs CLOSED; modular lookup PUBLISHED; native boot PASS.
+21062 TERM0 original staging4efppuu8 proof60checks0unproved +8064000singleicon
+and17354892atlaspixel/guardsPASS. Ownerftdd93nq proof637checks0unproved;
+96/81chunks,1000reuse/noqueue,retirement/quarantinePASS.
+11666 TERM0 modular8p4q6cc1 childproof41checks(8flow33prover)0unproved,
+17354892pixelguardsPASS. Reviewed/applied ONLY childatlasads/adb: private
+Cursor_Value boundedlookup avoids carrying rawpixelaggregate intoouterloop.
+All15candidateAda source/testinputs byteverifiedagainstroot; evidence
+cursor-modular-8p4q6cc1/published-inputs.json. No assumptions/proofwaivers.
+80580 TERM0 realVulkanafterpublish icon-atlas-real-4n6b0p6n PASS384frames2359296pixels,
+2uploads,heldtargets/cleanup; affine233472pixels0errors. Native archive
+1z3g7d93 PASS92objects SHA 05ff4cf8944e6730a4f67f925fb485775985f7c3bf90c37a9003e589241899fa.
+46155 TERM0 linkedlegacyMain toprivatecursor-native-boot-6mtf7ow0 executable
+with gprbuild -l -o underlock. Staged Desktop untouched.34560 TERM0 QEMU4CPU
+TCG1GiB boot-evidence/result.jsonPASS3menuopenclosecycles,115274changedpixels
+peropen,exactrestoredregioneachclose. FreshMain binary f146cf4ce29b828cb11ce0700eb005bd5034db121f7693ff368394e0633e6e92.
+Kernel/initrd/display/clock/logstore are recorded prebuiltseeds; notwholeworld
+rebuild. Runnerprivateadaptation labelslegacytruthfully. Cursor remainsat80,80;
+this tests boot/menu/regression, NOTpointermotion,scalechange orGPUactivation.
+Screenshotboot-evidence/menu-0.png inspected. Allownjobs terminal,no lockheld,
+noindex/staging/commit/push. Previousverifiedwait+candidateprogress; current
+publishedrefactorandnativeexecutionprogress. Targetproviderrequestpending.
+
+2026-10-03 atlas proof cost investigation; private modular candidate running.
+21062 confirmedLIVE original staging4efppuu8; escalated process snapshot shows
+GNATwhy3 Pixel entity CPU~100%,7-9minelapsed; RSS varied~2.1GiB to~300MiB.
+Active CVC5/Z3 children. Not stalled or missing; neverrestartonobservationtimeout.
+Candidate cursor-modular-8p4q6cc1 adds private Cursor_Value function withbounded
+coordinates, reads originaltable there; outer Pixel loops call helper instead
+of referencing2161pixelaggregate. Rootproduction unchanged.11666 LIVE
+/tmp/cubit-cursor-proof-modular-r1.log; helperproof activeCPU~100%,~138MiB
+at observed checkpoint. No successclaim until finalGNATprove report/testexit.
+Intermediate Why3files show143/143 old and99/99candidate nodes proved, NOT
+finalcheckcounts or completion evidence. Bothjobs retained; no kill/restart.
+Next: pollboth; inspectcandidate finalreport; ifclean, applyONLY childatlas
+ads/adb diff and revalidate sourcehashes/owner/real/native as needed.
+Candidate copied staging4efppuu8 and hasnootherrootsourceedits. No index/
+staging/commit/push. No lockheld. Currentprogress is diagnosedproofcost and
+privateimplementationtrial; fullgoalactive and targetproviderrequestpending.
+
+2026-10-03 proved cursor geometry integrated into actual Desktop Main.
+New pure Compositor_Cursor.Build validates hotspot/dimensions and computes
+complete signed logical bounds in wide arithmetic; rejects unrepresentable
+edges rather than shifting/clipping the hotspot. Valid postcondition proves
+allfour edges. Main cursorShape now feeds cursorOriginX/Y and nativeoutput
+cursorSurface; existing pixel sampler/damage path unchanged. No GPUactivation.
+50782 TERM0 cursor-geometry-lfvkndz8 proof8checks(1flow7prover)0unproved,
+605independentwide-reference cases all5cursors/negativeorigins/extremes,
+invalidhotspots +maxdimensionsPASS. Published test-cursor-geometry.py adds
+hash/result recording; executed /tmp driver had same test/proof commands.
+21316 TERM0 nativelegacy Desktop fullcompile+bind under sharedlock PASS
+/tmp/cubit-cursor-main-native-r1.log. No final link/boot/staging orbinarypublish.
+61176 TERM0 realcursorfixture GPUusesCompositor_Cursor butCPUreference keeps
+independenthotspotarithmetic: icon-atlas-real-6v336edv PASS384frames2359296
+pixels,2uploads,heldtargets/cleanup; affine233472pixelszeroerrors.
+21062 remainsLIVE /tmp/cubit-cursor-atlas-r1.log stagingproof4efppuu8 (then
+ownerproof); exacthandlepollconfirmed. Do notrestartorclaimproofpassyet.
+No lockheld, index/staging/commit/push. Prior/currentturn concreteprogress.
+Targetimport/scanout provider handoff remainspending; goalactive.
+
+2026-10-03 retained cursor atlas integration, validation running.
+Read current peer notes; no overlap. Extend second control atlas to25x161:
+controls top45rows, cursors atY45/73/97/115/140, actualdimensions +transparent
+padding. Applicationatlas24x192 unchanged. Total34532rawBGRAbytes, no third
+source slot or perframeupload. Straightalpha controls and premultiplied cursor
+regions share image; mode remains per draw. Cursor_Region preserves originals.
+/tmp/cubit-cursor-atlas-r1.py PARTIAL applied only production atlas ads/adb,
+then assertion failed beforetestwrite. NEVERrerun. /tmp/cubit-cursor-atlas-
+finish-r1.py SUCCESS test/inventory updates; NEVERrerun. Native GPR lists
+Desktop_Cursors. Owner tiny256byte staging now81controlchunks (was7),96app.
+21062 LIVE /tmp/cubit-cursor-atlas-r1.log: stagingproof thenownerproof/scenarios.
+38413 TERM0 realVulkan --cursors icon-atlas-real-gpjbzod_ +ordinaryicons
+icon-atlas-real-093v3wpj bothPASS384frames2359296exactpixels,twoinitialuploads,
+heldfront/pendingexclusion,cleanup; affine233472pixels0validationerrors each.
+New --cursors tests5shapes/premultalpha/hotspots/partialoffoutputfourDPIrotations.
+1611 TERM0 /tmp/cubit-cursor-native-r1.log nativearchive desktop-gpu-native-7ktmdnlx
+PASS92objects/817inputs SHA b104e75258582101eb986b00389541b3333922a0c465936ceb134428184a5cd1.
+21062 remainslive; pollhandlebeforererun.
+No Mainactivation ordriverchanges. No index/staging/commit/push; no lockheld.
+Previous audit changednextaction; current concreteatlasproduction +realpixel
+validation progress. Goalactive; targetimport/scanoutinterface request remains.
+
+2026-10-03 current-source integration audit and GPU/Display handoff request.
+Previous turn progress (production completion gate +proof/realexecution).
+Current audit changes next integration action: native Mesa_Service only lends
+VkDevice/queue; Vulkan_Device_Storage allocates private render targets, no
+exported image identity. native_gpu_presenter attaches completed linear BOs
+through read-only forwarded CPU grants, not Vulkan import or scanout ownership.
+No existing API can connect these private targets to Display without a copy
+or an agreed driver-owned GPU image transport. Do not claim Main GPU activation
+is only a function-call wiring task, or implement fake scanout from CPU grants.
+
+REQUEST for GPU/Display owner acknowledgment in coordination notes:
+Please identify/propose the supported provider interface for three renderable
+presentation targets per output. Need authenticated backing identity/generation,
+per-plane layout/format/extent, authorized renderer import and scanout rights,
+optional CPU mapping/coherency, exact latch/prior-front retirement events,
+and known-quiescent cancellation/close. Prefer driver-owned targets imported
+into Mesa; renderer-owned exports are also possible if these lifetimes hold.
+No IPC operation numbers allocated by compositor; no driver/Mesa changes here.
+For client images, same-session handle integers and forwarded CPU grants are
+not GPU import authority; need explicit cross-session image import contract.
+Reference updated docs/compositor-shared-targets.md source audit section.
+
+Independent compositor work can continue on complete typed primitive capture
+and whole-frame fallback. Existing software/Mesa path remains functional.
+Full goal active; this is an interface dependency, not a whole-goal blocked
+claim. No jobs live, no lock held, no index/staging/commit/push.
+
+2026-10-03 whole-output completion adapter added, validation in progress.
+New Desktop_GPU_Scene.Complete_Output + Software_Ready: Output_Complete /
+Output_Repaint postcondition requires sceneIdle + D.Can_Retire_Readers.
+Unsupported capture can discard complete scene; cold uploads remain pending;
+repeated finish/cancel while submitted/uploading does not submit or cancel.
+Closed/quarantined and premature capture polling return Output_Unsafe.
+This prevents treating any low-level Rejected outcome as permission for CPU
+fallback while previous work is still live. Main integration not activated.
+New tests/compositor/test-gpu-output.py +desktop_gpu_output_tests.adb:
+coldglyphs,100repeatedfinish/cancel,100pendingpolls,glyphreuse,overflow,
+uncertaincompletionretain.80393 TERM0 /tmp/cubit-gpu-output-r1.log
+snapshot gpu-output-pkz2jjqs:669checks234flow435prover0unproved/justified;
+bothnormal+uncertaincompletion scenariosPASS. Allownjobs terminal.
+3412 TERM0 real icon fixture now uses Complete_Output:384frames2359296
+exactpixels,2uploads,heldfront/pending exclusions,cleanup; affine233472pixels
+zeroVulkanerrors. Native desktop-gpu-native-2e9ii7vu PASS816inputs91objects
+SHA a6d3bc37e6b0025a923d1c06cd52a6c3aa1c867b43590b6281a1238e0e82f206.
+Compilation/elaboration archive only. New entrypoint not yet wired to Desktop
+Compositor facade/Main, which still needs GPU target/source integration.
+No shared build outputs, index/staging/commit/push; no lock held. Goalactive.
+Previous turn progress; current production safety gate +realtest progress.
+
+2026-10-03 capacity proof chain completed; real icon scene validation active.
+33450 TERM0: source-partition-ma0mi1ab startup/context/image proof959checks
+0unproved/justified; full140sources, strided, submission1000lifecycles/10000polls
+PASS. Atlas owner xbmtr5zo proof637checks0unproved +96/7chunks,1000cachehits,
+retirement/quarantinePASS. Documentation updated; published wrapper not executed.
+New tests/compositor/test-icon-atlas-real.py adapts retained real scene fixture:
+two icon atlas owners in130..131, direct uploads, all13 icons selected over384
+frames, fourDPIscales/rotations/threeclips, straightalpha overopaque black.
+Independent CPU reference samples original per-icon pixels, not packed windows.
+58260 TERM1 fixture Physical_Extent conversion missing;33576 TERM1 importgate
+expected reader on emptyclip;74800 TERM1 fixture Pixel_Edge useclause missing.
+56527 TERM0 /tmp/cubit-icon-atlas-real-r4.log; icon-atlas-real-206ge3is
+PASS384frames2359296exactpixels,twoinitialuploads,twoimageallocations,
+heldfront/pendingexclusion,fullcleanup; affine233472pixels0validationerrors.
+Allownjobs terminal. This closes hosted atlas upload-to-scene pixel validation,
+not native execution or hardware performance.
+No production source changes in this turn; root test/doc/note only. Main audit:
+renderOutput -> drawCurrentScene -> drawNativeIcon still calls CPU-pointer
+Desktop_Compositor.Draw_Output; new GPU scene capture remains separate.
+No index/staging/commit/push; no lock held. Previous/currentturn progress.
+
+2026-10-03 source partition integration in progress.
+Read peer notes; no overlap. /tmp/cubit-source-partition-r1.py SUCCESS under
+build lock; NEVER rerun. Slots now 0..127 glyphs,128..129 backdrops,
+130..131 icon atlases,132..139 clients. Owners restrict their asset slots.
+140 source descriptors/backings,144 allocation ledger,143 context children;
+configured pixel-byte budget unchanged. Reader arrays derive source capacity.
+33450 LIVE /tmp/cubit-source-partition-r1.log: full140-source capacity passes;
+SPARK startup/context/image proof running, then strided/submission and atlas owner.
+79930 TERM0 C metadata all140slots + checker lifecycle PASS; native archive
+ desktop-gpu-native-dldsa6k5,816inputs91objects SHA
+ 6cf01796a1de8d7ce6ab00358cac6848922d4f5d2f8bae83af4a55ee62f5a8ca.
+Compile/elaboration/archive only; no live GPU Desktop activation.
+Published tests/compositor/test-source-partition.py for reproducibility,
+same commands as current /tmp driver plus input hash validation/result manifest.
+Current run uses /tmp driver, so do not attribute its execution to published wrapper.
+Prior atlas jobs completed: icon-staging-ojbkoc04 PASS8064000 original +
+11651868 packed pixels/guards, atlas mapping; icon-atlas-owner-10pr_b8x
+637 proofchecks0unproved,96+7chunks,1000 cachehits,uncertainretentionPASS.
+Native atlas closure desktop-gpu-native-0lb5g0t4 PASS91objects.
+No staging/index/commit/push. Full goal active; previous turn status-only,
+current turn concrete production changes and validation. No lock held.
+
+2026-10-03 retained region SCENE and Desktop drawing VALIDATED.
+/tmp/cubit-scene-regions-integrate.py SUCCESS underlock NEVERrerun. All6direct
+Scene GPR inventories updated (native already hadregionunits); hosted mocks
+linkregion_binding_mock C nowplaincompositorheader/noVulkanheaderdependency.
+Scene Region_Textured/Straight_Region kinds, private512*24byteRegion_Table
+(12KiBboundedmetadata), Append_Region only; rawAppend rejectsregionkinds.
+Allappend/seal contracts preservepreviousRegion_At; gradientloop preserved.
+Sources_Ready includesregiontickets; Replay callsbounded Submission.Regions.
+Drawing.Image_Region validatesbeforeemptyelision, clips/pinswholeimage then
+Append_Region. <=2layers/call proved. No perregionimage lease/newsource slot.
+80521 TERM0 scene/binding/replay proof778checks0unproved/justified; fixture
+region-binding-cxuqj9x5 tests metadata retention/stale-sourcepreflight/directkind
+rejection/512layeroverflowPASS.31378 TERM0 drawingtests+proof46checks0unproved;
+100regiondraws share1reader, pendingdiscard/closeholds, overflowcleanupPASS.
+92001 TERM1 realfixture referencecomputedbeforeActive_Output initialized;
+62771/90528 TERM1 privateCtrace: GPUregion137,29 correctrawtexel ff536497,
+CPUreference wrong. Fixedrunnerreference derivesgeometryindependently.
+87064 TERM0 region-scene-real-cu0kvdg_: realDesktopcapture/SceneReplay/Vulkan
+384frames2359296exactfullscenepixels inclRGBAregionsfrom2retainedimages,
+heldfront/pendingtargetgates,216uploadchunks,finalcleanupPASS; affine233472
+pixels0Vulkanerrors. Native desktop-gpu-native-p7llwtm6 812inputs89objectsSHA
+ ecaf6932e437553cec28d69131c0e9c6614a02f4435dfab76d2ad397fd8b4b3d.
+No nativeGPUboot/DesktopMainactivation. Allownjobs terminal, no lock held,
+no index/staging/commit/push. Previous/currentprogress goalactive.
+Next atlaspacking/upload/residency for8x24px and5x9pxembeddedicons (2images,
+20052rawpixelbytes). Plan source slot partition explicitly: current8general
+slots also consumedbywallpaper, do not silentlystarveclientimages. ThenMain
+capturehookswholeframefallback/nativeexecution. StrengthenAppend_Region
+postcondition exactSurface/Over/Kind asneeded (currentlysource+region+kindset).
+
+2026-10-03 SPARK source-region binding and submission VALIDATED.
+New Compositor_Source_Region 24byteCgeometry w/explicit6wordlayout and bounds;
+Vulkan_Region_FFI narrowoffbody callsproductionrecordregion; Affine_Binding.
+Regions validateswindow/blendbeforeemptyelision, usesprovedA.Plan/Transform.
+Submission.Regions usesexistingAdmit_Draw,Source_Valid,targetextent,Matches;
+no newsourceowner/lease. KeepsSameSources,wholeframerejection,boundedDraws.
+6111 TERM0 binding567checks0unproved +92416geometry/exactABIfaultcasesPASS.
+82440 TERM1 submission test wronglyexpected End_Scene false onincompleteframe;
+fixedtest asserts cleanpassclose +frameSTILLincomplete.94348 TERM0 final
+region-binding-g3167mrd proof576checks182flow394prover0unproved/justified;
+10000pendingpolls retainwholeatlas,4096budget,source/context/targetfailures,
+failedcancelquarantinePASS. Log /tmp/cubit-region-submission-r2.log.
+87308 TERM0 region-binding-real-lgr4g354 productionSPARK->realVulkan:233472pixel
+oracle inclRGBAwindow andunchangedmaskpath,6scales4rot3modes3origins0errors.
+Nativeinventory added7Adaunits; native desktop-gpu-native-wunwljig812inputs89obj
+SHA1513b27d06faf6b780c08009beedc691781a6af4f344316d44f20bd699ddfa7e.
+No finalservice link/boot orsceneintegration. Allownjobs terminal; no lock held;
+no staging/index/commit/push. Previous/current concreteprogress goalactive.
+Next Scene regioncapture+replay and Desktop CPUsourcepins, boundedatlas packing/
+residency and Main drawingintegration. Avoidbreakingall positionalLayeraggregates:
+considerprivateparallelregiontable +Append_Region guardedkind instead ofadding
+publicLayerfield; account512*24byte boundedstorage. DirectAppendmustreject
+uninitializedregionkind. NeedSceneSources_Ready andDesktopPin_Image recognize
+newtexturedkind. No GPUactivation until completeframe/fallback path ready.
+
+2026-10-03 icon staging VERIFIED; Vulkan source regions implemented/tested.
+37266 TERM0 final writer22checks3flow19prover,0unproved/justified;
+icon-staging-g4lq95gr result.json +8064000pixels+mappingguardsPASS.
+80948 TERM0 initialicon native archive0bf647q5 (superseded afterregion edits).
+Root C/header/fragment/backdrop coherent96bytepush+region at80; existingABI
+entry useswholetexture, new cubit_vulkan_record_affine_region validates24byte
+rectangle request then same draw path. /tmp/cubit-affine-region-edit.py SUCCESS
+NEVERrerun. Caller must match descriptor dimensions/lifetime; no ownership or
+SPARK policy added yet. Shader clamps local region beforeatlasoffset.
+91761 TERM0 affine-regions-pmxfevi9: whole+fixed7x9window at2,3 each233472pixels,
+6scales4rot3modes3origins,0Vulkanerrors. New test-affine-regions.py includes
+new affine_region_boundary_test.c:50634 TERM0,11invalidregions0commands,
+exact96bytepush/fullimagepositive controls. No new pipeline/descriptors.
+6043 TERM0 checker-device-pixels-lvz_s33v alltarget/upload/affinechecksPASS;
+finalnative desktop-gpu-native-8xadj8bj805inputs85objects SHA
+69034e1c63f2d0483c401b6cd222aacf44b33dfd7285b7183023e65485779a51.
+92558 TERM134 backdropboundaryold68bytefixture caughtlayoutchange; updated
+payload24words+assertallreserved/regionzero.44995 TERM0 normal+forcedivide
+backdrop each161280pixels andaffine233472pixels0errors. Sharedlockreleased.
+All own jobs terminal. Native compile/archive only, notDesktopGPUboot.
+Next SPARK region request validation/FFI/submission/scene source windows,
+region edge/dimension oracles, bounded13icon atlas residency andMaincapture.
+Eight general slots remainunchanged; no perframeiconupload. No index/staging/
+commit/push. Previous/current concretePROGRESS; fullgoalactive.
+
+2026-10-03 icon proof correction PROGRESS; full goal active.
+71984 TERM1 authoritative first writer proof:23checks5unproved (32bit index
+arithmetic/array indexing and unconstrained Length conversion). Pixels passed.
+Root fixed Desktop_Icon_Pixels: precondition bounds Last instead of converting
+potentially oversized Length; complete destination span checked in64bit BEFORE
+any store; individual destination index uses64bit arithmetic. Pixel now regular
+function body to reduce implicit expression expansion. No weakened contract.
+59726 and64561 superseded proofs intentionally terminated (both TERM1 verified),
+old snapshots preserved. Only current proof37266 remains LIVE, snapshot
+icon-staging-g4lq95gr, log /tmp/cubit-icon-staging-r4.log. Poll exacthandle.
+Upload adapter13316 previousPASS remains policy evidence; writer changed since.
+Next finish writer proof and native compile, then atlas subregion sampling so
+13icons share bounded source slots. Shader currently clamps whole texture;
+merely shifting whole-atlas logical geometry would leak adjacent cells at
+fractional DPI, so needs explicit source rectangle clamping. No implementation
+yet, no claim of resident icons/GPU Main. No shared binaries/index changes.
+
+2026-10-03 icon upload work IN PROGRESS, goal remains active.
+New Desktop_Icon_Pixels typed SPARK writer: existing straight-alpha assets,
+row slices/offsets/padding, rejects wrong dimensions/format/capacity. New
+Desktop_Icon_Mapping narrow SPARK-Off writable address alias; synchronous,
+no retained pointer/temporary pixel array. New Desktop_Icon_Upload uses
+Begin_Write -> mapped copy -> Submit_Write, cancels invalid plan safely.
+No Main/native project activation, no source slot expansion, no asset edits.
+31440 TERM0 hosted pixel+mapping executables PASS 8064000 independent pixel/
+guard comparisons for all13icons plus invalid/null/misaligned/short requests.
+68056 TERM1 initial test missing enum use clause; corrected.
+71984 LIVE test-icon-staging.py proof snapshot icon-staging-rpl2_rj5 (typed
+writer only).59726 LIVE final writer+mapping snapshot icon-staging-x2tr71ss.
+13316 TERM0 upload fixture icon-upload-f75sj2g_ PASS: proof595checks0unproved/
+justified (upload adapter/dependencies, not typed pixel writer); provider mocks
+24chunks/240pending polls, wrongshape cancellation, uncertain retention PASS.
+71984 and59726 exact handles remain live;13316 terminal confirmed. Logs /tmp/cubit-icon-staging-
+r2.log, r3.log and /tmp/cubit-icon-upload-r1.log. Do not restart on timeout.
+SPARK result not yet known: constant atlas expansions yield25/37MiB proof
+intermediates, no diagnostics so far. If expensive, make Pixel a conventional
+function body to avoid expression-body expansion into caller; no weakened
+indexing contracts. Final proof/native archive still needed before completion.
+Source table has slots0..135, general128..135 (8) vs13embeddedicons. Residency
+must use packing/reuse or explicit bounded slot policy, not blind per-icon
+allocation. Staging here reserves no source slots. Next residency then Main.
+No lock held; preserve all mixed index/staging. Current turn concrete progress.
+
+2026-10-03 icon staging claim: new Desktop_Icon_Pixels SPARK typed staging
+writer over existing immutable application/window icon tables; source assets
+unchanged. New isolated pixel/proof fixture next. No Main activation or shared
+native build/staging changes. Previous turn verified progress.
+
+2026-10-03 bounded checker SCENE integration VALIDATED.
+Drawing.Shadow emits <=3 layers, zero new source readers; Checker_Grid replay
+uses existing bounded checker submission and device pipeline. Strengthened
+Set_Clip count/reader contract and Shadow loop invariants (no weakened bounds).
+4257 TERM0 final owner/drawing/scene proof:248checks68flow180prover,0unproved/
+justified; Shadow14proved, Set_Clip2. Report checker-scene-proof-r3/gnatprove.
+Earlier39717 TERM0 had reader-preservation unproved; superseded by final report.
+28908 TERM0 hosted drawing tests PASS, including partial-capture failure and
+pending lifetime; /tmp/cubit-checker-scene-tests-r3.log.
+95514 TERM0 checker-submission-46teujhz proof587checks0unproved + ABI/fault/
+20000heldpollsPASS; shadow-scene-real-iiuinz1_ realfonts+shadow49152exactpixels,
+affine233472pixels,0Vulkanerrors. Prior79359 confirmedTERM0 too.
+90454 TERM1 native invoked outside alr: exception mechanism mismatch. Correct
+92414 TERM0 kernel/alr native archive desktop-gpu-native-nn3tfo3r 796inputs80obj,
+SHAacafa5fba956eabcc3b843faf5f081098dbe63564498388bfdf8bab5ac3e2ed9.
+Native compilation/elaboration/symbol closure only, no finalservice link/boot.
+All own jobs terminal; no lock held, index/staging/commits/push untouched.
+Checkpoint checker-scene-validated-r3/validation.json. Previous status-only
+turn no progress; current turn concrete fixes and final verified evidence.
+Goal remains active. Next Desktop Main scene capture integration: remaining
+per-pixel icons/masks need bounded image/mask commands; wire complete draw
+capture with whole-frame fallback, then native scene execution. Shared client/
+scanout buffers and hardware latency remain outstanding. Do not claimGPU Main.
+
+2026-10-03 checker scene integration claim: Vulkan_Scene Checker_Grid kind,
+Replay via Vulkan_Submission.Checkers; Drawing.Shadow atmost3layers (oneclip,
+twologicalcheckerstrips), no source readers; retain whole-frame failure. Update
+all direct scene project inventories and mock checker provider coherently under
+sharedlock. Existing base real Vulkan scene tests now link device-storage C
+provider (no initialization implied); unsupported checker records reject.
+No Main activation, protocol changes or staged binaries.
+
+2026-10-03 checker pipeline group INTEGRATED/VALIDATED8ownedfiles.
+/tmp/cubit-integrate-checker-group-r1.py SUCCESS underlock NEVERrerun; manifest
+ tests/compositor/build/checker-group-edit-r1.json all8afterhashes reverified.
+Actual device_storage nowchecker+affine+provider oneexistingSPARKchild; create
+failurecleanups, providerclosefailure retainsboth, recordauth exactsubmission/
+device/livegroup/targetextent. Shadergen emitscheckerheader; nativebuilder copies
+shader/C; target_bundle/nativeGPR includechild/newC; contextsnapshot copiesfrag;
+metadatafixture updatedstubs. ExistingaffineABI unchanged/noMainactivation.
+95801 TERM0 actualtargetbundle VulkanallregressionsPASS zeroerrors.
+97802 TERM0 nativearchive desktop-gpu-native-_xj_tb9x 793inputs79objects SHA
+10f195997574e716095af96a25f717629220b0f8a89191a5a886cb933fa96222.
+No nativefinalservice link/boot. nm confirmscheckerFFI resolvedbydeviceStorage.
+48969 TERM1 fixtureflattenedheader paths compilefail;46126 TERM0 corrected
+newdevicegroupfaulttests6freshprocessscenarios+existingmetadataPASS. Source
+lifetime failurecases retainedbeforecleanup; fixtureclose retryNOTproduction.
+87802 TERM0 checker-device-pixels-pjnfht9r: realCdeviceadapter+ownedtargets2304
+exactpixels/wrongcontext+extent rejects, normalVulkanregressionszeroerrors.
+Summary tests/compositor/build/checker-group-validated-r1; noownlivejobs,
+no index/stagedbinary/commit/push. Previous/currentPROGRESS goalactive.
+Next Vulkan_Scene Checker kind and SPARK Shadow capture usingtwo strips;
+wire Checkers.Replay damagecommands (max8perlayer), rejectpartialcapture,
+then actualscene-driven GPU pixels/heldreader/nativearchive tests. Need update
+mockGPR inventory/stub fornewScene dependency and publicnative/headerinventory
+cohesively underlock before Mainwork. Desktop fullGPU+sharedscanout+HWlatency
+stilloutstanding, don'tclaimcomplete.
+
+2026-10-03 checker submission child COMPLETE; resourcegroup wiring PENDING.
+New vulkan_submission-checkers.ads/.adb Draw_Output/Replay admitsboundedattempts,
+checksoutputdims, physicalclips, no sourceownershipmutation, rejectswholeframe.
+Vulkan_Checker_FFI 64byteCrequest newimport cubit_vulkan_device_checker_record;
+realCprovider notimplementedyet, currentlymockonly; unreferencedbyproduction.
+40294 TERM1 testmissingnegativecoordinateuseclause fixed.47636/96023/90863 TERM0
+proof587checks incldependencies,0unproved/justified; newchild25proved7draw18replay.
+Final hosted tests exactABI signed16fields,4096exhaustion,statusfaults,cancel
+quarantine,20000heldpolls with/withoutimagepins,8damage replay/mid-prefixfail.
+Finalevidence tests/compositor/build/checker-submission-_do9pm1r/result.json;
+fullsharedsourceinventoryhashes rechecked. 7417 TERM0 nativeAdacompile in
+checker-submission-9cawjl_p/native.gpr, production4hashes unchanged, no link/boot.
+No ownlivejobs/no staging/index/commit/push. Next cohesivepipelineintegration:
+- vulkan_device_storage.c ownschecker alongsideaffine; checkercreatefailure
+  destroysaffine; sourcesinitfailure destroysboth; sourcesdestroyfailure retains
+  both; closeonlyafterexistingSPARKPipelinechildCanDestroy gate.
+- C checkerrecord authenticatesexact&context.submission/livepipeline/targetdims,
+  callschecker_record withownedcommand. No authority inferredfromCPUbuffer.
+- shadergenerator build-vulkan-affine-shaders.py needscheckerheader; native
+  builder c_names/shadercopy +nativeGPR sourceinventory; hosted target_bundle.gpr
+  (onlybaseGPR withdevice_storage.c), metadata Cmock test needsnewstubs.
+Need sharedlock whileeditingbuildscripts/GPR; don't breakcurrentbuilds with
+partialCpublication. Then scenechild capture/replay/newboundedshadowcommands,
+realGPU pixel+lifetime tests. Previous/currentPROGRESS fullgoalactive.
+
+2026-10-03 checker SPARK submission claim: new vulkan_checker_ffi.ads/.adb
+and Vulkan_Submission.Checkers child, bounded Draw_Output/Replay matching
+existing submission admission/cancellation policy. New private-output test
+runner with FFI status injection. Device-storage grouped lifecycle candidate
+must wait for build/source inventory updates before publishing; existing shared
+native build paths must stay linkable. No source-table ownership changes.
+
+2026-10-03 descriptor-free checker Vulkan primitive implemented/validated.
+New userspace/lib/compositor/vulkan_checker.c/.h/.frag: fixed separate pipeline,
+existing fullscreenvertexshader, 64byte push/request ABI, one rectangle draw,
+no descriptors/images/pixel allocations/upload/waits. Existing affineABI intact.
+81551 TERM0 initialGPUoracle;56211 TERM0 finalfault+GPUoracle,6144frames/
+4,718,592 exactpixels (256496painted/4462096preserved),256scales*4rot*3origins*
+2clips,zeroVulkanvalidationerrors. 40badrequests noCmdcalls,11missingdispatch,
+5creationfailures incl partialpipelinehandle allresourcesreleased. Snapshot
+ tests/compositor/build/vulkan-checker-35w7wx9n; script rechecks source hashes.
+73194 TERM0 native muslC compile, objSHA3d56707dfc68a57e5d6e9839f393016e806e2b3f7b12e4961cf889b1b8226c11,
+record/nativeobjinpassingwork. No native link/boot/hardware execution claim.
+Next SPARK binding/resourceowner and submission accounting/replay must own
+pipeline until all referring commands/readers retire. Context activepass/target
+dimensions/handleprovenance remaintrusted caller obligations. Do not wire Main
+beforewhole-frame sources/cursor/interfaces ready. No liveownjobs, no staged
+binaries/index/commit/push. Previous/currentPROGRESS; fullgoalactive.
+
+2026-10-03 Vulkan checker claim: new vulkan_checker.c/.h/.frag, isolated
+shader generator and hosted Vulkan oracle. Descriptor-free compatible-pass
+pipeline with one rectangle draw, fixed resources, no pixel texture/allocation.
+Preserve existing affine3pipeline ABI. Runtime/layout/truth boundary audited C;
+SPARK Compositor_Shadow remains geometry authority. No Main or driver changes.
+
+2026-10-03 bounded shadow geometry COMPLETE: new compositor_shadow.ads/.adb
+Pure SPARK two strips, constant-work coverage preserves UNION of outward
+logical cells (fractional DPI); center-sampled checker is NOT equivalent.
+62446 TERM0 initial proof44 runtime checks; strengthened exact Build postcond,
+3591 TERM0 proof50checks8flow42prover,0unproved/justified. Both hosted pixel
+oracles PASS18,874,368 comparisons extractedactualMainloop; final evidence
+ tests/compositor/build/shadow-geometry-4po4zo1k (source snapshot/proof/tests).
+New test-shadow-geometry.py rejects unproved/justified and changing inputs;
+final guard additions checked against final report, no production logic change.
+Coverage equivalence regression-tested; exact Build contract formally proved;
+no shader/native/hardware claim. Next descriptor-free checker Vulkan primitive
+and scene replay; existing affine pipeline has3 textured pipelines and static
+sampler usage, so new checker needs its own shader/pipeline or explicit source
+binding (do not issue old textured shader without descriptor). New shader can
+use inverseintegercoverage32bit (pixel<=65535, scale<=16, origin<=2^24), bounded
+rectangles and scissor. Need audit narrow C binding/prove Ada replay, actual
+hosted Vulkan pixels and nativecompile before Mainactivation. No live jobs,
+no staging/index/commit/push edits. Previous/currentPROGRESS; goal active.
+
+2026-10-03 bounded shadow implementation claim: new Compositor_Shadow pure
+SPARK geometry (two checker rectangles, constant-time pixel coverage), dedicated
+hosted oracle/proof in tests/compositor. Must preserve outward per-cell coverage
+at fractional DPI rather than substitute pixel-center checker sampling. New
+files only initially; Vulkan shader and scene binding follow verified geometry.
+No shared native outputs, staged binaries or foreign ABI edits in this step.
+
+2026-10-03 full-traversal shadow capacity gate VERIFIED. 31351 TERM0
+new test-desktop-shadow-capture.py extracts actual Main shadow/depth and routes
+putPixel through real Logical_Fill/scene owner with hosted device mocks.
+1920x1080 screen, single640x480shadow1675calls; limit512layers, rejectpixel257.
+320x200775calls,800x6002095calls also reject;64x64=187calls374layers accepted.
+Whole-frame rejection/zero readers/teardown0charge PASS. No GPUexecution or
+native/performance claim. First58998 TERM1 fixture dimensions32x24assert;
+fixed only private copied metadata mock to1920x1080, retained failed evidence.
+PASS tests/compositor/build/shadow-capture-dtvvblcq inputs/probe.log, rootdocs
+updated. No live own jobs, no source staging/index/commit/push changes.
+Next implement bounded procedural shadow capture/replay with exact-pixel
+validation, then wire Main complete drawing scopes incl icons/cursor/client
+images. Raising scene capacity or per-pixel lowering is not an integration
+solution. Previous/current PROGRESS; full goal active, no new blocker audit.
+
+2026-10-03 next integration audit: actual Main drawCurrentScene still includes
+per-pixel dappled shadows (window/menu) before GPU capture. Claim new
+ tests/compositor/test-desktop-shadow-capture.py: extract production shadow
+body into real retained GPU drawing adapter with hosted device boundary mocks;
+measure exact layer exhaustion across representative window dimensions. No
+Main/driver ABI changes, no shared native outputs. This tests capture feasibility,
+not GPU execution; required before wiring whole-scene facade blindly.
+
+2026-10-03 logical fill adapter COMPLETE: owned drawing.ads/.adb adds
+Logical_Fill using shared DPI/rotation/origin geometry and explicit physical
+damage. Existing mixed_tests expanded independent inverse-pixel oracle:
+3072 configurations/2359296 pixels PASS, empty/reversed clips, no readers,
+prior-clip independence and outside-capture rejection. 78181 build TERM0,
+31537 SPARK TERM0 25checks/11flow/14prover, zero unproved/justified;
+1012 hosted regressions TERM0 includes cold/pending/uncertain/overflow.
+Evidence frozen tests/compositor/build/logical-fill-evidence-r1 with source
+hashes/logs/proof. No Main activation or native/hardware claim. No live jobs
+from this slice, no staging/index/commit/push edits. Next connect whole-frame
+Desktop drawing scopes; retain GPU shared-target/client import/multi-output
+and physical measurement gates. Previous/current PROGRESS, goal active.
+
+2026-10-03 checkpoint verified: published native async lease shutdown PASS
+(boot-result.json in tests/compositor/build/desktop-completion-wvq3dkys),
+staging unchanged. Published hosted caller/routing/policy tests PASS. Prior
+72216/69001/75936 are completed; no restart of these evidence directories.
+Claim next owned slice: desktop_gpu_scene-drawing.ads/.adb and existing mixed
+drawing tests: logical fill placement/physical damage clipping in SPARK.
+Private-output hosted build/proof only; no Main activation, shared ABI or driver
+changes. Previous goal evidence PROGRESS; full hardware goal remains active.
+
+2026-10-03 ASYNC OUTPUT LEASE PUBLISHED13ownedfiles+backenddocs underlock.
+/tmp/cubit-publish-async-output-lease-r1.py SUCCESS; NEVERrerun. Manifest
+ tests/compositor/build/async-output-lease-published.json; all13hashes verified.
+Rootmain nowcapSubmit lease requests; Compositor_Lease_Request policyandtests,
+20modecaller +exactcompletionrouting tests, asyncnativeprobe/builderflag/runner,
+adaptedbaseprobeanchors, proofboundary docs. No kernel/Displaychanges.
+89699 TERM0 privatepackagedshutdownrunner nativePASS/stagingunchanged;
+41355 TERM0 fulllegacyDesktop57b76c212f8c56dbbc75f9b179cba0c16f21d35b3570609ca99cbf32b18a8e94.
+Finalleaseoracle strengthenedrejectactualuncertaincompletion/idexhaustionlogs;
+3positive31negativePASS +retainedall3native traces accepted. Baselineoracle29
+negative remains. Current72216 LIVE publishedrootcaller/routing/policytests;
+log/tmp/cubit-async-output-lease-published-tests-r1.log.69001 LIVE nativebuilder
+--async-lease shutdown underbuildlock; /tmp/cubit-async-output-lease-published-build-r1.log.
+Afterterminalinspectuniqueprintedfixture/result.json then runpublishednative
+runner underlock; noVMstartedbybuilder. No stagedbinary/index/commit/pushchanges.
+Priorretirementpublication manifest ishistorical: newasyncpublication intentionally
+supersedes somefilehashes. Goalactive; previous/currentPROGRESS.
+
+2026-10-03 asynclease nativevalidation COMPLETE:43102 TERM0 partialr1PASS
+normalDesktopobserver/stagingunchanged.10890 TERM0 correctedshutdownr2PASS
+heldactuallease replies, delayedsources/outputs tozeroPScharge,loop+kernelstop;
+stagingunchanged. Shutdownr1FAIL retained; correctedfixture excludesUIinput
+requirement aftershutdown, notacompositorbehaviorchange.
+55376 TERM0 expandedexactcaller20modes coversprior16partiallease/grantlayouts+
+shutdownsuppression plusheld/rejected/invalid/duplicate async completions.
+47371 TERM0 privateportablecaller20modes+exactrouting +oracles29+25negativePASS.
+Packageinstrumenter reproduces scaled43a5ffde..., shutdown4b0cef44...,partial
+bf43230e... mainSHA BYTEEXACT. Private package adds async_lease_fixture and
+--async-lease builder option; updatesbaseretirementanchors forasyncmain,
+runnerusesleasechecker+bothheldinputtrigger onlyforscaledasyncmode. No rootedits.
+89699 LIVE privatepackagedshutdownrunner validation underbuildlock,
+/tmp/cubit-async-lease-packaged-shutdown-r1/run.py; outerlog samefoldername.log.
+41355 LIVE privatelegacyDesktop link; /tmp/cubit-async-output-lease-legacy-build-r1.log.
+Needterminalchecks, finalproof-boundary/docreview, exactallowlistpublication and
+rootregressions/nativebuildercheck. Validation-only source_retirement_fixture
+and outputretirementpolicies copiedinpackage MUSTNOTpublish asnewchanges.
+Previous/currentPROGRESS; fullgoalactive; no index/stagedpromotion.
+
+2026-10-03 86380 TERM0 correctedshutdownr2 link5e6a91c0eebdd36c1e5af696ebd1a745c196068079d2981f695b24d816f83911.
+Readytonativelyrunafter43102releases sharedlock; no shutdownr2 boot yet.
+43102 re-polled LIVE; partialserial shows bothreallease completionsheld/replayed,
+leaseconfirmationPASS andinternal-sessionrecoveryPASS; normalobserverstill
+running. Waitsame43102, inspectterminalboot-result beforeclaimfullPASS.
+No productioncandidate changes; allnewworkprivate. Goalactive/PROGRESS.
+
+2026-10-03 shutdown68005 TERM1 retainedFAIL/stagingunchanged. Bothreallease
+repliesheld; fixtureincorrectlyrequired inputdispatchafterrunningFalse. Actual
+Drain_Events/Drain_Requests deliberately guardedbyrunning. Shutdown shoulddrain
+completions, notrestartUI dispatch. Nativeobserverfailed andDesktopstopped;
+exactVMcleanQMPquit, priorlockreleased. No productionchange justifiedbythis
+fixtureerror; normaldrain inputprogress already proven byscaled4083PASS.
+86380 LIVE corrected private shutdownr2 build underNix, sourcebasedonr1;
+remove input-afterhold gating andcommitinput>0 onlyforthisshutdownscenario,
+retain3/7leaseholdpolls/realsubmit/reply/boundedretry/revokeonce/zerocharge and
+actualloop/processstop. No QMPinput needed. /tmp/cubit-async-output-lease-shutdown-r2;
+log/tmp/cubit-async-output-lease-shutdown-build-r2.log. Runafterpartialterminal.
+70030 TERM0 partialfixturecompiled (see build logSHA), current43102 LIVE under
+sharedlock /tmp/cubit-async-output-lease-partial-r1/run.py, outerlog
+/tmp/cubit-async-output-lease-partial-run-r1.log. Real output1slot2 allocatedbut
+ungrantedabort, asyncleasereplies held3/7polls forboth includingdisabledoutput,
+3failednonpublishedsubmissions/output, realcompletionbeforerevoke, zerostorage,
+fixture-driven activateInternalSession recovery plus normalDesktopchecks.
+Partial/shutdown explicitlydonotclaim inputaftershutdown/beforeinputregistration.
+Normal scaledr1passes fullinputduringheldleases +DPI/arrangement preservation.
+Private productioncandidateunchanged, no root/index/stagingedits. Goalactive;
+previous/currentPROGRESS. Keepfailedfixtureevidence; neverreruninplace.
+
+2026-10-03 asynclease native4083 TERM0 PASS all4interactiongroups/scaledrestore/
+reopen. /tmp/cubit-async-output-lease-native-r1/boot-result.json PASS,
+stagingunchanged. Actualrelease replies bothheld, externalmodifierpress/release
+processed(2events) before replay; bothleasesretiredafterinput; noearlyrevoke or
+duplicates. Threeinjected nonpublished submissions/output thenrealsubmission.
+Originalrealframeheld/replayed with2latecompletions. Nativeobservercleanquit.
+30765 TERM0 shutdownfixture2e260f0a4fcb84b4c2eef9f565bed33c47acc1de4f943afeef2b39cd52af796f.
+Private /tmp/cubit-async-output-lease-shutdown-r1 variant requestsactualshutdown
+withqueuedframe, holdsbothlease replies andinjectsinput viaexistingobserverQMP,
+requireslatelease/inputevidence+zeroPScharge+loop/kernelprocessstop. Native run
+juststarted underbuildlock; outerlog/tmp/cubit-async-output-lease-shutdown-run-r1.log.
+No rootsource/index/stagedchanges. Needasyncpartialsetup/nativefailure plus
+portablefixtures/publication afterthisshutdown. Policy/routing/callerchecksPASS;
+fullgoalactive, previous/currentPROGRESS.
+
+2026-10-03 PRIVATE asynclease nextvalidation:92774 TERM0 exactcollectorbranch
+routingtests PASS twooutputs/all10invalidkernel-or-envelopefields,101unrelated
+tokens,duplicate completion;otheroutputstayspending. ExtractionSHA in
+/tmp/cubit-async-output-lease-r1/routing/inputs.json. Fullmainqueue/retiredwatermark
+routing is native scope, notclaimed by extractedbranch test.
+18237 TERM0 nativeleasefixturelink23b511bed475221a4cc3b77372be702d68a1292e5a714ec5855dd596d08693c2.
+4083 LIVE native /tmp/cubit-async-output-lease-native-r1 underbuildlock;
+outerlog/tmp/cubit-async-output-lease-native-run-r1.log. Fixturegenerated from
+privateasyncmain usingdeliberatelyadapted publishedoutputprobe: oldsynclease
+Observe_Lease diagnosticanchor removed (exactone), lateframecounter anchored
+onlytoframebranch toavoidnewleasematchedbranchcollision. Adds Probe_Lease_Submit
+first3false attempts/output withoutpublishing;thenrealcapSubmit successes
+mustonce/output. Probe_Lease_Poll holdsactualmatching LR completion peroutput;
+replaysafter3/7polls AND inputaftereachhold. SeparateQMPinjector waits bothreplies
+held beforemodifierpress/release. Asserts norevokebeforecorrectlease replay,
+allleasesretiredafterinput, thenoriginalscaledreopen+4interactiongroups.
+Nativehelper/runners/sources private; no rootproduction/index/staging edits.
+Pollsame4083; portableobserver cleanquitsitself onallpasses. Existing baseline
+policy/callerproofs remain; shutdown/partialsetup need asyncspecific validation
+before publication. Previous/currentPROGRESS; goalactive.
+
+2026-10-03 PRIVATE asynchronous output lease candidate, no rootpublication.
+/tmp/cubit-async-output-lease-r1: newpure Compositor_Lease_Request stages Ready/
+Submitting/Pending/Released/Quarantined. Prepare consumes strictlynew shared
+Desktop token; failedcapSubmit returnsReady retaininglease; confirmedmatching
+reply alone releases. Kernel Process.IPC.submitResolvedEndpoint audit confirms
+False meansnoenqueue; success reserves completion andpublishes atomically.
+transport-audit.json pinskernel/runtime/Displayinputs. No kernel/Displayedits.
+9163 TERM0 policyhosted10krejectedsubmissions+10kpendingadmission attempts and
+completionfaultcases PASS; SPARK9checks4flow5prover, zero unproved/justified.
+Private main now2lease requeststates; closeOutput capSubmits encodedrelease
+onlyafterrenderer+presentationretirement. collectPresentations routeslease
+completionsincluding disabledpartialoutputs usingexacttoken/kernelvalid/status/
+label/length/flags/reserved/allzero words. Invalid/duplicate quarantines;
+acceptedpending neverresubmits. No revoke/storage beforeLR.Released. Tokens
+remainuntilglobalretired watermark; newdrainresetsperoutputrequeststate.
+47564 TERM0 nativeMesaDesktop link9e03af0c6874a6fbb0ef609792544002f1a6b55b3b7b53318b0b9b97f31acb92.
+11162 TERM0 exactprivate cleanup4modes:2000failedcapSubmits,10kheldcompletion
+polls,noduplicates/nosyncleasecall,staggeredfree andretainedIDs; failed/wrongtoken/
+duplicate completion retainstorage. ControlledFFI policycompletion injection,
+NOT fullnativecollector validation. Caller extraction inputs in p/caller/inputs.
+Next: actualcollectPresentations envelope/routingtests +nativeheldreallease
+reply/inflightshutdown/partialsetup/reopen fixtures. Existing root outputprobe
+instrumenter expects Observe_Lease(R,Confirmed), nowchangedinprivate main; adapt
+privateprobe deliberately, don'tsilentlyskip assertions. ReopenGET_INFO/acquire
+still synchronous, separatefollowup. Allownjobs terminal/noVM/sharedlock;
+no rootproduction/index/stagingchanges. Previous/currentPROGRESS; goalactive.
+
+2026-10-03 FINAL integrated output retirement:44502 TERM0 root24modecaller,
+oracle3positive29negative, retirement16layouts/16kbusy/24kconfirmation andlayout
+10cases PASS.78949 TERM0 publishednativebuilder produced
+ tests/compositor/build/desktop-completion-jsfcgeuo/desktop.svc SHA
+23d5fc9672210d7ef64ad8f1a57dc3bb67e47299fdda92e3005e83263b8d6ef0;
+generatedmain1212c389... matches retainednativefixture exactly.73610 TERM0
+publishedportable runner native shutdownPASS, headless/faultscanPASS,
+stagingunchanged; loop exitedafteractualdelayedpresentation+grantretirement,
+zeroPScharge andkernelprocessstop. Allownjobs terminal/noVM/sharedlock.
+21publishedhashes reverified/scopeddiffcheckclean. NEVERrerun outputpublisher.
+No stagedbinary/index/commit/push changes. Source integration complete forthis
+retirementcheckpoint; fullGPU/latencygoal remains active.
+Next audit finding: closeOutput still invokes synchronous callDisplay forlease
+release aftermatchingpresentationretired. Newrenderer/grantBusy polling returns
+toeventloop, butleasecontrolIPC latency isnot bounded bythiswork. Considerasync
+lease request/completion admission beforeclaiming wholecleanupnonblocking;
+reopen GET_INFO/ACQUIRE also existing synccontrol. LiveGPUfacade, authenticated
+clientimports/sharedscanouttargets andhardwaremeasurements remain outstanding.
+Previous/currentPROGRESS.
+
+2026-10-03 OUTPUT RETIREMENT PUBLISHED21ownedfiles+backenddocs underlock.
+/tmp/cubit-publish-output-retirement-r1.py SUCCESS; NEVERrerun. Manifest
+ tests/compositor/build/output-retirement-published.json; all21hashes verified.
+Rootmain/interface/backends nowtypedTargetRelease andpersistentdrain state;
+newOutputRetirement/LayoutRestorepolicies; tests/GPRs/exactcaller/nativehelper/
+portablebuild+runner/docs included. Validation-only copieddependencies excluded.
+No stagedbinary/index/commit/push changes. Initialpackagingindentstrings issue
+fixedASTserialization; instrumenter reproduces all3testedMainfiles BYTEEXACT.
+Oracle3positive29negative +retainedscaled/shutdown/partialevidencePASS.
+9695 TERM0 packagednative shutdownobserver/run PASS;13036 TERM0 finalprivate
+24modecaller+oraclePASS. Sourcewrapperonly changedROOTfortest; rootintegration
+nowenables trueportable run. Current44502 LIVE rootregressions,log
+/tmp/cubit-output-retirement-published-regressions-r1.log.78949 LIVE truepublished
+nativebuilder --output-retirement shutdown underbuildlock, log
+/tmp/cubit-output-retirement-published-native-build-r1.log. NoVMstartedbybuilder;
+afterterminalbuild inspect printed unique fixture/result.json then run published
+run-output-retirement-fixture.py underlock. Existingmanualnativeevidencepassdoes
+notmean thisnewbuildervalidated yet. Previous/currentPROGRESS; fullgoalactive.
+
+2026-10-03 FINAL59578 TERM0 partial native r2 PASS; recovered Desktop group
+passes taskbar/splitdrag/maximize/wallpaper/cursor/Settings. boot-result PASS,
+stagingunchanged; observer cleanQMPquit andsharedlockreleased. Same cd88d39e...
+binary, correctedscenario recoverymarker. Earlier r1FAIL retained. Actualfive
+allocatedtargets (oneungranted) drainbeforebackBufferReady tozeroPScharge;
+fixture invokesexistingactivation then exercises normalnativeinteraction.
+15361 TERM0 packaged retirement/layout hostedprojects PASS. Privatepackage
+includes portablelayout_restore.gpr/tests andoutput_retirement.gpr/tests/check,
+24modeexactcaller runner/template, interface/testcaller updatesandpolicy/main.
+Copiedruntime cubit.ads andDisplay geometry/layout files are VALIDATION-ONLY
+package dependencies, MUSTNOTpublish these aschanges. candidate-files.json is
+STALE afterthis packaging step; regenerate exactexplicitowned allowlist before
+publication. Stillneedportable nativeinstrumentation/runner packaging, proof
+boundary/evidencefinaldocs andguardedpublication/rootregressions. Existing
+baselines.json root4filespreviouslymatched; recheckbeforepublication.
+Allownjobs terminal/noVM/sharedlock. No rootproduction/index/stagedpromotion.
+Native gatesnowinclude unitdrainr2, scaleddrainr6, shutdownr1, partialsetupr2.
+Goalactive; previous/currentPROGRESS.
+
+2026-10-03 partial native19934 TERM1: realpartialrollback zerocharge and
+fresh activateInternalSession recovery PASS; normalnative Desktop groupPASS.
+Runner thenrejects missing initial "desktop: internal shell active" marker,
+which cannot occur because fixture intentionallyfails initialactivation.
+Retained /tmp/cubit-output-partial-native-r1/boot-result.json FAIL, staging
+unchanged; observer cleanQMPquit, noVM remains. No codefailure found inthisrun.
+59578 LIVE fresh r2 underbuildlock, samecd88d39e... binary/sourcefixture; private
+headless expectedmarker now OUTPUT-PARTIAL: PASS recovered internal session.
+Allotherstartup/asyncrelease/cclready markers, nativeobserver andfaultscanremain.
+/tmp/cubit-output-partial-native-r2/run.py; outerlog
+/tmp/cubit-output-partial-native-run-r2.log. Pollsame59578; observerquitsVM itself.
+Recovery is fixture-driven call toexisting activateInternalSession afterdrain,
+NOT claimthatproduction automaticallyretries failedinitialshellactivation.
+Privatepackage prepared policies/interfaces/callers/controller/tests/docs and
+candidate-files.json, nativefixturepackaging/layouttestGPRstillneeded. Source
+maincandidateunchanged; no rootpublication/index/stagingpromotion. Goalactive.
+
+2026-10-03 native shutdown COMPLETE:86487 TERM0 fixturelink8a5a25a5...;
+39905 TERM0 nativePASS, boot-result stagingunchanged. Fixture requestsrunning
+False withrealqueuedframe, exercises actualshutdownbranch/loop; delaysactual
+completion +renderer/grant evidence, verifieszeroPScharge/noreopen/nopending
+source/output, loop exit andkernel reported Desktop processstop. Two late
+completions. /tmp/cubit-output-shutdown-native-r1; nohardwareGPUfenceclaim.
+67151 TERM0 partialnativefixturelinkcd88d39e805fee6318e35c60440501e4ad7a0b0f5d1da13f50507ae188325204.
+Partialfixture /tmp/cubit-output-partial-native-r1 abortsoutput1slot2 afterreal
+allocation/address butbeforegrantcreation; output0alreadyopen,output1slot1
+attached. Actualcleanup startsbeforebackBufferReady with7rendererBusypolls and
+3/7grantconfirmationholds, checksnoearlyfree, retainedCPtokens, zerochargecommit.
+Thenfixture invokesactual activateInternalSession once tocheckfreshrecovery.
+Native run juststarted underbuildlock, outerlog
+/tmp/cubit-output-partial-native-run-r1.log; observerwraps normaldualdesktop
+functionalchecks then cleanQMPquits. Allassertions preserve actualMG/Displaycalls.
+Both fixtures testprivatecandidate, no rootproduction/index/stagedpromotion.
+Previous/currentPROGRESS. Fullgoal active.
+
+2026-10-03 FINAL40585 TERM0 native scaled output-retirement PASS.
+/tmp/cubit-output-retirement-native-fixture-r6/boot-result.json: all4observer
+groups pass, actualinput2/latecompletion2, stagingunchanged. Same r3Desktop
+binary withindependent QMPinjector sentmodifierpress/release; restoredscaledlayout
+and reopened checks PASS. ExactVM cleanQMPquit onlyafter allmarkers; noownVM or
+sharedlock. Earlier r3/r4 failed evidence retained; r5 neverbooted. Rootcause of
+r4 harness failure confirmed second QMPchannel fixesinputinjection, keepingall
+assertions andbinaryunchanged. Doesnot establish hardwareGPUfences/timing.
+51167 TERM0 fullnativelegacyDesktop link2953b213e2247d2cd252abee5ab5af56554867f33040075b42aeb997bdb9fecf.
+30256 TERM0 portable24mode exactcaller runner PASS inPRIVATE package:
+/tmp/cubit-output-retirement-r1/package/tests/compositor/test-output-retirement.py
+and output_controller_fixture.inc; output-retirement.md documentsproofboundaries.
+Allownjobs terminal. Root4baselinehashesmatch. No rootproduction/index/staged
+promotion. Native shutdown/partialsetup/fault gates and finalpackaging remain
+before publication. Current main /tmp/cubit-output-retirement-r1/main.adb stays
+authoritative; neverrerun oldprepare-integration.py. Goalactive; PROGRESS.
+
+2026-10-03 controller33122 TERM0 all24modes PASS exact extracted closeOutput/
+pump/release routines. New /tmp/cubit-output-retirement-caller-r2 tests all16
+partial lease/grant combinations (three allocations, possibly ungranted),
+busy-before-backBufferReady, alternating shutdown/reopen, idempotence; unsafe
+renderer, five malformed lease reply fields, rejected first revoke retain all
+storage and identities. Controlled mocks, NOT native shutdown proof.
+73516 r4 TERM1 retained FAIL/stagingunchanged: separate injector timed out on
+QMP greeting because existing observer holds sole channel; no key sent. ExactVM
+QMPclosed only after Desktop exit and observerfailure.65348 r5 TERM1 beforeboot:
+private runner preparation assertion found4QMPassignment sites; noVM. Corrected
+single desktop-dual-output block, bash-n PASS, fresh r6 directory.
+40585 LIVE r6 native /tmp/cubit-output-retirement-native-fixture-r6/run.py under
+sharedlock. Private headless.sh root anchored to repo, second QMPchannel solely
+for external shift_r input; existing observer and all guestassertions unchanged.
+Same r3binary da1b1918...; retained runner-inputs.json. Outerlog
+/tmp/cubit-output-retirement-native-run-r6.log. Inspect injection.json plusfour
+observergroups and drain/scaledreopenmarkers before exactVM cleanquit.
+51167 LIVE private full legacyDesktop link /tmp/cubit-output-retirement-r1/
+link-legacy.py; log/tmp/cubit-output-retirement-legacy-native-r1.log.
+No production source/index/stagedpromotion. Previous/current PROGRESS.
+
+2026-10-03 facade6932 TERM0: Mesa86checks47flow39prover, legacy25flow,
+zero unproved/justified; migrated native_output_test compiles. Private caller
+changes remain /tmp/cubit-output-retirement-facade-r1, no root publication.
+Scaled native47853 TERM1: r3 failed instrumentation watchdog requiring input;
+held/replayed real completion, but no input observed before2000poll cap. Observer
+also failed second Apply after Desktop exited. Exact failedVM QMPclosed;
+boot-result FAIL/stagingunchanged. Retain all r3 evidence. Possible fixture
+sequencing issue: capture settles2seconds, injectedBusy cannot finish untilnew
+input; do not label production fault or dismiss without rerun evidence.
+73516 LIVE current r4 native run under build lock:
+/tmp/cubit-output-retirement-native-fixture-r4/run.py, outer
+/tmp/cubit-output-retirement-native-run-r4.log. SAME r3 compiled binary SHA
+da1b1918f9fcd0d7257c4500a2f4026fd621e24b71e5131669dfd90869f242cb,
+all existing assertions retained. Runner watcher waits for drain marker then
+injects QMP shift_r press/release into exactVM. injection.json records success;
+requires sent plus actual Desktop input counter>0. No pointer motion or text.
+Wait same73516 handle; inspect four observer PASS groups plus drain/reopen/scaled
+markers before cleanQMPquit exactVM. Do not rerun fixtures in place. No root
+source/index/staged promotion. Goal active; this turn PROGRESS, prior status
+turn no implementation progress, now revalidated and advanced tests/evidence.
+
+2026-10-03 output retirement progress: r2 native63802 TERM0 PASS all four
+interaction groups; boot-result input5/late2/staging unchanged. Corrected
+presentation gate also passes exact-controller15450 TERM0 with1000 pending
+presentation observations and staggered releases. Layout restoration wired in
+PRIVATE main, normal native45775 TERM0 and scaled fixture32641 TERM0 linked.
+Current47853 LIVE under shared build lock: r3 fractional-DPI drain/reopen test,
+/tmp/cubit-output-retirement-native-fixture-r3/run.py; outer log
+/tmp/cubit-output-retirement-native-run-r3.log. Initial sandbox launches failed
+Nix cache access before tests; retried with escalation, not a lock conflict.
+Private facade caller migration /tmp/cubit-output-retirement-facade-r1:
+41641 TERM0 all11 text/fill success and unsafe cases passed typed target release.
+Native output test migrated privately, compilation still pending. Root sources,
+index and staged binaries not promoted. Shutdown/partial-setup native gates,
+facade proofs and packaging remain before publication. Goal active.
+
+2026-10-03 nativeoutput r1 FAILED retained as evidence:94346 TERM1;
+Desktop exited outputretirementuncertain and observerfailed. ExactfailedVM
+cleanQMPquit; stagingunchangedtrue. Sourceaudit found Display rejects release
+whilePS.frameState nonIdle. FixedPRIVATE main: keepnormalCP.Complete validation
+whileclosing; gatelease release on notP.Enabled orCP.Writable(P.Transfer), via
+newpure Can_Release_Lease. Priorignore-known-closingreply approach waswrong.
+Actual r2 native build2708 TERM0 SHA
+e8613b8050c6740fd4f818615611ee3e2f08ee39427080b843cad7dc87346b2e.
+Freshfixture /tmp/cubit-output-retirement-native-fixture-r2 includes held-real
+completion replay, inputwhilebusy, grantdelay3/7, rawphasefailurediagnostics.
+r2bootstartingunderbuildlock; log/tmp/cubit-output-retirement-native-run-r2.log.
+83779 TERM0 updatedretirementtests/proof andlayoutrestoretests/proofPASS.
+Private /tmp/cubit-output-layout-r1 Compositor_Layout_Restore keepsaccepted
+DPI/originexactlyonlyifphysicalmodes/count/namesmatch;10layoutcases,15checks
+2flow13prover0unproved/justified. Initial8739TERM4 typingerrorsfixed.
+Layoutrestore NOTyetwiredintoDesktop; Applyduringdrain also unresolved.
+No rootproduction/indexedits; goalactive/currentPROGRESS.
+
+2026-10-03 output nativefixture93279 TERM0 link
+3ae5392a24a507d5cb4ef423ae881c91782983fd6c1b5d8f7dc3f0a894d0b68f.
+Private /tmp/cubit-output-retirement-native-fixture-r1 startsdrain afterrealinput
+andqueuedframe, withholdsrealcompletion thenreplaysduringdrain; injectsrenderer
+Busyuntilinput+latecompletion, grantconfirmation3/7polls, checksrevokeonce,
+noearlyfree, Ptokensretained, charged0commit/reopensamecharge. Nativebootnext
+underbuildlock via run.py/testimageoverride; no root/staging/indexchanges.
+Audit identifiedprepublicationgap: current setup resetsDPI/arrangement onreopen;
+need preserveacceptedlogical layout andhandle Apply duringdrain withoutdropping
+useraction. r1fixturetestsunit-layoutfirstinteraction, notthisunfixedcase.
+Previous/currentPROGRESS; goalactive.
+
+2026-10-03 PRIVATE output-drain MAIN integration nowlinks; no rootpublication.
+/tmp/cubit-output-retirement-r1/main.adb authoritative candidate; initial
+prepare-integration.py predates postgenerationfixes DO NOTrerunovermain.
+52124 TERM1 localAda defaultconformance fixed.72138 TERM0 nativeMesaDesktop
+linkfaeb653baea94f0c5e8b754626d52d45efd8293f03b34d61d2cdaa4c2f1036ce;
+inputhashes desktop-link-inputs.json, candidate-hashes.json. TypedTarget_Release
+(Retired/Busy/Unsafe) privatebothbackends. Persistent2output retirementstates.
+closeOutput pollsrenderer, releasesleaseonlysuccess, revokesonce, pollsaccepted
+grantconfirmation; storagefreeonlyReady. Globaldrain retainsP/tokens untilall
+released thenwatermarkcommit/clear; collectPresentations consumesknownclosing
+IDs without grantingwritepermission. Paint/cursorguards +1msretry; shutdownloop
+waitsforoutput+source retirement, noindefinitewait/postcleanupdraw. Newwindows
+keepmetadata/input duringdrain, reopenpending retriesoneowner-acquireattempt
+without2mssleep (startup keepsoldboundedhandoff). Partialsetupcleanup preserved.
+No falseBusyinterpretation ofDisplayerrors. NEED nativefault/normal/partialsetup/
+shutdown tests andfacadeproof beforepublication; callerfactsnotwholemainproof.
+91289 TERM4 hostedtestanonymousarrayaggregate syntax fixed;8675 TERM0 exact
+closeOutput/pumpOutputRetirements/releaseDisplayBuffer routines PASS rendererhold,
+revokeonce, deferredconfirm, staggeredoutputstoragefree, retainedcompletionIDs,
+newwindowreopenrequest. /tmp/cubit-output-retirement-caller-r1 hasmockFFIharness/
+source-extractionhashes;log/tmp/cubit-output-retirement-caller-r2.log.
+Next nativefixture mustexplicitlyrequestglobaldrain whileinternalshellactive:
+normaldualoutput testsleaveinternalShellsurfaceused, so lastwindowclosealone
+DOESNOTexerciseoutputcleanup. Inject3+Busy anddelayedgrantconfirmations inactual
+caller, validatePidentityretention,noearlyfree/revoke, safe-reopen; exercise
+input/requestdispatch andlatecompletion. Existingprivate sourcefixture pattern
+canadapt butnewtargettypedinterface also needs native_output_test/othercallers
+updated beforepublication. Allownjobs terminal/noVM/sharedlock/indexchanges.
+Previous/currentPROGRESS; goalactive.
+
+2026-10-03 PRIVATE output retirement /tmp/cubit-output-retirement-r1.
+61595 TERM0 concrete3target SPARK20checks9flow11prover,0unproved/justified;
+hosted16lease/grantlayouts,16krendererBusy+24kpendingconfirmation observations,
+orderedcleanup/partialtargetsets/uncertainty PASS. No rootpolicy/main/facade edits.
+NewCompositor_Output_Retirement: renderer->lease->revoke acceptance->grant
+confirmation->storage, persistentperoutputmetadata; Busy/falseconfirmation exact
+statepreservation. Failedlease/revoke/rendereruncertain ->stickyquarantine.
+CurrentDisplaywire hasNOexplicitBusyrelease; do NOTtreatBadStateasretryable.
+Integrationaudit found latequeuedcompletionhazard: collectPresentations rejects
+unknown token>retiredThrough, so mustretain closingoutput identities throughdrain
+or explicitlyclassify knownclosingtokens. Can'tclearPafteroneoutputfreewhile
+otherspending. Moreanchors/partialsetup/shutdown/writeguards inprivate
+integration-audit.txt. Next actualMaincontroller+typedtargets integration, not
+justenumrename. Allownjobs terminal/noVM/sharedlock/indexchanges. Prior/current
+PROGRESS. Goalactive; no GPU/hardwarelatencycompletionclaim.
+
+2026-10-03 FINAL41564 TERM0 root retirement regressions PASS: exactcaller
+24kbusy, actualsurface/receipt routines, nativeoracle plus negativecontrols;
+retained nativefixture accepted.18publishedhashes+scopeddiff previouslyverified.
+Publisher source-retirement-r1 SUCCESS NEVERrerun. Allownjobs terminal/noVM/
+sharedlock. No stagedbinary/index/commit/pushchanges. Source retirement is now
+rootintegrated, notprivateonly. Next audit: Forget_Targets remainsBoolean and
+releaseDisplayBuffer called onlastsurfaceDestroy/CloseAll andshutdown; ordinary
+GPUbusy there mustdefer teardown without losingtargetleases or blockinginput.
+Need completeoutput-drainstate integration, not an enum-only APIchange.
+Previous/currentPROGRESS; goalactive.
+
+2026-10-03 SOURCE RETIREMENT PUBLISHED18files+backenddoc.
+/tmp/cubit-publish-source-retirement-r1.py SUCCESS NEVERrerun; manifest
+ tests/compositor/build/source-retirement-published.json. Rootmain now reserves
+bounded source loans before acquisition; typedSourceRelease, asyncglobalmetadata
+retirement, receipt gating and boundedloopretry integrated. Bothbackends updated;
+newpolicy/check/tests+portable callerfixture/nativeinjection/oracle+documentation.
+62356 TERM0 nativelegacyDesktop link6d9c026955a6189ad8d1a51afd94470c0a0aaff01b7fb54189d159c45a9e6ab0
+plus typednative_output_test compile. Packaged91058TERM1 ambiguous extraction
+anchor fixedforwarddeclaration;53974TERM0 caller+surface+oraclechecksPASS.
+Nativehelper packaged instrumentation matches bootedcandidate moduloindentation;
+retained nativeevidence accepted.18publishedhashes verified/scopeddiffcheckclean.
+Rootpostpublicationregressions running /tmp/cubit-source-retirement-published-r1.log.
+NoVM/sharedlock/staging/indexchanges. Prior/currentPROGRESS. Next asyncoutput
+teardown +protocol immediate-retirement assumptions; actualGPUfacade/targets
+and hardware measurements remain open. Fullgoal active.
+
+2026-10-03 FINAL native source-retirement95711 TERM0 PASS, all4native groups
+(primary/scaling/arrangement/Desktop) plus fixture exact-source oracle.
+Private /tmp/cubit-source-retirement-native-fixture-r1/boot-result.json: real
+MG.Acquire/Return with3injectedBusyobservations each; pending detach followedby
+confirmedreturns. SourceBusy injection withholds synchronous renderer evidence,
+not GPU fence execution. CleanQMPquit exactVM afterallgroups; noVM/heldlock;
+testimageoverride verified stagingunchanged. Runnerlog source-retirement-native-run-r1.log.
+Facade49552 TERM0: Mesa85checks46flow39prover;legacy25flowchecks;0unproved/
+justified, fresh typed-retire-r1 reports. Nativefixture build97581TERM0; source
+surface25793TERM0 (publication receipt+close/reset+legacyreplacement tested).
+All ownjobs terminal. Candidate remains PRIVATE, no rootproduction/index edits.
+Next portable test/evidence packaging+guarded publication after legacy native
+compile and typed native_output_test compilation. Private native_output_test.adb
+updated for Source_Release; rootstillBoolean untilatomicpublication. Do notrerun
+completednativefixtureinplace. Async targetteardown and immediate-retirement
+assumptions in older desktop-check remain separate follow-up scopes. Current
+PROGRESS; previousPROGRESS. Fullgoal notcomplete/hardware timingunmeasured.
+
+2026-10-03 PRIVATE source surface25793 TERM0: exact main releaseSurfaceBuffer/
+retirePublicationBuffer routines pass hosted publication replacement,1000pending
+receipt polls, close+reset whileheld, legacyreplacement, idempotence. Controlled
+FFI only; see /tmp/cubit-source-retirement-surface-r1.log/extraction manifest.
+Nativefixture97581 TERM0 linkd3de85ade500a5d424f22955688b1cac007a00431fe4f5be3225accfd5dea0e5.
+95711 LIVE native dualoutput fixture under sharedbuildlock, testimageoverride
+(no stagedDesktopreplace), threeBusyobservations peractualsource acquisition
+beforegrantreturn. Exact /tmp/cubit-source-retirement-native-fixture-r1/run.py;
+log/tmp/cubit-source-retirement-native-run-r1.log,fixtureboot.log+serial.log.
+Currentheadlessprerequisitebuild; do not edit sharedinputs/restart ontimeout.
+Older native desktop-check publication tests assume immediate retirement; need
+bounded exact-receipt polling before using asynchronousfixture withthose tests.
+No rootpublication/indexchanges. Previous/current PROGRESS.
+
+2026-10-03 PRIVATE Desktop source-loan integration now links and caller tests pass.
+61020 TERM0 stronger concrete24slot proof:25checks7flow18prover,0unproved/
+justified. source-retirement-checks-r3.log and checked-obj/proof-r3 report.
+Private /tmp/cubit-source-retirement-r1 main.adb reserves24global metadata slots
+before both authenticated MG.Acquire paths; actual grant/address survive surface
+reset. Typed facade Source_Retired/Busy/Unsafe, both software backend bodies.
+Publication receipts wait for Released; event loop pumps bounded retirement table
+and includes pending loans in1ms retry condition. No production publication yet.
+Native21210 TERM1 missingbufferLoan in2aggregateinitializers fixed privately.
+21675 TERM0 nativeMesaDesktop linkSHA
+7f217a6db84dfa3fce6f4107d8a331a4b68069ba233011aeb9562c2f9ecb7c5a;
+input hashes verified desktop-link-inputs.json. FirstsandboxNix attempt failed
+cacheRO, escalated normalNix run succeeded. No boot/hardware claim.
+68006 TERM0 hosted exact-extracted actualDesktop helpers+controlledFFI:24kbusy
+polls preserve mappings; fulltable failsbeforeacquiresyscall; failedacquirecancels;
+staleticket cannotreturnnewloan; orderedreturn; renderer/returnuncertainty holds
+actualrecords andrequestsrestart. Extractionhashes in caller-extraction.json.
+Policytest24kbusy separate. Callerfixture notnativeIPC/GPU evidence.
+Next: actual releaseSurfaceBuffer/retirePublicationBuffer receipt+closed-record
+checks and native close/replacement/delayedsource fixture, legacy facade compile/
+proof and updated native_output_test typedcaller. Last-surface displayteardown
+still needs audit for asyncGPU target lifetime. No rootmain/backend/testGPR/index
+changes; allownjobs terminal/noVM/sharedlock. Previous userchecklist turn was
+NO PROGRESS; current turn PROGRESS. Goal remains active.
+
+2026-10-03 source loan78693 TERM0:24kbusy testsPASS and concrete24slot
+proof passed. Added stronger private frameconditions (everyother slot unchanged,
+identity/serial unchanged exceptReserve); new tests/proof starting inproof-r3,
+log/tmp/cubit-source-retirement-checks-r3.log. No mainintegration or publication
+yet; generictemplate72438no-check run explicitly excluded. CurrentPROGRESS.
+
+2026-10-03 PRIVATE source retirement policy /tmp/cubit-source-retirement-r1.
+New generic Compositor_Source_Loans fixedslots reserve before acquisition;
+Reserved->Attached->Renderer_Pending->Grant_Pending->Released, Busy unchanged,
+uncertainty stickyQuarantined. Opaque generational tickets prevent slot reuse
+until retirement and stale mutation. Concrete24slots=8surfaces*(2publication+
+1replacement allowance), metadata only. Main integration not implemented yet.
+72438 TERM1 generic-alone proof no checks, NOT evidence. Concrete checks78693
+LIVE:24kbusyobservations, exhaustion/order/staletickets/cancellation/uncertainty
+and source_loans_check instantiation proof; log/tmp/cubit-source-retirement-checks-r2.log.
+Actualcaller plan: global owned loan table retains mapping after surface close,
+reserve at both MG.Acquire sites, typed renderer retirement, bounded event-loop
+polling. Publication receipts await real grant return; destroyed metadata can
+clear only after global table owns it. No sharedsource/build/staging/index edits.
+CurrentPROGRESS; priorPROGRESS.
+
+2026-10-03 FINAL31616 TERM0 published2scene+10presentationregressionsPASS.
+Fivepublicationhashes reverified. Cleanproof332checks198flow134prover,2units,
+noneunproved/justified. Native76objects andrealMesa pixelchecksPASS. Allownjobs
+terminal/noVM/sharedlock. Publishercapture-admission-r1 SUCCESS NEVERrerun.
+Next integration audit: main retirePublicationBuffer/releaseSurfaceBuffer use
+Boolean Forget_Source and local Compositor_Readers state; any non-clear result
+restartsDesktop. Ordinary asynchronous GPU reader busy must eventually defer
+retirement and retain source metadata/loan, while uncertain release remains
+sticky quarantine. Surface destruction/replacement cannot discard queued
+retirement or reuse occupied slots. Needs actual caller/lifetime integration,
+not merely a bool-to-enum rename. No edits yet. Goalactive/currentPROGRESS.
+
+2026-10-03 CAPTURE ADMISSION PUBLISHED5files+backenddoc.
+/tmp/cubit-publish-capture-admission-r1.py SUCCESS; NEVER rerun. Clean53155
+TERM0:332checks198flow134prover, exactly2units,noneunproved/justified.
+Do NOT use old916 aggregate. Fivepublication hashesverified manifest
+tests/compositor/build/capture-admission-published.json. Native76objectarchive,
+10presentation+2scene cases/realMesa49152font+233472affinepixels allPASS.
+Rootregressions running /tmp/cubit-capture-admission-published-r1.log.
+NoVM/sharedlock/indexchanges. PreviousVERIFIEDWAIT/currentPROGRESS.
+
+2026-10-03 cleanproof53155 stillLIVE by directpoll; logs show scene
+contracts proved, owner analysis pending, no fresh summary yet. Prepared
+/tmp/cubit-publish-capture-admission-r1.py NOT RUN, gates clean report/current
+dependency locations, exact nativearchive/private sourcehashes, realpixeloracle
+and5rootbaselines. Do not execute until53155terminalPASS. Allotherownjobs
+terminal. NoVM/sharedlock/indexchanges. CurrentVERIFIEDWAIT; previousPROGRESS.
+
+2026-10-03 admission17784 TERM0 no unproved; aggregate916includes14units
+with stale dependency report locations (Damage.Add line30 vs current50). Do NOT
+claim916as clean currenttotal. Actual Admit_Capture and Begin_Frame proved.
+Fresh --subdirs=proof-clean-r3 proof started log/tmp/cubit-capture-admission-proof-r3.log.
+Native62512 TERM0 PASS76objectarchive snapshotdesktop-gpu-native-d0pg__zl,786inputs
+and symbolclosure verified.10presentation+2scene cases/realMesa pixeloraclePASS.
+No publication yet pending cleanproofscope. All candidate sources unchanged;
+noVM/sharedlock/indexchanges. CurrentPROGRESS.
+
+2026-10-03 capture coverage98832 TERM0:10presentation scenarios with32
+read-only preflights eachtransition pass, front/pending exclusion and latest
+ready replacement accepted, no submission-FFI/byte/front/token mutations.
+Real Mesa/font oracle49152exactpixels+233472affinepixels,validation0.
+Initial2scene lifecyclecasesPASS. Selectedproof17784 stillLIVE by directpoll;
+no error/high/medium messages yet. Native overlay helper prepared privately,
+actual sourcepaths/hashes retained; native gate starting next. No publication.
+CurrentPROGRESS; noVM/sharedlock/indexchanges.
+
+2026-10-03 capture admission8935 TERM4 hosted GPR accidentally included
+all runtime overrides (missing explicit inherited Source_Files). Corrected
+private GPR with Desktop_GPU_Scene Source_Files and fresh obj-r2.17784 LIVE
+tests/proof log/tmp/cubit-capture-admission-r2.log. No production changes;
+source candidate unchanged. Prior/currentPROGRESS.
+
+2026-10-03 PRIVATE capture admission /tmp/cubit-capture-admission-r1.
+8935 LIVE tests +selected owner/scene proof; log/tmp/cubit-capture-admission-r1.log.
+Read-only typed preflight: allowed/busy/unavailable/uncertain. Checks device,
+pipeline, target readiness/dimensions, submission/upload busy and writer room
+before Begin_Frame accepts readers/uploads. Render still revalidates; no
+reservation, import authority or new allocation/FFI. Four guarded sourcefiles.
+CurrentPROGRESS; no sharedproduction/build/staging/index changes.
+
+GPU/Display owner handoff request (no operation numbers reserved): current
+Display protocol still has only CPU-source attachment/copy semantics. Need
+agreement on three authenticated GPU targets per output (format/modifier/pitch,
+optional CPU mapping, renderer import capability), plus separate latch and
+previous-front/final-front retirement evidence. Existing application BO
+Map_Presentation forwarding is CPU-linear source access, not this scanout
+contract. Please review docs/compositor-shared-targets.md before any driver ABI
+implementation; compositor-side retained front/pending and cancellation policies
+are already proved. No driver-owned source changes proposed in this turn.
+
+2026-10-03 FINAL23089 TERM0 published retry regression PASS1000/32000;
+oracle3positive12negative and native retry evidence PASS; scoped diffcheck clean.
+Allownjobs terminal/noVM/sharedlock. Both output-begin and frame-retry publishers
+successful: NEVER rerun. Eleven latestpublication sourcehashes verified earlier.
+Goalactive, PROGRESS. Actual GPU facade/targetauthority and hardware latency
+remain open; no completion claim.
+
+2026-10-03 FRAME RETRY PUBLISHED11files+backenddoc.
+/tmp/cubit-publish-frame-retry-r1.py SUCCESS; NEVER rerun. Native52898 TERM0
+all retry checks and primary/scaling/arrangement/Desktop groups PASS. Exact
+stagedDesktop restored f20c2fd5f700550a99a68a51115018d67967ff02c33f1b1eaa26fd6f527e985d.
+Clean QMP quit after requiredgroups; noVM/sharedlock. Eleven sourcehashes
+verified tests/compositor/build/frame-retry-published.json. Root tests/oracle
+nowrunning /tmp/cubit-frame-retry-published-r1.log. Damageproof34checks
+11flow23prover,noneunproved/justified; hosted1000retries/32000freshupdates.
+No indexchanges. Next actual GPU facade scope+whole-scene capture, authenticated
+client GPU imports/Displaytargets remain; no hardware presentation claim.
+Previous/currentPROGRESS.
+
+2026-10-03 native retry52898 LIVE verified by direct poll; currently
+headless build prerequisites before boot. Oracle self-test PASS3positive/12negative.
+Exact log/tmp/cubit-frame-retry-native-r1.log; fixture boot/serial/evidence under
+/tmp/cubit-frame-retry-fixture-r1. Do not restart on observationtimeout.
+Private retry-notes.md records proof/testscope; nativeacceptance stillpending.
+No new productionpublication/index edits; currentturnPROGRESS.
+
+2026-10-03 retry fixture56534 TERM0 native link
+a323f532b90b98ded2c4cf25ee1f2028476a7a40aaafb6f0b1e2decfc4ab56ea.
+Native retry run started under shared build.lock; /tmp/cubit-run-retry-fixture-r1.py
+and log/tmp/cubit-frame-retry-native-r1.log. Runner restores stagedDesktop.
+Do not edit shared build sources while active. Reusable --retry builder/runner/
+oracle prepared privately; generated main exactly matches compiled fixture.
+No production retry publication. Root output-begin publication is complete.
+
+2026-10-03 private retry native3489 TERM0 link
+042c7aae31e9094e1463acae9c7403d601bb0ede864570a806a1a49231e7c874.
+Private /tmp/cubit-frame-retry-fixture-r1 now building; inject Retry on third
+frame/output after confirmed software completion and corruptfirstpixel.
+Asserts no displaytoken/front change, restored old+fresh damage, full repair
+on failedslot, freshwriterticket, and subsequent recaptured publication.
+Runner /tmp/cubit-run-retry-fixture-r1.py prepared; not booted yet.
+Logs /tmp/cubit-frame-retry-fixture-build-r1.log. No shared production/staging/
+index mutation. Goalactive; previous/currentPROGRESS.
+
+2026-10-03 PRIVATE frame retry /tmp/cubit-frame-retry-r1. New proven
+Compositor_Damage.Restore preserves captured+freshdamage, empties snapshot.
+Proof22596 TERM0:34checks11flow23prover,noneunproved/justified. Hosted27755
+TERM0:1000retryframes/32000freshupdates, failed-writer repair, heldfront safety,
+no failed publication. Private main Retry outcome calls existing proved
+Failed_Quiescent, RP.Failed_Render, Restore, Acquire; no Display submit.
+No publication yet; native build next. Rootbeginoracle16278 TERM0 PASS.
+NoVM/sharedlock/indexchanges. Previous/currentPROGRESS.
+
+2026-10-03 output begin PUBLISHED eight files +backend doc.
+/tmp/cubit-publish-output-begin-r1.py SUCCESS; NEVER rerun. Native65255 TERM0,
+all four interaction groups and newfixture PASS, exact stagedDesktop restored.
+Clean QMP quit after allrequiredgroups; no timeout/stoppedjob ambiguity.
+Manifest tests/compositor/build/output-begin-published.json eighthashes verified.
+Mesa84(45flow39prover)/legacy25flowchecks allproved;11softwarefaultmodesPASS.
+NoVM/sharedlock/indexchanges. Next: proven full-frame retry recovery +Desktop
+completion outcome for GPUcold upload recapture. Previous/currentPROGRESS.
+
+2026-10-03 native65255 LIVE: begin checks both outputs PASS; completion
+held3/6polls and next-frame damage bothPASS. Full interaction harness pending.
+Prepared guarded /tmp/cubit-publish-output-begin-r1.py (NOT RUN): validates
+terminal native PASS/restoration, exact generated fixture, eight root baselines,
+Mesa84/legacy25proofchecks before publish. Do not execute until65255 terminal.
+Next integration audit: GPUScene.Poll returns Retry after cold glyph upload;
+facade currently only Complete/Pending/Unsafe. Need whole-frame recapture path
+that restores captured damage plus fresh input, invalidates potentially partial
+writer pixels, and retires only quiescent render ownership. Existing BP
+Finish_Render(Failed_Quiescent) clearswriter withoutmakingReady; use/prove this
+transition rather than publish incomplete frame. No implementation yet.
+
+2026-10-03 begin fixture83597 TERM0 native link
+b3bb18743b1704aa8e080eb76e1e5a06746abd25026de8b9017fadda790ce6ce.
+Native r2 started under shared build.lock /tmp/cubit-run-begin-fixture-r2.py;
+logs /tmp/cubit-output-begin-native-r2.log and fixture-r2 boot/serial logs.
+Do not edit shared build sources while harness active. Runner restores staged
+Desktop. Current fixture adds indefinite-idle assertion and main retry fix.
+No root publication/index changes. Previous/current goalturns PROGRESS.
+
+2026-10-03 PROGRESS: corrected Mesa facade proof9871 TERM0:84checks45flow/
+39prover,0unproved/justified. Final46076 TERM1 only test invoked without mode;
+native link and legacy proof passed. Re-run66112 TERM0 all11 text/fill modes
+PASS and native final link9499107e0674612b3852887c5e280673dba08f1b529e65dc9efc2f8dc814a349.
+Audit caught deferred begin could idle indefinitely: private main now includes
+writable selected-renderer output damage in renderingPending (bounded1msretry).
+No new allocation/metadata or speculative wait. Requires new native validation.
+Prepared /tmp/cubit-output-begin-fixture-r2 with Probe_Idle assertion, build
+started /tmp/cubit-output-begin-fixture-build-r2.log. Allrootbaselines unchanged,
+no publication/index changes. Prior native r1 PASS does not cover new idle fix.
+
+2026-10-03 native36583 TERM0 completePASS/restored. Proof58452 TERM1: two
+flow errors because proposed In_Out Engine hooks only read current software
+state. Corrected PRIVATE spec Begin/Complete to truthful Input contracts; no
+fake state writes added. Future GPU implementation must extend its real state
+contract. Proof9871 LIVE /tmp/cubit-output-begin-proof-r2.log. Native fixture
+passed with identical executable logic but earlier Global contract; final native
+relink/source inventory still required. Regression builder/inc/oracle/docs
+prepared privately; generated fixture matches executed main exactly. All eight
+root source baselines unchanged; no publication/index changes. CurrentPROGRESS.
+
+2026-10-03 native begin36583 TERM0 PASS: all primary/scaling/arrangement/
+Desktop groups pass, two-output deferral and pending checks pass. Staged
+Desktop restored hashf20c2fd5f700550a99a68a51115018d67967ff02c33f1b1eaa26fd6f527e985d.
+No VM/shared lock held. Private facade SPARK proof now started, log
+/tmp/cubit-output-begin-proof-r1.log; no production publication yet.
+Previous/current goal turns PROGRESS.
+
+2026-10-03 native36583 still LIVE by direct poll. Both outputs passed
+three deferred-start assertions; held completion retired after3/7polls and
+fresh damage rendered on next frame for both. Full native interaction harness
+still running; do not claim full PASS/restoration until runner terminal.
+Private proof project prepared /tmp/cubit-output-begin-r1/glyph_renderer.gpr,
+not yet run to avoid competing with VM. No production publication.
+
+2026-10-03 LIVE36583 native begin/completion test under shared build.lock.
+Command /tmp/cubit-run-begin-fixture.py via Nix; native harness may rebuild
+kernel/image prerequisites. Do not edit shared build sources during this run.
+Runner restores exact saved staged Desktop in finally. Fixture47845 TERM0,
+SHAad6649237ea595b2f82eacfb370c5529c312f4ce72f75e6b8bbf3835bee41a51.
+Logs /tmp/cubit-output-begin-native-r1.log and privatefixture boot.log/serial.log.
+No production facade publication; no index changes. Poll36583 to terminal.
+
+2026-10-03 Desktop begin integration PRIVATE: native link 22260 TERM0,
+SHA79484b26e141cc645e363812e9dea1172615d0c4d569028ec98f699479e91349.
+Candidate four facade/main/backend files in /tmp/cubit-output-begin-r1,
+baseline inputs.json guards. No production publication yet. Building separate
+/tmp/cubit-output-begin-fixture-r1: inject three Deferred begins, assert damage,
+repair and ownership unchanged; completion fixture asserts exactly one begin
+scope across pending polls. Private objects only; no shared staging/index.
+Previous status-only turn NO PROGRESS; current native link evidence PROGRESS.
+Goal active; main GPU renderer/imports/Display handoff remain incomplete.
+
+2026-10-03 FINAL66621/67378 TERMINAL0: rootdrawingtests3PASS;
+nativeAda+muslC archive PASS,76objects, no unresolvedcubit_vulkan_* symbols.
+Snapshot tests/compositor/build/desktop-gpu-native-s7rimu_m hashes/result/build.log
+retained. All8gpu-drawing publicationhashes reverified unchanged. Proof21checks,
+realfonts49152pixels+affine233472pixels; validation0. Allownjobs terminal/noVM/lock.
+No index/staging/commit/push. Goalactive. Actualmain drawing facade/frame scopes,
+clientGPU imports and Display authenticatedimagehandoff remain integrationwork.
+Previous/currentturnPROGRESS. Do not rerun successful GPUdrawingpublishscript.
+
+2026-10-03 GPU drawing adapter PUBLISHED8files+docappend.
+/tmp/cubit-publish-gpu-drawing-r1.py SUCCESS; NEVER rerun. Manifest
+tests/compositor/build/gpu-drawing-published.json supersedes changed prior inventories.
+70104 TERM0 lifecycle2PASS +selectedDrawing21checks9flow12prover, no unproved/justified.
+34854 TERM4 testonlymissing coordinate use type fixed.78501 TERM0 mixedtests +realfont
+49152exactpixels/8glyphallocations/2faces/4DPIs;233472affinepixels/validation0.
+Published root hostedregression and nativecomponentbuild live, logs
+/tmp/cubit-gpu-drawing-published-r1.log and /tmp/cubit-gpu-drawing-native-r1.log.
+No sourceeditsduringbuilds; no index/staging/nativeVM changes. Main stillsoftware;
+next facade/frame capture scopes +clientimageimports/Displayhandoff.
+Previous/currentgoalturnPROGRESS.
+
+2026-10-03 PRIVATE Desktop drawing adapter /tmp/cubit-gpu-drawing-r1.
+New Desktop_GPU_Scene.Drawing child converts physicalfills, logicalimages with
+physicaldamage and32glyph textbatches into retainedscene commands. Empty/offscreen
+requests skip readers/uploads; each call suppliesits clip; cold/invalid captures
+finish/discard wholeframe, neverperdrawCPUfallback. No newFFI/pixelcopy.
+70104 LIVE text lifecycle scenarios (alreadyPASS2) then selected Drawing SPARKproof;
+log/tmp/cubit-gpu-drawing-r1.log.34854 LIVE mixeddrawingtests +realMesa/fontoracle,
+log/tmp/cubit-gpu-drawing-real-r1.log. Privateonly; sourceinputsfrozen.
+No sharedproduction/build/index/staging. Prior/currentturnPROGRESS.
+Main facade/scope/clientimports/displaytransport stillincomplete.
+
+2026-10-03 FINAL24612 TERMINAL0 native component archive+symbolclosure PASS.
+Snapshot tests/compositor/build/desktop-gpu-native-0r86gc_7; result/inputshashes/
+external-symbols/build.log retained. All6physical-clip publicationhashes unchanged.
+Allownjobs terminal/noVM/lock; no index/staging/commit/push. Proof132scene+
+72owner checks, no unproved/justified; pixel/DPI/fault evidence documented.
+Main drawing stillsoftware: next GPU drawing adapter for physicalfill/text/image
+clips, then main frame capture scope and authenticated Display image sharing.
+Goalactive; previous/currentturnPROGRESS, no blocker streak.
+
+2026-10-03 physical clipping PUBLISHED6files+docappend.
+/tmp/cubit-publish-physical-clip-r1.py SUCCESS; NEVER rerun.
+63940 TERM0 selectedVulkan_Scene132checks20flow112prover, noneunproved/justified;
+88650TERM0 realMesa384frames2359296pixels/validation0 then selectedDesktop_GPU_Scene
+72checks35flow37prover, noneunproved/justified. Physical full/partial/emptyclips.
+Source manifest tests/compositor/build/physical-clip-published.json authoritative.
+24612 LIVE nativeAda+muslC archive gate, privateoutputs; log/tmp/cubit-physical-clip-native-r1.log.
+Pollsamehandle; no sourceeditsduringbuild. No index/staging/nativeVM/sharedlock.
+Next Desktop drawing adapter and main scope wiring; actual Display transport
+stillabsent. Goalactive; currentturnPROGRESS.
+
+2026-10-03 physical clip verification update (private):
+63940 TERMINAL0:60 physicalclip/DPI/rotationcases +5 malformed clips PASS;
+selectedVulkan_Scene proof completed, report clips-obj/proof-r1/gnatprove/gnatprove.out.
+12001 TERM1 reference expected alpha0 outsideclip; rendererexistingopaqueRGB fill
+alpha1 verified in vulkan_submission_native.c. Only test reference corrected.
+88650 LIVE: realMesa384frames2359296exactpixels +233472affinepixels PASS,
+validation0; now selectedDesktop_GPU_Scene proof running. Pollsamehandle.
+Private /tmp/cubit-physical-clip-r1; inputsfrozen. No sourcepublicationyet.
+Prior/currentturnPROGRESS; no sharedproduction/build/index/staging changes.
+
+2026-10-03 PRIVATE physical clipping /tmp/cubit-physical-clip-r1.
+Own private Vulkan_Scene spec/body +Desktop_GPU_Scene spec/body, backdrop scene
+fixture and real bridge. New typed physical clip command avoids DPI roundtrip
+and applies exact pixel edges to subsequent layers; no newFFI/pixelsallocation.
+17840TERM4 testonlymissing use type corrected.63940 LIVE hosted60clip cases,
+5malformedcases then selectedVulkan_Scene proof; log/tmp/cubit-physical-clip-proof-r2.log.
+12001 LIVE realMesa clip/full/empty pixeloracle then selected sceneowner proof;
+log/tmp/cubit-physical-clip-real-r1.log. Pollsamehandles, sourceinputsfrozen.
+No sharedproduction/build/index/staging. Previous/currentturnPROGRESS.
+Actualmain drawing bypasses/renderer capture/displaytransport stillpending.
+
+2026-10-03 native GPU scene component gate PUBLISHED and VERIFIED.
+44419 TERMINAL0 repository entrypoint: tests/compositor/build-desktop-gpu-scene-native.py
+Nix/kernel-alr native Ada runtime +pinned CuBit musl C interfaces+existing Mesaheaders.
+Snapshot tests/compositor/build/desktop-gpu-native-3rrrt_23; result.json/inputshashes/
+external-symbols.json/build.log retained.122Ada sourcefiles/63Ada+binderobjects,
+12Cobjects; all cubit_vulkan_* symbols resolved internally.779inputfileschecked.
+New script/GPR/docs publishedmanifestdesktop-gpu-native-published.json reverified.
+Archive component ONLY, not finalapplicationlink/boot/deviceadmission/hardwareGPU.
+39667 TERM0 earlierAdaonly outputremovedbyNixTMPDIR;15028 TERM0 preservedAdaonly;
+10335 TERM0 privateAda+C;44419TERM0 publishednormalentrypoint+symbolclosure.
+All ownjobs terminal/noVM/sharedlock. No index/staging/commit/push modifications.
+Previous/currentgoalturnPROGRESS; goalactive. Next actual Desktop GPU scene
+capture/backend integration, then authenticated image sharing/Display handoff.
+
+2026-10-03 private native GPU scene archive build started.
+39667 LIVE Nix/kernel-alr build script /tmp/cubit-native-gpu-scene-r1/
+build-desktop-gpu-scene-native.py; log/tmp/cubit-native-gpu-scene-build-r1.log.
+122 actual production Ada source files, native runtime copied/hashchecked;
+private /tmp/cubit-desktop-gpu-native-* outputs. Compile+bind+archive only,
+not final link/boot/hardware rendering. No shared source/build/index/staging edits.
+Candidate new test GPR/script private until verified. PreviousturnPROGRESS;
+currentprogress closes native compiler/runtime gate before mainloop GPU capture.
+
+2026-10-03 FINAL93197 TERMINAL0: shared checkout image-reader4, glyphscene2,
+presentation10 scenarios PASS (16total). All9publishedhashes unchanged.
+Allownjobs terminal/noVM/sharedlock released; no index/staging/commit/push.
+scene-source-pins-r2 publisher SUCCESS (do not rerun); old r1 superseded.
+Proofs: first owner+scene325checks; revisedscene+backdrop75checks, overlapping
+notadditive; no unproved/justified. Realprovider capture-release check PASS.
+Goal remainsactive. Next fullDesktopGPUcapture/native integration and
+Display authenticated image sharing/retirement. Prior/currentgoalturnPROGRESS.
+
+2026-10-03 scene source readers PUBLISHED9files+docappend.
+/tmp/cubit-publish-scene-source-pins-r2.py SUCCESS; NEVER rerun.
+Old r1 publisher superseded; DO NOT RUN. Manifest scene-source-pins-published.json
+in tests/compositor/build is authoritative (supersedes changed older manifests).
+37239 TERM0 first owner+scene325checks194flow131prover; D unchanged inr2.
+5083 TERM0 revisedscene+backdrop75checks35flow40prover, noneunproved/justified.
+25903 TERM0 all4image-reader scenarios/backdrop288/realMesa384frames2359296pixels
+plus233472affinepixels, validation0. Actual provider Release_Source refused during
+CPU capture, readercountzero aftercompletion. All fixed metadata/no newpixelcopy.
+Root final build/test running; log /tmp/cubit-scene-source-pins-published-r2.log.
+No index/staging/commit/push. FullDesktopGPUcapture and drivertransport pending.
+
+2026-10-03 source-reader r2 private active; r1 proof FINISHED.
+37239 TERMINAL0: selected owner+scene325checks194flow131prover, noneunproved/justified.
+D spec/body unchanged byte-for-byte in /tmp/cubit-scene-source-pins-r2.
+r2 strengthens Pin_Image Current/Layer_Count preservation contract; no weakening.
+5083 LIVE selected revisedscene+backdrop proof, log/tmp/cubit-scene-source-pins-scene-proof-r2.log.
+25903 LIVE image scenarios+backdrop+realMesa with actual release attempts during
+CPU capture, log/tmp/cubit-scene-source-pins-tests-real-r2.log.
+Frozen r2inputs; all outputprivate. r1publication script NOTRUN and needsr2update.
+Prior turn PROGRESS; currentPROGRESS (proof evidence+contract repair+real regression).
+
+2026-10-03 PRIVATE image-reader verification update:
+59082 TERMINAL0: backdrop288cases +realMesa384frames2359296pixels, validation0.
+46409 TERMINAL0 but PROOF INCOMPLETE: backdrop6checks, one unproved postcondition
+because Pin_Image's contract lacks preserved Current/Layer_Count. Do NOT publish.
+37239 confirmed LIVE by handle and OSprocess1383847; selected owner+scene proof.
+After terminal, strengthen private Pin_Image post to preserve Current and
+Layer_Count, then reprove affected scene/backdrop. Inputs remain frozen meanwhile.
+/tmp/cubit-publish-scene-source-pins-r1.py PREPARED, NOT EXECUTED; updateproofpaths
+if repaired runs use newsubdir; script blocks unproved reports. No sharedchanges.
+
+2026-10-03 source-reader PRIVATE verification now active.
+64768 TERMINAL0: all4new image-reader scenarios PASS plus2existing glyphscene
+scenarios. Tests cover200draws/onepin,100pendingpolls, capture+GPU release guards,
+unknowncompletionretention,136-tokenexhaustion, stale/reused/None tokens,
+CPUnotretired, capturedshutdown, and stale source generation rejection.
+56417 TERMINAL4 was missing with Vulkan_Submission; corrected before64768.
+37239 LIVE selected SPARK proof owner+scene, log/tmp/cubit-scene-source-pins-proof-r1.log.
+59082 LIVE backdropcapture+realMesaoracle, log/tmp/cubit-scene-source-pins-real-r1.log.
+Sources frozen whilethesejobs run. No sharedoutputs/production/index changes.
+FullnativeGPUcapture/transport stillpending; currentturnPROGRESS.
+
+2026-10-03 PRIVATE source-reader integration /tmp/cubit-scene-source-pins-r1.
+Own private Desktop_Vulkan_Startup +Desktop_GPU_Scene/backdrop spec/bodies;
+explicit136 CPU-reader tokens gate source release/Stop, deduplicated scene image
+pins retained through capture/upload/submission until confirmed retirement.
+No production or sharedbuild/index edits.56417 private hosted compile;
+log /tmp/cubit-scene-source-pins-build-r1.log. New focused tests/proofs next.
+Previous turn PROGRESS (presentation cancellation published and verified).
+
+2026-10-03 FINAL70083 TERMINAL0: integrated checkout compiled; all10
+presentation scenarios PASS. Four published hashes rechecked unchanged.
+Clean selected owner proof245checks152flow93prover, none unproved/justified.
+All ownjobs terminal, no VM/lock; no index/staging/commit/push changes.
+Cancellation integration complete; goal still active, next fullDesktopGPU
+capture/source-lifetime integration and authenticated display handoff.
+
+2026-10-03 presentation cancellation PUBLISHED after clean proof and real Mesa.
+41857 TERMINAL0: all10 mock scenarios PASS; selected Desktop_Vulkan_Startup
+proof245checks (152flow,93prover), zero unproved/justified. 65721 TERMINAL0:
+realMesa384frames2359296exactpixels/382held-target exclusions/validation0.
+63666 TERMINAL1 was only inherited relative GPR paths; corrected in65721.
+/tmp/cubit-publish-gpu-presentation-cancel-r1.py SUCCESS; NEVER rerun.
+Four source hashes: tests/compositor/build/gpu-presentation-cancel-published.json.
+70083 LIVE final root presentation build and scenarios0..9 under sharedlock;
+log /tmp/cubit-gpu-presentation-cancel-published-r1.log. Poll same handle.
+No native VM/index/staging changes. Full Desktop GPU capture and actual
+Display image export/authenticated fence handoff remain incomplete.
+Previous status-summary turn NO PROGRESS; this turn PROGRESS: proof completed
+and guarded integration published. No blocker audit streak.
+
+2026-10-03 known-rejected presentation cancellation PRIVATE
+/tmp/cubit-gpu-presentation-cancel-r1. New D.Cancel_Presentation calls existing
+Pool.Retire_Display after explicit no-display-reader evidence; preservesfront
+and latestready. Bad/stale/unconfirmed ticket quarantines, no implicitretry.
+41857 LIVE10mockscenarios then cleanfullD proof, log
+/tmp/cubit-gpu-presentation-cancel-r1.log.63666 LIVE realMesaoracle finalhandoff
+cancels heldpending, presents latestready against originalfront, thenretires.
+Log/tmp/cubit-gpu-presentation-cancel-real-r1.log. Pollbothsamehandles; sources
+frozen. Rootexistingpublishedpresentation unchanged. Inputs.json baselines.
+No sharedproduction/index/nativeVM/lock. Previous/currentgoalPROGRESS.
+ActualDisplay authentication/export and fullDesktopGPUcapture stillrequired.
+
+LATEST29485 TERMINAL0 finalrootpresentation project compiles and allfive
+lifecycle/fault scenarios PASS. Sevenpublishedhashes unchanged. Allownjobs
+terminal/noVM/lock. Proof241checks and realMesaheldtargetchecks verified.
+Goal remainsactive; noindex/staging. Next known-rejected presentation rollback,
+realimageexport/Displayadapter, fullDesktop capture and hardwareverification.
+
+2026-10-03 GPU presentation integration PUBLISHED7files+docappend via
+/tmp/cubit-publish-gpu-presentation-r1.py SUCCESS; NEVERrerun.
+32482TERM0 cleanselected updatedD proof241checks150flow91prover,0unproved/justified.
+68276TERM0 all5mockscenarios;21552TERM0 actualMesa384frames2359296pixels,
+382framesexcludeactualheldfront/pendingframebuffers,cleanup/validation0 PASS.
+Root tests/compositor/build/gpu-presentation-published.json authoritative for
+changed D and strengthened realbackdropfixture (supersedes those earlierhashes).
+29485 LIVE finalrootproject compile/run5scenarios under sharedlock, log
+/tmp/cubit-gpu-presentation-published-r1.log. Pollsamehandle; no sourceedits.
+No index/staging/nativeVM. Presentationinterfaceexportsidentityonly; Display
+adapter/authorizedimageexport stillabsent. DriverConfirmed evidence simulated
+inhosttests, notphysicalscanout. NormalDesktopsoftware.
+Next consider safe pending-presentation cancellation for known-quiescent
+submission rejection (existingPool.Retire_Display, notyetexposed), plus actual
+mainloop/client/decorations and driverinterop. Fullgoalactive/progress.
+
+2026-10-03 GPU presentation integration PRIVATE /tmp/cubit-gpu-presentation-r1.
+Desktop_Vulkan_Startup copy now exposes existing Compositor_Pool display lease
+operations: Take_Presentation (ticketonly), Confirm_Presentation exactcurrent+
+previous latch/retirement evidence, Retire_Presentation finalfront, read-only
+pending/front/fault queries. No newFFI/rawimageexport/nativeprotocol.
+Pool displayheldtargets now stay in actualD render/stop lifecycle; latestready
+can recycle thirdtarget while front+pending held. Renderer completion notlatch.
+32482 LIVE cleanselected D SPARK proof, log /tmp/cubit-gpu-presentation-proof-r1.log.
+68276 LIVE mock GPUowner presentationtests, log /tmp/cubit-gpu-presentation-tests-r1.log:
+64readyreplacements, noqueuegrowth/heldtargetreuse, exacthandoff+stopretirement,
+wrong epoch/previous/unconfirmed/finalretire faults retainallstorage.
+Poll exacthandles; freezeprivateD/tests/GPR. No sharedsource/index/nativeVM.
+Current goalPROGRESS, previous wallpaper30filesalreadyPUBLISHED. Physicaldriver
+handoff/mainloop and remainingdrawingstillincomplete. No copy/performanceclaim.
+
+LATEST94394 TERMINAL0 published root GPR source-inventory checks and real
+Mesaoracle PASS384frames2359296pixels216chunks/twoimages/validation0, same
+companion233472affinepixels. Inventory warnings missing ALI in fresh testdirs
+are not compile evidence; actual real-oracle build/link/run succeeded. All30
+published filehashes rechecked match backdrop-published.json. All ownjobs
+terminal, no VM/lock. Native125%Settings screenshot inspected and available.
+No index/staging changes; fullgoalactive. Next GPUmainloop/decorations/client
+buffer and displayintegration; existingnativeDesktop stillsoftware.
+
+2026-10-03 wallpaper sources PUBLISHED30files via
+/tmp/cubit-publish-backdrop-r1.py SUCCESS; NEVER rerun. Root
+ tests/compositor/build/backdrop-published.json verifies exactset.
+16629TERM0 expanded nativeDPI fourgroups+headlessPASS; stoppedonlycompleted
+ownVM1303882. Native125%screenshot /tmp/cubit-backdrop-capture-r1/native-desktop-125.png
+visually inspected Settings+taskbar.78017TERM0 renamedrealoracle same384frames/
+2359296pixels/zeroValidation.42482TERM0 cleanCAPTUREproof5checks2flow3prover;
+previous589includedcachedunits; docs explicitlycorrectcounts5/11/31.
+78452TERM7 gprls missingfresh outputdirs; no sourcefailure.94394 LIVE root
+published-project inventories then realMesaoracle under sharedlock, log
+/tmp/cubit-backdrop-published-check-r2.log. Pollsamehandle, sharedsourcesfrozen.
+No index/staging/commit; normalDesktop remainssoftware, GPUmainloopunfinished.
+Published testdocs tests/compositor/desktop-backdrop.md and runscript.
+Current goalPROGRESS. Next afterrootcheck begin mainloop GPU capture boundaries
+and remainingdecorations/client/displayhandoff; private softpipe-only facadedraw
+cannotbe mislabeled asGPUoutput. No physical240Hz/latencyclaim.
+
+LATEST61210 TERMINAL0 full nativeDesktop compile/bind/link+hashguard,
+SHA8de871ea9ded52d8bf630ba6a47d1ed40ec675ffc28b9c5c6f241df15449d523.
+16629 LIVE expanded nativeDPI/Desktop run under sharedlock:
+/tmp/cubit-backdrop-dpi-r1.log and .serial.log, privateDesktopoverride;
+SCALING/PRIMARY/ARRANGEMENT/MIXED_OUTPUTS=1. Poll16629; no restart/inputs edits.
+Realhost49908TERM0 384frames2359296exactpixels/216chunks/2images/validation0
+recorded real-verified.json. Sourcepublication stillpending nativeQA.
+Need rename realhost bridge/test fixtures before rootpublication to avoid
+replacing existing glyph scene realfixture; preserve root tests/gpr ownership.
+Commonstyle changes need add desktop_backdrop_style.ads to explicit
+wallpaper_output/settings_renderer/desktop-wallpaper GPR sources. New source
+helpers not wiredintoMain yet; current native candidate onlysoftwarestyle.
+All newbackdrop sources private, noindex/staging changes.
+
+2026-10-03 REAL MESA WALLPAPER VERIFIED49908TERM0.
+Actual embeddedassets -> ownerchunkupload -> GPUscene -> physicaltarget readback
+384styles/DPI/rotations,2359296 EXACT pixels vs actualsoftwarePaint,216initial
+chunks/tworetainedimages/accountedcleanup. Companion233472affinepixels and zero
+Vulkanvalidationerrors. /tmp/cubit-backdrop-real-r3.log. This is hostedllvmpipe,
+notnativeGPU/performance.94670TERM1 testoperatorvisibility;19374TERM1 privateGPR
+missingcompositorsampling; correctedtestbuildonly beforeverifiedrun.
+61210 LIVE nativeDesktop fullcompile/bind/link+hashguard under sharedlock via
+/tmp/cubit-backdrop-link-desktop-r1.py, log/tmp/cubit-backdrop-native-link-r1.log,
+privateoutputdesktop-mesa-wallpaper.svc. Freeze inputs/pollsamehandle. This
+candidate changes sharedstyle in softwareWallpaper; doesnotactivateGPUMain.
+AfterterminalPASS nativefullDPIregression then guardedsourcepublication/docs.
+All sourcechanges PRIVATE; no index/staging. GoalPROGRESS, mainGPUroutingopen.
+
+2026-10-03 real wallpaper oracle LIVE94670, privatebackdropcaptureworkspace.
+/tmp/cubit-backdrop-real-r1.log. Nix vulkan-affine-shell; actual embedded native
+wallpaper.o/wallpaper_cubie.o copied/hashrecorded assets/asset-hashes.json.
+Private real bridge uses retainedowner for twoimages, G.Backdrop capture;
+C host borrows real llvmpipe device, reads selectedactualtarget, compares with
+software Desktop_Wallpaper.Paint.384style/DPI/rotation frames intended,216
+initialchunks/twoallocations, no perframeuploads, cleanup asserts. Not PASSyet.
+Sources/test/GPR frozen; poll94670, never restart livejob. No sharedoutputs,
+production/index edits/nativeVM. Existingfontarchivefrozen reused for linkonly.
+CurrentgoalPROGRESS implementation; physicalGPU/mainloop integration unfinished.
+
+2026-10-02 retained wallpaper owner VERIFIED PRIVATE.
+61523TERM0 bothassets72/144chunks,1000cachehits each/no upload, duplicate slot,
+changed slot rejection, CPUcapture and pendingGPUframe close gates, fullrefund;
+uncertainupload quarantine passes.39278TERM0 cleanselected owner SPARK proof
+report obj/owner-proof-r3/gnatprove/gnatprove.out, no unproved/justified.
+53597TERM1 after testsPASS: internal Advance lacked Available=>Resident summary;
+strengthened contract, reran proof and executablecontracts tests (above).
+All own jobs terminal. owner-verified.json hashes. No shared production/index
+changes. Next realMesa sceneoracle using retainedowner+GPUBackdrop.Capture and
+actual/synthetic immutableasset upload; then nativeadapter/fullDesktop routing.
+Capture_Retired remains explicit caller attestation for CPUreferences; device
+idle gate protects GPU readers. General slot reservations supplied by caller.
+No automaticeviction/newheap; storage charged by existingD ledger.
+Goal PROGRESS; actualhardware presentation/fullDesktop integration unfinished.
+
+2026-10-02 retained wallpaper owner PRIVATE implementation.
+Desktop_Backdrop_Owner limitedState explicit caller-reserved general slot128..135,
+immutable asset identity; Fresh/ReadyToUpload/Uploading/Resident/Quarantine/Closed.
+Acquire one allocation/chunk max, cachehit no pixelcopy; Poll onefence/nextchunk
+max, Close requires CPUcapture retirement +healthyidle; pending/uncertain kept.
+53597 LIVE private owner mock lifecycle tests then clean selectedSPARK proof,
+/tmp/cubit-backdrop-owner-r2.log. Freeze owner/test/project inputs.
+83441TERM1 Ada mixedlogicaloperators corrected; no proofchecksfirstattempt.
+Tests normalwallpaper72/cubie144chunks+1000residenthits, duplicate slot, changed
+identity rejection, CPUcapture and GPUframe Close gates, uncertainquarantine.
+No new shared production/index edits or nativeVM. ActualMesa asset/render
+oracle, Desktop routing and native integration still required. GoalPROGRESS.
+
+LATEST30406 TERMINAL0 upload lifecycle all3scenarios PASS:72chunks,
+720pending polls, busy backpressure, fullcoverage-only import/refund;
+wrongshape cancelsbeforequeue; uncertaintransfer retainsbacking/refusesimport.
+All own jobs terminal. upload-verified.json hashes source/testboundary.
+Next bounded retained wallpaper asset owner, reuse D accounting/import,
+then realMesa asset/pixeloracle and integrateDesktop; do not publishcandidate
+as completed mainloop/GPUfeature. No shared production/index changes.
+
+2026-10-02 wallpaper upload implementation PRIVATE /tmp/cubit-backdrop-capture-r1.
+New Desktop_Backdrop_Pixels synchronous audited raw-memory boundary validates
+plan/format/asset dimensions/mapping bytes before copying immutable atlas rows
+into existing staging; padding untouched, no retained pointer/newpixelallocation.
+Desktop_Backdrop_Upload SPARKStart borrows writer, copies one chunk, cancels
+on rejection, submits once with producer-retired after synchronouscopy.
+48003TERM0 fullatlas oracle464chunks bothimages/paddedrows+6no-writeguards PASS.
+80274TERM0 proof mixed cache total600; superseded by clean96206TERM0
+--subdirs=upload-proof-r2 report EXACT11checks7flow4prover,0unproved/justified,
+1unit analyzed. Do not attribute cached600checks to newupload unit.
+78034TERM4 test enum typo D.Failed corrected D.GPU_Failed.
+30406 LIVE private lifecycle tests (72chunks/720pendingpolls/fullcoverage import,
+wrongshape cancellation and uncertaintransfer retention), log
+/tmp/cubit-backdrop-upload-tests-r2.log. Pollsamehandle,inputs frozen.
+No own nativeVM/sharedlock/index changes. Retained asset owner and actualMesa
+pixel rendering/mainloop integration remain; copy onlyinitialupload intended.
+Current goal PROGRESS; no completion/hardwareperformance claim.
+
+2026-10-02 shared wallpaper style PRIVATE verified.
+70647TERM0 shared style: software384scaled/rotated/style cases and capture288
+cases PASS, selected SPARK589checks197flow392prover none unproved/justified.
+6404TERM0 independent scalar wallpaper1728clip/padding cases+8invalid guards
+PASS, scratch1024 unchanged.28743TERM5 GPR inherited Source_Dirs omitted,
+fixed privateGPR, no productionfailure. Logs /tmp/cubit-backdrop-shared-style-r1.log
+and /tmp/cubit-backdrop-shared-strips-r2.log. All own jobs terminal.
+New Desktop_Backdrop_Style centralizes dims/colors/placement; private existing
+Desktop_Wallpaper spec/body and GPUchild use it. Candidate hash manifest
+shared-style-verified.json. No shared production/index edits.
+Next chunked immutable wallpaper upload/retained backing owner using existing
+D.Begin_Write/Submit_Write/Poll_Upload; copy staticasset into mapped staging
+only at initialupload, never perframe. Must gate Import_Backing on fullconfirmed
+coverage, retain uncertain leases, then actualMesa pixeloracle and native
+integration. Source dimensions currently2048x576 and2048x1152, general8slot
+pool separatefromglyph128. No actual asset upload/GPUdesktop claim yet.
+Goal progress; active. Never rerun successful straighticons publication.
+
+2026-10-02 wallpaper capture70169 TERMINAL0: hosted288style/scale/rotation
+cases PASS; missing image and fill-then-image overflow reject without submission.
+Selected child SPARK proof closure588checks197flow391prover,0unproved/justified.
+Report /tmp/cubit-backdrop-capture-r1/obj/gnatprove/gnatprove.out. Dependency
+hash audit unchanged. All own jobs terminal; no shared production/index changes.
+Child implementation/test/GPR remain PRIVATE pending real asset upload and
+render integration. Next share style constants with software renderer, provide
+immutable asset upload ownership, wire child into actual capture, then pixel
+oracle/native tests. No new hardware/DPI pixel-quality/performance claim.
+Current goal PROGRESS; fullgoal active. Straighticon publication alreadydone.
+
+2026-10-02 wallpaper capture private candidate /tmp/cubit-backdrop-capture-r1.
+New Desktop_GPU_Scene.Backdrop child captures physical background fill plus
+existing Fill/Fit/Center wallpaper command,2layersmax, no pixels/copies/FFI.
+Uses existing style colors and immutable2048x576/2048x1152 atlas dimensions.
+Missing source/overflow invalidates whole capture; no partial background submit.
+70169 LIVE private hosted regression then selected SPARK proof, log
+/tmp/cubit-backdrop-capture-r3.log. Freeze privatechild/test/GPR inputs.
+8396/52743 TERM1 contract syntax (limitedstate Old then unevaluated Old),
+corrected scalar count snapshot with permitted unevaluated Old pragma.
+Tests288style/DPI/rotation cases plus no-partial missing-source/overflow.
+No shared production/index edits or nativeVM/buildlock. Existing wallpaper
+CPU path unchanged; actual asset upload and mainloop routing still required.
+Previous turn PROGRESS (straighticons published), current implementationPROGRESS.
+
+2026-10-02 straight-alpha icons VERIFIED and PUBLISHED23files.
+76017TERM0 mixed-output native Desktop: primary/scaling125-150%/arrangement/
+standard interaction groups PASS; headlessPASS desktop-dual-output. OwnVM
+1201590 stopped only after all observer groups passed; harness cleanupTERM0.
+Source/binary hashes unchanged; guarded /tmp/cubit-publish-straight-icons-r1.py
+SUCCESS (NEVER rerun). Root tests/compositor/build/straight-icons-published.json.
+No index/staging/commit changes. No own livejobs/VMs. PhysicalGPU still not
+integrated. Previous/current goal turns PROGRESS; goal remains active.
+Next wallpaper/decorations/fallbackglyph routing plus full GPU capture and
+client/display lifetime integration. Native150% capture is wallpaper-only:
+functional cursor/geometry evidence, not a text-quality screenshot.
+
+2026-10-02 DPI regression now LIVE76017 under shared build lock.
+Exact log /tmp/cubit-straight-icons-dpi-r2.log, serial matching .serial.log;
+CUBIT_TEST_{SCALING,PRIMARY,ARRANGEMENT,MIXED_OUTPUTS}=1, private Desktop
+SHAecbda7f2. Poll76017, do not restart/edit its inputs. Latest prelaunch retry
+had acquired lock but Nix cache was sandbox read-only (not lock contention);
+escalated native invocation authorized and running. Previous turn PROGRESS;
+current real test launched. Publication script remains NOT EXECUTED.
+
+2026-10-02 continued icon integration: expanded DPI retry r2 did not start
+(sharedlock busy; Servo release build noted). No own running handles/VMs.
+Prepared private candidate.patch (23files), git apply --check PASS against
+current shared sources, integration-notes.txt with ABI/proof boundaries.
+Prepared /tmp/cubit-publish-straight-icons-r1.py, NOT EXECUTED: acquires lock,
+requires all five expanded native PASS markers and unchanged source/binary
+hashes before copying. Run only after successful dpi-r2; NEVER rerun once
+manifest exists. No shared production/index edits. Next retry exact DPI command
+from prior turn; no existing live test to poll. Goal active; turn PROGRESS
+(reviewed patch/evidence and guarded integration artifact), no true blocker.
+
+2026-10-02 straight-alpha candidate:39135TERM0 fullDesktop link;35102TERM0
+native desktop-dual-output PASS (taskbar/split drag/per-monitor maximize/
+wallpaper-cursor restoration/Settings).71991TERM0 submission SPARK74checks
+(46flow28prover),none unproved/justified. Prior suite56724TERM0 unchanged.
+Expanded DPI/primary/arrangement run attempted but sharedlock busy: NOJOB.
+All own handles terminal, no own VM. Private integration-review.json records
+23 candidate hashes and baseline conflict audit. Not published; no index edits.
+Next acquire sharedlock for mixed-output125/150% regression with private
+CUBIT_DESKTOP_IMAGE, then guarded publication. Current goal turn PROGRESS
+(new terminal native/proof evidence); goal incomplete and active.
+
+2026-10-02 native straight-alpha suite VERIFIED:56724TERM0 headlessPASS
+softpipe, all384output/128affine/mask/batch/glyph-owner/Mesa-baseline tests PASS.
+First17147TERM1 oldguardOver2nowvalid; fixtureusesinvalid3,checksretained.
+OwnVMs stopped onlyafterappfinish (orfailedapp); no VM now.39135 LIVE actual
+Desktop compile/bind/link+sourcehashguard underown sharedlock, privatecandidate
+/tmp/cubit-straight-icons-r1/desktop-mesa-straight.svc. Need terminal thenDesktop
+nativeinteraction/DPI beforepublication. No sharedsource/index/staging changes.
+Previous/currentgoalPROGRESS. Privatehandoff updated.
+
+2026-10-02 native probe RUNNING, ownsharedlock:17147 QEMU softpipe300s
+/privateapp c436b20c hashchecked link31927TERM0. Logs /tmp/cubit-straight-icons-native*.
+53408TERM0 facade82checks(43flow39prover),11faultcasesPASS;56819TERM0 final
+fullsceneVulkan712queues/546816pixels/115straightlayers/validation0. All private
+straight-icon sources frozen while native app runs; no shared source/indexedits.
+Desktop link script prepared /tmp/cubit-straight-icons-link-desktop.py, notrun.
+Prior/currentPROGRESS; nextnativeprobe outcome thenDesktop link/boot.
+
+2026-10-02 UPDATE:1240 TERM0 final guardedsoftpipe nativeCcompile and
+expanded384requestnativeprobe Ada compile/bind PASS. No link/execution yet.
+All ownjobs terminal, noVM. Private /tmp/cubit-straight-icons-r1/handoff.txt
+has lateststate. Next nativeprobe link/run +Desktop integration beforepublishing.
+Current PROGRESS; no blocker. No shared straightalpha/index changes.
+
+2026-10-02 private straight-alpha icon routing /tmp/cubit-straight-icons-r1.
+GPUscene owner WAS published (10files), no pendingpublication there.
+Own private main iconrouting/backend facade/affine+scene policy/nativeblend
+adapters andoracles.24769 TERM0 selectedSPARK280checks allproved;81900 TERM0
+realVulkan233472pixels/72newstraightcases,validation0;2597 TERM0 actualnative
+main+backendcompileonly.61919 TERM0 nativeCcompile before finalindexguard;
+finalguardcompile postponedlockbusy(nojob). New384requestnativeoracle prepared
+butNOTcompiled/run. Need finalnativeC,probe+Desktop nativeintegration before
+publishing. No shared straight-alpha changes or index/staging. Allownjobs
+terminal, noVM; current/previousPROGRESS. Private handoff.txt detailscommands.
+
+2026-10-02 Desktop_GPU_Scene VERIFIED/PUBLISHED (10newfiles).
+Private /tmp/cubit-gpu-scene-r1.63894 TERM0 initialtests/proof;40533 TERM0
+finaltests +selectedSPARK55checks (29flow26prover),0unproved/justified.
+99124 TERM0 realhosted sceneowner,49152glyph/178176affinepixels,validation0,
+8imagescleanup. Own snapshot+deduplicated glyph readers, one cold upload then
+fresh capture, no partial submission;200glyphoccurrences/1reader test PASS.
+No copies exported, pending/unknown retention, overflow/rejected shutdown tests.
+All own jobs terminal. Root hashes match private; noindex/staging/nativeVM.
+Next fullDesktop draw routing: wallpaper/icons/shadow/fallbackglyph still direct
+CPU, existing facade lacks begin-scope; client producer/display handoff remains.
+NormalDesktop software. Current/previous goal turns PROGRESS, no blocker.
+
+2026-10-02 private Desktop_GPU_Scene /tmp/cubit-gpu-scene-r1.
+Own new desktop_gpu_scene.ads/adb +tests only; complete snapshot and deduplicated
+glyph readers, bounded cold-cache retry, no partial submission.63894 TERM0
+initial mock lifecycle tests + selected SPARK proof. Final Close failure
+quarantines stopped cache;40533 LIVE final tests/proof,99124 LIVE real Mesa
+oracle. Private inputs frozen, shared sources unchanged; no native build/VM,
+index/staging/commit changes. Fullscene mainloop/client imports still required.
+Previous/current goal turns PROGRESS, no blocker. See private handoff.txt.
+
+2026-10-02 GPU glyph residency VERIFIED/PUBLISHED. Private
+/tmp/cubit-glyph-residency-r1.14004 TERM0 selected concrete proof387checks
+(196flow191prover), none unproved/justified;72440 TERM0 defaultcache101checks.
+24441 TERM0 final hostedreal fonts/cache8residentimages,49152glyph pixels,
+178176affine,validation0,all8destroyed/refunded.32214 TERM0 trimmed uncertain
+frame fixture; all assertions retained.128resident/pinned lifecycle +5faults
+PASS; healthy-idle gate retains readers on uncertain frame.16files hashchecked
+underlock; docs/evidence in tests/compositor/build/glyph-residency-*.
+All own jobs terminal; no index/staging/commit changes. Current PROGRESS;
+previous status turn yielded completed proof evidence. Next actual scene capture
+and source/reader lifetime integration. Mainloopsoftware; no nativeGPU/HW claim.
+
+2026-10-02 private glyph residency /tmp/cubit-glyph-residency-r1. Own new
+Desktop_Glyph_Residency, reader-capacity/cache contracts and positive renderer
+retirement query. Full128resident/pinned lifecycle/fault tests PASS. Uncertain
+frame test97363 found logicallease release when Frame_Pendingfalse; fixed with
+healthy-idle Can_Retire_Readers (nativeimageguard already retained resources).
+14004 LIVE selectedResidency/Desktop proof after fixes;72440 LIVE defaultcache
+proof;24441 LIVE finalrealVulkan cache rerun. Inputs FROZEN. Priorrealcache68246
+TERM0 49152glyphpixels/178176affine/validation0,8images retired. No sharedsource
+changes for residency yet; root typedglyph342check publication complete.
+Current/priorPROGRESS; no index/staging. Mainloopsoftware,no nativeGPUclaim.
+
+2026-10-02 real-font Vulkan +typed glyph binding VERIFIED/PUBLISHED.
+Private /tmp/cubit-glyph-real-r1.53757 TERM0 frozen host Rust fonts build.
+63567 TERM0 rawglyph realoracle;59541/39969 TERMfailure missingPixel_Format
+operator visibility, fixed.43826 TERM0 finaltyped realfonts->exactownedstaging->
+scene:2faces4DPI,8glyphs4allocs4rewrites,49152exactpixels,affine178176,
+validation0.78827 TERM1 missing bind-resolve guarantee; GS.Bind contract strengthened with
+proved uniqueness assertions,76630 revised proof completed; report build/glyph-bindings-proof.out.
+Eight mockglyph cases check premature/wrongslot/density/duplicate/stale binding.
+11files hashpublished. Nativepolicy singleton nowowns glyph associations and
+Capture_Glyph; face/code are producer-attested raster metadata. No actual
+nativeGPU/display/perfclaim. Captures /tmp/cubit-glyph-real-r1/captures,
+glyph-dpi-sheet.png inspected. No index/staging changes. CurrentPROGRESS.
+Next bounded glyph residency/eviction and fullDesktop scene traversal integration.
+
+2026-10-02 padded upload/direct glyph producer VERIFIED/PUBLISHED.16files
+hashchecked underlock, build/strided-upload-* and direct-glyph-upload-* evidence.
+Private /tmp/cubit-strided-upload-r1.33980 initialfixture TERM1 wrongtargetsize;
+80058 TERM0 full136strided+2160chunk/21600pending+SPARK243checks(146flow97prover),
+0unproved.2608 TERM0 realhostVulkan padded rows poisoned:60chunks6144pixels,
+affine178176,validation0.52899 TERM0 initial8glyphscenarios+proof13checks;
+10601 TERM0 stronger8glyph scenarios +14defaultwriterfaults.30981 final glyph
+checks/proof completed; explicit pitch/offset/fullspan checks, audited unchanged
+fontFFI body/spec nowcontracted. No realfontGPU/nativeGPU/performanceclaim.
+Caller still must poll completion, import, bindglyph, capturefullscene. Sources
+now own136 under140entrybudget and139children from priorcapacitypublication.
+Allownjobs terminal atpublication. No index/staging changes. CurrentPROGRESS.
+
+2026-10-02 full source capacity VERIFIED/PUBLISHED underlock. Private
+/tmp/cubit-source-capacity-r1; combined publication supersedes unrun standalone
+storage publication script (DO NOT RUN /tmp/cubit-publish-storage-capacity-r1.py).
+47225 TERM0 Desktop/context/image-owner SPARK326checks(169flow157prover),0unproved.
+60510 TERM0 owners+14writer+9backing+6external regressions.61298 TERM0 sanitized
+C136metadata bounds and actual hosted Desktop llvmpipe6144pixels/affine178176,
+validation0. Fullmock136owned:128masks+8BGRA, exact140allocationbudget, slot
+role exclusion/reuse. Sourceprovider stays136; backing136, ledger140, child139.
+Ledger generic Slot_Count CPUdefault8, exact sum/refund proved146checks prior.
+No nativeGPU/timing claim; mainloopsoftware. Current/priorPROGRESS. Allownjobs
+terminal atpublication; no index/staging changes. Next glyph staging stride,
+source residency and full scene integration, displayhandoff/hardwaretiming.
+
+2026-10-02 actual Desktop singleton REAL VULKAN PASS/PUBLISHED. Private
+/tmp/cubit-desktop-real-upload-r1.65502 TERM1 test C adapter prototypes wrong;
+83078/51895 TERM1 pixeloracle version2 staleversion0: missing caller output
+damage, diagnosed explicitly. Bridge now marks changed quad;30033 TERM0 BGRA.
+35075/19866 TERM0 final BGRA/R8:40chunks,384B staging,8contents,4native source
+allocs+4same-image rewrites,6144exact pixels, final source/target/context release
+and budgetrefund. Actual Desktop/Device_FFI/Mesa_Service and real Vulkan; ONLY
+service admission mocked with borrowed host device. Intercepted dispatch forwards
+all operations, counts source lifetime and identifies recorded framebuffer.
+Affine178176pixels passes,validation0errors.7testfiles hashpublished underlock;
+build/desktop-real-upload-*. No production change from pixeltest. Prior/current
+PROGRESS. Allownjobs terminal/noVM. Root writer fullnative link still UNVERIFIED:
+49920 staleMesa adapter;42015 postlink runtime logging mutation; later retry
+flock failed(nojob). See /tmp/cubit-desktop-writer-r1/link-followup.txt. Next
+stable fullnative link, complete scene/client integration +displayhandoff;
+mainloop remainssoftware,no nativeGPU/HWperformanceclaim. No index/staging edits.
+
+2026-10-02 Desktop writer policy VERIFIED/PUBLISHED.95847 TERM0 actual
+SPARK210checks(129flow81prover),0unproved/justified. Strong invariant single
+active source, writing=>idle, transferring=>matchingpending; completed phase
+contract strengthened.26708 TERM0 14lifecycle/fault scenarios +nativecompile;
+93950 TERM0 final existing lifecycle regressions. CPU writer blocks descriptors,
+frames and retirement; chunk completions yield to frames. Ownedslots0..4 now
+completion-gated Import_Backing; trusted externalimports>=5.10files published
+underlock/hashchecked; build/desktop-writer-* evidence. Native helper adds
+upload_record C and required scheduler symbols. No index/staging changes.
+Previous/current PROGRESS. Allownjobs terminal. Next fullnative link, then
+realVulkan singleton test (existing hosted bridge tests components only), full
+scene/client integration and presentation. Mainloop software, noHW/timingclaim.
+
+2026-10-02 private writer integration PROGRESS, not published. Snapshot
+/tmp/cubit-desktop-writer-r1 adds per-backing coverage, single CPU writer token,
+transfer-vs-frame polling, protected retirement, owned-slot Import_Backing gate.
+Raw external imports move to slots>=5; 0..4 reserved. Runtime lifetime tests
+24792 initial13PASS; proof r2 failed four strengthened-invariant checks incl
+real descriptor-release overlap while CPU writer active. Fixed release gate,
+Fresh=>Available invariant, exact completed-phase contract and capacity guard.
+95847 LIVE revised proof-r3 (same handle, do not restart/edit inputs).26708 TERM0
+14writer scenarios incl interleaved frames/poll separation and uncertain
+release exclusion +native Ada compile.68033 TERM0 separate private regression
+snapshot: startup/backing/targets/frames/sources/pipeline/upload cases pass;
+updated source/backing tests copied back to writer snapshot. Source guard fixes
+in writer snapshot newer than that regression snapshot. No native full link or
+real-Vulkan Desktop-scheduler execution yet. Native builder must add
+vulkan_upload_record C object before publishing/linking. All other own jobs
+terminal. Current/prior PROGRESS. Shared source/index/staging unchanged.
+
+2026-10-02 private writer integration /tmp/cubit-desktop-writer-r1. Own Desktop singleton/API, upload policy integration and tests. No shared source changes until verification. Previous turn PROGRESS.
+
+2026-10-02 native upload-linked Desktop +fallback VERIFIED.42917 TERM1
+before link: saved bundle runtime hash stale.83020 TERM0 rebuilt NEW
+ desktop-upload-service-bundle-r1 against current runtime (allguardsenabled),
+linked desktop-upload-link-r2; required configure/release/uploadmetadata/bind
+symbols verified.ELF60a396fae31efaacbadfda2c7cf60bfd213818de181e6319a5821429f837d3b9.
+34174 TERM0 nativeQEMU --approve-render fallback: fresh software incarnation,
+three keyboard/menu exactrestoration cycles PASS. Frozenkernel/service seeds
+recorded; NO nativeGPUupload execution. Allownjobs terminal/noVM/lock. Logs
+build/desktop-upload-{link-r1,link-r2,fallback-r1}. Next global writer/pending
+purpose/completion-gated importer; mainloop software. Current/priorPROGRESS.
+
+2026-10-02 Desktop upload admission VERIFIED/PUBLISHED. Own singleton now
+owns U.State and Configure_Upload/Release_Upload with same aggregate Budget;
+metadata Device_Upload_FFI constructs one private buffer on admitted device.
+No mapping exposed yet; future writer API MUST extend retirement gate. Stop
+retains pending/uncertain/health-lost dependencies.3090 TERM0 eleven scenarios
++actual selectedSPARK152checks(93flow59prover),0unproved/justified.4680 TERM0
+native Desktop/FFI compile.78300 TERM0 existing startup/backing/target/frame/
+source/pipeline regressions.29619 TERM1 AFTER sanitizer metadata PASS due C
+harness pointer typo; corrected57748 TERM0 Vulkan32chunked sources,24576texture/
+82944scene pixels,0validationerrors.12files hashpublished underlock incl native
+builder C dependency; build/desktop-upload-*. Prior/current PROGRESS. No staging/
+index changes. Native full link next; no live Desktop upload/draw or HW claim.
+
+2026-10-02 own private Desktop upload-admission integration at /tmp/cubit-desktop-upload-r1. Scope device_storage C/header, new Device_Upload_FFI, Desktop singleton upload ownership, constructor/lifetime tests and native builder dependencies. No shared source writes until verified publication under lock. Previous turn PROGRESS.
+
+2026-10-02 upload coverage VERIFIED/PUBLISHED. New Compositor_Upload_Progress
+tracks confirmed rows with backing identity/nonwrapping chunk tickets; stale or
+duplicate observations ignored, uncertainty quarantined, publication iff complete.
+Same-backing content rewrite preserves sequence. Hosted bridge gates mapping,
+retirement and descriptor publication; 384B staging forces chunked BGRA/R8.
+Earlier34279 tests passed but proof ZERO checks (missing SPARK_Mode on instance),
+NOT proof evidence. Fixed instance;71271 TERM0 actual23checks(16flow7prover),
+all17entities analyzed, zero unproved/justified.42570 TERM0 native runtime compile.
+Existing17107 TERM0 Vulkan32contents(16resizes+16same-backing),24576texture/
+82944scene pixels,0validation errors;2160chunks/21600pending policy tests pass.
+Ninefiles hash-checked underlock; build/upload-progress-published.json, proof-r2
+and native-r1 logs copied. No index/staging/commit changes. Prior status-only
+turn NO PROGRESS; current proof/native/publish PROGRESS. No own livejobs/VM.
+Next Desktop admitted staging, global writer, upload-vs-frame purpose and importer
+coverage gate. Hosted bridge only; mainloop software, no HW/latency claim.
+
+2026-10-02 checked transfer recorder VERIFIED/PUBLISHED. New Compositor_Upload
+geometry (rect/stride/alignment/span +fullwidthrowchunks), Upload_Record_FFI +
+native C recorder and SPARK Upload_Recording; existingV.Seal_Transfer supports
+nonrenderpass batch after>=1admitted operation. Guardmatchingheldparents/live
+resources/freeassigneddescriptor/planfits; chargeboundedattempt, badrecord
+invalidatesbatch forcancel. Discard/layout, producercompletion, matchingprivate
+slot/noaliases remain trusted; partialcoldcontent NOTpublishable bythisAPI.
+68336 TERM0 380160addresscases/4Ktiles/extremes +recording faulttests; selected
+SPARK111checks0unproved/justified.85797 TERM0 ASanUBSan3positivebarrier/copy
+sequences+40precommandrejections and Vulkan.80456 TERM0 real llvmpipe BGRA/R8
+32resized CPUuploads via actualgeometry/recorder/SealTransfer/Submit/Poll;
+24576texture/82944scene pixels, stagingretention/refund,0validationerrors.
+16898 TERM0 nativeAda+Ccompile +existing1000submissionlifecycles/10000polls/
+frame/source/damage regressions.20files published underlock andhashchecked:
+build/upload-record-published.json. Allownjobs terminal/noVM/lock/index/staging
+changes. Prior/currentPROGRESS. Next Desktop stagingconstructor/admission,
+separate upload-vs-frame pendingpurpose, protectedmappedwrite and confirmedrow
+coverage before descriptorpublication. Main drawingloop stillsoftware; no
+nativeGPUupload/display/physicaltiming claim. Do not rerun publication script.
+
+2026-10-02 accounted upload buffer VERIFIED/PUBLISHED. New Upload_Owner/FFI
+and native upload_buffer C/header: contextchild before preparation, real buffer
+requirement charged before dedicated coherent host-visible allocation/map;
+capacity<=16MiB, noqueue/wait/pixelcopy insideboundary. Mapping presence NOT
+writepermission duringGPUuse. Unknown retainschild/charge, cleanreleaseunmaps
+andrefunds. GPUAccounting Extra_Slot=>True gives9 entries under SAME byte limit;
+defaultCPU8 unchanged. Initial85540 TERM1 caughtTotalstill8, fixed privately.
+27328 TERM0 13uploadcases+32reuses with8heldallocs +image/4096CPUstorage cycles;
+selectedSPARK93checks0unproved/justified.97531 TERM0 ASanUBSan19Cpaths.
+43071 TERM0 realllvmpipe32 CPU-written mapped sources +buffertoimage sampled
+render24576texture/82944scenepixels, pendingstagingretention, finalrefund,
+0validationerrors.15178 TERM0 nativeAda+Ccompile and CPUledger37proofchecks;
+97213 TERM0 nineDesktopbackingcases on9slots. All18files published underlock
+with build/upload-published.json hashes; headercomments clarifiedafterward.
+Logs build/upload-*. Current/priorPROGRESS; allownjobs terminal/noVM/lock/index/
+stagingchanges. Next device stagingmetadata +Desktopownership/admission and
+production bounded transfer recorder/completion-controlled writes. Hostmanual
+transfer/waits are fixture only; no nativeupload/drawing/display/perfclaim.
+
+2026-10-02 Desktop backing allocation INTEGRATED/VERIFIED. DeviceStorage
+five private BGRA/R8 source metadata records + new Device_Source_FFI; requires
+SPARK Fresh/Closed serialized slot, native nohandle/nooccupiedview, matching
+admitted device memory mask. Constructor no allocation/upload. Desktop
+Backings[0..4] context-aware owners share existing 8-entry budget with3targets;
+Allocate_Backing guardedhealthy/idle/notstopping/readytargets/pipeline/freeview,
+generation lease; Release_Backing stale/pending/view/health checks, Stopattempts
+unimported source retirement first. No source pointer exported by singleton.
+97054 TERM0 ASanUBSanmetadata matrix;17010 TERM4 Loop_Entry syntax fixed;
+26570 TERM0 ninebacking+sixsourcecases and selectedSPARK105checks0unproved/
+justified.37153 TERM0 actualmetadata/AdaFFI Vulkan32resizelifetimes24576texture/
+82944scenepixels0validationerrors.20600 TERM0 nativeLINK desktop-backing-r1 SHA
+fe083b96e252d716f6d323e4a049de8518c61fa51c1a2b7c63afeb8b992a64c7;
+nm confirms newallocation/release/constructor/sourceowner symbols. Mainloop
+still not invoking allocation or GPU draw. Docs desktop-optional-render.md.
+Allownjobs terminal/noVM/lock/index/stagingchanges. Prior/currentPROGRESS.
+Next bounded upload +layout/import integration: full5sources+3targets exhaust
+8ledger slots, so staging admission must be explicitly reserved/revised, never
+unaccounted. Complete native scenes/display handoff/hardwarelatency stillopen.
+
+2026-10-02 source metadata integration work: own device_storage C/header,
+new Vulkan_Device_Source_FFI ads/adb, source metadata test and hostbridge.
+Five private backing records share the existing 8-slot allocation budget with
+three targets; no raw client pointer import. Callers must be Fresh/Closed and
+serialized before metadata reset. No GPU allocation occurs in constructor.
+Previous turn PROGRESS; continuing bounded Desktop backing integration.
+
+2026-10-02 context-aware sampled backing VERIFIED/PUBLISHED. New
+Vulkan_Owned_Source ads/adb reserves context child before image prepare/allocate;
+clean rollback retires, unknown prepare/bind/release keeps child/charge; closed
+reuse via Rearm, no ledger/context-generation reset. Hosted nine failure cases,
+foreign context/held-reader rejection, unimported context retention, 32 reuse
+cycles and other-child preservation PASS.63268 TERM0 initial proof;87187 TERM0
+stronger selected proof13 (7flow/6prover), zero unproved/justified.77432 TERM0
+native Alire/runtime object compile.77616 TERM0 actual llvmpipe +15233 TERM0
+final strengthened-contract regression:24576texture/82944scene pixels,
+32resizedlifetimes, pending descriptor release blocked, finalbudgetrefund,
+0validationerrors. Logs build/source-parent-*. Allseven files published under
+lock with hashes build/source-parent-published.json; main/private rechecked.
+Earlier pending image-rearm fixture now superseded/published with sourceowner;
+do NOT replay old /tmp/cubit-rearm-publish.py or source-parent-publication.py.
+Allownjobs terminal/noVM/lock/index/stagingchanges. Prior/currentPROGRESS.
+Next singleton sampledmetadata/allocation/boundedupload integration; new owner
+still not called by DesktopStartup. Devicehealth, private matchingrequest and
+full upload/draw/descriptor retirement are caller obligations, nohardwareclaim.
+
+2026-10-02 image owner reuse VERIFIED:73769 terminal0 owner regression +
+selected SPARK61checks0unproved/justified, build/image-rearm-r1.log. Main
+Vulkan_Image_Owner.Rearm onlyClosed+noncurrentlease, no ledger/identity reset;
+32cycles alongsideheldallocation, staleidentity/live/prepared/quarantine gates.
+85980 terminal0 real llvmpipe private /tmp/cubit-image-rearm-vulkan-r1:
+32resizedsampled lifetimes24576texturedpixels/82944scenepixels, deferred release
+anddescriptor/backing/finalledgerrefundPASS, 0validationerrors. Production
+owner hashes identical private/main. Sharedlock prevented hostfixture
+publication (60649 boundedwait terminal1; subsequent nonblocking attempt1).
+Pending tested two-file delta build/image-rearm-host.patch plus source hashes
+build/image-rearm-sources.json. Apply under lock after hash check; do not rerun
+non-idempotent /tmp/cubit-rearm-host.py blindly. Docs record exact boundary.
+Allownjobs terminal/noVM/lock/index/stagingchanges. CurrentPROGRESS. Next publish
+fixture then production sampled-image metadata/backing/upload integration;
+Rearm alone does not reset native requests or provide upload/display authority.
+
+2026-10-02 owner reuse work: own Vulkan_Image_Owner ads/adb and owner tests.
+Adding guarded Rearm only after Closed and non-current ledger lease; ledger
+never reset, native request reset explicitly NOT supplied by this API. Tests
+exercise 32 reuses alongside a held allocation and reject live/prepared/unknown
+states. No native/driver/UI edits. Previous status-only user checklist was no
+progress; current implementation and verification are next safe action.
+
 # Compositor backend effort
+
+2026-10-02 actualnewprovider sampled source VERIFIED:80836 TERMINAL0
+build/owned-source-rendering-r1.log. Hostbridge allocatesowned sampledimage via
+SPARKImageOwner/sharedtargetbudget, GPUclear+shader-readablebarrier, actual
+DevicePipelineFFI.Source_Request +managedImport, capturedtexturedscene.768exact
+sampledoutputpixels, pendingreleaseblocked/nativebackingretained, completed
+viewthenbackingrelease, finalsharedbudgetrefundPASS. Full59136scenepixels+
+2304RGB+178176affine/0validationerrors. Ownhostbridge ads/adb/GPR+affineoracle
+updated; productioncodeunchangedthisturn. NoCuBitadmission/CPUupload/display/
+latencyclaim. Nextproduction sourcebacking+boundedupload lifecycle (including
+resize/reuse, stale-source generation andsharedbudget), thenUIcapture/handoff.
+Allownjobs terminal/noVM/lock/index/stagingchanges. Prior/currentPROGRESS.
+
+2026-10-02 owned-image source constructor VERIFIED: Cdevice_storage constructs
+fixedprovider request onlyforliveprivate ownedBGRA/R8 sampledimage, matching
+instance/physical/device/dispatch, no targetimage/memoryalias, validextent/slot,
+livepipeline/targets; occupiedslotrejectionpreservesrequest. SPARKDesktop
+Import_Owned_Source guardsidle/healthy/livepipeline/openadmission/freeSlot before
+metadata thenexistingmanagedImport.69366 TERM0 ASanUBSanmockmetadataPASS;
+86994 TERM0 sixsource-lifetimecasesnowthroughconstructorwrapperPASS;90451 TERM0
+SPARK83checks0unproved/justified;60633 TERM0 nativeLINK desktop-owned-sources-r1.
+NoCPUaddressimport, noexternalcapabilityauthority, sourcebacking/layoutretained
+callerobligations. Nextsourceallocation+boundedupload andrealnewprovider sampled
+pixeloracle; no actualnative source/texture/presentation claim. Allownjobs
+terminal/noVM/lock/index/stagingchanges. Previous/currentPROGRESS; goalACTIVE.
+
+2026-10-02 Desktop managedsource wrappers VERIFIED: Import_Source requires
+readydevice/livepipeline/openadmission/idle, pendingbusy noFFI; Release_Source
+allowedafterStop butonlyhealthydevice/idle, nullkey NEVERbacks-releasepermission.
+Source_Held tracksretainedregistration nothealth; uncertainty preservespipeline/
+context viaquarantinedsubmission.65312 TERM0 sixsourcecasesPASS inclpending,
+shutdownrelease, clean/unknownimport, unknownrelease, healthloss, stalegeneration
+reuse+capturedoldscenerejectedwithoutsubmission.42189 TERM0 SPARK77checks0unproved/
+justified.51451 TERM0 nativeLINK desktop-sources-r1. NewAPIsnotyetcalledfromnative
+Desktoploop; sourceproviderrequestmetadata/backing construction stillneeded,
+noCPU-pointer-as-texture orcrossprocessauthorityclaim. Next connectowned sampled
+image/upload/import provider andcompletecapturedscene. Allownjobs terminal,
+noVM/lock/index/stagingchanges. Prior/currentPROGRESS; goalACTIVE.
+
+Graphics/Display follow-up contract remains docs/compositor-shared-targets.md:
+currentprivateVkImages have NOscanoutauthority. Need negotiatedrender-write+
+scanout identity/epoch/fence/latch/retirement tobindGPUtargets withoutreadbackcopy.
+No newdriverABI orcapabilitynumbersinventedhere; compositor cancontinueowned
+sourcework whilethatindependentintegrationadvances.
+
+2026-10-02 existingtexturepipeline ownership INTEGRATED/VERIFIED: Desktop
+Prepare_Pipeline reservescontextchild beforeexistingaffineengine+136descriptor
+provider creation; cleanfailure retireschild, uncertainty retains; Stoprequires
+GPU/sourcequiescence, failedhealth skipsrelease. NoMesa/Vulkanrewrite orpixel
+upload/importauthority.71105 TERM0 fivepipeline +sixframecasesPASS inclpending/
+health retention;92065 TERM0 selectedSPARK68checks0unproved/justified.47494 TERM0
+realVulkan Cpipeline create/close +repeatrejection +targetpixeloraclePASS0validation
+errors (newprovider NOTsampled yet).7619 TERM0 nativeLINK desktop-pipeline-r1,
+--prepare-pipeline requirespreparetargets;6675 TERM0 nativefallback/menuPASS,
+no pipelinecreation withoutreadytargets. Audit: facadeCPUimageinputs needGPU
+sources and Complete_Output mutationcontract; privateGPUimages stillNOTDisplay
+scanouttargets. Nextsource/backing/captureconnection, nofakeCPUhandleimports.
+Descriptor/pipelineallocations outsideimageledger, fixedobjectcountsnotRAMclaim.
+Allownjobs terminal/noVM/lock/index/stagingchanges. Prior/currentPROGRESS.
+
+2026-10-02 boundedDesktopframe owner VERIFIED: Render/Poll_Frame/Damage_Output
+useprivatepool/damage/context, onependingGPU, deferredbusyrequests, onepoll/call,
+lateinputdamage preserved. Stopsetsstickyadmissionstop, dropsonlyunpublished
+readycandidate, pending/uncertainretained; pollingcanfinishbeforesubsequentStop.
+12310/92250 TERMINAL0 sixframecases +oldstartup/eighttargetcasesPASS;100busy
+resubmissionsnoextrastart/submit +100pendingpollsexactonequeryeach.21756/1122
+initialsyntaxTERM;81166 TERM1 two missingdamagecontractfacts, strengthened
+Frame.Begin_Record and Scene_Record withoutweakeningchecks.83646 TERMINAL0
+freshselectedproof168checks0unproved/justified.18445 TERM0 realnativeLINK
+build/desktop-frame-owner-r1;99023 TERM0 nativefallback boot/targets-skipped/
+3menus exactrestore PASS build/desktop-frame-owner-fallback-r1. Frame API not
+yetcalledbyDesktopdrawingloop; nohardwareframes/displayhandoff/latencyclaim.
+Nextactualscene-capture Render/Pollhook, display-readyleasehandoff remains.
+Allownjobs terminal/noVM/lock/index/stagingchanges. Prior/currentPROGRESS.
+
+2026-10-02 first-use layout IMPLEMENTED/VERIFIED: damageInitialized bits only
+warmonCompleted; cancelled/unknownretain. Owned Prepare_Frame guardscontext/
+epoch/writer/recording +coldfullpaint; sceneRecordcallsbeforepass, rejectedprep
+cancelscommand. CbarrierrecordsUNDEFINEDorretainedCOLOR, noqueue/wait/pixelcopy.
+53316 TERMINAL0 selectedSPARK116checks0unproved/justified.26372 TERM1 genuine
+partialassertcaughtfullpendingdamage;3settlingframesfixfixture.48619 TERM0 real
+Vulkan cancelledcoldretry +2304RGB +58368fillpixels/partial +178176affinePASS
+0validationerrors.53882 TERM0 owner/recordfaultmatrix inclpreparefailurePASS.
+61603 TERM0 ASanUBSan6barriers+66no-recordrejectionsPASS.14937 TERM0 native
+DesktopLINK build/desktop-initial-layout-r1. NoDesktopGPUsubmitloop/hardware/
+latencyclaim. Document target-context-lifetime.md; nextintegrateboundedframe
+submit/poll intoDesktopowner, then scene capture/presentation. Allownjobs
+terminal/noVM/lock/index/stagingchanges. Previous/currentPROGRESS, goalACTIVE.
+
+2026-10-02 real hosted device-target path VERIFIED:12756 TERMINAL0
+build/device-target-rendering-r1.log; oracle nowusesactualdevice_storage context
+request +actualAda Vulkan_Device_Targets_FFI +existingSPARKtargetowner, nohandmade
+imagerequests/mask.3allocations2304RGBpixels +72fillscenes55296pixels +surrounding
+178176affinepixels PASS/0validationerrors. Contextcloseretention+heldfront+final
+refundPASS. Test-onlymetadataintrospection in targetbundlebridge, GPRincludes
+actualstorageC/FFI. NoMesaServiceIPC/nativeadmission/Intel/latencyclaim.
+Nextproductionframegap confirmed: firstimageUNDEFINED->COLORtransition still
+suppliedbyhostoracle; Desktop needsproved first-use/discard-vs-retained handling
+including cancelledrecordings before GPUsubmissions. Existing scene spec already
+requirescaller imageprep, so allocationhook doesnotimplyrenderready. Allownjobs
+terminal/noVM/lock/index/stagingchanges. Previous/currentPROGRESS; goalACTIVE.
+
+2026-10-02 native target hook VERIFIED fallback: new Vulkan_Device_Targets_FFI
+realAda/C recordbridge discardsdirtyfailureoutputs; SPARK Configure_Targets
+checksready beforemetadata, callsboundedowner, consumesfailedattempt.20759
+TERMINAL0 startup+8targetscenariosPASS;15993 TERMINAL0 configure-proof37checks
+0unproved/justified.45524 TERMINAL0 realnativeLINK desktop-configure-targets-r1
+SHA d0ec7c169c54357d8bfde44fa6c9a831566d270515ab1c47d66ee9cd74e55b1a.
+Builder --prepare-targets requiresadmittedstartup, usesvalidatedoutputdims,
+64MiBimagebudget, logsready/charged/limit; softwaredrawingretained.16484
+TERMINAL0 native approvedunavailablefallback desktop-configure-targets-fallback-r1
+PASS emptyauthority, targetsskipped, freshsoftwarechild,3menu restorationcycles.
+Hardwaretargetallocation UNEXECUTED; 64MiBfixturelimit cannotfit3full4Ktargets,
+notproductionadmissionpolicy. Existingr2startupcandidateunchangedforgraphics.
+Nextactualdevice-metadata+targetrenderhostoracle; realframeinitialization,
+scene/framepipeline/presentation remainneeded. Allownjobs terminal/noVM/lock/
+index/stagingchanges. Prior/currentPROGRESS, goalACTIVE.
+
+2026-10-02 budget invariant +device metadata VERIFIED:99168 TERMINAL0 fresh
+budget-proof-r2 selected image/targets/Desktop144checks0unproved/justified;
+76522 priorTERM1 AdaOldconditional syntax corrected.31146 TERMINAL0 sixfault
+caseswithcontractsPASS. Configured_Limit preservescallerbudget throughalltarget
+operations; chargedactualimages only, NOTtotalMesa/processRAM. Addednarrow
+vulkan_device_storage.h/.c metadata preparer (sameadmittedview/livecontext,
+3distinctstaticrequests, excludesprotected/lazy, <=16384axes, onepublication).
+63767 TERMINAL0 ASan+UBSan private device-target-metadata-dj69nmww testsPASS.
+Sharedlockbusy initially; finalpublication exacttestedbytes/hashchecked against
+unchangedoldroot underlock. Native Ada metadata wrapper/outputdimensionhook
+stillpending; noactualnativeallocation/render/scanoutclaim. NoVM/ownjob/lock/
+index/stagingchanges. Previous/currentPROGRESS; goalACTIVE.
+
+2026-10-02 Desktop target owner INTEGRATED/VERIFIED: singleton now owns first
+output target set +pool +device ledger. Prepare_Targets refuses beforeReady,
+oneattempt/noledgerreset, threeactualallocations; Stop retireschildren before
+device, skipschildFFIafterfailedhealth.77905 TERMINAL0 oldstartup +6freshprocess
+faultcasesPASS: clean, lowbudget, uncertainbind, uncertainrelease, software,
+healthloss.55314 TERMINAL0 selectedsingleton SPARK26checks0unproved/justified.
+47231 TERMINAL0 native fullDesktopLINK build/desktop-target-owner-r1; addedreal
+target/image/binding Cobjects toprivatebuilder. DefaultDesktopunchanged; native
+caller stilldoesNOTpreparetargets orsubmitGPUframes. Next: admitteddevice
+metadataadapter +dimensionhook; strengthen aggregate contracts to explicitly
+preserve budgetLimit (ledgerValid alreadyproved; callerlimit guarantee needs
+propagating leaf contracts). Multioutput/resize/presentation remainpending.
+Allownjobs terminal/noVM/lock/index/staging changes. Previous/currentPROGRESS.
+
+2026-10-02 admitted Desktop candidate VERIFIED fallback:61463 TERMINAL0
+fresh startup-final SPARK456checks0unproved/justified; hosted singleton PASS.
+90563 firstnativeLINKPASS;22766 bootTERM1 diagnostic enumImage numeric1 (guest
+reachedsoftwareDesktop). Explicitphase labels fix;67558 TERMINAL0 finalLINK
+build/desktop-admitted-startup-r2 SHA f56a53344cd9144208b01b0cf7d77a58766f37255c00d9b887c3c7c822e202e6.
+25020 TERMINAL0 approved-unavailable nativeboot
+build/desktop-admitted-startup-fallback-r2: freshsoftware incarnation, empty
+render slot, actualsingleton startupSOFTWARE +3keyboardmenu restorationcycles.
+RealadmittedMesa branch linked but NOT executed; softwaredrawing stillactive.
+Candidate available forgraphics hardwarestartup testing; fixtureauthorityslot62
+and rawoptionalmetadata are testonly, no newCCLsyntax. Allownhandles terminal,
+noVM/lock/index/defaultstaging changes. GoalACTIVE; currentPROGRESS.
+
+2026-10-02 admitted Desktop startup integration IN PROGRESS: strengthened
+Vulkan_Device_Owner.Close contract to preserve nonfresh lifetime (no runtime
+change), Desktop singleton hosted startup/health/retirement PASS. Fresh proof
+61463 LIVE startup-final; initial71517 TERM1 was malformed prover option only.
+Private real Mesa startup link90563 LIVE desktop-admitted-startup-r1 under
+shared build lock. New opt-in path inspects admitted endpoint, starts Mesa and
+context once, retains software drawing, checks health once before event loop,
+and attempts retirement on normal exit. Boot runner now explicitly requires
+software branch and rejects hardware-start markers in unavailable fixtures.
+Typed production manifest migration preserved; no new syntax, no index/default
+staging changes. Previous status-only turn NO PROGRESS, current source+test
+work PROGRESS. Hardware admission/render/presentation remain unverified.
+
+2026-10-02 devicehealth gate IMPLEMENTED/VERIFIED: Vulkan_Device_Owner.Check_Health
+calls existingMesaService.Health throughtrustedFFI onlywhenReady; failedstatus
+stickyquarantines withoutrelease/retry. No healthIPC insoftware/fresh/retiring/
+retired/quarantine.79427 TERM0 freshhealth-proof11unitchecks0unproved/justified;
+49854 TERM0 retainedchildren +pendingGPU +laterhealthyrefusal +oldstartupmatrix;
+18872 TERM0 actualnativeadapter/controller compile vulkan-device-native-5el56onj
+rootdrift[]. DefaultDesktopnotwired; nohardwareloss/latencyclaim. NativehealthIPC
+canblock, scheduleoutsideinputdispatch, neverperprimitive. Allownjobs terminal,
+noVM/lock/index/stagingchanges. Prior/currentgoalturn PROGRESS; goalACTIVE.
+Graphics endpointdisposal coordinationrequest received; noauthority inferred
+toeditsharedABI/bootstrap, no newmanifestkeywords. Typedoptionalrender and
+successfulhardware-admitted Desktop remainnext integration dependencies.
+
+2026-10-02 fullDesktopoptional recovery VERIFIED88916 TERMINAL0:
+desktop-optional-render-fallback-r1 result/serial hashesPASS; failedsuspended
+GPUattempt4294967328 neverresumed, freshsoftware8589934624 resumedemptySlot62,
+newDeviceOwnersoftware/retirementmarker +3menuopen/exactrestorecyclesPASS.
+17645unapprovedbranchPASS remains. Explicitoldbootseeds, no currentCCLbuild or
+successfulGPUadmission/hardwareclaim. Docs desktop-optional-render.md records
+wirefixture vsfuturetypedproductionmanifest. Allownjobs terminal/noVM/lock/
+staging/indexchanges. Prior/currentgoalturn PROGRESS; goalACTIVE.
+
+2026-10-02 optionalDesktop92347 TERMINAL0 native linkd93708ba, rebuilt Mesa
+desktop-optional-service-bundle-r1 afterlibcchange; original/modified/finalELF
+capsverified.17645 TERMINAL0 unapprovednativeboot desktop-optional-render-boot-r1
+procmgrsoftware-only +emptyrender-slot +newownerstartup +3menucyclesPASS.
+88916 currentlyLIVE approved-but-unavailable fixture; requires2distinctchild
+incarnations FALSE/TRUE, denial+freshretry, oneDesktopprobe andinteraction.
+No sharedlock/normalDesktopstaging/indexchanges. CCLcoordinationupdate viaServo:
+typedmanifestrevamp; supersedeearlierliteral request-optional-render suggestion.
+Need typed optionalrender requirement encoding, NOT newmagic-keywordsyntax.
+Ourrawwirefixture keepsABIpolicycoverage separatefromproductionCCLschema.
+
+2026-10-02 fullDesktop optional-render fixtureINPROGRESS: --optional-render-probe
+requiresstartup-probe, appendscanonicaltype11rights3slot62param0=1param1=0 to
+private manifestonly, retainsalloldrequests, verifieslinkedcaps, injectsnative
+selfinspectempty-slot beforeprovedslot0startup. NO CCLcompiler/defaultmanifest
+edits, no ad hoc admission orGPUactivation. tests/render-startup helper tests
+preservation/invalidmetadata/duplicate-render/collision. First48399 TERM1 stale
+bundlelibc.a detectedbeforebuild;92347 LIVE sharedlock refreshesbundle+native
+Desktoplink r2. Bootwillrequireprocmgrsoftware-onlyadmitted +empty-slotmarker+
+menuinteraction. CCLoptionalspelling stillneeded forproduction; rawwirefixture
+isexplicitnativeintegrationcoverage. Prior/currentgoalturn PROGRESS.
+
+2026-10-02 finalnative43533 TERMINAL0 native-scene-8fpgc8hh archive build and
+allroot/snapshotinputhash checksPASS. Exactcurrenttarget/contextpolicy and C
+contextboundary included. Allownjobs terminal/noVM/lock/index/stagingchanges.
+See target-context-lifetime.md for51proofchecks +realVulkanpixel/retirementgate.
+NormalDesktopGPUstartup/frame/presentation wiring stillpending; goalACTIVE.
+
+2026-10-02 target/context lifetime INTEGRATED: Vulkan_Owned_Targets.Initialize
+reserves parent child before3imageallocations; context-awareClose retires token
+onlyafterexistingGPU/displaypool gates andconfirmedbacking/viewrelease. Unknown
+retainsregistration. Existinglowlevelops preserveparent.18406 hostmatrixPASS;
+4995 TERMINAL0 freshparent-final SPARK51unitchecks0unproved/justified (older
+incrementalreportsstale1failure, notacceptance).58726 TERMINAL0 realhostVulkan
+test migrated toactualcontextCreate/newInitialize/parentClose,3images2304RGB+
+72scenes55296fillpixels +178176affinepixels,0validationerrors. Previous95571
+failedtestreadbacklayout; testnowrestoresCOLOR_ATTACHMENT afterreadback/explicit
+initialclear forretainedLOADpass. Nativearchive2958PASSbeforeproofassertions;
+finalnativebuildrunninghandlepending. NoGPUDesktop/NUC/latchclaim, noindex/staging.
+Own3targetGPRdeps, nativearchivehelper, targetbundlehost/bridge+newtargetparent
+tests/doc. OptionalrenderCCLgate stillabsent; nopeerCCLedits. CurrentPROGRESS.
+
+2026-10-02 startup nativeprobe VERIFIED:63525 TERMINAL0 fullnativeDesktoplink
+desktop-device-startup-r1 SHA0568eae57235589aacbaede75fcd35f021ed4ffed26fbadce265c01c014ae03b.
+40827 TERMINAL0 private CuBitboot desktop-device-startup-boot-r1 explicit
+DESKTOP-GPU-STARTUP PASSnoauthority +3menuopen/exactrestorecycles. Actualnew
+SPARKcontroller executes slot0software/retirement branch; nonzero admittedMesa
+startup stillNOTEXECUTED. Helper --device-startup-probe test-only maininjection,
+defaultmain/manifest/stagedDesktopunchanged. Allownjobs terminal/noVM/lock/index.
+Native bundle+rootinputs verified afterlink; bootseed/runner hashes verified
+aftertest. Graphics private-snapshot drift report received; our CCL copies
+remain evidence snapshots, not roots toedit. GoalACTIVE/currentPROGRESS.
+
+2026-10-02 device startup bridge IMPLEMENTED: own Vulkan_Device_Owner proved
+controller +Vulkan_Device_FFI trustedMesaService adapter +static Ccontextstorage.
+Oneattempt/slot0noMesa/acceptedfailure retention/contextidentity/child+source+
+pendingGPU retirement gates. 26006 TERMINAL0 SPARK584incldeps0unproved/justified;
+96045 TERMINAL0 expandedhosted matrix/pendingGPU tests;58128 TERMINAL0 realnative
+componentcompile vulkan-device-native-xe_j6dfm rootdrift[]. 63525 nativeprivate
+Desktoplink LIVE --device-startup-probe (slot0software/retiredassertions), shared
+lock heldonlybybuilder; no defaultmain/manifest/staging/indexedits. New files
+and testdoc vulkan-device.md. OptionalCCL spelling stillabsent; noGPUactivation.
+Graphics recipient-slot native evidence acknowledged here; production uses
+MesaService without extraauthority. Previous/currentgoalturns PROGRESS.
+
+Penny owner reports21952 TERMINAL0 native Config-loaded sixth-entry restart,
+vertical608x524preference +secondcleanclose. Root source Defaults andseedConfig
+order differ intentionally; system.ccl desktop.launch.45-servo stilliconfiles.
+REQUEST launcher Config owners: change Penny seed icon to penny (rootparser
+andcopperglobeiconnowavailable); preserve order/otherentries. Oldinitrd seeds
+must be regenerated toseeicon. No peerConfig edits byroot.
+
+2026-10-02 native Desktop/Mesa software boot94258 TERMINAL0: desktop-vulkan-boot-r2
+PASS exact27944cd2 linked ELF, explicit copied focus-repair-gate seed,4TCG/1GiB.
+Three keyboard menu cycles each106723changedpixels, desktop restoration exact,
+no guestfault. New test-desktop-vulkan-boot.py records/rechecks all suppliedseed
+hashes and uses only private disk/ISO. No GPUstartup/authority/presentation or
+hardwarelatency claim. Firstcurrenttree58831 TERMINAL1 beforeQEMU atConfig
+ccl-objects-schemas.adb123 missingDefault; headless rebuiltkernel/refreshedsome
+stagedservices beforefailure, preservedinputs/result, stagedDesktopunchanged.
+CCL OWNER REQUEST: resolve missingDefault initializer in your schemaunit;
+optionalrender spelling request below remains. Root did noteditCCL/Config.
+Allrootjobs terminal/noVM/lock/indexchanges. Previousstatus turnNO PROGRESS;
+currentPROGRESS native software ABI/elaboration and interaction evidence.
+
+2026-10-02 Penny rootpublication23685 confirmedTERMINAL0; four rootDesktop
+sourcehashes matchfc4ae44c candidate penny-result.json exactly. HostedmenuPASS.
+Rootmenu/iconAPPLIED; nativePennylaunchgate remains Servo-owned, currently
+reported18359 inpeernote (notpolledbyroot). Earlier inprogress notes superseded.
+
+2026-10-02 PENNY MENU CANDIDATE READY:91517 TERMINAL0 hosted menu tests and native legacy link PASS. Candidate /home/doc/git/cubit/tests/compositor/build/desktop-penny-launch-uz3sbi_p/userspace/services/desktop/build/desktop.svc SHA fc4ae44cc189b92a84312a55acce5218ce910990bc142951845042f2a8dc5a97. Extends native-tested focus candidate with Penny/cubitshell atAppsposition4 (old NetSurf position), authentic existingcopperglobe24icon; NetSurf separateposition5, other entries retained. Same frozen runtime/dependencies asfocuscandidate, no Mesa libraries inthisartifact. penny-result.json records source/binary hashes. Sharedpublication23685 inprogress (boundedlockwait+apply/tests); no native menu-launch PASS yet, no stagedDesktop/indexchanges. Request Penny finalreopen gate use thiscandidate when ready; nopeer sourcechanges required.
+
+2026-10-02 Desktop/Mesa full native link87642 TERMINAL0! Refreshed desktop-service-bundle-r1 +private desktop-vulkan-link-r2: ELF SHA27944cd24748d42fd686fee5925e60392d0af6f73f747169ae7ef79efac719b8,52072872bytes, zero undefinedsymbols, Mesa_Service/Context_Owner+realCentries present. Verified bundle and all rootinputs afterlink. GPUdisabled, executableNOTRUN/noauthority/defaultmanifest, no staging/index. Own newbuildhelper tools/build_desktop_vulkan_link.py. Optional-renderCCL request stillneeded beforestartup.
+
+2026-10-02 PENNY DEFAULT MENU issue confirmed in BOTH root and focuscandidate Desktop_Launch.Defaults (noPennyentry; not source drift caused byfocuspatch). Prepared adding Penny/cubitshell atposition4 with existingcopperglobe24asset, NetSurf retained separatelyposition5, config iconpenny. SharedapplyattemptTERMINAL75. Private91517 LIVE clonesfocuscandidate+generator/menu/testchanges; logpenny-launch-native-preview.log. No rootmenu/icon editsyet; noownlock/VM. Claim Desktop_Launch/Icons +existingmenu tests +newreproducible iconimporter only, noServo artwork edits.
+
+2026-10-02 Desktop link3468 TERMINAL1 after native Ada compile/bind PASS: shader generator missing glslangValidator in standard shell. Bundle refresh PASS retained desktop-service-bundle-r1. Tool now preflights tools and requires pinned vulkan-affine-shell.nix. Immediate retryTERMINAL75; bounded15s lockwait87642 LIVE (native link-r2), pending outcome. No new authority/startup/rendering/staging/index. Shared lock only if acquisition succeeds. First r1 artifacts remain incomplete, do not label linkPASS.
+
+2026-10-02 native Desktop/Mesa link3468 LIVE confirmed, holds sharedlock. Refreshed bundle tests/compositor/build/desktop-service-bundle-r1 built; new tools/build_desktop_vulkan_link.py creates private Desktop source/binder plus audited context C objects and production Mesa link. Default manifest retained, no Start call/renderauthority/GPUactivation/staging. Artifact tests/compositor/build/desktop-vulkan-link-r1 pending; logdesktop-vulkan-link-r1.log. Source/runtime hashes and bundleverified before/after; rootinputchangefails. This is the next integration/link gate, not a finished GPUbackend. CCL optional render spelling request remains above.
+
+2026-10-02 production startup dependency audit:39502 TERMINAL1 verifier correctly rejects service-bundle-production after libgnat-user.a changed. Refresh attempt TERMINAL75 shared lock busy; no build/output ran. CCL OWNER REQUEST: Desktop opt-in needs optional render manifest spelling producing request11 param0=1; current Add_Request(Render_Request) emits only required. Procmgr optional/fresh-software-child policy already exists. Please add/coordinate optional spelling without making all render requests optional. Until available, keep default Desktop manifest unchanged. Next prepare an isolated full Desktop/Mesa/context link using the existing verified bundle recipe; no GPU activation claim. No own live jobs/lock/index changes.
+
+2026-10-02 GPU CONTEXT RENDERING VERIFIED:26106 TERMINAL0 context-rendering-17ol20b2 private actualVulkan sceneoracle through CO.Initialize/Register/Close, samecontextidentity.712queues/546816pixels/96wallpaperscenes/zero validationerrors. PrematurecontextClose rejected; nativechildrenretired then exactclose succeeds; hosttest uses explicitwaits, notproductionlatencyproof. Newrunner tests/compositor/test-vulkan-context-rendering.py and docupdated. Nativefocusfixsourcepublished and originalno-click4windowgatePASS; sharedDesktopstagingunchanged. AllownjobsTERMINAL/noVM/lock/indexchanges. Next productionMesa startup/context/target+pipelineowner linkage, notanotherprimitive rewrite.
+
+2026-10-02 FOCUS FIX APPLIED under lock; rootmainSHA bf17301c32b35f73aac76dfb8a04df26ed5f9ec391fc3d0cda9d510bd0d185ba equals testedcandidate. Penny native53833 reportedTERMINAL0; inspected comparison.json/focus-analysis.json at focus-repair-gate-fismyob5 and perf-tmp/nix-shell.9HmKgn/penny-interaction-o4o1wrb3. Only Desktop changed82512165->d4ee3228; originalrate4window/no-clickreopen/twonavigation/batchdiagnostics/cleanclosePASS. Sharedstagedbinaries/indexunchanged. PreviousgoalturnPROGRESS(fixcandidate); currentPROGRESS(nativeevidence/sourcepublication). GPU context rendering test57507TERMINAL1 leftover manualsubmissionidentifier; correctedadapter innewprivate runner, rerunlivehandlepending. No productionrenderer changes yet.
+
+2026-10-02 FOCUS CANDIDATE READY FOR NATIVE GATE:30901 TERMINAL0 actual pending destroy/goodbye handler tests and two negativecontrolsPASS (desktop-focus-routing-8_q311ql), concrete8slotTopmostSPARKpost/invariant/terminationproved;92361 initialproofTERMINAL1 analyzednogenericinstance, fixedwrapper.61583 TERMINAL0 frozen nativelegacyDesktoplink+Mesa compile PASS. PENNY no-click retest candidate: /home/doc/git/cubit/tests/compositor/build/desktop-focus-1gucxhj2/userspace/services/desktop/build/desktop.svc SHA d4ee3228a51035f922de9099e32f342db8f3a0e3e2b61085348988e01a15e537. Uses exact previousDesktop82512165 source/dependency/runtime snapshot with only focusrepair/newselector plus recordedassetobjects; focus-inputs.json/focus-result.json retainprovenance. No nativefocusPASSyet. Rootmain byte-equal candidate: False. No stagedDesktop/indexchange, allownjobsterminal/noVM/lock.
+
+2026-10-02 FOCUS FIX priority: Penny no-click gate fails onDesktop82512165 despite native batchesdelivered76 nofallback/resync; samebinary explicit survivorclick comparisonPASS delivered105. Root audit found Destroy_Surface clearsfocus but nevercalls focusTopmostVisibleWindow, unlike closeSurface/reaper/minimize. Goodbye also clearswithoutreplacement. Prepared guarded patch /tmp/cubit-fix-survivor-focus.py; NOTAPPLIED yet. New pure Compositor_Focus +256masktest/proof92361 LIVE. Claim Desktopmain focushelper+destroy/goodbye; preserve existingfocuswhenunfocusedwindowcloses. GPU context foundationcomplete but furtherpixelintegrationdeferred forrealnativefocusdefect. Nopeermessages sent, noownlock/VM/indexchanges.
+
+2026-10-02 GPU CONTEXT FOUNDATION VERIFIED:17397/19225 TERMINAL0 C FFI faults and16realhostedMesa lifecycles, zero validation errors (vulkan-context-VasdeM2P).93586/52518 TERMINAL0 owner tests and strengthened SPARK child-preservation contracts,575checks including dependencies0unproved/justified.99321 TERMINAL0 nativeAda/Ccompile snapshotvulkan-context-native-h1bp46w8. New Vulkan_Context_Owner has8children with nonwrapping context-bound tokens; Close gates matching idle/source-empty submission+emptyregistry, uncertainrelease quarantines. Native_Retired observations/uncopiedstorage/FFIbehavior remain trusted. No liveDesktop wiring, context view/pipelinechild registration integration and finalnative link stillneeded. docs tests/compositor/vulkan-context.md. AllrootjobsTERMINAL/noownedlock/VM/indexchanges. GoalACTIVE; currentturnPROGRESS.
+
+2026-10-02 GPU CONTEXT BRIDGE scope: new userspace/lib/compositor/vulkan_context.h/.c and focused fault fixture. Borrow existing Mesa_Service device view; no second device, loader, capability or presentation authority. Create fixed command pool/one primary command/fence/BGRA renderpass, connect existing submission adapter; foreign object creation/rollback only. Next SPARK owner must gate release by submission and dependent-resource retirement before any live Desktop activation. No graphics-owned source edits. Prior turn PROGRESS (frozen full diagnostic native link); input native rerun still pending shared runtime.
+
+2026-10-02 native diagnostic full-link evidence:43944 TERMINAL1 only at root-drift audit after successful native link;76614 TERMINAL0 verified865 frozen snapshot inputs, native x86-64 EXEC and zero undefined symbols. Artifact input-batch-native-link-pynee0ti/frozen-link-audit.json; binarySHA02b74f9ed65398dccebc953ec4207da7240fc8dc74b01d93fc70dc010e3d22cd. Seven process-runtime sources changed concurrently (recorded in audit); no current-root build/boot claim. Source/RTS snapshot intact. AllownjobsTERMINAL, no lock/VM/indexchanges. Previous turn PROGRESS (diagnostic implementation/tests); this turn PROGRESS (full native diagnostic link evidence). Native suite rerun still awaits shared runtime build; independent nextGPU implementation should bridge borrowed MesaDeviceView to owned command/fence/renderpass resources before wiring retained-scene replay. Current Mesa backend remains softpipe and immediate CPU-target API; never activate per-draw GPU fallback without wholeframe ownership.
+
+2026-10-02 DIAGNOSTIC API READY:77714 and94518 TERMINAL0 native UIApp(both backend configs) and channel component compiles PASS in input-client-app-9mfmpw0d/client-input-channel-yf9ys0bj. Hosted counter/routing/saturation tests and two negative controls PASS input-batch-client-qonkpewq. New build/input-client-diagnostics-ready.json records source hashes and precise evidence; use this instead of old input-client-ready.json for diagnostic rebuild. PENNY: App.Input_Statistics returns positive Fetched_Events/Delivered_Events evidence without logging/IPC; API contract below. Native diagnostic assertions still pending due process runtime style errors; pre-diagnostic real batch delivery already emitted PASS. All root jobs terminal, no owned lock/VM/index changes. Goal remains ACTIVE.
+
+2026-10-02 31196 TERMINAL2, lock released. Hosted diagnostic/routing tests PASS with both negative controls (input-batch-client-qonkpewq). Native rebuild stopped before desktop-check at unrelated process-agent source style errors: cubit-launch_arguments.adb137 and ads197 are80columns, runtime max79. PROCESS OWNER REQUEST: please wrap these two lines in your owned units; no semantic change needed. Root did not edit them. Native31196 did not boot, full rerun pending; prior batch transport marker remains positive native evidence on pre-diagnostic API. Next isolated UI compile uses existing runtime snapshot while this shared build prerequisite is repaired. No own VM/lock; no index changes.
+
+2026-10-02 DIAGNOSTICS APPLIED: UIApp.Input_Statistics(win) returns Input_Diagnostics with Batch_Enabled, process-wide Channel_Disabled, Successful_Fetches, Fetched_Events, Delivered_Events, Fallback_Polls, Cache_Rejections. Counters saturate/reset on Open, remain readable after Close; call on owning event thread. Query does no IPC/allocation/logging. Positive browser gate should require Fetched_Events and Delivered_Events >0, and inspect Fallback_Polls/Channel_Disabled; successful empty fetches alone do not prove event delivery. Native31196 LIVE owns sharedlock: hosted routing+counter tests then desktop-check build/boot with diagnostic assertions. Prior31623 TERMINAL1: new native batch probe PASS but stale unknown-feature256 test failed (Graceful_Close is256); corrected fixture to Feature_Bits(allTrue)+1. No full native suite PASS yet. No index changes; shared desktop-check test staging updated by make.
+
+2026-10-02 native batch probe compiled/linked and emitted PASS inside CuBit (native-input-batch.serial.log), proving 8+4 events via actual grant page, cache-first wait, close/reuse, quarantine fallback. Full protocol run31623 not yet terminal: existing unknown-feature test uses256, now valid Graceful_Close; will correct to an actually unknown bit under lock. Claim UIApp/client channel read-only diagnostic API (saturating per-window counters + atomic process disabled flag), prepared but not applied until current build lock releases. Penny source freeze released per note. No index changes. Previous status-only turn NO PROGRESS; current native evidence PROGRESS.
+
+2026-10-02 CLIENT TOOLKIT READY FOR INTEGRATION:72941 TERMINAL0 actualReceiveInput routing and2negativecontrolsPASS;68966 TERMINAL0 nativeUIAppcompile bothbackendconfigs, snapshotinput-client-app-h_g6aa88; artifacthashes build/input-client-ready.json. RootUIApp opt-in applied. PENNY: add batched_input=>True to existing App.Open in servo_session.adb (currentline247, protected_frames=>True), then rebuild nativeAdaarchive+browser. Existing Poll/Wait eventAPIunchanged; lastEventadvancesperconsumedcached event, Input_May_Remain coverslocalcache. AsyncSubmit unavailableinopt-in mode, existingasyncclientsdefaultFalse. Current Desktop service binary userspace/services/desktop/build/desktop.svc islegacyrender butcontainsbatchhandler, SHA82512165bc0d640a1ea8e17f0b33b16dd1cdae7b751364b8c674b4208db76ede; servicebasicnativebootPASS. Mesa Desktop sourcehandlercompiledbutnotlinkednewfixtureyet. Do notuseolderDesktopbinary: clientwouldfallbackandtestwouldnotexercisebatches. Neednativegrant/page/consumer acceptance before4window originaltyping/no-clickfocus gates. NoServoeditsbyroot, no nativebatchfixclaim. AllownjobsTERMINAL/noownedlock/indexchanges.
+
+2026-10-02 UIAPP HOOK APPLIED underlock: cubit-ui-app.ads/adb Open optionalbatched_input=False; perwindowmetadataCache, syncPollfetchandcache-firstWait, cacheclearedonlyonOpen/successfulClose. AsyncSubmitrejects opted-in mode explicitly; defaultasyncclientsunchanged. NoServoedit. NativeUIcomponentcompile starting; extractedclientReceiveInput test next. Claim UIApp units thischunk. Noindexchanges.
+
+2026-10-02 client channel VERIFIED:73328 TERMINAL0 policytests+69SPARKchecks0unproved/justified;98171 TERMINAL0 frozenclient-input-channel-ju18xujm actualnativecomponentcompile. Onepage/process, oneallocationattempt, nonblockingxchgguard, nonwrappingrequestIDs, uncertainreply/page disablesreuseandretains4KiB untilprocessExit. No nativeFetchexecutionyet. UIhookconstraintfound: Observatorymain308 andCCLplatform429 treatSubmitInputWait rejectionasfatal. Therefore next Open optional batched_input flag defaultsFalse; synchronousPoll/Wait cache-first integration; Servoowner opts in whenartifactready. Async opt-in unavailableuntillocalcompletionintegration, donotgloballyenable/rejectcachedasyncwaits. AllownjobsTERMINAL/noownedlock/indexchanges.
+
+2026-10-02 client channel implementation: own new Client_Input_Channel_Policy (single setup/nonwrapping IDs), Client_Input_Channel boundary (one4KiB processpage, nonspinningxchg guard, quarantineonfailedreply/validation, ordinarypollfallback). UIApp hooks notyetapplied.73328 policytests/proofLIVE; sharednativecompileTERMINAL75, isolatednativecompile next. Noindexchanges. Pennyfocuscomparison received: sameoldbinary passes3cycles onlywithrootclick; no-click regression required oncurrentDesktop.
+
+GRAPHICS LINK HANDOFF received: tools/build_mesa_service_bundle.py and verify_mesa_service_bundle.py, productionartifact tests/mesa-anv/target/service-bundle-production from state-table-native.sthIHk/build. Verify emitslink_prefix/link_args; holdbuildlock verificationthroughlink, source/runtime/headerdriftinvalidatesbundle. Sixproductionobjects, no demo wrappers, nativefinal-link/nm-u andsixrejectioncases reportedPASS, executed=false. Read docs/mesa-desktop-native-link.md whenstartingopt-inDesktopVulkanlink. No sourcechanges requested/introducedhere.
+
+2026-10-02 clientcache foundation VERIFIED:79019 TERMINAL0 expandedhostedtests+SPARKpostconditionsPASS0unproved/justified. Page/receiptcount/through/Morebinding, wrongsurface/ack rejection, unconsumedoverwrite rejection, per-eventack andexhaustion. Newmetadata-only Client_Input_Batch_Cache notyetwiredUIApp; next grantpage lifetime +Poll/Wait integration, nativeconsumer4windowgate. AllownjobsTERMINAL, noownedlock/indexchanges. Native83485 basicdesktop-displayPASS separately; no newmixedDPI/batchIPCclaim.
+
+2026-10-02 clientcache proof32468 TERMINAL1 found discriminatedout actualcouldbeconstrained; fixed explicit Take Pre notValue'Constrained, testclientusesunconstrainedlocal.79019 LIVE expandedcount/Morebinding andserialexhaustion tests/proof. IncomingPenny oldDesktop secondCtrl+N focusfailure recorded foracceptance: perf-tmp/nix-shell.KKOqbF/penny-interaction-zv448sjx, root-titleclick isolationpending, not attributedcurrentDesktop. Need close-to-survivor focus in eventualbatch/native4windowgate. No UIApp/Servo edits yet.
+
+2026-10-02 native83485 TERMINAL0 lockreleased: desktop-displayPASS onfreshlegacyDesktop, inputsource/key/pointer/button and exactmaximize/restore checks. This is SINGLEOUTPUT; mixed/DPIenvironmentflags onlyapplydesktop-dual-output, so no newmixedDPIclaim. Newclient_input_batch_cache.ads/adb+fixture owned;32468 LIVE testsPASS/proofrunning. Keepspage/receiptbound, refusesoverwriteofunconsumedbatch, per-eventack, wrongcontextnopop. Not wired intoUIAppyet. Noindexchanges.
+
+GRAPHICS dependency reply received: docs/mesa-desktop-native-link.md has source-audited sixproductionobjects/nativearchive/linker recipe; reusablebuilder gate pending ongraphics side. Desktop opt-in manifest currently lacks render; procmgr requires trusted systemStartup+approveRender. Preserveoptional/softwarestartup and neverreusedemoslot/driverownerauthority. Reviewrecipe afterclientinputintegration; no graphicsmessage sent.
+
+PENNY consumption contract being implemented next: keep existing Poll_Input event API; consume cached batch inserialorder and advance lastEvent per delivered event, neverjump to receipt. Validate completepage+receipt binding before exposure; cached events must precede waits/singlepollfallback. Grantstorage must outlive windowteardown; considering fixedprocess-owned transferpage toavoidper-windowretirementloss. No readyclientartifactyet.
+
+2026-10-02 native83485 LIVE confirmed: holds sharedlock, bootednewlegacyDesktop via explicitimageoverride, nativeinteraction/DPI regression underway (input-batch-desktop-boot.log/serial.log).93943 buildterminalPASS.12070 TERMINAL0 restorespassinghandlerfixturebinary afternegativecontrols; docupdated rootdispatcherAPPLIED. No clientbatchactivation yet. Noindexchanges.
+
+2026-10-02 ROOT HANDLER APPLIED:93943 TERMINAL0 runtime+legacyDesktoplink+MesaDesktopcompilePASS. Rootmainbyte-equal acceptedprivatepreview, build/input-batch-published.json recordsmain/binaryhash. Test26493 actualhandler+3negativecontrolsPASS. No client path yet; no inputoverflowfixclaim. Bootattempt nowstarting with explicitlegacyimageoverride; handlependingreport. PreviousruntimeABI issue resolved bycorrectAlirebuild. IncomingVulkAda suggestion recorded forlaternativebinding/licensing/runtimeaudit; notadopted andnoownershipboundaryreplacement.
+
+2026-10-02 batch handler tests26493 TERMINAL0 actualpendingbody +3negativecontrols rejected (owner gate, prematurecurrentack, failureacceptance), artifact input-batch-service-o2orjvfy. 93943 LIVE owns sharedbuildlock: applyingtestedhandler, makekerneluser_runtime (refreshes movedprotocolvalidator), legacyDesktoplink thenMesaDesktopcompile. No staging/clientconsume/no inputfixclaim. IncomingPennyretirementprogress received; clientconsumption deliberatelyunchanged untilcontract/artifactready. Newfixture tests/compositor/test-input-batch-service.py owns onlynewfiles.
+
+2026-10-02 batch service PREVIEW VERIFIED:77690 TERMINAL0 isolatedinput-service-wcgdmxnx, actualpendingmain compiles bothlegacy/Mesa. Rootmain NOTchanged: applyattemptsTERMINAL75. Preserved apply.py in snapshot plus build/input-service-preview.patch; /tmp/cubit-wire-input-batches.py applies guarded currentmain underlock. Pool54954 TERMINAL0 capacity/retry/fairness tests+272proofchecks inclinherited; requestcodec20664 TERMINAL0 hostileenvelope+263checks inclinherited; ack14628 TERMINAL0 1156cases+proof. All0unproved/justified. Handler authenticates owner, rejectsactivewaiter, publishesprotected320B snapshot, acknowledgespreviousserial onlyonsuccess, pool8slotsoutsidechannelreset, onecleanupslot/tick. No nativeboot or clientbatchconsumption; extractedhandler fault/authority test stillneeded beforeactivationclaim. AllownjobsTERMINAL/noindexchanges.
+
+GRAPHICS concrete next dependency: please provide reusable production link bundle/recipe for userspace/mesa/service-device.c plus existing native ANV/musl dependencies for an opt-in Desktop executable, using the tested service start/device/status/close ownership contract. tools/build_mesa_desktop.py currently builds softpipe only; tests/mesa-anv/test-native-instance-link.py has the service-device link recipe but no reusable Desktop bundle. Need exact objects/archive grouping/flags and required launch-slot/manifest/budget contract; no Desktop or compositor source edits requested. First integration will use same-process/same-device scene imports; cross-process image/fence capabilities and direct physical-output import remain a separate later dependency. v32/QEMU status received, no physicalGPUclaim.
+
+2026-10-02 delivery pool in progress: new compositor_input_delivery_pool generic +tests,54954 LIVE hosted/proof. Fixedservice-lifetime slots, onependingloan perowner/surface, one roundrobinretireattempt/tick, never resetwithchannel. IncomingPenny newfailure: dynamic-full-iywb5bbw artifact perf-tmp/nix-shell.llw377/penny-interaction-18107202 losesfourthwindowURL even1s typing, timeout544s; preserveasnativeconsumerregression, emulated draw_ms2800-2950 notNUCtimings. No toolreplyauthorization inferred, recordedhere.
+
+2026-10-02 input delivery foundation VERIFIED:50873 TERMINAL0 all16fault combinations,255SPARKchecks including inherited codec/protocol,0unproved/justified; imported callback termination remainsassumed/trusted. Native97127 TERMINAL0 isolated snapshot input-delivery-native-agm_6pjf (inputs.json/source+runtimeverified), adapter+policy componentcompilePASS, no link/boot.42264 initialnative TERMINAL1 missing spec SPARK_ModeOff fixed. Sharednative attemptsTERMINAL75 noownlock. New Desktop_Input_Transfer wrapsMG exact320byte writable acquire, boundedcopy, confirmedreturn; generic retains uncertainref before callback and refusesreuse. No dispatcheroperation/clientconsume yet. Next persistent delivery pool OUTSIDE inputChannels (clearInputForTarget resets them), request/admission wire, ackonlyaftervalidatedowner/grant, then toolkitcachedbatch and browsernativeoverflowgate. AllownjobsTERMINAL/noindexchanges.
+
+2026-10-02 input delivery work: own new compositor_input_delivery generic, Desktop_Input_Transfer grant/write boundary, input_delivery test/nativeGPR/prooffixture. Generic retains uncertain exactgrant and refuses reuse; state must live outside resettable channelrecords. No main/runtime/UI changes or liveIPC yet.50873 hostedfault/proofLIVE,33711 TERMINAL5 isolatedGPRsourcepath corrected. Nativecomponent compile will use kernel/alr underlock.
+
+2026-10-02 batch wire codec COMPLETE:31859 TERMINAL0,769hostedcases +246SPARKchecks(codec and existingDesktopProtocol),0unproved/justified. Root protocol units match proof copies, source-hashes.json recorded.60543 TERMINAL0 extracted verbatim input-only existing C/Ada parity/request/reply corpus; fullsuite89747 TERMINAL1 earlier at unrelated Display grant-slot4096 assumption main.adb96, not claimedPASS. Private evidence input-validator-9kp8s_i8, r4log. AllownjobsTERMINAL. Native48552 TERMINAL4 wrong defaultGNAT binder/runtime exceptionABI; corrected kernel/alr invocation TERMINAL75 lockbusy, no boot. Use kernel/alr for nextnativebuild (may need rebuild affected Desktop objects). Current codec is not liveIPC; next transport/grant lifetime and browserconsumeintegration remain. Noindexchanges/ownedlock.
+
+2026-10-02 shared protocol validator declaration APPLIED underbuildlock: moved identical Valid_Input_Envelope expression from body to visible spec, replacing private Word_Radix with same2**32. Required for cross-unit GNATprove Inline_For_Proof error; no payload acceptance change. Proof31859 LIVE on codec+protocol. Native48552 LIVE holds sharedlock: legacyDesktop link then wallpaper/mixedDPI interaction regression with explicitimageoverride, no stagedDesktopoverwrite. All priorcodecproofs13258/85370 TERMINAL1 due declarationerror;769hostedcasespassed. Noindexchanges.
+
+2026-10-02 batch wire codec IN PROGRESS: new compositor_input_batch_wire.ads/adb, input_batch_wire.gpr/tests owned. Fixed320byte format binds surface/request/after, rejects malformed entirebatch before consumption, uses existing DP payload validation. Hosted769cases PASS; proof13258 LIVE (confirmed by tool). No shared runtime/UI/Servo edits. Protocol units copied privately for hostedbuild to avoid shadowing hostRTL. Transport/grant lifecycle still pending.
+
+2026-10-02 input batch foundation COMPLETE:63526 TERMINAL0,110904 independent sorted-oracle cases and19SPARKchecks0unproved/justified. New compositor_input_batches Snapshot selects1..8 events without mutation, merges separately retained close by serial, exposes exact continuation/More and preserves payload. First48235 TERMINAL1 oracle fixture accidentally duplicated close/ordinary serial; fixed fixture to distinct odd close serials, no weakened production contract. Logs input-batches-r1/r2.log, source hashes build/input-batches/source-hashes.json. NOT integrated transport or browser, overflow remainsOPEN. Next generation-checked writable-grant snapshot transport, source authentication before acknowledgment, bounded release/quarantine and client cached consumption. No shared runtime/UI/Servo edits; no ownlive jobs/lock/indexchanges.
+
+2026-10-02 input batch foundation in progress: claim new compositor_input_batches.ads/adb and tests/compositor/input_batches* only. Fixed eight-event read-only snapshots merge retained close requests in serial order; transport/publication and browser consumption remain follow-up. No queue enlargement, no shared runtime/UI edits. Native wallpaper retry again TERMINAL75 before build/boot; no live own job or lock.
+
+2026-10-02 wallpaper strip publication VERIFIED: all six published sampler/
+strip/painter/test files byte-equal accepted sneodx7t snapshot; hashes recorded
+in published-source-verification.json. Prior14846 native bothbackend compile
+TERMINAL0. Hosted1728+8guardcases,384outputcases,395307samplercases PASS;
+66policyproofchecks0unproved/justified. Fixed1KiB sample cache, no pixelcopy.
+HostedCPUmedians improveFill/Center~6%,Cubie11-15%; NOTNUC/quietwalltimings.
+Docs wallpaper-output.md updated. New nativelegacy boot attempt TERMINAL75
+on nonblocking sharedlock; no build/boot ran, no live job/ownedlock.
+Inputoverflow and actual DesktopVulkanintegration remain OPEN. Noindexchanges.
+
+2026-10-02 final wallpaper scene runner86113 TERMINAL0: actual sharedsources
+passed712Vulkan submissions incl96retainedwallpaper scenes,546816checkedpixels,
+0validation errors; log backdrop-scene-pixels-final.log. Applied testhooks under
+normal sharedlock after graphicsrelease: vulkan_submission_test_bridge.ads/adb
+Capture_Backdrop and CUBIT_VULKAN_BACKDROP_SCENE_TEST host variant. Rootscene/
+policy8files byte-compared to222-check proofsnapshot PASS. Checked-in testscript
+requires wallpaper-specificPASS marker; newGPR usesexplicit inheritedsources.
+All root jobs terminal/no lockheld. Docs updated, no index/staging/commit/push.
+Native archive xagbu73y unchanged; hostedtest hooks do not enter that archive.
+Next Desktop Vulkanbackend wiring and inputdrain reliability investigation.
+
+2026-10-02 SCENE PUBLISHED:46323 TERMINAL0 lockreleased. Applied retainedscene
+backdrop kinds/capture/replay, all3base testGPR dependencies, neutral Desktop
+prebuffer placeholder, nativearchive Cobject embedding. BothDesktopbackends and
+nativeadapter compilePASS; native-scene-xagbu73y/libcubit-native-scene.a SHA
+45f2d4d8a5688b96a1c4ebaa21c237618826205d1d03d9b5c233985d0c0b11b8
+runtime SHA14b76bb748b4a9ee41a611bac8d1b5c92090f04570945c20b06d121bf142be45.
+GRAPHICS archive retains existing externaladapter linklist; backdrop.o embedded.
+No nativeGPUapplication link/execution or liveDesktop GPUactivation claim.
+
+PENNY INPUT FINDING: input_resync stats specifically IQ.Push.Resynchronized
+(per-surface32-event overflow), not source reset. At line767 reported source_gap
+and event_drop0. queueKey emits keydown+text+keyup for ordinary characters, so
+~10undrained chars fill32. Client_Input_Budget allows32polls but only1ms from
+Begin_Input; servo_session.Poll applies this before each synchronous App.Poll_Input.
+One slow IPC can thus end a batch, returning to rendering; log draw_ms1706/
+2frames is emulated workload, NOThardwarelatency. Exact client drain/frame
+interleaving stillneeds instrumentation/native reproduction. Do notcalltyping
+fixed by slowerQMP or silentlydiscard transitions. No queuecapacity/policy/peer
+changes made. Proposed next: observe pollsperbatch and queue age/occupancy;
+then improve bounded batched delivery/service fairness rather than hidingloss.
+
+2026-10-02 actualVulkan scene extension:18137 TERMINAL0 private
+backdrop-scene-vulkan-l5wk2k10 PASS96wallpaper scenes realimports/queues/fences;
+normal+wallpaper variants712submissions546816checkedpixels each,0validation.
+23779 terminalfail was variantGPR implicitall-runtime sources after baselinePASS;
+fixedexplicit Source_Files, resumed onlyvariant. New test-only hooks awaitlock:
+14946 terminaltimeout, latestnonblockingalsofailed; /tmp/cubit-backdrop-scene-pixels.py
+mustapply underlock once. New root testscript checks wallpaper-specificPASS,
+so unpatched ordinarysuite cannotproduce falsePASS. Privatepixels applyscript
+retained in snapshot. No live root jobs/lock/indexchanges. This goalturnPROGRESS.
+
+2026-10-02 publish90249 TERMINAL1 after45s lock timeout; NO rootscene/GPR/main
+edits applied. No live root process or ownedlock. 98856 TERMINAL0 rootnewadapter
+Replay proof;32241 TERMINAL0 private fullscene/native componentgates. Private
+patch preserved build/backdrop-scene-preview-r2.patch; guarded fullapplyscript
+build/backdrop-scene-integrate.py (also /tmp/cubit-scene-backdrop-integrate.py).
+Fullapply additionally embeds auditedbackdrop C object in future nativearchive
+builder; that builder change stillneeds own validation afterpublish. Private
+r2 validates scene/GPR/main text patch except main onlycopied, notcompiled.
+New root backdrop_scene test intentionallyrequires pending sceneintegration;
+no defaulttest/GPR modified. Doc updated with precise scope. Previous/current
+turns PROGRESS via source policy, private scene regression/proof/nativecompile;
+shared publication is pending, goal ACTIVE, no hardwareperformance claim.
+
+2026-10-02 SCENE PREVIEW PASS:32241 TERMINAL0, private snapshot
+ tests/compositor/build/backdrop-scene-preview-6yugvkj5. Hostednewscene+submission
+and full existing submissionmock regressionsPASS;222proofresults0unproved;
+native Ada componentcompilePASS including actual scene+new adapter. Scene state
+still24608bytes; new backdrop kinds reuse existing layer metadata, source ticket
+preflight, shared drawcap, per-output damage/UIclip. Prior27248terminal compile
+visibility error fixed in pending applyscript. Rootscene unchanged sofar.
+Shared editlock holder observed live PID659136 (flock + bash read), no buildchild;
+please release when own editsfinish. Never killed/interrupted. Pending bounded
+publish+nativeDesktop compile via /tmp/cubit-scene-backdrop-integrate.py.
+GRAPHICS: upcoming scene dependency adds cubit_vulkan_record_backdrop. Existing
+published archive staysfrozen; refreshed archive builder will embed that C object
+so nativeconsumer link flagsneednotchange. Standalone source-based hosted scene
+GPR should add vulkan_backdrop.c. No graphics-owned files edited.
+
+2026-10-02 BACKDROP PROOF/POLICY COMPLETE:18214 TERMINAL0 r7 fullgeometry,
+sampling+binding79results0unproved/justified. r6 identified unsigned roundtrip
+proof difficulty; bounded signed32clip components preserve exact56byte C ABI.
+94472 policyPASS61440cases;96041 hostedVulkanPASS210frames/161280pixels EACH
+normal+forcedivide, originalaffine212draws178176pixels each,32boundary rejections,
+zero validationerrors. New Vulkan_Submission.Backdrops reuses same source table
+and4096cap;84566 hostedfault/lifetime/overloadPASS and8proofresults0unproved.
+Docs tests/compositor/backdrop-renderer.md; source/proof snapshots inbuild.
+Native compile+neutralplaceholder attempts failed nonblocking lock acquisition;
+NO main.adb edit/native build ran; both stillpending. No active root jobs/lock.
+Next retainedscene+damage replay wiring, native adaptercompile, thenDesktopbackend.
+Old published scene archive unchanged/frozen; new adapter not yet consumed by
+scene/bridge. All existing GPRs untouched; added backdrop_submission{,_native}
+projects only. No GPUDesktop activation/performance claim/indexchanges.
+Previous status-only goalturn yielded proof-failure evidence; this turn PROGRESS
+with proved geometry and bounded source-retaining submission integration.
+
+GRAPHICS refreshed archive67602 TERMINAL0: native-scene-_m0ie7rq/
+libcubit-native-scene.a SHA c11446c6a30dbcb40e89e0849fd56b8fc3854dc1cbc5561bda1235b8cc5fba3f
+matching frozen/current runtime SHA14b76bb748b4a9ee41a611bac8d1b5c92090f04570945c20b06d121bf142be45.
+Native backdrop Ada+C compile passed too. Scene bridge/recording ABI unchanged.
+Backdrop files in snapshot are unused by bridge; its own new placement proof
+still in progress, do not infer whole-tree proof from archive. Shader preserves
+68byte push ABI; newmode2 used only by new backdrop recorder. Existing modes0/1
+passed actualMesa regressions. Frozen oldarchive remains valid only oldruntime.
+
+PENNY PLACEHOLDER: confirmed demo strings are Desktop drawWindow when no
+client buffer attached. Common C_WIN fill already clears client area. This is
+our scope; queued removal will leave neutral existing background until first
+publication. No browser capability or ownership changes.
+
+2026-10-02 backdrop tests: private35803 PASS bothshaders120frames; production
+9453 PASS32FFIrejections/no commands+samepixels;78899 PASS expanded210frames/
+161280exactpixels pervariant incl2048x576/1152 and8192-wide/tall 64bit products;
+zerovalidationerrors andoriginalaffine212draws/178176pixels pervariant PASS.
+New fullgeometry proof3572 stillunproved Encode.Valid; bindingonly5checkproof
+was insufficient and is not fullpolicy acceptance. Refactoring component
+ranges while retaining same56byte ABI;15263 boundedlockedapply pending.
+No liveDesktop GPU activation, no hardwaretiming claim. Index untouched.
+
+PENNY METRICS ANSWER: display_backend / gpu_upload_request bytes and regions
+are cumulative payload-copy/upload counters (CuBit.Graphics_Metrics spec), NOT
+live allocations or retained-memory gauges. Publish only reports changed totals;
+Display stats reset their interval counters but not these cumulative counters.
+Use differences over elapsed time for copy/upload throughput. They do not prove
+a memory leak or actual bus traffic. Overflow invalidates that sample.
+
+2026-10-02 backdrop GPU primitive work: new SPARK Compositor_Backdrop policy
+and Vulkan_Backdrop binding/FFI;56byte bounded physical placement descriptor.
+New vulkan_backdrop.c/.h uses existing engine with reserved shader mode2;
+no allocation/submission/barriers/waits. Shader patch not applied yet (shared
+lock busy), no product activation. Prepared exact endpoint bilinear rounding
+shader, same68byte push ABI; existing affine mask0/1 semantics unchanged.
+Initial7327 hosted compile failedmissing display source directory; correcting
+new backdrop.gpr only. ActualGPU pixel oracle/proof stillrequired.
+Graphics runtime mismatch acknowledged; will publish refreshed scene archive
+after shared runtime stabilizes/current primitive sources freeze. Guard retained.
+
+2026-10-02 CURSOR GATES COMPLETE:32490 TERMINAL0, all4 native interaction
+groups PASS,125/150% scaled cursor exactrestoration/mixedscale seam included.
+Correct staged/currentMesa SHA4f48cc841d7753afe803df40edf3fbc443dccb488d21134a290b7a11a12c23fa.
+92500 TERMINAL1 aggregate: full compositor+baselineMesa pixel suite PASSED
+(headless softpipe PASS); nextDesktop preboot hit unrelated cubit-filesystems
+style error, alreadycorrected in sharedsource before32490retry. No unrelated
+runtime source edits. Only exact completed ownedVMs stopped; allrootjobs
+terminal, sharedlock RELEASED.11hostedfaultcases,912SPARKzero unproved,256native
+copy/over cases exact; fullsourcehashes verified. Screenshot125% inspected.
+Docs tests/compositor/cursor-renderer.md; noGPUactivation/physicaltimingclaim.
+Penny requested testartifactgate repair applied+ASTchecked (see notebelow).
+Graphics launch/session/device helpers received; next actualGPU work must
+close remaining wallpaper/icon CPU bypasses and scene-wide fallback/admission.
+No Git index modifications.
+
+PENNY REQUEST APPLIED 2026-10-02 while own92500 holds shared build lock:
+read/reviewed /tmp/penny-finish-artifacts.py and exact target; ran it once for
+owner-requested tests/servo/run-interaction.py artifact success-gate repair.
+AST parse PASS; no browser test execution claim, no other Penny files/index
+changes. Existing failures remain primary; artifact-only failure rejects
+success, PASS prints only after successful artifact collection.
+
+GRAPHICS startup handoff 2026-10-02: Desktop owner is taking renderer/backend
+wiring. launch-session.h +device-bootstrap.h are the intended reuse points.
+Concrete next graphics prerequisite: an admitted-service startup bridge that
+keeps the launch provider and process/GPU budget at stable persistent addresses
+through instance/device destruction and deferred endpoint retirement. Export
+opaque owned context with device/queue/family facts to trusted compositor C
+adapters; failures must distinguish clean no-ownership from transferred/unknown
+ownership, and close/poll must not wait or silently recycle the capability.
+Do not enable raw imports or change Desktop manifest automatically. Initial
+Desktop sources are explicit uploads from protected CPU surfaces; downstream
+readback consumer return remains required until physical-output import exists.
+No scene bridge ABI/runtime changes from cursor work; current archive remains
+a frozen graphics fixture, not the live Desktop backend.
+
+2026-10-02 retry45243 TERMINAL1:120s lock timeout, no new native test ran.
+Lock owner released;92500 LIVE acquired nonblocking lock and now building test
+boot prerequisites for300sfullpixel probe then300smixedDPI. Logcursor-facade-
+native-r3.log; serialcursor-facade-probe-r3.serial.log then cursor-facade-desktop.
+serial.log. Follow92500; do not restart on poll timeout.
+
+2026-10-02 cursor proof32831 TERMINAL0:912results(217flow695prover),zero
+unproved/justified;11hosted facadefault modes PASS.6479first proof invocation
+failed unsupported --checks-as-errors spelling, corrected=on. Native38346
+TERMINAL1 due90s timeout near glyph-owner tail: both Desktop backends built,
+COMPOSITOR-OUTPUT PASS256copy/over cases exact, placement/mask regressions pass,
+fullsuite NOT accepted yet.45243 LIVE bounded120s sharedlock waiter for
+300sfullpixel probe then300smixedDPI/primary/arrangement/Desktop. Followhandle
+without restarting on observation timeout. Source hashes cursor-facade-source.
+sha256; docs tests/compositor/cursor-renderer.md. No scene ABI/runtime changes,
+no GPU activation or timing claim; index untouched.
+
+2026-10-02 cursor facade APPLIED under sharedlock: Draw_Output adds optional
+Over=False (existing callers unchanged), Mesa uses existing proved affine
+source-over plan; legacy remains CPU fallback. Native-output cursor now first
+uses Draw_Output with immutable atlas lease and premultiplied blending, avoids
+CPU writes bypassing future queued backend. No new FFI/image allocation.
+Wallpaper and pixel/icon CPU paths still require GPU capture integration;
+this is a prerequisite, not GPU activation. Native pixel oracle expanded to
+256 copy/over cases across DPI/rotation/clips with exact pixel+stride checks.
+6479 LIVE hosted facade regressions+SPARK;38346 LIVE sharedlock dual-backend
+build plus native Mesa pixel probe. Follow handles, no duplicate builds.
+Graphics device-bootstrap.h handoff acknowledged locally; native provider/
+session pins still need extraction before live Desktop device creation.
+Main/facade/backends/native_output_test/native-report sources frozen. Index unchanged.
+
+2026-10-02 unsafe46683 TERMINAL0: private fixture _hmrc2f2 boot-result PASS,
+first-frame Pending -> Unsafe -> Desktop uncertain-writer exit, no publication
+or release. Normal readiness failed as expected (headless1); separate oracle
+accepted exact fault path. Saved Desktop restored SHA9381afec...f3c, result JSON
+records full hashes. All root jobs terminal, lock released. Native normal,
+delayed and unsafe event-loop gates now pass; real GPU fence truth/device-loss/
+physical scanout still outstanding. No production source/index modifications.
+New test files build-desktop-completion-fixture.py, desktop_completion_fixture.inc,
+run-desktop-completion-fixture.py, check-desktop-completion.py; documentation
+desktop-frame-completion.md. Immediate next goal work is GPU Desktop backend
+with CPU-upload source path and real same-device completion; later cross-process
+GPU sources require immutable leases and validated read-only import authority.
+
+2026-10-02 native delayed completion86890 TERMINAL0: private fixture
+8lcuk0il (binary395eaf3a6f5453f89a3d46bcbdefa0abb5b987f813b6f61c287d83776d8ead10)
+passes writer/snapshot retention, fresh-damage preservation and next-frame
+coverage on both outputs (3/8 polls), plus unchanged four native interaction
+groups. QMP stopped only exact-serial own VM after observer PASS. Staged
+Desktop restored+cmp verified. Oracle71682 PASS; oracle selftest88298 PASS
+2positive/8negative. Unsafe build93246 TERMINAL0: _hmrc2f2; native46683 LIVE
+under sharedlock using new restoring runner, 40s desktop-display expected
+readiness failure plus precise no-publication oracle. Follow46683, no duplicate.
+No production source changes or GPU/physical timing claims; index untouched.
+
+GRAPHICS prerequisite handoff (2026-10-02): immediate Desktop GPU path can
+consume protected CPU UI surfaces through explicit upload into compositor-owned
+images. It needs authenticated same-device device/queue ownership, real fence
+completion and device-loss semantics; downstream Display must retain output
+until acquisition/scanout readers retire. Cross-process GPU import is not a
+prerequisite for that first path. Later zero-copy Servo needs format/stride/tiling
+validation, immutable producer leases, completion+retirement transfer and
+read-only GPU enforcement (unsupported RO PPGTT must reject or explicitly copy,
+never widen authority). Current CPU readback remains an acknowledged copy.
+Private completion fixture build34459 failed before compile on relative RTS
+path in extended GPR; corrected to absolute runtime. No shared staging change.
+
+2026-10-02 native pointer-time-r3 FINISHED: runner log confirms all four
+observer groups and final headless PASS. Matched Mesa Desktop SHA
+9381afec96993f61b2dc6d82ca736b123c69447bd23962f2e1afd92f00f67f3c.
+Unchanged mixed-DPI/primary/arrangement/Desktop checks accepted after acquired
+pointer-time fix; software TCG functional evidence only, no hardware timing.
+Next own work: private instrumented Desktop completion-delay/fault fixture,
+no production completion hooks or GPU activation. Index untouched.
+
+2026-10-02 REFRESHED SCENE SNAPSHOT for graphics native relinks:19004 TERMINAL0,
+tests/compositor/build/native-scene-oahh3gi0/libcubit-native-scene.a
+archiveSHA 3bd43f2c2b6d1ff571db169111e9179ef0502413d1513a645dbd612cfbadf62d
+matchingruntimeSHA 057d18b5907b209f944c37c2df5c429d9810d8be2fe95620522a7bd3b18e0cf5
+All801 snapshot inputhashes verified; bridge ABI/implementation/transferadapter
+unchanged. CurrenttreeDamage.Capture additive API included; no scene semantics
+changed. Do not bypassruntimeguard: old _g2p_mss remains valid ONLY with its old
+frozenruntime/alreadylinkedapps. New currentruntime is snapshot oahh3gi0.
+Finaltimestamp proof62718 TERMINAL0 (44checkszero unproved). Native69723
+TERMINAL1 after successfulruntime+PS2+xHCI+MesaDesktop builds: checksum command
+used .svc instead ofdriver.drv; failed beforeboot. Corrected62972 LIVE now
+hash-matchednative mixedDPI run; no duplicatedVM. Follow62972. Nativeacquired
+click timing acceptance pending. Index untouched.
+
+2026-10-02 runtime style repair APPLIED underlock: cubit-input.ads comments
+nowtwo spaces, allnewlines<=79. 61618 TERMINAL2 preboot strictstylefailure;
+no native test ran. Same graphicsv29 packaging failure acknowledged inlocalnote.
+No semantic timestamp changes. New boundedlocked native rebuild+unchangedtest
+starting; will verifyruntimehash andpublish freshscenearchive ifneeded before
+claiming compatible. No peer edits/index changes.
+
+2026-10-02 pointertime90822 TERMINAL0:44SPARK(17flow27prover)zero unproved/
+justified,2001delaynegative/positiveclick schedules, productionPS2 retry/overflow/
+replacement exacttimestamp testsPASS.36413 initialtestfailedold snapshot==buttons
+assertion; newchecks assertbuttonsANDtime. 61618 LIVE bounded180s sharedlock queue:
+makeps2+xhci+MesaDesktop, stagedhashes/cmp, unchangedfullmixedDPI300s. No duplicate
+job; follow61618 even ifobservationtimesout. Native resultpending, nofixclaimyet.
+Source timestampunknown/overlarge doesn'twrap; 56bitms+1 inexisting pointer
+snapshot, driveracquisition notswitch/IRQtime; queue1048bytes. Clickrecognizer
+policyunchanged, Desktop usesdriverclock andresetssequence onqualitychanges.
+Documentation tests/input-pending/README.md. No indexchanges.
+
+2026-10-02 pointer acquisition timestamp implementation APPLIED underlock22557
+TERMINAL0. Own CuBit.Input additive Pointer_Snapshot/Pointer_Time helpers,
+Input_Pending retained Observed_Ms, PS2/xHCI acquisition capture (not retrytime),
+Desktop click Press/Release uses acquiredclock; qualityswitch resetssequence.
+Fourword sourcewire unchanged, pointer snapshot low8buttons+optional high56
+milliseconds+1, zero unstamped; oversizedclock rejected notwrapped. Queueadds
+256bytes (792->1048), no newpixelallocation. No keyboardformat changes.
+Hosted timing regression2001delay schedules PASS, demonstrates processing-time
+negativecontrol and preserved acquiredclicks; olddriverfixture snapshotallzero
+assumption updated to assertlowbuttons+exacttime. Finalpolicyproof runningnext.
+NOTE GRAPHICS: shared CuBit.Input sourcechanged; your scene snapshot remains
+frozen. Native runtime rebuild MAY change whole libgnat-user.a hash; do not
+suppress strictmatch. If changed I will publish fresh matching scene snapshot.
+No graphicsfiles/index edits. Nativeclickfailure notyetacceptedfixed.
+
+2026-10-02 native71373 TERMINAL1, NOT accepted: correct staged/currentMesa
+SHA752dea5d3e19cd7108c49436f405bedaa1a35ae5b3277f3354144a13d6d852da,
+serial confirmsnativeoutput+Mesatext, observerfails "maximize ignored primary
+Y origin" atcheck-dual-desktop.py359. Two titlehit-downs/drag-ups forclient4,
+no title-double; redraw961ms underTCG. Suspectexistingprocessing-timeclickclock
+(main7059/7153 sysGETTIME) ratherthanYgeometry: CuBit.Input.Source_Report has
+no acquisitiontimestamp. Not yetrootcauseproved; donotloosenobserver. Next
+investigatecapturedinputtiming anddeterministicnegativecontrol, thenrepeatnative.
+QMPquit verifiedexactr2serial VM466469, exitedcleanly; allownjobs/locks terminal.
+Capture proof28 +facadeproof912 and11faultcases pass; bothbackends compile/link.
+Live Desktopnewcompletiongate remainsworkinprogress pendingnativeacceptance
+andactualPending/Unsafe eventloopfaultfixture. NoGPUactivation/hardwareclaim.
+Sourcehash desktop-frame-source.sha256; docsdesktop-frame-completion.md updated.
+Graphics frozenbridge unaffected; newadditiveDamageCaptureAPI onlycurrenttree.
+
+2026-10-02 Desktop final62423 TERMINAL0: completionfacade11faultscenariosPASS,
+SPARK912(217flow695prover)zerounproved incldependencies. Damage49545 TERMINAL0
+28proof +1000frames/32000freshupdates+legacycoveragePASS. Native41030 TERMINAL0
+bothlegacy/Mesa compile/link. Corrected Complete_Output Global=Input underlock;
+software implementations onlyreadstate; futureGPUbackend must modelmutableEngine.
+Native71373 LIVE sharedlock: explicitly makekernelDesktop(Mesa), hash+cmpstaged
+binary, thenmixedDPI300s4CPU QEMU; serial confirmsnativeoutput/Mesatext. Logs
+ desktop-frame-dual-r2.log /desktop-frame-native-r2.serial.log. No duplicatedjob.
+Earlier15194 TERMINAL0 observerPASS BUT STALE STAGED BINARY, NOT acceptance.
+OwnedQMP27227 TERMINAL0 quit afterobserverreleasedsocket; laterSIGTERM lookup
+foundnoVM andkillednothing. 94575 firstfacadeproof failedoverbroadGlobal; fixed.
+No index or graphics-source changes; scene snapshot _g2p_mss stays frozen.
+
+2026-10-02 Desktop asynchronous frame assembly claim: edited main.adb,
+shared Desktop_Compositor spec and legacy/Mesa bodies, Compositor_Damage.Capture
+under buildlock (now released). Separate held Frame_Damage from incomingDamage;
+renderer Complete/Pending/Unsafe gate, poll-only pending writer, bounded1ms
+fallback wake until kernel GPUcompletion notification exists. Softwarebackends
+still immediate. New hosted capture tests/proof and both nativeDesktop builds
+next; no GPU backend activation claimed. Existing graphics bridge snapshot is
+frozen/unchanged: use its copies, not currentCompositor_Damage (new additive
+captureAPI). No graphicsfiles/index edits. Capture actualGPU nativehook remains
+Graphics scope; shared exactadapter/pixelsetup already published above.
+
+2026-10-02 exact Ada bridge REAL MESA gate complete, ready for graphics native
+integration. Final71044 TERMINAL0: shared native_scene_transfer.h adapter,
+64x64 +256x256, each8lifetimes/128queues/384pendingpolls/16cancelledscenes/
+64simulatedconsumerrejects; exactbridge524288+8388608pixels (8912896total).
+Accompanying affine950272+15204352pixels; zeroVulkanvalidationerrors.
+Missingbarrier negativecontrols fail with actual layoutmismatch+READ_AFTER_WRITE.
+Earlier95210 rectangularoraclePASS;72599 inlinebarrier sizesPASS superseded by
+71044 using reusableadapter. Allownjobs terminal; no native lock, no index edits.
+
+GRAPHICS HANDOFF: reuse tests/compositor/native_scene_transfer.h verbatim for
+output color->transfer barrier+copy+hostdependency inside SAME Ada submission.
+It accepts dispatch function pointers and has no allocator/queue/wait/policy.
+Working lifecycle/resource setup: tests/compositor/native_scene_pixels.h;
+source upload/layout+descriptor/pass setup: vulkan_affine_host.c; precise native
+setup and sourceusage/layout/retention contract: native-scene-bridge.md section
+"Shared real-Mesa/native command setup". Source must be created SAMPLED in
+addition to producer usages; producer completion and shader-read transition
+precede borrowed sampling. TargetpassCLEAR/STORE,UNDEFINED->COLOR_ATTACHMENT,
+fullrepaint; don't reuse that layout policy for partialdamage without changes.
+Header/archive still native_scene_bridge.h and native-scene-_g2p_mss/
+libcubit-native-scene.a (ee3afebff4fb6111751a8ed5caeb7629bc2f94f11e83247b9d67df8795aa4b51).
+Ada source unchanged since736proof; archive initializer compositor_sceneinit.
+No app-link/boot/native Intel/presentation/latency claim. Graphics owns app/link/
+CPUconsumer integration; no tests/mesa-anv or teapot edits by compositor.
+Logs native-scene-pixels-shared.log and per-size positive/negative; sourcehashes
+native-scene-pixels-source.sha256. Hostedsource is immutable uploaded BGRA
+pattern, not a substitute renderer; native Mesa triangle/teapot source ownedby
+Graphics remains next fullintegration gate. v28 untouched.
+
+2026-10-02 native Ada bridge component gate complete. Own new tests/compositor/
+native_scene_bridge.{ads,adb,h}, native_scene_bridge_{tests.adb,c_test.c},
+bridge GPRs, build-native-scene-bridge.py and native-scene-bridge.md.
+Proof55740 TERMINAL0:736 results(230flow506prover), zero unproved/justified,
+includes dependencies. Final67402 TERMINAL0: nine lifecycle/fault scenarios,
+real C->Ada ABI sequence,1000pendingpolls/no resubmit,100clean reopen/cancel/close
+cycles, native archive+elaboration built from801hash-verified private inputs.
+Header: tests/compositor/native_scene_bridge.h.
+FINAL ARCHIVE: tests/compositor/build/native-scene-_g2p_mss/libcubit-native-scene.a
+Matching runtime+header+sources are in that independent snapshot. Call generated
+compositor_sceneinit exactly once. Archive is Ada only: required C adapters and
+link integration details in tests/compositor/native-scene-bridge.md. Graphics
+still owns tests/mesa-anv linker/app/barriers/presentation. No graphics edits.
+
+Open borrows immutable same-device affine source through successfulClose;
+Begin returns selected1..3 slot for preparation; Record runs production scene;
+caller appends readback+barriers before Submit; Poll checks actualfence once;
+Release requires CPUconsumerreturn; Close rejects heldready/pending. Code3sticky
+quarantine retains ALL objects; timeout never authorizescleanup. SourceBGRA8
+SAMPLED +shader-read-only descriptor; sameextent/device, nonaliasing, readybefore
+sampling; targetBGRA8 colorattachment+transfersrc.16MiB actualbackingcharge cap.
+Firstgate64x64triangle; dimensions12..65535 allowlater256teapot subjectbudget.
+No GPUimport/scanoutauthority. No app link/boot/native GPU/pixel/latency claim yet.
+NEXT: hosted realMesa exercise of this exact C/Ada bridge, then graphics native
+app integration. Allownjobs terminal; index unchanged.
+
+Earlier32651 sourcepath,87701 coordinateconversion,71613 damagebound proof and
+48449 compiler/runtime mismatch FAILED then corrected. Use Nix+kernel alrexec
+GNAT16 for nativebinding, not plainNix GNAT15; consistencychecks notsuppressed.
+64676 intermediatearchivePASS superseded by final67402 exactheader/CABIartifact.
+
+2026-10-02 graphics/Penny handoff inspected. Verified graphics hosted8cycles+
+negativecontrol log and native compile/link-only artifact olc3vo5x SHA256
+070f2e6ebc3d1451563352af07e7930538aed98058a7e714ba0da91db2cba633. Current smoke
+executes production C submission functions, NOT Ada scene policy. No native
+execution/physical presentation claim. I own the next compositor-local Ada
+scene-recording/native bridge and its archive/header/build fixture; graphics
+retains tests/mesa-anv app/image/driver/ANV transport. No peer source edits.
+
+NEXT NATIVE CONTRACT (proposed integration, not an existing public GPU ABI):
+Reuse graphics' authorized app VkDevice/queue and immutable app-owned offscreen
+triangle source. Compose that texture plus a physical green fill into owned
+targets using production Vulkan_Scene/Scene_Recording/Frame/Owned_Targets and
+the existing affine Mesa pipeline. C bridge constructs Vulkan requests and
+records audited layout/readback barriers; SPARK selects/adopts the writer,
+preflights source/context/output epochs, records, queues and polls. Source stays
+immutable and retained through the compositor fence. Keep explicit existing
+readback presentation for this first gate; readback buffers stay alive until
+the existing CPU consumer returns them. This is a same-device app-owned test,
+NOT cross-process GPU import or zero-copy scanout. No driver change required
+for that bounded first gate; graphics will need a linker/archive hook after
+the compositor bridge is available. Preserve v26 and all existing probe modes.
+Teapots follow as actual Mesa-rendered source content; no replacement rasterizer.
+
+PENNY CONTRACT: existing protected UI.App CPU frame publication/readback remains
+the available path. There is NO stable client GPU-import wire ABI yet. Planned
+semantics: explicit recipient/device-scoped import authority and independent
+allocation identity; surface/output epoch and non-reused frame identity;
+validated extent/format/stride/plane layout/DPI; authenticated producer-GPU-ready
+evidence; immutable accepted source until compositor-reader retirement. Frame
+acceptance, compositor GPU completion, display latch and final buffer release
+are different events. Resize creates a new epoch; old frames drain independently
+and stale completions cannot release new resources. Use bounded newest-ready
+admission: drop only unconsumed candidates, never overwrite GPU/display-held
+buffers. Browser/video producer must receive explicit accepted/deferred/rejected
+and terminal release outcomes; no busy-wait or unbounded FIFO is intended.
+These are semantic requirements, not promises of current syscalls/endpoints.
+
+Required GPU-import evidence: recipient authentication, rights attenuation,
+forged/stale identities, wrong device/owner, resize/death with held readers,
+revocation, producer/consumer device loss, overload and independent GPU/display
+retirement. CPU RO grants do NOT confer GPU authority. Gen11/12 lack of enforced
+RO PPGTT must reject unsupported RO imports or use an explicit permitted copy;
+never silently map RW. Graphics retains this transport/VM work; Penny retains
+browser/libc/netstack. I will not change browser code. Integration evidence must
+separate C boundary smoke, Ada-policy execution, CPU readback, GPU import and
+physical scanout. Coordination is recorded here; no direct thread message sent.
+
+2026-10-02 scene-recording complete at component gate:91898 TERMINAL0 nine
+recorded-not-ready/preflight/cancel/unknown cases;78889 TERMINAL0 proof702
+(211flow491prover)zero unproved incl dependencies;14250 TERMINAL0 realMesa72
+physical-fill scenes55296pixels through productionRecord_Scene +repaint-aware
+pool/acquire/submit/fencepoll, plus2304RGB/178176affine0validation.95149 TERMINAL0
+private nativecompile private-targets-29k_75b_ hashesPASS. Initial91255 visibility
+and12429 missingmodular guarantees corrected. No Desktop/sharedruntime/driver
+or index edits; allownjobs terminal. scene-recording.md states remaining native
+frame/presentation and image/source barrier integration requirements.
+
+2026-10-02 claim production scene-recording assembly: owner context/output epoch
+and sealed-source preflight, begin/replay/end, cancel-unsubmitted on known failure,
+retain writer/damage on uncertainty. Recorded is distinct from queued/completed.
+Own Vulkan_Scene_Recording plus epoch getters/test bridges; no Desktop service
+changes or driver/display authority. Hardware driver import transport still absent.
+
+2026-10-02 physicalfill final59768/9233/94712 TERMINAL0: proof558(176flow382
+prover)zero unproved incl dependencies;72actualMesa scenes55296exactpixels +
+ownedtargets2304RGB/178176affine/18bindingfaults0validation; privateCuBit compile
+snapshot private-targets-018sruyz hashesPASS.22688 earlier full712queue546816pixel
+regressionPASS before defensive rejection flag fix. First92665 typevisibility,
+73422 scaleconversions,90950 unsupportedlocalrecord,82076 staleAccepted defensive
+return failures corrected; no failed proof counted. Allownjobs terminal.
+No Desktop source/shared build/index edits. physical-fills.md documents remaining
+native capture/frame begin/end/source admission/presentation work.
+
+2026-10-02 claim output-pixel scene capture: Desktop Draw_Fill already receives
+physical rectangles; Vulkan scene currently assumes logical coordinates. Add
+typed physical fill capture and reuse bounded damage replay without a second
+DPI/rotation transform. Own Vulkan_Frame/Scene and hosted tests only. Desktop
+sources remain frozen while graphics95041 rebuilds consumers; no native rollout.
+
+2026-10-02 final context19069 TERMINAL0: null-context clean backing rollback
+and all policy regressionsPASS; isolated native compilationPASS complete target
+bundle +both Cboundaries. build/private-targets-pfh2mali contains regular source/
+runtime/musl/Mesa header copies, input hashes verified before/after, result.json.
+80604 proof578(183flow395prover)zero unproved including unchangeddeps;4072 hosted
+actual3targets2304RGB +178176affinepixels,18badbindings,0validationPASS. No jobs
+or waiters remain. Shared grant-ABI outputs untouched; no index mutations.
+
+2026-10-02 context binding: Attach captures Vulkan_Submission.Owner_Context;
+Close rejects unrelated idle context even with matching outputepoch. Foreign
+binding checks native submission device/queue/command/fence before publication.
+80604 policy/proof TERMINAL0;4072 actualMesa3target+178176affine+18foreignfaults
+TERMINAL0 zero validation. Firstprivate native58239 TERMINAL0 at
+build/private-targets-japdqimn with hashes; next rerun includes context binding.
+Own Vulkan_Submission getter and target files only; no sharedruntime/driver edits.
+
+2026-10-02 private native compile scope: shared lock remains unavailable during
+grant namespace build. New compile-private-targets.py copies compositor/display
+sources, CuBit runtime, existing musl/Mesa Vulkan headers into independent regular
+files, verifies hashes before/after compilation, writes only private artifacts.
+No native linking/staging/boot or grant ABI edits; follows permitted snapshot
+workflow for isolated component compilation. Driver GPU import/output authority
+handoff remains acknowledged but absent, not inferred from CPU grants.
+
+2026-10-02 final repeatablebundle7099 TERMINAL0: binding13negative+positive,
+3ownedtargets2304RGBpixels+178176affinepixels, helddisplayretirement,0validation.
+Source hashes vulkan-target-bundle-source.sha256. Allownjobs terminal; no waiter.
+
+2026-10-02 owned-targets51921 TERMINAL0 proof576(182flow394prover) including
+unchanged deps, zero unproved/justified.11832 TERMINAL0 expanded pending-GPU/
+display-role/epoch/rollback/null/alias/cancel tests.74582 Cbinding13negative+
+positivePASS.51247 TERMINAL0 actualhostMesa3ownedtargets2304exactRGBpixels,
+heldfront retainsallimages/views, finalclose refunds; affine178176pixels0errors.
+First14969 test used nonexistentpoolmethod;23938 missingloop invariant;
+75695 objectcollision and16255 missingtestbridge builds failed, allcorrected.
+NewC binding is vulkan_owned_target_binding.c (avoids Ada basename collision).
+Native36465 TERMINAL1 locktimeout; laternonblocking unavailable. Individualimage
+native70682 alreadyPASS Ada+muslC, aggregate nativeGPR remainspending. No jobs
+active at this note; repeatablebundle script nowincludes Cbindingfaulttest.
+NativeDesktop activation/import/displayauthority stillpending; indexuntouched.
+
+2026-10-02 native70682 TERMINAL0: new image owner compiles against CuBit Ada
+runtime and owned-image C compiles with existing musl Mesa ABI command. Native
+compile gate nowPASS, not a GPU execution claim. Next own scope: SPARK owned
+three-target bundle, tying backing retirement to existing GPU+display-role gate,
+foreign image-to-view-request binding and focused failure/lifetime tests.
+
+2026-10-02 owned-image implementation complete for hosted gate.26606 TERMINAL0:
+SPARK59(25flow34prover)zero unproved;32typepositions/9failurecases/heldreader/
+8slot/staleidentity policy testsPASS.95613 TERMINAL0: production C boundary
+faultsPASS; actual Mesa llvmpipe3images/212draws/178176pixels, allchargesrefunded,
+0validation.34502 TERMINAL0 full existing712queue546816pixel regressionPASS;
+that larger fixture still uses old testallocator. First3520 compile visibility
+error and83445 GPR source-dir error corrected before successful runs.
+Native80992 TERMINAL1 after60s lock timeout, no native compile ran; no own jobs
+remain. New nativeGPR ready for next sharedslot. No Mesa/kernel/runtime edits;
+index untouched. Native Desktop wiring/import/outputretirement still pending.
+
+2026-10-02 claim owned GPU images: new compositor-local Vulkan image FFI and
+SPARK memory admission policy, independent hosted fault/real Vulkan tests.
+Prepare/query before charged allocation; explicit quiescence before release.
+No Mesa/kernel/driver/shared runtime edits, no external import or scanout
+authority inferred. Existing staged checkpoint remains untouched.
+
+2026-10-02 gradient5459 TERMINAL0 nativefullPASS all4suites: primary/DPI125-150/arrangements/exactcursor-window restoration,4CPU TCG1GiB2sfunctionalsettle. Quit only identifiedownVM afterall4PASS,300sdeadline notsoak.37559 TERMINAL0 Settingsgradient940pixels/20rows exact. NativeMesaactive; source+image hashes unchanged. primary-125.png visuallyinspected genuine125%primary; evidence gradient-color-evidence. Old86977wrongprofile earlymaximize retained49700pixel latechange proof. All ownjobs terminal, sharedlockreleased;384file stagedindexuntouched. GPUimport/outputretirement+completeDesktopGPUcapture remainunfinished.
+
+2026-10-02 color gradient88373/58280 TERMINAL0: combined539proof results0unproved, capacity1/17slots casesPASS; hostedVulkan712queues546816pixels/22832gradientpixels0validation.86977 firstnative observerfailed earlymaximize(default0.8s, omittedfullDPIflags); SAMEVM latecapture changesall49700targetpixels, no productionregressionestablished. Saved late-maximized.json/PPMs and quit only identifiedfailedVM. Rerun with established2s Mesa settling +mixed/primary/arrangement/scaling flags, unchangedbinary, gradient-color-full.log/serial; newhandle next. Evidence copiedgradient-color-evidence; staged384unchanged.
+
+2026-10-02 gradient21935 TERMINAL0 nativeMesaDesktop linked desktop-mesa-none.svc; Desktop+VulkanScene use Color_Run_Last, no pixels/FFI changes.88373 LIVE scene mock+proof;58280 LIVE actualhostedVulkan pixel suite;86977 LIVE bounded sharedlock queue native300s dual-output/DPI/restoration with thisMesaimage. Logs gradient-color-{scene,vulkan,dual}.log and dual.serial; resumehandles, no duplicates. Source frozen, prior384file index intact. Purehelper proof60 alreadyPASS.
+
+2026-10-02 color gradient53871 TERMINAL0:270clipped cases117570exact pixels; flat2160rows1fill/subtle17/fullrange256; existing16777216channel+rowweights/maximalweightbands suitePASS. SPARK60(8flow52prover)0unproved/justified. First41637 wrong executable path terminal127,3856 terminatedonlyownhostedtest due test's quantified postcondition over2Bflatrows; bounded near-NaturalLast case replaces it.21935 LIVE bounded600s sharedlock queue to apply Desktop+Vulkan_Scene substitutions and nativeMesa build; gradient-color-native-build.log. No duplicate job/indexchanges. Caller/mocks and actualVulkan/nativeDPI gates follow application/build.
+
+2026-10-02 claim gradient RGB coalescing: own Compositor_Gradient At_Weight/Color_Run_Last, hosted gradient pixel oracle; subsequent Desktop settingsGradient and Vulkan_Scene Append_Gradient caller substitutions under sharedlock. Merge only exactly equal finalRGB across existing bounded weight bands; no shader/driver/import/protocol change. Aims reduce command pressure before completeDesktopGPUcapture; GPU import/outputretirement still pending acknowledgedownercontract. No index changes.
+
+2026-10-02 optional32510 TERMINAL0 nativePASS90s4CPU1GiB:4denials/5stops/2submissions/1retry/2runningsoftwarechildren with empty slots+Deviceswindow. FailedGPU17179869216 neverexecuted; retry4294967329, directsoftware12884901920. Core procmgr/policy/fixture sourcehashes unchanged from firstboot; packaging noexecstack +oracle shell-status fixes only.40824 policyPASS320+49cases,11SPARK(4flow7prover)0unproved;65463 observerPASS11negativecontrols plus actualrun.sh guard success/rejection. Allownjobs terminal; docs/evidence optional-corrected and optional-final.sha256. CCL optional keyword request stillpendingowner; no Desktop manifest activation/GPUimports/physicaltimingclaim.384staged index preserved. New optional wire support and boundedfresh-child retry are productionprocmgr, tests use rawmanifestbytes.
+
+2026-10-02 optional32510 LIVE bounded sharedlock queue/build/rerun with fixture noexecstack + explicit oracle failure propagation, optional-corrected.log/serial. Prior repair35330 TERMINAL143: intentionally stopped only own queuedflock56491 beforeexecution because /tmp per-user quota left repairscript empty. Recreated script in /home/doc/git/.cubit-fill-tmp; no unrelatedVM/job touched. Production policy/procmgr alreadybuilt; nativeonlyfixture/runner fixes pendingthisjob. First65149 wrapper0 is FAILED evidence, not nativeacceptance. Allpolicyproofs terminalPASS; preserve384fileindex.
+
+2026-10-02 optional65149 TERMINAL0 BUT INVALID TEST PASS: mandatorycases passed; all optionalapps rejected by ELF loader (manifest.o implied executable GNU stack). Oracle correctly failed, new run.sh branch failed to propagate Python status. Corrective run queued next: fixture linker explicit noexecstack + run.sh `if ! python ...; then exit1; fi`, then same90s gate; no productionpolicychanges. Applied production policy40824 TERMINAL0:320+49cases,11SPARK results(4flow7prover)zero unproved;11oracle negative controlsPASS. First native result explicitly NOT acceptance evidence. Logs optional-native.log+serial retained; preserve index.
+
+2026-10-02 optional65149 LIVE bounded600s sharedlock waiter: /tmp/cubit-optional-startup-edit.py applies reviewed procmgr/runtime/run.sh edits only while holding lock, then build+90s4CPU1GiB native optional fixture. Evidence optional-native.log/serial. Prepared preview42018 TERMINAL0:320decision+49incarnation cases,11oracle negative controls, SPARK checks-as-errors PASS (private source preview, not yet production). tests/render-startup/native/{build.sh,main,fixture,init,check,check_tests} new. Shared run.sh opt-in CUBIT_RENDER_OPTIONAL_TEST extends existing required-admission fixture; default fixture preserved. No duplicate waiter or index changes; resume65149.
+
+2026-10-02 claim optional render startup integration: procmgr main and own tests/render-startup/native fixture, under sharedlock. Explicit optional wire request type11/rights3/param0=1/param1=0, existing required param0=0 unchanged. Application-role only; no GPU approval inferred from manifest. Optional unapproved starts software with inspected empty slot; approved failed admission stops captured child then at most one fresh-incarnation software attempt, retaining broker resources. No Desktop manifest activation/native imports yet. REQUEST CCL owner: add `(request-optional-render read-write render)` encoding the same render request with param0=1, reject duplicates across both spellings and non-read-write rights; own ccl-manifests implementation/tests remain yours. Until acknowledgment, native fixtures encode the wire bytes directly and no CCL compiler changes here. Preserve index.
+
+2026-10-02 startup69095 TERMINAL1 after native gate PASS: 70s4CPU1GiB render-launch-policy exactly2denials/1submission/2stops/Deviceswindow, no sentinel. Wrapper post-test hashes: procmgr+Render_Startup unchanged, CCL.Language changed concurrently => exit1, NOT frozen-source provenance claim. Saved before/after hashes incl staged kernel/procmgr/devmgr; native-verified.log+serial. All ownjobs terminal/sharedlockreleased. README records5SPARK/320hostcases, native gate scope and provenance limitation; optional startup/retry stillnot enabled. Prior48690 image-compiler Type_Source failure was owner-corrected without our CCL edits.384file index unchanged.
+
+2026-10-02 startup69095 LIVE same native gate, native-verified.log/serial and before.sha256.48690 TERMINAL1 beforeVM: CCL image compiler Type_Source undefined; current CCL owner source now defines helper before use. No CCL edits here. Rerun records source hashes and checks them after test; sharedlock held by native gate. README +backends proof-boundary documentation added. No optional startup activation/index changes.
+
+2026-10-02 startup native48690 LIVE: shared-lock make procmgr/devmgr/devices/render-launch-policy followed by native70s4CPU1GiB required-admission regression; tests/render-startup/build/evidence/native-retry.log and native-retry.serial.log. Previous59388 confirmed TERMINAL2: procmgr compiled/linked, devmgr missing ccl-streams.ads. Other owner's current GPR already includes dependency; no devmgr edit here. Hosted320cases and5SPARKresults PASS. Added tests/render-startup/README.md distinguishing proved decisions from authenticated observations, fresh-child retry and retained GPU-resource obligations. Optional manifest/retry not enabled. Preserve384-file staged checkpoint; no index changes.
+
+2026-10-02 claim render startup decision policy: runtime CuBit.Render_Startup +tests/render-startup; procmgr mandatory acceptance gate uses proven decision without changing manifest/approval/launcher semantics. Optional policy permits software only with no admission attempt and kernel-confirmed empty slot; failed GPU child muststop before fresh retry. Optional manifest/retry plumbing not enabled yet. Sharedlock coversprocmgr edit/build. No driver/kernel/index edits.
+
+2026-10-02 glyph association75297/native33550/realVulkan34999 TERMINAL0.128slots4096B metadata; typed Append_Glyph requires face/code/equivalent density+livegeneration, forbids live reassociation andduplicate keys/tickets. Combined SPARK report479(164flow315prover), zero unproved/justified; 128capacity, wronglayout/stale/duplicate/recording/sealed/pending/quarantine tests PASS. Real712queues546816pixels/19336glyphpixels pass through typed capture with repeatedsource release/rebind, zeroVulkanvalidation. Earlier fixture duplicateContext+Ada reserved Entry fixed. Ownjobs terminal; staged384 unchanged. NativeGPU images/lease authority andDesktopactivation stillmissing; image metadata truth assumedatforeignboundary. Evidence glyph-source-evidence.
+
+2026-10-02 claim glyph key/source association: new Vulkan_Glyph_Sources reuses existing Glyph_Cache keys/rational density equality; typed Scene.Append_Glyph, mock and realhost bridge integration. Idle-only bindings, generation validation, no live reassociation, bounded128metadata slots. No actual VkImage import authority added; source metadata truthful foreign-owner assumption remains. No index changes.
+
+2026-10-02 glyph68439 TERMINAL0: realhost712queues/546816pixels/96glyphscenes6densities4rotations/19336coveredglyph pixels/zeroVulkanvalidation. Native16907 TERMINAL0. First97977 fixture viewport dimensions wrong;19977 oracle outward-cell vs actualpixel-centre wrong. Corrected fixture only; independentpixeloracle nowPASS. Proof351/mock240 unchanged;24608Bscene. Allownjobs terminal; staged384untouched. Next: nativeglyphcache/import/density association +Desktopcapture. No nativeGPUactivation/physicaltimingclaim. Evidence glyph-scene-evidence/vulkan-glyph-corrected.log +positive +sourcehashes.
+
+2026-10-02 glyphpolicy50651 TERMINAL0:240glyph-scene cases +existing mocks PASS;351SPARK(129flow222prover), zero unproved/justified. Native16907 and hostedVulkan80587 LIVE; source frozen, poll same handles. Glyph_Mask selects existing snapped density raster +cell/scene/damage clipping through affine binding, unchanged FFI and24608B scene. Real glyph pixel oracle stillpending; host suite currently covers616existing texture/fill/gradient/clip cases. No DesktopGPUactivation orindexchanges.
+
+2026-10-02 claim Vulkan glyph scene commands: affine_binding, submission, frame, scene +five explicit GPR lists and submission mock coverage. Reuse Glyph_Placement and Text.Clip; retain source tickets, scene bounds/draw budget and existing FFI. No native image importer/provider changes; no index edits.
+
+2026-10-02 native35475 TERMINAL0: all4 dual-final suites PASS productionMesaDesktop,4CPU TCG1GiB; primary/DPI125-150/arrangements/splitdrag/maximize/exactcursor-background. Quit ownVM afterallPASS, sharedlockreleased. Opaque text backgrounds32->1calls fullbatch;38SPARK zero unproved;1536geometrycases/8847360pixels;11backendfaultcases PASS. Evidence tests/compositor/build/text-background-evidence. Docsupdated, ownjobs terminal, staged384 unchanged. Next GPUglyph capture must use Glyph_Placement.Plan at output density and Text.Clip cell bounds; ordinary Surface scaling would resample raster. NativeGPUimport/targetlease handoff stillrequired.
+
+2026-10-02 native35475 LIVE bounded lock queue then dual-final regression, same text-background Desktop binary; follow handle, no duplicate. Observer exact Settings-return restoration wait applied underlock. Investigating glyph GPU path: use existing Glyph_Placement at output density plus Text.Clip cell bounds; ordinary logical Surface scaling would resample density-rounded glyph raster. Staged index unchanged.
+
+2026-10-02 text backgrounds: hosted1536cases/8847360pixels PASS;38SPARK zero unproved; nativebuild46110 TERMINAL0. Native51967 TERMINAL1 Settings keyboard restoration capture early:58267pixels differ, SAME VM later exact231000-byte region matches. Captured late-head-0.ppm then quit ownVM. Under sharedlock replacing single capture with <=15s exact-region readiness; same assertion/geometry, no production change. Rerun pending; staged384 index untouched.
+
+2026-10-02 text backgrounds: hosted1536cases/8847360pixels PASS;38SPARK zero unproved; nativebuild46110 TERMINAL0. Native51967 TERMINAL1 Settings keyboard restoration capture early:58267pixels differ, SAME VM later exact231000-byte region matches. Captured late-head-0.ppm then quit ownVM. Need sharedlock for bounded15s exact-region readiness replacement and rerun; nonblocklockbusy, no observer edit yet. No own jobs live; staged384 index untouched.
+
+2026-10-02 claim opaque text background coalescing: compositor_text.ads, Desktop drawUIText, new tests/compositor/text_background tests/GPR. Preserve staged384-file checkpoint. Prove contiguity eligibility and rectangle bounds, check scaled/rotated pixel union, then native integration. No GPU provider or other-agent source edits.
+
+2026-10-02 user requested a fresh safekeeping checkpoint before bed. Refreshing the existing index with current tracked changes and new input-retention/native-test sources. Excluding generated build trees and untracked wallpaper assets. No commit or push; no new compositor implementation in this staging turn. Preserve this refreshed index for the user.
+
+2026-10-02 nativeactivation75776 TERMINAL0: rebuiltprocmgr/devmgr/devices andrender-launchpolicy, CuBitQEMU4CPU1GiB70s PASS;2deniedchildren/1admissionsubmission/stopchecks andsurvivingDesktop+Deviceswindow. Evidence native-admission-audit log+serial. This verifies existing mandatory-render/separate-child denial semantics, not optionalDesktopauthority orsuccessfulGPUcomposition. Allrootjobs terminal/indexuntouched. Nextnativeproviderhandoff +Desktopprimitivecapture; graphicsownercontractrequest remains in note.
+
+2026-10-02 nativeactivation75776 LIVE current-source build+render-launch-policy QEMU70s; resumehandle, unique compositor/build/native-admission-audit logs. Further concretegap: anv_cubit_memory.h external-memory/userptr/placed-map callbacks unset; anv_cubit_memory.c rejects imported/scanout BO classes. Read-only presentation forwarding isCPUlinear, not Vulkanimageimport. Graphics handoff request above now backed by exact source; detailed activationgates docs/compositor-backends.md. No production/index edits.
+
+2026-10-02 native activation audit: Desktop manifest has no render request; procmgr rejects/discards every render-request child without Admitted, including timeout/Uncertain. Do not add a mandatory render request to critical Desktop or reinterpret Pending as software-safe. Optional acceleration needs separately admitted worker or a proved optional-admission/late-grant contract. Current GPU presentation export is CPU-linear RO grant forwarding, not a VkImage import/output lease. REQUEST graphics owner: agree native compositor GPU image import + display-target borrow/retirement contract before wiring borrowed Vk handles to Desktop; do not infer GPU authority from CPU grants. Existing native render-launch-policy gate queued to verify software Desktop/Devices survives both denied and unavailable requests on current tree. No production/index edits in this audit.
+
+2026-10-02 clip native98080/14480 and realVulkan1192/68831 TERMINAL0. Final616realqueues/473088outputpixels/943872nonwriter;144newclipscenes6modes6scales4rotations,84512exactclippedbackground/1370exactsolid/22832exactgradient; zero Vulkanvalidation. Firstrealrun lackedexplicitclippedsolid, finaladds5thsceneentry andstrictsolidpixelcheck. Policy342SPARK unchanged; scene24608B unchanged. Evidence scene-clip-evidence finalsourcehashes/native-final/vulkan-final/vulkan-positive. Allrootjobs terminal/indexuntouched. NativeGPUauthorizedadapter/Desktopcompletecapture remainpending; no physical timingclaim.
+
+2026-10-02 clip31416 TERMINAL0: tennewclip cases andallsubmissionmocktests PASS, state24608B unchanged. Scene/frame342SPARK126flow216prover zero unproved/justified; evidence scene-clip-evidence. Clipcmds reuseSurface, physicalscissorintersection retains texturegeometry/gradientorigin and sourceleases. Initial compile visibility fixes andmockwrongdescriptorarg corrected; no production bypass. Nativecompile98080 LIVE queued on shared lock; resume same handle; realVulkan scaled/rotated pixel oracle pending. Index untouched.
+
+2026-10-02 claim Vulkan ordered clip capture: Scene Set_Clip/Reset_Clip using existingLayer geometry, no largerrecords; Frame replay intersects physical damage withclip while retaining fulloriginal texturegeometry. Own frame/scene/testmock/realbridgehost follow-up; source mutations underbuildlock. No nativeGPU authority invention. Prior rootjobs terminal/index untouched.
+
+2026-10-02 native input52447 TERMINAL0: realCuBit loopback event mailbox32slots, sixrefusals/sixexactreports, fortyrefusals/eightnewest+recovery PASS; authorityPID/sequence/payload/buttons, exactkernel rejectioncounter and finaldeadlinewake/no newsource allchecked. Evidence tests/input-pending/build/native.06pF1E/{serial.log,input.sha256}; privateISO, reusedhashedkernel, no productionstaging. First46622 terminal1 fixtureexpectedlatermintedtag whileearlierselfendpointselected; fixedfixtureusesinheritedselfcap, no production/kernelchange. NO HID/crossprocessisolation/hardwarelatency claim. All rootjobs terminal. Index untouched.
+
+2026-10-02 claim native input retention oracle: tests/input-pending/native new private ISO fixture, real kernel loopback mailbox saturation + typed authority stamp + timed wake + production queue, transient refusal/overflow. Privileged disposable devmgr bootstrap only, no production staging/GPU/cross-process isolation claim. All prior ownjobs terminal. Index unchanged.
+
+2026-10-02 native26981 TERMINAL0: full dual-output MesaDesktop gate PASS all4observer suites (primary, scaling125/150, arrangement, exactdrag/cursor/window restoration). QMP quit only after4PASS;300s deadline notsoak. No mailbox refusals thisrun; initial sourcegap1 is explicit registration recovery. Evidence input-pending/build/evidence/dual-final.log/serial/screenshots. HostedactualPS2 refusal/overflow/replacement tests PASS; nativeUSB onlycompile. All ownjobs terminal/sharedlockreleased; index untouched. Next deterministic native source-publication fault gate and continued GPUprimitive/import integration; physical240Hz/1ms not measured.
+
+2026-10-02 hosted actualPS2 driver94878 TERMINAL0: production main/protocol/queue with fault-injected ports+IPC; retry7refusals/finaltimer6exactreports, overflow41refusals/8newestreports+recovery, consumerreplacement dropold6/sendnewstate PASS. Shared deadline policy28results(7flow21prover)zero unproved, PS2+xHCI native19068PASS. Driver owner fixed mixed initializer/native97619PASS; new fullDPI26981 LIVE queued/running, logs input-pending/build/evidence/dual-final.log and serial. Resume26981; no duplicate. Tests/input-pending README/evidence updated. No index changes.
+
+2026-10-02 REQUEST driver owner: native88865 TERMINAL1 before boot: intel_gpu_extent_directory.ads:68:66 components in others choice must have same type (Extent_Entry U64/U32 generic initializer). Please fix in your owned edit; no driver source changes here. USB19068 TERMINAL0: common deadline policy tests/proof and native PS2+xHCI compile/link PASS. No own jobs remain. Full native gate pending directory compile fix; existing360file index untouched.
+
+2026-10-02 continuation: native88865 confirmed LIVE queued (other agent holds build.lock for extent-directory edits). Claim xHCI main/GPR pointer retention integration and common proved retry-deadline selector in Input_Pending, preserving storage/boot-log deadlines. PS2 timed wait to use same selector. All mutations/builds queued under shared lock after current native gate. No kernel/GPU/index edits.
+
+2026-10-02 pointer policy69563/70426 and native3517 TERMINAL0. Hosted FIFO/retry/overflow/reset/wrap tests PASS; strengthened recovery contracts proved (see input-pending/build/evidence/policy-final.log). Native45206 TERMINAL1 observer early secondary scanout; SAME-VM late exact300000-byte region matches, cursor1180,90 correct, no publication loss during drag. VM quit after observer failure. New bounded-secondary predicate edit+native rerun88865 LIVE queued on shared lock; resume this handle. Final policy26checks(6flow20prover) zero unproved/justified, queue792bytes. PS2 retains32 reports and timer retries finalpacket; USB pending. User360file index untouched.
+
+2026-10-02 user safekeeping checkpoint refreshed to360 staged files; preserve index from here. Claim bounded pointer publication retention: new userspace/lib/input/input_pending policy, tests/input-pending, PS2 main/GPR first. Four mailbox rejections in pixel-routing dual-workarea log explain280px drift. Retain exact packets across transport refusal; bounded FIFO, explicit full-queue recovery, timed retry for final packet, consumer-change reset. USB integration remains follow-up. No kernel/driver-GPU changes; no own live jobs.
+
+2026-10-02 gradient native49437 and realVulkan92783/66883 TERMINAL0.472realqueues/9032exactgradientpixels/362496alloutput/722688nonwriter,24addedcases6scales4rotationsheights1..4096,zero Vulkanvalidation. First4781 failed fixture passed negative logical bounds to physicalDamage_Region; transformedcasesnowfullphysicaldamage, corrected. Dynamicreportcasecount fixed. Evidence scene-gradient-evidence/final-source-hashes.json/vulkan-positive.log/native.log; proof78alreadyPASS.
+Nativepixelrouting65899 TERMINAL1 attimeout: primarysuitePASS then scalingclickmiss. Actualcursorx360 vsfixture80 (later928vs648) persistent280offset; no rendererfault established, investigate relativePS2/injection/modeldrift rather than timing-only retries. StopattemptfoundVMalreadyterminal, touchednothingelse. All ownjobs terminal; indexuntouched.
+
+2026-10-02 native gradient compile49437 LIVE bounded600s sharedlockwait; scene-gradient-evidence/native.log. Desktop regression65899 alsoLIVE; resume both, no duplicate. GPR15312terminal0.
+
+2026-10-02 scenegradient50566 TERMINAL0: exact per-row/color/band cases+allsubmissionmocktests PASS;78SPARK(13flow/65prover) zero unproved/justified. Evidence scene-gradient-evidence/proof.log/gnatprove.out/sourcehashes. GPR15312 TERMINAL0 dependency edits for3existingprojects applied. Nativecompile+realVulkanpixeloracle pending.
+Pixelrouting50243 TERMINAL1: workarea snapshotearly, sameVM latecapture passesdifference; VMquit afterobserverfail. Atomic workarea wait+fullDPI rerun65899 LIVE queued; logs pixel-routing-evidence/dual-workarea. No other ownjobs, no index changes.
+
+2026-10-02 claim scene gradient capture: own Vulkan_Scene ads/adb Append_Gradient lowers proven bands into <=256orderedSolid metadata entries, no pixels/imports/allocations. Fullsnapshotreject on boundedcapacity failure, preserve priorentries. Not yet compiled/proved; GPR dependency edits and tests pending sharedlock. Native pixel-routing gate50243 remains livewaiter. No driver/index changes.
+
+2026-10-02 pixelgate33857 TERMINAL1: Settings reference captured Apps menu, laterreturned Settingscorrect. No pixelrouting defect established; old changed-vs-wallpaper check falsepositive. VMquit afterobserverfailure. Replacement atomic observerpatch/run50243 LIVE queued: actual940pixel defaultSettingsgradient requiredbefore referencecapture. Evidence pixel-routing-evidence/dual-settings.log/serial. Resume newhandle; preserve checkpoint.
+
+2026-10-02 pixel-routing gate33857 LIVE: mixedoutputs+arrangement+primary+scaling,4CPU1GiB300s deadline, existing exact observer. Evidence pixel-routing-evidence/dual.log and dual.serial.log. Build91302terminal0; no other ownjobs. Resume33857.
+
+2026-10-02 pixel-routing91302 TERMINAL0: main now routes putPixel through physical CPU fill with Use_Compositor=false; rectangle fills retain Mesa. NativeMesaDesktop build/link PASS. Previousbinary saved pixel-routing-evidence/before.svc. Need fullmixedDPI regression; no index edits.
+
+2026-10-02 claim pixel routing correction: recent fillRect backend hook unintentionally sends every nativeOutputPass putPixel through Mesa clear+flush. Own Desktop main only: explicit Use_Compositor=false for pixel primitive; existing physical clipping/CPU writer unchanged; normal rectanglefills stillbackend. Native edit/build lockqueued next. No driver/index changes, no performance claim before measurement.
+
+2026-10-02 fullDPI67085 TERMINAL0: all4native observer suites PASS and headless desktop-dual-output gate PASS. Exactdrag/restoration, Settings/arrangement/primary/workarea,125/150%,logicalminimum,cursorrepair,reflow,seams. VM quit AFTER allobserverPASS;300s wasdeadline notsoak. Evidence dual-primary.log/serial/screenshots/settings-125.png, native-gate-source-hashes.json. Native defaultlight Settings gradient940pixels alsoPASS. Strongerquantifiedgradientproof42checksPASS; contracts changed afterbinarybuild, algorithm unchanged. All rootjobs terminal/lockreleased. FullnativeGPUactivation/hardwarelatency stillpending. User348-file checkpoint preserved; allpostcheckpointworkunstaged.
+
+2026-10-02 gradient stronger contract78369/24065 TERMINAL0: isolated then production Run_Last quantified all-rows weight equality, not merely endpoints.42SPARK(5flow/37prover) zero unproved/justified; exhaustive assertion-enabled regressions PASS. Algorithm unchanged; contract/invariant edits after67085build finished and VM booted. Evidence all-rows proof/summary/hashes in gradient-band-evidence. Native67085 remains LIVE, reached primary-selection sequence; no rerun. Checkpoint untouched.
+
+2026-10-02 verified wait:67085 remains LIVE awaiting shared lock; dual-primary.log empty and second-primary patch not yet present, so no new VM has started. Do not duplicate or treat pending as a test failure. Driver supervisor migration owns lock; resume same67085. No new production or index edits.
+
+2026-10-02 dual73102 TERMINAL1: initial/drag/Settings/above/left/below/offset and primary migration progressed; second new-primary maximize snapshot early. SAME-VM new-primary-late.png confirms correct1280x684workarea. Observer edit1617 alreadyterminal0. Own failedVM quit viaQMP. Atomic second-maximize predicate wait +fullDPI rerun67085 LIVE, dual-primary logs/serial. No production change or relaxed predicate; waitbounded15s, wholeVM300s. Resume67085 only.
+
+2026-10-02 observer-edit1617 TERMINAL0 verified actual source. Full native gate73102 LIVE with dual-visible.serial.log/dual-visible.log,300sQEMU4CPU1GiB, mixedoutputs+arrangement+primary+scaling. Updated observer waits actual Workbench pane and both exact dragged fragments; no production changes. Resume73102, no duplicate. All earlier rootVMs terminal.
+
+2026-10-02 dual36717 TERMINAL1: repeated initial capture still placeholder despite first-frame marker; later screenshot actual UI. Confirms publication !=scanout. Exact native Settings gradient oracle37544 TERMINAL0:940pixels/all20rows match independent signed-channel Alloy palette interpolation (check-settings-gradient.py). FailedVM explicitly quit via unique serial-identified QMP. Shared observer edit1617 LIVE bounded60s lock: wait for actual white Workbench source pane before drag, then bounded15s BOTH exact fragment predicates; no assertion removed. Poll1617 before any rerun. All other rootjobs terminal. FullDPI gate still pending; stagedcheckpoint untouched.
+
+2026-10-02 dual63650 TERMINAL1: first-frame readiness fix applied under lock; drag+Settings appearance/display navigation+above arrangement passed. Later maximize screenshot preceded actual scanout; maximized-late.png from SAME liveVM confirms correct full work area. Own VM quit after observer failed. New36717 LIVE atomic observer edit+gate: first-frame counts for subsequent launches, exact maximize pixel predicate now bounded15s wait instead of fixed2s assumption. No production changes; softpipe/TCG correctness only. Evidence dual-pixels logs. Resume36717; no duplicate run.
+
+2026-10-02 correction:24607 terminal1 (observer failure; own VM quit via QMP),58190 terminal1 patch-script syntax before edit/build.10942 terminal143 intentionally canceled while waiting because its nonblocking prerequisite edit did not acquire lock; no stale rerun started. Replacement atomic edit+test waiter will acquire shared lock once driver edit24464 releases. Patch script syntax now validated. No observer source edit yet; inspect replacement handle rather than relaunch.
+
+2026-10-02 dual24607 observer failed before Settings: opened screenshot is initial placeholder, spanning is actual Workbench UI. Serial first-frame follows native-window-ready. QEMU handle24607 still LIVE bounded300s; do not restart. Queued shared-lock waiter58190 will change check-dual-desktop.py readiness from window-ready to first-frame-presented, preserving all pixel assertions, then run dual-ready300s gate. Own this shared observer edit; lock held through mutation and rerun. Evidence gradient-band-evidence/dual*.log and opened.png/spanning.png. Resume both exact handles; do not duplicate.
+
+2026-10-02 native Settings/DPI gate24607 LIVE: dual-output QEMU4CPU1GiB300s, mixed1280x720secondary, arrangement+primary+125/150% scaling, MesaDesktop selected,2s functional settle. Resume same handle. Evidence gradient-band-evidence/dual.log and dual.serial.log. No source edits while build runs; checkpoint untouched.
+
+2026-10-02 gradient97980/70460 TERMINAL0: exhaustive channel and band regressions PASS,40SPARK(5flow/35prover) zero unproved/justified, nativeMesaDesktop compile/link PASS. Run_Last logarithmic search groups equal-weight rows in actual settingsGradient,<=256fills/fullgradient, original unclipped color origin retained. Evidence gradient-band-evidence logs/proof/hashes. Initial1169 compile syntax corrected before finalchecks. No actual frame-time claim; Settings-specific native visual check outstanding. All own jobs terminal, staged checkpoint untouched.
+
+2026-10-02 claim gradient band coalescing: owned compositor_gradient ads/adb, gradient_tests and Desktop settingsGradient. Preserve identical row-weight semantics with bounded search for last equal-weight row; no intermediate pixels. Edits under shared lock after prior packaging lock released. Proof/regression/native compile pending; index untouched.
+
+2026-10-02 interaction16572 TERMINAL0: final Desktop Mesa fill build passes native CuBit QEMU4CPU1GiB180s gate.194673 geometric pixels; resume/full animated retired-buffer cycle/pause/Escape all PASS. Fresh fixture11244 resolved stale executable markers. Evidence desktop-fill-evidence includes screenshot, native oracle, passing policy-v2 log and476-result proof summary (zero unproved), source hashes with provenance caveat. All own jobs terminal; shared lock released. User staged348-file checkpoint preserved; new documentation/coordination changes remain unstaged. No native GPU/hardware latency claim. Next complete primitive capture and authorized GPU import/presentation integration.
+
+2026-10-02 fixture11244 TERMINAL0: current cube/scene/winsys compiled against existing native Mesa libraries into private desktop-fill-evidence. Interaction16572 LIVE (shared lock, QEMU4CPU1GiB180s); resume same handle. Logs/evidence tests/compositor/build/desktop-fill-evidence/window.log and window.serial.log. No production edits or index changes after safekeeping.
+
+2026-10-02 Desktop interaction18668 TERMINAL1: cube pixel oracle PASS194673, but selected Sep28 fixture lacks animation controls required by harness. Rebuild current cube fixture only against existing Mesa libraries, then rerun interaction; no compositor runtime failure established. User safekeeping staged348files; subsequent changes remain unstaged.
+
+2026-10-02 filloracle24594 TERMINAL0 full CuBit QEMU4CPU1GiB240s gate PASS including32newbackendfills/padding, allpriorglyph/color/pool tests andsoftpipebaseline. FinalDesktop build81244 completed but harness TERMINAL1 beforeboot: Nix TMPDIR produced >108byte Unixsocket path. Rerun with short /home/doc/git/.cubit-fill-tmp and explicit native-mesa-cube.app +MESA_WINDOW_SCENE=cube, animation+physicalclient required, livehandle to record after launch. Source finalcallbackconstants rebuiltby81244; no restart due observationtimeout. Proof61210 terminal0 zero unproved.
+
+2026-10-02 liveDesktopfill progress: build93933 TERMINAL0 native oracle+actualMesaDesktop. Hosted61210 TERMINAL0 all7text+4fillfault modes and backendproof476results(123flow/353prover), zero unproved/justified. Initial68336 proof2callback subtraction checks fixed by validated Width/Height constants captured before callback (no suppression). Native oracle24594 LIVE harness, QEMU app already emitted COMPOSITOR-OUTPUT plus COMPOSITOR-NATIVE/SOFTPIPE success; waitfullgate.32newpackedBGRA fill/padding cases run through liveDesktopbackend. Final callback-constant source requires actualDesktop rebuild before interaction test. No sourcebuild currently reading compositor; no otherjobs except24594. Defaultlegacy preserved, Mesa nativeOutputPass hookedfill has knownquiescentCPUfallback/unknownrestart. No performanceclaim, must runactualDesktop interaction before finalvalidation. Stagedcheckpoint untouched.
+
+2026-10-02 claim live Desktop fill boundary: Desktop_Compositor.Draw_Fill +Mesa retained-target implementation, narrow softpipe clear_render_target adapter, nativeOutputPass fillRect hook with quiescent CPU fallback/unknown restart. Own desktop main, backend mesa/legacy bodies, common compositor spec/Mesa binding/FFI/softpipe/header, glyphmock +native oracle. No driver/kernel/ABI/index changes; no GPR edits yet. Previous jobs terminal. Native compile/oracle and Desktop integration verification required before claiming completion.
+
+2026-10-02 solids40278/48615/92368/74106 TERMINAL0: ordered Scene.Solid layers source-free opaqueRGB; invalid source/blend/mask combinations reject. Frame.Replay_Fill uses proved DG.Damage outward transform +target-damage intersection, <=8attempts/sharedbudget/sourcepreservation.317combinedSPARK(124flow/193prover), zero unproved/justified (frame+scene rechecked plus priorresults).7solidcases+existing fill/scene/history/fault tests PASS. Initialtest23111 compile-only negative-literal visibility error fixed. RealMesa448queues/344064outputpixels/685824nonwriterpixels/41514pendingobservations,120solid/BGRA/R8 scenes with24cases6scales/4rotations/nonzero origins PASS; zero validationerrors. NativeAda/musl compile74106 PASS, notGPUexecution. Scene metadata24608B (512entries). Evidence tests/compositor/build/vulkan-solid-evidence/ hashes/logs/proof. All rootjobs terminal/sharedlockreleased. No index/commit/push changes.
+Remaining complete Desktop primitive capture includes gradient lowering/native glyph+icon+wallpaper imports and client/cursor command hooks, plus authorized native GPU targets/scanout retirement. Existing Desktop software/Mesa selection unchanged. Driver latest canonical extent-directory migration owns its own sources; no native ABI invented here.
+
+2026-10-02 claim ordered solid layers: Scene Solid kind with no source/descriptor, Frame.Replay_Fill using existing proven output damage transform +bounded intersection with target dirty plan. Real Vulkan mixedscene to include ordered solids and6scales/4rotations. Own frame/scene/test bridge/mock/host/docs; no sharedGPR/driver/index edits. Prior rootjobs terminal.
+
+2026-10-02 fills16044/93098/52097/9727 TERMINAL0: production Vulkan_Submission.Fill_Output now uses narrow CmdClearAttachments dispatch, checked active-pass bounds, shared4096attempt budget, no sourceimage/copy/allocation. Vulkan_Scene captures opaque background and restores dirtyrectangles after complete source preflight then replayslayers; fixture-only layered clears removed. 292combinedSPARK(118flow/174prover), zero unproved/justified (submission+scene rechecked, priorresults retained).7fillcases+12scenecases incl fillfailure/budget stoppinglayers PASS. NativeC13malformedfillguards+9missingdispatch PASS. RealMesa424queues/325632outputpixels/648960nonwriterpixels/33684pending polls, zero validationerrors. NativeAda/musl compilePASS, notnativeGPU. Evidence tests/compositor/build/vulkan-fill-evidence/ sourcehashes/logs/proof; final scene header comment-only clarification afterproof. All rootjobs terminal/sharedlockreleased. Post-checkpoint work unstaged; no commit/push.
+Desktop primitive audit: fillRect directCPU, settingsGradient perlogicalrow, icons per-pixel, wallpaper separateCPU painter. Need complete solid/gradient/text/icon/wallpaper/client/cursor command capture and native output/source lease integration; current VulkanScene primitive supports background but not yet arbitrary opaque layers. No Desktop Vulkan selection/driver ABI changes.
+
+2026-10-02 claim production opaque fills: Vulkan_Submission.Fill_Output bounded admission+geometry checking, narrow vkCmdClearAttachments FFI. Vulkan_Scene now restores captured dirty background itself before all layers, replacing fixture-only clear. Own submission/FFI/header/native C, scene, mock/bridge/host/docs. No GPUdriver/Desktop backend selection/index edits. Prior jobs terminal.
+
+2026-10-02 mixed58202/62907/37658 TERMINAL0: sealed scene now captures distinct BGRA+R8 imports; mask coverage/tint, moving/hiding/reorder and full CPU composition pass. Both managed source leases verified retained through recording/pending and released independently afterGPU completion.424queues/325632outputpixels/648960nonwriterpixels/34932pendingobservations, zero validationerrors. Vulkan_Scene.Sources_Ready now part of proved no-added-draws preflight contract;271combinedSPARK(115flow/156prover), zero unproved/justified. Existing scene/layer/history/fault tests PASS. NativeAda/musl compile PASS (notGPUexecution); initial lockbusy followed boundedwaiter37658 completed. All rootjobs terminal/lockreleased. Evidence tests/compositor/build/vulkan-mixed-scene-evidence/ sourcehashes/logs/proof. New edits remain unstaged, safekeeping checkpoint untouched.
+Next complete Desktop command capture (solid fills/gradients/icons/text/client/cursor), native GPU-authorized sources/targets and scanout retirement. R8 fixture synthetic; actual font atlas not yet imported. Driver latest extent-directory work remains owned separately; no driver/UI/ABI edits here.
+
+2026-10-02 claim heterogeneous scene imports: actual BGRA+R8 mask contexts captured into one sealed snapshot, both leases held through recording/pending and individually released after completion; CPU multilayer oracle. Strengthen Vulkan_Scene source-preflight contract: invalid ticket/unsealed scene leaves draw-attempt count unchanged. Own scene ads/adb, test bridge/host/docs; no driver/UI/GPR/index changes. Prior rootjobs terminal.
+
+2026-10-02 scene40107/92965/20148 TERMINAL0: bounded Vulkan_Scene snapshot now used by real layered oracle.512layers/20512B metadata, sealed immutable geometry/order/tickets, capacity/lateedit rejection retainsprefix, preflight stale secondsource rejects before any firstlayer draw.10scene cases+collectingoverflow PASS; existing frame/layer/history/source tests PASS.269combinedSPARK(114flow/155prover), zero unproved/justified; new sceneunit checked plus unchanged previous results. RealMesa424queues/325632outputpixels/648960nonwriterpixels/24135pendingobservations, zero validationerrors. Native Ada/musl compilation PASS, not nativeGPUexecution. GPR lock28549 completed; native initiallockbusy then20148 completed. All ownjobs terminal/sharedlockreleased. Evidence tests/compositor/build/vulkan-scene-evidence/ sourcehashes/logs/proof. Post-checkpoint changes remain unstaged; no commit/push.
+Desktop audit: drawCurrentScene/live surfaces and backend require synchronous completion. Need capture ALL wallpaper/chrome/text/client/cursor commands, authorized native GPU imports/output leases, asynchronous completion and separate scanout retirement.512-layer overflow must whole-scene fallback/batch, not truncate. Scene tickets context-local, not independent allocation authority; native owner continues import backing work. No fake Vulkan Desktop selection or wire ABI added.
+
+2026-10-02 claim bounded Vulkan_Scene snapshot: source tickets+geometry,512layer cap, seal/no late edits, preflight all generation-tagged sources before first replay. Own new scene ads/adb, submission bridge/mock/host fixture and3GPR source lists under lock. Desktop inspection confirms synchronous live-state renderer; no fake async backend selection or driver ABI edits. Native import/retirement agreement still pending. Prior rootjobs terminal, staged checkpoint untouched.
+
+2026-10-02 layers72248/36957/78034 TERMINAL0: Vulkan_Frame.Replay_Layer now proven bounded8attempts/layer, source preservation, wholeframe reject on bad output/source, foreign failure or frame-budget exhaustion. 234combinedSPARK(105flow/129prover), zero unproved/justified; frame rechecked plus unchanged prior unit results. New eightcase mock failure/empty/saturation/replay tests PASS. ActualMesa424queues/325632comparedpixels/648960nonwriterpixels/31183pendingobservations,96moving/hiding/reordered translucent scenes PASS;26631restoredbackgroundpixels vs73728fullclear (not layered fragment work/latency). Both standalone shader variants PASS. NativeAda/musl compile PASS, not nativeGPUexecution. Evidence tests/compositor/build/vulkan-layer-evidence/ hashes/logs/proof. Initial59480 proof rejected local-record scope before invariant, fixed supported declaration placement; final proof succeeds without suppressions. Native lock initially busy, bounded waiter78034 completed; all ownjobs terminal/lockreleased. Post-safekeeping changes remain unstaged; no commit/push.
+Next: complete scene snapshot/enumeration ownership, native target import/retirement adapter with driver owner, Desktop backend selection and hardware latency. Layer replay is production policy exercised by hosted oracle, not yet selected by Desktop. Driver notes show export-retention work in progress; no new wire namespace invented.
+
+2026-10-02 claim layered repaint: owned Vulkan_Frame.Replay_Layer bounded SPARK traversal of captured damage with submission cap/whole-frame rejection. Actual hosted oracle to restore damaged background and replay moving/hiding/reordered translucent layers, independent full-scene pixel reference. Own frame ads/adb, submission bridge ads/adb, vulkan_affine_host.c, mock tests/docs; no GPR/driver/index edits. Prior rootjobs all terminal.
+
+2026-10-02 repaint42549/30887/72737 TERMINAL0: final proof, native Ada/musl compile and actualMesa partial repaint PASS. Proof needed explicit D.Valid conjuncts rather than nested Within predicates (same stronger envelope invariant, no suppressions); Change also proves preservation of all previous Later damage. Combined report213results(102flow/111prover), zero unproved/justified, includes unchanged prior pool/submission/owner results.600CPU pixel-history cycles PASS;328actual queues/96partial opaque scenes/15240vs73728paintedpixels/501504nonwriterpixels/28409pending polls/zero validationerrors. Both shader variants previously4165 PASS. Evidence tests/compositor/build/vulkan-repaint-evidence/ with final source hashes. All rootjobs terminal, sharedlockreleased. All post-checkpoint edits unstaged. Native GPU integration/transparent-layer replay/hardware latency still pending; no 240Hz/1ms claim.
+
+2026-10-02 repaint validation: resumed old handles12216/28505 terminal1 (Box equality visibility compile error), GPR38260 terminal0. Fixed visibility. ActualMesa56613 and final4165 TERMINAL0:328queues,96partial opaque scenes,15240/73728paintedpixels,501504nonwriterpixels, zero validationerrors; both standalone shader variants pass. Native88110 TERMINAL0 Ada/musl compile, not nativeGPU. Independent600cycle pixel-history test PASS. Proof77874 then23897 terminal1; strengthened output-envelope invariant fixed bounds failures, two remaining validity obligations now split by explicit assertions. Proof41493 LIVE, sources frozen. Full goal not complete; transparent layer replay/native output import/Desktop selection/hardware measurements remain. User checkpoint staged311files; subsequent work remains unstaged, no commit/push.
+ACK driver-owner target/import audit: docs/compositor-shared-targets.md now makes CPU mapping optional and independent from GPU import/render/scanout, with existing software presentation retained for unmappable GPU targets. No wire ABI or driver source edits by compositor.
+
+2026-10-02 claim owned per-target repaint history: bounded8rect sets per3targets, separate changes arriving whilepainting, completion/cancel/unknown retention; repaint-aware Frame admission and completion, actual Mesa partial opaque-scene replay. No driver/index changes. GPR38260 waiting sharedlock, hosted outputs disjoint.
+
+2026-10-02 target7512/40002/64114 TERMINAL0:135SPARK(78flow/57prover) across pool/frame/submission/target-owner, zero unproved/justified. Production target provider creates3views+3framebuffers around authorized images, no pixel allocations/copies;304B C metadata. SPARK owner requires matchingepoch, source/GPU quiescence and empty writer/ready/pending/front before close; unknown holds/no replay. Pool Discard_Ready preserves other roles and faults stale tickets.100target lifecycles/5initfaults/3closefaults/epoch/source gates PASS. RealMesa6partialrollback points/unknown retention/4missingdispatch/15malformed requests +232queues/178176draw pixels/354048unchanged nonwriter pixels/31446pending polls PASS; zero validationerrors. Native Ada+musl compile (target object no undefined refs), both standalone shader variants and full pool regressions PASS. Metadata target views/framebuffers now production-owned, underlying VkImages still fixture-owned; latch/retirement still SIMULATED. Evidence tests/compositor/build/vulkan-target-evidence/. Build-definition lock waited75171 then completed; independent private test/proof79791/89700 also terminal0, public final checks supersede. All rootjobs terminal/sharedlock released; user staged checkpoint untouched, newwork unstaged.
+Next native image lease/import and Desktop backend integration; renderer primitives and resource teardown are ready for authoritative output targets. Driver latest bounded allocation compiled but no writable target ABI agreement yet. Do not reinterpret existing readonly app presenter or source-copy Released responses as scanout retirement. No hardware performance/240Hz/1ms claim.
+
+2026-10-02 claim owned Vulkan target/framebuffer metadata provider +SPARK epoch/quiescent teardown gate; reuse three GPU images, no pixel allocations. Add pool Discard_Ready for output disable, preserve front/pending/writer. Actual fixture will use managed target views/framebuffers. No driver ABI/Desktop selection/index edits. GPR edit75171 under sharedlock; prior rootjobs terminal.
+
+2026-10-02 frame32201/57369/40815/58495/66319 TERMINAL0: combined122SPARK(68flow/54prover) pool/frame/submission, zero unproved/justified. New production Vulkan_Frame couples actual command/fence operations to pool writer, target-indexed scenes, ready publication and uncertain retention. ActualMesa3distincttargets:232submissions/178176draw pixels/354048unchanged nonwriter pixels/61767pending observations; >50SIMULATEDlatches/>100ready replacements, zero validationerrors. Native Ada+musl compile PASS (not GPUexecution). Both standalone affine shader variants pass; hosted existing pool8000ready/15001front/3000copied cycles +frame1000frames/998deferrals/7commandfaults/2overlappingDisplayfaults PASS. Initial56747 proof failed because pool contract did not expose unchanged deferred state; strengthened actual Acquire postcondition and proved it, no weakened guarantees/suppressions. Evidence tests/compositor/build/vulkan-frame-evidence/. All rootjobs terminal, sharedlock released. Newwork remains unstaged; index unchanged.
+Next native writable-target/framebuffer provider +actual output image leases and Desktop backend integration. Three actual GPU images/rendering are exercised on hosted Mesa, but latch/retirement signals are model inputs. No physical GPU/240Hz/1ms claim. Target scene bindings require authorized mutually nonaliasing images for matching output/epoch; native Display/GPU contract still pending.
+
+2026-10-02 claim owned Vulkan_Frame adapter: bind acquired pool writer to target-indexed scene, connect actual command begin/end/submit/poll/cancel to pool GPU retention; reuse existing direct-front/latch policy. Integrate actual Mesa bridge and three-target/fault/saturation policy tests. No driver/Desktop selection/index edits. GPRs edited under sharedlock61731; no source changes owned by others.
+
+2026-10-02 provider final50478/9021/28406 TERMINAL0:63SPARK(41flow/22prover), zero unproved/justified;100managed lifecycles/4import/3release faults PASS alongside existing136slot and submission tests. RealMesa provider136slots/6missingdispatch/4allocation-or-lying-result faults/11malformed requests +232queues/178176pixels/298222pending observations PASS, zero validation errors. Native Ada+musl C compilation PASS, provider/control objects have no undefined externals; not native GPU execution. Fixed provider metadata7672B, Ada state value3300B, excludes Mesa metadata/pixels. New vulkan_sources.c/h creates136descriptors once and BGRA8/R8 views per import; actual fixture draws through it. Import_Source/Release_Source are SPARK idle gates; unknown release preserves registrations, no replay; Remove_Source cannot detach managed entries. Final release contract preserves all other registrations. Evidence tests/compositor/build/vulkan-provider-evidence/. Initial58012 failed invalid inline aggregate iterator in test only; replaced named arrays, subsequent checks passed. All rootjobs terminal, sharedlock released; source/driver/index untouched outside owned scope. New work unstaged.
+Next writable-target/framebuffer owner and native image-lease/import adapter feeding this provider plus Desktop integration. Provider accepts ALREADY authorized local VkImages; it does not import CPU grants or foreign application handles. Native GPU/physical presentation and240Hz/1ms measurements remain. REQUEST GPUowner: target/import/latch/retirement contract in docs/compositor-shared-targets.md still needs implementation agreement; readonly app presenter is insufficient.
+
+2026-10-02 claim owned Vulkan source provider: fixed136 descriptors, per-import image views, SPARK-gated import/release, actual Mesa fixture and fault tests. No pixel allocation/import authority/driver edits. GPR edit under sharedlock. Prior rootjobs terminal; snapshot index untouched.
+
+2026-10-02 source retention final71784/44982/95073 TERMINAL0:56SPARK(36flow/20prover), zero unproved/justified;136slot capacity/duplicate/null/stale handles +busy/quarantine retention PASS. RealMesa232queues/178176pixels/56760pending observations, source removal deferred through actual recording/sealed/pending; exact context returned after fence/cancel; zero validation errors. Native Ada+musl compile PASS (not GPU execution). Full State value storage2212bytes, no new pixel allocation. Sources now drawn by generation-tagged ticket; Quiescent differs from Can_Destroy(empty). Evidence tests/compositor/build/vulkan-source-evidence/. All rootjobs terminal, no lock. Initial host62474 compile failed shadowed package name V; fixed. Final checks initially stopped by /tmp quota before output; reran with task-owned TMPDIR in tests/compositor/build/source-check-tmp, no unrelated files removed. New work remains unstaged; user snapshot untouched.
+Next native descriptor/image provider behind retained contexts +Desktop target/import integration. Existing source table is a proved lifetime gate for borrowed immutable contexts, not VkImage import or descriptor allocation. Provider must retain all referenced resources/aliases until successful removal. Native GPU/hardware tests still required; no acceleration/latency claim.
+
+2026-10-02 claim owned submission source-context table:136slots, generation-tagged handles, idle-only install/remove, retained through recording/pending/quarantine, real Mesa fixture integration. Borrowed source pixels/views/descriptors stay provider-owned; this table establishes controller retirement gating, not native import authority. Source/tests/docs only, no driver/UI/index changes. All previous rootjobs terminal.
+
+2026-10-02 render-pass policy79972 TERMINAL0:43SPARK(26flow/17prover), zero unproved/justified;1000cycles/10000pending/4096cap/21statusfaults/7forbiddenorders. Host11333 TERMINAL0:232actual Mesa queues/178176pixels/203953pending observations, three active-pass cancellations, 8missingdispatch/22invalidpass/3invalidend guards and3accepted controls; zero validationerrors. Saved /tmp/cubit-vulkan-pass-evidence/. Native57234 TERMINAL0: CuBit Ada +musl C compile PASS, no undefined C references; compilation only, not native GPU execution. Prior96101 failed Nix cache permission before compilation. All rootjobs terminal; sharedlock released; source hashes rechecked. Current docs/test guard changes unstaged; safekeeping index unchanged. No driver/Desktop activation; image authority/descriptor retention/native GPU execution still required.
+
+2026-10-02 user renewed safekeeping request: staging current shared source, tests and docs, preserving existing index entries; excluding untracked build outputs, .gpu-* captures, wallpapers and old AML checkpoint trees. No commit/push. One bounded build-lock waiter for staging; no new build/test launched.
+
+2026-10-02 claiming owned submission render-pass ordering: one pass/frame, only in-pass drawing, target-dimension checks, seal only after pass end; cancellation/unknown retention maintained. Actual Mesa fixture will use these transitions. No driver/UI/Desktop activation/index changes. All prior jobs terminal.
+
+2026-10-02 affine40606 TERMINAL0 final summary inspected:155results(15flow/140prover), zero unproved/justified for binding+affine+transform. Final proof saved /tmp/cubit-vulkan-affine-evidence/gnatprove.out and proof-final.log; proof source hashes recorded. Submission final33results/realMesa232queues/178176pixels/nativecompile also PASS. All rootjobs/waiters terminal; no sharedlock. GPU Desktop activation/authority/descriptor ownership/physical presentation/hardware metrics remain. Root staged checkpoint untouched.
+
+2026-10-02 submission64788 TERMINAL0: final33SPARK(19flow/14prover) zero unproved/justified;1000cycles/10000pending/4096cap/15statusfaults PASS. Hosted34492 TERMINAL0: realMesa232queues/178176pixels/204257pending observations, pool writer retained, capcancel+2context mismatches, zero validationerrors. Native53571 TERMINAL0 Ada+musl compile PASS (no GPUexecution). Initial95859 failed C/Ada basename collision; fixed native.c. No pending native work. Affine40606 still LIVE: OS confirms active CVC5 transform Build solver, not stalled/restarted. Evidence /tmp/cubit-vulkan-submission-evidence/. Root index unchanged. REQUEST GPUowner: review docs/compositor-shared-targets.md for writable/importable output leases and separate latch/prior-front retirement; current readonly app-image path cannot activate these renderers.
+
+2026-10-02 claiming Vulkan submission ownership wrapper +narrow native command/fence FFI. One pending submission,4096 admission cap, cancellation only before submission, sticky unknown completion. Connect actual hosted affine path and Compositor_Pool writer retention in test bridge. No production Desktop/driver/UI/ABI edits; staged index unchanged. Previous affine proof40606 still LIVE same handle.
+
+2026-10-02 affine26289 TERMINAL0: both normal/forced-integer-fallback Mesa shader variants PASS232frames/178176pixels each,6scales/4rotations/color/over/mask,16extreme transforms,16missingdispatch/2partialcreate/10badrecording faults; zero Vulkanvalidation. Floating-UV initial62277 failed real125%texeledge; exact rational sampling fixed15449 and full26289. Native93015 TERMINAL0 final normalSPIRV+CuBit Ada/musl compile, not GPUexecution. Proof40606 LIVE samehandle last rechecked after evidence capture (binding/affine progressed; transform pending), sources frozen for proof; no nativejob/waiter/lock. Evidence /tmp/cubit-vulkan-affine-evidence/. Index not modified by root.
+
+2026-10-02 claiming owned Vulkan affine renderer (new vulkan_affine* files/tests): SPARK affine/clip/transform reuse; Vulkan fixed pipelines, sampled color/mask +premultiplied over; borrowed pass/descriptor/target. No driver ABI, shared UI or production Desktop selection. Hosted actual-shader pixel oracle/proof/nativecompile next. Safekeeping index unchanged by root.
+
+2026-10-02 Vulkan-copy hosted94934 TERMINAL0: actual Ada planner/FFI + Mesa lavapipe160submissions,122880pixels,74draws/80empty/6rejected; zero validationerrors. Missing-barrier negative control PASS. Initial64860 TERMINAL1 only diagnostic-spelling expectation, corrected. Proof56328 TERMINAL0:41results(7flow/34prover), zero unproved/justified. Native44855 TERMINAL0: CuBit Ada +existing musl/Mesa C compile, no C undefined references; compile only, not native GPU execution. Evidence /tmp/cubit-vulkan-copy-evidence/. No jobs/waiters/lock. Not selected in Desktop; image authority/lifetimes/affine/blending/native GPU integration remain. All continuation work unstaged; root did not change index after user checkpoint.
+
+2026-10-02 claiming owned Vulkan opaque client-copy adapter + tests/compositor/vulkan_copy* only. Reuse Desktop_Composition planner; narrow borrowed-command FFI, no allocation/import/presentation authority or new driver ABI. Hosted Mesa validation/pixel oracle next; production direct transport remains blocked on target interface. Safekeeping checkpoint staged; all continuation edits remain unstaged. No shared UI/driver edits.
+
+2026-10-02 latest31141 TERMINAL0: complete240s nativeMesa/softpipe gate incl252ready replacements/64simulatedlatches/pixelchecks PASS; bothDesktopvariants compile. Follow-up4CPUworkers120s viewerupdates/6pauses/graph-table/page/refresh/close duringoverlap PASS; allworkersdone/faultscan/inputhash/privatebase PASS. Evidence /tmp/cubit-ready-replacement-evidence/. Sharedlockreleased, no rootjobs/waiters. CurrentDesktop eager acquisition remains defaultFalse; no directscanout/backendtransport activation. Newwork unstaged, safekeeping index not modified by root.
+
+2026-10-02 latest88364 TERMINAL0:8000replacements +existing15001front/3000copy cycles, SPARK28results18flow10prover zero unproved/justified. Native31141 LIVE single sharedlock buildMesa+bothDesktop then240s softpipe and4worker copiedpath /tmp/cubit-ready-native.log. Newnativeoracle252ready replacements; latch/retirement events simulated, renderingrealMesa. Source frozen; previously staged snapshot left unchanged. No production opt-in without new scene work/driver lease transport.
+
+2026-10-02 claiming owned pool opt-in Replace_Ready acquisition for newer scene work: when full, reclaim only quiescent ready allocation, never front/pending. Default eager Desktop acquisition unchanged. Hosted8000 supersession/pixel checks and proof next, then native Mesa producer integration. Do not enable opportunistically in Desktop pump: eager acquisition without new damage could incorrectly discard the last ready frame. No driver/ABI edits or direct-mode activation.
+
+2026-10-02 front28667 TERMINAL0: unchanged binaries passed complete240s native softpipe/compositor suite incl FRONT64/POOL96/NATIVE192 and baseline pixels/triangle/finalfaultscan. Then4workers120s nativeviewer interactions/6pauses/graph-table/page/refresh/close duringoverlap PASS, workersdone/inputhash/privatebase PASS. Evidence /tmp/cubit-front-retention-evidence/. No rootjobs/waiters;sharedlockreleased. This continuation completed pending validation; safekeeping index not changed by root. New front-retention docs/ownnote evidence updates are unstaged. No direct GPUtransport/hardwarelatency claim; fullgoal active.
+
+2026-10-02 front28667 LIVE single sharedlock recheck, unchanged native/compositor binary hashes verified. Prior3732 terminal timeout aftercompositorpass, no liveoldhandles. New240s headless softpipe then copiedpath4worker overload /tmp/cubit-front-recheck.log and .serial. Harness rebuilt boot prerequisites beforeVM; no root compositor source edits. Safekeeping staged index left unchanged by this continuation; only new evidence/own notes to update. Shared UI/runtime/font freeze already released toServo.
 
 2026-10-02 safekeeping checkpoint requested by user: staging shared CuBit source/tests/docs/assets, excluding temporary .gpu-* captures; no commit/push. Native3732 TERMINAL1: new COMPOSITOR-FRONT64 +POOL96 +COMPOSITOR-NATIVE192 all PASS; full100s harness timed out after SOFTPIPE-NATIVE starting, before baseline pixel/triangle markers. Thus fullgate NOTPASS and subsequent overload was not reached. BothDesktopvariants nativecompile PASS. No rootjobs/waiters, sharedlockreleased. Follow-up: run fullnative oracle with adequate time, then copiedpath overload; do not claim complete integration. Policyproof11932/host22346 PASS.
 

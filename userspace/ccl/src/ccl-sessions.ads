@@ -1,8 +1,11 @@
 with CCL.Catalog;
 with CCL.Catalog.Completion;
+with CCL.Completions;
 with CCL.Language;
+with CCL.Language.Views;
 with CCL.VM;
 with CCL.Host_Values;
+with CCL.Streams;
 with Interfaces;
 
 --  Transport/UI-independent REPL foundation. No IPC, filesystem, or window
@@ -50,10 +53,33 @@ package CCL.Sessions with SPARK_Mode is
       Outcome : out CCL.Language.Interpretation_Result);
    function Kept_Definitions (Item : Session) return Natural;
    function Kept_Values (Item : Session) return Natural;
+   --  Whether a kept value is the stream Handle. A host closes the streams
+   --  its session no longer holds (docs/ccl-streams.md).
+   function Holds_Stream (Item : Session; Handle : CCL.Streams.Handle) return Boolean;
+   --  The program this session runs for Source as a plain expression: its
+   --  definitions and kept values around it. Plain is False when Source
+   --  defines or binds something, or the program does not fit. A host runs
+   --  it later (a live monitor) without changing the session.
+   --  Source as Into writes it: Lisp or BASIC (CCL.Language.Views). An entry
+   --  that names the session's definitions or kept values is rendered in
+   --  their context, so (window 6 t) reads back as window(6, t). Converted
+   --  is False when it cannot be rendered (the caller keeps Source).
+   procedure View_Source
+     (Item : Session; Source : String; Into : CCL.Language.Views.Surface;
+      Shown : out CCL.Language.Views.Text; Converted : out Boolean);
+   procedure Expression_Program
+     (Item : Session; Source : String; Program : out String; Length : out Natural;
+      Plain : out Boolean)
+     with Pre => Program'First = 1;
    function Length (Item : Session) return History_Count;
    procedure Complete
      (Item : Session; Prefix : String;
       Matches : out CCL.Catalog.Completion.Match_List);
+   --  Completion for the text before the caret, against this session's
+   --  catalog (CCL.Completions).
+   procedure Complete_At
+     (Item : Session; Before : String; After_Caret : Character;
+      Result : out CCL.Completions.Result);
    procedure Describe
      (Item : Session; Name : String;
       Operation : out CCL.Catalog.Resolved_Operation; Found : out Boolean);
@@ -82,6 +108,26 @@ package CCL.Sessions with SPARK_Mode is
       Outcome : out CCL.Language.Interpretation_Result)
      with Post => Outcome.Fuel_Remaining <= Fuel;
 
+   --  A live cell: evaluate entry Index again against the current
+   --  environment and replace its result in place. Only a plain expression
+   --  is re-run: an entry that names a value, defines, or is a command is
+   --  not (Reevaluated = False), so a live cell never changes the session
+   --  environment or the history's order.
+   generic
+      type Host_Context is limited private;
+      with procedure Invoke
+        (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
+         Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result);
+      --  Answers stream views (docs/ccl-streams.md); none by default.
+      with procedure Read_Stream
+        (Context : in out Host_Context; Request : CCL.Streams.View_Request;
+         Reply : in out CCL.Streams.View_Reply) is null;
+   procedure Reevaluate_With_Values
+     (Item : in out Session; Index : History_Index; Fuel : Fuel_Budget;
+      Grants : CCL.Catalog.Granted_Bindings; Context : in out Host_Context;
+      Outcome : out CCL.Language.Interpretation_Result; Reevaluated : out Boolean)
+     with Post => Outcome.Fuel_Remaining <= Fuel;
+
    function Result_Type (Outcome : CCL.Language.Interpretation_Result)
      return CCL.Language.Static_Type;
    generic
@@ -89,6 +135,9 @@ package CCL.Sessions with SPARK_Mode is
       with procedure Invoke
         (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
          Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result);
+      with procedure Read_Stream
+        (Context : in out Host_Context; Request : CCL.Streams.View_Request;
+         Reply : in out CCL.Streams.View_Reply) is null;
    --  Shown, when given, is what the transcript records instead of Source
    --  (for example ":load tools.ccl" rather than the file's text).
    procedure Submit_With_Values
@@ -97,7 +146,12 @@ package CCL.Sessions with SPARK_Mode is
       Outcome : out CCL.Language.Interpretation_Result;
       Shown : String := "")
      with Post => Outcome.Fuel_Remaining <= Fuel;
+   --  "Type: value", the transcript's one-line form of a result.
    function Result_Image (Outcome : CCL.Language.Interpretation_Result) return String;
+   --  Its parts: the result's type as written ("" for a failure or plain
+   --  "ok"), and its value (or the failure's message).
+   function Result_Type_Image (Outcome : CCL.Language.Interpretation_Result) return String;
+   function Result_Value_Image (Outcome : CCL.Language.Interpretation_Result) return String;
 private
    type History_Array is array (History_Index) of Submission;
    Maximum_Literal_Length : constant := 2 * CCL.Language.MAX_TEXT_BYTES;
@@ -106,6 +160,8 @@ private
       Name_Length : Natural range 0 .. CCL.Language.MAX_NAME_LENGTH := 0;
       Literal : String (1 .. Maximum_Literal_Length) := [others => ' '];
       Literal_Length : Natural range 0 .. Maximum_Literal_Length := 0;
+      --  A stream binding: the handle its literal names.
+      Stream : CCL.Streams.Handle := CCL.Streams.No_Handle;
    end record;
    type Kept_Value_Array is array (1 .. Maximum_Kept_Values) of Kept_Value;
    type Session is record

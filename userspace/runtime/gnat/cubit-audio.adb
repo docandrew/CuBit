@@ -1,3 +1,4 @@
+with CuBit.Audio_Playback;
 ------------------------------------------------------------------------------
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
@@ -18,6 +19,7 @@ package body CuBit.Audio is
    OP_AUDIO_CLOSE   : constant Unsigned_32 := 16#0501#;
    OP_AUDIO_SET_VOL : constant Unsigned_32 := 16#0502#;
    OP_AUDIO_WAKE    : constant Unsigned_32 := 16#0506#;
+   OP_AUDIO_PLAYBACK : constant Unsigned_32 := 16#0509#;
    REPLY_OK         : constant Unsigned_32 := 16#F000#;
 
    function volToU32 is new Ada.Unchecked_Conversion (Volume, Unsigned_32);
@@ -154,7 +156,8 @@ package body CuBit.Audio is
       --  The peer can modify shared header words, so validate the complete
       --  ring invariant once at this trust boundary before doing arithmetic.
       used := wp - rp;
-      if s.bufferSize = 0 or else frameSize = 0 or else
+      if s.bufferSize = 0 or else
+         (s.bufferSize and (s.bufferSize - 1)) /= 0 or else frameSize = 0 or else
          s.bufferSize mod frameSize /= 0 or else used > s.bufferSize or else
          wp mod frameSize /= 0 or else rp mod frameSize /= 0
       then
@@ -488,6 +491,30 @@ package body CuBit.Audio is
               readU32 (S.ringAddr + HDR_UNDERRUNS),
               readU32 (S.ringAddr + HDR_OVERRUNS));
    end Statistics;
+
+   function Playback (Stream : StreamHandle) return Playback_Status is
+      Msg : Message;
+      S : StreamRecord renames streamTable (Stream.idx);
+      Frame_Bytes : constant Unsigned_32 := Unsigned_32 (S.channels) * 2;
+   begin
+      if not Stream.valid or else not S.active or else Frame_Bytes = 0 then
+         return (others => <>);
+      end if;
+      Msg := (tag => (label => OP_AUDIO_PLAYBACK, length => 1, flags => 0, reserved => 0),
+              authorityTag => 0,
+              words => (0 => streamTable (Stream.idx).streamId, others => 0));
+      Msg.tag := capCall (CAP_SLOT_MIXER, Msg);
+      if Msg.tag.label /= REPLY_OK or else Msg.tag.length /= 4 or else
+        Msg.tag.flags /= 0 or else Msg.tag.reserved /= 0 or else
+        not CuBit.Audio_Playback.Valid
+          (Msg.words (0), Msg.words (1), Msg.words (2),
+           Unsigned_64 (S.bufferSize / Frame_Bytes), Msg.words (3))
+      then
+         return (others => <>);
+      end if;
+      return (True, Natural (Msg.words (0)), Natural (Msg.words (1)),
+              Natural (S.bufferSize / Frame_Bytes), Natural (Msg.words (2)));
+   end Playback;
 
    procedure notify is
       msg : constant Message :=

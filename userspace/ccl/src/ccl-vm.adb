@@ -164,6 +164,20 @@ is
    end Find_List_Operation;
 
    use type L.Apply_Operation;
+   use type CCL.Streams.View_Kind;
+
+   procedure Find_View
+     (Immediate : Integer_64; Item : out CCL.Streams.View_Kind; Found : out Boolean) is
+   begin
+      Item := CCL.Streams.View_Kind'First;
+      Found := False;
+      for Candidate in CCL.Streams.View_Kind loop
+         if Integer_64 (CCL.Streams.View_Kind'Enum_Rep (Candidate)) = Immediate then
+            Item := Candidate;
+            Found := True;
+         end if;
+      end loop;
+   end Find_View;
 
    procedure Find_Apply_Operation
      (Immediate : Integer_64; Item : out L.Apply_Operation; Found : out Boolean) is
@@ -296,7 +310,9 @@ is
       --  A parameter or result: any value a run holds (not a resource).
       function Function_Data (Kind : Value_Kind; Ref : CCL.Types.Type_Reference) return Boolean is
         (case Kind is
-            when Integer_Value | Boolean_Value | Text_Value | Character_Value => Ref = CCL.Types.Invalid_Type,
+            when Integer_Value =>
+               Ref = CCL.Types.Invalid_Type or else CCL.Types.Is_Stream (Candidate.Data_Types, Ref),
+            when Boolean_Value | Text_Value | Character_Value => Ref = CCL.Types.Invalid_Type,
             when Variant_Value => CCL.Types.Is_Scalar_Sum (Candidate.Data_Types, Ref),
             when List_Value => Supported_List (Candidate.Data_Types, Ref),
             when Object_Value => Node_Type (Candidate.Data_Types, Ref),
@@ -400,7 +416,9 @@ is
                  (Candidate.Local_Kinds (L - 1) = Object_Value and then
                   Node_Type (Candidate.Data_Types, Candidate.Local_Data_Types (L - 1))) or else
                  (Candidate.Local_Kinds (L - 1) = Function_Value and then
-                  CCL.Types.Is_Function (Candidate.Data_Types, Candidate.Local_Data_Types (L - 1)))))
+                  CCL.Types.Is_Function (Candidate.Data_Types, Candidate.Local_Data_Types (L - 1))) or else
+                 (Candidate.Local_Kinds (L - 1) = Integer_Value and then
+                  CCL.Types.Is_Stream (Candidate.Data_Types, Candidate.Local_Data_Types (L - 1)))))
          then Error := Invalid_Data_Type; return; end if;
          if Candidate.Local_Kinds (L - 1) = Resource_Value and then
            (Candidate.Local_Types (L - 1) >= Candidate.Types_Length or else
@@ -487,7 +505,7 @@ is
 
          if Instruction.Op not in Make_Variant | Equal_Variant | Project_Field | Variant_To_Text |
            New_List | Fill_List | Length_List | List_At | List_Builtin | Make_Node | Check_Range |
-           Make_Closure | Call_Value | List_Apply and then
+           Make_Closure | Call_Value | List_Apply | Push_Stream | Stream_View and then
            (Instruction.Data_Type /= CCL.Types.Invalid_Type or else Instruction.Alternative /= 0)
          then Error := Invalid_Data_Type; exit; end if;
 
@@ -636,6 +654,41 @@ is
 
             when Push_Integer =>
                Push_Kind (State, Integer_Value, Error);
+
+            when Push_Stream =>
+               if not CCL.Types.Is_Stream (Candidate.Data_Types, Instruction.Data_Type) or else
+                 Instruction.Immediate not in 1 .. CCL.Streams.Maximum_Handle or else
+                 Instruction.Alternative /= 0
+               then Error := Invalid_Data_Type;
+               else
+                  Push_Kind (State, Integer_Value, Error, Instruction.Data_Type);
+               end if;
+
+            when Stream_View =>
+               declare
+                  View : CCL.Streams.View_Kind;
+                  Known : Boolean;
+                  Result : CCL.Types.Type_Reference;
+               begin
+                  Find_View (Instruction.Immediate, View, Known);
+                  if not Known then
+                     Error := Invalid_Builtin;
+                  else
+                     Result := Stream_View_Type (Candidate.Data_Types, Instruction.Data_Type, View);
+                     if Instruction.Alternative /= 0 or else Result = CCL.Types.Invalid_Type or else
+                       not Function_Data (Kind_For_Type (Candidate.Data_Types, Result),
+                                          Reference_For_Type (Candidate.Data_Types, Result))
+                     then Error := Invalid_Data_Type;
+                     else
+                        Pop_Kind (State, Integer_Value, Error, Instruction.Data_Type);
+                        if View = CCL.Streams.Window_View then
+                           Pop_Kind (State, Integer_Value, Error);
+                        end if;
+                        Push_Kind (State, Kind_For_Type (Candidate.Data_Types, Result), Error,
+                                   Reference_For_Type (Candidate.Data_Types, Result));
+                     end if;
+                  end if;
+               end;
 
             when Push_Text =>
                if Instruction.Immediate not in 0 .. Integer_64 (Candidate.Constants_Length) - 1 then
@@ -1743,6 +1796,7 @@ is
                L.Take_Bounds (Item, A.Integer, Length, From, To);
                Reserve (if To >= From then To - From + 1 else 0);
                for I in From .. To loop
+                  pragma Loop_Invariant (CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Loop_Entry));
                   exit when not Good;
                   Read (I, E);
                   Put (Result.Items, I - From + 1, E);
@@ -1752,6 +1806,7 @@ is
          when L.Reverse_Items =>
             Reserve (Length);
             for I in 1 .. Length loop
+               pragma Loop_Invariant (CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Loop_Entry));
                exit when not Good;
                Read (Length - I + 1, E);
                Put (Result.Items, I, E);
@@ -1760,6 +1815,7 @@ is
          when L.Sort_Items =>
             Reserve (Length);
             for I in 1 .. Length loop
+               pragma Loop_Invariant (CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Loop_Entry));
                exit when not Good;
                Read (I, E);
                Put (Result.Items, I, E);
@@ -1813,6 +1869,7 @@ is
          when L.Sum_Items =>
             Result := Integer_Constant (0);
             for I in 1 .. Length loop
+               pragma Loop_Invariant (CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Loop_Entry));
                exit when not Good;
                Read (I, E);
                exit when not Good;
@@ -1836,6 +1893,7 @@ is
                Read (1, E);
                Result := Integer_Constant (E.Integer);
                for I in 2 .. Length loop
+                  pragma Loop_Invariant (CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Loop_Entry));
                   exit when not Good;
                   Read (I, E);
                   if Good and then
@@ -1849,6 +1907,7 @@ is
          when L.Contains_Item =>
             Result := Boolean_Constant (False);
             for I in 1 .. Length loop
+               pragma Loop_Invariant (CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Loop_Entry));
                exit when not Good;
                Read (I, E);
                exit when not Good;
@@ -1897,6 +1956,7 @@ is
                   end if;
                end if;
                for I in 1 .. Length loop
+                  pragma Loop_Invariant (CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Loop_Entry));
                   exit when not Good;
                   Read (I, E);
                   exit when not Good;
@@ -1941,6 +2001,7 @@ is
                   Reserve (Size);
                end if;
                for I in 1 .. Size loop
+                  pragma Loop_Invariant (CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Loop_Entry));
                   exit when not Good;
                   CCL.Checked_Arithmetic.Add (A.Integer, Integer_64 (I - 1), Next, Overflowed);
                   if Overflowed then
@@ -1989,6 +2050,7 @@ is
                --  At most Text_Length + 1 pieces; one more step reports a full
                --  list when Capacity is smaller.
                for Step in 0 .. Capacity loop
+                  pragma Loop_Invariant (CCL.Execution_Budgets.Limit (Budget) = CCL.Execution_Budgets.Limit (Budget'Loop_Entry));
                   pragma Loop_Invariant (Position <= Text_Length + 1);
                   exit when not Good;
                   CCL.Text_Operations.Next_Piece
@@ -2308,7 +2370,7 @@ is
       Stack_Result : Runtime_Stacks.Operation_Result := Runtime_Stacks.Stack_Ok;
       Waiting : Boolean := State.Waiting;
       Waiting_Owned : Boolean := State.Waiting_Owned;
-      Done  : Boolean := State.Terminal or else Waiting;
+      Done  : Boolean := State.Terminal or else Waiting or else State.Waiting_Stream;
       Status : Execution_Status := State.Terminal_Status;
       Own_Error : CCL.Ownership.Ownership_Error;
       Import_Error : CCL.Imports.Import_Error;
@@ -2537,6 +2599,10 @@ is
                         Good := Written = List_Regions.Operation_Ok;
                         --  The elements, in order, to be sorted with their keys.
                         for I in 1 .. Length loop
+                           pragma Loop_Invariant (Fuel_Limit (State) = Fuel_Limit (State'Loop_Entry));
+                           pragma Loop_Invariant
+                             (CCL.Imports.Phase (State.Import_Lifecycle) =
+                                CCL.Imports.Phase (State.Import_Lifecycle'Loop_Entry));
                            exit when not Good;
                            List_Regions.Read (State.Lists, Subject.Items, List_Regions.Array_Index (I), Element, Read);
                            Good := Read = List_Regions.Operation_Ok;
@@ -2910,10 +2976,634 @@ is
             when others => null;
          end case;
       end Run_Region_Op;
+
+      --  The opcodes of the variant, record and stack-shuffling opcodes, framed like Run_Region_Op: they never
+      --  change the fuel limit or the import lifecycle.
+      procedure Run_Data_Op
+        with Post => Fuel_Limit (State) = Fuel_Limit (State'Old) and then
+                     CCL.Imports.Phase (State.Import_Lifecycle) =
+                       CCL.Imports.Phase (State.Import_Lifecycle'Old);
+      procedure Run_Data_Op is
+      begin
+         declare
+            Ins : constant Instruction := Item.Content.Code (PC);
+            D : constant CCL.Types.Description := CCL.Types.Describe (Item.Content.Data_Types, Ins.Data_Type);
+            Good : Boolean := True;
+            Next_PC : Instruction_Index := PC + 1;
+            Alternative : CCL.Types.Component_Count;
+            Native_Value : Value;
+            function Matches (V : Value; Ref : CCL.Types.Type_Reference) return Boolean is
+              (V.Kind = Kind_For_Type (Item.Content.Data_Types, Ref) and then
+               V.Data_Type = Reference_For_Type (Item.Content.Data_Types, Ref) and then
+               V.Copyable and then V.Type_Tag = 0 and then Well_Typed (Item.Content.Data_Types, V));
+         begin
+            case Ins.Op is
+               when Project_Field =>
+                  Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+                  Good := Stack_Result = Runtime_Stacks.Stack_Ok and then
+                    Matches (Right_Value, Ins.Data_Type) and then D.Form = CCL.Types.Product and then
+                    Ins.Immediate in 1 .. Integer_64 (D.Count);
+                  if Good then
+                     Component (State.Arena, Item.Content.Data_Types, Right_Value,
+                                CCL.Types.Component_Index (Ins.Immediate), Native_Value, Good);
+                     if Good then
+                        Good := Matches (Native_Value, D.Parts (CCL.Types.Component_Index (Ins.Immediate)).Payload);
+                     end if;
+                     if Good then
+                        Runtime_Stacks.Push (Stack, Native_Value, Stack_Result);
+                        Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                     end if;
+                  end if;
+               when Make_Variant =>
+                  Right_Value := Integer_Constant (0);
+                  if Ins.Alternative not in 1 .. D.Count then Good := False;
+                  elsif D.Parts (Ins.Alternative).Payload /= CCL.Types.Unit_Type then
+                     Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+                     Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Right_Value.Copyable and then
+                       Right_Value.Kind = (if D.Parts (Ins.Alternative).Payload = CCL.Types.Integer_Type
+                                           then Integer_Value else Boolean_Value);
+                  end if;
+                  if Good then
+                     Right_Value := (Kind => Variant_Value, Data_Type => Ins.Data_Type,
+                       Alternative => Ins.Alternative, Integer => Right_Value.Integer,
+                       Boolean => Right_Value.Boolean, others => <>);
+                     Runtime_Stacks.Push (Stack, Right_Value, Stack_Result);
+                     Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                  end if;
+               when Equal_Variant =>
+                  Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+                  Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Right_Value.Kind = Variant_Value and then
+                    Right_Value.Data_Type = Ins.Data_Type and then Right_Value.Copyable;
+                  if Good then
+                     Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
+                     Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Left_Value.Kind = Variant_Value and then
+                       Left_Value.Data_Type = Ins.Data_Type and then Left_Value.Copyable;
+                  end if;
+                  if Good then
+                     Runtime_Stacks.Push (Stack, Boolean_Constant
+                       (Left_Value.Alternative = Right_Value.Alternative), Stack_Result);
+                     Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                  end if;
+               when Copy_Stack =>
+                  if Ins.Immediate not in 0 .. MAX_STACK_DEPTH - 1 then Good := False;
+                  else
+                     Runtime_Stacks.Peek_At (Stack, Unsigned_32 (Ins.Immediate), Right_Value, Stack_Result);
+                     Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Right_Value.Copyable;
+                     if Good then
+                        Runtime_Stacks.Push (Stack, Right_Value, Stack_Result);
+                        Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                     end if;
+                  end if;
+               when Drop_Under_Top =>
+                  Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+                  Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                  if Good then
+                     Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
+                     Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Left_Value.Copyable;
+                  end if;
+                  if Good then
+                     Runtime_Stacks.Push (Stack, Right_Value, Stack_Result);
+                     Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                  end if;
+               when Switch_Variant =>
+                  if Ins.Immediate < 0 or else Ins.Immediate >= Integer_64 (Item.Content.Matches_Length) then
+                     Good := False;
+                  else
+                     declare
+                        M : constant Match_Table := Item.Content.Matches (Match_Index (Ins.Immediate));
+                        Schema : constant CCL.Types.Description := CCL.Types.Describe (Item.Content.Data_Types, M.Data_Type);
+                     begin
+                        Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+                        Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Right_Value.Copyable and then
+                          Right_Value.Kind = Kind_For_Type (Item.Content.Data_Types, M.Data_Type) and then
+                          Right_Value.Data_Type = M.Data_Type and then
+                          Well_Typed (Item.Content.Data_Types, Right_Value);
+                        if Good and then Right_Value.Kind = Object_Value then
+                           Alternative := Right_Value.Alternative;
+                           Good := Alternative in 1 .. Schema.Count;
+                           if Good then
+                              Next_PC := M.Targets (Alternative);
+                              if Schema.Parts (Alternative).Payload /= CCL.Types.Unit_Type then
+                                 Component (State.Arena, Item.Content.Data_Types, Right_Value, 1, Native_Value, Good);
+                                 Good := Good and then Matches (Native_Value, Schema.Parts (Alternative).Payload);
+                                 if Good then
+                                    Runtime_Stacks.Push (Stack, Native_Value, Stack_Result);
+                                    Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                                 end if;
+                              end if;
+                           end if;
+                        elsif Good then
+                           Next_PC := M.Targets (Right_Value.Alternative);
+                           case Schema.Parts (Right_Value.Alternative).Payload is
+                              when CCL.Types.Integer_Type =>
+                                 Runtime_Stacks.Push (Stack, Integer_Constant (Right_Value.Integer), Stack_Result);
+                              when CCL.Types.Boolean_Type =>
+                                 Runtime_Stacks.Push (Stack, Boolean_Constant (Right_Value.Boolean), Stack_Result);
+                              when others => null;
+                           end case;
+                           Good := Stack_Result = Runtime_Stacks.Stack_Ok;
+                        end if;
+                     end;
+                  end if;
+               when others => null;
+            end case;
+            if not Good or else Next_PC <= PC or else Program_Length (Next_PC) >= Item.Content.Length then
+               Status := Invalid_Bytecode; State.Terminal := True;
+               State.Terminal_Status := Invalid_Bytecode; Done := True;
+            else PC := Next_PC;
+            end if;
+         end;
+      end Run_Data_Op;
+
+      --  The opcodes of integer arithmetic, framed like Run_Region_Op: they never
+      --  change the fuel limit or the import lifecycle.
+      procedure Run_Arithmetic_Op
+        with Post => Fuel_Limit (State) = Fuel_Limit (State'Old) and then
+                     CCL.Imports.Phase (State.Import_Lifecycle) =
+                       CCL.Imports.Phase (State.Import_Lifecycle'Old);
+      procedure Run_Arithmetic_Op is
+      begin
+         case Item.Content.Code (PC).Op is
+         when Add_Integer =>
+            Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+            if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+              Right_Value.Kind /= Integer_Value or else
+              Program_Length (PC) + 1 >= Item.Content.Length
+            then
+               Status := Invalid_Bytecode;
+               State.Terminal := True;
+               State.Terminal_Status := Invalid_Bytecode;
+               Done := True;
+            else
+               Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
+               if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+                 Left_Value.Kind /= Integer_Value
+               then
+                  Status := Invalid_Bytecode;
+                  State.Terminal := True;
+                  State.Terminal_Status := Invalid_Bytecode;
+                  Done := True;
+               else
+                  Right := Right_Value.Integer;
+                  Left := Left_Value.Integer;
+               CCL.Checked_Arithmetic.Add
+                 (Left, Right, Addition_Result, Addition_Overflowed);
+               if Addition_Overflowed then
+                  Status := Arithmetic_Overflow;
+                  State.Terminal := True;
+                  State.Terminal_Status := Arithmetic_Overflow;
+                  Done := True;
+               else
+                  Runtime_Stacks.Push
+                    (Stack, Integer_Constant (Addition_Result), Stack_Result);
+                  if Stack_Result = Runtime_Stacks.Stack_Ok then
+                     PC := PC + 1;
+                  else
+                     Status := Invalid_Bytecode;
+                     State.Terminal := True;
+                     State.Terminal_Status := Invalid_Bytecode;
+                     Done := True;
+                  end if;
+               end if;
+               end if;
+            end if;
+
+         when Subtract_Integer | Multiply_Integer | Divide_Integer | Modulo_Integer =>
+            Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+            if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+              Right_Value.Kind /= Integer_Value or else
+              Program_Length (PC) + 1 >= Item.Content.Length
+            then
+               Status := Invalid_Bytecode;
+               State.Terminal := True;
+               State.Terminal_Status := Invalid_Bytecode;
+               Done := True;
+            else
+               Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
+               if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+                 Left_Value.Kind /= Integer_Value
+               then
+                  Status := Invalid_Bytecode;
+                  State.Terminal := True;
+                  State.Terminal_Status := Invalid_Bytecode;
+                  Done := True;
+               else
+                  case Item.Content.Code (PC).Op is
+                     when Subtract_Integer =>
+                        CCL.Checked_Arithmetic.Subtract
+                          (Left_Value.Integer, Right_Value.Integer,
+                           Arithmetic_Result, Addition_Overflowed);
+                        Arithmetic_Error :=
+                          (if Addition_Overflowed then
+                              CCL.Checked_Arithmetic.Arithmetic_Overflow
+                           else CCL.Checked_Arithmetic.Arithmetic_Ok);
+                     when Multiply_Integer =>
+                        CCL.Checked_Arithmetic.Multiply
+                          (Left_Value.Integer, Right_Value.Integer,
+                           Arithmetic_Result, Addition_Overflowed);
+                        Arithmetic_Error :=
+                          (if Addition_Overflowed then
+                              CCL.Checked_Arithmetic.Arithmetic_Overflow
+                           else CCL.Checked_Arithmetic.Arithmetic_Ok);
+                     when Divide_Integer =>
+                        CCL.Checked_Arithmetic.Divide
+                          (Left_Value.Integer, Right_Value.Integer,
+                           Arithmetic_Result, Arithmetic_Error);
+                     when Modulo_Integer =>
+                        CCL.Checked_Arithmetic.Modulo
+                          (Left_Value.Integer, Right_Value.Integer,
+                           Arithmetic_Result, Arithmetic_Error);
+                     when others =>
+                        Arithmetic_Result := 0;
+                        Arithmetic_Error :=
+                          CCL.Checked_Arithmetic.Arithmetic_Overflow;
+                  end case;
+                  if Arithmetic_Error =
+                    CCL.Checked_Arithmetic.Arithmetic_Overflow
+                  then
+                     Status := Arithmetic_Overflow;
+                     State.Terminal := True;
+                     State.Terminal_Status := Arithmetic_Overflow;
+                     Done := True;
+                  elsif Arithmetic_Error =
+                    CCL.Checked_Arithmetic.Division_By_Zero
+                  then
+                     Status := Division_By_Zero;
+                     State.Terminal := True;
+                     State.Terminal_Status := Division_By_Zero;
+                     Done := True;
+                  else
+                     Runtime_Stacks.Push
+                       (Stack, Integer_Constant (Arithmetic_Result),
+                        Stack_Result);
+                     if Stack_Result = Runtime_Stacks.Stack_Ok then
+                        PC := PC + 1;
+                     else
+                        Status := Invalid_Bytecode;
+                        State.Terminal := True;
+                        State.Terminal_Status := Invalid_Bytecode;
+                        Done := True;
+                     end if;
+                  end if;
+               end if;
+            end if;
+
+            when others => null;
+         end case;
+      end Run_Arithmetic_Op;
+
+      --  The opcodes of the text opcodes, framed like Run_Region_Op: they never
+      --  change the fuel limit or the import lifecycle.
+      procedure Run_Text_Op
+        with Post => Fuel_Limit (State) = Fuel_Limit (State'Old) and then
+                     CCL.Imports.Phase (State.Import_Lifecycle) =
+                       CCL.Imports.Phase (State.Import_Lifecycle'Old);
+      procedure Run_Text_Op is
+      begin
+         case Item.Content.Code (PC).Op is
+         when Push_Text =>
+            if Item.Content.Code (PC).Immediate not in
+              0 .. Integer_64 (Item.Content.Constants_Length) - 1
+            then
+               Trap (Invalid_Bytecode);
+            else
+               Push_Constant
+                 (Item.Content, Constant_Index (Item.Content.Code (PC).Immediate),
+                  State.Text, Left_Value, Text_Status);
+               if Text_Status /= Text_Regions.Operation_Ok then
+                  Trap (Text_Failure (Text_Status));
+               else
+                  Push_Next (Left_Value);
+               end if;
+            end if;
+
+         when Concat_Text =>
+            Pop_Text (Right_Value);
+            if not Done then Pop_Text (Left_Value); end if;
+            if not Done then
+               Concat_Texts (State.Text, Left_Value, Right_Value, Joined, Text_Status);
+               if Text_Status /= Text_Regions.Operation_Ok then
+                  Trap (Text_Failure (Text_Status));
+               else
+                  Push_Next (Joined);
+               end if;
+            end if;
+
+         when Text_Builtin =>
+            declare
+               Operation : CCL.Text_Operations.Operation;
+               Known : Boolean;
+               Operands : Text_Operands := [others => (others => <>)];
+               Subject, Answer : Value;
+               Outcome : Execution_Status;
+            begin
+               Find_Operation (Item.Content.Code (PC).Immediate, Operation, Known);
+               if not Known then
+                  Trap (Invalid_Bytecode);
+               else
+                  Pop_Text (Subject);
+                  for I in reverse 1 .. CCL.Text_Operations.Signature_Of (Operation).Count loop
+                     exit when Done;
+                     Runtime_Stacks.Pop (Stack, Operands (I), Stack_Result);
+                     if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+                       Operands (I).Kind /= Kind_Of (CCL.Text_Operations.Signature_Of (Operation).Operands (I))
+                     then
+                        Trap (Invalid_Bytecode);
+                     end if;
+                  end loop;
+                  if not Done then
+                     Run_Text_Builtin (State.Text, Operation, Operands, Subject, Answer, Outcome);
+                     if Outcome /= Completed then
+                        Trap (Outcome);
+                     else
+                        Push_Next (Answer);
+                     end if;
+                  end if;
+               end if;
+            end;
+
+         when Length_Text =>
+            Pop_Text (Left_Value);
+            if not Done then
+               Push_Next (Integer_Constant
+                 (Integer_64 (Text_Regions.Length (Left_Value.Text))));
+            end if;
+
+         when Equal_Text =>
+            Pop_Text (Right_Value);
+            if not Done then Pop_Text (Left_Value); end if;
+            if not Done then
+               Equal_Texts (State.Text, Left_Value, Right_Value, Same_Text, Text_Status);
+               if Text_Status /= Text_Regions.Operation_Ok then
+                  Trap (Text_Failure (Text_Status));
+               else
+                  Push_Next (Boolean_Constant (Same_Text));
+               end if;
+            end if;
+
+         when Text_At =>
+            Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+            if Stack_Result /= Runtime_Stacks.Stack_Ok or else Right_Value.Kind /= Integer_Value then
+               Trap (Invalid_Bytecode);
+            end if;
+            if not Done then Pop_Text (Left_Value); end if;
+            if not Done then
+               if Right_Value.Integer < 1 or else
+                 Right_Value.Integer > Integer_64 (Text_Regions.Length (Left_Value.Text))
+               then
+                  Trap (Index_Out_Of_Range);
+               else
+                  Text_Regions.Read
+                    (State.Text, Left_Value.Text, Text_Regions.String_Index (Right_Value.Integer),
+                     Element, Text_Status);
+                  if Text_Status /= Text_Regions.Operation_Ok then
+                     Trap (Text_Failure (Text_Status));
+                  else
+                     Push_Next (Character_Constant (Element));
+                  end if;
+               end if;
+            end if;
+
+         when Integer_To_Text | Variant_To_Text =>
+            Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
+            if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+              Left_Value.Kind /=
+                (if Item.Content.Code (PC).Op = Integer_To_Text then Integer_Value else Variant_Value) or else
+              (Left_Value.Kind = Variant_Value and then
+               (Left_Value.Data_Type /= Item.Content.Code (PC).Data_Type or else
+                not CCL.Types.Is_Enumeration (Item.Content.Data_Types, Left_Value.Data_Type) or else
+                Left_Value.Alternative > CCL.Types.Describe (Item.Content.Data_Types, Left_Value.Data_Type).Count))
+            then
+               Trap (Invalid_Bytecode);
+            else
+               Joined := (Kind => Text_Value, others => <>);
+               Text_Regions.Allocate_String
+                 (State.Text,
+                  (if Left_Value.Kind = Integer_Value then T.Decimal_Image (Left_Value.Integer)
+                   else CCL.Types.Image (CCL.Types.Describe (Item.Content.Data_Types, Left_Value.Data_Type)
+                     .Parts (Left_Value.Alternative).Identifier)),
+                  Joined.Text, Text_Status);
+               if Text_Status /= Text_Regions.Operation_Ok then
+                  Trap (Text_Failure (Text_Status));
+               else
+                  Push_Next (Joined);
+               end if;
+            end if;
+
+            when others => null;
+         end case;
+      end Run_Text_Op;
+
+      --  The opcodes of comparisons and Boolean negation, framed like Run_Region_Op: they never
+      --  change the fuel limit or the import lifecycle.
+      procedure Run_Logic_Op
+        with Post => Fuel_Limit (State) = Fuel_Limit (State'Old) and then
+                     CCL.Imports.Phase (State.Import_Lifecycle) =
+                       CCL.Imports.Phase (State.Import_Lifecycle'Old);
+      procedure Run_Logic_Op is
+      begin
+         case Item.Content.Code (PC).Op is
+         when Equal_Integer | Less_Integer | Less_Equal_Integer | Equal_Boolean | Equal_Character =>
+            Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+            if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+              Right_Value.Kind /= Comparison_Kind (Item.Content.Code (PC).Op) or else
+              Program_Length (PC) + 1 >= Item.Content.Length
+            then
+               Status := Invalid_Bytecode;
+               State.Terminal := True;
+               State.Terminal_Status := Invalid_Bytecode;
+               Done := True;
+            else
+               Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
+               if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+                 Left_Value.Kind /= Right_Value.Kind
+               then
+                  Status := Invalid_Bytecode;
+                  State.Terminal := True;
+                  State.Terminal_Status := Invalid_Bytecode;
+                  Done := True;
+               else
+                  Runtime_Stacks.Push
+                    (Stack,
+                     Boolean_Constant
+                       (case Item.Content.Code (PC).Op is
+                           when Less_Integer => Left_Value.Integer < Right_Value.Integer,
+                           when Less_Equal_Integer => Left_Value.Integer <= Right_Value.Integer,
+                           when Equal_Boolean => Left_Value.Boolean = Right_Value.Boolean,
+                           when others => Left_Value.Integer = Right_Value.Integer),
+                     Stack_Result);
+                  if Stack_Result = Runtime_Stacks.Stack_Ok then
+                     PC := PC + 1;
+                  else
+                     Status := Invalid_Bytecode;
+                     State.Terminal := True;
+                     State.Terminal_Status := Invalid_Bytecode;
+                     Done := True;
+                  end if;
+               end if;
+            end if;
+
+         when Not_Boolean =>
+            Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+            if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+              Right_Value.Kind /= Boolean_Value or else
+              Program_Length (PC) + 1 >= Item.Content.Length
+            then
+               Status := Invalid_Bytecode;
+               State.Terminal := True;
+               State.Terminal_Status := Invalid_Bytecode;
+               Done := True;
+            else
+               Runtime_Stacks.Push
+                 (Stack,
+                  Boolean_Constant (not Right_Value.Boolean),
+                  Stack_Result);
+               if Stack_Result = Runtime_Stacks.Stack_Ok then
+                  PC := PC + 1;
+               else
+                  Status := Invalid_Bytecode;
+                  State.Terminal := True;
+                  State.Terminal_Status := Invalid_Bytecode;
+                  Done := True;
+               end if;
+            end if;
+
+            when others => null;
+         end case;
+      end Run_Logic_Op;
+
+      --  The opcodes of the local-variable opcodes, framed like Run_Region_Op: they never
+      --  change the fuel limit or the import lifecycle.
+      procedure Run_Local_Op
+        with Post => Fuel_Limit (State) = Fuel_Limit (State'Old) and then
+                     CCL.Imports.Phase (State.Import_Lifecycle) =
+                       CCL.Imports.Phase (State.Import_Lifecycle'Old);
+      procedure Run_Local_Op is
+      begin
+         case Item.Content.Code (PC).Op is
+         when Initialize_Local =>
+            Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+            if Stack_Result /= Runtime_Stacks.Stack_Ok or else
+              Natural (Item.Content.Code (PC).Local) >=
+                Item.Content.Locals_Length or else
+              Right_Value.Kind /= Item.Content.Local_Kinds
+                (Item.Content.Code (PC).Local) or else
+              Right_Value.Type_Tag /= Item.Content.Local_Types
+                (Item.Content.Code (PC).Local) or else
+              Right_Value.Data_Type /= Item.Content.Local_Data_Types
+                (Item.Content.Code (PC).Local) or else
+              (Right_Value.Copyable and then Item.Content.Types
+                (Item.Content.Local_Types (Item.Content.Code (PC).Local)).Mode /= CCL.Ownership.Unrestricted) or else
+              Program_Length (PC) + 1 >= Item.Content.Length
+            then
+               Status := Invalid_Bytecode;
+               State.Terminal := True;
+               State.Terminal_Status := Invalid_Bytecode;
+               Done := True;
+            else
+               CCL.Ownership.Declare_Binding
+                 (State.Ownership, Item.Content.Code (PC).Local,
+                  Item.Content.Local_Types (Item.Content.Code (PC).Local),
+                  Own_Error);
+               if Own_Error /= CCL.Ownership.Ownership_Valid then
+                  Status := Invalid_Bytecode;
+                  State.Terminal := True;
+                  State.Terminal_Status := Invalid_Bytecode;
+                  Done := True;
+               else
+                  State.Locals (Item.Content.Code (PC).Local) := Right_Value;
+                  PC := PC + 1;
+               end if;
+            end if;
+
+         when Copy_Local | Move_Local | Drop_Local |
+              Borrow_Local_RO | Return_Local_RO |
+              Borrow_Local_RW | Return_Local_RW |
+              Apply_Local_Disposition =>
+            if Program_Length (PC) + 1 >= Item.Content.Length then
+               Status := Invalid_Bytecode;
+               State.Terminal := True;
+               State.Terminal_Status := Invalid_Bytecode;
+               Done := True;
+            else
+               case Item.Content.Code (PC).Op is
+                  when Copy_Local =>
+                     CCL.Ownership.Copy_Value
+                       (State.Ownership, Item.Content.Types,
+                        Item.Content.Code (PC).Local,
+                        Own_Error);
+                  when Move_Local =>
+                     CCL.Ownership.Move_Value
+                       (State.Ownership,
+                        Item.Content.Code (PC).Local,
+                        Own_Error);
+                  when Drop_Local =>
+                     CCL.Ownership.Drop_Value
+                       (State.Ownership, Item.Content.Types,
+                        Item.Content.Code (PC).Local,
+                        Own_Error);
+                  when Borrow_Local_RO =>
+                     CCL.Ownership.Borrow_RO
+                       (State.Ownership,
+                        Item.Content.Code (PC).Local,
+                        Own_Error);
+                  when Return_Local_RO =>
+                     CCL.Ownership.Return_RO
+                       (State.Ownership,
+                        Item.Content.Code (PC).Local,
+                        Own_Error);
+                  when Borrow_Local_RW =>
+                     CCL.Ownership.Borrow_RW
+                       (State.Ownership,
+                        Item.Content.Code (PC).Local,
+                        Own_Error);
+                  when Return_Local_RW =>
+                     CCL.Ownership.Return_RW
+                       (State.Ownership,
+                        Item.Content.Code (PC).Local,
+                        Own_Error);
+                  when Apply_Local_Disposition =>
+                     CCL.Ownership.Apply_Disposition
+                       (State.Ownership, Item.Content.Types,
+                        Item.Content.Code (PC).Local,
+                        Item.Content.Code (PC).Verb,
+                        Own_Error);
+                  when others =>
+                     Own_Error := CCL.Ownership.Ownership_Valid;
+               end case;
+               if Own_Error /= CCL.Ownership.Ownership_Valid then
+                  Status := Invalid_Bytecode;
+                  State.Terminal := True;
+                  State.Terminal_Status := Invalid_Bytecode;
+                  Done := True;
+               else
+                  if Item.Content.Code (PC).Op in Copy_Local | Move_Local then
+                     Right_Value := State.Locals (Item.Content.Code (PC).Local);
+                     Right_Value.Copyable := Item.Content.Code (PC).Op = Copy_Local;
+                     Runtime_Stacks.Push
+                       (Stack,
+                        Right_Value,
+                        Stack_Result);
+                     if Stack_Result /= Runtime_Stacks.Stack_Ok then
+                        Status := Invalid_Bytecode;
+                        State.Terminal := True;
+                        State.Terminal_Status := Invalid_Bytecode;
+                        Done := True;
+                     else
+                        PC := PC + 1;
+                     end if;
+                  else
+                     PC := PC + 1;
+                  end if;
+               end if;
+            end if;
+            when others => null;
+         end case;
+      end Run_Local_Op;
    begin
       Stack := State.Stack;
       PC := State.PC;
-      if Waiting then
+      if Waiting or else (State.Waiting_Stream and then not State.Terminal) then
          Status := Waiting_For_Host;
       end if;
 
@@ -2955,134 +3645,7 @@ is
          else
          case Item.Content.Code (PC).Op is
             when Make_Variant | Equal_Variant | Switch_Variant | Copy_Stack | Drop_Under_Top | Project_Field =>
-               declare
-                  Ins : constant Instruction := Item.Content.Code (PC);
-                  D : constant CCL.Types.Description := CCL.Types.Describe (Item.Content.Data_Types, Ins.Data_Type);
-                  Good : Boolean := True;
-                  Next_PC : Instruction_Index := PC + 1;
-                  Alternative : CCL.Types.Component_Count;
-                  Native_Value : Value;
-                  function Matches (V : Value; Ref : CCL.Types.Type_Reference) return Boolean is
-                    (V.Kind = Kind_For_Type (Item.Content.Data_Types, Ref) and then
-                     V.Data_Type = Reference_For_Type (Item.Content.Data_Types, Ref) and then
-                     V.Copyable and then V.Type_Tag = 0 and then Well_Typed (Item.Content.Data_Types, V));
-               begin
-                  case Ins.Op is
-                     when Project_Field =>
-                        Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
-                        Good := Stack_Result = Runtime_Stacks.Stack_Ok and then
-                          Matches (Right_Value, Ins.Data_Type) and then D.Form = CCL.Types.Product and then
-                          Ins.Immediate in 1 .. Integer_64 (D.Count);
-                        if Good then
-                           Component (State.Arena, Item.Content.Data_Types, Right_Value,
-                                      CCL.Types.Component_Index (Ins.Immediate), Native_Value, Good);
-                           if Good then
-                              Good := Matches (Native_Value, D.Parts (CCL.Types.Component_Index (Ins.Immediate)).Payload);
-                           end if;
-                           if Good then
-                              Runtime_Stacks.Push (Stack, Native_Value, Stack_Result);
-                              Good := Stack_Result = Runtime_Stacks.Stack_Ok;
-                           end if;
-                        end if;
-                     when Make_Variant =>
-                        Right_Value := Integer_Constant (0);
-                        if Ins.Alternative not in 1 .. D.Count then Good := False;
-                        elsif D.Parts (Ins.Alternative).Payload /= CCL.Types.Unit_Type then
-                           Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
-                           Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Right_Value.Copyable and then
-                             Right_Value.Kind = (if D.Parts (Ins.Alternative).Payload = CCL.Types.Integer_Type
-                                                 then Integer_Value else Boolean_Value);
-                        end if;
-                        if Good then
-                           Right_Value := (Kind => Variant_Value, Data_Type => Ins.Data_Type,
-                             Alternative => Ins.Alternative, Integer => Right_Value.Integer,
-                             Boolean => Right_Value.Boolean, others => <>);
-                           Runtime_Stacks.Push (Stack, Right_Value, Stack_Result);
-                           Good := Stack_Result = Runtime_Stacks.Stack_Ok;
-                        end if;
-                     when Equal_Variant =>
-                        Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
-                        Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Right_Value.Kind = Variant_Value and then
-                          Right_Value.Data_Type = Ins.Data_Type and then Right_Value.Copyable;
-                        if Good then
-                           Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
-                           Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Left_Value.Kind = Variant_Value and then
-                             Left_Value.Data_Type = Ins.Data_Type and then Left_Value.Copyable;
-                        end if;
-                        if Good then
-                           Runtime_Stacks.Push (Stack, Boolean_Constant
-                             (Left_Value.Alternative = Right_Value.Alternative), Stack_Result);
-                           Good := Stack_Result = Runtime_Stacks.Stack_Ok;
-                        end if;
-                     when Copy_Stack =>
-                        if Ins.Immediate not in 0 .. MAX_STACK_DEPTH - 1 then Good := False;
-                        else
-                           Runtime_Stacks.Peek_At (Stack, Unsigned_32 (Ins.Immediate), Right_Value, Stack_Result);
-                           Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Right_Value.Copyable;
-                           if Good then
-                              Runtime_Stacks.Push (Stack, Right_Value, Stack_Result);
-                              Good := Stack_Result = Runtime_Stacks.Stack_Ok;
-                           end if;
-                        end if;
-                     when Drop_Under_Top =>
-                        Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
-                        Good := Stack_Result = Runtime_Stacks.Stack_Ok;
-                        if Good then
-                           Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
-                           Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Left_Value.Copyable;
-                        end if;
-                        if Good then
-                           Runtime_Stacks.Push (Stack, Right_Value, Stack_Result);
-                           Good := Stack_Result = Runtime_Stacks.Stack_Ok;
-                        end if;
-                     when Switch_Variant =>
-                        if Ins.Immediate < 0 or else Ins.Immediate >= Integer_64 (Item.Content.Matches_Length) then
-                           Good := False;
-                        else
-                           declare
-                              M : constant Match_Table := Item.Content.Matches (Match_Index (Ins.Immediate));
-                              Schema : constant CCL.Types.Description := CCL.Types.Describe (Item.Content.Data_Types, M.Data_Type);
-                           begin
-                              Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
-                              Good := Stack_Result = Runtime_Stacks.Stack_Ok and then Right_Value.Copyable and then
-                                Right_Value.Kind = Kind_For_Type (Item.Content.Data_Types, M.Data_Type) and then
-                                Right_Value.Data_Type = M.Data_Type and then
-                                Well_Typed (Item.Content.Data_Types, Right_Value);
-                              if Good and then Right_Value.Kind = Object_Value then
-                                 Alternative := Right_Value.Alternative;
-                                 Good := Alternative in 1 .. Schema.Count;
-                                 if Good then
-                                    Next_PC := M.Targets (Alternative);
-                                    if Schema.Parts (Alternative).Payload /= CCL.Types.Unit_Type then
-                                       Component (State.Arena, Item.Content.Data_Types, Right_Value, 1, Native_Value, Good);
-                                       Good := Good and then Matches (Native_Value, Schema.Parts (Alternative).Payload);
-                                       if Good then
-                                          Runtime_Stacks.Push (Stack, Native_Value, Stack_Result);
-                                          Good := Stack_Result = Runtime_Stacks.Stack_Ok;
-                                       end if;
-                                    end if;
-                                 end if;
-                              elsif Good then
-                                 Next_PC := M.Targets (Right_Value.Alternative);
-                                 case Schema.Parts (Right_Value.Alternative).Payload is
-                                    when CCL.Types.Integer_Type =>
-                                       Runtime_Stacks.Push (Stack, Integer_Constant (Right_Value.Integer), Stack_Result);
-                                    when CCL.Types.Boolean_Type =>
-                                       Runtime_Stacks.Push (Stack, Boolean_Constant (Right_Value.Boolean), Stack_Result);
-                                    when others => null;
-                                 end case;
-                                 Good := Stack_Result = Runtime_Stacks.Stack_Ok;
-                              end if;
-                           end;
-                        end if;
-                     when others => null;
-                  end case;
-                  if not Good or else Next_PC <= PC or else Program_Length (Next_PC) >= Item.Content.Length then
-                     Status := Invalid_Bytecode; State.Terminal := True;
-                     State.Terminal_Status := Invalid_Bytecode; Done := True;
-                  else PC := Next_PC;
-                  end if;
-               end;
+               Run_Data_Op;
             when Halt =>
                CCL.Ownership.Check_Scope
                  (State.Ownership, Item.Content.Types, Own_Error);
@@ -3100,6 +3663,58 @@ is
                end if;
                State.Terminal := True;
                Done := True;
+
+            when Push_Stream =>
+               if Program_Length (PC) + 1 >= Item.Content.Length then
+                  Trap (Invalid_Bytecode);
+                  Done := True;
+               else
+                  Runtime_Stacks.Push
+                    (Stack, (Kind => Integer_Value, Integer => Item.Content.Code (PC).Immediate,
+                             Data_Type => Item.Content.Code (PC).Data_Type, others => <>),
+                     Stack_Result);
+                  if Stack_Result = Runtime_Stacks.Stack_Ok then
+                     PC := PC + 1;
+                  else
+                     Trap (Invalid_Bytecode);
+                     Done := True;
+                  end if;
+               end if;
+
+            when Stream_View =>
+               --  Pop the stream (and a window's count), then suspend until
+               --  the host's reader answers (Complete_Stream_Call).
+               declare
+                  View : CCL.Streams.View_Kind;
+                  Known : Boolean;
+                  Count : Value := Integer_Constant (1);
+               begin
+                  Find_View (Item.Content.Code (PC).Immediate, View, Known);
+                  Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
+                  if Known and then Stack_Result = Runtime_Stacks.Stack_Ok and then
+                    View = CCL.Streams.Window_View
+                  then
+                     Runtime_Stacks.Pop (Stack, Count, Stack_Result);
+                  end if;
+                  if not Known or else Stack_Result /= Runtime_Stacks.Stack_Ok or else
+                    Right_Value.Kind /= Integer_Value or else Count.Kind /= Integer_Value or else
+                    Right_Value.Data_Type /= Item.Content.Code (PC).Data_Type or else
+                    Right_Value.Integer not in 1 .. CCL.Streams.Maximum_Handle
+                  then
+                     Trap (Invalid_Bytecode);
+                  elsif Count.Integer not in 1 .. CCL.Streams.Maximum_Window then
+                     Trap (Stream_Window_Out_Of_Range);
+                  else
+                     State.Waiting_Stream := True;
+                     State.Stream_Request :=
+                       (Stream => CCL.Streams.Handle (Right_Value.Integer), View => View,
+                        Count => CCL.Streams.Window_Length (Count.Integer));
+                     State.Stream_Result_Type := Stream_View_Type
+                       (Item.Content.Data_Types, Item.Content.Code (PC).Data_Type, View);
+                     Status := Waiting_For_Host;
+                  end if;
+                  Done := True;
+               end;
 
             when Push_Integer =>
                if Program_Length (PC) + 1 >= Item.Content.Length then
@@ -3145,130 +3760,8 @@ is
                   end if;
                end if;
 
-            when Add_Integer =>
-               Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
-               if Stack_Result /= Runtime_Stacks.Stack_Ok or else
-                 Right_Value.Kind /= Integer_Value or else
-                 Program_Length (PC) + 1 >= Item.Content.Length
-               then
-                  Status := Invalid_Bytecode;
-                  State.Terminal := True;
-                  State.Terminal_Status := Invalid_Bytecode;
-                  Done := True;
-               else
-                  Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
-                  if Stack_Result /= Runtime_Stacks.Stack_Ok or else
-                    Left_Value.Kind /= Integer_Value
-                  then
-                     Status := Invalid_Bytecode;
-                     State.Terminal := True;
-                     State.Terminal_Status := Invalid_Bytecode;
-                     Done := True;
-                  else
-                     Right := Right_Value.Integer;
-                     Left := Left_Value.Integer;
-                  CCL.Checked_Arithmetic.Add
-                    (Left, Right, Addition_Result, Addition_Overflowed);
-                  if Addition_Overflowed then
-                     Status := Arithmetic_Overflow;
-                     State.Terminal := True;
-                     State.Terminal_Status := Arithmetic_Overflow;
-                     Done := True;
-                  else
-                     Runtime_Stacks.Push
-                       (Stack, Integer_Constant (Addition_Result), Stack_Result);
-                     if Stack_Result = Runtime_Stacks.Stack_Ok then
-                        PC := PC + 1;
-                     else
-                        Status := Invalid_Bytecode;
-                        State.Terminal := True;
-                        State.Terminal_Status := Invalid_Bytecode;
-                        Done := True;
-                     end if;
-                  end if;
-                  end if;
-               end if;
-
-            when Subtract_Integer | Multiply_Integer | Divide_Integer | Modulo_Integer =>
-               Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
-               if Stack_Result /= Runtime_Stacks.Stack_Ok or else
-                 Right_Value.Kind /= Integer_Value or else
-                 Program_Length (PC) + 1 >= Item.Content.Length
-               then
-                  Status := Invalid_Bytecode;
-                  State.Terminal := True;
-                  State.Terminal_Status := Invalid_Bytecode;
-                  Done := True;
-               else
-                  Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
-                  if Stack_Result /= Runtime_Stacks.Stack_Ok or else
-                    Left_Value.Kind /= Integer_Value
-                  then
-                     Status := Invalid_Bytecode;
-                     State.Terminal := True;
-                     State.Terminal_Status := Invalid_Bytecode;
-                     Done := True;
-                  else
-                     case Item.Content.Code (PC).Op is
-                        when Subtract_Integer =>
-                           CCL.Checked_Arithmetic.Subtract
-                             (Left_Value.Integer, Right_Value.Integer,
-                              Arithmetic_Result, Addition_Overflowed);
-                           Arithmetic_Error :=
-                             (if Addition_Overflowed then
-                                 CCL.Checked_Arithmetic.Arithmetic_Overflow
-                              else CCL.Checked_Arithmetic.Arithmetic_Ok);
-                        when Multiply_Integer =>
-                           CCL.Checked_Arithmetic.Multiply
-                             (Left_Value.Integer, Right_Value.Integer,
-                              Arithmetic_Result, Addition_Overflowed);
-                           Arithmetic_Error :=
-                             (if Addition_Overflowed then
-                                 CCL.Checked_Arithmetic.Arithmetic_Overflow
-                              else CCL.Checked_Arithmetic.Arithmetic_Ok);
-                        when Divide_Integer =>
-                           CCL.Checked_Arithmetic.Divide
-                             (Left_Value.Integer, Right_Value.Integer,
-                              Arithmetic_Result, Arithmetic_Error);
-                        when Modulo_Integer =>
-                           CCL.Checked_Arithmetic.Modulo
-                             (Left_Value.Integer, Right_Value.Integer,
-                              Arithmetic_Result, Arithmetic_Error);
-                        when others =>
-                           Arithmetic_Result := 0;
-                           Arithmetic_Error :=
-                             CCL.Checked_Arithmetic.Arithmetic_Overflow;
-                     end case;
-                     if Arithmetic_Error =
-                       CCL.Checked_Arithmetic.Arithmetic_Overflow
-                     then
-                        Status := Arithmetic_Overflow;
-                        State.Terminal := True;
-                        State.Terminal_Status := Arithmetic_Overflow;
-                        Done := True;
-                     elsif Arithmetic_Error =
-                       CCL.Checked_Arithmetic.Division_By_Zero
-                     then
-                        Status := Division_By_Zero;
-                        State.Terminal := True;
-                        State.Terminal_Status := Division_By_Zero;
-                        Done := True;
-                     else
-                        Runtime_Stacks.Push
-                          (Stack, Integer_Constant (Arithmetic_Result),
-                           Stack_Result);
-                        if Stack_Result = Runtime_Stacks.Stack_Ok then
-                           PC := PC + 1;
-                        else
-                           Status := Invalid_Bytecode;
-                           State.Terminal := True;
-                           State.Terminal_Status := Invalid_Bytecode;
-                           Done := True;
-                        end if;
-                     end if;
-                  end if;
-               end if;
-
+            when Add_Integer | Subtract_Integer | Multiply_Integer | Divide_Integer | Modulo_Integer =>
+               Run_Arithmetic_Op;
             when Call_Function =>
                --  The arguments stay on the stack as the callee's parameters.
                if State.Frame_Count = MAX_FUNCTIONS or else
@@ -3325,204 +3818,14 @@ is
                   end;
                end if;
 
-            when Push_Text =>
-               if Item.Content.Code (PC).Immediate not in
-                 0 .. Integer_64 (Item.Content.Constants_Length) - 1
-               then
-                  Trap (Invalid_Bytecode);
-               else
-                  Push_Constant
-                    (Item.Content, Constant_Index (Item.Content.Code (PC).Immediate),
-                     State.Text, Left_Value, Text_Status);
-                  if Text_Status /= Text_Regions.Operation_Ok then
-                     Trap (Text_Failure (Text_Status));
-                  else
-                     Push_Next (Left_Value);
-                  end if;
-               end if;
-
-            when Concat_Text =>
-               Pop_Text (Right_Value);
-               if not Done then Pop_Text (Left_Value); end if;
-               if not Done then
-                  Concat_Texts (State.Text, Left_Value, Right_Value, Joined, Text_Status);
-                  if Text_Status /= Text_Regions.Operation_Ok then
-                     Trap (Text_Failure (Text_Status));
-                  else
-                     Push_Next (Joined);
-                  end if;
-               end if;
-
-            when Text_Builtin =>
-               declare
-                  Operation : CCL.Text_Operations.Operation;
-                  Known : Boolean;
-                  Operands : Text_Operands := [others => (others => <>)];
-                  Subject, Answer : Value;
-                  Outcome : Execution_Status;
-               begin
-                  Find_Operation (Item.Content.Code (PC).Immediate, Operation, Known);
-                  if not Known then
-                     Trap (Invalid_Bytecode);
-                  else
-                     Pop_Text (Subject);
-                     for I in reverse 1 .. CCL.Text_Operations.Signature_Of (Operation).Count loop
-                        exit when Done;
-                        Runtime_Stacks.Pop (Stack, Operands (I), Stack_Result);
-                        if Stack_Result /= Runtime_Stacks.Stack_Ok or else
-                          Operands (I).Kind /= Kind_Of (CCL.Text_Operations.Signature_Of (Operation).Operands (I))
-                        then
-                           Trap (Invalid_Bytecode);
-                        end if;
-                     end loop;
-                     if not Done then
-                        Run_Text_Builtin (State.Text, Operation, Operands, Subject, Answer, Outcome);
-                        if Outcome /= Completed then
-                           Trap (Outcome);
-                        else
-                           Push_Next (Answer);
-                        end if;
-                     end if;
-                  end if;
-               end;
-
-            when Length_Text =>
-               Pop_Text (Left_Value);
-               if not Done then
-                  Push_Next (Integer_Constant
-                    (Integer_64 (Text_Regions.Length (Left_Value.Text))));
-               end if;
-
-            when Equal_Text =>
-               Pop_Text (Right_Value);
-               if not Done then Pop_Text (Left_Value); end if;
-               if not Done then
-                  Equal_Texts (State.Text, Left_Value, Right_Value, Same_Text, Text_Status);
-                  if Text_Status /= Text_Regions.Operation_Ok then
-                     Trap (Text_Failure (Text_Status));
-                  else
-                     Push_Next (Boolean_Constant (Same_Text));
-                  end if;
-               end if;
-
-            when Text_At =>
-               Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
-               if Stack_Result /= Runtime_Stacks.Stack_Ok or else Right_Value.Kind /= Integer_Value then
-                  Trap (Invalid_Bytecode);
-               end if;
-               if not Done then Pop_Text (Left_Value); end if;
-               if not Done then
-                  if Right_Value.Integer < 1 or else
-                    Right_Value.Integer > Integer_64 (Text_Regions.Length (Left_Value.Text))
-                  then
-                     Trap (Index_Out_Of_Range);
-                  else
-                     Text_Regions.Read
-                       (State.Text, Left_Value.Text, Text_Regions.String_Index (Right_Value.Integer),
-                        Element, Text_Status);
-                     if Text_Status /= Text_Regions.Operation_Ok then
-                        Trap (Text_Failure (Text_Status));
-                     else
-                        Push_Next (Character_Constant (Element));
-                     end if;
-                  end if;
-               end if;
-
+            when Push_Text | Concat_Text | Text_Builtin | Length_Text | Equal_Text | Text_At | Integer_To_Text | Variant_To_Text =>
+               Run_Text_Op;
             when New_List | Fill_List | Length_List | List_At | List_Builtin | Make_Node | Check_Range |
                  Make_Closure | Call_Value | List_Apply =>
                Run_Region_Op (Item.Content.Code (PC).Op);
 
-            when Integer_To_Text | Variant_To_Text =>
-               Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
-               if Stack_Result /= Runtime_Stacks.Stack_Ok or else
-                 Left_Value.Kind /=
-                   (if Item.Content.Code (PC).Op = Integer_To_Text then Integer_Value else Variant_Value) or else
-                 (Left_Value.Kind = Variant_Value and then
-                  (Left_Value.Data_Type /= Item.Content.Code (PC).Data_Type or else
-                   not CCL.Types.Is_Enumeration (Item.Content.Data_Types, Left_Value.Data_Type) or else
-                   Left_Value.Alternative > CCL.Types.Describe (Item.Content.Data_Types, Left_Value.Data_Type).Count))
-               then
-                  Trap (Invalid_Bytecode);
-               else
-                  Joined := (Kind => Text_Value, others => <>);
-                  Text_Regions.Allocate_String
-                    (State.Text,
-                     (if Left_Value.Kind = Integer_Value then T.Decimal_Image (Left_Value.Integer)
-                      else CCL.Types.Image (CCL.Types.Describe (Item.Content.Data_Types, Left_Value.Data_Type)
-                        .Parts (Left_Value.Alternative).Identifier)),
-                     Joined.Text, Text_Status);
-                  if Text_Status /= Text_Regions.Operation_Ok then
-                     Trap (Text_Failure (Text_Status));
-                  else
-                     Push_Next (Joined);
-                  end if;
-               end if;
-
-            when Equal_Integer | Less_Integer | Less_Equal_Integer | Equal_Boolean | Equal_Character =>
-               Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
-               if Stack_Result /= Runtime_Stacks.Stack_Ok or else
-                 Right_Value.Kind /= Comparison_Kind (Item.Content.Code (PC).Op) or else
-                 Program_Length (PC) + 1 >= Item.Content.Length
-               then
-                  Status := Invalid_Bytecode;
-                  State.Terminal := True;
-                  State.Terminal_Status := Invalid_Bytecode;
-                  Done := True;
-               else
-                  Runtime_Stacks.Pop (Stack, Left_Value, Stack_Result);
-                  if Stack_Result /= Runtime_Stacks.Stack_Ok or else
-                    Left_Value.Kind /= Right_Value.Kind
-                  then
-                     Status := Invalid_Bytecode;
-                     State.Terminal := True;
-                     State.Terminal_Status := Invalid_Bytecode;
-                     Done := True;
-                  else
-                     Runtime_Stacks.Push
-                       (Stack,
-                        Boolean_Constant
-                          (case Item.Content.Code (PC).Op is
-                              when Less_Integer => Left_Value.Integer < Right_Value.Integer,
-                              when Less_Equal_Integer => Left_Value.Integer <= Right_Value.Integer,
-                              when Equal_Boolean => Left_Value.Boolean = Right_Value.Boolean,
-                              when others => Left_Value.Integer = Right_Value.Integer),
-                        Stack_Result);
-                     if Stack_Result = Runtime_Stacks.Stack_Ok then
-                        PC := PC + 1;
-                     else
-                        Status := Invalid_Bytecode;
-                        State.Terminal := True;
-                        State.Terminal_Status := Invalid_Bytecode;
-                        Done := True;
-                     end if;
-                  end if;
-               end if;
-
-            when Not_Boolean =>
-               Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
-               if Stack_Result /= Runtime_Stacks.Stack_Ok or else
-                 Right_Value.Kind /= Boolean_Value or else
-                 Program_Length (PC) + 1 >= Item.Content.Length
-               then
-                  Status := Invalid_Bytecode;
-                  State.Terminal := True;
-                  State.Terminal_Status := Invalid_Bytecode;
-                  Done := True;
-               else
-                  Runtime_Stacks.Push
-                    (Stack,
-                     Boolean_Constant (not Right_Value.Boolean),
-                     Stack_Result);
-                  if Stack_Result = Runtime_Stacks.Stack_Ok then
-                     PC := PC + 1;
-                  else
-                     Status := Invalid_Bytecode;
-                     State.Terminal := True;
-                     State.Terminal_Status := Invalid_Bytecode;
-                     Done := True;
-                  end if;
-               end if;
-
+            when Equal_Integer | Less_Integer | Less_Equal_Integer | Equal_Boolean | Equal_Character | Not_Boolean =>
+               Run_Logic_Op;
             when Drop =>
                Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
                if Stack_Result /= Runtime_Stacks.Stack_Ok or else
@@ -3641,122 +3944,8 @@ is
                   Done := True;
                end;
 
-            when Initialize_Local =>
-               Runtime_Stacks.Pop (Stack, Right_Value, Stack_Result);
-               if Stack_Result /= Runtime_Stacks.Stack_Ok or else
-                 Natural (Item.Content.Code (PC).Local) >=
-                   Item.Content.Locals_Length or else
-                 Right_Value.Kind /= Item.Content.Local_Kinds
-                   (Item.Content.Code (PC).Local) or else
-                 Right_Value.Type_Tag /= Item.Content.Local_Types
-                   (Item.Content.Code (PC).Local) or else
-                 Right_Value.Data_Type /= Item.Content.Local_Data_Types
-                   (Item.Content.Code (PC).Local) or else
-                 (Right_Value.Copyable and then Item.Content.Types
-                   (Item.Content.Local_Types (Item.Content.Code (PC).Local)).Mode /= CCL.Ownership.Unrestricted) or else
-                 Program_Length (PC) + 1 >= Item.Content.Length
-               then
-                  Status := Invalid_Bytecode;
-                  State.Terminal := True;
-                  State.Terminal_Status := Invalid_Bytecode;
-                  Done := True;
-               else
-                  CCL.Ownership.Declare_Binding
-                    (State.Ownership, Item.Content.Code (PC).Local,
-                     Item.Content.Local_Types (Item.Content.Code (PC).Local),
-                     Own_Error);
-                  if Own_Error /= CCL.Ownership.Ownership_Valid then
-                     Status := Invalid_Bytecode;
-                     State.Terminal := True;
-                     State.Terminal_Status := Invalid_Bytecode;
-                     Done := True;
-                  else
-                     State.Locals (Item.Content.Code (PC).Local) := Right_Value;
-                     PC := PC + 1;
-                  end if;
-               end if;
-
-            when Copy_Local | Move_Local | Drop_Local |
-                 Borrow_Local_RO | Return_Local_RO |
-                 Borrow_Local_RW | Return_Local_RW |
-                 Apply_Local_Disposition =>
-               if Program_Length (PC) + 1 >= Item.Content.Length then
-                  Status := Invalid_Bytecode;
-                  State.Terminal := True;
-                  State.Terminal_Status := Invalid_Bytecode;
-                  Done := True;
-               else
-                  case Item.Content.Code (PC).Op is
-                     when Copy_Local =>
-                        CCL.Ownership.Copy_Value
-                          (State.Ownership, Item.Content.Types,
-                           Item.Content.Code (PC).Local,
-                           Own_Error);
-                     when Move_Local =>
-                        CCL.Ownership.Move_Value
-                          (State.Ownership,
-                           Item.Content.Code (PC).Local,
-                           Own_Error);
-                     when Drop_Local =>
-                        CCL.Ownership.Drop_Value
-                          (State.Ownership, Item.Content.Types,
-                           Item.Content.Code (PC).Local,
-                           Own_Error);
-                     when Borrow_Local_RO =>
-                        CCL.Ownership.Borrow_RO
-                          (State.Ownership,
-                           Item.Content.Code (PC).Local,
-                           Own_Error);
-                     when Return_Local_RO =>
-                        CCL.Ownership.Return_RO
-                          (State.Ownership,
-                           Item.Content.Code (PC).Local,
-                           Own_Error);
-                     when Borrow_Local_RW =>
-                        CCL.Ownership.Borrow_RW
-                          (State.Ownership,
-                           Item.Content.Code (PC).Local,
-                           Own_Error);
-                     when Return_Local_RW =>
-                        CCL.Ownership.Return_RW
-                          (State.Ownership,
-                           Item.Content.Code (PC).Local,
-                           Own_Error);
-                     when Apply_Local_Disposition =>
-                        CCL.Ownership.Apply_Disposition
-                          (State.Ownership, Item.Content.Types,
-                           Item.Content.Code (PC).Local,
-                           Item.Content.Code (PC).Verb,
-                           Own_Error);
-                     when others =>
-                        Own_Error := CCL.Ownership.Ownership_Valid;
-                  end case;
-                  if Own_Error /= CCL.Ownership.Ownership_Valid then
-                     Status := Invalid_Bytecode;
-                     State.Terminal := True;
-                     State.Terminal_Status := Invalid_Bytecode;
-                     Done := True;
-                  else
-                     if Item.Content.Code (PC).Op in Copy_Local | Move_Local then
-                        Right_Value := State.Locals (Item.Content.Code (PC).Local);
-                        Right_Value.Copyable := Item.Content.Code (PC).Op = Copy_Local;
-                        Runtime_Stacks.Push
-                          (Stack,
-                           Right_Value,
-                           Stack_Result);
-                        if Stack_Result /= Runtime_Stacks.Stack_Ok then
-                           Status := Invalid_Bytecode;
-                           State.Terminal := True;
-                           State.Terminal_Status := Invalid_Bytecode;
-                           Done := True;
-                        else
-                           PC := PC + 1;
-                        end if;
-                     else
-                        PC := PC + 1;
-                     end if;
-                  end if;
-               end if;
+            when Initialize_Local | Copy_Local | Move_Local | Drop_Local | Borrow_Local_RO | Return_Local_RO | Borrow_Local_RW | Return_Local_RW | Apply_Local_Disposition =>
+               Run_Local_Op;
          end case;
          end if;
       end loop;
@@ -3803,6 +3992,8 @@ is
            (if Waiting then
                Item.Content.Imports (State.Waiting_Import).Binding
             else 0),
+         Stream_Requested => State.Waiting_Stream and then not State.Terminal,
+         Stream_Request => State.Stream_Request,
          others => <>);
       if State.Has_Value and then
         (State.Result_Value.Kind = Object_Value or else
@@ -3819,6 +4010,8 @@ is
             --  host takes it through Native_Objects.Export_Result.
             if Printed then
                Result.Has_Literal := True;
+               Result.Literal_Shape := CCL.Types.Shapes.Shape_Of
+                 (Item.Content.Data_Types, State.Result_Value.Data_Type);
             else
                Result.Literal := (others => <>);
             end if;
@@ -3911,15 +4104,52 @@ is
       end if;
    end Stop;
 
+   procedure Complete_Stream_Call
+     (Item : Validated_Program; State : in out Machine_State;
+      Response : Value; Failure : Execution_Status)
+   is
+      Stack_Result : Runtime_Stacks.Operation_Result;
+      Expected : constant CCL.Types.Type_Reference := State.Stream_Result_Type;
+   begin
+      if not State.Waiting_Stream or else State.Terminal then
+         return;
+      end if;
+      State.Waiting_Stream := False;
+      if Failure /= Completed then
+         State.Terminal := True;
+         State.Terminal_Status := Failure;
+      elsif not CCL.Types.Known (Item.Content.Data_Types, Expected) or else
+        Response.Kind /= Kind_For_Type (Item.Content.Data_Types, Expected) or else
+        Response.Data_Type /= Reference_For_Type (Item.Content.Data_Types, Expected) or else
+        not Well_Typed (Item.Content.Data_Types, Response) or else
+        not Response.Copyable or else Response.Type_Tag /= 0 or else
+        Program_Length (State.PC) + 1 >= Item.Content.Length
+      then
+         State.Terminal := True;
+         State.Terminal_Status := Invalid_Bytecode;
+      else
+         Runtime_Stacks.Push (State.Stack, Response, Stack_Result);
+         if Stack_Result = Runtime_Stacks.Stack_Ok then
+            State.PC := State.PC + 1;
+         else
+            State.Terminal := True;
+            State.Terminal_Status := Invalid_Bytecode;
+         end if;
+      end if;
+   end Complete_Stream_Call;
+
    procedure Complete_Checked_Host_Call
      (Item     : Validated_Program;
       State    : in out Machine_State;
-      Response : Value;
+      Host_Response : Value;
       Accepted : Boolean;
       Native_Response : Boolean;
       Resource_Response : Boolean := False)
    is
       Import_Error : CCL.Imports.Import_Error;
+      --  A stream import's reply is the bare handle: it takes the stream
+      --  type the program declared (and Well_Typed checks the handle).
+      Response : Value := Host_Response;
       Stack_Result : Runtime_Stacks.Operation_Result;
    begin
       if not State.Waiting or else State.Terminal then
@@ -3949,6 +4179,11 @@ is
                State.Terminal_Status := Invalid_Bytecode;
                return;
             end if;
+         end if;
+         if Response.Kind = Integer_Value and then Response.Data_Type = CCL.Types.Invalid_Type and then
+           CCL.Types.Is_Stream (Item.Content.Data_Types, Item.Content.Imports (State.Waiting_Import).Result_Data_Type)
+         then
+            Response.Data_Type := Item.Content.Imports (State.Waiting_Import).Result_Data_Type;
          end if;
          if (Response.Kind = Object_Value and then not Native_Response) or else
            (Response.Kind = Resource_Value and then not Resource_Response) or else

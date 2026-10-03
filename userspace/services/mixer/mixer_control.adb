@@ -39,7 +39,7 @@ package body Mixer_Control with SPARK_Mode is
          return False;
       end if;
       case Label is
-         when 16#0501# | 16#0503# => -- Close / get volume
+         when 16#0501# | 16#0503# | 16#0509# => -- Close / get volume
             return Length = 1 and then Data (1) = 0;
          when 16#0502# => -- Volume, 0 .. 2 in unsigned 16.16
             return Length = 2 and then Data (1) <= 16#2_0000#;

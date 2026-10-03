@@ -2,7 +2,8 @@ with Interfaces; use Interfaces;
 -- Native implementation boundary for owned RW/NX allocation syscalls.
 -- Callers own a live execution pin for PID. No caller holds addressSpaceLock.
 package Process.Owned_Memory is
-   Maximum_Bytes : constant Unsigned_64 := 16 * 1024 * 1024;
+   -- Per-mapping admission bound; physical backing still obeys frame quotas.
+   Maximum_Bytes : constant Unsigned_64 := 256 * 1024 * 1024;
    -- RW/NX normal RAM only. Returns zero on failure; bytes round up to pages.
    procedure Allocate (PID : ProcessID; Bytes : Unsigned_64; Base : out Unsigned_64);
    -- Exact original base/rounded size only. Grants keep their own frame pins;

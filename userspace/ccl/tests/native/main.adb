@@ -760,6 +760,32 @@ procedure Main is
                    Outcome.Diagnostic = CCL.Language.Unsupported_List_Element,
                    "no lists of range types yet");
          end;
+         --  Stream types (docs/ccl-streams.md): data elements only, never stored.
+         declare
+            procedure Refused (Source : String; Code : CCL.Language.Diagnostic_Code; Name : String) is
+            begin
+               CCL.Language.Interpret (Source, 4096, Outcome);
+               Check (Outcome.Status = CCL.Language.Parse_Failed and then
+                      Outcome.Diagnostic = Code, Name);
+            end Refused;
+         begin
+            CCL.Language.Interpret ("(define (f (s (Stream Integer))) Integer 1) 1", 4096, Outcome);
+            Check (Outcome.Status = CCL.Language.Succeeded, "a stream parameter type-checks");
+            CCL.Language.Interpret
+              ("(type P (record (x Integer) (y Integer))) " &
+               "(define (f (s (Stream P)) (t (Stream (List P)))) Integer 1) 1", 4096, Outcome);
+            Check (Outcome.Status = CCL.Language.Succeeded, "streams of records and of lists");
+            Refused ("(define (f (s (Stream (Stream Integer)))) Integer 1) 1",
+                     CCL.Language.Unsupported_Stream_Element, "no streams of streams");
+            Refused ("(define (f (s (Stream (Function (Integer) Integer)))) Integer 1) 1",
+                     CCL.Language.Unsupported_Stream_Element, "no streams of functions");
+            Refused ("(type R (record (s (Stream Integer)))) 1",
+                     CCL.Language.Stream_Not_Data, "a stream is not a record field");
+            Refused ("(type V (variant (live (Stream Integer)) (none))) 1",
+                     CCL.Language.Stream_Not_Data, "a stream is not a variant payload");
+            Refused ("(define (f (s (List (Stream Integer)))) Integer 1) 1",
+                     CCL.Language.Unsupported_List_Element, "no lists of streams");
+         end;
          --  Still refused: lists of lists, and lists across a host boundary.
          CCL.Language.Interpret ("[[1] [2]]", 1024, Outcome);
          Check (Outcome.Status = CCL.Language.Type_Check_Failed, "no lists of lists yet");
@@ -1474,6 +1500,13 @@ procedure Main is
          end Same;
       begin
          Same ("(- 50 8)", "CCLB subtraction");
+         --  A lambda inside a definition keeps its slot: a later lambda
+         --  must not take it (the parser once reset the count after a body).
+         Same ("(define (h (x Integer)) Integer (fold (fn ((a Integer) (b Integer)) (+ a b)) x (range 1 2))) " &
+               "(each (fn ((i Integer)) (h i)) (range 0 2))", "lambda slots after a definition's lambda");
+         Same ("(define (h (x Integer)) Integer (fold (fn ((a Integer) (b Integer)) (+ a x)) 0 (range 1 2))) " &
+               "(define (k (y Integer)) Integer (h (+ y 1))) (each (fn ((i Integer)) (k i)) (range 0 2))",
+               "captures through nested definitions");
          Same ("(- 5 8)", "CCLB subtraction below zero");
          Same ("(- 0 9223372036854775807)", "CCLB subtraction at the range edge");
          Same ("(- -9223372036854775807 2)", "CCLB subtraction overflow traps");

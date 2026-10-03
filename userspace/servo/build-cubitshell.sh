@@ -19,7 +19,8 @@ mkdir -p "$build"
 # Native chrome and protected Desktop publication share the existing Ada UI
 # owner/policy rather than reimplementing grant lifetimes in Rust. The caller
 # holds coordination/build.lock over this script and all native staging.
-make -C "$repo/kernel" ui-fonts-native >/dev/null
+# The font helper packages its own Cargo output; do not leak Servo's target dir.
+env -u CARGO_TARGET_DIR make -C "$repo/kernel" ui-fonts-native >/dev/null
 (cd "$repo/kernel" && alr exec -- gprbuild -p -P ../userspace/servo/native/servo_shell_host.gpr -j4)
 export CUBIT_SERVO_NATIVE_DIR="$here/native"
 
@@ -27,7 +28,13 @@ export CUBIT_SERVO_NATIVE_DIR="$here/native"
 # contract is a link option, so relink (cargo does not track it).
 export CUBIT_STACK_SIZE=${CUBIT_STACK_SIZE:-8388608}
 rm -f "$CARGO_TARGET_DIR/x86_64-unknown-cubit/release/cubitshell"
-bash "$here/servo-cargo.sh" build --release -p cubitshell --features bundled "$@"
+# Native-tested CPU media is the default; set CUBIT_SERVO_MEDIA=0 for diagnosis.
+if [[ ${CUBIT_SERVO_MEDIA:-1} == 1 ]]; then
+    python3 "$here/media/with_environment.py" --repo "$repo" -- \
+        bash "$here/servo-cargo.sh" build --release -p cubitshell --features bundled,media "$@"
+else
+    bash "$here/servo-cargo.sh" build --release -p cubitshell --features bundled "$@"
+fi
 # Verify the audited runtime boundary in the actual unstripped final ELF.
 python3 "$repo/tests/servo/check_secondary_stack_link.py" \
     "$CARGO_TARGET_DIR/x86_64-unknown-cubit/release/cubitshell"

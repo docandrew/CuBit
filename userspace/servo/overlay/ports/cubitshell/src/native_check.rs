@@ -63,3 +63,66 @@ pub fn fonts() -> Result<usize, String> {
     if count < 4 { return Err(format!("only {count} TrueType entries")); }
     Ok(count)
 }
+
+/// Native oracle for the self-only owned-frame query. Run before Servo starts
+/// worker threads: a private mapping must be charged, then released on unmap.
+pub fn memory_accounting() -> bool {
+    unsafe extern "C" {
+        fn mmap(addr: *mut c_void, len: usize, prot: i32, flags: i32, fd: i32, offset: i64) -> *mut c_void;
+        fn munmap(addr: *mut c_void, len: usize) -> i32;
+    }
+    const BYTES: usize = 2 * 1024 * 1024;
+    let before = crate::cubit_desktop::memory_owned();
+    if before == u64::MAX || before == 0 { return false; }
+    let region = unsafe { mmap(std::ptr::null_mut(), BYTES, 3, 0x22, -1, 0) };
+    if region as usize == usize::MAX { return false; }
+    for offset in (0..BYTES).step_by(4096) {
+        unsafe { region.cast::<u8>().add(offset).write_volatile(0x5a); }
+    }
+    let during = crate::cubit_desktop::memory_owned();
+    if unsafe { munmap(region, BYTES) } != 0 { return false; }
+    let after = crate::cubit_desktop::memory_owned();
+    during >= before + BYTES as u64 && after <= during - BYTES as u64
+}
+
+/// Opt-in disposable-disk oracle for Penny's filesystem capability scopes.
+/// The harness provides both readable and forbidden canaries. An absent file
+/// or unsupported operation is not accepted as evidence of access denial.
+pub fn filesystem_scopes() -> Result<(), String> {
+    use std::fs::{self, OpenOptions};
+    use std::io::{ErrorKind, Write};
+    const CANARY: &[u8] = b"penny-filesystem-scope-canary\n";
+    let readable = "/servo/sandbox-read-control";
+    if fs::read(readable).map_err(|e| format!("read control: {e}"))? != CANARY {
+        return Err("read control contents differ".into());
+    }
+    for path in ["/Bookmarks/penny-sandbox-write-probe", "/Downloads/penny-sandbox-write-probe"] {
+        // Never truncate pre-existing user data, even if this test is enabled
+        // accidentally outside its intended disposable filesystem.
+        let mut file = OpenOptions::new().write(true).create_new(true).open(path)
+            .map_err(|e| format!("create control {path}: {e}"))?;
+        file.write_all(CANARY).map_err(|e| format!("write control {path}: {e}"))?;
+        drop(file);
+        if fs::read(path).map_err(|e| format!("readback {path}: {e}"))? != CANARY {
+            return Err(format!("write control contents differ: {path}"));
+        }
+    }
+    match fs::read("/sandbox-private/canary") {
+        Err(e) if e.kind() == ErrorKind::PermissionDenied => {},
+        Err(e) => return Err(format!("private read not explicitly denied: {e}")),
+        Ok(_) => return Err("private canary was readable".into()),
+    }
+    match OpenOptions::new().write(true).open(readable) {
+        Err(e) if e.kind() == ErrorKind::PermissionDenied => {},
+        Err(e) => return Err(format!("read-only write-open not explicitly denied: {e}")),
+        Ok(_) => return Err("read-only scope permitted write-open".into()),
+    }
+    for path in ["/servo/penny-sandbox-denied-create", "/sandbox-private/penny-sandbox-denied-create"] {
+        match OpenOptions::new().write(true).create_new(true).open(path) {
+            Err(e) if e.kind() == ErrorKind::PermissionDenied => {},
+            Err(e) => return Err(format!("create {path} not explicitly denied: {e}")),
+            Ok(_) => return Err(format!("forbidden create succeeded: {path}")),
+        }
+    }
+    Ok(())
+}

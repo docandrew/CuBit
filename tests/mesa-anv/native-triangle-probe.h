@@ -4,6 +4,12 @@
 #include <string.h>
 #include <unistd.h>
 #include "triangle-shaders.h"
+#include "completed-image.h"
+#include "probe-timing.h"
+#ifdef CUBIT_TEST_COMPOSITOR
+/* Test the production boundary unchanged, not a second Vulkan backend. */
+#include "../../userspace/lib/compositor/vulkan_submission_native.c"
+#endif
 
 static uint32_t triangle_memory_type(const VkPhysicalDeviceMemoryProperties *p,
                                      uint32_t bits, VkMemoryPropertyFlags flags)
@@ -15,7 +21,7 @@ static uint32_t triangle_memory_type(const VkPhysicalDeviceMemoryProperties *p,
 }
 
 static VkResult
-mesa_triangle_probe(VkInstance instance, VkPhysicalDevice physical, VkDevice device,
+mesa_triangle_probe_with_source(VkInstance instance, VkPhysicalDevice physical, VkDevice device,
                     PFN_vkGetInstanceProcAddr instance_proc,
                     void (*log_message)(const char *, ...),
                     /* Optional synchronous completed-buffer consumer. The
@@ -25,7 +31,8 @@ mesa_triangle_probe(VkInstance instance, VkPhysicalDevice physical, VkDevice dev
                      * on error; uncertain consumers must retain/wait instead.
                      * No ownership is transferred by this callback alone. */
                     VkResult (*consume)(VkDevice, VkDeviceMemory, VkDeviceSize,
-                                        uint32_t, uint32_t, uint32_t))
+                                        uint32_t, uint32_t, uint32_t),
+                    mesa_completed_image_consumer consume_image)
 {
    PFN_vkGetDeviceProcAddr proc = (PFN_vkGetDeviceProcAddr)
       instance_proc(instance, "vkGetDeviceProcAddr");
@@ -63,6 +70,7 @@ mesa_triangle_probe(VkInstance instance, VkPhysicalDevice physical, VkDevice dev
    LOAD(QueueSubmit); LOAD(WaitForFences); LOAD(DeviceWaitIdle);
 #undef LOAD
    VkResult result=VK_SUCCESS;
+   struct probe_timing timing=probe_timing_start();
    VkImage image=VK_NULL_HANDLE;
    VkBuffer buffer=VK_NULL_HANDLE;
    VkDeviceMemory image_memory=VK_NULL_HANDLE, host_memory=VK_NULL_HANDLE;
@@ -86,7 +94,9 @@ mesa_triangle_probe(VkInstance instance, VkPhysicalDevice physical, VkDevice dev
    const VkFormat format=VK_FORMAT_B8G8R8A8_UNORM;
    VkFormatProperties support;
    get_format(physical, format, &support);
-   if (!(support.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT))
+   const VkFormatFeatureFlags required=VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
+      (consume_image ? VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT : 0);
+   if ((support.optimalTilingFeatures & required)!=required)
       return VK_ERROR_FORMAT_NOT_SUPPORTED;
    VkPhysicalDeviceMemoryProperties memory;
    get_memory(physical, &memory);
@@ -96,7 +106,8 @@ mesa_triangle_probe(VkInstance instance, VkPhysicalDevice physical, VkDevice dev
       .sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType=VK_IMAGE_TYPE_2D,
       .format=format, .extent={64,64,1}, .mipLevels=1, .arrayLayers=1,
       .samples=VK_SAMPLE_COUNT_1_BIT, .tiling=VK_IMAGE_TILING_OPTIMAL,
-      .usage=VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+      .usage=VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+         (consume_image ? VK_IMAGE_USAGE_SAMPLED_BIT : 0),
       .sharingMode=VK_SHARING_MODE_EXCLUSIVE, .initialLayout=VK_IMAGE_LAYOUT_UNDEFINED,
    };
    TRY(CreateImage(device,&image_info,NULL,&image));
@@ -177,25 +188,49 @@ mesa_triangle_probe(VkInstance instance, VkPhysicalDevice physical, VkDevice dev
       .pViewportState=&viewport_state,.pRasterizationState=&raster,.pMultisampleState=&samples,
       .pColorBlendState=&blend,.layout=layout,.renderPass=pass,.subpass=0};
    log_message("MESA-TRIANGLE pipeline compilation beginning\n");
+   probe_timing_mark(&timing,PROBE_PIPELINE);
    TRY(CreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&graphics,NULL,&pipeline));
+   probe_timing_mark(&timing,PROBE_RECORD);
    log_message("MESA-TRIANGLE pipeline ready\n");
    const VkCommandPoolCreateInfo pool_info={.sType=VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-      .flags=VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,.queueFamilyIndex=0};
+      .flags=VK_COMMAND_POOL_CREATE_TRANSIENT_BIT|VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,.queueFamilyIndex=0};
    TRY(CreateCommandPool(device,&pool_info,NULL,&pool));
    const VkCommandBufferAllocateInfo cmd_info={.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
       .commandPool=pool,.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY,.commandBufferCount=1};
    TRY(AllocateCommandBuffers(device,&cmd_info,&command));
+   const VkFenceCreateInfo fence_info={.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+   TRY(CreateFence(device,&fence_info,NULL,&fence));
+   GetDeviceQueue(device,0,0,&queue);
+   if (!queue) { result=VK_ERROR_INITIALIZATION_FAILED; goto cleanup; }
+#ifdef CUBIT_TEST_COMPOSITOR
+   struct cubit_vulkan_submission compositor;
+#define COMPOSE(expr) do { if ((expr)!=0) { result=VK_ERROR_UNKNOWN; \
+   log_message("MESA-COMPOSITOR failed %s\n", #expr); goto cleanup; } } while (0)
+   COMPOSE(cubit_vulkan_submission_init(&compositor,device,queue,command,fence,proc));
+   COMPOSE(cubit_vulkan_submission_start(&compositor));
+#else
    const VkCommandBufferBeginInfo begin={.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
       .flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
    TRY(BeginCommandBuffer(command,&begin));
+#endif
    const VkClearValue clear={.color={{0.0f,0.0f,1.0f,1.0f}}};
    const VkRenderPassBeginInfo render={.sType=VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
       .renderPass=pass,.framebuffer=framebuffer,.renderArea={{0,0},{64,64}},
       .clearValueCount=1,.pClearValues=&clear};
+#ifdef CUBIT_TEST_COMPOSITOR
+   struct cubit_vulkan_scene scene={.device=device,.begin=render};
+   COMPOSE(cubit_vulkan_submission_begin_scene(&compositor,&scene,width,height));
+#else
    CmdBeginRenderPass(command,&render,VK_SUBPASS_CONTENTS_INLINE);
+#endif
    CmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);
    CmdDraw(command,3,1,0,0);
+#ifdef CUBIT_TEST_COMPOSITOR
+   COMPOSE(cubit_vulkan_submission_fill(&compositor,width,height,4,4,12,12,0x00ff00));
+   COMPOSE(cubit_vulkan_submission_end_scene(&compositor));
+#else
    CmdEndRenderPass(command);
+#endif
    const VkImageMemoryBarrier image_barrier={.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
       .srcAccessMask=VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT,
       .oldLayout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,.newLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -212,15 +247,20 @@ mesa_triangle_probe(VkInstance instance, VkPhysicalDevice physical, VkDevice dev
       .buffer=buffer,.size=bytes};
    CmdPipelineBarrier(command,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,
       0,0,NULL,1,&host_barrier,0,NULL);
+#ifdef CUBIT_TEST_COMPOSITOR
+   COMPOSE(cubit_vulkan_submission_seal(&compositor));
+   log_message("MESA-COMPOSITOR production submission beginning\n");
+   probe_timing_mark(&timing,PROBE_SUBMIT);
+   result=cubit_vulkan_submission_submit(&compositor)==0 ? VK_SUCCESS : VK_ERROR_UNKNOWN;
+#else
    TRY(EndCommandBuffer(command));
-   const VkFenceCreateInfo fence_info={.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-   TRY(CreateFence(device,&fence_info,NULL,&fence));
-   GetDeviceQueue(device,0,0,&queue);
-   if (!queue) { result=VK_ERROR_INITIALIZATION_FAILED; goto cleanup; }
    const VkSubmitInfo submit={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,
       .commandBufferCount=1,.pCommandBuffers=&command};
    log_message("MESA-TRIANGLE submit beginning\n");
+   probe_timing_mark(&timing,PROBE_SUBMIT);
    result=QueueSubmit(queue,1,&submit,fence);
+#endif
+   probe_timing_mark(&timing,PROBE_WAIT);
    if (result!=VK_SUCCESS) {
       VkResult idle;
       do {
@@ -238,36 +278,57 @@ mesa_triangle_probe(VkInstance instance, VkPhysicalDevice physical, VkDevice dev
       } while (result!=VK_SUCCESS && result!=VK_ERROR_DEVICE_LOST);
    }
    if (result!=VK_SUCCESS) goto cleanup;
+   probe_timing_mark(&timing,PROBE_READBACK);
+#ifdef CUBIT_TEST_COMPOSITOR
+   COMPOSE(cubit_vulkan_submission_poll(&compositor));
+#endif
    const volatile uint8_t *pixels=mapped;
    uint32_t red=0, blue=0, other=0, misplaced=0;
+   uint32_t green=0;
    for (uint32_t i=0; i<width*height; ++i) {
       const volatile uint8_t *p=pixels+4*i;
       if (p[0]==0 && p[1]==0 && p[2]==255 && p[3]==255) red++;
       else if (p[0]==255 && p[1]==0 && p[2]==0 && p[3]==255) blue++;
+      else if (p[0]==0 && p[1]==255 && p[2]==0 && p[3]==255) green++;
       else other++;
       /* Viewport-space vertices (8,8),(56,8),(32,56). Doubled pixel
        * centers are odd; no sample lies exactly on any triangle edge. */
       const int32_t x=2*(int32_t)(i%width)+1, y=2*(int32_t)(i/width)+1;
       const int inside=y>16 && 2*x-y>16 && 2*x+y<240;
-      if (p[0]!=(inside ? 0 : 255) || p[1]!=0 ||
-          p[2]!=(inside ? 255 : 0) || p[3]!=255) misplaced++;
+      int fill=0;
+#ifdef CUBIT_TEST_COMPOSITOR
+      fill=i%width>=4 && i%width<12 && i/width>=4 && i/width<12;
+#endif
+      if (p[0]!=(fill || inside ? 0 : 255) || p[1]!=(fill ? 255 : 0) ||
+          p[2]!=(!fill && inside ? 255 : 0) || p[3]!=255) misplaced++;
    }
    const volatile uint8_t *center=pixels+4*(32*64+32);
    log_message("MESA-TRIANGLE storage=BGRA8 pitch=256 (NOT exported)\n");
    log_message("MESA-TRIANGLE readback red=%u blue=%u other=%u\n",red,blue,other);
    log_message("MESA-TRIANGLE pixel mismatches=%u expected=0\n",misplaced);
+#ifdef CUBIT_TEST_COMPOSITOR
+   log_message("MESA-COMPOSITOR green=%u expected=64 mismatches=%u\n",green,misplaced);
+   if (green!=64) misplaced++;
+#else
+   if (green!=0) misplaced++;
+#endif
    if (red==0 || blue==0 || other || misplaced || center[0]!=0 || center[2]!=255 ||
        pixels[0]!=255 || pixels[2]!=0)
       result=VK_ERROR_UNKNOWN;
-   if (result==VK_SUCCESS && consume) {
+   if (result==VK_SUCCESS && (consume || consume_image)) {
       UnmapMemory(device,host_memory);
       mapped=NULL;
       /* Native unmap may report device loss through the device rather than
        * this void Vulkan API. The native consumer must check that state before
        * requesting its grant; the driver independently excludes live writers. */
-      result=consume(device,host_memory,bytes,width,height,width*4);
+      if (consume_image) {
+         const struct mesa_completed_image source={instance,physical,device,
+            instance_proc,queue,image,view,width,height,host_memory,bytes};
+         result=consume_image(&source,consume);
+      } else result=consume(device,host_memory,bytes,width,height,width*4);
    }
 cleanup:
+   probe_timing_mark(&timing,PROBE_CLEANUP);
    if (fence) DestroyFence(device,fence,NULL);
    if (pool) DestroyCommandPool(device,pool,NULL);
    if (pipeline) DestroyPipeline(device,pipeline,NULL);
@@ -282,6 +343,34 @@ cleanup:
    if (mapped) UnmapMemory(device,host_memory);
    if (buffer) DestroyBuffer(device,buffer,NULL);
    if (host_memory) FreeMemory(device,host_memory,NULL);
+   probe_timing_mark(&timing,PROBE_CLEANUP);
+   /* This synchronous fixture is driven by one caller. Sample first/every32
+    * calls, plus failures, rather than flood logstore with every iteration. */
+   static unsigned timing_calls;
+   const unsigned timing_call=++timing_calls;
+   if (timing_call==1 || timing_call%32==0 || result!=VK_SUCCESS) {
+   if (timing.valid) {
+      log_message("MESA-TIMING call=%u cpu-us setup=%llu pipeline=%llu record=%llu\n", timing_call,
+         (unsigned long long)(timing.ns[PROBE_SETUP]/1000),
+         (unsigned long long)(timing.ns[PROBE_PIPELINE]/1000),
+         (unsigned long long)(timing.ns[PROBE_RECORD]/1000));
+      log_message("MESA-TIMING call=%u cpu-us submit=%llu wait=%llu readback-consumer=%llu cleanup=%llu result=%d\n", timing_call,
+         (unsigned long long)(timing.ns[PROBE_SUBMIT]/1000),
+         (unsigned long long)(timing.ns[PROBE_WAIT]/1000),
+         (unsigned long long)(timing.ns[PROBE_READBACK]/1000),
+         (unsigned long long)(timing.ns[PROBE_CLEANUP]/1000), result);
+   } else log_message("MESA-TIMING unavailable (CPU clock sample invalid)\n");
+   }
 #undef TRY
+#ifdef CUBIT_TEST_COMPOSITOR
+#undef COMPOSE
+#endif
    return result;
+}
+
+static inline VkResult mesa_triangle_probe(VkInstance instance,VkPhysicalDevice physical,
+   VkDevice device,PFN_vkGetInstanceProcAddr get,void (*log)(const char *,...),
+   mesa_completed_pixels consume)
+{
+   return mesa_triangle_probe_with_source(instance,physical,device,get,log,consume,NULL);
 }

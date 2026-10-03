@@ -14,9 +14,9 @@ package body AML_Execute with SPARK_Mode is
       Calls_Left : Call_Budget := 32; Current_Sync : Sync_Level := 0)
    is
       Allowed : Boolean;
-      procedure Execute_Body
-        with Pre => Context_Valid (Environment) and then not Result_Out'Constrained,
-             Post => Context_Valid (Environment) and then Result_Out.Charged <= Budget,
+      procedure Execute_Body (Body_Result : out Execution_Result)
+        with Pre => Context_Valid (Environment) and then not Body_Result'Constrained,
+             Post => Context_Valid (Environment) and then Body_Result.Charged <= Budget,
              Always_Terminates,
              Subprogram_Variant => (Decreases => Calls_Left, Decreases => Natural'(2))
       is
@@ -130,11 +130,7 @@ package body AML_Execute with SPARK_Mode is
          end if;
       end Resolve_Slot;
       procedure Operand (V : out Datum; S : out Execution_Status; Allow_No_Return : Boolean := False; Require_Integer : Boolean := False)
-        with Global =>
-               (Input => (Input, Code, Width, Budget, Limit,
-                          Scope, Calls_Left, Current_Sync),
-                In_Out => (Offset, Charged, Locals, Ready, Parameters, Supplied, Environment)),
-             Always_Terminates,
+        with Always_Terminates,
              Subprogram_Variant => (Decreases => Calls_Left, Decreases => Natural'(1)),
              Pre => Context_Valid (Environment) and then not V'Constrained and then Offset <= Limit and then Limit <= Code'Length and then Charged <= Budget,
              Post => Context_Valid (Environment) and then Offset <= Limit and then Limit <= Code'Length and then Charged <= Budget
@@ -249,8 +245,7 @@ package body AML_Execute with SPARK_Mode is
            (ID : Natural; Actuals : Value_Arguments; Count : Natural;
             Need_Value : Boolean; Value : out Datum;
             Status : out Execution_Status)
-           with Global => (Input => (Input, Calls_Left, Budget, Current_Sync), In_Out => (Charged, Environment)),
-                Always_Terminates,
+           with Always_Terminates,
                 Subprogram_Variant => (Decreases => Calls_Left, Decreases => Natural'(0)),
                 Pre => Context_Valid (Environment) and then not Value'Constrained and then Count <= 7 and then Charged > 0 and then Charged <= Budget,
                 Post => Context_Valid (Environment) and then Charged <= Budget and then Charged >= Charged'Old
@@ -308,7 +303,22 @@ package body AML_Execute with SPARK_Mode is
                Stack (Depth) := (Op => B, others => <>);
                Offset := Offset + 1;
             else
-               if B in 16#87# | 16#8E# then
+               if B = 16#5B# then
+                  if Limit - Offset < 2 then S := Truncated; return; end if;
+                  if Code (Code'First + Offset + 1) /= 16#33# then
+                     S := Unsupported; return;
+                  end if;
+                  Offset := Offset + 2;
+                  declare
+                     Reading : Integer_Value;
+                     Available : Boolean;
+                  begin
+                     Read_Timer (Environment, Reading, Available);
+                     if not Available then S := Unsupported; return; end if;
+                     V := (Is_Object => False,
+                           Number => AML_Integers.Normalize (Reading, Width));
+                  end;
+               elsif B in 16#87# | 16#8E# then
                   Offset := Offset + 1;
                   declare
                      N : Integer_Value;
@@ -548,18 +558,59 @@ package body AML_Execute with SPARK_Mode is
             Limit := Blocks (Block_Depth).Outer_Limit;
             Block_Depth := Block_Depth - 1;
          else
-         if Charged = Budget then Result_Out := Failure (Budget_Exceeded, Charged); return; end if;
+         if Charged = Budget then Body_Result := Failure (Budget_Exceeded, Charged); return; end if;
          Charged := Charged + 1;
          Op := Code (Code'First + Offset);
          Offset := Offset + 1;
          case Op is
             when 16#5B# =>
-               if Offset = Limit then Result_Out := Failure (Truncated, Charged); return; end if;
+               if Offset = Limit then Body_Result := Failure (Truncated, Charged); return; end if;
+               if Code (Code'First + Offset) = 16#33# then
+                  Offset := Offset - 1;
+                  Operand (Value, State);
+                  if State /= Returned then
+                     Body_Result := Failure (State, Charged); return;
+                  end if;
+               elsif Code (Code'First + Offset) = 16#88# then
+                  Offset := Offset + 1;
+                  declare
+                     use type AML_Names.Parse_Status;
+                     Path : AML_Names.Name_Result;
+                     Token : Natural;
+                     Declared_Status : Execution_Status;
+                     Signature, OEM, Table_ID : Datum;
+                  begin
+                     if Offset = Limit then Body_Result := Failure (Bad_Name, Charged); return; end if;
+                     Path := AML_Names.Read_Name (Code (Code'First + Offset .. Code'First + (Limit - 1)));
+                     if Path.Kind /= AML_Names.Accepted or else Path.Count = 0 then
+                        Body_Result := Failure (Bad_Name, Charged); return;
+                     end if;
+                     Offset := Offset + Path.Consumed;
+                     Reserve_Region (Environment, Scope, Path, Token, Declared_Status);
+                     if Declared_Status /= Returned or else Token = 0 then
+                        Body_Result := Failure
+                          ((if Declared_Status in Failure_Status then Declared_Status else Unsupported), Charged);
+                        return;
+                     end if;
+                     Operand (Signature, Declared_Status);
+                     if Declared_Status /= Returned then Body_Result := Failure (Declared_Status, Charged); return; end if;
+                     Operand (OEM, Declared_Status);
+                     if Declared_Status /= Returned then Body_Result := Failure (Declared_Status, Charged); return; end if;
+                     Operand (Table_ID, Declared_Status);
+                     if Declared_Status /= Returned then Body_Result := Failure (Declared_Status, Charged); return; end if;
+                     Complete_Region (Environment, Input, Token, Width, Signature, OEM, Table_ID, Declared_Status);
+                     if Declared_Status /= Returned then
+                        Body_Result := Failure
+                          ((if Declared_Status in Failure_Status then Declared_Status else Unsupported), Charged);
+                        return;
+                     end if;
+                  end;
+               else
                if Code (Code'First + Offset) /= 16#81# then
-                  Result_Out := Failure (Unsupported, Charged); return;
+                  Body_Result := Failure (Unsupported, Charged); return;
                end if;
                Offset := Offset + 1;
-               if Offset = Limit then Result_Out := Failure (Bad_Package, Charged); return; end if;
+               if Offset = Limit then Body_Result := Failure (Bad_Package, Charged); return; end if;
                declare
                   use type AML_Names.Parse_Status;
                   P : constant Package_Result := Read_Package
@@ -569,19 +620,19 @@ package body AML_Execute with SPARK_Mode is
                   Flags : Byte;
                   Declared_Status : Execution_Status;
                begin
-                  if P.Kind /= Accepted then Result_Out := Failure (Bad_Package, Charged); return; end if;
+                  if P.Kind /= Accepted then Body_Result := Failure (Bad_Package, Charged); return; end if;
                   Finish := Offset + P.Extent;
                   Offset := Offset + P.Encoding_Bytes;
-                  if Offset = Finish then Result_Out := Failure (Bad_Name, Charged); return; end if;
+                  if Offset = Finish then Body_Result := Failure (Bad_Name, Charged); return; end if;
                   Region := AML_Names.Read_Name (Code (Code'First + Offset .. Code'First + (Finish - 1)));
-                  if Region.Kind /= AML_Names.Accepted then Result_Out := Failure (Bad_Name, Charged); return; end if;
+                  if Region.Kind /= AML_Names.Accepted then Body_Result := Failure (Bad_Name, Charged); return; end if;
                   Offset := Offset + Region.Consumed;
-                  if Offset = Finish then Result_Out := Failure (Truncated, Charged); return; end if;
+                  if Offset = Finish then Body_Result := Failure (Truncated, Charged); return; end if;
                   Flags := Code (Code'First + Offset);
                   Offset := Offset + 1;
                   -- Charge every FieldList byte before any namespace mutation.
                   if Finish - Offset > Budget - Charged then
-                     Result_Out := Failure (Budget_Exceeded, Charged); return;
+                     Body_Result := Failure (Budget_Exceeded, Charged); return;
                   end if;
                   Charged := Charged + (Finish - Offset);
                   if Offset = Finish then
@@ -591,12 +642,13 @@ package body AML_Execute with SPARK_Mode is
                        Code (Code'First + Offset .. Code'First + (Finish - 1)), Declared_Status);
                   end if;
                   if Declared_Status /= Returned then
-                     Result_Out := Failure
+                     Body_Result := Failure
                        ((if Declared_Status in Failure_Status then Declared_Status else Unsupported), Charged);
                      return;
                   end if;
                   Offset := Finish;
                end;
+               end if;
             when 16#14# => -- Method: declaration takes effect when executed.
                declare
                   P : Package_Result;
@@ -606,18 +658,18 @@ package body AML_Execute with SPARK_Mode is
                   Declared_Status : Declaration_Status;
                   use type AML_Names.Parse_Status;
                begin
-                  if Offset = Limit then Result_Out := Failure (Bad_Package, Charged); return; end if;
+                  if Offset = Limit then Body_Result := Failure (Bad_Package, Charged); return; end if;
                   P := Read_Package (Code (Code'First + Offset .. Code'First + (Limit - 1)));
-                  if P.Kind /= Accepted then Result_Out := Failure (Bad_Package, Charged); return; end if;
+                  if P.Kind /= Accepted then Body_Result := Failure (Bad_Package, Charged); return; end if;
                   Finish := Offset + P.Extent;
                   Offset := Offset + P.Encoding_Bytes;
-                  if Offset = Finish then Result_Out := Failure (Truncated, Charged); return; end if;
+                  if Offset = Finish then Body_Result := Failure (Truncated, Charged); return; end if;
                   Path := AML_Names.Read_Name (Code (Code'First + Offset .. Code'First + (Finish - 1)));
                   if Path.Kind /= AML_Names.Accepted or else Path.Count = 0 then
-                     Result_Out := Failure (Unsupported, Charged); return;
+                     Body_Result := Failure (Unsupported, Charged); return;
                   end if;
                   Offset := Offset + Path.Consumed;
-                  if Offset = Finish then Result_Out := Failure (Truncated, Charged); return; end if;
+                  if Offset = Finish then Body_Result := Failure (Truncated, Charged); return; end if;
                   Flags := Code (Code'First + Offset);
                   Offset := Offset + 1;
                   if Offset = Finish then
@@ -628,10 +680,10 @@ package body AML_Execute with SPARK_Mode is
                   end if;
                   case Declared_Status is
                      when Declared => null;
-                     when Declaration_Duplicate => Result_Out := Failure (Duplicate_Name, Charged); return;
-                     when Declaration_Missing => Result_Out := Failure (Unknown_Name, Charged); return;
-                     when Declaration_Full => Result_Out := Failure (Namespace_Limit, Charged); return;
-                     when Declaration_Unsupported => Result_Out := Failure (Unsupported, Charged); return;
+                     when Declaration_Duplicate => Body_Result := Failure (Duplicate_Name, Charged); return;
+                     when Declaration_Missing => Body_Result := Failure (Unknown_Name, Charged); return;
+                     when Declaration_Full => Body_Result := Failure (Namespace_Limit, Charged); return;
+                     when Declaration_Unsupported => Body_Result := Failure (Unsupported, Charged); return;
                   end case;
                   Offset := Finish;
                end;
@@ -643,9 +695,9 @@ package body AML_Execute with SPARK_Mode is
                   Start : constant Natural := Offset - 1;
                   Is_Loop : constant Boolean := Op = 16#A2#;
                begin
-                  if Offset = Limit then Result_Out := Failure (Bad_Package, Charged); return; end if;
+                  if Offset = Limit then Body_Result := Failure (Bad_Package, Charged); return; end if;
                   P := Read_Package (Code (Code'First + Offset .. Code'First + (Limit - 1)));
-                  if P.Kind /= Accepted then Result_Out := Failure (Bad_Package, Charged); return; end if;
+                  if P.Kind /= Accepted then Body_Result := Failure (Bad_Package, Charged); return; end if;
                   If_End := Offset + P.Extent;
                   Offset := Offset + P.Encoding_Bytes;
                   Resume := If_End;
@@ -653,18 +705,18 @@ package body AML_Execute with SPARK_Mode is
                   if not Is_Loop and then If_End < Limit and then Code (Code'First + If_End) = 16#A1# then
                      Has_Else := True;
                      Else_Start := If_End + 1;
-                     if Else_Start = Limit then Result_Out := Failure (Bad_Package, Charged); return; end if;
+                     if Else_Start = Limit then Body_Result := Failure (Bad_Package, Charged); return; end if;
                      P := Read_Package (Code (Code'First + Else_Start .. Code'First + (Limit - 1)));
-                     if P.Kind /= Accepted then Result_Out := Failure (Bad_Package, Charged); return; end if;
+                     if P.Kind /= Accepted then Body_Result := Failure (Bad_Package, Charged); return; end if;
                      Resume := Else_Start + P.Extent;
                      Else_Start := Else_Start + P.Encoding_Bytes;
                   end if;
                   Outer := Limit;
                   Limit := If_End;
                   Operand (Value, State, Require_Integer => True);
-                  if State /= Returned then Result_Out := Failure (State, Charged); return; end if;
+                  if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
                   --  Predicate conversion observes the AML integer width.
-                  if Value.Is_Object then Result_Out := Failure (Unsupported_Value, Charged); return; end if;
+                  if Value.Is_Object then Body_Result := Failure (Unsupported_Value, Charged); return; end if;
                   Value := (Is_Object => False, Number => AML_Integers.Normalize (Value.Number, Width));
                   if Value.Number = 0 then
                      if Has_Else then
@@ -676,7 +728,7 @@ package body AML_Execute with SPARK_Mode is
                      end if;
                   end if;
                   if Value.Number /= 0 or Has_Else then
-                     if Block_Depth = 64 then Result_Out := Failure (Block_Limit, Charged); return; end if;
+                     if Block_Depth = 64 then Body_Result := Failure (Block_Limit, Charged); return; end if;
                      Block_Depth := Block_Depth + 1;
                      Blocks (Block_Depth) :=
                        (Outer_Limit => Outer, Resume => Resume,
@@ -697,43 +749,43 @@ package body AML_Execute with SPARK_Mode is
                         exit;
                      end if;
                   end loop;
-                  if not Found then Result_Out := Failure (Invalid_Control, Charged); return; end if;
+                  if not Found then Body_Result := Failure (Invalid_Control, Charged); return; end if;
                end;
             when 16#A3# => null; --  Noop
             when 16#A4# | 16#70# => --  Return / Store
                Operand (Value, State);
-               if State /= Returned then Result_Out := Failure (State, Charged); return; end if;
+               if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
                if Op = 16#A4# then
                   if Value.Is_Object then
-                     Result_Out := (Status => Object_Returned, Charged => Charged, Object => Value.Object); return;
+                     Body_Result := (Status => Object_Returned, Charged => Charged, Object => Value.Object); return;
                   end if;
-                  Result_Out := (Status => Returned, Charged => Charged, Value => Value.Number); return;
+                  Body_Result := (Status => Returned, Charged => Charged, Value => Value.Number); return;
                end if;
                Write_Target (Value, State);
-               if State /= Returned then Result_Out := Failure (State, Charged); return; end if;
+               if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
             when 16#72# | 16#74# | 16#77# .. 16#82# | 16#85#
                | 16#87# | 16#8E# | 16#90# .. 16#95# =>
                Offset := Offset - 1;
                Operand (Value, State);
-               if State /= Returned then Result_Out := Failure (State, Charged); return; end if;
+               if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
             when 16#41# .. 16#5A# | 16#5F# | 16#5C# | 16#5E# | 16#2E# | 16#2F# =>
                Offset := Offset - 1;
                Operand (Value, State, Allow_No_Return => True);
                if State /= Returned and State /= No_Return then
-                  Result_Out := Failure (State, Charged); return;
+                  Body_Result := Failure (State, Charged); return;
                end if;
-            when others => Result_Out := Failure (Unsupported, Charged); return;
+            when others => Body_Result := Failure (Unsupported, Charged); return;
          end case;
          end if;
       end loop;
-      Result_Out := Failure (No_Return, Charged); return;
+      Body_Result := Failure (No_Return, Charged); return;
       end Execute_Body;
    begin
       Begin_Call (Environment, Scope, Allowed);
       if not Allowed then
          Result_Out := (Status => Namespace_Limit, Charged => 0); return;
       end if;
-      Execute_Body;
+      Execute_Body (Result_Out);
       End_Call (Environment, Scope);
    end Execute_With_Input;
 
@@ -775,9 +827,35 @@ package body AML_Execute with SPARK_Mode is
       begin
          Binding := (Status => Failed_Binding, Failure => Unsupported_Value);
       end Reject_Literal;
+      procedure Reject_Region
+        (Environment : in out Context; Scope : Natural; Path : AML_Names.Name_Result;
+         Token : out Natural; Status : out Execution_Status)
+        with Pre => Context_Valid (Environment), Post => Context_Valid (Environment)
+      is
+         pragma Unreferenced (Scope, Path);
+      begin
+         Token := 0; Status := Unsupported;
+      end Reject_Region;
+      procedure Reject_Completion
+        (Environment : in out Context; Input : aliased No_Input; Token : Natural;
+         Width : Integer_Width; Signature, OEM, Table_ID : Datum; Status : out Execution_Status)
+        with Pre => Context_Valid (Environment), Post => Context_Valid (Environment)
+      is
+         pragma Unreferenced (Input, Token, Width, Signature, OEM, Table_ID);
+      begin
+         Status := Unsupported;
+      end Reject_Completion;
+      procedure No_Timer
+        (Environment : in out Context; Value : out Integer_Value;
+         Available : out Boolean)
+        with Pre => Context_Valid (Environment), Post => Context_Valid (Environment)
+      is
+      begin
+         Value := 0; Available := False;
+      end No_Timer;
       procedure Execute is new Execute_With_Input
         (Context, No_Input, Context_Valid, Read_Binding, Get_Method, Write,
-         Begin_Call, End_Call, Define_Method, Reject_Fields, Reject_Literal);
+         Begin_Call, End_Call, Define_Method, Reject_Fields, Reject_Literal, Reject_Region, Reject_Completion, No_Timer);
    begin
       Execute (Code, Width, Args, Argument_Count, Budget, Empty, Environment,
                Scope, Result_Out, Calls_Left, Current_Sync);

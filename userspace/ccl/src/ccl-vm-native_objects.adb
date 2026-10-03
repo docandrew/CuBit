@@ -417,6 +417,45 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
       Complete_Checked_Host_Call (Item, State.Core, Result, Good, True);
    end Complete_Object;
 
+   procedure Complete_Stream_View
+     (Item : Validated_Program; State : in out Machine; Reply : CCL.Streams.View_Reply)
+   is
+      Good : Boolean := False;
+      Result : CCL.VM.Value := (others => <>);
+   begin
+      if not State.Initialized or else not Is_Well_Formed (Item, State.Core) or else
+        not State.Core.Waiting_Stream
+      then
+         return;
+      end if;
+      case Reply.Status is
+         when CCL.Streams.No_Such_Stream =>
+            Complete_Stream_Call (Item, State.Core, Result, Stream_Unavailable); return;
+         when CCL.Streams.Stream_Empty =>
+            Complete_Stream_Call (Item, State.Core, Result, Stream_Empty); return;
+         when CCL.Streams.View_Answered => null;
+      end case;
+      if not CCL.Streams.Returns_Elements (State.Core.Stream_Request.View) then
+         Result := Integer_Constant (Reply.Total);
+         Good := True;
+      else
+         declare
+            Image : CCL.Objects.Views.Snapshot;
+         begin
+            CCL.Objects.Views.Capture_Local
+              (Image, Item.Content.Data_Types, State.Core.Stream_Result_Type, Reply.Elements, Good);
+            if Good then
+               Load (Image, CCL.Objects.Views.Root (Image), Item.Content.Data_Types,
+                     State.Core.Stream_Result_Type,
+                     State.Core.Arena, State.Core.Text, State.Core.Lists, Result, Good);
+            end if;
+            CCL.Objects.Views.Clear (Image);
+         end;
+      end if;
+      Complete_Stream_Call
+        (Item, State.Core, Result, (if Good then Completed else Stream_Element_Mismatch));
+   end Complete_Stream_View;
+
    procedure Complete_Scalar
      (Item : Validated_Program; State : in out Machine; Response : Value; Accepted : Boolean) is
    begin

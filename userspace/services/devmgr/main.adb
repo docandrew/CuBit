@@ -41,7 +41,12 @@ with Intel_GPU_PCI_Power;
 with Intel_GPU_ADS_Backing;
 with Intel_GPU_Buffer_Backing;
 with Intel_GPU_Extent_Allocator;
+with Intel_GPU_Metadata_Platform;
+with Intel_GPU_Record_Growth;
+with Intel_GPU_Extent_Growth;
+with Intel_GPU_Allocation_Growth;
 with Intel_GPU_Physical_Extents;
+with Intel_GPU_Extent_Directory;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_PCI_Interrupts;
 with Intel_GPU_PCI_IRQ_Disable;
@@ -236,13 +241,66 @@ procedure main is
    function Context_Allocation_Ready return Boolean is
      (Intel_Inspection_PID /= 0 and then Intel_Reset_Authorized and then
       Intel_Config_Frozen and then Intel_GGTT_Granted);
-   function Allocate_Buffer_Block (CPU : Unsigned_64) return Unsigned_64 is
-     (syscall (SYSCALL_ALLOC_DMA, Intel_Inspection_PID,
-       Intel_GPU_Physical_Extents.Allocation_Order, CPU, 3, 2 ** 32));
+   function Allocate_Buffer_Block (CPU : Unsigned_64) return Unsigned_64;
    package Buffer_Allocations is new Intel_GPU_Extent_Allocator
      (Context_Allocation_Ready, Allocate_Buffer_Block);
    Intel_Buffer_Pool : Buffer_Allocations.Pool;
+   function Allocate_Buffer_Block (CPU : Unsigned_64) return Unsigned_64 is
+     (syscall (SYSCALL_ALLOC_DMA, Intel_Inspection_PID,
+       Intel_GPU_Physical_Extents.Allocation_Order, CPU, 3,
+       Buffer_Allocations.DMA_Ceiling (Intel_Buffer_Pool)));
+   package Intel_Extent_Growth is new Intel_GPU_Extent_Growth
+     (Buffer_Allocations, Intel_Buffer_Pool, Intel_GPU_Metadata_Platform.Storage,
+      Context_Allocation_Ready);
    Intel_Buffer_Arena_Granted : Boolean := False;
+   -- Metadata policy is independent of BO/RAM size. Reserve VA lazily and
+   -- commit only demanded chunks; this is not a preallocated million objects.
+   Intel_Metadata_Quota : constant Unsigned_64 := 64 * 1024 * 1024;
+   Intel_Record_Quota : constant Positive := 1_048_576;
+   Intel_Allocation_Reply_Slot : constant CapabilitySlot := 58;
+   function Intel_Record_Capacity return Positive is
+     (Buffer_Allocations.Record_Capacity (Intel_Buffer_Pool));
+   procedure Publish_Intel_Records
+     (Base, Bytes : Unsigned_64; Accepted : out Boolean) is
+   begin
+      Buffer_Allocations.Extend_Records (Intel_Buffer_Pool, Base, Bytes, Accepted);
+   end Publish_Intel_Records;
+   package Intel_Record_Growth is new Intel_GPU_Record_Growth
+     (Intel_GPU_Metadata_Platform.Storage, Intel_Record_Capacity, Publish_Intel_Records);
+   function Save_Intel_Allocation_Reply return Boolean is
+     (saveReplyCap (Unsigned_64 (Intel_Allocation_Reply_Slot)) = 1);
+   procedure Acquire_Intel_Buffer
+     (Index : Positive; Pages : Intel_GPU_Buffer_Backing.Page_Count;
+      Generation : Unsigned_32; Buffer : out Intel_GPU_Buffer_Reply.Extent_View;
+      Success, Pending : out Boolean) is
+   begin
+      Intel_Extent_Growth.Step
+        (Intel_Inspection_PID, Index, Pages, Generation, Buffer, Success, Pending);
+   end Acquire_Intel_Buffer;
+   procedure Reply_Intel_Allocation
+     (Index : Positive; Generation : Unsigned_32;
+      Buffer : Intel_GPU_Buffer_Reply.Extent_View; Success : Boolean) is
+      Response : Message :=
+        (tag => (16#F001#, 0, 0, 0), authorityTag => 0, words => [others => 0]);
+      Delivery : Unsigned_64;
+      pragma Unreferenced (Delivery);
+   begin
+      if Success then
+         Intel_Buffer_Arena_Granted := True;
+         Response :=
+           (tag => (16#F004#, 4, 0, 0), authorityTag => 0,
+            words => [Intel_GPU_Buffer_Reply.CPU_Address (Buffer),
+              Intel_GPU_Buffer_Reply.Byte_Count (Buffer), Intel_Inspection_PID,
+              Intel_GPU_Buffer_Backing.Allocation_Key (Index, Generation)]);
+      end if;
+      -- Delivery failure consumes the saved capability, not the allocation.
+      -- Retained backing must not be recycled on ambiguous client delivery.
+      Delivery := replyCap (Intel_Allocation_Reply_Slot, Response);
+   end Reply_Intel_Allocation;
+   package Intel_Allocation_Growth is new Intel_GPU_Allocation_Growth
+     (Intel_Record_Growth, Context_Allocation_Ready, Save_Intel_Allocation_Reply,
+      Acquire_Intel_Buffer, Reply_Intel_Allocation);
+   Intel_Allocations : Intel_Allocation_Growth.Dispatcher;
    gpuIsPrimary : Boolean := False;
 
    --  Service PIDs
@@ -962,7 +1020,7 @@ procedure main is
               (tag => (16#F002#, 0, 0, 0), authorityTag => 0, words => [others => 0]));
          elsif rdyMsg.tag = (Intel_GPU_Buffer_Backing.Budget_Request_Label, 4, 0, 0) and then
            sender = Intel_Inspection_PID and then sender /= 0 and then
-           rdyMsg.authorityTag = 16#4947# and then rdyMsg.words = [1, 0, 0, 0]
+           rdyMsg.authorityTag = 16#4947# and then rdyMsg.words = [Intel_GPU_Buffer_Backing.Budget_Version, 0, 0, 0]
          then
             ignore := reply (sender,
               (tag => (16#F002#, 0, 0, 0), authorityTag => 0, words => [others => 0]));
@@ -2148,6 +2206,15 @@ procedure main is
 
 begin
    debugPrint ("devmgr: starting" & LF);
+   declare
+      Accepted : Boolean;
+   begin
+      Intel_Allocation_Growth.Configure
+        (Intel_Allocations, Intel_Metadata_Quota, Intel_Record_Quota, Accepted);
+      if not Accepted then
+         debugPrint ("devmgr: Intel allocation metadata policy rejected" & LF);
+      end if;
+   end;
 
    --  Get initrd info from sysinfo
    initrdAddr := getInfo (SYSINFO_RAMDISK_ADDRESS);
@@ -3031,9 +3098,11 @@ begin
          end if;
       end if;
       GPU_Launch.Step (GPU_Launches, Launch_Now);
+      Intel_Allocation_Growth.Step (Intel_Allocations);
       Poll_Service_Request (from, msg, Request_Found);
       if not Request_Found then
-         if not GPU_Launch.Runnable (GPU_Launches) then
+         if not GPU_Launch.Runnable (GPU_Launches) and then
+           not Intel_Allocation_Growth.Pending (Intel_Allocations) then
             Launch_Activity := Wait_For_Activity_Until
               (GPU_Launch.Next_Deadline (GPU_Launches));
             if Launch_Activity = Unavailable then
@@ -3486,24 +3555,13 @@ begin
         msg.authorityTag = 16#4947#
       then
          declare
-            View : Intel_GPU_Buffer_Reply.Extent_View;
-            Granted : Boolean;
+            Accepted : Boolean;
          begin
-            Buffer_Allocations.Acquire_Buffer
-              (Intel_Buffer_Pool, Intel_Inspection_PID, Intel_GPU_Buffer_Backing.Slot (msg.words (0)),
+            Intel_Allocation_Growth.Begin_Request
+              (Intel_Allocations, Intel_GPU_Buffer_Backing.Slot (msg.words (0)),
                Intel_GPU_Buffer_Backing.Page_Count (msg.words (1)),
-               Unsigned_32 (msg.words (2)),
-               View, Granted);
-            if Granted then
-               Intel_Buffer_Arena_Granted := True;
-               ret := Unsigned_64 (reply (from,
-                 (tag => (16#F004#, 4, 0, 0), authorityTag => 0,
-                  words => [Intel_GPU_Buffer_Reply.CPU_Address (View),
-                    Intel_GPU_Buffer_Reply.Byte_Count (View), Intel_Inspection_PID,
-                    Intel_GPU_Buffer_Backing.Allocation_Key
-                      (Intel_GPU_Buffer_Backing.Slot (msg.words (0)),
-                       Unsigned_32 (msg.words (2)))])));
-            else
+               Unsigned_32 (msg.words (2)), Accepted);
+            if not Accepted then
                ret := Unsigned_64 (reply (from,
                  (tag => (16#F001#, 0, 0, 0), authorityTag => 0, words => [others => 0])));
             end if;
@@ -3538,16 +3596,19 @@ begin
          end;
       elsif msg.tag = (Intel_GPU_Buffer_Backing.Budget_Request_Label, 4, 0, 0) and then
         Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
-        msg.authorityTag = 16#4947# and then msg.words = [1, 0, 0, 0]
+        msg.authorityTag = 16#4947# and then msg.words = [Intel_GPU_Buffer_Backing.Budget_Version, 0, 0, 0]
       then
          declare
             Usage : constant Buffer_Allocations.Budget :=
               Buffer_Allocations.Memory_Budget (Intel_Buffer_Pool);
             Data : constant Intel_GPU_Buffer_Backing.Budget_Words :=
               Intel_GPU_Buffer_Backing.Budget_Reply
-                (Usage.Known, Usage.Capacity, Usage.Retained, Usage.Unassigned_Slots);
+                (Usage.Known, Usage.Capacity, Usage.Retained,
+                 Intel_Allocation_Growth.Record_Budget
+                   (Intel_Allocations, Buffer_Allocations.Record_Capacity (Intel_Buffer_Pool),
+                    Usage.Unassigned_Slots));
          begin
-            if Data (0) = 1 then
+            if Data (0) = Intel_GPU_Buffer_Backing.Budget_Version then
                ret := Unsigned_64 (reply (from,
                  (tag => (Intel_GPU_Buffer_Backing.Budget_Request_Label, 4, 0, 0),
                   authorityTag => 0, words => [Data (0), Data (1), Data (2), Data (3)])));
@@ -3556,21 +3617,22 @@ begin
                  (tag => (16#F001#, 0, 0, 0), authorityTag => 0, words => [others => 0])));
             end if;
          end;
-      elsif msg.tag = (Intel_GPU_Buffer_Backing.Extent_Request_Label, 2, 0, 0) and then
-        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
-        msg.authorityTag = 16#4947# and then msg.words (2 .. 3) = [0, 0] and then
-        msg.words (0) <= Unsigned_64 (Intel_GPU_Physical_Extents.Block_Index'Last) and then
-        msg.words (1) = Intel_Inspection_PID and then Intel_Buffer_Arena_Granted
+      elsif Intel_GPU_Buffer_Backing.Extent_Request_Authorized
+        (msg.tag.label, msg.tag.length, msg.tag.flags, msg.tag.reserved,
+         Intel_GPU_Buffer_Backing.Budget_Words (msg.words), Unsigned_64 (from),
+         msg.authorityTag, Intel_Inspection_PID,
+         Intel_GPU_Extent_Directory.Byte_Count (Buffer_Allocations.Snapshot (Intel_Buffer_Pool)),
+         Intel_Buffer_Arena_Granted)
       then
          declare
-            Map : Intel_GPU_Physical_Extents.Map;
+            Map : Intel_GPU_Extent_Directory.Borrowed_View;
             Part : Intel_GPU_Physical_Extents.Span;
             Granted : Boolean;
             Offset : constant Unsigned_64 := msg.words (0) * Intel_GPU_Physical_Extents.Block_Bytes;
          begin
-            Buffer_Allocations.Acquire
-              (Intel_Buffer_Pool, Intel_GPU_Buffer_Backing.CPU_Base, Map, Granted);
-            Part := Intel_GPU_Physical_Extents.Resolve
+            Map := Buffer_Allocations.Snapshot (Intel_Buffer_Pool);
+            Granted := Intel_GPU_Extent_Directory.Valid (Map);
+            Part := Intel_GPU_Extent_Directory.Resolve
               (Map, Offset, Intel_GPU_Physical_Extents.Block_Bytes);
             if Granted and then Part.Valid then
                ret := Unsigned_64 (reply (from,

@@ -147,8 +147,10 @@ begin
          Add ("(define (g" & Character'Val (Character'Pos ('a') + I - 1) &
               ") Integer (+ 0 (g" & Character'Val (Character'Pos ('a') + I - 2) & "))) ");
       end loop;
+      --  Declarations are siblings, not nesting: sixteen chained calls stay
+      --  within the evaluation depth bound.
       Interpret (Source (1 .. Length) & "(gp)", 4096, Outcome);
-      pragma Assert (Outcome.Status = Evaluation_Depth_Exhausted);
+      pragma Assert (Outcome.Status = Succeeded and then Outcome.Result_Value.Integer = 1);
       Interpret (Source (1 .. Length) & "(gp)", 20, Outcome);
       pragma Assert (Outcome.Status = Evaluation_Fuel_Exhausted);
    end;

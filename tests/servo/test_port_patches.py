@@ -12,6 +12,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("servo_fixes", ROOT / "userspace/servo/crate_fixes.py")
 fixes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixes)
+swgl_fix = fixes.FIXES["swgl-0.70.0"]
 crate = "mozjs_sys-153.3.0-0"
 full = fixes.FIXES[crate]
 upstream = next((ROOT / "userspace/rust/build/servo-work/cargo-home/registry/src").glob(f"*/{crate}"))
@@ -57,3 +58,22 @@ with tempfile.TemporaryDirectory(prefix="cubit-servo-patch-") as directory:
     fixes.apply(str(registry), str(fresh))
     assert (fresh / crate / "mozjs/js/src/gc/Memory.cpp").read_bytes() == memory.read_bytes()
 print("SERVO-PORT-PATCHES: PASS fresh existing-cache idempotent protection-unchanged")
+
+# SWGL diagnostics must apply cleanly and preserve repeat-build timestamps.
+crate = "swgl-0.70.0"
+upstream = next((ROOT / "userspace/rust/build/servo-work/cargo-home/registry/src").glob(f"*/{crate}"))
+with tempfile.TemporaryDirectory(prefix="cubit-swgl-patch-") as directory:
+    directory = pathlib.Path(directory)
+    source = directory / "registry" / crate / "src"
+    source.mkdir(parents=True)
+    for name, *_ in swgl_fix["edits"]:
+        destination = directory / "registry" / crate / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(upstream / name, destination)
+    fixes.FIXES = {crate: swgl_fix}
+    fixes.apply(str(directory / "registry"), str(directory / "out"))
+    patched = directory / "out" / crate / "src/gl.cc"
+    snapshot = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in (directory / "out").rglob("*") if p.is_file()}
+    fixes.apply(str(directory / "registry"), str(directory / "out"))
+    assert all((p.read_bytes(), p.stat().st_mtime_ns) == before for p, before in snapshot.items())
+print("SERVO-SWGL-PATCH: PASS fresh and idempotent")

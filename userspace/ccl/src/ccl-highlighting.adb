@@ -1,6 +1,7 @@
 with CCL.Language;
 
 package body CCL.Highlighting with SPARK_Mode is
+   use type CCL.Language.Builtin_Operation;
    function Space (C : Character) return Boolean is
      (C in ' ' | ASCII.HT | ASCII.CR | ASCII.LF);
    function Line_End (C : Character) return Boolean is
@@ -9,23 +10,11 @@ package body CCL.Highlighting with SPARK_Mode is
      (not Space (C) and then C not in '(' | ')' | '"' | '#');
 
    function Is_Special_Form (Word : String) return Boolean is
-     (Word = "define" or else Word = "type" or else Word = "let" or else
-      Word = "if" or else Word = "match" or else Word = "fn" or else
-      Word = "handler" or else Word = "field" or else Word = "list" or else
-      Word = "list-of" or else Word = "->>" or else Word = "and" or else
-      Word = "or" or else Word = "not");
+     (for some Form in Form_Word => Special_Form_Name (Form) = Word);
 
-   --  The core operators of CCL.Language plus its named built-ins.
+   --  The core operators plus the named built-ins of CCL.Language.
    function Is_Operator (Word : String) return Boolean is
-     (Word = "+" or else Word = "-" or else Word = "*" or else Word = "/" or else
-      Word = "%" or else Word = "=" or else Word = "/=" or else Word = "<" or else
-      Word = "<=" or else Word = ">" or else Word = ">=" or else
-      Word = "add" or else Word = "subtract" or else Word = "multiply" or else
-      Word = "divide" or else Word = "mod" or else Word = "modulo" or else
-      Word = "equal" or else Word = "not-equal" or else Word = "less" or else
-      Word = "less-equal" or else Word = "greater" or else
-      Word = "greater-equal" or else Word = "at" or else Word = "concat" or else
-      Word = "length" or else Word = "to-string" or else
+     ((for some Operator in Core_Operator => Core_Operator_Name (Operator) = Word) or else
       (for some Operation in CCL.Language.Builtin_Operation =>
          Operation /= CCL.Language.No_Builtin and then
          CCL.Language.Builtin_Name (Operation) = Word));

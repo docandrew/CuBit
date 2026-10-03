@@ -65,7 +65,7 @@ procedure Read_Source_Tests is
       if Binding = 78 then
          Check (Argument = CCL.Host_Values.Object_Constant (Value));
          State.Writes := State.Writes + 1;
-         Reply := (Value => CCL.Host_Values.Integer_Constant (23), Success => True);
+         Reply := (Value => CCL.Host_Values.Integer_Constant (23), Success => True, Why => <>);
          return;
       end if;
       Check (Binding = 77 and Argument = CCL.Host_Values.Integer_Constant (0));
@@ -73,7 +73,7 @@ procedure Read_Source_Tests is
       R.Build (Definition, True, State.Code, (if State.Code in W.Success | W.Stale then 42 else 0),
         Value, Image, Accepted);
       if State.Corrupt then Image.Reserved := 1; end if;
-      Reply := (Value => CCL.Host_Values.Object_Constant (Image), Success => Accepted);
+      Reply := (Value => CCL.Host_Values.Object_Constant (Image), Success => Accepted, Why => <>);
    end Invoke;
    procedure Evaluate is new L.Interpret_With_Values (Context, Invoke);
    procedure Evaluate_Object is new L.Interpret_Object_With_Values (Context, Invoke);
@@ -435,14 +435,14 @@ begin
       begin
          if Binding = 1 then
             State.Calls := State.Calls + 1;
-            Reply := (Value => CCL.Host_Values.Object_Constant (Text_Image), Success => True);
+            Reply := (Value => CCL.Host_Values.Object_Constant (Text_Image), Success => True, Why => <>);
          elsif Binding = 2 then
             Check (Argument = CCL.Host_Values.Object_Constant (Text_Image));
             State.Writes := State.Writes + 1;
-            Reply := (Value => CCL.Host_Values.Integer_Constant (23), Success => True);
+            Reply := (Value => CCL.Host_Values.Integer_Constant (23), Success => True, Why => <>);
          else
             State.Writes := State.Writes + 1;
-            Reply := (Value => CCL.Host_Values.Integer_Constant (23), Success => True);
+            Reply := (Value => CCL.Host_Values.Integer_Constant (23), Success => True, Why => <>);
          end if;
       end Text_Invoke;
       procedure Text_Evaluate is new L.Interpret_With_Values (Context, Text_Invoke);

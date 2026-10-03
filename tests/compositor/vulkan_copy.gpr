@@ -1,0 +1,18 @@
+project Vulkan_Copy is
+   for Languages use ("Ada", "C");
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("vulkan_copy_tests.adb", "vulkan_copy_test_bridge.ads", "vulkan_copy_test_bridge.adb",
+      "vulkan_copy_host.c", "vulkan_copy.c", "vulkan_copy.h",
+      "vulkan_copy_binding.ads", "vulkan_copy_binding.adb", "vulkan_copy_ffi.ads", "vulkan_copy_ffi.adb",
+      "desktop_composition.ads", "desktop_composition.adb");
+   for Object_Dir use "build/vulkan-copy/obj";
+   for Exec_Dir use "build/vulkan-copy";
+   for Main use ("vulkan_copy_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+      for Default_Switches ("C") use ("-std=c11", "-O2", "-Wall", "-Wextra", "-Werror");
+   end Compiler;
+   package Linker is
+      for Default_Switches ("Ada") use ("-lvulkan");
+   end Linker;
+end Vulkan_Copy;

@@ -13,12 +13,11 @@ procedure GuC_Context_Session_Tests is
    Calls, Retained_Count : Natural := 0;
    Last_Payload : Events.Words (0 .. 11) := [others => 0];
    Last_Length : Natural := 0;
-   Last_Fence : Unsigned_16 := 0;
    function Ready return Boolean is (Owner);
-   procedure Queue (Payload : Events.Words; Fence : Unsigned_16;
+   procedure Queue (Payload : Events.Words;
                     Result : out Life.Send_Result) is
    begin
-      Calls := Calls + 1; Last_Length := Payload'Length; Last_Fence := Fence;
+      Calls := Calls + 1; Last_Length := Payload'Length;
       Last_Payload := [others => 0];
       Last_Payload (0 .. Payload'Length - 1) := Payload;
       Result := Outcome;
@@ -35,7 +34,7 @@ procedure GuC_Context_Session_Tests is
    Status : Driver.Result;
 begin
    declare Object : Driver.Session; Saved : Natural; begin
-      Driver.Initialize (Object, 7, 16#200000#, 4096, 100, 65535, 1000, 500000, False);
+      Driver.Initialize (Object, 7, 16#200000#, 4096, 1000, 500000, False);
       Saved := Retained_Count;
       Driver.Dispatch (Object, [16#90004600#, 8], 99, Status);
       pragma Assert (Status = Driver.Retained and Retained_Count = Saved + 1);
@@ -49,30 +48,30 @@ begin
    for Scenario in 0 .. 5 loop
       declare Object : Driver.Session; Saved : Natural; begin
          Owner := True; Retain_OK := True; Outcome := Life.Queued;
-         Driver.Initialize (Object, 7, 16#200000#, 4096, 100, 65535, 1000, 500000, False);
+         Driver.Initialize (Object, 7, 16#200000#, 4096, 1000, 500000, False);
          Saved := Calls;
          Driver.Submit (Object, Life.Enable, Status);
          pragma Assert (Status = Driver.Rejected and Calls = Saved);
          Driver.Submit (Object, Life.Register_Context, Status);
-         pragma Assert (Status = Driver.Queued and Last_Length = 12 and Last_Fence = 100);
+         pragma Assert (Status = Driver.Queued and Last_Length = 12);
          pragma Assert (Last_Payload = [16#20004502#, 1, 7, 0, 1, 0, 0, 0, 0, 0, 16#20031D#, 0]);
          Outcome := Life.Backpressure;
          Driver.Submit (Object, Life.Set_Policy, Status);
          pragma Assert (Status = Driver.Backpressure and Driver.State (Object) = Life.Registration_Queued);
          Outcome := Life.Queued;
          Driver.Submit (Object, Life.Set_Policy, Status);
-         pragma Assert (Status = Driver.Queued and Last_Length = 10 and Last_Fence = 101);
+         pragma Assert (Status = Driver.Queued and Last_Length = 10);
          pragma Assert (Last_Payload (0 .. 9) =
            [16#2000100B#, 7, 16#20030001#, 2, 16#20010001#, 1000,
             16#20020001#, 500000, 16#20050001#, 0]);
          if Scenario = 1 then Outcome := Life.Uncertain; end if;
          Driver.Submit (Object, Life.Enable, Status);
-         pragma Assert (Last_Length = 3 and Last_Fence = 102 and
+         pragma Assert (Last_Length = 3 and
                         Last_Payload (0 .. 2) = [16#20001001#, 7, 1]);
          if Scenario = 1 then
             pragma Assert (Status = Driver.Faulted);
          elsif Scenario = 2 then
-            Driver.Dispatch (Object, [16#E0000001#], 100, Status);
+            Driver.Dispatch (Object, [16#E0000001#], 16#8000#, Status);
             pragma Assert (Status = Driver.Faulted);
          elsif Scenario = 3 then
             Driver.Dispatch (Object, [16#90001002#, 7, 0], 0, Status);
@@ -95,16 +94,16 @@ begin
             pragma Assert (Status = Driver.Rejected and Calls = Saved);
             Outcome := Life.Backpressure;
             Driver.Notify_Work (Object, True, Status);
-            pragma Assert (Status = Driver.Backpressure and Last_Fence = 104);
+            pragma Assert (Status = Driver.Backpressure);
             Outcome := Life.Queued;
             Driver.Notify_Work (Object, True, Status);
-            pragma Assert (Status = Driver.Queued and Last_Fence = 104 and
+            pragma Assert (Status = Driver.Queued and
               Last_Length = 2 and Last_Payload (0 .. 1) = [16#20001000#, 7]);
             Driver.Notify_Work (Object, True, Status);
-            pragma Assert (Status = Driver.Queued and Last_Fence = 105 and
+            pragma Assert (Status = Driver.Queued and
               Driver.State (Object) = Life.Enabled);
             Driver.Submit (Object, Life.Disable, Status);
-            pragma Assert (Status = Driver.Queued and Last_Fence = 103);
+            pragma Assert (Status = Driver.Queued);
             Driver.Dispatch (Object, [16#90001002#, 7, 0], 0, Status);
             pragma Assert (Status = Driver.Handled and Driver.State (Object) = Life.Disabled);
             Driver.Fail (Object);
@@ -127,7 +126,7 @@ begin
       begin
          Owner := True; Outcome := Life.Queued;
          Lose_Owner_On_Queue := False;
-         Driver.Initialize (Object, 7, 16#200000#, 4096, 100, 65535,
+         Driver.Initialize (Object, 7, 16#200000#, 4096,
                             1000, 500000, False);
          Driver.Submit (Object, Life.Register_Context, Status);
          Driver.Submit (Object, Life.Set_Policy, Status);
@@ -148,15 +147,14 @@ begin
          Driver.Notify_Work (Object, True, Status);
          pragma Assert (Calls = Saved + (if Scenario = 0 then 0 else 1));
          if Scenario >= 4 then
-            pragma Assert (Status = Driver.Queued and Last_Fence = 104);
+            pragma Assert (Status = Driver.Queued);
             if Scenario = 5 then
                Driver.Submit (Object, Life.Disable, Status);
                Driver.Dispatch (Object, [16#90001002#, 7, 0], 0, Status);
                pragma Assert (Driver.State (Object) = Life.Disabled);
             end if;
-            -- A late failure of a published notification is still ours even
-            -- after scheduling has been disabled.
-            Driver.Dispatch (Object, [16#E0000001#], 104, Status);
+            -- Transport-classified failures quarantine even after disable.
+            Driver.Dispatch (Object, [16#E0000001#], 16#8000#, Status);
          end if;
          pragma Assert (Status = Driver.Faulted and
                         Driver.State (Object) = Life.Quarantined);
@@ -172,7 +170,7 @@ begin
       declare Object : Driver.Session; Saved : Natural; begin
          Owner := True; Retain_OK := True; Outcome := Life.Queued;
          Lose_Owner_On_Queue := False;
-         Driver.Initialize (Object, 7, 16#200000#, 4096, 100, 65535, 1000, 500000, False);
+         Driver.Initialize (Object, 7, 16#200000#, 4096, 1000, 500000, False);
          Driver.Deregister (Object, True, True, Status);
          pragma Assert (Status = Driver.Rejected);
          Driver.Submit (Object, Life.Register_Context, Status);
@@ -200,16 +198,14 @@ begin
             pragma Assert (Status = Driver.Faulted and Driver.State (Object) = Life.Quarantined);
          else
             pragma Assert (Last_Length = 2 and Last_Payload (0 .. 1) = [16#20004503#,7]);
-            pragma Assert (Last_Fence = 104);
             if Scenario = 4 then
                pragma Assert (Status = Driver.Backpressure and Driver.State (Object) = Life.Disabled);
                Outcome := Life.Queued;
                Driver.Deregister (Object, True, True, Status);
-               pragma Assert (Last_Fence = 104);
             end if;
             pragma Assert (Status = Driver.Queued and Driver.State (Object) = Life.Deregister_Pending);
             if Scenario = 5 then
-               Driver.Dispatch (Object, [16#E0000001#], 104, Status);
+               Driver.Dispatch (Object, [16#E0000001#], 16#8000#, Status);
                pragma Assert (Status = Driver.Faulted);
             else
                Driver.Dispatch (Object, [16#90004600#,7], 0, Status);

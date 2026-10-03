@@ -1,0 +1,15 @@
+project Vulkan_Affine is
+   for Languages use ("Ada", "C");
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use ("compositor_glyph_placement.ads", "compositor_glyph_placement.adb", "compositor_glyph_layout.ads", "compositor_glyph_layout.adb", "compositor_text.ads", "compositor_text.adb", "vulkan_affine_tests.adb", "vulkan_affine_test_bridge.ads", "vulkan_affine_test_bridge.adb", "vulkan_affine_host.c", "vulkan_affine.c", "vulkan_affine.h", "compositor.h", "vulkan_affine_binding.ads", "vulkan_affine_binding.adb", "vulkan_affine_ffi.ads", "vulkan_affine_ffi.adb", "compositor_affine.ads", "compositor_affine.adb", "compositor_transform.ads", "compositor_transform.adb", "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb");
+   for Object_Dir use "build/vulkan-affine/obj";
+   for Exec_Dir use "build/vulkan-affine";
+   for Main use ("vulkan_affine_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+      for Default_Switches ("C") use ("-std=c11", "-O2", "-Wall", "-Wextra", "-Werror");
+   end Compiler;
+   package Linker is
+      for Default_Switches ("Ada") use ("-lvulkan");
+   end Linker;
+end Vulkan_Affine;

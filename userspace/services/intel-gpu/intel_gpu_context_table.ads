@@ -1,12 +1,9 @@
 with Interfaces; use Interfaces;
-with Intel_GPU_Context_Routes;
-with Intel_GPU_Fence_Ranges;
 with Intel_GPU_GuC_Context_Event;
 with Intel_GPU_GuC_Context_Lifecycle;
 with Intel_GPU_GuC_Context_Session;
 generic
    Capacity : Positive;
-   First_Fence, Last_Fence : Unsigned_16;
    with package Driver is new Intel_GPU_GuC_Context_Session (<>);
    with function Owner_Ready return Boolean;
    with procedure Retain
@@ -25,8 +22,8 @@ package Intel_GPU_Context_Table is
    type Table is limited private;
    No_Context : constant Unsigned_32 := 65535;
    function Count (Object : Table) return Natural;
+   function Can_Run_And_Retire (Object : Table; ID : Unsigned_32) return Boolean;
    function Failed (Object : Table) return Boolean;
-   function Owns_Fence (Object : Table; Fence : Unsigned_16) return Boolean;
    -- Session comes from authenticated render admission, never IPC words.
    -- Zero is reserved for internal/bootstrap contexts and never resolves.
    function Session_Context (Object : Table; Session : Unsigned_64) return Unsigned_32;
@@ -38,7 +35,7 @@ package Intel_GPU_Context_Table is
    -- Trusted dispatcher only: Work_Drained certifies completion of outstanding
    -- work and deferred publication, not merely absence of a VM-update hold.
    -- Also requires retired admission, no hold, and acknowledged Disabled.
-   -- Completion retains ID/fence routes/backing; this is NOT reclamation.
+   -- Completion retains context ID/backing; this is NOT reclamation.
    procedure Deregister_Retired
      (Object : in out Table; ID : Unsigned_32; Work_Drained : Boolean;
       Status : out Driver.Result);
@@ -46,10 +43,10 @@ package Intel_GPU_Context_Table is
      return Intel_GPU_GuC_Context_Lifecycle.Phase;
    procedure Open
      (Object : in out Table; GPU_Start, Pin_Bias : Unsigned_64;
-      Fence_Count : Natural; Quantum_Us, Preemption_Us : Unsigned_32;
+      Quantum_Us, Preemption_Us : Unsigned_32;
       Preempt_To_Idle : Boolean; ID : out Unsigned_32; Accepted : out Boolean;
       Session : Unsigned_64 := 0);
-   -- A failed initialization can still reserve ID/range permanently. In that
+   -- A failed initialization can still reserve a context ID permanently. In that
    -- case ID names the retained failed session even though Accepted is False.
    -- No_Context means no slot was reserved. Caller retains backing on failure.
    -- At most one context per nonzero session for this transport lifetime.
@@ -82,16 +79,12 @@ package Intel_GPU_Context_Table is
       Fence : Unsigned_16; ID : out Unsigned_32; Status : out Dispatch_Result);
    procedure Fail (Object : in out Table);
 private
-   package Routes is new Intel_GPU_Context_Routes (Capacity);
-   package Fences is new Intel_GPU_Fence_Ranges (First_Fence, Last_Fence);
    type Sessions is array (Positive range 1 .. Capacity) of Driver.Session;
    type Owners is array (Positive range 1 .. Capacity) of Unsigned_64;
    type Retirement_Flags is array (Positive range 1 .. Capacity) of Boolean;
    type Table is limited record
       Used : Natural range 0 .. Capacity := 0;
       Broken : Boolean := False;
-      Routing : Routes.Registry;
-      Ledger : Fences.Ledger;
       Items : Sessions;
       Session_Owners : Owners := [others => 0];
       Retired : Retirement_Flags := [others => False];

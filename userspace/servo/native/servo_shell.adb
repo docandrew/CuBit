@@ -1,5 +1,46 @@
 with Servo_Session;
+with CuBit.Messages;
+with CuBit.Config;
 package body Servo_Shell is
+   function Config_Scope_Check return Unsigned_32 is
+      use type CuBit.Config.ConfigStatus;
+      use type System.Address;
+      Key : constant String := "browser.servo.sandbox_probe";
+      Value : aliased constant String := "penny-config-canary";
+      Data : System.Address;
+      Length : Natural;
+      Status : CuBit.Config.ConfigStatus;
+      function Denied (Foreign_Key : String) return Boolean is
+      begin
+         CuBit.Config.get (Foreign_Key, Data, Length, Status);
+         if Status /= CuBit.Config.AccessDenied then return False; end if;
+         CuBit.Config.set (Foreign_Key, Value'Address, Value'Length, Status);
+         if Status /= CuBit.Config.AccessDenied then return False; end if;
+         CuBit.Config.delete (Foreign_Key, Status);
+         return Status = CuBit.Config.AccessDenied;
+      end Denied;
+   begin
+      CuBit.Config.get (Key, Data, Length, Status);
+      if Status /= CuBit.Config.NotFound then return 1; end if;
+      CuBit.Config.set (Key, Value'Address, Value'Length, Status);
+      if Status /= CuBit.Config.OK then return 2; end if;
+      CuBit.Config.get (Key, Data, Length, Status);
+      if Status /= CuBit.Config.OK or else Length /= Value'Length or else
+        Data = System.Null_Address then return 3; end if;
+      declare
+         Readback : String (1 .. Value'Length) with Import, Address => Data;
+      begin
+         if Readback /= Value then return 4; end if;
+      end;
+      CuBit.Config.delete (Key, Status);
+      if Status /= CuBit.Config.OK then return 5; end if;
+      if not Denied ("browser.servo_escape.sandbox_probe") then return 6; end if;
+      if not Denied ("desktop.penny_sandbox_probe") then return 7; end if;
+      return 0;
+   end Config_Scope_Check;
+
+   function Memory_Owned return Unsigned_64 is
+     (CuBit.Messages.getInfo (CuBit.Messages.SYSINFO_MEM_OWNED_SELF));
    package S1 is new Servo_Session;
    package S2 is new Servo_Session;
    package S3 is new Servo_Session;
@@ -46,6 +87,15 @@ package body Servo_Shell is
       end loop;
       return 0;
    end Open;
+   procedure Input_Statistics (Result : access Input_Stats) is
+   begin
+      case Selected is
+         when 1 => S1.Input_Statistics (Result);
+         when 2 => S2.Input_Statistics (Result);
+         when 3 => S3.Input_Statistics (Result);
+         when 4 => S4.Input_Statistics (Result);
+      end case;
+   end Input_Statistics;
    procedure Metrics (Result : access Viewport) is
    begin
       case Selected is
@@ -94,24 +144,33 @@ package body Servo_Shell is
          when 4 => S4.State (URL, URL_Length, Title, Title_Length, Flags);
       end case;
    end State;
-   procedure Tab_Title (Index : Unsigned_32; Text : System.Address; Length : Unsigned_32) is
+   procedure Security (Text : System.Address; Length : Unsigned_32) is
    begin
       case Selected is
-         when 1 => S1.Tab_Title (Index, Text, Length);
-         when 2 => S2.Tab_Title (Index, Text, Length);
-         when 3 => S3.Tab_Title (Index, Text, Length);
-         when 4 => S4.Tab_Title (Index, Text, Length);
+         when 1 => S1.Security (Text, Length);
+         when 2 => S2.Security (Text, Length);
+         when 3 => S3.Security (Text, Length);
+         when 4 => S4.Security (Text, Length);
       end case;
-   end Tab_Title;
-   procedure Tab_Parked (Index : Unsigned_32) is
+   end Security;
+   function Tab_Capacity return Unsigned_32 is
    begin
       case Selected is
-         when 1 => S1.Tab_Parked (Index);
-         when 2 => S2.Tab_Parked (Index);
-         when 3 => S3.Tab_Parked (Index);
-         when 4 => S4.Tab_Parked (Index);
+         when 1 => return S1.Tab_Capacity;
+         when 2 => return S2.Tab_Capacity;
+         when 3 => return S3.Tab_Capacity;
+         when 4 => return S4.Tab_Capacity;
       end case;
-   end Tab_Parked;
+   end Tab_Capacity;
+   function Update_Tabs (Value : access constant Servo_Tab_Projection.Snapshot) return Unsigned_32 is
+   begin
+      case Selected is
+         when 1 => return S1.Update_Tabs (Value);
+         when 2 => return S2.Update_Tabs (Value);
+         when 3 => return S3.Update_Tabs (Value);
+         when 4 => return S4.Update_Tabs (Value);
+      end case;
+   end Update_Tabs;
    procedure Navigation_Error is
    begin
       case Selected is
@@ -144,16 +203,16 @@ package body Servo_Shell is
       Lease := 0;
    end Cancel;
    function Present
-     (RGBA : System.Address; Length : Unsigned_64;
-      Width, Height : Unsigned_32) return Unsigned_32 is
+     (BGRA : System.Address; Length : Unsigned_64;
+      Width, Height, Source_Pitch : Unsigned_32) return Unsigned_32 is
       Result : Unsigned_32;
    begin
       if Lease /= Selected then return 0; end if;
       case Selected is
-         when 1 => Result := S1.Present (RGBA, Length, Width, Height);
-         when 2 => Result := S2.Present (RGBA, Length, Width, Height);
-         when 3 => Result := S3.Present (RGBA, Length, Width, Height);
-         when 4 => Result := S4.Present (RGBA, Length, Width, Height);
+         when 1 => Result := S1.Present (BGRA, Length, Width, Height, Source_Pitch);
+         when 2 => Result := S2.Present (BGRA, Length, Width, Height, Source_Pitch);
+         when 3 => Result := S3.Present (BGRA, Length, Width, Height, Source_Pitch);
+         when 4 => Result := S4.Present (BGRA, Length, Width, Height, Source_Pitch);
       end case;
       Lease := 0; return Result;
    end Present;

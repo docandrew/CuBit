@@ -192,6 +192,11 @@ is
    --  handle. It maps a pinned descriptor operation to that runtime-local
    --  binding without changing the interface identity or contract.
    type Granted_Bindings is private;
+   --  The bindings one environment can grant: every operation it answers,
+   --  across all its interfaces. A program imports at most
+   --  CCL.VM.MAX_IMPORTS of them.
+   MAX_GRANTS : constant := 64;
+   subtype Grant_Count is Natural range 0 .. MAX_GRANTS;
    type Grant_Result is
      (Grant_Added,
       Grant_Existing,
@@ -202,7 +207,7 @@ is
 
    procedure Initialize (Item : out Granted_Bindings);
 
-   function Length (Item : Granted_Bindings) return CCL.VM.Import_Count;
+   function Length (Item : Granted_Bindings) return Grant_Count;
 
    procedure Install
      (Item      : in out Granted_Bindings;
@@ -291,11 +296,12 @@ private
       Binding   : Unsigned_32 := 0;
    end record;
 
+   subtype Grant_Index is Natural range 0 .. MAX_GRANTS - 1;
    type Granted_Binding_Array is
-     array (CCL.VM.Import_Index) of Granted_Binding;
+     array (Grant_Index) of Granted_Binding;
 
    type Granted_Bindings is record
-      Count   : CCL.VM.Import_Count := 0;
+      Count   : Grant_Count := 0;
       Entries : Granted_Binding_Array := [others => (others => <>)];
    end record;
 
@@ -308,7 +314,7 @@ private
    function Length (Item : Linkage_Table) return CCL.VM.Import_Count is
      (Item.Count);
 
-   function Length (Item : Granted_Bindings) return CCL.VM.Import_Count is
+   function Length (Item : Granted_Bindings) return Grant_Count is
      (Item.Count);
 
    function Element

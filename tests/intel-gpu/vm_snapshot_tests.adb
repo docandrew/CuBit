@@ -27,6 +27,46 @@ procedure VM_Snapshot_Tests is
       end loop;
    end Reject;
 begin
+   -- A disposed receipt is distinct from a new, failed or mutable snapshot.
+   -- In particular a failed re-preparation must not inherit the exemption used
+   -- by cross-context table-retirement scans.
+   for Preparation in 1 .. 4 loop
+      declare
+         Retiring, Source, Invalid : VM.Image;
+         Epoch : Unsigned_64;
+      begin
+         pragma Assert (not Snapshots.Retired (Retiring));
+         VM.Initialize (Retiring, Pages (16#E00000#), OK); pragma Assert (OK);
+         pragma Assert (not Snapshots.Retired (Retiring));
+         VM.Map_Page (Retiring, 4096, 16#3000000#, Write_Back, Read_Write, OK);
+         pragma Assert (OK);
+         VM.Seal (Retiring, OK); pragma Assert (OK);
+         Epoch := VM.Revision (Retiring);
+         Snapshots.Forget_Retired (Retiring, Epoch, 16#E00000#, False, OK);
+         pragma Assert (not OK and not Snapshots.Retired (Retiring));
+         Snapshots.Forget_Retired (Retiring, Epoch, 16#E00000#, True, OK);
+         pragma Assert (OK and Snapshots.Retired (Retiring));
+         Snapshots.Forget_Retired (Retiring, Epoch, 16#E00000#, True, OK);
+         pragma Assert (not OK and Snapshots.Retired (Retiring));
+         case Preparation is
+            when 1 => VM.Initialize (Retiring, Pages (16#F00000#), OK);
+            when 2 => VM.Initialize (Retiring, [others => 0], OK);
+            when 3 =>
+               VM.Initialize (Source, Pages (16#F00000#), OK); pragma Assert (OK);
+               VM.Map_Page (Source, 4096, 16#3000000#, Write_Back, Read_Write, OK);
+               pragma Assert (OK);
+               VM.Seal (Source, OK); pragma Assert (OK);
+               VM.Prepare_Update (Retiring, Source, Pages (16#E00000#), OK);
+            when 4 => VM.Prepare_Update (Retiring, Invalid, Pages (16#E00000#), OK);
+         end case;
+         pragma Assert (OK = (Preparation = 1 or Preparation = 3));
+         pragma Assert (not Snapshots.Retired (Retiring));
+         pragma Assert (not VM.Sealed (Retiring));
+         pragma Assert (VM.Revision (Retiring) = Epoch + 1);
+         Snapshots.Forget_Retired (Retiring, Epoch, 16#E00000#, True, OK);
+         pragma Assert (not OK and not Snapshots.Retired (Retiring));
+      end;
+   end loop;
    declare
       Initial, Empty, Rebound, Invalid : VM.Image;
    begin
@@ -130,12 +170,14 @@ begin
                pragma Assert (VM.Root_DMA (Live) /= Base);
                Snapshots.Forget_Retired (Reusable (Index), Old_Revision, Base, False, OK);
                pragma Assert (not OK and VM.Sealed (Reusable (Index)));
+               pragma Assert (not Snapshots.Retired (Reusable (Index)));
                Snapshots.Forget_Retired (Reusable (Index), Old_Revision + 1, Base, True, OK);
                pragma Assert (not OK);
                Snapshots.Forget_Retired (Reusable (Index), Old_Revision, Base + 4096, True, OK);
                pragma Assert (not OK);
                Snapshots.Forget_Retired (Reusable (Index), Old_Revision, Base, True, OK);
                pragma Assert (OK and not VM.Sealed (Reusable (Index)));
+               pragma Assert (Snapshots.Retired (Reusable (Index)));
                pragma Assert (VM.Root_DMA (Reusable (Index)) = 0 and VM.Used (Reusable (Index)) = 0);
                pragma Assert (VM.Lookup (Reusable (Index), 4096) = 0);
                for P in VM.Page_Number loop
@@ -145,6 +187,7 @@ begin
                end loop;
             end if;
             VM.Prepare_Update (Reusable (Index), Live, Pages (Base), OK); pragma Assert (OK);
+            pragma Assert (not Snapshots.Retired (Reusable (Index)));
             pragma Assert (VM.Revision (Reusable (Index)) = Old_Revision + 1);
             VM.Seal_Update (Reusable (Index), OK); pragma Assert (OK);
             -- Same DMA address as the retired incarnation: old ack is invalid.
@@ -165,6 +208,7 @@ begin
       end loop;
    end;
    Ada.Text_IO.Put_Line ("VM snapshot reuse PASS:128 alternating commits, exact retirement revision, same-address ABA rejection (offline model)");
+   Ada.Text_IO.Put_Line ("VM retired receipt PASS: acknowledged disposal only; successful and failed new incarnations remove alias-scan exemption");
    Ada.Text_IO.Put_Line ("VM snapshot PASS: 20 logical commits, stale/replay/unsealed/unrelated rejection; no hardware or backing reclamation");
    Ada.Text_IO.Put_Line ("VM snapshot lifecycle PASS: full unmap, empty-seal rejection, remap and adoption");
 end VM_Snapshot_Tests;

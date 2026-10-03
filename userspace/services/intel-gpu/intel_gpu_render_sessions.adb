@@ -1,18 +1,48 @@
 package body Intel_GPU_Render_Sessions with SPARK_Mode is
+   function Storage_Index (Object : Registry; Tag : Unsigned_64) return Slot_Index
+     with Refined_Post =>
+       (if Storage_Index'Result /= 0 then Tag > Tag_Base and Tag <= Tag_Last) and
+       (if Tag > Tag_Base and Tag <= Tag_Last then
+         (Storage_Index'Result = 0) =
+           (for all I in 1 .. Object.Used => Object.Items (I).Tag /= Tag))
+   is
+   begin
+      if Tag <= Tag_Base or else Tag > Tag_Last then return 0; end if;
+      for I in 1 .. Object.Used loop
+         if Object.Items (I).Tag = Tag then return I; end if;
+         pragma Loop_Invariant
+           (for all J in 1 .. I => Object.Items (J).Tag /= Tag);
+      end loop;
+      return 0;
+   end Storage_Index;
+   function Issued_Tag (Object : Registry; Index : Slot_Index) return Unsigned_64 is
+     (if Index = 0 or else Index > Object.Used then 0
+      elsif Storage_Index (Object, Object.Items (Index).Tag) /= Index then 0
+      else Object.Items (Index).Tag);
    function Index_Of (Object : Registry; Sender, Tag : Unsigned_64) return Natural is
-     (if Object.Failed or else Sender = 0 or else Tag <= Tag_Base or else
-         Tag > Tag_Base + Unsigned_64 (Object.Used) then 0
-      elsif Object.Items (Positive (Tag - Tag_Base)).Sender = Sender then
-         Positive (Tag - Tag_Base) else 0);
+     (if Object.Failed or else Sender = 0 or else Storage_Index (Object, Tag) = 0 then 0
+      elsif Object.Items (Storage_Index (Object, Tag)).Sender = Sender then
+         Storage_Index (Object, Tag) else 0);
    pragma Annotate (GNATprove, Inline_For_Proof, Index_Of);
    procedure Reserve
-     (Object : in out Registry; Sender : Unsigned_64; Tag : out Unsigned_64) is
+     (Object : in out Registry; Sender : Unsigned_64; Tag : out Unsigned_64)
+     with Refined_Post =>
+       (Tag = 0 or else
+         (Sender /= 0 and Tag > Tag_Base and Tag <= Tag_Last and
+          Storage_Index (Object, Tag) /= 0)) and
+       (if Tag = 0 then Object.Last_Issued = Object.Last_Issued'Old
+        else Object.Last_Issued'Old < Tag_Last and
+          Object.Last_Issued = Object.Last_Issued'Old + 1 and
+          Tag = Object.Last_Issued)
+   is
    begin
       Tag := 0;
-      if Object.Failed or else Sender = 0 or else Object.Used = Capacity then return; end if;
+      if Object.Failed or else Sender = 0 or else Object.Used = Capacity or else
+        Object.Last_Issued = Tag_Last then return; end if;
+      Object.Last_Issued := Object.Last_Issued + 1;
       Object.Used := Object.Used + 1;
-      Object.Items (Object.Used) := (Sender, Reserved);
-      Tag := Tag_Base + Unsigned_64 (Object.Used);
+      Object.Items (Object.Used) := (Sender, Object.Last_Issued, Reserved);
+      Tag := Object.Last_Issued;
    end Reserve;
    procedure Finalize
      (Object : in out Registry; Sender, Tag : Unsigned_64;

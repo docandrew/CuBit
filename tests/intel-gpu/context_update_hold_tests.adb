@@ -10,10 +10,10 @@ procedure Context_Update_Hold_Tests is
    Owner : Boolean := True;
    Calls : Natural := 0;
    function Ready return Boolean is (Owner);
-   procedure Queue (Payload : Events.Words; Fence : Unsigned_16;
+   procedure Queue (Payload : Events.Words;
                     Status : out Life.Send_Result) is
    begin
-      pragma Assert (Payload'Length > 0 and Fence /= 0);
+      pragma Assert (Payload'Length > 0);
       Calls := Calls + 1; Status := Life.Queued;
    end Queue;
    procedure Retain (Payload : Events.Words; Fence : Unsigned_16;
@@ -21,7 +21,7 @@ procedure Context_Update_Hold_Tests is
       pragma Unreferenced (Payload, Fence);
    begin Success := True; end Retain;
    package Driver is new Intel_GPU_GuC_Context_Session (Ready, Queue, Retain);
-   package Pool is new Intel_GPU_Context_Table (2, 100, 355, Driver, Ready, Retain);
+   package Pool is new Intel_GPU_Context_Table (2, Driver, Ready, Retain);
    Object : Pool.Table;
    A, B, ID : Unsigned_32;
    Accepted : Boolean;
@@ -43,7 +43,7 @@ procedure Context_Update_Hold_Tests is
    procedure Start (Session : Unsigned_64; Target : out Unsigned_32) is
    begin
       Pool.Open (Object, 16#200000# + Session * 16#10000#, 4096,
-                 128, 1000, 500000, False, Target, Accepted, Session);
+                 1000, 500000, False, Target, Accepted, Session);
       pragma Assert (Accepted and not Pool.Work_Allowed (Object, Target));
       Pool.Hold_Work (Object, Target, Accepted); pragma Assert (not Accepted);
       Submit (Target, Life.Register_Context); Submit (Target, Life.Set_Policy);

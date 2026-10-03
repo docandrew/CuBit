@@ -7,6 +7,9 @@ with CuBit.Messages; use CuBit.Messages;
 with Intel_GPU_Buffer_Backing;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Buffer_Memory;
+with Intel_GPU_Metadata_Arena;
+with Intel_GPU_Table_Provenance;
+with Intel_GPU_Table_Provenance.Retirement;
 procedure Buffer_Memory_Tests is
    package Layout renames Intel_GPU_Buffer_Backing;
    package Replies renames Intel_GPU_Buffer_Reply;
@@ -16,7 +19,33 @@ procedure Buffer_Memory_Tests is
       Owner_Calls := Owner_Calls + 1;
       return Owner_Calls /= Fail_Owner;
    end Owner_Ready;
-   package Buffers is new Intel_GPU_Buffer_Memory (Owner_Ready);
+   type Meta_RAM is array (Natural range 0 .. 65535) of Unsigned_8 with Alignment => 4096;
+   Meta : Meta_RAM;
+   Meta_Base : constant Unsigned_64 := Unsigned_64 (To_Integer (Meta'Address));
+   Meta_Fault : Natural := 0;
+   Reserves, Commits, Clears : Natural := 0;
+   function Reserve (Bytes : Unsigned_64) return Unsigned_64 is
+   begin
+      pragma Assert (Bytes = 65536);
+      Reserves := Reserves + 1;
+      return (if Meta_Fault = 1 then 0 else Meta_Base);
+   end Reserve;
+   function Commit (Base, Offset, Bytes : Unsigned_64) return Boolean is
+   begin
+      pragma Assert (Base = Meta_Base and Offset = 0 and Bytes = 65536);
+      Commits := Commits + 1;
+      return Meta_Fault /= 2;
+   end Commit;
+   function Clear (Base, Bytes : Unsigned_64) return Boolean is
+   begin
+      pragma Assert (Base = Meta_Base and Bytes = 65536);
+      Clears := Clears + 1;
+      if Meta_Fault = 3 then return False; end if;
+      Meta := [others => 0];
+      return True;
+   end Clear;
+   package Storage is new Intel_GPU_Metadata_Arena (Reserve, Commit, Clear);
+   package Buffers is new Intel_GPU_Buffer_Memory (Owner_Ready, Storage);
    use type Buffers.Allocation_Stage;
    function Mmap (Address : System.Address; Length : Interfaces.C.size_t;
                   Protection, Flags, FD : Interfaces.C.int;
@@ -48,6 +77,8 @@ procedure Buffer_Memory_Tests is
       for I in 3 * 512 .. RAM'Last loop pragma Assert (RAM (I) = Sentinel); end loop;
    end Check_Guards;
 begin
+   pragma Assert (Layout.Valid_Allocation_Request
+     (Layout.Request_Label, 3, 0, 0, Unsigned_64 (Layout.Slot'Last), 1, 1, 0));
    for Fault in 0 .. 12 loop
       declare
          Request : Message := ((Layout.Request_Label, 3, 0, 0), [1, 1, 1, 0]);
@@ -58,7 +89,7 @@ begin
             when 2 => Request.tag.flags := 1;
             when 3 => Request.tag.reserved := 1;
             when 4 => Request.words (0) := 0;
-            when 5 => Request.words (0) := 17;
+            when 5 => Request.words (0) := Unsigned_64 (Layout.Slot'Last) + 1;
             when 6 => Request.words (1) := 0;
             when 7 => Request.words (1) := 4097;
             when 8 => Request.words (2) := 0;
@@ -89,7 +120,7 @@ begin
             when 3 => Authority := 0;
             when 4 => Granted := False;
             when 5 => Request.words (0) := 0;
-            when 6 => Request.words (0) := 17;
+            when 6 => Request.words (0) := Unsigned_64 (Layout.Slot'Last) + 1;
             when 7 => Request.words (1) := 0;
             when 8 => Request.words (1) := 2 ** 32 - 1;
             when 9 => Request.words (2) := 8;
@@ -138,7 +169,8 @@ begin
       pragma Assert (Consumed and Last_Token > Old_Token);
       Buffers.Complete (Object, Receipt, Consumed);
       pragma Assert (not Consumed and Buffers.Pending (Object));
-      for I in 0 .. 15 loop
+      -- A4KiB allocation needs only the first committed2MiB extent.
+      for I in 0 .. 0 loop
          Receipt := (Last_Token, COMPLETION_OK,
            ((16#F003#, 4, 0, 0),
             [Unsigned_64 (I), 16#0200_0000# + Unsigned_64 (I) * 4 * 1024 * 1024,
@@ -146,7 +178,7 @@ begin
          Old_Token := Last_Token;
          Buffers.Complete (Object, Receipt, Consumed);
          pragma Assert (Consumed);
-         if I < 15 then pragma Assert (Last_Token > Old_Token); end if;
+         pragma Assert (Last_Token = Old_Token); -- no eager suffix queries
          Buffers.Complete (Object, Receipt, Consumed);
          pragma Assert (not Consumed);
       end loop;
@@ -184,7 +216,7 @@ begin
       Buffers.Complete (Object, Receipt, Consumed);
       pragma Assert (Consumed and Buffers.Pending (Object));
       for Word of RAM loop pragma Assert (Word = Sentinel); end loop;
-      for I in 0 .. 15 loop
+      for I in 0 .. 0 loop
          Receipt := (Last_Token, COMPLETION_OK,
            ((16#F003#, 4, 0, 0),
             [Unsigned_64 (I), 16#0200_0000# + Unsigned_64 (I) * 4 * 1024 * 1024,
@@ -203,6 +235,9 @@ begin
    for Bad_At in 0 .. 15 loop
       for Fault in 1 .. 4 loop
          Reset;
+         -- Force exactly Bad_At+1 required extents. Failure must occur before
+         -- zeroing, so the synthetic far CPU range must never be accessed.
+         Response.words (0) := Layout.CPU_Base + Unsigned_64 (Bad_At) * 2 * 1024 * 1024 + 4096;
          declare
             Object : Buffers.Pool;
             Started, Consumed : Boolean;
@@ -322,7 +357,7 @@ begin
    declare Object : Buffers.Pool; begin
       Retry_First := True;
       Result := Buffers.Acquire (Object, 1, 1);
-      pragma Assert (Result.Ready and Submissions = 2 and Polls = 18);
+      pragma Assert (Result.Ready and Submissions = 2 and Polls = 3);
    end;
    Reset;
    declare Object : Buffers.Pool; begin
@@ -454,6 +489,193 @@ begin
       end;
    end loop;
    Ada.Text_IO.Put_Line ("Buffer retirement PASS:128 ack/reinitialize cycles, stale identity, quarantine on uncertain outcome");
+   Reset;
+   declare
+      Object : Buffers.Pool;
+      Metadata : Words := [others => Sentinel] with Alignment => 4096;
+      Base : constant Unsigned_64 := Unsigned_64 (To_Integer (Metadata'Address));
+      Accepted, Started : Boolean;
+      Capacity : Positive;
+   begin
+      Buffers.Extend_Records (Object, Base, 4096, Accepted);
+      pragma Assert (Accepted and Buffers.Record_Capacity (Object) > 16);
+      Capacity := Buffers.Record_Capacity (Object);
+      Buffers.Start (Object, 1, 1, Started);
+      pragma Assert (Started);
+      Buffers.Extend_Records (Object, Base, 8192, Accepted);
+      pragma Assert (not Accepted and Buffers.Record_Capacity (Object) = Capacity);
+      Buffers.Cancel (Object);
+      Buffers.Extend_Records (Object, Base, 8192, Accepted);
+      pragma Assert (not Accepted and Buffers.Record_Capacity (Object) = Capacity);
+      for I in 512 .. Metadata'Last loop
+         pragma Assert (Metadata (I) = Sentinel);
+      end loop;
+   end;
+   Reset;
+   declare
+      Object : Buffers.Pool;
+      Metadata : Words := [others => Sentinel] with Alignment => 4096;
+      Base : constant Unsigned_64 := Unsigned_64 (To_Integer (Metadata'Address));
+      Accepted : Boolean;
+   begin
+      Result := Buffers.Acquire (Object, 1, 1);
+      pragma Assert (Result.Ready);
+      Buffers.Extend_Records (Object, Base, 4096, Accepted);
+      pragma Assert (Accepted and Buffers.Result (Object).Ready);
+      pragma Assert (Buffers.Result (Object).CPU_Address = Result.CPU_Address);
+      Fail_Owner := Owner_Calls + 1;
+      Buffers.Extend_Records (Object, Base, 8192, Accepted);
+      pragma Assert (not Accepted);
+   end;
+   Ada.Text_IO.Put_Line ("Backing record growth PASS: old result preserved; active, quarantined and revoked growth rejected");
+   declare
+      Target : constant Unsigned_64 := Layout.CPU_Base + 16 * 2 * 1024 * 1024;
+      Extra : constant System.Address := Mmap
+        (To_Address (Integer_Address (Target)), 4096, 3, 16#100022#, -1, 0);
+   begin
+      pragma Assert (Extra = To_Address (Integer_Address (Target)));
+      for Fault in 0 .. 5 loop
+         declare
+            Object : Buffers.Pool;
+            Receipt : aliased CompletionEntry;
+            Started, Consumed : Boolean;
+            Saved_Token : Unsigned_64;
+         begin
+            Reset; Meta_Fault := Fault; Reserves := 0; Commits := 0; Clears := 0;
+            Buffers.Configure_Heap (Object, 64 * 1024 * 1024, 2 ** 32, 65536, Started);
+            pragma Assert (Started and Reserves = 0);
+            Response.words (0) := Target;
+            Buffers.Start (Object, 1, 1, Started); pragma Assert (Started);
+            pragma Assert (Poll (Receipt'Address) = 1);
+            Buffers.Complete (Object, Receipt, Consumed); pragma Assert (Consumed);
+            for Index in 0 .. 15 loop
+               pragma Assert (Poll (Receipt'Address) = 1);
+               pragma Assert (Receipt.msg.words (0) = Unsigned_64 (Index));
+               Buffers.Complete (Object, Receipt, Consumed); pragma Assert (Consumed);
+            end loop;
+            pragma Assert (Buffers.Last_Stage (Object) = Buffers.Awaiting_Extent_Metadata);
+            Saved_Token := Last_Token;
+            Buffers.Complete (Object, Receipt, Consumed);
+            pragma Assert (not Consumed and Last_Token = Saved_Token and Reserves = 0);
+            if Fault = 4 then Step := 30_000; end if;
+            if Fault = 5 then Fail_Owner := Owner_Calls + 1; end if;
+            for Turn in 1 .. 6 loop
+               exit when not Buffers.Pending (Object) or else Last_Token /= Saved_Token;
+               Buffers.Tick (Object);
+               pragma Assert (Submissions = 1);
+            end loop;
+            if Fault = 0 then
+               pragma Assert (Last_Token /= Saved_Token and Reserves = 1 and Commits = 1 and Clears = 1);
+               pragma Assert (Poll (Receipt'Address) = 1 and Receipt.msg.words (0) = 16);
+               Buffers.Complete (Object, Receipt, Consumed);
+               pragma Assert (Consumed and Buffers.Result (Object).Ready);
+               pragma Assert (Buffers.Result (Object).CPU_Address = Target);
+            else
+               pragma Assert (not Buffers.Pending (Object) and not Buffers.Result (Object).Ready);
+               pragma Assert (Last_Token = Saved_Token and Reserves = (if Fault <= 3 then 1 else 0));
+               Buffers.Tick (Object);
+               Buffers.Start (Object, 1, 1, Started);
+               pragma Assert (not Started and Submissions = 1 and Reserves = (if Fault <= 3 then 1 else 0));
+            end if;
+         end;
+      end loop;
+      declare
+         Object : Buffers.Pool;
+         Accepted : Boolean;
+      begin
+         Reset; Meta_Fault := 0; Reserves := 0; Commits := 0; Clears := 0;
+         Buffers.Configure_Heap (Object, 64 * 1024 * 1024, 2 ** 32, 65536, Accepted);
+         pragma Assert (Accepted);
+         Response.words (0) := Target;
+         Result := Buffers.Acquire (Object, 1, 1);
+         pragma Assert (Result.Ready and Result.CPU_Address = Target);
+         pragma Assert (Submissions = 1 and Polls = 18 and Reserves = 1 and Commits = 1);
+      end;
+      pragma Assert (Munmap (Extra, 4096) = 0);
+   end;
+   Ada.Text_IO.Put_Line ("Extent metadata wait PASS: seventeenth extent, retained token, stale completion ignored, reserve/commit/clear faults, no allocation replay");
+   for Fault in 0 .. 3 loop
+      Reset;
+      declare
+         Object : Buffers.Pool;
+         Retained : array (1 .. 2) of Replies.Backing;
+         procedure Resolve_Page (Session, Ticket, Offset : Unsigned_64;
+                                 CPU, DMA : out Unsigned_64; Accepted : out Boolean) is
+            Slot : constant Unsigned_64 := Ticket mod 2 ** 32;
+         begin
+            CPU := 0; DMA := 0; Accepted := False;
+            if Session /= 42 or Slot not in 1 .. 2 or Offset /= 0 or
+              Ticket /= Layout.Allocation_Key (Layout.Slot (Slot), 1) then return; end if;
+            if not Retained (Natural (Slot)).Ready then return; end if;
+            CPU := Retained (Natural (Slot)).CPU_Address;
+            DMA := Replies.Page_Address (Retained (Natural (Slot)), 0); Accepted := True;
+         end Resolve_Page;
+         function Released (Session : Unsigned_64) return Boolean is (Session = 42);
+         function May_Free (Session, Ticket : Unsigned_64) return Boolean is
+           (Session = 42 and Ticket in Layout.Allocation_Key (1, 1) .. Layout.Allocation_Key (2, 1));
+         function Confirmed (Session, Ticket : Unsigned_64) return Boolean is
+           (May_Free (Session, Ticket) and then Buffers.Retirement_Confirmed
+             (Object, Layout.Slot (Ticket mod 2 ** 32), Unsigned_32 (Ticket / 2 ** 32)));
+         package P renames Intel_GPU_Table_Provenance;
+         package A is new P.Authority (Resolve_Page);
+         package R is new P.Retirement (Released, May_Free, Confirmed);
+         use type P.Retirement_Phase;
+         Ledger : P.Ledger;
+         OK, Consumed, Found : Boolean;
+         Ticket : Unsigned_64;
+         Next : Natural;
+         Receipt : CompletionEntry;
+         Sends : Natural;
+      begin
+         for Slot in 1 .. 2 loop
+            Response := ((16#F004#, 4, 0, 0),
+              [Layout.CPU_Base + Unsigned_64 (Slot) * 4096, 4096, 7,
+               Layout.Allocation_Key (Slot, 1)]);
+            Retained (Slot) := Buffers.Acquire (Object, Slot, 1);
+            pragma Assert (Retained (Slot).Ready);
+            A.Install (Ledger, 42, 1, Slot, Layout.Allocation_Key (Slot, 1), 0, OK);
+            pragma Assert (OK);
+         end loop;
+         R.Start (Ledger, 42, 1, OK); pragma Assert (OK);
+         for Turn in 1 .. 12 loop
+            R.Step (Ledger);
+            if R.Phase (Ledger) = P.Request_Ready then
+               R.Take_Request (Ledger, 42, Ticket, OK); pragma Assert (OK);
+               Sends := Submissions; Submit_Fails := Fault = 1;
+               Buffers.Retire (Object, Layout.Slot (Ticket mod 2 ** 32),
+                               Unsigned_32 (Ticket / 2 ** 32), True, OK);
+               pragma Assert (OK = (Fault /= 1));
+               pragma Assert (not Confirmed (42, Ticket));
+               P.Scan_Ticket (Ledger, 42, Ticket, 1, Found, Next, OK);
+               pragma Assert (OK and Found); -- submission never clears references
+               if Fault /= 1 then
+                  Receipt := (Last_Token, COMPLETION_OK,
+                    ((Layout.Retire_Request_Label, 4, 0, 0),
+                     [0, Ticket + (if Fault = 3 then 2 ** 32 else 0), 7, 0]));
+                  if Fault = 2 then
+                     declare Stale : CompletionEntry := Receipt; begin
+                        Stale.token := 0;
+                        Buffers.Complete (Object, Stale, Consumed);
+                        pragma Assert (not Consumed and not Confirmed (42, Ticket));
+                     end;
+                  end if;
+                  Buffers.Complete (Object, Receipt, Consumed); pragma Assert (Consumed);
+               end if;
+               R.Acknowledge (Ledger, 42, Ticket, OK);
+               pragma Assert (OK = (Fault in 0 | 2));
+               if not OK then Buffers.Cancel (Object); end if;
+               pragma Assert (Submissions <= Sends + 1); -- never retry release
+            end if;
+            exit when R.Phase (Ledger) in P.Complete | P.Failed;
+         end loop;
+         pragma Assert ((R.Phase (Ledger) = P.Complete) = (Fault in 0 | 2));
+         if Fault in 1 | 3 then
+            P.Scan_Ticket (Ledger, 42, Layout.Allocation_Key (1, 1), 1, Found, Next, OK);
+            pragma Assert (OK and Found and R.Phase (Ledger) = P.Failed);
+         end if;
+      end;
+   end loop;
+   Ada.Text_IO.Put_Line ("Table retirement transport PASS: real Buffer_Memory state machine, 2 allocations, stale completion, wrong generation, send failure, no early reuse");
    pragma Assert (Munmap (Mapping, Span) = 0);
    Ada.Text_IO.Put_Line ("Buffer memory PASS: zeroing/guards, arena identity, overlap, transport failures, bounded waits, ownership quarantine (host fixture)");
 end Buffer_Memory_Tests;

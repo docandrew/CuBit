@@ -186,8 +186,9 @@ Gaps are omitted, and named regions are not necessarily fully backed by RAM.
                         | Owned anonymous memory (1 TiB)              |
   0x0000_5800_0000_0000 +-----------------------------------------------+
                         :                                             :
-  0x0000_4010_0000_0000 +-----------------------------------------------+
-                        | Received memory grants (currently 64 GiB)   |
+  0x0000_5000_0000_0000 +-----------------------------------------------+
+                        | Received memory grants (16 TiB reserved)    |
+                        | Lazy backing; 4096 slots per owner          |
   0x0000_4000_0000_0000 +-----------------------------------------------+
                         : Application images, heaps, legacy mappings  :
   0x0000_0000_0000_0000 +-----------------------------------------------+

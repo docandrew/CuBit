@@ -5,6 +5,7 @@
 --  @summary
 --  Unified, authority-scoped hardware inventory and diagnostics
 ------------------------------------------------------------------------------
+with CuBit.Logging;
 with Interfaces; use Interfaces;
 with CCL_Manifest_Bindings;
 
@@ -858,8 +859,10 @@ procedure main is
      (ui => ui, controls => controls,
       Render => Render, Handle_Event => Handle_Event);
 
+   Announced : Boolean;
 begin
    debugPrint ("devices: starting read-only hardware inspector" & LF);
+   CuBit.Logging.Announce ("devices: started (read-only inspector)", Announced);
    Load_Inventory;
    declare
       ok : Boolean;

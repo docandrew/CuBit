@@ -14,10 +14,10 @@ procedure Admission_Dispatch_Tests is
    Used : Boolean;
    Now : Unsigned_64 := 10;
    Base : constant Unsigned_64 := 16#4750_0000_0000_0000#;
-   procedure Reply (Token, Session : Unsigned_64) is
+   procedure Reply (Token, Session : Unsigned_64; Slot : Unsigned_64 := 0) is
       Receipt : constant CompletionEntry :=
         (token => Token, from => 77, status => 0,
-         msg => ((16#0A21#, 4, 0, 0), [0, 1, Session, 0]), valid => True);
+         msg => ((16#0A21#, 4, 0, 0), [0, 1, Session, Slot]), valid => True);
    begin
       D.Complete (Object, Receipt, Now, Used);
    end Reply;
@@ -41,9 +41,9 @@ begin
    pragma Assert (D.State (Object, First) = Core.Reserve_Pending);
    pragma Assert (not D.Runnable (Object) and D.Next_Deadline (Object) = 100);
    Reply (999, 1); pragma Assert (not Used);
-   Reply (1003, Base + 2);
+   Reply (1003, Base + 2, 41);
    pragma Assert (Used and D.State (Object, Second) = Core.Delegate_Ready);
-   Reply (1000, Base + 1);
+   Reply (1000, Base + 1, 40);
    pragma Assert (Used and D.State (Object, First) = Core.Abort_Ready);
    D.Step (Object, 11);
    pragma Assert (Last_Token = 1002 and Last_Submit.words (3) = 2);
@@ -77,7 +77,7 @@ begin
       Rejected_ID : Small.Ticket;
       Receipt : CompletionEntry :=
         (token => 3000, from => 77, status => 0,
-         msg => ((16#0A21#, 4, 0, 0), [0, 1, 203, 0]), valid => True);
+         msg => ((16#0A21#, 4, 0, 0), [0, 1, 203, 40]), valid => True);
    begin
       Inspection := [1, 11, 0, 77, 0, 9];
       Small.Start (Limited_Object, Target, 31, 30, 6, 0, 100, ID);
@@ -91,6 +91,7 @@ begin
       Small.Step (Limited_Object, 2);
       pragma Assert (Last_Token = 3002 and Last_Submit.words (3) = 2);
       Receipt.token := 3002;
+      Receipt.msg.words (3) := 0;
       Small.Complete (Limited_Object, Receipt, 2, Used);
       pragma Assert (Used and Small.State (Limited_Object, ID) = Core.Failed);
    end;
@@ -99,7 +100,7 @@ begin
       ID : D.Ticket;
       Receipt : CompletionEntry :=
         (token => 1000, from => 77, status => 0,
-         msg => ((16#0A21#, 4, 0, 0), [0, 1, Base + 4, 0]), valid => True);
+         msg => ((16#0A21#, 4, 0, 0), [0, 1, Base + 4, 43]), valid => True);
    begin
       D.Start (Late, Target, 31, 30, 6, 0, 6, ID);
       D.Step (Late, 1);
@@ -109,6 +110,7 @@ begin
       D.Step (Late, 4); -- render endpoint
       D.Step (Late, 5); -- activate
       Receipt.token := 1001;
+      Receipt.msg.words (3) := 0;
       D.Complete (Late, Receipt, 6, Used); -- no timer step first
       pragma Assert (Used and D.State (Late, ID) = Core.Abort_Ready);
    end;
@@ -117,7 +119,7 @@ begin
       ID : D.Ticket;
       R : CompletionEntry :=
         (token => 1000, from => 77, status => 0,
-         msg => ((16#0A21#, 4, 0, 0), [0, 1, Base + 6, 0]), valid => True);
+         msg => ((16#0A21#, 4, 0, 0), [0, 1, Base + 6, 45]), valid => True);
    begin
       Inspection := [1, 11, 0, 77, 0, 9];
       D.Start (Waiting, Target, 31, 30, 8, 0, 5, ID);
@@ -139,6 +141,7 @@ begin
       pragma Assert (not D.Runnable (Waiting));
       pragma Assert (D.Next_Deadline (Waiting) = Unsigned_64'Last);
       R.token := 1002;
+      R.msg.words (3) := 0;
       D.Complete (Waiting, R, 22, Used);
       pragma Assert (Used and D.State (Waiting, ID) = Core.Failed);
       pragma Assert (not D.Runnable (Waiting));

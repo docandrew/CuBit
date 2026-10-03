@@ -15,7 +15,7 @@
 --    Offset 0x000: Header (64 bytes)
 --      +0x00  writePtr    : U32  (app advances after writing)
 --      +0x04  readPtr     : U32  (mixer advances after reading)
---      +0x08  bufferSize  : U32  (ring data area bytes)
+--      +0x08  bufferSize  : U32  (power-of-two ring data bytes)
 --      +0x0C  sampleRate  : U32  (48000)
 --      +0x10  channels    : U16  (2)
 --      +0x12  format      : U16  (0 = S16LE)
@@ -172,6 +172,17 @@ package CuBit.Audio is
       Underruns, Overruns : Unsigned_32 := 0;
    end record;
    function Statistics (Stream : StreamHandle) return Stream_Statistics;
+
+   type Playback_Status is record
+      Valid : Boolean := False;
+      Ring_Frames, Device_Frames : Natural := 0;
+      Ring_Capacity_Frames, Device_Capacity_Frames : Natural := 0;
+   end record;
+   --  Owner-scoped mixer snapshot. Device frames remain pending until the
+   --  authenticated completion of their DMA period, including partial periods.
+   --  Capacities bound queued frames in the shared ring and hardware periods.
+   --  They are not a measurement of current delay or external amplifier latency.
+   function Playback (Stream : StreamHandle) return Playback_Status;
 
    ---------------------------------------------------------------------------
    --  notify

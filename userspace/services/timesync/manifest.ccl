@@ -3,6 +3,8 @@
 (executable-manifest v1
   (identity "com.cubit.timesync")
   (version "0.1.0")
+  # One "started" record (CuBit.Logging.Announce).
+  (request-service logstore read-write logstore)
   (request-service config read-write config)
   (request-service clock read-write clock)
   (request-service clock-control read-write clock-control)

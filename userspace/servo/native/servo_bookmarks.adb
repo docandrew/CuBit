@@ -253,7 +253,7 @@ package body Servo_Bookmarks is
          end loop;
       end Rows;
       procedure Field (ID, Y : Natural; Label : String; E : Ed.Edit_State; Focus : Boolean) is
-         R : constant Rect := (B.x + 302, B.y + Y + 22, B.w - 320, 28);
+         R : constant Rect := (B.x + 304, B.y + Y + 22, B.w - 320, 28);
       begin
          CuBit.UI.Widgets.Label (C, (R.x, B.y + Y, R.w, 20), Colors, Label);
          CT.Add_Button (S.Map, ID, R, B);
@@ -268,8 +268,8 @@ package body Servo_Bookmarks is
       end if;
       CuBit.UI.Widgets.Label (C, (B.x + 16, B.y + 10, B.w - 32, 26), Colors, "Bookmarks");
       if (for some P of S.Icon => P /= 0) then Paint_Icon (C, B.x + B.w - 36, B.y + 14, S.Icon); end if;
-      Button (2, 16, 44, 126, "New bookmark"); Button (3, 150, 44, 114, "New folder");
-      CuBit.UI.Trees.View_Frame (C, (B.x + 16, B.y + 82, 268, B.h - 146), Colors, S.Focus = 4, Content);
+      Button (2, 16, 44, 130, "New bookmark"); Button (3, 154, 44, 130, "New folder");
+      CuBit.UI.Trees.View_Frame (C, (B.x + 16, B.y + 82, 268, B.h - 170), Colors, S.Focus = 4, Content);
       S.Visible := Positive'Max (1, Content.h / CuBit.UI.Trees.TREE_ROW_HEIGHT);
       S.Row_Count := 0; Rows (0, 0);
       S.Scroll := Natural'Min (S.Scroll, (if S.Row_Count > S.Visible then S.Row_Count - S.Visible else 0));
@@ -299,15 +299,15 @@ package body Servo_Bookmarks is
       if S.Row_Count = 0 then CuBit.UI.Widgets.Label (C, Content, Colors, "No bookmarks yet"); end if;
       Field (20, 82, "Name", S.Name, S.Focus = 1);
       Field (21, 146, (if S.Folder then "Folder (no address)" else "Address"), S.URL, S.Focus = 2 and not S.Folder);
-      CuBit.UI.Widgets.Label (C, (B.x + 302, B.y + 210, B.w - 320, 20), Colors, "Folder");
-      Button (1, 302, 292, 78, "Save"); Button (4, 388, 292, 78, "Delete");
-      Button (5, 474, 292, 78, "Open"); Button (6, B.w - 94, B.h - 44, 78, "Done");
+      CuBit.UI.Widgets.Label (C, (B.x + 304, B.y + 210, B.w - 320, 20), Colors, "Folder");
+      Button (1, 304, 276, 88, "Save"); Button (4, 400, 276, 88, "Delete");
+      Button (5, 496, 276, 88, "Open"); Button (6, B.w - 104, B.h - 44, 88, "Done");
       if S.Focus >= 5 then
          R := CT.Bounds (S.Map, S.Focus - 3); Stroke_Rect (C, Inflate_Rect (R, 2), Colors.accent, Colors.accent);
       end if;
-      CuBit.UI.Widgets.Label (C, (B.x + 16, B.y + B.h - 72, B.w - 32, 24), Colors, S.Message (1 .. S.Message_Last));
+      CuBit.UI.Widgets.Label (C, (B.x + 16, B.y + B.h - 76, B.w - 32, 24), Colors, S.Message (1 .. S.Message_Last));
       Parents (S, M);
-      CB.Draw (C, S.Map, S.Parent, M, 600, (B.x + 302, B.y + 234, B.w - 320, CB.Default_Height), Colors, Focused => S.Focus = 3);
+      CB.Draw (C, S.Map, S.Parent, M, 600, (B.x + 304, B.y + 234, B.w - 320, CB.Default_Height), Colors, Focused => S.Focus = 3);
       CuBit.UI.State.Finish_Frame (S.UI);
    end Draw;
 end Servo_Bookmarks;

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Log;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -303,8 +304,8 @@ procedure Main is
                      --  The session asked for input, so it has processed
                      --  what it holds; taking nothing means a record
                      --  exceeds its buffer.
-                     debugPrint ("tls: channel" & C.Id'Image &
-                                 " failed: record exceeds input buffer" & LF);
+                     CuBit.Log.Warning ("tls: channel" & C.Id'Image &
+                                 " failed: record exceeds input buffer");
                      C.Error := Protocol_Alert;
                      C.Phase := Failed;
                      exit;
@@ -324,8 +325,8 @@ procedure Main is
                   C.Open_Waiting := False;
                   Send_Reply (Open_Slot (I), Reply_OK, 1, C.Id);
                end if;
-               debugPrint ("tls: channel" & C.Id'Image & " established with " &
-                           C.Name (1 .. C.Name_Length) & LF);
+               CuBit.Log.Info ("tls: channel" & C.Id'Image & " established with " &
+                           C.Name (1 .. C.Name_Length));
             when Plaintext_Ready =>
                exit when C.Plain_Position < C.Plain_Length;
                Read_Plaintext (Sessions (I), Plain (I), Count);
@@ -334,8 +335,8 @@ procedure Main is
                Serve_Read (I);
             when Error_Alert =>
                C.Error := Map_Error (Last_Error (Sessions (I)));
-               debugPrint ("tls: channel" & C.Id'Image & " failed: " &
-                           Name (C.Error) & LF);
+               CuBit.Log.Warning ("tls: channel" & C.Id'Image & " failed: " &
+                           Name (C.Error));
                C.Phase := Failed;
             when Shutdown =>
                C.Peer_Closed := True;
@@ -460,7 +461,7 @@ procedure Main is
       if not Client_Scopes.Allows
         (Scopes, Unsigned_64 (From), Name (1 .. Name_Length), Port)
       then
-         debugPrint ("tls: scope denied " & Name (1 .. Name_Length) & LF);
+         CuBit.Log.Warning ("tls: scope denied " & Name (1 .. Name_Length));
          CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
          Fail_Request (Scope_Denied);
          return;
@@ -778,7 +779,7 @@ procedure Main is
       Msg := Open_Request (Reference, Roots_Path'Length, OPEN_READ_ONLY);
       Msg.tag := capCall (FS_Slot, Msg);
       if Msg.tag.label /= CuBit.Filesystems.REPLY_OK then
-         debugPrint ("tls: cannot open " & Roots_Path & LF);
+         CuBit.Log.Warning ("tls: cannot open " & Roots_Path);
          return False;
       end if;
       Handle := File_Handle (Msg.words (0));
@@ -790,8 +791,8 @@ procedure Main is
       Msg := Close_Request (Handle);
       Msg.tag := capCall (FS_Slot, Msg);
       if Total = 0 or else Total = Roots_Capacity then
-         debugPrint ("tls: root bundle empty or larger than" &
-                     Roots_Capacity'Image & " bytes" & LF);
+         CuBit.Log.Warning ("tls: root bundle empty or larger than" &
+                     Roots_Capacity'Image & " bytes");
          return False;
       end if;
       declare
@@ -800,7 +801,7 @@ procedure Main is
       begin
          SPARKTLS.Cert_Verify.Load_Roots (Roots, DER, Loaded, OK);
       end;
-      debugPrint ("tls: loaded" & Loaded'Image & " trust anchors" & LF);
+      CuBit.Log.Info ("tls: loaded" & Loaded'Image & " trust anchors");
       return OK and then Loaded > 0;
    end Load_Roots;
 
@@ -852,7 +853,7 @@ procedure Main is
                      H.Address (1 .. H.Address_Length) := Text (Equals + 1 .. Stop);
                   end;
                else
-                  debugPrint ("tls: ignoring malformed tls.hosts entry" & LF);
+                  CuBit.Log.Warning ("tls: ignoring malformed tls.hosts entry");
                end if;
             end;
          end loop;
@@ -919,52 +920,57 @@ procedure Main is
    Completion : CompletionEntry;
    Ignore : Unsigned_64;
 begin
-   debugPrint ("tls: starting" & LF);
+   CuBit.Log.Info ("tls: starting");
    SPARKTLS.RBG.Init (Entropy_OK);
    if not Entropy_OK then
-      debugPrint ("tls: entropy or DRBG self-test failed; exiting" & LF);
+      CuBit.Log.Warning ("tls: entropy or DRBG self-test failed; exiting");
       return;
    end if;
    if not Load_Roots then
-      debugPrint ("tls: no trust anchors; exiting" & LF);
+      CuBit.Log.Warning ("tls: no trust anchors; exiting");
       return;
    end if;
    Load_Hosts;
    if not Setup_Buffers then
-      debugPrint ("tls: netstack buffers unavailable; exiting" & LF);
+      CuBit.Log.Warning ("tls: netstack buffers unavailable; exiting");
       return;
    end if;
    Ignore := registerDriver (Service_Role);
    if Ignore = Unsigned_64'Last then
-      debugPrint ("tls: registration failed" & LF);
+      CuBit.Log.Warning ("tls: registration failed");
       return;
    end if;
-   debugPrint ("tls: ready" & LF);
+   CuBit.Log.Info ("tls: ready");
 
    loop
       Progress := False;
+      CuBit.Log.Pump;
       while Poll_Completion (Completion'Address) = 1 loop
-         declare
-            Index : constant Unsigned_64 := Shift_Right (Completion.token, 4) and 15;
-            Op : constant Unsigned_64 := Completion.token and 15;
-            Id : constant Unsigned_64 := Shift_Right (Completion.token, 8);
-         begin
-            if Completion.token = Wait_Token then
-               --  netstack has news for a waiting channel: drive them all.
-               Wait_Outstanding := False;
-               for I in Channel_Index loop
-                  if Channels (I).Blocked then
-                     Drive (I);
-                  end if;
-               end loop;
-            elsif Index < Maximum_Channels and then Op = 1 and then
-              Channels (Natural (Index)).Id = Id and then
-              Channels (Natural (Index)).Phase /= Free
-            then
-               Complete (Natural (Index), Net_Operation'Enum_Val (Op),
-                         Completion.msg);
-            end if;
-         end;
+         if CuBit.Log.Owns (Completion.token) then
+            CuBit.Log.Collect (Completion);
+         else
+            declare
+               Index : constant Unsigned_64 := Shift_Right (Completion.token, 4) and 15;
+               Op : constant Unsigned_64 := Completion.token and 15;
+               Id : constant Unsigned_64 := Shift_Right (Completion.token, 8);
+            begin
+               if Completion.token = Wait_Token then
+                  --  netstack has news for a waiting channel: drive them all.
+                  Wait_Outstanding := False;
+                  for I in Channel_Index loop
+                     if Channels (I).Blocked then
+                        Drive (I);
+                     end if;
+                  end loop;
+               elsif Index < Maximum_Channels and then Op = 1 and then
+                 Channels (Natural (Index)).Id = Id and then
+                 Channels (Natural (Index)).Phase /= Free
+               then
+                  Complete (Natural (Index), Net_Operation'Enum_Val (Op),
+                            Completion.msg);
+               end if;
+            end;
+         end if;
          Progress := True;
       end loop;
 
@@ -1007,7 +1013,7 @@ begin
       end if;
       if not Progress then
          if Wait_For_Activity_Until (Next_Deadline) = Unavailable then
-            debugPrint ("tls: activity wait unavailable" & LF);
+            CuBit.Log.Warning ("tls: activity wait unavailable");
             return;
          end if;
       end if;

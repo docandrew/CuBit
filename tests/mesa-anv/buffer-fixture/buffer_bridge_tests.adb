@@ -1,5 +1,6 @@
 with Interfaces; use Interfaces;
 with CuBit.Messages;
+with CuBit.Grant_References;
 with Native_GPU_Buffers;
 with Ada.Text_IO;
 procedure Buffer_Bridge_Tests is
@@ -439,6 +440,12 @@ begin
       end loop;
       M.Fault := 0;
       M.Map_Response := [0, 1, 1, 7 * 2 ** 32 + 4096];
+      Status := Native_GPU_Buffers.Map (63, 1, 0, 4096, 1, Mapping'Access, Reference'Access);
+      pragma Assert (Status = 0 and Reference = 7 * 2 ** 32 + 4096);
+      M.Map_Response := [0, 1, 1, 7 * 2 ** 32 + CuBit.Grant_References.Maximum_Slot];
+      Status := Native_GPU_Buffers.Map (63, 1, 0, 4096, 1, Mapping'Access, Reference'Access);
+      pragma Assert (Status = 0 and Reference = M.Map_Response (3));
+      M.Map_Response (3) := M.Map_Response (3) + 1;
       Status := Native_GPU_Buffers.Map (63, 1, 0, 4096, 1, Mapping'Access, Reference'Access);
       pragma Assert (Status = 5 and Mapping = 0 and Reference = 0);
       M.Map_Response := [4, 1, 0, 0];

@@ -16,6 +16,8 @@ with Grant_Page_Installation;
 with IPI;
 with Memory_Grants;
 with Memory_Grants.Loans;
+with Retained_Record_Blocks;
+with System.Storage_Elements;
 with PerCPUData;
 with Process.Queues;
 with Process_Lifetime;
@@ -1585,13 +1587,183 @@ package body Process.IPC is
     -- Only grantLock accesses these tables. Keep scope state off kernel stacks
     -- and reset it only when the associated grant identity is invalidated.
     Empty_Forwarding_Scope : Grant_Loans.State; -- never mutated
-    Forwarding_Scopes : array (Memory_Grants.Global_Slot) of Grant_Loans.State;
+    -- Allocate forwarding metadata only for admitted delegation. Page blocks
+    -- remain at stable kernel addresses for the kernel lifetime; invalidation
+    -- resets only the retired identity's scope, never a live neighbour.
+    Scopes_Per_Block : constant Positive :=
+      4096 / (Grant_Loans.State'Object_Size / System.Storage_Unit);
+    function allocateGrantMetadataBlock
+      (Bytes, Alignment : System.Storage_Elements.Storage_Count)
+       return System.Address
+    is
+        address : System.Address;
+    begin
+        if Bytes > 4096 or else Alignment > 4096 then
+            return System.Null_Address;
+        end if;
+        BuddyAllocator.alloc (0, address);
+        return address;
+    end allocateGrantMetadataBlock;
+
+    package Grant_Storage is new Retained_Record_Blocks
+      (Grant, GrantID'Last, 64, allocateGrantMetadataBlock);
+    subtype Grant_Pointer is Grant_Storage.Element_Access;
+    use type Grant_Pointer;
+    use type Memory_Grants.Process_Generation;
+    Grant_Stores : array (ProcessID) of Grant_Storage.Store;
+    Grant_Lives : array (ProcessID) of Memory_Grants.Process_Generation := (others => 0);
+    Grant_Life_Ready : array (ProcessID) of Boolean := (others => False);
+
+    -- These stores outlive process-table pages. In particular, endpoint
+    -- invalidation must not hide grants still awaiting their final reader.
+    function grantFor (owner : ProcessID; slot : GrantID) return Grant_Pointer is
+      (Grant_Storage.Find (Grant_Stores (owner), slot));
+
+    function grantFor (slot : Memory_Grants.Global_Slot) return Grant_Pointer is
+      (grantFor (ProcessID (Memory_Grants.Owner_Of (slot)),
+        GrantID (Memory_Grants.Local_Slot_Of (slot))));
+
+    function initializeGrantLife
+      (pid : ProcessID; life : Memory_Grants.Process_Generation) return Boolean
+    is
+        slot : GrantID := GrantID'First;
+        present : Boolean;
+        value : Grant_Pointer;
+    begin
+        if pid = NO_PROCESS then return False; end if;
+        Spinlocks.enterCriticalSection (grantLock);
+        if Grant_Life_Ready (pid) and then life <= Grant_Lives (pid) then
+            Spinlocks.exitCriticalSection (grantLock);
+            return False;
+        end if;
+        -- Two passes: rejection must leave all existing records unchanged.
+        loop
+            Grant_Storage.Next_Present (Grant_Stores (pid), slot, slot, present);
+            exit when not present;
+            value := grantFor (pid, slot);
+            if Memory_Grants.Is_Active (value.lifecycle) then
+                Spinlocks.exitCriticalSection (grantLock);
+                return False;
+            end if;
+            exit when slot = GrantID'Last;
+            slot := slot + 1;
+        end loop;
+        slot := GrantID'First;
+        loop
+            Grant_Storage.Next_Present (Grant_Stores (pid), slot, slot, present);
+            exit when not present;
+            value := grantFor (pid, slot);
+            value.all := (generation => Memory_Grants.Life_Base (life), others => <>);
+            exit when slot = GrantID'Last;
+            slot := slot + 1;
+        end loop;
+        Grant_Lives (pid) := life;
+        Grant_Life_Ready (pid) := True;
+        Spinlocks.exitCriticalSection (grantLock);
+        return True;
+    end initializeGrantLife;
+
+    procedure reserveGrantRecord
+      (owner : ProcessID; slot : out GrantID; value : out Grant_Pointer)
+    is
+        result : Grant_Storage.Allocation_Result;
+    begin
+        slot := GrantID'First;
+        value := null;
+        if not Grant_Life_Ready (owner) then return; end if;
+        for candidate in GrantID loop
+            value := grantFor (owner, candidate);
+            if value = null then
+                Grant_Storage.Ensure
+                  (Grant_Stores (owner), candidate,
+                   (generation => Memory_Grants.Life_Base (Grant_Lives (owner)), others => <>),
+                   Grant_Storage.Maximum_Blocks, value, result);
+                if value = null then return; end if;
+            end if;
+            if not Memory_Grants.Is_Active (value.lifecycle) and then value.reusable then
+                slot := candidate;
+                return;
+            end if;
+        end loop;
+        value := null;
+    end reserveGrantRecord;
+
+    function hasActiveGrants (owner : ProcessID) return Boolean is
+        slot : GrantID := GrantID'First;
+        present : Boolean;
+    begin
+        loop
+            Grant_Storage.Next_Present (Grant_Stores (owner), slot, slot, present);
+            exit when not present;
+            if Memory_Grants.Is_Active (grantFor (owner, slot).lifecycle) then
+                return True;
+            end if;
+            exit when slot = GrantID'Last;
+            slot := slot + 1;
+        end loop;
+        return False;
+    end hasActiveGrants;
+
+    package Scope_Storage is new Retained_Record_Blocks
+      (Grant_Loans.State, Memory_Grants.Global_Slot'Last, Scopes_Per_Block,
+       allocateGrantMetadataBlock);
+    subtype Scope_Pointer is Scope_Storage.Element_Access;
+    use type Scope_Pointer;
+    Scopes : Scope_Storage.Store;
+
+    -- All callers hold grantLock. A missing scope is normal for ordinary
+    -- grants. A live parent link, conversely, always has a published scope.
+    function scopeFor (slot : Memory_Grants.Global_Slot) return Scope_Pointer is
+    begin
+        return Scope_Storage.Find (Scopes, slot);
+    end scopeFor;
+
+    function ensureScope (slot : Memory_Grants.Global_Slot) return Scope_Pointer is
+        value : Scope_Pointer;
+        result : Scope_Storage.Allocation_Result;
+    begin
+        -- All failure results return null before the caller takes a parent
+        -- hold or installs a child mapping. Existing scopes remain untouched.
+        Scope_Storage.Ensure
+          (Scopes, slot, Empty_Forwarding_Scope, Scope_Storage.Maximum_Blocks,
+           value, result);
+        return value;
+    end ensureScope;
     type Parent_Link is record
         active : Boolean := False;
         parent : Memory_Grants.Reference := (0, Memory_Grants.Initial_Generation);
         loan : Grant_Loans.Loan_Reference := Grant_Loans.No_Loan;
     end record;
-    Parent_Links : array (Memory_Grants.Global_Slot) of Parent_Link;
+    Empty_Parent_Link : constant Parent_Link := (others => <>);
+    Links_Per_Block : constant Positive :=
+      4096 / (Parent_Link'Object_Size / System.Storage_Unit);
+    package Link_Storage is new Retained_Record_Blocks
+      (Parent_Link, Memory_Grants.Global_Slot'Last, Links_Per_Block,
+       allocateGrantMetadataBlock);
+    use type Link_Storage.Element_Access;
+    Links : Link_Storage.Store;
+
+    -- Like scopeFor, only called under grantLock. Missing storage denotes
+    -- an ordinary grant, not an error and never an implicit allocation.
+    function linkFor (slot : Memory_Grants.Global_Slot) return Parent_Link is
+        value : constant Link_Storage.Element_Access :=
+          Link_Storage.Find (Links, slot);
+    begin
+        if value = null then return Empty_Parent_Link; end if;
+        return value.all;
+    end linkFor;
+
+    function ensureLink (slot : Memory_Grants.Global_Slot)
+      return Link_Storage.Element_Access
+    is
+        value : Link_Storage.Element_Access;
+        result : Link_Storage.Allocation_Result;
+    begin
+        Link_Storage.Ensure
+          (Links, slot, Empty_Parent_Link, Link_Storage.Maximum_Blocks,
+           value, result);
+        return value;
+    end ensureLink;
 
     function grantReference (value : Grant) return Memory_Grants.Reference is
       ((value.globalSlot, value.generation));
@@ -1602,13 +1774,14 @@ package body Process.IPC is
         nextGeneration : Memory_Grants.Live_Grant_Generation :=
           value.generation;
         mayReuse : Boolean;
+        scope : constant Scope_Pointer := scopeFor (value.globalSlot);
     begin
-        if Parent_Links(value.globalSlot).active or else
-           Grant_Loans.Holds_Parent (Forwarding_Scopes(value.globalSlot))
+        if linkFor(value.globalSlot).active or else
+           (scope /= null and then Grant_Loans.Holds_Parent (scope.all))
         then
             raise ProcessException with "Grant invalidated before child retirement";
         end if;
-        Forwarding_Scopes(value.globalSlot) := Empty_Forwarding_Scope;
+        if scope /= null then scope.all := Empty_Forwarding_Scope; end if;
         -- Stay within this life's generation range (its high half); at the
         -- ceiling the slot retires for this life instead of stepping into the
         -- next process's range.
@@ -1668,8 +1841,8 @@ package body Process.IPC is
         receiver : ProcessID;
         flags : Unsigned_64;
         ok : Boolean;
-        found : Boolean := False;
         slot : GrantID := 0;
+        target : Grant_Pointer;
         globalId : Natural;
         staging : Grant;
         procedure mapPageInst is new Virtmem.mapPage (BuddyAllocator.allocFrame);
@@ -1753,17 +1926,8 @@ package body Process.IPC is
             return;
         end if;
 
-        for candidate in GrantID loop
-            if not Memory_Grants.Is_Active
-              (proctab(owner).grants(candidate).lifecycle) and then
-               proctab(owner).grants(candidate).reusable
-            then
-                slot := candidate;
-                found := True;
-                exit;
-            end if;
-        end loop;
-        if not found then
+        reserveGrantRecord (owner, slot, target);
+        if target = null then
             Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
@@ -1785,8 +1949,8 @@ package body Process.IPC is
         staging.numPages := installed;
 
         staging.lifecycle := Memory_Grants.Available_Lifecycle;
-        staging.generation := proctab(owner).grants(slot).generation;
-        proctab(owner).grants(slot) := staging;
+        staging.generation := target.generation;
+        target.all := staging;
         id := globalId;
         success := True;
         Spinlocks.exitCriticalSection (grantLock);
@@ -1801,19 +1965,19 @@ package body Process.IPC is
     is
         caller : constant ProcessID := PerCPUData.getCurrentPID;
         rootOwner : constant ProcessID := ProcessID (Memory_Grants.Owner_Of (parent.slot));
-        source : Grant renames proctab(rootOwner).grants
-          (GrantID (Memory_Grants.Local_Slot_Of (parent.slot)));
-        scope : Grant_Loans.State renames Forwarding_Scopes(parent.slot);
+        source : Grant_Pointer;
+        scope : Scope_Pointer;
         requested : constant Grant_Loans.Terms :=
           (pageOffset, numPages, (if perm = GRANT_READWRITE then
            Memory_Grants.Borrowed_Read_Write else Memory_Grants.Borrowed_Read_Only));
         loan : Grant_Loans.Loan_Reference;
         reservation : Grant_Loans.Reservation_Result;
         applied, mapped : Boolean;
-        found : Boolean := False;
+        target : Grant_Pointer;
         childLocal : GrantID := 0;
         childSlot : Memory_Grants.Global_Slot;
         staging : Grant;
+        childLink : Link_Storage.Element_Access;
         installed : Natural;
         flags : constant Unsigned_64 := (if perm = GRANT_READWRITE then
           Virtmem.PG_USERDATA else Virtmem.PG_USERDATARO);
@@ -1877,7 +2041,8 @@ package body Process.IPC is
             return;
         end if;
         Spinlocks.enterCriticalSection (grantLock);
-        if not proctab(caller).admitted or else not proctab(rootOwner).admitted or else
+        source := grantFor (parent.slot);
+        if source = null or else not proctab(caller).admitted or else not proctab(rootOwner).admitted or else
            not proctab(grantee).admitted or else
            Process_Lifetime.Closing (threadOf (caller).lifetime) or else
            Process_Lifetime.Closing (threadOf (rootOwner).lifetime) or else
@@ -1887,7 +2052,7 @@ package body Process.IPC is
            not Memory_Grants.Is_Available (source.lifecycle) or else
            Memory_Grants.Acquisition_Total (source.lifecycle) = 0 or else
            source.granteePID /= caller or else source.granterPID /= rootOwner or else
-           not source.forwardable or else Parent_Links(parent.slot).active or else
+           not source.forwardable or else linkFor(parent.slot).active or else
            source.numPages = 0 or else
            not Memory_Grants.Range_Attenuates
              (Memory_Grants.Page_Count (source.numPages), pageOffset, numPages) or else
@@ -1896,21 +2061,25 @@ package body Process.IPC is
             Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
-        for candidate in GrantID loop
-            if not Memory_Grants.Is_Active (proctab(caller).grants(candidate).lifecycle)
-              and then proctab(caller).grants(candidate).reusable
-            then
-                childLocal := candidate;
-                found := True;
-                exit;
-            end if;
-        end loop;
-        if not found then
+        reserveGrantRecord (caller, childLocal, target);
+        if target = null then
             Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
-        if Grant_Loans.Phase (scope) = Grant_Loans.Unconfigured then
-            Grant_Loans.Open_Forwarding (scope, source.lifecycle, parent,
+        childSlot := Memory_Grants.Make_Global_Slot
+          (Memory_Grants.Process_Index (caller), childLocal);
+        childLink := ensureLink (childSlot);
+        if childLink = null then
+            Spinlocks.exitCriticalSection (grantLock);
+            return;
+        end if;
+        scope := ensureScope (parent.slot);
+        if scope = null then
+            Spinlocks.exitCriticalSection (grantLock);
+            return;
+        end if;
+        if Grant_Loans.Phase (scope.all) = Grant_Loans.Unconfigured then
+            Grant_Loans.Open_Forwarding (scope.all, source.lifecycle, parent,
               Memory_Grants.Page_Count (source.numPages),
               (if source.permission = GRANT_READWRITE then Memory_Grants.Borrowed_Read_Write
                else Memory_Grants.Borrowed_Read_Only), Grant_Loans.Forward_Once, applied);
@@ -1919,13 +2088,11 @@ package body Process.IPC is
                 return;
             end if;
         end if;
-        Grant_Loans.Reserve (scope, requested, loan, reservation);
+        Grant_Loans.Reserve (scope.all, requested, loan, reservation);
         if reservation /= Grant_Loans.Reserved then
             Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
-        childSlot := Memory_Grants.Make_Global_Slot
-          (Memory_Grants.Process_Index (caller), childLocal);
         staging := (globalSlot => childSlot, granterPID => caller,
           granteePID => grantee, permission => perm, forwardable => False,
           granterAddr => To_Address (To_Integer (source.granteeAddr) +
@@ -1936,11 +2103,11 @@ package body Process.IPC is
         if not mapped then
             -- Transaction has already removed its partial mappings and waited
             -- for shootdown. Only now can the reserved loan retire.
-            Grant_Loans.Revoke (scope, loan, applied);
+            Grant_Loans.Revoke (scope.all, loan, applied);
             if not applied then
                 raise ProcessException with "Child rollback lost reservation";
             end if;
-            Grant_Loans.Finish_Retirement (scope, loan, applied);
+            Grant_Loans.Finish_Retirement (scope.all, loan, applied);
             if not applied then
                 raise ProcessException with "Child rollback retirement failed";
             end if;
@@ -1948,14 +2115,14 @@ package body Process.IPC is
             return;
         end if;
         staging.numPages := installed;
-        staging.generation := proctab(caller).grants(childLocal).generation;
+        staging.generation := target.generation;
         staging.lifecycle := Memory_Grants.Available_Lifecycle;
-        Grant_Loans.Publish (scope, loan, applied);
+        Grant_Loans.Publish (scope.all, loan, applied);
         if not applied then
             raise ProcessException with "Child publication lost reservation";
         end if;
-        Parent_Links(childSlot) := (True, parent, loan);
-        proctab(caller).grants(childLocal) := staging;
+        childLink.all := (True, parent, loan);
+        target.all := staging;
         derived := grantReference (staging);
         success := True;
         Spinlocks.exitCriticalSection (grantLock);
@@ -2007,21 +2174,21 @@ package body Process.IPC is
 
     procedure retireGrantLocked (slot : Memory_Grants.Global_Slot) is
         owner : constant ProcessID := ProcessID (Memory_Grants.Owner_Of (slot));
-        value : Grant renames proctab(owner).grants
-          (GrantID (Memory_Grants.Local_Slot_Of (slot)));
-        link : constant Parent_Link := Parent_Links(slot);
+        value : constant Grant_Pointer := grantFor (slot);
+        link : constant Parent_Link := linkFor(slot);
         applied : Boolean;
     begin
-        unmapGrantPages (value);
+        if value = null then return; end if;
+        unmapGrantPages (value.all);
         if link.active then
             Grant_Loans.Finish_Retirement
-              (Forwarding_Scopes(link.parent.slot), link.loan, applied);
+              (scopeFor (link.parent.slot).all, link.loan, applied);
             if not applied then
                 raise ProcessException with "Child retired in invalid loan phase";
             end if;
-            Parent_Links(slot) := (others => <>);
+            Link_Storage.Find (Links, slot).all := Empty_Parent_Link;
         end if;
-        invalidateGrant (value);
+        invalidateGrant (value.all);
         if link.active then
             releaseForwardingIfReady (link.parent);
         end if;
@@ -2029,22 +2196,19 @@ package body Process.IPC is
     end retireGrantLocked;
 
     procedure releaseForwardingIfReady (reference : Memory_Grants.Reference) is
-        owner : constant ProcessID := ProcessID
-          (Memory_Grants.Owner_Of (reference.slot));
-        value : Grant renames proctab(owner).grants
-          (GrantID (Memory_Grants.Local_Slot_Of (reference.slot)));
-        scope : Grant_Loans.State renames Forwarding_Scopes(reference.slot);
+        value : constant Grant_Pointer := grantFor (reference.slot);
+        scope : constant Scope_Pointer := scopeFor (reference.slot);
         applied : Boolean;
         result : Memory_Grants.Hold_Release_Result;
     begin
-        if value.generation /= reference.generation or else
-           Grant_Loans.Phase (scope) /= Grant_Loans.Closing or else
-           not Grant_Loans.Empty (scope)
+        if value = null or else scope = null or else value.generation /= reference.generation or else
+           Grant_Loans.Phase (scope.all) /= Grant_Loans.Closing or else
+           not Grant_Loans.Empty (scope.all)
         then
             return;
         end if;
         Grant_Loans.Release_Forwarding
-          (scope, value.lifecycle, reference, applied, result);
+          (scope.all, value.lifecycle, reference, applied, result);
         if not applied then
             raise ProcessException with "Forwarding scope lost its parent hold";
         end if;
@@ -2056,30 +2220,38 @@ package body Process.IPC is
     procedure revokeGrantLocked (slot : Memory_Grants.Global_Slot);
 
     procedure closeForwardingLocked (slot : Memory_Grants.Global_Slot) is
-        value : Grant renames proctab(ProcessID (Memory_Grants.Owner_Of (slot))).grants
-          (GrantID (Memory_Grants.Local_Slot_Of (slot)));
-        reference : constant Memory_Grants.Reference := grantReference (value);
-        receiver : constant ProcessID := value.granteePID;
+        value : constant Grant_Pointer := grantFor (slot);
+        reference : Memory_Grants.Reference;
+        receiver : ProcessID;
         applied : Boolean;
         childSlot : Memory_Grants.Global_Slot;
+        scope : constant Scope_Pointer := scopeFor (slot);
+        local : GrantID := GrantID'First;
+        present : Boolean;
     begin
-        if Grant_Loans.Phase (Forwarding_Scopes(slot)) /= Grant_Loans.Accepting then
+        if value = null or else scope = null or else Grant_Loans.Phase (scope.all) /= Grant_Loans.Accepting then
             return;
         end if;
-        Grant_Loans.Close_Forwarding (Forwarding_Scopes(slot), reference, applied);
+        reference := grantReference (value.all);
+        receiver := value.granteePID;
+        Grant_Loans.Close_Forwarding (scope.all, reference, applied);
         if not applied then
             raise ProcessException with "Forwarding close rejected current identity";
         end if;
         -- Children are terminal and owned by the original receiver. Its PID
         -- cannot recycle while any owned grant still retains its backing.
-        for local in GrantID loop
+        loop
+            Grant_Storage.Next_Present (Grant_Stores (receiver), local, local, present);
+            exit when not present;
             childSlot := Memory_Grants.Make_Global_Slot
               (Memory_Grants.Process_Index (receiver), local);
-            if Parent_Links(childSlot).active and then
-               Parent_Links(childSlot).parent = reference
+            if linkFor(childSlot).active and then
+               linkFor(childSlot).parent = reference
             then
                 revokeGrantLocked (childSlot);
             end if;
+            exit when local = GrantID'Last;
+            local := local + 1;
         end loop;
         -- Last child retirement may already have released/inactivated parent.
         releaseForwardingIfReady (reference);
@@ -2088,21 +2260,20 @@ package body Process.IPC is
     procedure revokeGrantLocked (slot : Memory_Grants.Global_Slot)
 
     is
-        g : Grant renames proctab(ProcessID (Memory_Grants.Owner_Of (slot))).grants
-          (GrantID (Memory_Grants.Local_Slot_Of (slot)));
+        g : constant Grant_Pointer := grantFor (slot);
         result : Memory_Grants.Revocation_Result;
         applied : Boolean;
-        link : Parent_Link renames Parent_Links(slot);
+        link : constant Parent_Link := linkFor(slot);
     begin
-        if not Memory_Grants.Is_Active (g.lifecycle) then
+        if g = null or else not Memory_Grants.Is_Active (g.lifecycle) then
             return;
         end if;
 
         if link.active and then Grant_Loans.Phase_Of
-          (Forwarding_Scopes(link.parent.slot), link.loan) = Grant_Loans.Available
+          (scopeFor (link.parent.slot).all, link.loan) = Grant_Loans.Available
         then
             Grant_Loans.Revoke
-              (Forwarding_Scopes(link.parent.slot), link.loan, applied);
+              (scopeFor (link.parent.slot).all, link.loan, applied);
             if not applied then
                 raise ProcessException with "Child revocation lost parent scope";
             end if;
@@ -2119,16 +2290,24 @@ package body Process.IPC is
     ---------------------------------------------------------------------------
     -- revokeGrant
     ---------------------------------------------------------------------------
-    procedure revokeGrant (id : GrantID)
+    procedure revokeGrant (id : GrantID; success : out Boolean)
 
     is
         pid   : constant ProcessID := PerCPUData.getCurrentPID;
         owner : constant ProcessID :=
             pid;
     begin
+        success := False;
         Spinlocks.enterCriticalSection (grantLock);
+        if owner = NO_PROCESS or else grantFor (owner, id) = null or else
+          not Memory_Grants.Is_Active (grantFor (owner, id).lifecycle)
+        then
+            Spinlocks.exitCriticalSection (grantLock);
+            return;
+        end if;
         revokeGrantLocked (Memory_Grants.Make_Global_Slot
           (Memory_Grants.Process_Index (owner), id));
+        success := True;
         Spinlocks.exitCriticalSection (grantLock);
     end revokeGrant;
 
@@ -2140,11 +2319,17 @@ package body Process.IPC is
     procedure revokeAllGrants (pid : ProcessID)
 
     is
+        slot : GrantID := GrantID'First;
+        present : Boolean;
     begin
         Spinlocks.enterCriticalSection (grantLock);
-        for i in GrantID loop
+        loop
+            Grant_Storage.Next_Present (Grant_Stores (pid), slot, slot, present);
+            exit when not present;
             revokeGrantLocked (Memory_Grants.Make_Global_Slot
-              (Memory_Grants.Process_Index (pid), i));
+              (Memory_Grants.Process_Index (pid), slot));
+            exit when slot = GrantID'Last;
+            slot := slot + 1;
         end loop;
         Spinlocks.exitCriticalSection (grantLock);
     end revokeAllGrants;
@@ -2161,29 +2346,34 @@ package body Process.IPC is
     procedure revokeAllGrantsTo (pid : ProcessID)
 
     is
+        slot : GrantID;
+        present : Boolean;
     begin
         Spinlocks.enterCriticalSection (grantLock);
         for owner in ProcessID range ProcessID'First + 1 .. ProcessID'Last loop
-            for slot in GrantID loop
-                if Memory_Grants.Is_Active
-                  (proctab(owner).grants(slot).lifecycle) and then
-                   proctab(owner).grants(slot).granteePID = pid
+            slot := GrantID'First;
+            loop
+                Grant_Storage.Next_Present (Grant_Stores (owner), slot, slot, present);
+                exit when not present;
+                if grantFor (owner, slot) /= null and then Memory_Grants.Is_Active
+                  (grantFor (owner, slot).lifecycle) and then
+                   grantFor (owner, slot).granteePID = pid
                 then
                     declare
                         hadAcquisitions : Boolean;
-                        value : Grant renames proctab(owner).grants(slot);
+                        value : constant Grant_Pointer := grantFor (owner, slot);
                         reference : constant Memory_Grants.Reference :=
-                          grantReference (value);
-                        link : constant Parent_Link := Parent_Links(reference.slot);
+                          grantReference (value.all);
+                        link : constant Parent_Link := linkFor(reference.slot);
                         applied : Boolean;
                     begin
                         if link.active then
                             if Grant_Loans.Phase_Of
-                              (Forwarding_Scopes(link.parent.slot), link.loan) =
+                              (scopeFor (link.parent.slot).all, link.loan) =
                                 Grant_Loans.Available
                             then
                                 Grant_Loans.Revoke
-                                  (Forwarding_Scopes(link.parent.slot), link.loan, applied);
+                                  (scopeFor (link.parent.slot).all, link.loan, applied);
                                 if not applied then
                                     raise ProcessException with "Dead child revocation failed";
                                 end if;
@@ -2191,10 +2381,10 @@ package body Process.IPC is
                             -- Kernel-confirmed receiver death ends its CPU
                             -- readers; this is never exposed as a user request.
                             for reader in 1 .. Grant_Loans.Readers
-                              (Forwarding_Scopes(link.parent.slot), link.loan)
+                              (scopeFor (link.parent.slot).all, link.loan)
                             loop
                                 Grant_Loans.Return_Reader
-                                  (Forwarding_Scopes(link.parent.slot), link.loan, applied);
+                                  (scopeFor (link.parent.slot).all, link.loan, applied);
                                 if not applied then
                                     raise ProcessException with "Dead child reader lost";
                                 end if;
@@ -2209,7 +2399,7 @@ package body Process.IPC is
                            value.globalSlot = reference.slot
                         then
                             if Memory_Grants.Is_Active (value.lifecycle) then
-                                unmapGrantPages (value);
+                                unmapGrantPages (value.all);
                                 value.numPages := 0;
                             else
                                 retireGrantLocked (reference.slot);
@@ -2217,6 +2407,8 @@ package body Process.IPC is
                         end if;
                     end;
                 end if;
+                exit when slot = GrantID'Last;
+                slot := slot + 1;
             end loop;
             completeOwnerPIDIfReady (owner);
         end loop;
@@ -2236,7 +2428,7 @@ package body Process.IPC is
           (Memory_Grants.Owner_Of (slot));
         localSlot : constant GrantID := GrantID
           (Memory_Grants.Local_Slot_Of (slot));
-        value : Grant renames proctab(slotOwner).grants(localSlot);
+        value : Grant_Pointer;
     begin
         generation := 0;
         success := False;
@@ -2248,7 +2440,8 @@ package body Process.IPC is
             return;
         end if;
 
-        if not Memory_Grants.Is_Active (value.lifecycle) then
+        value := grantFor (slotOwner, localSlot);
+        if value = null or else not Memory_Grants.Is_Active (value.lifecycle) then
             --  Zero is an owned, retired slot, not a lookup failure. All
             --  invalidation paths retire mappings/TLBs before marking inactive.
             success := True;
@@ -2276,17 +2469,19 @@ package body Process.IPC is
           (Memory_Grants.Owner_Of (reference.slot));
         localSlot : constant GrantID := GrantID
           (Memory_Grants.Local_Slot_Of (reference.slot));
-        value : Grant renames proctab(slotOwner).grants(localSlot);
+        value : Grant_Pointer;
         mappedBytes : Unsigned_64;
         applied : Boolean;
-        link : Parent_Link renames Parent_Links(reference.slot);
+        link : Parent_Link;
     begin
         mappedAddress := System.Null_Address;
         success := False;
 
         Spinlocks.enterCriticalSection (grantLock);
+        link := linkFor (reference.slot);
+        value := grantFor (slotOwner, localSlot);
 
-        if expectedOwner = NO_PROCESS or else slotOwner /= expectedOwner or else
+        if value = null or else expectedOwner = NO_PROCESS or else slotOwner /= expectedOwner or else
            not Memory_Grants.Can_Acquire (value.lifecycle) or else
            not value.reusable or else
            value.granterPID /= expectedOwner or else
@@ -2311,7 +2506,7 @@ package body Process.IPC is
         -- deferred revocation, not whether a visible mapping owns its pages.
         if link.active then
             Grant_Loans.Acquire
-              (Forwarding_Scopes(link.parent.slot), link.loan, applied);
+              (scopeFor (link.parent.slot).all, link.loan, applied);
             if not applied then
                 Spinlocks.exitCriticalSection (grantLock);
                 return;
@@ -2357,7 +2552,6 @@ package body Process.IPC is
     procedure completeOwnerPIDIfReady (owner : ProcessID)
 
     is
-        activeGrant : Boolean := False;
     begin
         if not proctab(owner).grantTeardownPending or else
            not proctab(owner).grantTeardownReady
@@ -2365,16 +2559,7 @@ package body Process.IPC is
             return;
         end if;
 
-        for slot in GrantID loop
-            if Memory_Grants.Is_Active
-              (proctab(owner).grants(slot).lifecycle)
-            then
-                activeGrant := True;
-                exit;
-            end if;
-        end loop;
-
-        if not activeGrant then
+        if not hasActiveGrants (owner) then
             -- DMA blocks were deliberately retained while any acquisition
             -- could still pin a page within them.  The final return has now
             -- unpinned every such page, so whole buddy blocks are safe to
@@ -2405,15 +2590,17 @@ package body Process.IPC is
           (Memory_Grants.Owner_Of (reference.slot));
         localSlot : constant GrantID := GrantID
           (Memory_Grants.Local_Slot_Of (reference.slot));
-        value : Grant renames proctab(slotOwner).grants(localSlot);
+        value : Grant_Pointer;
         result : Memory_Grants.Return_Result;
         applied : Boolean;
-        link : Parent_Link renames Parent_Links(reference.slot);
+        link : Parent_Link;
     begin
         success := False;
         Spinlocks.enterCriticalSection (grantLock);
 
-        if not Memory_Grants.Is_Active (value.lifecycle) or else
+        link := linkFor (reference.slot);
+        value := grantFor (slotOwner, localSlot);
+        if value = null or else not Memory_Grants.Is_Active (value.lifecycle) or else
            value.granteePID /= receiver or else
            not Memory_Grants.Is_Current (reference, value.generation) or else
            Memory_Grants.Acquisition_Total (value.lifecycle) = 0
@@ -2424,7 +2611,7 @@ package body Process.IPC is
 
         if link.active then
             Grant_Loans.Return_Reader
-              (Forwarding_Scopes(link.parent.slot), link.loan, applied);
+              (scopeFor (link.parent.slot).all, link.loan, applied);
             if not applied then
                 raise ProcessException with "Child return lost parent reader";
             end if;
@@ -2452,11 +2639,12 @@ package body Process.IPC is
           (Memory_Grants.Owner_Of (reference.slot));
         localSlot : constant GrantID := GrantID
           (Memory_Grants.Local_Slot_Of (reference.slot));
-        value : Grant renames proctab(slotOwner).grants(localSlot);
+        value : Grant_Pointer;
     begin
         success := False;
         Spinlocks.enterCriticalSection (grantLock);
-        if slotOwner /= owner or else
+        value := grantFor (slotOwner, localSlot);
+        if value = null or else slotOwner /= owner or else
            not Memory_Grants.Is_Active (value.lifecycle) or else
            value.granterPID /= owner or else
            not Memory_Grants.Is_Current (reference, value.generation)
@@ -2479,14 +2667,7 @@ package body Process.IPC is
     begin
         deferred := False;
         Spinlocks.enterCriticalSection (grantLock);
-        for slot in GrantID loop
-            if Memory_Grants.Is_Active
-              (proctab(pid).grants(slot).lifecycle)
-            then
-                deferred := True;
-                exit;
-            end if;
-        end loop;
+        deferred := hasActiveGrants (pid);
 
         if deferred then
             proctab(pid).grantTeardownPending := True;

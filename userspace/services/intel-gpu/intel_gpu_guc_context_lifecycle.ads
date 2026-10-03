@@ -7,93 +7,52 @@ package Intel_GPU_GuC_Context_Lifecycle with SPARK_Mode is
    type Operation is (Register_Context, Set_Policy, Enable, Disable);
    type Send_Result is (Backpressure, Queued, Uncertain);
    type Context is limited private;
-   -- Acknowledged scheduling stop only. Neither state authorizes backing
-   -- release or PTE mutation without separate drain, alias and owner checks.
-   -- Pending and quarantined contexts never count as stopped.
    function Scheduling_Stopped (Value : Phase) return Boolean is
-     (Value in Disabled | Deregistered)
-     with Global => null;
+     (Value in Disabled | Deregistered) with Global => null;
    function State (Object : Context) return Phase;
    function Credits_Held (Object : Context) return Natural;
-   function Last_Fence (Object : Context) return Unsigned_16;
-   -- One driver-owned context, no ID/fence reuse. Re-enable is permitted only
-   -- after acknowledged disable and consumes a fresh fence. Caller serializes
-   -- send/dispatch and reserves four initial control fences
-   -- globally plus four receive DWORDs (CT + HXG + two event data words).
-   -- These are trusted local facts, not authorizations accepted from clients.
-   -- Repeated scheduling controls share the monotonic notification-fence pool;
-   -- re-enable reserves capacity for a subsequent disable. Backpressure alone
-   -- restores the previous phase/fence; queued or uncertain sends spend it.
-   -- Disabled is a scheduling acknowledgement, not proof of a flushed engine
-   -- or permission to mutate PTEs. The owner supplies those separate gates.
+   -- State-only admission. Transport availability, ownership, and independent
+   -- GPU drain/backing retirement remain caller obligations.
+   function Can_Run_And_Retire (Object : Context) return Boolean;
    procedure Initialize (Object : in out Context; ID : Unsigned_32;
-                         Fence_Base, Fence_Last : Unsigned_16; Ownership_Ready : Boolean)
+                         Ownership_Ready : Boolean)
      with Post => (if State (Object)'Old = Quarantined then State (Object) = Quarantined);
+   -- No wire IDs here. The exclusive transport assigns diagnostic IDs and
+   -- routes failures globally; context completion is by event payload ID.
    procedure Prepare (Object : in out Context; Action : Operation;
-                      Fence : out Unsigned_16; Accepted : out Boolean)
+                      Accepted : out Boolean)
      with Post => (if State (Object)'Old = Quarantined then
-                     State (Object) = Quarantined and not Accepted);
-   -- Called once after the serialized non-reentrant send. Backpressure means
-   -- explicitly no publication; Uncertain includes partial writes/transport
-   -- failure. Pending is recorded before send, not after notification.
+       State (Object) = Quarantined and not Accepted);
    procedure Sent (Object : in out Context; Result : Send_Result)
      with Post => (if State (Object)'Old = Quarantined then State (Object) = Quarantined);
-   -- Repeated single-LRC scheduling notifications while already enabled.
-   -- Caller has published a new tail with the required cache ordering. A
-   -- notification is NOT a GPU completion and holds no scheduling-done credit.
-   -- Fences above the four initial controls are never reused after queued or
-   -- uncertain publication; exhaustion rejects without wrapping. The caller
-   -- reserves [Fence_Base, Fence_Last] for this context lifetime. Four fences
-   -- are required initially; extra capacity serves notifications and resume.
-   procedure Prepare_Notification
-     (Object : in out Context; Fence : out Unsigned_16; Accepted : out Boolean)
-     with Post => (if Accepted then Fence <= Last_Fence (Object) else Fence = 0);
+   procedure Prepare_Notification (Object : in out Context; Accepted : out Boolean);
    procedure Notification_Sent (Object : in out Context; Result : Send_Result)
      with Post => (if State (Object)'Old = Quarantined then State (Object) = Quarantined);
-   -- Dispatcher has already checked HXG origin/type/shape. A failure for any
-   -- previously attempted fence quarantines even after later actions queued.
-   procedure Failed_Request (Object : in out Context; Fence : Unsigned_16;
-                             Matched : out Boolean)
-     with Post => (if Matched or State (Object)'Old = Quarantined then
-                     State (Object) = Quarantined);
-   -- Dispatcher validates wire framing separately. No batch-completion claim.
    procedure Scheduling_Done (Object : in out Context; ID, Runnable : Unsigned_32;
                               Accepted : out Boolean)
-     with Post =>
-       (if State (Object)'Old = Quarantined then State (Object) = Quarantined) and then
-       (if Accepted then State (Object) in Enabled | Disabled and Credits_Held (Object) = 0);
+     with Post => (if State (Object)'Old = Quarantined then State (Object) = Quarantined)
+       and then (if Accepted then State (Object) in Enabled | Disabled
+                   and Credits_Held (Object) = 0);
    procedure Fail (Object : in out Context)
      with Post => State (Object) = Quarantined;
-   -- Caller has closed admission and drained all retained work. Only a
-   -- disabled context may request deregistration; consume a fresh fence and
-   -- reserve CT+HXG+ID completion space. Neither success nor Deregistered
-   -- permits reuse without separate CPU-grant/GPU-alias retirement.
-   procedure Prepare_Deregister
-     (Object : in out Context; Fence : out Unsigned_16; Accepted : out Boolean)
-     with Post => (if Accepted then
-       State (Object) = Deregister_Pending and Credits_Held (Object) = 3
-       and Fence <= Last_Fence (Object) else Fence = 0);
+   procedure Prepare_Deregister (Object : in out Context; Accepted : out Boolean)
+     with Post => (if Accepted then State (Object) = Deregister_Pending
+                   and Credits_Held (Object) = 3);
    procedure Deregister_Sent (Object : in out Context; Result : Send_Result)
      with Post => (if State (Object)'Old = Quarantined then State (Object) = Quarantined);
    procedure Deregistration_Done
      (Object : in out Context; ID : Unsigned_32; Accepted : out Boolean)
-     with Post => (if Accepted then
-       State (Object) = Deregistered and Credits_Held (Object) = 0);
+     with Post => (if Accepted then State (Object) = Deregistered
+                   and Credits_Held (Object) = 0);
 private
-   type Sent_Set is array (Operation) of Boolean;
    type Context is limited record
       Value : Phase := Fresh;
       ID : Unsigned_32 := 65535;
-      Base : Unsigned_16 := 0;
-      Last : Unsigned_16 := 0;
-      Used : Sent_Set := [others => False];
       Active : Operation := Register_Context;
       Before_Send : Phase := Fresh;
-      Previously_Used, Dynamic_Fence : Boolean := False;
       Sending : Boolean := False;
       Credits : Natural range 0 .. 4 := 0;
       Notification_Sending : Boolean := False;
       Deregister_Sending : Boolean := False;
-      Next_Notification : Unsigned_32 range 0 .. 65536 := 0;
    end record;
 end Intel_GPU_GuC_Context_Lifecycle;

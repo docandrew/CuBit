@@ -142,8 +142,27 @@ package CuBit.Desktop_Protocol with SPARK_Mode, Pure is
       More_Pending : Boolean := False;
    end record;
    More_Pending_Flag : constant Unsigned_8 := 1;
-   function Valid_Input_Envelope (Item : Input_Envelope) return Boolean
-     with Annotate => (GNATprove, Inline_For_Proof);
+   function Valid_Input_Envelope (Item : Input_Envelope) return Boolean is
+     (case Item.Kind is
+         when No_Input =>
+           Item.Payload0 = 0 and Item.Payload1 = 0 and not Item.More_Pending,
+         when Key_Pressed | Key_Released =>
+           Item.Payload0 <= 127 and Item.Payload1 <= 15,
+         when Text_Entered => Item.Payload0 <= 255 and Item.Payload1 = 0,
+         when Close_Requested => Item.Payload0 = 0 and Item.Payload1 = 0,
+         when Surface_Configured =>
+           Item.Payload0 <= Unsigned_64 (Pixel_Extent'Last) and
+           Item.Payload1 <= Unsigned_64 (Pixel_Extent'Last),
+         when Pointer_Moved | Pointer_Pressed | Pointer_Released |
+              Wheel_Turned | Input_Resynchronized =>
+           Item.Payload0 mod 2 ** 32 <= Unsigned_64 (Pixel_Coordinate'Last)
+           and Item.Payload0 / 2 ** 32 <=
+             Unsigned_64 (Pixel_Coordinate'Last) and
+           (case Item.Kind is
+               when Pointer_Moved | Pointer_Pressed | Pointer_Released =>
+                 Item.Payload1 < 2 ** 32,
+               when Input_Resynchronized => Item.Payload1 / 2 ** 32 <= 15,
+               when others => True));
    type Input_Result (Status : Status_Code := Invalid_Request) is record
       case Status is
          when Success => Value : Input_Envelope;

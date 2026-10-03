@@ -4,8 +4,10 @@ with CCL.Imports;
 with CCL.Bounded_Stacks;
 with CCL.Execution_Budgets;
 with CCL.Types;
+with CCL.Types.Shapes;
 with CCL.Objects;
 with CCL.Resources;
+with CCL.Streams;
 with CCL.Secondary_Stacks;
 with CCL.Secondary_Arrays;
 with CCL.List_Operations;
@@ -161,7 +163,9 @@ is
    function Known_Value_Type
      (Types : CCL.Types.Registry; Kind : Value_Kind; Ref : CCL.Types.Type_Reference) return Boolean is
      (case Kind is
-        when Integer_Value | Boolean_Value => Ref = CCL.Types.Invalid_Type,
+        --  An Integer carrying a stream type is a session's stream handle.
+        when Integer_Value => Ref = CCL.Types.Invalid_Type or else CCL.Types.Is_Stream (Types, Ref),
+        when Boolean_Value => Ref = CCL.Types.Invalid_Type,
         when Variant_Value => CCL.Types.Is_Scalar_Sum (Types, Ref),
         when Object_Value => Native_Object_Type (Types, Ref),
         when Resource_Value => CCL.Types.Known (Types, Ref) and then
@@ -182,6 +186,8 @@ is
       elsif Ref = CCL.Types.Character_Type then Character_Value
       elsif CCL.Types.Describe (Types, Ref).Form = CCL.Types.Bounded then Integer_Value
       elsif CCL.Types.Describe (Types, Ref).Form = CCL.Types.Resource then Resource_Value
+      --  A stream is its session handle: an Integer carrying its type.
+      elsif CCL.Types.Is_Stream (Types, Ref) then Integer_Value
       elsif CCL.Types.Is_List (Types, Ref) then List_Value
       elsif CCL.Types.Is_Function (Types, Ref) then Function_Value
       elsif CCL.Types.Is_Scalar_Sum (Types, Ref) then Variant_Value else Object_Value);
@@ -189,8 +195,23 @@ is
    --  types its kind already says.
    function Reference_For_Type
      (Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference) return CCL.Types.Type_Reference is
-     (if Kind_For_Type (Types, Ref) in Integer_Value | Boolean_Value | Text_Value | Character_Value
+     (if Kind_For_Type (Types, Ref) in Integer_Value | Boolean_Value | Text_Value | Character_Value and then
+        not CCL.Types.Is_Stream (Types, Ref)
       then CCL.Types.Invalid_Type else Ref);
+   --  What a view of a stream of type Stream_Type yields: its element type
+   --  (latest), the list of it (window) or Integer (arrived, lost).
+   --  Invalid_Type when Stream_Type is not a stream, or the list does not
+   --  exist in Types.
+   function Stream_View_Type
+     (Types : CCL.Types.Registry; Stream_Type : CCL.Types.Type_Reference;
+      View : CCL.Streams.View_Kind) return CCL.Types.Type_Reference is
+     (if not CCL.Types.Is_Stream (Types, Stream_Type) then CCL.Types.Invalid_Type
+      else
+        (case View is
+            when CCL.Streams.Latest_View => CCL.Types.Stream_Element (Types, Stream_Type),
+            when CCL.Streams.Window_View =>
+               CCL.Types.List_Of (Types, CCL.Types.Stream_Element (Types, Stream_Type)),
+            when CCL.Streams.Arrived_View | CCL.Streams.Lost_View => CCL.Types.Integer_Type));
 
    --  A record or payload variant the arena holds.
    function Node_Type
@@ -229,6 +250,9 @@ is
          CCL.Types.Is_Function (Types, Item.Data_Type) and then Item.Integer in 0 .. MAX_FUNCTIONS - 1
       elsif Item.Kind = Character_Value then
          Item.Data_Type = CCL.Types.Invalid_Type and then Item.Integer in 0 .. MAX_CHARACTER_CODE
+      elsif Item.Kind = Integer_Value and then Item.Data_Type /= CCL.Types.Invalid_Type then
+         CCL.Types.Is_Stream (Types, Item.Data_Type) and then
+         Item.Integer in 1 .. CCL.Streams.Maximum_Handle
       elsif Item.Kind /= Variant_Value then Item.Data_Type = CCL.Types.Invalid_Type
       else CCL.Types.Is_Scalar_Sum (Types, Item.Data_Type) and then
          Item.Alternative <= CCL.Types.Describe (Types, Item.Data_Type).Count);
@@ -319,7 +343,15 @@ is
       --  type in Data_Type. Resumable: each element is an ordinary call whose
       --  return comes back to this instruction, with the iteration's state in
       --  the machine (no loop in the code, no recursion in the VM).
-      List_Apply);
+      List_Apply,
+      --  Streams (docs/ccl-streams.md). Push_Stream pushes the session's
+      --  stream Immediate as a value of the stream type in Data_Type: an
+      --  Integer handle that no arithmetic or comparison accepts.
+      --  Stream_View (CCL.Streams.View_Kind in Immediate) pops the stream
+      --  in Data_Type, and for a window the count below it, then suspends
+      --  for the host's reader (Waiting_For_Host with Stream_Requested).
+      Push_Stream,
+      Stream_View);
    for Op_Code use
      (Halt                    => 0,
       Push_Integer            => 1,
@@ -373,7 +405,9 @@ is
       Check_Range             => 49,
       Make_Closure            => 50,
       Call_Value              => 51,
-      List_Apply              => 52);
+      List_Apply              => 52,
+      Push_Stream             => 53,
+      Stream_View             => 54);
    for Op_Code'Size use 8;
 
    type Authority_Class is
@@ -557,6 +591,13 @@ is
       Range_Error,
       --  Calls through function values nested deeper than the frame table.
       Call_Depth_Exhausted,
+      --  A stream view the host could not answer (CCL.Streams.View_Status),
+      --  a window outside 1 .. Maximum_Window, or elements not of the type
+      --  the program names.
+      Stream_Unavailable,
+      Stream_Empty,
+      Stream_Window_Out_Of_Range,
+      Stream_Element_Mismatch,
       Invalid_Bytecode,
       Waiting_For_Host,
       Host_Call_Failed,
@@ -589,6 +630,12 @@ is
       --  literal, as the interpreter prints it, when it has one that fits.
       Has_Literal : Boolean := False;
       Literal : Result_Text := (others => <>);
+      --  Its rows' record type and fields, for a table (Count = 0: none).
+      Literal_Shape : CCL.Types.Shapes.Row_Shape := (others => <>);
+      --  Waiting_For_Host on a stream view, not an import: the host answers
+      --  Stream_Request through Native_Objects.Complete_Stream_View.
+      Stream_Requested : Boolean := False;
+      Stream_Request : CCL.Streams.View_Request := (others => <>);
    end record;
 
    type Machine_State is private;
@@ -797,9 +844,16 @@ private
       P : CCL.Types.Component_Index; Result : out Value; Good : out Boolean);
    -- Only the native-object child admits object references, after copying and
    -- validating their owned storage. Public scalar completion cannot mint one.
+   --  Answer a stream view: push Response (already of Stream_Result_Type)
+   --  and continue, or stop the run with Failure.
+   procedure Complete_Stream_Call
+     (Item : Validated_Program; State : in out Machine_State;
+      Response : Value; Failure : Execution_Status)
+     with Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),
+       Post => Is_Well_Formed (Item, State);
    procedure Complete_Checked_Host_Call
      (Item : Validated_Program; State : in out Machine_State;
-      Response : Value; Accepted : Boolean; Native_Response : Boolean;
+      Host_Response : Value; Accepted : Boolean; Native_Response : Boolean;
       Resource_Response : Boolean := False)
      with Pre => Is_Valid (Item) and then Is_Well_Formed (Item, State),
        Post => Is_Well_Formed (Item, State);
@@ -845,6 +899,11 @@ private
       Arena               : Value_Arena;
       Iterations          : Iteration_Array := [others => (others => <>)];
       Iteration_Depth     : Iteration_Count := 0;
+      --  Suspended on a stream view (separate from import waits): the
+      --  request, and the type its answer must have (T, List<T>, Integer).
+      Waiting_Stream      : Boolean := False;
+      Stream_Request      : CCL.Streams.View_Request := (others => <>);
+      Stream_Result_Type  : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
    end record;
 
    function Is_Valid (Item : Validated_Program) return Boolean is

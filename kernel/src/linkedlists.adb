@@ -186,6 +186,35 @@ package body LinkedLists is
         myList.length := myList.length - 1;
     end popBack;
 
+    procedure moveFrontBefore (myList : in out List; Before : NodePtr;
+                               Success : out Boolean) is
+        Cursor : NodePtr := myList.head;
+        Found : Boolean := False;
+        Moved, Previous : NodePtr;
+    begin
+        Success := False;
+        if Before = null or else myList.length = 0 then return; end if;
+        for I in 1 .. myList.length loop
+            if Cursor = Before then Found := True; exit; end if;
+            Cursor := Cursor.next;
+        end loop;
+        if not Found then return; end if;
+        if Before = myList.head or else Before = myList.head.next then
+            Success := True;
+            return;
+        end if;
+        Moved := myList.head;
+        myList.head := Moved.next;
+        myList.head.prev := myList.tail;
+        myList.tail.next := myList.head;
+        Previous := Before.prev;
+        Previous.next := Moved;
+        Moved.prev := Previous;
+        Moved.next := Before;
+        Before.prev := Moved;
+        Success := True;
+    end moveFrontBefore;
+
     procedure detachRange (myList : in out List; First, Last : NodePtr;
                            Count : Positive; Detached : in out List;
                            Success : out Boolean) is

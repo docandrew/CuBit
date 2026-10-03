@@ -30,15 +30,15 @@ def check(events, minimum=180.0):
         'title CuBitBrowserTyped:abc', 'url /browser-b', 'loaded-path /browser-b',
         'history traversal complete', 'title CuBitBrowserRestoredA',
         'title CuBitBrowserRestoredB', 'title CuBitBrowserWheel:1',
-        'title CuBitBrowserScrolled', 'title CuBitBrowserResize:854x506',
-        'title CuBitBrowserResize:800x496', 'tab new 2', 'tab select 1', 'tab select 2',
-        'title CuBitBrowserRetained:abc', 'title CuBitBrowserRetained:abcd', 'title CuBitBrowserTyped:abcd', 'title CuBitBrowserResize:608x536', 'tab close 2', 'tab parked 2',
+        'title CuBitBrowserScrolled', 'title CuBitBrowserResize:854x504',
+        'title CuBitBrowserResize:800x494', 'tab new 2', 'tab select 1', 'tab select 2',
+        'title CuBitBrowserRetained:abc', 'title CuBitBrowserRetained:abcd', 'title CuBitBrowserTyped:abcd', 'title CuBitBrowserResize:608x524', 'tab close 2', 'tab parked 2',
     ]
     for event in events:
         if event['event'] == 'cycle-start':
             assert current is None and event['cycle'] == cycles + 1, 'cycle order'
             assert begin['seconds'] <= event['seconds'] < end['seconds']
-            current = {'number': event['cycle'], 'markers': [], 'idle': None, 'renewed': False, 'pixels': False}
+            current = {'number': event['cycle'], 'tab_id': event.get('tab_id', 2), 'markers': [], 'idle': None, 'renewed': False, 'pixels': False}
         elif event['event'] == 'callback' and current is not None:
             current['markers'].append(event['marker'])
             if current['idle'] is not None:
@@ -58,6 +58,8 @@ def check(events, minimum=180.0):
             assert current['pixels'], 'missing resize pixel comparison'
             assert event['cycle'] == current['number'] and event['seconds'] <= end['seconds']
             for suffix in required:
+                if suffix.startswith('tab ') and suffix.endswith(' 2'):
+                    suffix = suffix[:-1] + str(current['tab_id'])
                 assert 'CUBITSHELL-BROWSER: ' + suffix in current['markers'], 'missing ' + suffix
             assert current['markers'].count('CUBITSHELL-BROWSER: history traversal complete') >= 2
             assert current['markers'].count('CUBITSHELL-BROWSER: loaded-path /browser-b') >= 2

@@ -24,8 +24,9 @@ procedure Main is
    Value : CCL.Control.Response;
    Encoded : Control_Wire.Response;
    function Query (Op : CBOR.UInt64; Text : String) return Byte_Array is
-     (Encoding.Encode_Array (4) & Encoding.Encode_Unsigned (1) &
-      Encoding.Encode_Unsigned (1) & Encoding.Encode_Unsigned (Op) & Encoding.Encode_Text_String (Text));
+     (Encoding.Encode_Array (5) & Encoding.Encode_Unsigned (Control_Wire.Protocol_Version) &
+      Encoding.Encode_Unsigned (1) & Encoding.Encode_Unsigned (Control_Wire.No_Session) &
+      Encoding.Encode_Unsigned (Op) & Encoding.Encode_Text_String (Text));
    procedure Reject (Text : String) is
    begin Parse (Text, R); pragma Assert (R.State = Rejected); end Reject;
 begin
@@ -56,6 +57,19 @@ begin
    declare
       D : constant Decode_All_Result := Decoding.Decode_All_Strict (Encoded.Data (1 .. SE_Offset (Encoded.Length)));
    begin pragma Assert (D.Status = OK and D.Count = 9); end;
+   --  A stream result: its description, typeCode 0 (a session's handle is
+   --  not a portable value).
+   Control_Wire.Decode (Query (2, "(stream Integer 1)"), Q, Valid);
+   pragma Assert (Valid);
+   CCL.Control.Execute (Session, Q.Op, Q.Source (1 .. Q.Length), (others => <>), Value);
+   pragma Assert (CCL.Sessions.Result_Image (Value.Outcome) = "Stream<Integer>: #<stream 1>");
+   Control_Wire.Encode (Q, Value, Encoded);
+   declare
+      D : constant Decode_All_Result := Decoding.Decode_All_Strict (Encoded.Data (1 .. SE_Offset (Encoded.Length)));
+   begin
+      pragma Assert (D.Status = OK and D.Count = 9);
+      pragma Assert (D.Items (7).Kind = MT_Unsigned_Integer and D.Items (7).UInt_Value = 0);
+   end;
    --  A list result: typeCode 5, then its element type code and a definite
    --  array of elements (signed integers use CBOR major type 1).
    Control_Wire.Decode (Query (2, "[1 (- 0 2) 3]"), Q, Valid);
@@ -88,11 +102,20 @@ begin
    end;
    Put_Line ("PASS: list results as typed CBOR arrays");
    Control_Wire.Decode (Query (1, "not allowed"), Q, Valid); pragma Assert (not Valid);
+   --  Version 2 names the session; a version 1 envelope is refused.
+   Control_Wire.Decode (Encoding.Encode_Array (5) & Encoding.Encode_Unsigned (2) &
+     Encoding.Encode_Unsigned (1) & Encoding.Encode_Unsigned (16#BEEF#) &
+     Encoding.Encode_Unsigned (2) & Encoding.Encode_Text_String ("7"), Q, Valid);
+   pragma Assert (Valid and Q.Session = 16#BEEF# and Q.Length = 1);
+   Control_Wire.Decode (Encoding.Encode_Array (4) & Encoding.Encode_Unsigned (1) &
+     Encoding.Encode_Unsigned (1) & Encoding.Encode_Unsigned (2) & Encoding.Encode_Text_String ("7"), Q, Valid);
+   pragma Assert (not Valid);
    Control_Wire.Decode (Query (4, ""), Q, Valid); pragma Assert (not Valid);
    declare
       function Monitor_Query (Op, Target : CBOR.UInt64; Source : String := "") return Byte_Array is
-        (Encoding.Encode_Array (5) & Encoding.Encode_Unsigned (1) &
-         Encoding.Encode_Unsigned (1) & Encoding.Encode_Unsigned (Op) &
+        (Encoding.Encode_Array (6) & Encoding.Encode_Unsigned (Control_Wire.Protocol_Version) &
+         Encoding.Encode_Unsigned (1) & Encoding.Encode_Unsigned (Control_Wire.No_Session) &
+         Encoding.Encode_Unsigned (Op) &
          Encoding.Encode_Text_String (Source) & Encoding.Encode_Unsigned (Target));
    begin
       Control_Wire.Decode (Monitor_Query (4, 0, "7"), Q, Valid); pragma Assert (Valid);

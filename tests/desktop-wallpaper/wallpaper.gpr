@@ -1,19 +1,21 @@
 project Wallpaper is
-   for Source_Dirs use (".", "../../userspace/services/desktop",
-     "../../userspace/lib/theme", "../../userspace/ccl/tools/ccl-ui-preview/host");
-   for Source_Files use
-     ("main.adb", "desktop_wallpaper.ads", "desktop_wallpaper.adb",
-      "cubit.ads", "cubit-appearance.ads", "cubit-appearance.adb");
-   for Object_Dir use "build";
+   for Source_Dirs use (".", "../../userspace/services/desktop", "../../userspace/lib/compositor",
+     "../../userspace/lib/display", "../../userspace/lib/theme", "../../userspace/runtime/gnat");
+   for Source_Files use ("main.adb",
+     "desktop_backdrop_style.ads", "desktop_wallpaper.ads", "desktop_wallpaper.adb", "cubit.ads", "cubit-appearance.ads",
+     "cubit-appearance.adb", "cubit-display_geometry.ads", "cubit-display_geometry.adb",
+     "compositor_backdrop_strips.ads", "compositor_backdrop_strips.adb", "compositor_image_sampling.ads", "compositor_image_sampling.adb",
+     "compositor_sampling.ads", "compositor_sampling.adb", "compositor_text.ads",
+     "compositor_text.adb", "compositor_affine.ads", "compositor_affine.adb");
+   for Object_Dir use "build/obj";
    for Exec_Dir use "build";
    for Main use ("main.adb");
    package Compiler is
-      --  Linux-hosted regression only.
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
    end Compiler;
    package Linker is
       for Default_Switches ("Ada") use
-        ("../../userspace/services/desktop/build/wallpaper.o",
-         "../../userspace/services/desktop/build/wallpaper_cubie.o");
+        (Wallpaper'Project_Dir & "../../userspace/services/desktop/build/wallpaper.o",
+         Wallpaper'Project_Dir & "../../userspace/services/desktop/build/wallpaper_cubie.o");
    end Linker;
 end Wallpaper;

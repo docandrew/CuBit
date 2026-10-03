@@ -1290,6 +1290,7 @@ package body Syscall.IPC is
             arg0 / Unsigned_64 (Process.MAX_GRANTS_PER_PROCESS);
         slot : constant Unsigned_64 :=
             arg0 mod Unsigned_64 (Process.MAX_GRANTS_PER_PROCESS);
+        success : Boolean;
     begin
         if expectedPID /= Unsigned_64 (callerPID) then
             retval := 0;
@@ -1301,16 +1302,10 @@ package body Syscall.IPC is
             return;
         end if;
 
-        if not Memory_Grants.Is_Active
-          (Process.proctab(callerPID).grants
-             (Process.GrantID (slot)).lifecycle)
-        then
-            retval := 0;
-            return;
-        end if;
-
-        Process.IPC.revokeGrant (id => Process.GrantID (slot));
-        retval := 1;
+        -- Admission and revocation share grantLock. Do not inspect grant
+        -- storage outside IPC, especially as records become lazily allocated.
+        Process.IPC.revokeGrant (id => Process.GrantID (slot), success => success);
+        retval := (if success then 1 else 0);
     end handleRevoke;
 
     procedure handleGetOwnedGrantGeneration
@@ -1468,6 +1463,13 @@ package body Syscall.IPC is
         isDeviceInfo : Boolean := False;
         hasCap       : Boolean := False;
     begin
+        if arg0 = Sysinfo.MEM_OWNED_SELF then
+            -- callerPID is derived from the running thread by syscall dispatch;
+            -- arg1 cannot select another process. A live telemetry snapshot.
+            retval := Unsigned_64 (Process.proctab(callerPID).frames.length) *
+              Unsigned_64 (Virtmem.PAGE_SIZE);
+            return;
+        end if;
         if arg0 = Sysinfo.EVENT_DROPS_SELF then
             retval := Process.proctab(callerPID).eventDrops;
             return;

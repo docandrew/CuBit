@@ -14,6 +14,20 @@ static pthread_barrier_t start;
 static uint32_t epoch, marker = 1;
 static unsigned updates, submits;
 static bool fail_updates;
+static struct anv_device extra_devices[40];
+static void *grow_worker(void *arg)
+{
+   (void)arg;
+   void *saved = device.cubit_cpu_mappings;
+   int rc = pthread_barrier_wait(&start);
+   assert(rc == 0 || rc == PTHREAD_BARRIER_SERIAL_THREAD);
+   for (unsigned i = 0; i < 40; i++) {
+      assert(anv_cubit_memory_init(&extra_devices[i], i) == VK_SUCCESS);
+      assert(device.cubit_cpu_mappings == saved);
+      sched_yield();
+   }
+   return NULL;
+}
 
 static void enter(void)
 {
@@ -71,11 +85,13 @@ static void *worker(void *arg)
 }
 static void run(void)
 {
-   pthread_t threads[4];
-   assert(pthread_barrier_init(&start, NULL, 4) == 0);
+   pthread_t threads[4], growth;
+   assert(pthread_barrier_init(&start, NULL, fail_updates ? 4 : 5) == 0);
+   if (!fail_updates) assert(pthread_create(&growth, NULL, grow_worker, NULL) == 0);
    for (unsigned i = 0; i < 4; i++)
       assert(pthread_create(&threads[i], NULL, worker, NULL) == 0);
    for (unsigned i = 0; i < 4; i++) assert(pthread_join(threads[i], NULL) == 0);
+   if (!fail_updates) assert(pthread_join(growth, NULL) == 0);
    assert(pthread_barrier_destroy(&start) == 0);
 }
 int main(void)
@@ -89,6 +105,6 @@ int main(void)
    fail_updates = true;
    run();
    assert(updates == 513 && submits == 512 && epoch == 512 && marker == 513);
-   puts("ANV concurrency PASS: 4 threads, 1024 serialized operations, independent epochs, sticky shared failure; mocked IPC only");
+   puts("ANV concurrency PASS: 4 submission threads plus concurrent growth through 40 lifetimes, 1024 serialized operations, stable tracker, sticky shared failure; mocked IPC only");
    return 0;
 }

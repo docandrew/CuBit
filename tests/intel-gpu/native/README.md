@@ -1,5 +1,78 @@
 # Native DMA-retention fixture
 
+## Demand-backing oracle (native QEMU pass, 2026-10-02)
+
+`demand_backing_check.adb` is a separate disposable-VM supervisor using the
+production extent allocator, record growth and actual CuBit DMA/owned-memory
+syscalls. It is installed as `devmgr.svc` **only in a private minimal initrd**;
+the kernel's existing supervisor authority is used without weakening checks.
+No normal stage-1 files or user disks are modified. Run under Nix and the shared
+build lock:
+
+```sh
+flock --exclusive --nonblock coordination/build.lock nix develop -c \
+  bash tests/intel-gpu/native/run-demand.sh
+```
+
+The runner records the existing kernel binary's hash rather than rebuilding it.
+It creates isolated build/image/log outputs in `tests/intel-gpu/demand-backing.*`.
+It checks 17 allocations, at most one new 2 MiB block per step, 18 MiB committed
+backing, 4,112 page sentinels in separate write/read passes, metadata extension,
+slice reuse, stale retirement rejection and owner-loss denial. The VM receives
+no GPU mappings or external buffer loans; this is CPU mapping/lifetime evidence,
+not GPU DMA, allocation IPC, Mesa rendering or display retirement evidence.
+Native run `tests/intel-gpu/demand-backing.PnS7R8/serial.log` passed on four-CPU
+QEMU with 512 MiB RAM. Kernel SHA256:
+`e5918f700edb9f26609db7f81c139716408937f5678d706e94336ffd0ec7f98c`.
+Fixture SHA256:
+`405a59057e5dc2a93c3ef08af3df7015271e636881c447bc1fd3bc7812fd8c7e`.
+The owner-loss branch changes the allocator callback to unavailable; it does
+not kill/revoke a real process. The slice's preserved contents test same-owner
+reuse, not clearing before cross-client exposure. Explicit large-page DMA mode
+is requested; the oracle checks CPU access, not page-table leaf encoding.
+Initial attempt compiled but failed to link because the test project omitted
+the native Builder `-nostdlib` flag; the corrected project passed compile,
+link, image creation and the complete runtime oracle.
+
+## Saved-capability allocation loopback (native QEMU pass, 2026-10-02)
+
+Run the same command with an additional `ipc` argument. This selects
+`allocation_ipc_check.adb`, composing production `Buffer_Memory`,
+`Allocation_Growth`, `Extent_Allocator`, metadata growth and extent decoding
+with actual kernel async submit/receive/completion syscalls. The supervisor
+side uses saved reply slot 58, as devmgr does. A second request is received and
+answered while the first allocation remains pending; its reply must not replace
+the saved allocation reply. Each saved reply is consumed exactly once, and an
+immediate attempt to reuse it must fail.
+
+Four-CPU QEMU passed 17 saved allocation replies, three extent-address queries
+(only the missing suffix is fetched), one interleaved request, metadata growth
+on both sides, zero/flush/readback, and preservation of earlier buffer sentinels.
+The driver observed backing snapshots growing from 4 MiB to 6 MiB. Evidence:
+`tests/intel-gpu/demand-backing.1CNi90/serial.log`. Kernel hash is the same as
+the memory-only run above; fixture SHA256:
+`cb480c0cb1978f9fe5cf3d64519198bb040211843a6434d2175c6279ef9bb3d6`.
+
+This is real IPC but **one privileged process with a self endpoint**. The test
+router mirrors the relevant devmgr branches; it is not the complete devmgr
+binary. It does not prove cross-process isolation, real endpoint death/revocation,
+malicious-client admission, or hardware execution. No production capabilities,
+staging files or disks are changed.
+
+The current IPC fixture extends this gate to **18 physical extents (36 MiB)**,
+17 saved replies and one interleaved request. Its explicitly configured 64 MiB
+test policy forces both supervisor and driver extent directories past their
+sixteen-entry bootstrap storage. It asserts supervisor capacity growth and
+observes the driver's metadata-wait state, in addition to bounded physical
+steps, clearing/readback and earlier-buffer preservation. Production devmgr
+uses the same `Extent_Growth` adapter; its live policy is still 32 MiB.
+Four-CPU/512 MiB QEMU passed in `demand-backing.dlureW`; exact kernel and fixture
+hashes are in its `input.sha256`, with the full oracle in `serial.log`. The
+runner now requires the eighteen-extent marker, not the historical three-extent
+marker above. This remains allocation/IPC evidence, not Intel rendering.
+
+## Historical DMA-retention and grant fixture
+
 Root-grant large-leaf resolution has now been promoted to the main kernel.
 Historical references below to private-only kernel behavior describe the
 staged validation runs. Event `4D55` is an optional sacrificial permission test:
@@ -95,3 +168,28 @@ sender. The supervisor must grant slot 5 to itself, authenticate the received
 request's caller against the spawned PID, validate the encoded reference,
 then acquire and check the sentinel. No completion token is requested: the
 fixture deliberately kills the child while the acquisition remains held.
+## Native CPU-export retention
+
+Run under Nix and the shared build lock:
+
+```sh
+flock --exclusive --nonblock coordination/build.lock nix develop -c bash tests/intel-gpu/native/run-demand.sh views
+```
+
+This boots a privileged disposable fixture, not the desktop. Production buffer
+allocation, handles and views use real kernel self-grants. Three cycles check
+read-only access, shared sentinel contents, two reader pins after name closure,
+delayed retirement until acquisition return, final release and stale-reference
+rejection. No GPU mappings or cross-process isolation are tested. The existing
+kernel and fixture hashes are recorded; production staging remains untouched.
+Passing evidence: `../demand-backing.kZQEfo/serial.log` and `input.sha256`.
+The later `../demand-backing.Uq6uOa/` run additionally holds a forwarded terminal
+child across root revocation and parent return. Write escalation/re-forwarding
+are rejected; the child's return is required before the root's BO pin can drop.
+The later `../demand-backing.XJMKqq/` run additionally drives retirement through
+the production pending-only FIFO. Eight polls retain the acquired parent/child;
+returning the parent still waits for the child. Returning the child completes
+exactly once, and 32 subsequent polls do not replay the callback. The second
+independent view still pins the backing. This passes across three cycles with
+real kernel grants, not GPU completion or cross-process isolation.
+The runner requires the stronger queued-retirement completion marker.

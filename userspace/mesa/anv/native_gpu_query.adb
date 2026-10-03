@@ -10,7 +10,7 @@ package body Native_GPU_Query is
       Output.all := [others => 0];
       if Slot > Unsigned_64 (CapabilitySlot'Last) then return 1; end if;
       Request.tag := Expected;
-      Request.words := [1, 0, 0, 0];
+      Request.words := [2, 0, 0, 0];
       Returned := capCall (CapabilitySlot (Slot), Request);
       if Returned /= Expected or Request.tag /= Expected then return 1; end if;
       Output.all := [Request.words (0), Request.words (1),

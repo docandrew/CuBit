@@ -54,6 +54,57 @@ package body Intel_GPU_Buffer_Requests.Binding is
       end if;
       Response := [OK, Version, Coordinator.Generation (State), 0];
    end Handle_Update;
+   procedure Handle_In_Place
+     (Object : Service; Source : in out VM.Image;
+      State : in out Coordinator.State;
+      VM_Session, Sender, Stamp : Unsigned_64; Request_Label : Unsigned_32;
+      Length, Flags : Unsigned_8; Reserved : Unsigned_16;
+      Request : Words; Response : out Words)
+   is
+      Before : constant Unsigned_64 := Coordinator.Generation (State);
+      ID : constant Unsigned_64 := Request (1) and 16#FFFF_FFFF#;
+      Offset : constant Unsigned_64 := Shift_Right (Request (1), 32) * 4096;
+      Backing : Intel_GPU_Buffer_Reply.Backing;
+      Preparation : Preparation_Result;
+      Result : Coordinator.Result;
+      Ready : Boolean;
+      use type Coordinator.Result;
+   begin
+      Response := [Denied, Version, 0, 0];
+      if VM_Session = 0 or else Session_Of (Sender, Stamp) /= VM_Session then return; end if;
+      Response (0) := Unavailable;
+      if not Coordinator.Can_Submit (State) then return; end if;
+      Check_Update_Request (Object, Source, VM_Session, Before,
+        Sender, Stamp, Request_Label, Length, Flags, Reserved, Request, Preparation);
+      case Preparation is
+         when Request_Denied => Response (0) := Denied; return;
+         when Malformed => Response (0) := Bad_Request; return;
+         when Eligible => null;
+         when others => return;
+      end case;
+      if (Shift_Right (Request (0), 16) and 16#FFFF#) /=
+        (if Remove then 1 else 0) then
+         Response (0) := Bad_Request; return;
+      end if;
+      Backing := Intel_GPU_Buffer_Handles.Resolve
+        (Object.Handles, VM_Session, Intel_GPU_Buffer_Handles.Handle (ID));
+      if Remove and then
+        not Binder.Matches_Range (Source, Backing, Request (2), Offset, Request (3))
+      then return; end if;
+      Capture (Backing, Request (2), Offset, Request (3), VM.Revision (Source), Ready);
+      if not Ready or else Object.Failed or else not Owner_Ready or else
+        Session_Of (Sender, Stamp) /= VM_Session then return; end if;
+      Coordinator.Execute (State, Before, Result);
+      if Result /= Coordinator.Complete then return; end if;
+      if Object.Failed or else not Owner_Ready or else
+        Session_Of (Sender, Stamp) /= VM_Session or else
+        not Coordinator.Can_Submit (State) or else
+        Coordinator.Generation (State) /= Before + 1
+      then
+         Coordinator.Fail (State); return;
+      end if;
+      Response := [OK, Version, Coordinator.Generation (State), 0];
+   end Handle_In_Place;
    procedure Check_Update_Request
      (Object : Service; Source : VM.Image;
       VM_Session, Current_Generation, Sender, Stamp : Unsigned_64;

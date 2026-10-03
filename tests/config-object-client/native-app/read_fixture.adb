@@ -79,7 +79,7 @@ package body Read_Fixture is
          if Binding = Operation'Enum_Rep (Supplied_Value) and then Action = Store_Supplied then
             if Argument.Kind /= CCL.Host_Values.Integer_Value or else Argument.Integer /= 0 then return; end if;
             State.Calls := State.Calls + 1;
-            Reply := (Value => CCL.Host_Values.Object_Constant (Expected), Success => True);
+            Reply := (Value => CCL.Host_Values.Object_Constant (Expected), Success => True, Why => <>);
             return;
          elsif Binding = Operation'Enum_Rep (Read_Value) and then Action = Inspect_Stored then
             if Argument.Kind /= CCL.Host_Values.Integer_Value or else Argument.Integer /= 0 then return; end if;

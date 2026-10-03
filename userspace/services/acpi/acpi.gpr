@@ -1,6 +1,10 @@
 project ACPI is
    for Languages use ("Ada");
-   for Source_Dirs use (".", "native", "../../lib/acpi", "../../../shared/firmware");
+   for Source_Dirs use (".", "native", "native-clock", "../../lib/acpi", "../../../shared/firmware");
+   for Excluded_Source_Files use ("acpi_service.ads");
+   package Naming is
+      for Spec ("ACPI_Service") use "acpi_service_native.ads";
+   end Naming;
    for Object_Dir use "build";
    for Main use ("main.adb");
    for Runtime ("Ada") use "../../runtime";

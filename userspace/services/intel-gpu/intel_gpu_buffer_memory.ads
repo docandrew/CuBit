@@ -4,14 +4,31 @@ with CuBit.Messages;
 with Interfaces;
 with Intel_GPU_Extent_Replies;
 with Intel_GPU_Physical_Extents;
+with Intel_GPU_Extent_Directory;
+with Intel_GPU_Record_Store;
+with Intel_GPU_Metadata_Arena;
 generic
    with function Owner_Ready return Boolean;
+   with package Extent_Storage is new Intel_GPU_Metadata_Arena (<>);
 package Intel_GPU_Buffer_Memory is
+   use type Interfaces.Unsigned_64;
    type Pool is limited private;
+   -- Trusted policy matching the supervisor, before the first request. This
+   -- does not reserve CPU VA, grant DMA authority or request physical backing.
+   procedure Configure_Heap
+     (Object : in out Pool; Byte_Quota, DMA_Limit, Metadata_Bytes : Interfaces.Unsigned_64;
+      Accepted : out Boolean);
+   function Record_Capacity (Object : Pool) return Positive;
+   -- Trusted disjoint committed CPU metadata, retained for the pool lifetime.
+   -- No allocation/retirement may be in flight; growth cannot revive a failed
+   -- pool or change DMA authority, current backing, or submission identities.
+   procedure Extend_Records
+     (Object : in out Pool; Base, Bytes : Interfaces.Unsigned_64;
+      Accepted : out Boolean);
    type Allocation_Stage is (Idle, Owner_Check, Submit_Request, Awaiting_Reply,
                             Validate_Reply, Validate_Backing, Zero_Backing,
                             Flush_Backing, Readback_Backing, Granted, Denied,
-                            Awaiting_Retirement, Retired);
+                            Awaiting_Retirement, Retired, Awaiting_Extent_Metadata);
    function Last_Stage (Object : Pool) return Allocation_Stage;
    -- Observational only; retained when cancelled/failed. Not a readiness gate.
    -- One pool per driver endpoint incarnation; it owns completion tokens
@@ -56,15 +73,22 @@ package Intel_GPU_Buffer_Memory is
    -- Success includes zeroing, cache flush and volatile readback, not GPU
    -- publication or permission to delegate a client-visible handle/grant.
 private
-   type Attempts is array (Intel_GPU_Buffer_Backing.Slot) of Boolean;
-   type Generations is array (Intel_GPU_Buffer_Backing.Slot) of Interfaces.Unsigned_32;
-   type Backings is array (Intel_GPU_Buffer_Backing.Slot) of Intel_GPU_Buffer_Reply.Backing;
+   type Backing_Record is record
+      Attempted : Boolean := False;
+      Generation : Interfaces.Unsigned_32 := 1;
+      Backing : Intel_GPU_Buffer_Reply.Backing;
+   end record;
+   package Records is new Intel_GPU_Record_Store (Backing_Record, (others => <>));
    type Pool is limited record
       Broken : Boolean := False;
+      Configured, Waiting_Metadata : Boolean := False;
+      Heap_Limit : Interfaces.Unsigned_64 := Intel_GPU_Buffer_Backing.Default_Heap.Byte_Quota;
+      DMA_Limit : Interfaces.Unsigned_64 := Intel_GPU_Buffer_Backing.Default_Heap.DMA_Limit;
+      Metadata_Limit : Interfaces.Unsigned_64 := Intel_GPU_Buffer_Backing.Default_Heap.Metadata_Bytes;
+      Metadata_Published : Interfaces.Unsigned_64 := 0;
+      Extent_Metadata : Extent_Storage.Arena;
       Stage : Allocation_Stage := Idle;
-      Attempted : Attempts := [others => False];
-      Slot_Generations : Generations := [others => 1];
-      Items : Backings;
+      Items : Records.Store;
       Active : Boolean := False;
       Serial : Interfaces.Unsigned_32 := 0;
       Completion_Token : Interfaces.Unsigned_64 := 0;
@@ -75,9 +99,9 @@ private
       Started_At, Previous : Interfaces.Unsigned_64 := 0;
       Current : Intel_GPU_Buffer_Reply.Backing;
       Fetching : Boolean := False;
-      Extent_Index : Intel_GPU_Physical_Extents.Block_Index := 0;
+      Extent_Index : Natural := 0;
       Arena_ID, Requested_CPU, Requested_Bytes : Interfaces.Unsigned_64 := 0;
       Assembly : Intel_GPU_Extent_Replies.Assembly;
-      Mapping : Intel_GPU_Physical_Extents.Map;
+      Mapping : Intel_GPU_Extent_Directory.Borrowed_View;
    end record;
 end Intel_GPU_Buffer_Memory;

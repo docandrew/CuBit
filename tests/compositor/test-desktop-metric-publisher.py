@@ -21,6 +21,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants; with CuBit.Metric_Protocol;
 with Desktop_Metric_Publisher;
 with Compositor_Stage_Metrics;
+with Compositor_Work_Metrics;
 procedure Check is
  package D is new Desktop_Metric_Publisher(10);
  package P renames CuBit.Metric_Protocol;
@@ -39,31 +40,32 @@ begin
  D.Pump(Sequence,100_020);
  pragma Assert(Submissions=0 and Sequence=100 and not D.Matches(0));
  if Mode="normal-overload" then
-  for I in 1..57 loop Record_One(Unsigned_64(I)); end loop;
+  for I in 1..55 loop Record_One(Unsigned_64(I)); end loop;
   pragma Assert(Submissions=0 and CuBit.Memory_Grants.Creates=0);
   D.Pump(Sequence,20);
   pragma Assert(Submissions=1 and Sent_Counts(1)=63 and Sent_Tokens(1)=101);
-  for I in 58..114 loop Record_One(Unsigned_64(I)); end loop;
+  for I in 56..110 loop Record_One(Unsigned_64(I)); end loop;
   D.Pump(Sequence,20);
   pragma Assert(Submissions=2 and Sent_Counts(2)=63 and Sent_Tokens(2)=102);
-  for I in 115..214 loop Record_One(Unsigned_64(I)); end loop;
+  for I in 111..210 loop Record_One(Unsigned_64(I)); end loop;
   pragma Assert(D.Dropped=100 and not D.Disabled);
   D.Pump(Sequence,200_000); pragma Assert(Submissions=2 and Sequence=102);
   Good_Reply(999,63); D.Collect(C); pragma Assert(not D.Matches(999) and not D.Disabled);
   Good_Reply(102,63); D.Collect(C); D.Collect(C);
   pragma Assert(not D.Disabled and D.Rejected=0);
-  Record_One(215); D.Pump(Sequence,100_020);
-  pragma Assert(Submissions=3 and Sent_Counts(3)=7 and Sent_Tokens(3)=103);
+  Record_One(211); D.Pump(Sequence,100_020);
+  pragma Assert(Submissions=3 and Sent_Counts(3)=9 and Sent_Tokens(3)=103);
   Good_Reply(101,63); D.Collect(C);
-  Good_Reply(103,7); D.Collect(C);
+  Good_Reply(103,9); D.Collect(C);
   pragma Assert(not D.Disabled and D.Invalid=0 and D.Dropped=100);
  elsif Mode="stage-mixed" then
   for Stage in Compositor_Stage_Metrics.Stage loop
    D.Record_Stage(Stage,10,20);
   end loop;
+  for Work in Compositor_Work_Metrics.Work_Kind loop D.Record_Work(Work,100,20); end loop;
   Record_One; D.Pump(Sequence,100_020);
-  pragma Assert(Submissions=1 and Sent_Counts(1)=11 and D.Invalid=0);
-  Good_Reply(101,11); D.Collect(C);
+  pragma Assert(Submissions=1 and Sent_Counts(1)=15 and D.Invalid=0);
+  Good_Reply(101,15); D.Collect(C);
   pragma Assert(not D.Disabled and D.Rejected=0);
  elsif Mode="invalid-clock" then
   D.Record_Completion((0,1,1,10,9));
@@ -73,7 +75,8 @@ begin
    D.Record_Stage(Stage,10,9);
    D.Record_Stage(Stage,0,Unsigned_64'Last);
   end loop;
-  pragma Assert(D.Invalid=10 and Submissions=0 and not D.Disabled);
+  D.Record_Work(Compositor_Work_Metrics.Scene_Pixels,100,Unsigned_64'Last);
+  pragma Assert(D.Invalid=11 and Submissions=0 and not D.Disabled);
  else
   if Mode="submit-failed" then Submit_OK:=False;
   elsif Mode="grant-failed" then CuBit.Memory_Grants.Create_OK:=False;
@@ -82,11 +85,11 @@ begin
   if Mode="submit-failed" or Mode="grant-failed" or Mode="token-exhaustion" then
    pragma Assert(D.Disabled);
    if Mode="token-exhaustion" then pragma Assert(Submissions=0 and CuBit.Memory_Grants.Creates=0);
-   elsif Mode="grant-failed" then pragma Assert(Submissions=0 and D.Rejected=7);
-   else pragma Assert(Submissions=1 and D.Rejected=7); end if;
+   elsif Mode="grant-failed" then pragma Assert(Submissions=0 and D.Rejected=9);
+   else pragma Assert(Submissions=1 and D.Rejected=9); end if;
   else
-   pragma Assert(Submissions=1 and Sent_Counts(1)=7 and D.Matches(101));
-   Good_Reply(101,7);
+   pragma Assert(Submissions=1 and Sent_Counts(1)=9 and D.Matches(101));
+   Good_Reply(101,9);
    if Mode="invalid-cqe" then C.valid:=False;
    elsif Mode="transport-failed" then C.status:=1;
    elsif Mode="bad-length" then C.msg.tag.length:=3;
@@ -102,13 +105,13 @@ begin
    else raise Program_Error; end if;
    D.Collect(C);
    if Mode="definite-refusal" then
-    pragma Assert(not D.Disabled and D.Rejected=7);
+    pragma Assert(not D.Disabled and D.Rejected=9);
     Record_One(2); D.Pump(Sequence,100_020);
-    pragma Assert(Submissions=2 and Sent_Counts(2)=7 and Sent_Tokens(2)=102);
-    Good_Reply(102,7); D.Collect(C); pragma Assert(not D.Disabled);
+    pragma Assert(Submissions=2 and Sent_Counts(2)=9 and Sent_Tokens(2)=102);
+    Good_Reply(102,9); D.Collect(C); pragma Assert(not D.Disabled);
    else
     pragma Assert(D.Disabled);
-    if Mode="denied" then pragma Assert(D.Rejected=7 and D.Invalid=0);
+    if Mode="denied" then pragma Assert(D.Rejected=9 and D.Invalid=0);
     else pragma Assert(D.Invalid=1); end if;
    end if;
   end if;
@@ -130,7 +133,7 @@ with tempfile.TemporaryDirectory(prefix='cubit-desktop-metrics-') as tmp:
                  'cubit-metrics.ads','cubit-metrics.adb'):
         shutil.copyfile(runtime/name,d/name)
     for unit in ('compositor_elapsed','compositor_frame_trace','compositor_requests',
-                 'compositor_stage_metrics','compositor_release_metrics','compositor_metric_batch_policy','compositor_metric_completion'):
+                 'compositor_work_metrics','compositor_stage_metrics','compositor_release_metrics','compositor_metric_batch_policy','compositor_metric_completion'):
         for source in (root/'userspace/lib/compositor').glob(unit+'.ad?'):
             shutil.copyfile(source,d/source.name)
     for source in (root/'userspace/services/desktop').glob('desktop_metric_publisher.ad?'):

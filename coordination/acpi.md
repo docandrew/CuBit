@@ -1,4 +1,2448 @@
+2026-10-02 PROGRESS integration audit: frozen integrated-owner-cc2azty0
+integration-source-inventory.json records14changed mapped library/service
+files with both hashes/diff counts; nothing applied. Confirmed shared Fresh
+constructor migration required in request_tests, native-blocks/block_tests,
+native-loop/loop_tests (including reset assignment),field_data_runner,
+table_find_runner,and native/acpi_native_instance. Test-before State copies
+need ghost/model snapshots for limited types, not blind replacement.
+98033 and60411 remain LIVE by boundedpolls. Previous turn VERIFIED WAIT;
+current source-integration evidence PROGRESS. No shared production/index edits.
+
+2026-10-02 PROGRESS correction:80446 TERMINAL1 no checks generated,
+selected generic acpi_service_core.adb rather than concrete instantiation.
+No proof credit. Retained checked-proof-mhbxr6mh log. Corrected core-full-proof
+config unit acpi_service.ads and report/entities ACPI_Service.*;60411 LIVE
+retry concrete instance, no region restriction.98033 target-context callsites
+still LIVE after30s wait. Previous turn prooflaunch progress; current target
+correction+verified wait. No production/index/source edits.
+
+2026-10-02 PROGRESS/WAIT:98033 target-context caller remains LIVE via30s
+poll. New80446 LIVE full service-core proof on frozen integrated-owner-cc2azty0,
+core-full-proof.json no region restriction, actual Install/Invoke/Declare_Table_
+Region/Declare_Table_Field/Read_Namespace_Field entity coverage, disjoint
+build-core/proof-core-full. This checks dependencies trusted by proved Requests;
+no combined Core pass claim yet. Previous turn warninginventory+verifiedwait;
+current proof launch progress. No shared production/index changes.
+
+2026-10-02 PROGRESS/WAIT:98033 caller proof still LIVE after bounded30s
+waits. Helper report warning inventory saved flow-warning-inventory.json:
+25INOUT_ONLY_READ,21INEFFECTIVE; no suppression or strictgate relaxation.
+Inspected callback adapters and Return call (dead outgoing state), distinct
+from proof obligations. Previous turn PROGRESS helperaudit; current evidence
+inventory plus VERIFIED WAIT. No production/index changes.
+
+2026-10-02 PROGRESS:22231 TERMINAL1 strictwrapper only: target-context-
+pxf7g527 helper commandexit0,88/88proof VCs proved including ALL4 actual
+Collect_Targets postconditions181 (Context_Valid preservation).46existing
+flowwarnings/636flow records remain, no strictpass claim. helper-proof-audit.json
+verifies terminal source hashes/report and actual entities.98033 callers still
+LIVE after bounded30second poll; must prove both new preconditions669/774 and
+numeric call782 before accepting refactor. Runtime13+16 already passed.
+Previous turn VERIFIED WAIT; current PROGRESS (completed helperproof audit).
+No shared production/index edits; objective active/incomplete.
+
+2026-10-02 VERIFIED WAIT:22231 helper and98033 callsites both remain LIVE
+following parallel bounded30second session waits; no restart or source edits.
+Previous goal turn PROGRESS (GNAT16 comparison audit), current VERIFIED WAIT.
+Next inspect their terminal reports; do not infer proof success from runtime.
+
+2026-10-02 PROGRESS:98976 TERMINAL0 GNAT16.1.0 assertion-enabled
+integrated-owner-cc2azty0 runtime PASS1799, identical five suite pass counts
+to GNAT15.3.0. compiler-comparison-audit.json verifies unchanged source hashes,
+both logs and10binary hashes; Linux-hosted mocks, not native boot or prover16.
+22231 helper confirmed LIVE with bounded30second wait;98033 callsites LIVE
+this turn. No terminal proof results yet. Previous/current turns PROGRESS;
+no shared production/index changes, full objective remains active/incomplete.
+
+2026-10-02 PROGRESS/VERIFIED WAIT:22231 helper and98033 callsites proofs
+both confirmed LIVE, phase3 target-context-pxf7g527. Prior turn PROGRESS.
+New98976 LIVE GNAT16 assertion-enabled runtime comparison on frozen integrated-
+owner-cc2azty0:requests711/endpoint57/native99/core13/field919, disjoint
+--subdirs=gnat16 outputs, log runtime-gnat16.log records GNATLS16.1.0.
+Purpose: test actual native compiler generation against pinned hostedGNAT15
+for same service cases; NOT a GNATprove16 run and NOT live native execution.
+No terminal comparison claim yet. No shared production/index changes.
+
+2026-10-02 PROGRESS: target-context-pxf7g527 runtime95746 TERMINAL0,
+13rollback +16ACPICA PASS assertion-enabled. runtime-audit.json verifies all
+source/tool/report/binary hashes; origins.json records only AML Execute source
+delta from integrated candidate. Helper22231 confirmed LIVE phase3. New98033
+LIVE callsitestest region669:782, includes BOTH Collect_Targets preconditions
+and Complete_Numeric call plus intervening branches; disjoint proof-callsites
+output. This replaces need to launch individual prepared caller configs.
+No terminal proof claim. Previous/current goal turns PROGRESS. No shared
+production/index changes; full namespace semantics/proof/native integration
+remain incomplete. Preserve live handles22231,98033.
+
+2026-10-02 PROGRESS:64423 TERMINAL0 integrated-owner-cc2azty0 Endpoint
+strict5VC+7flow PASS; actual Encode/Dispatch/Dispatch_Block posts audited in
+integrated-endpoint-proof-audit.json, source hashes stable.48061 TERMINAL1:
+numeric-checkpoint-o3c0om6h16VC/12unproved (4assert780+8caller781),636flow;
+caller-proof-audit.json records terminal source/report checks. Context valid at
+677 proved earlier, but fails immediately pre-call780; no claim of correctness
+from diagnostic assertions. New private service-target-context-pxf7g527 based
+on integrated candidate: Collect_Targets Pre/Post explicitly Context_Valid,
+no executable body change.22231 LIVE helper174:220 proof,95746 LIVE assertions
+runtime13+16. Prepared not yet run caller782,first-call669,second-call774 configs;
+prove helper AND both new preconditions/caller before accepting contract change.
+Latest-target-context pointer updated. No shared production/index changes.
+Previous goal turn evidence/launch progress; current PROGRESS audits+contract.
+
+2026-10-02 PROGRESS/VERIFIED WAIT: user asked toolchain version; live version
+check60216 TERMINAL0 confirms native explicit Alire GNATLS16.1.0 but pinned
+Nix default GNATLS15.3.0 and GNATprove FSF15.0,Why31.7.1+git. Crash is proof15,
+not native16. No toolchain migration performed.48061 diagnostic still LIVE.
+Combined endpoint proof64423 LIVE in integrated-owner-cc2azty0, endpoint-proof
+config minimum12, actual Encode/Dispatch/Dispatch_Block scope; initial Nix
+cache lock denial retried approved. No shared production/index changes.
+Previous goal turn VERIFIED WAIT; this turn version evidence +endpoint proof
+launch. Audit same handles next; full objective remains incomplete.
+
+2026-10-02 VERIFIED WAIT:48061 numeric-checkpoint-o3c0om6h diagnostic
+still LIVE by session polls. Host process inspection additionally confirms
+associated gnatprove/why3 pipeline alive: gnatprove365332 elapsed7m32,
+gnat2why376302,gnatwhy3400586,CVC5407818 actively100%CPU. No terminal result
+or test_namespace.spark yet; do not restart based on silent phase3 log.
+Previous goal turn PROGRESS (combined proof/native audit); current VERIFIED
+WAIT. No source/staging changes. Continue same48061 then audit assertion780
+and caller781 together before selecting next AML change.
+
+2026-10-02 PROGRESS:56132 TERMINAL0 combined integrated-owner-cc2azty0
+Requests strict proof155VC+21flow PASS, zero warnings; result checked-proof-
+fbvn0j0w/result.json, integrated-requests-proof-audit.json verifies source/report
+hashes and actual boundary/post VCs. Native integrated-native-j4xw7dv7 job43276
+TERMINAL0 actual GNAT16 release compile/bind/link acpi.svc;459 source/seed inputs
+verified native-stack-audit.json. Delta from prior native: only Requests ads/adb
+and AML checkpoint (integrated source, NOT numeric diagnostic candidate).
+Handle176bounded,Collect_Targets1152static,field accessors48static bytes unchanged;
+not booted, not whole call-chain proof.48061 numeric assertion+caller diagnostic
+still confirmed LIVE; do not restart. Runtime results remain1799+16 integrated,
+13+16 diagnostic. Previous/current goal turns PROGRESS. No shared production,
+index,commit,push changes. Full AML and native integration unfinished.
+
+2026-10-02 PROGRESS: numeric-checkpoint-o3c0om6h runtime24290 TERMINAL0;
+13 rollback checks +16ACPICA arithmetic/target-order comparisons PASS with
+assertions enabled. runtime-audit.json verifies source/tool/report/binary
+hashes; origins.json confirms sole source delta from integrated candidate is
+checked Context_Valid assertion immediately before Complete_Numeric call.
+48061 focused assertion+caller proof and56132 combined Requests proof both
+confirmed LIVE via session polls this turn, phase3. Do not restart either.
+No terminal proof result yet; no whole namespace verification claim.
+Previous goal turn progress; this turn progress (runtime/source audit) plus
+verified waits. Shared production and staging untouched.
+
+2026-10-02 PROGRESS: combined service-integrated-owner-cc2azty0 runtime10264
+TERMINAL0:1799 checked cases and16ACPICA comparisons PASS; runtime-audit.json
+verifies source/provenance/report/tool/binary hashes. Fresh combined full
+Requests proof56132 LIVE (initial Nix cache-lock denial retried with approved
+escalation); component
+proofs are not substituted for combined verification. Context checkpoint39569
+TERMINAL1: caller12VC/8unproved, source/report audited caller-proof-audit.json;
+prior checkpoint4/4 assertions prove. New private service-numeric-checkpoint-
+o3c0om6h adds checked Context_Valid assertion immediately before numeric call,
+scopes BOTH assertion and call780:781;48061 LIVE. No assumption suppression.
+No shared production/index/commit/push edits. Previous goal turn progress;
+current turn progress (terminal audits and targeted next proof). Full AML,
+whole namespace proof, promotion and native integration remain incomplete.
+
+2026-10-02 PROGRESS: previousgoalturn endpointstrict5+7audited.
+Current90805 TERMINAL0 strictRequests revision-ah1yrwxq155VC+21flow PASS,
+zero warnings/skips; revision-proof-audit.json actualHandle post/exactincrement
+andboundaryinvariant ads67 confirmed, sourcehashesstable.39569caller confirmed
+LIVE bybounded30secondpoll. New service-integrated-owner-cc2azty0 combines
+checkpoint57u9__ub AML/core plus exactverifiedrevision Requests/Bootstrap four
+files; origins.json/sourcehashmanifest preserves provenance. Combined runtime
+requests867/coreSmoke13/16ACPICA/field919 launched; handletoolhistory. This
+merge is NOT yet fullproof evidence; caller unresolved and freshintegrated
+verification needed. No sharedproduction/indexchanges; goalACTIVE.
+
+2026-10-02 PROGRESS: previousgoalturn strictRequests152+21 andcheckpoint4
+actualassertions audited, Endpoint launched. Current36472 TERMINAL0 strict
+Endpoint5VC+7flow PASS; endpoint-proof-audit.json confirms actualEncode,
+Dispatch,Dispatch_Block posts andsourcehashes. Scope trustsConfig/receivedStamp;
+NOT kernel tag authentication nor livegrant lifetime proof.90805exactrevision
+and39569checkpointcaller confirmedLIVE withbounded30second handlepolls. Inputs
+unchanged; no speculative modifications. No sharedproduction/indexchanges;
+goalACTIVE, fullAML/nativeintegration stillpending.
+
+2026-10-02 PROGRESS: previousgoalturn exactrevision contract introduced.
+Current60955 TERMINAL0 strictRequests boundary-oifp55ul152VC+21flow PASS,
+zero warnings/skips. boundary-proof-audit.json confirms actualpublicHandle
+VC_INVARIANT_CHECK ads67 andVC_POSTCONDITION ads69 plusallremainingchecks,
+sourcehashesstable. Removing redundantjoin diagnosticdidNOTremoveboundary
+requirement; that requirement nowproveddirectly.867checked/release alreadypass.
+39569checkpointphase commandexit0,4/4Context_Valid assertions677 proved across
+all4instances;46existingflowwarnings strictfail. checkpoint-proof-audit.json
+verified; same39569 nowcallerphase. Thus validityprovedaftertargetprelude,
+remainingcaller result will locate laterbranch complexity.90805strongerrevision
+867assertionsPASS, runtime-audit.json stable; proofLIVE.36472LIVE fullEndpoint
+proof against strictRequestsparent: expectedEncode/Dispatch/Dispatch_Block
+andactualposts to audit. Trustedstamp/nativegrants remain external boundaries.
+No sharedproduction/indexchanges; goalACTIVE, wholeAML/nativeintegration pending.
+
+2026-10-02 PROGRESS: previousgoalturn verifiedwait60955/39569; both
+confirmedLIVE again, no restart/inputchange. New private request-revision-ah1yrwxq
+strengthens Handle publicpost to specify exactone revision advance (andold<Max)
+for authenticated Start..Finish mutations returningOK/Table_Rejected/Incomplete.
+Retains monotonic andexactdenied/read-onlyframe contracts. This is protocol
+behavior alreadyimplemented/tested, now an explicit proofobligation; no body
+change or weakenedrequirement. Assertion867runtime thenentireRequests proof
+launched; newhandle recordedtoolhistory. Existing boundaryproof usesparent
+source; cannot establish this strongerpost. No sharedproduction/indexchanges;
+goalACTIVE, fullverification/liveintegration stilloutstanding.
+
+2026-10-02 VERIFIED WAIT: previousgoalturn audited867explicitchecked/release
+agreement. Current60955directRequests boundary and39569interpretercheckpoint
+confirmedLIVE byspecific bounded30second handlepolls, no newdiagnostics or
+terminal result. Frozeninputs unchanged; no restart or blockedclaim. No shared
+production/indexchanges; goalACTIVE, await actualboundary/checkpoint evidence.
+
+2026-10-02 release99230 TERMINAL0: same867explicitchecksPASS under-gnatp andcheckedmode; mode-comparison-audit.json exactsource/log/binaryhashes. No observedmode divergence inthese cases; Ghostassertions checkedmodeonly.
+
+2026-10-02 PROGRESS/validation: previousgoalturn count153VC/1fail audited
+and boundarydiagnosticremoval. Current60955boundary runtime867assertionchecks
+PASS; runtime-audit.json sources/log verified.60955fullRequests +39569checkpoint
+proofs confirmedLIVE. Independent request-release-6eipe60d copies exactboundary
+sources, release_tests.gpr -gnatp (no-gnata/-gnato), disjointbuild-release.
+99230LIVE explicitrequests/endpoint/nativeadapter tests to compare enabledvs
+release behavior after recent requestrefactors, peruser preference. Ghost
+assertions only count as checkedmode evidence; no releaseproofclaim. No shared
+production/indexchanges; goalACTIVE, fullverification/nativeboot unfinished.
+
+2026-10-02 PROGRESS: previousgoalturn native-stackcomparison +checkpoint16.
+Current54394 TERMINAL1: count-erzf42uv153VC/1unproved, onlyfinalmergedConsistent
+assert247 (StartedwhenOpen component). HelpercallCountbound andallbranch
+assertions nowprove; terminal-proof-audit.json hashverified. New private
+request-boundary-oifp55ul removes ONLY redundant diagnosticjoinassert, retains
+all5branchassertions, publicType_Invariant/Pre/Post unchanged. Fresh fullproof
+must prove actualHandle boundaryinvariant+post directly; no completionclaim
+based on removingdiagnostic. Runtime867 thenproof launched; handle recorded
+in toolhistory.39569checkpoint proof confirmedLIVE atlastpoll. No sharedsource
+orindexchanges; goalACTIVE, fullverification/liveintegration pending.
+
+2026-10-02 PROGRESS: previousgoalturn checkpointdiagnostic+count867audit.
+Current39569checkpoint runtime16ACPICAcomparisons PASS, runtime-audit.json
+verifies sources/report/toolinputs.54394Requests and39569proofs confirmedLIVE.
+Independent native-stackcomparison audit: oldfield-native7hhxt_hx vscurrent
+r8ex6sc4 sources/seeds verified; all5 Operand.Constprop frames exactly unchanged
+(187472..187584bytes,dynamic), largest8reportedframes identical. New
+stack-comparison-audit.json hashes all.suinputs. Compiler report only, NOT
+wholecallchain bound, timing claim orboot. No sourcechanges/sharedindexedits;
+goalACTIVE, fullverification/liveintegration remain incomplete.
+
+2026-10-02 PROGRESS: previousgoalturn auditedStart_Validated3VC+1flow
+fullframe and targetcaller8fail; started countvalidation. Current54394 confirmed
+LIVE; count-erzf42uv867assertionchecksPASS, runtime-audit.json hashesverified.
+GeneratedALI Collect_Targets Globals show onlyCode/Offset/Limit inputs andOffset
+output, noEnvironment; sourceactuals are disjoint Count/Total/Targets. Further
+collector refactoring unlikely to address environmentvalidity itself.
+New private context-checkpoint-57u9__ub adds checkedContext_Valid immediately
+after collecting-target prelude, before dispatch branches (line677); no semantic
+change under validexecution.39569LIVE assertion16ACPICA thencheckpoint677 and
+caller780 scopedproofs separately. BOTH mustprove; a callerpass cannotjustify
+an unprovedearlierassert. No sharedproduction/indexchanges; goalACTIVE.
+
+2026-10-02 terminalupdate52113: targetparameters caller12VC/8unproved Context_Valid pre+implicitEnvironment invariant across4instances at779. caller-proof-audit.json sourcehashesverified. Narrowingcollector interface proves88VC but doesNOT fix caller.54394remainslive.
+
+2026-10-02 PROGRESS: priorgoalturn strongerframe runtime867audit.
+Current77510 TERMINAL1 only wrapper guessedminimum5; gnatprovecommandexit0,
+actualcompleteStart_Validated scope3VC+1flow, zero warnings/skips. Audited actual
+precondition146, acceptanceassert147, entirepost137 (all5conjunct branches),
+entityline133/sourcehash/loghash/freshreport; strictreportchecker passes min4.
+start-frame-audit.json records originalwrapperfailure and correctedcoverage;
+futureconfig min4, oldresultpreserved. No identicalproof rerunneeded.
+85669 TERMINAL1:150VC/2unproved: callCount<=Boot.TableCapacity and finaljoin
+Consistent; helper/publicposts proved. terminal-proof-audit.json hashverified.
+New request-count-erzf42uv retains strongerframe; validates wordrepresentation,
+converts toPositive Count, compares directly with Boot.Table_Capacity before
+Startedguard/helpercall. Bootdiscriminant equalsServercapacity; sameaccepted
+range/errorpriority.54394LIVE runtime867 thenfullRequestsproof.52113caller
+stillLIVE atlastpoll. No sharedproduction/indexchanges; goalACTIVE.
+
+2026-10-02 PROGRESS/VERIFIEDWAIT: previousgoalturn strengthened startup
+Core_Model frame. Current fsviuiqd assertion867PASS audited sourcehashes/log;
+strongerframe runtimeenabled.52113targetcaller/85669Requests/77510startframe
+allconfirmedLIVE viaexacthandles. Intermediateproofsessionfiles updated20:03:55
+(targetcaller),20:04:29(requests),phase1compiler20:04:23(startframe); no terminal
+or failed-jobclaim. Inputs remainfrozen, no further speculative sourcechanges.
+No sharedproduction/indexchanges; goalACTIVE, fullverification incomplete.
+
+2026-10-02 PROGRESS: previousgoalturn startup867audit+verifiedwait.
+Current52113 targetcaller and85669Requests confirmedLIVE byexacthandles.
+New private service-start-frame-fsviuiqd strengthens Start_Validated post with
+Core_Model(Session)=Core_Model(Session)Old, matching underlying proved
+Bootstrap.Start retained-core frame. No implementationchange or weakenedcase;
+explicit guarantee avoids losing meaningful state-preservation information at
+new internal boundary.77510LIVE assertionruntime then scoped actualStart_Validated
+proof (--limit-subp currentline133, expectedentity/min5checks), privateoutputs.
+This strongerpost NOT yetproved; currentwholeRequests job uses parent5ywvwkv8.
+No sharedproduction/indexchanges; goalACTIVE, fullverification outstanding.
+
+2026-10-02 PROGRESS/VERIFIED WAIT: previousgoalturn target88VCaudit and
+Start_Validated extraction. Current startuphelper5ywvwkv8 assertion867PASS,
+runtime-audit.json verifies unchangedinputs/log.52113 targetcaller and85669
+Requests proofs confirmedLIVE bybounded30second exacthandle polls. No new
+proofdiagnostics or speculative dependentchanges. No sharedproduction/index
+changes; goalACTIVE, fullverification/liveintegration remain incomplete.
+
+2026-10-02 PROGRESS: priorgoalturn nativeGNAT16link verified +request2fail.
+Current52113 collectorphase commandexit0 but strictwrapper flagsoldflowwarning;
+88/88VC incl4actualCollect_Targets postsproved,46flowwarnings. collect-proof-audit
+sourcehashes/report/entities verified. Same52113callerphase stillLIVE.
+Request remaining Accepted164=CVC5/Z3timeout10; join230=CVC5timeout/Z3OOM.
+New private request-start-helper-5ywvwkv8 isolates alreadyguardedBootstrap.Start
+in internalStart_Validated(Session,Count) with validity/notStarted/count pre,
+Started/Receiving/Expected post and checkedAccepted assertion. Handler retains
+sameguards/countconversion; no scopeexpansion.85669 LIVE assertion867runtime
+thenentireRequestsproof namingnewhelper. Newhelperpost doesnotclaim fullCore_Model
+frame; underlyingBootstrap.Start retains its separatelyprovedfullframecontract.
+No sharedproduction/indexchanges; goalACTIVE, caller/fullverification pending.
+
+2026-10-02 PROGRESS: previousgoalturn verifiedwait52113/15083.
+Current15083 TERMINAL1: branch148VC/2unproved (Accepted assert164, joinConsistent
+assert230). All5branchConsistent assertions and actualHandle publicpost proved,
+including deniedexactframe, but unprovedassertions mean NOT overallproof.
+terminal-proof-audit.json hashes/report/posts audited.52113stillLIVE atlastpoll.
+Independent current-native-r8ex6sc4 combines target6kfyn_u8 AML/core with
+branch97_4opb5 Requests/Bootstrap and original actualnativeadapter/clock files;
+459inputs/seeds hashchecked.5123TERMINAL0 GNAT16 release(-gnatp) nativeELF
+compile/bind/linkPASS. native-stack-audit.json ELF/sourcehashes verified:
+Collect_Targets1152static per5reportedinstances, Handle176dynamicbounded,
+Declare_Table_Field/Read_Namespace_Field48static each. Helperinlining meansno
+separateComplete_Numeric/Arithmetic frame reported; no wholechain bound orboot
+claim. No sharedproduction/indexchanges; goalACTIVE, fullverification pending.
+
+2026-10-02 VERIFIED WAIT: previous goalturn progressed via branch867audit
+and numericcaller12VC/8fail evidence. Current52113 targetcollector/caller and
+15083 requestbranch proofs confirmedLIVE in bounded30second exacthandle polls,
+no newdiagnostics/terminal results. Inputs frozen, no restarts/newsourceedits.
+Reviewed namespaceContext_Valid expansion; no unsupported semanticconclusion.
+No sharedproduction/indexchanges; goalACTIVE. Await existing narrowed-target
+and perbranchresults before further dependent refactors.
+
+2026-10-02 PROGRESS: priorgoalturn preorderproof audit3fail+branchcandidate.
+Current15083 runtime867assertionchecksPASS with perbranchConsistent/Accepted
+assertions; runtime-audit.json verifies sourcehashes. Formal15083confirmedLIVE.
+15139 nowTERMINAL1: numericcaller12VC/8unproved, all4Context_Valid preconditions
+and4implicitEnv invariants atline774. caller-proof-audit.json hashes+checktrees
+retained. Numeric76VC helperproof remains validscoped evidence, but extraction
+alone didnotresolve caller. Targetparameters52113 confirmedLIVE; collect then
+caller proof alreadytests fullFrameequality removal, so no speculative restart.
+No sharedproduction/indexchanges; goalACTIVE, fullproof/liveintegration pending.
+
+2026-10-02 PROGRESS: previousgoalturn targetparser narrowed+flowaudit.
+Current20042 TERMINAL1: preorder144VC/3unproved, boundaryinvariantcheck now
+proved. Remaining mergedUsed<=Extent,StartedwhenOpen,deniedexactModelframe;
+terminal-proof-audit.json verifies sourcehashes.52113 LIVE targetparameters
+proof;16assertionACPICAcomparisons PASS, runtime-audit.json report/toolhashes
+verified.15139 callerproof confirmedLIVE. New private request-branches-97_4opb5
+replaces impossibleStart rejectedreturn with checkedAssert(Accepted), justified
+by previous validcount/notStarted guards and provedBootstrap.Start acceptance
+contract. Adds Consistent assertions per5mutationbranches and finaljoin instead
+of mergedcomponentchecks to localize/simplifyobligations; no assumedasserts.
+15083 LIVE assertionruntime thenentireRequestsproof. Publiccontracts unchanged;
+newassertions/remaining3obligations require proof. No sharedproduction/index
+changes; goalACTIVE, no wholeverificationclaim.
+
+2026-10-02 PROGRESS: previous turn runtime867+redundantreturncleanup.
+Current98666 TERMINAL0 flow-only628results/46warnings (21INEFFECTIVE,
+25INOUT_ONLY_READ);4new numeric tailreturn warnings gone; flow-audit.json
+hashes/progress/skipfields audited, NOT theoremproof.15139caller/20042Requests
+confirmedLIVE byexacthandles. Independent target-parameters-6kfyn_u8 narrows
+Collect_Targets formals from entireFrame to Count/Total/Targets (same0..2subtype),
+removing hugefullFrame equality post while making unrelated fields inaccessible
+to mutation. Both callsites pass correspondingdisjoint components; body otherwise
+unchanged.52113 LIVE assertionbuild16ACPICA then collect174..218 andcaller779
+scoped proofs. Aims to reduce caller formula complexity; no passassumed. Based
+numericcleanup, includes strengthenedarithmetic contract and numerichelper.
+No sharedproduction/indexchanges; goalACTIVE, fullverification outstanding.
+
+2026-10-02 PROGRESS: prior turn audited strictbootstrap75VC and numeric76VC,
+request4fail pluspreorderfix. Current20042 confirmedLIVE preorderww2ba591:
+867assertionchecksPASS, runtime-audit.json verifies sourcehashes/log; nowRequests
+proof.15139 callerproof confirmedLIVE. New private numeric-cleanup-p_ed0yf6
+removes redundant tail conditionalreturn introduced atComplete_Numeric end;
+proof flagged statementhasnoeffect in4instances. No behavioral branchchange:
+procedure returns atthatpoint eitherway.98666 LIVE flow-only namespace check
+withseparateoutputs; this is not a theoremproof/fullnamespace validation.
+No sharedproduction/indexchanges; goalACTIVE, formal/liveintegration incomplete.
+
+2026-10-02 PROGRESS: prior goalturn bootstrap159 runtime evidence.
+Current13252 TERMINAL0 strict bootstrap75VC with0flowwarnings; actualStart,
+Import_Table,Finish posts audited in bootstrap-proof-audit.json.90461TERMINAL1:
+Consistent request144VC/4unproved, downfrom7; actualRead_Request post proved.
+Threeold mutationobligations remain plus precondition Valid(Server) calls public
+function before structural Consistent established. requests-proof-audit.json
+hashes stable. New private preorder-ww2ba591 swaps conjunction order to
+Consistent andthenValid, preserving acceptedstate set while discharging call
+invariant before evaluating public Valid. Fresh runtime/fullRequests proof launched.
+15139 numericphase commandexit0,76/76VCs incl4actualComplete_Numeric posts
+proved;50flowwarnings strictwrapperfailure. numeric-proof-audit.json stable.
+Same15139 runs callerphase next; no caller/fullnamespace claim. No sharedsource
+orindex edits; goalACTIVE, fullcorrectness/liveintegration outstanding.
+
+2026-10-02 bootstrap13252 runtime159 assertionchecksPASS on revised Started expression; bootstrap-runtime-audit.json hashesstable. Proof remainsLIVE, runtimepass not proofclaim.
+
+2026-10-02 VERIFIED WAIT/ongoing validation: previous goalturn progressed
+by explicit Consistent invariant boundary +867runtime and numeric7879tests.
+Current15139/90461 confirmedLIVE via exacthandles; no restart or failed-job
+claim. New13252 LIVE bootstrap proof dependency check on consistent4g8pjh19:
+assertion bootstrap build/test then entireACPI_Bootstrap proof with Start,
+Import_Table,Finish expectedentities/min60checks, separate build-bootstrap
+outputs. Needed because Started body moved to private expression since old
+bootstrap proof. No sourcechanges thisturn; no newproofsuccessclaimed.
+GoalACTIVE; fullnamespace/request/formal/nativeintegration remain incomplete.
+
+2026-10-02 numeric regression96455 TERMINAL0: {'DIVISION': 1048, 'LOGIC': 2013, 'CALL': 4818} assertionsPASS. runtime-audit.json verifies exactparent85u_0r1u inputs plus binaries/log. Formal15139/90461 stillLIVE at lastpoll.
+
+2026-10-02 PROGRESS: previous goal turn audited strongerhelper52VC PASS
+and callerfailure/readsplitproof failures. Current15139 confirmedLIVE numeric
+helper proof;16ACPICA assertions passed and runtime-audit.json verifies all3
+reports/toolinputs/sourcehashes. New private service-request-consistent-4g8pjh19
+factors original unchanged structural Type_Invariant into private Consistent
+expression and explicitly requires it at internalRead_Request precondition.
+90461 LIVE: compiled and867assertionchecksPASS, runtime-audit.json stable;
+now entireRequests proof. No publiccontract weakening or suppressedcheck.
+Independent numeric regression heox3y46 copies exact85u_0r1u source plus
+existing division/logic tests;96455 LIVE build then division/logic/call tests.
+No sharedproduction/indexchanges; goalACTIVE, fullverification outstanding.
+
+2026-10-02 PROGRESS terminal update:98558 commandexit0, strictwrapper fails
+existing flowwarnings only. Stronger arithmetic helper52/52VCs proved including
+all4actual instantiated exact-result/divzero postconditions;46flowwarnings.
+terminal-proof-audit.json sourcehashes/report/postentities audited. 92704
+TERMINAL1: readsplit144VC/7unproved, zero flowwarnings; original3 obligations
+plus4implicit request-state invariant checks insideRead_Request. Its actual
+reply postcondition proved. Privateinternal helper requires explicit structural
+state-invariant precondition: next candidate should factor identical existing
+Type_Invariant into private expression predicate and require it atRead_Request
+boundary (no weakening). Current15139 numeric refactor remainsLIVE. Stronger
+arithmetic proof applies parentc6rjjsvo, needsfullcoverage after numericmove.
+
+2026-10-02 PROGRESS: previous turn audited5866 assertion regressions.
+Current30346 TERMINAL1 caller:12VC/8unproved, four Context_Valid preconditions
+and four implicit environment invariants atComplete_Arithmetic call. Actual
+inspected branch CVC5timeout10/Z3OOM; caller-proof-audit.json verifies hashes
+and records checktrees. No counterexample established. Stronger-helper98558
+and request-readsplit92704 became TERMINAL1 in final poll; audits below supersede. Reviewed liveintegration gaps in
+backendREADME/catalogAPI; no kernel changes attempted while focusingproof.
+New private service-numeric-helper-85u_0r1u extracts unchanged slot resolution,
+coercion, logic/arithmetic completion to Complete_Numeric with explicit context
+preservation and integer-on-success post. Copies stronger arithmetic contract;
+that dependency itself remains pending98558. 15139 LIVE: assertion build16
+ACPICA comparisons then numericregion/callerregion proofs. Different outputdirs;
+no assumptions or semantic weakening. Source locations279..332 andcaller774.
+No sharedproduction/indexchanges; goalACTIVE, no fullverificationclaim.
+
+2026-10-02 PROGRESS: previous goal turn read-request extraction/runtime867
+and arithmetic16 oracle audit. Current confirms30346 caller,98558 stronger
+helper,92704 requests readsplit proofs LIVE by exacthandle polls. Reviewed
+readsplit diff: identical readbody, authentication/header gates remain caller.
+Private service-arithmetic-regression-dvmafzn9 copies exact stronger-helper
+sources plus existing division_tests;13489 TERMINAL0 assertionenabled1048
+Division +4818Call checks PASS (5866total). runtime-audit.json verifies sources
+match result-c6rjjsvo, inputmanifest and binaries/log. Coverszero divisor,
+aliased targets, truncation/budget, method error/rollback regression paths.
+No new production/test behavior changes this turn; no sharedindex modifications.
+GoalACTIVE; current formaljobs incomplete and liveintegration still outstanding.
+
+2026-10-02 PROGRESS: previous goal turn strengthened arithmetic result
+contract and started fresh checks; current57071 TERMINAL0,16ACPICA comparisons
+PASS on result-c6rjjsvo; runtime-audit.json checks all3 oracle reports and their
+script/binary/tool inputhashes plus source manifest. Stronger-helper98558 and
+parent-helpercaller30346 both confirmed LIVE. Request expression49845 TERMINAL1,
+140VC/3unproved identical lifecycle obligations (Used<=Extent, Started whenOpen,
+Handle denied exactframe); terminal-proof-audit.json hashes stable.
+New private service-request-read-split-5idt1erw extracts readmetrics/table
+branches unchanged to Read_Request(Server : State), with revision/boundedreply
+postcondition. Authentication/header gates remain in Handle, and helper has
+readlabel+Valid precondition; cannot mutate inputstate. This reduces Handle
+proof complexity without weakening contracts. 92704 LIVE:867assertionruntime
+PASS then entire Requests proof; runtime-audit.json sourcehashesverified.
+No shared production/index changes; goalACTIVE. Fullproof/liveintegration pending.
+
+2026-10-02 PROGRESS: prior goal turn progressed (terminal evidence audits,
+private Started-expression change, runtime867 verified). Current turn confirms
+30346 caller proof and49845 Requests proof both LIVE by exact handles.
+Independent private service-arithmetic-result-c6rjjsvo strengthens helper
+postcondition: divide/modulo zero iff Division_By_Zero and result0; otherwise
+result exactly AML_Integers.Apply(Op,Left,Right,Width), including target-write
+failure paths. No behavior edit, no weakened preconditions or assumptions.
+98558 LIVE scoped helper proof,57071 LIVE assertion-enabled runtime build plus
+16ACPICA comparisons (outputs disjoint). Parent40VC proof does NOT establish
+this stronger contract; fresh proof required. No shared production/index edits.
+Goal ACTIVE; caller/fullnamespace/state proofs and liveintegration outstanding.
+
+2026-10-02 PROGRESS: helper phase30346 completed commandexit0 but strict
+wrapper rejected existing flow warning at aml_execute.adb1090. Actual helper
+region has40/40 provedVCs, including all4 Complete_Arithmetic instantiated
+postconditions; helper-contract-audit.json verifies entitynames+sourcehashes.
+46flowwarnings remain, so NOT strict fullpass. Same30346 handle proceeds to
+caller-region proof; confirmed LIVE. Request expression49845 also LIVE.
+
+2026-10-02 PROGRESS: continued after user-requested crash report. Previous
+report-only turn yielded no new implementation evidence; current turn audits
+terminal jobs and makes a private proof-visibility change. 63643 TERMINAL1:
+lifecycle root8oey5uvh 140VC/3unproved (Used<=Extent, Started when Open,
+Handle rejected-state exact model frame). 48124 handle now missing, retained
+result TERMINAL1: resource retry oldstarted rootwyxky9cn 141VC/6unproved;
+more resources/CVC5-only not a remedy. Both terminal-proof-audit.json files
+verify unchanged source manifests and record actual failed obligations.
+92940 terminal result retained from earlier; runtime.log now confirms all16
+arithmetic ACPICA comparisons; helper rootlmb6bs7f runtime-audit.json hashes
+verified. 30346 confirmed LIVE by handle poll; helper then caller proofs.
+New private service-started-expression-knrzkfx_ moves unchanged Started
+expression into Bootstrap private spec, so clients can reason about actual
+Begun field; no interface/acceptance weakening or assumptions. 49845 LIVE:
+867 assertion checks PASS (711requests/57endpoint/99hosted native adapter),
+runtime-audit.json stablehashes; now entire Requests proof running. No shared
+production/index changes; goal ACTIVE, no whole-service verification claim.
+
+2026-10-02 PROGRESS: lifecycle8oey5uvh867assertionchecks PASS/hashstable,
+runtime-audit.json;63643 nowRequestsproofLIVE.14069 TERM1 checkpoint76VCs/
+16unproved incl4Context_Valid assertsBEFOREpurecalculation. Newprivate
+service-arithmetic-helper-lmb6bs7f extracts Complete_Arithmetic with explicit
+Context_Valid preservation, integerresult/statuscontract, divisionzero guard,
+ordered remainder/quotientwrites andearlyfailure. Usesflowcleanup branch; no
+laterStarted lifecyclechange merged.30346 LIVE sequentialhelperregion242..274
+andcall754proofs (separateconfigs toavoidswitch ambiguity);92940 LIVE16ACPICA
+comparisons.48124oldrequestresource stillpending. No sharedproduction/index edits.
+CurrentturnPROGRESS through verifiedlifecycle runtime andmodulararithmetic change.
+
+2026-10-02 PROGRESS: service-request-lifecycle-8oey5uvh removes duplicated
+Requests.Started runtimeflag andits redundantGhostmodel member. Current/start
+admission/open invariant queryBoot.Started directly; allactualstate stillinGhost
+Model viaBoot.Model. Eliminates synchronization relationship byconstruction,
+no relaxation ofone-shot startup. Request711+endpoint57+native99 thenrequest
+proof launched.48124oldresource and14069arithmetic jobsstillLIVE; frozeninputs
+unchanged. Arithmeticregion723..738 verifiedincludesnewassert+bothwrites.
+No sharedproduction/index changes. Goal incomplete.
+
+2026-10-02 VERIFIED WAIT:48124/14069 bothconfirmedLIVE after20s polls;
+sourcehashes rechecked unchanged. No restart/source/index/newproofclaim.
+PreviousturnPROGRESS release-vs-checked native-loop39comparison; currentverified
+wait. Objective remainsACTIVE/incomplete, no externalblocker.
+
+2026-10-02 PROGRESS:38540 TERM0 same39native-loop explicitchecks pass
+release -gnatp asassertionenabled; originalsourcehashesunchanged, separateGPR/
+binary/log hashedrelease-comparison-audit.json.3Ghostfullstateassertions run
+onlycheckedmode, notclaimedreleasechecks. Hosted scriptedIPC, nobootclaim.
+48124/14069 exacthandles confirmedLIVE with20s waits; no restarts/edits toproof
+inputs. No sharedproduction/index changes. CurrentturnPROGRESS modecomparison.
+
+2026-10-02 VERIFIED WAIT:48124/14069 exactsessions confirmedLIVE.
+Read-only nativecatalog/Authority_Policy audit: noexistingACPI service role or
+snapshotexport authority. Future wiring must add explicit scopedexport, not
+reusegenericrawmemory capability; no ABI/capability policy edits thisturn.
+No source/index changes. Previous/currentturn verifiedwait; objectiveACTIVE.
+
+2026-10-02 VERIFIED WAIT:48124requestresource retry and14069arithmetic
+checkpoint confirmedLIVE; bothsource manifests rechecked unchanged. Read-only
+integrationsearch confirms no callers ofkernelCopy_Table/Snapshot_Table_Count
+outsideACPI itself andno ACPI catalog/procmgr startup role yet. No new code
+orverificationclaim. PreviousturnPROGRESS native-loop39+3/resourceinvestigation;
+currentverifiedwait, objectiveACTIVE/incomplete.
+
+2026-10-02 VERIFIED:94832 TERM0 migratedactualnative-loop hosted39checks
++3Ghostexactstateassertions PASS, runtime-audit.json inputhashesstable; scripted
+IPC only/no livekernel authenticationclaim.11102 TERM1 requestStarted assertion
+ANDfinalinvariant stillunproved; inspectedchecktrees CVC5/Z3 memory/timeout
+limits, including CVC5outofmemory after46832steps onfinalinvariant.21207 installed
+help confirmsmemlimit MB; host106GiBavailable. Samefrozencandidate retry with
+CVC5only30seconds/4096MiB, freshproof-requests-resources output launched.
+14069 arithmeticcheckpoint stillpending. No sharedproduction/index edits.
+CurrentturnPROGRESS through native-loopcoverage andresource-diagnostic change.
+
+2026-10-02 FOLLOW-UP:65853 TERM4 fixture missingNative_Endpoint source;
+addedactualnativeadapter dependency afterterminal, recapturedmanifest.94832
+retryLIVE; originalruntime.log retained. No behaviorchange orsharededit.
+
+2026-10-02 PROGRESS: service-loop-owned-gnborb6v migrates actualnative
+loop fixture to2separate limitedServer lifetimes; fullstate equality preserved
+via3 GhostModel runtimeassertions instead ofcopyingState. Currentruntime ABI
+Message declarations extracted byexistingprepare logic into PRIVATEroot;
+actualNative_Server/Launch reused, scriptedIPC/grantmocks remainHOSTED.
+Loopcompile/test launched;11102request and14069arithmetic stillLIVE.
+RemainingINEFFECTIVE warnings onlydiscardedoutputs atReturn/Run_Typed; no
+interface changes orsuppression tohide these. No sharedproduction/index changes.
+
+2026-10-02 FOLLOW-UP:81049 TERM0 cleanup13rollback+58ACPICA PASS,
+runtime-audit.json hashesverified.11102 and14069 remainpending.
+
+2026-10-02 VERIFIED:25506 TERM0 flow-only cleanup analysis608results,
+46remainingwarnings vs56baseline; allremaining INOUT_ONLY_READ/INEFFECTIVE,
+no uninitialized-read diagnostics. flow-audit.json checksflowphase, frozeninputs,
+no skips, reporthash. This isFLOW evidence only, notnewVC proof.81049 runtime
+13rollback+18wrapper passedsofar, exacthandleLIVE;11102request and14069arithmetic
+stillLIVE. No furtheredits orshared/index changes. CurrentturnPROGRESS.
+
+2026-10-02 PROGRESS: service-flow-cleanup-cjhury16 removes4overwritten
+initialvalues: Operand.Pending_Slot,Inspect.Type_Code,Load_Bound.Item (Root0
+retained),Define_Region.Query initializer. No warning suppression orcallbackmode
+changes.25506 LIVE flow-only actualnamespace analysis (notproofclaim);
+81049 LIVE checked13rollback+58ACPICA. Sourcehashmanifest frozen.11102request
+and14069arithmeticcheckpoint proofs exacthandlesremainLIVE. Thiscleanup branch
+includes arithmeticcheckpoint but not laterStarted request assertion; merge
+explicitly only afterverification. No sharedproduction/index changes.
+
+2026-10-02 FOLLOW-UP:31519 TERM0 arithmeticcheckpoint16ACPICA cases
+PASS (8arithmetic+2order+6Divide), runtime-audit.json verifiedfrozeninputs.
+11102 latestRequeststartup-agreement runtime/proof LIVE.
+
+2026-10-02 PROGRESS:80958 TERM1 request nowONLYHandlefinalinvariant;
+alllocalphase/extent/finalupload assertions proved.61027 TERM1 strictflowwarnings
+only: combinedCore actualDIC proved, source/report latest-proof-audit.json.
+Newservice-request-started-wyxky9cn adds checked Started=Boot.Started before
+existing fullupload-state assertions; runtime711thenproof launched.
+14069arithmeticcheckpoint proof and31519arithmeticruntime stillLIVE.
+No sharedproduction/index changes. Goal incomplete.
+
+2026-10-02 PROGRESS:19878 TERM1 CVC5timeout30 scopedarithmetic still
+12unproved/32checks. All4actualinstantiations andsourcehashes independently
+audited arithmetic-targets-audit.json (wrapper emptyentitycaveat remains).
+Newservice-arithmetic-checkpoint-jphcvq7f adds checked Context_Valid assertion
+before pureintegercalculation; no assumption/contract weakening.14069 LIVE
+scoped723..738 proof inclnewassert; runtime arithmetic/order/Dividecomparison
+joblaunched.80958request+61027combinedinit remainpending. Initiallyplanned
+redundantinitialization cleanup deferred due newarithmetic diagnostic evidence.
+No sharedproduction/index changes. CurrentturnPROGRESS.
+
+2026-10-02 VERIFIED:29411 TERM0 both correctedcaller proofs. Fieldread
+strictPASS report/resultsource hashes audited read-field-audit.json; no public
+postcondition declared (safety andcalledpreconditions proved). Declare earlier
+12proof+2flow andactualpublicpostcondition proved.19549flowwarning audit
+identifies22unique source locations across56instances: readonly INOUTcallbacks
+andineffectiveinitializations, notunproved safetyVCs. No suppressions added.
+80958request,61027combinedinit,19878arithmetic exacthandlesremainLIVE.
+CurrentturnPROGRESS through completedfieldread proof. No shared/index changes.
+
+2026-10-02 VERIFIED:29411 correctedDeclare_Table_Field stage strictPASS
+12proof+2flow, actualpostcondition andfrozenhashes audited declare-field-audit.json
+infield-admission-8q4ck90o. ExplicitTables0 guard resolves finalinvariant.
+29411 nowRead_Namespace_Field stageLIVE.47653 TERM1 bothstaleselectors produced
+NOchecks, notfunctional failures.80958 request711assertions PASS,audited in
+request-checkpoints-py83zu_s/runtime-audit.json; nowRequests proofLIVE.
+61027combinedinit and19878arithmetic exacthandlesLIVE. CurrentturnPROGRESS
+via actualcallerproof andnewassertionsruntime. No sharedproduction/index edits.
+
+2026-10-02 PROGRESS:19549 nowTERM1. Requestdiagnostic localphase asserts
+proved; remainingfinalassert is Extent>=header plusHandlefinalinvariant.
+Source/report audit request-diagnostic-audit.json retained. New
+service-request-checkpoints-py83zu_s combines latest guard/accessors/init with
+localchecked phase+extent assertions atBegin/Write branches; launched request
+711checkedruntime thenfullrequestproof. No assumption or weakened invariant.
+61027combinedinit,19878arithmetic,29411correctedcaller,47653stale-selectorread
+stillpending. No sharedproduction/index changes. Goal incomplete.
+
+2026-10-02 CORRECTION:47653 declaration stage TERM1 generatedNOchecks,
+not invariantfailure: copied limit-subp95 became stale afterObserve moved from
+body. Actual declaration89/read110. Newcorrected configs derive selectors from
+current declarations and usefresh separateoutputdirs;29411 LIVE sequence.
+Original47653read stage pending (also stale116); no successclaim. Frozen source
+unchanged.19549/19878/61027 pending. CurrentturnPROGRESS diagnostic correction;
+previous919runtimePASS stillvalid. No sharedproduction/index changes.
+
+2026-10-02 VERIFIED:73112 TERM0 fieldadmission candidate919assertion
+checks PASS, runtime-audit.json inputhashes stable.47653callerproof,61027combined
+initialization,19549requestdiagnostics,19878arithmetic proof all exacthandles
+confirmedLIVE thisturn. No new source/index edits. CurrentturnPROGRESS via
+verifiedregression on newguard; no inferred proofpass orbootclaim.
+
+2026-10-02 PROGRESS:combined-lqxzyuyy1786assertionchecks verified
+711request+57endpoint+99adapter+919fields, runtime-audit.json hashstable;
+61027 nowinit proofLIVE. Newservice-field-admission-8q4ck90o explicit Tables0
+rejection inDeclare_Table_Field, preserving existing implied no-region behavior
+andmakingemptyService invariant path explicit.47653 LIVE sequentialdeclare/read
+proofs; fieldruntime joblaunched.19549requestdiagnostics and19878arithmetic
+remainLIVE.83250 mistakenread-onlycwd probe TERM0 withcd failure (no edits),
+correctroot used foractualproof/build. No sharedproduction/index changes.
+CurrentturnPROGRESS. Goal incomplete.
+
+2026-10-02 FOLLOW-UP:66879 TERM1 Declare_Table_Field finalService invariant
+unproved (ads123); sequence stopped beforeRead_Namespace_Field. Inspect
+empty-snapshot/zero-table branch andBind_Table_Field frames next. No successclaim.
+
+2026-10-02 VERIFIED core default init:19549 corestage4/4VCs including
+actualDIC proved. Exact empty/zero metrics guarantee retained; strengthened
+ownerdefault zero usage supplies missing information.56otherflowwarnings mean
+wrapper strictfail, core-initialization-audit.json source/report hashes records
+scope.19549 nowRequestdiagnostics pending. New service-owned-combined-lqxzyuyy
+merges provedownerdefault+privateObserve expression with4provedfieldaccessors,
+limited service/core/boot/requests andunrolled targetwrites.61027 LIVE assertion
+request711+endpoint57+native99+field919 thencombinedinit proof. Frozen source,
+latest-owned-combined-root.txt pointer.19878 arithmetic and66879caller proofs
+remain pending. No sharedproduction/index changes. CurrentturnPROGRESS.
+
+2026-10-02 VERIFIED WAIT:19549,19878,66879 exacthandles stillLIVE.
+Read-only startup review confirms service awaits stamped configuration and
+kernel exports only Copy_Table/Snapshot_Table_Count internal APIs; no new
+transport wiring implemented this turn. Preserve allfrozen proofinputs.
+Previous/current turns verifiedwait; objective remainsACTIVE, no blockerclaim.
+
+2026-10-02 VERIFIED WAIT:19549 init/request diagnostics and19878 scoped
+arithmetic proof exactsessions stillLIVE. Started66879 sequential focused
+Declare_Table_Field/Read_Namespace_Field servicecaller proofs in frozen
+field-observers candidate; accessor contracts alreadyproved, callerverification
+required after replacing snapshots. No new runtime/source/index changes.
+Previous goalturnPROGRESS through migrated1051688servicechecks; current verified
+wait plus required callerproof dispatch. Goal ACTIVE/incomplete.
+
+2026-10-02 PROGRESS:13647 TERM0 broad migrated service suite in
+service-regression-41qzjmha PASS1051688 servicechecks plusFADT/register suites.
+Release -gnatp explicit Check/Program_Error remains active. Test-only access
+allocation/deallocation replaces Fresh reassignment with genuinelynew limited
+owner lifetimes; local S objects explicitlyconstrained. No productionreset API.
+Covers large>1MiB table, aggregatequota, identifiers, fieldinvalid/duplicates,
+retainedsourceoverwrite. Inputhashes/log audited runtime-audit.json.
+19549 and19878 exacthandles confirmedLIVE. No sharedproduction/index edits.
+Current/previous turnsPROGRESS; goal incomplete.
+
+2026-10-02 VERIFIED:32765 TERM0 all4 ownedfieldaccessors strictPASS:
+Present7+1,Kind7+1,Region_Data11+1,Field_Data11+1 =36proof+4flow.
+Actual4postconditions sourcehashes audited accessor-contracts-audit.json.
+19549 owner-init stage terminal (wrapper strictfail flowwarnings), all7VCs
+including actual strengthenedDIC proved; owner-default-audit.json captures scope.
+Sequence continues core-init thenrequests, exacthandleLIVE.19878 focused
+arithmetic CVC530seconds stillLIVE (coverage caveat previousnote applies).
+No sharedproduction/index changes. CurrentturnPROGRESS via verifiedcontracts.
+
+2026-10-02 VERIFIED:16801 native GNAT16 release TERM0, input hashes
+stable, native-stack-audit.json in service-field-native-7hhxt_hx. Both
+Declare_Table_Field andRead_Namespace_Field now48byte staticframes vs725216/
+725168 before. Actual native ELF linked; no boot orwhole-chain bound claim.
+Present/Kind/Region_Data actualpostconditions audited in observercandidate;
+32765 stillLIVE finalField_Data.19549 defaults diagnosticsLIVE. New19878 LIVE
+CVC5timeout30 scoped arithmetic targetfailures onunchanged unrollcandidate.
+IMPORTANT19878 wrapper config entities accidentallyempty after whitespace-key
+lookup failed; separately saved arithmetic-targets-expected.json int-normalized
+4actualfailedentities. Require explicit report coverage audit afterterminal,
+do not claim wrapper strictpass. No source/index/sharedproduction changes.
+CurrentturnPROGRESS through native measured reduction andcontract evidence.
+
+2026-10-02 PROGRESS:31319 TERM0 field-runtime-ghwz1df3 migrated existing
+service_field_execution_tests to explicit2/4096/2048 capacities and added direct
+fieldread agreement plusinvalidroot/region checks.919assertion-enabled checks
+PASS (runtime-audit.json inputshashes stable), revisions1/2,0..8192bits,
+sourceoverwrite, write denial, budget and value exhaustion.32765 accessor proof
+sequenceLIVE; Present strict7proof+1flow actualpostcondition audited.
+19549 default/boundary diagnosticLIVE.16801 LIVE native16 release rebuild in
+service-field-native-7hhxt_hx to measure framechanges; private old runtime seeds
+read-only, allnewnativeunit/source/project+runtime hashes captured. No bootclaim.
+No sharedproduction/index changes. Previous/current turnsPROGRESS.
+
+2026-10-02 FOLLOW-UP:90496 TERMINAL0 checked accessor candidate core build
+and13rollback PASS. Accessor proof32765 stillLIVE; field-specific coverage pending.
+
+2026-10-02 PROGRESS:89342 fullnamespace TERM1;4057VC/12unproved at
+Apply_Target first/second arithmetic writes, full-proof-audit.json source/report
+hashes verified. Unrolling did not resolve contextual validity proof failures.
+New PRIVATE service-field-observers-6c3_s8zy adds Owned.Present/Kind/Region_Data/
+Field_Data exact snapshot-equivalence contracts and direct A.Tree query bodies.
+Core fielddeclare/read replace6 runtimefullSnapshot calls with these accessors.
+32765 LIVE sequential accessor proofs;90496 LIVE checkedcore build/13rollback.
+19549 boundary/default diagnostics remains LIVE. Sources frozen. Next field
+runtime coverage should migrate existing service_field_execution_tests or full
+service_tests fixture (shared tests use old Fresh constructor). No native frame
+reduction claim until compiled measurement. No sharedproduction/index changes.
+Previous/current turns PROGRESS, goal incomplete.
+
+2026-10-02 PROGRESS: inspected actual failed request proof trees: final
+open-phase assertion CVC5 timeout10/Z3 outofmemory; finalinvariant both timeout10.
+Do not treat this as a demonstrated functional failure.19549 diagnostics and
+89342 namespace exacthandles confirmedLIVE. Recorded421 native GNAT16 release
+frame reports/hashes in model-shape root/native-stack-audit.json: fielddeclare
+725216bytes/read725168bytes, each3 fullSnapshot calls. Small owned query
+accessors are next concrete stack reduction; no whole-call-chain bound claimed.
+Current turnPROGRESS via new resource failure evidence/stack audit. No source
+or index changes, only private audit and own coordination note.
+
+2026-10-02 PROGRESS: target-unroll candidate core runtime13rollback+
+18wrapper PASS;83395 TERM2 invocation omitted lifetime fixture args.
+50979 corrected remaining comparisons TERM0:14lifetime+10package+8arithmetic+
+2order+6Divideorder; all58 audited acpica-audit.json, inputs stable.
+40108 TERM1 same2request obligations;10902 TERM1 init DIC unchanged after
+Observe expression private completion in service-init-observe-hiam45zm.
+New service-proof-boundaries-t9izxo1x adds checked Begin/Write phase assertions
+and explicit owner-default zero usage (retains exact Empty snapshot guarantee).
+19549 LIVE sequential owner-init/core-init/request diagnostic proof; no assumptions
+or weakened contracts.89342 fullnamespace remains LIVE exacthandle. No shared
+production/index changes. Previous/current turns PROGRESS; goal incomplete.
+
+2026-10-02 PROGRESS:12927 TERMINAL1 Requests now2unproved (open-state
+phase assertion +Handle invariant),61998 TERMINAL1 fieldwiseCoreDIC remains.
+51539 fullnamespace TERMINAL1 clustered arithmetic target-loop failures;
+all3 frozen source manifests rechecked, terminal-proof-audit.json retained.
+New PRIVATE service-target-unroll-a9z0gh6c unrolls bounded0..2 arithmetic target
+writes preserving collected-target order, remainder thenquotient and first
+failure exit. Moves Requests.Current identical expression toprivate spec for
+modular proof visibility.4148 TERM1 hosted defaultstack STORAGE_ERROR;
+retry established64MiB checkedmodel stack:711request+57endpoint+99native-mock
+PASS (runtime-audit.json),40108 LIVE nowRequests proof.83395 LIVE core build+
+58ACPICA comparisons/rollback;89342 LIVE fullnamespace proof. New sources
+frozen; no sharedproduction/index edits. Native stack/liveboot stillunverified.
+Previous response supplied standalone provercrash details; current turnPROGRESS
+via source changes and867runtimechecks. Goal incomplete.
+
+2026-10-02 PROGRESS: service-owned-frames-r8mqdbwt strengthens Boot
+Import_Table/Finish Started and Expected preservation; Finish additionally
+preserves exact Core_Model. Bootstrap strictPASS (obhyzrcn), actual3 public
+mutation postconditions and source hashes audited frames-audit.json.
+32474 TERMINAL0 request711+endpoint57+native-adapter hosted99=867 PASS.
+12927 LIVE now request proof stage. Separate service-init-fields-t6sfqhcy
+expands identical initial Metrics=zero guarantee into9zero numeric fields+
+false saturation bit, to localize residual DIC failure without weakening it;
+61998 LIVE focused initialization proof.51539 fullnamespace confirmedLIVE.
+Read-only boot wiring audit: service README still explicitly excludes actual
+startup/provider export installation; headless run.sh has no ACPI service test.
+Native executable build alreadyproved in previous root, boot remains genuine
+integration work, not an existing test to rerun. No shared source/index changes.
+Previous/current goal turns PROGRESS; objective incomplete.
+
+2026-10-02 VERIFIED:65995 TERMINAL0 freestanding ACPI compile/bind/link
+with GNAT16.1.0 matching copied runtime; ELF64x86_64EXEC built at
+service-owned-model-shape-h3d_v312/build-native-gnat16/acpi.svc. Native inputs
+hash-stable, native-link-audit.json records binary/compiler/GPR/source seeds;
+-gnatp release, runtime prebuilt seed, NO boot test or shared promotion.
+82552 TERMINAL0 Bootstrap entire package strict65proof+13flow; actual Start,
+Import_Table,Finish postconditions audited bootstrap-proof-audit.json.
+2883 TERMINAL1 combined sequence (Requests failed5VCs, Endpoint stage completed
+separately); original request failures include now-repaired model dimensions
+and missing Started/Expected preservation frames on Boot Import/Finish.
+99590 TERMINAL1 remaining Core default-initial-condition proof (invariant
+proved). Next strengthen bootstrap mutation frames and investigate metrics
+part of Core DIC. Current standalone hosted runtime867checks PASS.51539 full
+namespace still pending at last poll. No shared production/index changes.
+
+2026-10-02 PROGRESS:35399 TERMINAL1 Bootstrap only Model discriminant
+shape unproved. New service-owned-model-shape-h3d_v312 adds exact capacity
+postconditions to Core/Boot/Requests Ghost models and Catalog_Snapshot.
+58821 TERMINAL0 checks request711+endpoint57+real Native_Blocks implementation
+with hosted syscall mocks99=867; integration-runtime-audit.json.82552 LIVE
+Bootstrap reproof.99590 TERMINAL1 core DIC still unproved (invariant nowproved);
+2883 request stage reports modelshape and Started/Boot.Started preservation
+failures, endpoint stage continues. Need strengthen Boot.Import/Finish frames.
+Private native seeds386files copied under shared flock, hashes recorded;
+Native_Instance state declaration migrated to explicit fourth revision0, no
+returning constructor.10715 TERM4 root mocks exclusions also hidruntimeunits;
+6002 TERM4 clean native source isolation COMPILEPASS but bind GNAT15 vs runtime
+GNAT16 mismatch. Native16.gpr uses copiedruntime and Alire16.1.0 toolchain from
+kernel lock, fresh outputs; build launched. No nativeboot claim. Native source
+and seeds in model-shape root; proof root files frozen (native-check edits only).
+51539 full namespace pending. No shared production/index/commit/push changes.
+Previous/current goal turns PROGRESS; objective incomplete.
+
+2026-10-02 PROGRESS: private service-owned-requests-ekjp3dux migrates
+Requests.State to limited/default-initialized with explicit Initial_Revision
+fourth discriminant (preserves exhaustion fixtures). Start_Snapshot calls
+in-place Boot.Start; invariant aligns Started with Boot.Started. Full Ghost
+Model preserves previous exact-state denial frames including pending buffer,
+bootstrap catalog/namespace/identity metadata. Endpoint Dispatch/Dispatch_Block
+contracts use Ghost Model and explicit Valid pre/post. No authority classification
+or wire ABI changes.99565 TERMINAL4 unused test use-clause;4093 TERMINAL0
+request711checks.91531 TERMINAL0 request711+endpoint57 assertions/overflow
+checks; request-runtime-audit.json hashes recorded. Request+endpoint proof
+sequence launched, source root frozen. Native_instance and legacy testcaller
+construction/reset sites still need migration, no shared promotion yet.
+73055 TERMINAL1 owner default4/4proof VCs (actual DIC) PASS but56flowwarnings
+elsewhere; owner-initialization-audit.json records scoped success, strictfail.
+99590 LIVE core-init and35399 LIVE complete Bootstrap proofs;51539 older
+namespace full proof still pending. Previous/current turns PROGRESS.
+No shared production/index/staging/commit/push changes. Goal incomplete.
+
+2026-10-02 FOLLOW-UP:62670 TERMINAL0 strengthened owner-default contract
+bootstrap159checks PASS again; bootstrap-runtime-audit.json validates frozen
+sources/binary/log.73055 proof sequence and51539 namespace still pending.
+
+2026-10-02 PROGRESS:48229 TERMINAL0 Reset then Install strictPASS;
+Install86proof+5flow actual postcondition verified install-audit.json in
+service-owned-empty-dkc47qsi.75567 TERMINAL1 strict flow warnings only:
+core-body118/118 VCs proved,56flowwarnings. IMPORTANT body-only region excludes
+PUBLIC spec postconditions; only nested Install.Reject postcondition covered,
+recorded core-body-audit.json.57404 TERMINAL1 explicit default-init condition
+and invariant unproved; need Owned.Arena default contract visible to caller.
+New service-owned-bootstrap-1fhbf943: Core.Model and Bootstrap.Model are Ghost
+full-state observers (identity metadata included only in Ghost type, no runtime
+authority); Boot.State limited, default construction; Start is in-place one-shot
+with repeated/invalid startup handled without resetting Core. Retains full frame
+on inactive Import/Finish via Ghost models.95399 TERMINAL4 test parentheses,
+31215 TERMINAL0 strict -gnata/-gnato bootstrap159checks. Then added Owned.Arena
+Default_Initial_Condition Valid && !Initialized && Snapshot=Empty.73055 LIVE
+sequential owner-init/core-init/bootstrap proofs;62670 LIVE checked rebuild159.
+Full namespace51539 remains pending frozen reject-k5rmq7a6. Bootstrap latest
+pointer latest-owned-bootstrap-root.txt; main core pointer still empty-dkc47qsi.
+No shared production/index/staging/commit/push. Requests/native consumer migration
+still pending. Previous/current goal turns PROGRESS; objective incomplete.
+
+2026-10-02 PROGRESS: service-owned-empty-dkc47qsi Reset strict proof PASS
+15proof+2flow; reset-audit.json verifies actual Owned.Reset postcondition and
+source hashes.48229 remains LIVE now Install portion of sequential job.
+70540 TERMINAL0 new empty-state contract checked58ACPICA+13rollback; audited
+runtime-audit.json hashes stable.57404 LIVE separate State default-init proof
+(spec57..61 region, require actual DIC coverage before claim).75567 older
+whole-core body proof and51539 current namespace proof confirmed LIVE/frozen.
+Read-only consumer inventory: Bootstrap.Start constructs Fresh Core;
+Requests.Start_Snapshot assigns Boot.Start; Native_Instance constructs
+Requests.Fresh. These must move to noncopyable in-place lifecycle, preserving
+complete denial/rollback frames and one-shot startup. No edits there yet.
+Previous/current turns PROGRESS via reset proof and updated runtime evidence.
+No shared production/index/staging/commit/push changes. Goal incomplete.
+
+2026-10-02 FOLLOW-UP:71306 TERMINAL1 ownership Valid now proved; remaining
+Install postcondition failure is exact Snapshot rollback (ads132). New frozen
+service-owned-empty-dkc47qsi strengthens Owned.Reset success Snapshot=Empty,
+failure Snapshot=Old, and core Type_Invariant Tables0 => Snapshot=Empty.
+These are actual implementation guarantees, not weakened rollback requirements.
+Sequential Reset then Install proof launched; latest pointer updated.75567 older
+whole-core and51539 namespace remain live/frozen. Current runtime-validated
+source remains service-owned-reject-k5rmq7a6 (58+13); new contracts need runtime
+and full-core validation. Goal ACTIVE, no shared production/index changes.
+
+2026-10-02 PROGRESS:12750 TERMINAL1 no internal crash;85/86 Install VCs
+proved, remaining Valid(Service) postcondition +2flow warnings. New frozen
+service-owned-reject-k5rmq7a6 strengthens nested Reject post to preserve Valid
+and removes unused Signature/Result initialization (no semantics change).
+71306 LIVE focused Install proof;75567 LIVE whole-core-body region proof
+(including nested Reject and other mutations);51539 LIVE full current namespace.
+84139 TERMINAL0 checked58ACPICA+13rollback; runtime-audit.json verifies hashes.
+81740 TERMINAL1 OLD full namespace3946VCs/50unproved, all listed failures in
+old executor arithmetic;56flowwarnings. Full-proof-audit.json hashes verified.
+Current executor has later arithmetic repairs;51539 must establish full result.
+Standalone crash report86719 TERMINAL1 reproduces two-source nested limited
+constructor crash; user supplied exact code/versions/command, no external post.
+Previous/current turns PROGRESS. No shared production/index/commit/push changes.
+Latest-owned-core pointer names reject-k5rmq7a6. Default-init proof coverage still
+needs explicit audit; bootstrap/requests limited migration/native incomplete.
+
+2026-10-02 PROGRESS:79244 TERMINAL0 direct-default core checked58ACPICA
++13rollback; runtime-audit.json hashes stable.74743 TERMINAL1 now past limited
+constructor crash but Why3 translation has unbound global last_issued symbol
+through service Type_Invariant. No Install proof achieved. New owner observers
+Node_Count/Values_Used/Methods_Used in service-owned-observers-mu3zcgdh eliminate
+full namespace copies for metrics and node bounds.97000 TERMINAL0 all3 strict
+focused proofs; observers-audit.json requires actual proved postconditions and
+source hashes.3399 TERMINAL0 checked58ACPICA+13rollback on observer source.
+service-owned-valid-wx5qwrbu carries owner Valid requirement as default-init and
+all4 public mutations' Pre/Post instead of global-dependent Type_Invariant;
+ordinary structural/catalog invariant remains.56129 TERMINAL1 private helper
+Valid_Context not public, removed redundant attempted structural predicate
+(owner Valid still exact in explicit contracts).12750 LIVE retry focused Install.
+Latest-owned-core pointer is this experiment; last runtime-validated observer
+core is service-owned-observers-mu3zcgdh.81740 old full namespace still live at
+turn start; frozen. No shared production/staging/commit/push changes.
+Previous/current goal turns PROGRESS. Full bootstrap/requests migration, current
+whole namespace/core proof and native integration still incomplete.
+
+2026-10-02 FOLLOW-UP:64657 TERMINAL1 ordinary Ada placement error for
+Default_Initial_Condition (must be on partial/private declaration). Corrected
+placement after terminal;74743 LIVE proof in service-owned-default-h7hqgtno.
+Assertion-enabled compile +13rollback +58ACPICA runtime job launched in same
+frozen source root with disjoint proof subdirectory. Earlier failed source/log
+is retained in checked-proof-dugv5qtb/result.json source manifest.
+
+2026-10-02 PROGRESS:97848 TERMINAL1 extended-return constructor triggers
+flow CFG internal assertion at core.adb:14.91215 TERMINAL1 equivalent capacity
+observer still gnat2why-expr.adb:294.82781 TERMINAL0 minimal simple limited
+constructor proves;47300 TERMINAL1 expanded matrix reproduces SAME crash in
+nested_limited.ads:5:75 with only two tiny source files (limited record contains
+limited component). Preserved limited-constructor-reproducer README/logs/hashes;
+no upstream report sent. New service-owned-default-h7hqgtno removes returning
+constructor, uses explicit State discriminants and Default_Initial_Condition
+Observe=zero and namespaceCount=0 (same empty-state guarantee).64657 LIVE focused
+Install proof. Latest pointer experimental; service-owned-core-qj2gnao0 remains
+runtime-validated58+13.81740 namespace confirmed LIVE. Source roots frozen;
+no shared production/index/commit/push changes. Previous/current turns PROGRESS.
+
+2026-10-02 FOLLOW-UP:21559 TERMINAL0 runtime audit verifies58ACPICA,
+13rollback checks, missing-method negative control, stable source hashes.
+79498 TERMINAL1 GNATprove INTERNAL CRASH gnat2why-expr.adb:294 translating
+Fresh result-discriminant contract at core.ads:126; no proof claim. Original
+reproducer retained. New service-owned-constructor-_ekdqttl changes only Fresh
+expression body to equivalent extended return, all contracts retained; focused
+Install proof launched. Latest-owned-core pointer now names this experiment;
+last runtime-validated core remains service-owned-core-qj2gnao0.
+
+2026-10-02 PROGRESS: private service-owned-core-qj2gnao0 migrates Core.State
+and Tree to limited Owned.Arena, catalog-only ghost snapshots preserve rollback
+contracts without copying authority. Initialized observer links runtime token check
+to ghost Generation. Shared production unchanged. 73292/13554 builds TERMINAL4
+Old-prefix legality; fixed via Unevaluated_Use_Of_Old in spec/body.65698 TERMINAL0
+strict assertion-enabled compile.20154 TERMINAL4 unused runner use-clause fixed.
+28001 TERMINAL2 after13rollback +44ACPICA PASS (lifetime CLI args missing);
+55561 TERMINAL0 remaining14 lifetime comparisons PASS. Total58 service-path
+ACPICA cases, not just interpreter wrappers. Source manifest frozen. Runtime audit
+service-runtime-audit.json pending21559 completion.79498 LIVE focused Install
+SPARK proof;81740 older full namespace proof confirmed LIVE. Do not edit either
+proof snapshot. Bootstrap/Requests limited migration and full current namespace/
+service proofs still required. Owner observer performance also needs review.
+Previous goal turn no implementation progress (compatibility discussion); current
+turn PROGRESS via migration/build/runtime evidence. No staging/commit/push.
+
+2026-10-02 PROGRESS:76207 TERMINAL1 strict flow warnings only. Repaired
+arithmetic executor656/656 VCs proved;16flow warnings retained, actual Run
+postcondition and hashes audited arithmetic-frame-repair-ij4knzor/executor-audit.json.
+42035 TERMINAL0 completed checked58ACPICA+11207regressions+44upper-bound
+checks +negative control. Audit hashes and exact library equality to proof snapshot
+verified arithmetic-repair-checked-h2h2mknr/audit.json.81740 full older namespace
+proof still pending. Latest private complete candidate arithmetic-frame-repair
+includes owned bindings and validity fix. Full namespace proof for this newest
+source and limited service/core/bootstrap/request state migration remain required.
+No shared production/index/commit/push changes; goal remains incomplete.
+
+2026-10-02 PROGRESS:17971 TERMINAL1 after44boundary and18wrapper PASS;
+package comparison relocation generated root.parent.parent, looking for missing
+parent/build/index_runner. Fixed four test-script root assignments to exact full
+line replacement (no runtime library edits).42035 LIVE remaining40 comparisons,
+11207regressions and negative control; audit includes prior44+18 results.
+76207 repaired arithmetic executor and81740 older full namespace remain pending.
+Service Install review: all table admission checks precede transactional Load_Names;
+retained bytes/catalog commit only after success. Limited-owner migration must
+preserve that ordering and failure snapshot/catalog contracts; first DSDT admission
+must initialize owner explicitly without cloning tokens. No service source changed
+yet. Previous turnPROGRESS/current harness repair +transaction inspectionPROGRESS.
+No shared/index/commit/push changes.
+
+2026-10-02 PROGRESS: new arithmetic-repair-checked-h2h2mknr reuses exact
+arithmetic-frame-repair-ij4knzor library. Adds44 upper-index metamorphic checks:
+same arithmetic AML at ordinary bounds and ending at Positive.Last, both widths,
+fuel0..10; status/value/charged equality.79297 TERMINAL4 test High variable could
+be constant; fixed after terminal.17971 LIVE checked build+44bounds+58ACPICA+
+11207regressions+negative control.76207 repaired executor proof and81740 older
+full consolidated namespace proof confirmed LIVE. Source roots remain frozen.
+Previous turnPROGRESS/current boundary test +validation workPROGRESS.
+No shared production/index/commit/push. Pending service owner migration retained.
+
+2026-10-02 PROGRESS:4469 TERMINAL0 both owned declaration wrappers strict
+41proof+2flow each PASS; actual postconditions and hashes audited bindings-audit.json.
+28893 TERMINAL0 checked declarations34 PASS +negative control, identical library
+bytes verified.48792 TERMINAL1 arithmetic executor: overflow in Code.First+Limit-1,
+collection precondition count<=total, integer discriminant checks unproved.
+Fresh arithmetic-frame-repair-ij4knzor (includes owned service wrappers) fixes
+slice as First+(Limit-1), explicitly resets count for initial collection, strengthens
+Collect_Targets exact frame to only Target_Count/Targets mutation, adds integer
+kind guard before arithmetic.76207 LIVE executor proof.81740 older consolidated
+full namespace proof pending/frozen; do not edit. New runtime retest still needed.
+Previous turnPROGRESS/current proof-driven repair and binding evidencePROGRESS.
+No shared production/index/commit/push changes. Service limited-state migration pending.
+
+2026-10-02 PROGRESS:17352 TERMINAL0 consolidated checked58 ACPICA +11207
+regressions PASS; runtime-audit.json hashes verified.81740 full consolidated
+namespace and48792 arithmetic executor proofs still LIVE. Service migration
+inspection confirms copyable Core/Bootstrap/Requests chain, whole-State Old/equality
+contracts and Boot:=Start assignment need conversion to limited state/plain observer
+snapshots; do not clone owner token. New owned-service-bindings-pumysrp_ adds
+Owned.Bind_Table_Region/Field forwarding exact declaration contracts, preserves
+owner generation and complete object arena.4469 LIVE sequential focused wrapper
+proofs. These APIs are needed by service declaration paths before swapping Tree
+for owned Arena. Previous turnPROGRESS/current API integration workPROGRESS.
+No shared production/index/commit/push changes. Goal incomplete.
+
+2026-10-02 PROGRESS:71251 TERMINAL0 validity expression focused analysis,
+0proof+1flow; removes old invariant-requiring Valid(E) call with identical checks.
+No whole-proof claim. New owned-arithmetic-consolidated-86rylzx7 combines latest
+explicit target initialization, target collection, deferred Store source reads and
+inline namespace validity.81740 LIVE full unfiltered namespace proof.17352 LIVE
+assertion-enabled consolidated runtime:58 planned ACPICA comparisons +11207
+regressions. Scripts relocated to current root; arithmetic report isolated from
+18-wrapper comparison report to avoid overwriting evidence. Frozen source manifest.
+48792 earlier arithmetic executor proof still LIVE. Shared consumer inventory:
+40ACPI/service/test files reference executor; shared library remains old Datum
+boolean API, so promotion requires consumer migration and service owner integration,
+not copying private sources blindly. Previous turnPROGRESS/current consolidation
+and full validation setupPROGRESS. No shared/index/commit/push changes.
+
+2026-10-02:16686 TERMINAL1 before proof: SPARK rejects box aggregates for
+Target_Descriptor.Path / Frame.Targets without explicit defaults. Fresh
+arithmetic-target-init-qwqhmt35 adds Path Truncated and Targets default
+initializers; proof relaunched. See latest-arithmetic-init-root.txt for exact root.
+71251 validity expression proof still pending.
+
+2026-10-02 PROGRESS:50294 TERMINAL0 divide-order-compare.py6 ACPICA
+comparisons PASS on checked arithmetic-target-order-1zhioyid. Both targets change
+source local (DVSC), second target reads byte before first result write (DVWR),
+mixed local/index targets(MIXD), each width. Report/hashes audited divide-order-
+audit.json.16686 arithmetic executor proof confirmed LIVE, source frozen.
+New owned-context-validity-s7nz6fg1 isolates old full-namespace invariant failure:
+replace Context_Valid Valid(E) call with identical inline Valid_Context(E.Tree)
+and issuer/entry-token checks, no removed condition.71251 LIVE focused function
+analysis; zero obligations possible, so this alone cannot count as full namespace
+proof. Source based on older owned-namespace-invoke snapshot intentionally, not
+latest arithmetic; carry fix forward only after evidence. Previous turnPROGRESS,
+current oracle evidence/validity repair PROGRESS. No shared/index/commit changes.
+
+2026-10-02:11272 TERMINAL0 checked arithmetic order repair:10 ACPICA
+comparisons (AORD included) +11054regressions PASS. Freeze source manifest and
+launch executor proof on arithmetic-target-order-1zhioyid. Source targeted tests
+for both Divide target side effects and named-target identity remain needed.
+
+2026-10-02 PROGRESS:41518 TERMINAL1 strict flow warnings only; indexed-store-
+progress-qn8854a7 all602 VCs proved, Run postcondition/hash audit executor-audit.json,
+16flow warnings retained.90753 TERMINAL1 older deferred source had602checks/1
+unproved loop variant; strict-progress contract resolves it in newer snapshot.
+No own old proof jobs remain live. New arithmetic-target-order-1zhioyid separates
+Collect_Targets/Apply_Target with two bounded target descriptors in Frame. Retains
+right operand+slot; evaluates all Index targets before resolving left/right operands
+or writing either Divide result. No recursion.11272 LIVE checked build then AORD2,
+basic arithmetic8 ACPICA comparisons +11054regressions. Prior early-write candidate
+not promoted. Previous turn PROGRESS, current semantic repair/proof audit PROGRESS.
+No shared production/index/commit/push changes. Full namespace invariant at
+Owned.Invoke.Context_Valid remains unresolved separately; arithmetic proof pending.
+
+2026-10-02:39123 TERMINAL1 confirmed arithmetic order mismatch: ACPICA
+AORD returns2, CuBit10 when Index destination changes source Local0 from9 to1.
+Do not promote arithmetic-index-target-3558eltt. Next refactor into target-collection
+then operand-resolution/calculation then ordered writes; current calculation and
+first Divide write happen too early. Preserve deferred local/argument identities,
+collect both Divide target references before calculation/writes, maintain bounded
+stack and fuel. Eight basic comparisons remain valid but insufficient acceptance.
+
+2026-10-02 PROGRESS:73277 TERMINAL0 arithmetic-index-target-3558eltt:
+assertion-enabled indexed arithmetic implementation,8 ACPICA comparisons and
+11054Store/execute/call regressions PASS. Frame retains result/remainder and
+Targets_Left; Advance_Targets suspends for Index then resumes ordered Divide
+writes without recursive target parsing.39123 LIVE side-effect order AORD oracle
+(expected source resolved after destination); acceptance pending this test.
+91979 TERMINAL1 old full owned invocation proof:3507/3508 VCs proved, one
+VC_INVARIANT_CHECK at Owned.Invoke.Context_Valid expression calling Valid(E),
+aml_namespace.adb1286. full-proof-audit.json retains exact failure and hashes;
+not complete proof.41518 and90753 newer executor proof jobs still pending.
+Previous turn PROGRESS; current arithmetic execution/test +proof audit PROGRESS.
+No shared production/index/commit/push. Do not claim full arithmetic target
+semantics until side-effect evaluation, errors/budgets and proof are resolved.
+
+2026-10-02:6398 TERMINAL0 arithmetic target reference-only oracle8 PASS.
+No CuBit arithmetic-target execution yet.41518 proof confirmed LIVE.
+
+2026-10-02 PROGRESS:98373 TERMINAL1 old indexed-store executor proof has
+one unproved main-loop variant (fuel refund before Operand; old contract only
+nondecreasing charge). New indexed-store-progress-qn8854a7 strengthens Operand
+postcondition: successful return strictly increases Charged.41518 LIVE proof;
+runtime implementation unchanged from deferred-qth58qs1.90753 deferred executor
+proof still LIVE and expected to encounter same missing contract;91979 full older
+namespace proof still pending. Frozen sources untouched.
+6398 LIVE reference-only ACPICA arithmetic target corpus in
+arithmetic-target-oracle-m1spb3xv (Add value/write, Divide distinct targets and
+aliased targets; revisions1/2). NOT implementation validation. Next generalize
+bounded Frame target state: saved result/remainder plus remaining-target count,
+resume after Index target evaluation and continue Divide target sequence. Avoid
+recursive target parsing; preserve source evaluation and budgets. Previous turn
+PROGRESS, current proof-driven contract repair/oracle work PROGRESS.
+No shared production/index/commit/push changes; goal incomplete.
+
+2026-10-02:58596 TERMINAL0 deferred-source repair checked build:10 package
+comparisons +2 mutated uninitialized-source comparisons +11054 regressions PASS.
+Source hashes verified; deferred-audit.json records mutation provenance in both
+widths. Fresh executor proof prepared/launched on indexed-store-deferred-qth58qs1.
+No full AML semantics claim; next generalize target evaluation to arithmetic.
+
+2026-10-02:56404 TERMINAL0 initialized-local repair:42 ACPICA comparisons
+and11054 regressions PASS in both release/checked; input hashes and identical Ada
+bytes audited indexed-store-order-behswe3g/checked-audit.json. This is older than
+deferred-qth58qs1 fix for initially uninitialized source, whose58596 remains LIVE.
+
+2026-10-02 PROGRESS:3928 TERMINAL0 oracle experiment confirms initially
+uninitialized source Local0 may be initialized by Index destination side effects:
+ACPICA returns1, prior CuBit UNINITIALIZED. Fixture mutation precisely replaces
+unique Store(9,Local0) with four Noops, preserving all package lengths and repairing
+SDT checksum; provenance at store-uninitialized-oracle-85ji6uoo/mutation.json.
+New indexed-store-deferred-qth58qs1 removes premature Resolve_Slot only for
+complex target path; retains final resolution and simple-target error checks.
+58596 LIVE assertion-enabled build, package-store10 +regressions +mutated oracle
+in revisions1/2.56404 older initialized-local repair validation still running;
+98373 older executor and91979 older namespace proofs frozen/pending.
+Previous turn PROGRESS, current oracle-driven semantic repair PROGRESS.
+No shared production/index/commit/push. Next fresh executor proof for deferred
+candidate after runtime gate, extend common target handling beyond Store.
+
+2026-10-02:56404 revised release package-store10 ACPICA comparisons PASS,
+including EORD1 in revisions1/2. Remaining release regressions and checked build
+continue in same session; do not restart. Source remains frozen.
+
+2026-10-02 PROGRESS:54444 TERMINAL1 new ACPICA oracle EORD returned1,
+expected9 exposed actual evaluation-order mismatch: Store local source must
+resolve after Index destination side effects. Four prior new cases PINT/PSTR/PALS/
+RETV passed revision1 before failure. Fresh indexed-store-order-behswe3g retains
+Left_Slot and re-resolves after target, returns resolved source; checked clone
+indexed-order-checked-dwwym75i.56404 LIVE build +10 package-store +18 wrappers
++14 lifetime comparisons +Store/execute/call regressions in release then checked.
+Old executor98373 remains frozen/running;91979 older namespace proof live.
+IMPORTANT follow-up: first source Resolve_Slot still occurs before target. Need
+remove early resolution for complex target to allow target side effects to initialize
+an otherwise uninitialized local/argument; verify ACPICA fixture first. Current
+repair addresses changed initialized local, not that additional case yet.
+Previous conversational turn NO PROGRESS; this turn oracle-driven semantic repair
+PROGRESS. No shared production/index/commit/push changes.
+
+2026-10-02:45838 TERMINAL0 all11207 release regression checks and32 ACPICA
+comparisons PASS, including RGLB/RSMU indexed mutation cases in both widths.
+Frozen source manifest written in executor-index-store-mbr_1mzl; executor proof
+launched next. Checked build and package-write-specific ACPICA tests next.
+
+2026-10-02:45538 TERMINAL0 full sequential storage proof chain PASS.
+Store_Integer strict33proof+6flow and actual postcondition/source hash audited
+owned-store-integer-frame-1poq8zka/store-audit.json.20865 TERMINAL1 regression
+4013: old unsupported expectation for now-recognized bare Index destination;
+changed to Truncated, no runtime workaround.45838 LIVE revised regressions and
+ACPICA:4137Store+2099execute+4818calls+60deref+28transport+65owner PASS so far;
+ACPICA32 comparisons pending. executor-index-store-mbr_1mzl prepared executor
+proof config; wait for runtime manifest before launching proof. Assertion-enabled
+new opcode path still pending. No full target/source semantics claim.
+
+2026-10-02 PROGRESS:45538 sequential proof job: Set_Element and
+Package_References.Write strict PASS with actual postconditions/hash audit
+owned-store-integer-frame-1poq8zka/frame-audit.json; Store_Integer pending.
+New executor-index-store-mbr_1mzl uses existing bounded Operand stack for
+Store(value,Index(...)) destinations. Store frame retains resolved source while
+Index is evaluated, then Store_Reference callback writes. Main Store routed through
+same path with charge adjustment to avoid double-counting. Other complex target
+forms, arithmetic target writes and noninteger source writes remain unsupported.
+73726 TERMINAL0 strict build.20865 LIVE regressions +18 named wrappers +all14
+reference lifetime comparisons (removed old filtered case list explicitly).
+No runtime success claim until results.91979 old full namespace proof pending.
+Previous turn PROGRESS; current parser/callback integration PROGRESS. No shared
+production/index/commit/push changes. Next assert-enabled comparisons and full
+executor proof, then generalize target mechanism across result-producing ops.
+
+2026-10-02 PROGRESS:88657 TERMINAL0 owned-store-checked-a5ukngta:
+2120 assertion-enabled ownership checks PASS +negative control, source hashes
+and byte-equality to owned-reference-store-71a92zkp library verified. Full arena
+package replacement rejects atomically; stale reference rejects before allocation;
+byte write succeeds even at object limit.95247 TERMINAL1 one unproved integer
+value postcondition: package slot Write lacks explicit integer-value frame fact.
+New owned-store-integer-frame-1poq8zka adds integer preservation to Set_Element
+and Package_References.Write contracts.45538 LIVE sequential focused proofs
+(element,reference,Store_Integer). Old source frozen; no runtime weakening.
+91979 older full namespace proof still pending. Previous turn PROGRESS; current
+runtime evidence/contract repair PROGRESS. No shared source/index/commit changes.
+Next integrate complex target evaluation using existing bounded expression stack:
+Store frame should retain resolved source while evaluating Index target, then
+write through returned reference; avoid adding recursive target parsers. Extend
+same target-state mechanism to arithmetic/Index optional targets, preserving
+budget/depth bounds and evaluation order. Full object-source Store still pending.
+
+2026-10-02:95247 build and65 release ownership checks PASS; now running
+Store_Integer focused proof. Proof result and assertion-enabled run pending.
+
+2026-10-02 PROGRESS:31224 TERMINAL0 stronger literal proof strict28proof+7flow
+PASS; actual postcondition/source audit literal-frame-length-9ijv0g5f/literal-audit.json.
+Promoted only New_Bytes exact Length postcondition into shared
+userspace/lib/acpi/aml_objects.ads under shared build lock. Baseline spec/body
+byte-equality verified, allocator-promotion.json records hash; index untouched.
+New private owned-reference-store-71a92zkp Store_Integer handles owned byte slot
+low-byte writes and transactional fresh integer replacement for package slots.
+Rejects stale/foreign before allocation; not wired to executor target parsing and
+not complete Store semantics. Added10 owner tests (total65).60755 TERMINAL4
+missing test operator visibility;58459 TERMINAL4 redundant use clause warning;
+both fixed with manifest refresh only after terminal.95247 LIVE build/test/proof.
+91979 older full namespace proof confirmed LIVE. No commit/push. Previous turn
+PROGRESS, current implementation/contracts/promotion PROGRESS; goal incomplete.
+
+2026-10-02 PROGRESS:37061 TERMINAL1 one unproved literal Size postcondition;
+New_Bytes contract omitted Length=Data.Length. Fresh literal-frame-length-9ijv0g5f
+adds exact allocator postcondition.31224 LIVE sequential job: byte allocator strict
+proof PASS and actual postcondition/source hashes audited bytes-audit.json;
+stronger materializer proof pending.55051 TERMINAL1 strict flow warnings only:
+581/581 executor VCs proved, Run postcondition audited,11 warnings retained
+(9 INOUT_ONLY_READ,2 INEFFECTIVE); executor-audit.json in package-literal root.
+58209 TERMINAL0 literal-failure-tests-qi3d_dw4:60 assertion-enabled explicit
+checks PASS, malformed/truncated/nested-invalid packages in both widths fail
+without namespace state mutation. Negative control rejects; byte-equal library
+matches new proof snapshot (source-audit.json).91979 full older namespace LIVE.
+Previous turn PROGRESS; this turn contract repair/runtime/proof evidence PROGRESS.
+No shared production promotion/index/commit/push. Next finish stronger literal
+proof, then reference writes and service integration; goal incomplete.
+
+2026-10-02 PROGRESS:89721 and66062 TERMINAL0. Additional8 ACPICA cases
+(nested package integer/buffer/string +empty package, revisions1/2) PASS in both
+release and checked builds. Source equality/report hashes audited at
+owned-package-literal-x9fatw73/nested-audit.json. Total36 comparisons each build.
+Scripts package-nested-comparison.py and package-nested-checked-comparison.py
+are outside frozen source roots; reports in each nested-comparison directory.
+37061 stronger literal contract proof remains LIVE phase3,55051 executor proof
+LIVE phase3,91979 older full namespace proof LIVE at latest handle check.
+No shared production promotion/index/commit/push. Goal remains incomplete.
+
+2026-10-02 PROGRESS: previous goal turn PROGRESS (literal execution/tests/proof).
+55051 LIVE executor proof for package branch, frozen owned-package-literal-x9fatw73.
+91979 older full namespace proof confirmed LIVE. New literal-frame-contract-c58nc9qh
+strengthens materializer: failure unchanged, only Values may change, returned ID
+in bounds/type/size, original object kinds/lengths preserved and count monotonic.
+5330 TERMINAL1 operator visibility error before proof; corrected membership form.
+37061 LIVE revised focused proof, source manifest updated after terminal failure.
+Independent package-nested-comparison.py exercises nested integer/buffer/string
+and empty package in both widths.8021 TERMINAL1 ASL reserved method name ZERO;
+renamed ZPKG,89721 LIVE retry. No shared production source/index/commit/push edits.
+Write_Target currently cannot evaluate complex targets; future write-through work
+must integrate target expression evaluation and callback, preserve budgets and
+termination, not merely bolt a callback onto simple-name writes.
+
+2026-10-02:67038 TERMINAL0 strict materialization proof PASS13proof+7flow,
+actual Valid_Context postcondition coverage and source hashes audited in
+owned-package-literal-x9fatw73/literal-proof-audit.json. This is the materializer
+boundary only; new executor branch proof remains next.91979 full older namespace
+proof still pending.
+
+2026-10-02 PROGRESS:59558 TERMINAL0. Assertion-enabled28 ACPICA comparisons
+PASS (package-literal-checked-lw0blftd/audit.json, exact Ada source hashes verified).
+Release regressions11197 explicit checks PASS:60 dereference,28 transport,
+2099 execute,4137 Store,4818 calls,55 namespace owner. Runtime source hash audit
+owned-package-literal-x9fatw73/runtime-audit.json confirms28 release comparisons.
+Corrected focused materialization proof67038 confirmed LIVE (phase3); older full
+owned namespace proof91979 confirmed LIVE. Source remains frozen for both.
+Next inspect proof results with actual postcondition coverage, then prove new
+executor package branch and broaden package operand semantics/target writes.
+No full interpreter or native integration claim. No index/commit/push changes.
+
+2026-10-02 PROGRESS: package literal execution candidate at
+/home/doc/git/.acpi-proof-work/owned-package-literal-x9fatw73. Constant
+Package/VarPackage uses transactional AML_Data.Load on candidate store; owned
+literal callback stamps source handle. Width propagated through materialization.
+36967 TERMINAL1 unused use-clause warning fixed;37048 TERMINAL0 rebuild and
+18 named-wrapper ACPICA comparisons;8429 TERMINAL0 lifetime10 comparisons
+including RPKG in both widths. Combined28 release comparisons PASS. No full
+Package semantics claim: computed/name elements and write-through remain pending.
+59558 LIVE checked28 comparisons plus release regressions in
+package-literal-checked-lw0blftd.50142 TERMINAL1 wrapper invocation typo before
+proof; corrected positional-config proof launched separately. Older full namespace
+proof91979 confirmed LIVE, frozen sources untouched. Previous conversational
+turn NO PROGRESS toward implementation; current repair/validation PROGRESS.
+No shared production source/index/commit/push changes.
+
 # Userspace ACPI / AML
+
+2026-10-02 PROGRESS: authoritative owned invocation snapshot is
+owned-namespace-invoke-xx4hwdmy. Prior note insertion was accidentally overwritten;
+restoring handoff here. Owned.Invoke uses actual limited Arena, entry-token-bound
+Context_Valid, reused Lookup_With_Tables/Read_Context_Timer, existing mutation
+callbacks, owner-stamped named/materialized objects, index/resolution callbacks.
+Owned.Valid includes full namespace Valid_Context.35620 TERMINAL0 previously
+verified full named-wrapper18 +supported lifetime8 ACPICA comparisons, including
+RIDX/RCHN/RIWR/RSTR in both widths. runtime-audit.json and manifests preserved.
+55347 TERMINAL0 focused Invoke strict17proof+1flow PASS; actual Invoke
+postcondition/hash audit invoke-audit.json. This focused run does NOT prove
+nested callback bodies; full-unit proof required.64343 TERMINAL0:26 assertion-
+enabled ACPICA comparisons PASS, exact Ada bytes, no -gnatp;
+owned-invoke-checked-r69jkklj/audit.json. Full unfiltered namespace proof91979
+now LIVE in proof-full subdir to include all nested callbacks/executor instance.
+No shared source/index changes, commits or pushes. Previous turnPROGRESS;
+current proof/checked setupPROGRESS. Write-through targets, package literals,
+full reference semantics and native service migration remain unfinished.
+
+2026-10-02 PROGRESS:82460 TERMINAL1 strict wrapper, underlying proofs pass.
+owned-index-contract-2ze0e2bf resolver50proof+5flow strict PASS with actual
+origin-authority postcondition; executor560/560 proofs and Run postcondition
+proved,11 flow warnings retained (9 INOUT_ONLY_READ/2 INEFFECTIVE). Both audits
+rehash source manifests. Not warning-free or complete AML semantics claim.
+27943 TERMINAL0 ACPICA DIFFERENTIAL18 PASS in owned-index-differential-h43cwjv6:
+3 compiled callee bodies x buffer/string/package x table revisions1/2. ACPICA
+wrappers supply named source; CuBit runs the same compiled callee with an
+owner-bound argument built from that same table. Direct Index/Deref, local
+target, arithmetic consuming dereference checked. Fresh ACPICA processes,
+strict integer/diagnostic gates, compiler/runner/source/AML hashes recorded.
+comparison/library-audit.json confirms identical Ada library bytes to proved
+Index snapshot.12585 initial runner compile error fixed, not a runtime mismatch.
+Native service binding/named lookup/literal materialization/write-through and
+broader reference semantics remain pending.84605 TERMINAL1: full runtime-owner
+audit at owner-runtime-valid-zg104jk0/owner-audit.json (older snapshot without
+Index source extension); all proof obligations and ten postconditions proved,
+flow warnings retained. All own jobs now terminal.
+No shared promotion/index/commit/push. Previous turnPROGRESS; currentPROGRESS.
+
+2026-10-02 PROGRESS:51814 TERMINAL1 strict wrapper;540/540 dereference
+executor proof obligations proved, Run postcondition covered,10 flow warnings
+(8 INOUT_ONLY_READ/2 INEFFECTIVE) retained. Source hashes/audit at
+owner-deref-valid-frame-_wpi32mc/audit.json. No warning-free claim.
+New owned-index-contract-2ze0e2bf strengthens Resolve_Value object postcondition:
+Has_Source for returned owner handle and exact source ID. Corrected Object_Value
+comment: ID/cache provenance versus explicit Source authority.82460 LIVE
+sequential resolver then Index executor proofs; audit both postconditions.
+39319 TERMINAL0:60 checked Index/deref/ownership tests PASS, negative control
+active, identical source bytes; owned-index-checked-p5n1085p/audit.json.
+84605 full runtime-owner proof still separate. ACPICA differential comparison
+for new opcode path outstanding; existing lifetime oracle covers broader
+unsupported cases and must not be passed off as implementation conformance.
+No shared promotion/index/commit/push. Previous turnPROGRESS; currentPROGRESS.
+
+2026-10-02 PROGRESS:6419 TERMINAL0. Make_Index strict13proof+4flow PASS,
+actual postcondition/hash audit index-proof-audit.json; Make_Source earlier6+2.
+New private executor-owned-index-ki2mavhf adds Object_Value.Source opaque handle
+(ID remains read-only provenance); owner Resolve_Value stamps noninteger
+package elements, snapshot bindings default No_Object_Handle. Execute_With_Input
+Create_Index callback handles opcode88 source/index/target, returns slot Ref;
+old adapters reject. Fixture actual owner delegates Make_Index and uses expression
+Valid fix.98530 TERMINAL0:60 ownership/deref/index checks +2099execute +4137Store
++4818calls +28transport PASS. Nested DerefOf(Index(DerefOf(arg))), local target,
+returned alias, bounds, foreign Source and absent Source tested.
+Index proof/checked run/ACPICA comparisons pending. Named lookup/literal owned
+materialization not wired, so NOT full Index support. Next fix Object_Value
+header comment to distinguish immutable ID/cache from explicit Source authority,
+then strengthen origin postcondition and verify new opcode.51814 revised Deref
+proof confirmed LIVE;84605 full owner proof separate, no source edits/restart.
+No shared promotion/index/commit/push. Previous turnPROGRESS, currentPROGRESS.
+
+2026-10-02 PROGRESS:90135 TERMINAL0 indexed-source52 checked testsPASS,
+owner-index-checked-y5fho5q_ matches source and both failurecontrols active.
+6419 LIVE sequential proof job: Make_Source strict pass completed, actual
+postcondition and hashes audited in owner-index-source-lxoj13da/source-proof-audit.json;
+Make_Index proof now pending.43474 TERMINAL1: globals errors resolved, but
+5/540 obligations unproved at fixture validity pre/postconditions. No full pass.
+New owner-deref-valid-frame-_wpi32mc exposes same Valid expression directly;
+no runtime behavior/contract weakening.51814 LIVE revised executor proof.
+84605 full owner proof remains separate. Previous turnPROGRESS, current
+checked testing/proof-driven repairPROGRESS. No shared promotion/index/commit/push.
+Important next snapshot merge: Index-source snapshot still has opaque fixture
+Valid; carry expression-function fix forward after its proof, not by editing
+frozen current source. Full opcode/service integration still unfinished.
+
+2026-10-02 PROGRESS: new private owner-index-source-lxoj13da adds opaque
+AML_References.Object_Handle (owner token + source ID), separate from immutable
+Object_Value.ID and slot Reference. Owned.Make_Source stamps only its own live
+owner; Has_Source and Make_Index validate owner/generation/count before choosing
+byte or package indexing. No token accessor. Exact source creation and successful
+Index target/offset contracts added. Index opcode and owned lookup binding are
+NOT wired yet; this is the required authority boundary, not full AML support.
+58769 TERMINAL0:52 release checks PASS, including matching-ID foreign owner,
+stale generation, zero ID, length boundary/U64 maximum, package source and prior
+dereference cases. Source hashes recorded. New source API proof/checked run pending.
+43474 revised dereference proof and84605 full owner proof each confirmed LIVE;
+no frozen-source edits/restart. Previous turn PROGRESS; current implementation
+and tests PROGRESS. No shared promotion/index/commit/push. Next connect source
+handles to owned object evaluation and Index, while preserving immutable values.
+
+2026-10-02 PROGRESS:43179 TERMINAL0 checked explicit-reference DerefOf
+30 tests PASS, same source bytes; checked/release failure controls active.
+Evidence owner-deref-checked-_x2ohdci/audit.json.54518 TERMINAL0 expanded
+package-slot checked tests43 PASS: integer, null, self-package, buffer, string;
+owner-deref-package-6i6bw9qc library bytes match the original proof snapshot.
+99345 TERMINAL1: actual global-analysis errors, not merely warnings. Nested
+Write_Target and Inspect explicit Globals omit issuer state read through
+Context_Valid. New owner-deref-global-j60kf7ux removes ONLY those two explicit
+Global aspects for inference; all pre/post/frame guarantees retained. No
+runtime statements changed.43474 LIVE revised executor proof. Source manifest
+frozen.84605 full runtime-owner proof remains separate; no restart or edits.
+Previous turn PROGRESS; current tests and proof-driven repair PROGRESS.
+No shared promotion/index/commit/push. Full DerefOf string paths, Index, other
+reference kinds and production owner/service binding remain unfinished.
+
+2026-10-02 PROGRESS: new private executor-owner-deref-8lpupsy8 adds explicit
+Resolve_Reference callback to Execute_With_Input and opcode83 reference path.
+It resolves the evaluated local/argument reference via the callback; failure
+statuses are bounded and reference-valued callback results rejected. Snapshot
+adapters reject resolution, preserving owner boundary. Timer_Verification test
+context now contains actual limited Owned.Arena and delegates resolution to it.
+Tests cover both widths/budgets, live changed byte, local transport, foreign
+owner with same object IDs, stale owner and Active cleanup.10373 TERMINAL0:
+30 dereference checks +2099 execution +4137 Store +4818 calls +28 reference
+transport/resolution checks PASS.99345 LIVE focused executor proof with real
+limited owner context; requires actual Run postcondition audit. Assertion-enabled
+dereference run and negative control remain pending. This is explicit-reference DerefOf only; string-path operands, Index
+creation, other reference kinds and full service wiring still incomplete.
+84605 previous runtime-owner proof remains separate frozen work; no edits to
+that running snapshot. No shared source/index mutation, commit or push.
+Previous turn PROGRESS; current executor integration PROGRESS.
+
+2026-10-02 PROGRESS: full runtime-valid owner proof 84605 launched and
+confirmed live in owner-runtime-valid-zg104jk0 (separate owner-proof subdir,
+single worker, durable TMPDIR). Covers all ten owner operation contracts and
+namespace invariants, including Resolve_Value with the new runtime predicate.
+Focused assertion-enabled test 83501 TERMINAL0:28 checks PASS, same Ada
+source bytes, no -gnatp, both failure controls active. Evidence
+owner-runtime-checked-7zkccus3/audit.json.
+Previous turn progressed issuer proof; this turn integrates verification scope.
+No shared source promotion, index changes, commits, or pushes. Goal active.
+Executor binding next: Execute_With_Input needs a resolution callback from the
+actual limited owner. Copyable Run_Typed/namespace State adapters must reject
+references explicitly; their snapshots carry no owner identity. Do not retrofit
+identity into copyable State or reinterpret Object_Value.ID as a reference.
+
+2026-10-02 PROGRESS: unified owner proof 91389 TERMINAL1 (strict wrapper).
+All 2731 namespace proof obligations and 30 byte/31 package descriptor proofs
+proved. All nine owner spec postconditions covered, source hashes verified;
+25 namespace flow warnings retained. Evidence namespace-unified-reference-
+_mbtfxl_/full-audit.json. No warning-free or full interpreter claim.
+New private owner-runtime-valid-zg104jk0 adds Issuer.Is_Issued(Token) boolean
+query with exact ghost ordinal contract. Owned.Valid is runtime-callable using
+empty-token-or-issued plus object-store validity; Generation remains Ghost.
+No runtime accessor returns an owner's token. This enables actual owner context
+validation at the executor generic boundary. Session61750 TERMINAL0:28 functional checks PASS; issuer strict proof
+PASS with both Is_Issued/Issue postconditions audited in issuer-audit.json.
+New namespace validity implementation still needs its own integration proof; no shared promotion, index change, commit or push.
+Previous turn completed proof audit (PROGRESS); current implementation/audit
+PROGRESS. Resolver and owner execution callback integration remain pending.
+
+2026-10-02 PROGRESS: resolver proof session 18901 completed with exit 0.
+The strict report gate passed 45 proof checks and 5 flow checks. The separate
+contract audit confirms an actual proved Test_Namespace.Owned.Resolve_Value
+postcondition; all source hashes match. Evidence: owner-resolve-value-doyhcf7h/
+resolver-proof-audit.json and checked-proof-ra3rzh1i/result.json. The log retains
+the generic-not-analyzed warning for the generic compilation unit; its concrete
+instance was analyzed. Scope is Resolve_Value, not the entire namespace.
+Package-owner full proof session 91389 was re-polled and remains live.
+Previous turn: progress. This turn: completed proof audit, progress. No shared
+promotion, index changes, commits, or pushes. Goal remains active.
+Next integration constraint: the executor needs an owner-bound resolution
+callback. Owned.Valid is currently ghost because it uses identity Ordinal;
+a runtime validity predicate must avoid exposing an owner's token or relying
+on snapshot identity. Generation should remain ghost. Resolve callback and
+DerefOf integration, broader reference semantics, and service ownership remain
+unfinished. Do not treat the private resolver as a supported AML opcode.
+
+2026-10-02 PROGRESS:20919 TERMINAL0 checked resolver24 explicit testsPASS,
+owner-resolve-checked-5lfk_167 audit confirms identical Ada source bytes,
+actual compiler command has no -gnatp; both checked/release negativecontrols
+active.18901 confirmed LIVE focused resolver proof --limit-subp=aml_namespace.adb:1201
+on owner-resolve-value-doyhcf7h; require actual Owned.Resolve_Value spec
+postcondition coverage before claiming proof.91389 unified package owner full
+proof confirmed LIVE. No restart/shared promotion/index/commit/push.
+Executor integration inspection: add owner-bound resolution callback at unary
+operand evaluation and generic instantiations; existing Run_Typed wrappers use
+copyable snapshots without owner identity and cannot authorize reference reads.
+Need actual Owned execution context, not bypass via snapshot/raw Object_ID.
+Previous turnPROGRESS; current checked testing/proof setupPROGRESS. GoalACTIVE.
+
+2026-10-02 PROGRESS:6854 TERMINAL1 strict wrapper, GNATprove0. Executor
+reference-datum-proof-3gyn44wc audit:534/534 proof obligations proved, Run
+postcondition present;9 flow warnings (7 INOUT_ONLY_READ,2 INEFFECTIVE) retained.
+Arbitrary typed Args fixture, all source hashes verified; not warning-free pass.
+74000 TERMINAL1 strict wrapper: consolidated byte owner2685/2685 proofs plus
+Byte_References30/30 proved; all6 owner postconditions covered,25 namespace
+flow warnings retained. namespace-current-owner-cu69jqnx/full-audit.json.
+91389 unified byte/package owner proof confirmed LIVE. No restart.
+New owner-resolve-value-doyhcf7h adds Owned.Resolve_Value with exact status,
+integer value/object ID+size contract: owner validation, byte to integer, package
+slot to integer/object, null slot Uninitialized, invalid/stale Unsupported_Value.
+Not yet wired to AML DerefOf/conversion. Test compile visibility and accidental
+Ghost projection use corrected by explicit runtime AML_References projections.
+84620 TERMINAL0:24 explicit resolver/transport checks PASS release. Resolver
+assertion-enabled testing and proof pending; no shared promotion,
+index/commit/push. Previous turnPROGRESS, current proofs+implementationPROGRESS.
+
+2026-10-02 PROGRESS: new reference-datum-proof-3gyn44wc frozen snapshot
+runs Timer_Verification.Run with ARBITRARY Value_Arguments/Argument_Count<=7,
+not only empty args. Exact runtime-tested executor/reference library bytes;
+new fixture exercises all datum discriminants in formal executor body.6854 LIVE
+phase3 proof, single worker, durable private TMPDIR. No new proof success claim.
+74000/91389 each confirmed LIVE.28228 TERMINAL0 host process check shows two
+ownership gnatprove processes at16m22/10m48, active gnatwhy3/cvc5 CPU workers,
+new executor proof at16s. No failure/restart or unchanged-run duplication.
+No source/index/shared output changes; no commits/pushes. Previous turn
+PROGRESS; current formal verification setup PROGRESS. Next inspect terminal
+reports for required spec postconditions, unresolved checks and flow warnings.
+Reference resolution/Index/DerefOf and actual owned service state still pending.
+
+2026-10-02 PROGRESS: private executor-reference-datum-fbl0mgwi replaces
+boolean Datum discriminant with Integer_Datum/Object_Datum/Reference_Datum;
+Reference_Returned carries opaque handle, propagated through Dispatch, locals,
+arguments and Return. Object_Value.ID remains immutable provenance. Reference
+arithmetic/predicate/inspection currently explicitly Unsupported_Value pending
+resolution callbacks; this is NOT complete AML reference semantics/Index support.
+Namespace integer writes/table selectors reject refs before discriminant access.
+33376 compilePASS;7354 testcompileFAIL byte visibility fixed;31678 TERMINAL0:
+2099execute+4137Store+4818call+55owner+11reference transport checksPASS release,
+reference negativecontrol active; input hashes/runtime-audit.json recorded.
+9485 TERMINAL0: reference-datum-checked-mnitz7q2 passes same11 transport
+checks with assertions enabled and negativecontrol active. Source bytes match.
+No shared promotion or SPARK claim for new executor representation.74000/91389
+ownership proofs each confirmed LIVE this turn, source snapshots unchanged.
+No index/commit/push. Previous turn VERIFIEDWAIT; current implementation/tests
+PROGRESS. Next finish checked transport, audit owner proofs and prove updated
+executor; then reference resolution and Index/DerefOf integration.
+
+2026-10-02 VERIFIED WAIT: sessions74000 and91389 each re-polled and confirmed
+LIVE, both in phase3 proof; no terminal result, no restart. Rehashed all60/61
+manifested inputs in respective namespace-current-owner-cu69jqnx and
+namespace-unified-reference-_mbtfxl_: unchanged. Previous turn PROGRESS.
+Executor integration audit: Datum still boolean Is_Object and Execution_Result
+only integer/object returns. Need explicit third reference alternative, propagation
+through Dispatch/Return/arguments/locals, and guarded conversion/inspection paths.
+Reference handling must not reinterpret Object_Value.ID. No source/index change,
+no new jobs, no completion/blocked claim. Next audit completed proof reports or
+implement migration in separate snapshot; existing running snapshots stay frozen.
+
+2026-10-02 PROGRESS: private namespace-unified-reference-_mbtfxl_ introduces
+pure AML_References.Reference for byte/package slots; owner validates identity
+AND kind before access. Owned.Reference now aliases the pure type (no duplicate
+owner-specific representation); adds Make/Read/Write_Element with exact frame,
+null slot and failure-atomic contracts. This is storage-level reference handling,
+not AML Store conversion or Index opcode integration. No shared promotion.
+17329 TERMINAL0 release55 checks.13858 TERMINAL0 checked+release55each with
+negative controls active, identical library inputs; namespace-unified-checked-
+cgp8d4zp/audit.json.32765 TERMINAL0 stronger package cross-owner test PASS57:
+namespace-package-owner-collision-g416kjc9 forces matching package IDs on both
+owners; checked library bytes identical to proof source.91389 confirmed LIVE
+full unified owner SPARK proof.
+74000 previously confirmed LIVE full byte-owner proof, separate frozen source.
+All isolated outputs; no index/commit/push/shared build lock. Previous turn
+PROGRESS; this turn implementation and runtime evidence PROGRESS. Next audit
+all three new package-owner postconditions, then integrate explicit reference
+Datum/results into executor; immutable object provenance must remain distinct.
+
+2026-10-02 PROGRESS: limited mutable executor context PROMOTED under shared
+build lock (four guarded files); promotion.json source hashes verified and
+scoped diff check clean. No index/commit/push. Existing evidence528/528 proof
+obligations with9flow warnings retained; readonly copy wrappers unchanged.
+New private namespace-current-owner-cu69jqnx consolidates current shared
+library sources, current Byte_References (buffer AND string), and pure opaque
+AML_Identity with singleton issuer. Owner Valid/Generation now Ghost; runtime
+callers cannot obtain its token via Generation. Copy snapshots still contain
+no token. Release37 explicit checks PASS including string mutation, foreign
+owner and reset rejection; negative control active. Updated snapshot executor
+spec to promoted version and rebuilt successfully before proof.
+Current74000 full namespace/byte-reference proof confirmed LIVE.5092 TERMINAL0:
+namespace-current-checked-rshx1axq,37 checked tests PASS, negativecontrol active;
+no -gnatp in actual compiler command, all Ada bytes equal proof snapshot.
+Isolated outputs. No namespace promotion yet. Package-owned
+references/global reference datum and execution binding remain next work.
+Previous goal turn PROGRESS; current integration/consolidation PROGRESS.
+
+2026-10-02 PROGRESS: revalidated namespace-owner-frame-95fu0wl8 source
+manifest and full audit. Job64332 is TERMINAL1 (strict wrapper): all2685
+namespace proof obligations and30 buffer-reference obligations proved;25
+inherited namespace flow warnings remain. All six Owned postconditions covered.
+This supersedes older LIVE notes. Private old buffer API, not shared integration.
+Pure identity44084 TERMINAL0: strict3proof+6flow checks, actual Issue postcondition
+covered and report/source hashes verified. Release2002 explicit checks pass.
+Separate pure-identity-checked-rk75vnqx project has NO -gnatp, uses -gnata/-gnato;
+2002 checked tests pass identically, negative controls fail in BOTH modes.
+Audit: pure-arena-identity-z9t5pcn3/audit.json. Jobs6023/19100 TERMINAL0.
+Singleton issuer plus pure opaque identity is private, pending namespace migration.
+Limited-context guarded promotion remains pending: authoritative flock exit75
+on latest attempt. No shared source/index mutations, no own live build/proof,
+no commit/push. Goal ACTIVE. Previous explanation turn NO PROGRESS; this turn
+new checked-build evidence and proof audit PROGRESS. Next: consolidate owned
+namespace with current byte/package descriptors and pure identity, then wire
+explicit reference values into execution; do not reinterpret immutable Object.ID.
+
+2026-10-02 PROGRESS promoted two reference-shape specs underbuildlock;
+reference-shape-frame-n4pzi_rm/promotion.json hashesverified, scopeddiffcheckPASS.
+Limitedexecutor20488 TERMINAL1 STRICTwrapper but GNATprove0:528/528proofchecks
+proved,9flowwarnings (7INOUT_ONLY_READ callbacks/2INEFFECTIVE initializations).
+No warning suppression/strict success claim; audited allhashes/Runpostcondition
+limited-executor-proof-3noo3x9x/audit.json. Consolidated fixtures avoidduplication:
+reuse readonly_input Mutable limited and TimerVerification.Clock_State limited;
+timer_clock test uses fresh scoped Clock instead of copying one.70707 TERMINAL0
+1811readonly/32timerchecksPASS, olderprivate Store/call/execute regressionsalsoPASS.
+Guarded4file promotion /tmp/acpi-promote-limited-context.py ready but lockbusy,
+NO sharedexecutor changesyet. Sourceconsolidated limited-context-consolidated-
+ghdm69ye. Namespace64332 stillLIVE. No stagedindex/commits/pushes; goal ACTIVE.
+Previous userexplanationturn NO PROGRESS; this turn proofs/test/consolidation
+and reference-contract promotion PROGRESS.
+
+
+2026-10-02 PROGRESS private mutable executor limited-context migration:
+limited-executor-context-sf9acf67 changes FIRST TWO Context formals to limited
+private (Execute_With_Input/Execute_Typed), readonly Run wrappers retaincopyable
+Context.62015 TERMINAL0: actual limited mutable context1811checks, readonly1811,
+Store4137/calls4818/executor2099 PASS explicitchecks withgnatp; manifestedinputs
+verified. Runtime fixture based on readonlyinput tests with Mutable limited;
+recursivecalls/budgetcleanup tested, bodies unchanged. GPR namingwarning only,
+corrected in proof snapshot limited-executor-proof-3noo3x9x. New SPARK instance
+Timer_Verification.Clock_State limited, proving generic body with actual limited
+mutable state; proof20488 LIVE from launch. No promotion yet.
+Namespace64332 separatelyLIVE, pending sharedreference shape promotion still
+lockbusy on thisturn attempt. No sharedsource/index/buildoutput mutation. Prior
+userstatus response NO PROGRESS; this turn runtime+implementation PROGRESS.
+Goal ACTIVE.
+
+
+2026-10-02 PROGRESS63714 TERMINAL0 strengthened Byte/Package reference Write
+contracts preserve Count/Usage and all objectKind/Length.61proof+16flow strict
+PASS, perentityMake/Read/Write postconditions audited, sourcehashes verified;
+1035byte+22package explicit functionalchecks PASS. Evidence reference-shape-
+frame-n4pzi_rm/audit.json. Guarded /tmp/acpi-promote-shape.py promotion attempted
+underbuildlock but busy; sharedtwo specs unchanged. Namespace64332 separately
+LIVE last poll, same required frame added to old Buffer_References snapshot.
+Executor boundary audit: Pure AML_Execute.Datum only integer/immutableObject;
+mutable reference representation must be separate, not reinterpret Object.ID.
+Its Context formal is private (copyable); limited live owner requires mutable
+executor path accepting limited context while readonly copy wrappers remain
+separate. No implementation/proof of that migration yet. No index/sharedcode/
+buildoutput changes this turn; goal ACTIVE.
+
+
+2026-10-02 UPDATE42058 TERMINAL0 allchecked regressionsPASS:12378objects,
+4137Store,768bufferwrites,1035byterefs,22packagerefs; package negativecontrol
+fails correctly. PROMOTED7files underbuildlock: exactElement_Updated+Set_Element
+frame, Package_References child, test, GPR/run test+proof registration. Source
+hashes match218proof+30flow checked snapshot; allfoursetter/referencecontracts
+proved. package-references-2zip7v64/promotion.json; syntax/scopeddiffcheckPASS.
+No Index/Store-conversion/lifetime/CopyObjectcompletion claim. Namespace64332
+still separatelyLIVE; no index change/commit/push/lock held. Goal ACTIVE.
+
+
+2026-10-02 PROGRESS audit found CopyObject r6 ALREADY has equivalent private
+Element_Updated frame; do not claim shared package-frame primitive fixes its
+8remaining obligations, and do not rerun unchanged proof. Raw package ref
+context42058 LIVE checked regression on current sharedsource plus proved
+package-frame units: package-reference-context-nkmt0fha. Includes object/Store/
+buffer/byte refs and22packagechecks+negativecontrol; source hashes recorded.
+Namespace64332 stillLIVE last handle poll on frozen frame-strengthened snapshot.
+No sharedsource/index changes this turn; no owned buildlock/commit/push. Goal
+ACTIVE; previous turn PROGRESS, this turn audit+validation setup PROGRESS.
+
+
+2026-10-02 PROGRESS namespace52686 TERMINAL1:2684/2685 proofchecks proved,
+sole unproved namespace invariant at Owned.Write spec255. Allsix expected
+Owned postconditions present+proved;25inherited flowwarnings retained.58input
+hashes verified full-audit.json namespace-nested-owner-497bgt_l. New PRIVATE
+namespace-owner-frame-95fu0wl8 adds child Write count/usage/kind/length frame
+postconditions (invariant preserved, no suppression).64332 LIVE full namespace
++strengthened childproof, no restricted region. Source frozen while running.
+Separately package56705 TERMINAL0: private package-references-2zip7v64 exact
+Element_Updated delta frame added to Set_Element, Package_References checks
+invalidValue beforemutation, alias reads/null/selfcycle/failureatomic22testsPASS.
+Strict proof+perentity setter/Make/Read/Write contract coverage audited audit.json.
+No package promotion or AML Store conversion/lifetime integration claim.
+No shared library/index/buildoutput changes this turn; goal ACTIVE.
+
+
+2026-10-02 PROGRESS PROMOTED under sharedbuildlock: generalized Stored_Byte,
+Set_Stored_Byte/exact frame in aml_objects.ads/adb; new arena-local Byte_References
+child and1035case test; existingbuffer_access test renamed calls; aml.gpr/run.sh
+register new test and proofunit. Source hashes match209proof+29flow checked
+snapshot; existingobject12378/Store4137/buffer768 regressions passed,1035tests
+identical checked/release withnegativecontrols. Promotion.json byte-references-
+w5ovhibi verifies8files. ALSO promoted14case ACPICA lifetimeoracle/scriptdoc,
+includingstring RSTR97/RSMU99, guarded hashes string-reference-oracle-bf92tje6.
+Scoped gitdiffcheck and shellsyntax PASS. No stagedindex changes/commits/pushes.
+Namespace owner stillPRIVATE, separate frozen old-API snapshot52686 LIVE full
+proof last handle poll. Newshared API requires adapting owner only AFTER its
+proof result audited. No AML Index/executor/service ownership integration claim.
+No buildlock held now. Goal ACTIVE; this turn PROGRESS.
+
+
+2026-10-02 PROGRESS context2844 TERMINAL0: object12378/Store4137/buffer768/
+byte-reference1035 checked regressionsPASS, all current-context source hashes
+verified byte-access-context-04p6rzul/audit.json. Generalized byte primitive+
+arena-local descriptor promotion fully prepared /tmp/acpi-promote-byte-access.py:
+guarded original/source hashes, eightfiles inclGPR/run test+proof registration.
+Attempt holding sharedbuildlock failed nonblock, NO sharedfiles changed. Do not
+apply unguarded while another task builds. Oracle14 guarded promotion also
+still pending. Namespace52686 LIVE last handle poll; unchanged frozen fullproof
+source, do not restart. No own buildlock, index edits, commits/pushes. Full
+mutable reference/service ownership integration and fullgoal still unfinished.
+
+
+2026-10-02 PROGRESS byte references86041 TERMINAL0: object187proof+21flow,
+descriptor22proof+8flow; strict report PASS. Explicit contract audit verifies
+Set_Stored_Byte +Make/Read/Write each has proved postcondition;8inputs rehashed,
+byte-references-w5ovhibi/audit.json.32481 TERMINAL0 same1035explicitchecks in
+checked/release, bothnegativecontrols active, allAda byteidentity verified:
+byte-reference-dual-uap5pbgj/audit.json. Still raw byte storage semantics only.
+Before sharedpromotion,2844 LIVE existing object/Store/buffer-access plus new
+byte-reference tests on current shared context with generalized primitive:
+byte-access-context-04p6rzul, all source manifested. Checked profile preserves
+legacy assertions. Do not promote descriptor into executor without ownership.
+Separate namespace52686 still LIVE fullproof; source frozen. Shared Buffer_Byte
+currently unchanged. No sharedcode/index/buildoutput mutation; goal ACTIVE.
+
+
+2026-10-02 PROGRESS private byte-references-w5ovhibi: generalized scalar
+Buffer_Byte -> Stored_Byte access for Byte_Kind; Byte_References validates
+String/Buffer and retains exact write frame. Shared source unchanged.
+18923 TERMINAL1 runtimeCheck7: fixture assumed Byte_Data lowerbound1 despite
+nonzero backing offset; fixed to Data'First/Data'Last, no library change.
+86041 LIVE proof, compiled runtime1035explicitchecks PASS: all256byte values,
+neighbors/otherbuffer preserved, wrongkind/invalidID/bounds/U64max rejected.
+Raw string storage only: termination/resize/AMLopcode semantics not implemented.
+Source frozen while full object+descriptor proof runs. Separate namespace52686
+still LIVE last polled; no full namespace proof claim. Oracle14 promotion retry
+nonblockinglock unavailable, remainsprivate. No index/buildoutput/commit changes.
+Goal ACTIVE; prior turn and this turn PROGRESS.
+
+
+2026-10-02 PROGRESS private string reference oracle57916 TERMINAL0:
+string-reference-oracle-bf92tje6/results/report.json all14observations32/64bit,
+source/tools hashes verified audit.json. RSTR97 method-local string Index
+survives return; RSMU99 global-string reference observes direct later mutation.
+Reference-only; CuBit string Index remains absent. Promotion of script+doc
+attempted under nonblock buildlock and unavailable; no sharedfiles changed.
+Ready guarded /tmp/acpi-promote-string-oracle.py; recheck source before reuse.
+52686 unfiltered namespace proof STILL LIVE on latest handle poll; do not restart.
+Construction/reset audit identifies request Start_Snapshot assignment to Boot
+(acpi_requests.adb150), bootstrap Start/Core Fresh and copyable request state,
+plus whole-state Old/equality specs. Ownership migration must cover allthree
+live-state layers while preserving ordinary data snapshots/rollback. No native
+runtime edits, staging/index changes, commits/pushes; goal ACTIVE.
+
+
+2026-10-02 PROGRESS proof coverage audit:42338 TERMINAL1 strict wrapper,
+GNATprove0; report11body checks proved,25inherited flowwarnings (16INOUT_ONLY_READ,
+9INEFFECTIVE). Crucially body-only limit-region EXCLUDED spec postconditions;
+not full Owned proof. region-audit.json preserves entity/rule coverage and58
+verified hashes.52686 LIVE unfiltered test_namespace+issuer proof on same frozen
+namespace-nested-owner-497bgt_l source; full-proof-config.json removes region.
+New private audit_contract_coverage.py requires actual proved VC_POSTCONDITION
+for each expected operation, supplements rather than relaxes strict wrapper.
+14443 TERMINAL0 control: prior direct owned-buffer proof accepted five contracts;
+filtered namespace rejected missing Load postcondition. Evidence contract-audit-
+control.json. Next apply to six Owned operations (Load/Reset/Append/Make/Read/
+Write) and audit namespace invariant obligations when full proof terminates.
+Service/bootstrap audit confirms both states copyable and whole-state Old/equality
+contracts; owner migration needs noncopyable live state plus data snapshots.
+No shared library, index, or build outputs changed. Goal ACTIVE.
+
+
+2026-10-02 PROGRESS namespace-owner-dual-pb168sgt5036 TERMINAL0:
+30explicit checks each checked/release, identical output; negativecontrol0
+PROGRAM_ERROR in both. Added successful second named-buffer load, reference
+survival, independent-slot writes and earlier snapshot isolation. Alllibrary
+bytes verified identical to live namespace-nested-owner-497bgt_l proof inputs.
+Audit preserved.42338 STILL LIVE confirmed handle and host process1127672:
+gnatwhy3 worker1163760 running CPU, own why3server socket under private tmp.
+No stuck/failure conclusion; private proof source remains frozen. Translation
+includes nested Execute generics despite region filter, so wait for coverage
+report before claiming scope. Service core audit: its State is also copyable;
+migration must make live core/session ownership noncopyable or separate owner
+from snapshots, and preserve Install/rollback/Fresh contracts. No shared
+library changes, owned lock, index changes, commits/pushes. Goal ACTIVE.
+
+
+2026-10-02 PROGRESS package-boundary repair private namespace-nested-owner-497bgt_l:
+Owned nested in generic AML_Namespace; removed unsupported generic child,
+namespace Type_Invariant verified byte-identical. Twenty explicit release
+checks PASS; allsource hashes verified runtime-audit.json.42338 LIVE proof
+last authoritative poll; reached flow/proof phase past prior unsupported error.
+Focused limit-region AML_Namespace.adb1094 through nested Owned body, expected
+Test_Namespace.Owned.Load/Reset/Write. Not a full namespace proof. Source frozen
+until terminal result; no shared library modifications or staging/index changes.
+Next audit actual region coverage and invariant obligations, then service
+migration and mutable AML reference executor integration. Goal ACTIVE.
+
+
+2026-10-02 UPDATE54690 TERMINAL1: GNATprove rejects generic child instance
+outside parent declaring invariant (unsupported tool feature), before proof.
+Twenty functional checks remain PASS only. Evidence owned-namespace-3ogxb8uk/
+proof-limitation.json and checked-proof-8bfsgw66/command.log. No own live jobs.
+Next change package boundary (nested owner or external wrapper with explicit
+namespace mutation operations); retain Type_Invariant, no suppression. Current
+private generic-child implementation NOT eligible for promotion.
+
+
+2026-10-02 PROGRESS private namespace ownership integration:
+owned-namespace-3ogxb8uk (latest-owned-namespace-root.txt). Generic child
+AML_Namespace.Owned holds existing namespace State inside limited-private
+Arena; authority token stays outside copyable snapshots/transaction candidates.
+Reset obtains fresh identity before clearing tree; issuer NaturalLast.
+Twenty explicit -gnatp checks PASS: named buffer load/mutate, old snapshot
+isolation, wrong owner/stale reset rejection, failed duplicate-load preserves
+reference. runtime-audit.json verifies all copied inputs. Compiler36482 and
+46152 TERMINAL4 resolved qualified Reference and redundant inherited uses;
+54690 build/runtime PASSED, strict wrapper proof LIVE confirmed handle.
+Repoll54690; no full proof claim yet. No shared library changes or service
+migration; mutable Index callback/executor, package/string refs, lifetime
+reclamation remain. Private source freeze while proof runs. No owned build
+lock/index edits/commits/pushes; goal ACTIVE. Prior turn PROGRESS.
+
+
+2026-10-02: PROGRESS exact private owned-buffer contracts PROVED25560 TERMINAL0:
+owned-buffer-exact-ulryu4xy/checked-proof-ge2dctkc/result.json. Arena22proof+
+18flow, issuer4proof+8flow; all13inputs rehashed. Reset generation change and
+failure preservation; exact target/offset on Make; exact Read byte; successful
+Write exact single-byte frame and rejected Write unchanged storage. Earlier
+46012 TERMINAL0 basic ownership15proof+15flow issuer4+8 confirmed this turn.
+Dual-profile2548 TERMINAL0:29explicit checks each checked/release, identical
+output; intentional Check0 fails both. Includes helper-call-created reference,
+later allocation retention, wrong arena/stale reset, invalid IDs/bounds/U64max,
+exhaustion preservation and live mutation. All librarybytes match exact proof;
+owned-buffer-dual-r_c5a573/audit.json. Capacity3 only for exhaustion testing;
+service-capacity wrapper proof and integration still pending. No reclamation
+or AML integration claim. Next unify ownership with namespace Values rather
+than introducing a separate per-method store; retain package/name/Local/Arg
+semantics and expand beyond buffer refs. No own live jobs/shared build lock;
+no shared library or index changes, no commit/push. Goal ACTIVE.
+
+
+2026-10-02: PROGRESS private limited-private owning buffer arena implemented:
+/home/doc/git/.acpi-proof-work/owned-buffer-arena-r49jg9fo. Owns storage and
+nonreused issuer token; references stamped internally; cross-arena and stale
+reset rejected, identity exhaustion leaves storage/generation unchanged.
+Checked compile/runtime15018 and r3 runtime PASS explicit checks: wrong arena,
+stale reset, exhaustion preservation, valid write/read. First proof65487
+TERMINAL1 strict report rejected two unused output Status flowwarnings; fixed
+by deriving Success from checked child status. Service instance SPARK_On added.
+Second strict proof46012 LIVE last handle poll this turn; repoll before claiming
+completion. Source input-hashes.json; r1 failure/logs preserved. No shared
+library changes, no arena integration, no interpreter conformance claim.
+Capacity3 prototype; eventual service capacity/proof, exact successful access
+contracts, retention/reclamation and namespace migration remain. No own lock,
+no index changes, no commits/pushes. Goal ACTIVE.
+
+
+2026-10-02: Previous response-only turn classified NO PROGRESS; this turn
+PROMOTED tests/aml-core/acpica_references.py and reference-lifetime.md under
+shared build lock. Ten ACPICA lifetime observations across32/64bit widths;
+original source/tool hashes reverified. New private harness validation20110
+TERMINAL0: correct synthetic runner accepted10cases; wrong value, nonzeroexit,
+and extra output each rejected; stale report removed in all three failures.
+Evidence .acpi-proof-work/reference-oracle-gates-2sj4yyk2/audit.json; promotion
+record reference-lifetime-oracle-mns04wvf/promotion.json. Synthetic runners
+validate the harness only, NOT CuBit conformance. Mutable Index integration
+still absent; backing objects must survive their creating method.
+Full Clone33235 TERMINAL1:373/381proved, eight remaining obligations; evidence
+copy-combined-r6-62sv11o_/full-proof-audit.json. Identity issuer42181 TERMINAL0:
+capacity3/NaturalLast instances each4proof+7flow, checked/release14checks each;
+private arena-identity-06dhqlqg/audit.json. Not integrated into arena lifetime.
+No own live jobs, no build lock held, no index/commit/push changes. Next enforce
+arena identity and reset rejection in a limited-private owning arena before
+connecting mutable references to interpreter execution. Full goal ACTIVE.
+
+
+2026-10-02: Focused dual-profile reference testing41861 TERMINAL0:
+18explicit checks each with -O2 -gnata -gnato and -O2 -gnatp, identical output;
+intentional failing Check0 raises PROGRAM_ERROR in both. No disabled assertion
+counted as a functional pass. Library byte-identical to descriptor r3 proved
+22proof+8flow. Evidence /home/doc/git/.acpi-proof-work/
+buffer-reference-dual-0tg7pps2/audit.json; original inputs unchanged.
+Descriptor remains PRIVATE: arena identity/reset and ownership lifetime missing.
+Separate full Clone33235 polled live; no full-constructor success claim.
+No index changes or shared build outputs touched.
+
+
+2026-10-02 USER TESTING PREFERENCE: use -gnatp for release/functional runs;
+retain occasional focused assertion-enabled runs and reconcile differences.
+Functional oracles must use explicit checks, not disabled pragma Assert.
+Private combined-r6 functional36227 TERMINAL0:323explicit checks PASS with
+-O2 -gnatp; intentional Check(False) exits1 PROGRAM_ERROR. Seven ghost checks
+excluded and not counted. Private copy-functional-gnatp-swd6os6k/audit.json
+records source hashes and scope. Only unused-formal warning disabled in this
+profile because stripping contracts removes parameter uses; others stay fatal.
+Original full checked73836/82344 deliberately retired143, exact executables
+verified; full-assertion-retirement.json retained, no pass claim. Focused
+checked25boundary/19nested evidence remains on earlier documented snapshots.
+Current full Clone33235 proof remains separate and pending. Descriptor r3
+proof99427 passed22proof+8flow; arena-local only, identity/lifetime still missing.
+No staged index changes, commits, shared build output edits, or lock held.
+
+
+2026-10-02: Promoted scalar Buffer_Byte, exact-frame Buffer_Byte_Updated and
+Set_Buffer_Byte to shared aml_objects.ads/.adb under build lock. Registered
+buffer_access_tests.adb in tests/aml-core/aml.gpr and run.sh; existing proof
+command already analyzes aml_objects.adb. Full unit proof99618 TERMINAL0:
+187proof+21flow, no rejected warnings/Assume/skips, source hashes verified.
+Evidence /home/doc/git/.acpi-proof-work/buffer-access-shared-uoq8tugj/audit.json.
+Complete private context43848 TERMINAL0: object12378, Store4137, byte768 PASS,
+128inputs unchanged; buffer-access-context-fbjvrbhx/audit.json. Promotion
+hashes match; shellsyntax and scoped diffcheck PASS. No shared build outputs
+or staged index touched. Mutable references/AML Index remain unimplemented;
+Object_Value remains immutable provenance. Clone33235 separately still live
+and unproved. No native correctness or whole-interpreter proof claim.
+
+
+2026-10-02: Promoted corrected ACPICA CopyObject oracle and reference README
+under shared build lock. NEST/PKGM now mutate through nested Index rather than
+Local assignment, which can copy data and mask aliasing. BASE/SRCO positive
+alias controls yield9; REPT/ORIG copied-data isolation yields1. All42reference
+observations across32/64bit widths PASS in private40110; source/tool hashes
+verified, promotion.json in /home/doc/git/.acpi-proof-work/
+copy-repeated-oracle-4blgk3dv. Diffcheck PASS; no CuBit conformance claim.
+Private Set_Buffer_Byte primitive proved16checks (copy-buffer-write-b0tqu_jw),
+with additional shared-source/per-occurrence-copy mutation tests PASS in
+copy-buffer-alias-eqx7doa9; all inputs verified. No library promotion yet.
+Private null-guard6684 terminal1:11unresolved at level2/timeout10, hashes intact.
+Combined33235 full Clone proof remains live at level4/timeout60, including
+separately proved range helper18checks, opaque call-site18+24 checks, and
+explicit final checker4+24checks. Full constructor remains unproved.
+Original hosted82344/73836 last polled live this turn. Instrumented duplicate
+81081 intentionally stopped143 after bottleneck identification, no pass claim.
+No build lock held now, no index changes, no commits or pushes.
+
+
+2026-10-02: Copy runtime bottleneck diagnosed in private snapshots. Profile
+attributes about 98% of samples to Valid/Element; nested assertions repeatedly
+scan the object store. Optimized null-slot path skips Preserve_Node/Slot calls
+only when Candidate and Witness are unchanged. Private boundary session80589
+TERMINAL0: all25 checks PASS, including4096-slot exact element capacity; all18
+input hashes unchanged. Evidence /home/doc/git/.acpi-proof-work/
+copy-null-preserve-zkzmvr0n/result.json. Compiler-inlining experiment gave no
+material improvement and is not being promoted. No contract/assertion removed.
+Latest r5 proof snapshot plus null guard now in copy-r5-null-guard-v6skkcdk:
+strict build and19 nested/predicate checks PASS; session6684 LIVE full Clone
+proof at level2/timeout10. Existing69669 r5 level4/timeout60 proof still LIVE;
+82344/73836/81081 regressions last polled live this work chunk. These are
+separate snapshots; no combined/full proof claim. All experimental library
+edits remain private; shared library and staged index untouched. No build lock.
+
+
+2026-10-02: Clean timer98253 TERMINAL: GNATprove exit0, independent JSON audit
+confirms2797prover+379flow checks, no unproved/skipped/Assume obligations,127
+source hashes unchanged. Strict private wrapper exit1 is RETAINED because27
+flow warnings (16INOUT_ONLY_READ,11INEFFECTIVE) are rejected by its blanket
+warning rule. See .acpi-proof-work/timer-clean-_4838sdk/timer-proof-audit.json
+and preserved report;179hosted timer checks passed. No nativeclock/wholeAML
+claim. Independent ACPICA43624 TERMINAL0:17DataTableRegion/selector comparisons
+pass,128source hashes and runner hash verified; only control-confirmed exact
+ACPICA20260408 shutdown-cache diagnostic accepted. Evidence in
+.acpi-proof-work/acpica-region-clean-kp3f5_eg/result.json (under /home/doc/git).
+Copy98068 full constructor proof and82344/73836 hosted regressions remain
+live; no shared source/build-script edits or index changes this turn.
+
+2026-10-02: Own narrow documentation correction in tests/aml-core/
+hardware-catalog/README.md and userspace/services/acpi-backend/README.md:
+existing Hardware_Grants/Cspace group, attenuation and descendant-revocation
+policy must be distinguished from absent live syscall/boot/I/O wiring.
+Private timer98253: strict compile and179 hosted checks passed; full timer
+harness proof pending in timer-clean-_4838sdk (127 hashed sources). Private
+copy98068 full proof,82344/73836 regressions remain live. No shared source or
+build-script edits, no shared build lock, no index changes.
+
+2026-10-02: Integrated71170 TERMINAL143, deliberately stopped after recovering
+GNAT internal DOC_END error in timer_service_verification from deleted log.
+Verified isolated process group2325164 including its orphaned GNAT workers;
+all stopped, diagnostics retained in /home/doc/git/.acpi-proof-work/
+integrated-cancellation.json and integrated-recovered-log.txt. Original /tmp
+source manifest missing; no clean integrated-proof or ACPICA completion claim.
+Shared AML source freeze for this run released. Private copy proof98068 and
+hosted copy runs82344/73836 remain separate. Next: fresh timer/integrated proof
+outputs and durable TMPDIR/manifests; preserve all contracts and full scope.
+No shared build lock held; no commits/pushes.
+
+2026-10-02: Clock integration promoted under sharedlock24files +obsolete
+acpi_service.adb removed; generic core retains service API via package instance.
+Native provider moved to dedicated native-clock/ so hosted loop/endpoint GPRs
+cannot discover syscall-bound instance. Native52036 TERMINAL0 explicit GPR
+naming/exclusion +newdirectory compile/link. Default and native specs retain
+SPARK_Mode(On). Registered42clock/105executor/32combined tests; proof runner
+now names acpi_service.ads plus explicit Timer harnesses. README scope updated.
+71170 LIVE full registered run.sh --prove --acpica, /tmp/cubit-aml-clock-
+integrated-full.log. Frozen own-source manifest /tmp/cubit-aml-clock-integrated-
+hashes.json. No shared AML source/runner edits until terminal. Diffcheck and
+shellsyntax PASS. No new nativeboot/live Timer/suspend guarantee. No sharedlock
+held; staged safekeeping index preserved. Only ownlivejob71170. Full goal
+still requires Debug/CCL logging, CopyObject/reference lifetime semantics,
+other AML/features/table budgets/live integration/hardware capability work.
+
+53548 TERMINAL0 default-instance flow now actually analyzed: Total                           376    376 (100%)         .           .          .
+No skipped SPARK bodies; verified-default-flow.out saved. Native74817
+TERMINAL0 compile/link with SPARK-enabled native instance. All ownjobs now
+terminal; no shared lock/index changes. Clock promotion preparation next.
+
+2026-10-02: Regression94646 TERMINAL0 remaining18 executables PASS;
+combined with first25 establishes all43. No production behavior change.
+Default proof target82666 TERMINAL0 but ZERO checks: default package instance
+had no SPARK_Mode and bodies were skipped. This is NOT verification success.
+Added pragma SPARK_Mode(On) to default/native instance specs in integration
+snapshots only.53548 LIVE default instance flow retry /tmp/cubit-aml-clock-
+default-flow-r2.log; must inspect nonzero analyzed obligations before promotion.
+Native annotation recompile74817 LIVE /tmp/cubit-aml-clock-native-r4.log;
+r2production/r4native hash manifests saved.
+Generic core source remains exactly as proved3192; annotation change is to
+instance entry points. No shared source/index edits or lock. Current turn
+progress completed regressions and repaired silent proof coverage gap.
+
+2026-10-02: Native provider selection95847 TERMINAL0 compile/link. Private
+acpi.gpr explicitly maps ACPI_Service spec to native/acpi_service_native.ads
+and excludes hosted/default acpi_service.ads. Native instance binds trusted
+ACPI_Clock_Source.Read, hosted default remains unavailable clock. All r3source
+hashes intact; no shared native/GPR edits yet. This is build evidence only.
+Clock regression15105 TERMINAL1: compiled all mains and passed first25tests,
+then integer_oracle_tests lacked ../tests/aml-core/build/integer-oracle.txt
+because private runner cwd/layout differed. Production code not implicated.
+Copied oracle fixture into private expected layout, recorded hash, set cwd to
+private kernel dir;94646 LIVE resumes from integer_oracle_tests through last18
+executables. Logs /tmp/cubit-aml-clock-regressions{,-r2}.log. No passed tests
+repeated; no test assertions changed. Only ownlivejob94646. Staged index and
+shared sources unchanged, no lock or waiter. Current progress integration
+build selection +regression harness recovery; full ACPI goal remains active.
+
+2026-10-02: Both proofs TERMINAL0 and summaries/hash manifests inspected:
+2058 clock-service3192total=2805prover+387flow zero unproved/justified;
+80718 Debug harness620total=538prover+82flow zero unproved/justified.
+Saved each verified-proof.out. Debug proof scope is callback harness, not
+whole service/log formatting/native sink. Clock native44980 already links.
+Preparing clock promotion independently: /tmp/cubit-aml-clock-regressions-
+vbgwloqr copies frozen production sources; two older generic-callback tests
+adapted with explicit unavailable clock.15105 LIVE full aml.gpr build +43
+registered *_tests executables, /tmp/cubit-aml-clock-regressions.log. Production
+hashes saved; no production code change from proved clock candidate. Generic
+package/native provider selection +shared runner proof target updates still
+need guarded integration after validation. No current shared source edits.
+CopyObject audit: existing object store has allocation +Set_Element but no
+clone/replace facility; Store handles named integers only, cannot safely serve
+as CopyObject. Source type replacement and independent aggregate copying must
+be implemented/tested, with allocation failure and lifetime semantics. No
+CopyObject implementation claim. Only ownjob15105; no shared lock/indexchanges.
+Previous turn progress upstreamnextopcode; current terminalproof+regression.
+
+2026-10-02: Debug+controlled-clock candidate advances selected upstream8
+arithmetic/logic modes: each emits one mode message then UNSUPPORTED. No
+upstream passes claimed. Candidate report /tmp/cubit-aml-debug-aslts/report.json.
+Diagnostic-only63637 TERMINAL0 build /tmp/cubit-aml-debug-trace-xdngvky0;
+trace locates RST0 offset1 previous157(0x9D). Confirmed bytes and pinned
+runtime/cntl/common.asl278..284: first CopyObject(0,ERR0), followed by ERR1,
+ERR2,FNAM resets. confirmed-copyobject-report.json saved with table hashes.
+First byte-check assumed2-byte PkgLength; corrected checker accepts all four
+encodings and validates lead encoding width, since this method uses short
+PkgLength. Diagnostic exception code is not production/proof evidence.
+Both2058 clock-service and80718 Debug proof same-handleLIVE; frozen inputs
+122/127 hashes intact. No shared source/index edits or locks. Prior turn
+progress Debug boundary tests; current progress actual next blocker evidence.
+CopyObject requires source-type-preserving replacement/deep-copy semantics;
+do not alias it to Store merely to satisfy this initial integer reset.
+
+2026-10-02: Debug executor79 hosted checks PASS: all prefixes of Store-to-
+Debug, target truncation, wrong extended target, rejected value read, ObjectType,
+SizeOf rejection, arithmetic/nested Store results, budget side-effect boundary,
+disabled sink, saturated callback counters, method cleanup on all paths.
+Initial84436 TERMINAL4 test mixed logical operators; fixed assertions only.
+80718 LIVE SPARK debug_verification.adb, /tmp/cubit-aml-debug-proof-r2.log,
+proof-input-hashes.json frozen in /tmp/cubit-aml-debug-550p34tz. Tests exercise
+explicit callback, not native logging or CCL delivery. Previous turn16reference
+comparisons preserved.2058 clock-service proof stillLIVE samehandle. No source
+changes to either frozen graph while active. Only ownjobs2058/80718; no shared
+source/index changes, lock or waiter. Current turn progress boundary tests and
+actual proof invocation; full goal still incomplete.
+
+2026-10-02: Debug implementation isolated /tmp/cubit-aml-debug-550p34tz
+(path /tmp/cubit-aml-debug-path), regular source copy of clock core. Executor
+recognizes5B31 only as write target, consumes two bytes with truncation guard,
+invokes synchronous callback without AML failure status. Legacy/default
+namespace uses explicit disabled sink; core generic can provide typed sink
+with live value store. No retained arena IDs permitted by interface intent;
+actual hosted sink formats synchronously. Existing ObjectType(Debug) support
+was already present; not newly claimed. Native/CCL log sink NOT implemented.
+15937 TERMINAL0 hosted reference build;16 comparisons match saved ACPICA values
+and captured CuBit scalar/string/buffer/package output, side effects and result
+targets.2 RefOf cases explicitly UNSUPPORTED (missing reference semantics),
+not silently dropped or counted as pass. debug-comparison-report.json saved.
+No Debug SPARK proof yet; malformed targets/budget/callback lifecycle tests
+still required.2058 clock service proof remainsLIVE; do not alter frozen
+clock candidate. No shared source/index edits or lock. Current turn progress
+actual Debug callback implementation +reference comparisons.
+
+2026-10-02: Debug reference audit44932 TERMINAL0:18 pinned ACPICA observations
+across both widths for integer/string/buffer/package/reference writes, result
+targets, source side effects, nested Store return and ObjectType16. Corrected
+initial output-prefix regex against saved logs; every writing case has debug
+output, Type only has none. Known allocation diagnostic retained by control.
+Evidence /tmp/cubit-aml-debug-audit/report.json +requirements.md. No CuBit Debug
+implementation or comparison claim. Writes benign/optional debug sink per
+ACPI; requested CCL logging still required. Need lifetime-safe copied output,
+no evaluation of references and nonfatal overflow.2058 fullclockservice proof
+same-handle LIVE; no frozen source edits, shared lock or staged index changes.
+Prior turn progress traced next upstream opcode; current reference evidence.
+
+2026-10-02: Native-binding prior turn progress.2058 full serviceproof same
+handle remainsLIVE, no frozen source edits. Controlled-clock service runner
+executed all8 arithmetic/logic modes on pinned upstream tables: still explicit
+UNSUPPORTED, no passes. Independent diagnostic-only build76657 TERMINAL0 at
+/tmp/cubit-aml-clock-trace-luw_9q13 located next failure in STRT; table-byte
+cross-check confirms Debug object5B31 in every mode after Timer. Saved
+confirmed-debug-report.json with trace offsets/byte contexts/table hashes.
+Baseline candidate outputs at /tmp/cubit-aml-clock-aslts/report.json; synthetic
+clock only, not native timing. Diagnostic exception instrumentation must never
+be promoted or cited as proof. This changes next implementation target to
+Debug target/output handling after Timer integration, not a passed ASLTS claim.
+Only own livejob2058; no shared source/index changes, lock or waiter.
+
+Native clock44980 TERMINAL0 compile/link ACPI service; native input hashes
+verified and production core byte-matches2058 frozen proof source. Only
+livejob2058. Compilation is not a boot or live clock correctness test.
+
+2026-10-02: Prior turn progress clock service flow379PASS;2058 full proof
+same-handle confirmed LIVE, frozen core unchanged. Independent native binding
+prepared /tmp/cubit-aml-clock-native-oryjpfbe from prior native runtime seed
+plus current clock service core. ACPI_Service native instance supplies
+ACPI_Clock_Source.Read; abstract external asynchronously changing clock state
+is declared in SPARK spec, syscall body explicitly SPARK Off trusted boundary.
+Uses existing CuBit.Monotonic.Read, no caller-selected memory/register address.
+Core adapter validates availability/overflow/regression before AML width
+normalization. Native50891 TERMINAL1 visibility error in contract; fixed use
+type and44980 retryLIVE /tmp/cubit-aml-clock-native-r2.log with native-source-
+hashes-r2.json. Runtime/crt/manifest are preserved seeds, not rebuilt claims.
+No boot/live timer/suspend correctness claim. Only own jobs2058/44980; no
+shared source/index edits, lock or waiter. Full goal remains incomplete.
+
+Clock-service flow66402 TERMINAL0:379 flow checks, zero unproved/justified.
+Saved verified-flow.out. Full instantiated service+clock proof2058 LIVE,
+/tmp/cubit-aml-clock-service-core-proof.log, unchanged r2 frozen inputs.
+This replaces66402 as sole own livejob; no shared lock/index changes.
+
+2026-10-02: Package-provider41277 TERMINAL1: compiler PASS, previous invariant
+instantiation restriction resolved. Flow reported9 initialization obligations
+at Execute_Body call (3 result components across3 instantiations). Preserved
+flow-nine-unproved.out. Replaced captured Result_Out inside Execute_Body with
+explicit out formal Body_Result; no default success result or suppression.
+66402 LIVE compile+flow recheck. Compile/link passed,8 controlled-clock AML
+checks repeated PASS on current binary. source flow-input-hashes-r2.json saved.
+This is private /tmp/cubit-aml-clock-service-core-45zjoidk; not promoted or
+native clock-bound. Only livejob66402, no sharedlock or indexchanges. Previous
+turn progress full suite completion/refactor; current output ownership repair.
+
+2026-10-02: Full integrated92086 TERMINAL0 hosted+ACPICA suite. All selected
+regressions passed; upstream reference12PASS vs CuBit0PASS/12unsupported/
+0unexpected failures/339unselected. Log /tmp/cubit-aml-region-full-integration.log
+and shared build/aslts/report.json inspected. Not full AML completion.
+Clock service flow13127 TERMINAL1: GNATprove explicitly does not support
+external instantiation of generic subprograms declared inside packages with
+type invariants. Preserved failed snapshot; did NOT drop invariants.
+New isolated /tmp/cubit-aml-clock-service-core-45zjoidk (path file
+/tmp/cubit-aml-clock-service-core-path) parameterizes namespace +new service
+core generic packages by clock provider; ACPI_Service is default no-clock
+instance. Existing client type names preserved through instance exports.
+No generic subprogram instantiation across invariant-bearing package boundary.
+41277 LIVE compile then --mode=flow only; log /tmp/cubit-aml-clock-service-core-flow.log.
+flow-input-hashes.json saved. This refactor is unproved/unpromoted and native
+clock syscall remains unwired. Only own live job41277. Shared sources/runners
+now idle; safekeeping staged index unchanged. Previous turn progress provider
+flow experiment; current progress completed regression and verifier-compatible
+refactor attempt (compatibility still to be established by actual flow result).
+
+2026-10-02: Combined Timer/clock proof28074 TERMINAL0, repaired Valid post
+proved against body; no assumptions. Source r4 hashes verified; saved
+verified-clock-proof.out. Summary: Total                           625    90 (14%)                           535 (86%)           .          .
+Service-level effect check13127 LIVE (--mode=flow only) in private service
+snapshot; explicit provider inputs Sample_Microseconds/Sample_Available are
+modeled globals. Removed stale Operand/Dispatch Global exclusions in that
+snapshot to infer actual provider dependencies; no bounds/termination
+contracts removed. This must pass flow before native/provider proof claims.
+flow-input-hashes.json saved; no source edits while active. Full integrated
+92086 still LIVE, now selected upstream ASLTS; earlier regressions passed.
+Only own jobs92086/13127; staged index unchanged, no shared lock held.
+
+2026-10-02: Prior turn verified wait. New isolated service clock wiring at
+/tmp/cubit-aml-timer-service-937d1c1r (path file /tmp/cubit-aml-timer-service-path).
+Namespace and service generic Invoke_With_Clock accept explicit raw microsecond
+provider; namespace retains AML_Clock history. Existing Invoke_With_Tables
+uses explicit unavailable provider. Removed Execute_With_Input Global=>null
+in this new snapshot so clock-provider effects are not falsely hidden; effect
+contracts and service instantiation proof still required. No native syscall
+binding yet.58430 TERMINAL0 reference runner compile,8 controlled-clock real
+AML checks PASS (both widths, return/local/order/highword). Synthetic readings
+are hosted fixtures only, not upstream success or native Timer claim.
+Combined clock82163 TERMINAL1:4 unproved validity post/preconditions, because
+statement-bodied Valid had no exported functional contract. Preserved report
+clock-proof-four-unproved.out; added Post=>Valid'Result to prove actual constant
+True definition (depth still bounded by subtype).28074 recheck LIVE with hash
+manifest clock-proof-input-hashes-r4.json. No suppressions/assumptions added.
+Full integrated92086 remains LIVE ACPICA phase (store520 now passed).
+Only jobs92086/28074; staged safekeeping index and shared sources unchanged.
+
+2026-10-02: Clock adapter now exercised through isolated Timer executor
+callback in Timer_Verification; native syscall remains unwired. New fixture
+timer_clock_tests checks conversion, 32-bit AML result with64-bit retained
+clock history, repeated readings, rollback/unavailable/overflow preservation,
+recovery and no sample when budget exhausted. Initial8390 failed test operator
+visibility;87442 failed redundant valid-depth warning under -gnatwe. Fixed
+visibility and used True validity predicate because Active subtype itself
+bounds0..33; no range check suppression.82163 LIVE build/tests+combinedproof,
+log /tmp/cubit-aml-timer-clock-integration-r3.log; source hashes saved
+clock-proof-input-hashes.json. Do not modify frozen graph while active.
+Full integrated92086 still LIVE ACPICA phase; no shared source/index edits.
+Prior turn progress clock-adapter proof; current progress executor integration.
+
+Clock adapter25598 TERMINAL0, inspected proof summary zero unproved/justified;
+Total                            12    5 (42%)                      7 (58%)           .          .
+Input hashes intact and verified-proof.out saved. Only own live job92086.
+
+2026-10-02: Prior turn progress revised Timer proof; current native-clock
+adapter implementation isolated in /tmp/cubit-aml-clock-adapter. AML_Clock
+converts microseconds to100ns with explicit unavailable/overflow/regression
+statuses; failed samples preserve last accepted value, equal reads allowed.
+Hosted42 boundary checks PASS including32-bit crossing, maximum conversion,
+one-past maximum, rollback and recovery.25598 LIVE SPARK proof; source hash
+manifest saved. No native binding/physical timing/suspend correctness claim.
+Full integrated92086 still LIVE; hosted checks completed and reference phase
+now running (table bits80/servicefields54/FWTS48 passed so far). Do not edit
+shared AML sources/runners during that run. Only own jobs92086 and25598;
+no shared lock held, staged safekeeping index unchanged. Full goal remains.
+
+2026-10-02: Previous turn progress: verified region integration. Full hosted
++ACPICA suite92086 LIVE, /tmp/cubit-aml-region-full-integration.log; service
+boundary fixtures building. No shared runner/source edits while it runs.
+Timer corrected-harness38066 TERMINAL0:527 prover+84flow, zero unproved or
+justified. All r2 input hashes intact; saved verified-proof.out. Wrapper no
+longer resets Active or promises cleanup; hosted105 tests check cleanup,
+formal restoration remains separate. Native clock integration NOT complete.
+Only own live job92086. Staged index preserved; no shared lock held.
+
+Integration89618 TERMINAL0: full aml.gpr build;175 executor+1176 service+1811
+readonly checks and17 registered ACPICA comparisons PASS. Current integrated
+production bytes match verified frozen candidate; reference runner hash matches
+report. Only live job38066 (Timer harness recheck); no shared lock held.
+
+2026-10-02: Guarded promotion completed12files; verified DataTableRegion now
+in shared sources/tests and normal hosted/reference runner registration.
+Follow-up upstream reason updated under lock from DataTableRegion to Timer;
+README records exact proof/test scope and remaining gaps. Diffcheck, Python
+compile and shell syntax PASS. Native production bytes already verified in
+final snapshot; no new live service claim. Integration89618 LIVE builds full
+aml.gpr then runs175executor/1176service/1811readonly +17ACPICA comparisons;
+log /tmp/cubit-aml-region-integrated.log. No runner edits while it runs.
+Timer51466 TERMINAL0 527prover+84flow zero unproved/justified, but original
+harness reset Active and did NOT prove executor cleanup. Preserved report as
+proof-with-wrapper-reset.out; removed artificial reset and cleanup postcondition
+from proof wrapper. Recheck38066 LIVE, /tmp/cubit-aml-timer-proof-r2.log, new
+proof-input-hashes-r2.json. Cleanup still checked by hosted105 tests; full
+generic call-state restoration needs its own formal contract. Production
+Timer sources unchanged by harness repair. No shared lock held; staged
+safekeeping index preserved. Full AML/native/CCL/capability goal incomplete.
+
+2026-10-02: Shared promotion retried under nonblocking lock, still busy;
+no shared source or staged index changes. DataTableRegion terminal proof and
+verified-promotion marker ready, prior turn progress not a blocker audit.
+Timer56399 TERMINAL0 hosted105 checks (standalone+nested calls added).
+Isolated Timer proof51466 LIVE on timer_verification.adb with controlled
+clock callback; source hashes saved proof-input-hashes.json. No changes to
+this frozen graph while live. Proof harness is NOT native clock integration;
+its wrapper explicitly resets Active, so it cannot establish executor cleanup
+(the hosted tests check cleanup before any reset). Remove that wrapper reset
+and cleanup postcondition after terminal, keep proof scope honest. All other
+service/test instantiations still require clock wiring; no Timer promotion.
+Only own live job51466, log /tmp/cubit-aml-timer-proof.log; no shared lock/waiter.
+
+2026-10-02: Final DataTableRegion proof73644 TERMINAL0. Inspected summary:
+3149 total =2777 prover+372flow, ZERO unproved/justified; input114hashes
+intact, saved verified-proof.out + verified-promotion.json in final snapshot.
+Promotion preflight12files PASS. Guarded promotion exited1 because shared
+build.lock busy; NO shared source changes. Request brief runner/GPR edit window
+when current native owner finishes; no lock holder/waiter of our own.
+Independent Timer snapshot /tmp/cubit-aml-timer-wpgbxyxl from frozen candidate:
+explicit per-opcode clock callback (100ns units), width normalization,
+unavailable/truncated/unknown/budget failure behavior; legacy path explicitly
+has no clock. First84940 TERMINAL0 hosted99checks. Added standalone+nestedcall
+cases;56399 result in /tmp/cubit-aml-timer-tests-r2.log. NOT service-integrated
+or SPARK-proved: remaining instantiations need callback, native clock binding,
+monotonic/suspend semantics and deterministic proof harness. No fake native
+clock. Staged checkpoint/index unchanged; previous turn verified wait, this
+turn implementation/testing and terminal service proof evidence.
+
+2026-10-02: Timer reference audit completed independently of frozen proof.
+/tmp/cubit-aml-timer-audit/audit.py generated revision1/2 fixtures: direct/local
+Timer values, consecutive nondecreasing reads and shift-by32. Pinned ACPICA
+returns observed32-bit revision1 and64-bit revision2 values. Known shutdown
+allocation diagnostic reproduced by control, retained in report. Requirements
+and limitations saved requirements.md; no native clock correctness claim.
+CuBit.Monotonic.Read exists (microseconds, optional); suspend continuity
+explicitly unresolved. Do not fake Timer with instruction count or one cached
+invocation timestamp. Need callback plus real clock binding and width audit.
+Prior turn progress: actual ASLTS blocker evidence; this turn reference evidence.
+Proof73644 same-handle confirmed LIVE; no frozen source or staged index edits.
+
+2026-10-02: Safekeeping checkpoint staged at user request; preserve index.
+Current continuation: prior turn progress (staged recoverable source/evidence).
+ASLTS88812 TERMINAL0, selected upstream reference12PASS; candidate0PASS,
+12unsupported,339unselected. Independent diagnostic build confirms actual next
+blocker Timer5B33 in STRT for all8 arithmetic/logic modes (table byte hashes and
+trace saved /tmp/cubit-aml-region-trace-kag1ofra/confirmed-timer-report.json).
+Control remains BYTE_LIMIT. Private ASLTS report now classifies actual opcode;
+shared runner remains unchanged. Diagnostic exception instrumentation is NOT
+production code or proof evidence. Initial trace-byte verification had an
+off-by-one index; corrected by matching both reported previous and next bytes.
+Final service proof73644 confirmed LIVE by same-handle poll; frozen input
+hashes intact. Do not promote or restart until terminal report inspected.
+Only own live job73644; no shared build lock or source edits. This note update
+is deliberately unstaged to preserve the user's safekeeping index.
+
+2026-10-02: Portable region reference fixture now ready outside frozen source
+graph: /tmp/cubit-aml-region-fixtures/acpica_datatable_regions.py supports
+--tools/--runner/--output and preserves baseline diagnostics. Initial86413
+failed because expected AE_NOT_FOUND emits a separate descriptive error line;
+added narrow diagnostic allowance tied to that final status. Final21848
+TERMINAL0:17 actual region/field/selector comparisons match,11 batches retain
+known control-reproduced shutdown diagnostic; not error-free ACPICA execution.
+Results /tmp/cubit-aml-region-fixtures/results-r2/report.json includes runner
+hash and explicit coarse status mapping. Python compile passes.
+Promotion prepared /tmp/cubit-aml-region-promote.py --check passes12files
+without writes; mutation requires terminal proof verification record (not yet
+created) plus shared build lock. Do NOT promote while73644LIVE. Same-handle
+poll confirms still running; all final proof input hashes intact. Only own
+live job73644. No shared source/index/staging edits, locks or waiters.
+Prior turn progress contract proof repair; current progress reproducible
+reference fixture and preflight.
+
+
+2026-10-02: Corrected full proof73644 LIVE, --checks-as-errors=on, selected
+aml_table_backing.adb + acpi_service.adb, -j1. Service1176checks passed before
+proof; log /tmp/cubit-aml-region-final-proof.log. Do NOT reuse old6209 as pass:
+it had one unproved range check despite exit0. New Valid_Span postcondition
+is being verified against implementation, not assumed. Native5844 TERMINAL0
+compile+link /tmp/cubit-aml-region-native-final.log. Contract fixture48715
+TERMINAL0 all33811 checks /tmp/cubit-aml-span-contract-tests.log. Final
+proof/native source hashes and production byte comparison intact. Only live
+job73644; no shared code/index/staging edits, locks or waiters. Next inspect
+terminal proof and complete reproducible promotion fixtures/registration only
+if all obligations discharged. Existing 26353 regressions predate postcondition
+only; implementation unchanged, focused malformed-span checks cover it.
+
+
+2026-10-02: Proof6209 TERMINAL0 but NOT PASS:2747 prover+368flow, one
+unproved range check at aml_namespace.adb752 for positive region Extent.
+Saved old snapshot proof-with-one-unproved.out; frozen hashes intact.
+Valid_Span checks extent>=36 internally but had no postcondition exposing
+that bound. Corrected candidate adds explicit result-implies-span-bounds
+postcondition in aml_table_backing.ads (implementation unchanged); prove
+backing body and service together. Signature/order fixes included. Final
+proof manifest saved final-proof-input-hashes.json, source freeze begins.
+No assumptions/weakened checks, no shared implementation/index edits.
+
+
+2026-10-02: Latest selector-order correction native93296 TERMINAL0 compile
++link (/tmp/cubit-aml-region-native-r3.log); regression71475 TERMINAL0 all
+26353 checks (/tmp/cubit-aml-region-regression-r3.log). Corrected candidate
+selector-fix-input-hashes and native selector-fix-source-hashes intact; all
+production source bytes match. This turn progresses verification of latest
+code. Original proof6209 confirmedLIVE same handle, log unchanged phase3;
+no proof PASS claim, no restart. Only own live job6209. Signature/order-fixed
+candidate still needs instantiated proof. Staged checkpoint unchanged; no
+shared implementation/staging edits, shared locks or waiters.
+
+
+2026-10-02: Prior turn progress (26353 regression+native pass). Old proof6209
+confirmed LIVE same-handle and hostprocess: gnatprove1722034, active
+gnatwhy31798202 CPU100% atobservation; do not restart. Selector audit77022
+terminal1 fixture used reserved ASL ZERO as method name; renamed ZSIG.
+Audit49190 terminal0 gathered9 statuses and found3 mismatches: empty/short
+signatures and malformed-signature+overlong-OEM returned Unsupported_Value
+instead of Bad_Name. Before-fix report retained /tmp/cubit-aml-selector-audit/
+before-fix-report.json. Corrected candidate validates signature before OEM
+lengths, with 5 more methods for regression. Run81114 TERMINAL0 in
+/tmp/cubit-aml-region-selector-fix.log:1176 service checks pass and all9
+reference selector outcomes match (explicit coarse error-code mapping). Sources in signature candidate updated;
+previous native/regression evidence predates this correction and is not final.
+selector-fix-input-hashes.json saved. Original proof snapshot frozen unchanged.
+No shared implementation/staging edits or locks; staged checkpoint intact.
+
+
+2026-10-02: Regression10753 TERMINAL0:1811 readonly +160 literal +1523
+Field declaration +978 boundary +847 service field +11938 typed +4818 call
++4137 store +141 method-storage =26353 checks pass. Frozen inputs intact.
+Native22103 TERMINAL4: shell default GNAT15 mismatched GNAT16 runtime seed;
+no code defect bypassed. Corrected command uses kernel/alr exec compiler.
+Native76286 TERMINAL0 forced full ACPI service compile+link, main.ali confirms
+GNAT16; /tmp/cubit-aml-region-native-r2.log. All257 source/seed hashes and
+production byte comparison against signature-fixed candidate pass.
+Only own live job6209, old service proof same-handle confirmedLIVE. Do not
+restart or modify its snapshot. Need terminal report and then proof of corrected
+candidate before promotion; broader table selector/error-order audit remains.
+Safekeeping staged files unchanged; no shared implementation/staging edits.
+
+
+2026-10-02: Prior goal turn made progress (signature fix+regression). Existing
+proof6209 confirmed LIVE same handle; frozen old snapshot untouched. Corrected
+candidate now adapts readonly_input_tests to new region callbacks. Broader
+regression10753 LIVE /tmp/cubit-aml-region-regression.log (9 targets). Native
+22103 LIVE /tmp/cubit-aml-region-native.log in independent regular-copy
+/tmp/cubit-aml-region-native-k4r7igtp, source/seed hashes saved (257 files).
+Native build forced with existing runtime library/crt/manifest seeds identified;
+no new kernel/runtime claim. Corrected candidate source frozen during these
+builds, regression-input-hashes.json. No shared implementation/staging edits,
+shared locks or waiters; safekeeping index unchanged.
+
+
+2026-10-02: Staged safekeeping checkpoint remains untouched. Independent
+signature-fixed candidate /tmp/cubit-aml-region-signatures-wvm7nlkq (pathfile
+/tmp/cubit-aml-region-signatures-path) passes876 actual service checks.
+Original validation negative control fails exactly ASF! assertion6; first
+harness47294 terminal1 due spacing in Ada exception output, corrected harness
+then confirms expected failure without rebuilding. Control pathfile
+/tmp/cubit-aml-region-signatures-control-path. Tested input hashes saved.
+ACPICA33304 TERMINAL0 reference confirms ASF! and1ABC returnregion type10;
+asf!/AS!F fail AE_BAD_SIGNATURE. Shutdown baseline diagnostic retained.
+Evidence: /tmp/cubit-aml-region-signature-reference/report.json and logs.
+Old frozen service proof6209 stillLIVE last same-handle poll; do not restart
+or modify /tmp/cubit-aml-region-service-7p_69er3. Signature-fixed candidate
+not yet proved or native-compiled. No shared implementation edits/locks.
+
 
 Safekeeping request: integrated ACPI work already committed in 209c46e6.
 Unpromoted candidate saved as reviewable patch plus source hashes, test/proof
@@ -2724,3 +5168,248 @@ reference12PASS; CuBit0PASS/12unsupported/0unexpected failures,339unselected.
 SPARK3005 zero unproved on unchanged core; native89187 terminal0. Scoped diff
 check clean. All own commands terminal, no shared lock held. Full interpreter,
 native stack bounds and live CCL/service integration remain unfinished.
+
+2026-10-02 continuation after safekeeping: staged checkpoint preserved.
+Integrated job71170 confirmed live, now in proofs; all198 frozen source hashes
+match. Original CopyObject audit62069 terminal0 (20reference observations).
+Portable expanded oracle48125 terminal0 (28reference-only observations).
+Private script /tmp/cubit-aml-copyobject-harness/acpica_copyobject.py; exact
+input hashes and retained logs in its reference/report.json. Adds empty
+buffers, partially initialized packages, and expression-result independence.
+Initial ALIA expectation9 failed with value1; inspected upstream
+AcpiExStoreDirectToNode copy/attach logic before correcting expectation.
+A captured CopyObject result must not accidentally share mutable storage with
+its named destination. No CuBit conformance claim. Strict --runner mode treats
+unsupported execution as failure; --reference-only is explicit.
+Publication attempt exited1 because shared buildlock busy; script was NOT
+copied into shared tests. No frozen-input or index modifications; no commits
+or pushes. Next: publish oracle when lock available and implement separate
+copy/replacement semantics, retaining object lifetime and exhaustion coverage.
+
+Strict CopyObject differential76672 terminal1 as expected: private Debug/clock
+runner rejects firstTEXT with PROGRAM_ERROR:execute:UNSUPPORTED, its usual
+CLI failure path; no success report produced. Reference-only observations
+are not counted as CuBit passes. Integrated71170 remains live; no restart.
+
+Copy groundwork continuation: previous turn made progress (28-case oracle and
+strict differential evidence). Shared integrated71170 re-polled live; do not
+edit its frozen sources. Private /tmp/cubit-aml-copy-core-6ufb21gn now contains
+AML_Objects.Copies.Clone prototype over regular copies of object/decode units.
+Iterative breadth-first per-occurrence allocation preserves uninitialized slots
+and duplicates repeated package links; candidate state publishes only on full
+success. Allocation failure leaves exact original state and target0. Cycles
+exhaust bounded capacity transactionally; no claim of AML cycle semantics.
+82007 terminal0 initial13 checks. Expanded15869 hosted316 PASS (300-deep chain,
+independent repeated children, four data kinds, zero-size values, full-object/
+byte/element limits, partial-copy byte exhaustion, cycle termination). Same
+15869 remains live running full-mode selected Clone SPARK proof, log
+/tmp/cubit-aml-copy-core-proof.log. Input hashes saved in private snapshot.
+Clone postconditions cover validity, prior-state preservation, failure atomicity,
+root kind/length/scalar/bytes. Recursive package-value correspondence is not yet
+expressed/proved, and full CopyObject target/lifetime/reference integration is
+not implemented. No shared source or index edits, commits or pushes.
+
+Copy proof15869 terminal1: six unproved obligations (queue IDs, candidate
+validity, final validity), preserved first-proof.out and first-body.txt. Revised
+private prototype adds queue/header/frame invariants and exact Element_Updated
+ghost contract to Set_Element; New_Bytes explicitly promises resulting length.
+77475 hosted316 PASS then live all-mode level2 proof of both object allocator
+and Copies unit; log /tmp/cubit-aml-copy-core-proof-r2.log, inputs-r2 manifest.
+No weakened pre/postconditions or proof suppressions; complete package-value
+correspondence and termination contract remain additional work beyond this pass.
+Shared buildlock acquired briefly: published tests/aml-core/acpica_copyobject.py
+and copyobject-reference.md, exact previously validated oracle bytes. Standalone
+strict harness remains outside main runner until implementation. Staged index
+preserved. 71170 still live and all198 integrated input hashes unchanged.
+
+Copy continuation: prior turn progressed proof contracts/oracle publication.
+77475 terminal1, still unresolved preservation checks; second-proof.out saved.
+Private core r3 moves object accessor/preservation expression definitions into
+private spec for child proof visibility, strengthens Valid integer representation
+(size/first both0, as allocated). 16293 hosted316 PASS, proof still live in
+/tmp/cubit-aml-copy-core-proof-r3.log; input-hashes-r3.json captured. This is
+not a proof success and does not alter the shared allocator.
+Separate /tmp/cubit-aml-copy-shape-8x7jeixu adds ghost Is_Independent_Copy to
+Clone postcondition: verifies all nested values, zero slots, disjoint fresh
+per-occurrence children and no extra unvisited allocations. Iterative predicate
+and clone traversal have decreasing variants. 96537 terminal0 baseline316;
+26771 terminal0 expanded321 including deliberate bad value/original-alias/
+shared-child/uninitialized-slot corruption and restored valid copy. Predicate
+is runtime-checked, not yet formally proved; input-hashes.json captured.
+Do not merge its older parent allocator over r3 when combining these snapshots.
+Integrated71170 re-polled live; shared frozen sources and staged index untouched.
+
+Copy ownership continuation: previous turn progressed full-tree ghost contract.
+Found distinct-ID predicate alone insufficient for byte/element backing
+independence. Shape snapshot now checks exact fresh backing cursors and final
+byte/element usage. Test-only AML_Objects.Test_Faults (SPARK Off, not production)
+injects shared backing while preserving Valid and equal payloads; predicate
+rejects both byte and package-element aliases. 41027 terminal0,323 checks PASS;
+input-hashes-r2.json saved. Full predicate still lacks formal proof.
+Core proof16293 terminal1, third-proof.out retained: allocator contracts did not
+state new backing starts, so Set_Element prefix preservation was unprovable.
+Core r4 adds Fresh_Allocation ghost contract (precise offsets/counter deltas),
+fresh backing invariants, explicit old-object/byte-value frame guarantees and
+loop variant. 1037 hosted316 PASS, then proof live, log
+/tmp/cubit-aml-copy-core-proof-r4.log; input-hashes-r4.json saved.
+Integrated71170 confirmed live this turn. No shared source/index edits except
+this continuation note. Full CopyObject integration and proof remain incomplete.
+
+Copy checker verification: previous turn progressed backing ownership contracts.
+Shape snapshot now uses exact r4 parent allocator units (pre-r4 copies saved).
+72298 terminal0:323 hosted checks PASS, then targeted Is_Independent_Copy
+full-mode level2 proof PASS52 obligations (46prover+6flow), zero unproved/
+justified, no Assume. Scope is checker runtime safety/invariants/termination,
+NOT proof that Clone establishes the predicate or full AML semantics. Saved
+verified-predicate-proof.out; all10 input-hashes-r3.json entries unchanged.
+Core1037 and shared integrated71170 both re-polled live; no restart or edits
+to their inputs. Reviewed namespace/executor integration: Write_Binding only
+supports existing integers and Write_Target has no replacement mode. Need
+separate typed replacement semantics and allocation failure propagation, not
+aliasing CopyObject to Store. ACPICA utcopy creates new objects per package
+occurrence; null elements are retained. No shared source/index modifications.
+
+Copy core1037 terminal1:301 obligations,268prover+30flow proved,3 unproved
+matching-value invariant preservation checks. No unproved allocator contracts
+or runtime checks; this is still an incomplete proof. fourth-proof.out saved.
+Private r5 explicitly preserves all queued Matching values in Allocate contract,
+initializes Used0 for that precondition, and relates Work1 to Source/Root so
+root payload preservation follows the queue invariant. No public Clone post
+weakening. 33259 hosted316 PASS then full core/allocator proof live; log
+/tmp/cubit-aml-copy-core-proof-r5.log and input-hashes-r5.json.
+Integrated71170 re-polled live; its198 source inputs verified unchanged.
+Checker-only52-obligation proof remains separate in shape snapshot; full Clone
+postcondition Is_Independent_Copy still not integrated/proved in core.
+Staged index unchanged; no shared source updates or commits/pushes.
+
+Copy continuation: previous turn improved allocation/queue frame contracts.
+Shape13785 terminal0:328 checked executions including object/element exhaustion
+after partial copying and exact object/byte/element-capacity success. Checker
+body unchanged from52-obligation proof; only test source changed, new complete
+input-hashes-r4.json saved (original proof manifest retained separately).
+Core33259 terminal1, three preservation invariants unresolved; fifth-proof.out
+saved. Private r6 adds separately contracted Link_Child and explicit original
+state Extends guarantee on Allocate. 28283 hosted316 PASS, proof live in
+/tmp/cubit-aml-copy-core-proof-r6.log; input-hashes-r6.json saved. No suppression
+or weakened Clone postcondition. Is_Independent_Copy is still only in shape
+snapshot, not yet established by the core proof. Integrated71170 polled live.
+Read-only audit confirmed service derives width from DSDT and preserves it
+for SSDTs; no width change needed. Staged index and shared source unchanged.
+
+Verification recovery continuation:28283 terminal1 but its report is STALE:
+reports4subprograms/no Link_Child and old3 obligations, while current .ali and
+.gnat-json include Link_Child. .spark timestamp02:04 predates r6 source02:05;
+report02:06 therefore cannot assess r6. No claim these are current obligations.
+Sandbox failed starting with Quota exceeded while creating /tmp/.git mount
+target; read-only escalated diagnostics worked. /tmp80% globally, quota utility
+unavailable; exact per-user quota/cause unconfirmed.
+Preserved terminal core build artifacts with SHA256 verification under
+/home/doc/git/.acpi-proof-work/copy-core-r6-4o2gsuvd/previous-generated, then
+removed only the verified original generated build to free temporary capacity.
+Original sources/logs/manifests retained. Normal sandbox commands work again.
+Fresh regular source snapshot at same main-filesystem directory matches every
+r6 input hash. 82614 live fresh all-mode core/allocator proof, TMPDIR explicitly
+set to snapshot/tmp, log snapshot/proof.log. No source changes or test rerun
+needed (exact r6 source retains316 hosted evidence). Inspect new report for
+Link_Child coverage and every unproved/skip count before claiming success.
+Integrated71170 still confirmed live. Its /tmp log ends mid-warning after
+quota event; inspect authoritative completion/reports carefully. Do not restart
+while its handle remains live. No staged index or shared source modifications.
+
+Copy verification continuation: fresh82614 terminal1 with CURRENT coverage,
+5subprograms incl Link_Child11checks proved;4 actual queue/current-value
+preservation checks unresolved. Saved verified-current-r6-incomplete.out.
+Combined snapshot /home/doc/git/.acpi-proof-work/copy-full-a_i_bgun uses r6
+core + full independent-tree/backing checker + complete tests.3621 terminal0,
+328 PASS; all10 input hashes preserved. Strong Clone postcondition is runtime
+checked here, still not formally established. No shared integration.
+Core main-filesystem snapshot now r7: Enqueue helper explicitly preserves
+existing queue entries and all Matching guarantees; inner loop relates Current
+to Work(Next).13394 live build/hosted tests followed by proof-r7.log command;
+last poll has build/link complete, no hosted PASS or proof phase yet. Need exact
+completion before claims. input-hashes-r7.json captured; expected6 analyzed
+subprograms incl Enqueue and Link_Child when final report is read.
+Integrated71170 confirmed live this turn. No source/index changes in shared
+ACPI tree; only this unstaged coordination note updated.
+
+Copy continuation:13394 terminal1 after hosted316 PASS. Current r7 report
+includes6 subprograms; Enqueue13 and Link_Child11 checks proved,2 remaining
+queue-preservation invariants in Clone (59/61). r7-incomplete.out preserved.
+Private r8 adds checked assertions at inner/outer loop boundaries to localize
+remaining gap; no assumptions or weakened contracts.80936 proof live in
+main-filesystem core snapshot/proof-r8.log; input-hashes-r8.json captured.
+References:81977 terminal0 six new ACPICA cases in copy-reference-targets.
+CopyObject Arg holding RefOf follows reference to named target; Local holding
+RefOf is replaced; Arg holding Index reference does not update package element.
+Published cases under buildlock;40142 terminal0 expanded34 reference-only PASS.
+Updated copyobject-reference.md accordingly. These are future reference-model
+requirements, NOT CuBit conformance. Existing immutable Datum IDs must not be
+reinterpreted as mutable references. Integrated71170 remains live from exact
+poll. Staged index unchanged; production sources not edited.
+
+Copy proof diagnostics: previous turn progressed34-case reference oracle and
+queue assertions.80936 terminal1:3 unproved obligations at new assertions/root
+byte postcondition, r8-incomplete.out retained. Why3 session shows5-second
+solver limit and timeout/unknown attempts, with hundreds valid; no inference
+that timeouts establish correctness.13085 live same r8 source/contracts with
+--timeout=30, proof-r8-time30.log. No source change or test repetition.
+Added private proof_report_check.py and tests under .acpi-proof-work.9515
+terminal0 Nix8checks PASS: known52-check checker report accepted, ACTUAL stale
+r5 report rejected for missing Link_Child, plus assumptions/skips/unproved/
+justified/zero-check/wrong-phase rejection. This validates report contents only;
+caller still must check terminal status, freshness and source hashes. Not yet
+in shared test runner. Root integrated71170 exact handle confirmed live; host
+compiler/prover processes actively use CPU. Do not restart a live job based on
+quiet/truncated log. No shared sources or staged index modified.
+
+Proof collection milestone:71320 terminal0 guarded fresh checker proof52 PASS,
+/tmp/cubit-aml-copy-shape-8x7jeixu/checked-proof-w2viqcg9/result.json confirms
+46prover+6flow, expected sole entity, source hashes unchanged. Wrapper archives
+previous .spark reports, requires newly produced reports and exit0, checks full
+requested scope, no skips/assumptions/justified/unproved results, hashes saved
+reports and log.24541 terminal0 Nix3 negative end-to-end checks: exit0/no fresh
+report, changed source, and failing process all rejected. Private scripts under
+.acpi-proof-work, not yet registered in shared runner.
+Core13085 terminal1:one remaining inner-loop byte-preservation assertion, CVC5
+and Z3 each Timeout30 in actual .spark proof_attempts; other obligations proved.
+Saved r8-time30-incomplete.out.80834 live same r8 source, --timeout120 with
+CVC5/Z3, via checked wrapper/core-proof-config.json. Explicit expected scope6
+copy+22allocator entities, minimum100checks perunit. Full-tree postcondition
+still separate/unproved: this run is safety/frame/root contract only.
+Integrated71170 exact handle polled live. No source edits in active proof trees,
+no staged index changes, commits or pushes.
+
+Copy core milestone:80834 terminal0, guarded result
+/home/doc/git/.acpi-proof-work/copy-core-r6-4o2gsuvd/checked-proof-_agcioc2/result.json
+confirms success, fresh reports, exact6copy+22allocator entities and unchanged
+r8 input hashes.338 obligations=309prover+29flow, zero unproved/justified/skips/
+Assume. Preserved verified-core-r8-proof.out. Scope: runtime safety/termination,
+exact failure rollback, original-state preservation, fresh allocation backing,
+and root kind/length/scalar/bytes correctness. Does NOT establish full package
+value/ownership correspondence or AML CopyObject target/reference semantics.
+Complete-contract snapshot copy-full-a_i_bgun now combines r8 Clone and strong
+Is_Independent_Copy postcondition.76276 hosted328 PASS, then guarded full proof
+live; checked-proof-8g30h2ku/command.log, input-hashes-r8.json, explicit7copy
+entities+22allocator. Same120-second CVC5/Z3 settings; main-filesystem TMPDIR.
+Root integrated71170 polled live. No shared production source edits or index
+updates; original staged checkpoint remains intact. Full goal not complete.
+
+Executor integration prerequisite: private copy-target-sd8cauax contains pure
+AML_Simple_Targets decoder using existing Names parser. CopyObject grammar is
+ARGP_SIMPLENAME in pinned ACPICA acopcode.h/aslprimaries.y: local/arg slots or
+NameString, not Store's broader targets. NullName remains explicitly a name
+with count0, requiring executor rejection before writes (not a discard target).
+82975 terminal4 test-only byte operator visibility, corrected with use type.
+60734 terminal0:523 checks PASS (all leading bytes, slot mapping, non1 slices,
+truncation, rooted dual names,255-segment and parent-prefix limits, Debug
+rejection). No target writes/CopyObject opcode integration yet.
+22058 guarded decoder+name-parser proof live, snapshot proof-config.json and
+input-hashes.json; report scope includes Read_Target and Read_Name/Lead/Tail/
+Valid. Full ownership proof76276 and integrated71170 re-polled live. No edits
+to those frozen inputs, shared sources, or staged index.
+
+Target decoder22058 terminal0 guarded verification PASS96 obligations=88prover
++8flow, zero unproved/justified/skips/Assume; Read_Target30total and Names66total.
+Verified exact source hashes and expected scope; saved verified-proof.out in
+copy-target-sd8cauax.523 hosted checks retained. Decoder remains private until
+executor integration; this does not prove full AML target/reference semantics.

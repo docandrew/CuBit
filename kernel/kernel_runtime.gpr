@@ -10,6 +10,7 @@ library project kernel_runtime is
         (
             "-g",
             "-gnatpgn",
+            "-gnatyM120",   -- lines up to 120 columns (-gnatg alone means 79)
             "-gnatwa",
             "-gnatw.X",     -- disable warnings for No_Exception_Propagation rule
             "-nostdlib",

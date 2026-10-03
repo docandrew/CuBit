@@ -38,7 +38,7 @@ package body CCL.Objects.Schemas with SPARK_Mode is
          when Handler_ID => return Types.Handler_Type;
          when Unit_ID => return Types.Unit_Type;
          when others =>
-            if Ref in Unit_ID + 1 .. Unit_ID + Types.Maximum_Declarations then
+            if Ref in Unit_ID + 1 .. Unit_ID + Maximum_Image_Definitions then
                return Types.Unit_Type + Types.Type_Reference (Ref - Unit_ID);
             end if;
             return Types.Invalid_Type;
@@ -69,7 +69,8 @@ package body CCL.Objects.Schemas with SPARK_Mode is
       Selected : constant Binding := Root_Closure (Contract);
    begin
       Data := (others => <>);
-      Accepted := Is_Bound (Selected);
+      Accepted := Is_Bound (Selected) and then
+        Types.Last (Selected.Types) - Types.Unit_Type <= Maximum_Image_Definitions;
       if not Accepted then return; end if;
       Data.Key := Selected.Key;
       Data.Root := Wire_ID (Selected.Root);
@@ -97,7 +98,7 @@ package body CCL.Objects.Schemas with SPARK_Mode is
    begin
       Contract := (others => <>); Accepted := False;
       if Data.Format /= Version or else Data.Key = No_Schema or else
-        Data.Count > Types.Maximum_Declarations or else Data.Reserved /= 0 or else
+        Data.Count > Maximum_Image_Definitions or else Data.Reserved /= 0 or else
         (for some B of Data.Padding => B /= 0)
       then return; end if;
       for Index in Data.Definitions'Range loop

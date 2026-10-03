@@ -1,12 +1,26 @@
 project Buffers is
    for Languages use ("Ada", "C");
    for Source_Dirs use (".", "../../../userspace/mesa/anv",
-                        "../../../userspace/services/intel-gpu");
+                        "../../../userspace/services/intel-gpu",
+                        "../../../userspace/runtime/gnat");
    for Object_Dir use "../target/buffer-requests-host";
    -- This is the wire/C-ABI fixture, not the prepared Mesa-type adapter test.
-   for Excluded_Source_Files use
-     ("anv_cubit_memory.c", "anv_cubit_sync.c", "anv_cubit_sync_types.c",
-      "native_gpu_mapping.c", "native_gpu_presenter.c");
+   for Source_Files use
+     ("buffer_bridge_tests.adb", "buffer_c_test.c", "cubit.ads",
+      "cubit-messages.ads", "cubit-messages.adb", "cubit-grant_references.ads",
+      "native_gpu_buffers.ads", "native_gpu_buffers.adb",
+      "intel_gpu_buffer_requests.ads", "intel_gpu_buffer_requests.adb",
+      "intel_gpu_buffer_requests-binding.ads", "intel_gpu_buffer_requests-binding.adb",
+      "intel_gpu_buffer_backing.ads", "intel_gpu_buffer_reply.ads", "intel_gpu_buffer_reply.adb",
+      "intel_gpu_buffer_handles.ads", "intel_gpu_buffer_handles.adb",
+      "intel_gpu_physical_extents.ads", "intel_gpu_physical_extents.adb",
+      "intel_gpu_record_store.ads", "intel_gpu_record_store.adb",
+      "intel_gpu_extent_directory.ads", "intel_gpu_extent_directory.adb",
+      "intel_gpu_vm_image.ads", "intel_gpu_vm_image.adb",
+      "intel_gpu_vm_update.ads", "intel_gpu_vm_update.adb",
+      "intel_gpu_vm_buffer.ads", "intel_gpu_vm_buffer.adb",
+      "intel_gpu_adln_ppgtt.ads", "intel_gpu_adln_ppgtt.adb",
+      "intel_gpu_ppgtt_scratch.ads");
    for Main use ("buffer_bridge_tests.adb");
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");

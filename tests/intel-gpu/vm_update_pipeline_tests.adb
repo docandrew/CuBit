@@ -36,10 +36,10 @@ procedure VM_Update_Pipeline_Tests is
       use type Life.Phase;
       Queue_Count : Natural := 0;
       function Device_Ready return Boolean is (True);
-      procedure Queue (Payload : Events.Words; Fence : Unsigned_16;
+      procedure Queue (Payload : Events.Words;
                        Result : out Life.Send_Result) is
       begin
-         pragma Assert (Payload'Length > 0 and Fence /= 0);
+         pragma Assert (Payload'Length > 0);
          Queue_Count := Queue_Count + 1; Result := Life.Queued;
       end Queue;
       procedure Retain (Payload : Events.Words; Fence : Unsigned_16;
@@ -49,7 +49,7 @@ procedure VM_Update_Pipeline_Tests is
       package Driver is new Intel_GPU_GuC_Context_Session
         (Device_Ready, Queue, Retain);
       package Pool is new Intel_GPU_Context_Table
-        (1, 100, 200, Driver, Device_Ready, Retain);
+        (1, Driver, Device_Ready, Retain);
       Contexts : Pool.Table;
       Context_ID : Unsigned_32;
       use type Driver.Result;
@@ -189,7 +189,7 @@ procedure VM_Update_Pipeline_Tests is
          if Revoke_On_Resume and Step = 2 then Session_Live := False; end if;
       end Resume;
    begin
-      Pool.Open (Contexts, 16#200000#, 4096, 100, 1000, 500000,
+      Pool.Open (Contexts, 16#200000#, 4096, 1000, 500000,
                  False, Context_ID, OK, Session => 99);
       pragma Assert (OK);
       Submit (Life.Register_Context); Submit (Life.Set_Policy);

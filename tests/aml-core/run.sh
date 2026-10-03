@@ -62,6 +62,11 @@ alr exec -- gprbuild -p -P ../tests/aml-core/regions/regions.gpr
 ../tests/aml-core/build/literal_value_tests
 ../tests/aml-core/build/selection_tests
 ../tests/aml-core/build/string_conversion_tests
+../tests/aml-core/build/region_executor_tests
+../tests/aml-core/build/region_service_tests
+../tests/aml-core/build/clock_tests
+../tests/aml-core/build/timer_executor_tests
+../tests/aml-core/build/timer_clock_tests
 ../tests/aml-core/build/method_tests
 ../tests/aml-core/build/method_storage_tests
 ../tests/aml-core/build/expression_tests
@@ -73,6 +78,9 @@ alr exec -- gprbuild -p -P ../tests/aml-core/regions/regions.gpr
 ../tests/aml-core/build/binding_tests
 ../tests/aml-core/build/call_tests
 ../tests/aml-core/build/object_tests
+../tests/aml-core/build/buffer_access_tests
+../tests/aml-core/build/byte_reference_tests
+../tests/aml-core/build/package_reference_tests
 ../tests/aml-core/build/data_tests
 ../tests/aml-core/build/package_count_tests
 ../tests/aml-core/build/inspect_tests
@@ -120,7 +128,7 @@ if [[ $prove == yes ]]; then
         --timeout=30 --steps=0 --prover=cvc5,z3 --checks-as-errors=on -j2 \
         2>&1 | tee ../tests/aml-core/build/transactions-proof.log
     alr exec -- gnatprove -P ../tests/aml-core/aml.gpr \
-        -u aml_coercions-strings.adb aml_table_backing.adb firmware_tables-identifiers.adb firmware_tables-copies.adb firmware_tables-exposure.adb firmware_tables-catalog.adb acpi_fadt-registers.adb acpi_fadt.adb aml_decode.adb aml_fields.adb aml_field_data.adb aml_names.adb aml_execute.adb aml_integers.adb aml_coercions.adb aml_logic.adb aml_objects.adb aml_data.adb namespace_instance.ads acpi_service.adb acpi_bootstrap.adb acpi_requests.adb acpi_endpoint.adb --mode=all --level=2 \
+        -u aml_coercions-strings.adb aml_table_backing.adb firmware_tables-identifiers.adb firmware_tables-copies.adb firmware_tables-exposure.adb firmware_tables-catalog.adb acpi_fadt-registers.adb acpi_fadt.adb aml_decode.adb aml_fields.adb aml_field_data.adb aml_names.adb aml_execute.adb aml_integers.adb aml_coercions.adb aml_logic.adb aml_objects.adb aml_objects-byte_references.adb aml_objects-package_references.adb aml_data.adb namespace_instance.ads acpi_service.ads aml_clock.adb timer_verification.adb timer_service_verification.adb acpi_bootstrap.adb acpi_requests.adb acpi_endpoint.adb --mode=all --level=2 \
         --timeout=30 --memlimit=2000 --prover=cvc5,z3 --checks-as-errors=on -j2 \
         2>&1 | tee ../tests/aml-core/build/proof.log
     alr exec -- gnatprove -P ../tests/aml-core/backing.gpr \

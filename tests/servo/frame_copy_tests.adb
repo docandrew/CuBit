@@ -23,6 +23,16 @@ begin
      Copy.Accepts (Unsigned_64'Last, Unsigned_32'Last, Unsigned_32'Last,
        Unsigned_32'Last, Unsigned_32'Last, Natural'Last, Natural'Last, Natural'Last)
    then raise Program_Error with "malformed frame accepted"; end if;
+   pragma Assert (Copy.Accepts_BGRA (24, 2, 2, 2, 2, 12, 16, 5, 1, 2));
+   pragma Assert (not Copy.Accepts_BGRA (16, 2, 2, 2, 2, 4, 16, 5, 1));
+   pragma Assert (not Copy.Accepts_BGRA (24, 2, 2, 2, 2, 10, 16, 5, 1));
+   pragma Assert (not Copy.Accepts_BGRA (23, 2, 2, 2, 2, 12, 16, 5, 1));
+   pragma Assert (not Copy.Accepts_BGRA (24, 2, 2, 3, 2, 12, 16, 5, 1));
+   pragma Assert (not Copy.Accepts_BGRA (0, 0, 0, 0, 0, 4, 16, 5, 1));
+   pragma Assert (not Copy.Accepts_BGRA (Unsigned_64'Last,
+     Unsigned_32'Last, Unsigned_32'Last, Unsigned_32'Last,
+     Unsigned_32'Last, Unsigned_32'Last, Natural'Last,
+     Natural'Last, Natural'Last));
    for W in 1 .. 31 loop
       for H in 1 .. 15 loop
          for Padding in 0 .. 5 loop
@@ -32,6 +42,9 @@ begin
                   Source : Copy.Bytes (0 .. W * H * 4 - 1);
                   Target : Copy.Pixels (0 .. (Top + H + 2) * Pitch - 1) := [others => Sentinel];
                   Area : constant Copy.Rectangle := (1, Top, W, H);
+                  Source_Pitch : constant Positive := (W + Padding) * 4;
+                  BGRA : Copy.Bytes (0 .. Source_Pitch * H - 1) := [others => 16#D3#];
+                  Direct : Copy.Pixels (Target'Range) := [others => Sentinel];
                   Expected : Unsigned_32;
                   X, Y, S : Natural;
                begin
@@ -45,6 +58,25 @@ begin
                           Unsigned_32 (Source (S + 1)) * 256 + Unsigned_32 (Source (S + 2));
                      else Expected := Sentinel; end if;
                      if Target (I) /= Expected then raise Program_Error with "pixel/padding mismatch"; end if;
+                  end loop;
+                  for Row in 0 .. H - 1 loop
+                     for Col in 0 .. W - 1 loop
+                        declare
+                           A : constant Natural := (Row * W + Col) * 4;
+                           B : constant Natural := Row * Source_Pitch + Col * 4;
+                        begin
+                           BGRA (B) := Source (A + 2);
+                           BGRA (B + 1) := Source (A + 1);
+                           BGRA (B + 2) := Source (A);
+                           BGRA (B + 3) := Source (A + 3);
+                        end;
+                     end loop;
+                  end loop;
+                  Copy.Paint_BGRA (BGRA, Source_Pitch, Direct, Pitch, Area);
+                  for I in Target'Range loop
+                     if Target (I) /= Direct (I) then
+                        raise Program_Error with "BGRA/RGBA equivalence mismatch";
+                     end if;
                   end loop;
                   Cases := Cases + 1;
                end;

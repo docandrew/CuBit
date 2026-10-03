@@ -1,3 +1,4 @@
+with CCL_Application;
 with CCL_Config_IO;
 with CCL.Types;
 with CCL.Objects;
@@ -83,7 +84,7 @@ package body CCL_Native_Execution is
       H.Advance (Host, Instructions, Tokens, Result);
       if not Reported and then Result.Status = CCL.VM.Completed then
          -- Diagnostic status only: never log source text or Config payloads.
-         CuBit.Messages.debugPrint ("ccl-workbench: bytecode completed" & ASCII.LF);
+         CuBit.Messages.debugPrint (CCL_Application.Name & ": bytecode completed" & ASCII.LF);
          Reported := True;
       end if;
    end Advance;

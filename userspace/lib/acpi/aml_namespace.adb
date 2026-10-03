@@ -1,4 +1,6 @@
 pragma Ada_2022;
+with AML_Coercions.Strings;
+with Firmware_Tables.Identifiers;
 with AML_Fields;
 with AML_Data;
 with AML_Coercions;
@@ -291,6 +293,8 @@ package body AML_Namespace with SPARK_Mode is
       Located := Resolve (Tree, Node_ID (Scope), Path);
       if Located.Status /= Found then
          return (Status => AML_Execute.Missing_Binding);
+      elsif Kind (Tree, Located.Node) = Uninitialized_Region_Object then
+         return (Status => AML_Execute.Failed_Binding, Failure => AML_Execute.Uninitialized);
       elsif Kind (Tree, Located.Node) = Method_Object then
          return (Status => AML_Execute.Method_Binding,
                  Method_ID => Natural (Located.Node),
@@ -629,6 +633,134 @@ package body AML_Namespace with SPARK_Mode is
           Size => Data'Length, Conversion_32 => C32, Conversion_64 => C64));
    end Materialize_Literal;
 
+   procedure Reserve_Region
+     (Tree : in out State; Scope : Natural; Path : AML_Names.Name_Result;
+      Token : out Natural; Status : out AML_Execute.Execution_Status)
+     with Pre => Valid_Context (Tree), Post => Valid_Context (Tree)
+   is
+      Base, Node : Node_ID;
+      Added : Insert_Status;
+   begin
+      Token := 0; Status := AML_Execute.Bad_Name;
+      if Scope = 0 or else Scope > Tree.Used or else not Tree.Items (Scope).Alive
+        or else Tree.Items (Scope).Active_Calls = 0
+        or else Path.Kind /= AML_Names.Accepted or else Path.Count = 0
+        or else (Path.Rooted and Path.Parents /= 0)
+      then return; end if;
+      for I in 1 .. Path.Count loop
+         if not AML_Names.Valid (Path.Parts (I)) then return; end if;
+      end loop;
+      Base := (if Path.Rooted then Root else Node_ID (Scope));
+      for I in 1 .. Path.Parents loop
+         pragma Loop_Invariant (Base <= Tree.Used);
+         if Base = Root then Status := AML_Execute.Unknown_Name; return; end if;
+         Base := Parent (Tree, Base);
+      end loop;
+      for I in 1 .. Path.Count - 1 loop
+         pragma Loop_Invariant (Base <= Tree.Used);
+         Base := Child (Tree, Base, Path.Parts (I));
+         if Base = Root then Status := AML_Execute.Unknown_Name; return; end if;
+      end loop;
+      if Kind (Tree, Base) not in Scope_Object | Device_Object | Method_Object then
+         Status := AML_Execute.Unknown_Name; return;
+      end if;
+      Insert (Tree, Base, Path.Parts (Path.Count), Node, Added);
+      case Added is
+         when Duplicate => Status := AML_Execute.Duplicate_Name; return;
+         when Full => Status := AML_Execute.Namespace_Limit; return;
+         when Invalid_Name => return;
+         when Inserted => null;
+      end case;
+      Tree.Items (Node).Owner := Node_ID (Scope);
+      Tree.Items (Node).Object_Type := Uninitialized_Region_Object;
+      Token := Natural (Node);
+      Status := AML_Execute.Returned;
+   end Reserve_Region;
+
+   procedure Complete_Region
+     (Tree : in out State; Input : aliased AML_Table_Backing.State; Token : Natural;
+      Width : AML_Decode.Integer_Width; Signature, OEM, Table_ID : AML_Execute.Datum;
+      Status : out AML_Execute.Execution_Status)
+     with Pre => Valid_Context (Tree), Post => Valid_Context (Tree)
+   is
+      use type AML_Decode.Byte;
+      type Selector is record
+         Valid : Boolean := False;
+         Length : Natural := 0;
+         Prefix : String (1 .. 8) := [others => Character'Val (0)];
+      end record;
+      function Describe (Data : AML_Decode.Bytes) return Selector is
+         Result : Selector := (Valid => True, others => <>);
+      begin
+         for I in Data'Range loop
+            exit when Data (I) = 0;
+            Result.Length := Result.Length + 1;
+            if Result.Length <= 8 then
+               Result.Prefix (Result.Length) := Character'Val (Data (I));
+            end if;
+            pragma Loop_Invariant (Result.Length <= I - Data'First + 1);
+         end loop;
+         return Result;
+      end Describe;
+      function Convert (Item : AML_Execute.Datum) return Selector is
+      begin
+         if not Item.Is_Object then
+            return Describe (AML_Coercions.Strings.From_Integer (Item.Number, Width));
+         elsif Item.Object.ID = 0 or else Item.Object.ID > AML_Objects.Count (Tree.Values) then
+            return (others => <>);
+         end if;
+         declare
+            ID : constant AML_Objects.Object_ID := Item.Object.ID;
+         begin
+            if AML_Objects.Kind (Tree.Values, ID) = AML_Objects.String_Object then
+               return Describe (AML_Objects.Byte_Data (Tree.Values, ID));
+            elsif AML_Objects.Kind (Tree.Values, ID) = AML_Objects.Buffer_Object then
+               declare
+                  Data : constant AML_Decode.Bytes := AML_Objects.Byte_Data (Tree.Values, ID);
+               begin
+                  if Data'Length > Natural'Last / 5 then return (others => <>); end if;
+                  return Describe (AML_Coercions.Strings.From_Buffer (Data));
+               end;
+            elsif AML_Objects.Kind (Tree.Values, ID) = AML_Objects.Integer_Object then
+               return Describe (AML_Coercions.Strings.From_Integer (AML_Objects.Integer_Data (Tree.Values, ID), Width));
+            end if;
+         end;
+         return (others => <>);
+      end Convert;
+      Sig, Manufacturer, Model : Selector;
+      Query : Firmware_Tables.Identifiers.Selection := (Name => "____", others => <>);
+      Found_Table : Natural;
+   begin
+      Status := AML_Execute.Unsupported_Value;
+      if Token = 0 or else Token > Tree.Used or else not Tree.Items (Token).Alive
+        or else Tree.Items (Token).Object_Type /= Uninitialized_Region_Object
+      then return; end if;
+      Sig := Convert (Signature); Manufacturer := Convert (OEM); Model := Convert (Table_ID);
+      if not Sig.Valid or else not Manufacturer.Valid or else not Model.Valid then return; end if;
+      if Sig.Length < 4 then Status := AML_Execute.Bad_Name; return; end if;
+      Query.Name := Sig.Prefix (1 .. 4);
+      -- Table signatures are not AML object names: digits may lead, and
+      -- the fourth character may be '!' (for example ASF!).
+      for I in Query.Name'Range loop
+         if Query.Name (I) not in 'A' .. 'Z' | '0' .. '9' | '_'
+           and then not (I = 4 and then Query.Name (I) = '!')
+         then Status := AML_Execute.Bad_Name; return; end if;
+      end loop;
+      if Manufacturer.Length > 6 or else Model.Length > 8 then return; end if;
+      Query.Match_OEM := Manufacturer.Length /= 0;
+      Query.OEM := Manufacturer.Prefix (1 .. 6);
+      Query.Match_OEM_Table := Model.Length /= 0;
+      Query.OEM_Table := Model.Prefix;
+      Found_Table := AML_Table_Backing.Find_Table (Input, Query);
+      if Found_Table = 0 or else not AML_Table_Backing.Valid_Span (Input, Found_Table) then
+         Status := AML_Execute.Unknown_Name; return;
+      end if;
+      Tree.Items (Token).Table_Binding :=
+        (Region => (Table => Found_Table, Extent => Input.Tables (Found_Table).Extent), others => <>);
+      Tree.Items (Token).Object_Type := Table_Region_Object;
+      Status := AML_Execute.Returned;
+   end Complete_Region;
+
    procedure Invoke_With_Tables
      (Tree : in out State; Input : aliased AML_Table_Backing.State; Node : Node_ID;
       Args : AML_Execute.Arguments; Argument_Count : Natural; Budget : Natural;
@@ -692,9 +824,23 @@ package body AML_Namespace with SPARK_Mode is
             end if;
          end;
       end Lookup;
+      procedure Read_Timer
+        (Environment : in out State; Value : out AML_Decode.Integer_Value;
+         Available : out Boolean)
+        with Pre => Valid_Context (Environment), Post => Valid_Context (Environment)
+      is
+         use type AML_Clock.Sample_Status;
+         Raw : AML_Decode.Integer_Value;
+         Ready : Boolean;
+         Status : AML_Clock.Sample_Status;
+      begin
+         Read_Microseconds (Raw, Ready);
+         AML_Clock.Observe (Environment.Timer_State, Raw, Ready, Value, Status);
+         Available := Status = AML_Clock.Accepted;
+      end Read_Timer;
       procedure Execute is new AML_Execute.Execute_With_Input
         (State, AML_Table_Backing.State, Valid_Context, Lookup, Read_Method, Write_Binding,
-         Begin_Method, End_Method, Define_Method, Define_Fields, Materialize_Literal);
+         Begin_Method, End_Method, Define_Method, Define_Fields, Materialize_Literal, Reserve_Region, Complete_Region, Read_Timer);
       Method : constant AML_Execute.Method_Definition := Read_Method (Tree, Node);
    begin
       if not Method.Exists then
@@ -706,6 +852,8 @@ package body AML_Namespace with SPARK_Mode is
         Argument_Count, Budget, Input, Tree, Natural (Node), Result,
         Current_Sync => AML_Execute.Method_Level (Method.Flags));
    end Invoke_With_Tables;
+
+
 
    function Invoke
      (Tree : State; Node : Node_ID; Args : AML_Execute.Arguments;

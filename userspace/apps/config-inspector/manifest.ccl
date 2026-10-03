@@ -2,6 +2,8 @@
 (executable-manifest v1
   (identity "com.cubit.config-inspector")
   (version "0.1.0")
+  # One "started" record (CuBit.Logging.Announce).
+  (request-service logstore read-write logstore)
   (request-service desktop read-write desktop)
   (request-service config read-write config)
   (config-scope (rights read) all))

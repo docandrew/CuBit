@@ -1,0 +1,9 @@
+project Metadata_Arena is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-metadata-arena";
+   for Main use ("metadata_arena_tests.adb", "record_growth_tests.adb",
+                 "allocation_growth_tests.adb", "metadata_bundle_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Metadata_Arena;

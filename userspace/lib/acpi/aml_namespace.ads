@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Clock;
 with AML_Names;
 with AML_Decode;
 with AML_Execute;
@@ -9,6 +10,8 @@ with AML_Field_Data;
 --  they are not capabilities or externally reusable service handles.
 generic
    Capacity : Positive;
+   with procedure Read_Microseconds
+     (Value : out AML_Decode.Integer_Value; Available : out Boolean) is AML_Clock.No_Sample;
 package AML_Namespace with SPARK_Mode is
    use type AML_Decode.Integer_Value;
    use type AML_Names.Parse_Status;
@@ -84,7 +87,7 @@ package AML_Namespace with SPARK_Mode is
                   Name (Tree, I) = Name (Tree'Old, I))
              else Tree = Tree'Old and then Node = Root);
    type Object_Kind is (Scope_Object, Device_Object, Integer_Object, String_Object, Buffer_Object, Package_Object, Method_Object,
-                       Table_Region_Object, Table_Field_Object);
+                       Table_Region_Object, Table_Field_Object, Uninitialized_Region_Object);
    function Kind (Tree : State; Node : Node_ID) return Object_Kind
      with Pre => Node <= Count (Tree),
           Post => (if Node = Root then Kind'Result = Scope_Object);
@@ -183,8 +186,7 @@ package AML_Namespace with SPARK_Mode is
      (Tree : in out State; Input : aliased AML_Table_Backing.State; Node : Node_ID;
       Args : AML_Execute.Arguments; Argument_Count : Natural; Budget : Natural;
       Result : out AML_Execute.Execution_Result)
-     with Global => null,
-       Pre => Node <= Count (Tree) and then Argument_Count <= 7
+     with Pre => Node <= Count (Tree) and then Argument_Count <= 7
          and then not Result'Constrained,
        Post => Result.Charged <= Budget;
 
@@ -215,6 +217,7 @@ private
    end record;
    type Entries is array (Positive range 1 .. Capacity) of Entry_Record;
    type State is record
+      Timer_State : AML_Clock.State := AML_Clock.Fresh;
       Used : Node_ID := 0;
       Items : Entries;
       Values : AML_Objects.State := AML_Objects.Empty;

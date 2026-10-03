@@ -2,6 +2,7 @@ with CuBit.Metrics;
 with Compositor_Requests;
 with Compositor_Release_Metrics;
 with Compositor_Stage_Metrics;
+with Compositor_Work_Metrics;
 with Compositor_Metric_Batch_Policy;
 with Compositor_Metric_Completion;
 package body Desktop_Metric_Publisher with SPARK_Mode => Off is
@@ -10,6 +11,7 @@ package body Desktop_Metric_Publisher with SPARK_Mode => Off is
    package CR renames Compositor_Requests;
    package RM renames Compositor_Release_Metrics;
    package SM renames Compositor_Stage_Metrics;
+   package WM renames Compositor_Work_Metrics;
    package BP renames Compositor_Metric_Batch_Policy;
    package MC renames Compositor_Metric_Completion;
    use type BP.Append_Kind;
@@ -53,7 +55,7 @@ package body Desktop_Metric_Publisher with SPARK_Mode => Off is
          if Accepted then Quarantine; end if;
          return;
       end if;
-      -- At most six metadata records; no allocation, retry, or IPC here.
+      -- At most eight metadata records; no allocation, retry, or IPC here.
       for Kind in BP.Description loop
          if BP.Next (Batch) = Kind then
             case Kind is
@@ -63,6 +65,8 @@ package body Desktop_Metric_Publisher with SPARK_Mode => Off is
                when BP.Describe_Request => Write (SM.Declaration (SM.Request_Dispatch));
                when BP.Describe_Draw => Write (SM.Declaration (SM.Scene_Draw));
                when BP.Describe_Submit => Write (SM.Declaration (SM.Submit_Call));
+               when BP.Describe_Scene_Pixels => Write (WM.Declaration (WM.Scene_Pixels));
+               when BP.Describe_Repair_Pixels => Write (WM.Declaration (WM.Repair_Pixels));
             end case;
             if Disabled then Local_Drops := Add (Local_Drops, 1); return; end if;
          end if;
@@ -72,6 +76,13 @@ package body Desktop_Metric_Publisher with SPARK_Mode => Off is
       end if;
       Write (Value);
    end Append;
+
+   procedure Record_Work (Kind : WM.Work_Kind; Pixels, Now : Unsigned_64) is
+      Value : constant WM.Sample := WM.Prepare (Kind, Pixels, Now);
+   begin
+      if not Value.Valid then Bad := Add (Bad, 1); return; end if;
+      Append (Value.Value, Now);
+   end Record_Work;
 
    procedure Record_Completion (Frame : Compositor_Frame_Trace.Record_Value) is
       Value : constant RM.Sample := RM.Prepare (Frame);

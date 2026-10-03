@@ -1,4 +1,7 @@
 # Requested authority only; the existing launch path remains in control.
 (executable-manifest v1
   (identity "com.cubit.logstore")
-  (version "1.0.0"))
+  (version "1.0.0")
+  # logs.minimum-level: the least severe record kept at startup.
+  (request-service config read-write config)
+  (config-scope (rights read) "logs."))

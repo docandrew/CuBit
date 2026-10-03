@@ -26,7 +26,8 @@ package body CCL.Periodic_Programs with SPARK_Mode is
       Grants : CCL.Catalog.Granted_Bindings; Context : in out Host_Context;
       Updated : out Boolean)
    is
-      procedure Evaluate is new CCL.Language.Interpret_With_Values (Host_Context, Invoke);
+      procedure Evaluate is new CCL.Language.Interpret_With_Values
+        (Host_Context, Invoke, Read_Stream => Read_Stream);
       Ticket : Invocation;
       Ready : Boolean;
       Outcome : CCL.Language.Interpretation_Result;

@@ -1,5 +1,5 @@
+with CuBit.Failures;
 with CCL.Diagnostics;
-with CCL.Language.Views;
 with CCL.Types;
 
 package body CCL.Sessions with SPARK_Mode is
@@ -38,6 +38,13 @@ package body CCL.Sessions with SPARK_Mode is
    begin
       CCL.Catalog.Completion.Find (Item.Catalog, Prefix, Matches);
    end Complete;
+
+   procedure Complete_At
+     (Item : Session; Before : String; After_Caret : Character;
+      Result : out CCL.Completions.Result) is
+   begin
+      CCL.Completions.Complete (Item.Catalog, Before, After_Caret, Result);
+   end Complete_At;
 
    procedure Describe
      (Item : Session; Name : String;
@@ -102,6 +109,9 @@ package body CCL.Sessions with SPARK_Mode is
    function Definitions_Source (Item : Session) return String is
      (Item.Definitions (1 .. Item.Definitions_Length));
    function Kept_Values (Item : Session) return Natural is (Item.Value_Count);
+   function Holds_Stream (Item : Session; Handle : CCL.Streams.Handle) return Boolean is
+     (CCL.Streams."/=" (Handle, CCL.Streams.No_Handle) and then
+      (for some V in 1 .. Item.Value_Count => CCL.Streams."=" (Item.Values (V).Stream, Handle)));
 
    function Is_Blank (C : Character) return Boolean is
      (C in ' ' | ASCII.HT | ASCII.LF | ASCII.CR);
@@ -285,6 +295,10 @@ package body CCL.Sessions with SPARK_Mode is
             end loop;
             Add ("]");
          end if;
+      elsif Outcome.Has_Stream then
+         --  The session's own name for the stream; it grants nothing.
+         Add ("(stream " & Outcome.Stream_Element.Data (1 .. Outcome.Stream_Element.Length) &
+              CCL.Streams.Handle'Image (Outcome.Stream) & ")");
       elsif Outcome.Has_Literal then
          --  Already the canonical literal the reader accepts.
          Add (Outcome.Literal.Data (1 .. Outcome.Literal.Length));
@@ -319,6 +333,8 @@ package body CCL.Sessions with SPARK_Mode is
       Definition_Count : Natural := 0;
       Binding : Kept_Value;
       Fits : Boolean := True;
+      --  The entry itself defines (a define or type form), new or again.
+      Defines : Boolean := False;
       --  Where the entry's own text starts in Program: diagnostics are
       --  reported relative to what was typed.
       Entry_Offset : Natural := 0;
@@ -413,6 +429,7 @@ package body CCL.Sessions with SPARK_Mode is
       end;
       for F in 1 .. Form_Count loop
          if Forms (F).Kind = Definition_Form then
+            Result.Defines := True;
             if not Used (F) then
                Keep_Definition (Entry_Text (Forms (F).First .. Forms (F).Last));
             end if;
@@ -466,6 +483,7 @@ package body CCL.Sessions with SPARK_Mode is
       if Outcome.Status /= CCL.Language.Succeeded then return; end if;
       if Value.Name_Length > 0 then
          Literal_Of (Outcome, Value.Literal, Value.Literal_Length, Kept);
+         Value.Stream := (if Outcome.Has_Stream then Outcome.Stream else CCL.Streams.No_Handle);
          for V in 1 .. Item.Value_Count loop
             if Item.Values (V).Name (1 .. Item.Values (V).Name_Length) = Value.Name (1 .. Value.Name_Length) then
                Slot_Index := V;
@@ -684,9 +702,9 @@ package body CCL.Sessions with SPARK_Mode is
 
    --  After evaluation: diagnostics relative to the typed entry, then keep
    --  what a successful entry defined or bound.
-   procedure Finish
-     (Item : in out Session; Planned : Plan; Read : Reading;
-      Outcome : in out CCL.Language.Interpretation_Result) is
+   --  Diagnostics relative to what was typed, and explained.
+   procedure Report
+     (Planned : Plan; Read : Reading; Outcome : in out CCL.Language.Interpretation_Result) is
    begin
       if Outcome.Diagnostic_Position > Planned.Entry_Offset then
          Outcome.Diagnostic_Position := Outcome.Diagnostic_Position - Planned.Entry_Offset;
@@ -695,6 +713,13 @@ package body CCL.Sessions with SPARK_Mode is
          Outcome.Diagnostic_Position := 0;
       end if;
       Explain (Read, Outcome);
+   end Report;
+
+   procedure Finish
+     (Item : in out Session; Planned : Plan; Read : Reading;
+      Outcome : in out CCL.Language.Interpretation_Result) is
+   begin
+      Report (Planned, Read, Outcome);
       Commit (Item, Planned, Outcome);
    end Finish;
 
@@ -762,7 +787,8 @@ package body CCL.Sessions with SPARK_Mode is
       Outcome : out CCL.Language.Interpretation_Result;
       Shown : String := "")
    is
-      procedure Evaluate is new CCL.Language.Interpret_With_Values (Host_Context, Invoke);
+      procedure Evaluate is new CCL.Language.Interpret_With_Values
+        (Host_Context, Invoke, Read_Stream => Read_Stream);
       Program : CCL.Language.Views.Text;
       Read : Reading;
       Planned : Plan;
@@ -782,6 +808,131 @@ package body CCL.Sessions with SPARK_Mode is
       end if;
       Record_Submission (Item, (if Shown'Length > 0 then Shown else Source), Fuel, Outcome);
    end Submit_With_Values;
+
+   procedure Reevaluate_With_Values
+     (Item : in out Session; Index : History_Index; Fuel : Fuel_Budget;
+      Grants : CCL.Catalog.Granted_Bindings; Context : in out Host_Context;
+      Outcome : out CCL.Language.Interpretation_Result; Reevaluated : out Boolean)
+   is
+      procedure Evaluate is new CCL.Language.Interpret_With_Values
+        (Host_Context, Invoke, Read_Stream => Read_Stream);
+      Entry_Value : Submission;
+      Found : Boolean;
+      Program : CCL.Language.Views.Text;
+      Read : Reading;
+      Planned : Plan;
+   begin
+      Outcome := (others => <>);
+      Reevaluated := False;
+      Recall (Item, Index, Entry_Value, Found);
+      if not Found or else Entry_Value.Source_Truncated or else Entry_Value.Source_Length = 0 or else
+        Entry_Value.Source (1) = ':'
+      then
+         return;
+      end if;
+      Prepare (Item, Entry_Value.Source (1 .. Entry_Value.Source_Length), Program, Read);
+      Assemble (Item, Program.Data (1 .. Program.Length), Read.Drop_Body, Planned);
+      --  Only a plain expression: it names no value and defines nothing.
+      if not Planned.Fits or else Planned.Binding.Name_Length > 0 or else Planned.Defines then
+         return;
+      end if;
+      Evaluate (Planned.Program.Data (1 .. Planned.Program.Length), Fuel, Item.Catalog,
+                Grants, Context, Outcome);
+      Report (Planned, Read, Outcome);
+      Item.Entries (Slot (Item.Oldest, Index - 1)).Outcome := Outcome;
+      Reevaluated := True;
+   end Reevaluate_With_Values;
+
+   procedure View_Source
+     (Item : Session; Source : String; Into : CCL.Language.Views.Surface;
+      Shown : out CCL.Language.Views.Text; Converted : out Boolean)
+   is
+      package V renames CCL.Language.Views;
+      use type V.Surface;
+      From : V.Surface;
+      Alone : V.Conversion;
+      procedure Keep (Text : String) is
+      begin
+         Shown.Length := Text'Length;
+         Shown.Data (1 .. Text'Length) := Text;
+         Converted := True;
+      end Keep;
+   begin
+      Shown := (others => <>);
+      Converted := False;
+      if Source'Length = 0 or else Source'Length > CCL.Language.MAX_SOURCE_LENGTH then return; end if;
+      --  Session commands read the same in both notations.
+      if Source (Source'First) = ':' then Keep (Source); return; end if;
+      From := V.Detect (Source);
+      if From = Into then Keep (Source); return; end if;
+      --  BASIC lowers to Lisp without its context; Lisp is checked first.
+      V.Convert (Source, From, Into, Item.Catalog, Alone, Check => From = V.Lisp);
+      if Alone.Status = V.Converted then
+         --  Unchecked BASIC lowering fills only Canonical, the Lisp itself.
+         Shown := (if From = V.Lisp then Alone.Rendered else Alone.Canonical);
+         Converted := True;
+         return;
+      end if;
+      if From /= V.Lisp then return; end if;
+      --  In the session's context: the program it would run, converted
+      --  whole, then the entry's own node cut out of the rendering.
+      declare
+         Prepared : V.Text;
+         Read : Reading;
+         Planned : Plan;
+         Whole : V.Conversion;
+         Best : CCL.Language.Node_Reference := CCL.Language.NO_NODE;
+         Best_End : Natural := 0;
+      begin
+         Prepare (Item, Source, Prepared, Read);
+         Assemble (Item, Prepared.Data (1 .. Prepared.Length), Read.Drop_Body, Planned);
+         if not Planned.Fits or else Planned.Binding.Name_Length > 0 or else Planned.Defines then
+            return;
+         end if;
+         V.Convert (Planned.Program.Data (1 .. Planned.Program.Length), V.Lisp, Into,
+                    Item.Catalog, Whole);
+         if Whole.Status /= V.Converted then return; end if;
+         --  The outermost node that starts where the entry does.
+         for N in Whole.Input_Nodes'Range loop
+            if Whole.Input_Nodes (N).First = Planned.Entry_Offset + 1 and then
+              Whole.Input_Nodes (N).After_Last > Best_End
+            then
+               Best := N; Best_End := Whole.Input_Nodes (N).After_Last;
+            end if;
+         end loop;
+         if Best = CCL.Language.NO_NODE then return; end if;
+         declare
+            S : constant V.Span := Whole.Output_Nodes (Best);
+         begin
+            if S.First in 1 .. Whole.Rendered.Length and then S.After_Last in S.First + 1 .. Whole.Rendered.Length + 1 then
+               Keep (Whole.Rendered.Data (S.First .. S.After_Last - 1));
+            end if;
+         end;
+      end;
+   end View_Source;
+
+   procedure Expression_Program
+     (Item : Session; Source : String; Program : out String; Length : out Natural;
+      Plain : out Boolean)
+   is
+      Prepared : CCL.Language.Views.Text;
+      Read : Reading;
+      Planned : Plan;
+   begin
+      Program := [others => ' '];
+      Length := 0;
+      Plain := False;
+      if Source'Length = 0 or else Source (Source'First) = ':' then return; end if;
+      Prepare (Item, Source, Prepared, Read);
+      Assemble (Item, Prepared.Data (1 .. Prepared.Length), Read.Drop_Body, Planned);
+      if Planned.Fits and then Planned.Binding.Name_Length = 0 and then not Planned.Defines and then
+        Planned.Program.Length <= Program'Length
+      then
+         Length := Planned.Program.Length;
+         Program (1 .. Length) := Planned.Program.Data (1 .. Length);
+         Plain := True;
+      end if;
+   end Expression_Program;
 
    function Result_Type (Outcome : CCL.Language.Interpretation_Result)
      return CCL.Language.Static_Type is
@@ -850,21 +1001,31 @@ package body CCL.Sessions with SPARK_Mode is
          else "enumeration") & ">: [" & Buffer (1 .. Last) & "]";
    end List_Image;
 
-   function Result_Image (Outcome : CCL.Language.Interpretation_Result) return String is
+   function Trimmed_Image (Value : Interfaces.Integer_64) return String is
+     (if Interfaces."<" (Value, 0) then Interfaces.Integer_64'Image (Value)
+      else Interfaces.Integer_64'Image (Value)
+             (2 .. Interfaces.Integer_64'Image (Value)'Last));
+
+   function Result_Type_Image (Outcome : CCL.Language.Interpretation_Result) return String is
    begin
-      if Outcome.Status = CCL.Language.Host_Import_Required then
-         return CCL.Diagnostics.Message (Outcome.Status);
-      elsif Outcome.Status /= CCL.Language.Succeeded then
-         return CCL.Diagnostics.Message (Outcome.Status) &
-           (if Outcome.Diagnostic = CCL.Language.No_Diagnostic then ""
-            else ": " & CCL.Diagnostics.Message (Outcome.Diagnostic)) &
-           (if Outcome.Diagnostic_Position = 0 then ""
-            else " at character" & Natural'Image (Outcome.Diagnostic_Position));
-      end if;
-      if Outcome.Has_List then
-         return List_Image (Outcome);
+      if Outcome.Status /= CCL.Language.Succeeded then
+         return "";
+      elsif Outcome.Has_Stream then
+         return "Stream<" & Outcome.Stream_Element.Data (1 .. Outcome.Stream_Element.Length) & ">";
+      elsif Outcome.Has_List then
+         declare
+            Image : constant String := List_Image (Outcome);
+            Separator : Natural := Image'First;
+         begin
+            while Separator < Image'Last and then Image (Separator) /= ':' loop
+               pragma Loop_Invariant (Separator in Image'Range);
+               pragma Loop_Variant (Increases => Separator);
+               Separator := Separator + 1;
+            end loop;
+            return Image (Image'First .. Separator - 1);
+         end;
       elsif Outcome.Has_Function then
-         return "Function: " & CCL.Types.Image (Outcome.Function_Name);
+         return "Function";
       elsif Outcome.Has_Literal then
          declare
             Name : constant String := CCL.Types.Image (Outcome.Literal_Type_Name);
@@ -874,28 +1035,95 @@ package body CCL.Sessions with SPARK_Mode is
             return (if Name'Length > List_Prefix'Length and then
                       Name (Name'First .. Name'First + List_Prefix'Length - 1) = List_Prefix
                     then "List<" & Name (Name'First + List_Prefix'Length .. Name'Last) & ">"
-                    else Name) & ": " & Outcome.Literal.Data (1 .. Outcome.Literal.Length);
+                    else Name);
          end;
       end if;
       case Result_Type (Outcome) is
-         when CCL.Language.Integer_Type =>
-            return "Integer:" & Interfaces.Integer_64'Image (Outcome.Result_Value.Integer);
-         when CCL.Language.Boolean_Type =>
-            return "Boolean: " & (if Outcome.Result_Value.Boolean then "true" else "false");
-         when CCL.Language.String_Type =>
-            return "String: " & Outcome.Result_Text.Data (1 .. Outcome.Result_Text.Length);
-         when CCL.Language.Character_Type =>
-            return "Character: " & Outcome.Result_Character;
-         when CCL.Language.Invalid_Type => return "ok";
+         when CCL.Language.Integer_Type => return "Integer";
+         when CCL.Language.Boolean_Type => return "Boolean";
+         when CCL.Language.String_Type => return "String";
+         when CCL.Language.Character_Type => return "Character";
+         when CCL.Language.Invalid_Type => return "";
          when CCL.Language.Handler_Type => return "Handler";
          when CCL.Language.Unit_Type => return "Unit";
+         when CCL.Types.Declared_Type => return CCL.Types.Image (Outcome.Variant_Type_Name);
+      end case;
+   end Result_Type_Image;
+
+   function Result_Value_Image (Outcome : CCL.Language.Interpretation_Result) return String is
+   begin
+      if Outcome.Status = CCL.Language.Host_Import_Required then
+         return CCL.Diagnostics.Message (Outcome.Status);
+      elsif Outcome.Status in CCL.Language.Host_Call_Failed | CCL.Language.Host_Authority_Denied |
+                              CCL.Language.Host_Contract_Unsupported and then
+        Outcome.Failed_Operation.Length > 0
+      then
+         --  Which operation, why, and how to allow it (docs/ccl-errors.md).
+         return CuBit.Failures.Explain (CCL.Types.Image (Outcome.Failed_Operation), Outcome.Failure);
+      elsif Outcome.Status /= CCL.Language.Succeeded then
+         return CCL.Diagnostics.Message (Outcome.Status) &
+           (if Outcome.Diagnostic = CCL.Language.No_Diagnostic then ""
+            elsif Outcome.Diagnostic_Subject.Length > 0
+            then ": field " & CCL.Types.Image (Outcome.Diagnostic_Subject) & ": " &
+                 CCL.Diagnostics.Message (Outcome.Diagnostic)
+            else ": " & CCL.Diagnostics.Message (Outcome.Diagnostic)) &
+           (if Outcome.Diagnostic_Position = 0 then ""
+            else " at character" & Natural'Image (Outcome.Diagnostic_Position));
+      elsif Outcome.Has_Stream then
+         --  A description, never a literal: # starts a comment, so it
+         --  cannot be typed back in.
+         return "#<stream" & CCL.Streams.Handle'Image (Outcome.Stream) & ">";
+      elsif Outcome.Has_List then
+         declare
+            Image : constant String := List_Image (Outcome);
+            Separator : Natural := Image'First;
+         begin
+            while Separator < Image'Last and then Image (Separator) /= ':' loop
+               pragma Loop_Invariant (Separator in Image'Range);
+               pragma Loop_Variant (Increases => Separator);
+               Separator := Separator + 1;
+            end loop;
+            return Image (Natural'Min (Separator + 2, Image'Last + 1) .. Image'Last);
+         end;
+      elsif Outcome.Has_Function then
+         return CCL.Types.Image (Outcome.Function_Name);
+      elsif Outcome.Has_Literal then
+         return Outcome.Literal.Data (1 .. Outcome.Literal.Length);
+      end if;
+      case Result_Type (Outcome) is
+         when CCL.Language.Integer_Type => return Trimmed_Image (Outcome.Result_Value.Integer);
+         when CCL.Language.Boolean_Type =>
+            return (if Outcome.Result_Value.Boolean then "true" else "false");
+         when CCL.Language.String_Type =>
+            return Outcome.Result_Text.Data (1 .. Outcome.Result_Text.Length);
+         when CCL.Language.Character_Type => return [1 => Outcome.Result_Character];
+         when CCL.Language.Invalid_Type => return "ok";
+         when CCL.Language.Handler_Type | CCL.Language.Unit_Type => return "";
          when CCL.Types.Declared_Type =>
-            return CCL.Types.Image (Outcome.Variant_Type_Name) & "." &
-              CCL.Types.Image (Outcome.Variant_Member_Name) &
+            return CCL.Types.Image (Outcome.Variant_Member_Name) &
               (case Outcome.Variant_Payload_Type is
                 when CCL.Language.Integer_Type => "(" & Interfaces.Integer_64'Image (Outcome.Result_Value.Integer) & ")",
                 when CCL.Language.Boolean_Type => (if Outcome.Result_Value.Boolean then "(true)" else "(false)"),
                 when others => "");
       end case;
+   end Result_Value_Image;
+
+   function Result_Image (Outcome : CCL.Language.Interpretation_Result) return String is
+      Type_Image : constant String := Result_Type_Image (Outcome);
+      Value_Image : constant String := Result_Value_Image (Outcome);
+   begin
+      if Type_Image'Length = 0 then
+         return Value_Image;
+      elsif Value_Image'Length = 0 then
+         return Type_Image;
+      elsif Outcome.Status = CCL.Language.Succeeded and then not Outcome.Has_List and then
+        not Outcome.Has_Function and then not Outcome.Has_Literal and then
+        Result_Type (Outcome) in CCL.Types.Declared_Type
+      then
+         --  A variant reads as it is written: Type.Member(payload).
+         return Type_Image & "." & Value_Image;
+      else
+         return Type_Image & ": " & Value_Image;
+      end if;
    end Result_Image;
 end CCL.Sessions;

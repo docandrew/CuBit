@@ -17,6 +17,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants; use CuBit.Memory_Grants;
 with HDA;
+with CuBit.Audio_Periods;
 
 procedure main is
    use ASCII;
@@ -42,6 +43,7 @@ procedure main is
    buffersGrant : Grant_Reference := (slot => 0, generation => 1);
    streamRunning  : Boolean := False;
    periodSequence : Unsigned_64 := 0;
+   previousSlot : Natural := HDA.NUM_BDL_ENTRIES - 1;
 
    procedure sendReply (label : Unsigned_32;
                         w0    : Unsigned_64 := 0;
@@ -115,7 +117,7 @@ begin
          --  device before notifying the mixer so the line cannot remain
          --  asserted while userspace is scheduled.
          irqEvent : declare
-            completedSlot : Natural;
+            completedSlot, advance : Natural;
             position      : Unsigned_32;
             completed     : Boolean;
             submitted     : Boolean;
@@ -123,22 +125,27 @@ begin
          begin
             HDA.acknowledgePeriod (completedSlot, position, completed);
             if completed and then streamRunning then
-               periodSequence := periodSequence + 1;
-               periodMsg :=
-                 (tag => (label  => OP_AUDIO_HW_PERIOD,
-                          length => 4,
-                          flags  => 0,
-                          reserved  => 0),
-                  authorityTag => 0,
-                  words =>
-                    (0 => Unsigned_64 (completedSlot),
-                     1 => periodSequence,
-                     2 => Unsigned_64 (position),
-                     3 => CuBit.Benchmark_Clock.Read_Counter));
-               submitted := capSubmit
-                 (CAP_SLOT_MIXER, periodMsg, NO_COMPLETION_TOKEN);
-               if not submitted then
-                  debugPrint ("hda: mixer period notification dropped" & LF);
+               advance := CuBit.Audio_Periods.Advance
+                 (previousSlot, completedSlot, HDA.NUM_BDL_ENTRIES);
+               previousSlot := completedSlot;
+               if advance > 0 then
+                  periodSequence := periodSequence + Unsigned_64 (advance);
+                  periodMsg :=
+                    (tag => (label  => OP_AUDIO_HW_PERIOD,
+                             length => 4,
+                             flags  => 0,
+                             reserved  => 0),
+                     authorityTag => 0,
+                     words =>
+                       (0 => Unsigned_64 (completedSlot),
+                        1 => periodSequence,
+                        2 => Unsigned_64 (position),
+                        3 => CuBit.Benchmark_Clock.Read_Counter));
+                  submitted := capSubmit
+                    (CAP_SLOT_MIXER, periodMsg, NO_COMPLETION_TOKEN);
+                  if not submitted then
+                     debugPrint ("hda: mixer period notification dropped" & LF);
+                  end if;
                end if;
             end if;
          end irqEvent;
@@ -173,10 +180,12 @@ begin
 
          when OP_AUDIO_HW_START =>
             if buffersGranted then
-               periodSequence := 0;
+               previousSlot := HDA.NUM_BDL_ENTRIES - 1;
                HDA.startStream;
                streamRunning := True;
-               sendReply (REPLY_OK);
+               --  Keep completion numbering monotonic across restarts. The
+               --  mixer rejects queued notifications from an earlier run.
+               sendReply (REPLY_OK, w0 => periodSequence);
             else
                sendReply (REPLY_ERR);
             end if;

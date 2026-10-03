@@ -419,4 +419,9 @@ package CuBit.UI is
 
    function Button
       (bounds : Rect; pointer : Pointer_State) return Widget_Result;
+private
+   --  Shared with the child control packages (CuBit.UI.Tables).
+   function Content_Rect (R : Rect; X_Pad, Y_Pad : Natural) return Rect;
+   function Control_Edge (Colors : Theme) return Color;
+   function Center_Text_Y (r : Rect) return Natural;
 end CuBit.UI;

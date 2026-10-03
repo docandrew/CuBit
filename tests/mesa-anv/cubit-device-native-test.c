@@ -81,5 +81,12 @@ int main(void)
    request.words[1] = 5;
    assert(!cubit_gpu_native_query_call(&endpoint, &request, &reply));
    assert(calls == 10);
+   request = (struct cubit_gpu_query_message){.label=0xa2e, .length=4,
+                                             .words={1,0,0,0}};
+   assert(!cubit_gpu_native_query_call(&endpoint, &request, &reply));
+   assert(calls == 10); /* obsolete budget version never reaches transport */
+   request.words[0] = 2;
+   assert(cubit_gpu_native_query_call(&endpoint, &request, &reply));
+   assert(calls == 11);
    return 0;
 }

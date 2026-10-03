@@ -16,6 +16,18 @@ package CuBit.Log_Records with Pure, SPARK_Mode is
    type Wire_Buffer is array (Positive range 1 .. Wire_Count'Last)
      of Unsigned_8;
    type Severity is (Trace, Debug, Information, Warning, Error, Critical);
+   --  A severity as the CCL value it is (CCL.Interfaces.Logs's Severity):
+   --  "Severity.Information". Settings hold this spelling.
+   function Severity_Literal (Level : Severity) return String is
+     (case Level is
+         when Trace => "Severity.Trace", when Debug => "Severity.Debug",
+         when Information => "Severity.Information", when Warning => "Severity.Warning",
+         when Error => "Severity.Error", when Critical => "Severity.Critical");
+   function Is_Severity_Literal (Text : String) return Boolean is
+     (for some Level in Severity => Text = Severity_Literal (Level));
+   function Severity_Of (Text : String) return Severity
+     with Pre => Is_Severity_Literal (Text),
+          Post => Severity_Literal (Severity_Of'Result) = Text;
    type Timebase is (Unspecified, Monotonic_Milliseconds, Unix_Milliseconds);
    subtype Clock_Domain is Unsigned_64 range 1 .. Unsigned_64'Last;
    type Timestamp (Clock : Timebase := Unspecified) is record

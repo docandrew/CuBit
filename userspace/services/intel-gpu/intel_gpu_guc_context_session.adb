@@ -9,15 +9,16 @@ package body Intel_GPU_GuC_Context_Session is
    use type Life.Send_Result;
    use type Events.Kind;
    function State (Object : Session) return Life.Phase is (Life.State (Object.Life));
+   function Can_Run_And_Retire (Object : Session) return Boolean is (Life.Can_Run_And_Retire (Object.Life));
    procedure Fail (Object : in out Session) is
    begin Life.Fail (Object.Life); end Fail;
    procedure Initialize
      (Object : in out Session; ID : Unsigned_32;
-      GPU_Start, Pin_Bias : Unsigned_64; Fence_Base, Fence_Last : Unsigned_16;
+      GPU_Start, Pin_Bias : Unsigned_64;
       Quantum_Us, Preemption_Us : Unsigned_32; Preempt_To_Idle : Boolean) is
    begin
       if State (Object) /= Life.Fresh then return; end if;
-      Life.Initialize (Object.Life, ID, Fence_Base, Fence_Last,
+      Life.Initialize (Object.Life, ID,
         Owner_Ready and then Requests.Admissible (ID, GPU_Start, Pin_Bias)
         and then Quantum_Us /= 0 and then Preemption_Us /= 0);
       if State (Object) /= Life.Ready then return; end if;
@@ -29,7 +30,6 @@ package body Intel_GPU_GuC_Context_Session is
                      Status : out Result) is
       Payload : Events.Words (0 .. 11) := [others => 0];
       Length : Natural := 0;
-      Fence : Unsigned_16;
       Accepted : Boolean;
       Outcome : Life.Send_Result;
    begin
@@ -54,9 +54,9 @@ package body Intel_GPU_GuC_Context_Session is
               (Requests.Scheduling_Mode (Object.ID, Action = Life.Enable));
             Length := 3;
       end case;
-      Life.Prepare (Object.Life, Action, Fence, Accepted);
+      Life.Prepare (Object.Life, Action, Accepted);
       if not Accepted then return; end if;
-      Queue (Payload (0 .. Length - 1), Fence, Outcome);
+      Queue (Payload (0 .. Length - 1), Outcome);
       Life.Sent (Object.Life, Outcome);
       if not Owner_Ready then Fail (Object); end if;
       if State (Object) = Life.Quarantined then Status := Faulted;
@@ -65,7 +65,6 @@ package body Intel_GPU_GuC_Context_Session is
    end Submit;
    procedure Notify_Work (Object : in out Session; Tail_Published : Boolean;
                           Status : out Result) is
-      Fence : Unsigned_16;
       Accepted : Boolean;
       Outcome : Life.Send_Result;
    begin
@@ -73,9 +72,9 @@ package body Intel_GPU_GuC_Context_Session is
       if State (Object) /= Life.Enabled then return; end if;
       if not Owner_Ready then Fail (Object); Status := Faulted; return; end if;
       if not Tail_Published then return; end if;
-      Life.Prepare_Notification (Object.Life, Fence, Accepted);
+      Life.Prepare_Notification (Object.Life, Accepted);
       if not Accepted then return; end if;
-      Queue (Events.Words (Requests.Schedule (Object.ID)), Fence, Outcome);
+      Queue (Events.Words (Requests.Schedule (Object.ID)), Outcome);
       Life.Notification_Sent (Object.Life, Outcome);
       if not Owner_Ready then Fail (Object); end if;
       if State (Object) = Life.Quarantined then Status := Faulted;
@@ -85,7 +84,6 @@ package body Intel_GPU_GuC_Context_Session is
    procedure Deregister
      (Object : in out Session; Admission_Closed, Work_Drained : Boolean;
       Status : out Result) is
-      Fence : Unsigned_16;
       Accepted : Boolean;
       Outcome : Life.Send_Result;
    begin
@@ -93,9 +91,9 @@ package body Intel_GPU_GuC_Context_Session is
       if State (Object) in Life.Fresh | Life.Quarantined then return; end if;
       if not Owner_Ready then Fail (Object); Status := Faulted; return; end if;
       if not Admission_Closed or else not Work_Drained then return; end if;
-      Life.Prepare_Deregister (Object.Life, Fence, Accepted);
+      Life.Prepare_Deregister (Object.Life, Accepted);
       if not Accepted then return; end if;
-      Queue (Events.Words (Requests.Deregister (Object.ID)), Fence, Outcome);
+      Queue (Events.Words (Requests.Deregister (Object.ID)), Outcome);
       Life.Deregister_Sent (Object.Life, Outcome);
       if not Owner_Ready then Fail (Object); end if;
       if State (Object) = Life.Quarantined then Status := Faulted;
@@ -114,8 +112,9 @@ package body Intel_GPU_GuC_Context_Session is
       end if;
       case Item.Tag is
          when Events.Request_Failure =>
-            Life.Failed_Request (Object.Life, Fence, Matched);
-            if Matched then Status := Faulted; return; end if;
+            -- The table must broadcast transport failures to every session.
+            -- A directly delivered failure cannot be attributed by wire ID.
+            Fail (Object); Status := Faulted; return;
          when Events.Scheduling_Done =>
             if Item.ID = Object.ID then
                Life.Scheduling_Done (Object.Life, Item.ID, Item.Runnable, Matched);

@@ -1,0 +1,7 @@
+#ifndef CUBIT_VULKAN_OWNED_TARGETS_H
+#define CUBIT_VULKAN_OWNED_TARGETS_H
+#include "vulkan_owned_image.h"
+#include "vulkan_targets.h"
+uint32_t cubit_vulkan_owned_targets_bind(void *description,void *a,void *b,void *c,void *submission);
+uint32_t cubit_vulkan_owned_targets_prepare_frame(void *,void *,uint32_t,uint32_t,uint32_t,uint32_t);
+#endif

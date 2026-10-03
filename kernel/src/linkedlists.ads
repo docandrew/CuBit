@@ -136,6 +136,13 @@ package LinkedLists is
     ---------------------------------------------------------------------------
     procedure popBack (myList : in out List);
 
+    -- Move the existing head immediately before a member of this same list.
+    -- No allocation, release or length/capacity change. Before is checked for
+    -- membership before dereference. Null/nonmember rejects without mutation;
+    -- head and its successor are successful no-ops. Caller holds list lock.
+    procedure moveFrontBefore (myList : in out List; Before : NodePtr;
+                               Success : out Boolean);
+
     -- Detach a nonwrapping, contiguous range into an empty list without
     -- allocating or freeing nodes. First/Last are compared against nodes
     -- reached from myList, never dereferenced before membership is known.

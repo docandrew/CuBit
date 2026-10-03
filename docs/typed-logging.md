@@ -284,3 +284,35 @@ accounting, and successful publication after refill.
 - **Native:** the Workbench builds.
 - **Not yet live:** procmgr approves log observation only for `boot-logs.app`. The Workbench needs the same transitional approval; I've asked the graphics agent, who owns procmgr.
 - **Later:** typed log fields in entries, live tailing (a subscription left open), a table view in the Workbench and Observatory, and persistence to disk.
+
+## Logging from a program: `CuBit.Log` (2026-10-03)
+
+The runtime's everyday interface (`userspace/runtime/gnat/cubit-log.ads`):
+
+```ada
+CuBit.Log.Info ("netmgr: lease acquired");
+CuBit.Log.Warning ("netmgr: no answer from 10.0.2.2");
+```
+
+- **Binding:** the manifest requests `(request-service logstore read-write logstore)`. Without it, records are only echoed to the debug console.
+- **Queued delivery (the default):** records wait in a 32-record FIFO and go out asynchronously.
+  - The event loop calls `CuBit.Log.Pump`.
+  - It hands completions where `CuBit.Log.Owns (token)` to `CuBit.Log.Collect`.
+  - Tokens `16#4C47_…#` are reserved for the package. tls works this way.
+- **Immediate delivery:** `CuBit.Log.Set_Delivery (CuBit.Log.Immediate)`. Each record is one synchronous call as it is written, and the completion queue is never touched. This is for programs without an event loop, such as timesync, which sleeps between polls.
+- **Filtering before IPC:** records below the minimum logstore keeps are dropped in the program, before any IPC. The minimum is learned from logstore's replies. `CuBit.Log.Wanted (Level)` lets a caller skip building text that would be dropped.
+- **Losses:** `CuBit.Log.Lost` counts records not delivered (queue full, no binding, logstore refused). Filtered records are not losses.
+- **Lower layer:** `CuBit.Logging` keeps `Publisher`/`Emit`/`Complete` for programs that manage their own queue (desktop's `Desktop_Logs`). It also provides `Publish_Now` and `Announce`.
+
+## What logstore keeps: the minimum level (2026-10-03)
+
+- **The rule:** logstore keeps records at or above a minimum severity.
+- **Startup value:** `logs.minimum-level`, a CCL `Severity` value. `system.ccl` sets `"Severity.Information"`; without the setting everything is kept. logstore reads it through a config request scoped to `logs.` and retries until Config answers.
+- **Changing it while running:** `(logs.set-minimum Severity.Debug)` from the CCL console or Workbench, or the Logs app's "logstore keeps" box. Both need the log-control role (service role 27, slot 32). The startup plan and desktop-launched Logs, console and Workbench are approved for it.
+  - logstore records each change, with the pid that made it, and that record is kept whatever the minimum.
+  - `(logs.minimum)` reads the current value through any logstore role.
+- **Protocol:**
+  - `Set_Minimum` (0x0C04, control only) replies with the previous minimum.
+  - `Get_Minimum` (0x0C05).
+  - Publish replies carry the minimum in word 0. A record under it gets `Below_Minimum` (0xF009): delivered, not kept, not a loss.
+- **Proofs:** the policy gate and the protocol's operation gating are proved in `tests/log-fanout` (policy_proof).

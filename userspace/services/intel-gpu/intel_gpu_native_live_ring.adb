@@ -9,6 +9,7 @@ package body Intel_GPU_Native_Live_Ring is
       Base < 2 ** 47 and then Bytes <= 2 ** 47 - Base);
    Active : Boolean := False;
    First, Last : Unsigned_32 := 0;
+   Wrapped : Boolean := False;
    function Owned return Boolean is
      (Mapping_Valid and then Active and then CPU_Base = Base and then
       Backing_Bytes = Bytes and then Owner_Ready and then Coherent_Ready);
@@ -30,7 +31,10 @@ package body Intel_GPU_Native_Live_Ring is
    procedure Store_Word (Offset, Value : Unsigned_32; OK : out Boolean) is
    begin
       OK := False;
-      if not Owned or else Offset < First or else Offset >= Last or else
+      if not Owned or else
+        (if Wrapped then not (Offset >= First and Offset < Writer.Ring_Bytes) and
+                            not (Offset < Last)
+         else Offset < First or Offset >= Last) or else
         Offset mod 4 /= 0 then return; end if;
       declare
          Word : Unsigned_32 with Import, Volatile_Full_Access,
@@ -41,10 +45,13 @@ package body Intel_GPU_Native_Live_Ring is
    function Publish_Words (Offset, Bytes : Unsigned_32) return Boolean is
       Page_First, Page_Last : Unsigned_64;
    begin
-      if not Owned or else Offset /= First or else Bytes /= Last - First
+      if not Owned or else
+        (if Wrapped then not ((Offset = First and Bytes = Writer.Ring_Bytes - First) or
+                              (Offset = 0 and Bytes = Last))
+         else Offset /= First or Bytes /= Last - First)
       then return False; end if;
-      Page_First := Unsigned_64 (First / 4096) * 4096;
-      Page_Last := Unsigned_64 ((Last + 4095) / 4096) * 4096;
+      Page_First := Unsigned_64 (Offset / 4096) * 4096;
+      Page_Last := Unsigned_64 ((Offset + Bytes + 4095) / 4096) * 4096;
       -- Only command-ring pages: GPU reads them but never writes them.
       -- Do not flush the concurrently GPU-written saved-context page.
       return Intel_GPU_DMA_Cache.Flush_Range
@@ -113,9 +120,8 @@ package body Intel_GPU_Native_Live_Ring is
       Success := False;
       if not Select_Channel (Object) then return; end if;
       First := Tail (Object);
-      if First > Writer.Ring_Bytes - Writer.Guard_Bytes - Writer.Segment_Bytes
-      then return; end if;
-      Last := First + Writer.Segment_Bytes;
+      Wrapped := First > Writer.Ring_Bytes - Writer.Guard_Bytes - Writer.Segment_Bytes;
+      Last := (if Wrapped then Writer.Segment_Bytes else First + Writer.Segment_Bytes);
       Active := True;
       Writer.Append (Object.Inner, Segment, Status);
       Active := False;
@@ -129,9 +135,8 @@ package body Intel_GPU_Native_Live_Ring is
       Success := False;
       if not Select_Channel (Object) then return; end if;
       First := Tail (Object);
-      if First > Writer.Ring_Bytes - Writer.Guard_Bytes - Writer.Barrier_Bytes
-      then return; end if;
-      Last := First + Writer.Barrier_Bytes;
+      Wrapped := First > Writer.Ring_Bytes - Writer.Guard_Bytes - Writer.Barrier_Bytes;
+      Last := (if Wrapped then Writer.Barrier_Bytes else First + Writer.Barrier_Bytes);
       Active := True;
       Writer.Append (Object.Inner, Segment, Status);
       Active := False;

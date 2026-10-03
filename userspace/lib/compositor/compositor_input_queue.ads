@@ -2,7 +2,8 @@ with Interfaces;
 package Compositor_Input_Queue with SPARK_Mode, Pure is
    use type Interfaces.Unsigned_64;
    subtype Word is Interfaces.Unsigned_64;
-   Capacity : constant := 32;
+   -- Bounded retention while an application is painting. Batch size stays eight.
+   Capacity : constant := 128;
    subtype Index is Natural range 0 .. Capacity - 1;
    subtype Selection is Integer range -1 .. Index'Last;
    type Event is record

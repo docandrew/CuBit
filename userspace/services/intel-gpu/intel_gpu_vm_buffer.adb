@@ -3,7 +3,8 @@ with Intel_GPU_Buffer_Backing;
 package body Intel_GPU_VM_Buffer is
    procedure Change_Extent_Range
      (Object : in out VM.Image; Backing : Intel_GPU_Buffer_Reply.Extent_View;
-      GPU, Offset, Bytes : Unsigned_64; Remove : Boolean; Accepted : out Boolean) is
+      GPU, Offset, Bytes : Unsigned_64; Remove : Boolean; Accepted : out Boolean;
+      Access_Mode : Intel_GPU_ADLN_PPGTT.Page_Access := Intel_GPU_ADLN_PPGTT.Read_Write) is
       package Views renames Intel_GPU_Buffer_Reply;
    begin
       Accepted := False;
@@ -26,15 +27,16 @@ package body Intel_GPU_VM_Buffer is
             VM.Unmap_Pages (Object, GPU, Pages, Accepted);
          else
             VM.Map_Pages (Object, GPU, Pages, Intel_GPU_ADLN_PPGTT.Write_Back,
-                          Intel_GPU_ADLN_PPGTT.Read_Write, Accepted);
+                          Access_Mode, Accepted);
          end if;
       end;
    end Change_Extent_Range;
    procedure Bind_Range
      (Object : in out VM.Image; Backing : Intel_GPU_Buffer_Reply.Extent_View;
-      GPU, Offset, Bytes : Unsigned_64; Accepted : out Boolean) is
+      GPU, Offset, Bytes : Unsigned_64; Accepted : out Boolean;
+      Access_Mode : Intel_GPU_ADLN_PPGTT.Page_Access := Intel_GPU_ADLN_PPGTT.Read_Write) is
    begin
-      Change_Extent_Range (Object, Backing, GPU, Offset, Bytes, False, Accepted);
+      Change_Extent_Range (Object, Backing, GPU, Offset, Bytes, False, Accepted, Access_Mode);
    end Bind_Range;
    procedure Unbind_Range
      (Object : in out VM.Image; Backing : Intel_GPU_Buffer_Reply.Extent_View;

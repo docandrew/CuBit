@@ -15,7 +15,7 @@ package body Compositor_Affine with SPARK_Mode is
       return G.Pixel_Edge (Signed'Min (Signed (Limit), (N + D - 1) / D));
    end Edge;
    function Plan (Screen : G.Output; Surface : G.Logical_Rectangle;
-                  Over : Boolean := False) return Result is
+                  Over : Boolean := False; Straight_Alpha : Boolean := False) return Result is
       Rotated : constant Boolean := Screen.Rotation in G.Clockwise_90 | G.Clockwise_270;
       W : constant G.Physical_Extent := (if Rotated then Screen.Height else Screen.Width);
       H : constant G.Physical_Extent := (if Rotated then Screen.Width else Screen.Height);
@@ -47,13 +47,13 @@ package body Compositor_Affine with SPARK_Mode is
         Encode (Signed (G.Orientation'Pos (Screen.Rotation))),
         Encode (Signed (X0)), Encode (Signed (Y0)),
         Encode (Signed (X1 - X0)), Encode (Signed (Y1 - Y0)),
-        (if Over then 1 else 0));
+        (if not Over then 0 elsif Straight_Alpha then 2 else 1));
       begin
          pragma Assert (D.Origin_X in -(2 ** 31) .. 2 ** 31 and
                         D.Origin_Y in -(2 ** 31) .. 2 ** 31);
          pragma Assert (D.Logical_W in 1 .. 2 ** 31 and D.Logical_H in 1 .. 2 ** 31);
          pragma Assert (D.Numerator in 1 .. 16 and D.Denominator in 1 .. 16);
-         pragma Assert (D.Rotation <= 3 and D.Over <= 1);
+         pragma Assert (D.Rotation <= 3 and D.Over <= 2);
          pragma Assert (Signed (D.Clip_X) < Signed (Screen.Width) and Signed (D.Clip_Y) < Signed (Screen.Height));
          pragma Assert (Signed (D.Clip_W) in 1 .. Signed (Screen.Width) - Signed (D.Clip_X));
          pragma Assert (Signed (D.Clip_H) in 1 .. Signed (Screen.Height) - Signed (D.Clip_Y));

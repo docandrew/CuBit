@@ -1,14 +1,16 @@
 package body Intel_GPU_Buffer_Reply with SPARK_Mode is
-   function Valid (Object : Extent_View) return Boolean is (Object.Accepted);
+   function Valid (Object : Extent_View) return Boolean is
+     (Object.Accepted and then (Object.Linear_Base /= 0 or else
+        Intel_GPU_Extent_Directory.Valid (Object.Map)));
    function From_Extents
-     (Map : Intel_GPU_Physical_Extents.Map; Arena_ID, Offset, Bytes : Unsigned_64)
+     (Map : Intel_GPU_Extent_Directory.Borrowed_View; Arena_ID, Offset, Bytes : Unsigned_64)
       return Extent_View is
       Empty : Extent_View;
    begin
-      if not Intel_GPU_Physical_Extents.Ready (Map) or else Arena_ID = 0 or else
+      if not Intel_GPU_Extent_Directory.Valid (Map) or else Arena_ID = 0 or else
         Bytes = 0 or else (Offset or Bytes) mod 4096 /= 0 or else
-        Offset >= Intel_GPU_Physical_Extents.Capacity or else
-        Bytes > Intel_GPU_Physical_Extents.Capacity - Offset
+        Offset >= Intel_GPU_Extent_Directory.Byte_Count (Map) or else
+        Bytes > Intel_GPU_Extent_Directory.Byte_Count (Map) - Offset
       then return Empty; end if;
       return (True, Arena_ID, Offset, Bytes, Map, 0);
    end From_Extents;
@@ -32,7 +34,7 @@ package body Intel_GPU_Buffer_Reply with SPARK_Mode is
       if Parent.Linear_Base /= 0 then
          return Parent.Linear_Base + Parent.First + Offset;
       end if;
-      Span := Intel_GPU_Physical_Extents.Resolve
+      Span := Intel_GPU_Extent_Directory.Resolve
         (Parent.Map, Parent.First + Offset, 4096);
       return (if Span.Valid and then Span.Bytes = 4096 then Span.Address else 0);
    end Page_Address;
@@ -41,11 +43,11 @@ package body Intel_GPU_Buffer_Reply with SPARK_Mode is
    function Byte_Count (Object : Extent_View) return Unsigned_64 is
      (if Valid (Object) then Object.Length else 0);
    function Same_Arena (Left, Right : Extent_View) return Boolean is
-      use type Intel_GPU_Physical_Extents.Map;
    begin
       return Valid (Left) and then Valid (Right) and then
-        Left.Identity = Right.Identity and then Left.Map = Right.Map and then
-        Left.Linear_Base = Right.Linear_Base;
+        Left.Identity = Right.Identity and then
+        Left.Linear_Base = Right.Linear_Base and then
+        (Left.Linear_Base /= 0 or else Intel_GPU_Extent_Directory.Same_Owner (Left.Map, Right.Map));
    end Same_Arena;
 
    function Valid (Object : Backing) return Boolean is
@@ -92,7 +94,7 @@ package body Intel_GPU_Buffer_Reply with SPARK_Mode is
          end;
       end if;
       while Offset < Object.Length loop
-         Part := Intel_GPU_Physical_Extents.Resolve
+         Part := Intel_GPU_Extent_Directory.Resolve
            (Object.Map, Object.First + Offset, Object.Length - Offset);
          if not Part.Valid or else Part.Bytes = 0 then return True; end if;
          if (if First >= Part.Address then First - Part.Address < Part.Bytes

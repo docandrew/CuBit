@@ -77,6 +77,12 @@ is
          State.Isolates (Selected).Machine,
          Outcome);
 
+      --  A scheduled isolate has no session, so no stream to read: a stream
+      --  view fails it rather than waiting on an import nobody answers.
+      if Outcome.Status = Waiting_For_Host and then Outcome.Stream_Requested then
+         Stop (State.Isolates (Selected).Machine);
+         Outcome.Status := Stream_Unavailable;
+      end if;
       case Outcome.Status is
          when Waiting_For_Host =>
             State.Isolates (Selected).Token := Make_Token

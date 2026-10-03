@@ -21,6 +21,9 @@ The public scalar protocol now uses [epoch, register ID, value, zero]; callers
 cannot choose offset or width. The trusted record fixes the register geometry
 and allowed write bits for that epoch. ID zero disables public access. Internal
 range validation remains defense in depth. The planned live resolver belongs in
-the kernel; this library is not a substitute for kernel enforcement. Startup
-resource groups and attenuated delegation are design requirements, not yet
-implemented capability operations. See the service contract.
+the kernel; this library is not a substitute for kernel enforcement.
+`Hardware_Grants` and `Hardware_Grants.Cspace` now implement internal kernel
+policy for group installation, attenuated child grants, descendant revocation
+and authenticated access reservation. Boot provisioning, current-caller syscall
+dispatch and actual hardware transactions still need to connect those policies
+to the running system. See the service contract.

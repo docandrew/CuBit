@@ -41,8 +41,9 @@ them, so a program signature is written exactly like a function signature.
    leave out one that has no default. Record constructors accept the same
    form, so `(Netstack_Limits :connections 4096)` fills the other fields
    from their defaults.
-   - `:name` is a new token kind: a colon followed by a symbol. It is valid
-     only in argument position, so it cannot be mistaken for a value.
+   - Landed for record constructors on 2026-10-02 with Ada's spelling
+     instead: `(Netstack_Limits connections => 4096)`. `=>` follows a field
+     name and is valid only in argument position. See docs/ccl-typed-manifests.md.
 3. **Range types.** `(type Port (range 1 65535))` declares a bounded
    integer type. Arguments are checked against the bounds at compile time
    when they are constant, and at the call otherwise. This is the CCL form

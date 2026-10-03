@@ -35,9 +35,26 @@ All three profiles passed native CuBit in four-CPU QEMU TCG on 2026-09-30.
   to confirm root retirement.
 - `grant-forward-owner-exit`: the owner changes its backing page and exits.
   The reader waits for admission to close, sees the changed bytes, and returns
-  its acquisition. The surviving intermediary confirms child retirement. This
+  its acquisition. The surviving intermediary confirms child retirement while
+  retaining its direct root acquisition, verifies both root pages, rejects a
+  new root acquisition, returns the direct root, and rejects a duplicate return.
+  Both `GRANT-FORWARD-OWNER-ROOT-DRAIN` and `GRANT-FORWARD-OWNER-EXIT` are required.
+  This
   checks retained backing and child cleanup, not subsequent owner PID reuse or
   physical allocator reuse.
+
+2026-10-02: both exit profiles pass with lazy retained kernel grant records.
+The strengthened direct-root scenario passes separately; evidence logs are
+`../grant-storage/build/grant-records-death-r2.log` and
+`../grant-storage/build/grant-records-owner-root.log` (each gives retained serial
+paths). Closure is the guest synchronization point, not an observation of the
+exact endpoint-generation increment. A controlled retirement-event/PID-reuse
+fixture is still needed for that distinction. Capability inspection returns
+stored capability data and must not be substituted as a liveness oracle.
+
+The GPR explicitly lists its presenter sources. It must not compile every C
+file in the shared ANV directory: driver-internal Mesa files require upstream
+headers and are outside this CPU grant-lifetime fixture.
 
 Admission probes return every temporary successful acquisition; the original
 reader acquisition stays held throughout. Polls are bounded and do not treat

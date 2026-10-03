@@ -10,11 +10,12 @@ with CuBit.UI.Menus;
 with Client_Canvas_Geometry;
 with Servo_Frame_Copy;
 with Client_Input_Budget;
+with Servo_Input_Admission;
 with Servo_Input_Geometry;
 with CuBit.Messages;
 with CuBit.Desktop_Protocol;
 with CuBit.Config;
-with Servo_Tabs;
+with Servo_Tab_Projection;
 with Servo_Bookmarks;
 with Penny_Artwork;
 with Servo_Tab_Geometry;
@@ -33,8 +34,8 @@ package body Servo_Session is
    Address_Input_Lost : Boolean := False;
    Focus_On_State : Boolean := False;
    Paint_Open : Boolean := False;
+   Load_Marks, Load_Seconds : Unsigned_32 := 0;
    First_Shown : Natural := 0;
-   First_Tab : Natural := 0;
    Window_Limit : Boolean := False;
    package Menus renames CuBit.UI.Menus;
    Menu_State : Menus.Menu_State;
@@ -42,10 +43,15 @@ package body Servo_Session is
    Menu_UI : CuBit.UI.State.UI_State;
    Menu_Interaction : App.Pointer_Interaction;
    Menu_Block_Release, Menu_Key_Held : Boolean := False;
-   Menu_Height : constant := 24;
+   Menu_Height : constant := Servo_Tab_Geometry.Menu_Height;
    Bookmark_Dialog : Servo_Bookmarks.Dialog;
    Settings_Open : Boolean := False;
    About_Open : Boolean := False;
+   Security_Open : Boolean := False;
+   Security_Lines : array (Positive range 1 .. 128) of String (1 .. 76) := [others => [others => ' ']];
+   Security_Lengths : array (Positive range 1 .. 128) of Natural range 0 .. 76 := [others => 0];
+   Security_Count : Positive range 1 .. 128 := 1;
+   Security_Scroll : Natural range 0 .. 127 := 0;
    Settings_Focus : Positive range 1 .. 2 := 1;
    Settings_Controls : CuBit.UI.Controls.Control_Map;
    Settings_UI : CuBit.UI.State.UI_State;
@@ -57,14 +63,19 @@ package body Servo_Session is
    Chrome_UI : CuBit.UI.State.UI_State;
    Chrome_Interaction : App.Pointer_Interaction;
    Controls_Stale : Boolean := False;
-   package Tabs renames Servo_Tabs;
-   use type Tabs.Phase;
-   Tab_State : Tabs.State;
-   Vertical_Tabs, Tab_Limit, Preference_Error : Boolean := False;
+   package Tabs renames Servo_Tab_Projection;
+   use type Tabs.Snapshot;
+   Tab_State : Tabs.Snapshot;
+   Vertical_Tabs, Preference_Error : Boolean := False;
+   Rail_Width : Servo_Tab_Geometry.Rail_Size := 192;
+   Rail_Dragging : Boolean := False;
+   Rail_Start_Width : Servo_Tab_Geometry.Rail_Size := 192;
+   Rail_Grab_X : Integer := 0;
+   Rail_Key : constant String := "browser.servo.vertical-tab-width";
    Tab_Titles : array (Tabs.Slot) of String (1 .. 64) := [others => [others => ' ']];
    Tab_Lengths : array (Tabs.Slot) of Natural range 0 .. 64 := [others => 0];
    Preference_Key : constant String := "browser.servo.vertical-tabs";
-   Toolbar_Height : constant := 40;
+   Toolbar_Height : constant := Servo_Tab_Geometry.Toolbar_Height;
    Status_Height : constant := 24;
    Max_Bytes : constant := 16 * 1_024 * 1_024;
    Input_Batch : Client_Input_Budget.Batch := Client_Input_Budget.Open (0);
@@ -99,11 +110,12 @@ package body Servo_Session is
    BM_Add_Key : aliased constant String := "Ctrl+D";
    BM_Manage_Key : aliased constant String := "Ctrl+Shift+B";
    Help_Menu : aliased constant String := "Help";
+   Security_Item : aliased constant String := "Connection information...";
    About_Item : aliased constant String := "About Penny...";
    function Menu_Model return Menus.Model is
       M : Menus.Model;
    begin
-      M.Menu_Count := 5; M.Item_Count := 17;
+      M.Menu_Count := 5; M.Item_Count := 18;
       M.Menus (1) := (M_0'Access, 'f');
       M.Menus (2) := (M_1'Access, 'e');
       M.Menus (3) := (M_2'Access, 'v');
@@ -126,6 +138,7 @@ package body Servo_Session is
       M.Items (15) := (4, BM_Add'Access, BM_Add_Key'Access, 'b', 13, True, False, False);
       M.Items (16) := (4, BM_Manage'Access, BM_Manage_Key'Access, 'm', 14, True, False, False);
       M.Items (17) := (5, About_Item'Access, null, 'a', 15, True, False, False);
+      M.Items (18) := (3, Security_Item'Access, null, 'c', 16, True, False, False);
       M.Items (9).Enabled := Can_Back;
       M.Items (10).Enabled := Can_Forward;
       return M;
@@ -139,37 +152,32 @@ package body Servo_Session is
 
    function Toolbar return Rect is ((0, Menu_Height, App.Width (Win), Toolbar_Height));
    function Address_Area return Rect is
-     ((228, 31, (if App.Width (Win) > 236 then App.Width (Win) - 236 else 0), 26));
+     ((110, 25, (if App.Width (Win) > 118 then App.Width (Win) - 118 else 0), 24));
    function Page_Area return Rect is
       P : constant Servo_Tab_Geometry.Rectangle := Servo_Tab_Geometry.Page
-        (Natural'Min (App.Width (Win), 65_535), Natural'Min (App.Height (Win), 65_535), Vertical_Tabs);
+        (Natural'Min (App.Width (Win), 65_535), Natural'Min (App.Height (Win), 65_535), Vertical_Tabs, Rail_Width);
    begin return (P.X, P.Y, P.W, P.H); end Page_Area;
    function Page_Height return Natural is (Page_Area.h);
-   function New_Button return Rect is ((8, 68, 28, 28));
+   function New_Button return Rect is ((8, Servo_Tab_Geometry.Strip_Top + 6, 24, 22));
    function Previous_Tab_Button return Rect is
-     ((if Vertical_Tabs then 116 else App.Width (Win) - 64), 68, 26, 28);
+     ((if Vertical_Tabs then Rail_Width - 76 else App.Width (Win) - 64), Servo_Tab_Geometry.Strip_Top + 6, 24, 22);
    function Next_Tab_Button return Rect is
-     ((if Vertical_Tabs then 146 else App.Width (Win) - 34), 68, 26, 28);
+     ((if Vertical_Tabs then Rail_Width - 46 else App.Width (Win) - 34), Servo_Tab_Geometry.Strip_Top + 6, 24, 22);
    function Visible_Tabs return Natural is
      (Servo_Tab_Geometry.Visible
        (Natural'Max (800, Natural'Min (65_535, App.Width (Win))),
         Natural'Min (65_535, App.Height (Win)), Vertical_Tabs,
-        Servo_Tab_Geometry.Tab_Count (Natural'Max (1, Tabs.Count (Tab_State)))));
-   function Tab_Rank (I : Tabs.Slot) return Natural is
-      Rank : Natural := 0;
-   begin
-      for J in Tabs.Slot loop
-         exit when J = I;
-         if Tab_State.Items (J) = Tabs.Live then Rank := Rank + 1; end if;
-      end loop;
-      return Rank;
-   end Tab_Rank;
+        Servo_Tab_Geometry.Tab_Count (Natural'Max (1, Natural (Tab_State.Count)))));
    function Tab_Box (I : Tabs.Slot) return Rect is
       B : constant Servo_Tab_Geometry.Rectangle := Servo_Tab_Geometry.Tab
         (Natural'Max (800, Natural'Min (65_535, App.Width (Win))),
-         Tab_Rank (I) - First_Tab, Vertical_Tabs,
-         Servo_Tab_Geometry.Tab_Count (Visible_Tabs));
+         I - 1, Vertical_Tabs,
+         Servo_Tab_Geometry.Tab_Count (Visible_Tabs), Rail_Width);
    begin return (B.X, B.Y, B.W, B.H); end Tab_Box;
+   function Rail_Divider return Rect is
+     ((Rail_Width - 6, Servo_Tab_Geometry.Strip_Top, 6,
+       App.Height (Win) - Servo_Tab_Geometry.Strip_Top - Status_Height));
+
    procedure Read_Preference is
       Data : System.Address;
       Length : Natural;
@@ -181,7 +189,32 @@ package body Servo_Session is
          declare Value : Character with Import, Address => Data;
          begin Vertical_Tabs := Value = '1'; end;
       end if;
+      Rail_Width := 192;
+      CuBit.Config.get (Rail_Key, Data, Length, Status);
+      if Status = CuBit.Config.OK and then Length = 3 and then Data /= System.Null_Address then
+         declare
+            Value : String (1 .. 3) with Import, Address => Data;
+            Width : Natural := 0;
+         begin
+            if (for all C of Value => C in '0' .. '9') then
+               for C of Value loop Width := Width * 10 + Character'Pos (C) - Character'Pos ('0'); end loop;
+               if Width in Servo_Tab_Geometry.Rail_Size then Rail_Width := Width; end if;
+            end if;
+         end;
+      end if;
    end Read_Preference;
+
+   procedure Save_Rail is
+      Value : aliased String (1 .. 3);
+      Status : CuBit.Config.ConfigStatus;
+      use type CuBit.Config.ConfigStatus;
+   begin
+      Value := [Character'Val (48 + Rail_Width / 100),
+                Character'Val (48 + (Rail_Width / 10) mod 10),
+                Character'Val (48 + Rail_Width mod 10)];
+      CuBit.Config.set (Rail_Key, Value'Address, Value'Length, Status);
+      Preference_Error := Status /= CuBit.Config.OK;
+   end Save_Rail;
    procedure Toggle_Layout is
       Value : aliased Character;
       Status : CuBit.Config.ConfigStatus;
@@ -193,6 +226,20 @@ package body Servo_Session is
       Preference_Error := Status /= CuBit.Config.OK;
       Chrome_Dirty := True;
    end Toggle_Layout;
+
+   procedure Input_Statistics (Result : access Input_Stats) is
+      Stats : constant App.Input_Diagnostics := App.Input_Statistics (Win);
+   begin
+      if Result = null then return; end if;
+      Result.all :=
+        (Batch_Enabled => (if Stats.Batch_Enabled then 1 else 0),
+         Channel_Disabled => (if Stats.Channel_Disabled then 1 else 0),
+         Successful_Fetches => Stats.Successful_Fetches,
+         Fetched_Events => Stats.Fetched_Events,
+         Delivered_Events => Stats.Delivered_Events,
+         Fallback_Polls => Stats.Fallback_Polls,
+         Cache_Rejections => Stats.Cache_Rejections);
+   end Input_Statistics;
 
    procedure Metrics (Result : access Viewport) is
       C : constant Canvas := App.Canvas (Win);
@@ -218,22 +265,23 @@ package body Servo_Session is
         App.WINDOW_FLAG_MINIMIZABLE or App.WINDOW_FLAG_MAXIMIZABLE or
         App.WINDOW_FLAG_CLOSEABLE or CuBit.Desktop_Protocol.Feature_Bits
           ([CuBit.Desktop_Protocol.Graceful_Close => True, others => False]),
-        OK, title => "Penny", protected_frames => True);
+        OK, title => "Penny", protected_frames => True, batched_input => True);
       if not OK then return 0; end if;
       Editor.Initialize (Address_Edit, "", OK);
-      Read_Preference;
-      Tab_State := (others => <>); First_Tab := 0;
+      Read_Preference; Rail_Dragging := False;
+      Tab_State := (others => <>);
       Tab_Lengths := (others => 0); Tab_Titles := (others => (others => ' '));
       Chrome_Controls := (others => <>); Chrome_UI := (others => <>);
       Chrome_Interaction := Fresh_Interaction; Controls_Stale := False;
-      Window_Limit := False; Tab_Limit := False; Preference_Error := False;
+      Window_Limit := False; Preference_Error := False;
       Menus.Dismiss (Menu_State); Menu_Controls := (others => <>);
       Menu_UI := (others => <>); Menu_Interaction := Fresh_Interaction;
       Menu_Block_Release := False; Menu_Key_Held := False;
-      Settings_Open := False; About_Open := False; Settings_Focus := 1;
+      Settings_Open := False; About_Open := False; Security_Open := False; Settings_Focus := 1;
       Settings_Controls := (others => <>); Settings_UI := (others => <>);
       Settings_Interaction := Fresh_Interaction;
       Busy := False; Can_Back := False; Can_Forward := False;
+      Load_Marks := 0; Load_Seconds := 0;
       URL_Last := 0; First_Shown := 0; Current_URL := (others => ' ');
       Address_Too_Long := False; Invalid_Address := False;
       Address_Input_Lost := False; Focus_On_State := False; Chrome_Press := False;
@@ -319,6 +367,8 @@ package body Servo_Session is
          end;
       end if;
       Busy := (Flags and 1) /= 0;
+      Load_Marks := Shift_Right (Flags, 3) and 15;
+      Load_Seconds := Shift_Right (Flags, 8);
       Invalid_Address := False;
       Can_Back := (Flags and 2) /= 0;
       Can_Forward := (Flags and 4) /= 0;
@@ -326,65 +376,85 @@ package body Servo_Session is
       Chrome_Dirty := True;
    end State;
 
-   procedure Tab_Title (Index : Unsigned_32; Text : System.Address; Length : Unsigned_32) is
-      I : Tabs.Slot;
+   procedure Security (Text : System.Address; Length : Unsigned_32) is
+      Row : Positive range 1 .. 128 := 1;
    begin
-      if Index not in 1 .. Tabs.Capacity or else Length > 64 or else Text = System.Null_Address then return; end if;
-      I := Tabs.Slot (Index);
-      declare
-         Input : String (1 .. Natural (Length)) with Import, Address => Text;
-         Safe : String (Input'Range);
-      begin
-         for J in Input'Range loop
-            Safe (J) := (if Input (J) in ' ' .. '~' then Input (J) else '?');
-         end loop;
-         if Tab_Lengths (I) = Safe'Length and then Tab_Titles (I) (1 .. Safe'Length) = Safe then return; end if;
-         Tab_Lengths (I) := Safe'Length;
-         Tab_Titles (I) (1 .. Safe'Length) := Safe;
-      end;
-      Chrome_Dirty := True;
-   end Tab_Title;
-   procedure Tab_Parked (Index : Unsigned_32) is
-   begin
-      if Index in 1 .. Tabs.Capacity then
-         Tabs.Parked (Tab_State, Tabs.Slot (Index));
-         Tab_Limit := False; Chrome_Dirty := True;
+      Security_Lengths := [others => 0];
+      if Text /= System.Null_Address and then Length <= 12_288 then
+         declare
+            Value : String (1 .. Natural (Length)) with Import, Address => Text;
+         begin
+            for C of Value loop
+               if C = ASCII.LF then
+                  exit when Row = 128;
+                  Row := Row + 1;
+               elsif Security_Lengths (Row) < 76 then
+                  Security_Lengths (Row) := Security_Lengths (Row) + 1;
+                  Security_Lines (Row) (Security_Lengths (Row)) :=
+                    (if C in ' ' .. '~' then C else '?');
+               end if;
+            end loop;
+         end;
       end if;
-   end Tab_Parked;
+      Security_Count := Row;
+      Security_Scroll := Natural'Min (Security_Scroll, Natural'Max (17, Row) - 17);
+      if Security_Open then Chrome_Dirty := True; end if;
+   end Security;
+
+   function Tab_Capacity return Unsigned_32 is
+     (Unsigned_32 (Servo_Tab_Geometry.Visible
+       (Natural'Max (800, Natural'Min (65_535, App.Width (Win))),
+        Natural'Min (65_535, App.Height (Win)), Vertical_Tabs, Tabs.Capacity)));
+
+   function Update_Tabs (Value : access constant Tabs.Snapshot) return Unsigned_32 is
+      Accepted : Boolean;
+      Fresh : App.Pointer_Interaction;
+   begin
+      if Value = null or else not Tabs.Valid (Value.all) then return 0; end if;
+      if Value.all = Tab_State then return 1; end if;
+      if not Tabs.Same_Mapping (Tab_State, Value.all) then
+         -- A captured local row must never activate its replacement ID.
+         Chrome_UI := (others => <>); Chrome_Interaction := Fresh;
+         Controls_Stale := True;
+      end if;
+      Tabs.Publish (Tab_State, Value.all, Accepted);
+      if not Accepted then return 0; end if;
+      for I in Tabs.Slot loop
+         Tab_Lengths (I) := Natural (Tab_State.Items (I).Length);
+         for J in 1 .. Tab_Lengths (I) loop
+            Tab_Titles (I) (J) :=
+              (if Tab_State.Items (I).Text (J) in 32 .. 126
+               then Character'Val (Tab_State.Items (I).Text (J)) else '?');
+         end loop;
+      end loop;
+      Chrome_Dirty := True;
+      return 1;
+   end Update_Tabs;
+
    procedure Tab_Action (Control : Natural; Result : access Event) is
-      Added : Tabs.Selection;
-      Old : constant Tabs.Selection := Tab_State.Active;
+      ID : Unsigned_64;
    begin
       Result.Kind := 22;
       if Control = 5 then
-         Tabs.Open_Tab (Tab_State, Added);
-         Tab_Limit := Added = 0;
-         if Added /= 0 then
-            Tab_Lengths (Added) := 0;
-            Result.all := (24, Unsigned_64 (Added), Unsigned_64 (Old));
-         end if;
+         Result.all := (24, 0, 0);
       elsif Control in 7 .. 8 then
-         Tabs.Cycle (Tab_State, Control = 7);
-         Result.all := (25, Unsigned_64 (Tab_State.Active), Unsigned_64 (Old));
+         Result.all := (29, (if Control = 7 then 1 else 0), 0);
       elsif Control = 9 then
-         Window_Limit := False;
-         Result.Kind := 27;
+         Window_Limit := False; Result.Kind := 27;
       elsif Control = 6 then
          Menus.Dismiss (Menu_State);
-         Settings_Open := True; About_Open := False; Settings_Focus := 1;
-         Settings_Controls := (others => <>);
-         Result.Kind := 28;
+         Settings_Open := True; About_Open := False; Security_Open := False; Settings_Focus := 1;
+         Settings_Controls := (others => <>); Result.Kind := 28;
       elsif Control in 101 .. 100 + Tabs.Capacity then
-         Tabs.Select_Tab (Tab_State, Tabs.Slot (Control - 100));
-         Result.all := (25, Unsigned_64 (Tab_State.Active), Unsigned_64 (Old));
+         ID := Tabs.ID_At (Tab_State, Control - 100);
+         if ID /= 0 then Result.all := (25, ID, 0); end if;
       elsif Control in 201 .. 200 + Tabs.Capacity then
-         Tabs.Close_Tab (Tab_State, Tabs.Slot (Control - 200));
-         Result.all := (26, Unsigned_64 (Control - 200), Unsigned_64 (Tab_State.Active));
+         ID := Tabs.ID_At (Tab_State, Control - 200);
+         if ID /= 0 then Result.all := (26, ID, 0); end if;
       end if;
-      if Result.Kind in 24 .. 26 then
+      if Result.Kind in 24 .. 26 | 29 then
          Focused := False; Address_Input_Lost := False;
-         Focus_On_State := Result.Kind = 24;
-         Held_Buttons := 0;
+         Focus_On_State := Result.Kind = 24; Held_Buttons := 0;
       end if;
       Chrome_Dirty := True; Controls_Stale := True;
    end Tab_Action;
@@ -393,6 +463,7 @@ package body Servo_Session is
       Dirty : Rect := (others => 0);
    begin
       if Input.kind in App.INPUT_CONFIGURE | App.INPUT_RESYNC then
+         if Rail_Dragging then Rail_Width := Rail_Start_Width; Rail_Dragging := False; end if;
          Reset.kind := App.INPUT_RESYNC;
          Reset.payload0 := 0; Reset.payload1 := 0;
          App.Apply_Pointer_Event
@@ -412,7 +483,8 @@ package body Servo_Session is
    begin
       Menus.Dismiss (Menu_State); Focused := False; Held_Buttons := 0;
       Servo_Bookmarks.Open (Bookmark_Dialog, Current_URL (1 .. URL_Last),
-        Tab_Titles (Tab_State.Active) (1 .. Tab_Lengths (Tab_State.Active)), Add_Page);
+        (if Tabs.Active_Row (Tab_State) = 0 then "" else
+          Tab_Titles (Tabs.Active_Row (Tab_State)) (1 .. Tab_Lengths (Tabs.Active_Row (Tab_State)))), Add_Page);
       Result.Kind := 28; Chrome_Dirty := True; Controls_Stale := True;
    end Open_Bookmarks;
 
@@ -423,13 +495,16 @@ package body Servo_Session is
          when 2 => if Can_Forward then Result.Kind := 18; end if;
          when 3 => Result.Kind := 19;
          when 5 .. 9 => Tab_Action (Command, Result);
-         when 10 => Tab_Action (200 + Tab_State.Active, Result);
+         when 10 => Tab_Action (200 + Tabs.Active_Row (Tab_State), Result);
          when 11 => Result.Kind := 21;
          when 12 => Focus_Address;
          when 13 .. 14 => Open_Bookmarks (Command = 13, Result);
          when 15 =>
             Tab_Action (6, Result);
             About_Open := True; Settings_Focus := 2;
+         when 16 =>
+            Tab_Action (6, Result);
+            Security_Open := True; Security_Scroll := 0; Settings_Focus := 2;
          when others => null;
       end case;
    end Menu_Command;
@@ -519,6 +594,7 @@ package body Servo_Session is
          declare
             Reset : App.Input_Event := Input;
          begin
+            if Rail_Dragging then Rail_Width := Rail_Start_Width; Rail_Dragging := False; end if;
             Reset.kind := App.INPUT_RESYNC; Reset.payload0 := 0; Reset.payload1 := 0;
             App.Apply_Pointer_Event
               (Chrome_Interaction, Chrome_UI, Chrome_Controls, Win, Reset, Dirty);
@@ -534,13 +610,20 @@ package body Servo_Session is
 
    procedure Settings_Action (ID : Natural; Result : access Event) is
    begin
-      if ID = 401 and then not About_Open then
+      if ID = 401 and then not About_Open and then not Security_Open then
          Settings_Focus := 1; Toggle_Layout; Result.Kind := 20;
       elsif ID = 402 then
          Settings_Open := False; Result.Kind := 20;
       end if;
       Chrome_Dirty := True; Controls_Stale := True;
    end Settings_Action;
+
+   procedure Scroll_Security (Delta_Rows : Integer) is
+   begin
+      Security_Scroll := Natural (Integer'Max (0, Integer'Min
+        (Integer (Security_Count) - 17, Integer (Security_Scroll) + Delta_Rows)));
+      Chrome_Dirty := True;
+   end Scroll_Security;
 
    procedure Settings_Input (Input : App.Input_Event; Result : access Event) is
       X, Y, Target : Natural;
@@ -550,9 +633,13 @@ package body Servo_Session is
       Result.Kind := 22;
       if Input.kind = App.INPUT_KEY_DOWN then
          case Input.payload0 is
+            when 16#48# => if Security_Open then Scroll_Security (-1); end if;
+            when 16#50# => if Security_Open then Scroll_Security (1); end if;
+            when 16#49# => if Security_Open then Scroll_Security (-16); end if;
+            when 16#51# => if Security_Open then Scroll_Security (16); end if;
             when 16#01# => Settings_Action (402, Result);
             when 16#0F# =>
-               Settings_Focus := (if About_Open or else Settings_Focus = 1 then 2 else 1);
+               Settings_Focus := (if About_Open or else Security_Open or else Settings_Focus = 1 then 2 else 1);
                Chrome_Dirty := True;
             when 16#39# | 16#1C# =>
                Settings_Action (400 + Settings_Focus, Result);
@@ -563,6 +650,10 @@ package body Servo_Session is
       then
          X := CuBit.UI.Input.Pointer_X (Input);
          Y := CuBit.UI.Input.Pointer_Y (Input);
+         if Security_Open and then Input.kind = App.INPUT_POINTER_WHEEL then
+            Scroll_Security (if CuBit.UI.Input.Pointer_Wheel_Delta (Input) > 0 then -3 else 3);
+            return;
+         end if;
          Target := Controls.Hit (Settings_Controls, X, Y);
          App.Apply_Pointer_Event (Settings_Interaction, Settings_UI,
            Settings_Controls, Win, Input, Dirty);
@@ -581,7 +672,9 @@ package body Servo_Session is
    end Settings_Input;
 
    function Settings_Box return Rect is
-     ((App.Width (Win) - 360) / 2, (App.Height (Win) - 176) / 2, 360, 176);
+     (if Security_Open then
+        ((App.Width (Win) - 680) / 2, (App.Height (Win) - 420) / 2, 680, 420)
+      else ((App.Width (Win) - 360) / 2, (App.Height (Win) - 176) / 2, 360, 176));
 
    procedure Draw_Settings (C : Canvas; Colors : Theme) is
       B : constant Rect := Settings_Box;
@@ -595,8 +688,21 @@ package body Servo_Session is
       Fill_Rect (C, B, Colors.face);
       Stroke_Rect (C, B, Colors.shadow, Colors.shadow);
       Widgets.Label (C, (B.x + 16, B.y + 12, B.w - 32, 28), Colors,
-        (if About_Open then "About Penny" else "Penny settings"));
-      if About_Open then
+        (if Security_Open then "Connection information" elsif About_Open then "About Penny" else "Penny settings"));
+      if Security_Open then
+         Fill_Rect (C, (B.x + 12, B.y + 44, B.w - 24, 310), Colors.panel);
+         Stroke_Rect (C, (B.x + 12, B.y + 44, B.w - 24, 310), Colors.shadow, Colors.highlight);
+         for R in 0 .. 16 loop
+            exit when Security_Scroll + R + 1 > Security_Count;
+            declare I : constant Positive := Security_Scroll + R + 1;
+            begin
+               Widgets.Label (C, (B.x + 20, B.y + 46 + R * 18, B.w - 40, 18), Colors,
+                 Security_Lines (I) (1 .. Security_Lengths (I)));
+            end;
+         end loop;
+         Widgets.Label (C, (B.x + 16, B.y + B.h - 42, B.w - 120, 28), Colors,
+           "Scroll / Page Up / Page Down for certificate chain");
+      elsif About_Open then
          Draw_Bitmap (C, B.x + 16, B.y + 50, Penny_Artwork.Globe_32);
          Widgets.Label (C, (B.x + 60, B.y + 52, B.w - 76, 28), Colors,
            "Penny - Web browser");
@@ -636,9 +742,17 @@ package body Servo_Session is
    begin
       if Result = null or else Controls_Stale then return 0; end if;
       Result.all := (others => 0);
-      if not Client_Input_Budget.Can_Poll (Input_Batch, Now) then return 0; end if;
+      if not Servo_Input_Admission.Can_Take
+        (Input_Batch, Now, App.Cached_Input_Count (Win), Controls_Stale)
+      then return 0; end if;
       Client_Input_Budget.Charge (Input_Batch);
-      App.Poll_Input (Win, Input, Found);
+      -- Cached validation failure must not trigger another input fetch after
+      -- the deadline. Configure/resync application may still do theme/resize work.
+      if App.Cached_Input_Count (Win) > 0 then
+         App.Poll_Cached_Input (Win, Input, Found);
+      else
+         App.Poll_Input (Win, Input, Found);
+      end if;
       if not Found then return 0; end if;
       Result.all := (Input.kind, Input.payload0, Input.payload1);
       if Input.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
@@ -653,6 +767,17 @@ package body Servo_Session is
          end if;
          Chrome_Dirty := True; Held_Buttons := 0; Chrome_Press := False;
          Result.Kind := 20; return 1;
+      end if;
+      if Rail_Dragging and then Input.kind not in App.INPUT_POINTER_MOVE |
+        App.INPUT_POINTER_DOWN | App.INPUT_POINTER_UP | App.INPUT_POINTER_WHEEL
+      then
+         Result.Kind := 22;
+         if Input.kind = App.INPUT_KEY_DOWN and then Input.payload0 = 16#01# then
+            Rail_Width := Rail_Start_Width; Rail_Dragging := False;
+            Chrome_Press := True; Chrome_Dirty := True; Controls_Stale := True;
+            Result.Kind := 20;
+         end if;
+         return 1;
       end if;
       if Servo_Bookmarks.Is_Open (Bookmark_Dialog) then
          Result.Kind := 22;
@@ -690,7 +815,7 @@ package body Servo_Session is
             Focus_Address; Result.Kind := 22; return 1;
          elsif Ctrl and then Input.payload0 = 16#11# then
             if Shift then Result.Kind := 21;
-            else Tab_Action (200 + Tab_State.Active, Result); end if;
+            else Tab_Action (200 + Tabs.Active_Row (Tab_State), Result); end if;
             return 1;
          elsif Ctrl and then Input.payload0 = 16#31# then
             Window_Limit := False; Chrome_Dirty := True;
@@ -698,8 +823,7 @@ package body Servo_Session is
          elsif Ctrl and then Input.payload0 = 16#14# then
             Tab_Action (5, Result); return 1;
          elsif Ctrl and then Input.payload0 = 16#0F# then
-            Tabs.Cycle (Tab_State, Shift);
-            Tab_Action (100 + Tab_State.Active, Result); return 1;
+            Tab_Action ((if Shift then 7 else 8), Result); return 1;
          elsif (Ctrl and then Input.payload0 = 16#13#) or else Input.payload0 = 16#3F# then
             Result.Kind := 19; return 1;
          elsif Alt and then Input.payload0 = 16#4B# and then Can_Back then
@@ -767,6 +891,27 @@ package body Servo_Session is
                Chrome_Dirty := Chrome_Dirty or else not Is_Empty (Dirty);
             end if;
          end;
+         if Vertical_Tabs and then Held_Buttons = 0 and then
+           (Rail_Dragging or else (Control = 10 and then Input.kind = App.INPUT_POINTER_DOWN
+                                  and then (Input.payload1 and 1) /= 0))
+         then
+            if not Rail_Dragging then
+               Rail_Dragging := True; Rail_Start_Width := Rail_Width;
+               Rail_Grab_X := Integer (Natural'Min (X, 65_535));
+               Chrome_Press := True; Focused := False;
+            end if;
+            if Input.kind in App.INPUT_POINTER_MOVE | App.INPUT_POINTER_UP then
+               Rail_Width := Servo_Tab_Geometry.Rail
+                 (Integer (Rail_Start_Width) + Integer (Natural'Min (X, 65_535)) - Rail_Grab_X,
+                  Natural'Min (App.Width (Win), 65_535));
+            end if;
+            if Input.kind = App.INPUT_POINTER_UP and then (Input.payload1 and 1) = 0 then
+               Rail_Dragging := False; Chrome_Press := False;
+               if Rail_Width /= Rail_Start_Width then Save_Rail; end if;
+            end if;
+            Chrome_Dirty := True; Controls_Stale := True; Result.Kind := 20;
+            return 1;
+         end if;
          if Held_Buttons = 0 and then
            (Chrome_Press or else not Point_In_Rect (X, Y, Page_Area))
          then
@@ -819,29 +964,28 @@ package body Servo_Session is
         (if P - 1 < First_Shown then 0 else P - 1 - First_Shown);
    begin
       Fill_Rect (C, Toolbar, Colors.face);
-      if Vertical_Tabs then Fill_Rect (C, (0, 64, 192, App.Height (Win) - 88), Colors.panel);
-      else Fill_Rect (C, (0, 64, App.Width (Win), 40), Colors.panel); end if;
-      if Tab_State.Active /= 0 and then Visible_Tabs > 0 then
-         First_Tab := Natural'Min (First_Tab, Tab_Rank (Tab_State.Active));
-         if Tab_Rank (Tab_State.Active) >= First_Tab + Visible_Tabs then
-            First_Tab := Tab_Rank (Tab_State.Active) - Visible_Tabs + 1;
-         end if;
-         First_Tab := Natural'Min (First_Tab,
-           Tabs.Count (Tab_State) - Natural'Min (Tabs.Count (Tab_State), Visible_Tabs));
-      end if;
+      if Vertical_Tabs then Fill_Rect (C, (0, Servo_Tab_Geometry.Strip_Top, Rail_Width,
+        App.Height (Win) - Servo_Tab_Geometry.Strip_Top - Status_Height), Colors.panel);
+      else Fill_Rect (C, (0, Servo_Tab_Geometry.Strip_Top, App.Width (Win), 30), Colors.panel); end if;
       Controls.Clear (Chrome_Controls);
       Controls.Add_Surface (Chrome_Controls, 300, Page_Area);
+      if Vertical_Tabs then
+         Controls.Add (Chrome_Controls, 10, Rail_Divider, App.Full_Rect (Win),
+           cursor => Pointer_Resize_Horizontal, continuousAction => True);
+         Draw_Vertical_Splitter (C, Rail_Divider, Colors,
+           Chrome_UI.pointer.enabled and then Point_In_Rect
+             (Chrome_UI.pointer.x, Chrome_UI.pointer.y, Rail_Divider), Rail_Dragging);
+      end if;
       Widgets.Button (C, Chrome_UI, Chrome_Controls, 5, New_Button,
         App.Full_Rect (Win), Colors, "+", Widget, retainedInput => True);
-      if Tabs.Count (Tab_State) > Visible_Tabs then
+      if Tab_State.Total > Unsigned_64 (Visible_Tabs) then
          Widgets.Button (C, Chrome_UI, Chrome_Controls, 7, Previous_Tab_Button,
            App.Full_Rect (Win), Colors, "<", Widget, retainedInput => True);
          Widgets.Button (C, Chrome_UI, Chrome_Controls, 8, Next_Tab_Button,
            App.Full_Rect (Win), Colors, ">", Widget, retainedInput => True);
       end if;
       for I in Tabs.Slot loop
-         if Tab_State.Items (I) = Tabs.Live and then
-           Tab_Rank (I) >= First_Tab and then Tab_Rank (I) < First_Tab + Visible_Tabs
+         if I <= Natural (Tab_State.Count) and then I <= Visible_Tabs
          then
             declare
                B : constant Rect := Tab_Box (I);
@@ -849,26 +993,27 @@ package body Servo_Session is
                Child_Colors : Theme;
             begin
                Widgets.Tab (C, Chrome_UI, Chrome_Controls, 100 + I,
-                 B, App.Full_Rect (Win), Colors, Tab_State.Active = I,
+                 B, App.Full_Rect (Win), Colors, Tabs.Active_Row (Tab_State) = I,
                  Content, Child_Colors, Widget,
                  orientation => (if Vertical_Tabs then Vertical else Horizontal));
-               Widgets.Label (Content, (B.x + 8, B.y + 2, B.w - 30, B.h - 4),
+               Widgets.Label (Content, (B.x + 10, B.y + 2, B.w - 38, B.h - 4),
                  Child_Colors,
                  (if Tab_Lengths (I) = 0 then "New" else Tab_Titles (I) (1 .. Tab_Lengths (I))));
                Widgets.Button (Content, Chrome_UI, Chrome_Controls, 200 + I,
-                 (B.x + B.w - 20, B.y + 2, 18, B.h - 4), Content.clip,
+                 (B.x + B.w - 24, B.y + (B.h - 18) / 2, 18, 18), Content.clip,
                  Child_Colors, "x", Widget, retainedInput => True, quiet => True);
             end;
          end if;
       end loop;
       Widgets.Navigation_Button (C, Chrome_UI, Chrome_Controls, 1,
-        (8, 31, 60, 26), App.Full_Rect (Win), Colors,
-        Widgets.Navigate_Back, "Back", Can_Back, Widget);
+        (8, 25, 26, 24), App.Full_Rect (Win), Colors,
+        Widgets.Navigate_Back, "", Can_Back, Widget);
       Widgets.Navigation_Button (C, Chrome_UI, Chrome_Controls, 2,
-        (76, 31, 72, 26), App.Full_Rect (Win), Colors,
-        Widgets.Navigate_Forward, "Forward", Can_Forward, Widget);
-      Widgets.Button (C, Chrome_UI, Chrome_Controls, 3, (156, 31, 64, 26),
-        App.Full_Rect (Win), Colors, "Reload", Widget, retainedInput => True);
+        (42, 25, 26, 24), App.Full_Rect (Win), Colors,
+        Widgets.Navigate_Forward, "", Can_Forward, Widget);
+      Widgets.Navigation_Button (C, Chrome_UI, Chrome_Controls, 3,
+        (76, 25, 26, 24), App.Full_Rect (Win), Colors,
+        Widgets.Navigate_Reload, "", True, Widget);
       Controls.Add (Chrome_Controls, 4, Address_Area, Toolbar);
       Draw_Text_Edit_Field (C, Address_Area, Colors,
         Text (1 + Natural'Min (First_Shown, Text'Length) .. Text'Last),
@@ -877,12 +1022,41 @@ package body Servo_Session is
       Draw_Status_Bar (C, (0, App.Height (Win) - Status_Height, App.Width (Win), Status_Height),
         Colors, (if Address_Input_Lost then "Input interrupted; press Ctrl+L to retry"
           elsif Window_Limit then "Window limit reached; close a window or wait for cleanup"
-          elsif Tab_Limit then "Tab limit reached; close a tab or wait for cleanup"
           elsif Preference_Error then "Layout changed; Config could not save preference"
           elsif Invalid_Address then "Enter an HTTP or HTTPS address"
           elsif Address_Too_Long then "Address exceeds editor limit; Ctrl+L enters a new address"
-          elsif Busy then "Loading..." else "Ready"), "    Penny");
-      Draw_Bitmap (C, App.Width (Win) - 8 - UI_Text_Width ("    Penny"),
+          elsif Load_Marks /= 0 then ""
+          elsif Busy then "Loading..." else "Ready"), "      Penny");
+      if Load_Marks /= 0 and then not
+        (Address_Input_Lost or Window_Limit or Preference_Error or
+         Invalid_Address or Address_Too_Long)
+      then
+         declare
+            X : Natural := 8;
+            Y : constant Natural := App.Height (Win) - Status_Height;
+            Limit : constant Natural := App.Width (Win) - Natural'Min (App.Width (Win), 105);
+            procedure Mark (Label : String; Bit : Unsigned_32) is
+               W : constant Natural := 20 + UI_Text_Width (Label) + 12;
+            begin
+               if X + W > Limit then return; end if;
+               -- Display-only milestones: never register these as controls.
+               Draw_Checkbox (C, (X, Y + 5, 14, 14), Colors,
+                 (Load_Marks and Bit) /= 0, False, False);
+               Draw_UI_Text (C, X + 20, Y + (Status_Height - Natural'Min
+                 (Status_Height, UI_Text_Height)) / 2, Label, Colors.text, Colors.panel);
+               X := X + W;
+            end Mark;
+         begin
+            Mark ("Request", 1); Mark ("HTML", 2);
+            Mark ("Resources", 4); Mark ("Frame", 8);
+            if X + UI_Text_Width (Unsigned_32'Image (Load_Seconds) & "s") < Limit then
+               Draw_UI_Text (C, X, Y + (Status_Height - Natural'Min
+                 (Status_Height, UI_Text_Height)) / 2,
+                 Unsigned_32'Image (Load_Seconds) & "s", Colors.muted, Colors.panel);
+            end if;
+         end;
+      end if;
+      Draw_Bitmap (C, App.Width (Win) - 8 - UI_Text_Width ("      Penny"),
         App.Height (Win) - 20, Penny_Artwork.Globe_16);
       Controls.Clear (Menu_Controls);
       Menus.Draw (C, Menu_Controls, Menu_State, Menu_Model, 500,
@@ -913,8 +1087,8 @@ package body Servo_Session is
    end Cancel;
 
    function Present
-     (RGBA : System.Address; Length : Unsigned_64;
-      Width, Height : Unsigned_32) return Unsigned_32
+     (BGRA : System.Address; Length : Unsigned_64;
+      Width, Height, Source_Pitch : Unsigned_32) return Unsigned_32
    is
       C : Canvas;
       V : aliased Viewport;
@@ -931,19 +1105,21 @@ package body Servo_Session is
       Physical_Height := Geometry.Edge (C.height, C.densityNumerator, C.densityDenominator);
       -- Configured Frame_Pair storage is capped at 16 MiB. These guards also
       -- avoid unchecked foreign-length/address overflow before imported views.
-      Matched := Servo_Frame_Copy.Accepts
-        (Length, Width, Height, V.Width, V.Height, C.pitch, Physical_Height, Top, Left) and then
-        RGBA /= System.Null_Address and then Length <= Max_Bytes and then
-        To_Integer (RGBA) <= Integer_Address'Last - Integer_Address (Length);
+      Matched := Servo_Frame_Copy.Accepts_BGRA
+        (Length, Width, Height, V.Width, V.Height, Source_Pitch,
+         C.pitch, Physical_Height, Top, Left) and then
+        BGRA /= System.Null_Address and then Length <= Max_Bytes and then
+        To_Integer (BGRA) <= Integer_Address'Last - Integer_Address (Length);
       if Matched then
          Target_Bytes := C.pitch * Physical_Height;
          declare
             Source : Servo_Frame_Copy.Bytes (0 .. Natural (Length) - 1)
-              with Import, Address => RGBA;
+              with Import, Address => BGRA;
             Target : Servo_Frame_Copy.Pixels (0 .. Target_Bytes / 4 - 1)
               with Import, Address => C.addr;
          begin
-            Servo_Frame_Copy.Paint (Source, Target, C.pitch / 4,
+            Servo_Frame_Copy.Paint_BGRA
+              (Source, Positive (Source_Pitch), Target, C.pitch / 4,
               (Left, Top, Positive (Width), Positive (Height)));
          end;
       else

@@ -1,6 +1,5 @@
 pragma Ada_2022;
 package body AML_Objects with SPARK_Mode is
-   use type AML_Decode.Byte;
    function Usage_Of (Store : State) return Usage is
      ((Objects => Store.Used, Bytes => Store.Bytes_Used, Elements => Store.Elements_Used));
    function Count (Store : State) return Object_ID is (Store.Used);
@@ -39,6 +38,20 @@ package body AML_Objects with SPARK_Mode is
      (Store = (Prior with delta Objects =>
        (Prior.Objects with delta ID =>
          (Prior.Objects (ID) with delta Value => Value))));
+   function Stored_Byte (Store : State; ID : Object_ID; Index : Natural)
+     return AML_Decode.Byte is
+     (Store.Bytes (Store.Objects (ID).First + Index + 1));
+   function Stored_Byte_Updated
+     (Store, Prior : State; ID : Object_ID; Index : Natural;
+      Value : AML_Decode.Byte) return Boolean is
+     (Store = (Prior with delta Bytes =>
+       (Prior.Bytes with delta Prior.Objects (ID).First + Index + 1 => Value)));
+   procedure Set_Stored_Byte
+     (Store : in out State; ID : Object_ID; Index : Natural; Value : AML_Decode.Byte)
+   is
+   begin
+      Store.Bytes (Store.Objects (ID).First + Index + 1) := Value;
+   end Set_Stored_Byte;
    procedure Set_Integer
      (Store : in out State; ID : Object_ID; Value : AML_Decode.Integer_Value) is
    begin
@@ -99,6 +112,11 @@ package body AML_Objects with SPARK_Mode is
       ID := Store.Used;
       Status := Allocated;
    end New_Package;
+   function Element_Updated
+     (Store, Prior : State; ID : Object_ID; Index : Natural; Value : Object_ID)
+     return Boolean is
+     (Store = (Prior with delta Elements =>
+       (Prior.Elements with delta Prior.Objects (ID).First + Index + 1 => Value)));
    procedure Set_Element (Store : in out State; ID : Object_ID; Index : Natural; Value : Object_ID) is
    begin
       Store.Elements (Store.Objects (ID).First + Index + 1) := Value;

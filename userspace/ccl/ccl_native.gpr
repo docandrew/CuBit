@@ -1,3 +1,4 @@
+with "cubit_shared.gpr";
 project CCL_Native is
    for Languages use ("Ada");
    for Source_Dirs use ("src", "modules", "tests/native", "../../tests/ccl-module-support", external ("CBOR_ADA_SRC") & "/src");

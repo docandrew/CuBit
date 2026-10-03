@@ -77,7 +77,7 @@ package body Observatory_CCL with SPARK_Mode is
          else Text (Image); end if;
       end Number;
    begin
-      Reply := (Value => H.Integer_Constant (0), Success => False);
+      Reply := (Value => H.Integer_Constant (0), Success => False, Why => <>);
       if Host_Binding < Binding (Operation'First) or else Host_Binding > Binding (Operation'Last)
         or else Argument.Kind /= H.Integer_Value then return; end if;
       Op := Operation'Val (Host_Binding - Binding_Base);

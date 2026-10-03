@@ -1,0 +1,15 @@
+--  The CuBit runtime units that hosted (Linux) builds share with native
+--  ones: the proved ring generics (docs/async-rings.md) and CuBit.Failures
+--  (docs/ccl-errors.md). Native builds get them from the runtime library.
+--  It brings the runtime's root package CuBit, so an including project
+--  must not have another (the preview excludes its host/cubit.ads).
+project CuBit_Shared is
+   --  Links to just these files: the whole runtime directory would put
+   --  the CuBit runtime's own Interfaces and System units in front of the
+   --  host toolchain's.
+   for Source_Dirs use ("runtime-shared");
+   for Object_Dir use "build/cubit-shared";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2");
+   end Compiler;
+end CuBit_Shared;

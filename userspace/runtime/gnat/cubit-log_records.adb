@@ -311,4 +311,15 @@ package body CuBit.Log_Records with SPARK_Mode is
       end if;
       return (Success => True, Value => Item);
    end Decode;
+
+   function Severity_Of (Text : String) return Severity is
+   begin
+      for Level in Severity loop
+         if Text = Severity_Literal (Level) then
+            return Level;
+         end if;
+         pragma Loop_Invariant (for all Earlier in Severity'First .. Level => Text /= Severity_Literal (Earlier));
+      end loop;
+      raise Program_Error;
+   end Severity_Of;
 end CuBit.Log_Records;

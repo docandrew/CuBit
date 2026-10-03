@@ -121,3 +121,24 @@ HTTP/TCP/IPC implementation or browser code.
 
 See `userspace/ccl/remote/README.md` for the wire profile and
 `docs/network-inbound-implementation.md` for native network limitations.
+
+## REPL transcript
+
+Evaluations use wire operation 7 (present). Each entry renders as a card, as in the native CCL console (`docs/ccl-console.md`), from the same `CCL.Presentations` description:
+- highlighted source, a type badge, and elapsed time and fuel;
+- the value, a table or a picture.
+
+Pointer and keyboard actions write the same CCL text as the native console:
+- Clicking a source edits it again; clicking a value or a table cell inserts it.
+- Clicking a column header writes a `sort-by`; Ctrl+clicking a cell writes a `where`.
+- Enter runs a complete form, an open form continues on an indented line, Shift+Enter breaks the line, and Ctrl+Enter runs anyway.
+
+Pictures arrive in bands of RGB rows (operation 8) and are cached by their content id.
+
+Everything shown comes from CuBit, built from text nodes, never markup.
+
+Two sets of golden vectors keep the browser in step with the native code:
+- `highlight-vectors.json`, written by `CCL.Highlighting` (`tests/ccl-console/vectors.adb`), checked by `highlight.test.mjs`;
+- `wire-vectors.json`, real evaluations encoded natively (`tests/ccl-remote/wire_vectors.adb`), checked by `wire.test.mjs`.
+
+`npm test` runs all three suites.

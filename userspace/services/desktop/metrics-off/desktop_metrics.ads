@@ -2,8 +2,11 @@ with Interfaces;
 with CuBit.Messages;
 with Compositor_Frame_Trace;
 with Compositor_Stage_Metrics;
+with Compositor_Work_Metrics;
 package Desktop_Metrics with SPARK_Mode => Off is
    Enabled : constant Boolean := False;
+   procedure Record_Work
+     (Kind : Compositor_Work_Metrics.Work_Kind; Pixels, Now : Interfaces.Unsigned_64) is null;
    procedure Record_Stage
      (Stage : Compositor_Stage_Metrics.Stage; First, Last : Interfaces.Unsigned_64) is null;
    procedure Record_Completion (Frame : Compositor_Frame_Trace.Record_Value) is null;

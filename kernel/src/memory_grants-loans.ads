@@ -5,11 +5,14 @@ pragma Ada_2022;
 --  hidden descendant may outlive the readers tracked here.
 generic
    Maximum_Sequence : Interfaces.Unsigned_64 := Interfaces.Unsigned_64'Last;
+   --  Per-parent forwarding policy, independent of the owner's grant namespace.
+   --  Increasing grant storage must not also enlarge every forwarding scope.
+   Maximum_Children : Positive := 16;
 package Memory_Grants.Loans with Pure, SPARK_Mode is
    type Forwarding_Policy is (No_Forwarding, Forward_Once);
    type Parent_Phase is (Unconfigured, Accepting, Closing, Retired);
    type Loan_Phase is (Absent, Mapping, Available, Draining, Unmapping);
-   subtype Loan_Index is Positive range 1 .. Grants_Per_Process;
+   subtype Loan_Index is Positive range 1 .. Maximum_Children;
    type Terms is record
       Offset : Page_Offset := 0;
       Pages : Page_Count := 1;

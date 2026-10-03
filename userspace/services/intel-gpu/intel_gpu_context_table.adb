@@ -1,3 +1,4 @@
+with Intel_GPU_GuC_Fast_Fences;
 package body Intel_GPU_Context_Table is
    package Life renames Intel_GPU_GuC_Context_Lifecycle;
    use type Life.Phase;
@@ -5,13 +6,16 @@ package body Intel_GPU_Context_Table is
    use type Driver.Result;
    function Count (Object : Table) return Natural is (Object.Used);
    function Failed (Object : Table) return Boolean is (Object.Broken);
-   function Owns_Fence (Object : Table; Fence : Unsigned_16) return Boolean is
-     (not Object.Broken and then Routes.Owner (Object.Routing, Fence) /= Routes.No_Context);
    function Known (Object : Table; ID : Unsigned_32) return Boolean is
      (ID >= First_ID and then ID - First_ID < Unsigned_32 (Object.Used));
    function State (Object : Table; ID : Unsigned_32) return Life.Phase is
      (if Known (Object, ID) then Driver.State (Object.Items (Natural (ID - First_ID) + 1))
       else Life.Fresh);
+   function Can_Run_And_Retire (Object : Table; ID : Unsigned_32) return Boolean is
+     (not Object.Broken and then Owner_Ready and then Known (Object, ID) and then
+      not Object.Retired (Natural (ID - First_ID) + 1) and then
+      not Object.Work_Held (Natural (ID - First_ID) + 1) and then
+      Driver.Can_Run_And_Retire (Object.Items (Natural (ID - First_ID) + 1)));
    function Session_Context (Object : Table; Session : Unsigned_64) return Unsigned_32 is
    begin
       if Session = 0 or else Object.Broken or else not Owner_Ready then return No_Context; end if;
@@ -98,11 +102,9 @@ package body Intel_GPU_Context_Table is
    end Deregister_Retired;
    procedure Open
      (Object : in out Table; GPU_Start, Pin_Bias : Unsigned_64;
-      Fence_Count : Natural; Quantum_Us, Preemption_Us : Unsigned_32;
+      Quantum_Us, Preemption_Us : Unsigned_32;
       Preempt_To_Idle : Boolean; ID : out Unsigned_32; Accepted : out Boolean;
       Session : Unsigned_64 := 0) is
-      First, Last : Unsigned_16;
-      Held : Boolean;
    begin
       ID := No_Context; Accepted := False;
       if not Ready (Object) or else Object.Used = Capacity then return; end if;
@@ -111,15 +113,11 @@ package body Intel_GPU_Context_Table is
             if Object.Session_Owners (I) = Session then return; end if;
          end loop;
       end if;
-      Fences.Reserve (Object.Ledger, Fence_Count, First, Last, Held);
-      if not Held then return; end if;
       Object.Used := Object.Used + 1;
       Object.Session_Owners (Object.Used) := Session;
       ID := First_ID + Unsigned_32 (Object.Used - 1);
-      Routes.Register (Object.Routing, ID, First, Last, Held);
-      if not Held then Fail (Object); return; end if;
       Driver.Initialize (Object.Items (Object.Used), ID, GPU_Start, Pin_Bias,
-                         First, Last, Quantum_Us, Preemption_Us, Preempt_To_Idle);
+                         Quantum_Us, Preemption_Us, Preempt_To_Idle);
       if not Ready (Object) then return; end if;
       Accepted := State (Object, ID) = Life.Ready;
    end Open;
@@ -151,25 +149,35 @@ package body Intel_GPU_Context_Table is
    procedure Dispatch
      (Object : in out Table; Payload : Intel_GPU_GuC_Context_Event.Words;
       Fence : Unsigned_16; ID : out Unsigned_32; Status : out Dispatch_Result) is
-      Target : Routes.Destination;
       Outcome : Driver.Result;
       Kept : Boolean;
+      Item : constant Intel_GPU_GuC_Context_Event.Event :=
+        Intel_GPU_GuC_Context_Event.Decode (Payload, Fence);
+      use type Intel_GPU_GuC_Context_Event.Kind;
    begin
       ID := No_Context; Status := Transport_Fault;
       if not Ready (Object) then return; end if;
-      Target := Routes.Select_Destination (Object.Routing, Payload, Fence);
-      case Target.Kind is
-         when Routes.Invalid_Message => Fail (Object);
-         when Routes.Unclaimed =>
-            Retain (Payload, Fence, Kept);
-            if Kept then Status := Retained; else Fail (Object); end if;
-         when Routes.Context_Message =>
-            ID := Target.ID;
-            if not Known (Object, ID) then Fail (Object); return; end if;
-            Driver.Dispatch (Object.Items (Natural (ID - First_ID) + 1), Payload, Fence, Outcome);
-            Status := (if Outcome in Driver.Faulted | Driver.Rejected then
-                         Context_Fault else Delivered);
-      end case;
+      -- Fast wire IDs may wrap and are never context-completion authority.
+      -- A delayed failure stops the entire table, irrespective of ownership
+      -- or whether its diagnostic ID has since been issued again.
+      if Item.Tag = Intel_GPU_GuC_Context_Event.Request_Failure and then
+        Intel_GPU_GuC_Fast_Fences.Is_Fast (Fence)
+      then
+         Fail (Object); return;
+      end if;
+      if Item.Tag = Intel_GPU_GuC_Context_Event.Malformed then
+         Fail (Object);
+      elsif Item.Tag in Intel_GPU_GuC_Context_Event.Scheduling_Done |
+        Intel_GPU_GuC_Context_Event.Deregister_Done and then Known (Object, Item.ID)
+      then
+         ID := Item.ID;
+         Driver.Dispatch (Object.Items (Natural (ID - First_ID) + 1), Payload, Fence, Outcome);
+         Status := (if Outcome in Driver.Faulted | Driver.Rejected then
+                      Context_Fault else Delivered);
+      else
+         Retain (Payload, Fence, Kept);
+         if Kept then Status := Retained; else Fail (Object); end if;
+      end if;
       if not Ready (Object) then Status := Transport_Fault; end if;
    end Dispatch;
 end Intel_GPU_Context_Table;

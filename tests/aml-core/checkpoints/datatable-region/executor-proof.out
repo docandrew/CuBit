@@ -1,0 +1,73 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+----------------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total        Flow                             Provers   Justified   Unproved
+----------------------------------------------------------------------------------------------------------
+Data Dependencies                10          10                                   .           .          .
+Flow Dependencies                 .           .                                   .           .          .
+Initialization                   66          66                                   .           .          .
+Non-Aliasing                      .           .                                   .           .          .
+Run-time Checks                 414           .         414 (CVC5 89%, Trivial 11%)           .          .
+Assertions                       36           .                           36 (CVC5)           .          .
+Functional Contracts             63           .    63 (CVC5 95%, Trivial 5%, Z3 1%)           .          .
+LSP Verification                  .           .                                   .           .          .
+Termination                      29          15                           14 (CVC5)           .          .
+Concurrency                       .           .                                   .           .          .
+----------------------------------------------------------------------------------------------------------
+Total                           618    91 (15%)                           527 (85%)           .          .
+
+
+max steps used for successful proof: 7429
+
+============================
+Most difficult proved checks
+============================
+
+aml_execute.adb:140:22: postcondition proved in max 1 seconds
+aml_execute.adb:140:97: range check proved in max 1 seconds
+aml_execute.adb:436:42: loop invariant after first iteration proved in max 1 seconds
+aml_execute.adb:433:42: loop invariant after first iteration proved in max 1 seconds
+aml_execute.adb:435:42: loop invariant after first iteration proved in max 1 seconds
+aml_execute.adb:434:42: loop invariant after first iteration proved in max 1 seconds
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 1 unit
+in unit aml_execute, 33 subprograms and packages out of 33 analyzed
+  AML_Execute at aml_execute.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  AML_Execute.As_Values at aml_execute.ads:23 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (9 checks)
+  AML_Execute.Empty_Valid at aml_execute.adb:927 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  AML_Execute.Method_Level at aml_execute.ads:68 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  AML_Execute.No_Binding at aml_execute.adb:911 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Execute.No_Method at aml_execute.adb:920 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Execute.Run at aml_execute.ads:186 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  AML_Execute.Unboundgp50534 at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Execute.Unboundgp50534.Unbound at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508 at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 1 warnings and 0 pragma Assume statements) and proved (2 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Begin_Read at aml_execute.adb:855, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 1 warnings and 0 pragma Assume statements) and proved (1 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.End_Read at aml_execute.adb:862, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 1 warnings and 0 pragma Assume statements) and proved (1 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402 at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Executegp46297 at aml_execute.adb:832, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Executegp46297.Execute at aml_execute.adb:832, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (6 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Executegp46297.Execute.Execute_Body at aml_execute.adb:17, instantiated at aml_execute.adb:832, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (192 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Executegp46297.Execute.Execute_Body.Assign_Slot at aml_execute.adb:47, instantiated at aml_execute.adb:832, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (11 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Executegp46297.Execute.Execute_Body.Failure at aml_execute.adb:24, instantiated at aml_execute.adb:832, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Executegp46297.Execute.Execute_Body.Operand at aml_execute.adb:132, instantiated at aml_execute.adb:832, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 1 warnings and 0 pragma Assume statements) and proved (204 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Executegp46297.Execute.Execute_Body.Operand.Dispatch at aml_execute.adb:248, instantiated at aml_execute.adb:832, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (21 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Executegp46297.Execute.Execute_Body.Operand.Inspect at aml_execute.adb:177, instantiated at aml_execute.adb:832, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 1 warnings and 0 pragma Assume statements) and proved (34 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Executegp46297.Execute.Execute_Body.Operand.Integer_Expected at aml_execute.adb:170, instantiated at aml_execute.adb:832, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (5 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Executegp46297.Execute.Execute_Body.Resolve_Slot at aml_execute.adb:116, instantiated at aml_execute.adb:832, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (7 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Executegp46297.Execute.Execute_Body.Write_Target at aml_execute.adb:71, instantiated at aml_execute.adb:832, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (14 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Read_Binding at aml_execute.adb:784, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 1 warnings and 0 pragma Assume statements) and proved (2 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Reject_Completion at aml_execute.adb:823, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 1 warnings and 0 pragma Assume statements) and proved (1 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Reject_Fields at aml_execute.adb:795, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 1 warnings and 0 pragma Assume statements) and proved (1 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Reject_Literal at aml_execute.adb:804, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 1 warnings and 0 pragma Assume statements) and proved (2 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Executegp48402.Execute.Reject_Region at aml_execute.adb:814, instantiated at aml_execute.adb:878, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 1 warnings and 0 pragma Assume statements) and proved (1 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Reject_Definition at aml_execute.adb:869, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 1 warnings and 0 pragma Assume statements) and proved (1 checks)
+  AML_Execute.Unboundgp50534.Unbound.Executegp49508.Execute.Reject_Write at aml_execute.adb:846, instantiated at aml_execute.adb:904, instantiated at aml_execute.adb:934 flow analyzed (0 errors, 0 checks, 1 warnings and 0 pragma Assume statements) and proved (1 checks)

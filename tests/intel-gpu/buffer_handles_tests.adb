@@ -3,6 +3,9 @@ with Interfaces; use Interfaces;
 with Intel_GPU_Buffer_Handles; use Intel_GPU_Buffer_Handles;
 with Intel_GPU_Buffer_Backing;
 with Intel_GPU_Buffer_Reply;
+with Intel_GPU_Metadata_Arena;
+with Intel_GPU_Metadata_Initialize;
+with System.Storage_Elements; use System.Storage_Elements;
 procedure Buffer_Handles_Tests is
    package Layout renames Intel_GPU_Buffer_Backing;
    package Replies renames Intel_GPU_Buffer_Reply;
@@ -13,22 +16,134 @@ procedure Buffer_Handles_Tests is
    function Backing (Offset : Unsigned_64) return Replies.Backing is
      (Intel_GPU_Buffer_Reply.From_Linear (16#2000000# + Offset, Layout.CPU_Base + Offset, 4096, 16#2000000#));
 begin
+   declare
+      Pool : Registry;
+      Name, Next_Name : Handle;
+   begin
+      pragma Assert (Check_Close (Pool, 0, 1) = Session_Unavailable);
+      pragma Assert (Check_Close (Pool, 42, 0) = Invalid_Handle);
+      pragma Assert (Check_Close (Pool, 42, 133) = Unknown_Handle);
+      Register (Pool, 42, Backing (0), Name);
+      for Cycle in 1 .. 1024 loop
+         pragma Assert (Check_Close (Pool, 42, Name) = Close_Ready);
+         pragma Assert (Check_Close (Pool, 43, Name) = Foreign_Session);
+         Close (Pool, 43, Name, OK); pragma Assert (not OK);
+         pragma Assert (Is_Open (Pool, 42, Name));
+         Close (Pool, 42, Name, OK); pragma Assert (OK);
+         pragma Assert (Check_Close (Pool, 42, Name) = Already_Closed);
+         Close (Pool, 42, Name, OK); pragma Assert (not OK);
+         Release_Retired_Backing (Pool, 42, Name, True, OK);
+         pragma Assert (OK);
+         Replace_Retired (Pool, 42, 42, Name, Backing (0), True, Next_Name);
+         pragma Assert (Next_Name > Name);
+         pragma Assert (Check_Close (Pool, 42, Name) = Unknown_Handle);
+         pragma Assert (Check_Close (Pool, 42, Next_Name) = Close_Ready);
+         Name := Next_Name;
+      end loop;
+      Quarantine (Pool);
+      pragma Assert (Check_Close (Pool, 42, Name) = Registry_Quarantined);
+      Close (Pool, 42, Name, OK); pragma Assert (not OK);
+   end;
+   Ada.Text_IO.Put_Line ("Close diagnostics PASS: 1024 identity replacements, foreign/duplicate/stale/session/quarantine rejection");
+   declare
+      Pool, Foreign : Registry;
+      Export_Pin, Import_Pin, Work_Pin, Empty : Retained_Reference;
+      Name, Replacement : Handle;
+   begin
+      Register (Pool, 42, Backing (0), Name);
+      Retain_Referenced_Backing (Pool, Empty, Import_Pin, OK);
+      pragma Assert (not OK);
+      Retain_Backing (Pool, 42, Name, Export_Pin, OK); pragma Assert (OK);
+      Close_Session (Pool, 42);
+      -- Admission is closed; only an existing internal retained lifetime can
+      -- be split, not an application naming the closed allocation.
+      Retain_Backing (Pool, 42, Name, Import_Pin, OK); pragma Assert (not OK);
+      Retain_Referenced_Backing (Foreign, Export_Pin, Import_Pin, OK);
+      pragma Assert (not OK);
+      Retain_Referenced_Backing (Pool, Export_Pin, Import_Pin, OK);
+      pragma Assert (OK);
+      Retain_Referenced_Backing (Pool, Export_Pin, Import_Pin, OK);
+      pragma Assert (not OK);
+      Return_Reference (Pool, Export_Pin, True, OK); pragma Assert (OK);
+      Retain_Referenced_Backing (Pool, Export_Pin, Work_Pin, OK);
+      pragma Assert (not OK);
+      Retain_Referenced_Backing (Pool, Import_Pin, Work_Pin, OK);
+      pragma Assert (OK);
+      pragma Assert (Referenced_Backing (Pool, Work_Pin).Ready);
+      Return_Reference (Pool, Import_Pin, True, OK); pragma Assert (OK);
+      pragma Assert (not Can_Release_Backing (Pool, 42, Name));
+      Replace_Retired (Pool, 42, 42, Name, Backing (0), True, Replacement);
+      pragma Assert (Replacement = No_Handle);
+      Return_Reference (Pool, Work_Pin, False, OK); pragma Assert (not OK);
+      Return_Reference (Pool, Work_Pin, True, OK); pragma Assert (OK);
+      Return_Reference (Pool, Work_Pin, True, OK); pragma Assert (not OK);
+      pragma Assert (Can_Release_Backing (Pool, 42, Name));
+      Release_Retired_Backing (Pool, 42, Name, True, OK); pragma Assert (OK);
+      Replace_Retired (Pool, 42, 43, Name, Backing (0), True, Replacement);
+      pragma Assert (Replacement /= No_Handle);
+      Retain_Referenced_Backing (Pool, Work_Pin, Import_Pin, OK);
+      pragma Assert (not OK);
+      Retain_Backing (Pool, 43, Replacement, Export_Pin, OK); pragma Assert (OK);
+      Quarantine (Pool);
+      Retain_Referenced_Backing (Pool, Export_Pin, Import_Pin, OK);
+      pragma Assert (not OK and not Referenced_Backing (Pool, Import_Pin).Ready);
+   end;
+   Ada.Text_IO.Put_Line ("Retained lifetime split PASS: closed owner, independent users, stale/foreign/active rejection, retirement and quarantine");
+   declare
+      Pool, Other : Registry;
+      First, Second : Retained_Reference;
+      Name, Other_Name, Replacement : Handle;
+   begin
+      Register (Pool, 42, Backing (0), Name);
+      Register (Other, 42, Backing (0), Other_Name);
+      pragma Assert (Name = Other_Name);
+      pragma Assert (not Can_Release_Backing (Pool, 42, Name)); -- still open
+      Retain_Backing (Pool, 43, Name, First, OK); pragma Assert (not OK);
+      Retain_Backing (Pool, 42, Name, First, OK); pragma Assert (OK);
+      Retain_Backing (Pool, 42, Name, First, OK); pragma Assert (not OK);
+      Retain_Backing (Pool, 42, Name, Second, OK); pragma Assert (OK);
+      pragma Assert (not Referenced_Backing (Other, First).Ready);
+      Return_Reference (Other, First, True, OK); pragma Assert (not OK);
+      Close_Session (Pool, 42);
+      pragma Assert (not Resolve (Pool, 42, Name).Ready and
+        Referenced_Backing (Pool, First).Ready and Referenced_Backing (Pool, Second).Ready);
+      Release_Retired_Backing (Pool, 42, Name, True, OK); pragma Assert (not OK);
+      pragma Assert (not Can_Release_Backing (Pool, 42, Name));
+      Replace_Retired (Pool, 42, 42, Name, Backing (0), True, Replacement);
+      pragma Assert (Replacement = No_Handle);
+      Return_Reference (Pool, First, False, OK); pragma Assert (not OK);
+      Return_Reference (Pool, First, True, OK); pragma Assert (OK);
+      pragma Assert (not Can_Release_Backing (Pool, 42, Name)); -- second reader
+      Return_Reference (Pool, First, True, OK); pragma Assert (not OK);
+      Release_Retired_Backing (Pool, 42, Name, True, OK); pragma Assert (not OK);
+      Return_Reference (Pool, Second, True, OK); pragma Assert (OK);
+      pragma Assert (Can_Release_Backing (Pool, 42, Name));
+      pragma Assert (not Can_Release_Backing (Pool, 43, Name));
+      Release_Retired_Backing (Pool, 42, Name, True, OK); pragma Assert (OK);
+      Replace_Retired (Pool, 42, 43, Name, Backing (0), True, Replacement);
+      pragma Assert (Replacement > Name and Resolve (Pool, 43, Replacement).Ready);
+      pragma Assert (not Referenced_Backing (Pool, Second).Ready);
+      Retain_Backing (Pool, 43, Replacement, First, OK); pragma Assert (OK);
+      Quarantine (Pool);
+      Return_Reference (Pool, First, True, OK); pragma Assert (not OK);
+   end;
+   Ada.Text_IO.Put_Line ("Backing references PASS: close retains pins, wrong registry, double return, replacement gate, quarantine");
    Register (Object, 0, Backing (0), ID); pragma Assert (ID = 0 and Count (Object) = 0);
    Register (Object, 1, (Ready => False), ID); pragma Assert (ID = 0);
-   for I in 1 .. Capacity loop
+   for I in 1 .. Initial_Capacity loop
       Register (Object, Unsigned_64 (I), Backing (Unsigned_64 (I) * 4096), ID);
       pragma Assert (ID = Handle (I));
       -- Same storage-slot bits are not the same issued name. Reject forged
       -- future generations even while the original object remains live.
       for Generation in Handle range 1 .. 32 loop
-         declare Other : constant Handle := ID + Generation * Capacity; begin
+         declare Other : constant Handle := ID + Generation * Initial_Capacity; begin
             pragma Assert (not Resolve (Object, Unsigned_64 (I), Other).Ready);
             pragma Assert (not Closed_Backing (Object, Unsigned_64 (I), Other).Ready);
             Close (Object, Unsigned_64 (I), Other, OK);
             pragma Assert (not OK and Is_Open (Object, Unsigned_64 (I), ID));
          end;
       end loop;
-      for Session in 0 .. Capacity + 1 loop
+      for Session in 0 .. Initial_Capacity + 1 loop
          B := Resolve (Object, Unsigned_64 (Session), ID);
          pragma Assert (B.Ready = (Session = I));
          if B.Ready then pragma Assert (Intel_GPU_Buffer_Reply.Page_Address (B, 0) = 16#2000000# + Unsigned_64 (I) * 4096); end if;
@@ -36,14 +151,14 @@ begin
       Close (Object, Unsigned_64 (I + 100), ID, OK);
       pragma Assert (not OK and Is_Open (Object, Unsigned_64 (I), ID));
    end loop;
-   Register (Object, 1, Backing (0), ID); pragma Assert (ID = 0 and Count (Object) = Capacity);
+   Register (Object, 1, Backing (0), ID); pragma Assert (ID = 0 and Count (Object) = Initial_Capacity);
    Close (Object, 1, 1, OK); pragma Assert (OK and not Is_Open (Object, 1, 1));
    Register (Object, 1, Backing (0), ID); pragma Assert (ID = 0); -- no reuse
    Close_Session (Object, 2);
    pragma Assert (not Is_Open (Object, 2, 2) and Is_Open (Object, 3, 3));
    pragma Assert (not Resolve (Object, 1, Unsigned_32'Last).Ready);
    Quarantine (Object);
-   for I in 1 .. Capacity loop pragma Assert (not Resolve (Object, Unsigned_64 (I), Handle (I)).Ready); end loop;
+   for I in 1 .. Initial_Capacity loop pragma Assert (not Resolve (Object, Unsigned_64 (I), Handle (I)).Ready); end loop;
    declare Fresh : Registry; begin
       Register (Fresh, 42, Backing (0), ID);
       Register (Fresh, 42, Backing (4096), ID);
@@ -194,4 +309,65 @@ begin
       end loop;
    end;
    Ada.Text_IO.Put_Line ("Cross-session handles PASS:128 released generations, previous-owner checks, old-session teardown isolation");
+   declare
+      type Storage is array (Natural range 0 .. 8191) of Unsigned_64;
+      Memory : Storage := [others => 16#ABCD#] with Alignment => 4096;
+      Base : constant Unsigned_64 := Unsigned_64 (To_Integer (Memory'Address));
+      Committed : Unsigned_64 := 0;
+      function Reserve (Bytes : Unsigned_64) return Unsigned_64 is
+        (if Bytes = 65536 then Base else 0);
+      function Commit (Address, Offset, Bytes : Unsigned_64) return Boolean is
+      begin
+         pragma Assert (Address = Base and Offset = Committed and Offset + Bytes <= 65536);
+         Committed := Committed + Bytes; return True;
+      end Commit;
+      package M is new Intel_GPU_Metadata_Arena
+        (Reserve, Commit, Intel_GPU_Metadata_Initialize.Clear);
+      A : M.Arena;
+      Pool : Registry;
+      Previous_Capacity : Natural;
+      Name, Replacement : Handle;
+      Pinned : Retained_Reference;
+   begin
+      M.Open (A, 65536, OK); pragma Assert (OK);
+      for Growth in Unsigned_64 range 1 .. 8 loop
+         Previous_Capacity := Record_Capacity (Pool);
+         M.Request (A, Growth * 4096, OK); pragma Assert (OK);
+         M.Step (A);
+         Extend_Storage (Pool, Base, M.Snapshot (A).Published, OK);
+         pragma Assert (OK and Record_Capacity (Pool) > Previous_Capacity);
+         while Count (Pool) < Record_Capacity (Pool) loop
+            Register (Pool, 42, Backing (Unsigned_64 (Count (Pool)) * 4096), Name);
+            pragma Assert (Name /= 0 and Name = Handle (Count (Pool)));
+         end loop;
+         if Growth = 1 then
+            Retain_Backing (Pool, 42, 20, Pinned, OK); pragma Assert (OK);
+         end if;
+         pragma Assert (Referenced_Backing (Pool, Pinned).Ready and then
+           Referenced_Backing (Pool, Pinned).CPU_Address = Layout.CPU_Base + 19 * 4096);
+         for I in 1 .. Count (Pool) loop
+            pragma Assert (Check_Close (Pool, 42, Handle (I)) = Close_Ready);
+            pragma Assert (Resolve (Pool, 42, Handle (I)).Ready and then
+              Resolve (Pool, 42, Handle (I)).CPU_Address = Layout.CPU_Base + Unsigned_64 (I - 1) * 4096);
+            pragma Assert (not Resolve (Pool, 43, Handle (I)).Ready);
+         end loop;
+         Previous_Capacity := Record_Capacity (Pool);
+         Extend_Storage (Pool, Base + 4096, (Growth + 1) * 4096, OK);
+         pragma Assert (not OK and Record_Capacity (Pool) = Previous_Capacity);
+      end loop;
+      pragma Assert (Count (Pool) > 128);
+      pragma Assert (Check_Close (Pool, 42, 133) = Close_Ready);
+      Close (Pool, 42, 133, OK); pragma Assert (OK);
+      pragma Assert (Check_Close (Pool, 42, 133) = Already_Closed);
+      Close (Pool, 42, 20, OK); pragma Assert (OK);
+      Replace_Retired (Pool, 42, 42, 20, Backing (19 * 4096), True, Replacement);
+      pragma Assert (Replacement = No_Handle and Referenced_Backing (Pool, Pinned).Ready);
+      Return_Reference (Pool, Pinned, True, OK); pragma Assert (OK);
+      Replace_Retired (Pool, 42, 42, 20, Backing (19 * 4096), True, Replacement);
+      pragma Assert (Replacement > Handle (Count (Pool)) and Resolve (Pool, 42, Replacement).Ready);
+      pragma Assert (not Resolve (Pool, 42, 20).Ready and Resolve (Pool, 42, 21).Ready);
+      Close_Session (Pool, 42); pragma Assert (Session_Closed (Pool, 42));
+      for I in 4096 .. Memory'Last loop pragma Assert (Memory (I) = 16#ABCD#); end loop;
+   end;
+   Ada.Text_IO.Put_Line ("Dynamic handle storage PASS: eight arena growth boundaries, >128 live records, stable names, replacement/session retirement, untouched uncommitted tail");
 end Buffer_Handles_Tests;

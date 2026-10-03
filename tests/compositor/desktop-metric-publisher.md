@@ -382,3 +382,45 @@ in this single-output fixture. These values include startup, the software
 emulated graphics path, and nested scopes; they are neither steady-state
 benchmarks nor hardware latency claims. They justify inspecting repeated
 scene repair and presentation copies, not claiming a NUC bottleneck.
+
+
+## Pixel work records (2026-10-03)
+
+Keys 7 and 8 now declare `desktop.scene_pixels` and `desktop.repair_pixels`
+as Counter records in Count units (pixels). Values are interval deltas, so the
+collector may sum them without double-counting cumulative totals. Main emits
+the pair once per existing reporting interval before resetting local counters,
+reusing that interval's clock. A zero repair count is a valid observation.
+
+Each page now carries eight declarations and at most 55 measurements. The SDK
+still owns exactly two pages; no queue, allocation, blocking call or extra clock
+read was added to pixel rendering. Work samples use the same drop/quarantine
+path as duration samples. The expanded batch policy and work-record contracts
+passed 40 SPARK checks, none unproved. Actual publisher tests cover mixed work
+and duration records, invalid time, two-page overload and completion failures;
+stream tests cover 890 drops while both pages are held, immutable retained
+pages, and redeclaration after out-of-order release.
+
+Native CuBit/QEMU validation passed: 39 eight-row refreshes, 20 visible
+pause/resume cycles, graph/table restoration and close. The retained table
+visibly contains both work names with 35 samples each: scene work has a
+2,621,440-count p99 histogram upper bound and repair work has a zero bound.
+This is visual confirmation of work-record delivery, not an automated value
+oracle. The current viewer presents histogram bounds even for Counter series;
+these displayed values are neither cumulative pixel totals nor pixels/second.
+Records can be dropped by bounded admission, so even collected counter sums
+must be interpreted alongside producer loss. Physical input-to-photon timing
+is not measured here. Evidence: `build/work-metrics-native-evidence/` (ignored
+local artifacts), including input hashes, result, serial log and table image.
+
+Reproduce the work-record and metadata-admission proof with:
+
+```sh
+nix-shell tests/compositor/vulkan-affine-shell.nix --run 'python3 tests/compositor/test-work-metrics.py'
+```
+
+The runner snapshots the selected sources into an isolated build directory,
+requires zero unproved checks, records input hashes, and rejects source changes
+during the proof. The published runner passed all 40 checks (11 flow and 29
+prover) in `build/work-metrics-vxdpfw6d/`. This proves the selected SPARK
+contracts; publisher IPC and end-to-end viewer behavior remain separate tests.

@@ -1,4 +1,6 @@
 with Ada.Text_IO;
+with Intel_GPU_Extent_Directory;
+with Extent_Directory_Fixture;
 with Interfaces; use Interfaces;
 with Interfaces.C;
 with System; use System;
@@ -10,6 +12,9 @@ with Intel_GPU_Submission_Backing;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Physical_Extents;
 with Intel_GPU_VM_Image;
+with Intel_GPU_VM_Image.Removal;
+with Intel_GPU_VM_Image.Insertion;
+with Intel_GPU_VM_Image.Snapshots;
 with Intel_GPU_Application_Image;
 with Intel_GPU_Application_Image.Publication;
 with Intel_GPU_Application_Image.Retirement;
@@ -449,6 +454,93 @@ begin
                pragma Assert (RAM (I) = Expected.Words (I));
             end loop;
          end;
+         if Update_Case = 0 then
+            declare
+               package Snapshots is new VM.Snapshots;
+               type Leaf_Words is array (Intel_GPU_ADLN_PPGTT.Table_Index) of Unsigned_64;
+               Leaf : Leaf_Words with Import, Volatile,
+                 Address => To_Address (Integer_Address (Backing (4).CPU));
+               Next_Image : VM.Image;
+               Next_Pages : VM.Backing_Pages;
+               Next_Backing : Application.Tables.Mappings;
+               Invalidations : Natural := 0;
+               procedure Write_Leaf
+                 (Table_DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;
+                  Expected, Replacement : Unsigned_64; Success : out Boolean) is
+               begin
+                  Updates.Remove_Leaf (State, Source, Backing, Table_DMA, Index,
+                    Expected, Replacement, Success);
+               end Write_Leaf;
+               procedure Invalidate (Success : out Boolean) is
+               begin
+                  pragma Assert (VM.Lookup (Source, 4096) = 16#5000003#);
+                  pragma Assert (Leaf (1) = VM.Scratch_Entry (Source, 1));
+                  Invalidations := Invalidations + 1;
+                  Success := True; -- simulated completion, not Intel HW
+               end Invalidate;
+               package Removal is new VM.Removal (Held, Write_Leaf, Invalidate);
+               Removal_State : Removal.Controller;
+               procedure Insert_Word
+                 (Table_DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;
+                  Expected, Replacement : Unsigned_64; Success : out Boolean) is
+               begin
+                  Updates.Insert_Leaf (State, Source, Backing, Table_DMA, Index,
+                    Expected, Replacement, Success);
+               end Insert_Word;
+               procedure Insert_Invalidate (Success : out Boolean) is
+               begin
+                  pragma Assert (VM.Lookup (Source, 4096) = 0);
+                  pragma Assert (Leaf (1) = 16#5000003#);
+                  Success := True;
+               end Insert_Invalidate;
+               package Insertion is new VM.Insertion (Held, Insert_Word, Insert_Invalidate);
+               Insert_State : Insertion.Controller;
+            begin
+               Snapshots.Adopt_Committed (Source, Candidate, OK); pragma Assert (OK);
+               Removal.Execute (Removal_State, Source, VM.Revision (Source), 4096,
+                 VM.Data_Pages'[16#5000000#], OK);
+               pragma Assert (OK and Invalidations = 1 and not Updates.Failed (State));
+               pragma Assert (VM.Lookup (Source, 4096) = 0);
+               pragma Assert (Insertion.Range_Reusable (Source, 4096, 4096));
+               Insertion.Execute (Insert_State, Source, VM.Revision (Source), 4096,
+                 VM.Data_Pages'[16#5000000#], Intel_GPU_ADLN_PPGTT.Write_Back,
+                 Intel_GPU_ADLN_PPGTT.Read_Write, OK);
+               pragma Assert (OK and not Updates.Failed (State));
+               pragma Assert (not Insertion.Range_Reusable (Source, 4096, 4096));
+               Removal.Execute (Removal_State, Source, VM.Revision (Source), 4096,
+                 VM.Data_Pages'[16#5000000#], OK);
+               pragma Assert (OK and Invalidations = 2 and VM.Lookup (Source, 4096) = 0);
+               -- Historical allocation receipt is not rewritten as live state.
+               pragma Assert (VM.Lookup (Candidate, 4096) = 16#5000003#);
+               pragma Assert (Leaf (2) = 16#5001003#);
+               for P in VM.Page_Number loop
+                  Next_Pages (P) := Intel_GPU_Buffer_Reply.Page_Address (Table_Memory, 0)
+                    + 24 * 4096 + Unsigned_64 (P - 1) * 4096;
+                  Next_Backing (P) :=
+                    (Table_Memory.CPU_Address + 24 * 4096 + Unsigned_64 (P - 1) * 4096,
+                     Next_Pages (P));
+               end loop;
+               VM.Prepare_Update (Next_Image, Source, Next_Pages, OK); pragma Assert (OK);
+               VM.Map_Page (Next_Image, 4096, 16#5000000#,
+                 Intel_GPU_ADLN_PPGTT.Write_Back, Intel_GPU_ADLN_PPGTT.Read_Write, OK);
+               pragma Assert (OK);
+               VM.Seal_Update (Next_Image, OK); pragma Assert (OK);
+               Updates.Publish_Tables (State, Source, Next_Image, Next_Backing, OK);
+               pragma Assert (OK and not Updates.Failed (State));
+               pragma Assert (Application.Retained_Root (State).DMA =
+                 Intel_GPU_Buffer_Reply.Page_Address (Table_Memory, 0));
+               declare
+                  New_Leaf : Leaf_Words with Import, Volatile,
+                    Address => To_Address (Integer_Address (Next_Backing (4).CPU));
+               begin
+                  pragma Assert (New_Leaf (1) = 16#5000003# and New_Leaf (2) = 16#5001003#);
+               end;
+            end;
+            -- A directory cannot be erased by calling the leaf-only API.
+            Updates.Remove_Leaf (State, Candidate, Backing, Pages (2), 0,
+              VM.Entry_Value (Candidate, 2, 0), VM.Scratch_Entry (Candidate, 1), OK);
+            pragma Assert (not OK and Updates.Failed (State));
+         end if;
          Exclusive := False;
          Updates.Publish_Tables (State, Candidate, Source, Backing, OK);
          pragma Assert (not OK and Updates.Failed (State));
@@ -574,6 +666,7 @@ begin
             Ledger : Intel_GPU_GGTT_Reservations.Ledger;
             Status : Publication.Result;
             Retired : Retirement.Result;
+            Saved_Root : Application.Tables.Page_Mapping;
          begin
             Session_Open := True;
             Writes := 0; PTEs := [others => 0]; Flush_OK := Scenario /= 1;
@@ -612,8 +705,10 @@ begin
             Retirement_Allowed := Scenario /= 24 and Scenario /= 28;
             Flush_OK := Scenario /= 25;
             Read_OK := Scenario /= 26;
+            Retirement.Forget_Backing_Receipt (State, GPU, Backing (1), True, OK);
+            pragma Assert (not OK); -- supervisor flag alone cannot bypass GPU retirement
             Retirement.Execute (State, Ledger, 16#6000000#, Retired);
-            pragma Assert (Retired = (if Scenario = 0 or Scenario = 27 then Retirement.Detached
+            pragma Assert (Retired = (if Scenario = 0 or Scenario = 27 then Retirement.Address_Released
               elsif Scenario = 25 then Retirement.Quarantined
               else Retirement.Rejected));
             if Scenario = 0 or Scenario >= 24 then
@@ -626,6 +721,17 @@ begin
             end if;
             if Scenario = 0 or Scenario = 27 then
                for PTE of PTEs loop pragma Assert (PTE = 16#6000001#); end loop;
+               pragma Assert (Intel_GPU_GGTT_Reservations.Count (Ledger) = 0);
+               pragma Assert (Intel_GPU_GGTT_Reservations.Space_Free (Ledger, GPU, Images.GGTT_Bytes));
+               -- Another allocation may now claim this VA. The old image
+               -- must never republish, update or retire the new occupant.
+               declare
+                  Claim : Intel_GPU_GGTT_Reservations.Result;
+                  use type Intel_GPU_GGTT_Reservations.Result;
+               begin
+                  Intel_GPU_GGTT_Reservations.Reserve (Ledger, GPU, Images.GGTT_Bytes, Claim);
+                  pragma Assert (Claim = Intel_GPU_GGTT_Reservations.Reserved);
+               end;
             end if;
             if Scenario = 28 then
                pragma Assert (Writes = 20);
@@ -637,8 +743,45 @@ begin
             Saved_Writes := Writes;
             Retirement.Execute (State, Ledger, 16#6000000#, Retired);
             pragma Assert (Retired = Retirement.Rejected and Writes = Saved_Writes);
+            pragma Assert (Intel_GPU_GGTT_Reservations.Count (Ledger) = 1);
+            pragma Assert (Intel_GPU_GGTT_Reservations.Has_Claim (Ledger, GPU, Images.GGTT_Bytes));
+            pragma Assert (Intel_GPU_GGTT_Reservations.Valid (Ledger));
+            Publication.Publish (State, Source, Backing,
+              Intel_GPU_Buffer_Reply.From_Linear (16#1000000#, Base, Span, 16#1000000#), Ledger, Status);
+            pragma Assert (Status = Publication.Rejected and Writes = Saved_Writes);
+            Retirement.Forget_Backing_Receipt (State, GPU, Backing (1), False, OK);
+            pragma Assert (not OK);
+            Retirement.Forget_Backing_Receipt (State, GPU + 4096, Backing (1), True, OK);
+            pragma Assert (not OK);
+            Retirement.Forget_Backing_Receipt (State, GPU,
+              (Backing (1).CPU + 4096, Backing (1).DMA), True, OK);
+            pragma Assert (not OK);
+            Retirement.Forget_Backing_Receipt (State, GPU,
+              (Backing (1).CPU, Backing (1).DMA + 4096), True, OK);
+            pragma Assert (not OK);
+            Saved_Root := Application.Retained_Root (State);
+            Retirement.Forget_Backing_Receipt (State, GPU, Backing (1), True, OK);
+            pragma Assert (OK = (Scenario = 0 or Scenario = 27));
+            if OK then
+               pragma Assert (Application.Retained_Root (State).CPU = 0 and
+                              Application.Retained_Root (State).DMA = 0);
+               pragma Assert (Application.GPU_Start (State) = 0 and Publication.GPU_Address (State) = 0);
+               Updates.Publish_Tables (State, Source, Source, Backing, OK);
+               pragma Assert (not OK);
+               Publication.Publish (State, Source, Backing,
+                 Intel_GPU_Buffer_Reply.From_Linear (16#1000000#, Base, Span, 16#1000000#), Ledger, Status);
+               pragma Assert (Status = Publication.Rejected and Writes = Saved_Writes);
+               Retirement.Forget_Backing_Receipt (State, GPU, Backing (1), True, OK);
+               pragma Assert (not OK);
+            else
+               pragma Assert (Application.Retained_Root (State).CPU = Saved_Root.CPU and
+                              Application.Retained_Root (State).DMA = Saved_Root.DMA);
+            end if;
+            pragma Assert (Writes = Saved_Writes);
+            pragma Assert (Intel_GPU_GGTT_Reservations.Has_Claim (Ledger, GPU, Images.GGTT_Bytes));
          end;
       end loop;
+      Ada.Text_IO.Put_Line ("Application image retirement PASS29 paths: revoked cleanup, exact release, failure retention, same-VA stale image rejection");
    end;
    declare
       package E renames Intel_GPU_Physical_Extents;
@@ -650,7 +793,8 @@ begin
         Address => To_Address (Integer_Address (Window_CPU));
       Window_Mapping : System.Address;
       Bases : E.Addresses;
-      Map : E.Map;
+      Map : Intel_GPU_Extent_Directory.Borrowed_View;
+      Owner : aliased Intel_GPU_Extent_Directory.Directory;
    begin
       Window_Mapping := Mmap (To_Address (Integer_Address (Window_CPU)),
                              Window_Bytes, 3, 16#100022#, -1, 0);
@@ -660,7 +804,8 @@ begin
       for I in E.Block_Index loop
          Bases (I) := 16#40000000# - Unsigned_64 (I) * 2 * E.Block_Bytes;
       end loop;
-      E.Admit (Bases, Map, OK); pragma Assert (OK);
+      Extent_Directory_Fixture.Initialize (Owner, Bases);
+      Map := Intel_GPU_Extent_Directory.Borrow (Owner);
       Fail_Owner := 0;
       -- Place the physical discontinuity at every interior context page
       -- boundary: context, ring, tables, batch, completion and render storage.
@@ -706,6 +851,116 @@ begin
       pragma Assert (Munmap (Window_Mapping, Window_Bytes) = 0);
       Ada.Text_IO.Put_Line ("Scattered context PASS: all32 interior physical splits, image readback and untouched guards (host RAM, NOT GPU execution)");
    end;
+   for Fault in 1 .. 3 loop
+      declare
+         package VM is new Intel_GPU_VM_Image (4);
+         Held : Boolean := True;
+         Armed : Boolean := False;
+         Flushes : Natural := 0;
+         function Owner return Boolean is (Held);
+         function Flush (CPU : Unsigned_64) return Boolean is
+         begin
+            if Armed then
+               Flushes := Flushes + 1;
+               if Fault = 2 then return False; end if;
+               if Fault = 3 then Held := False; end if;
+            end if;
+            return Intel_GPU_DMA_Cache.Flush_Range (CPU, 4096);
+         end Flush;
+         package App is new Intel_GPU_Application_Image (VM, Owner, Flush);
+         package Updates is new App.Updates (Owner);
+         Source : VM.Image;
+         State : App.State;
+         Pages : VM.Backing_Pages := [16#4000000#, 16#4001000#, 16#4002000#, 16#4003000#];
+         Backing : App.Tables.Mappings;
+         type Leaf_Words is array (Intel_GPU_ADLN_PPGTT.Table_Index) of Unsigned_64;
+         Leaf : Leaf_Words with Import, Volatile,
+           Address => To_Address (Integer_Address (Base + Span + 3 * 4096));
+      begin
+         for P in VM.Page_Number loop
+            Backing (P) := (Base + Span + Unsigned_64 (P - 1) * 4096, Pages (P));
+         end loop;
+         VM.Initialize (Source, Pages, OK); pragma Assert (OK);
+         VM.Map_Page (Source, 4096, 16#5000000#, Intel_GPU_ADLN_PPGTT.Write_Back,
+           Intel_GPU_ADLN_PPGTT.Read_Write, OK); pragma Assert (OK);
+         VM.Seal (Source, OK); pragma Assert (OK);
+         App.Prepare (State, Source, Backing,
+           Intel_GPU_Buffer_Reply.From_Linear (16#1000000#, Base, Span, 16#1000000#),
+           16#2000000#, Images.GGTT_Bytes, OK); pragma Assert (OK);
+         Armed := True;
+         if Fault = 1 then Leaf (1) := 16#5001003#; end if;
+         Updates.Remove_Leaf (State, Source, Backing, Pages (4), 1, 16#5000003#, 0, OK);
+         pragma Assert (not OK and Updates.Failed (State));
+         pragma Assert (VM.Lookup (Source, 4096) = 16#5000003#);
+         pragma Assert (Leaf (1) = (if Fault = 1 then 16#5001003# else 0));
+         pragma Assert (Flushes = (if Fault = 1 then 0 else 1));
+         -- Even restoring authority and the old word cannot revive the writer.
+         Held := True; Leaf (1) := 16#5000003#; Armed := False;
+         Updates.Remove_Leaf (State, Source, Backing, Pages (4), 1, 16#5000003#, 0, OK);
+         pragma Assert (not OK and Updates.Failed (State) and Leaf (1) = 16#5000003#);
+      end;
+   end loop;
+   Ada.Text_IO.Put_Line ("Retained leaf failure PASS: stale hardware word, failed flush, post-write ownership loss, permanent retry rejection (host RAM)");
+   for Fault in 0 .. 6 loop
+      declare
+         package VM is new Intel_GPU_VM_Image (4);
+         Held, Armed : Boolean := False;
+         Flushes : Natural := 0;
+         function Owner return Boolean is (Held);
+         function Flush (CPU : Unsigned_64) return Boolean is
+         begin
+            if Armed then
+               Flushes := Flushes + 1;
+               if Fault = 2 then return False; end if;
+               if Fault = 3 then Held := False; end if;
+            end if;
+            return Intel_GPU_DMA_Cache.Flush_Range (CPU, 4096);
+         end Flush;
+         package App is new Intel_GPU_Application_Image (VM, Owner, Flush);
+         package Updates is new App.Updates (Owner);
+         Source : VM.Image;
+         State : App.State;
+         Pages : VM.Backing_Pages := [16#4000000#, 16#4001000#, 16#4002000#, 16#4003000#];
+         Backing : App.Tables.Mappings;
+         type Leaf_Words is array (Intel_GPU_ADLN_PPGTT.Table_Index) of Unsigned_64;
+         Leaf : Leaf_Words with Import, Volatile,
+           Address => To_Address (Integer_Address (Base + Span + 3 * 4096));
+         Replacement : Unsigned_64 := 16#5001003#;
+         Index : Intel_GPU_ADLN_PPGTT.Table_Index := 2;
+      begin
+         Held := True;
+         for P in VM.Page_Number loop
+            Backing (P) := (Base + Span + Unsigned_64 (P - 1) * 4096, Pages (P));
+         end loop;
+         VM.Initialize (Source, Pages, OK); pragma Assert (OK);
+         VM.Map_Page (Source, 4096, 16#5000000#, Intel_GPU_ADLN_PPGTT.Write_Back,
+           Intel_GPU_ADLN_PPGTT.Read_Write, OK); pragma Assert (OK);
+         VM.Seal (Source, OK); pragma Assert (OK);
+         App.Prepare (State, Source, Backing,
+           Intel_GPU_Buffer_Reply.From_Linear (16#1000000#, Base, Span, 16#1000000#),
+           16#2000000#, Images.GGTT_Bytes, OK); pragma Assert (OK);
+         Armed := True;
+         case Fault is
+            when 1 => Leaf (2) := 16#BAD0003#;
+            when 4 => Replacement := Pages (1) + 3;
+            when 5 => Replacement := 16#5001001#; -- unsupported read-only PTE
+            when 6 => Index := 1; -- occupied logical leaf
+            when others => null;
+         end case;
+         Updates.Insert_Leaf (State, Source, Backing, Pages (4), Index, 0, Replacement, OK);
+         pragma Assert (OK = (Fault = 0));
+         pragma Assert (Updates.Failed (State) = (Fault /= 0));
+         pragma Assert (VM.Lookup (Source, 8192) = 0); -- commit belongs to coordinator
+         pragma Assert (Flushes = (if Fault in 0 | 2 | 3 then 1 else 0));
+         if Fault in 0 | 2 | 3 then pragma Assert (Leaf (2) = Replacement); end if;
+         if Fault /= 0 then
+            Held := True; Armed := False; Leaf (2) := 0;
+            Updates.Insert_Leaf (State, Source, Backing, Pages (4), 2, 0, 16#5001003#, OK);
+            pragma Assert (not OK and Leaf (2) = 0);
+         end if;
+      end;
+   end loop;
+   Ada.Text_IO.Put_Line ("Retained insertion writer PASS: empty leaf, stale hardware, flush/owner failure, table alias, unsupported PTE and occupied leaf (host RAM)");
    pragma Assert (Munmap (Mapping, 2 * Span) = 0);
    Ada.Text_IO.Put_Line ("Submission buffer PASS: independent one-shot mappings (host fixture)");
 end Submission_Buffer_Tests;

@@ -138,7 +138,7 @@ package body CCL.Objects.Schemas.Persistence with SPARK_Mode is
       Metadata.Root := Unsigned_32 (Item.Item.UInt_Value);
       Item := Take;
       if Item.Status /= CBOR.OK or else Item.Item.Kind /= CBOR.MT_Array
-        or else Item.Item.Arr_Count > Types.Maximum_Declarations then return; end if;
+        or else Item.Item.Arr_Count > Maximum_Image_Definitions then return; end if;
       Count := Natural (Item.Item.Arr_Count);
       Metadata.Count := Unsigned_32 (Count);
       for Index in 1 .. Count loop

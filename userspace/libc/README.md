@@ -31,14 +31,14 @@ stack canary at `%fs:0x28`, exists.
 | `futex` wait, wake | FUTEX_WAIT / FUTEX_WAKE; requeue wakes all waiters instead |
 | thread pointer | `wrfsbase` (FSGSBASE); the kernel keeps FS per thread |
 | `brk` | SBRK (heap growth) |
-| private RW `mmap` | owned zero-filled RW/NX pages, at most 16 MiB per mapping |
+| private RW `mmap` | owned zero-filled RW/NX pages, at most 256 MiB per mapping |
 | `munmap` | releases an exact whole owned allocation; partial/foreign/double unmaps fail with `EINVAL` |
 | `madvise` | currently accepted without effect |
 | `mmap` NONE/RO | owned pages with inaccessible/read-only permissions installed before return; always NX |
 | `mprotect` | NONE/RO/RW for a page-aligned subrange of one owned allocation; acknowledged TLB invalidation, no execute mode |
 | executable/shared/fixed `mmap` | unsupported (`ENOTSUP`); executable `mprotect` remains `ENOSYS` |
 | `clock_gettime`, `nanosleep` | the kernel's millisecond clock (1 ms resolution; `CLOCK_REALTIME` is time since boot until the clock service is wired in) |
-| descriptors 1, 2 | the program's `stdout`/`stderr` CuBit streams (typed text lines, created on first write; subscribers see them if the manifest declares them). Not terminals: `ioctl` is `-ENOTTY` |
+| descriptors 1, 2 | the program's `stdout`/`stderr` CuBit streams (typed text lines, created on first write; subscribers see them if the manifest declares them). Not terminals: unsupported device/terminal `ioctl` requests return `-ENOTTY` |
 | descriptor 0 | none (no input stream is granted) |
 | `open`, `stat`, `read`, `pread`, `lseek`, `getdents64`, `close` | files and directories through filesystem.svc (`overlay/src/cubit/file.c`), read-only; the service checks each path against the program's `filesystem-scope`s. `@vol:N/…` paths are CuBit names; POSIX absolute paths name the system volume (`/fonts/a.ttf` is `@nvme:0/fonts/a.ttf`); no working directory |
 | `mmap` of a file | private copy of its bytes, releasable with `munmap`; requested NONE/RO/RW protection applied after copying; no writeback |
@@ -74,3 +74,41 @@ Writing files, sockets over netstack, a precise and wall clock, the
 entropy service, `munmap`/`mprotect` (needs the address-space region API),
 real `FUTEX_REQUEUE`, signals, `fork`/`exec` (by design: procmgr starts
 programs).
+
+## Network completion regressions
+
+`ioctl(FIONBIO)` toggles the descriptor's existing `O_NONBLOCK` state through
+`fcntl`, preserving the other flags. This supports Rust's standard timed
+connect and nonblocking APIs without a browser-specific workaround.
+
+Network completion collection has one owner, including opportunistic polling.
+Threads waiting behind that owner are notified after it releases ownership;
+the notification during completion dispatch alone is insufficient because a
+follower can wake and sleep again while the original collector is still active.
+Idle collection with no followers does not increment the readiness sequence.
+The same handoff applies when submitting the service WAIT fails.
+
+Run the deterministic host regressions in the Nix shell:
+
+```sh
+python3 userspace/libc/tests/test-net-handoff.py
+python3 userspace/libc/tests/test-fionbio.py
+```
+
+The first compiles the actual collector/wait code against a controlled pthread
+schedule. Its lost-handoff, overlapping-collector and failed-submission cases
+fail against the previous implementation; these are host regression results,
+not native TCP stress results. `tests/servo/run-socket-endurance.py` exercises
+native standard-library timed connects, concurrent churn, budget refusal and
+recovery before Servo starts. Run it with freshly rebuilt libc and Penny under
+the shared build lock; the current fixes still await that native gate.
+
+Kernel asynchronous replies are thread-owned. A collector now keeps ownership
+until it harvests its own WAIT reply, even if a local event already changed the
+readiness sequence; in that case it cancels the WAIT first. Opportunistic
+collection only reaps the shared netstack control queue and does not consume
+kernel completions. OPEN queue exhaustion/refusal returns `EAGAIN` instead of
+creating an asynchronous reply tied to a caller that may migrate or exit.
+SHUT retains the existing synchronous fallback when the control queue is full.
+The host regression's fifth schedule specifically fails the preceding fix.
+Native validation of this additional ownership correction remains pending.

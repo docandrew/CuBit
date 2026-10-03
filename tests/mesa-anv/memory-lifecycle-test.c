@@ -11,6 +11,19 @@
 #include "../../userspace/mesa/anv/native_gpu_buffers.h"
 
 static atomic_uint active_calls, create_calls;
+static bool fail_directory, fail_record;
+void *__real_realloc(void *, size_t);
+void *__real_calloc(size_t, size_t);
+void *__wrap_realloc(void *, size_t);
+void *__wrap_calloc(size_t, size_t);
+void *__wrap_realloc(void *ptr, size_t bytes)
+{
+   return fail_directory ? NULL : __real_realloc(ptr, bytes);
+}
+void *__wrap_calloc(size_t count, size_t bytes)
+{
+   return fail_record ? NULL : __real_calloc(count, bytes);
+}
 static uint64_t expected_bytes = 4096;
 uint32_t cubit_intel_create_buffer(uint64_t slot, uint64_t bytes, uint32_t *handle)
 {
@@ -94,6 +107,13 @@ int main(void)
    assert(anv_cubit_memory_slot_retained(64));
    assert(anv_cubit_memory_init(&device, 64) == VK_ERROR_INITIALIZATION_FAILED);
    assert(allocations == 0 && !device.cubit_cpu_mappings);
+   fail_directory = true;
+   assert(anv_cubit_memory_init(&device, 63) == VK_ERROR_OUT_OF_HOST_MEMORY);
+   assert(!device.cubit_cpu_mappings && !anv_cubit_memory_slot_retained(63));
+   fail_directory = false; fail_record = true;
+   assert(anv_cubit_memory_init(&device, 63) == VK_ERROR_OUT_OF_HOST_MEMORY);
+   assert(!device.cubit_cpu_mappings && !anv_cubit_memory_slot_retained(63));
+   fail_record = false;
    assert(anv_cubit_memory_init(&device, 63) == VK_SUCCESS);
    static struct anv_physical_device physical;
    static struct intel_memory_class_instance region;
@@ -254,14 +274,40 @@ int main(void)
    assert(anv_cubit_memory_init(&device, 61) == VK_SUCCESS);
    assert(device.cubit_cpu_mappings != saved); /* uncertain record retained */
    assert(anv_cubit_memory_finish(&device) == VK_SUCCESS);
-   /* Capacity bounds outstanding uncertain lifetimes, not successful history. */
+   /* Grow beyond the former 16 records without reclaiming uncertain owners.
+    * Work is bounded by the real capability-slot namespace (64), not a
+    * separately smaller bookkeeping cap. */
    close_status = 4;
-   for (unsigned slot = 1; slot <= 14; slot++) {
+   /* Keep a live tracker while both directory and record allocation fail,
+    * then while the directory grows. The pointer must never move. */
+   static struct anv_device held;
+   assert(anv_cubit_memory_init(&held, 0) == VK_SUCCESS);
+   struct cubit_cpu_mapping_tracker *held_tracker = held.cubit_cpu_mappings;
+   for (unsigned slot = 1; slot <= 61; slot++) {
+      if (slot == 2) {
+         fail_directory = true;
+         assert(anv_cubit_memory_init(&device, slot) == VK_ERROR_OUT_OF_HOST_MEMORY);
+         assert(held.cubit_cpu_mappings == held_tracker && held_tracker->slot == 0);
+         assert(!device.cubit_cpu_mappings && !anv_cubit_memory_slot_retained(slot));
+         fail_directory = false;
+      }
+      if (slot == 8 || slot == 24) {
+         fail_record = true;
+         assert(anv_cubit_memory_init(&device, slot) == VK_ERROR_OUT_OF_HOST_MEMORY);
+         assert(!device.cubit_cpu_mappings && !anv_cubit_memory_slot_retained(slot));
+         fail_record = false;
+      }
       assert(anv_cubit_memory_init(&device, slot) == VK_SUCCESS);
+      assert(held.cubit_cpu_mappings == held_tracker && held_tracker->slot == 0);
       assert(anv_cubit_memory_finish(&device) == VK_ERROR_DEVICE_LOST);
    }
-   assert(anv_cubit_memory_poll() == 16);
-   assert(anv_cubit_memory_init(&device, 60) == VK_ERROR_OUT_OF_HOST_MEMORY);
+   assert(anv_cubit_memory_poll() == 63);
+   assert(anv_cubit_memory_finish(&held) == VK_ERROR_DEVICE_LOST);
+   assert(anv_cubit_memory_poll() == 64);
+   for (unsigned slot = 0; slot < 64; slot++) {
+      assert(anv_cubit_memory_slot_retained(slot));
+      assert(anv_cubit_memory_init(&device, slot) == VK_ERROR_INITIALIZATION_FAILED);
+   }
    assert(!device.cubit_cpu_mappings && allocations == 0 && frees == 0);
-   puts("ANV memory lifecycle PASS (actual types, 128 completed reuse cycles, 16 quarantined records, detached cleanup)");
+   puts("ANV memory lifecycle PASS (actual types, 128 completed reuse cycles, growth to 64 quarantined records, detached cleanup)");
 }

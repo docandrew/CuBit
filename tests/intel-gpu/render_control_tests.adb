@@ -4,6 +4,7 @@ with Intel_GPU_Render_Control; use Intel_GPU_Render_Control;
 with Intel_GPU_Render_Sessions;
 with Intel_GPU_Broker_Request;
 with Intel_GPU_Broker_Launches;
+with Intel_GPU_Boot;
 procedure Render_Control_Tests is
    Object : Controller;
    Reply : Words;
@@ -18,6 +19,71 @@ procedure Render_Control_Tests is
               [Version, Target, Session, Operation], Reply, Recipient_Ready);
    end Call;
 begin
+   declare
+      Bootstrap : Controller;
+      Actual_Tag : constant Unsigned_64 := Intel_GPU_Boot.Broker_Tag;
+      Answer : Words;
+   begin
+      -- Exercise the production bootstrap constant: a fixture tag alone
+      -- misses collisions between broker and application authority ranges.
+      pragma Assert (Actual_Tag /= 0);
+      pragma Assert (Actual_Tag not in
+        Intel_GPU_Render_Sessions.Tag_Base + 1 ..
+        Intel_GPU_Render_Sessions.Tag_Last);
+      Bind (Bootstrap, 42, Actual_Tag);
+      pragma Assert (Is_Broker (Bootstrap, 42, Actual_Tag));
+      Handle (Bootstrap, 42, Actual_Tag, True, Label, 4, 0, 0,
+        [Version, Identity, 0, Reserve], Answer);
+      pragma Assert (Answer (0) = OK);
+      pragma Assert (Answer (2) in
+        Intel_GPU_Render_Sessions.Tag_Base + 1 ..
+        Intel_GPU_Render_Sessions.Tag_Last);
+      pragma Assert (not Is_Broker (Bootstrap, 42, Answer (2)));
+      pragma Assert (not Is_Broker (Bootstrap, 43, Actual_Tag));
+   end;
+   declare
+      Fresh : Controller;
+      Base : constant Unsigned_64 := Intel_GPU_Render_Sessions.Tag_Base;
+      Tags : array (1 .. Intel_GPU_Render_Sessions.Capacity) of Unsigned_64;
+      procedure Check (Condition : Boolean) is
+      begin
+         if not Condition then
+            raise Program_Error with "controller issued-record lookup";
+         end if;
+      end Check;
+   begin
+      Check (Storage_Index (Fresh, 0) = 0);
+      Check (Issued_Tag (Fresh, 0) = 0);
+      Check (Storage_Index (Fresh, Unsigned_64'Last) = 0);
+      Bind (Fresh, 42, 99);
+      for I in Tags'Range loop
+         Check (Storage_Index (Fresh, Base + Unsigned_64 (I)) = 0);
+         Check (Issued_Tag (Fresh, I) = 0);
+         Handle (Fresh, 42, 99, True, Label, 4, 0, 0,
+           [Version, Identity, 0, Reserve], Reply);
+         Check (Reply (0) = OK);
+         Tags (I) := Reply (2);
+         Check (Storage_Index (Fresh, Tags (I)) = I);
+         Check (Issued_Tag (Fresh, I) = Tags (I));
+         Check (Resolve (Fresh, 42, Tags (I)) = 0);
+         Handle (Fresh, 42, 99, True, Label, 4, 0, 0,
+           [Version, Identity, Tags (I), Activate], Reply, True);
+         Check (Reply (0) = OK);
+         Check (Resolve (Fresh, 42, Tags (I)) = Tags (I));
+         Check (Resolve (Fresh, 43, Tags (I)) = 0);
+         Reject_Delivery (Fresh, Identity, Tags (I));
+         Check (Storage_Index (Fresh, Tags (I)) = I);
+         Check (Resolve (Fresh, 42, Tags (I)) = 0);
+      end loop;
+      Quarantine (Fresh);
+      for I in Tags'Range loop
+         Check (Storage_Index (Fresh, Tags (I)) = I);
+         Check (Issued_Tag (Fresh, I) = Tags (I));
+         Check (Resolve (Fresh, 42, Tags (I)) = 0);
+         Check (Resolve_Retired (Fresh, 42, Tags (I)) = 0);
+      end loop;
+      Check (Storage_Index (Fresh, Base + Tags'Length + 1) = 0);
+   end;
    declare
       package L renames Intel_GPU_Broker_Launches;
       package B renames Intel_GPU_Broker_Request;
@@ -219,6 +285,19 @@ begin
    Call (Reserve, 0); pragma Assert (Reply = [Unavailable, Version, 0, 0]);
    Quarantine (Object);
    Call (Reserve, 0); pragma Assert (Reply (0) = Unavailable);
+   for Reserved_Tag of Words'
+     (Intel_GPU_Render_Sessions.Tag_Base + 1,
+      Intel_GPU_Render_Sessions.Tag_Base + 17,
+      Intel_GPU_Render_Sessions.Tag_Last - 1,
+      Intel_GPU_Render_Sessions.Tag_Last)
+   loop
+      declare Collision : Controller; begin
+         Bind (Collision, 42, Reserved_Tag);
+         pragma Assert (not Is_Broker (Collision, 42, Reserved_Tag));
+         Bind (Collision, 42, 99);
+         pragma Assert (not Is_Broker (Collision, 42, 99));
+      end;
+   end loop;
    declare
       Fresh, Invalid_Binding : Controller;
       Fresh_Tag : Unsigned_64;
