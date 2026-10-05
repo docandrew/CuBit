@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with CCL.Catalog;
 with CCL.Host_Values;
 with CCL.Language;
@@ -13,6 +14,7 @@ with CCL.Manifests.Keywords;
 with CCL.Diagnostics;
 with CCL.Types;
 with CuBit.Failures;
+with CuBit.Program_Descriptions;
 
 package body CCL.Manifests.Typed with SPARK_Mode => On is
    use Standard.Interfaces;
@@ -33,7 +35,7 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
    begin
       Reply := (Value => CCL.Host_Values.Integer_Constant (0), Success => False, Why => <>);
    end Refuse;
-   procedure Evaluate is new CCL.Language.Interpret_Object_With_Values (No_Host, Refuse);
+   procedure Evaluate is new CCL.Evaluation.Evaluate_Object_With_Values (No_Host, Refuse);
 
    MANIFEST_FUEL : constant := 100_000;
    MAXIMUM_DISTANCE : constant := 2;
@@ -79,7 +81,45 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
    LOCAL_KEY : constant CCL.Objects.Schema_Key :=
      [16#4D41_4E49_4645_5354#, 16#2D4C_4F43_414C_0001#, 0, 0];
 
-   procedure Compile (Source, Catalog_Source, Schema_Source : String; Result : out Compilation_Result) is
+   --  The schema without its comment lines and indentation, so that it
+   --  leaves the manifest most of the source limit (it is prepended to
+   --  every manifest; diagnostics point into the manifest only). Schema
+   --  lines hold no multi-line text.
+   procedure Compact (Schema : String; Text : out String; Length : out Natural)
+   with Pre => Text'First = 1 and then Text'Length >= Schema'Length;
+   procedure Compact (Schema : String; Text : out String; Length : out Natural) is
+      Comment : constant Character := '#';
+      Line_Start : Boolean := True;
+      In_Comment : Boolean := False;
+   begin
+      Text := [others => ' '];
+      Length := 0;
+      for C of Schema loop
+         if C = ASCII.LF then
+            if not In_Comment and then not Line_Start then
+               Length := Length + 1;
+               Text (Length) := C;
+            end if;
+            Line_Start := True;
+            In_Comment := False;
+         elsif In_Comment then
+            null;
+         elsif Line_Start and then (C = ' ' or else C = ASCII.HT) then
+            null;
+         elsif Line_Start and then C = Comment then
+            In_Comment := True;
+         else
+            Line_Start := False;
+            Length := Length + 1;
+            Text (Length) := C;
+         end if;
+      end loop;
+   end Compact;
+
+   procedure Compile_Compacted
+     (Source, Catalog_Source, Schema_Source : String; Result : out Compilation_Result);
+   procedure Compile_Compacted
+     (Source, Catalog_Source, Schema_Source : String; Result : out Compilation_Result) is
       Program : constant String := Schema_Source & ASCII.LF & Source;
       Checked : CCL.Language.Analysis_Result;
       Manifest_Type : CCL.Types.Type_Reference;
@@ -493,21 +533,136 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
          Decl.Scopes (Decl.Scope_Count) := Item;
       end Add_Scope;
 
-      procedure Add_Stream (At_Cursor : Views.Cursor) is
-         Kind_Name : constant String := Alt (Named (At_Cursor, "kind"));
-         Kind : constant Stream_Kind :=
-           (if Kind_Name = "Standard_Output" then Standard_Output
-            elsif Kind_Name = "Standard_Error" then Standard_Error else Log_Output);
-         Pages : constant Integer_64 := Number (Named (At_Cursor, "pages"));
+      --  A program's outlets and inlets and, for a ported Unix program,
+      --  which file descriptor feeds which (docs/ccl-launch-parameters.md,
+      --  "Inlets and outlets, not stdio"). Names are fully qualified.
+      --  unix.* names are legacy glue with fixed directions. com.cubit.*
+      --  names are CuBit contracts with a fixed shape. A run's outcome is
+      --  not a connector (it is a Task). In the description the outlets
+      --  come first, then the inlets.
+      procedure Add_Connectors (Outlets, Inlets, Descriptors : Views.Cursor) is
+         package PP renames CuBit.Program_Descriptions;
+         use type PP.Connector_Direction;
+         use type PP.Element_Kind;
+         use type PP.Signal_Kind;
+         S : PP.Signature renames Decl.Description;
+
+         procedure Add_One (At_Cursor : Views.Cursor; Direction : PP.Connector_Direction) is
+            Name : constant String := Text (Named (At_Cursor, "name"));
+            Element_Name : constant String := Alt (Named (At_Cursor, "element"));
+            Element : constant PP.Element_Kind :=
+              (if Element_Name = "Text" then PP.Text_Lines
+               elsif Element_Name = "Raw_Bytes" then PP.Raw_Bytes
+               elsif Element_Name = "Integers" then PP.Integers else PP.Log_Records);
+            Signal : constant PP.Signal_Kind :=
+              PP.Signal_Kind'Value (Alt (Named (At_Cursor, "signal")));
+            Pages : constant Integer_64 := Number (Named (At_Cursor, "pages"));
+            Kind : constant String := (if Direction = PP.Outlet then "outlet" else "inlet");
+            Found : Boolean;
+            Existing : PP.Connector_Index;
+            function Is_Contract (Expected : String) return Boolean is (Name = Expected);
+         begin
+            if not PP.Valid_Connector_Name (Name) then
+               Fail (Invalid_Connector, Kind & " """ & Name & """ is not a qualified name",
+                     "use dot-separated components of [a-z0-9-], such as unix.stderr or " &
+                     "org.example.tool.progress");
+               return;
+            end if;
+            PP.Find_Connector (S, Name, Existing, Found);
+            if Found then
+               Fail (Invalid_Connector, """" & Name & """ is declared twice");
+               return;
+            end if;
+            if not In_Range (Pages, 1, 255) then
+               Fail (Invalid_Connector, Kind & " """ & Name & """ asks for" &
+                     Integer_64'Image (Pages) & " ring pages, not 1 to 255");
+               return;
+            end if;
+            if (Is_Contract ("com.cubit.stdlog") or else Is_Contract ("com.cubit.audit"))
+              and then (Direction /= PP.Outlet or else Element /= PP.Log_Records
+                        or else Signal /= PP.Stream)
+            then
+               Fail (Invalid_Connector, Name & " is a CuBit contract: an outlet streaming Log_Records");
+               return;
+            elsif Is_Contract ("unix.stdin") and then Direction /= PP.Inlet then
+               Fail (Invalid_Connector, "unix.stdin is an inlet");
+               return;
+            elsif (Is_Contract ("unix.stdout") or else Is_Contract ("unix.stderr"))
+              and then Direction /= PP.Outlet
+            then
+               Fail (Invalid_Connector, Name & " is an outlet");
+               return;
+            elsif Name'Length > 5 and then Name (Name'First .. Name'First + 4) = "unix."
+              and then not (Is_Contract ("unix.stdin") or else Is_Contract ("unix.stdout")
+                            or else Is_Contract ("unix.stderr"))
+            then
+               Fail (Invalid_Connector, "unix.* names only stdin, stdout and stderr",
+                     "name it under the program's own identity");
+               return;
+            end if;
+            S.Connectors (S.Connector_Total) :=
+              (Direction => Direction, Element => Element, Signal => Signal,
+               Pages => Positive (Pages), Name => [others => ' '], Name_Length => Name'Length);
+            S.Connectors (S.Connector_Total).Name (1 .. Name'Length) := Name;
+            S.Connector_Total := S.Connector_Total + 1;
+         end Add_One;
       begin
-         if Decl.Streams (Kind).Present then Fail (Duplicate_Stream); return; end if;
-         if not In_Range (Pages, 1, 256) then Fail (Invalid_Stream_Pages); return; end if;
-         Decl.Streams (Kind) :=
-           (Present => True, Pages => Positive (Pages),
-            Format => (if Alt (Named (At_Cursor, "format")) = "Text" then Text_Lines else Raw_Bytes));
-         Decl.Stream_Count := Decl.Stream_Count + 1;
-         Decl.Stream_Order (Decl.Stream_Count) := Kind;
-      end Add_Stream;
+         if Views.Length (Object, Outlets) + Views.Length (Object, Inlets) > PP.Maximum_Connectors then
+            Fail (Invalid_Connector, "at most" & Natural'Image (PP.Maximum_Connectors) &
+                  " outlets and inlets together");
+            return;
+         end if;
+         if Views.Length (Object, Descriptors) > PP.Maximum_Descriptors then
+            Fail (Invalid_Connector, "at most" & Natural'Image (PP.Maximum_Descriptors) & " descriptors");
+            return;
+         end if;
+         for Index in 1 .. Views.Length (Object, Outlets) loop
+            exit when Failed;
+            Locate (Entry_Text ("outlets", Index));
+            Add_One (Views.Element (Object, Outlets, Index), PP.Outlet);
+         end loop;
+         for Index in 1 .. Views.Length (Object, Inlets) loop
+            exit when Failed;
+            Locate (Entry_Text ("inlets", Index));
+            Add_One (Views.Element (Object, Inlets, Index), PP.Inlet);
+         end loop;
+         if Failed then return; end if;
+         for Index in 1 .. Views.Length (Object, Descriptors) loop
+            Locate (Entry_Text ("descriptors", Index));
+            declare
+               At_Cursor : constant Views.Cursor := Views.Element (Object, Descriptors, Index);
+               Number_Value : constant Integer_64 := Number (Named (At_Cursor, "number"));
+               Target_Name : constant String := Text (Named (At_Cursor, "name"));
+               Target : PP.Connector_Index;
+               Found : Boolean;
+            begin
+               if not In_Range (Number_Value, 0, 255) then
+                  Fail (Invalid_Connector, "descriptor" & Integer_64'Image (Number_Value) & " is not 0 to 255");
+                  return;
+               end if;
+               PP.Find_Connector (S, Target_Name, Target, Found);
+               if not Found then
+                  Fail (Invalid_Connector, "no outlet or inlet """ & Target_Name & """");
+                  return;
+               end if;
+               if (Number_Value = 0) /= (S.Connectors (Target).Direction = PP.Inlet) then
+                  Fail (Invalid_Connector,
+                        "descriptor" & Integer_64'Image (Number_Value) &
+                        (if Number_Value = 0 then " reads, so it must name an inlet"
+                         else " writes, so it must name an outlet"));
+                  return;
+               end if;
+               for D of S.Descriptors (1 .. S.Descriptor_Total) loop
+                  if D.Number = Natural (Number_Value) then
+                     Fail (Invalid_Connector, "descriptor" & Integer_64'Image (Number_Value) & " is mapped twice");
+                     return;
+                  end if;
+               end loop;
+               S.Descriptor_Total := S.Descriptor_Total + 1;
+               S.Descriptors (S.Descriptor_Total) := (Number => Natural (Number_Value), Target => Target);
+            end;
+         end loop;
+      end Add_Connectors;
 
       --  A program this executable may start: its exact name, as the
       --  launch table (CuBit.Launch_Authority) holds it.
@@ -537,6 +692,156 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
          Decl.Launch_Count := Decl.Launch_Count + 1;
          Decl.Launches (Decl.Launch_Count) := Name;
       end Add_Launch;
+
+      --  A ported tool's typed parameters and the argv they render into
+      --  (CuBit.Program_Descriptions). Every parameter must be rendered by
+      --  some piece, so no value is granted without being passed.
+      procedure Add_Parameters (Parameters, Pieces : Views.Cursor) is
+         package PP renames CuBit.Program_Descriptions;
+         use type PP.Kind;
+         S : PP.Signature renames Decl.Description;
+         Rendered : array (PP.Parameter_Index) of Boolean := [others => False];
+         --  Declared in_arguments => false: a place delegated to the program
+         --  that never appears in its argv (a work or toolchain directory).
+         Place_Only : array (PP.Parameter_Index) of Boolean := [others => False];
+
+         function Index_Of (Name : String) return Integer is
+         begin
+            for P in 0 .. S.Parameter_Total - 1 loop
+               if S.Parameters (P).Name (1 .. S.Parameters (P).Name_Length) = Name then
+                  return P;
+               end if;
+            end loop;
+            return -1;
+         end Index_Of;
+
+         function Valid_Text (Item : String; Limit : Positive) return Boolean is
+           (Item'Length in 1 .. Limit and then (for all C of Item => C in ' ' .. '~'));
+      begin
+         if Views.Length (Object, Parameters) > PP.Maximum_Parameters then
+            Fail (Invalid_Parameters, "at most" & Natural'Image (PP.Maximum_Parameters) & " parameters");
+            return;
+         end if;
+         if Views.Length (Object, Pieces) > PP.Maximum_Pieces then
+            Fail (Invalid_Parameters, "at most" & Natural'Image (PP.Maximum_Pieces) & " argument pieces");
+            return;
+         end if;
+         for Index in 1 .. Views.Length (Object, Parameters) loop
+            Locate (Entry_Text ("parameters", Index));
+            declare
+               At_Cursor : constant Views.Cursor := Views.Element (Object, Parameters, Index);
+               Name : constant String := Text (Named (At_Cursor, "name"));
+               Kind : constant PP.Kind := PP.Kind'Value (Alt (Named (At_Cursor, "kind")));
+               Many : constant Boolean := Flag (Named (At_Cursor, "many"));
+               P : constant PP.Parameter_Index := S.Parameter_Total;
+            begin
+               if Name'Length not in 1 .. PP.Maximum_Name_Bytes
+                 or else (for some C of Name => C not in 'a' .. 'z' | '0' .. '9' | '_' | '-')
+               then
+                  Fail (Invalid_Parameters, "name """ & Name & """ is not 1 to 32 of [a-z0-9_-]");
+                  return;
+               end if;
+               if Index_Of (Name) >= 0 then
+                  Fail (Invalid_Parameters, "parameter """ & Name & """ is declared twice");
+                  return;
+               end if;
+               if Many and then Kind = PP.Flag then
+                  Fail (Invalid_Parameters, "flag """ & Name & """ cannot take many values");
+                  return;
+               end if;
+               if not Flag (Named (At_Cursor, "in_arguments")) then
+                  if Kind in PP.Flag | PP.Text then
+                     Fail (Invalid_Parameters,
+                           "parameter """ & Name & """ is not a file or directory, so it must be in arguments",
+                           "only a place can be delegated without appearing in argv");
+                     return;
+                  end if;
+                  Place_Only (P) := True;
+               end if;
+               S.Parameters (P) :=
+                 (Of_Kind => Kind, Many => Many,
+                  Optional => not Flag (Named (At_Cursor, "required")) or else Kind = PP.Flag,
+                  Name => [others => ' '], Name_Length => Name'Length);
+               S.Parameters (P).Name (1 .. Name'Length) := Name;
+               S.Parameter_Total := P + 1;
+            end;
+         end loop;
+         for Index in 1 .. Views.Length (Object, Pieces) loop
+            Locate (Entry_Text ("arguments", Index));
+            declare
+               At_Cursor : constant Views.Cursor := Views.Element (Object, Pieces, Index);
+               Kind : constant String := Alt (At_Cursor);
+               Payload : constant Views.Cursor := Views.Payload (Object, At_Cursor);
+               Item : PP.Piece;
+               Target : Integer := 0;
+            begin
+               if Kind = "Literal" then
+                  declare
+                     Literal : constant String := Text (Payload);
+                  begin
+                     if not Valid_Text (Literal, PP.Maximum_Text_Bytes) then
+                        Fail (Invalid_Parameters, "literal is not 1 to 48 printable characters");
+                        return;
+                     end if;
+                     Item.Of_Kind := PP.Literal;
+                     Item.Text (1 .. Literal'Length) := Literal;
+                     Item.Text_Length := Literal'Length;
+                  end;
+               else
+                  declare
+                     Name : constant String :=
+                       (if Kind = "Value" then Text (Payload) else Text (Named (Payload, "parameter")));
+                  begin
+                     Target := Index_Of (Name);
+                     if Target < 0 then
+                        Fail (Invalid_Parameters, "no parameter """ & Name & """");
+                        return;
+                     end if;
+                     Rendered (Target) := True;
+                     Item.Parameter := Target;
+                     if Kind = "Value" then
+                        if S.Parameters (Target).Of_Kind = PP.Flag then
+                           Fail (Invalid_Parameters, "flag """ & Name & """ has no value",
+                                 "render a flag with when-set");
+                           return;
+                        end if;
+                        Item.Of_Kind := PP.Value;
+                     else
+                        declare
+                           Literal : constant String := Text (Named (Payload, "text"));
+                        begin
+                           if not Valid_Text (Literal, PP.Maximum_Text_Bytes) then
+                              Fail (Invalid_Parameters, "literal is not 1 to 48 printable characters");
+                              return;
+                           end if;
+                           Item.Of_Kind := PP.When_Set;
+                           Item.Text (1 .. Literal'Length) := Literal;
+                           Item.Text_Length := Literal'Length;
+                        end;
+                     end if;
+                  end;
+               end if;
+               S.Piece_Total := S.Piece_Total + 1;
+               S.Pieces (S.Piece_Total) := Item;
+            end;
+         end loop;
+         Locate ("parameters");
+         for P in 0 .. S.Parameter_Total - 1 loop
+            if Place_Only (P) and then Rendered (P) then
+               Fail (Invalid_Parameters,
+                     "parameter """ & S.Parameters (P).Name (1 .. S.Parameters (P).Name_Length)
+                     & """ is declared in_arguments => false but is rendered",
+                     "remove it from arguments, or drop in_arguments => false");
+               return;
+            elsif not Place_Only (P) and then not Rendered (P) then
+               Fail (Invalid_Parameters,
+                     "parameter """ & S.Parameters (P).Name (1 .. S.Parameters (P).Name_Length)
+                     & """ is never rendered",
+                     "name it in arguments, or declare it in_arguments => false (a place only)");
+               return;
+            end if;
+         end loop;
+      end Add_Parameters;
 
       procedure Add_Match (At_Cursor : Views.Cursor) is
          Kind : constant String := Alt (At_Cursor);
@@ -676,7 +981,6 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
          Root : constant Views.Cursor := Views.Root (Object);
          Requests : constant Views.Cursor := Named (Root, "requests");
          Scopes : constant Views.Cursor := Named (Root, "scopes");
-         Streams : constant Views.Cursor := Named (Root, "streams");
       begin
          Locate ("identity");
          Metadata (Named (Root, "identity"), Decl.Identity);
@@ -695,12 +999,6 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
             Locate (Entry_Text ("scopes", Index));
             Add_Scope (Views.Element (Object, Scopes, Index));
          end loop;
-         Locate ("streams");
-         if Views.Length (Object, Streams) > MAX_STREAMS then Fail (Duplicate_Stream); end if;
-         for Index in 1 .. Views.Length (Object, Streams) loop
-            exit when Failed;
-            Add_Stream (Views.Element (Object, Streams, Index));
-         end loop;
          Decl.Explicit_No_Requests := Flag (Named (Root, "requests_none"));
          declare
             Launches : constant Views.Cursor := Named (Root, "may_launch");
@@ -711,8 +1009,22 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                Add_Launch (Views.Element (Object, Launches, Index));
             end loop;
          end;
+         if not Failed then
+            Add_Parameters (Named (Root, "parameters"), Named (Root, "arguments"));
+         end if;
+         if not Failed then
+            Add_Connectors (Named (Root, "outlets"), Named (Root, "inlets"), Named (Root, "descriptors"));
+         end if;
       end;
       if Failed then return; end if;
       Encoding.Encode (Decl, Cat, 0, Result);
+   end Compile_Compacted;
+
+   procedure Compile (Source, Catalog_Source, Schema_Source : String; Result : out Compilation_Result) is
+      Schema_Text : String (1 .. Schema_Source'Length);
+      Schema_Length : Natural;
+   begin
+      Compact (Schema_Source, Schema_Text, Schema_Length);
+      Compile_Compacted (Source, Catalog_Source, Schema_Text (1 .. Schema_Length), Result);
    end Compile;
 end CCL.Manifests.Typed;

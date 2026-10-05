@@ -1,0 +1,8 @@
+project Desktop_Glyph_Residency extends "desktop_vulkan_startup.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat", "../../userspace/services/desktop");
+   for Source_Files use Desktop_Vulkan_Startup'Source_Files &
+      ("desktop_glyph_residency.ads", "desktop_glyph_residency.adb", "desktop_glyph_upload.ads", "desktop_glyph_upload.adb", "compositor_glyph_ffi.ads", "compositor_glyph_ffi.adb", "desktop_glyph_residency_mock.c", "desktop_glyph_residency_tests.adb");
+   for Object_Dir use "build/desktop-glyph-residency/obj";
+   for Exec_Dir use "build/desktop-glyph-residency";
+   for Main use ("desktop_glyph_residency_tests.adb");
+end Desktop_Glyph_Residency;

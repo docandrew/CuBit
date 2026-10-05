@@ -60,7 +60,7 @@ begin
    end loop;
    Set_Entry (1, "valid", 15);
    Set_Entry (2, "bad", 15);
-   Data (Wire_Entry_Bytes + 2) := 65;
+   Data (Wire_Entry_Bytes + 3) := 2;   --  a 512-byte prefix
    Decode (Data, Item, OK);
    pragma Assert (not OK and then not Allows (Item, "valid", Read_Only));
    Set_Entry (2, "../bad", 15);
@@ -70,12 +70,12 @@ begin
    Decode (Data, Item, OK);
    pragma Assert (not OK);
    Set_Entry (2, "valid", 15);
-   Data (3) := 1;
+   Data (4) := 1;                      --  a reserved byte
    Decode (Data, Item, OK);
    pragma Assert (not OK);
    Decode (Data (1 .. 0), Item, OK);
    pragma Assert (not OK);
-   Decode (Data (1 .. 71), Item, OK);
+   Decode (Data (1 .. Wire_Entry_Bytes - 1), Item, OK);
    pragma Assert (not OK);
    Allow_All_For_Bootstrap (Item);
    pragma Assert (Allows (Item, "anywhere", All_Rights));

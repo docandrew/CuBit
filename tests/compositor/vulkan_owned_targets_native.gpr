@@ -1,0 +1,9 @@
+project Vulkan_Owned_Targets_Native extends "vulkan_submission_native.gpr" is
+   for Source_Dirs use ("../../userspace/lib/compositor", "../../userspace/lib/display");
+   for Source_Files use Vulkan_Submission_Native'Source_Files &
+     ("vulkan_context_owner.ads", "vulkan_context_owner.adb", "vulkan_context_ffi.ads", "vulkan_context_ffi.adb", "vulkan_scene_recording.ads", "vulkan_scene_recording.adb",
+      "vulkan_owned_targets.ads", "vulkan_owned_targets.adb", "vulkan_owned_target_ffi.ads", "vulkan_owned_target_ffi.adb",
+      "vulkan_image_owner.ads", "vulkan_image_owner.adb", "vulkan_image_ffi.ads", "vulkan_image_ffi.adb",
+      "compositor_storage.ads", "compositor_storage.adb");
+   for Object_Dir use "build/vulkan-owned-targets-native";
+end Vulkan_Owned_Targets_Native;

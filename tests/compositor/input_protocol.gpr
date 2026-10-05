@@ -1,0 +1,8 @@
+project Input_Protocol extends "input_batch_wire.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "build/input-batch-wire/source");
+   for Source_Files use Input_Batch_Wire'Source_Files &
+     ("compositor_input_protocol.ads", "compositor_input_protocol.adb", "input_protocol_tests.adb");
+   for Object_Dir use "build/input-protocol/obj";
+   for Exec_Dir use "build/input-protocol";
+   for Main use ("input_protocol_tests.adb");
+end Input_Protocol;

@@ -1,0 +1,7 @@
+project Desktop_Glyph_Uncertain extends "desktop_glyph_residency.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat", "../../userspace/services/desktop");
+   for Source_Files use Desktop_Glyph_Residency'Source_Files & ("desktop_glyph_uncertain_tests.adb");
+   for Object_Dir use "build/desktop-glyph-uncertain/obj";
+   for Exec_Dir use "build/desktop-glyph-uncertain";
+   for Main use ("desktop_glyph_uncertain_tests.adb");
+end Desktop_Glyph_Uncertain;

@@ -40,6 +40,20 @@ package Owned_Demand_Pages with SPARK_Mode, Pure is
             and then Length (Pages) = Length (Pages'Old)
             and then Mode (Pages, Index) = Mode (Pages'Old, Index);
 
+   -- Publish removal only after the caller has unmapped the page, completed
+   -- TLB invalidation, and safely retired its frame-list node. Permissions
+   -- remain intact so a later permitted fault can install zero-filled backing.
+   procedure Discard (Pages : in out Map; Index : Page_Index)
+     with Pre => Valid_Index (Pages, Index) and then Resident (Pages, Index)
+                 and then Resident_Count (Pages) > 0,
+          Post => Resident_Count (Pages) = Resident_Count (Pages'Old) - 1
+            and then Length (Pages) = Length (Pages'Old)
+            and then (for all I in Page_Index =>
+              (if Valid_Index (Pages, I) then
+                 Mode (Pages, I) = Mode (Pages'Old, I)
+                 and then Resident (Pages, I) =
+                   (if I = Index then False else Resident (Pages'Old, I))));
+
    function Valid_Range
      (Pages : Map; First : Page_Index; Count : Page_Count) return Boolean;
    procedure Set_Mode

@@ -33,6 +33,7 @@ begin
       return;
    end if;
    debugPrint ("clock: registered" & LF);
+   Wall_Clock.Publish;
    declare
       Entry_Value : constant CuBit.Log_Records.Decoded :=
         CuBit.Log_Records.Make ("clock: service ready");
@@ -55,6 +56,8 @@ begin
             return;
          end if;
       else
+         --  The discipline advances between requests: keep the offset current.
+         Wall_Clock.Publish;
          Response := NULL_MESSAGE;
          if Request.tag.label = CLOCK_OP_MONOTONIC_MS and then
            Request.tag.length = 1 and then Request.words (0) = 0
@@ -85,6 +88,7 @@ begin
                end if;
                if Decoded then
                   Wall_Clock.Adjust (Candidate, Result, Quality);
+                  Wall_Clock.Publish;
                   Response.tag :=
                     (label => REPLY_OK, length => 2, flags => 0, reserved => 0);
                   Response.words (0) :=

@@ -1,4 +1,5 @@
 with "../../lib/ui/fonts_native.gpr";
+with "../../lib/ui/toolkit_flags.gpr";
 project Desktop_Check is
    for Languages use ("Ada");
    for Source_Dirs use (".", "../../lib/ui", "../../lib/theme", "../../lib/compositor", "../../lib/display", "../../allocator/src");
@@ -9,10 +10,10 @@ project Desktop_Check is
       for Executable ("main.adb") use "desktop-check.app";
       for Default_Switches ("Ada") use ("-nostdlib");
    end Builder;
-   package Compiler is
+   package Compiler extends Toolkit_Flags.Compiler is
       for Default_Switches ("Ada") use
         ("-O2", "-gnat2022", "-fstack-usage", "-fomit-frame-pointer",
-         "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+         "-mno-red-zone", "-fno-pic");
    end Compiler;
    package Binder is
       for Default_Switches ("Ada") use ("-d_C");

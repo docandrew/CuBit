@@ -163,7 +163,12 @@ package Ext2 is
      (Rename_Complete, Rename_Source_Not_Found, Rename_Destination_Exists,
       Rename_Invalid_Name, Rename_Malformed, Rename_Range_Unsupported,
       Rename_Read_Only, Rename_Out_Of_Range, Rename_IO_Error,
-      Rename_Recovery_Required);
+      Rename_Recovery_Required,
+      Rename_Not_Directory,   --  a directory onto a non-directory
+      Rename_Is_Directory,    --  a non-directory onto a directory
+      Rename_Not_Empty,       --  onto a directory that has entries
+      Rename_Invalid_Move,    --  a directory into its own subtree
+      Rename_No_Room);        --  internal: the in-place path needs the general one
 
    type Flush_Status is
      (Flush_Complete, Flush_Unsupported, Flush_IO_Error,
@@ -377,16 +382,29 @@ package Ext2 is
       newSize : Unsigned_64; resizedInode : out Inode;
       status : out Truncate_Status);
 
-   --  Non-overwriting rename within one directory. The replacement is prepared
-   --  in memory and must fit in the source directory block. Multi-block moves
-   --  and replacement of existing destinations need a separate transaction API.
+   --  The in-place rename within one directory: the replacement is prepared
+   --  in memory and must fit in the source directory block (Rename_No_Room
+   --  otherwise), and an existing destination is not replaced. renamePath
+   --  uses it first and falls back to its general path.
    procedure renameEntry
      (fs : in out Filesystem; dirInodeNum : Unsigned_32;
       oldName, newName : String; status : out Rename_Status);
 
+   --  POSIX rename: across directories and blocks, replacing an existing
+   --  newPath (a file by a file, an empty directory by a directory). A
+   --  directory moved elsewhere has its ".." and both parents' link counts
+   --  updated; moving one into its own subtree is refused. Without a
+   --  journal the order never leaves the inode without a name: its link
+   --  count is raised, the new name written, the old one removed, the
+   --  count lowered (a crash at worst over-counts, as e2fsck repairs).
+   --  A replaced file loses its last link. With keepReplaced (handles still
+   --  hold it) it keeps its blocks for reclaimInode at last close, as
+   --  unlinkPath's keepOrphan; replacedNumber and replaced (links 0) then
+   --  name it. replacedNumber is 0 when nothing was replaced.
    procedure renamePath
      (fs : in out Filesystem; oldPath, newPath : String;
-      status : out Rename_Status);
+      keepReplaced : Boolean; replacedNumber : out Unsigned_32;
+      replaced : out Inode; status : out Rename_Status);
 
    --  Name removal (unlink, rmdir) and directory creation (mkdir). Until the
    --  journal lands these are write-through, ordered so that a crash leaves
@@ -394,7 +412,9 @@ package Ext2 is
    --  a freed inode nor a pointer to a freed block: the name goes first, the
    --  link count next, then the blocks (detached durably before release),
    --  then the inode; mkdir writes the new block and inode before the name.
-   --  Parent directories must be plain (unindexed, direct blocks only).
+   --  Parent directories may have any number of blocks up to double
+   --  indirect; an htree index is cleared before a change. rmdir releases
+   --  only directories with direct blocks.
    type Remove_Status is
      (Remove_Complete, Remove_Not_Found, Remove_Invalid_Name,
       Remove_Wrong_Type,  --  unlink of a directory; rmdir of a non-directory

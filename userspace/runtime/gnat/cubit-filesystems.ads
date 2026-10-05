@@ -102,7 +102,13 @@ is
    --  This is distinct from insufficient caller authority or a missing name.
    REPLY_UNSUPPORTED_OBJECT : constant Unsigned_32 := 16#F00E#;
    REPLY_SHARING_VIOLATION : constant Unsigned_32 := 16#F00F#;
-   REPLY_NOT_EMPTY : constant Unsigned_32 := 16#F010#;   --  rmdir
+   REPLY_NOT_EMPTY : constant Unsigned_32 := 16#F010#;   --  rmdir, rename
+   --  rename: a non-directory onto a directory.
+   REPLY_IS_DIRECTORY : constant Unsigned_32 := 16#F011#;
+   --  rename: a directory into its own subtree.
+   REPLY_INVALID_MOVE : constant Unsigned_32 := 16#F012#;
+   --  rename between volumes: the caller copies instead (EXDEV).
+   REPLY_CROSS_VOLUME : constant Unsigned_32 := 16#F013#;
 
    MAXIMUM_PATH_BYTES : constant := CuBit.Directory_Paths.Maximum_Bytes;
    subtype Path_Byte_Count is Natural range 0 .. MAXIMUM_PATH_BYTES;
@@ -188,10 +194,14 @@ is
      array (Directory_Page_Entry_Index) of Directory_Entry
        with Component_Size => DIRECTORY_ENTRY_BYTES * 8;
 
-   --  Directory.Inspection.V1: what the volume records about each entry.
+   --  Directory.Inspection.V1: what the volume records about each entry
+   --  (and, through Queue_Describe, about one open handle's object).
    --  Valid says which fields were filled; a volume without a field leaves
    --  it zero and its bit clear. Times are milliseconds since the Unix
-   --  epoch; Mode is the stored permission and type bits.
+   --  epoch: modified is content (POSIX mtime), changed is the object's
+   --  metadata (ctime), accessed is atime. Mode is the stored permission
+   --  and type bits. ObjectId names the object within its service (volume
+   --  << 32 | inode) for as long as it exists, as st_dev/st_ino do.
    DIRECTORY_INSPECTED_BYTES : constant := 2 * DIRECTORY_PAGE_BYTES;
    DIRECTORY_INSPECTION_BYTES : constant := 64;
    INSPECTED_SIZE  : constant Unsigned_32 := 1;
@@ -199,19 +209,20 @@ is
    INSPECTED_MODE  : constant Unsigned_32 := 4;
    INSPECTED_LINKS : constant Unsigned_32 := 8;
    INSPECTED_OWNER : constant Unsigned_32 := 16;
+   INSPECTED_OBJECT : constant Unsigned_32 := 32;
 
    type Entry_Inspection is record
       valid      : Unsigned_32;
       mode       : Unsigned_32;
       sizeBytes  : Unsigned_64;
       modifiedMs : Unsigned_64;
-      createdMs  : Unsigned_64;
+      changedMs  : Unsigned_64;
       accessedMs : Unsigned_64;
       links      : Unsigned_32;
       owner      : Unsigned_32;
       group      : Unsigned_32;
       reserved   : Unsigned_32;
-      reserved2  : Unsigned_64;
+      objectId   : Unsigned_64;
    end record with Convention => C, Size => DIRECTORY_INSPECTION_BYTES * 8;
 
    for Entry_Inspection use record
@@ -219,13 +230,13 @@ is
       mode       at 4  range 0 .. 31;
       sizeBytes  at 8  range 0 .. 63;
       modifiedMs at 16 range 0 .. 63;
-      createdMs  at 24 range 0 .. 63;
+      changedMs  at 24 range 0 .. 63;
       accessedMs at 32 range 0 .. 63;
       links      at 40 range 0 .. 31;
       owner      at 44 range 0 .. 31;
       group      at 48 range 0 .. 31;
       reserved   at 52 range 0 .. 31;
-      reserved2  at 56 range 0 .. 63;
+      objectId   at 56 range 0 .. 63;
    end record;
 
    type Directory_Inspections is
@@ -348,9 +359,12 @@ is
    function Rewind_Directory_Request
      (handle : Directory_Handle) return CuBit.Messages.Message;
 
-   --  Non-overwriting rename: an existing destination is ALREADY_EXISTS.
-   --  Currently supported only within one parent and one directory block;
-   --  larger transactions return FILE_RANGE_UNSUPPORTED without mutation.
+   --  POSIX rename within one volume (CROSS_VOLUME otherwise, EXDEV):
+   --  across directories and blocks, replacing an existing destination (a
+   --  file by a file, an empty directory by a directory). A directory onto
+   --  a non-directory is WRONG_OBJECT_TYPE, a non-directory onto a directory
+   --  IS_DIRECTORY, onto a directory with entries NOT_EMPTY, a directory
+   --  into its own subtree INVALID_MOVE; nothing changes then.
    --  IO_ERROR reports a failed read, or a failed write whose original block
    --  was restored successfully.
    --  RECOVERY_REQUIRED means restoration also failed; the volume rejects

@@ -1,7 +1,9 @@
 # CuBit libc checks (userspace/libc). Reads the development disk's tls/
-# directory (files, directory listing); everything else must be denied.
+# directory (files, directory listing) and writes under libc-check/;
+# everything else must be denied.
 (executable-manifest v1
   (identity "com.cubit.libc-check")
   (version "0.1.0")
   (request-service filesystem read-write filesystem)
-  (filesystem-scope (rights read) "@nvme:0/tls"))
+  (filesystem-scope (rights read) "@nvme:0/tls")
+  (filesystem-scope (rights read write create) "@nvme:0/libc-check"))

@@ -46,27 +46,17 @@ package body Intel_GPU_Buffer_Views is
       if Success then Object.Current := Shared; end if;
    end Share_Backing;
 
-   procedure Share
+   procedure Share_Pinned
      (Object : in out View; Buffers : in out Intel_GPU_Buffer_Handles.Registry;
-      Session : Intel_GPU_Buffer_Handles.Session_ID;
-      ID : Intel_GPU_Buffer_Handles.Handle;
       Recipient : CuBit.Messages.CapabilitySlot; Identity : Unsigned_64;
-      Offset, Bytes : Unsigned_64; Writable : Boolean;
-      Presentation : Boolean := False) is
+      Offset, Bytes : Unsigned_64; Writable, Presentation : Boolean) is
       Attempted, Returned : Boolean;
    begin
-      if Object.Current /= Empty then return; end if;
-      Intel_GPU_Buffer_Handles.Retain_Backing
-        (Buffers, Session, ID, Object.Backing_Reference, Object.Pinned);
-      if not Object.Pinned then Object.Current := Failed; return; end if;
-      -- Acquire the lifetime reference BEFORE exposing any grant. Creation
-      -- failure may be ambiguous: retain rather than guess that no alias lives.
       Share_Backing (Object, Intel_GPU_Buffer_Handles.Referenced_Backing
-        (Buffers, Object.Backing_Reference),
-        Recipient, Identity, Offset, Bytes, Writable, Attempted, Presentation);
+        (Buffers, Object.Backing_Reference), Recipient, Identity, Offset, Bytes,
+        Writable, Attempted, Presentation);
       if not Attempted then
-         -- No kernel creation was attempted, so this reference has no users.
-         -- Invalid requests must not permanently consume allocation backing.
+         -- No kernel creation was attempted: this new pin has no readers.
          Intel_GPU_Buffer_Handles.Return_Reference
            (Buffers, Object.Backing_Reference, True, Returned);
          if Returned then
@@ -74,7 +64,44 @@ package body Intel_GPU_Buffer_Views is
             Object.Current := Retired;
          end if;
       end if;
+   end Share_Pinned;
+
+   procedure Share
+     (Object : in out View; Buffers : in out Intel_GPU_Buffer_Handles.Registry;
+      Session : Intel_GPU_Buffer_Handles.Session_ID;
+      ID : Intel_GPU_Buffer_Handles.Handle;
+      Recipient : CuBit.Messages.CapabilitySlot; Identity : Unsigned_64;
+      Offset, Bytes : Unsigned_64; Writable : Boolean;
+      Presentation : Boolean := False) is
+   begin
+      if Object.Current /= Empty then return; end if;
+      -- Enforce the allocation hold here too: trusted callers may bypass the
+      -- request-level map table. No pin or kernel grant exists on rejection.
+      if Writable and then Intel_GPU_Buffer_Handles.Writes_Excluded
+        (Buffers, Session, ID)
+      then Object.Current := Retired; return; end if;
+      Intel_GPU_Buffer_Handles.Retain_Backing
+        (Buffers, Session, ID, Object.Backing_Reference, Object.Pinned);
+      if not Object.Pinned then Object.Current := Failed; return; end if;
+      -- Acquire the lifetime reference BEFORE exposing any grant. Creation
+      -- failure may be ambiguous: retain rather than guess that no alias lives.
+      Share_Pinned (Object, Buffers, Recipient, Identity, Offset, Bytes,
+                    Writable, Presentation);
    end Share;
+
+   procedure Share_Retained
+     (Object : in out View; Buffers : in out Intel_GPU_Buffer_Handles.Registry;
+      Source : Intel_GPU_Buffer_Handles.Retained_Reference;
+      Recipient : CuBit.Messages.CapabilitySlot; Identity : Unsigned_64;
+      Offset, Bytes : Unsigned_64) is
+   begin
+      if Object.Current /= Empty then return; end if;
+      Intel_GPU_Buffer_Handles.Retain_Referenced_Backing
+        (Buffers, Source, Object.Backing_Reference, Object.Pinned);
+      if not Object.Pinned then Object.Current := Failed; return; end if;
+      Share_Pinned (Object, Buffers, Recipient, Identity, Offset, Bytes,
+                    Writable => False, Presentation => False);
+   end Share_Retained;
 
    procedure Share_Completed
      (Object : in out View; Recipient : CuBit.Messages.CapabilitySlot;

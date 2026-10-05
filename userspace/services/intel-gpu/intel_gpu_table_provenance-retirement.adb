@@ -2,11 +2,13 @@ package body Intel_GPU_Table_Provenance.Retirement is
    function Phase (Object : Ledger) return Retirement_Phase is (Object.Phase);
    function Pending_Ticket (Object : Ledger) return Unsigned_64 is
      (if Object.Phase = Awaiting_Ack then Object.Pending else 0);
-   procedure Start (Object : in out Ledger; Session, Expected_Generation : Unsigned_64; Accepted : out Boolean) is
+   procedure Start (Object : in out Ledger; Session, Expected_Generation : Unsigned_64;
+                    Accepted : out Boolean; Last_Ticket : Unsigned_64 := 0) is
    begin
       Accepted := False;
       if Expected_Generation /= Object.Epoch or else Object.Phase /= Open or else Session = 0 or else Session /= Object.Owner
         or else not Context_Released (Session) then return; end if;
+      Object.Last_Ticket := Last_Ticket; Object.Include_Last := False;
       Object.Phase := Searching; Object.Cursor := 1; Accepted := True;
    end Start;
    procedure Reopen (Object : in out Ledger; Session, Expected_Generation : Unsigned_64;
@@ -21,6 +23,7 @@ package body Intel_GPU_Table_Provenance.Retirement is
       -- tickets; each clearing sweep required the exact confirmed release.
       Object.Epoch := Object.Epoch + 1;
       Object.Owner := 0; Object.Used := 0; Object.Cursor := 1;
+      Object.Last_Ticket := 0; Object.Include_Last := False;
       Object.Phase := Open; Accepted := True;
    end Reopen;
    procedure Recycle_Confirmed
@@ -60,7 +63,9 @@ package body Intel_GPU_Table_Provenance.Retirement is
       Last := Object.Cursor + Natural'Min (63, Object.Used - Object.Cursor);
       for I in Object.Cursor .. Last loop
          Item := Records.Get (Object.Items, I);
-         if Object.Phase = Searching and Item.Ticket /= 0 then
+         if Object.Phase = Searching and then Item.Ticket /= 0 and then
+           (Object.Include_Last or else Item.Ticket /= Object.Last_Ticket)
+         then
             if not May_Release (Object.Owner, Item.Ticket)
               or else not Context_Released (Object.Owner)
             then Object.Phase := Failed; return; end if;
@@ -72,6 +77,11 @@ package body Intel_GPU_Table_Provenance.Retirement is
       if Last = Object.Used then
          if Object.Phase = Sweeping then
             Object.Pending := 0; Object.Cursor := 1; Object.Phase := Searching;
+         elsif Object.Last_Ticket /= 0 and then not Object.Include_Last then
+            -- A complete bounded census found no other retained tickets.
+            -- The next pass may ask for the parent, still subject to its own
+            -- consumer-exclusion and exact supervisor acknowledgment checks.
+            Object.Include_Last := True; Object.Cursor := 1;
          else Object.Phase := Complete; end if;
       else Object.Cursor := Last + 1; end if;
    end Step;

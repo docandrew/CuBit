@@ -15,8 +15,8 @@ package body Proof_Cases with SPARK_Mode is
          pragma Assert
            (Item.Binding.Identity /= 0 and Item.Binding.Generation /= 0);
          pragma Assert
-           (Item.Source.Direction = Output and
-            Item.Destination.Direction = Input);
+           (Item.Source.Direction = Outlet and
+            Item.Destination.Direction = Inlet);
          pragma Assert
            (Delivery.Compatible
               (Item.Source.Profile, Item.Destination.Profile));

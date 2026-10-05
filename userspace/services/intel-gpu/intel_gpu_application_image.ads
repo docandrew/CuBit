@@ -20,11 +20,22 @@ package Intel_GPU_Application_Image is
    -- GPU_Start remains zero until BOTH images pass visibility/readback checks
    -- and the final ownership check. This is not permission to publish them.
    procedure Prepare
-     (Object : in out State; Source : VM.Image; Backing : Tables.Mappings;
+     (Object : in out State; Source : VM.Image; Backing : Tables.Mapping_View;
       Allocation : Intel_GPU_Buffer_Reply.Backing;
       GGTT_Start, Bytes : Unsigned_64; Success : out Boolean;
       Scratch : Tables.Scratch_Mappings := [others => (0, 0)]);
    function GPU_Start (Object : State) return Unsigned_64;
+   generic
+      with function Lookup (Ordinal : Positive) return Tables.Page_Mapping;
+   procedure Prepare_From_Mappings
+     (Object : in out State; Source : VM.Image; Mapping_Count : Natural;
+      Allocation : Intel_GPU_Buffer_Reply.Backing;
+      GGTT_Start, Bytes : Unsigned_64; Success : out Boolean;
+      Scratch : Tables.Scratch_Mappings := [others => (0, 0)]);
+   -- Same preparation gates without a caller-sized mapping array. Lookup has
+   -- the immutable authenticated-inventory contract of Tables.Prepare_From_Mappings.
+   -- Recheck source identity and owner after each callback; context allocation
+   -- CPU overlap is checked before table writes and on every later resolution.
    function Retained_Root (Object : State) return Tables.Page_Mapping;
    -- Exact root backing encoded into the prepared context, retained across
    -- subsequent VM generations. Zero until both images pass preparation.

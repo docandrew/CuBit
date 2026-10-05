@@ -109,6 +109,47 @@ begin
    Expect (S, Invalid_Geometry);
    D := Decode (Baseline, Baseline, 0);
    pragma Assert (D.State = Invalid_Geometry);
+   declare
+      P : Flip_Plan;
+      Target : constant Unsigned_64 := 16#1000000#;
+      Bytes : constant Unsigned_64 := 8_294_400;
+      procedure Reject (Old, Now : Sample; First, Span : Unsigned_64;
+                        Table : Unsigned_64 := 8 * 1024 * 1024) is
+         R : constant Flip_Plan := Plan_Linear_Flip (Old, Now, Table, First, Span);
+      begin
+         pragma Assert (not R.Valid and not R.Memory.Valid and R.Surface_Word = 0);
+      end Reject;
+   begin
+      P := Plan_Linear_Flip (Baseline, Baseline, 8 * 1024 * 1024, Target, Bytes);
+      pragma Assert (P.Valid and P.Memory.First = Target and P.Memory.Bytes = Bytes);
+      pragma Assert (Unsigned_64 (P.Surface_Word) = Target);
+      S := Baseline; S.Control := S.Control or 8; S.Surface := S.Surface or 8;
+      P := Plan_Linear_Flip (S, S, 8 * 1024 * 1024, Target, Bytes);
+      pragma Assert (P.Valid and P.Surface_Word = Unsigned_32 (Target));
+      Reject (Baseline, Baseline, Target + 1, Bytes);
+      Reject (Baseline, Baseline, Target, Bytes - 4096);
+      Reject (Baseline, Baseline, Target, Bytes + 1);
+      Reject (Baseline, Baseline, Target, 0);
+      Reject (Baseline, Baseline, 2 ** 32, Bytes);
+      Reject (Baseline, Baseline, Unsigned_64'Last, Bytes);
+      Reject (Baseline, Baseline, Target, Unsigned_64'Last - 4095);
+      Reject (Baseline, Baseline, 16#FFFFF000#, Bytes);
+      Reject (Baseline, Baseline, 16#200000#, Bytes); -- same old surface
+      Reject (Baseline, Baseline, 16#201000#, Bytes); -- overlapping old surface
+      Reject (Baseline, S, Target, Bytes); -- changed sample
+      S := Baseline; S.Control := S.Control or 16#200#; -- async unsupported
+      Reject (S, S, Target, Bytes);
+      S := Baseline; S.Control := 0; Reject (S, S, Target, Bytes);
+      Reject (Baseline, Baseline, Target, Bytes, 0);
+      Reject (Baseline, Baseline, Target, 2 ** 31, 4 * 1024 * 1024);
+      S := Baseline; S.Size := 0; S.Stride := 1;
+      P := Plan_Linear_Flip (S, S, 8 * 1024 * 1024, 16#FFFFF000#, 4096);
+      pragma Assert (P.Valid and P.Surface_Word = 16#FFFFF000# and P.Memory.Bytes = 4096);
+      P := Plan_Linear_Flip (Baseline, Baseline, 8 * 1024 * 1024,
+        Unsigned_64 (Baseline.Surface) + Bytes, Bytes); -- adjacency allowed
+      pragma Assert (P.Valid);
+   end;
+   Ada.Text_IO.Put_Line ("Linear flip planning PASS: stable geometry, exact field encoding, range/overlap rejection (NO MMIO)");
    Ada.Text_IO.Put_Line ("Plane decode PASS:" & Cases'Image &
      " rejection/format cases plus geometry and six-field transition checks");
 end Plane_Decode_Tests;

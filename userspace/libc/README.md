@@ -2,7 +2,9 @@
 
 A C library for CuBit: **musl 1.2.6** (MIT; `build/musl-src/COPYRIGHT`)
 with its Linux system-call layer replaced by an in-process implementation
-over CuBit syscalls and services (`overlay/src/cubit/syscall.c`). Plus a C++
+over CuBit syscalls and services, written in Ada and SPARK (`ada/`,
+`CuBit.Libc_System_Calls` and the units it calls; docs/c-removal.md: no
+CuBit-written C). Plus a C++
 runtime: nixpkgs' musl cross gcc's `libstdc++`, linked against this libc.
 Part of the Servo port (`docs/servo-port.md`, decision B: a WASI-style
 libc). Native checks: headless case `libc` (`libc-check` in C,
@@ -57,10 +59,15 @@ Diagnostics that must reach the kernel console (test markers) use
 `cubit_debug_write` from `<cubit/debug.h>`, explicitly; nothing is mirrored
 there implicitly.
 
-The start code (`crt/crt1.c`) builds the argument block musl expects, since
-CuBit's loader passes none: `argv = { "cubit-program" }`, an empty
-environment, and auxiliary entries for the program headers, page size and
-16 random bytes.
+The start code (`crt/crt1.S`, then `CuBit.Libc_Start`) builds the
+argument block musl expects from the launch block (docs/process-arguments.md)
+or, without one, `argv = { "cubit-program" }` and an empty environment, and
+auxiliary entries for the program headers, page size and 16 random bytes.
+
+The libc's Ada runs without an Ada run-time library (`libc-ada.adc`), and
+its decisions and arithmetic are proved SPARK. `tests/libc-ada` holds the
+hosted tests, the proofs, and a check of every ABI constant against musl's
+headers and the kernel's sources.
 
 ## Licenses
 

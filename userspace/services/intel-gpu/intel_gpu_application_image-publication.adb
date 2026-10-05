@@ -4,12 +4,13 @@ with Intel_GPU_Submission_Image;
 package body Intel_GPU_Application_Image.Publication is
    function GPU_Address (Object : State) return Unsigned_64 is
      (if Object.Retirement_Attempted then 0 else Object.Published);
-   procedure Publish
-     (Object : in out State; Source : VM.Image; Backing : Tables.Mappings;
+   procedure Publish_From_Mappings
+     (Object : in out State; Source : VM.Image; Mapping_Count : Natural;
       Allocation : Intel_GPU_Buffer_Reply.Backing;
       Reservations : in out Intel_GPU_GGTT_Reservations.Ledger;
       Status : out Result;
       Scratch : Tables.Scratch_Mappings := [others => (0, 0)]) is
+      procedure Prepare_Image is new Prepare_From_Mappings (Lookup);
       Bytes : constant Unsigned_64 := Intel_GPU_Submission_Image.GGTT_Bytes;
       First_Page : constant Unsigned_64 :=
         Intel_GPU_Buffer_Reply.Page_Address (Allocation, 0);
@@ -21,7 +22,7 @@ package body Intel_GPU_Application_Image.Publication is
         (Owner_Ready and then Range_Allowed (First, Size));
       procedure Prepare_Backing (First, Size : Unsigned_64; Success : out Boolean) is
       begin
-         Prepare (Object, Source, Backing, Allocation, First, Size, Success, Scratch);
+         Prepare_Image (Object, Source, Mapping_Count, Allocation, First, Size, Success, Scratch);
          if Success then Prepared_First := First; end if;
       end Prepare_Backing;
       procedure Write_Checked (Index, Value : Unsigned_64; Success : out Boolean) is
@@ -56,5 +57,19 @@ package body Intel_GPU_Application_Image.Publication is
       else
          Status := Mapping_Failed;
       end if;
+   end Publish_From_Mappings;
+   procedure Publish
+     (Object : in out State; Source : VM.Image; Backing : Tables.Mapping_View;
+      Allocation : Intel_GPU_Buffer_Reply.Backing;
+      Reservations : in out Intel_GPU_GGTT_Reservations.Ledger;
+      Status : out Result;
+      Scratch : Tables.Scratch_Mappings := [others => (0, 0)]) is
+      function Page (Ordinal : Positive) return Tables.Page_Mapping is (Backing (Ordinal));
+      procedure Stream is new Publish_From_Mappings (Page);
+   begin
+      if Backing'First /= 1 then
+         Status := Rejected; Object.Publication_Attempted := True; return;
+      end if;
+      Stream (Object, Source, Backing'Length, Allocation, Reservations, Status, Scratch);
    end Publish;
 end Intel_GPU_Application_Image.Publication;

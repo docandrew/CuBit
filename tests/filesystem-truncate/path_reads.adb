@@ -6,6 +6,8 @@ with Volume_Admission; use Volume_Admission;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 procedure Path_Reads is
+   Replaced_Number : Interfaces.Unsigned_32;
+   Replaced : Ext2.Inode;
    fs : Filesystem;
    sb : Superblock with Import, Address => Disk (1024)'Address;
    bgd : BlockGroupDescriptor with Import, Address => Disk (2048)'Address;
@@ -129,7 +131,7 @@ begin
             Fail_At := boundary;
             CuBit.Messages.Mode := treatment;
             Reply_Style := style;
-            renamePath (fs, "folder/file", "folder/renamed", renameStatus);
+            renamePath (fs, "folder/file", "folder/renamed", False, Replaced_Number, Replaced, renameStatus);
             pragma Assert (renameStatus = Rename_IO_Error);
             pragma Assert (Calls = boundary and Writes = 0 and Disk = original);
          end loop;
@@ -142,13 +144,13 @@ begin
    pragma Assert (lookup = Lookup_Not_Found and found = 0);
    resolvePath (fs, "/absent/file", found, lookup);
    pragma Assert (lookup = Lookup_Not_Found and found = 0);
-   renamePath (fs, "absent/file", "absent/renamed", renameStatus);
+   renamePath (fs, "absent/file", "absent/renamed", False, Replaced_Number, Replaced, renameStatus);
    pragma Assert (renameStatus = Rename_Source_Not_Found and Writes = 0);
    Setup;
    rootEntry.length := 4;
    resolvePath (fs, "folder/file", found, lookup);
    pragma Assert (lookup = Lookup_Malformed and found = 0);
-   renamePath (fs, "folder/file", "folder/renamed", renameStatus);
+   renamePath (fs, "folder/file", "folder/renamed", False, Replaced_Number, Replaced, renameStatus);
    pragma Assert (renameStatus = Rename_Malformed and Writes = 0);
    Setup;
    root.directBlocks (0) := 64;
@@ -159,7 +161,7 @@ begin
    bgd.inodeTableAddr := 64;
    resolvePath (fs, "folder/file", found, lookup);
    pragma Assert (lookup = Lookup_Out_Of_Range and found = 0);
-   renamePath (fs, "folder/file", "folder/renamed", renameStatus);
+   renamePath (fs, "folder/file", "folder/renamed", False, Replaced_Number, Replaced, renameStatus);
    pragma Assert (renameStatus = Rename_Out_Of_Range and Writes = 0);
    Setup;
    resolvePath (fs, "../file", found, lookup);

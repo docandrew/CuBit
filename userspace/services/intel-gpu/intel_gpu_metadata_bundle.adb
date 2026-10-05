@@ -5,14 +5,25 @@ package body Intel_GPU_Metadata_Bundle is
      (Object : in out Bundle; Count, Record_Quota : Positive;
       Per_Table_Bytes : Unsigned_64; Accepted : out Boolean) is
    begin
+      Request (Object, Count,
+        [others => (Count, Record_Quota, Per_Table_Bytes)], Accepted);
+   end Request;
+   procedure Request
+     (Object : in out Bundle; Count : Positive; Demand : Requirements;
+      Accepted : out Boolean) is
+   begin
       Accepted := False;
-      if Object.Status /= Idle or else not Owner_Ready or else
-        Count > Record_Quota or else Per_Table_Bytes = 0 or else
-        Per_Table_Bytes mod Storage.Page_Bytes /= 0 or else
-        (Object.Byte_Limit /= 0 and Object.Byte_Limit /= Per_Table_Bytes)
-      then return; end if;
+      if Object.Status /= Idle or else not Owner_Ready then return; end if;
+      for T in Table_ID loop
+         if Demand (T).Records > Demand (T).Record_Quota or else
+           Demand (T).Byte_Quota = 0 or else
+           Demand (T).Byte_Quota mod Storage.Page_Bytes /= 0 or else
+           (Object.Plan (T).Byte_Quota /= 0 and then
+            Object.Plan (T).Byte_Quota /= Demand (T).Byte_Quota)
+         then return; end if;
+      end loop;
       Object.Target := Count;
-      Object.Byte_Limit := Per_Table_Bytes;
+      Object.Plan := Demand;
       Object.Current := Table_ID'First;
       Object.Status := Checking;
       Accepted := True;
@@ -26,7 +37,7 @@ package body Intel_GPU_Metadata_Bundle is
       V := Storage.Snapshot (Object.Items (Object.Current));
       case Object.Status is
          when Checking =>
-            if Capacity (Object.Current) >= Object.Target then
+            if Capacity (Object.Current) >= Object.Plan (Object.Current).Records then
                if Object.Current = Table_ID'Last then Object.Status := Admitting;
                else Object.Current := Table_ID'Succ (Object.Current); end if;
             else
@@ -34,13 +45,19 @@ package body Intel_GPU_Metadata_Bundle is
             end if;
          when Opening =>
             Object.Status := Failed;
-            Storage.Open (Object.Items (Object.Current), Object.Byte_Limit, OK);
+            Storage.Open (Object.Items (Object.Current), Object.Plan (Object.Current).Byte_Quota, OK);
             if OK then Object.Status := Requesting; end if;
          when Requesting =>
             Object.Status := Failed;
-            if V.Published >= Object.Byte_Limit then return; end if;
+            if V.Published >= Object.Plan (Object.Current).Byte_Quota then return; end if;
             Storage.Request (Object.Items (Object.Current), V.Published +
-              Unsigned_64'Min (Storage.Step_Bytes, Object.Byte_Limit - V.Published), OK);
+              Unsigned_64'Min
+                (Unsigned_64'Min (Storage.Step_Bytes,
+                   Unsigned_64'Max (Storage.Page_Bytes, V.Published)),
+                 Object.Plan (Object.Current).Byte_Quota - V.Published), OK);
+            -- A large virtual reservation is not demand for physical backing.
+            -- Publish one page first, recheck actual capacity, then double
+            -- the committed prefix until the bounded64KiB quantum is reached.
             if OK then Object.Status := Committing; end if;
          when Committing =>
             Object.Status := Failed;
@@ -58,5 +75,9 @@ package body Intel_GPU_Metadata_Bundle is
             if OK then Object.Status := Idle; end if;
          when Idle | Failed => null;
       end case;
+      -- Callback success is not renewed authority. In particular, Admit must
+      -- not expose Idle/success after revocation during the final callback.
+      -- Keep all committed prefixes retained and make this failure sticky.
+      if not Owner_Ready then Object.Status := Failed; end if;
    end Step;
 end Intel_GPU_Metadata_Bundle;

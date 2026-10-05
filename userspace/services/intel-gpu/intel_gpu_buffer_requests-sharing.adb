@@ -68,6 +68,22 @@ package body Intel_GPU_Buffer_Requests.Sharing is
       end if;
       return 0;
    end Find;
+   function Writable_Buffer_Held
+     (Table : Mapping_Table; Session, ID : Unsigned_64) return Boolean is
+   begin
+      if Session = 0 or else ID = 0 or else
+        ID > Unsigned_64 (Intel_GPU_Buffer_Handles.Handle'Last) or else
+        Table.Failed or else not Owner_Ready
+      then return True; end if;
+      for Index in 1 .. Table.Used loop
+         if Element (Table, Index).Session = Session and then
+           Element (Table, Index).Buffer_ID = ID and then
+           Element (Table, Index).Writable and then
+           Views.State (Element (Table, Index).View) not in Views.Empty | Views.Retired
+         then return True; end if;
+      end loop;
+      return False;
+   end Writable_Buffer_Held;
    function Presentation_Held (Table : Mapping_Table; Session : Unsigned_64)
       return Boolean is
    begin
@@ -134,7 +150,11 @@ package body Intel_GPU_Buffer_Requests.Sharing is
         not Intel_GPU_Buffer_Handles.Is_Open
           (Object.Handles, Session, Intel_GPU_Buffer_Handles.Handle (ID))
       then return; end if;
-      -- Whole-BO writer/presentation exclusion. Existing writable aliases must
+      -- Independent image leases can outlive every presentation view.
+      if Writable and then Intel_GPU_Buffer_Handles.Writes_Excluded
+        (Object.Handles, Session, Intel_GPU_Buffer_Handles.Handle (ID))
+      then return; end if;
+      -- Existing writable aliases must
       -- be confirmed retired before exporting; presentation descendants must
       -- be confirmed retired before granting a new writer. Read aliases may
       -- coexist. Failed/uncertain grants never silently remove exclusion.
@@ -254,8 +274,12 @@ package body Intel_GPU_Buffer_Requests.Sharing is
    end Quarantine;
    procedure Poll (Object : in out Service; Table : in out Mapping_Table) is
    begin
-      for Index in 1 .. Table.Used loop
-         Views.Poll_Retirement (Element (Table, Index).View, Object.Handles);
+      if Table.Used = 0 then return; end if;
+      for Step in 1 .. Natural'Min (Table.Used, Poll_Budget) loop
+         Views.Poll_Retirement
+           (Element (Table, Table.Next_Poll).View, Object.Handles);
+         Table.Next_Poll :=
+           (if Table.Next_Poll = Table.Used then 1 else Table.Next_Poll + 1);
       end loop;
    end Poll;
    procedure Share
@@ -273,7 +297,14 @@ package body Intel_GPU_Buffer_Requests.Sharing is
         or else Intel_GPU_Buffer_Views.State (View) /= Intel_GPU_Buffer_Views.Empty
       then return; end if;
       Recipient_Of (Sender, Stamp, Slot, Identity);
-      if Identity = 0 then return; end if;
+      -- Admission may have changed across the trusted recipient lookup. Do
+      -- not create a kernel alias using a now-closed or replacement session.
+      if Identity = 0 or else Object.Failed or else not Owner_Ready or else
+        Session_Of (Sender, Stamp) /= Session
+      then return; end if;
+      if Writable and then Intel_GPU_Buffer_Handles.Writes_Excluded
+        (Object.Handles, Session, Intel_GPU_Buffer_Handles.Handle (ID))
+      then return; end if;
       Intel_GPU_Buffer_Views.Share
         (View, Object.Handles, Session, Intel_GPU_Buffer_Handles.Handle (ID),
          Slot, Identity, Offset, Bytes, Writable, Presentation);

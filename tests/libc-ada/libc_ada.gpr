@@ -1,0 +1,35 @@
+--  Hosted tests and proofs for the libc's Ada (docs/c-removal.md, run.sh).
+project Libc_Ada is
+   Runtime_Src := external ("LIBC_ADA_SRC", "../../userspace/runtime/gnat");
+   for Source_Dirs use (".", Runtime_Src, "../../userspace/libc/ada");
+   for Source_Files use ("cubit.ads", "cubit-kernel_abi.ads",
+                         "cubit-libc_abi.ads", "cubit-child_exits.ads",
+                         "cubit-child_table.ads", "cubit-child_table.adb",
+                         "cubit-libc_time.ads", "cubit-libc_time.adb",
+                         "cubit-libc_select.ads", "cubit-libc_select.adb",
+                         "cubit-libc_reports.ads", "cubit-libc_reports.adb",
+                         "cubit-libc_start_layout.ads", "cubit-libc_start_layout.adb",
+                         "cubit-launch_arguments.ads", "cubit-launch_arguments.adb",
+                         "cubit-libc_rings.ads", "cubit-libc_rings.adb",
+                         "cubit-libc_directory_entries.ads", "cubit-libc_directory_entries.adb",
+                         "cubit-libc_descriptor_rules.ads", "cubit-libc_descriptor_rules.adb",
+                         "cubit-libc_file_cache.ads", "cubit-libc_file_cache.adb",
+                         "cubit-libc_dirty_map.ads", "cubit-libc_dirty_map.adb",
+                         "cubit-libc_park_table.ads", "cubit-libc_park_table.adb",
+                         "cubit-filesystem_queues.ads", "cubit-submission_queues.ads",
+                         "cubit-submission_queues.adb", "cubit-slot_rings.ads", "cubit-slot_rings.adb",
+                         "cubit-channel_rings.ads", "cubit-channel_rings.adb",
+                         "cubit-path_names.ads", "cubit-path_names.adb",
+                         "cubit-libc_net_addresses.ads", "cubit-libc_net_addresses.adb",
+                         "cubit-libc_net_targets.ads", "cubit-libc_net_targets.adb",
+                         "cubit-libc_net_names.ads", "cubit-libc_net_names.adb",
+                         "cubit-libc_stream_rings.ads", "cubit-libc_stream_rings.adb",
+                         "main.adb");
+   for Object_Dir use external ("LIBC_ADA_OBJ", "build");
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa", "-I-");
+   end Compiler;
+end Libc_Ada;

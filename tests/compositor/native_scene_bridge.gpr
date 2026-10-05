@@ -1,0 +1,8 @@
+project Native_Scene_Bridge extends "vulkan_owned_targets.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use Vulkan_Owned_Targets'Source_Files &
+     ("native_scene_bridge.ads", "native_scene_bridge.adb", "native_scene_bridge_tests.adb", "native_scene_bridge_c_test.c", "native_scene_bridge.h");
+   for Main use ("native_scene_bridge_tests.adb");
+   for Object_Dir use "build/native-scene-bridge/obj";
+   for Exec_Dir use "build/native-scene-bridge";
+end Native_Scene_Bridge;

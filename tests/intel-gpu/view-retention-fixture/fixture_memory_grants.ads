@@ -7,6 +7,8 @@ package CuBit.Memory_Grants is
    Revoke_OK : Boolean := True;
    Gone : Boolean := False;
    Creates, Revokes : Natural := 0;
+   Forwardable_Creates : Natural := 0;
+   Last_Writable : Boolean := False;
    procedure Create_Via_Capability
      (Slot : CuBit.Messages.CapabilitySlot; LocalAddr : System.Address;
       NumPages : Natural; ReadWrite : Boolean;

@@ -38,6 +38,17 @@ package Intel_GPU_Buffer_Views is
    -- Presentation explicitly permits terminal read-only forwarding (e.g. to
    -- Desktop). It is rejected with Writable; ordinary mappings never forward.
    -- This is CPU sharing authority, not a GPU-completion or scanout fence.
+   procedure Share_Retained
+     (Object : in out View; Buffers : in out Intel_GPU_Buffer_Handles.Registry;
+      Source : Intel_GPU_Buffer_Handles.Retained_Reference;
+      Recipient : CuBit.Messages.CapabilitySlot; Identity : Unsigned_64;
+      Offset, Bytes : Unsigned_64);
+   -- Trusted coordinator only: authenticate recipient and its read rights
+   -- separately; a lifetime pin is NOT delegation authority. Creates a
+   -- terminal, nonforwardable, read-only CPU reader with its OWN backing pin,
+   -- including after the original BO name closes. Source remains unchanged.
+   -- Caller establishes GPU completion and prevents writes for the entire
+   -- reader lifetime. No image layout, GPU import or scanout guarantee.
    procedure Retire (Object : in out View);
    procedure Poll_Retirement (Object : in out View);
    -- Registry-backed exports retain their BO even after name closure. The

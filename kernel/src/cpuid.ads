@@ -873,6 +873,9 @@ is
     procedure cpuid(leaf : in Unsigned_32; 
                     eax : out Unsigned_32; ebx : out Unsigned_32;
                     ecx : out Unsigned_32; edx : out Unsigned_32);
+    -- CPUID with a sub-leaf in ECX (for example 0Dh, the XSAVE leaf).
+    procedure cpuid(leaf, ecxIn : in Unsigned_32;
+                    eax, ebx, ecx, edx : out Unsigned_32);
 
     ---------------------------------------------------------------------------
     -- Wrapper around CPUID:00h[EAX]

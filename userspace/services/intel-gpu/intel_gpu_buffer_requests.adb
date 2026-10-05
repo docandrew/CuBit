@@ -1,4 +1,7 @@
 package body Intel_GPU_Buffer_Requests is
+   function Image_Writes_Held (Object : Service; Session : Unsigned_64) return Boolean is
+     (Object.Failed or else not Owner_Ready or else
+      Intel_GPU_Buffer_Handles.Session_Writes_Excluded (Object.Handles, Session));
    function Close_Diagnostic
      (Object : Service; Sender, Stamp, ID : Unsigned_64)
       return Intel_GPU_Buffer_Handles.Close_Check is
@@ -81,12 +84,14 @@ package body Intel_GPU_Buffer_Requests is
    end Closed_At;
    procedure Reserve_Private
      (Object : in out Service; Session : Unsigned_64; ID : out Ticket;
-      Reclaimable : Boolean := False) is
+      Reclaimable : Boolean := False;
+      Kind : Private_Table_Kind := Replacement_Tables) is
    begin
       ID := 0;
       if Object.Failed or else Object.Pending /= 0 or else
         Object.Private_Pending /= 0 or else not Owner_Ready or else
-        (Reclaimable and then Session = 0) then return; end if;
+        (Reclaimable and then Session = 0) or else
+        (Kind = Incremental_Tables and then not Reclaimable) then return; end if;
       if Reclaimable then
          for Index in 1 .. Committed_Slots (Object) loop
             if Records.Get (Object.Items, Index).Private_Reusable then
@@ -99,7 +104,7 @@ package body Intel_GPU_Buffer_Requests is
            (Records.Get (Object.Items, Index) with delta Private_Reusable => False));
                Records.Put (Object.Items, Index,
                  (Records.Get (Object.Items, Index) with delta
-                  Private_Closed => False, Private_Reclaimable => True));
+                  Private_Closed => False, Private_Reclaimable => True, Table_Kind => Kind));
                ID := Object.Private_Pending;
                return;
             end if;
@@ -113,9 +118,27 @@ package body Intel_GPU_Buffer_Requests is
       Records.Put (Object.Items, Object.Attempted,
            (Records.Get (Object.Items, Object.Attempted) with delta Owner => Session));
       Records.Put (Object.Items, Object.Attempted,
-           (Records.Get (Object.Items, Object.Attempted) with delta Private_Reclaimable => Reclaimable));
+           (Records.Get (Object.Items, Object.Attempted) with delta
+            Private_Reclaimable => Reclaimable, Table_Kind => Kind));
       ID := Object.Private_Pending;
    end Reserve_Private;
+   function Is_Table_Allocation
+     (Object : Service; Session : Unsigned_64; ID : Ticket;
+      Kind : Private_Table_Kind) return Boolean is
+      Index : constant Layout.Slot := Ticket_Slot (ID);
+   begin
+      if Session = 0 or else ID = 0 or else Object.Failed or else not Owner_Ready or else
+        Index > Committed_Slots (Object)
+      then return False; end if;
+      declare
+         Item : constant Allocation_Record := Records.Get (Object.Items, Index);
+      begin
+         return Item.Identity = ID and then Item.Owner = Session and then Item.Table_Kind = Kind and then
+           (Item.Private_Reclaimable or else Item.Private_Closed) and then
+           not Item.Private_Reusable and then not Item.Reusable and then
+           not Item.Context_Parent and then Item.Issued.Handle = 0;
+      end;
+   end Is_Table_Allocation;
    procedure Acknowledge_Private_Retirement
      (Object : in out Service; Session : Unsigned_64; ID : Ticket;
       References_Retired : Boolean; Accepted : out Boolean) is

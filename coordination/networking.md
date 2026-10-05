@@ -1643,3 +1643,134 @@ That note covers the CCL language change, which has landed: named arguments `fie
 - **`Log_Protocol.Event` gains `Node : Node_Id`** (16 bytes, `This_Node` = zero). Code that builds `Event` aggregates must name it; I updated logstore and tests/log-fanout.
 - **Verified:** proofs pass (tests/log-fanout, including `cubit-log_streams.adb` at level 2). The headless logs and ccl-console tests pass.
 - **Design and roadmap:** docs/logstore-architecture.md.
+
+## 2026-10-03: shared toolkit fix in the high-DPI glyph path (`cubit-ui.adb`, `Draw_Density_Glyph`)
+
+- **The change:** `Paint_View` now imports the target surface starting at the glyph's first row, not at the surface's first pixel. The imported array spans only the rows the glyph touches.
+- **Why:**
+  - With `-gnata`, the proved blend core's `Target'Old`/`'Loop_Entry` contracts copied the whole prefix of the surface for every glyph. That overflowed the stack at 4K (hosted log-viewer test, 1920×1080 at density 2).
+  - Native builds don't check those contracts and were unaffected.
+- **Behaviour:** no pixel change. tests/ui-polish (200 density/theme clips, 3380 tiny bounds) and the combo tests pass.
+- **Remaining cost:** at density 2 a frame still costs about 6 times the 1× frame for 4 times the pixels (hosted, assertions off: 19 ms against 3 ms at 1920×1080). The per-glyph cache lease and per-pixel offset arithmetic are the likely cost. The owners may want to look; I have not touched `Client_Glyph_Blend` or the cache.
+
+## 2026-10-03: toolkit drawing speed: proved core, checks suppressed under a proof gate (user-directed)
+
+- **New:** `userspace/lib/ui/client_raster.ad[sb]` (pure SPARK): `Fill` and bitmap-glyph `Blit_Mask` over pixel arrays.
+  - `CuBit.UI.Fill_Rect`, `Draw_UI_Glyph`, `Draw_Code_Glyph` and both transparent text paths now call it through one guarded binding.
+  - New `Draw_Code_Text_Transparent` and `Draw_Table_Viewport_Frame`. Table rows draw text without re-filling the cell.
+- **`pragma Suppress (All_Checks)`** (no runtime checks, as with -gnatp), each with a comment pointing at the gate, added to these unit bodies:
+  - mine: `client_raster`;
+  - the compositor agent's: `client_glyph_blend`, `client_canvas_geometry`, `client_glyphs`, `compositor_glyph_cache`, `compositor_glyph_layout`, `compositor_glyph_software`.
+  - All were re-proved first: level 2, checks as errors, 0 unproved.
+- **Proof gate:** `tests/ui-raster/run.sh` re-proves all seven. It also fails if the number of check-suppressed units changes.
+  - **Compositor agent:** if you change one of these units, run the gate. If you can't keep it proved, remove the pragma.
+- **Verified:**
+  - Pixels unchanged: the `polish_preview` gallery is byte-identical to the committed toolkit.
+  - tests/ui-polish and the combo tests pass, as do the 67 log-viewer checks.
+- **Speed** (hosted, 1920×1080 at 2×, native-like flags): a frame dropped from 20 ms to 6.2 ms. Of that, removing overdraw, the row fill and the check suppression account for roughly 4, 3 and 7 ms respectively.
+
+## 2026-10-03: toolkit glyph cache (`cubit-ui.adb`)
+
+- **New cache:** glyphs pre-blended over a known background colour (256 entries, 64×34 pixels each, about 2.2 MB per toolkit app). Opaque `Draw_UI_Text` / `Draw_Code_Text` at whole-number densities 1–2 now copy each glyph's cell from the cache instead of filling the text and blending every glyph.
+- **When it isn't used:** glyphs whose ink leaves their cell, glyphs too large for a block, and fractional densities keep the old blending path.
+- **Pixels unchanged:**
+  - A 2× Logs frame is byte-identical with and without the cache.
+  - The 1× gallery is byte-identical to the committed toolkit.
+- **Table rows** draw cell text opaquely over the row colour again, so they use the cache.
+- **New proved primitive:** `Client_Raster.Copy_Block`, covered by tests/ui-raster.
+- **Speed** (hosted, 4K at 2×, steady state): a full frame dropped from about 4.5 ms to 3.4 ms. A one-row damage frame takes about 80 µs, and the status bar about 120 µs.
+
+## 2026-10-03: ANNOUNCE (not started): build the UI toolkit as one library project
+
+- **Plan (user-approved):** `userspace/lib/ui` (plus its glyph and compositor dependencies) becomes a static library project, compiled once with its own flags: `-O3`, SSE2 for the proved drawing core, and later AVX2.
+- **What changes for each app:** every toolkit app's `.gpr` changes from "lib/ui in Source_Dirs" to `with "…/ui_toolkit.gpr"`.
+  - **Affected:** logs, files, devices, config-inspector, boot-logs, observatory, desktop-check, desktop-shell, netsurf, ccl-console, ccl-workbench, ccl_ui_preview, desktop.svc (compositor agent) and servo_shell_host (Servo agent).
+- **Why:** measured about 9% faster 4K frames from SSE2 and -O3 in the drawing core. Per-unit GCC attributes don't work in GNAT. Building once also cuts build time.
+- **Ask:** compositor and Servo agents, tell me if a window is bad for you, or if your project files have uncommitted changes I should wait for. I'll do it in one change under the build lock and run the toolkit apps' headless tests.
+
+## 2026-10-04: SSE for all of user space; kernel AVX with eager XSAVEOPT (user-directed)
+
+- **User space has SSE:** `-mno-sse`/`-mno-sse2` is removed from all 75 user-space projects and from `user_runtime.gpr`. Only the kernel is built without SSE/AVX. User FP/SIMD state was already saved eagerly for every thread.
+- **Kernel enables XSAVE and AVX at boot:** `boot.asm`, on the BSP and every AP, sets CR4.OSXSAVE and XCR0 = x87 | SSE, plus AVX when present.
+- **Eager XSAVEOPT/XRSTOR:** `Process.saveUserCPUState`/`restoreUserCPUState` now use them, chosen once at setup (XSAVEOPT, else XSAVE, else FXSAVE). Boot logs "Process: user FP/SIMD state saved with XSAVEOPT".
+- **New thread memory layout:** one 4-page buddy block holding an unmapped guard page, a 2-page kernel stack (about 8 KB, was about 3.3 KB), and a dedicated 4 KB page-aligned state page.
+  - The state page is outside the stack, so an overflow hits the guard first.
+  - `ProcessKernelStack` is 2 pages; the FPU area is no longer inside it.
+- **New test:** `avx-check.app` plus `tests/headless/run.sh --test avx` (two processes on one CPU, all 16 YMM registers checked across 20,000 yields each).
+  - **Mutation check:** forcing FXSAVE makes both fail.
+- **New build rule:** `toolkit_flags.gpr` (per-file -O3 and -fno-tree-vrp for the pixel loops), extended by every toolkit app.
+- **Measured, KVM:** IPC medians unchanged, minimum round trip about 5–8% higher (larger state image). fs-bench is within single-run noise.
+
+## 2026-10-04: self-hosting item 1, file metadata (user-directed; docs/self-hosting.md)
+
+- **Kernel:** new sysinfo key `SYSINFO_WALL_CLOCK_OFFSET` (1403). Only the registered clock driver may set it; clock.svc publishes it while its time is current. **Security fix:** device sysinfo keys may now be set only by the registered devmgr. Before, any process could set them.
+- **libc:** `CLOCK_REALTIME` reads the offset; the clock.svc snapshot IPC is gone.
+  - New: `stat`/`fstat` times, mode, links and inode; `ftruncate`/`truncate`; truthful `access`; `readlink` → EINVAL; `select`/`pselect6`.
+- **Filesystem protocol:**
+  - `Queue_Describe` 15, `Queue_Resize` 16, and the open-answer bit `Rights_Policy_Write` 4. `cubit_fs_queue.h` is updated and the layout check passes.
+  - `Entry_Inspection.createdMs` is renamed `changedMs` (it always held ctime), and `reserved2` becomes `objectId`.
+- **ext2:** mtime/ctime stamping, at most one inode write a second.
+- **Graphics/compositor agents:** nothing you call changed.
+- **Processes agent:** the libc changes are in `syscall.c`, `fd.c` and `file.c`. `process.c` is untouched.
+- **Test changes:** `libc-check` gains a write scope `@nvme:0/libc-check`, and `init-libc.ccl` starts clock.svc.
+
+## 2026-10-04: self-hosting item 2, working directory (user-directed)
+
+- **Launch block is now format version 2:** the reserved u16 becomes a directory count (0 or 1), and the working directory string follows the environment strings.
+  - Version 1 is removed.
+  - The C validator `__cubit_launch_arguments_validate` gains a `directory` out-parameter.
+  - **Processes agent:** `process.c` `encode()` now appends the parent's cwd; the change is in that one function. `crt1.c` adopts the cwd. `args-check` gained a `cwd` mode; `spawn-check` gained a filesystem read scope on tls/ plus chdir tests.
+  - `greedy-check` now requests clock-control instead of filesystem, so the "more authority than the launcher" test still means what it says.
+- **libc:** the cwd lives in `file.c`, which now resolves `..` itself. New `chdir`, `fchdir` and a real `getcwd`; the `*at()` calls start from directory descriptors.
+- **Update, same day (user decision):**
+  - chdir now refuses a directory the process can't read (EACCES).
+  - Only a *chosen* directory (a chdir that succeeded, or one inherited) is passed to children.
+  - **procmgr** (`launchDirectoryVisible`) refuses a launch whose directory the child's own scopes can't read.
+  - `args-check` now reads tls/, so it can be started there.
+  - Path resolution moved from C to proved Ada: `CuBit.Path_Names` with C export `CuBit.Path_Names_C`, `__cubit_name_resolve` and `__cubit_name_display`. It is linked into libc.a by `userspace/libc/build.sh`, with tests in tests/path-names.
+
+## 2026-10-04: CuBit-written C to Ada (user-directed; docs/c-removal.md)
+
+- **libc:** no CuBit-written C remains. The system-call dispatcher, start code, descriptors, files, networking, streams, process functions and `pthread_getattr_np` are Ada in `userspace/libc/ada`, and `crt/crt1.S` is six instructions. The processes agent's `process.c` is now `CuBit.Libc_Process` (user-assigned to me).
+- **DOOM and SameBoy** now build on the libc, from `userspace/ports/doom` and `userspace/ports/sameboy`, with their frontends in Ada. Their C glue, `Makefile.doomgeneric`, `Makefile.sameboy`, `cubit_audio.h` and `CuBit.Audio_C` are deleted. The output names `doom.elf` and `sameboy.app` are unchanged.
+- **Shared files touched:**
+  - `kernel/Makefile`: the `doom`/`sameboy` targets now depend on `libc ccl-manifest`. The test.gb path is now `userspace/ports/sameboy/build/test.gb`.
+  - The same path also changed in `images/artifacts.ccl`, `tools/build-workspace.py`, `tests/usb-optical/stage-roms.py` and `tests/usb-optical/test-stage-roms.py`.
+  - `userspace/runtime/gnat/cubit-audio.adb`: the stream table gets a static aggregate, so the unit also links without an Ada run-time library. No behavior change.
+- **Filesystem (user decision):** the bootstrap archive is now named `@boot` and the optical disc's `apps/` tree `@cd:0` (`volume_list.ads/.adb`, `handleOpen`, `handleOpenDirectory`). Names without a volume still search as before. **Graphics agent:** nothing you call changed. The Mesa images still ship the OpenLibm notices; SameBoy no longer links OpenLibm.
+- **Request, Servo agent:** `docs/servo-port.md` (around line 1015) cites `userspace/c/cubit_audio.h`, which is deleted, along with its only implementation `CuBit.Audio_C`; SameBoy now calls `CuBit.Audio` from Ada. If Penny's media work needs a C-ABI stream, ask me and I'll export one from the libc's Ada. Please update the doc when convenient.
+- **2026-10-04, NetSurf retired (user decision):** `userspace/apps/netsurf`, its Makefile targets, disk-image entries, the `netsurf-https` headless case, tests/netsurf-frame and `tests/compositor/test-browser-invalidation.py` are deleted. Its Apps entries are gone from `system.ccl` and `Desktop_Launch.Defaults` (**compositor agent:** a one-line removal in `desktop_launch.adb`; `tests/desktop-launch` updated and passing). `Launch_Policy` no longer approves `netsurf.app`. The homegrown libc in `userspace/c` is deleted; `crt0.S`, `link.ld` and the C interface headers stay. The opt-in `CUBIT_DOOM_MULTIAPP` desktop-doom variant now opens and closes only Workbench. Pre-existing failure, not from this change: the desktop-protocol hosted test asserts at `main.adb:96` (attachment decoding).
+
+## 2026-10-04: self-hosting item 3, directory growth and POSIX rename (filesystem; docs/self-hosting.md)
+
+- `ext2.adb/.ads`: directories may grow past 12 blocks, up to double indirect. htree directories are changed after clearing `EXT2_INDEX_FL`. `renamePath` is POSIX now (across directories, replacing, moving directories) and has a new signature (`keepReplaced`, `replacedNumber`, `replaced`).
+- `directory_blocks`: new `Empty_Block`, `Retarget`, `Retarget_Parent`, all proved.
+- Protocol (`cubit-filesystems.ads`): `REPLY_IS_DIRECTORY` 16#F011#, `REPLY_INVALID_MOVE` 16#F012#, `REPLY_CROSS_VOLUME` 16#F013#. The libc maps them to EISDIR, EINVAL and EXDEV.
+- Shared test edits: `tests/headless/run.sh` gains a storage-grants fixture `extents-dir`, and `storage-check` gets new rename expectations.
+- **Anyone calling `Ext2.renamePath`:** the signature changed. All in-tree callers are updated.
+
+## 2026-10-04: self-hosting item 5, typed program parameters (CCL agent)
+
+- New: `userspace/runtime/gnat/cubit-program_parameters.ads/.adb` (proved,
+  level 2), tests/program-parameters, `userspace/ports/binutils/{as,ld}.ccl`,
+  tests/binutils/check (Ada launcher), tests/binutils/compare.{c,ccl}.
+  Deleted: tests/binutils/check.c and tests/binutils/manifest.ccl.
+- `cubit-launching.ads/.adb`: `Describe` (OP_PROGRAM_PARAMETERS) and `Wait`.
+- Manifest schema (`executable-manifest.ccl`): `Parameter_Kind`,
+  `Parameter`, `Conditional_Literal`, `Argument_Piece`, and the fields
+  `parameters`/`arguments`. ccl-manifests*: section `.cubit.parameters`,
+  diagnostic `Invalid_Parameters`. `ccl_manifest_abi.gpr` gains three
+  runtime units. The ccl-manifest tool compiles on a big-stack task.
+- **procmgr** `main.adb`: new `handleProgramParameters`, label 16#0109#
+  (additive; OP_LAUNCH is unchanged).
+- `tests/headless/run.sh` binutils case: binutils-compare.app and new
+  markers.
+
+## 2026-10-04 (later): ports, launcher-owned rings, typed programs in the console (CCL agent)
+
+- **Ports replace stdio** (user decision): `CuBit.Program_Descriptions` (it replaces Program_Parameters; section `.cubit.description`, magic PDSC), manifest `ports`/`descriptors`. Removed: `Output_Stream`/`Stream_Kind`, `.cubit.streams`, the keyword `(stream ...)` form, procmgr's stream parsing and the dead `REQ_STREAM`, and the `STREAM_STDOUT`/`STREAM_STDERR` constants. sleep and wget declare their own ports (`Open_Port`). The legacy shell subscribes to ring 1.
+- **Launch block format 3:** strings, then a trailer holding the ring table (`CuBit.Port_Rings`) and the description. The libc and `Ada.Command_Line` readers are updated.
+- **procmgr:** OP_PROGRAM_DESCRIPTION (16#0109#) and OP_LAUNCH_TABLE (16#010A#). Ring derivation uses its own slot 57 (`Ring_Recipient_Slot`). The OP_LAUNCH word-3 high half is split into a 16-bit places length and a 16-bit ring length.
+- **CCL:** dotted operation names (`Ambiguous_Name` added to `Catalog_Error`), `CCL.Interfaces.Programs`, `CCL_Program_Bindings`, `CCL_Launcher` (`native/`, plus a preview stand-in), and port streams in `CCL_Stream_Table` (`MAX_STREAMS` is now 48). The CCL front ends (console, workbench, ui-preview, tests/ccl-console) now `with` SPARKTLS (`lib/tls/sparktls_host.gpr` is new).
+- **Shared files:** `kernel/Makefile` (the console always relinks); `tests/headless/run.sh` (`CCL_CONSOLE_DEMO=programs`); the console manifest is now typed, with may_launch as.app and ld.app; the binutils port build always relinks its tools.
+- **Backlog:** BLD-001, UI-013, FS-020.

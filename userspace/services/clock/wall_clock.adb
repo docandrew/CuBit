@@ -74,6 +74,25 @@ package body Wall_Clock is
         (Discipline, Candidate, syscall (SYSCALL_GETTIME), Floor_MS, Result);
       Quality := Clock_Discipline.Quality (Discipline);
    end Adjust;
+   Last_Published : Unsigned_64 := 0;
+
+   procedure Publish is
+      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      UTC_MS : Clock_Discipline.UTC_Milliseconds;
+      Current : Boolean;
+      Offset : Unsigned_64;
+      Ignore : Unsigned_64;
+   begin
+      Clock_Discipline.Current (Discipline, Now, UTC_MS, Current);
+      if Current and then Unsigned_64 (UTC_MS) > Now then
+         Offset := Unsigned_64 (UTC_MS) - Now;
+         if Offset /= Last_Published then
+            Ignore := setSysinfo (SYSINFO_WALL_CLOCK_OFFSET, Offset);
+            Last_Published := Offset;
+         end if;
+      end if;
+   end Publish;
+
    function Snapshot return Message is
       Result : Message := NULL_MESSAGE;
       Date : Civil_Time.Date_Time;

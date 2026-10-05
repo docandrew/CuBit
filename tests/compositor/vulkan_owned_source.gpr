@@ -1,0 +1,8 @@
+project Vulkan_Owned_Source extends "vulkan_owned_targets.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use Vulkan_Owned_Targets'Source_Files &
+      ("vulkan_owned_source.ads", "vulkan_owned_source.adb", "vulkan_owned_source_tests.adb");
+   for Object_Dir use "build/vulkan-owned-source/obj";
+   for Exec_Dir use "build/vulkan-owned-source";
+   for Main use ("vulkan_owned_source_tests.adb");
+end Vulkan_Owned_Source;

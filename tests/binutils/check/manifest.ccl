@@ -1,0 +1,9 @@
+# The binutils test launcher (tests/binutils/check): starts as.app and
+# ld.app with typed parameters, delegating exactly the files each call
+# names, which it must hold itself; binutils-compare checks the outputs.
+(Executable_Manifest
+  identity => "com.cubit.binutils-check"
+  version => "0.2.0"
+  requests => [(service "process-manager" "process-manager") (service "filesystem" "filesystem")]
+  scopes => [(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")]
+  may_launch => [(Launch "as.app") (Launch "ld.app") (Launch "binutils-compare.app")])

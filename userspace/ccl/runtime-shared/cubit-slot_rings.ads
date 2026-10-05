@@ -1,0 +1,1 @@
+../../runtime/gnat/cubit-slot_rings.ads

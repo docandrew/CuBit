@@ -3,7 +3,13 @@ generic
    with function May_Release (Session, Ticket : Unsigned_64) return Boolean;
    with function Release_Confirmed (Session, Ticket : Unsigned_64) return Boolean;
 package Intel_GPU_Table_Provenance.Retirement is
-   procedure Start (Object : in out Ledger; Session, Expected_Generation : Unsigned_64; Accepted : out Boolean);
+   procedure Start (Object : in out Ledger; Session, Expected_Generation : Unsigned_64;
+                    Accepted : out Boolean; Last_Ticket : Unsigned_64 := 0);
+   -- Optional exact combined-parent ticket: visit it only after all other
+   -- allocation groups are acknowledged and swept. This is ordering ONLY;
+   -- its context/ring/scratch consumers must independently satisfy May_Release.
+   -- Parent references remain retained on any earlier failure. Zero preserves
+   -- normal ledger order; an absent Last_Ticket grants no new release authority.
    procedure Reopen (Object : in out Ledger; Session, Expected_Generation : Unsigned_64;
                      Accepted : out Boolean);
    procedure Recycle_Confirmed

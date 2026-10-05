@@ -1,5 +1,5 @@
-# Requested authority only; the existing launch path remains in control.
-(executable-manifest v1
-  (identity "com.cubit.sleep")
-  (version "1.0.0")
-  (stream stdout text 4))
+# A long-lived process that reports on one text outlet and sleeps in a loop.
+(Executable_Manifest
+  identity => "com.cubit.sleep"
+  version => "1.0.0"
+  outlets => [(Outlet "com.cubit.sleep.status" Element.Text pages => 4)])

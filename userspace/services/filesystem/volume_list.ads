@@ -19,21 +19,34 @@ package Volume_List with SPARK_Mode is
    type State is private;
    type Registration_Result is
      (Registered, Invalid_Name, Name_In_Use, Endpoint_In_Use, List_Full);
+   --  The read-only stores that are not block volumes have fixed names:
+   --  "@boot" is the bootstrap archive, "@cd:0" the optical disc's apps/
+   --  tree (the part the service mounts). Names
+   --  without a volume still search both and then every volume, for the
+   --  services that use them; the libc always names a volume.
+   Boot_Archive_Name : constant String := "boot";
+   Optical_Name      : constant String := "cd:0";
    type Path_Selection is
-     (Unqualified, Known_Volume, Unknown_Volume, Invalid_Path);
+     (Unqualified, Known_Volume, Boot_Archive, Optical_Volume, Unknown_Volume,
+      Invalid_Path);
 
    function Count (List : State) return Volume_Reference;
    function Name (List : State; Volume : Volume_Index) return String
      with Pre => Volume <= Count (List);
    function Binding (List : State; Volume : Volume_Index) return Device_Binding
      with Pre => Volume <= Count (List);
+   --  The fixed store names are never registered as volumes.
    procedure Register
      (List : in out State; Name : String; Device : Device_Binding;
-      Volume : out Volume_Reference; Result : out Registration_Result);
+      Volume : out Volume_Reference; Result : out Registration_Result)
+     with Post => (if Name = Boot_Archive_Name or else Name = Optical_Name
+                   then Result = Invalid_Name);
+   --  Volume is No_Volume unless Selection is Known_Volume.
    procedure Select_Path
      (List : State; Path : String; Selection : out Path_Selection;
       Volume : out Volume_Reference; Relative_First : out Integer)
-     with Pre => Path'Last < Positive'Last;
+     with Pre  => Path'Last < Positive'Last,
+          Post => (if Selection /= Known_Volume then Volume = No_Volume);
    --  Relative_First uses the index base type: a null String can have bounds
    --  outside Positive. Nonempty qualified names always return a valid suffix.
 

@@ -28,6 +28,7 @@ with Interrupt_State;
 with Locks;
 with Mem_mgr;
 with Page_Admission;
+with User_Page_Walk;
 with PerCPUData;
 with Process.Futex;
 with Process.IPC;
@@ -44,6 +45,7 @@ with Spinlocks;
 with Sysinfo;
 with TextIO; use TextIO;
 with x86;
+with CPUID;
 
 -- Ada implementation: custom storage, address overlays or live context state.
 -- Only separately annotated SPARK policy/state routines carry proof obligations.
@@ -400,7 +402,7 @@ package body Process is
         FrameLists.delete (proctab(pid).frames);
         if threadOf (pid).guardPage /= 0 then
             Mem_mgr.removeGuardPage (threadOf (pid).guardPage);
-            BuddyAllocator.free (1, Virtmem.P2Va (threadOf (pid).guardPage));
+            BuddyAllocator.free (KERNEL_BLOCK_ORDER, Virtmem.P2Va (threadOf (pid).guardPage));
             threadOf (pid).guardPage := 0;
         end if;
         threadOf (pid).kernelStack := null;
@@ -452,6 +454,30 @@ package body Process is
     -- Construct the architectural reset state expected by FXRSTOR. Keeping a
     -- valid image for every user process prevents first-use state inheritance.
     ---------------------------------------------------------------------------
+    --  How user FP/SIMD state is saved: XSAVEOPT (skips untouched and
+    --  unchanged components) when boot.asm enabled XSAVE and the CPU has it,
+    --  else XSAVE, else FXSAVE (x87 and SSE only). Chosen once in setup.
+    type Save_Instruction is (Use_FXSAVE, Use_XSAVE, Use_XSAVEOPT);
+    saveWith : Save_Instruction := Use_FXSAVE;
+
+    procedure chooseSaveInstruction is
+        eax, ebx, ecx, edx : Unsigned_32;
+        XSAVEOPT_BIT : constant Unsigned_32 := 1;
+    begin
+        saveWith := Use_FXSAVE;
+        if (x86.getCR4 and x86.CR4_OSXSAVE) = 0 then
+            return;
+        end if;
+        --  CPUID 0Dh.0 EBX: bytes the enabled components need.
+        CPUID.cpuid (16#D#, 0, eax, ebx, ecx, edx);
+        if ebx = 0 or else ebx > XSAVE_AREA_BYTES then
+            TextIO.println ("Process: XSAVE area too large; FXSAVE only");
+            return;
+        end if;
+        CPUID.cpuid (16#D#, 1, eax, ebx, ecx, edx);
+        saveWith := (if (eax and XSAVEOPT_BIT) /= 0 then Use_XSAVEOPT else Use_XSAVE);
+    end chooseSaveInstruction;
+
     procedure initializeFPUState (state : out FPUState) with SPARK_Mode => On
     is
     begin
@@ -493,6 +519,12 @@ package body Process is
         Spinlocks.Initialize (threadTableLock, threadTableLockName'Access);
         Process_Table.Initialize;
         Thread_Table.Initialize;
+        chooseSaveInstruction;
+        TextIO.println ("Process: user FP/SIMD state saved with " &
+            (case saveWith is
+                when Use_XSAVEOPT => "XSAVEOPT",
+                when Use_XSAVE    => "XSAVE",
+                when Use_FXSAVE   => "FXSAVE"));
         TextIO.enableOutputLocking;
         Spinlocks.Initialize (sleepList.lock, sleepListLockName'Access);
         -- ProcList.setup (allProcs, Config.MAX_PROCESSES);
@@ -533,13 +565,13 @@ package body Process is
             thr.state     := SUSPENDED;
             thr.priority  := priority;
 
-            -- Allocate 2 contiguous pages: guard (lower) + stack (upper)
+            -- One 4-page block: guard, kernel stack, FP/SIMD state page.
             allocGuardedStack : declare
                 function toKStackPtr is new Ada.Unchecked_Conversion
                     (System.Address, ProcessKernelStackPtr);
                 baseVirt : System.Address;
             begin
-                BuddyAllocator.alloc (1, baseVirt);
+                BuddyAllocator.alloc (KERNEL_BLOCK_ORDER, baseVirt);
                 if baseVirt = BuddyAllocator.NO_BLOCK_AVAILABLE then
                     raise ProcessException with
                         "Unable to allocate kernel stack + guard page";
@@ -666,7 +698,8 @@ package body Process is
     ---------------------------------------------------------------------------
     ---------------------------------------------------------------------------
     -- allocGuardedKernelStack
-    -- Two contiguous pages: an unmapped guard (lower) and the kernel stack.
+    -- One 4-page block: an unmapped guard, the kernel stack (2 pages) and the
+    -- thread's FP/SIMD state page.
     ---------------------------------------------------------------------------
     procedure allocGuardedKernelStack (tid : ThreadID; ok : out Boolean) is
         function toKStackPtr is new Ada.Unchecked_Conversion
@@ -675,13 +708,13 @@ package body Process is
         guarded : Boolean;
     begin
         ok := False;
-        BuddyAllocator.alloc (1, baseVirt);
+        BuddyAllocator.alloc (KERNEL_BLOCK_ORDER, baseVirt);
         if baseVirt = BuddyAllocator.NO_BLOCK_AVAILABLE then
             return;
         end if;
         Mem_mgr.tryCreateGuardPage (Virtmem.V2P (baseVirt), guarded);
         if not guarded then
-            BuddyAllocator.free (1, baseVirt);
+            BuddyAllocator.free (KERNEL_BLOCK_ORDER, baseVirt);
             return;
         end if;
         threadtab (tid).guardPage   := Virtmem.V2P (baseVirt);
@@ -698,7 +731,7 @@ package body Process is
     begin
         if threadtab (tid).guardPage /= 0 then
             Mem_mgr.removeGuardPage (threadtab (tid).guardPage);
-            BuddyAllocator.free (1, Virtmem.P2Va (threadtab (tid).guardPage));
+            BuddyAllocator.free (KERNEL_BLOCK_ORDER, Virtmem.P2Va (threadtab (tid).guardPage));
             threadtab (tid).guardPage := 0;
         end if;
         threadtab (tid).kernelStack := null;
@@ -718,8 +751,15 @@ package body Process is
                                    userRSP  : System.Address;
                                    argument : Unsigned_64) is
     begin
-        initializeFPUState (threadtab (tid).kernelStack.fpuarea);
-        threadtab (tid).fpu := threadtab (tid).kernelStack.fpuarea'Address;
+        --  The state page follows the kernel stack in the thread's block.
+        initializeState : declare
+            area : FPUState with Import, Address =>
+                threadtab (tid).kernelStack.all'Address +
+                Storage_Offset (KERNEL_STACK_PAGES * Virtmem.PAGE_SIZE);
+        begin
+            initializeFPUState (area);
+            threadtab (tid).fpu := area'Address;
+        end initializeState;
         threadtab (tid).kernelStack.filler := (others => 0);
 
         threadtab (tid).kernelStack.interruptFrame := (
@@ -2025,8 +2065,35 @@ package body Process is
     ---------------------------------------------------------------------------
     -- pageFault
     ---------------------------------------------------------------------------
+    -- Called with the address-space lock held and a live caller execution pin.
+    -- A sibling may have installed a mapping while this fault waited for the
+    -- lock; presence alone does not establish permission to retry the access.
+    function faultAccessPermitted
+      (pid : ProcessID; addr : System.Address; Write : Boolean) return Boolean
+    is
+        procedure Read_Entry
+          (Table_Frame : Unsigned_64; Index : User_Page_Walk.Table_Index;
+           Word : out Unsigned_64)
+        is
+            Entry_Word : Unsigned_64 with Import, Atomic,
+              Address => Virtmem.P2Va (Virtmem.PhysAddress (Table_Frame)) +
+                         Storage_Offset (Index * 8);
+        begin
+            Word := Entry_Word;
+        end Read_Entry;
+        function Readable is new User_Page_Walk.Readable_Frame (Read_Entry);
+        function Writable is new User_Page_Walk.Writable_Frame (Read_Entry);
+        Root : constant Unsigned_64 := Unsigned_64
+          (Virtmem.K2P (addrtab(proctab(pid).pgTable)'Address));
+    begin
+        return (if Write then Writable
+          (Root, Unsigned_64 (To_Integer (addr)), Unsigned_64 (Virtmem.MAX_PHYS_USABLE))
+          else Readable
+          (Root, Unsigned_64 (To_Integer (addr)), Unsigned_64 (Virtmem.MAX_PHYS_USABLE))) /= 0;
+    end faultAccessPermitted;
+
     procedure kernelUserFault (pid : ProcessID; addr : System.Address;
-                               handled : out Boolean)
+                               Write : Boolean; handled : out Boolean)
     is
         ignore : System.Address;
         result : Page_Allocation_Result;
@@ -2046,7 +2113,7 @@ package body Process is
         lockAddressSpace (pid);
         if Virtmem.tableWalk
           (page, addrtab(proctab(pid).pgTable), Allow_Big => True) /= 0 then
-            handled := True;
+            handled := faultAccessPermitted (pid, addr, Write);
         elsif Page_Admission.Check
           (Unsigned_64 (To_Integer (proctab(pid).stackBottom)),
            Unsigned_64 (To_Integer (proctab(pid).stackTop)),
@@ -2063,7 +2130,7 @@ package body Process is
         unlockAddressSpace (pid);
     end kernelUserFault;
 
-    procedure pageFault (pid : ProcessID; addr : System.Address)
+    procedure pageFault (pid : ProcessID; addr : System.Address; Write : Boolean)
     is
         ignore : System.Address;
         result : Page_Allocation_Result := Page_Added;
@@ -2085,9 +2152,13 @@ package body Process is
            Virtmem.tableWalk
              (page, addrtab(proctab(pid).pgTable), Allow_Big => True) /= 0
         then
-            -- A sibling thread mapped it first.
-            unlockAddressSpace (pid);
-            return;
+            -- A sibling thread mapped it first. Retry only if every page
+            -- table level still permits the original user access.
+            if faultAccessPermitted (pid, addr, Write) then
+                unlockAddressSpace (pid);
+                return;
+            end if;
+            admission := Page_Admission.Outside_Reservation;
         end if;
         if admission = Page_Admission.Admitted then
             tryAddPage (proc => Proctab(pid),
@@ -2224,7 +2295,11 @@ package body Process is
         perCPUAddr : constant System.Address := PerCPUData.getPerCPUDataAddr;
     begin
         if threadtab (tid).mode = USER then
-            x86.fxsave (threadtab (tid).fpu);
+            case saveWith is
+                when Use_XSAVEOPT => x86.xsaveopt (threadtab (tid).fpu);
+                when Use_XSAVE    => x86.xsave (threadtab (tid).fpu);
+                when Use_FXSAVE   => x86.fxsave (threadtab (tid).fpu);
+            end case;
             threadtab (tid).fsBase := x86.rdfsbase;
             clearLoadedState : declare
                 cpuData : PerCPUData.PerCPUData with
@@ -2245,7 +2320,11 @@ package body Process is
             -- FXRSTOR64 raises #NM while CR0.TS is set, so clear TS before
             -- restoring the process' always-valid initial/saved state image.
             enableFPU;
-            x86.fxrstor (threadtab (tid).fpu);
+            if saveWith = Use_FXSAVE then
+                x86.fxrstor (threadtab (tid).fpu);
+            else
+                x86.xrstor (threadtab (tid).fpu);
+            end if;
             x86.wrfsbase (threadtab (tid).fsBase);
             -- KERNEL_GS_BASE is swapped in as the user GS base on return to
             -- ring 3. User GS is not supported; zero it so a value written by

@@ -1,4 +1,4 @@
-with CuBit.Failures;
+with CCL.Evaluation;
 with CCL.Diagnostics;
 with CCL.Types;
 
@@ -297,7 +297,8 @@ package body CCL.Sessions with SPARK_Mode is
          end if;
       elsif Outcome.Has_Stream then
          --  The session's own name for the stream; it grants nothing.
-         Add ("(stream " & Outcome.Stream_Element.Data (1 .. Outcome.Stream_Element.Length) &
+         Add ((if Outcome.Is_Task then "(task " else "(stream ") &
+              Outcome.Stream_Element.Data (1 .. Outcome.Stream_Element.Length) &
               CCL.Streams.Handle'Image (Outcome.Stream) & ")");
       elsif Outcome.Has_Literal then
          --  Already the canonical literal the reader accepts.
@@ -744,7 +745,7 @@ package body CCL.Sessions with SPARK_Mode is
          Prepare (Item, Source, Program, Read);
          Assemble (Item, Program.Data (1 .. Program.Length), Read.Drop_Body, Planned);
          if Planned.Fits then
-            CCL.Language.Interpret
+            CCL.Evaluation.Evaluate
               (Planned.Program.Data (1 .. Planned.Program.Length), Fuel, Item.Catalog, Outcome);
             Finish (Item, Planned, Read, Outcome);
          else
@@ -759,7 +760,7 @@ package body CCL.Sessions with SPARK_Mode is
       Grants : CCL.Catalog.Granted_Bindings; Context : in out Host_Context;
       Outcome : out CCL.Language.Interpretation_Result)
    is
-      procedure Evaluate is new CCL.Language.Interpret_With_Host (Host_Context, Invoke);
+      procedure Evaluate is new CCL.Evaluation.Evaluate_With_Host (Host_Context, Invoke);
       Program : CCL.Language.Views.Text;
       Read : Reading;
       Planned : Plan;
@@ -787,7 +788,7 @@ package body CCL.Sessions with SPARK_Mode is
       Outcome : out CCL.Language.Interpretation_Result;
       Shown : String := "")
    is
-      procedure Evaluate is new CCL.Language.Interpret_With_Values
+      procedure Evaluate is new CCL.Evaluation.Evaluate_With_Values
         (Host_Context, Invoke, Read_Stream => Read_Stream);
       Program : CCL.Language.Views.Text;
       Read : Reading;
@@ -814,7 +815,7 @@ package body CCL.Sessions with SPARK_Mode is
       Grants : CCL.Catalog.Granted_Bindings; Context : in out Host_Context;
       Outcome : out CCL.Language.Interpretation_Result; Reevaluated : out Boolean)
    is
-      procedure Evaluate is new CCL.Language.Interpret_With_Values
+      procedure Evaluate is new CCL.Evaluation.Evaluate_With_Values
         (Host_Context, Invoke, Read_Stream => Read_Stream);
       Entry_Value : Submission;
       Found : Boolean;
@@ -842,6 +843,76 @@ package body CCL.Sessions with SPARK_Mode is
       Item.Entries (Slot (Item.Oldest, Index - 1)).Outcome := Outcome;
       Reevaluated := True;
    end Reevaluate_With_Values;
+
+   procedure Resume_With_Values
+     (Item : in out Session; Index : History_Index; Fuel : Fuel_Budget;
+      Grants : CCL.Catalog.Granted_Bindings; Context : in out Host_Context;
+      Outcome : out CCL.Language.Interpretation_Result; Resumed : out Boolean)
+   is
+      procedure Evaluate is new CCL.Evaluation.Evaluate_With_Values
+        (Host_Context, Invoke, Read_Stream => Read_Stream);
+      Entry_Value : Submission;
+      Found : Boolean;
+      Program : CCL.Language.Views.Text;
+      Read : Reading;
+      Planned : Plan;
+   begin
+      Outcome := (others => <>);
+      Resumed := False;
+      Recall (Item, Index, Entry_Value, Found);
+      if not Found or else Entry_Value.Outcome.Status /= CCL.Language.Waiting_On_Task or else
+        Entry_Value.Source_Truncated or else Entry_Value.Source_Length = 0
+      then
+         return;
+      end if;
+      Prepare (Item, Entry_Value.Source (1 .. Entry_Value.Source_Length), Program, Read);
+      Assemble (Item, Program.Data (1 .. Program.Length), Read.Drop_Body, Planned);
+      if not Planned.Fits then
+         return;
+      end if;
+      Evaluate (Planned.Program.Data (1 .. Planned.Program.Length), Fuel, Item.Catalog,
+                Grants, Context, Outcome);
+      --  Still waiting (on a later task of the same entry): nothing to bind yet.
+      if Outcome.Status = CCL.Language.Waiting_On_Task then
+         Report (Planned, Read, Outcome);
+      else
+         Finish (Item, Planned, Read, Outcome);
+      end if;
+      Item.Entries (Slot (Item.Oldest, Index - 1)).Outcome := Outcome;
+      Resumed := True;
+   end Resume_With_Values;
+
+   function Waiting_Entry (Item : Session; Waited_On : CCL.Streams.Handle) return History_Count is
+      use type CCL.Streams.Handle;
+      Entry_Value : Submission;
+      Found : Boolean;
+   begin
+      for Index in 1 .. Length (Item) loop
+         Recall (Item, Index, Entry_Value, Found);
+         if Found and then Entry_Value.Outcome.Status = CCL.Language.Waiting_On_Task and then
+           Entry_Value.Outcome.Waited_On = Waited_On
+         then
+            return Index;
+         end if;
+      end loop;
+      return 0;
+   end Waiting_Entry;
+
+   procedure Abandon_Wait
+     (Item : in out Session; Index : History_Index; Why : CuBit.Failures.Failure) is
+   begin
+      if Index <= Length (Item) then
+         declare
+            Outcome : CCL.Language.Interpretation_Result renames
+              Item.Entries (Slot (Item.Oldest, Index - 1)).Outcome;
+         begin
+            if Outcome.Status = CCL.Language.Waiting_On_Task then
+               Outcome.Status := CCL.Language.Host_Call_Failed;
+               Outcome.Failure := Why;
+            end if;
+         end;
+      end if;
+   end Abandon_Wait;
 
    procedure View_Source
      (Item : Session; Source : String; Into : CCL.Language.Views.Surface;
@@ -1011,7 +1082,8 @@ package body CCL.Sessions with SPARK_Mode is
       if Outcome.Status /= CCL.Language.Succeeded then
          return "";
       elsif Outcome.Has_Stream then
-         return "Stream<" & Outcome.Stream_Element.Data (1 .. Outcome.Stream_Element.Length) & ">";
+         return (if Outcome.Is_Task then "Task<" else "Stream<") &
+           Outcome.Stream_Element.Data (1 .. Outcome.Stream_Element.Length) & ">";
       elsif Outcome.Has_List then
          declare
             Image : constant String := List_Image (Outcome);
@@ -1063,12 +1135,28 @@ package body CCL.Sessions with SPARK_Mode is
       elsif Outcome.Status /= CCL.Language.Succeeded then
          return CCL.Diagnostics.Message (Outcome.Status) &
            (if Outcome.Diagnostic = CCL.Language.No_Diagnostic then ""
+            --  A type mismatch names what wanted which type, and what it got.
+            elsif Outcome.Diagnostic = CCL.Language.Field_Type_Mismatch
+              and then Outcome.Diagnostic_Expected.Length > 0 and then Outcome.Diagnostic_Found.Length > 0
+            then ": field " & CCL.Types.Image (Outcome.Diagnostic_Subject) & " takes " &
+                 CCL.Types.Image (Outcome.Diagnostic_Expected) & ", not " &
+                 CCL.Types.Image (Outcome.Diagnostic_Found)
+            elsif Outcome.Diagnostic = CCL.Language.Argument_Type_Mismatch
+              and then Outcome.Diagnostic_Expected.Length > 0 and then Outcome.Diagnostic_Found.Length > 0
+            then ": " & CCL.Types.Image (Outcome.Diagnostic_Subject) & " takes " &
+                 CCL.Types.Image (Outcome.Diagnostic_Expected) & ", not " &
+                 CCL.Types.Image (Outcome.Diagnostic_Found)
             elsif Outcome.Diagnostic_Subject.Length > 0
             then ": field " & CCL.Types.Image (Outcome.Diagnostic_Subject) & ": " &
                  CCL.Diagnostics.Message (Outcome.Diagnostic)
             else ": " & CCL.Diagnostics.Message (Outcome.Diagnostic)) &
            (if Outcome.Diagnostic_Position = 0 then ""
             else " at character" & Natural'Image (Outcome.Diagnostic_Position));
+      elsif Outcome.Has_Stream and then Outcome.Is_Task then
+         --  Its state when the entry ran (or last re-ran, as a live card).
+         return (if Outcome.Task_Done
+                 then "Done " & Outcome.Task_Value.Data (1 .. Outcome.Task_Value.Length)
+                 else "Running");
       elsif Outcome.Has_Stream then
          --  A description, never a literal: # starts a comment, so it
          --  cannot be typed back in.

@@ -458,42 +458,17 @@ clean:
 	-rm isodir/boot/laptop-live-initrd.img
 	-rm -rf laptop_live_staging laptop_live_isodir
 
-# Build DOOM and copy ELF into ISO directory
+# DOOM: doomgeneric on the CuBit libc, platform layer in Ada
+# (userspace/ports/doom).
 .PHONY : doom
-doom: user_runtime
-	$(ALR) $(MAKE) -C ../userspace/c -f Makefile.doomgeneric
-	cp ../userspace/c/doom_build/doom.elf isodir/boot/doom.elf
+doom: libc ccl-manifest
+	bash ../userspace/ports/doom/build.sh isodir/boot/doom.elf
 
+# SameBoy: the upstream core on the CuBit libc, frontend in Ada
+# (userspace/ports/sameboy).
 .PHONY : sameboy
-sameboy: user_runtime
-	$(ALR) $(MAKE) -C ../userspace/c -f Makefile.sameboy
-	cp ../userspace/c/sameboy_build/sameboy.app isodir/boot/sameboy.app
-
-# NetSurf renders pages; the browser chrome is native Ada (apps/netsurf).
-# The C script builds the engine object; removing the app forces gprbuild
-# to relink against a rebuilt engine.
-define build_netsurf
-../userspace/c/netsurf/build-freestanding-deps.sh
-mkdir -p ../userspace/apps/netsurf/build
-$(call compile_ccl_manifest,../userspace/apps/netsurf)
-rm -f ../userspace/apps/netsurf/build/netsurf.app
-$(ALR) gprbuild -P ../userspace/apps/netsurf/netsurf.gpr
-endef
-
-.PHONY : netsurf
-netsurf: user_runtime ccl-manifest ui-fonts-native
-	$(build_netsurf)
-	cp ../userspace/apps/netsurf/build/netsurf.app isodir/boot/netsurf.app
-
-# Test variant for the netsurf-https regression: homepage on the loopback
-# HTTPS fixture. The engine is recompiled, so the default app is rebuilt
-# and restaged afterwards and never keeps the test homepage.
-.PHONY : netsurf-https-test
-netsurf-https-test: user_runtime ccl-manifest ui-fonts-native
-	CUBIT_NETSURF_HOMEPAGE=https://tls-test.cubit.internal:18460/ $(build_netsurf)
-	cp ../userspace/apps/netsurf/build/netsurf.app isodir/boot/netsurf-https-test.app
-	$(build_netsurf)
-	cp ../userspace/apps/netsurf/build/netsurf.app isodir/boot/netsurf.app
+sameboy: libc ccl-manifest
+	bash ../userspace/ports/sameboy/build.sh isodir/boot/sameboy.app
 
 .PHONY : sleep
 sleep: user_runtime ccl-manifest
@@ -1016,6 +991,8 @@ ccl-workbench: user_runtime ccl-manifest ui-fonts-native
 ccl-console: user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/ccl/apps/ccl-console/build
 	$(call compile_ccl_manifest,../userspace/ccl/apps/ccl-console)
+	# gprbuild does not track the manifest object it links: always relink.
+	rm -f ../userspace/ccl/apps/ccl-console/build/ccl-console.app
 	$(ALR) gprbuild -P ../userspace/ccl/apps/ccl-console/ccl_console.gpr
 	cp ../userspace/ccl/apps/ccl-console/build/ccl-console.app isodir/boot/ccl-console.app
 
@@ -1131,6 +1108,13 @@ libc-protection-check: libc ccl-manifest
 rust-std-hello: ccl-manifest
 	bash ../userspace/rust/std/build-hello.sh
 	cp ../userspace/rust/build/rust-std-hello.app isodir/boot/rust-std-hello.app
+
+.PHONY : avx-check
+avx-check: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/avx-check/build
+	$(call compile_ccl_manifest,../userspace/apps/avx-check)
+	$(ALR) gprbuild -P ../userspace/apps/avx-check/avx_check.gpr
+	cp ../userspace/apps/avx-check/build/avx-check.app isodir/boot/avx-check.app
 
 .PHONY : futex-check
 futex-check: user_runtime ccl-manifest
@@ -1549,8 +1533,8 @@ DOOM_WAD ?= ../doom1.wad
 # the Servo checkout in userspace/rust/build/servo-work): cubitshell.app, the
 # fonts its font list scans (@nvme:0/fonts) and its start page (servo/pages).
 SERVO_DISK_CONTENTS := $(wildcard isodir/boot/cubitshell.app)
-DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/netsurf.app isodir/boot/sleep.app \
-	isodir/boot/sameboy.app ../userspace/c/sameboy_build/test.gb \
+DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.app \
+	isodir/boot/sameboy.app ../userspace/ports/sameboy/build/test.gb \
 	isodir/boot/capability-test.app \
 	isodir/boot/wget.app isodir/boot/devices.app isodir/boot/files.app isodir/boot/config-inspector.app \
 	isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app \
@@ -1585,7 +1569,7 @@ DESKTOP_CONFIG_SAMPLES := ../userspace/ccl/samples/config-counter.ccl \
 DESKTOP_OVERLAY := isodir/boot/desktop.svc isodir/boot/display.svc isodir/boot/metrics.svc \
 	isodir/boot/netstack.svc isodir/boot/tls.svc isodir/boot/desktop-shell.app \
 	isodir/boot/devices.app isodir/boot/config-inspector.app isodir/boot/files.app \
-	isodir/boot/doom.elf isodir/boot/netsurf.app isodir/boot/ccl-workbench.app \
+	isodir/boot/doom.elf isodir/boot/ccl-workbench.app \
 	isodir/boot/ccl-console.app isodir/boot/logs.app isodir/boot/config-storage.svc \
 	$(SERVO_DISK_CONTENTS)
 DESKTOP_SAMPLE_ARGS = $(foreach sample,$(DESKTOP_CONFIG_SAMPLES),--file "work/$(notdir $(sample))=$(sample)")
@@ -1612,7 +1596,7 @@ INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hd
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
 desktop-session-content: $(INITRD_SERVICES) desktop-metrics display logstore \
-	desktop-shell devices files config-inspector ccl-workbench ccl-console logs config-storage clock timesync tls doom netsurf sameboy
+	desktop-shell devices files config-inspector ccl-workbench ccl-console logs config-storage clock timesync tls doom sameboy
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.ccl, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -1622,7 +1606,7 @@ ata_disk.img nvme_disk.img: $(DISK_CONTENTS) $(DESKTOP_CONFIG_SAMPLES) ../tools/
 		--boot $(filter isodir/boot/%,$(DISK_CONTENTS)) \
 		--file "motd.txt=../userspace/motd.txt" \
 		--file "doom1.wad=$(DOOM_WAD)" \
-		--file "sameboy/00.gb=../userspace/c/sameboy_build/test.gb" \
+		--file "sameboy/00.gb=../userspace/ports/sameboy/build/test.gb" \
 		--file "tls/roots.der=build/tls-roots.der" \
 		--file "init.ccl=../init.ccl" \
 		$(DESKTOP_SAMPLE_ARGS) \
@@ -1820,7 +1804,7 @@ iso: cubit_kernel initrd
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom sameboy netsurf sleep thread-check futex-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: cubit_kernel doom sameboy sleep thread-check futex-check avx-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world
@@ -1914,16 +1898,19 @@ run-desktop: cubit_kernel desktop-session-content
 run-desktop-fast:
 	@test -f cubit_kernel.iso || (echo "missing cubit_kernel.iso; run make -C kernel run-desktop once first" && false)
 	@test -f nvme_disk.img || (echo "missing nvme_disk.img; run make -C kernel run-desktop once first" && false)
-	@rm -f serial_output.log net.pcap
+	@rm -f net.pcap
 	$(MAKE) prepare-desktop-disk
-	GDK_BACKEND=x11 qemu-system-x86_64 \
+	GDK_BACKEND=x11 python3 ../tools/run_logged_qemu.py \
+		--log-root desktop-logs --latest serial_output.log \
+		--hash isodir/boot/cubitshell.app --hash isodir/boot/desktop.svc \
+		--hash cubit_kernel.iso -- qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
 		-cpu Broadwell \
 		-smp 4 \
 		-m $(DESKTOP_MEMORY) \
 		-cdrom cubit_kernel.iso \
-		-serial file:serial_output.log \
+		-serial stdio \
 		-vga none \
 		-device virtio-vga,xres=1024,yres=768 \
 		-display gtk,zoom-to-fit=on \

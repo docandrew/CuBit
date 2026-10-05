@@ -131,6 +131,15 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
    --  DIRECTORY_INSPECTED_BYTES each): a listing with each entry's metadata.
    --  Length = bytes of pairs wanted; the answer's value is pairs filled.
    Queue_Read_Directory_Inspected : constant := 14;
+   --  Handle (an open file or directory): one Directory.Inspection.V1
+   --  record of its object at Arena_Offset (Length at least
+   --  CuBit.Filesystems.DIRECTORY_INSPECTION_BYTES), as fstat needs. A
+   --  write-delegated handle's buffered pages are taken in first, so the
+   --  size and times include them.
+   Queue_Describe : constant := 15;
+   --  Handle (a file that may write), Length = its new size (truncate,
+   --  ftruncate). Queued, it follows the client's earlier writes.
+   Queue_Resize : constant := 16;
 
    --  Byte offsets within a request and an answer (the token first).
    Token_At        : constant := 0;
@@ -148,6 +157,10 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
    Rights_At       : constant := 12;
    Rights_Read     : constant := 1;
    Rights_Write    : constant := 2;
+   --  Whether the client's policy would let it write the file, or create
+   --  in the directory, whatever the handle was opened for (access(W_OK)).
+   --  Directory opens answer this bit alone.
+   Rights_Policy_Write : constant := 4;
    Value_At        : constant := 16;   --  the reply's word 0
 
    Word_Bits : constant := 32;

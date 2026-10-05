@@ -27,7 +27,6 @@ library project user_runtime is
             "-mno-red-zone",
             "-mcmodel=kernel",
             "-fno-pic",
-            "-mno-sse",
             "-I-"
         );
     end Compiler;

@@ -1,3 +1,4 @@
+with Ada.Environment_Variables;
 with System.Storage_Elements;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with Ext2;
@@ -129,7 +130,12 @@ package body CuBit.Messages is
                end;
             end loop;
          end if;
-         if Check_Creation and then Covers (Creation_Block * 1024) then
+         if Check_Creation and then Covers (Creation_Block * 1024) and then
+           --  A grown directory's empty block (one unused record spanning
+           --  it) carries no name and may precede the inode.
+           not (for all I in 0 .. 3 =>
+                  Grant_Buffer (Creation_Block * 1024 - offset + I) = 0)
+         then
             --  The name may only be published after inode initialization.
             pragma Assert ((Disk (4096) and 4) /= 0);
             pragma Assert
@@ -201,6 +207,17 @@ package body CuBit.Messages is
       type Region is array (Natural range <>) of Unsigned_8;
       type Region_Access is access Region;
    begin
+      if call = SYSCALL_GETTIME then
+         return 0;
+      elsif call = SYSCALL_INFO and then arg0 = SYSINFO_WALL_CLOCK_OFFSET then
+         declare
+            Clock : constant String :=
+              Ada.Environment_Variables.Value ("CUBIT_TEST_WALL_CLOCK", "");
+         begin
+            return (if Clock = "" then Unsigned_64'Last
+                    else Unsigned_64'Value (Clock) * 1_000);
+         end;
+      end if;
       if call /= SYSCALL_ALLOCATE_OWNED_MEMORY or else arg0 = 0 or else
         arg0 > 16 * 1024 * 1024
       then

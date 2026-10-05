@@ -1,0 +1,6 @@
+# binutils-compare (tests/binutils): reads the tools' outputs and Linux's.
+(Executable_Manifest
+  identity => "com.cubit.binutils-compare"
+  version => "0.1.0"
+  requests => [(service "filesystem" "filesystem")]
+  scopes => [(filesystem [File_Right.Read] "@nvme:0/work")])

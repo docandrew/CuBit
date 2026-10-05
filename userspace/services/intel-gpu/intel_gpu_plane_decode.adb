@@ -56,4 +56,40 @@ package body Intel_GPU_Plane_Decode with SPARK_Mode is
       end if;
       return (Linear_Ready, Footprint);
    end Decode;
+   function Plan_Linear_Flip
+     (Before, After : Sample; Table_Bytes, Target_First, Target_Bytes : Unsigned_64)
+      return Flip_Plan is
+      use Intel_GPU_Plane_Control;
+      Current : constant Decoded := Decode (Before, After, Table_Bytes);
+      Candidate : Sample := Before;
+      Surface : Surface_Register := (others => <>);
+      Proposed : Decoded;
+      Empty : Flip_Plan;
+   begin
+      -- Check wide values before narrowing into the 20-bit page field. The
+      -- full range must fit 32-bit display addressing and the GGTT aperture.
+      if Current.State /= Linear_Ready or else
+        Target_First mod 4096 /= 0 or else Target_First >= 2 ** 32 or else
+        Target_Bytes = 0 or else Target_Bytes mod 4096 /= 0 or else
+        Target_Bytes > 2 ** 32 - Target_First
+      then return Empty; end if;
+      if Target_First >= Table_Bytes / 8 * 4096 or else
+        Target_Bytes > Table_Bytes / 8 * 4096 - Target_First
+      then return Empty; end if;
+      Surface.Base_Page := Bits_20 (Target_First / 4096);
+      -- MMIO proposal: no ring-flip source or reserved bits are copied.
+      Candidate.Surface := Surface_To_Word (Surface);
+      -- Synthetic live value for geometry decoding ONLY, not latch evidence.
+      Candidate.Live_Surface := Candidate.Surface;
+      Proposed := Decode (Candidate, Candidate, Table_Bytes);
+      if Proposed.State /= Linear_Ready or else Proposed.Memory.Bytes > Target_Bytes then
+         return Empty;
+      end if;
+      -- Keep both old/new GGTT ranges distinct during the pending flip.
+      -- Physical alias exclusion remains the allocation owner's obligation.
+      if Target_First < Current.Memory.First + Current.Memory.Bytes and then
+        Current.Memory.First < Target_First + Target_Bytes
+      then return Empty; end if;
+      return (True, Candidate.Surface, Proposed.Memory);
+   end Plan_Linear_Flip;
 end Intel_GPU_Plane_Decode;

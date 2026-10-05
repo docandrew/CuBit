@@ -1,0 +1,18 @@
+<!doctype html><title>CuBitBrowserPerfAudioStarting</title><body style="font:18px sans-serif"><h1>Penny video seeking</h1><p id="status">Starting</p><video id="v" width="640" height="360" controls></video><script>
+const v=document.getElementById('v');
+const mark=s=>{document.title='CuBitBrowserPerf'+s;document.getElementById('status').textContent=s;};
+const delay=ms=>new Promise(r=>setTimeout(r,ms));
+function event(name){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{v.removeEventListener(name,done);reject(new Error('timeout '+name+' at '+v.currentTime));},12000);function done(){clearTimeout(timer);resolve();}v.addEventListener(name,done,{once:true});});}
+async function until(t){const deadline=Date.now()+12000;while(v.currentTime<t){if(Date.now()>deadline)throw new Error('time stalled at '+v.currentTime);await delay(50);}}
+async function seek(t){const done=event('seeked');v.currentTime=t;await done;if(v.seeking||Math.abs(v.currentTime-t)>.5)throw new Error('bad seek '+t+' got '+v.currentTime);}
+v.src=__MEDIA_URL__;
+(async()=>{
+ await v.play();await until(1);v.pause();mark('SeekPaused');
+ await seek(6);const paused=v.currentTime;await delay(500);
+ if(!v.paused||Math.abs(v.currentTime-paused)>.05)throw new Error('paused seek advanced');mark('SeekPausedForward');
+ await v.play();await until(7);await seek(2);mark('SeekPlayingBackward');
+ await until(3);await seek(10);mark('SeekPlayingForward');
+ await event('ended');if(v.videoWidth!==640||v.videoHeight!==360)throw new Error('dimensions');
+ mark('AudioEnded');
+})().catch(e=>mark('AudioError:'+e));
+</script>

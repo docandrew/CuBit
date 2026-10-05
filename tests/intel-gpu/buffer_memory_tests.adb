@@ -10,6 +10,7 @@ with Intel_GPU_Buffer_Memory;
 with Intel_GPU_Metadata_Arena;
 with Intel_GPU_Table_Provenance;
 with Intel_GPU_Table_Provenance.Retirement;
+with Intel_GPU_Table_Provenance.Retirement.Dispatcher;
 procedure Buffer_Memory_Tests is
    package Layout renames Intel_GPU_Buffer_Backing;
    package Replies renames Intel_GPU_Buffer_Reply;
@@ -594,7 +595,7 @@ begin
       pragma Assert (Munmap (Extra, 4096) = 0);
    end;
    Ada.Text_IO.Put_Line ("Extent metadata wait PASS: seventeenth extent, retained token, stale completion ignored, reserve/commit/clear faults, no allocation replay");
-   for Fault in 0 .. 3 loop
+   for Fault in 0 .. 6 loop
       Reset;
       declare
          Object : Buffers.Pool;
@@ -622,10 +623,65 @@ begin
          use type P.Retirement_Phase;
          Ledger : P.Ledger;
          OK, Consumed, Found : Boolean;
-         Ticket : Unsigned_64;
          Next : Natural;
          Receipt : CompletionEntry;
-         Sends : Natural;
+         Calls, Waits, Releases, Finalized : Natural := 0;
+         procedure Send_Release (Session, Ticket : Unsigned_64; Accepted : out Boolean) is
+            Sends : constant Natural := Submissions;
+         begin
+            Calls := Calls + 1; Releases := Releases + 1; Waits := 0;
+            pragma Assert (May_Free (Session, Ticket));
+            pragma Assert (Ticket = Layout.Allocation_Key ((if Releases = 1 then 2 else 1), 1));
+            Submit_Fails := Fault = 1 or (Fault = 5 and Releases = 2);
+            Buffers.Retire (Object, Layout.Slot (Ticket mod 2 ** 32),
+                            Unsigned_32 (Ticket / 2 ** 32), True, Accepted);
+            pragma Assert (Accepted = (not Submit_Fails));
+            pragma Assert (Submissions <= Sends + 1 and not Confirmed (Session, Ticket));
+            P.Scan_Ticket (Ledger, Session, Ticket, 1, Found, Next, OK);
+            pragma Assert (OK and Found); -- dispatch cannot clear references
+         end Send_Release;
+         procedure Await_Release
+           (Session, Ticket : Unsigned_64; Complete, Failed : out Boolean) is
+         begin
+            Calls := Calls + 1; Waits := Waits + 1;
+            if Waits = 3 then
+               Receipt := (Last_Token, COMPLETION_OK,
+                 ((Layout.Retire_Request_Label, 4, 0, 0),
+                  [0, Ticket + (if Fault = 3 or (Fault = 4 and Releases = 2)
+                                then 2 ** 32 else 0), 7, 0]));
+               if Fault = 2 then
+                  declare Stale : CompletionEntry := Receipt; begin
+                     Stale.token := 0;
+                     Buffers.Complete (Object, Stale, Consumed);
+                     pragma Assert (not Consumed and not Confirmed (Session, Ticket));
+                  end;
+               end if;
+               Buffers.Complete (Object, Receipt, Consumed);
+               pragma Assert (Consumed);
+            end if;
+            Complete := Confirmed (Session, Ticket);
+            Failed := not Complete and not Buffers.Pending (Object);
+            if Waits < 3 then
+               pragma Assert (not Complete and not Failed);
+               P.Scan_Ticket (Ledger, Session, Ticket, 1, Found, Next, OK);
+               pragma Assert (OK and Found);
+            end if;
+         end Await_Release;
+         procedure Finish_Release (Session, Ticket : Unsigned_64; Accepted : out Boolean) is
+         begin
+            Calls := Calls + 1; Finalized := Finalized + 1;
+            P.Scan_Ticket (Ledger, Session, Ticket, 1, Found, Next, OK);
+            pragma Assert (OK and not Found and Next = 0 and Confirmed (Session, Ticket));
+            Accepted := Fault /= 6;
+         end Finish_Release;
+         procedure Prepare (Session, Ticket : Unsigned_64; Complete, Failed : out Boolean) is
+         begin
+            Calls := Calls + 1;
+            Complete := May_Free (Session, Ticket); Failed := not Complete;
+         end Prepare;
+         package D is new R.Dispatcher (Prepare, Send_Release, Await_Release, Finish_Release);
+         use type D.State;
+         Control : D.Controller;
       begin
          for Slot in 1 .. 2 loop
             Response := ((16#F004#, 4, 0, 0),
@@ -636,46 +692,34 @@ begin
             A.Install (Ledger, 42, 1, Slot, Layout.Allocation_Key (Slot, 1), 0, OK);
             pragma Assert (OK);
          end loop;
-         R.Start (Ledger, 42, 1, OK); pragma Assert (OK);
-         for Turn in 1 .. 12 loop
-            R.Step (Ledger);
-            if R.Phase (Ledger) = P.Request_Ready then
-               R.Take_Request (Ledger, 42, Ticket, OK); pragma Assert (OK);
-               Sends := Submissions; Submit_Fails := Fault = 1;
-               Buffers.Retire (Object, Layout.Slot (Ticket mod 2 ** 32),
-                               Unsigned_32 (Ticket / 2 ** 32), True, OK);
-               pragma Assert (OK = (Fault /= 1));
-               pragma Assert (not Confirmed (42, Ticket));
-               P.Scan_Ticket (Ledger, 42, Ticket, 1, Found, Next, OK);
-               pragma Assert (OK and Found); -- submission never clears references
-               if Fault /= 1 then
-                  Receipt := (Last_Token, COMPLETION_OK,
-                    ((Layout.Retire_Request_Label, 4, 0, 0),
-                     [0, Ticket + (if Fault = 3 then 2 ** 32 else 0), 7, 0]));
-                  if Fault = 2 then
-                     declare Stale : CompletionEntry := Receipt; begin
-                        Stale.token := 0;
-                        Buffers.Complete (Object, Stale, Consumed);
-                        pragma Assert (not Consumed and not Confirmed (42, Ticket));
-                     end;
-                  end if;
-                  Buffers.Complete (Object, Receipt, Consumed); pragma Assert (Consumed);
-               end if;
-               R.Acknowledge (Ledger, 42, Ticket, OK);
-               pragma Assert (OK = (Fault in 0 | 2));
-               if not OK then Buffers.Cancel (Object); end if;
-               pragma Assert (Submissions <= Sends + 1); -- never retry release
-            end if;
-            exit when R.Phase (Ledger) in P.Complete | P.Failed;
+         D.Start (Control, Ledger, 42, 1, OK,
+                  Last_Ticket => Layout.Allocation_Key (1, 1)); pragma Assert (OK);
+         for Turn in 1 .. 64 loop
+            Calls := 0;
+            D.Step (Control, Ledger);
+            pragma Assert (Calls <= 1);
+            exit when D.Status (Control) in D.Done | D.Failed;
          end loop;
+         pragma Assert ((D.Status (Control) = D.Done) = (Fault in 0 | 2));
          pragma Assert ((R.Phase (Ledger) = P.Complete) = (Fault in 0 | 2));
-         if Fault in 1 | 3 then
+         pragma Assert (Releases = (if Fault in 0 | 2 | 4 | 5 then 2 else 1));
+         pragma Assert (Finalized = (if Fault in 0 | 2 then 2
+                                    elsif Fault in 4 .. 6 then 1 else 0));
+         if Fault in 0 | 2 then
+            pragma Assert (Buffers.Retirement_Confirmed (Object, 1, 1));
+            pragma Assert (not Buffers.Retirement_Confirmed (Object, 2, 1));
+         end if;
+         Calls := 0; D.Step (Control, Ledger); pragma Assert (Calls = 0);
+         if Fault not in 0 | 2 then
             P.Scan_Ticket (Ledger, 42, Layout.Allocation_Key (1, 1), 1, Found, Next, OK);
             pragma Assert (OK and Found and R.Phase (Ledger) = P.Failed);
+            P.Scan_Ticket (Ledger, 42, Layout.Allocation_Key (2, 1), 1, Found, Next, OK);
+            pragma Assert (OK and (Found = (Fault in 1 | 3)));
+            D.Reopen (Control, Ledger, OK); pragma Assert (not OK);
          end if;
       end;
    end loop;
-   Ada.Text_IO.Put_Line ("Table retirement transport PASS: real Buffer_Memory state machine, 2 allocations, stale completion, wrong generation, send failure, no early reuse");
+   Ada.Text_IO.Put_Line ("Table retirement transport PASS7: real Buffer_Memory, anchor-last exact final receipt, first/second send and generation failures, child finalization failure, no early reuse/replay");
    pragma Assert (Munmap (Mapping, Span) = 0);
    Ada.Text_IO.Put_Line ("Buffer memory PASS: zeroing/guards, arena identity, overlap, transport failures, bounded waits, ownership quarantine (host fixture)");
 end Buffer_Memory_Tests;

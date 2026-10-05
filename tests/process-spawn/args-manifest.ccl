@@ -1,0 +1,7 @@
+# Launch-argument child for the processes test. It reads tls/ only so it
+# may be started there (a child must be able to read its working directory).
+(executable-manifest v1
+  (identity "com.cubit.args-check")
+  (version "0.1.0")
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read) "@nvme:0/tls"))

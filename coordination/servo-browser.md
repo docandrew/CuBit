@@ -1,3 +1,707 @@
+2026-10-03 — Uninstrumented indexed sparse candidate ACTIVE. Prior turn
+PROGRESS: release/discard/protect indexed and native gates passed. Measure before
+adding allocationgap complexity: clock reads on400k+ faults add materialoverhead.
+Private owned-memory counters removed, cargo-proxy restored unprofiled syscall
+object; use existing tested libc-file-cleanup-wrap.o (rootcleanup+eagertransport).
+Private kernelcompile and browserrelink (sharedlock, restores normal builtapp),
+then fresh native lifecycle + memorycycles. Productionstaging unchanged.
+
+2026-10-03 — Indexed release/discard/protect PROGRESS, private only.
+Compile58257 TERM0; native56348 allPASS plus new duplicatechunk/gap/crossrange
+fixture. Kernel0b9f3903089922235db61e23465e57f3728e3558f56f4259fc3644609a938292.
+Browser70251 TERM0 PASSi6rf18qf interactions. Release5564->13.48visits/call,
+lockedelapsed2.541->0.922s. Fault3.886s;allocate2.309s;Find_Base231millionvisits.
+Loads5019/6605/5888/778ms; last screenshot missingicons, exclude778outlier;
+no page-loadspeedclaim. Evidence sparse-indexed-operations includes sources,
+hashes,tests,comparison. Native scale t2foy0te,permissionsy9_1iuvy,concurrency
+2qh949ee,quotaz8uxv358,remotegrants1usd0fjm,aliasb826ncoz,pressurefgd4gxsa.
+Alljobs terminal; disposableimagescleaned. Productiona361unchanged. Next
+allocationgapindex (preserve reservation/chunk overlap semantics), then remove
+profiling and run controlled performance+memorycycles before promotion. Private
+nativefixture and run-native.py now require indexedoperations marker. Memory
+ownership stats still not RSS nor total kernel metadata; audit accounting before
+promotion. Full daily-driver goal active, AVX untouched.
+
+2026-10-03 — Private indexed release/discard/protect ACTIVE. Prior turn
+PROGRESS: AVL fault lookup validated + browser faster. Own only private
+owned-memory + lifecycle fixture/runner in /tmp/penny-sparse-implementation.
+Floor lookup retains exact/range/kind/owner/generation checks. New native cases
+cover reservation+firstchunk equalkeys, adjacent/gap and crossrange rejections.
+No production/shared kernel edits. Compile then native suites/browser measure.
+
+2026-10-03 — Private AVL fault lookup PROGRESS, browser98280 TERM0 PASS.
+Kernel16ea74ff31ca6520f4d42d7bcca6f0ceca6329d8e68be5b569a8ee744de42c49, unchangedprofileapp6fbb1a2b.
+Hosted82810+78065 PASS8193/65536records,20k randomduplicate mutations each,
+structuralchecks+arrayoracle,depth<=32. Kernelcompile88875 TERM0. Native24114
+allPASS: scale b0glg6rf,permissions w6hg0jaf,concurrency2g03qj6a,quotaqer84t0e,
+remotegrants83cn00rv,aliascucgu7h2,pressure2dz2000a; freshlifecycle log retained.
+Browser7o7lkqlg loads5267/6751/5760/5824ms,renderedYouTubehomepagechecked.
+Fault visits7491->13.66/call,locked29.921->3.881s,wait22.292->5.476s; elapsed
+notCPU/fairbenchmark. Release still5564visits/call,Find_Base231millionvisits.
+Evidence sparse-index sources/tests/hashes/comparison. Alljobs terminal, images
+cleaned. Productiona361 unchanged. Next indexedrelease/discard/protect and
+allocationgapsearch, then uninstrumentedtiming+memorycycles beforepromotion.
+Private owned_record_tables.* now override root; only fault resolver uses Floor.
+StableIDs+orderedlist retained; AVL updates insert/release, existing validators
+stillapply. Profiling remainsenabled. Fullgoal stillactive.
+
+2026-10-03 — Private AVL mapping lookup ACTIVE. Prior turn PROGRESS with
+native fault-search profile. Own private owned_record_tables.ads/adb + fault
+resolver in /tmp/penny-sparse-implementation only. Stable record IDs/references,
+ordered list retained, AVL floor selects candidate then existing checks apply.
+Hosted structural/random/failure tests then native regressions/browser next.
+No production edits or AVX work. Sharedsource untouched.
+
+2026-10-03 — Kernel profiling PROGRESS, browser78995 TERM0 PASS 1_3bhwum.
+Privatekernel7a15dea4 app6fbb1a2b. Faults433160:3,244,714,381recordvisits
+(~7491/fault),29.921s lockedelapsed +22.292s lockwait. Allocation4.289/1.260s,
+release2.759/1.019s. Loads7669/11778/12411/13771ms; no speed claim. Counters
+are cumulativeguestwalltime, notCPU; instrumentationaddswork. Strong evidence
+for indexedrange lookup replacing Resolve linear scan. Save results/sources/
+hashes in sparse-memory-profile/kernel-profile-*. Productiona361 unchanged.
+Lifecycle runner stale serial bug FIXED; first17414 run notvalid evidence.
+Fresh84569 PASS withnewcountermarkers; prior reusedrunner lifecycle results
+maybestale (other suites freshdirs). Fixedrunner saved. Allownjobs terminal,
+disposableimagescleaned. Next design indexedlookup preserving owner/generation/
+range validation; private profiling enabled, cargo-proxy still profileobject.
+
+2026-10-03 — Private kernel memory profiling ACTIVE. Prior turn no progress
+(AVX acknowledgment); resumed measured sparse-performance work. Own only private
+/tmp/penny-sparse-implementation owned-memory diagnostics: per-PID fault/alloc/
+release wait and locked elapsed times, record visits, exit summary. Production
+a361d491 unchanged; no AVX changes. Compile and native browser run next.
+
+2026-10-03 — Release/discard optimized browser4227 TERM0 PASS, no load speed win.
+w4v_krih:release cumulative8.718s->3.649s, discard1.693s->0.402s,
+protect0.180s->0.087s; allocate stays5.417s. Totalsinclude waiting/overlap,
+NOT CPUtime or equalpage savings. Loads4749/9383/11370/13760ms stillslow.
+Evidence before/after-results+operation-comparison in sparse-memory-profile.
+All ownjobs terminal, testimagescleaned. Production a361d491 unchanged.
+Privateprofile app6fbb1a... uses libc-syscall-profile.o (cargo-proxy points
+there); uninstrumented object libc-syscall-wrap.o retained. Kernel22be419...
+retains optimizedDemand inventory/knownmember detach; all nativegatesPASS.
+Next measure fault/registry search exclusive costs and load-stage work; avoid
+assuming cumulative memory syscall time explains wholepage delay. Metadata
+lookup Release/Resolve still scansrecords; Find_Base+Insert scanslinear.
+
+2026-10-03 — Private sparse release/discard profiling+optimization.
+Regularbrowser66354 4x32j43d onoptkernel PASS nearbaseline; memoryprofiling
+86525 build+53770 f8d4w7hk PASS:30k releasecalls8.718sec,31k alloc5.412sec,
+2073discard1.693sec aggregatewallus (excludesfaults/directtransportallocs).
+Private Demand Inventory validates retainedsegments, no fullprocess listscan;
+detachMemberRange boundedlocalchecks only forauthenticated lockedanchors.
+53740 compile+27103 lifecycle/scale/permissions/concurrency/quota/remotegrant/
+alias/pressure ALLPASS kernel22be419... scale256x128 release11–12ms vs69–115.
+Browser afterprofile session4227 ACTIVE; poll next. Source/logs/hashes in
+sparse-memory-profile. Staged a361d491 unchanged; privateinstrumentation only.
+
+2026-10-03 — NORMAL Penny shutdown fix PUBLISHED, no sparse memory.
+19648 normal libc+browserbuild TERM0.44040 native validation TERM0 using
+actualfastISO kernelb96b0993...:windowjlo35wp5,workerltvdoywa,YouTubechrome
+o2tmw9rg allPASS. Normaldocloads2764/4883/5175/5242ms nearpriorbaseline.
+Staged+rootbuiltapp now a361d4917636dfb2b9a5bcaaf1b31a86d7ce3b808700d74ce66d7786ad0649f4.
+Includes rootlibc failedgrantcleanup; no experimental127/128 or memorywraps.
+run-desktop-fast overlays stagedapp automatically; ISO/kernel unchanged.
+Evidence shutdown-cancellation/publication.json; previousb4e277 app rollback
+and matching penny-unstripped symbols retained there. Redundantnormalapp and
+extractedkernelremoved; disposableVMimagescleaned. All own sessions terminal.
+Private sparse candidate remains9d4de535... withshutdownfix, optimizedkernel
+92790b...; unresolved browserperformance regression (despite microbench gain).
+Next instrument sparse protection/discard costs and recover remaining speed
+before promotingmemoryABI; broader daily-driver/video/sandboxgoal remainsactive.
+
+2026-10-03 — Shutdown cancellation regression FIX verifiedprivate.
+Stagedbaseline81261 08mmrni1 deterministically crashes error.rs91 in closing
+custom-elementconstructor. Fix preserves uncatchable noexception JSFailed
+only knownclosing Window/Worker; ordinary liveglobalassert retained.
+64061 buildPASS;4937 windowPASS de_1spis,worker cleanbutmarkerassert wrong.
+8048 TERM0 public fixtures window2d4yvmd_,workermfo2jfi4 +YouTubechrome
+rsiqznc9 allPASS. Worker uses existing ImportScripts closingpath.
+Root shutdown_exception.py+patchhook, native regressionrunner+HTMLsaved.
+Now building NORMAL Penny +libc cleanup under sharedlock; no sparsewrappers
+or newkernelABI. Will nativevalidate stagedkernel before apppublication.
+
+2026-10-03 — Browser97254 TERM1: new shutdown assertion captured.
+6pi51jsx: error.rs91 JS_IsExceptionPending(cx) in JSFailed branch Script#2;
+windowclosed + CUBITSHELLclosed precede panic, mozalloc_abort/nullfault.
+Possible cancellation without pendingexception; needs diagnosis, not assertion
+suppression. Native allocator regressions/proof pass, but browserFAIL; HOLD
+promotion. Documents4804/9380/10628/5455ms (not isolated; speednotestablished).
+Evidence sparse-scale-optimization/browser-result.json +shutdown-crash.log.
+All ownjobs terminal; imagescleaned; matching penny-unstripped retained /tmp.
+Next investigate JSFailed close cancellation and profile remaining fault cost.
+
+2026-10-03 — PRIVATE sparse insertion optimization passes native regressions.
+39702 baseline scale4e06rkp0:256maps*128pages touch1.95–4.63sec; optimized
+ur925u2a82–92ms. Fast known-member insertion avoids wholeframe-list scan;
+Preceding bounds scan to actualmapping length. Ordinary checkedsplice retained.
+24980 lifecycle+permissionsPASS, concurrencyfailedprogress witness;66822
+locatedline62 (200fastdiscards completed beforeallworkerprogress). Stronger
+batchedprogress witness45404 PASScbz2nkcf +quota/remotegrant/alias/pressure.
+97401 metadata100958243checks+SPARKPASS. Sources/logs/results/hash saved
+sparse-scale-optimization. Kernel92790b..., stillprivate; no newrootAPI.
+Browser chrome-stress97254 ACTIVE; poll next. No stagedchanges.
+
+2026-10-03 — Sparse/baseline cycles complete; HOLD sparse promotion for speed.
+80525 TERM0 baseline akthfmbs PASS: postclose394809344/394330112/393846784bytes.
+Candidate85c5xxnh231739392/234512384/234803200; savings40.4–41.3%.
+BUT candidate6documenttimes5128/9508/10687/10781/4030/4213ms vs baseline
+2714/4866/5172/5452/1911/2021 (~2x). Sharedhost/livepage notisolated;
+consistent regression needs investigation. Full cycle-comparison.json saved.
+Likely hotpaths to measure: moveFrontBefore scans entire processframe list
+for membership everyfault; Preceding scans4096 bits even smallmappings;
+Resolve iterates allrecords. No optimization applied yet.
+Independent ROOT libc file.c leakcleanup applied underlock; no sparseABI.
+Bounce/partialqueue failures revoke createdgrants and releaseunused mappings.
+Native48177 TERM0 file-denied-root-nmth2e3z PASS32deniedcalls stableowned;
+80063 private PASSecpn0628;27223 oldcontrol expectedFAIL nsbnhmr8.
+Newfixture userspace/libc/tests/file-grant-denied.c; detailed evidence under
+sparse-libc-candidate/file-grant-cleanup. No sharedlibc/browserrebuild/staging.
+All own sessions terminal, disposableVMimagescleaned. Next sparsefaultcost fix
+and measure before integration; branchfailure injection for cleanup stilluseful.
+
+2026-10-03 — Candidate memory cycles21715 TERM0 PASS.
+85c5xxnh: postclose ownedbytes231739392,234512384,234803200 (~221/224/224MiB).
+4reloads+resize/menu stress then3load/close phases and final PIDreclaim.
+Candidate report saved sparse-libc-candidate/candidate-cycles.json.
+Baseline sameprivatekernel+fixture/stagedapp session80525 ACTIVE; poll next.
+No production edits. Sharedhost/livewebsite: not fair crossOS timing or leakproof.
+
+2026-10-03 — Private sparse memory-cycle session21715 ACTIVE.
+Evidence penny-input-85c5xxnh. First two postclose final ownedbytes
+231739392 and234512384; thirdclose pending. No universal leak claim.
+Samekernel/stagedbrowser baseline next; only private test images.
+Static integration review recorded sparse-libc-candidate/integration-review.md.
+
+2026-10-03 — PRIVATE sparse Penny full interaction PASS, 55187 TERM0.
+Evidence penny-input-utk621zp: YouTube rendered (screens inspected),
+resize, load/postload click, menu close, PID36 reclaimed +1331 ownedregions.
+Guest Complete5423ms; owned359374848 at15s (NOT RSS/matchedbenchmark).
+One Connect warning remains; no grant failures. Prior48548 g6dg5umd
+rendered but overbroad warning assertion stopped before close; preserved.
+Private file/net transport allocations eager; anonymous mmap sparse <=16MiB.
+Stagedapp byte-identical restored. Sources/wrappers/hashes/results preserved
+in penny-evidence-20261003/sparse-libc-candidate. All own sessions terminal.
+Disposable images removed; retain current candidate/unstripped for followup.
+Next matched memory settle/cycles, then source/API/lock review; not published.
+
+2026-10-03 — Private Penny sparse integration exposed grant-before-touch.
+Initial browser icxja9zc TIMEOUT: demand-backed filesystem transport grants
+failed, marker/fonts inaccessible. Private file.c now eager transport backing;
+lt0ccm77 startup/resize/shutdown passed but network Connect failed similarly.
+Private net.c now eager shared transport backing too. New strict load runner
+rejects grant failures and Connect errors; native session 48548 active.
+All libc candidates private via link wraps; shared app restored, no staging.
+Sources/hashes/logs: penny-evidence-20261003/sparse-libc-candidate.
+
+2026-10-03 — Private libc direct and linker-wrap native tests PASS.
+Aligned allocation/discard/free 16 cycles and eager fallback covered.
+Building private Penny sparse candidate under shared lock via cargo rustc
+linker wrap; shared stripped app restored from identical staged app on exit.
+No staging or production ABI changes. Next native browser load/memory tests.
+
+2026-10-03 — PRIVATE sparse real pressure +alias tests PASS.
+4621 TERM0 sparse-pressure-n0mnh1vi:256MiBguest/noquota fills eagerRAM+sparsemeta;
+failedallocation countersstable; freeing1MiB restoresmetadata+zerofault; full
+releasebaseline; exhaustedchildfaultisolated/reclaimed,parentallocates afterboth.
+69574 TERM0 sparse-alias-9p2d_dud: authorizedlegacycontroladmits, sparseVAoverwrite/
+resident/guard/refaultphysicalaliasesreject andtargetVAunmapped,4cycles.
+44285 initialfixturefailed (controlinreceivedgrantaperture; fixedaddress/sentinel).
+All exact optimizedcandidatekernel. Source/hash/log/results sparse-failure-alias.
+Alljobs terminal; disposableimages/ELFs cleaned. Prototype stillprivate. Next
+review coordinatedABI/libc integration candidate and runPenny end-to-end instead
+of expanding generictests indefinitely. Need actualbrowser RAM/timing and non-
+sequential/manymapping costs; no universalfailure/lock/sandbox proof claimed.
+
+2026-10-03 — PRIVATE sparse fault optimization measured+regressed PASS.
+42674 baseline timings eu74wqoc;21411 optimized czevdxpd:16MiB ascendingtouch
+median218634us->14096us, eagerallocate+touch4407us, discard622us. Guest syscall114,
+3repeats,KVM4CPU;sharedhost notisolated, snapshotsrecorded;notbrowserbenchmark.
+Remove fullInventoryValid perFault; retain liveowner/generation, metadataanchor/
+count and touchedframe/PTE validation, fullscan onProtect/Discard/Retire.
+99374 TERM0: lifecycle,permissions6aev_3ak,concurrencysluh7_d2,quota7eqtlgbq,
+remotegrantsz8m9y8fx allPASS exactnewprivatekernel. Persisted sparse-fault-optimized
+sources/hashes/logs/result; comparison sparse-timing-comparison.json. No shared
+prototype/ABI/Penny change. ISO/ELFcopies cleaned,2MiB candidate+objects retained
+for remainingfailure/alias tests. Alljobs terminal. Need reverse/random/manymapping
+cost checks, allocator/PTE rollback andlockreview before promotion. Goalactive.
+
+2026-10-03 — PRIVATE sparse quota +remote-grant native PASS.
+85291 TERM0 sparse-quota-8z8vzdat:realSPAWN/CAP_RESOURCE/RESUME512framequota;
+metadatafill+32stable rejections,release/re-admit/datafault quota recovery and
+baseline; secondchild quota faultkills/reclaims, parentallocates afterboth exits.
+55450 TERM0 sparse-remote-grants-g5hic_13: separateownerdiscard+zero/refill+release+
+exit retainsreceiverolddata; heldgrant blocksPIDreuse; afterreturn newincarnation
+rejectsoldgrant/endpoint/return identities. No kerneltesthook/checkbypass.
+All same privatecandidatekernel; alljobs terminal. Source/hash/log/results saved
+sparse-owned-prototype/quota-remote-grant.json; ISO/ELFcopies cleaned. No rootkernel
+orPenny/sourceABI promotion. Next allocationfailure/rollback, alias, fault-cost
+and lockreview; fullinventory perFault currently needs performance measurement.
+
+2026-10-03 — PRIVATE sparse retained-grant test PASS.
+92619 TERM0 sparse-grants-743ux89l,16self-grant cycles samecandidatekernel.
+Existing rootdevmgr policy mints selfendpoint, then real grant APIs: pinnedold
+contents survive ownerdiscard; ownerrefaultzero; writesindependent; ownerrelease
+preservesalias; revoke blocksnewacquisition but acquiredalias validuntilreturn;
+stalegeneration acquire denied. No bypass/testkernelpatch. Scope=selfalias only,
+not secondprocess or physicalalias admission. Source/hash/log/result+runner saved
+sparse-owned-prototype. Allownjobs terminal; ISO/ELFs/duplicatekernel cleaned.
+Next quota/rollback and crossprocess/alias coverage before prototypepromotion.
+Production libc/Penny stillunchanged, goalactive.
+
+2026-10-03 — PRIVATE sparse protection/concurrency tests PASS.
+2702 TERM0 sparse-permissions-caz2ka8j:6fault+reclaimcases/3allowedcontrols.
+37150 earlier concurrencypass; stronger59997 TERM0 sparse-concurrency-nge13yrz:
+3pthread workers/4KVM CPUs,24firsttouchwaves32pages,exactowned accounting;
+200concurrentdiscards with everyworker progress witness, quiescentbaseline restored.
+All tests exactsame privatecandidatekernel. No sharedprototype/sourceABI/staging
+change. Allownjobs terminal. ISO/ELFs/duplicatedkernels removed, compactevidence
+and scripts persisted sparse-owned-prototype/protection-concurrency.json.
+Next quota/allocation rollback +retained grants/alias checks; review fault-time
+lock ordering and inventory scan performance; libc/Penny stillnotoptedin.
+
+2026-10-03 — PRIVATE sparse owned-memory native/accounting PASS.
+70623 and8488 TERM0. 129pages3orders, mixed eager, partial/repeated/full discard,
+neighbor retention/zero refault, readonly/guard transitions, release+8live exit.
+Exact owned inventory: reserve+4096 metadata; touch+129pages; discard-79pages;
+3cycles return baseline. No wholeRSS/browser saving claim. Prototype NOT applied
+root or staged. Persisted source/base/hashes/logs/result/remaininggates under
+penny-evidence-20261003/sparse-owned-prototype. /tmp/penny-sparse-implementation
+retains2MiB candidatekernel+incrementalobjects for forthcoming isolationtests;
+ISO/duplicatekernel/initrd/testELF removed. Allownjobs terminal.
+Next guard/read-only death, concurrent faults/discard/locks, quota/rollback,
+grant-pin/alias tests and performance before shared promotion/libc optin.
+Experimental syscall127/128 only inprivatekernel, coordinate ABI beforepromotion.
+
+2026-10-03 — sparse owned-memory PRIVATE prototype native70623 active.
+No shared kernel source edits this turn. Private /tmp/penny-sparse-implementation
+contains owned-memory ads/adb +parent Process fault hooks +experimental syscall
+127 Allocate_Demand /128 Discard_Demand (numbers NOT published/reserved in root).
+Metadata one tracked charged physicalframe; data nodes descending beforeanchor;
+physical-conflict scan includes metadata/pending rollback; generation authenticated.
+Allocate, Resolve, Protect, Discard, Retire implemented. 16MiB per sparse mapping,
+eager buffers unchanged. Native compile47409 and private fullkernel94801 PASS;
+packaging33220 PASS after private runtime/linker path fixes. Native70623 KVM test
+checks zero refault, neighbor preservation, three fault orders, readonly/guard
+transitions, mixed eager+sparse, release/exit. Permission-death/concurrency/quota/
+grant-pin tests remain required. DO NOT publish or opt libc/Penny in yet.
+
+2026-10-03 — fault-access native PASS, all own jobs terminal.
+77514 TERM0 dnayeodg: actual candidatekernel boot, YouTube loading, clicks during
+load/afterload, exact resize, clean process+network retirement PASS. Source/native
+compile and64path extracted dispatcher regressions documented tests/owned-demand.
+No stagedkernel/ISO change; shared kernel/cubit_kernel is rebuilt output only.
+Native temporaryimages/ELFs removed, own /tmp/penny-fault-kernel removed afterhash.
+Compact source/hash/log/result evidence retained fault-access anddnayeodg.
+Physical discard not yet integrated. Next sparse owned backing/resolution needs
+native permission/fault-concurrency/retirement tests before libc opts in. Goalactive.
+
+2026-10-03 — fault-access build/regressions PASS; native77514 active.
+76603 compile and29811 full kernel link TERM0. 83462 extracted actual dispatcher
+passes64 flag/handled combinations; instruction/lost-write/reserved-bit negative
+controls fail as expected. Initial71394 harness SPARK nested-aspect error fixed.
+User-memory tests expanded16 writable-level combinations +absent/supervisor reject,
+all existing copy/read tests pass. Preserved snapshots/hashes/logs fault-access.
+Candidate /tmp/penny-fault-kernel; no stagedkernel/ISO change. 77514 disposableKVM
+YouTube click-during-load regression active, Broadwell/HDA. Source files frozen.
+Full demand backing still not integrated; these are fault-permission prerequisites.
+
+2026-10-03 — fault access prerequisite ACTIVE.
+Narrow ownership: kernel/src/interrupts.adb handlePageFault and process.ad[sb]
+pageFault/kernelUserFault plus local permission-check helper (no launch/FPU edits).
+Reject instruction/reserved-bit faults before data demand path; preserve Write;
+check effective user permission on raced-in resident PTEs. Applied under lock.
+Native compile and extracted routing tests pending. No staging/ISO changes.
+
+2026-10-03 — discard metadata prerequisite VERIFIED and published.
+89427 TERM0 hosted100958243 checks + SPARK all checks proved. Discard removes
+one resident bit/count while preserving permissions and neighbors; tests cover
+forward/reverse/permuted full removal, ranks, and recommit/discard. Published
+kernel/src/owned_demand_pages.ad[sb], tests/owned-demand/pages_tests.adb/README
+under shared lock. Evidence penny-evidence-20261003/discard-metadata contains
+source hashes, source copies, proof report and result. No live kernel caller,
+physical savings or native concurrency claim. All own jobs terminal; staged
+Penny unchanged. Next integrate sparse ownership/fault backing safely, keeping
+existing dense buffers/grants semantics. No libc false-reclamation workaround.
+
+2026-10-03 — physical discard prerequisite active (private source only).
+Own kernel/src/owned_demand_pages.ad[sb], tests/owned-demand/pages_tests.adb
+and README for sparse residency removal; no owned-memory ABI/fault edits yet.
+Prepared /tmp/penny-discard-xwcwldry with Discard preserving permissions and
+neighbor residency. Nix hosted tests/SPARK session89427 running private outputs.
+Production/staged binaries unchanged. Full native discard needs authenticated
+ranges, sparse inventory, fault restoration, TLB/pin/quota handling; not claimed.
+
+2026-10-03 — Rc sizing FIX +optin reports STAGED b4e277ab.
+46471 TERM0 jbh71ed3 native:4reports (21,>600,644,87 categories), YouTube4loads,
+resize/menu actions, idle/tabclose, process/networkretirement PASS. Previously
+faulting report2 nowvalid. Afterclose YouTubeJS categories gone; largest20MiB
+networkcache; owned397467648. Categories notcomplete/overlap; decommitted engine
+labels notphysicalreclamation because libcMADV remainsadvisory.
+Staged exact testedb4e277ab underlock; private candidate96MB removed. Publication,
+report-result/logs/PNG/source/hashmanifest retainedjbh71ed3; fixtureimages cleaned.
+Promoted test_rc_dom_size.py underlock. docs/penny-memory-reports.md documents marker,
+asyncbounds, limitations and allocation fix. Allownjobs terminal. Original4f25
+rollback retained; originaluserclickabort notprovedrelated. Fullgoal active.
+
+2026-10-03 — Rc DOM memory-sizing fix built; native46471 active.
+Rootcause:HTMLVideoElement usesRc/new WeakReferenceable reflection; DOMClass codegen
+always usedBox rawself helper, feeding interiorRc data pointer into malloc_usable_size.
+patch_servo.py now selectsrawRc helper for weakReferenceable descriptor; ManuallyDrop
+Rc::from_raw delegates existingMallocUnconditionalSizeOf so allocationbase restored,
+strongreference not consumed. Box helper unchanged.76880 TERM0 build1m57s b4e277ab.
+Hosted37527/86713 PASS actualhelper+traitadapter:64alignedRc base,100measurements,
+counts unchanged/singledrop; oldinteriorpointer negative rejected. Initial47415
+fixture syntaxerror corrected. Testscript+outputs retained private/evidence; root
+promotion refusedlock. Native46471 jbh71ed3 runningmemoryreport idle/closefixture.
+No staging. Sharedlock busyagain afterourbuild; no sharedmutation while busy.
+
+2026-10-03 — opt-in engine memory report native FAULT; NOT STAGED.
+45266 TERM0 build46089f87.28731 TERM1 nwi3ypwl: startupreport21entries works;
+secondrequest~30s faults address0x11/RIP3e3f881 malloc_usable_size. Exact current
+unstripped .text SHA dfc143729a1f64621592e551d77b7fc5e9b7c81ade3839ffb3267c59685a939f
+matches candidate. Return1e0d1f2 script_bindings::mem::malloc_size_of_including_raw_self
+<HTMLVideoElement>;1dd9c0d script::runtime::script_runtime::compute_size. No cause
+claim yet: invalid/interior/freed pointer or allocator mismatch needs investigation.
+Original userclickabort not linked. Source memory_report.rs still opt-in gated by
+/servo/memory-check; ordinary staged5be237b4 unchangedbyus. Do NOT stage reporter
+until fault understood. Logs/source/symbols/disassembly/result retained nwi3ypwl;
+fixtureimages/ELFs cleaned; temporary96MBcandidate deleted. Allownjobs terminal.
+Next inspect DOM pointer ownership/allocator provenance at sizing callback, with
+exactbinary evidence, not speculative malloc_usable_size validation or zero-return.
+
+2026-10-03 — engine memory diagnostic applied; build45266 active under lock.
+79791 lockrefused; hosted31950 test PASS actual prepared module with fake clock/
+callback transport:100polls1request, top20sorted/sanitizedlabels,30srate,60stimeout,
+latecallbacksafe. Evidence penny-evidence-20261003/memory-probe-hosted.
+97542 acquiredlock/applied then TERM1 Cargo base crate name mismatch. Corrected
+Cargo dependency servo-base and importservo_base underlock;45266 rebuilding.
+No staging. Owned files memory_report.rs,main.rs,Cargo.toml. /servo/memory-check
+optin only, cap1asyncchannel and no UIwait. Native fixture prepared private
+ tests/penny-memory-report.py. Need native >=2reports and shutdown beforepublication.
+
+2026-10-03 — engine memory report implementation PREPARED, not applied.
+Previous turn progress(memory cycles); this turn source/API investigation and
+private fixture preparation, shared mutation blocked.93889 TERM1 45s flockwait;
+98284 TERM1 nonblockingretry. Host lslocks confirmed holder3613168; not killed.
+No production source/binary change. Prepared operation now persistent private
+ tests/prepare-memory-report.py (execute at ROOT under sharedlock in Nix): adds
+memory_report.rs, target base/profile_traits deps, runwindowpoll; then builds.
+AsyncGenericCallback delivers via capacity1 try_send to UI; onepending request,
+30s interval,60s timeout disables furtherrequests; marker/servo/memory-check;
+prints top20 entries, bounded/control-sanitized labels, notes overlapping categories.
+Uncompiled/unverified; needs review/build/native test, do not stage blind.
+Private tests/penny-memory-report.py injects marker into disposable image, uses
+prior idle/close fixture, requires >=2engine reports. System reporter lacks CuBit
+RSS/systemheap totals (None), so cannot equate reportedcategories to ownedmemory.
+Allownjobs terminal. Next acquirelock/apply/build, native fixture theninspect actual
+reports. Broadgoal active; not blocked audit threshold, other work remains possible.
+
+2026-10-03 — repeated native page-close memory plateaus PASS (53794 TERM0).
+Previous turn progress(singlecycle). Private tests/penny-memory-cycles.py adds2
+load/idle/close/idle rounds in SAME process after first4loadstress. Each30s idle.
+o4nr5onl postclose plateaus391245824,390574080,389615616 bytes (373.12,372.48,371.57MiB),
+last3samples eachidentical, final1630208bytes lowerthanfirst. Loaded rounds2/3 settle
+690790400/686297088. No cumulative ownedgrowth in this scenario; no RSS/leakfreeclaim.
+Tabparked gates/actualclose observed; clean processreclaim andnetworkretirement PASS.
+No changes to production/staged. Compact logs/PNG/hashmanifest/source/memory-phases/
+cycle-result retained in tmp/penny-input-o4nr5onl, images/ELFs verifiedremoved.
+Allownjobs terminal. Source investigation: Servo.create_memory_report callback API
+available (base::generic_channel::GenericCallback, profile_traits::mem reports).
+Profiler collects perreporter synchronously on profilerthread; embedder must never
+wait synchronously. Could use opt-in bounded reports to attribute remainingbaseline.
+Full browser goal stillactive; original userclickabort stillnotprovedfixed.
+
+2026-10-03 — post-reload/tab-close native memory observation PASS (61129 TERM0).
+Private tests/penny-memory-settle.py extends stress fixture with30s idle and30s
+post-close; creates blanktab, selects original, FileCloseTab, requires tabparked1.
+g4zmbbkw startup owned193335296; after4loads peak1144242176, idle settles~1083MB;
+afterYouTubeclose760590336 ->451624960 ->449515520 ->390709248, final3samples equal.
+Old pipelines exit, 2blankviews remain (sharedblank+oneparked). Processclose/reclaim/
+networkretirement PASS, no crashes/rejections. Not RSS/leakproof; nextrepeatcycles
+must distinguish reusablecache from persistent growth. libc MADV_DONTNEED/FREE
+currently advisory no-op, source confirmed; no kernel decommit path found yet.
+No source/staged changes. Allownjobs terminal; nativeartifacts auto-cleaned images/
+ELFs. Preserve compact g4zmbbkw logs/PNG/hashmanifest/memory-phases/result. Goalactive.
+
+2026-10-03 — expanded native browser interaction stress PASS; memory follow-up.
+Previous goal turn progress: SSE2 staged. Private tests/penny-chrome-stress.py
+extends load-click fixture:4YouTube loads (initial+3reloads),8exactviewport size
+transitions 800x494<->824x504, File dropdown perload, page clicks, File Newtab/CloseTab,
+then native close/reclaim/network retirement.13280 TERM0 gvev0zc7 PASS, no rejected
+input/abort/fault.3 priorfixture failures due coordinates/minsize, not browser crash:
+58295 6_rt9uli,65274 bbhut_md,97589 btfczbe0 allterminal, imagesauto-cleaned.
+Runner now derives current viewport/handle, asserts desired dimensions perdrag.
+FourloadsComplete2741/717/3822/5946ms; cache/network differences, not benchmark.
+Ownedmemory rises467374080@5s ->1115713536@25s; not RSS/leakproof. Need idle/tabclose
+plateau/repeat run before claiming memory stable. Shutdown reclaim4.117hostseconds.
+Stagedsource unchangedbyus. Allownjobs terminal. Source/logs/PNG/hashmanifest and
+stress-result.json retained under private tmp/penny-input-gvev0zc7; largeoutputs
+removed. Broadgoal active, original userclickabort stillnotprovedfixed.
+
+2026-10-03 — SSE2 native Penny FIX STAGED, all own jobs terminal.
+User SSE correction implemented: servo_shell_host.gpr -msse -msse2 -mno-mmx.
+Previous no-progress/lock state revalidated;63963 refused lock. Private64170 compiled
+snapshot with SSE2, MMX guard passed and XMM instructions verified. Native probe
+3504 initially lacked unused bookmark callbacks;17933 linked fail-fast callbacks,
+89383 TERM0 meijmirg initial UI x87 clean +30000 threaded formatting calls PASS.
+This is not dedicated XMM-preemption proof. Shared lock became free;64416 TERM0
+clean full build.5514 TERM0 he362dvw KVM/Broadwell/HDA, clicks during and after
+YouTube load, profiler/close/reclaim/network retirement PASS. Staged under lock:
+5be237b4dbb028998d1329e4e9343e922c3da3b4274499a02603ca76910aca83.
+Publication and compact evidence penny-evidence-20261003/sse-native. Temporary
+probe ELF/native object tree and final private production copy removed; fixture
+images/ELFs auto-cleaned. Keep original4f25 crash rollback. No AVX enablement;
+current kernel still FXSAVE/FXRSTOR. Original user click abort not proved fixed,
+although identified x87/MMX startup defect is fixed. Full browser goal active.
+
+2026-10-03 — SSE enablement lock wait41850 TERMINAL1 (45s elapsed).
+No gpr edit/build occurred; another shared build still prevents mutation. Exact
+prepared operation /tmp/penny-enable-sse.py updates only Penny gpr, force rebuilds,
+runs build guard, snapshots production candidate. Execute under shared lock in
+Nix once free, then native verify before publication. All own jobs terminal.
+
+2026-10-03 — user correction: enable SSE/SSE2 for native Penny Ada.
+Verified boot OSFXSR/OSXMMEXCPT and per-user-thread FXSAVE64/FXRSTOR64; Rust already
+uses SSE2. Retain -mno-mmx to avoid x87 aliasing. Session41850 waits at most45s
+for shared lock, then updates gpr and clean-builds/tests archive into private
+production candidate. Do not publish prior no-SSE candidate while this is pending.
+
+2026-10-03 — MMX contamination FIX VERIFIED; production publication pending lock.
+Baseline68165 build/80147 native260x_bqx: FXSAVE tag0 entry -> ff after native UI,
+then typefind SW41/tag7f. Generated ownerIP/windowIP use MM0 with no EMMS. Added
+-mno-mmx to servo_shell_host.gpr. Diagnostic16181/20703 native9kg8_1x4 all tags/SW0,
+YouTube profiled click/shutdown PASS. Incremental archive retained stale damage
+initializer; forced library rebuild10972 TERM0 removes all MMX. Build now runs
+check_native_mmx.py; real assembled negative control75228 rejected as expected.
+Production942fef3ba5cb7c3c6b3356046ea7f84412f7440de4b10445afb4b1fe700499e1
+native69066 TERM0 f0pl0ezl profiled YouTube click/shutdown PASS. Diagnostic source
+restored; no permanent FXSAVE probes. Private tests/browser-fp/production.app is
+candidate to stage after shared lock becomes available. Do not delete until staged.
+Copy under lock was refused; initial75457 xkmestow merely repeated diagnostic,
+not counted as production. Readonly copy then hashed before/after for final run.
+Host3558633 confirmed live owns build.lock makeworld+3headless tests; no interference.
+Compact evidence penny-evidence-20261003/native-mmx. Diagnostic ELF removed; fixture
+images/ELFs automatically cleaned. All own jobs terminal. Staged browser unchanged
+by us so far; preserve original4f25 rollback. Original click abort not proved fixed.
+
+2026-10-03 — temporary browser floating-state diagnostic build active (68165).
+Shared lock covers media_init.rs diagnostic edit, build and finally restoration.
+No staged browser changes. Private browser-fp candidate will test current kernel
+against standalone C controls; all output arrays aligned and FXSAVE is non-mutating.
+
+2026-10-03 — Native media floating-point controls PASS; no browser fix claimed.
+Previous turn was progress (Run regression). No new desktop-logs or new user crash.
+Pinned gst-base source retrieved via Nix, no production edits. Private C probe
+initializes gst and typefind then known-value + 30000 threaded formatting checks.
+56404 TERM0 KVM l67j_vs9 passes, CW37f/SW0/TAG0. Full Penny plugin order and registry
+environment 24021 TERM0 vqzn0ruy passes, clean state at every registration boundary;
+identified process reclaimed. Current staged kernel3ea67533 differs from earlier
+browser diagnostic9a3368e7; standalone process differs, so no claim source defect
+excluded or fixed. Penny65ae unchanged. Exact logs/manifests/source retained in
+penny-evidence-20261003/media-float-controls. Fixture images/ELFs auto-cleaned and
+local probe.app/manifest.o removed. All own jobs terminal. Next compare browser
+startup in current kernel or inspect exact browser link/runtime difference, rather
+than clearing x87 flags speculatively. Original click abort remains unresolved.
+
+2026-10-03 — UI.App Run regression complete.
+New tests/compositor/test-input-terminal-loop.py compiles the actual extracted Run
+body with mocked input/frame boundaries. Baseline and three negative controls pass
+(session 11312): terminal poll, timed and untimed wait, no timer callback after stop,
+live timer remains functional, mock surface/page identity retained. Force compilation
+for each mutation to avoid timestamp-based reuse (initial 34296 false negative).
+This is hosted orchestration coverage, not proof of native frame lifetime. No own
+jobs remain. Compact evidence copied to penny-evidence-20261003/input-terminal-loop;
+compiled outputs removed by fixture. Original user Penny abort remains unresolved.
+
+2026-10-03 — PROGRESS: orphanpoll prevention implemented; ConfigInspector STAGED.
+UI.App adds terminalinputstate onvalidatedBad_Object; clears inputcache, stops sync/
+cached/asyncadmission and Run includingtimedwait, guards BeginPaint/Present. Preserves
+surfaceidentity and frameallocations; Close stillrequires existing retirementchecks.
+Othererrors retry, logonceperepisode; successclearsflag. No Desktopkillrights changes.
+ConfigInspector optsGraceful_Close and exitsRun onCloseRequest (existingLogs pattern).
+58818 TERM0 actualReceive/Apply/cache/codec hostedtest plus3negativecontrols PASS:
+terminalresponse stopsrepeatedIPC, malformed/InvalidRequest nonterminal, siblingworks,
+retainedsurface/bufferPages unchanged. DoesNOTproveallrealframe-retirement behavior.
+53514 TERM0 nativeConfigInspectorcompile/link(noMakeautostaging).60672 TERM0 KVM
+penny-float-d8bpsycr observedtitleclose (950,95), identifiedprocessreclaim, nodeniedkill/
+inputspam PASS; fixture stopped afterbuttondown beforebuttonup socketcall. Initial
+18860 setupTERM1 wrongapp path (beforeVM); auto-cleaned. 73229 TERM66 wronglockpath
+beforebuild; corrected53514. ProductionConfigInspector nowtestedhash inpublication.
+Penny/Desktop/kernel unchangedbyus. Allownjobs terminal, VMimages/copiedELFs cleaned.
+Next nativeforcedBadObject withpendingprotectedframe/sibling, and sharedhelperRun
+coverage; userPennyclickabort stillnotreproduced/fixed. Broadgoalactive.
+
+2026-10-03 — own UI.App input termination +ConfigInspector gracefulclose.
+Editing cubit-ui-app.ads/adb,config-inspector/main.adb; tests for validatedBadObject
+and retaining frameownership. NoDesktopkillauthority changes. Sharedlockheld edits.
+
+2026-10-03 — PROGRESS: duringload +afterload clicks nativePASS privatefixture.
+Sharedlock authoritatively held by hostPID3457283 (other session makeworld/logstest),
+so no sharedsource/testscript mutations. Private tests/penny-load-click.py derived
+from rootprofilerfixture adds --click-during-load; sourcecopied intoartifactrunner.
+60830 TERM0 jbo9yk03 KVM/Broadwell/HDA,no-profile: queuedclick atserial871 BEFORE
+YouTubeComplete1198 (2657ms), secondqueuedclick1316, windowclose1330, PIDreclaim
+andnetworkrelease gatesPASS;stderrmarkerverified. interaction-result.json +hashes.
+No claim usercrashfixed; standaloneprobe doesn't match full user's app/windowhistory.
+ConfigInspector gracefulclose existingLogs pattern understood; no codechanges while
+fullbuildlockheld. Need terminalUI.AppBadObject/no-prematureloanfree test forstorm.
+Fixtureimages/ELFs auto-cleaned; allownjobs terminal. Stagedunchangedbyus. Goalactive.
+
+2026-10-03 — PROGRESS: fastlauncherCPU/HDA nativecontrol +review orphanstorm.
+35324 TERM0 mc5ecsfy: KVM Broadwell/HDA withsilenthost sink, staged65ae loadsYouTube,
+clicks/closes/reclaims PASS; HDAconfigured/mixergrant acquired, noabort. Fixture new
+--cpu/--hda options recordedactualargv. No productionbinarychanges. Imagesauto-cleaned.
+Originaluser log spam starts immediately afterConfigInspectorPID37 close: hit surface5,
+KILLdeniedRIGHT_WRITE. Boundedread-onlycompositor review returnedcomplete cursor137:
+Desktop dropssurface beforedeniedkill; client treatsBad_Object asnoevent and keeps
+polling. Recommends gracefulclose ConfigInspector; explicitterminal UI.App inputstate
+onvalidatedBad_Object includingtimedwait; stopinput/paint butretain uncertainframeloans;
+no broadkillrights. Explainsstorm notPennyabort. Peer made noedits, broadgoalpaused.
+Triedsharedlock for--click-during-load testoption twice; unavailable; editsNOTapplied.
+43180 TERM2 attemptedoption rejected BEFOREVMlaunch, noartifacts. Noownlivejobs.
+Next implement loadinginteraction fixture whenlockfree and scope orphanclosefix with
+propernative/loanregressions. No lockowner inferred fromsandbox lslocks absence.
+
+2026-10-03 — PROGRESS: stderr capture verified +STAGED.80126 TERM0 owo7w4_x
+actualstderr sentinel captured, YouTube+click/close/reclaim PASS. StagedSHA 65ae75a09fe8b61d8fda2936568003fc42e8abbce6b37b4bda1640ef4be667b8
+Previousc55e replaced; ONErollback4f25 intentionally retained as exactusercrashbinary
+for furtheranalysis. Do not discard until crashunderstood. No extra binarycopies.
+Alljobs terminal, defaultfixturecleanup complete. This is diagnosticimprovement, NOT
+a demonstratedfix for reportedclickabort. Next addBroadwell+HDA testfidelity.
+
+2026-10-03 — clickabort investigation IN PROGRESS; finalstderr test80126 LIVE.
+Readonly extracted user's desktopdisk Penny SHA4f25 matches priorrollback. Exact
+oldRIP disassembly shows xor eax/eax;mov[rax],rdx intentionalnullcrash afterabort,
+not evidence of accidentalnullbug. Savedprovenance/disassembly then/tmpELFdeleted.
+Currentunstripped addresssymbols differ and NOT used. Priorabort originalcausehidden:
+Penny stderr went to unreadCuBitstream. New Penny-only --wrap=__cubit_fd_writev sends
+fd2 directdebugconsole, forwards otherfds, no allocation/streamIPC; say avoidsduplicate.
+30665 TERM0 build;12648 TERM0 YouTube+click+close/reclaim native1v5266yf PASS but
+no originalcrash reproduction.69804 TERM0 finalbuild9.09s removes temporaryFPprobes,
+adds stderr sentinel;80126 LIVE sameKVM clicktest requires sentinel. No stagingyet.
+Existing fixture isCPUhost +noHDA, unlike user's Broadwell +intel-hda/hda-output;
+NEXT improve fidelity withCPU/audiooptions before interpreting pass as userregression.
+Owned main.rs/build.rs/newstderr_capture.rs,profilerfixture/docs; no libcgloballychanged.
+Broader goals and typefindx87issue remainopen. Sharedlock released after69804.
+
+2026-10-03 — USER crash report: host crash retention implemented for fastlauncher.
+User clicked afterYouTube, anothercrash. Existing kernel/serial_output.log preserved
+raw (~2.3MB) in penny-evidence-20261003/user-crash-20261003 with hash, cleanedexcerpt.
+PENNY-ABORT caller425f97 thenPID39 nullfaultRIP283e5cc; input-rejection spam heavily
+interleaves output. Do NOT symbolize against currentunstripped without matching
+binary provenance. This is distinct evidence from profilerformattinghang; rootcause
+NOT fixed by newlogging. Existing userVM/disk/log untouched by inspection.
+New tools/run_logged_qemu.py +kernel/Makefile run-desktop-fast integration captures
+QEMUstdout/stderr via-serialstdio. 2x8MiB serialsegments +firstfatal512KiBcontext/
+256KiBafter,3runsretained (liveexcluded), metadataQEMUargs +stagedapp/Desktop/ISOhash.
+serial_output.log compatibilitysymlink; priorregularlogtail8MiB preserved. No guest
+capabilities widened. .gitignore excludeskernel/desktop-logs; docs/penny-crash-capture.md.
+67019 TERM0 hostedtest splitmarkers/rotation/crashretention/status/hash/runretention.
+14919 TERM124 EXPECTED realQEMU-TCG serialsmoke(timeout2s); capturedtermination and
+correctstatus. No fullinteractiveguestlaunch; applies user's NEXT fastlaunch.
+Smokeartifacts consolidated into savedcrashevidence then/tmpcleaned. Alljobs terminal,
+no builds/staging/indexchanges. Prior FPdiagnosticcandidate ROOTonly; stagedc55e stays.
+Next priority: actualclickabort/IPCinput-rejection failure and improve fatalstack
+report fidelity; separatetypefindx87fault remains open with priornativeevidence.
+
+2026-10-03 — PROGRESS: x87 stackfault first appears in GStreamer typefind plugin.
+8876 TERM0 build;94860 TERM0 KVM YouTube jhc30xku: prepaintCW037F,SW0041,
+MXCSR1FA1/1FA5; draw leavesx87 unchanged.55330 TERM0 build;73396 TERM0 offline
+k4g42sr5: main-entry cleanSW0; aftermediaSW41.70310 TERM0 build;54877 TERM0
+4usc23qt offline detailedstartup: nativeUI/GStreamer/coreelements/app/playback
+allSW0; gst_plugin_typefindfunctions_register firstSW41; persists thereafter.
+fp-startup-result.json exactmarkers. SW41=invalidoperation+stackfault; causality
+of formatting hang beyond association not yet proven. No reset/fninit workaround.
+Own diagnostic edits main.rs, media_init.rs, stall_probe.rs; ROOTcandidate only,
+stagedc55e unchanged. Diagnostics remain opt-in logs; startup reads marker perstage
+currently temporary. Next inspect pinned gst-plugins-base typefind registration
+source and x87 tag state/ABI or bad return handling. NOT browserdrawingorigin.
+Allownjobs terminal; native fixtures auto-cleaned VMimages/copiedELFs, keptcompact
+logs/screenshots/results. Broad browsergoal stillactive; no commits/indexchanges.
+
+2026-10-03 — PROGRESS: standalone native float formatting controls PASS.
+New owned tests/servo/float-format/{probe.c,manifest.ccl,test-native.py,README.md}.
+32388/24536 TERM0 C releasebuilds to /tmp/penny-float-probe;41012 TERM0 KVM baseline
+input-buffer/tmp/penny-input-0516vlso (sixknownvalues).44107 TERM0 concurrentcontrol
+penny-float-8ssg2d2g:3pthread x10000 conversions +yield each, exactresults +joins,
+identifiedprocessreclaim. No generic snprintf/threadswitchfailure reproduced.
+This narrows browserhang toward rendering-context FPstate; do not claim libc root
+cause established. Next inspect x87CW/SW and MXCSR around slow SWGL draw; staged
+integer workaround c55e unchanged. Alljobs terminal. Fixture auto-cleanup removed
+VMimages/copiedELFs; source and smalllogs retained. No TCGcontrol needed yet since
+KVM standalone doesn't reproduce. Broadgoals remain incomplete/active.
+
+2026-10-03 — PROGRESS: KVM profiled YouTube freeze workaround verified + STAGED.
+37518 TERM0 release64s/linkchecks;79378 TERM0 fixture2qommtf5 nativePASS.
+SWGL integer timing line emitted(ps_quad_box_shadow6.132ms), YouTubeComplete3128ms,
+Close accepted/PID36 reclaimed1.205hostsec,netstackscopes retired,TSV extracted.
+Candidate c55e2b50152e90216973a508907edc5323279fa31045a78d4d7dbcd26b940110
+matches fixtureverified2 and now staged. Previous4f25 replaces one existingbackup
+at penny-evidence/previous-staged-230ituwz/cubitshell.app. Desktop/kernel unchanged.
+No new backup fleet; images/copiedELFs/PPMs automatically cleaned. Allownjobsterminal.
+This fixes browser diagnostic printf float hang by integer formatting; underlying
+libc/x87 floating-format issue remains OPEN, do not claim systemwide fix. Previous
+repeatpatch72166 verifies single loggingblock/idempotence. Shell stallprobe +paint
+breadcrumbs remain opt-in /servo/profile-check, normal mode no thread/logs.
+Next isolate native float snprintf with small reproduction under KVM versusTCG;
+avoid inferring rootcause (FPU state/compiler/libc) before evidence. Full browser
+scope(video,MSE,arbitrarywindows,restore,memory/security/perf) still unfinished.
+
+2026-10-03 — PROGRESS: exact SWGL snprintf localization; integer fix building.
+64228 TERM0 but candidate intentionally NOT tested due obsolete diagnostic prefix.
+72166 TERM0 Nix preparation regression: exactly one integer timing log, zero old
+format markers, repeat crate preparation byte-identical. Migration repaired.
+37518 LIVE root releasebuild /tmp/penny-swgl-integer-clean-build.log holds sharedlock.
+Next poll37518, then native KVM profiler fixture with ROOTcandidate, same input-buffer
+seed and stagedDesktop/kernel. Source uses integer ms +3digits instead of %.3f;
+full libc/x87 formatting issue remains to diagnose separately. Not yet nativefixPASS.
+6105 TERM1 evidence vjby8qmw/stall-result.json: formatbegin without formatend.
+DisposableVMcleanup complete. Staged4f25 untouched. No other own livejobs.
+
+2026-10-03 — PROGRESS: KVM hang pinned to SWGL diagnostic snprintf.
+3888 TERM0 instrumentedbuild;6105 TERM1 vjby8qmw: format begin without formatend,
+phase7 sustained. Draw alreadyfinished before logging. Candidate integerformatter
+build64228 LIVE but inspected preparedsource still contains obsolete duplicated
+float diagnostic from earlier failed migration; DO NOT test/publish this candidate.
+After terminal, remove exact obsolete instrumented prefix via migration, verify
+preparation twice idempotent and single diagnostic block, then rebuild/testKVM.
+Own crate_fixes.py, patch_servo.py, shellstallprobe, profiler fixture. Stagedunchanged.
+
+2026-10-03 — PROGRESS: rendering stall isolated further; nonprofile control PASS.
+88207 TERM0 release16.62s/linkchecks.96180 TERM1 KVM profile fixture vc0h663c:
+query collection and renderer.update return; renderer.render begins without end;
+phase7 epoch42035 repeats. Native close timeout, Desktop remains responsive.
+82017 TERM0 KVM --no-profile fixture8gowyjf1: same candidate/native gate loads,
+resizes, closes, PID36 reclaimed1.204hostseconds,1405regions +networkscopes retire.
+One control PASS does NOT prove stability or causality; compare further. Profiling
+likely involved but scheduling/live response differs. No performance parityclaim.
+Root patch_servo.py adds opt-in begin/end breadcrumbs around queries/update/draw;
+root profiler fixture adds --no-profile (removes marker, skips TSV only; same gates).
+README documents diagnostic overhead/limits. No staged artifacts changed. All own
+jobs terminal; defaultcleanup confirmed retained only compactlogs/PNG/metadata.
+Next investigate renderer.render profiling-specific paths (and repeat control),
+including actual patched dependency location; registry source may be unpatched.
+Broader browser goal remains active and unchanged. No commits/indexchanges.
+
+2026-10-03 — PROGRESS: KVM freeze reproduced and localized to WebView::paint.
+97533 TERM0 releasebuild9.06s/linkcheckPASS;75168 TERMINAL1 native close timeout.
+Evidence input-buffer/tmp/penny-input-f61ofsyp/stall-result.json: YouTube Complete
+3278ms, repeated phase7 sequence43208 while Desktop and watchdog continue.
+Opt-in stall_probe.rs enabled only by /servo/profile-check; phase7 wraps native
+webview.paint; no periteration logs, sampled atomic epoch distinguishes ongoing
+iterations from stuckphase. Main+module source modified, candidate ROOTbuildonly,
+STAGED4f25 unchanged. Not a fix; no nonprofiling comparison yet. Next split
+Painter::render update/draw/query handling; profiling GPU timer queries may be
+involved but NOT established. All own jobs terminal; images/ELFs/PPMs auto-cleaned.
+Previous acknowledgment no progress corrected by this native diagnostic evidence.
+
+2026-10-03 — previous acknowledgment NO PROGRESS; resumed source investigation.
+99426 TERMINAL1: KVM YouTube Complete3171ms, then Penny stops input polling;
+Desktop remains responsive. No panic in serial. Native close gate FAILED.
+Own main.rs and new opt-in stall_probe.rs to identify blocked UI phase; no
+production staging. Previous artifacts auto-cleaned, compact evidence retained.
+
 2026-10-03 — prior turn PROGRESS; KVM native profiling99426 LIVE.
 Sandbox /dev/kvm absent, approved read-only host ls confirms device exists. Normal
 kernel Makefile defaultsQEMU_ACCEL=kvm. Therefore priorTCGtimings are NOT estimates

@@ -91,6 +91,26 @@ package CuBit.Launch_Authority with SPARK_Mode is
    with Pre => Item'First = 1,
         Post => Valid'Result = Well_Formed (Item);
 
+   ---------------------------------------------------------------------------
+   --  OP_LAUNCH_TABLE: the requester's own launch table (what it may start;
+   --  its manifest's may_launch), so a launcher such as the CCL console can
+   --  offer exactly those programs. Seeing one's own grants needs no
+   --  authority. The requester lends procmgr a writable grant of
+   --  Maximum_Table_Bytes:
+   --    words (0) grant reference (CuBit.Grant_References wire form)
+   --  Reply OK: words (0) = the table's length written there (0: none).
+   ---------------------------------------------------------------------------
+   Table_Operation     : constant := 16#010A#;
+   Table_Request_Words : constant := 1;
+
+   --  Name Index (1-based) of a valid table: its bytes are Item (First ..
+   --  Last); Found False past the last name.
+   procedure Name_At
+     (Item : Table_Bytes; Index : Positive; First : out Positive; Last : out Natural;
+      Found : out Boolean)
+   with Pre => Item'First = 1 and then Valid (Item),
+        Post => (if Found then First <= Last + 1 and then Last <= Item'Last);
+
    --  Whether Name is one of the table's names (exact, byte for byte).
    function Contains (Item : Table_Bytes; Name : String) return Boolean
    with Pre => Item'First = 1 and then Valid (Item);
@@ -104,7 +124,7 @@ package CuBit.Launch_Authority with SPARK_Mode is
    --  prefix exactly.
    ---------------------------------------------------------------------------
    Filesystem_Service : constant Unsigned_8 := 0;
-   Maximum_Prefix_Bytes : constant := 64;
+   Maximum_Prefix_Bytes : constant := 256;   --  CuBit.File_Access
 
    function Rights_Within (Held, Requested : Unsigned_8) return Boolean is
      ((Requested and not Held) = 0);

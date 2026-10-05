@@ -154,7 +154,7 @@ begin
    -- A real RAM publication of one bootstrap update, retaining the exact
    -- registered root. Exclusion/flush callbacks are host fixtures, not GPU
    -- completion or TLB evidence.
-   for Case_ID in 0 .. 4 loop
+   for Case_ID in 0 .. 7 loop
       declare
          State : Buffers.Buffer_State;
          package VM renames Buffers.VM;
@@ -206,7 +206,17 @@ begin
                         VM.Lookup (Candidate, Images.Batch_VA));
          VM.Seal (Candidate, OK); pragma Assert (OK);
          if Case_ID = 2 then Pages (4).CPU := Base; end if;
-         Updates.Publish_Boot_Tables (State, Candidate, Pages, OK);
+         declare
+            Before : constant Words := RAM;
+            First : constant Positive := (if Case_ID = 6 then 2 else 1);
+            Last : constant Natural := (if Case_ID = 7 then 0
+              elsif Case_ID = 5 then VM.Used (Candidate) - 1 else VM.Used (Candidate));
+         begin
+            Updates.Publish_Boot_Tables (State, Candidate, Pages (First .. Last), OK);
+            if Case_ID >= 5 then
+               pragma Assert (not OK and RAM = Before and Flushes = 0);
+            end if;
+         end;
          pragma Assert (OK = (Case_ID = 0));
          pragma Assert (Updates.Failed (State) = (Case_ID /= 0));
          pragma Assert (Buffers.Retained_Boot_Root (State).DMA = Root.DMA);
@@ -340,7 +350,7 @@ begin
       -- One supervisor allocation supplies disjoint retained context/table
       -- slices; no second allocation ticket or application-visible handle.
       for With_Scratch in Boolean loop
-      for Update_Case in 0 .. 3 loop
+      for Update_Case in 0 .. 6 loop
       declare
          Parent : constant Intel_GPU_Buffer_Reply.Backing :=
            Intel_GPU_Buffer_Reply.From_Linear (16#1000000#, Base, 2 * Span, 16#1000000#);
@@ -439,7 +449,19 @@ begin
            Intel_GPU_ADLN_PPGTT.Write_Back, Intel_GPU_ADLN_PPGTT.Read_Write, OK);
          pragma Assert (OK); VM.Seal (Candidate, OK); pragma Assert (OK);
          if Update_Case = 1 then Backing (4).CPU := Context.CPU_Address + 4096; end if;
-         Updates.Publish_Tables (State, Source, Candidate, Backing, OK);
+         declare
+            Before : constant Words := RAM;
+            First : constant Positive := (if Update_Case = 5 then 2 else 1);
+            Last : constant Natural := (if Update_Case = 6 then 0
+              elsif Update_Case = 4 then VM.Used (Candidate) - 1 else VM.Used (Candidate));
+         begin
+            Updates.Publish_Tables (State, Source, Candidate, Backing (First .. Last), OK);
+            if Update_Case >= 4 then
+               pragma Assert (not OK and RAM = Before and Updates.Failed (State));
+               Updates.Publish_Tables (State, Source, Candidate, Backing, OK);
+               pragma Assert (not OK and RAM = Before);
+            end if;
+         end;
          pragma Assert (OK = (Update_Case = 0));
          if With_Scratch then
             pragma Assert (RAM ((Span + 16 * 4096) / 4) = 16#BADC0DE#);
@@ -550,7 +572,11 @@ begin
       end;
       end loop;
       end loop;
-      for Scenario in 0 .. 24 + Span / 4096 loop
+      declare
+         Owner_Bound : Natural := 21;
+         Scenario : Natural := 0;
+      begin
+      while Scenario <= 4 + Owner_Bound + Span / 4096 - 1 loop
          declare
             Source : VM.Image;
             Pages : VM.Backing_Pages := [16#4000000#, 16#4001000#,
@@ -568,14 +594,14 @@ begin
             if Scenario = 3 then Backing (4).CPU := Base + 4096; end if;
             VM.Initialize (Source, Pages, OK); pragma Assert (OK);
             VM.Map_Page (Source, 4096,
-              (if Scenario >= 25 then 16#1000000# + Unsigned_64 (Scenario - 25) * 4096
+              (if Scenario >= 4 + Owner_Bound then 16#1000000# + Unsigned_64 (Scenario - (4 + Owner_Bound)) * 4096
                else 16#5000000#),
               Intel_GPU_ADLN_PPGTT.Write_Back, Intel_GPU_ADLN_PPGTT.Read_Write, OK);
             pragma Assert (OK);
             VM.Seal (Source, OK); pragma Assert (OK);
             RAM := [others => 16#A5A5A5A5#];
             Owner_Calls := 0;
-            if Scenario in 4 .. 24 then Fail_Owner := Scenario - 3; end if;
+            if Scenario in 4 .. 3 + Owner_Bound then Fail_Owner := Scenario - 3; end if;
             Application.Prepare (State, Source, Backing,
               Intel_GPU_Buffer_Reply.From_Linear (16#1000000#, Base, Span, 16#1000000#),
               16#2000000#, Images.GGTT_Bytes, OK);
@@ -588,11 +614,12 @@ begin
             pragma Assert (Application.Retained_Root (State).DMA =
               (if OK then Backing (1).DMA else 0));
             if OK then
-               pragma Assert (Owner_Calls = 21);
+               pragma Assert (Owner_Calls >= 21);
+               Owner_Bound := Owner_Calls;
                for I in Expected.Words'Range loop
                   pragma Assert (RAM (I) = Expected.Words (I));
                end loop;
-            elsif Scenario <= 4 or else Scenario >= 25 then
+            elsif Scenario <= 4 or else Scenario >= 4 + Owner_Bound then
                for Word of RAM loop pragma Assert (Word = 16#A5A5A5A5#); end loop;
             end if;
             -- No preparation stage may write outside context/table extents.
@@ -607,7 +634,9 @@ begin
               16#2000000#, Images.GGTT_Bytes, OK);
             pragma Assert (not OK);
          end;
+         Scenario := Scenario + 1;
       end loop;
+      end;
    end;
    declare
       package VM is new Intel_GPU_VM_Image (4);
@@ -851,7 +880,8 @@ begin
       pragma Assert (Munmap (Window_Mapping, Window_Bytes) = 0);
       Ada.Text_IO.Put_Line ("Scattered context PASS: all32 interior physical splits, image readback and untouched guards (host RAM, NOT GPU execution)");
    end;
-   for Fault in 1 .. 3 loop
+   for Direct in Boolean loop
+   for Fault in 0 .. 3 loop
       declare
          package VM is new Intel_GPU_VM_Image (4);
          Held : Boolean := True;
@@ -889,21 +919,34 @@ begin
            16#2000000#, Images.GGTT_Bytes, OK); pragma Assert (OK);
          Armed := True;
          if Fault = 1 then Leaf (1) := 16#5001003#; end if;
-         Updates.Remove_Leaf (State, Source, Backing, Pages (4), 1, 16#5000003#, 0, OK);
-         pragma Assert (not OK and Updates.Failed (State));
+         if Direct then
+            Updates.Remove_Mapped_Leaf (State, Source, Backing (4), Pages (4), 1, 16#5000003#, 0, OK);
+         else
+            Updates.Remove_Leaf (State, Source, Backing, Pages (4), 1, 16#5000003#, 0, OK);
+         end if;
+         pragma Assert (OK = (Fault = 0));
+         pragma Assert (Updates.Failed (State) = (Fault /= 0));
          pragma Assert (VM.Lookup (Source, 4096) = 16#5000003#);
          pragma Assert (Leaf (1) = (if Fault = 1 then 16#5001003# else 0));
          pragma Assert (Flushes = (if Fault = 1 then 0 else 1));
          -- Even restoring authority and the old word cannot revive the writer.
+         if Fault /= 0 then
          Held := True; Leaf (1) := 16#5000003#; Armed := False;
-         Updates.Remove_Leaf (State, Source, Backing, Pages (4), 1, 16#5000003#, 0, OK);
+         if Direct then
+            Updates.Remove_Mapped_Leaf (State, Source, Backing (4), Pages (4), 1, 16#5000003#, 0, OK);
+         else
+            Updates.Remove_Leaf (State, Source, Backing, Pages (4), 1, 16#5000003#, 0, OK);
+         end if;
          pragma Assert (not OK and Updates.Failed (State) and Leaf (1) = 16#5000003#);
+         end if;
       end;
    end loop;
-   Ada.Text_IO.Put_Line ("Retained leaf failure PASS: stale hardware word, failed flush, post-write ownership loss, permanent retry rejection (host RAM)");
-   for Fault in 0 .. 6 loop
+   end loop;
+   Ada.Text_IO.Put_Line ("Retained leaf failure PASS: array/direct mapping, stale hardware word, failed flush, post-write ownership loss, permanent retry rejection (host RAM)");
+   for Direct in Boolean loop
+   for Fault in 0 .. 9 loop
       declare
-         package VM is new Intel_GPU_VM_Image (4);
+         package VM is new Intel_GPU_VM_Image (5);
          Held, Armed : Boolean := False;
          Flushes : Natural := 0;
          function Owner return Boolean is (Held);
@@ -920,13 +963,15 @@ begin
          package Updates is new App.Updates (Owner);
          Source : VM.Image;
          State : App.State;
-         Pages : VM.Backing_Pages := [16#4000000#, 16#4001000#, 16#4002000#, 16#4003000#];
+         Pages : VM.Backing_Pages := [16#4000000#, 16#4001000#, 16#4002000#, 16#4003000#, 16#4004000#];
          Backing : App.Tables.Mappings;
          type Leaf_Words is array (Intel_GPU_ADLN_PPGTT.Table_Index) of Unsigned_64;
          Leaf : Leaf_Words with Import, Volatile,
            Address => To_Address (Integer_Address (Base + Span + 3 * 4096));
          Replacement : Unsigned_64 := 16#5001003#;
          Index : Intel_GPU_ADLN_PPGTT.Table_Index := 2;
+         First : Positive := 1;
+         Last : Natural := 4;
       begin
          Held := True;
          for P in VM.Page_Number loop
@@ -936,7 +981,26 @@ begin
          VM.Map_Page (Source, 4096, 16#5000000#, Intel_GPU_ADLN_PPGTT.Write_Back,
            Intel_GPU_ADLN_PPGTT.Read_Write, OK); pragma Assert (OK);
          VM.Seal (Source, OK); pragma Assert (OK);
-         App.Prepare (State, Source, Backing,
+         -- Reject malformed application preparation views without touching
+         -- retained context/table RAM; each rejected state is one-shot.
+         for Shape in 1 .. 3 loop
+            declare
+               Rejected : App.State;
+               Before : constant Words := RAM;
+               Start : constant Positive := (if Shape = 2 then 2 else 1);
+               Stop : constant Natural := (if Shape = 3 then 0 elsif Shape = 1 then 3 else 5);
+            begin
+               App.Prepare (Rejected, Source, Backing (Start .. Stop),
+                 Intel_GPU_Buffer_Reply.From_Linear (16#1000000#, Base, Span, 16#1000000#),
+                 16#2000000#, Images.GGTT_Bytes, OK);
+               pragma Assert (not OK and App.GPU_Start (Rejected) = 0 and RAM = Before);
+               App.Prepare (Rejected, Source, Backing (1 .. 4),
+                 Intel_GPU_Buffer_Reply.From_Linear (16#1000000#, Base, Span, 16#1000000#),
+                 16#2000000#, Images.GGTT_Bytes, OK);
+               pragma Assert (not OK and RAM = Before);
+            end;
+         end loop;
+         App.Prepare (State, Source, Backing (1 .. 4),
            Intel_GPU_Buffer_Reply.From_Linear (16#1000000#, Base, Span, 16#1000000#),
            16#2000000#, Images.GGTT_Bytes, OK); pragma Assert (OK);
          Armed := True;
@@ -945,9 +1009,20 @@ begin
             when 4 => Replacement := Pages (1) + 3;
             when 5 => Replacement := 16#5001001#; -- unsupported read-only PTE
             when 6 => Index := 1; -- occupied logical leaf
+            when 7 => Replacement := Pages (5) + 3; -- reserved, absent from view
+            when 8 =>
+               Last := 3;
+               if Direct then Backing (4).CPU := 0; end if;
+            when 9 =>
+               First := 2; Last := 5;
+               if Direct then Backing (4).DMA := Pages (3); end if;
             when others => null;
          end case;
-         Updates.Insert_Leaf (State, Source, Backing, Pages (4), Index, 0, Replacement, OK);
+         if Direct then
+            Updates.Insert_Mapped_Leaf (State, Source, Backing (4), Pages (4), Index, 0, Replacement, OK);
+         else
+            Updates.Insert_Leaf (State, Source, Backing (First .. Last), Pages (4), Index, 0, Replacement, OK);
+         end if;
          pragma Assert (OK = (Fault = 0));
          pragma Assert (Updates.Failed (State) = (Fault /= 0));
          pragma Assert (VM.Lookup (Source, 8192) = 0); -- commit belongs to coordinator
@@ -955,12 +1030,18 @@ begin
          if Fault in 0 | 2 | 3 then pragma Assert (Leaf (2) = Replacement); end if;
          if Fault /= 0 then
             Held := True; Armed := False; Leaf (2) := 0;
-            Updates.Insert_Leaf (State, Source, Backing, Pages (4), 2, 0, 16#5001003#, OK);
+            Backing (4) := (Base + Span + 3 * 4096, Pages (4));
+            if Direct then
+               Updates.Insert_Mapped_Leaf (State, Source, Backing (4), Pages (4), 2, 0, 16#5001003#, OK);
+            else
+               Updates.Insert_Leaf (State, Source, Backing, Pages (4), 2, 0, 16#5001003#, OK);
+            end if;
             pragma Assert (not OK and Leaf (2) = 0);
          end if;
       end;
    end loop;
-   Ada.Text_IO.Put_Line ("Retained insertion writer PASS: empty leaf, stale hardware, flush/owner failure, table alias, unsupported PTE and occupied leaf (host RAM)");
+   end loop;
+   Ada.Text_IO.Put_Line ("Retained insertion writer PASS: array/direct mapping, empty leaf, stale hardware, flush/owner failure, table alias, unsupported PTE and occupied leaf (host RAM)");
    pragma Assert (Munmap (Mapping, 2 * Span) = 0);
    Ada.Text_IO.Put_Line ("Submission buffer PASS: independent one-shot mappings (host fixture)");
 end Submission_Buffer_Tests;

@@ -2,7 +2,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=CUBIT_SERVO_NATIVE_DIR");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("cubit") { return; }
     println!("cargo:rustc-link-arg=-Wl,--wrap=__gnat_get_secondary_stack");
-    println!("cargo:rustc-link-arg=-Wl,--wrap=abort,--wrap=mozalloc_abort");
+    println!("cargo:rustc-link-arg=-Wl,--wrap=abort,--wrap=mozalloc_abort,--wrap=__cubit_fd_writev");
     let native = std::path::PathBuf::from(std::env::var_os("CUBIT_SERVO_NATIVE_DIR")
         .expect("build through userspace/servo/build-cubitshell.sh"));
     let userspace = native.parent().unwrap().parent().unwrap();

@@ -1,0 +1,11 @@
+# Frozen startup-v1 hardware fixture, not new production manifest syntax.
+# Pair with the optional-render Mesa-linked Desktop candidate. Normal Desktop
+# and the existing triangle-window profile remain unchanged.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "config-storage.svc" (priority 5) (role config-storage))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4) (render approve-declared))
+  (start "boot-logs.app" (priority 4))
+  (start "mesa-triangle-window.app" (priority 3) (render approve-declared)))

@@ -1,0 +1,15 @@
+<!doctype html><title>CuBitBrowserPerfAudioStarting</title><body style="font:20px sans-serif"><h1>Penny WebAudio</h1><p id="status">Testing 16 JavaScript audio contexts...</p><script>
+(async()=>{try{for(let cycle=0;cycle<16;cycle++){
+const context=new AudioContext({sampleRate:48000});
+const buffer=context.createBuffer(2,4096,48000);
+buffer.getChannelData(0).fill(0.125);buffer.getChannelData(1).fill(-0.125);
+const source=context.createBufferSource();source.buffer=buffer;source.connect(context.destination);
+await context.resume();
+await new Promise(resolve=>{source.onended=resolve;source.start(context.currentTime+0.1);});
+await new Promise(resolve=>setTimeout(resolve,300));
+await context.close();
+document.title='CuBitBrowserPerfAudioCycle'+(cycle+1);
+document.getElementById('status').textContent='Context '+(cycle+1)+' played and closed';
+}document.title='CuBitBrowserPerfAudioEnded';}
+catch(error){document.getElementById('status').textContent=String(error);document.title='CuBitBrowserPerfAudioError';}})();
+</script>

@@ -1,0 +1,37 @@
+# GCC on CuBit (userspace/ports/gcc): the gcc driver, installed as
+# @nvme:0/toolchain/bin/gcc (configured --prefix=/toolchain). It starts cc1,
+# as and ld by the exact names its search produces, resolved like paths by
+# the libc's posix_spawn, and passes on whole the places its launcher
+# delegated to it (decision D2); it has no file scopes of its own.
+#
+# Typed parameters (docs/ccl-launch-parameters.md), for the CCL console:
+# sources in, one output out. Two places are delegated without appearing in
+# argv (in_arguments => false): work, a directory the output must be in, where -save-temps=obj
+# keeps the intermediate files (no TMPDIR, so no temporary place); and the
+# toolchain, read-only, which the driver passes on to cc1, as and ld with
+# the rest. Launchers that need more (tests/gcc) give a raw argv and places.
+(Executable_Manifest
+  identity => "org.gnu.gcc"
+  version => "15.3.0"
+  requests => [(service "process-manager" "process-manager") (service "filesystem" "filesystem")]
+  may_launch => [
+    (Launch "toolchain/libexec/gcc/x86_64-linux-musl/15.3.0/cc1")
+    (Launch "toolchain/x86_64-linux-musl/bin/as")
+    (Launch "toolchain/x86_64-linux-musl/bin/ld")]
+  outlets => [
+    (Outlet "unix.stdout" Element.Text pages => 4)
+    (Outlet "unix.stderr" Element.Text pages => 4)]
+  descriptors => [(Descriptor 1 "unix.stdout") (Descriptor 2 "unix.stderr")]
+  parameters => [
+    (Parameter "output" Parameter_Kind.Output_File)
+    (Parameter "sources" Parameter_Kind.Input_File many => true)
+    (Parameter "work" Parameter_Kind.Output_Directory in_arguments => false)
+    (Parameter "toolchain" Parameter_Kind.Input_Directory in_arguments => false)
+    (Parameter "compile_only" Parameter_Kind.Flag)
+    (Parameter "optimize" Parameter_Kind.Flag)]
+  arguments => [
+    (Argument_Piece.When_Set (Conditional_Literal "optimize" "-O2"))
+    (Argument_Piece.When_Set (Conditional_Literal "compile_only" "-c"))
+    (Argument_Piece.Literal "-save-temps=obj")
+    (Argument_Piece.Literal "-o") (Argument_Piece.Value "output")
+    (Argument_Piece.Value "sources")])

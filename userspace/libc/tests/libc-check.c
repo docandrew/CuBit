@@ -12,6 +12,8 @@
 #include <sys/mman.h>
 #include <sys/syscall.h>
 #include <sys/stat.h>
+#include <sys/select.h>
+#include <limits.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -282,6 +284,101 @@ int main(void)
 	      "a file outside the scope is denied");
 	check(open("/tls/roots.der", O_WRONLY) < 0 && errno == EACCES,
 	      "writing needs a write scope");
+
+	/* File times (docs/self-hosting.md: make needs real mtimes): a write
+	 * sets mtime and ctime to the wall clock; the volume's inode number,
+	 * type and link count come through fstat and stat. */
+	if (mkdir("/libc-check", 0755) < 0 && errno != EEXIST)
+		check(0, "make the writable directory");
+	int wfd = open("/libc-check/times", O_CREAT | O_TRUNC | O_RDWR | O_CLOEXEC, 0644);
+	struct timespec before, after;
+	struct stat wst, nst;
+	clock_gettime(CLOCK_REALTIME, &before);
+	check(wfd >= 3 && write(wfd, "stamp", 5) == 5, "create and write a file");
+	clock_gettime(CLOCK_REALTIME, &after);
+	check(fstat(wfd, &wst) == 0 && S_ISREG(wst.st_mode) && wst.st_size == 5 &&
+	      wst.st_nlink == 1 && wst.st_ino > 2, "fstat: type, size, links, inode");
+	/* Whole seconds on ext2: the write's second, within the call. */
+	check(wst.st_mtim.tv_sec >= before.tv_sec && wst.st_mtim.tv_sec <= after.tv_sec &&
+	      wst.st_ctim.tv_sec == wst.st_mtim.tv_sec,
+	      "a write sets mtime and ctime to the wall clock");
+	say("libc-check: mtime %ld realtime %ld..%ld\n", (long)wst.st_mtim.tv_sec,
+	    (long)before.tv_sec, (long)after.tv_sec);
+	check(close(wfd) == 0 && stat("/libc-check/times", &nst) == 0 &&
+	      nst.st_ino == wst.st_ino && nst.st_mtim.tv_sec == wst.st_mtim.tv_sec &&
+	      nst.st_size == 5, "stat by name agrees with fstat");
+	check(stat("/libc-check", &nst) == 0 && S_ISDIR(nst.st_mode) &&
+	      nst.st_mtim.tv_sec >= before.tv_sec, "the directory's mtime follows its entries");
+	char link[8];
+	check(readlink("/libc-check/times", link, sizeof link) < 0 && errno == EINVAL &&
+	      readlink("/libc-check/absent", link, sizeof link) < 0 && errno == ENOENT,
+	      "readlink: no symbolic links (EINVAL), missing names ENOENT");
+	char *real = realpath("/libc-check/times", 0);
+	check(real && !strcmp(real, "/libc-check/times"), "realpath");
+	free(real);
+	check(access("/libc-check/times", R_OK | W_OK) == 0 &&
+	      access("/libc-check", W_OK) == 0 &&
+	      access("/tls/roots.der", R_OK) == 0 &&
+	      access("/tls/roots.der", W_OK) < 0 && errno == EACCES,
+	      "access: W_OK follows the write scope");
+	int tfd = open("/libc-check/times", O_RDWR | O_CLOEXEC);
+	char grown[9] = { 1 };
+	check(tfd >= 3 && ftruncate(tfd, 2) == 0 && fstat(tfd, &nst) == 0 && nst.st_size == 2 &&
+	      ftruncate(tfd, 9) == 0 && pread(tfd, grown, 9, 0) == 9 &&
+	      !memcmp(grown, "st\0\0\0\0\0\0\0", 9) && close(tfd) == 0 &&
+	      truncate("/libc-check/times", 0) == 0 && stat("/libc-check/times", &nst) == 0 &&
+	      nst.st_size == 0, "ftruncate and truncate shrink and zero-fill");
+	int sp[2];
+	fd_set rset, wset;
+	struct timeval zero = { 0, 0 }, wait10 = { 0, 10000 };
+	check(pipe(sp) == 0, "pipe for select");
+	FD_ZERO(&rset); FD_SET(sp[0], &rset);
+	FD_ZERO(&wset); FD_SET(sp[1], &wset);
+	check(select(sp[1] + 1, &rset, &wset, 0, &zero) == 1 &&
+	      !FD_ISSET(sp[0], &rset) && FD_ISSET(sp[1], &wset),
+	      "select: empty pipe writable, not readable");
+	FD_ZERO(&rset); FD_SET(sp[0], &rset);
+	check(write(sp[1], "s", 1) == 1 && select(sp[0] + 1, &rset, 0, 0, &wait10) == 1 &&
+	      FD_ISSET(sp[0], &rset) && close(sp[0]) == 0 && close(sp[1]) == 0,
+	      "select: readable after a write");
+	check(unlink("/libc-check/times") == 0, "remove the file");
+
+	/* Working directory and directory-relative names (self-hosting
+	 * item 2): relative names start from the working directory, ".."
+	 * leaves it, and the *at calls start from an open directory. */
+	char here[64];
+	check(getcwd(here, sizeof here) && !strcmp(here, "/"), "getcwd starts at /");
+	check(chdir("/libc-check") == 0 && getcwd(here, sizeof here) &&
+	      !strcmp(here, "/libc-check"), "chdir and getcwd");
+	int rfd = open("relative", O_CREAT | O_TRUNC | O_WRONLY | O_CLOEXEC, 0644);
+	check(rfd >= 3 && write(rfd, "r", 1) == 1 && close(rfd) == 0 &&
+	      stat("/libc-check/relative", &nst) == 0 && nst.st_size == 1,
+	      "a relative name starts from the working directory");
+	check(stat("../tls/roots.der", &nst) == 0 && S_ISREG(nst.st_mode) &&
+	      stat("./../libc-check/./relative", &nst) == 0,
+	      "dot and dot-dot components");
+	check(chdir("relative") < 0 && errno == ENOTDIR &&
+	      chdir("absent") < 0 && errno == ENOENT &&
+	      getcwd(here, sizeof here) && !strcmp(here, "/libc-check"),
+	      "chdir refuses files and missing names and stays put");
+	int dfd = open("/libc-check", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+	check(dfd >= 3 && mkdirat(dfd, "sub", 0755) == 0 &&
+	      (rfd = openat(dfd, "sub/inner", O_CREAT | O_WRONLY | O_CLOEXEC, 0644)) >= 3 &&
+	      close(rfd) == 0 && fstatat(dfd, "sub/inner", &nst, 0) == 0 &&
+	      faccessat(dfd, "sub/inner", W_OK, 0) == 0 &&
+	      renameat(dfd, "sub/inner", dfd, "sub/moved") == 0 &&
+	      unlinkat(dfd, "sub/moved", 0) == 0 && unlinkat(dfd, "sub", AT_REMOVEDIR) == 0,
+	      "mkdirat, openat, fstatat, faccessat, renameat and unlinkat");
+	check(chdir("/") < 0 && errno == EACCES && getcwd(here, sizeof here) &&
+	      !strcmp(here, "/libc-check"),
+	      "chdir to a directory it may not read is refused");
+	check(chdir("/tls") == 0 && fchdir(dfd) == 0 && getcwd(here, sizeof here) &&
+	      !strcmp(here, "/libc-check") && close(dfd) == 0, "fchdir");
+	check(openat(1, "x", O_RDONLY) < 0 && errno == ENOTDIR &&
+	      openat(999, "x", O_RDONLY) < 0 && errno == EBADF,
+	      "openat with a non-directory or closed descriptor");
+	check(unlink("relative") == 0 && stat("/../../tls/roots.der", &nst) == 0 &&
+	      stat("../../../tls/roots.der", &nst) == 0, "dot-dot stops at the root");
 
 	say("%s\n", failures ? "LIBC: FAIL" : "LIBC: PASS");
 	return failures != 0;

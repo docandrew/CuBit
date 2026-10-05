@@ -60,14 +60,15 @@ package body CCL.Objects with SPARK_Mode is
          if D.Form = Bounded then
             --  A range subtype of Integer.
             Allowed (Ref) := True;
-         elsif D.Form = Stream then
-            --  A stream handle, held as a binding; its elements are data.
+         elsif D.Form in Stream | Async then
+            --  A stream or task handle, held as a binding; its elements (or
+            --  its result) are data.
             Allowed (Ref) := D.Count = 1 and then D.Parts (1).Payload < Ref
               and then Persistable (Types, D.Parts (1).Payload);
          elsif D.Form = Sequence then
             Allowed (Ref) := D.Count = 1 and then D.Parts (1).Payload < Ref
               and then Allowed (D.Parts (1).Payload)
-              and then Describe (Types, D.Parts (1).Payload).Form not in Sequence | Stream;
+              and then Describe (Types, D.Parts (1).Payload).Form not in Sequence | Stream | Async;
          else
             Allowed (Ref) := D.Form in Product | Sum;
             for I in 1 .. D.Count loop
@@ -76,9 +77,9 @@ package body CCL.Objects with SPARK_Mode is
                      Allowed (Ref) := False;
                   end if;
                elsif not Allowed (D.Parts (I).Payload) or else
-                 Describe (Types, D.Parts (I).Payload).Form = Stream
+                 Describe (Types, D.Parts (I).Payload).Form in Stream | Async
                then
-                  --  A stream is a session's handle, never a field or payload.
+                  --  A stream or task is a session's handle, never a field or payload.
                   Allowed (Ref) := False;
                end if;
             end loop;
@@ -198,7 +199,7 @@ package body CCL.Objects with SPARK_Mode is
                            if Integer_Of (C) not in Low_Of (Contract.Types, Expected) ..
                                                     High_Of (Contract.Types, Expected)
                            then return False; end if;
-                        when Primitive | Resource | Callable | Stream => return False;
+                        when Primitive | Resource | Callable | Stream | Async => return False;
                         when Sequence =>
                            --  Each element takes at least one cell, so a count
                            --  past the cells left is malformed (and the work

@@ -3,6 +3,7 @@ with CCL.Resource_Sections;
 with CuBit.Network_Authority;
 with CuBit.Render_Authority;
 with CuBit.Launch_Authority;
+with CuBit.Program_Descriptions;
 
 --  The checked content of an executable manifest and of a service catalog,
 --  whatever notation it was read from. CCL.Manifests.Encoding writes the
@@ -93,22 +94,9 @@ package CCL.Manifests.Model with SPARK_Mode => On is
       Rights : Access_Rights := [others => False];
    end record;
    type Scope_Array is array (Positive range 1 .. MAX_SCOPES) of Scope;
-   type Stream_Kind is (Standard_Output, Standard_Error, Log_Output);
-   for Stream_Kind use (Standard_Output => 2, Standard_Error => 3, Log_Output => 4);
-   type Stream_Type is (Raw_Bytes, Text_Lines);
-   for Stream_Type use (Raw_Bytes => 0, Text_Lines => 1);
-   type Stream_Declaration is record
-      Present : Boolean := False;
-      Pages : Positive range 1 .. 256 := 1;
-      Format : Stream_Type := Text_Lines;
-   end record;
-   type Stream_Array is array (Stream_Kind) of Stream_Declaration;
 
    subtype Request_Count is Natural range 0 .. MAX_REQUESTS;
    subtype Scope_Count_Type is Natural range 0 .. MAX_SCOPES;
-   MAX_STREAMS : constant := 3;
-   subtype Stream_Count_Type is Natural range 0 .. MAX_STREAMS;
-   type Stream_Order_Array is array (Positive range 1 .. MAX_STREAMS) of Stream_Kind;
    MATCH_VALUES : constant := 3;
    type Match_Value_Array is array (Positive range 1 .. MATCH_VALUES) of Unsigned_16;
 
@@ -125,9 +113,6 @@ package CCL.Manifests.Model with SPARK_Mode => On is
       Count : Request_Count := 0;
       Scopes : Scope_Array := [others => (others => <>)];
       Scope_Count : Scope_Count_Type := 0;
-      Streams : Stream_Array := [others => (others => <>)];
-      Stream_Order : Stream_Order_Array := [others => Standard_Output];
-      Stream_Count : Stream_Count_Type := 0;
       --  An explicit statement that the executable requests no capabilities:
       --  an empty .cubit.caps section rather than none.
       Explicit_No_Requests : Boolean := False;
@@ -135,6 +120,10 @@ package CCL.Manifests.Model with SPARK_Mode => On is
       Match_Values : Match_Value_Array := [others => 0];
       Launches : Launch_Array := [others => (others => <>)];
       Launch_Count : Launch_Count_Type := 0;
+      --  The program's description: typed parameters and how they render
+      --  into argv, its ports and its descriptor map; no section when it
+      --  declares none of these.
+      Description : CuBit.Program_Descriptions.Signature;
    end record;
 
    --  The build's service catalog: names, IDs and offered rights, the

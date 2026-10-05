@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 root = pathlib.Path(__file__).resolve().parents[2]
-fixture = root / 'userspace/c/sameboy_build/test.gb'
+fixture = root / 'userspace/ports/sameboy/build/test.gb'
 stager = pathlib.Path(__file__).with_name('stage-roms.py')
 
 

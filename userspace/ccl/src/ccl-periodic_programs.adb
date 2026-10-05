@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 package body CCL.Periodic_Programs with SPARK_Mode is
    use type CCL.Language.Interpretation_Status;
 
@@ -8,7 +9,7 @@ package body CCL.Periodic_Programs with SPARK_Mode is
       Context : in out Host_Context;
       Updated : out Boolean)
    is
-      procedure Evaluate is new CCL.Language.Interpret_With_Host
+      procedure Evaluate is new CCL.Evaluation.Evaluate_With_Host
         (Host_Context, Invoke);
       Ticket : Invocation;
       Ready : Boolean;
@@ -26,7 +27,7 @@ package body CCL.Periodic_Programs with SPARK_Mode is
       Grants : CCL.Catalog.Granted_Bindings; Context : in out Host_Context;
       Updated : out Boolean)
    is
-      procedure Evaluate is new CCL.Language.Interpret_With_Values
+      procedure Evaluate is new CCL.Evaluation.Evaluate_With_Values
         (Host_Context, Invoke, Read_Stream => Read_Stream);
       Ticket : Invocation;
       Ready : Boolean;

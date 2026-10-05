@@ -1,0 +1,8 @@
+project Vulkan_Device_Native extends "vulkan_context_native.gpr" is
+   for Source_Dirs use ("../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/mesa");
+   for Source_Files use Vulkan_Context_Native'Source_Files &
+     ("vulkan_device_owner.ads", "vulkan_device_owner.adb",
+      "vulkan_device_ffi.ads", "vulkan_device_ffi.adb",
+      "mesa_service.ads", "mesa_service.adb");
+   for Object_Dir use "build/vulkan-device-native";
+end Vulkan_Device_Native;

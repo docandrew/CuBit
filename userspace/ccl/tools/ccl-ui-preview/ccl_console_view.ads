@@ -52,7 +52,7 @@ package CCL_Console_View is
    --  cell, as does a click on a cell's LIVE mark. Only a plain expression
    --  is re-run (CCL.Sessions.Reevaluate_With_Values); the session's
    --  environment and history do not change.
-   MAXIMUM_LIVE_CELLS : constant := 4;
+   MAXIMUM_LIVE_CELLS : constant := 16;
    generic
       with procedure Reevaluate
         (Item : in out CCL.Sessions.Session; Index : CCL.Sessions.History_Index;
@@ -60,6 +60,22 @@ package CCL_Console_View is
          Outcome : out CCL.Language.Interpretation_Result; Reevaluated : out Boolean);
       with function Now_Ms return Interfaces.Unsigned_64;
    procedure Refresh (State : in out View_State; Redraw : out Boolean);
+   --  Run Source (CCL source) as an entry of its own, as if typed, and make
+   --  it live, re-running whenever stream elements arrive (no period): the
+   --  card a front end adds for each outlet of a program an entry started
+   --  (docs/ccl-launch-parameters.md, "Every outlet gets a card").
+   generic
+      with procedure Execute
+        (Item : in out CCL.Sessions.Session; Source : String;
+         Fuel : CCL.Sessions.Fuel_Budget;
+         Outcome : out CCL.Language.Interpretation_Result);
+      with function Now_Ms return Interfaces.Unsigned_64;
+   procedure Follow (State : in out View_State; Source : String);
+
+   --  The newest entry's source (for a front end that follows what it
+   --  started).
+   function Latest_Source (State : View_State) return String;
+
    --  When Refresh next has work (absolute milliseconds), or 0 for none.
    function Next_Deadline (State : View_State) return Interfaces.Unsigned_64;
    --  Elements arrived on the session's streams: every live cell runs again

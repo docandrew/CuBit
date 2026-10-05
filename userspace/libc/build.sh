@@ -24,11 +24,10 @@ rm -rf "$src"
 mkdir -p "$src"
 tar -xzf "$tarball" -C "$src" --strip-components=1
 cp -R "$here/overlay/." "$src/"
-# The CuBit stream producer, the network channel and filesystem queue
-# layouts, shared with
-# the older C runtime.
-cp "$here/../c/cubit_streams.c" "$here/../c/cubit.h" "$here/../c/cubit_net_channel.h" "$here/../c/cubit_fs_queue.h" \
-    "$src/src/cubit/"
+# musl sources replaced by the libc's Ada (docs/c-removal.md).
+sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$here/replaced-by-ada.txt" | while read -r replaced; do
+    if [ -n "$replaced" ]; then rm -f "$src/$replaced"; fi
+done
 
 (
     cd "$src"
@@ -41,23 +40,42 @@ cp "$here/../c/cubit_streams.c" "$here/../c/cubit.h" "$here/../c/cubit_net_chann
 # The proved channel-ring and datagram-record code (CuBit.Channel_Rings,
 # CuBit.Datagram_Rings, tests/channel-rings) and their C entry points: C,
 # C++ and Rust programs keep their network channel rings and listener
-# records with it (src/cubit/net.c). Also the proved launch-block validator
+# records with it (CuBit.Libc_Net). Also the proved launch-block validator
 # (CuBit.Launch_Arguments, tests/launch-arguments) that the start code and
-# posix_spawn use. Pure code: no Ada run-time library.
+# posix_spawn use, path resolution (CuBit.Path_Names, tests/path-names), and
+# the libc's functions written in Ada (ada/, docs/c-removal.md). No Ada
+# run-time library: libc-ada.adc forbids anything that would need one.
 gnat_gcc=$(dirname "$(command -v gnat)")/gcc
 ada_obj=$build/ada
 rm -rf "$ada_obj"
 mkdir -p "$ada_obj"
 for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gnat/cubit-channel_rings_c.adb" \
     "$here/../runtime/gnat/cubit-datagram_rings.adb" "$here/../runtime/gnat/cubit-datagram_rings_c.adb" \
-    "$here/../runtime/gnat/cubit-launch_arguments.adb" "$here/../runtime/gnat/cubit-launch_arguments_c.adb"; do
+    "$here/../runtime/gnat/cubit-launch_arguments.adb" "$here/../runtime/gnat/cubit-launch_arguments_c.adb" \
+    "$here/../runtime/gnat/cubit-launch_grants.adb" "$here/../runtime/gnat/cubit-program_descriptions.adb" \
+    "$here/../runtime/gnat/cubit-outlet_rings.adb" \
+    "$here/../runtime/gnat/cubit-path_names.adb" "$here/../runtime/gnat/cubit-path_names_c.adb" \
+    "$here/../runtime/gnat/cubit-kernel_calls.adb" "$here/../runtime/gnat/cubit-child_table.adb" \
+    "$here/ada/cubit-libc_process.adb" "$here/ada/cubit-libc_time.adb" \
+    "$here/ada/cubit-libc_select.adb" "$here/ada/cubit-libc_reports.adb" \
+    "$here/ada/cubit-libc_system_calls.adb" "$here/ada/cubit-libc_start.adb" \
+    "$here/ada/cubit-libc_start_layout.adb" "$here/ada/cubit-libc_rings.adb" \
+    "$here/ada/cubit-libc_directory_entries.adb" "$here/ada/cubit-libc_descriptor_rules.adb" \
+    "$here/ada/cubit-libc_descriptors.adb" "$here/ada/cubit-libc_file_cache.adb" \
+    "$here/ada/cubit-libc_dirty_map.adb" "$here/ada/cubit-libc_park_table.adb" \
+    "$here/ada/cubit-libc_files.adb" "$here/../runtime/gnat/cubit-filesystem_queues.ads" \
+    "$here/../runtime/gnat/cubit-submission_queues.adb" "$here/../runtime/gnat/cubit-slot_rings.adb" \
+    "$here/ada/cubit-libc_net_addresses.adb" "$here/ada/cubit-libc_net_targets.adb" \
+    "$here/ada/cubit-libc_net_names.adb" "$here/ada/cubit-libc_net.adb" \
+    "$here/../runtime/gnat/cubit-net_control_queues.ads" "$here/ada/cubit-libc_threads.adb" \
+    "$here/ada/cubit-libc_stream_rings.adb" "$here/ada/cubit-libc_streams.adb"; do
     (cd "$ada_obj" && "$gnat_gcc" -c -O2 -g -gnatp -gnatn -fno-pic -ffunction-sections \
-        -I"$here/../runtime/gnat" "$unit")
+        -gnat2022 -gnatwa -gnatys -gnatec="$here/libc-ada.adc" \
+        -I"$here/ada" -I"$here/../runtime/gnat" "$unit")
 done
 ar rcs "$sysroot/lib/libc.a" "$ada_obj"/*.o
 
-gcc -O2 -g -ffreestanding -nostdinc -isystem "$sysroot/include" \
-    -c "$here/crt/crt1.c" -o "$sysroot/lib/cubit-crt1.o"
+gcc -c "$here/crt/crt1.S" -o "$sysroot/lib/cubit-crt1.o"
 install -m 0644 "$here/link.ld" "$sysroot/lib/cubit.ld"
 
 # C++: nixpkgs' musl cross gcc (libstdc++ built against musl headers of the

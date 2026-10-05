@@ -5,13 +5,17 @@
 pragma Ada_2022;
 
 package CuBit.Directory_Paths with SPARK_Mode => On is
-   Maximum_Bytes : constant := 256;
+   --  The longest name the filesystem service takes: Linux's PATH_MAX.
+   --  (Every name is resolved to a full name; CuBit prefers short ones.)
+   Maximum_Bytes : constant := 4096;
+   --  The longest single component (ext2's EXT2_NAME_LEN).
+   Maximum_Component_Bytes : constant := 255;
    subtype Byte_Count is Natural range 0 .. Maximum_Bytes;
    type Path is private;
 
    function Value (Item : Path) return String;
    function Valid_Child_Name (Name : String) return Boolean is
-     (Name'Length in 1 .. Maximum_Bytes - 1 and then
+     (Name'Length in 1 .. Maximum_Component_Bytes and then
       Name /= "." and then Name /= ".." and then
       (for all C of Name =>
          C /= '/' and then C /= ':' and then C /= Character'Val (0)));

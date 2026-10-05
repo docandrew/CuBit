@@ -1,4 +1,5 @@
 with "../../lib/ui/fonts_native.gpr";
+with "../../lib/ui/toolkit_flags.gpr";
 project Boot_Logs is
    for Languages use ("Ada");
    for Object_Dir use "build";
@@ -9,10 +10,10 @@ project Boot_Logs is
       for Executable ("main.adb") use "boot-logs.app";
       for Default_Switches ("Ada") use ("-nostdlib");
    end Builder;
-   package Compiler is
+   package Compiler extends Toolkit_Flags.Compiler is
       for Default_Switches ("Ada") use
         ("-O2", "-gnat2022", "-gnatwa", "-fstack-usage",
-         "-fomit-frame-pointer", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+         "-fomit-frame-pointer", "-mno-red-zone", "-fno-pic");
    end Compiler;
    package Binder is
       for Default_Switches ("Ada") use ("-d_C");

@@ -1,0 +1,11 @@
+# musl sources the CuBit libc replaces with Ada (docs/c-removal.md), removed
+# from the musl tree before it is built, so musl's version cannot come back.
+# One path per line, relative to the musl source tree.
+src/process/posix_spawn.c       # CuBit.Libc_Process
+src/process/posix_spawnp.c      # CuBit.Libc_Process
+src/process/waitpid.c           # CuBit.Libc_Process
+src/process/system.c            # CuBit.Libc_Process
+src/linux/wait4.c               # CuBit.Libc_Process
+src/stdio/popen.c               # CuBit.Libc_Process
+src/network/lookup_name.c       # CuBit.Libc_Net (__lookup_name)
+src/thread/pthread_getattr_np.c # CuBit.Libc_Threads

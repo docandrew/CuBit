@@ -35,6 +35,8 @@ package body CuBit.UI.App is
       return (value + 4095) and not Unsigned_64'(4095);
    end Align_Up_Page;
 
+   function Input_Stopped (win : Window) return Boolean is (win.inputStopped);
+
    function Is_Open (win : Window) return Boolean is
    begin
       return win.surfaceId /= 0;
@@ -214,7 +216,7 @@ package body CuBit.UI.App is
       Captured : Boolean;
    begin
       ready := False; repair := (others => 0);
-      if not Is_Open (win) then return; end if;
+      if not Is_Open (win) or else win.inputStopped then return; end if;
       if not win.protectedFrames then
          repair := CuBit.UI.Clamp_Rect (Canvas (win), changed);
          ready := not CuBit.UI.Is_Empty (repair);
@@ -269,6 +271,8 @@ package body CuBit.UI.App is
       if not attached then return; end if;
       win.protectedFrames := protected_frames;
       win.sentBye := False;
+      win.inputStopped := False;
+      win.inputErrorReported := False;
       win.width := 0; win.height := 0; win.pitch := 0;
       win.densityNumerator := 1; win.densityDenominator := 1;
       win.lastEvent := 0; win.inputMayRemain := False;
@@ -413,15 +417,25 @@ package body CuBit.UI.App is
    begin
       event := (others => <>);
       found := False;
-      if win.surfaceId = 0 then
+      if win.surfaceId = 0 or else win.inputStopped then
          return;
       end if;
 
       win.inputMayRemain := False;
       if decoded.Status /= DP.Success then
-         debugPrint ("ui-app: input request or reply rejected" & LF);
+         if not win.inputErrorReported then
+            debugPrint ("ui-app: input request or reply rejected" & LF);
+            win.inputErrorReported := True;
+         end if;
+         if decoded.Status = DP.Bad_Object then
+            -- The decoder accepts this only from a valid status response.
+            -- Do not clear the surface identity or free uncertain frame loans.
+            win.inputStopped := True;
+            Client_Input_Batch_Cache.Clear (win.inputCache);
+         end if;
          return;
       end if;
+      win.inputErrorReported := False;
       win.inputMayRemain := decoded.Value.More_Pending;
       win.lastEvent := decoded.Value.Serial;
       if decoded.Value.Kind = DP.No_Input then
@@ -465,7 +479,7 @@ package body CuBit.UI.App is
       request : Message;
    begin
       accepted := False;
-      if win.surfaceId = 0 or else win.sentBye or else win.batchedInput or else
+      if win.surfaceId = 0 or else win.inputStopped or else win.sentBye or else win.batchedInput or else
         not CuBit.Async_Requests.Can_Reserve (win.inputRequest, token)
       then return; end if;
       request := CuBit.Desktop_Messages.From_Wire
@@ -490,7 +504,7 @@ package body CuBit.UI.App is
       if not healthy then return; end if;
       decoded := DP.Decode_Input_Result (CuBit.Desktop_Messages.To_Wire (receipt.msg), DP.Wait_Input);
       healthy := decoded.Status = DP.Success;
-      if healthy then Apply_Input_Result (win, decoded, event, found); end if;
+      Apply_Input_Result (win, decoded, event, found);
    end Complete_Input_Wait;
 
    procedure Add_Input_Count (Value : in out Unsigned_64; Amount : Unsigned_64 := 1) is
@@ -512,7 +526,7 @@ package body CuBit.UI.App is
       Decoded : DP.Input_Result;
    begin
       event := (others => <>); found := False; valid := False;
-      if win.surfaceId = 0 or else Input_Wait_Pending (win) or else
+      if win.surfaceId = 0 or else win.inputStopped or else Input_Wait_Pending (win) or else
         not win.batchedInput or else Cache.Remaining (win.inputCache) = 0
       then return; end if;
       Cache.Take (win.inputCache, win.surfaceId, win.lastEvent, Decoded);
@@ -544,7 +558,7 @@ package body CuBit.UI.App is
       reply : Message;
    begin
       event := (others => <>); found := False;
-      if win.surfaceId = 0 or else Input_Wait_Pending (win) then return; end if;
+      if win.surfaceId = 0 or else win.inputStopped or else Input_Wait_Pending (win) then return; end if;
       if win.batchedInput then
          declare
             package Cache renames Client_Input_Batch_Cache;
@@ -656,7 +670,7 @@ package body CuBit.UI.App is
       accepted : Boolean;
       Watermark : Unsigned_64;
    begin
-      if win.surfaceId = 0 or else CuBit.UI.Is_Empty (r) then
+      if win.surfaceId = 0 or else win.inputStopped or else CuBit.UI.Is_Empty (r) then
          Cancel_Paint (win);
          return;
       end if;
@@ -903,7 +917,7 @@ package body CuBit.UI.App is
 
       Paint (Full_Rect (win));
 
-      while running loop
+      while running and then not win.inputStopped loop
          declare
             dirty : CuBit.UI.Rect := (others => 0);
             dirtyEvents : Natural := 0;
@@ -979,7 +993,7 @@ package body CuBit.UI.App is
                Paint (dirty);
             end if;
 
-            if running and then not hasPendingEvent then
+            if running and then not win.inputStopped and then not hasPendingEvent then
                --  Park on a deferred one-use reply capability. Reducing the
                --  old polling interval would still add avoidable latency and
                --  burn CPU; this wakes directly when input is queued. It is
@@ -1001,7 +1015,9 @@ package body CuBit.UI.App is
                      if not hasPendingEvent then running := False; end if;
                   else
                      Wait_Input_Until (win, deadline, pendingEvent, hasPendingEvent);
-                     if not hasPendingEvent and then appDeadline /= 0 and then
+                     if win.inputStopped then
+                        running := False;
+                     elsif not hasPendingEvent and then appDeadline /= 0 and then
                        syscall (SYSCALL_GETTIME) >= appDeadline
                      then
                         On_Deadline (win, timerDirty, running);

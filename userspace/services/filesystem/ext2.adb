@@ -207,6 +207,8 @@ package body Ext2 is
    subtype Cache_Slot is Block_Cache_Index.Slot_Index;
    subtype Block_Class is Block_Cache_Index.Block_Class;
    use all type Block_Cache_Index.Block_Class;
+   --  ext2's EXT2_INDEX_FL: the directory carries an htree index.
+   Inode_Index_Flag : constant Unsigned_32 := 16#0000_1000#;
    Cached_Block_Bytes : constant := 4096; -- largest admitted ext2 block
    type Cached_Block is array (0 .. Cached_Block_Bytes - 1) of Unsigned_8
      with Alignment => 8;
@@ -2569,14 +2571,16 @@ package body Ext2 is
    --  descriptor block per reserved group, the superblock.
    Write_Credits : constant := 1 + 3 + 2 * 4 + 1;
    --  create/mkdir: parent and new inode blocks, the name's directory block
-   --  and a new one, inode bitmap and descriptor, two single-block
-   --  allocations (bitmap + descriptor each), the superblock.
-   Create_Credits : constant := 2 + 2 + 2 + 2 * 2 + 1;
+   --  and a new directory's own, inode bitmap and descriptor, a single-block
+   --  allocation (bitmap + descriptor), the superblock, and the parent's
+   --  growth by one block (an allocation run).
+   Create_Credits : constant := 2 + 2 + 2 + 2 + 1 + Write_Credits;
    --  unlink/rmdir/inode release: directory block, inode and parent inode
    --  blocks, inode bitmap and descriptor, the superblock, and for rmdir
    --  a bitmap and descriptor per directory block.
    Remove_Credits : constant := 3 + 2 + 1 + 2 * 12;
-   Rename_Credits : constant := 1;
+   --  rename: the directory block and the directory's inode block.
+   Rename_Credits : constant := 2;
    --  Orphan list: the superblock, the inode and its predecessor.
    Orphan_Credits : constant := 3;
 
@@ -2652,6 +2656,53 @@ package body Ext2 is
          forgetVolume (fs);
       end if;
    end writeBytes;
+
+   --  UTC seconds now, from the kernel's wall-clock offset (published by the
+   --  clock service; SYSINFO_WALL_CLOCK_OFFSET), or 0 while it is unknown.
+   function Now_Seconds return Unsigned_32 is
+      Offset : constant Unsigned_64 := syscall (SYSCALL_INFO, SYSINFO_WALL_CLOCK_OFFSET, 0);
+      Monotonic : Unsigned_64;
+      MS_PER_SECOND : constant := 1_000;
+   begin
+      if Offset = 0 or else Offset = Unsigned_64'Last then
+         return 0;
+      end if;
+      Monotonic := syscall (SYSCALL_GETTIME);
+      if Monotonic = Unsigned_64'Last or else Offset > Unsigned_64'Last - Monotonic then
+         return 0;
+      end if;
+      return Unsigned_32 (Unsigned_64'Min ((Offset + Monotonic) / MS_PER_SECOND, Unsigned_64 (Unsigned_32'Last)));
+   end Now_Seconds;
+
+   --  What an inode change means for its times (POSIX): every change sets
+   --  ctime; changed content (data, size, directory entries) sets mtime too;
+   --  a new inode starts with all three. Times change only when the second
+   --  does, so a burst of overwrites costs at most one inode write a second.
+   --  While wall time is unknown, times are left as they are.
+   type Inode_Touch is (Inode_Changed, Content_Changed, Inode_Created);
+   procedure Stamp (ino : in out Inode; touch : Inode_Touch) is
+      Now : constant Unsigned_32 := Now_Seconds;
+   begin
+      if Now = 0 then
+         return;
+      end if;
+      ino.creationTime := Now;   --  ext2's i_ctime: the inode's change time
+      if touch in Content_Changed | Inode_Created then
+         ino.modifiedTime := Now;
+      end if;
+      if touch = Inode_Created then
+         ino.accessedTime := Now;
+      end if;
+   end Stamp;
+
+   --  Stamp, reporting whether a time changed: an inode that is written
+   --  only for its times need not be written when none did.
+   procedure Stamp (ino : in out Inode; touch : Inode_Touch; changed : out Boolean) is
+      before : constant Inode := ino;
+   begin
+      Stamp (ino, touch);
+      changed := ino /= before;
+   end Stamp;
 
    --  Exact_Inode writes every field as given; Update_Existing_Inode keeps
    --  the on-disk dtime of an unlinked inode of a journaled volume, which
@@ -3373,7 +3424,8 @@ package body Ext2 is
    procedure appendRun
      (fs : in out Filesystem; ino : in out Inode; pos : Unsigned_64;
       source : System.Address; available : Unsigned_64;
-      consumed : out Unsigned_64; status : out Write_Status)
+      consumed : out Unsigned_64; status : out Write_Status;
+      payloadClass : Block_Class := File_Data)
    is
       sectors : constant Sector_Accounting.Block_Sectors :=
         Sector_Accounting.Block_Sectors (fs.blkSize / 512);
@@ -3616,7 +3668,7 @@ package body Ext2 is
             writeBytes
               (fs, Storage_Offset (Data_Block (start)) * Storage_Offset (fs.blkSize),
                payload (Natural (start * blockBytes))'Address,
-               Storage_Count (length * blockBytes), status, File_Data);
+               Storage_Count (length * blockBytes), status, payloadClass);
             if status /= Write_Complete then
                fs.writeQuarantined := True;
                status := Write_Recovery_Required;
@@ -3794,7 +3846,6 @@ package body Ext2 is
          status := Write_Out_Of_Range;
          return;
       end if;
-
       if count > 0 and then offset + count > fileSize (ino) and then
         not Ext2_Support.Size_Admitted (offset + count, fs.sb.readOnlyFeatures)
       then
@@ -4016,11 +4067,17 @@ package body Ext2 is
          fs.writeQuarantined := True;
       end if;
 
+      --  Only a write that changed bytes changes the times; a failed one
+      --  must not, and must not publish an inode for its sake.
+      if written > 0 and then not fs.writeQuarantined then
+         Stamp (ino, Content_Changed);
+      end if;
       if written > 0 and then not fs.writeQuarantined and then
         ino /= originalInode
       then
-         --  Data-only overwrites do not alter the inode. Avoid a block-group
-         --  read and inode-sector RMW in that common path. Compare the whole
+         --  Data-only overwrites within the same second do not alter the
+         --  inode. Avoid a block-group read and inode-sector RMW in that
+         --  common path. Compare the whole
          --  typed record so future timestamp/accounting fields cannot silently
          --  bypass publication by forgetting to set a separate dirty flag.
          --  Publish new pointers and size only after their data blocks have
@@ -4047,6 +4104,193 @@ package body Ext2 is
          status := terminalStatus;
       end if;
    end writeData;
+
+   --  The most blocks a directory may have: what readDirectoryPage follows
+   --  (direct, single and double indirect).
+   function directoryBlockLimit (fs : Filesystem) return Unsigned_64 is
+     (Unsigned_64 (NUM_DIRECT_BLOCKS) + Unsigned_64 (fs.blkSize / 4) +
+      Unsigned_64 (fs.blkSize / 4) * Unsigned_64 (fs.blkSize / 4));
+
+   --  A directory whose records this service may rewrite: whole blocks
+   --  within directoryBlockLimit, and no inode flag but the htree index,
+   --  which a change clears first (unindexDirectory).
+   function writableDirectory (fs : Filesystem; dir : Inode) return Boolean is
+     (inodeType (dir) = INODE_DIRECTORY and then
+      (dir.flags and not Inode_Index_Flag) = 0 and then
+      dir.sizeLo /= 0 and then dir.sizeLo mod fs.blkSize = 0 and then
+      dir.sizeHi_DirACL = 0 and then dir.tripleIndirectBlock = 0 and then
+      Unsigned_64 (dir.sizeLo / fs.blkSize) <= directoryBlockLimit (fs));
+
+   --  The device block holding a directory's logical block index; valid is
+   --  False for a hole or a pointer outside the volume.
+   procedure directoryBlock
+     (fs : Filesystem; dir : Inode; index : Natural; number : out Unsigned_32;
+      valid : out Boolean; readStatus : out Read_Status)
+   is
+      leaf, middle : Unsigned_32;
+   begin
+      resolveBlock (fs, dir, Unsigned_32 (index), number, leaf, middle, readStatus);
+      valid := readStatus = Read_Complete and then
+        number >= fs.sb.firstDataBlock and then number < fs.sb.blockCount;
+   end directoryBlock;
+
+   --  Before changing an htree directory's records, clear its index flag, so
+   --  a Linux reader never trusts a stale index; it reads the directory
+   --  linearly instead (e2fsck -fD can rebuild the index). Index blocks
+   --  already read as unused records.
+   procedure unindexDirectory
+     (fs : in out Filesystem; number : Unsigned_32; dir : in out Inode;
+      status : out Write_Status)
+   is
+   begin
+      status := Write_Complete;
+      if (dir.flags and Inode_Index_Flag) /= 0 then
+         dir.flags := dir.flags and not Inode_Index_Flag;
+         writeInode (fs, number, dir, status);
+      end if;
+   end unindexDirectory;
+
+   --  Add one empty block (Directory_Blocks.Empty_Block) to a writable
+   --  directory, allocated and attached by appendRun as journaled directory
+   --  data, then publish the larger size. Interrupted after the attach, the
+   --  directory merely has an empty block; ENOSPC writes nothing.
+   procedure growDirectory
+     (fs : in out Filesystem; number : Unsigned_32; dir : in out Inode;
+      status : out Write_Status)
+   is
+      contents : Directory_Blocks.Block_Data;
+      grown : Inode := dir;
+      consumed : Unsigned_64;
+   begin
+      if Unsigned_64 (dir.sizeLo / fs.blkSize) >= directoryBlockLimit (fs) or else
+        Unsigned_64 (dir.sizeLo) + Unsigned_64 (fs.blkSize) >
+          Unsigned_64 (Unsigned_32'Last)
+      then
+         status := Write_File_Range_Unsupported;
+         return;
+      end if;
+      Directory_Blocks.Empty_Block
+        (contents, Directory_Blocks.Block_Length (fs.blkSize));
+      appendRun (fs, grown, Unsigned_64 (dir.sizeLo), contents'Address,
+                 Unsigned_64 (fs.blkSize), consumed, status, Directory_Data);
+      if status /= Write_Complete then
+         return;
+      elsif consumed /= Unsigned_64 (fs.blkSize) then
+         fs.writeQuarantined := True;
+         status := Write_Recovery_Required;
+         return;
+      end if;
+      grown.sizeLo := dir.sizeLo + fs.blkSize;
+      writeInode (fs, number, grown, status);
+      if status /= Write_Complete then
+         fs.writeQuarantined := True;
+         status := Write_Recovery_Required;
+         return;
+      end if;
+      dir := grown;
+   end growDirectory;
+
+   --  Find room for a record of needed bytes in a writable directory, the
+   --  last blocks first (names are appended, so free space is usually at
+   --  the end; any block with room will do), growing it by an empty block
+   --  when none has room (growDirectory). An htree index is cleared first.
+   --  On success buffer holds targetBlock's contents, and the record goes
+   --  at entryOffset with entrySpan bytes (a live record it is split from
+   --  is already shortened in buffer).
+   procedure findRoom
+     (fs : in out Filesystem; number : Unsigned_32; dir : in out Inode;
+      needed : Unsigned_32; targetBlock : out Unsigned_32; buffer : out String;
+      entryOffset : out Storage_Offset; entrySpan : out Unsigned_16;
+      status : out Write_Status)
+   is
+      blocks : constant Natural := Natural (dir.sizeLo / fs.blkSize);
+      blockValid, found : Boolean := False;
+      readStatus : Read_Status;
+
+      procedure Uncertain is
+      begin
+         fs.writeQuarantined := True;
+         status := Write_Recovery_Required;
+      end Uncertain;
+   begin
+      targetBlock := 0;
+      buffer := [others => Character'Val (0)];
+      entryOffset := 0;
+      entrySpan := 0;
+      unindexDirectory (fs, number, dir, status);
+      if status /= Write_Complete then
+         Uncertain;
+         return;
+      end if;
+      for index in reverse 0 .. blocks - 1 loop
+         directoryBlock (fs, dir, index, targetBlock, blockValid, readStatus);
+         if blockValid then
+            readBlock (fs, targetBlock, buffer'Address, readStatus);
+         end if;
+         if not blockValid or else readStatus /= Read_Complete then
+            status := Write_Device_Error;
+            return;
+         end if;
+         declare
+            position : Storage_Offset := 0;
+         begin
+            while position < Storage_Offset (fs.blkSize) loop
+               --  Validate serialized record bounds before overlay/access.
+               if Storage_Offset (fs.blkSize) - position < 8 then
+                  status := Write_Device_Error;
+                  return;
+               end if;
+               declare
+                  dent : DirectoryEntry
+                    with Import, Address => buffer'Address + position;
+                  used : Unsigned_16;
+               begin
+                  if dent.length < 8 or else dent.length mod 4 /= 0 or else
+                    Storage_Offset (dent.length) >
+                      Storage_Offset (fs.blkSize) - position or else
+                    Unsigned_16 (dent.nameLength) > dent.length - 8
+                  then
+                     status := Write_Device_Error;
+                     return;
+                  end if;
+                  used := (if dent.inode = 0 then 0 else
+                    Unsigned_16 (((8 + Natural (dent.nameLength) + 3) / 4) * 4));
+                  if Unsigned_32 (dent.length - used) >= needed then
+                     entryOffset := position + Storage_Offset (used);
+                     entrySpan := dent.length - used;
+                     if used /= 0 then
+                        dent.length := used;
+                     end if;
+                     found := True;
+                     exit;
+                  end if;
+                  position := position + Storage_Offset (dent.length);
+               end;
+            end loop;
+         end;
+         exit when found;
+      end loop;
+
+      if not found then
+         --  No room: grow by an empty block (published with the new size;
+         --  harmless if what follows fails), and insert there.
+         growDirectory (fs, number, dir, status);
+         if status /= Write_Complete then
+            return;
+         end if;
+         directoryBlock (fs, dir, blocks, targetBlock, blockValid, readStatus);
+         if blockValid then
+            readBlock (fs, targetBlock, buffer'Address, readStatus);
+         end if;
+         if not blockValid or else readStatus /= Read_Complete then
+            Uncertain;
+            return;
+         end if;
+         entryOffset := 0;
+         entrySpan := Unsigned_16 (fs.blkSize);
+      end if;
+      status := Write_Complete;
+   end findRoom;
 
    procedure renameInner
      (fs : in out Filesystem; dirInodeNum : Unsigned_32;
@@ -4111,11 +4355,9 @@ package body Ext2 is
       elsif inodeType (dirIno) /= INODE_DIRECTORY then
          status := Rename_Malformed;
          return;
-      elsif dirIno.flags /= 0 then
-         --  Only plain directory records are supported for mutation. In
-         --  particular, changing a name without updating a hash index would
-         --  make that name unreachable to an index-aware filesystem reader.
-         --  Other inode flags may also require semantics we do not implement.
+      elsif not writableDirectory (fs, dirIno) then
+         --  Other inode flags may require semantics we do not implement. An
+         --  htree index is cleared before the records change (below).
          status := Rename_Range_Unsupported;
          return;
       end if;
@@ -4139,22 +4381,29 @@ package body Ext2 is
          status := Lookup_Failure (lookupStatus);
          return;
       end if;
-      if dirIno.sizeLo = 0 or else dirIno.sizeLo mod fs.blkSize /= 0 then
-         status := Rename_Malformed;
-         return;
-      elsif Unsigned_64 (dirIno.sizeLo) >
-        Unsigned_64 (NUM_DIRECT_BLOCKS) * Unsigned_64 (fs.blkSize)
-      then
-         status := Rename_Range_Unsupported;
-         return;
-      end if;
-
-      for index in 0 .. Natural (dirIno.sizeLo / fs.blkSize) - 1 loop
-         blockNumber := dirIno.directBlocks (index);
-         if blockNumber = 0 then
-            status := Rename_Malformed;
+      declare
+         unindexed : Write_Status;
+      begin
+         unindexDirectory (fs, dirInodeNum, dirIno, unindexed);
+         if unindexed /= Write_Complete then
+            fs.writeQuarantined := True;
+            status := Rename_Recovery_Required;
             return;
          end if;
+      end;
+
+      for index in 0 .. Natural (dirIno.sizeLo / fs.blkSize) - 1 loop
+         declare
+            valid : Boolean;
+         begin
+            directoryBlock (fs, dirIno, index, blockNumber, valid, readStatus);
+            if not valid then
+               status := (if readStatus = Read_Complete then Rename_Malformed
+                          elsif readStatus = Read_Out_Of_Range then Rename_Out_Of_Range
+                          else Rename_IO_Error);
+               return;
+            end if;
+         end;
          readBlock (fs, blockNumber, original'Address, readStatus);
          if readStatus /= Read_Complete then
             status := (if readStatus = Read_Out_Of_Range then
@@ -4171,7 +4420,22 @@ package body Ext2 is
                  (original, candidate,
                   Directory_Blocks.Block_Length (fs.blkSize), result);
                case result is
-                  when Committer.Committed => status := Rename_Complete;
+                  when Committer.Committed =>
+                     status := Rename_Complete;
+                     --  The directory's entries changed.
+                     declare
+                        timeStatus : Write_Status := Write_Complete;
+                        changed : Boolean;
+                     begin
+                        Stamp (dirIno, Content_Changed, changed);
+                        if changed then
+                           writeInode (fs, dirInodeNum, dirIno, timeStatus);
+                        end if;
+                        if timeStatus /= Write_Complete then
+                           fs.writeQuarantined := True;
+                           status := Rename_Recovery_Required;
+                        end if;
+                     end;
                   when Committer.Original_Restored => status := Rename_IO_Error;
                   when Committer.Recovery_Required =>
                      fs.writeQuarantined := True;
@@ -4183,7 +4447,7 @@ package body Ext2 is
                status := Rename_Destination_Exists;
                return;
             when Directory_Blocks.Insufficient_Space =>
-               status := Rename_Range_Unsupported;
+               status := Rename_No_Room;
                return;
             when Directory_Blocks.Invalid_Name =>
                status := Rename_Invalid_Name;
@@ -4209,68 +4473,12 @@ package body Ext2 is
       stopHandle (fs);
    end renameEntry;
 
-   procedure renamePath
-     (fs : in out Filesystem; oldPath, newPath : String;
-      status : out Rename_Status)
-   is
-      function Leaf_Start (path : String) return Integer is
-      begin
-         for index in reverse path'Range loop
-            if path (index) = '/' then
-               return index + 1;
-            end if;
-         end loop;
-         return path'First;
-      end Leaf_Start;
-      directory : Unsigned_32 := ROOT_INODE;
-      lookupStatus : Directory_Lookup_Status;
-   begin
-      status := Rename_Invalid_Name;
-      if not CuBit.File_Access.Valid_Path (oldPath) or else
-        not CuBit.File_Access.Valid_Path (newPath) or else
-        oldPath'Length = 0 or else newPath'Length = 0 or else
-        oldPath (oldPath'Last) = '/' or else newPath (newPath'Last) = '/'
-      then
-         return;
-      end if;
-      declare
-         oldStart : constant Integer := Leaf_Start (oldPath);
-         newStart : constant Integer := Leaf_Start (newPath);
-         oldParent : constant String :=
-           (if oldStart = oldPath'First then ""
-            else oldPath (oldPath'First .. oldStart - 2));
-         newParent : constant String :=
-           (if newStart = newPath'First then ""
-            else newPath (newPath'First .. newStart - 2));
-      begin
-         if oldParent /= newParent then
-            status := Rename_Range_Unsupported;
-            return;
-         end if;
-         if oldParent'Length > 0 then
-            resolvePath (fs, oldParent, directory, lookupStatus);
-            if lookupStatus /= Lookup_Found then
-               status := (case lookupStatus is
-                 when Lookup_Not_Found => Rename_Source_Not_Found,
-                 when Lookup_Malformed => Rename_Malformed,
-                 when Lookup_Out_Of_Range => Rename_Out_Of_Range,
-                 when Lookup_Range_Unsupported => Rename_Range_Unsupported,
-                 when others => Rename_IO_Error);
-               return;
-            end if;
-         end if;
-         renameEntry
-           (fs, directory, oldPath (oldStart .. oldPath'Last),
-            newPath (newStart .. newPath'Last), status);
-      end;
-   end renamePath;
-
    --  Create an empty regular file or directory. Prepare the directory
    --  insertion before reserving anything; publish the initialized inode
    --  (and a directory's "."/".." block before it) before its name. A new
    --  directory's parent gains its ".." link before anything refers to it
-   --  (an over-count is harmless); a grown parent's new block is attached
-   --  after it holds the name.
+   --  (an over-count is harmless). A parent with no room first grows by an
+   --  empty block (growDirectory), so any directory size works.
    procedure createNodeInner
      (fs : in out Filesystem; dirInodeNum : Unsigned_32; name : String;
       directory : Boolean; inodeNum : out Unsigned_32; status : out Write_Status)
@@ -4286,12 +4494,11 @@ package body Ext2 is
       entryOffset : Storage_Offset := 0;
       entrySpan : Unsigned_16 := 0;
       found : Boolean := False;
-      grow : Boolean;
+      blockValid : Boolean;
       needed : Unsigned_32;
       cleanupStatus : Write_Status;
       knownAbsent : Boolean := False;
-      grownParent : Inode;
-      accepted : Boolean;
+      parentTimes : Boolean;
       ownBlock : Unsigned_32 := 0;
       sectors : constant Unsigned_32 := fs.blkSize / 512;
 
@@ -4334,13 +4541,7 @@ package body Ext2 is
          return;
       elsif inodeType (parent) /= INODE_DIRECTORY then
          return;
-      elsif parent.flags /= 0 or else
-        fileSize (parent) > Unsigned_64 (NUM_DIRECT_BLOCKS) *
-          Unsigned_64 (fs.blkSize) or else
-        parent.sizeLo mod fs.blkSize /= 0 or else
-        parent.singleIndirectBlock /= 0 or else
-        parent.doubleIndirectBlock /= 0 or else parent.tripleIndirectBlock /= 0
-      then
+      elsif not writableDirectory (fs, parent) then
          status := Write_File_Range_Unsupported;
          return;
       elsif directory and then
@@ -4364,131 +4565,40 @@ package body Ext2 is
       end if;
 
       parentBlocks := Natural (parent.sizeLo / fs.blkSize);
-      --  Last block first: names are appended, so free space is usually
-      --  at the end (any block with room will do).
-      for index in reverse 0 .. parentBlocks - 1 loop
-         targetBlock := parent.directBlocks (index);
-         readBlock (fs, targetBlock, buffer'Address, readStatus);
-         if readStatus /= Read_Complete then
-            status := Write_Device_Error;
-            return;
-         end if;
-         declare
-            position : Storage_Offset := 0;
-         begin
-            while position < Storage_Offset (fs.blkSize) loop
-               --  Validate serialized record bounds before overlay/access.
-               if Storage_Offset (fs.blkSize) - position < 8 then
-                  status := Write_Device_Error;
-                  return;
-               end if;
-               declare
-                  dent : DirectoryEntry
-                    with Import, Address => buffer'Address + position;
-                  used : Unsigned_16;
-               begin
-                  if dent.length < 8 or else dent.length mod 4 /= 0 or else
-                    Storage_Offset (dent.length) >
-                      Storage_Offset (fs.blkSize) - position or else
-                    Unsigned_16 (dent.nameLength) > dent.length - 8
-                  then
-                     status := Write_Device_Error;
-                     return;
-                  end if;
-                  used := (if dent.inode = 0 then 0 else
-                    Unsigned_16 (((8 + Natural (dent.nameLength) + 3) / 4) * 4));
-                  if Unsigned_32 (dent.length - used) >= needed then
-                     entryOffset := position + Storage_Offset (used);
-                     entrySpan := dent.length - used;
-                     if used /= 0 then
-                        dent.length := used;
-                     end if;
-                     found := True;
-                     exit;
-                  end if;
-                  position := position + Storage_Offset (dent.length);
-               end;
-            end loop;
-         end;
-         exit when found;
-      end loop;
-
-      grow := not found;
-      if grow then
-         if parentBlocks = NUM_DIRECT_BLOCKS then
-            status := Write_File_Range_Unsupported;
-            return;
-         elsif parent.directBlocks (parentBlocks) /= 0 then
-            --  Do not overwrite an unexplained pointer beyond directory EOF.
-            status := Write_Device_Error;
-            return;
-         end if;
-         buffer := [others => Character'Val (0)];
-         entryOffset := 0;
-         entrySpan := Unsigned_16 (fs.blkSize);
-         if not Inode_Mappings.Fits
-           (parent, Unsigned_32 (parentBlocks),
-            Sector_Accounting.Block_Sectors (fs.blkSize / 512))
-         then
-            status := Write_Out_Of_Range;
-            return;
-         end if;
-         --  Reserve directory space first. No inode is consumed on ENOSPC.
-         allocateBlock (fs, targetBlock, status);
-         if status /= Write_Complete then
-            return;
-         end if;
-         Inode_Mappings.Prepare_Attachment
-           (parent, Unsigned_32 (parentBlocks), targetBlock, 0,
-            Sector_Accounting.Block_Sectors (fs.blkSize / 512),
-            grownParent, accepted);
-         if not accepted then
-            Uncertain;
-            return;
-         end if;
+      findRoom (fs, dirInodeNum, parent, needed, targetBlock, buffer,
+                entryOffset, entrySpan, status);
+      if status /= Write_Complete then
+         return;
       end if;
 
       if directory then
          allocateBlock (fs, ownBlock, status);
          if status /= Write_Complete then
-            if grow and then status = Write_No_Space then
-               releaseBlocks (fs, [1 => targetBlock], cleanupStatus);
-               if cleanupStatus /= Write_Complete then
-                  Uncertain;
-               end if;
-            elsif grow then
-               Uncertain;
-            end if;
             return;
          end if;
       end if;
 
       allocateInode (fs, reservedInode, status, directory);
       if status /= Write_Complete then
-         if status = Write_No_Space and then (grow or else directory) then
-            --  These blocks were never published. Only a definite no-space
+         if status = Write_No_Space and then directory then
+            --  The block was never published. Only a definite no-space
             --  rejection permits cleanup; transport uncertainty must stop.
-            if grow and then directory then
-               releaseBlocks (fs, [targetBlock, ownBlock], cleanupStatus);
-            elsif grow then
-               releaseBlocks (fs, [1 => targetBlock], cleanupStatus);
-            else
-               releaseBlocks (fs, [1 => ownBlock], cleanupStatus);
-            end if;
+            releaseBlocks (fs, [1 => ownBlock], cleanupStatus);
             if cleanupStatus /= Write_Complete then
                Uncertain;
             end if;
-         elsif grow or else directory then
+         elsif directory then
             Uncertain;
          end if;
          return;
       end if;
 
+      --  The parent gains an entry: its content changes.
+      Stamp (parent, Content_Changed, parentTimes);
       if directory then
          --  The parent's ".." link first: until the name exists it is an
          --  over-count, which is harmless.
          parent.numHardLinks := parent.numHardLinks + 1;
-         grownParent.numHardLinks := parent.numHardLinks;
          writeInode (fs, dirInodeNum, parent, status);
          if status /= Write_Complete then
             Uncertain;
@@ -4518,6 +4628,7 @@ package body Ext2 is
          fresh.typeAndPermissions := Regular_Mode;
          fresh.numHardLinks := 1;
       end if;
+      Stamp (fresh, Inode_Created);
       writeInode (fs, reservedInode, fresh, status);
       if status /= Write_Complete then
          Uncertain;
@@ -4543,9 +4654,9 @@ package body Ext2 is
          Uncertain;
          return;
       end if;
-      if grow then
-         parent := grownParent;
-         parent.sizeLo := parent.sizeLo + fs.blkSize;
+      if not directory and then parentTimes then
+         --  A new file in an existing block: only the parent's times change
+         --  (a new directory already wrote them with its ".." link).
          writeInode (fs, dirInodeNum, parent, status);
          if status /= Write_Complete then
             Uncertain;
@@ -4964,6 +5075,10 @@ package body Ext2 is
          status := Truncate_Unsupported;
          return;
       end if;
+      --  A size change is a content change (POSIX truncate sets mtime).
+      if newSize /= fileSize (ino) then
+         Stamp (ino, Content_Changed);
+      end if;
       validateBlockTree (fs, ino, status);
       if status /= Truncate_Complete then return; end if;
       keepBlocks := newSize / Unsigned_64 (fs.blkSize) +
@@ -5100,15 +5215,14 @@ package body Ext2 is
       end if;
    end resolveParent;
 
-   --  A directory whose records this service may rewrite: unindexed, whole
-   --  blocks, direct pointers only.
-   function plainDirectory (fs : Filesystem; dir : Inode) return Boolean is
-     (inodeType (dir) = INODE_DIRECTORY and then dir.flags = 0 and then
-      dir.sizeLo /= 0 and then dir.sizeLo mod fs.blkSize = 0 and then
+   --  A writable directory with direct pointers only: what rmdir can
+   --  release today (a grown directory's pointer blocks would need the
+   --  truncate path).
+   function directOnlyDirectory (fs : Filesystem; dir : Inode) return Boolean is
+     (writableDirectory (fs, dir) and then
       Unsigned_64 (dir.sizeLo) <=
         Unsigned_64 (NUM_DIRECT_BLOCKS) * Unsigned_64 (fs.blkSize) and then
-      dir.singleIndirectBlock = 0 and then dir.doubleIndirectBlock = 0 and then
-      dir.tripleIndirectBlock = 0);
+      dir.singleIndirectBlock = 0 and then dir.doubleIndirectBlock = 0);
 
    function removeLookupFailure
      (status : Directory_Lookup_Status) return Remove_Status is
@@ -5125,8 +5239,10 @@ package body Ext2 is
 
    --  The dtime of a freed inode: ext2 requires it nonzero. Without a clock
    --  the volume's last write time serves.
+   --  Wall time when known; otherwise the volume's last write time (dtime
+   --  must be nonzero on a deleted inode).
    function deletionTime (fs : Filesystem) return Unsigned_32 is
-     (Unsigned_32'Max (1, fs.sb.lastWriteTime));
+     (Unsigned_32'Max (1, (if Now_Seconds /= 0 then Now_Seconds else fs.sb.lastWriteTime)));
 
    --  A file with no data, no blocks and no block pointers.
    function emptyFile (ino : Inode) return Boolean is
@@ -5148,6 +5264,7 @@ package body Ext2 is
       removed : Unsigned_32;
       kind : Unsigned_8;
       blockNumber : Unsigned_32 := 0;
+      blockValid : Boolean;
       readStatus : Read_Status;
 
       procedure Write_Block
@@ -5232,9 +5349,10 @@ package body Ext2 is
          --  Anything else: every block, fully checked, below.
       end if;
       for index in first .. last - 1 loop
-         blockNumber := dir.directBlocks (index);
-         if blockNumber = 0 then
-            status := Remove_Malformed;
+         directoryBlock (fs, dir, index, blockNumber, blockValid, readStatus);
+         if not blockValid then
+            status := (if readStatus = Read_Complete then Remove_Malformed
+                       else removeReadFailure (readStatus));
             return;
          end if;
          readBlock (fs, blockNumber, original'Address, readStatus);
@@ -5511,86 +5629,25 @@ package body Ext2 is
                  else Remove_Recovery_Required);
    end reclaimInode;
 
-   procedure unlinkPath
-     (fs : in out Filesystem; path : String; keepOrphan : Boolean;
-      inodeNum : out Unsigned_32; unlinked : out Inode;
+   --  Drop a regular file's last link once its name is gone, under the
+   --  handle that removed the name (stopped here): freed now when that is
+   --  safe, otherwise put on the orphan list and reclaimed unless still
+   --  held (keepOrphan). inodeNum and unlinked are set once that is done.
+   procedure releaseUnlinked
+     (fs : in out Filesystem; target : Unsigned_32; ino : in out Inode;
+      keepOrphan : Boolean; inodeNum : out Unsigned_32; unlinked : out Inode;
       status : out Remove_Status)
    is
-      parentNum, target : Unsigned_32;
-      leafFirst : Positive;
-      lookup : Directory_Lookup_Status;
-      dir, ino : Inode;
-      readStatus : Read_Status;
       writeStatus : Write_Status;
-      treeStatus : Truncate_Status;
+      readStatus : Read_Status;
    begin
       inodeNum := 0;
       unlinked := NULL_INODE;
-      status := removeRefusal (fs);
-      if status /= Remove_Complete then
-         return;
-      end if;
-      resolveParent (fs, path, parentNum, leafFirst, lookup);
-      if lookup /= Lookup_Found then
-         status := removeLookupFailure (lookup);
-         return;
-      end if;
-      declare
-         leaf : String renames path (leafFirst .. path'Last);
-      begin
-         if not CuBit.Directory_Paths.Valid_Child_Name (leaf) then
-            status := Remove_Invalid_Name;
-            return;
-         end if;
-         readInode (fs, parentNum, dir, readStatus);
-         if readStatus /= Read_Complete then
-            status := removeReadFailure (readStatus);
-            return;
-         elsif inodeType (dir) /= INODE_DIRECTORY then
-            status := Remove_Not_Found;
-            return;
-         elsif not plainDirectory (fs, dir) then
-            status := Remove_Unsupported;
-            return;
-         end if;
-         lookupInDir (fs, dir, leaf, target, lookup);
-         if lookup /= Lookup_Found then
-            status := removeLookupFailure (lookup);
-            return;
-         end if;
-         readInode (fs, target, ino, readStatus);
-         if readStatus /= Read_Complete then
-            status := removeReadFailure (readStatus);
-            return;
-         elsif inodeType (ino) = INODE_DIRECTORY then
-            status := Remove_Wrong_Type;
-            return;
-         elsif Ext2_Support.Check_File (ino) /= Ext2_Support.File_Allowed or else
-           ino.fileACL /= 0
-         then
-            status := Remove_Unsupported;
-            return;
-         end if;
-         --  Check the block tree before the name goes, so that reclaim
-         --  cannot then refuse it and strand an orphan.
-         validateBlockTree (fs, ino, treeStatus);
-         if treeStatus /= Truncate_Complete then
-            status := (if treeStatus = Truncate_IO_Error then Remove_IO_Error
-                       else Remove_Unsupported);
-            return;
-         end if;
-         startHandle (fs, Remove_Credits + Orphan_Credits);
-         forgetName (fs, parentNum, leaf);
-         removeEntry (fs, dir, leaf, target, status);
-         if status /= Remove_Complete then
-            uncertainDirectory (fs, parentNum);
-            stopHandle (fs);
-            return;
-         end if;
-      end;
+      status := Remove_Complete;
       --  The name is gone; a crash here leaves a linked, unnamed inode
       --  (e2fsck moves it to lost+found). Journaled, both are one operation.
       ino.numHardLinks := 0;
+      Stamp (ino, Inode_Changed);
       --  An unheld inode with no blocks, on a journaled volume: it is freed
       --  under the same handle as its name, so the transaction holds both
       --  or neither and it never needs the orphan list (Linux's unlink and
@@ -5634,6 +5691,109 @@ package body Ext2 is
       if not keepOrphan then
          reclaimInode (fs, target, status);
       end if;
+   end releaseUnlinked;
+
+   procedure unlinkPath
+     (fs : in out Filesystem; path : String; keepOrphan : Boolean;
+      inodeNum : out Unsigned_32; unlinked : out Inode;
+      status : out Remove_Status)
+   is
+      parentNum, target : Unsigned_32;
+      leafFirst : Positive;
+      lookup : Directory_Lookup_Status;
+      dir, ino : Inode;
+      readStatus : Read_Status;
+      writeStatus : Write_Status;
+      treeStatus : Truncate_Status;
+   begin
+      inodeNum := 0;
+      unlinked := NULL_INODE;
+      status := removeRefusal (fs);
+      if status /= Remove_Complete then
+         return;
+      end if;
+      resolveParent (fs, path, parentNum, leafFirst, lookup);
+      if lookup /= Lookup_Found then
+         status := removeLookupFailure (lookup);
+         return;
+      end if;
+      declare
+         leaf : String renames path (leafFirst .. path'Last);
+      begin
+         if not CuBit.Directory_Paths.Valid_Child_Name (leaf) then
+            status := Remove_Invalid_Name;
+            return;
+         end if;
+         readInode (fs, parentNum, dir, readStatus);
+         if readStatus /= Read_Complete then
+            status := removeReadFailure (readStatus);
+            return;
+         elsif inodeType (dir) /= INODE_DIRECTORY then
+            status := Remove_Not_Found;
+            return;
+         elsif not writableDirectory (fs, dir) then
+            status := Remove_Unsupported;
+            return;
+         end if;
+         lookupInDir (fs, dir, leaf, target, lookup);
+         if lookup /= Lookup_Found then
+            status := removeLookupFailure (lookup);
+            return;
+         end if;
+         readInode (fs, target, ino, readStatus);
+         if readStatus /= Read_Complete then
+            status := removeReadFailure (readStatus);
+            return;
+         elsif inodeType (ino) = INODE_DIRECTORY then
+            status := Remove_Wrong_Type;
+            return;
+         elsif Ext2_Support.Check_File (ino) /= Ext2_Support.File_Allowed or else
+           ino.fileACL /= 0
+         then
+            status := Remove_Unsupported;
+            return;
+         end if;
+         --  Check the block tree before the name goes, so that reclaim
+         --  cannot then refuse it and strand an orphan.
+         validateBlockTree (fs, ino, treeStatus);
+         if treeStatus /= Truncate_Complete then
+            status := (if treeStatus = Truncate_IO_Error then Remove_IO_Error
+                       else Remove_Unsupported);
+            return;
+         end if;
+         startHandle (fs, Remove_Credits + Orphan_Credits);
+         forgetName (fs, parentNum, leaf);
+         unindexDirectory (fs, parentNum, dir, writeStatus);
+         if writeStatus /= Write_Complete then
+            fs.writeQuarantined := True;
+            status := Remove_Recovery_Required;
+            stopHandle (fs);
+            return;
+         end if;
+         removeEntry (fs, dir, leaf, target, status);
+         if status /= Remove_Complete then
+            uncertainDirectory (fs, parentNum);
+            stopHandle (fs);
+            return;
+         end if;
+         --  The parent lost an entry: its content changed.
+         declare
+            timeStatus : Write_Status := Write_Complete;
+            changed : Boolean;
+         begin
+            Stamp (dir, Content_Changed, changed);
+            if changed then
+               writeInode (fs, parentNum, dir, timeStatus);
+            end if;
+            if timeStatus /= Write_Complete then
+               fs.writeQuarantined := True;
+               status := Remove_Recovery_Required;
+               stopHandle (fs);
+               return;
+            end if;
+         end;
+      end;
+      releaseUnlinked (fs, target, ino, keepOrphan, inodeNum, unlinked, status);
    end unlinkPath;
 
    procedure makeDirectoryPath
@@ -5692,7 +5852,7 @@ package body Ext2 is
          elsif inodeType (parent) /= INODE_DIRECTORY then
             status := Remove_Not_Found;
             return;
-         elsif not plainDirectory (fs, parent) then
+         elsif not writableDirectory (fs, parent) then
             status := Remove_Unsupported;
             return;
          end if;
@@ -5711,7 +5871,7 @@ package body Ext2 is
          elsif inodeType (dir) /= INODE_DIRECTORY then
             status := Remove_Wrong_Type;
             return;
-         elsif not plainDirectory (fs, dir) or else dir.fileACL /= 0 or else
+         elsif not directOnlyDirectory (fs, dir) or else dir.fileACL /= 0 or else
            dir.deletedTime /= 0 or else dir.fragmentBlockAddr /= 0
          then
             status := Remove_Unsupported;
@@ -5752,6 +5912,12 @@ package body Ext2 is
          end if;
          forgetName (fs, parentNum, leaf);
          Dentry_Cache.Forget_Directory (Names, fs.device.endpointSlot, target);
+         unindexDirectory (fs, parentNum, parent, writeStatus);
+         if writeStatus /= Write_Complete then
+            fs.writeQuarantined := True;
+            status := Remove_Recovery_Required;
+            return;
+         end if;
          removeEntry (fs, parent, leaf, target, status);
          if status /= Remove_Complete then
             uncertainDirectory (fs, parentNum);
@@ -5783,6 +5949,7 @@ package body Ext2 is
       end if;
       if writeStatus = Write_Complete then
          parent.numHardLinks := parent.numHardLinks - 1;
+         Stamp (parent, Content_Changed);
          writeInode (fs, parentNum, parent, writeStatus);
       end if;
       if writeStatus /= Write_Complete then
@@ -5800,6 +5967,560 @@ package body Ext2 is
       removeDirectoryInner (fs, path, inodeNum, status);
       stopHandle (fs);
    end removeDirectoryPath;
+
+   --  A general rename's credits: the source, both parents' and a replaced
+   --  target's inode blocks, the new name's, the old name's and a moved
+   --  directory's first block, the new parent's growth, a replaced target's
+   --  release and the orphan list.
+   Move_Credits : constant :=
+     4 + 3 + Write_Credits + Remove_Credits + Orphan_Credits;
+
+   --  The directory-record file type for an inode's mode (ext2's
+   --  EXT2_FT_*), from the mode's type nibble.
+   function fileTypeOf (ino : Inode) return Unsigned_8 is
+     (case inodeType (ino) is
+         when 16#1# => 5,                  --  FIFO
+         when 16#2# => 3,                  --  character device
+         when INODE_DIRECTORY => FILETYPE_DIRECTORY,
+         when 16#6# => 4,                  --  block device
+         when INODE_REGULAR_FILE => FILETYPE_REGULAR,
+         when 16#A# => 7,                  --  symbolic link
+         when 16#C# => 6,                  --  socket
+         when others => 0);                --  unknown
+
+   function renameLookupFailure
+     (result : Directory_Lookup_Status) return Rename_Status is
+     (case result is
+        when Lookup_Malformed => Rename_Malformed,
+        when Lookup_Device_Error => Rename_IO_Error,
+        when Lookup_Out_Of_Range => Rename_Out_Of_Range,
+        when Lookup_Range_Unsupported => Rename_Range_Unsupported,
+        when others => Rename_Source_Not_Found);
+
+   function renameReadFailure (result : Read_Status) return Rename_Status is
+     (if result = Read_Out_Of_Range then Rename_Out_Of_Range else Rename_IO_Error);
+
+   --  Whether a direct-only directory has no entries but "." and "..".
+   procedure directoryEmpty
+     (fs : Filesystem; dir : Inode; empty : out Boolean;
+      status : out Rename_Status)
+   is
+      contents : Directory_Blocks.Block_Data := [others => 0];
+      children : Directory_Blocks.Byte_Count;
+      counted : Directory_Blocks.Prepare_Result;
+      number : Unsigned_32;
+      valid : Boolean;
+      readStatus : Read_Status;
+   begin
+      empty := False;
+      status := Rename_Complete;
+      for index in 0 .. Natural (dir.sizeLo / fs.blkSize) - 1 loop
+         directoryBlock (fs, dir, index, number, valid, readStatus);
+         if valid then
+            readBlock (fs, number, contents'Address, readStatus);
+         end if;
+         if not valid or else readStatus /= Read_Complete then
+            status := (if readStatus = Read_Complete then Rename_Malformed
+                       else renameReadFailure (readStatus));
+            return;
+         end if;
+         Directory_Blocks.Count_Children
+           (contents, Directory_Blocks.Block_Length (fs.blkSize),
+            fs.sb.inodeCount, children, counted);
+         if counted /= Directory_Blocks.Prepared then
+            status := Rename_Malformed;
+            return;
+         elsif children /= 0 then
+            return;
+         end if;
+      end loop;
+      empty := True;
+   end directoryEmpty;
+
+   --  Whether directory candidate is ancestor or candidate itself lies
+   --  below (or is) directory moved, following ".." up to the root.
+   procedure insideOf
+     (fs : Filesystem; candidate, moved : Unsigned_32; inside : out Boolean;
+      status : out Rename_Status)
+   is
+      Maximum_Depth : constant := 4096;
+      current : Unsigned_32 := candidate;
+      ino : Inode;
+      readStatus : Read_Status;
+      lookup : Directory_Lookup_Status;
+      parent : Unsigned_32;
+   begin
+      inside := True;
+      status := Rename_Complete;
+      for depth in 1 .. Maximum_Depth loop
+         if current = moved then
+            return;
+         elsif current = ROOT_INODE then
+            inside := False;
+            return;
+         end if;
+         readInode (fs, current, ino, readStatus);
+         if readStatus /= Read_Complete then
+            status := renameReadFailure (readStatus);
+            return;
+         elsif inodeType (ino) /= INODE_DIRECTORY then
+            status := Rename_Malformed;
+            return;
+         end if;
+         lookupInDir (fs, ino, "..", parent, lookup);
+         if lookup /= Lookup_Found or else parent = 0 or else parent = current then
+            status := (if lookup = Lookup_Found then Rename_Malformed
+                       else renameLookupFailure (lookup));
+            return;
+         end if;
+         current := parent;
+      end loop;
+      status := Rename_Malformed;   --  deeper than any real tree: a loop
+   end insideOf;
+
+   --  Change one record of a directory in place: Name's record retargeted
+   --  to (number, kind) (Directory_Blocks.Retarget), or with retargetParent
+   --  the first block's ".." to number. Only the changed bytes are written.
+   procedure retargetRecord
+     (fs : in out Filesystem; dir : Inode; name : String;
+      retargetParent : Boolean; number : Unsigned_32; kind : Unsigned_8;
+      old : out Unsigned_32; status : out Rename_Status)
+   is
+      contents : Directory_Blocks.Block_Data := [others => 0];
+      blockNumber : Unsigned_32;
+      valid : Boolean;
+      readStatus : Read_Status;
+      writeStatus : Write_Status;
+      prepared : Directory_Blocks.Prepare_Result;
+      first, last : Positive;
+      blocks : constant Natural :=
+        (if retargetParent then 1 else Natural (dir.sizeLo / fs.blkSize));
+   begin
+      old := 0;
+      for index in 0 .. blocks - 1 loop
+         directoryBlock (fs, dir, index, blockNumber, valid, readStatus);
+         if valid then
+            readBlock (fs, blockNumber, contents'Address, readStatus);
+         end if;
+         if not valid or else readStatus /= Read_Complete then
+            status := (if readStatus = Read_Complete then Rename_Malformed
+                       else renameReadFailure (readStatus));
+            return;
+         end if;
+         if retargetParent then
+            Directory_Blocks.Retarget_Parent
+              (contents, Directory_Blocks.Block_Length (fs.blkSize),
+               fs.sb.inodeCount, number, old, first, prepared);
+            last := first + 3;
+         else
+            Directory_Blocks.Retarget
+              (contents, Directory_Blocks.Block_Length (fs.blkSize),
+               fs.sb.inodeCount, name, number, kind, old, first, last, prepared);
+         end if;
+         case prepared is
+            when Directory_Blocks.Prepared =>
+               writeBytes
+                 (fs, Storage_Offset (blockNumber) * Storage_Offset (fs.blkSize) +
+                    Storage_Offset (first - 1),
+                  contents (first)'Address, Storage_Count (last - first + 1),
+                  writeStatus, Directory_Data);
+               status := (if writeStatus = Write_Complete then Rename_Complete
+                          else Rename_IO_Error);
+               return;
+            when Directory_Blocks.Source_Not_Found => null;
+            when others =>
+               status := Rename_Malformed;
+               return;
+         end case;
+      end loop;
+      status := Rename_Source_Not_Found;
+   end retargetRecord;
+
+   --  The general rename (renamePath), under one journal handle. Every
+   --  refusal comes before the first write; a failure after it
+   --  write-quarantines the volume.
+   procedure renameMove
+     (fs : in out Filesystem; oldParentNum : Unsigned_32; oldName : String;
+      newParentNum : Unsigned_32; newName : String; keepReplaced : Boolean;
+      replacedNumber : out Unsigned_32; replaced : out Inode;
+      stopped : out Boolean; status : out Rename_Status)
+   is
+      sameParent : constant Boolean := oldParentNum = newParentNum;
+      oldParent, newParent, source, target : Inode := NULL_INODE;
+      sourceNum, targetNum, old : Unsigned_32 := 0;
+      readStatus : Read_Status;
+      writeStatus : Write_Status;
+      lookup : Directory_Lookup_Status;
+      sourceDirectory, targetDirectory, empty, inside : Boolean := False;
+      treeStatus : Truncate_Status;
+      removed : Remove_Status;
+
+      procedure Fail (result : Rename_Status) is
+      begin
+         fs.writeQuarantined := True;
+         status := (if result = Rename_IO_Error then Rename_Recovery_Required
+                    else result);
+      end Fail;
+
+      --  The parent inode a name lives in (one inode when both are one).
+      procedure Write_Parents is
+      begin
+         Stamp (oldParent, Content_Changed);
+         writeInode (fs, oldParentNum, oldParent, writeStatus);
+         if writeStatus = Write_Complete and then not sameParent then
+            Stamp (newParent, Content_Changed);
+            writeInode (fs, newParentNum, newParent, writeStatus);
+         end if;
+      end Write_Parents;
+   begin
+      replacedNumber := 0;
+      replaced := NULL_INODE;
+      stopped := False;
+      status := Rename_Invalid_Name;
+      if not CuBit.Directory_Paths.Valid_Child_Name (oldName) or else
+        not CuBit.Directory_Paths.Valid_Child_Name (newName)
+      then
+         return;
+      elsif fs.writeQuarantined or else Is_Read_Only (fs.device.description) then
+         status := Rename_Read_Only;
+         return;
+      end if;
+
+      --  Preflight: read and check everything.
+      readInode (fs, oldParentNum, oldParent, readStatus);
+      if readStatus = Read_Complete then
+         readInode (fs, newParentNum, newParent, readStatus);
+      end if;
+      if readStatus /= Read_Complete then
+         status := renameReadFailure (readStatus);
+         return;
+      elsif not writableDirectory (fs, oldParent) or else
+        not writableDirectory (fs, newParent)
+      then
+         status := Rename_Range_Unsupported;
+         return;
+      end if;
+      lookupInDir (fs, oldParent, oldName, sourceNum, lookup);
+      if lookup /= Lookup_Found then
+         status := renameLookupFailure (lookup);
+         return;
+      end if;
+      lookupInDir (fs, newParent, newName, targetNum, lookup);
+      if lookup = Lookup_Not_Found then
+         targetNum := 0;
+      elsif lookup /= Lookup_Found then
+         status := renameLookupFailure (lookup);
+         return;
+      end if;
+      if targetNum = sourceNum then
+         --  The same file under both names (or one name): nothing to do.
+         status := Rename_Complete;
+         return;
+      end if;
+      readInode (fs, sourceNum, source, readStatus);
+      if readStatus /= Read_Complete then
+         status := renameReadFailure (readStatus);
+         return;
+      end if;
+      sourceDirectory := inodeType (source) = INODE_DIRECTORY;
+      if source.numHardLinks = 0 or else source.numHardLinks >= Maximum_Links then
+         status := (if source.numHardLinks = 0 then Rename_Malformed
+                    else Rename_Range_Unsupported);
+         return;
+      end if;
+      if targetNum /= 0 then
+         readInode (fs, targetNum, target, readStatus);
+         if readStatus /= Read_Complete then
+            status := renameReadFailure (readStatus);
+            return;
+         end if;
+         targetDirectory := inodeType (target) = INODE_DIRECTORY;
+         if sourceDirectory and then not targetDirectory then
+            status := Rename_Not_Directory;
+            return;
+         elsif targetDirectory and then not sourceDirectory then
+            status := Rename_Is_Directory;
+            return;
+         elsif targetDirectory then
+            if not directOnlyDirectory (fs, target) or else target.fileACL /= 0 or else
+              target.deletedTime /= 0 or else target.fragmentBlockAddr /= 0
+            then
+               status := Rename_Range_Unsupported;
+               return;
+            end if;
+            directoryEmpty (fs, target, empty, status);
+            if status /= Rename_Complete then
+               return;
+            elsif not empty then
+               status := Rename_Not_Empty;
+               return;
+            elsif target.numHardLinks /= 2 or else newParent.numHardLinks <= 2 then
+               status := Rename_Malformed;
+               return;
+            end if;
+         else
+            --  As unlink: an ordinary single-link file whose block tree
+            --  checks out, so its release cannot then be refused.
+            if Ext2_Support.Check_File (target) /= Ext2_Support.File_Allowed or else
+              target.fileACL /= 0
+            then
+               status := Rename_Range_Unsupported;
+               return;
+            end if;
+            validateBlockTree (fs, target, treeStatus);
+            if treeStatus /= Truncate_Complete then
+               status := (if treeStatus = Truncate_IO_Error then Rename_IO_Error
+                          else Rename_Range_Unsupported);
+               return;
+            end if;
+         end if;
+      end if;
+      if sourceDirectory and then not sameParent then
+         insideOf (fs, newParentNum, sourceNum, inside, status);
+         if status /= Rename_Complete then
+            return;
+         elsif inside then
+            status := Rename_Invalid_Move;
+            return;
+         elsif not directOnlyDirectory (fs, source) and then
+           not writableDirectory (fs, source)
+         then
+            status := Rename_Range_Unsupported;
+            return;
+         elsif targetNum = 0 and then newParent.numHardLinks >= Maximum_Links then
+            status := Rename_Range_Unsupported;
+            return;
+         end if;
+      end if;
+
+      forgetName (fs, oldParentNum, oldName);
+      forgetName (fs, newParentNum, newName);
+      uncertainDirectory (fs, oldParentNum);
+      uncertainDirectory (fs, newParentNum);
+      if sourceDirectory then
+         Dentry_Cache.Forget_Directory (Names, fs.device.endpointSlot, sourceNum);
+      end if;
+
+      --  1. One more link: from here the file always has a name.
+      source.numHardLinks := source.numHardLinks + 1;
+      Stamp (source, Inode_Changed);
+      writeInode (fs, sourceNum, source, writeStatus);
+      if writeStatus /= Write_Complete then
+         Fail (Rename_IO_Error);
+         return;
+      end if;
+
+      --  2. The new name: the replaced target's record now names the source,
+      --  or a new record.
+      unindexDirectory (fs, newParentNum, newParent, writeStatus);
+      if writeStatus /= Write_Complete then
+         Fail (Rename_IO_Error);
+         return;
+      end if;
+      if sameParent then
+         oldParent := newParent;
+      end if;
+      if targetNum /= 0 then
+         retargetRecord (fs, newParent, newName, False, sourceNum,
+                         fileTypeOf (source), old, status);
+         if status /= Rename_Complete or else old /= targetNum then
+            Fail ((if status = Rename_Complete then Rename_Malformed else status));
+            return;
+         end if;
+      else
+         declare
+            buffer : String (1 .. Natural (fs.blkSize)) with Alignment => 8;
+            targetBlock : Unsigned_32;
+            entryOffset : Storage_Offset;
+            entrySpan : Unsigned_16;
+         begin
+            findRoom (fs, newParentNum, newParent,
+                      ((8 + Unsigned_32 (newName'Length) + 3) / 4) * 4,
+                      targetBlock, buffer, entryOffset, entrySpan, writeStatus);
+            if writeStatus /= Write_Complete then
+               --  Only the extra link is written: undo it.
+               source.numHardLinks := source.numHardLinks - 1;
+               declare
+                  undone : Write_Status;
+               begin
+                  writeInode (fs, sourceNum, source, undone);
+                  if undone /= Write_Complete or else
+                    writeStatus = Write_Recovery_Required
+                  then
+                     Fail (Rename_IO_Error);
+                  else
+                     status := (case writeStatus is
+                        when Write_No_Space => Rename_Range_Unsupported,
+                        when Write_File_Range_Unsupported => Rename_Range_Unsupported,
+                        when Write_Read_Only => Rename_Read_Only,
+                        when others => Rename_IO_Error);
+                  end if;
+               end;
+               return;
+            end if;
+            if sameParent then
+               oldParent := newParent;
+            end if;
+            declare
+               dent : DirectoryEntry
+                 with Import, Address => buffer'Address + entryOffset;
+               entryName : String (1 .. newName'Length)
+                 with Import, Address => buffer'Address + entryOffset + 8;
+            begin
+               dent := (inode => sourceNum, length => entrySpan,
+                        nameLength => Unsigned_8 (newName'Length),
+                        fileType => fileTypeOf (source));
+               entryName := newName;
+            end;
+            writeBytes
+              (fs, Storage_Offset (targetBlock) * Storage_Offset (fs.blkSize),
+               buffer'Address, Storage_Count (fs.blkSize), writeStatus,
+               Directory_Data);
+            if writeStatus /= Write_Complete then
+               Fail (Rename_IO_Error);
+               return;
+            end if;
+         end;
+      end if;
+
+      --  3. The old name goes.
+      unindexDirectory (fs, oldParentNum, oldParent, writeStatus);
+      if writeStatus /= Write_Complete then
+         Fail (Rename_IO_Error);
+         return;
+      end if;
+      removeEntry (fs, oldParent, oldName, sourceNum, removed);
+      if removed /= Remove_Complete then
+         Fail ((if removed = Remove_Malformed then Rename_Malformed else Rename_IO_Error));
+         return;
+      end if;
+      if sameParent then
+         newParent := oldParent;
+      end if;
+
+      --  4. The link count back; a moved directory's ".." and its parents'
+      --  link counts (".." counts as a link of the parent).
+      source.numHardLinks := source.numHardLinks - 1;
+      writeInode (fs, sourceNum, source, writeStatus);
+      if writeStatus /= Write_Complete then
+         Fail (Rename_IO_Error);
+         return;
+      end if;
+      if sourceDirectory and then not sameParent then
+         retargetRecord (fs, source, "", True, newParentNum, 0, old, status);
+         if status /= Rename_Complete or else old /= oldParentNum then
+            Fail ((if status = Rename_Complete then Rename_Malformed else status));
+            return;
+         end if;
+         oldParent.numHardLinks := oldParent.numHardLinks - 1;
+         newParent.numHardLinks := newParent.numHardLinks + 1;
+      end if;
+      if targetDirectory then
+         --  The replaced directory's ".." link to the new parent goes.
+         newParent.numHardLinks := newParent.numHardLinks - 1;
+      end if;
+      if sameParent then
+         oldParent.numHardLinks := newParent.numHardLinks;
+         newParent := oldParent;
+      end if;
+      Write_Parents;
+      if writeStatus /= Write_Complete then
+         Fail (Rename_IO_Error);
+         return;
+      end if;
+      status := Rename_Complete;
+
+      --  5. A replaced target loses its last link.
+      if targetNum /= 0 and then targetDirectory then
+         declare
+            blocks : constant Natural := Natural (target.sizeLo / fs.blkSize);
+            retired : Release_List (1 .. blocks);
+         begin
+            for index in retired'Range loop
+               retired (index) := target.directBlocks (index - 1);
+            end loop;
+            Dentry_Cache.Forget_Directory (Names, fs.device.endpointSlot, targetNum);
+            target.numHardLinks := 0;
+            target.sizeLo := 0;
+            target.directBlocks := [others => 0];
+            target.numDiskSectors := 0;
+            target.deletedTime := deletionTime (fs);
+            writeInode (fs, targetNum, target, writeStatus, Exact_Inode);
+            if writeStatus = Write_Complete then
+               deferRelease (fs, retired, writeStatus);
+            end if;
+            if writeStatus = Write_Complete then
+               freeInode (fs, targetNum, True, writeStatus);
+            end if;
+            if writeStatus /= Write_Complete then
+               Fail (Rename_IO_Error);
+            end if;
+         end;
+      elsif targetNum /= 0 then
+         --  As unlink, under this handle (which it stops).
+         releaseUnlinked (fs, targetNum, target, keepReplaced, replacedNumber,
+                          replaced, removed);
+         stopped := True;
+         if removed /= Remove_Complete then
+            status := (if removed = Remove_Recovery_Required then Rename_Recovery_Required
+                       else Rename_IO_Error);
+         end if;
+         return;
+      end if;
+   end renameMove;
+
+   procedure renamePath
+     (fs : in out Filesystem; oldPath, newPath : String;
+      keepReplaced : Boolean; replacedNumber : out Unsigned_32;
+      replaced : out Inode; status : out Rename_Status)
+   is
+      oldParent, newParent : Unsigned_32;
+      oldFirst, newFirst : Positive;
+      lookup : Directory_Lookup_Status;
+   begin
+      replacedNumber := 0;
+      replaced := NULL_INODE;
+      status := Rename_Invalid_Name;
+      if not CuBit.File_Access.Valid_Path (oldPath) or else
+        not CuBit.File_Access.Valid_Path (newPath) or else
+        oldPath'Length = 0 or else newPath'Length = 0 or else
+        oldPath (oldPath'Last) = '/' or else newPath (newPath'Last) = '/'
+      then
+         return;
+      end if;
+      resolveParent (fs, oldPath, oldParent, oldFirst, lookup);
+      if lookup = Lookup_Found then
+         resolveParent (fs, newPath, newParent, newFirst, lookup);
+      end if;
+      if lookup /= Lookup_Found then
+         status := renameLookupFailure (lookup);
+         return;
+      end if;
+      declare
+         oldName : String renames oldPath (oldFirst .. oldPath'Last);
+         newName : String renames newPath (newFirst .. newPath'Last);
+      begin
+         --  The common case first: within one directory, to an absent name
+         --  that fits the source's block, one block rewritten.
+         if oldParent = newParent then
+            renameEntry (fs, oldParent, oldName, newName, status);
+            if status not in Rename_No_Room | Rename_Destination_Exists then
+               return;
+            end if;
+         end if;
+         declare
+            stopped : Boolean;
+         begin
+            startHandle (fs, Move_Credits);
+            renameMove (fs, oldParent, oldName, newParent, newName, keepReplaced,
+                        replacedNumber, replaced, stopped, status);
+            if not stopped then
+               stopHandle (fs);
+            end if;
+         end;
+      end;
+   end renamePath;
+
 
    --  At admission, as Linux's ext4_orphan_cleanup: free every unlinked
    --  inode on the orphan list (a crash came between its unlink and its

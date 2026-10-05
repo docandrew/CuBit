@@ -1,4 +1,7 @@
 package body Compositor_Glyph_Cache with SPARK_Mode is
+   --  Proved free of run-time errors; tests/ui-raster/run.sh re-proves every
+   --  unit carrying this pragma and fails on any unproved check.
+   pragma Suppress (All_Checks);
    -- Inductive accounting lemmas over a single changed slot. All storage and
    -- reader tables are fixed-size; no heap or foreign calls occur here.
    procedure Changed_Bytes (Before, After : Items; I : Slot) with Ghost,

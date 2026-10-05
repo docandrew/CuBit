@@ -1,0 +1,7 @@
+project Desktop_Strided extends "desktop_vulkan_startup.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat", "../../userspace/services/desktop");
+   for Source_Files use Desktop_Vulkan_Startup'Source_Files & ("desktop_strided_tests.adb");
+   for Object_Dir use "build/desktop-strided/obj";
+   for Exec_Dir use "build/desktop-strided";
+   for Main use ("desktop_strided_tests.adb");
+end Desktop_Strided;

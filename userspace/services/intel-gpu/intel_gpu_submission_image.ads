@@ -75,4 +75,8 @@ package Intel_GPU_Submission_Image with SPARK_Mode is
      (Pages : Backing_Pages; GGTT_Start, Root_DMA : Unsigned_64) return Image
      with Post => (if not Build_For_VM'Result.Valid then
        (for all Word of Build_For_VM'Result.Words => Word = 0));
+   -- Same numeric admission as Build_For_VM without constructing its full
+   -- submission image. No mapping, writes or live authority are established.
+   function Valid_For_VM
+     (Pages : Backing_Pages; GGTT_Start, Root_DMA : Unsigned_64) return Boolean;
 end Intel_GPU_Submission_Image;

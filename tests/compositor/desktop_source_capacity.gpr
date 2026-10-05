@@ -1,0 +1,7 @@
+project Desktop_Source_Capacity extends "desktop_vulkan_startup.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat", "../../userspace/services/desktop");
+   for Source_Files use Desktop_Vulkan_Startup'Source_Files & ("desktop_source_capacity_tests.adb");
+   for Object_Dir use "build/desktop-source-capacity/obj";
+   for Exec_Dir use "build/desktop-source-capacity";
+   for Main use ("desktop_source_capacity_tests.adb");
+end Desktop_Source_Capacity;

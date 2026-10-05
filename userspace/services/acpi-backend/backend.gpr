@@ -18,6 +18,6 @@ library project Backend is
    package Compiler is
       for Default_Switches ("Ada") use
         ("-O2", "-gnat2022", "-gnata", "-gnato", "-fstack-usage",
-         "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+         "-mno-red-zone", "-fno-pic");
    end Compiler;
 end Backend;

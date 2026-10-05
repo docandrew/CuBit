@@ -14,7 +14,9 @@ project Buffer_Memory is
      "intel_gpu_adln_ppgtt.ads", "intel_gpu_adln_ppgtt.adb",
      "intel_gpu_table_provenance.ads", "intel_gpu_table_provenance.adb",
      "intel_gpu_table_provenance-retirement.ads",
-     "intel_gpu_table_provenance-retirement.adb");
+     "intel_gpu_table_provenance-retirement.adb",
+     "intel_gpu_table_provenance-retirement-dispatcher.ads",
+     "intel_gpu_table_provenance-retirement-dispatcher.adb");
    for Object_Dir use external ("BUFFER_MEMORY_OBJECT_DIR", "build-buffer-memory");
    for Main use ("buffer_memory_tests.adb");
    package Compiler is

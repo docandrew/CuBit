@@ -31,6 +31,7 @@ package body CCL.Hints with SPARK_Mode is
       elsif Name = "window" then "(window n s) : Integer (Stream a) -> (List a)  up to the n newest elements"
       elsif Name = "arrived" then "(arrived s) : (Stream a) -> Integer  how many elements have arrived"
       elsif Name = "lost" then "(lost s) : (Stream a) -> Integer  how many fell out of the history"
+      elsif Name = "wait" then "(wait t) : (Task a) -> a  the task's result, once it completes"
       elsif Name = "define" then "(define (f (x T) ...) R body)  a function; visible after its own body"
       elsif Name = "type" then "(type N (record (f T [default]) ...) | (enum A ...) | (variant (A [T]) ...) | (range lo hi))"
       elsif Name = "let" then "(let ((x e) ...) body)  name values for body"

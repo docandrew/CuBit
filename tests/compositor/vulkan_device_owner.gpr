@@ -1,0 +1,14 @@
+project Vulkan_Device_Owner extends "vulkan_context_owner.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use Vulkan_Context_Owner'Source_Files &
+     ("vulkan_device_owner.ads", "vulkan_device_owner.adb",
+      "vulkan_device_ffi.ads", "vulkan_device_ffi_mock.adb",
+      "vulkan_device_mock.ads", "vulkan_device_mock.adb",
+      "vulkan_device_boundary_mock.c", "vulkan_device_owner_tests.adb");
+   for Object_Dir use "build/vulkan-device-owner/obj";
+   for Exec_Dir use "build/vulkan-device-owner";
+   for Main use ("vulkan_device_owner_tests.adb");
+   package Naming is
+      for Body ("Vulkan_Device_FFI") use "vulkan_device_ffi_mock.adb";
+   end Naming;
+end Vulkan_Device_Owner;

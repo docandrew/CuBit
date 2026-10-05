@@ -1,0 +1,7 @@
+project Desktop_Vulkan_Presentation extends "desktop_vulkan_startup.gpr" is
+   for Source_Dirs use Desktop_Vulkan_Startup'Source_Dirs;
+   for Source_Files use Desktop_Vulkan_Startup'Source_Files & ("desktop_vulkan_presentation_tests.adb");
+   for Main use ("desktop_vulkan_presentation_tests.adb");
+   for Object_Dir use "build/desktop-vulkan-presentation/obj";
+   for Exec_Dir use "build/desktop-vulkan-presentation";
+end Desktop_Vulkan_Presentation;

@@ -1,0 +1,7 @@
+project Vulkan_Target_Parent extends "vulkan_owned_targets.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use Vulkan_Owned_Targets'Source_Files & ("vulkan_target_parent_tests.adb");
+   for Object_Dir use "build/vulkan-target-parent/obj";
+   for Exec_Dir use "build/vulkan-target-parent";
+   for Main use ("vulkan_target_parent_tests.adb");
+end Vulkan_Target_Parent;

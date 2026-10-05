@@ -31,6 +31,9 @@ begin
          begin
             Commits := Commits + 1;
             pragma Assert (Address = Base (T) and Offset = Committed (T) and Bytes <= 65536);
+            pragma Assert (Bytes = Unsigned_64'Min
+              (Unsigned_64'Min (65536, Unsigned_64'Max (4096, Offset)),
+               131072 - Offset));
             if Fault = 7 and T = Backing then return False; end if;
             Committed (T) := Offset + Bytes;
             return True;
@@ -65,7 +68,7 @@ begin
       begin
          G.Request (Object, 1000, 999, 131072, OK); pragma Assert (not OK);
          G.Request (Object, 1000, 2000, 131072, OK); pragma Assert (OK);
-         for Turn in 1 .. 100 loop
+         for Turn in 1 .. 500 loop
             Before := Reservations + Commits + Publications + Admissions;
             if Fault = 8 and Publications = 2 then Owner := False; end if;
             G.Step (Object);
@@ -76,7 +79,7 @@ begin
          if Fault = 0 then
             pragma Assert (G.State (Object) = G.Idle and Admitted = 1000 and Reservations = 6);
             G.Request (Object, 1500, 2000, 131072, OK); pragma Assert (OK);
-            for Turn in 1 .. 100 loop
+            for Turn in 1 .. 500 loop
                G.Step (Object);
                exit when G.State (Object) in G.Idle | G.Failed;
             end loop;

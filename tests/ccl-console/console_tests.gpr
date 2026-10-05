@@ -1,6 +1,7 @@
 with "../../userspace/ccl/cubit_shared.gpr";
 --  Hosted tests of the CCL console view: events in, results and frames out.
 with "../../userspace/lib/ui/fonts_host.gpr";
+with "../../userspace/lib/tls/sparktls_host.gpr";
 project Console_Tests is
    for Source_Dirs use (".", "../../userspace/ccl/src", "../../userspace/ccl/tools/ccl-ui-preview", "../../userspace/ccl/tools/ccl-ui-preview/host",
                         "../../userspace/lib/ui", "../../userspace/lib/theme",

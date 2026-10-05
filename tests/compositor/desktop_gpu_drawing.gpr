@@ -1,0 +1,9 @@
+project Desktop_GPU_Drawing extends "desktop_gpu_scene.gpr" is
+   for Source_Dirs use Desktop_GPU_Scene'Source_Dirs;
+   for Source_Files use Desktop_GPU_Scene'Source_Files &
+     ("compositor_shadow.ads", "compositor_shadow.adb", "desktop_gpu_scene-drawing.ads", "desktop_gpu_scene-drawing.adb",
+      "desktop_gpu_scene-drawing-tests.adb", "desktop_gpu_scene-drawing-mixed_tests.adb");
+   for Main use ("desktop_gpu_scene-drawing-tests.adb", "desktop_gpu_scene-drawing-mixed_tests.adb");
+   for Object_Dir use "build/desktop-gpu-drawing/obj";
+   for Exec_Dir use "build/desktop-gpu-drawing";
+end Desktop_GPU_Drawing;

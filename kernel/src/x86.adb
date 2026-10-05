@@ -632,6 +632,37 @@ is
             Volatile => True);
     end wrfsbase;
 
+    --  EDX:EAX all ones: every component enabled in XCR0.
+    procedure xsave (saveArea : System.Address) is
+    begin
+        Asm("xsave64 (%0)",
+            Inputs => (System.Address'Asm_Input("r", saveArea),
+                       Unsigned_32'Asm_Input("a", 16#FFFF_FFFF#),
+                       Unsigned_32'Asm_Input("d", 16#FFFF_FFFF#)),
+            Clobber => "memory",
+            Volatile => True);
+    end xsave;
+
+    procedure xsaveopt (saveArea : System.Address) is
+    begin
+        Asm("xsaveopt64 (%0)",
+            Inputs => (System.Address'Asm_Input("r", saveArea),
+                       Unsigned_32'Asm_Input("a", 16#FFFF_FFFF#),
+                       Unsigned_32'Asm_Input("d", 16#FFFF_FFFF#)),
+            Clobber => "memory",
+            Volatile => True);
+    end xsaveopt;
+
+    procedure xrstor (saveArea : System.Address) is
+    begin
+        Asm("xrstor64 (%0)",
+            Inputs => (System.Address'Asm_Input("r", saveArea),
+                       Unsigned_32'Asm_Input("a", 16#FFFF_FFFF#),
+                       Unsigned_32'Asm_Input("d", 16#FFFF_FFFF#)),
+            Clobber => "memory",
+            Volatile => True);
+    end xrstor;
+
     procedure fxsave (saveArea : System.Address) is
     begin
         --  FXSAVE writes 512 bytes to the memory pointed to by saveArea.

@@ -82,7 +82,7 @@ package body CCL.Objects.Views with SPARK_Mode is
                   case D.Form is
                      --  A range is one Integer cell (Validate checked its bounds).
                      when Bounded => null;
-                     when Primitive | Resource | Callable | Stream => return;
+                     when Primitive | Resource | Callable | Stream | Async => return;
                      when Sequence =>
                         --  Validate bounded the count by the cells left.
                         if D.Count /= 1 or else Object.Value.Cells (Seen).First > Unsigned_64 (Maximum_Cells) then

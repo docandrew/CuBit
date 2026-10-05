@@ -1,0 +1,11 @@
+# Delegated places (docs/self-hosting.md, item 4): starts args-check, which
+# may not read @nvme:0/delegated itself, handing it read access to that
+# place; and checks that it cannot hand over what it does not hold.
+(executable-manifest v1
+  (identity "com.cubit.delegate-check")
+  (version "0.1.0")
+  (request-service process-manager read-write process-manager)
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read) "@nvme:0/delegated")
+  # args-check's own manifest reads tls/: a launcher must hold it too.
+  (filesystem-scope (rights read) "@nvme:0/tls"))

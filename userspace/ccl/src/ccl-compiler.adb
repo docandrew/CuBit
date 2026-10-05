@@ -304,7 +304,7 @@ is
                end if;
 
             when CCL.Language.Stream_Reference =>
-               if not CCL.Types.Is_Stream (Program.Data_Types, Item.Static_Kind) then
+               if not CCL.Types.Is_Handle (Program.Data_Types, Item.Static_Kind) then
                   Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
                else
                   Emit (CCL.VM.Push_Stream, Item.Integer_Value, Data_Type => Item.Static_Kind);
@@ -442,21 +442,19 @@ is
                         when CCL.Language.Boolean_Type => CCL.VM.Boolean_Value,
                         when CCL.Language.String_Type => CCL.VM.Text_Value,
                         when CCL.Language.Character_Type => CCL.VM.Character_Value,
+                        when CCL.Language.Handler_Type => CCL.VM.Function_Value,
                         when others => (if CCL.VM.Supported_List (Program.Data_Types, Initializer.Static_Kind)
                           then CCL.VM.List_Value
                           elsif CCL.Types.Is_Function (Program.Data_Types, Initializer.Static_Kind)
                           then CCL.VM.Function_Value
-                          elsif CCL.Types.Is_Stream (Program.Data_Types, Initializer.Static_Kind)
+                          elsif CCL.Types.Is_Handle (Program.Data_Types, Initializer.Static_Kind)
                           then CCL.VM.Integer_Value
                           elsif CCL.Types.Describe (Program.Data_Types, Initializer.Static_Kind).Form = CCL.Types.Resource
                           then CCL.VM.Resource_Value
                           elsif CCL.Types.Is_Scalar_Sum (Program.Data_Types, Initializer.Static_Kind)
                           then CCL.VM.Variant_Value else CCL.VM.Object_Value));
                   Program.Local_Types (Local) := Resource_Tags (Initializer.Static_Kind);
-                  if Initializer.Static_Kind = CCL.Language.Handler_Type
-                  then
-                     Fail (Unsupported_Form, Index, Item.Source_Position);
-                  elsif Initializer.Static_Kind = CCL.Language.Invalid_Type then
+                  if Initializer.Static_Kind = CCL.Language.Invalid_Type then
                      Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
                   else
                      if Initializer.Static_Kind not in
@@ -551,10 +549,10 @@ is
                if not Import_Lowered then
                   Fail (Unsupported_Form, Index, Item.Source_Position);
                elsif (Item.Host_Call.Import.Result = CCL.Host_Values.Integer_Value and then
-                   not Item.Host_Call.Import.Result_Stream and then
+                   not (Item.Host_Call.Import.Result_Stream or Item.Host_Call.Import.Result_Task) and then
                    Item.Static_Kind /= CCL.Language.Integer_Type) or else
                  (Item.Host_Call.Import.Result = CCL.Host_Values.Boolean_Value and then
-                   not Item.Host_Call.Import.Result_Stream and then
+                   not (Item.Host_Call.Import.Result_Stream or Item.Host_Call.Import.Result_Task) and then
                    Item.Static_Kind /= CCL.Language.Boolean_Type)
                then
                   Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
@@ -655,7 +653,10 @@ is
                end if;
 
             when CCL.Language.Handler_Form =>
-               Fail (Unsupported_Form, Index, Item.Source_Position);
+               --  An inert reference to a named function, for the host to
+               --  register: it cannot be called here (docs/ccl-type-system.md).
+               Emit (CCL.VM.Make_Closure, Interfaces.Integer_64 (Item.Function_Id),
+                     Data_Type => CCL.Types.Handler_Type);
 
             when CCL.Language.Record_Construct =>
                --  The fields in order, then the node (step 4). Range-typed
@@ -751,7 +752,8 @@ is
                   Read_Node (Item.Arguments (Item.Argument_Count), Subject);
                   if CCL.Language.Is_Stream_View (Item.Builtin) then
                      --  (window n s): n, then the stream; others: the stream.
-                     if not CCL.Types.Is_Stream (Program.Data_Types, Subject.Static_Kind) or else
+                     --  (wait t) takes a task; the other views a stream.
+                     if not CCL.Types.Is_Handle (Program.Data_Types, Subject.Static_Kind) or else
                        CCL.VM.Stream_View_Type
                          (Program.Data_Types, Subject.Static_Kind,
                           CCL.Language.Stream_View_Of (Item.Builtin)) = CCL.Types.Invalid_Type

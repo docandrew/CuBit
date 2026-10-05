@@ -70,12 +70,15 @@ package body Intel_GPU_Buffer_Handles with SPARK_Mode is
       end loop;
       return Slot'First;
    end Slot_Of;
+   function Open_Item (Value : Item; Session : Session_ID; ID : Handle)
+      return Boolean is
+     (Session /= 0 and then ID /= No_Handle and then Value.ID = ID and then
+      Value.Open and then Value.Session = Session and then Value.Backing.Ready);
    function Is_Open (Object : Registry; Session : Session_ID; ID : Handle) return Boolean is
-     (not Object.Failed and then Session /= 0 and then ID /= No_Handle
-      and then Read_Item (Object, Slot_Of (Object, ID)).ID = ID
-      and then Read_Item (Object, Slot_Of (Object, ID)).Open
-      and then Read_Item (Object, Slot_Of (Object, ID)).Session = Session
-      and then Read_Item (Object, Slot_Of (Object, ID)).Backing.Ready);
+   begin
+      if Object.Failed or else Session = 0 or else ID = No_Handle then return False; end if;
+      return Open_Item (Read_Item (Object, Slot_Of (Object, ID)), Session, ID);
+   end Is_Open;
    function Check_Close (Object : Registry; Session : Session_ID; ID : Handle)
      return Close_Check is
       Value : Item;
@@ -92,8 +95,14 @@ package body Intel_GPU_Buffer_Handles with SPARK_Mode is
    end Check_Close;
    function Resolve (Object : Registry; Session : Session_ID; ID : Handle)
      return Replies.Backing is
-     (if Is_Open (Object, Session, ID) then Read_Item (Object, Slot_Of (Object, ID)).Backing
-      else (Ready => False));
+      Value : Item;
+   begin
+      if Object.Failed or else Session = 0 or else ID = No_Handle then
+         return (Ready => False);
+      end if;
+      Value := Read_Item (Object, Slot_Of (Object, ID));
+      return (if Open_Item (Value, Session, ID) then Value.Backing else (Ready => False));
+   end Resolve;
    procedure Retain_Backing
      (Object : in out Registry; Session : Session_ID; ID : Handle;
       Reference : in out Retained_Reference; Accepted : out Boolean)
@@ -102,15 +111,17 @@ package body Intel_GPU_Buffer_Handles with SPARK_Mode is
       Value : Item;
    begin
       Accepted := False;
-      if Reference.Active or else not Is_Open (Object, Session, ID) then return; end if;
+      if Reference.Active or else Object.Failed or else Session = 0 or else ID = No_Handle then return; end if;
       Value := Read_Item (Object, Index);
-      if Value.Released or else Value.Retained = Natural'Last then return; end if;
+      if not Open_Item (Value, Session, ID) or else Value.Released or else
+        Value.Retained = Natural'Last then return; end if;
       Value.Retained := Value.Retained + 1;
       Write_Item (Object, Index, Value);
       Reference.Origin := Object'Address;
       Reference.Index := Index;
       Reference.Session := Session;
       Reference.ID := ID;
+      Reference.Excludes_Writes := False;
       Reference.Active := True;
       Accepted := True;
    end Retain_Backing;
@@ -126,12 +137,24 @@ package body Intel_GPU_Buffer_Handles with SPARK_Mode is
       then return (Ready => False); end if;
       Value := Read_Item (Object, Reference.Index);
       if Value.ID /= Reference.ID or else Value.Session /= Reference.Session or else
-        Value.Released or else Value.Retained = 0 then return (Ready => False); end if;
+        Value.Released or else Value.Retained = 0 or else
+        (Reference.Excludes_Writes and then Value.Write_Holds = 0)
+      then return (Ready => False); end if;
       return Value.Backing;
    end Referenced_Backing;
+   function Reference_Matches
+     (Object : Registry; Reference : Retained_Reference;
+      Session : Session_ID; ID : Handle) return Boolean
+     with SPARK_Mode => Off is
+   begin
+      return Session /= 0 and then ID /= No_Handle and then
+        Reference.Session = Session and then Reference.ID = ID and then
+        Referenced_Backing (Object, Reference).Ready;
+   end Reference_Matches;
    procedure Retain_Referenced_Backing
      (Object : in out Registry; Source : Retained_Reference;
-      Destination : in out Retained_Reference; Accepted : out Boolean)
+      Destination : in out Retained_Reference; Accepted : out Boolean;
+      Exclude_Writes : Boolean := False)
      with SPARK_Mode => Off is
       Value : Item;
    begin
@@ -140,13 +163,22 @@ package body Intel_GPU_Buffer_Handles with SPARK_Mode is
          return;
       end if;
       Value := Read_Item (Object, Source.Index);
-      if Value.Retained = Natural'Last then return; end if;
+      if Value.Retained = Natural'Last or else
+        ((Source.Excludes_Writes or Exclude_Writes) and then
+          (Value.Write_Holds = Natural'Last or else
+           Object.Total_Write_Holds = Unsigned_64'Last))
+      then return; end if;
       Value.Retained := Value.Retained + 1;
+      if Source.Excludes_Writes or Exclude_Writes then
+         Value.Write_Holds := Value.Write_Holds + 1;
+         Object.Total_Write_Holds := Object.Total_Write_Holds + 1;
+      end if;
       Write_Item (Object, Source.Index, Value);
       Destination.Origin := Source.Origin;
       Destination.Index := Source.Index;
       Destination.Session := Source.Session;
       Destination.ID := Source.ID;
+      Destination.Excludes_Writes := Source.Excludes_Writes or Exclude_Writes;
       Destination.Active := True;
       Accepted := True;
    end Retain_Referenced_Backing;
@@ -161,23 +193,59 @@ package body Intel_GPU_Buffer_Handles with SPARK_Mode is
       if not References_Retired or else not Referenced_Backing (Object, Reference).Ready then return; end if;
       Index := Reference.Index;
       Value := Read_Item (Object, Index);
+      if Reference.Excludes_Writes then
+         if Value.Write_Holds = 0 or else Object.Total_Write_Holds = 0 then
+            Object.Failed := True;
+            return;
+         end if;
+         Value.Write_Holds := Value.Write_Holds - 1;
+         Object.Total_Write_Holds := Object.Total_Write_Holds - 1;
+      end if;
       Value.Retained := Value.Retained - 1;
       Write_Item (Object, Index, Value);
       Reference.Active := False;
+      Reference.Excludes_Writes := False;
       Reference.Origin := System.Null_Address;
       Reference.Index := 0;
       Reference.Session := 0;
       Reference.ID := No_Handle;
       Accepted := True;
    end Return_Reference;
+   function Writes_Excluded (Object : Registry; Session : Session_ID; ID : Handle)
+      return Boolean is
+      Value : Item;
+   begin
+      if Object.Failed or else Session = 0 or else ID = No_Handle then return True; end if;
+      Value := Read_Item (Object, Slot_Of (Object, ID));
+      return Value.ID /= ID or else Value.Session /= Session or else Value.Write_Holds /= 0;
+   end Writes_Excluded;
+   function Session_Writes_Excluded (Object : Registry; Session : Session_ID)
+      return Boolean is
+   begin
+      if Object.Failed or else Session = 0 then return True; end if;
+      if Object.Total_Write_Holds = 0 then return False; end if;
+      for Index in 1 .. Object.Used loop
+         declare Value : constant Item := Read_Item (Object, Index); begin
+            if Value.Session = Session and then Value.Write_Holds /= 0 then return True; end if;
+         end;
+      end loop;
+      return False;
+   end Session_Writes_Excluded;
+   function Closed_Item (Value : Item; Session : Session_ID; ID : Handle)
+      return Boolean is
+     (Session /= 0 and then ID /= No_Handle and then Value.ID = ID and then
+      Value.Session = Session and then not Value.Released and then
+      not Value.Open and then Value.Backing.Ready);
    function Closed_Backing (Object : Registry; Session : Session_ID; ID : Handle)
      return Replies.Backing is
-     (if not Object.Failed and then Session /= 0 and then
-         ID /= No_Handle and then Read_Item (Object, Slot_Of (Object, ID)).ID = ID and then
-         Read_Item (Object, Slot_Of (Object, ID)).Session = Session and then
-         not Read_Item (Object, Slot_Of (Object, ID)).Released and then
-         not Read_Item (Object, Slot_Of (Object, ID)).Open
-      then Read_Item (Object, Slot_Of (Object, ID)).Backing else (Ready => False));
+      Value : Item;
+   begin
+      if Object.Failed or else Session = 0 or else ID = No_Handle then
+         return (Ready => False);
+      end if;
+      Value := Read_Item (Object, Slot_Of (Object, ID));
+      return (if Closed_Item (Value, Session, ID) then Value.Backing else (Ready => False));
+   end Closed_Backing;
    procedure Register
      (Object : in out Registry; Session : Session_ID;
       Backing : Replies.Backing; ID : out Handle) is
@@ -199,16 +267,21 @@ package body Intel_GPU_Buffer_Handles with SPARK_Mode is
       Object.Used := Object.Used + 1;
       Object.Last_Issued := Object.Last_Issued + 1;
       ID := Object.Last_Issued;
-      Write_Item (Object, Object.Used, (ID, Session, True, False, Backing, 0));
+      Write_Item (Object, Object.Used, (ID, Session, True, False, Backing, 0, 0));
    end Register;
    procedure Close
      (Object : in out Registry; Session : Session_ID; ID : Handle;
       Accepted : out Boolean) is
+      Index : Slot;
+      Value : Item;
    begin
-      Accepted := Is_Open (Object, Session, ID);
+      Accepted := False;
+      if Object.Failed or else Session = 0 or else ID = No_Handle then return; end if;
+      Index := Slot_Of (Object, ID);
+      Value := Read_Item (Object, Index);
+      Accepted := Open_Item (Value, Session, ID);
       if Accepted then
-         Write_Item (Object, Slot_Of (Object, ID),
-           (Read_Item (Object, Slot_Of (Object, ID)) with delta Open => False));
+         Write_Item (Object, Index, (Value with delta Open => False));
       end if;
    end Close;
    procedure Close_Session (Object : in out Registry; Session : Session_ID) is
@@ -249,20 +322,30 @@ package body Intel_GPU_Buffer_Handles with SPARK_Mode is
       end loop;
       Object.Last_Issued := Object.Last_Issued + 1;
       ID := Object.Last_Issued;
-      Write_Item (Object, Index, (ID, Session, True, False, Backing, 0));
+      Write_Item (Object, Index, (ID, Session, True, False, Backing, 0, 0));
    end Replace_Retired;
    function Can_Release_Backing
      (Object : Registry; Session : Session_ID; ID : Handle) return Boolean is
-     (Closed_Backing (Object, Session, ID).Ready and then
-      Read_Item (Object, Slot_Of (Object, ID)).Retained = 0);
+      Value : Item;
+   begin
+      if Object.Failed or else Session = 0 or else ID = No_Handle then return False; end if;
+      Value := Read_Item (Object, Slot_Of (Object, ID));
+      return Closed_Item (Value, Session, ID) and then Value.Retained = 0;
+   end Can_Release_Backing;
    procedure Release_Retired_Backing
      (Object : in out Registry; Session : Session_ID; ID : Handle;
       References_Retired : Boolean; Accepted : out Boolean) is
+      Index : Slot;
+      Value : Item;
    begin
-      Accepted := References_Retired and then Can_Release_Backing (Object, Session, ID);
+      Accepted := False;
+      if not References_Retired or else Object.Failed or else Session = 0 or else
+        ID = No_Handle then return; end if;
+      Index := Slot_Of (Object, ID);
+      Value := Read_Item (Object, Index);
+      Accepted := Closed_Item (Value, Session, ID) and then Value.Retained = 0;
       if Accepted then
-         Write_Item (Object, Slot_Of (Object, ID),
-           (Read_Item (Object, Slot_Of (Object, ID)) with delta Released => True));
+         Write_Item (Object, Index, (Value with delta Released => True));
       end if;
    end Release_Retired_Backing;
    procedure Quarantine (Object : in out Registry) is

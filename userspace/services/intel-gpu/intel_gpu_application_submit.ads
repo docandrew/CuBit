@@ -1,4 +1,5 @@
 with Interfaces; use Interfaces;
+with System;
 generic
    -- All callbacks select the SAME authenticated session/context incarnation.
    -- Serialize against retirement, BO close, VM updates and other submissions.
@@ -27,8 +28,22 @@ package Intel_GPU_Application_Submit is
    type Phase is (Uninitialized, Idle, Checking, Executing, Failed);
    type Result is (Rejected, Batch_Denied, Complete, Faulted, Exhausted);
    type State is limited private;
+   type Completion_Receipt is limited private;
+   -- Keep the exact State root alive and unmoved through receipt consumption.
+   -- A receipt is internal evidence, never a client-supplied wire structure.
+   function Receipt_Confirmed (Object : State; Receipt : Completion_Receipt)
+      return Boolean;
+   function Receipt_Sequence (Object : State; Receipt : Completion_Receipt)
+      return Unsigned_32;
    function Current (Object : State) return Phase;
    function Last_Completed (Object : State) return Unsigned_32;
+   -- Observation for the EXACT state/context incarnation selected by the
+   -- trusted coordinator. Sequence must come from its reserved submission,
+   -- never a client completion claim. Marker1 is setup, not application work.
+   -- Only Idle after marker observation AND disable confirms application work.
+   -- Does not establish current ownership or CPU/display consumer retirement.
+   function Completion_Confirmed (Object : State; Sequence : Unsigned_32)
+      return Boolean;
    -- Trusted dispatcher only, after setup marker1 AND disable acknowledgement.
    -- One-shot; caller must not manufacture this fact from a client request.
    procedure Initialize (Object : in out State; Setup_Complete : Boolean);
@@ -39,7 +54,18 @@ package Intel_GPU_Application_Submit is
    procedure Execute
      (Object : in out State; Handle, GPU, Offset, Bytes : Unsigned_64;
       Status : out Result; Completion : out Unsigned_32);
+   -- Caller must reserve all consumer obligations BEFORE dispatch. Only a
+   -- completed execution seals this single-use receipt; uncertainty retains
+   -- the caller's obligations without manufacturing completion evidence.
+   procedure Execute_With_Receipt
+     (Object : in out State; Handle, GPU, Offset, Bytes : Unsigned_64;
+      Receipt : in out Completion_Receipt; Status : out Result);
 private
+   type Completion_Receipt is limited record
+      Attempted : Boolean := False;
+      Origin : System.Address := System.Null_Address;
+      Sequence : Unsigned_32 := 0;
+   end record;
    type State is limited record
       Value : Phase := Uninitialized;
       Completed : Unsigned_32 := 0;

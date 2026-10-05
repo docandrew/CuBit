@@ -408,6 +408,13 @@ package body CCL.Types with SPARK_Mode is
    function Is_Stream (Item : Registry; Ref : Type_Reference) return Boolean is
      (Known (Item, Ref) and then Describe (Item, Ref).Form = Stream);
 
+   function Is_Task (Item : Registry; Ref : Type_Reference) return Boolean is
+     (Known (Item, Ref) and then Describe (Item, Ref).Form = Async);
+
+   function Task_Result (Item : Registry; Ref : Type_Reference) return Type_Reference is
+     (if Is_Task (Item, Ref) then Describe (Item, Ref).Parts (1).Payload
+      else Invalid_Type);
+
    function Stream_Element (Item : Registry; Ref : Type_Reference) return Type_Reference is
      (if Is_Stream (Item, Ref) then Describe (Item, Ref).Parts (1).Payload
       else Invalid_Type);
@@ -447,8 +454,13 @@ package body CCL.Types with SPARK_Mode is
       return Allowed (Root);
    end Persistable;
 
-   procedure Specialize_Stream
-     (Item : in out Registry; Element : Type_Reference;
+   --  Stream<Element> or Task<Element>: one generic part, by form.
+   procedure Specialize_Handle
+     (Item : in out Registry; Element : Type_Reference; Form : Shape; Prefix : String;
+      Ref : out Type_Reference; Result : out Stream_Result)
+   with Pre => Form in Stream | Async;
+   procedure Specialize_Handle
+     (Item : in out Registry; Element : Type_Reference; Form : Shape; Prefix : String;
       Ref : out Type_Reference; Result : out Stream_Result)
    is
       Candidate : Description;
@@ -461,10 +473,10 @@ package body CCL.Types with SPARK_Mode is
          return;
       end if;
       Candidate :=
-        (Identifier => Named ("Stream-" & Image (Describe (Item, Element).Identifier)),
-         Form => Stream,
+        (Identifier => Named (Prefix & Image (Describe (Item, Element).Identifier)),
+         Form => Form,
          Count => 1,
-         Parts => [1 => (Named ("element"), Element), others => <>]);
+         Parts => [1 => (Named ((if Form = Stream then "element" else "result")), Element), others => <>]);
       Result := Stream_Name_Too_Long;
       if not Valid_Name (Candidate.Identifier) then
          return;
@@ -482,7 +494,21 @@ package body CCL.Types with SPARK_Mode is
       Result := (if Defined_As = Defined then Stream_Specialized
                  elsif Defined_As = Registry_Full then Stream_Registry_Full
                  else Invalid_Stream_Element);
+   end Specialize_Handle;
+
+   procedure Specialize_Stream
+     (Item : in out Registry; Element : Type_Reference;
+      Ref : out Type_Reference; Result : out Stream_Result) is
+   begin
+      Specialize_Handle (Item, Element, Stream, "Stream-", Ref, Result);
    end Specialize_Stream;
+
+   procedure Specialize_Task
+     (Item : in out Registry; Result_Type : Type_Reference;
+      Ref : out Type_Reference; Result : out Stream_Result) is
+   begin
+      Specialize_Handle (Item, Result_Type, Async, "Task-", Ref, Result);
+   end Specialize_Task;
 
    function Element_Of (Item : Registry; Ref : Type_Reference) return Type_Reference is
      (if Is_List (Item, Ref) then Describe (Item, Ref).Parts (1).Payload

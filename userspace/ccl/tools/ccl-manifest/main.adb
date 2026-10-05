@@ -136,9 +136,20 @@ begin
    if Ada.Directories.Exists (Schema_Path) then
       Read_Source (Schema_Path, Schema_Source, Schema_Length);
    end if;
-   CCL.Manifests.Compile
-     (Source (1 .. Source_Length), Catalog_Source (1 .. Catalog_Length), Result,
-      Schema_Source (1 .. Schema_Length));
+   --  The interpreter recurses with large frames (about 240 KiB each), more
+   --  than a default 8 MiB stack holds for a typed manifest and its schema,
+   --  so the compilation runs on a task with room for it.
+   declare
+      task Compilation with Storage_Size => 256 * 1024 * 1024;
+      task body Compilation is
+      begin
+         CCL.Manifests.Compile
+           (Source (1 .. Source_Length), Catalog_Source (1 .. Catalog_Length), Result,
+            Schema_Source (1 .. Schema_Length));
+      end Compilation;
+   begin
+      null;
+   end;
    if not Result.Success and then CuBit.Failures."/=" (Result.Why.Why, CuBit.Failures.Unspecified) then
       --  A typed manifest says which entry is wrong and how to fix it.
       declare
@@ -168,9 +179,9 @@ begin
    Emit (".cubit.id", Result.Identity);
    Emit (".cubit.caps", Result.Capabilities);
    Emit (".cubit.access", Result.Access_Scopes);
-   Emit (".cubit.streams", Result.Streams);
    Emit (".cubit.resources", Result.Resources);
    Emit (".cubit.launch", Result.Launch);
+   Emit (".cubit.description", Result.Description);
    Put_Line (".section .note.GNU-stack,"""",@progbits");
 exception
    when Ada.Streams.Stream_IO.Name_Error | Ada.Streams.Stream_IO.Use_Error =>

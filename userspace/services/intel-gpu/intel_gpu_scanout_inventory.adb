@@ -46,6 +46,28 @@ package body Intel_GPU_Scanout_Inventory with SPARK_Mode is
       Result.Status := Complete;
       return Result;
    end Collect;
+   function Plan_Linear_Flip
+     (P : Planes; C : Cursors;
+      Presence : Intel_GPU_Display_Presence.Snapshot;
+      Selected : Plane_Index;
+      Table_Bytes, Target_First, Target_Bytes : Unsigned_64)
+      return Intel_GPU_Plane_Decode.Flip_Plan
+   is
+      package DP renames Intel_GPU_Display_Presence;
+      State : constant Inventory := Collect (P, C, Table_Bytes, Presence);
+      Rejected : constant Intel_GPU_Plane_Decode.Flip_Plan := (others => <>);
+   begin
+      if not Presence.Known or else
+        Presence.Pipes (DP.Pipe'Val ((Selected - 1) / 5)) /= DP.Present or else
+        not P (Selected).Collected or else
+        not No_Scanout_Overlap (State, (True, Target_First, Target_Bytes))
+      then
+         return Rejected;
+      end if;
+      return Intel_GPU_Plane_Decode.Plan_Linear_Flip
+        (P (Selected).Before, P (Selected).After,
+         Table_Bytes, Target_First, Target_Bytes);
+   end Plan_Linear_Flip;
    function No_Scanout_Overlap (State : Inventory; Candidate : Intel_GPU_Scanout_Range.Extent)
      return Boolean is
    begin

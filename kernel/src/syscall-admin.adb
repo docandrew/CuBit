@@ -1313,21 +1313,20 @@ package body Syscall.Admin is
         use type Capabilities.CapabilityType;
 
 
-        hasCap : Boolean := False;
+        --  Who may set what: the wall-clock offset only the registered
+        --  clock service; device configuration only the registered device
+        --  manager. (Any write-capable CAP_PROCESS used to suffice, and every
+        --  process holds one for itself.)
+        owner : constant Sysinfo.DriverID :=
+            (if arg0 = Sysinfo.WALL_CLOCK_OFFSET then Sysinfo.DRIVER_CLOCK
+             else Sysinfo.DRIVER_DEVMGR);
+        hasCap : constant Boolean :=
+            Process.threadOf (callerPID).mode = Process.KERNEL or else
+            Sysinfo.getInfo (Sysinfo.REGISTERED_DRIVER, Unsigned_64 (owner)) =
+                Unsigned_64 (callerPID);
     begin
-        for slot in Capabilities.CapabilitySlot loop
-            if Process.proctab(callerPID).caps(slot).capType =
-               Capabilities.CAP_PROCESS and then
-               Process.proctab(callerPID).caps(slot).rights(
-                   Capabilities.RIGHT_WRITE)
-            then
-                hasCap := True;
-                exit;
-            end if;
-        end loop;
-
         if not hasCap then
-            println ("SET_SYSINFO: denied, no RIGHT_WRITE");
+            println ("SET_SYSINFO: denied, caller is not the registered owner");
             retval := reterr;
         elsif Sysinfo.setInfo (arg0, arg1) then
             retval := 0;

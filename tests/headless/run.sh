@@ -45,7 +45,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, rust-std, libc, processes, servo, bench-spread, timesync, tls-probe, tls-service, netsurf-https, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, avx, rust-std, libc, processes, binutils, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
@@ -57,7 +57,7 @@ Options:
   --disk PATH          Base ext2 disk image (default: kernel/nvme_disk.img)
   --serial PATH        Serial log path (default: /tmp/cubit-headless-*.log)
   --pcap PATH          Packet capture path (default: /tmp/cubit-headless-*.pcap)
-  --keep-logs          Leave logs in place after a passing run
+  --keep-logs          Leave logs (and the guest's disk) in place after a run
   --turso-revision N  turso-native: expected saved revision, 1 (seed) or 2 (fresh boot)
   --turso-export DIR  turso-native: save validated disk and SQLite in a NEW directory
   --config-export DIR config-objects/reopen/benchmark: save validated disk and SQLite/WAL in a NEW directory
@@ -274,7 +274,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|rust-std|libc|processes|servo|bench-spread|timesync|tls-probe|tls-service|netsurf-https|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary|bench-latency)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|avx|rust-std|libc|processes|binutils|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary|bench-latency)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -380,7 +380,12 @@ cleanup() {
     cp "$GRUB_BAK" "$GRUB_CFG"
     rm -f "$GRUB_BAK"
     if [ -n "$TEMP_DISK" ]; then
-        rm -f "$TEMP_DISK"
+        # --keep-logs keeps the guest's disk too, for inspecting what it wrote.
+        if [ "$KEEP_LOGS" -eq 1 ] && [ -n "$SERIAL_LOG" ]; then
+            mv -f "$TEMP_DISK" "${SERIAL_LOG%.*}-disk.img" 2>/dev/null || rm -f "$TEMP_DISK"
+        else
+            rm -f "$TEMP_DISK"
+        fi
     fi
     if [ -n "$TEMP_STORAGE_FIXTURE" ]; then
         rm -f "$TEMP_STORAGE_FIXTURE"
@@ -509,6 +514,12 @@ case "$TEST_NAME" in
         # Threads of one process on every CPU at once (default four).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-futex.ccl"
         ;;
+    avx)
+        # Two processes sharing one CPU, each holding its own YMM pattern
+        # across thousands of switches (kernel XSAVE isolation).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-avx.ccl"
+        if [ "$QEMU_CPUS_EXPLICIT" = 0 ]; then QEMU_CPUS=1; fi
+        ;;
     rust-std)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-rust-std.ccl"
         ;;
@@ -536,6 +547,10 @@ case "$TEST_NAME" in
     libc)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-libc.ccl"
         ;;
+    binutils)
+        # userspace/ports/binutils: as and ld on CuBit, compared with Linux.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-binutils.ccl"
+        ;;
     processes)
         # docs/process-arguments.md: launch arguments, posix_spawn, waitpid.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-processes.ccl"
@@ -562,9 +577,6 @@ case "$TEST_NAME" in
         ;;
     tls-service)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-tls-service.ccl"
-        ;;
-    netsurf-https)
-        INIT_PROFILE="$ROOT_DIR/tests/headless/init-netsurf-https.ccl"
         ;;
     wget-https)
         # Needs internet access from the host: a manual, network-dependent
@@ -850,7 +862,7 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
         if [ "${CUBIT_DOOM_MULTIAPP:-0}" = 1 ]; then
-            for app in ccl-workbench.app netsurf.app; do
+            for app in ccl-workbench.app; do
                 if [ ! -f "$KERNEL_DIR/isodir/boot/$app" ]; then
                     echo "headless: build $app before the multi-app DOOM test" >&2
                     exit 1
@@ -998,6 +1010,21 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
             rm -f "$CONSOLE_PICTURE"
+            if [ "${CCL_CONSOLE_DEMO:-}" = programs ]; then
+                # as and ld, typed from the console (docs/ccl-launch-parameters.md):
+                # built by tests/binutils/build.sh into isodir/boot.
+                for PROGRAM_IMAGE in as.app ld.app; do
+                    debugfs -w -R "rm $PROGRAM_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+                    debugfs -w -R "write $KERNEL_DIR/isodir/boot/$PROGRAM_IMAGE $PROGRAM_IMAGE" \
+                      "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+                done
+                for PROGRAM_INPUT in hello.s bad.s; do
+                    SOURCE_DIR="$ROOT_DIR/tests/binutils"
+                    [ "$PROGRAM_INPUT" = bad.s ] && SOURCE_DIR="$ROOT_DIR/tests/ccl-console"
+                    debugfs -w -R "write $SOURCE_DIR/$PROGRAM_INPUT work/$PROGRAM_INPUT" \
+                      "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+                done
+            fi
         fi
         for CCL_IMAGE_NAME in $CCL_IMAGES; do
             CCL_IMAGE="$KERNEL_DIR/isodir/boot/$CCL_IMAGE_NAME"
@@ -1173,6 +1200,16 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
     fi
+    if [ "$TEST_NAME" = "avx" ]; then
+        for AVX_IMAGE in logstore.svc avx-check.app; do
+            debugfs -w -R "rm $AVX_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$AVX_IMAGE $AVX_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $AVX_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
     if [ "$TEST_NAME" = "processes" ]; then
         # The children link the current libc (crt1 builds argv from the
         # launch block); stage-1 services, procmgr included, come from initrd.
@@ -1181,14 +1218,45 @@ if [ -n "$INIT_PROFILE" ]; then
             echo "headless: failed to build the processes test programs" >&2
             exit 1
         fi
+        # delegate-check hands args-check this place, which only it holds.
+        printf 'delegated note\n' > "$(dirname "$SERIAL_LOG")/delegated-note.txt"
+        debugfs -w -R "mkdir delegated" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "write $(dirname "$SERIAL_LOG")/delegated-note.txt delegated/note.txt" \
+          "$TEMP_DISK" >/dev/null 2>&1
+        DEEP_PLACE=delegated/a-directory-name-longer-than-the-old-sixty-four-byte-scope-limit
+        debugfs -w -R "mkdir $DEEP_PLACE" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "write $(dirname "$SERIAL_LOG")/delegated-note.txt $DEEP_PLACE/note.txt" \
+          "$TEMP_DISK" >/dev/null 2>&1
         for PROCESS_IMAGE in logstore.svc args-check.app spawn-check.app \
-          ada-args-check.app rust-args-check.app greedy-check.app; do
+          ada-args-check.app rust-args-check.app greedy-check.app delegate-check.app; do
             debugfs -w -R "rm $PROCESS_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$PROCESS_IMAGE $PROCESS_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $PROCESS_IMAGE" >&2
                 exit 1
             fi
+        done
+    fi
+    if [ "$TEST_NAME" = "binutils" ]; then
+        # The tools, the launcher, the comparer, and the inputs and Linux's
+        # outputs in @nvme:0/work, which the launcher holds and delegates
+        # file by file through as's and ld's typed parameters.
+        if ! make -C "$KERNEL_DIR" libc user_runtime ccl-manifest >/dev/null ||
+           ! bash "$ROOT_DIR/tests/binutils/build.sh" "$KERNEL_DIR/isodir/boot" >/dev/null; then
+            echo "headless: failed to build the binutils test" >&2
+            exit 1
+        fi
+        for BINUTILS_IMAGE in logstore.svc as.app ld.app binutils-check.app binutils-compare.app; do
+            debugfs -w -R "rm $BINUTILS_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$BINUTILS_IMAGE $BINUTILS_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
+        debugfs -w -R "mkdir work" "$TEMP_DISK" >/dev/null 2>&1
+        for BINUTILS_FILE in "$ROOT_DIR/tests/binutils/hello.s" \
+          "$ROOT_DIR/tests/binutils/build/expected-hello.o" \
+          "$ROOT_DIR/tests/binutils/build/expected-hello.elf"; do
+            debugfs -w -R "write $BINUTILS_FILE work/$(basename "$BINUTILS_FILE")" \
+              "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         done
     fi
     if [ "$TEST_NAME" = "libc" ]; then
@@ -1341,22 +1409,7 @@ SERVO_PAGES_EOF
             fi
         done
     fi
-    if [ "$TEST_NAME" = "netsurf-https" ]; then
-        # netsurf-https-test.app is NetSurf built with the fixture as its
-        # homepage; it runs under the production name.
-        for NS_IMAGE in logstore.svc clock.svc tls.svc display.svc desktop.svc \
-          netsurf-https-test.app:netsurf.app; do
-            NS_SOURCE="${NS_IMAGE%%:*}"
-            NS_TARGET="${NS_IMAGE##*:}"
-            debugfs -w -R "rm $NS_TARGET" "$TEMP_DISK" >/dev/null 2>&1
-            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$NS_SOURCE $NS_TARGET" \
-              "$TEMP_DISK" >/dev/null 2>&1; then
-                echo "headless: failed to install $NS_TARGET" >&2
-                exit 1
-            fi
-        done
-    fi
-    if [ "$TEST_NAME" = "tls-service" ] || [ "$TEST_NAME" = "netsurf-https" ]; then
+    if [ "$TEST_NAME" = "tls-service" ]; then
         # The test root is the service's trust store for this run.
         debugfs -w -R "mkdir tls" "$TEMP_DISK" >/dev/null 2>&1
         debugfs -w -R "rm tls/roots.der" "$TEMP_DISK" >/dev/null 2>&1
@@ -1544,11 +1597,14 @@ SERVO_PAGES_EOF
         # ext2 dirent's record-length field. The service must reject the page
         # without reading a variable-length name or advancing its cursor.
         debugfs -w -R "mkdir corrupt-dir" "$TEMP_DISK" >/dev/null 2>&1
-        # The rename path must not treat an indexed directory as plain ext2
-        # records and leave its name index inconsistent. This is deliberately
-        # a flagged fixture, not a claim to generate a valid HTree here.
+        # An htree-flagged directory is writable (the flag is cleared before
+        # a change); a directory with a layout CuBit does not write (extents)
+        # must be refused unchanged. Flagged fixtures, not real trees.
         debugfs -w -R "mkdir indexed-dir" "$TEMP_DISK" >/dev/null 2>&1
         debugfs -w -R "set_inode_field indexed-dir flags 0x1000" \
+          "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "mkdir extents-dir" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "set_inode_field extents-dir flags 0x80000" \
           "$TEMP_DISK" >/dev/null 2>&1
         CORRUPT_DIR_BLOCK="$(debugfs -R "stat corrupt-dir" "$TEMP_DISK" 2>/dev/null | sed -n 's/.*(0):\([0-9][0-9]*\).*/\1/p' | head -n 1)"
         if [ -z "$CORRUPT_DIR_BLOCK" ]; then
@@ -1591,7 +1647,7 @@ if [ "$TEST_NAME" = "storage-grants" ]; then
         exit 1
     fi
 fi
-if [ "$TEST_NAME" = "tls-service" ] || [ "$TEST_NAME" = "netsurf-https" ]; then
+if [ "$TEST_NAME" = "tls-service" ]; then
     # Development initrd whose tls.hosts maps the fixture name to the host.
     if ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
           "$ROOT_DIR/tests/tls/tls-initrd.ccl" \
@@ -1877,46 +1933,24 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                     printf 'mouse_button 0\n'
                     sleep 1
                     move_pointer -910 -14
-                    printf 'sendkey meta_l\n'
-                    sleep 0.3
-                    for key in down down down ret; do
-                        printf 'sendkey %s\n' "$key"
-                        sleep 0.2
-                    done
-                    sleep 4
-                    printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-browser.ppm"
-                    # Move the fixed-size browser fully onto the screen so its
-                    # close button is reachable, then close before DOOM.
-                    move_pointer 120 14
-                    sleep 0.3
-                    printf 'mouse_button 1\n'
-                    sleep 0.2
-                    move_pointer -98 -58
-                    sleep 0.3
-                    printf 'mouse_button 0\n'
-                    sleep 0.3
-                    printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-browser-moved.ppm"
-                    move_pointer 909 0
-                    sleep 0.3
-                    printf 'mouse_button 1\n'
-                    sleep 0.1
-                    printf 'mouse_button 0\n'
-                    sleep 1
-                    printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-browser-closed.ppm"
                 } | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
             fi
             # Launch through Apps: boot-time spawning bypasses compositor
             # bookkeeping and cannot cover interactive-launch regressions.
+            # DOOM is the fourth entry (system.ccl: Workbench, Console,
+            # Logs, DOOM).
             {
                 printf 'sendkey meta_l\n'
                 sleep 0.3
-                printf 'sendkey down\n'
-                sleep 0.2
+                for doom_entry_step in 1 2 3; do
+                    printf 'sendkey down\n'
+                    sleep 0.2
+                done
                 printf 'sendkey ret\n'
             } | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
             doom_ready=0
             for ((attempt = 0; attempt < 100; attempt++)); do
-                if grep -F "I_InitGraphics: framebuffer" \
+                if grep -F "DOOM: Running inside desktop surface" \
                     "$SERIAL_LOG" >/dev/null 2>&1; then
                     doom_ready=1
                     break
@@ -2146,7 +2180,27 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                     sleep 0.3
                 done
             }
-            if [ "${CCL_CONSOLE_DEMO:-}" = ps ]; then
+            if [ "${CCL_CONSOLE_DEMO:-}" = programs ]; then
+            # Typed programs (CCL_CONSOLE_DEMO=programs): as on a bad source,
+            # its unix.stderr port and its exit; then ld on a good object.
+            send_text() {
+                python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$1"
+            }
+            sleep 0.5
+            send_text '(define bad (as.run (As_Parameters output => (Output_File "@nvme:0/work/bad.o") source => (Input_File "@nvme:0/work/bad.s"))))'
+            sleep 3
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-programs-as.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            send_text '(define good (as.run (As_Parameters output => (Output_File "@nvme:0/work/hello.o") source => (Input_File "@nvme:0/work/hello.s"))))'
+            sleep 3
+            send_text '(define linked (ld.run (Ld_Parameters output => (Output_File "@nvme:0/work/hello") inputs => [(Input_File "@nvme:0/work/hello.o")] static => true)))'
+            sleep 3
+            send_text '(ld.outlets linked)'
+            sleep 2
+            send_text '(ld.run (Ld_Parameters output => (Input_File "@nvme:0/work/x") inputs => []))'
+            sleep 2
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-programs.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.5
+            elif [ "${CCL_CONSOLE_DEMO:-}" = ps ]; then
             # What runs on the guest (CCL_CONSOLE_DEMO=ps): :ps, then the
             # largest by memory.
             {
@@ -2554,10 +2608,6 @@ if [ "$TEST_NAME" = "tls-probe" ] || [ "$TEST_NAME" = "tls-service" ]; then
     python3 "$ROOT_DIR/tests/tls/server.py" "$SERIAL_LOG" "$TEST_NAME" &
     NETWORK_PEER_PID=$!
 fi
-if [ "$TEST_NAME" = "netsurf-https" ]; then
-    python3 "$ROOT_DIR/tests/tls/https_server.py" "$SERIAL_LOG" "$TIMEOUT_SECONDS" &
-    NETWORK_PEER_PID=$!
-fi
 if [ "$TEST_NAME" = "servo" ]; then
     python3 "$ROOT_DIR/tests/servo/http_server.py" "$TIMEOUT_SECONDS" &
     NETWORK_PEER_PID=$!
@@ -2941,6 +2991,29 @@ libc-check: lseek, pread and end of file PASS
 libc-check: mmap a file PASS
 libc-check: opendir and readdir PASS
 libc-check: a file outside the scope is denied PASS
+libc-check: create and write a file PASS
+libc-check: fstat: type, size, links, inode PASS
+libc-check: a write sets mtime and ctime to the wall clock PASS
+libc-check: stat by name agrees with fstat PASS
+libc-check: the directory's mtime follows its entries PASS
+libc-check: readlink: no symbolic links (EINVAL), missing names ENOENT PASS
+libc-check: realpath PASS
+libc-check: access: W_OK follows the write scope PASS
+libc-check: ftruncate and truncate shrink and zero-fill PASS
+libc-check: pipe for select PASS
+libc-check: select: empty pipe writable, not readable PASS
+libc-check: select: readable after a write PASS
+libc-check: remove the file PASS
+libc-check: getcwd starts at / PASS
+libc-check: chdir and getcwd PASS
+libc-check: a relative name starts from the working directory PASS
+libc-check: dot and dot-dot components PASS
+libc-check: chdir refuses files and missing names and stays put PASS
+libc-check: mkdirat, openat, fstatat, faccessat, renameat and unlinkat PASS
+libc-check: chdir to a directory it may not read is refused PASS
+libc-check: fchdir PASS
+libc-check: openat with a non-directory or closed descriptor PASS
+libc-check: dot-dot stops at the root PASS
 LIBC: PASS
 cxx-check: hello from C++ on CuBit
 cxx-check: exceptions unwind and run destructors PASS
@@ -2950,6 +3023,24 @@ cxx-check: streams and map PASS
 CXX: PASS
 "
         python3 "$ROOT_DIR/userspace/libc/tests/check-protection-faults.py" "$SERIAL_LOG" || exit 1
+        ;;
+    binutils)
+        required_markers="
+binutils-check: procmgr describes as.app PASS
+binutils-check: procmgr describes ld.app PASS
+binutils-check: as assembles hello.s PASS
+binutils-check: as output matches Linux PASS
+binutils-check: ld links hello.o PASS
+binutils-check: ld output matches Linux PASS
+binutils-check: ld without an output is refused (Missing_Parameter) PASS
+binutils-check: an output outside the launcher's places is refused (Not_Granted) PASS
+binutils-check: as with raw argv and no places fails PASS
+BINUTILS-CHECK: PASS
+"
+        if grep -qF 'BINUTILS-CHECK: FAIL' "$SERIAL_LOG"; then
+            echo "headless: binutils test reported a failure" >&2
+            exit 1
+        fi
         ;;
     processes)
         required_markers="
@@ -2963,6 +3054,12 @@ spawn-check: WNOHANG while the child runs PASS
 spawn-check: then its exit code 5 PASS
 spawn-check: faulting child reported as stopped (WIFSIGNALED) PASS
 args-check: 1000 arguments PASS
+args-check: working directory from the launcher PASS
+spawn-check: no working directory chosen: a child starts at / PASS
+spawn-check: chdir and getcwd PASS
+spawn-check: after chdir, a child starts there (/tls) PASS
+spawn-check: a child that may not read the working directory is refused (EACCES) PASS
+spawn-check: chdir to a directory it may not read is refused, cwd unchanged PASS
 spawn-check: 1000 arguments PASS
 spawn-check: oversized arguments are E2BIG PASS
 spawn-check: missing program is ENOENT PASS
@@ -2978,8 +3075,20 @@ rust-args-check: std::env::args and env::var PASS
 spawn-check: Rust std::env::args, env::var and exit code 44 PASS
 spawn-check: all children collected PASS
 PROCESS-SPAWN: PASS
+delegate-check: child started without delegation PASS
+delegate-check: child started with the place delegated PASS
+delegate-check: a place longer than 64 bytes delegated PASS
+delegate-check: delegating write it does not hold is refused (Not_Granted) PASS
+delegate-check: delegating a place it does not hold is refused (Not_Granted) PASS
+DELEGATE-CHECK: PASS
 "
-        if grep -qF 'PROCESS-SPAWN: FAIL' "$SERIAL_LOG"; then
+        if [ "$(grep -c 'args-check: delegated read as expected PASS' "$SERIAL_LOG")" -lt 3 ]; then
+            echo "headless: delegated-place children did not all read as expected" >&2
+            exit 1
+        fi
+        if grep -qF 'PROCESS-SPAWN: FAIL' "$SERIAL_LOG" ||
+           grep -qF 'DELEGATE-CHECK: FAIL' "$SERIAL_LOG" ||
+           grep -qF 'args-check: delegated read FAIL' "$SERIAL_LOG"; then
             echo "headless: processes test reported a failure" >&2
             exit 1
         fi
@@ -3024,6 +3133,12 @@ rust-std: hashmap with random keys PASS
 rust-std: sleep and Instant PASS
 rust-std: thread with a custom stack PASS
 RUST-STD: PASS
+"
+        ;;
+    avx)
+        required_markers="
+Process: user FP/SIMD state saved with XSAVEOPT
+avx-check: all 16 YMM registers kept across 20000 yields PASS
 "
         ;;
     futex)
@@ -3104,20 +3219,6 @@ tls: channel 1 established with example.com
 wget: status HTTP/1.1 200 OK
 wget: done
 "
-        ;;
-    netsurf-https)
-        # The fixture is the verdict: it passes only when NetSurf's GET
-        # arrived over a verified TLS session and the page was served. The
-        # shell marker shows the engine is running inside the native chrome.
-        required_markers="
-tls: ready
-netsurf: native shell ready
-"
-        if ! wait "$NETWORK_PEER_PID"; then
-            echo "headless: HTTPS fixture did not see NetSurf's request" >&2
-            exit 1
-        fi
-        NETWORK_PEER_PID=""
         ;;
     tls-service)
         required_markers="
@@ -3548,7 +3649,7 @@ shell: cwd=@nvme:0/
         required_markers="
 display: backend virtio-gpu
 desktop: internal shell active
-I_InitGraphics: framebuffer
+DOOM: Running inside desktop surface
 desktop: stats
 display: stats
 mixer: stats
@@ -3666,8 +3767,8 @@ fi
 
 if [ "$TEST_NAME" = "desktop-doom" ]; then
     if [ "${CUBIT_DOOM_MULTIAPP:-0}" = 1 ] &&
-       [ "$(grep -Ec 'desktop: ptr hit-down [0-9]+ [0-9]+ 6$' "$SERIAL_LOG")" -lt 2 ]; then
-        echo "headless: multi-app fixture did not close both windows" >&2
+       [ "$(grep -Ec 'desktop: ptr hit-down [0-9]+ [0-9]+ 6$' "$SERIAL_LOG")" -lt 1 ]; then
+        echo "headless: multi-app fixture did not close the Workbench window" >&2
         exit 1
     fi
     if ! python3 "$ROOT_DIR/tests/headless/check-doom-frame.py" "${SERIAL_LOG%.log}"; then

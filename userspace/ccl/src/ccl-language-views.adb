@@ -762,6 +762,12 @@ package body CCL.Language.Views with SPARK_Mode => On is
                Emit (")");
                return;
             end if;
+            if CCL.Types.Is_Task (Analysis.Tree.Types, Kind) and then Level <= MAX_NESTING then
+               Emit ((if Style = Lisp then "(Task " else "TASK("));
+               Emit_Type (CCL.Types.Task_Result (Analysis.Tree.Types, Kind), Level + 1);
+               Emit (")");
+               return;
+            end if;
             if not CCL.Types.Is_Function (Analysis.Tree.Types, Kind) or else Level > MAX_NESTING then
                Emit (Type_Name (Kind));
                return;

@@ -1,4 +1,3 @@
-with CCL.Objects;
 
 package body CCL_Stream_Table with SPARK_Mode is
    use type CCL.Streams.Handle;
@@ -33,7 +32,7 @@ package body CCL_Stream_Table with SPARK_Mode is
             Next := (if Item.Streams (Slot).Opened = MAX_GENERATION then 0
                      else Item.Streams (Slot).Opened + 1);
             Item.Streams (Slot) := (Open => True, Opened => Next, Period => Period,
-                                    Due => Now + Period, others => <>);
+                                    Due => Now + Period, Timer => True, others => <>);
             Handle := Handle_Of (Slot, Next);
             return;
          end if;
@@ -69,7 +68,7 @@ package body CCL_Stream_Table with SPARK_Mode is
          declare
             S : Stream renames Item.Streams (Slot);
          begin
-         if S.Open then
+         if S.Open and then S.Timer then
             --  More than a ring behind (the host was suspended): skip to
             --  the most recent ring's worth instead of replaying it all.
             if Now >= S.Due then
@@ -106,9 +105,22 @@ package body CCL_Stream_Table with SPARK_Mode is
             CCL.Objects.Append (Reply.Elements, Value, Built);
          end if;
       end Add;
+      procedure Add_Line (S : Stream; Line : Line_Slot) is
+      begin
+         if Built = CCL.Objects.Added then
+            CCL.Objects.Append_Text
+              (Reply.Elements, S.Lines (Line) (1 .. S.Lengths (Line)), Built);
+         end if;
+      end Add_Line;
    begin
       Reply.Elements := (others => <>);
       if Slot = 0 then
+         Reply.Status := CCL.Streams.No_Such_Stream; return;
+      end if;
+      --  A handle names a stream or a task, never both: a stream view of a
+      --  task, or a wait on a stream (a (task T n) or (stream T n) written
+      --  over the other kind), names nothing here.
+      if CCL.Streams."=" (Request.View, CCL.Streams.Wait_View) /= (Item.Streams (Slot).Kind = Task_Result) then
          Reply.Status := CCL.Streams.No_Such_Stream; return;
       end if;
       declare
@@ -122,19 +134,44 @@ package body CCL_Stream_Table with SPARK_Mode is
          case Request.View is
             when CCL.Streams.Arrived_View => Reply.Total := S.Arrived;
             when CCL.Streams.Lost_View => Reply.Total := S.Lost;
+            when CCL.Streams.Wait_View =>
+               --  A task's result, once it completed.
+               if S.Result_Slot = 0 then
+                  Reply.Status := CCL.Streams.Stream_Empty;
+               else
+                  Reply.Elements := Item.Results (S.Result_Slot);
+               end if;
             when CCL.Streams.Latest_View =>
-               if Held = 0 then
+               if S.Kind = Text_Elements then
+                  if S.Text_Fill = 0 then
+                     Reply.Status := CCL.Streams.Stream_Empty;
+                  else
+                     Add_Line (S, S.Text_Newest);
+                  end if;
+               elsif Held = 0 then
                   Reply.Status := CCL.Streams.Stream_Empty;
                else
                   Add (CCL.Objects.Integer_Cell (S.Elements (History.Slot_Of (Newest))));
                end if;
             when CCL.Streams.Window_View =>
                --  The newest Shown elements, oldest first.
-               Add (CCL.Objects.Sequence_Cell (Shown));
-               for I in 1 .. Shown loop
-                  Add (CCL.Objects.Integer_Cell
-                         (S.Elements (History.Slot_Of (Newest - History.Index (Shown - I)))));
-               end loop;
+               if S.Kind = Text_Elements then
+                  declare
+                     Lines_Shown : constant Natural := Natural'Min (Request.Count, S.Text_Fill);
+                  begin
+                     Add (CCL.Objects.Sequence_Cell (Lines_Shown));
+                     for I in 1 .. Lines_Shown loop
+                        Add_Line (S, (S.Text_Newest - 1 - (Lines_Shown - I) + TEXT_HISTORY)
+                                     mod TEXT_HISTORY + 1);
+                     end loop;
+                  end;
+               else
+                  Add (CCL.Objects.Sequence_Cell (Shown));
+                  for I in 1 .. Shown loop
+                     Add (CCL.Objects.Integer_Cell
+                            (S.Elements (History.Slot_Of (Newest - History.Index (Shown - I)))));
+                  end loop;
+               end if;
          end case;
       end;
       if Built /= CCL.Objects.Added then
@@ -142,10 +179,141 @@ package body CCL_Stream_Table with SPARK_Mode is
       end if;
    end Read;
 
+   procedure Open_Outlet
+     (Item : in out Table; Kind : Element_Kind; Handle : out CCL.Streams.Handle;
+      Pinned : Boolean := False)
+   is
+      Next : Generation;
+   begin
+      Handle := CCL.Streams.No_Handle;
+      for Slot in Slot_Index loop
+         if not Item.Streams (Slot).Open then
+            Next := (if Item.Streams (Slot).Opened = MAX_GENERATION then 0
+                     else Item.Streams (Slot).Opened + 1);
+            Item.Streams (Slot) := (Open => True, Opened => Next, Kind => Kind,
+                                    Pinned => Pinned, others => <>);
+            Handle := Handle_Of (Slot, Next);
+            return;
+         end if;
+      end loop;
+   end Open_Outlet;
+
+   procedure Push_Integer
+     (Item : in out Table; Handle : CCL.Streams.Handle; Value : Interfaces.Integer_64;
+      Pushed : out Boolean)
+   is
+      Slot : constant Natural := Slot_Of (Item, Handle);
+   begin
+      Pushed := Slot /= 0 and then not Item.Streams (Slot).Timer
+        and then Item.Streams (Slot).Kind = Integer_Elements
+        and then not Item.Streams (Slot).Finished;
+      if Pushed then
+         Push (Item.Streams (Slot), Value);
+      end if;
+   end Push_Integer;
+
+   procedure Push_Text
+     (Item : in out Table; Handle : CCL.Streams.Handle; Line : String; Pushed : out Boolean)
+   is
+      Slot : constant Natural := Slot_Of (Item, Handle);
+      Kept : constant Natural := Natural'Min (Line'Length, MAX_LINE);
+   begin
+      Pushed := Slot /= 0 and then Item.Streams (Slot).Kind = Text_Elements
+        and then not Item.Streams (Slot).Finished;
+      if not Pushed then
+         return;
+      end if;
+      declare
+         S : Stream renames Item.Streams (Slot);
+         Next : constant Line_Slot := S.Text_Newest mod TEXT_HISTORY + 1;
+      begin
+         S.Lines (Next) := [others => ' '];
+         S.Lines (Next) (1 .. Kept) := Line (Line'First .. Line'First + Kept - 1);
+         S.Lengths (Next) := Kept;
+         S.Text_Newest := Next;
+         if S.Text_Fill < TEXT_HISTORY then
+            S.Text_Fill := S.Text_Fill + 1;
+         elsif S.Lost < CCL.Streams.Element_Total'Last then
+            S.Lost := S.Lost + 1;
+         end if;
+         if S.Arrived < CCL.Streams.Element_Total'Last then
+            S.Arrived := S.Arrived + 1;
+         end if;
+      end;
+   end Push_Text;
+
+   procedure Open_Task
+     (Item : in out Table; Handle : out CCL.Streams.Handle; Pinned : Boolean := False) is
+   begin
+      Open_Outlet (Item, Task_Result, Handle, Pinned);
+   end Open_Task;
+
+   procedure Complete_Task
+     (Item : in out Table; Handle : CCL.Streams.Handle; Result : CCL.Objects.Image;
+      Completed : out Boolean)
+   is
+      Slot : constant Natural := Slot_Of (Item, Handle);
+   begin
+      Completed := False;
+      if Slot = 0 or else Item.Streams (Slot).Kind /= Task_Result
+        or else Item.Streams (Slot).Finished
+      then
+         return;
+      end if;
+      for R in Item.Results'Range loop
+         if not Item.Used (R) then
+            Item.Used (R) := True;
+            --  A view reply is a local image (CCL.Objects.Views
+            --  .Capture_Local): the reader checks it against the type it
+            --  waits for, so the producer's schema claim is not kept.
+            Item.Results (R) := Result;
+            Item.Results (R).Schema := CCL.Objects.No_Schema;
+            Item.Streams (Slot).Result_Slot := R;
+            Item.Streams (Slot).Finished := True;
+            Item.Streams (Slot).Arrived := 1;
+            Completed := True;
+            return;
+         end if;
+      end loop;
+   end Complete_Task;
+
+   function Task_Done (Item : Table; Handle : CCL.Streams.Handle) return Boolean is
+     (Slot_Of (Item, Handle) /= 0
+      and then Item.Streams (Slot_Of (Item, Handle)).Kind = Task_Result
+      and then Item.Streams (Slot_Of (Item, Handle)).Result_Slot /= 0);
+
+   --  Free a closing stream's task result, if it had one.
+   procedure Release_Result (Item : in out Table; Slot : Slot_Index) is
+   begin
+      if Item.Streams (Slot).Result_Slot /= 0 then
+         Item.Used (Item.Streams (Slot).Result_Slot) := False;
+      end if;
+   end Release_Result;
+
+   procedure Unpin (Item : in out Table; Handle : CCL.Streams.Handle) is
+      Slot : constant Natural := Slot_Of (Item, Handle);
+   begin
+      if Slot /= 0 then
+         Item.Streams (Slot).Pinned := False;
+      end if;
+   end Unpin;
+
+   procedure End_Stream (Item : in out Table; Handle : CCL.Streams.Handle) is
+      Slot : constant Natural := Slot_Of (Item, Handle);
+   begin
+      if Slot /= 0 then
+         Item.Streams (Slot).Finished := True;
+      end if;
+   end End_Stream;
+
+   function Ended (Item : Table; Handle : CCL.Streams.Handle) return Boolean is
+     (Slot_Of (Item, Handle) /= 0 and then Item.Streams (Slot_Of (Item, Handle)).Finished);
+
    procedure Close (Item : in out Table; Handle : CCL.Streams.Handle) is
       Slot : constant Natural := Slot_Of (Item, Handle);
    begin
       if Slot /= 0 then
+         Release_Result (Item, Slot);
          Item.Streams (Slot) := (Opened => Item.Streams (Slot).Opened, others => <>);
       end if;
    end Close;
@@ -153,9 +321,10 @@ package body CCL_Stream_Table with SPARK_Mode is
    procedure Retain (Item : in out Table) is
    begin
       for Slot in Slot_Index loop
-         if Item.Streams (Slot).Open and then
+         if Item.Streams (Slot).Open and then not Item.Streams (Slot).Pinned and then
            not Held (Handle_Of (Slot, Item.Streams (Slot).Opened))
          then
+            Release_Result (Item, Slot);
             Item.Streams (Slot) := (Opened => Item.Streams (Slot).Opened, others => <>);
          end if;
       end loop;
@@ -166,13 +335,14 @@ package body CCL_Stream_Table with SPARK_Mode is
       for S of Item.Streams loop
          S := (Opened => S.Opened, others => <>);
       end loop;
+      Item.Used := [others => False];
    end Clear;
 
    function Next_Due (Item : Table) return Interfaces.Unsigned_64 is
       Earliest : Interfaces.Unsigned_64 := Interfaces.Unsigned_64'Last;
    begin
       for S of Item.Streams loop
-         if S.Open and then S.Due < Earliest then Earliest := S.Due; end if;
+         if S.Open and then S.Timer and then S.Due < Earliest then Earliest := S.Due; end if;
       end loop;
       return Earliest;
    end Next_Due;

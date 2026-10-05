@@ -89,6 +89,20 @@ is
       Length : Result_Text_Length := 0;
       Data   : String (1 .. MAX_RESULT_TEXT) := [others => ' '];
    end record;
+   --  Text crossing a host import: up to a whole string (an object image's
+   --  text bound, CCL.Objects.Maximum_Text_Bytes).
+   subtype Import_Text_Length is Natural range 0 .. MAX_STRING_BYTES;
+   type Import_Text is record
+      Length : Import_Text_Length := 0;
+      Data   : String (1 .. MAX_STRING_BYTES) := [others => ' '];
+   end record;
+   --  A record or list result's printed literal: room for a whole table,
+   --  as the console shows it.
+   MAX_LITERAL_TEXT : constant := 4_096;
+   type Literal_Text is record
+      Length : Natural range 0 .. MAX_LITERAL_TEXT := 0;
+      Data   : String (1 .. MAX_LITERAL_TEXT) := [others => ' '];
+   end record;
 
    --  Lists (step 3): a run's lists live in a bounded region of its machine
    --  state, as strings do; a List_Value holds a checked descriptor and
@@ -163,18 +177,20 @@ is
    function Known_Value_Type
      (Types : CCL.Types.Registry; Kind : Value_Kind; Ref : CCL.Types.Type_Reference) return Boolean is
      (case Kind is
-        --  An Integer carrying a stream type is a session's stream handle.
-        when Integer_Value => Ref = CCL.Types.Invalid_Type or else CCL.Types.Is_Stream (Types, Ref),
+        --  An Integer carrying a stream or task type is a session handle.
+        when Integer_Value => Ref = CCL.Types.Invalid_Type or else CCL.Types.Is_Handle (Types, Ref),
         when Boolean_Value => Ref = CCL.Types.Invalid_Type,
         when Variant_Value => CCL.Types.Is_Scalar_Sum (Types, Ref),
         when Object_Value => Native_Object_Type (Types, Ref),
         when Resource_Value => CCL.Types.Known (Types, Ref) and then
           CCL.Types.Describe (Types, Ref).Form = CCL.Types.Resource,
+        --  A handler crosses as an inert function reference (an argument).
+        when Function_Value => Ref = CCL.Types.Handler_Type,
         --  A list crosses as an image (copied into the run's list region).
         when List_Value => CCL.Types.Is_List (Types, Ref) and then CCL.Objects.Persistable (Types, Ref),
         --  Text lives in the run's region, and neither text nor characters
         --  cross the host boundary yet: only compiler-created locals hold them.
-        when Text_Value | Character_Value | Function_Value => False);
+        when Text_Value | Character_Value => False);
    --  How a value of type Ref lives in a run: one representation per type.
    --  A range subtype is an Integer; a record or payload variant is an
    --  Object_Value in the arena, whether built here or copied in.
@@ -184,10 +200,11 @@ is
       elsif Ref = CCL.Types.Boolean_Type then Boolean_Value
       elsif Ref = CCL.Types.String_Type then Text_Value
       elsif Ref = CCL.Types.Character_Type then Character_Value
+      elsif Ref = CCL.Types.Handler_Type then Function_Value
       elsif CCL.Types.Describe (Types, Ref).Form = CCL.Types.Bounded then Integer_Value
       elsif CCL.Types.Describe (Types, Ref).Form = CCL.Types.Resource then Resource_Value
-      --  A stream is its session handle: an Integer carrying its type.
-      elsif CCL.Types.Is_Stream (Types, Ref) then Integer_Value
+      --  A stream or task is its session handle: an Integer carrying its type.
+      elsif CCL.Types.Is_Handle (Types, Ref) then Integer_Value
       elsif CCL.Types.Is_List (Types, Ref) then List_Value
       elsif CCL.Types.Is_Function (Types, Ref) then Function_Value
       elsif CCL.Types.Is_Scalar_Sum (Types, Ref) then Variant_Value else Object_Value);
@@ -196,7 +213,7 @@ is
    function Reference_For_Type
      (Types : CCL.Types.Registry; Ref : CCL.Types.Type_Reference) return CCL.Types.Type_Reference is
      (if Kind_For_Type (Types, Ref) in Integer_Value | Boolean_Value | Text_Value | Character_Value and then
-        not CCL.Types.Is_Stream (Types, Ref)
+        not CCL.Types.Is_Handle (Types, Ref)
       then CCL.Types.Invalid_Type else Ref);
    --  What a view of a stream of type Stream_Type yields: its element type
    --  (latest), the list of it (window) or Integer (arrived, lost).
@@ -205,13 +222,18 @@ is
    function Stream_View_Type
      (Types : CCL.Types.Registry; Stream_Type : CCL.Types.Type_Reference;
       View : CCL.Streams.View_Kind) return CCL.Types.Type_Reference is
-     (if not CCL.Types.Is_Stream (Types, Stream_Type) then CCL.Types.Invalid_Type
+     (if CCL.Streams."=" (View, CCL.Streams.Wait_View) then
+        --  wait takes a task, and yields its result type.
+        (if CCL.Types.Is_Task (Types, Stream_Type)
+         then CCL.Types.Task_Result (Types, Stream_Type) else CCL.Types.Invalid_Type)
+      elsif not CCL.Types.Is_Stream (Types, Stream_Type) then CCL.Types.Invalid_Type
       else
         (case View is
             when CCL.Streams.Latest_View => CCL.Types.Stream_Element (Types, Stream_Type),
             when CCL.Streams.Window_View =>
                CCL.Types.List_Of (Types, CCL.Types.Stream_Element (Types, Stream_Type)),
-            when CCL.Streams.Arrived_View | CCL.Streams.Lost_View => CCL.Types.Integer_Type));
+            when CCL.Streams.Arrived_View | CCL.Streams.Lost_View => CCL.Types.Integer_Type,
+            when CCL.Streams.Wait_View => CCL.Types.Invalid_Type));
 
    --  A record or payload variant the arena holds.
    function Node_Type
@@ -247,11 +269,13 @@ is
       elsif Item.Node /= 0 then False
       elsif Item.Kind = List_Value then Supported_List (Types, Item.Data_Type)
       elsif Item.Kind = Function_Value then
-         CCL.Types.Is_Function (Types, Item.Data_Type) and then Item.Integer in 0 .. MAX_FUNCTIONS - 1
+         (CCL.Types.Is_Function (Types, Item.Data_Type) or else
+          (Item.Data_Type = CCL.Types.Handler_Type and then Item.Node = 0)) and then
+         Item.Integer in 0 .. MAX_FUNCTIONS - 1
       elsif Item.Kind = Character_Value then
          Item.Data_Type = CCL.Types.Invalid_Type and then Item.Integer in 0 .. MAX_CHARACTER_CODE
       elsif Item.Kind = Integer_Value and then Item.Data_Type /= CCL.Types.Invalid_Type then
-         CCL.Types.Is_Stream (Types, Item.Data_Type) and then
+         CCL.Types.Is_Handle (Types, Item.Data_Type) and then
          Item.Integer in 1 .. CCL.Streams.Maximum_Handle
       elsif Item.Kind /= Variant_Value then Item.Data_Type = CCL.Types.Invalid_Type
       else CCL.Types.Is_Scalar_Sum (Types, Item.Data_Type) and then
@@ -428,6 +452,10 @@ is
       Argument  : Value_Kind := Integer_Value;
       Result    : Value_Kind := Integer_Value;
       Argument_Data_Type, Result_Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
+      --  A text argument or reply: the longest the contract allows, in bytes
+      --  (0 for other kinds). The VM refuses a longer argument before the
+      --  host sees it, and a longer reply.
+      Argument_Text_Limit, Result_Text_Limit : Import_Text_Length := 0;
       Result_Type_Tag : CCL.Ownership.Type_Id := 0;
       Receiver_Data_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
       -- When present, Local is an owned resource receiver. Argument is a
@@ -598,6 +626,9 @@ is
       Stream_Empty,
       Stream_Window_Out_Of_Range,
       Stream_Element_Mismatch,
+      --  A text argument longer than its import's contract allows: the
+      --  host never saw the call.
+      Host_Argument_Out_Of_Bounds,
       Invalid_Bytecode,
       Waiting_For_Host,
       Host_Call_Failed,
@@ -611,6 +642,10 @@ is
       Steps          : Unsigned_32 := 0;
       Requested_Import : Import_Index := 0;
       Request_Argument : Value := (others => <>);
+      --  A text argument's characters (Request_Argument.Kind = Text_Value),
+      --  within the import's Argument_Text_Limit.
+      Has_Request_Text : Boolean := False;
+      Request_Text : Import_Text := (others => <>);
       Request_Receiver : CCL.Resources.Reference := CCL.Resources.No_Reference;
       Request_Owned : Boolean := False;
       Requested_Authority : Authority_Class := No_Authority;
@@ -629,11 +664,14 @@ is
       --  A record or payload variant, or a list of them: its canonical CCL
       --  literal, as the interpreter prints it, when it has one that fits.
       Has_Literal : Boolean := False;
-      Literal : Result_Text := (others => <>);
+      Literal : Literal_Text := (others => <>);
       --  Its rows' record type and fields, for a table (Count = 0: none).
       Literal_Shape : CCL.Types.Shapes.Row_Shape := (others => <>);
       --  Waiting_For_Host on a stream view, not an import: the host answers
-      --  Stream_Request through Native_Objects.Complete_Stream_View.
+      --  Stream_Request through Native_Objects.Complete_Stream_View. For an
+      --  Wait_View on a pending task the host does not answer until the
+      --  task completes: the machine stays suspended there (unlike the
+      --  interpreter, which stops with Waiting_On_Task and is run again).
       Stream_Requested : Boolean := False;
       Stream_Request : CCL.Streams.View_Request := (others => <>);
    end record;
@@ -798,8 +836,8 @@ private
    MAX_ITERATIONS : constant := MAX_FUNCTIONS + 1;
    type Iteration is record
       Active : Boolean := False;
-      --  Waiting for the function's result for element Position.
-      Awaiting : Boolean := False;
+      --  Calling the function for element Position: its result is next.
+      In_Call : Boolean := False;
       At_PC : Instruction_Index := 0;
       Frame_Level : Natural range 0 .. MAX_FUNCTIONS := 0;
       Operation : CCL.List_Operations.Apply_Operation := CCL.List_Operations.Each_Items;

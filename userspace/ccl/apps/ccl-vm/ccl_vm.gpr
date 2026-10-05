@@ -19,9 +19,7 @@ project CCL_VM is
          "-fstack-usage",
          "-fomit-frame-pointer",
          "-mno-red-zone",
-         "-fno-pic",
-         "-mno-sse",
-         "-mno-sse2");
+         "-fno-pic");
    end Compiler;
 
    package Binder is

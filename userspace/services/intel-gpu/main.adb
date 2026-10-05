@@ -1,13 +1,19 @@
 with Intel_GPU_ADLN_L3;
 with Intel_GPU_Record_Store;
 with Intel_GPU_Table_Provenance.Backing;
+with Intel_GPU_Table_Allocations;
 with Intel_GPU_Table_Provenance.Retirement;
 with Intel_GPU_Metadata_Platform;
 with Intel_GPU_Metadata_Bundle;
 with Intel_GPU_Record_Growth;
+with Intel_GPU_Table_Provenance.Retirement.Dispatcher;
 with Intel_GPU_Update_Storage;
 with Intel_GPU_VM_Image.Removal;
 with Intel_GPU_VM_Image.Insertion;
+with Intel_GPU_VM_Image.Growth;
+with Intel_GPU_VM_Image.Growth.Backing;
+with Intel_GPU_VM_Image.Growth.Backing.Writer;
+with Intel_GPU_Table_Provenance.IO;
 with Intel_GPU_Deferred_Retirement;
 with CuBit.Capability_Grants;
 with Intel_GPU_Probe_Export;
@@ -361,6 +367,9 @@ procedure Main is
    package Application_Maps is new Application_Buffers.Sharing (Application_Recipient);
    Application_Map_State : Application_Maps.Mapping_Table;
    Buffer_Retirement_Pending : Application_Buffers.Ticket := 0;
+   -- The pending ticket remains the group anchor/admission gate; this ticket
+   -- identifies the one physical allocation currently submitted for release.
+   Table_Release_Ticket : Application_Buffers.Ticket := 0;
    Buffer_Retirement_Has_Reply : Boolean := False;
    Buffer_Retirement_Is_Private : Boolean := False;
    Buffer_Retirement_Is_Context : Boolean := False;
@@ -412,10 +421,12 @@ procedure Main is
    package Application_Lifetime renames Intel_GPU_Application_Lifetime;
    use type Application_Lifetime.Phase;
    package Application_VM renames Application_State.VM;
+   package Application_Topology is new Application_VM.Growth;
    package Application_Binding is new Application_Buffers.Binding (Application_VM);
    Private_Contexts : Application_State.Context_Array renames Application_State.Items;
    Private_Pending : Application_Buffers.Ticket := 0;
    Update_Pending : Application_Buffers.Ticket := 0;
+   Update_Table_Pages : Natural range 0 .. Application_State.Table_Pages := 0;
    In_Place_Active : Boolean := False;
    In_Place_Inserting : Boolean := False;
    type Replacement_Record is record
@@ -426,15 +437,22 @@ procedure Main is
    package Replacement_Records is new Intel_GPU_Record_Store
      (Replacement_Record, (others => <>));
    Replacement_Tables : Replacement_Records.Store;
+   function Table_Allocation_Admitted
+     (Session, Ticket : Unsigned_64; Slot : Positive) return Boolean;
+   function Table_Allocation_Retired (Session, Ticket : Unsigned_64) return Boolean;
+   package Table_Allocations is new Intel_GPU_Table_Allocations
+     (Table_Allocation_Admitted, Table_Allocation_Retired);
+   Table_Backing_Registry : Table_Allocations.Registry;
    procedure Publish_Snapshot (Text : String;
      Level : CuBit.Log_Records.Severity := CuBit.Log_Records.Information);
-   type Metadata_Table is (Tickets, Handles, Backing, Replacements, Retirement, Updates);
+   type Metadata_Table is (Tickets, Handles, Backing, Replacements, Retirement, Updates, Table_Backing);
    function Metadata_Capacity (Table : Metadata_Table) return Natural is
      (case Table is
          when Tickets => Application_Buffers.Record_Capacity (Application_Buffer_State),
          when Handles => Application_Buffers.Handle_Capacity (Application_Buffer_State),
          when Backing => Buffer_Memory.Record_Capacity (Buffer_Pool),
          when Replacements => Replacement_Records.Capacity (Replacement_Tables),
+         when Table_Backing => Table_Allocations.Capacity (Table_Backing_Registry),
          when Retirement => Deferred_Retirement.Capacity (Deferred_Closes),
          when Updates => Application_State.Update_Capacity);
    procedure Extend_Metadata
@@ -445,6 +463,7 @@ procedure Main is
          when Handles => Application_Buffers.Extend_Handles (Application_Buffer_State, Base, Bytes, Accepted);
          when Backing => Buffer_Memory.Extend_Records (Buffer_Pool, Base, Bytes, Accepted);
          when Replacements => Replacement_Records.Extend (Replacement_Tables, Base, Bytes, Accepted);
+         when Table_Backing => Table_Allocations.Extend (Table_Backing_Registry, Base, Bytes, Accepted);
          when Retirement => Deferred_Retirement.Extend_Storage (Deferred_Closes, Base, Bytes, Accepted);
          when Updates => Application_State.Extend_Update_Index (Base, Bytes, Accepted);
       end case;
@@ -454,7 +473,7 @@ procedure Main is
       Application_Buffers.Admit_Slots
         (Application_Buffer_State, Count,
          (Backing => Metadata_Capacity (Backing),
-          Replacements => Metadata_Capacity (Replacements),
+          Replacements => Natural'Min (Metadata_Capacity (Replacements), Metadata_Capacity (Table_Backing)),
           Retirement => Metadata_Capacity (Retirement),
           Update_Index => Metadata_Capacity (Updates)), Accepted);
    end Admit_Metadata;
@@ -547,7 +566,7 @@ procedure Main is
    Next_Table_Retirement : Intel_GPU_Buffer_Backing.Slot := Intel_GPU_Buffer_Backing.Slot'First;
    type Table_Retirement_Checkpoint is
      (No_Candidate, Readiness, Identity, Backing_Validation, Current_VM,
-      Contexts_Running, Alias_Check, Retirement_Submitted, Retirement_Rejected);
+      Contexts_Running, Alias_Check, Retirement_Queued, Retirement_Submitted, Retirement_Rejected);
    Last_Table_Retirement : Table_Retirement_Checkpoint := No_Candidate;
    Last_Table_Retirement_Slot : Natural := 0;
    Private_Session, Private_Identity : Unsigned_64 := 0;
@@ -559,7 +578,9 @@ procedure Main is
    function Render_Backend_Ready return Boolean;
    -- Initial bounded VM budget:64 tables, four private scratch pages and context.
    -- No application data is placed in this allocation.
-   Private_Table_Pages : constant := Application_State.Table_Pages;
+   -- Physical bootstrap is separate from CPU mirror capacity. Sparse binds
+   -- acquire further owned table pages through the deferred offline/live paths.
+   Private_Table_Pages : constant := 4;
    Private_Pages : constant Intel_GPU_Buffer_Backing.Page_Count :=
      Intel_GPU_Submission_Image.Byte_Count / 4096 + Private_Table_Pages + 4;
    function Table_Ledger_Busy return Boolean;
@@ -579,7 +600,6 @@ procedure Main is
       if Stored = 0 then return; end if;
       declare
          Index : constant Positive := Stored;
-         Pages : Application_VM.Backing_Pages;
          Scratch : Intel_GPU_PPGTT_Scratch.Backing_Pages;
          Initialized, Eligible : Boolean;
       begin
@@ -616,15 +636,19 @@ procedure Main is
             Private_Contexts (Index).Life := Application_Lifetime.Retired;
             return;
          end if;
-         for P in Application_VM.Page_Number loop
-            Pages (P) := Intel_GPU_Buffer_Reply.Page_Address
-              (Private_Contexts (Index).Tables, Unsigned_64 (P - 1) * 4096);
-         end loop;
          for L in Scratch'Range loop
             Scratch (L) := Intel_GPU_Buffer_Reply.Page_Address
               (Private_Contexts (Index).Scratch, Unsigned_64 (L) * 4096);
          end loop;
-         Application_VM.Initialize (Private_Contexts (Index).Source, Pages, Initialized, Scratch);
+         declare
+            function Read_Table (Page : Application_VM.Page_Number) return Unsigned_64 is
+              (Intel_GPU_Buffer_Reply.Page_Address
+                (Private_Contexts (Index).Tables, Unsigned_64 (Page - 1) * 4096));
+            procedure Initialize_Tables is new Application_VM.Initialize_From_Pages (Read_Table);
+         begin
+            Initialize_Tables (Private_Contexts (Index).Source,
+              Backing_Count => Private_Table_Pages, Accepted => Initialized, Scratch => Scratch);
+         end;
          Private_Contexts (Index).Life := Application_Lifetime.Allocate
            (Private_Contexts (Index).Life, Initialized);
          if Initialized then Start_Table_Ledger (Index, Private_Session); end if;
@@ -659,6 +683,7 @@ procedure Main is
       end;
    end Start_Private_Context;
    procedure Retire_Application_Resources (Session : Unsigned_64);
+   function Try_Offline_Bind_Growth (From : ProcessID; Msg : Message) return Boolean;
    procedure Complete_Render_Activation is
       package Control renames Intel_GPU_Render_Control;
       Index : constant Intel_GPU_Render_Sessions.Slot_Index :=
@@ -699,10 +724,11 @@ procedure Main is
       Reply_Message : Message := NULL_MESSAGE;
       Delivery : Unsigned_64;
    begin
+      if Try_Offline_Bind_Growth (From, Msg) then return; end if;
       if Stored /= 0 then
          declare Index : constant Positive := Positive (Stored); begin
             Response (0) := Application_Buffers.Unavailable;
-            if not Table_Ledger_Busy and then
+            if Update_Pending = 0 and then not In_Place_Active and then not Table_Ledger_Busy and then
               Private_Contexts (Index).Life = Application_Lifetime.Offline then
                Application_Binding.Handle
                  (Application_Buffer_State, Private_Contexts (Index).Source, Session,
@@ -1631,7 +1657,6 @@ procedure Main is
         Intel_GPU_Render_Control.Storage_Index (Render_Admission, Session);
       Code : Unsigned_64 := Application_Buffers.Denied;
       Prepared : Boolean := False;
-      Backing : Application_Images.Tables.Mappings;
       Scratch : Application_Images.Tables.Scratch_Mappings;
       Status : Application_Publication.Result;
       use type Application_Publication.Result;
@@ -1655,27 +1680,36 @@ procedure Main is
                  (Private_Contexts (Preparing_Index).Life);
                Application_VM.Seal (Private_Contexts (Preparing_Index).Source, Prepared);
                if Prepared then
-                  for P in Application_VM.Page_Number loop
-                     declare
-                        M : constant Intel_GPU_Table_Provenance.Mapping :=
-                          Initial_Table_Mapping (Preparing_Index, Session, P);
-                     begin
-                        if M.Ticket = 0 then Prepared := False; exit; end if;
-                        Backing (P) := (M.CPU, M.DMA);
-                     end;
-                  end loop;
+                 declare
+                  Generation : constant Unsigned_64 := Private_Contexts (Stored).Table_Generation;
+                  function Held return Boolean is
+                    (Application_Image_Owner and then Preparing_Index = Stored
+                     and then Preparing_Session = Session and then Preparing_Identity = Identity
+                     and then Private_Contexts (Stored).Table_Generation = Generation);
+                  function Table_Page (Ordinal : Positive) return Application_Images.Tables.Page_Mapping is
+                     M : Intel_GPU_Table_Provenance.Mapping;
+                  begin
+                     if not Held then return (0, 0); end if;
+                     M := Initial_Table_Mapping (Stored, Session, Ordinal);
+                     if not Held or else M.Ticket = 0 then return (0, 0); end if;
+                     return (M.CPU, M.DMA);
+                  end Table_Page;
+                  procedure Publish_Tables is new Application_Publication.Publish_From_Mappings (Table_Page);
+                 begin
                   for L in Scratch'Range loop
                      Scratch (L) :=
                        (Private_Contexts (Preparing_Index).Scratch.CPU_Address + Unsigned_64 (L) * 4096,
                         Intel_GPU_Buffer_Reply.Page_Address
                           (Private_Contexts (Preparing_Index).Scratch, Unsigned_64 (L) * 4096));
                   end loop;
-                  if Prepared then Application_Publication.Publish
+                  if Prepared then Publish_Tables
                     (Application_Images_State (Preparing_Index),
-                     Private_Contexts (Preparing_Index).Source, Backing,
+                     Private_Contexts (Preparing_Index).Source,
+                     Application_VM.Used (Private_Contexts (Preparing_Index).Source),
                      Private_Contexts (Preparing_Index).Context, Runtime_Ledger, Status, Scratch);
                   Prepared := Status = Application_Publication.Published;
                   end if;
+                 end;
                end if;
                -- No later offline binds or second publication attempt. The
                -- retained source is sealed; future live binds need VM_Update.
@@ -1836,6 +1870,7 @@ procedure Main is
      (Selected_Index in Private_Contexts'Range and then
       Buffer_Retirement_Pending = 0 and then
       not Application_Maps.Presentation_Held (Application_Map_State, Selected_Session) and then
+      not Application_Buffers.Image_Writes_Held (Application_Buffer_State, Selected_Session) and then
       not Runtime_Fault and then Context_Owner and then PCI_Device = 16#46D2# and then
       Application_Setup_Complete (Selected_Index) and then
       Application_Session (Selected_Sender, Selected_Stamp) = Selected_Session and then
@@ -1984,6 +2019,7 @@ procedure Main is
       Code : Unsigned_64 := Application_Buffers.Denied;
       Completion : Unsigned_32 := 0;
       Status : Application_Submission.Result;
+      Receipt : Application_Submission.Completion_Receipt;
       use type Application_Submission.Result;
       use type Application_Submission.Phase;
       Response : Message := NULL_MESSAGE;
@@ -1992,7 +2028,8 @@ procedure Main is
       Selected_Index := 0;
       if Stored /= 0 and then
         Buffer_Retirement_Pending = 0 and then
-        not Application_Maps.Presentation_Held (Application_Map_State, Session)
+        not Application_Maps.Presentation_Held (Application_Map_State, Session) and then
+        not Application_Buffers.Image_Writes_Held (Application_Buffer_State, Session)
       then
          Code := Application_Buffers.Bad_Request;
          -- [version | (byte offset << 32), BO handle, raw48 GPU address, bytes]
@@ -2024,9 +2061,17 @@ procedure Main is
                      Application_Submission.Initialize (Application_Submissions (Selected_Index),
                        Application_Setup_Complete (Selected_Index));
                   end if;
-                  Application_Submission.Execute (Application_Submissions (Selected_Index),
+                  Application_Submission.Execute_With_Receipt (Application_Submissions (Selected_Index),
                     Msg.words (1), Msg.words (2), Shift_Right (Msg.words (0), 32), Msg.words (3),
-                    Status, Completion);
+                    Receipt, Status);
+                  if Status = Application_Submission.Complete then
+                     Completion := Application_Submission.Receipt_Sequence
+                       (Application_Submissions (Selected_Index), Receipt);
+                     if Completion = 0 then
+                        Quarantine_Submission;
+                        Status := Application_Submission.Faulted;
+                     end if;
+                  end if;
                   Code := (case Status is
                     when Application_Submission.Complete => Application_Buffers.OK,
                     when Application_Submission.Rejected => Application_Buffers.Bad_Request,
@@ -2093,13 +2138,54 @@ procedure Main is
    package Live_Images is new Application_Images.Updates (Update_Exclusive);
    package Live_Snapshots is new Application_VM.Snapshots;
    Removal_Backing : Intel_GPU_Buffer_Reply.Backing;
-   Removal_Mappings : Application_Images.Tables.Mappings;
+   type Mapping_Capture is record
+      Ready : Boolean := False;
+      Index : Natural := 0;
+      Session, Identity, Ticket, Root, Revision, Generation : Unsigned_64 := 0;
+   end record;
+   Removal_Capture : Mapping_Capture;
    Removal_GPU, Removal_Offset, Removal_Bytes, Removal_Revision : Unsigned_64 := 0;
    Removal_Invalidated : Boolean := False;
    -- Ticket-relative authority boundary shared by current capture and future
    -- per-table provenance. Never accept a client CPU/DMA address here.
    function Table_Ticket_Session (Ticket : Unsigned_64) return Unsigned_64 is
      (Application_Buffers.Ticket_Session (Application_Buffer_State, Ticket));
+   function Table_Allocation_Admitted
+     (Session, Ticket : Unsigned_64; Slot : Positive) return Boolean is
+   begin
+      if not Publication_Owner_Ready or else Session = 0 or else Ticket = 0 or else
+        Application_Buffers.Ticket_Slot (Ticket) /= Slot or else
+        Table_Ticket_Session (Ticket) /= Session or else
+        Intel_GPU_Render_Control.Storage_Index (Render_Admission, Session) = 0
+      then return False; end if;
+      -- Incremental allocations are authenticated private table-only tickets;
+      -- they do not own a replacement image. Backing must separately have been
+      -- installed from the retained supervisor allocation into the registry.
+      if Application_Buffers.Is_Table_Allocation
+        (Application_Buffer_State, Session, Ticket, Application_Buffers.Incremental_Tables)
+      then return True; end if;
+      if not Application_Buffers.Is_Table_Allocation
+        (Application_Buffer_State, Session, Ticket, Application_Buffers.Replacement_Tables) or else
+        not Application_State.Has_Update (Slot)
+      then return False; end if;
+      if Ticket = Update_Pending and then Session = Update_Session then
+         return Update_Exclusive;
+      end if;
+      if Slot > Replacement_Records.Capacity (Replacement_Tables) then return False; end if;
+      declare
+         Saved : constant Replacement_Record := Replacement_Records.Get (Replacement_Tables, Slot);
+      begin
+         return Saved.Session = Session and Saved.Ticket = Ticket and not Saved.Superseded;
+      end;
+   end Table_Allocation_Admitted;
+   function Table_Allocation_Retired (Session, Ticket : Unsigned_64) return Boolean is
+     (not Runtime_Fault and then Context_Owner and then Session /= 0 and then Ticket /= 0 and then
+      Session = Buffer_Retirement_Session and then Buffer_Retirement_Pending /= 0 and then
+      Ticket = Table_Release_Ticket and then
+      (Buffer_Retirement_Is_Private or else Buffer_Retirement_Is_Closed_Table or else
+       Buffer_Retirement_Is_Context) and then
+      Buffer_Memory.Retirement_Confirmed (Buffer_Pool, Application_Buffers.Ticket_Slot (Ticket),
+        Application_Buffers.Ticket_Generation (Ticket)));
    procedure Select_Table_Slice
      (Session, Ticket : Unsigned_64;
       Selected : out Intel_GPU_Buffer_Reply.Backing;
@@ -2118,25 +2204,14 @@ procedure Main is
          -- only its table slice, retaining absolute allocation-relative offsets.
          Allocation_Offset := Intel_GPU_Submission_Image.Byte_Count;
          Selected := Private_Contexts (Positive (Stored)).Tables;
-      elsif Ticket = Update_Pending and then Session = Update_Session and then Update_Exclusive then
-         declare
-            Slot : constant Intel_GPU_Buffer_Backing.Slot := Application_Buffers.Ticket_Slot (Ticket);
-         begin
-            if not Application_State.Has_Update (Slot) then return; end if;
-            Selected := Application_State.Updates (Slot).Tables;
-         end;
       else
-         declare
-            Slot : constant Intel_GPU_Buffer_Backing.Slot := Application_Buffers.Ticket_Slot (Ticket);
-            Saved : Replacement_Record;
-         begin
-            if Slot > Replacement_Records.Capacity (Replacement_Tables) then return; end if;
-            Saved := Replacement_Records.Get (Replacement_Tables, Slot);
-            if Saved.Ticket /= Ticket or else Saved.Session /= Session or else
-              Saved.Superseded or else not Application_State.Has_Update (Slot)
-            then return; end if;
-            Selected := Application_State.Updates (Slot).Tables;
-         end;
+         Table_Allocations.Lookup (Table_Backing_Registry, Application_Buffers.Ticket_Slot (Ticket),
+           Session, Ticket,
+           (if Application_Buffers.Is_Table_Allocation
+              (Application_Buffer_State, Session, Ticket, Application_Buffers.Incremental_Tables)
+            then Table_Allocations.Incremental_Tables else Table_Allocations.Replacement_Image),
+           Selected, Accepted);
+         return;
       end if;
       Accepted := True;
    end Select_Table_Slice;
@@ -2147,41 +2222,131 @@ procedure Main is
       CPU, DMA : out Unsigned_64; Accepted : out Boolean)
      renames Table_Resolver.Resolve_Owned_Page;
    package Table_Authority is new Intel_GPU_Table_Provenance.Authority (Resolve_Table_Page);
+   Table_Appends : array (Private_Contexts'Range) of Table_Authority.Append_State;
+   use type Table_Authority.Append_Phase;
    Ledger_Index : Natural range 0 .. Intel_GPU_Render_Sessions.Capacity := 0;
    Ledger_Session : Unsigned_64 := 0;
    function Table_Ledger_Busy return Boolean is (Ledger_Index /= 0);
+   function Table_Ledger_Owner return Boolean is
+     (Ledger_Index in Private_Contexts'Range and then Publication_Owner_Ready and then
+      Private_Contexts (Ledger_Index).Life = Application_Lifetime.Offline and then
+      Intel_GPU_Render_Control.Storage_Index (Render_Admission, Ledger_Session) = Ledger_Index);
+   procedure Stop_Table_Ledger (Reason : String) is
+   begin
+      if Ledger_Index in Private_Contexts'Range then
+         Private_Contexts (Ledger_Index).Life := Application_Lifetime.Retired;
+      end if;
+      Publish_Snapshot (Reason);
+      Ledger_Index := 0; Ledger_Session := 0;
+   end Stop_Table_Ledger;
+   function Offline_Metadata_Owner return Boolean;
+   Live_Metadata_Pending : Boolean := False;
+   Live_Metadata_Epoch : Unsigned_64 := 0;
+   function Live_Metadata_Owner return Boolean is
+     (Live_Metadata_Pending and then In_Place_Active and then not Update_Held and then
+      Update_Pending = 0 and then Update_Owner and then
+      Application_VM.Revision (Private_Contexts (Update_Index).Source) = Live_Metadata_Epoch);
+   function Context_Metadata_Index return Natural is
+     (if Table_Ledger_Busy then Ledger_Index else Update_Index);
+   function Context_Metadata_Owner return Boolean is
+     (if Table_Ledger_Busy then Table_Ledger_Owner
+      elsif Live_Metadata_Pending then Live_Metadata_Owner else Offline_Metadata_Owner);
    function Ledger_Capacity return Positive is
-     (if Ledger_Index = 0 then 1 else
-      Intel_GPU_Table_Provenance.Capacity (Private_Contexts (Ledger_Index).Table_Owners));
+     (if Context_Metadata_Index = 0 then 1 else
+      Intel_GPU_Table_Provenance.Capacity (Private_Contexts (Context_Metadata_Index).Table_Owners));
    procedure Extend_Ledger (Base, Bytes : Unsigned_64; Accepted : out Boolean) is
    begin
       Accepted := False;
-      if Ledger_Index /= 0 and then Publication_Owner_Ready then
+      if Context_Metadata_Owner then
          Intel_GPU_Table_Provenance.Extend
-           (Private_Contexts (Ledger_Index).Table_Owners, Base, Bytes, Accepted);
+           (Private_Contexts (Context_Metadata_Index).Table_Owners, Base, Bytes, Accepted);
       end if;
    end Extend_Ledger;
-   package Ledger_Growth is new Intel_GPU_Record_Growth
-     (Intel_GPU_Metadata_Platform.Storage, Ledger_Capacity, Extend_Ledger);
-   Ledger_Controllers : array (Private_Contexts'Range) of Ledger_Growth.Controller;
-   use type Ledger_Growth.Phase;
    function Context_Mirror_Capacity return Positive is
-     (if Ledger_Index = 0 then 1 else
-      Application_VM.Metadata_Capacity (Private_Contexts (Ledger_Index).Source));
+     (if Context_Metadata_Index = 0 then 1 else
+      Application_VM.Mirror_Capacity (Private_Contexts (Context_Metadata_Index).Source));
    procedure Extend_Context_Mirror (Base, Bytes : Unsigned_64; Accepted : out Boolean) is
    begin
       Accepted := False;
-      if Ledger_Index /= 0 and then Publication_Owner_Ready and then
-        Private_Contexts (Ledger_Index).Life = Application_Lifetime.Offline
-      then
+      if Context_Metadata_Owner then
          Application_VM.Extend_Metadata
-           (Private_Contexts (Ledger_Index).Source, Base, Bytes, Accepted);
+           (Private_Contexts (Context_Metadata_Index).Source, Base, Bytes, Accepted);
       end if;
    end Extend_Context_Mirror;
-   package Context_Mirror_Growth is new Intel_GPU_Record_Growth
-     (Intel_GPU_Metadata_Platform.Storage, Context_Mirror_Capacity, Extend_Context_Mirror);
-   Mirror_Controllers : array (Private_Contexts'Range) of Context_Mirror_Growth.Controller;
-   use type Context_Mirror_Growth.Phase;
+   function Context_Descriptor_Capacity return Positive is
+     (if Context_Metadata_Index = 0 then 1 else
+      Application_VM.Descriptor_Capacity (Private_Contexts (Context_Metadata_Index).Source));
+   procedure Extend_Context_Descriptors (Base, Bytes : Unsigned_64; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if Context_Metadata_Owner then
+         Application_VM.Extend_Descriptors
+           (Private_Contexts (Context_Metadata_Index).Source, Base, Bytes, Accepted);
+      end if;
+   end Extend_Context_Descriptors;
+   function Context_Reference_Capacity return Positive is
+     (if Context_Metadata_Index = 0 then 1 else Application_State.Table_References.Capacity
+       (Private_Contexts (Context_Metadata_Index).Table_IDs));
+   procedure Extend_Context_References (Base, Bytes : Unsigned_64; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if Context_Metadata_Owner then
+         Application_State.Table_References.Extend
+           (Private_Contexts (Context_Metadata_Index).Table_IDs, Base, Bytes, Accepted);
+      end if;
+   end Extend_Context_References;
+   type Context_Metadata_Table is (References, Descriptors, Mirrors, Provenance);
+   type Context_Metadata_Needs is array (Context_Metadata_Table) of Natural;
+   Context_Metadata_Targets : array (Private_Contexts'Range) of Context_Metadata_Needs :=
+     [others => [others => 0]];
+   function Context_Metadata_Capacity (Table : Context_Metadata_Table) return Natural is
+     (case Table is
+        when References => Context_Reference_Capacity,
+        when Descriptors => Context_Descriptor_Capacity,
+        when Mirrors => Context_Mirror_Capacity,
+        when Provenance => Ledger_Capacity);
+   procedure Extend_Context_Metadata
+     (Table : Context_Metadata_Table; Base, Bytes : Unsigned_64; Accepted : out Boolean) is
+   begin
+      case Table is
+         when References => Extend_Context_References (Base, Bytes, Accepted);
+         when Descriptors => Extend_Context_Descriptors (Base, Bytes, Accepted);
+         when Mirrors => Extend_Context_Mirror (Base, Bytes, Accepted);
+         when Provenance => Extend_Ledger (Base, Bytes, Accepted);
+      end case;
+   end Extend_Context_Metadata;
+   procedure Admit_Context_Metadata (Count : Positive; Accepted : out Boolean) is
+   begin
+      Accepted := Context_Metadata_Owner and then Count <= Application_State.Table_Pages
+        and then Context_Metadata_Targets (Context_Metadata_Index) (References) = Count
+        and then (for all T in Context_Metadata_Table => Context_Metadata_Capacity (T) >=
+          Context_Metadata_Targets (Context_Metadata_Index) (T));
+   end Admit_Context_Metadata;
+   package Context_Metadata_Growth is new Intel_GPU_Metadata_Bundle
+     (Context_Metadata_Table, Intel_GPU_Metadata_Platform.Storage,
+      Context_Metadata_Owner, Context_Metadata_Capacity, Extend_Context_Metadata, Admit_Context_Metadata);
+   Context_Metadata : array (Private_Contexts'Range) of Context_Metadata_Growth.Bundle;
+   use type Context_Metadata_Growth.Phase;
+   procedure Request_Context_Metadata
+     (Index, Tables, Records : Positive; OK : out Boolean) is
+   begin
+      OK := False;
+      if not Context_Metadata_Owner or else Context_Metadata_Index /= Index then return; end if;
+      Context_Metadata_Growth.Request
+        (Context_Metadata (Index), Tables,
+         [References => (Tables, Application_State.Table_Pages,
+                         Application_State.Table_References.Metadata_Bytes),
+          Descriptors => (Tables, Application_State.Table_Pages,
+                          Application_VM.Descriptor_Metadata_Bytes),
+          Mirrors => (Tables, Application_State.Table_Pages,
+                      Unsigned_64 (Application_State.Table_Pages -
+                        Application_State.Bootstrap_Table_Mirrors) * 4096),
+          Provenance => (Records, 32768, 1024 * 1024)], OK);
+      if OK then
+         Context_Metadata_Targets (Index) :=
+           [References | Descriptors | Mirrors => Tables, Provenance => Records];
+      end if;
+   end Request_Context_Metadata;
    procedure Start_Table_Ledger (Index : Positive; Session : Unsigned_64) is
       OK : Boolean;
    begin
@@ -2189,15 +2354,13 @@ procedure Main is
          Runtime_Fault := True; return;
       end if;
       Ledger_Index := Index; Ledger_Session := Session;
-      -- CPU metadata quota, not a preallocated backing pool or GPU VA limit.
-      Ledger_Growth.Configure (Ledger_Controllers (Index), 1024 * 1024, 32768, OK);
-      if OK then Ledger_Growth.Request (Ledger_Controllers (Index), Private_Table_Pages, OK); end if;
-      if OK then
-         Context_Mirror_Growth.Configure (Mirror_Controllers (Index),
-           Unsigned_64 (Private_Table_Pages - Application_State.Bootstrap_Table_Mirrors) * 4096,
-           Private_Table_Pages, OK);
+      if not Table_Ledger_Owner then
+         Stop_Table_Ledger ("intel-gpu: initial metadata owner unavailable; backing retained");
+         return;
       end if;
-      if OK then Context_Mirror_Growth.Request (Mirror_Controllers (Index), Private_Table_Pages, OK); end if;
+      -- Stable per-store byte reservations, not BO backing or GPU VA.
+      Request_Context_Metadata
+        (Index, Private_Table_Pages, Private_Table_Pages, OK);
       if not OK then
          Private_Contexts (Index).Life := Application_Lifetime.Retired;
          Publish_Snapshot ("intel-gpu: initial table provenance request rejected; backing retained");
@@ -2206,37 +2369,45 @@ procedure Main is
    end Start_Table_Ledger;
    procedure Grow_Table_Ledger is
       OK : Boolean := False;
-      Page : Positive;
    begin
       if not Table_Ledger_Busy then return; end if;
-      if Publication_Owner_Ready and then
-        Private_Contexts (Ledger_Index).Life = Application_Lifetime.Offline and then
-        Intel_GPU_Render_Control.Storage_Index (Render_Admission, Ledger_Session) = Ledger_Index
-      then
-         if Context_Mirror_Growth.Snapshot (Mirror_Controllers (Ledger_Index)).State /= Context_Mirror_Growth.Idle then
-            Context_Mirror_Growth.Step (Mirror_Controllers (Ledger_Index));
-            if Context_Mirror_Growth.Snapshot (Mirror_Controllers (Ledger_Index)).State = Context_Mirror_Growth.Failed then
-               Private_Contexts (Ledger_Index).Life := Application_Lifetime.Retired;
-               Publish_Snapshot ("intel-gpu: context mirror growth failed; backing retained");
-               Ledger_Index := 0; Ledger_Session := 0;
-            end if;
-            return;
+      if Table_Ledger_Owner then
+         Context_Metadata_Growth.Step (Context_Metadata (Ledger_Index));
+         if not Table_Ledger_Owner then
+            Stop_Table_Ledger ("intel-gpu: table metadata owner lost; backing retained"); return;
          end if;
-         Ledger_Growth.Step (Ledger_Controllers (Ledger_Index));
-         case Ledger_Growth.Snapshot (Ledger_Controllers (Ledger_Index)).State is
-            when Ledger_Growth.Idle =>
-               Page := Intel_GPU_Table_Provenance.Count
-                 (Private_Contexts (Ledger_Index).Table_Owners) + 1;
-               Table_Authority.Install
-                 (Private_Contexts (Ledger_Index).Table_Owners, Ledger_Session,
-                  Private_Contexts (Ledger_Index).Table_Generation, Page,
-                  Private_Contexts (Ledger_Index).Parent_Ticket,
-                  Intel_GPU_Submission_Image.Byte_Count + Unsigned_64 (Page - 1) * 4096, OK);
-               if OK then
-                  Private_Contexts (Ledger_Index).Table_IDs (Page) := Page;
+         case Context_Metadata_Growth.State (Context_Metadata (Ledger_Index)) is
+            when Context_Metadata_Growth.Idle =>
+               if Table_Authority.Status (Table_Appends (Ledger_Index)) = Table_Authority.Unused then
+                  Table_Authority.Begin_Append
+                    (Table_Appends (Ledger_Index), Private_Contexts (Ledger_Index).Table_Owners,
+                     Ledger_Session, Private_Contexts (Ledger_Index).Table_Generation,
+                     Private_Contexts (Ledger_Index).Parent_Ticket,
+                     Intel_GPU_Submission_Image.Byte_Count, Private_Table_Pages, OK);
+                  if not Table_Ledger_Owner then
+                     Stop_Table_Ledger ("intel-gpu: table append owner lost; backing retained"); return;
+                  end if;
+                  if OK then return; end if;
+               else
+                  Table_Authority.Step
+                    (Table_Appends (Ledger_Index), Private_Contexts (Ledger_Index).Table_Owners);
+                  if not Table_Ledger_Owner then
+                     Stop_Table_Ledger ("intel-gpu: table append owner lost; backing retained"); return;
+                  end if;
+                  if Table_Authority.Status (Table_Appends (Ledger_Index)) = Table_Authority.Appending
+                  then return; end if;
+                  OK := Table_Authority.Status (Table_Appends (Ledger_Index)) = Table_Authority.Appended;
+                  if OK then
+                     for Page in 1 .. Private_Table_Pages loop
+                        Application_State.Table_References.Put
+                          (Private_Contexts (Ledger_Index).Table_IDs,
+                           Private_Contexts (Ledger_Index).Table_Generation, Page,
+                           Table_Authority.First_ID (Table_Appends (Ledger_Index)) + Page - 1, OK);
+                        exit when not OK;
+                     end loop;
+                  end if;
                end if;
-               if OK and then Page < Private_Table_Pages then return; end if;
-            when Ledger_Growth.Failed | Ledger_Growth.Empty => null;
+            when Context_Metadata_Growth.Failed => null;
             when others => return;
          end case;
       end if;
@@ -2244,8 +2415,8 @@ procedure Main is
       Publish_Snapshot ("intel-gpu: initial table provenance ready=" & Boolean'Image (OK) &
         " records=" & Natural'Image (Intel_GPU_Table_Provenance.Count
           (Private_Contexts (Ledger_Index).Table_Owners)) &
-        " growth=" & Ledger_Growth.Phase'Image
-          (Ledger_Growth.Snapshot (Ledger_Controllers (Ledger_Index)).State));
+        " growth=" & Context_Metadata_Growth.Phase'Image
+          (Context_Metadata_Growth.State (Context_Metadata (Ledger_Index))));
       Ledger_Index := 0; Ledger_Session := 0;
    end Grow_Table_Ledger;
    function Initial_Table_Mapping (Index : Positive; Session : Unsigned_64;
@@ -2253,11 +2424,13 @@ procedure Main is
    begin
       if Index not in Private_Contexts'Range or else
         Page not in Application_VM.Page_Number or else
-        Private_Contexts (Index).Table_IDs (Page) = 0
+        Application_State.Table_References.Get (Private_Contexts (Index).Table_IDs,
+          Private_Contexts (Index).Table_Generation, Page) = 0
       then return (others => 0); end if;
       return Table_Authority.Lookup (Private_Contexts (Index).Table_Owners, Session,
         Private_Contexts (Index).Table_Generation,
-        Private_Contexts (Index).Table_IDs (Page));
+        Application_State.Table_References.Get (Private_Contexts (Index).Table_IDs,
+          Private_Contexts (Index).Table_Generation, Page));
    end Initial_Table_Mapping;
    function Replacement_Table_Mapping
      (Slot : Intel_GPU_Buffer_Backing.Slot; Session : Unsigned_64;
@@ -2269,93 +2442,656 @@ procedure Main is
       declare
          Item : Application_State.Update_Record renames Application_State.Updates (Slot).all;
       begin
-         if Item.Table_IDs (Page) = 0 then return (others => 0); end if;
+         if Application_State.Table_References.Get (Item.Table_IDs, Item.Table_Generation, Page) = 0
+         then return (others => 0); end if;
          return Table_Authority.Lookup (Item.Table_Owners, Session,
-           Item.Table_Generation, Item.Table_IDs (Page));
+           Item.Table_Generation, Application_State.Table_References.Get
+             (Item.Table_IDs, Item.Table_Generation, Page));
       end;
    end Replacement_Table_Mapping;
-   procedure Recycle_Table_Ledger
-     (Slot : Intel_GPU_Buffer_Backing.Slot; Session, Ticket : Unsigned_64;
-      Accepted : out Boolean)
-   is
-      function Receipt_Ready (Owner : Unsigned_64) return Boolean is
-        (Owner = Session and then Session /= 0 and then not Runtime_Fault and then Context_Owner
-         and then Ticket = Buffer_Retirement_Pending and then Session = Buffer_Retirement_Session
-         and then Application_Buffers.Ticket_Slot (Ticket) = Slot
-         and then Application_State.Has_Update (Slot)
-         and then Live_Snapshots.Retired (Application_State.Updates (Slot).Candidate)
-         and then Buffer_Memory.Retirement_Confirmed
-           (Buffer_Pool, Slot, Application_Buffers.Ticket_Generation (Ticket)));
-      function Exact_Receipt (Owner, ID : Unsigned_64) return Boolean is
-        (ID = Ticket and then Receipt_Ready (Owner));
-      package R is new Intel_GPU_Table_Provenance.Retirement
-        (Receipt_Ready, Exact_Receipt, Exact_Receipt);
-      OK : Boolean;
+   -- Initial-root incremental allocations retain independent tickets in the
+   -- context ledger. New image ordinals are installed only after directory
+   -- publication and its own TLB receipt; leaf binding uses a second receipt.
+   type Directory_Phase is
+     (No_Directory_Update, Allocate_Directories, Register_Directories,
+      Start_Directories, Publish_Directories, Invalidate_Directories,
+      Commit_Directories);
+   Directory_Update : Directory_Phase := No_Directory_Update;
+   Directory_First_ID, Directory_Previous_Used : Natural := 0;
+   Directory_Invalidated : Boolean := False;
+   function Directory_Exclusive return Boolean is
+     (Directory_Update /= No_Directory_Update and then Update_Exclusive and then
+      Current_Table_Ticket (Update_Index) = 0 and then
+      Private_Contexts (Update_Index).Table_Generation =
+        Intel_GPU_Table_Provenance.Generation (Private_Contexts (Update_Index).Table_Owners));
+   function Directory_Table_ID (DMA : Unsigned_64) return Natural is
+      M : Intel_GPU_Table_Provenance.Mapping;
+   begin
+      if DMA = 0 or else not Directory_Exclusive then return 0; end if;
+      for P in 1 .. Application_VM.Used (Private_Contexts (Update_Index).Source) loop
+         M := Initial_Table_Mapping (Update_Index, Update_Session, P);
+         if M.Ticket /= 0 and then M.DMA = DMA then
+            return Application_State.Table_References.Get
+              (Private_Contexts (Update_Index).Table_IDs,
+               Private_Contexts (Update_Index).Table_Generation, P);
+         end if;
+      end loop;
+      if Directory_First_ID /= 0 and then Update_Table_Pages /= 0 then
+         for P in 0 .. Update_Table_Pages - 1 loop
+            M := Table_Authority.Lookup (Private_Contexts (Update_Index).Table_Owners,
+              Update_Session, Private_Contexts (Update_Index).Table_Generation,
+              Directory_First_ID + P);
+            if M.Ticket = Update_Pending and then M.DMA = DMA then
+               return Directory_First_ID + P;
+            end if;
+         end loop;
+      end if;
+      return 0;
+   end Directory_Table_ID;
+   function Directory_Owned (DMA : Unsigned_64) return Boolean is
+     (Directory_Table_ID (DMA) /= 0);
+   function Directory_Flush_CPU (CPU : Unsigned_64) return Boolean is
+     (Directory_Exclusive and then Intel_GPU_DMA_Cache.Flush_Range (CPU, 4096)
+      and then Directory_Exclusive);
+   package Directory_IO is new Intel_GPU_Table_Provenance.IO
+     (Table_Authority, Directory_Exclusive, Directory_Flush_CPU);
+   procedure Read_Directory_Word
+     (DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;
+      Value : out Unsigned_64; OK : out Boolean) is
+      ID : constant Natural := Directory_Table_ID (DMA);
+   begin
+      Value := 0; OK := False;
+      if ID = 0 then return; end if;
+      Directory_IO.Read_Word (Private_Contexts (Update_Index).Table_Owners,
+        Update_Session, Private_Contexts (Update_Index).Table_Generation,
+        ID, DMA, Index, Value, OK);
+   end Read_Directory_Word;
+   procedure Write_Directory_Word
+     (DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;
+      Value : Unsigned_64; OK : out Boolean) is
+      ID : constant Natural := Directory_Table_ID (DMA);
+   begin
+      OK := False;
+      if ID = 0 then return; end if;
+      Directory_IO.Write_Word (Private_Contexts (Update_Index).Table_Owners,
+        Update_Session, Private_Contexts (Update_Index).Table_Generation,
+        ID, DMA, Index, Value, OK);
+   end Write_Directory_Word;
+   function Flush_Directory_Page (DMA : Unsigned_64) return Boolean is
+      ID : constant Natural := Directory_Table_ID (DMA);
+   begin
+      return ID /= 0 and then Directory_IO.Flush
+        (Private_Contexts (Update_Index).Table_Owners, Update_Session,
+         Private_Contexts (Update_Index).Table_Generation, ID, DMA);
+   end Flush_Directory_Page;
+   function Directory_TLB_Confirmed return Boolean is
+     (Directory_Invalidated and then Directory_Exclusive);
+   package Directory_Backing is new Application_Topology.Backing (Directory_Owned);
+   package Directory_Writer is new Directory_Backing.Writer
+     (Directory_Exclusive, Read_Directory_Word, Write_Directory_Word,
+      Flush_Directory_Page, Directory_TLB_Confirmed);
+   type Offline_Bind_Phase is
+     (No_Offline_Bind, Grow_Offline_Metadata, Allocate_Offline, Register_Offline, Commit_Offline);
+   Offline_Bind_State : Offline_Bind_Phase := No_Offline_Bind;
+   Offline_Epoch : Unsigned_64 := 0;
+   function Offline_Bind_Owner return Boolean is
+      Status : Application_Binding.Preparation_Result;
+      use type Application_Binding.Preparation_Result;
+   begin
+      if Offline_Bind_State = No_Offline_Bind or else Update_Pending = 0 or else
+        Update_Index not in Private_Contexts'Range or else Runtime_Fault or else
+        not Publication_Owner_Ready or else Table_Ledger_Busy or else
+        Private_Contexts (Update_Index).Life /= Application_Lifetime.Offline or else
+        Application_Setup_Complete (Update_Index) or else
+        Current_Table_Ticket (Update_Index) /= 0 or else
+        Intel_GPU_Render_Control.Storage_Index (Render_Admission, Update_Session) /= Update_Index or else
+        Intel_GPU_Render_Control.Recipient_Identity
+          (Render_Admission, Update_Sender, Update_Stamp) /= Update_Identity or else
+        Private_Contexts (Update_Index).Table_Generation /=
+          Intel_GPU_Table_Provenance.Generation (Private_Contexts (Update_Index).Table_Owners)
+      then return False; end if;
+      Application_Binding.Check_Offline_Bind_Request
+        (Application_Buffer_State, Private_Contexts (Update_Index).Source,
+         Update_Session, Offline_Epoch, Update_Sender, Update_Stamp,
+         Update_Request.tag.label, Update_Request.tag.length,
+         Update_Request.tag.flags, Update_Request.tag.reserved,
+         [Update_Request.words (0), Update_Request.words (1),
+          Update_Request.words (2), Update_Request.words (3)], Status);
+      return Status = Application_Binding.Eligible;
+   end Offline_Bind_Owner;
+   function Offline_Metadata_Owner return Boolean is
+     (Offline_Bind_State = Grow_Offline_Metadata and then Offline_Bind_Owner);
+   procedure Reject_Offline_Bind is
+   begin
+      Intel_GPU_Render_Control.Reject_Delivery (Render_Admission, Update_Identity, Update_Session);
+      Retire_Application_Resources (Update_Session);
+   end Reject_Offline_Bind;
+   procedure Finish_Offline_Bind (Backing : Intel_GPU_Buffer_Reply.Backing) is
+      OK, Consumed : Boolean := False;
+      Words : Application_Buffers.Words := [Application_Buffers.Unavailable, 1, 0, 0];
+      Response : Message := NULL_MESSAGE;
+      Delivered : Unsigned_64;
+      First, ID : Natural := 0;
+      function Appended_Page (Ordinal : Positive) return Unsigned_64 is
+         M : Intel_GPU_Table_Provenance.Mapping;
+      begin
+         if not Offline_Bind_Owner or else ID = 0 or else
+           Ordinal > Update_Table_Pages or else ID > Natural'Last - (Ordinal - 1)
+         then return 0; end if;
+         M := Table_Authority.Lookup
+           (Private_Contexts (Update_Index).Table_Owners, Update_Session,
+            Private_Contexts (Update_Index).Table_Generation, ID + (Ordinal - 1));
+         if not Offline_Bind_Owner or else M.Ticket /= Update_Pending
+         then return 0; end if;
+         return M.DMA;
+      end Appended_Page;
+      procedure Append_Stream is new Application_VM.Append_Offline_From_Pages
+        (Appended_Page, Offline_Bind_Owner);
+   begin
+      if Offline_Bind_State = No_Offline_Bind then return; end if;
+      if Offline_Bind_State = Grow_Offline_Metadata and then Offline_Bind_Owner then
+         -- No supervisor backing operation is active in this phase. The event
+         -- loop supplies its old result; never interpret it as this ticket's
+         -- backing. Advance one metadata phase and revalidate the captured BO,
+         -- requester, epoch and topology before starting physical allocation.
+         Context_Metadata_Growth.Step (Context_Metadata (Update_Index));
+         if Offline_Bind_Owner then
+            case Context_Metadata_Growth.State (Context_Metadata (Update_Index)) is
+               when Context_Metadata_Growth.Idle =>
+                  declare
+                     Needed : constant Application_Topology.Offline_Requirements :=
+                       Application_Topology.Inspect_Offline
+                         (Private_Contexts (Update_Index).Source,
+                          Update_Request.words (2), Update_Request.words (3));
+                     use type Application_Topology.Plan_Status;
+                  begin
+                     if Needed.Topology.Status = Application_Topology.Ready and then
+                       Needed.Topology.Fits_Reserved and then
+                       Needed.Additional_Backing = Update_Table_Pages and then
+                       Update_Table_Pages <= Ledger_Capacity -
+                         Intel_GPU_Table_Provenance.Count (Private_Contexts (Update_Index).Table_Owners)
+                     then
+                        Offline_Bind_State := Allocate_Offline;
+                        Buffer_Memory.Start (Buffer_Pool,
+                          Application_Buffers.Ticket_Slot (Update_Pending), Update_Table_Pages, OK);
+                        if OK then return; end if;
+                     end if;
+                  end;
+               when Context_Metadata_Growth.Failed => null;
+               when others => return;
+            end case;
+         end if;
+         -- Fall through to terminal failure, not stale backing processing.
+         Offline_Bind_State := Grow_Offline_Metadata;
+      end if;
+      if Offline_Bind_Owner and then Intel_GPU_Buffer_Reply.Valid (Backing) and then
+        Update_Table_Pages /= 0 and then Backing.Bytes = Unsigned_64 (Update_Table_Pages) * 4096
+      then
+         case Offline_Bind_State is
+            when Allocate_Offline =>
+               Table_Allocations.Install (Table_Backing_Registry,
+                 Application_Buffers.Ticket_Slot (Update_Pending), Update_Session,
+                 Update_Pending, Table_Allocations.Incremental_Tables, Backing, OK);
+               if OK then Table_Authority.Rearm (Table_Appends (Update_Index),
+                 Private_Contexts (Update_Index).Table_Owners, OK); end if;
+               if OK then Table_Authority.Begin_Append (Table_Appends (Update_Index),
+                 Private_Contexts (Update_Index).Table_Owners, Update_Session,
+                 Private_Contexts (Update_Index).Table_Generation,
+                 Update_Pending, 0, Update_Table_Pages, OK); end if;
+               if OK then Offline_Bind_State := Register_Offline; return; end if;
+            when Register_Offline =>
+               Table_Authority.Step (Table_Appends (Update_Index), Private_Contexts (Update_Index).Table_Owners);
+               if Table_Authority.Status (Table_Appends (Update_Index)) = Table_Authority.Appending
+               then return; end if;
+               if Table_Authority.Status (Table_Appends (Update_Index)) = Table_Authority.Appended then
+                  Offline_Bind_State := Commit_Offline; return;
+               end if;
+            when Commit_Offline =>
+               declare begin
+                  ID := Table_Authority.First_ID (Table_Appends (Update_Index));
+                  OK := ID /= 0;
+                  if OK and then Offline_Bind_Owner then
+                     Append_Stream
+                       (Private_Contexts (Update_Index).Source, Update_Table_Pages, First, OK);
+                     if OK then
+                        for P in 1 .. Update_Table_Pages loop
+                           Application_State.Table_References.Put
+                             (Private_Contexts (Update_Index).Table_IDs,
+                              Private_Contexts (Update_Index).Table_Generation,
+                              First + P - 1, ID + P - 1, OK);
+                           exit when not OK;
+                        end loop;
+                        -- This sole serialized mutation advances the expected
+                        -- epoch. It does not authorize a different requester.
+                        if OK then
+                        Offline_Epoch := Application_VM.Revision (Private_Contexts (Update_Index).Source);
+                        Application_Binding.Handle (Application_Buffer_State,
+                          Private_Contexts (Update_Index).Source, Update_Session,
+                          Update_Sender, Update_Stamp, Update_Request.tag.label,
+                          Update_Request.tag.length, Update_Request.tag.flags, Update_Request.tag.reserved,
+                          [Update_Request.words (0), Update_Request.words (1),
+                           Update_Request.words (2), Update_Request.words (3)], Words);
+                        end if;
+                     end if;
+                  end if;
+               end;
+            when No_Offline_Bind | Grow_Offline_Metadata => null;
+         end case;
+      end if;
+      Application_Buffers.Finish_Private (Application_Buffer_State, Update_Pending, Consumed);
+      if not Consumed then Words := [Application_Buffers.Unavailable, 1, 0, 0]; end if;
+      if Words (0) /= Application_Buffers.OK then
+         Publish_Snapshot ("intel-gpu: offline backing growth failed; backing retained");
+         Reject_Offline_Bind;
+      end if;
+      Response.tag := (Application_Binding.Bind_Label, 4, 0, 0);
+      Response.words := [Words (0), Words (1), Words (2), Words (3)];
+      Delivered := replyCap (Application_Reply_Slot, Response);
+      if Delivered /= 1 then Reject_Offline_Bind; end if;
+      Offline_Bind_State := No_Offline_Bind;
+      Update_Pending := 0; Update_Table_Pages := 0; Update_Index := 0;
+   end Finish_Offline_Bind;
+   function Try_Offline_Bind_Growth (From : ProcessID; Msg : Message) return Boolean is
+      Session : constant Unsigned_64 := Application_Session (Unsigned_64 (From), Msg.authorityTag);
+      Stored : constant Intel_GPU_Render_Sessions.Slot_Index :=
+        Intel_GPU_Render_Control.Storage_Index (Render_Admission, Session);
+      Status : Application_Binding.Preparation_Result;
+      Needed : Application_Topology.Offline_Requirements;
+      Started, Consumed : Boolean;
+      use type Application_Binding.Preparation_Result, Application_Topology.Plan_Status;
+   begin
+      if Stored = 0 or else Update_Pending /= 0 or else In_Place_Active or else
+        Application_Pending /= 0 or else Private_Pending /= 0 or else Buffer_Retirement_Pending /= 0 or else
+        Table_Ledger_Busy or else Buffer_Memory.Pending (Buffer_Pool) or else
+        Private_Contexts (Stored).Life /= Application_Lifetime.Offline
+      then return False; end if;
+      Application_Binding.Check_Offline_Bind_Request
+        (Application_Buffer_State, Private_Contexts (Stored).Source, Session,
+         Application_VM.Revision (Private_Contexts (Stored).Source), Unsigned_64 (From), Msg.authorityTag,
+         Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
+         [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Status);
+      if Status /= Application_Binding.Eligible then return False; end if;
+      Needed := Application_Topology.Inspect_Offline
+        (Private_Contexts (Stored).Source, Msg.words (2), Msg.words (3));
+      if Needed.Topology.Status /= Application_Topology.Ready or else
+        not Needed.Topology.Fits_Quota or else Needed.Additional_Backing = 0 or else
+        Intel_GPU_Table_Provenance.Count (Private_Contexts (Stored).Table_Owners) > 32768 or else
+        Needed.Additional_Backing > 32768 -
+          Intel_GPU_Table_Provenance.Count (Private_Contexts (Stored).Table_Owners)
+      then return False; end if;
+      Update_Index := Stored; Update_Session := Session; Update_Sender := Unsigned_64 (From);
+      Update_Stamp := Msg.authorityTag; Update_Request := Msg;
+      Update_Identity := Intel_GPU_Render_Control.Recipient_Identity (Render_Admission, Update_Sender, Update_Stamp);
+      Offline_Epoch := Application_VM.Revision (Private_Contexts (Stored).Source);
+      Update_Table_Pages := Needed.Additional_Backing;
+      Application_Buffers.Reserve_Private (Application_Buffer_State, Session, Update_Pending,
+        Reclaimable => True, Kind => Application_Buffers.Incremental_Tables);
+      if Update_Pending = 0 then Update_Index := 0; Update_Table_Pages := 0; return False; end if;
+      Offline_Bind_State := Grow_Offline_Metadata;
+      if not Offline_Bind_Owner or else saveReplyCap (Unsigned_64 (Application_Reply_Slot)) /= 1 then
+         Reject_Offline_Bind;
+         Application_Buffers.Finish_Private (Application_Buffer_State, Update_Pending, Consumed);
+         Offline_Bind_State := No_Offline_Bind; Update_Pending := 0;
+         Update_Index := 0; Update_Table_Pages := 0;
+         return False; -- caller still owns and answers the unsaved request
+      end if;
+      Request_Context_Metadata
+        (Stored, Needed.Topology.Required_Tables,
+         Intel_GPU_Table_Provenance.Count (Private_Contexts (Stored).Table_Owners) +
+           Needed.Additional_Backing, Started);
+      if not Started then
+         Offline_Bind_State := Allocate_Offline;
+         Finish_Offline_Bind ((Ready => False));
+      end if;
+      return True;
+   end Try_Offline_Bind_Growth;
+   Recycle_Slot : Intel_GPU_Buffer_Backing.Slot := 1;
+   Recycle_Session, Recycle_Ticket : Unsigned_64 := 0;
+   Recycle_Context_Index : Natural := 0;
+   function Context_Group_Exclusion (Owner : Unsigned_64) return Boolean;
+   function Recycle_Exclusion_Ready (Owner : Unsigned_64) return Boolean is
+   begin
+      if Buffer_Retirement_Is_Context then
+         if not Context_Group_Exclusion (Owner) then return False; end if;
+      else
+      if not (Owner = Recycle_Session and then Owner /= 0 and then not Runtime_Fault and then Context_Owner
+      and then Recycle_Ticket /= 0 and then Recycle_Ticket = Buffer_Retirement_Pending
+      and then Owner = Buffer_Retirement_Session
+      and then (Buffer_Retirement_Is_Private or else Buffer_Retirement_Is_Closed_Table)
+      and then Application_Buffers.Ticket_Slot (Recycle_Ticket) = Recycle_Slot
+      and then Application_State.Has_Update (Recycle_Slot)
+      and then Application_Buffers.Is_Table_Allocation
+        (Application_Buffer_State, Owner, Recycle_Ticket, Application_Buffers.Replacement_Tables))
+      then return False; end if;
+      declare
+         Saved : constant Replacement_Record := Replacement_Records.Get (Replacement_Tables, Recycle_Slot);
+      begin
+         if Saved.Session /= Owner or else Saved.Ticket /= Recycle_Ticket or else
+           (not Live_Snapshots.Retired (Application_State.Updates (Recycle_Slot).Candidate) and then
+            (not Application_VM.Sealed (Application_State.Updates (Recycle_Slot).Candidate) or else
+             Application_VM.Revision (Application_State.Updates (Recycle_Slot).Candidate) /= Saved.Revision or else
+             Application_VM.Root_DMA (Application_State.Updates (Recycle_Slot).Candidate) /= Saved.Root))
+         then return False; end if;
+      end;
+      end if;
+      -- The preflight's alias proofs remain stable behind the global pending
+      -- gate. Still recheck scheduling exclusion across every dispatcher yield.
+      for I in 1 .. Context_Pool.Count (Contexts) loop
+         if not Context_Life.Scheduling_Stopped
+           (Context_Pool.State (Contexts, First_Context_ID + Unsigned_32 (I - 1)))
+         then return False; end if;
+      end loop;
+      return True;
+   end Recycle_Exclusion_Ready;
+   function Recycle_Receipt_Ready (Owner : Unsigned_64) return Boolean is
+     (Recycle_Exclusion_Ready (Owner) and then Buffer_Memory.Retirement_Confirmed
+        (Buffer_Pool, Recycle_Slot, Application_Buffers.Ticket_Generation (Recycle_Ticket)));
+   -- BEGIN GROUPED TABLE TRANSPORT
+   function Recycle_May_Release (Owner, ID : Unsigned_64) return Boolean is
+      use type Table_Allocations.Allocation_Role;
+      Item : Table_Allocations.Retained_Allocation;
+   begin
+      if ID = 0 or else not Recycle_Exclusion_Ready (Owner) then return False; end if;
+      if Buffer_Retirement_Is_Context and then ID = Recycle_Ticket then
+         -- Combined context/ring/scratch parent is not a table-only registry
+         -- entry. The group exclusion must establish its consumer retirement;
+         -- authenticate its exact context ticket before requesting release.
+         return Context_Tickets.Can_Retire (Application_Buffer_State, Owner, ID);
+      end if;
+      Item := Table_Allocations.Retained_At
+        (Table_Backing_Registry, Application_Buffers.Ticket_Slot (ID));
+      if not Item.Present or else Item.Session /= Owner or else Item.Ticket /= ID
+      then return False; end if;
+      if ID = Recycle_Ticket then
+         return Item.Role = Table_Allocations.Replacement_Image;
+      end if;
+      return Item.Role = Table_Allocations.Incremental_Tables and then
+        Application_Buffers.Is_Table_Allocation
+          (Application_Buffer_State, Owner, ID, Application_Buffers.Incremental_Tables) and then
+        (not Buffer_Retirement_Is_Context or else
+         Closed_Table_Tickets.Can_Retire (Application_Buffer_State, Owner, ID));
+   end Recycle_May_Release;
+   function Recycle_Exact_Receipt (Owner, ID : Unsigned_64) return Boolean is
+     (ID /= 0 and then ID = Table_Release_Ticket and then Recycle_May_Release (Owner, ID) and then
+      Buffer_Memory.Retirement_Confirmed (Buffer_Pool, Application_Buffers.Ticket_Slot (ID),
+        Application_Buffers.Ticket_Generation (ID)));
+   package Table_Recycling is new Intel_GPU_Table_Provenance.Retirement
+     (Recycle_Exclusion_Ready, Recycle_May_Release, Recycle_Exact_Receipt);
+   procedure Submit_Table_Retirement (Owner, ID : Unsigned_64; Accepted : out Boolean) is
    begin
       Accepted := False;
-      if not Receipt_Ready (Session) then return; end if;
+      if Table_Release_Ticket /= 0 or else not Recycle_May_Release (Owner, ID) or else
+        Buffer_Memory.Pending (Buffer_Pool) then return; end if;
+      Table_Release_Ticket := ID;
+      Buffer_Memory.Retire (Buffer_Pool, Application_Buffers.Ticket_Slot (ID),
+        Application_Buffers.Ticket_Generation (ID), True, Accepted);
+      Last_Table_Retirement := (if Accepted then Retirement_Submitted else Retirement_Rejected);
+   end Submit_Table_Retirement;
+   procedure Poll_Table_Receipt (Owner, ID : Unsigned_64; Complete, Failed : out Boolean) is
+   begin
+      Complete := Recycle_Exact_Receipt (Owner, ID);
+      Failed := not Recycle_May_Release (Owner, ID) or else
+        (not Complete and then not Buffer_Memory.Pending (Buffer_Pool));
+   end Poll_Table_Receipt;
+   procedure Finalize_Table_Receipt (Owner, ID : Unsigned_64; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if not Recycle_Exact_Receipt (Owner, ID) then return; end if;
+      if Buffer_Retirement_Is_Context and then ID = Recycle_Ticket then
+         -- Final context acknowledgment belongs to the parent finalizer after
+         -- the entire ledger has completed. There is no registry row to erase.
+         Accepted := True;
+      else
+         Table_Allocations.Retire
+           (Table_Backing_Registry, Application_Buffers.Ticket_Slot (ID), Owner, ID, Accepted);
+      end if;
+      if Accepted and then ID /= Recycle_Ticket then
+         -- References for this ticket have been swept by the dispatcher. The
+         -- anchor remains held until the complete group retires and reopens.
+         if Buffer_Retirement_Is_Closed_Table or else Buffer_Retirement_Is_Context then
+            Closed_Table_Tickets.Acknowledge (Application_Buffer_State, Owner, ID, True, Accepted);
+         else
+            Application_Buffers.Acknowledge_Private_Retirement
+              (Application_Buffer_State, Owner, ID, True, Accepted);
+         end if;
+      end if;
+      if Accepted then Table_Release_Ticket := 0; end if;
+   end Finalize_Table_Receipt;
+   -- END GROUPED TABLE TRANSPORT
+   procedure Prepare_Table_Retirement
+     (Owner, ID : Unsigned_64; Complete, Failed : out Boolean);
+   package Table_Recycle_Dispatch is new Table_Recycling.Dispatcher
+     (Prepare_Table_Retirement, Submit_Table_Retirement, Poll_Table_Receipt, Finalize_Table_Receipt);
+   Table_Recycle_Control : Table_Recycle_Dispatch.Controller;
+   use type Table_Recycle_Dispatch.State;
+   function Recycle_In_Progress return Boolean is
+     (Table_Recycle_Dispatch.Status (Table_Recycle_Control) = Table_Recycle_Dispatch.Running);
+   procedure Begin_Table_Recycling
+     (Slot : Intel_GPU_Buffer_Backing.Slot; Session, Ticket : Unsigned_64; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if Table_Recycle_Dispatch.Status (Table_Recycle_Control) /= Table_Recycle_Dispatch.Unused then return; end if;
+      Recycle_Context_Index := 0;
+      Recycle_Slot := Slot; Recycle_Session := Session; Recycle_Ticket := Ticket;
+      if Table_Release_Ticket /= 0 then return; end if;
+      if not Recycle_Exclusion_Ready (Session) then return; end if;
+      Table_Recycle_Dispatch.Start (Table_Recycle_Control, Application_State.Updates (Slot).Table_Owners,
+        Session, Application_State.Updates (Slot).Table_Generation, Accepted,
+        Last_Ticket => Ticket);
+      -- Buffer_Memory exposes the current retirement receipt. Keep the group's
+      -- anchor last so the finalizer can validate that exact slot/generation,
+      -- never a preceding child's receipt. Child allocations additionally
+      -- require incremental role/identity and the per-ticket alias preflight.
+   end Begin_Table_Recycling;
+   procedure Advance_Table_Recycling is
+   begin
+      if Recycle_In_Progress then
+         if Recycle_Context_Index in Private_Contexts'Range then
+            Table_Recycle_Dispatch.Step
+              (Table_Recycle_Control, Private_Contexts (Recycle_Context_Index).Table_Owners);
+         else
+            Table_Recycle_Dispatch.Step (Table_Recycle_Control, Application_State.Updates (Recycle_Slot).Table_Owners);
+         end if;
+      end if;
+   end Advance_Table_Recycling;
+   procedure Recycle_Table_Ledger
+     (Slot : Intel_GPU_Buffer_Backing.Slot; Session, Ticket : Unsigned_64;
+      Accepted, Pending : out Boolean)
+   is
+      OK : Boolean;
+   begin
+      Accepted := False; Pending := False;
+      if Slot /= Recycle_Slot or else Session /= Recycle_Session or else Ticket /= Recycle_Ticket
+        or else not Recycle_Receipt_Ready (Session) then return; end if;
       declare
          Item : Application_State.Update_Record renames Application_State.Updates (Slot).all;
       begin
-         -- This receipt is for the current single-allocation replacement path.
-         -- Future multi-allocation trees require the asynchronous group driver.
-         if Intel_GPU_Table_Provenance.Count (Item.Table_Owners) /= Private_Table_Pages
-           or else Private_Table_Pages > 64 then return; end if;
-         -- Account for the exact receipt already received. Never submit a
-         -- second retirement request, and never manufacture a confirmation.
-         R.Recycle_Confirmed (Item.Table_Owners, Session, Item.Table_Generation, Ticket, OK);
+         Pending := Recycle_In_Progress;
+         if Pending or else Table_Recycle_Dispatch.Status (Table_Recycle_Control) /= Table_Recycle_Dispatch.Done
+         then return; end if;
+         Table_Recycle_Dispatch.Reopen (Table_Recycle_Control, Item.Table_Owners, OK);
+         if not OK then return; end if;
+         Application_State.Table_References.Reopen (Item.Table_IDs, Item.Table_Generation,
+           Intel_GPU_Table_Provenance.Generation (Item.Table_Owners), OK);
          if not OK then return; end if;
          Item.Table_Generation := Intel_GPU_Table_Provenance.Generation (Item.Table_Owners);
-         Item.Table_IDs := [others => 0];
+         Recycle_Session := 0; Recycle_Ticket := 0;
          Accepted := True;
       end;
    end Recycle_Table_Ledger;
    procedure Invalidate_Update (OK : out Boolean);
+   function Captured_Mapping_Ready return Boolean is
+      Ticket : Application_Buffers.Ticket;
+   begin
+      if not Removal_Capture.Ready or else not In_Place_Active or else
+        not Update_Exclusive or else Removal_Capture.Index /= Update_Index or else
+        Removal_Capture.Session /= Update_Session or else
+        Removal_Capture.Identity /= Update_Identity or else
+        not Application_VM.Sealed (Private_Contexts (Update_Index).Source) or else
+        Removal_Capture.Root /= Application_VM.Root_DMA (Private_Contexts (Update_Index).Source) or else
+        Removal_Capture.Revision /= Application_VM.Revision (Private_Contexts (Update_Index).Source)
+      then return False; end if;
+      Ticket := Current_Table_Ticket (Update_Index);
+      if Ticket /= Removal_Capture.Ticket then return False; end if;
+      if Ticket = 0 then
+         return Removal_Capture.Generation = Private_Contexts (Update_Index).Table_Generation;
+      end if;
+      declare
+         Slot : constant Intel_GPU_Buffer_Backing.Slot := Application_Buffers.Ticket_Slot (Ticket);
+         Saved : constant Replacement_Record := Replacement_Records.Get (Replacement_Tables, Slot);
+      begin
+         return Saved.Ticket = Ticket and then Saved.Session = Update_Session and then
+           not Saved.Superseded and then Application_State.Has_Update (Slot) and then
+           Saved.Root = Removal_Capture.Root and then
+           Application_State.Updates (Slot).Table_Generation = Removal_Capture.Generation;
+      end;
+   end Captured_Mapping_Ready;
+   function Captured_Table_Mapping (Page : Positive)
+     return Intel_GPU_Table_Provenance.Mapping is
+      M : Intel_GPU_Table_Provenance.Mapping;
+   begin
+      if not Captured_Mapping_Ready or else
+        Page > Application_VM.Used (Private_Contexts (Update_Index).Source)
+      then return (others => 0); end if;
+      if Removal_Capture.Ticket = 0 then
+         M := Initial_Table_Mapping (Update_Index, Update_Session, Page);
+      else
+         M := Replacement_Table_Mapping
+           (Application_Buffers.Ticket_Slot (Removal_Capture.Ticket), Update_Session, Page);
+      end if;
+      -- A resolver can lose authority. Recheck the captured incarnation and
+      -- generation after it returns, not merely the expected physical address.
+      if M.Ticket = 0 or else not Captured_Mapping_Ready or else
+        M.DMA /= Application_VM.Page_DMA (Private_Contexts (Update_Index).Source, Page)
+      then return (others => 0); end if;
+      return M;
+   end Captured_Table_Mapping;
+   function Captured_Leaf_Mapping (Table_DMA : Unsigned_64)
+     return Intel_GPU_Table_Provenance.Mapping is
+   begin
+      if not Captured_Mapping_Ready then return (others => 0); end if;
+      for P in 2 .. Application_VM.Used (Private_Contexts (Update_Index).Source) loop
+         if Application_VM.Page_DMA (Private_Contexts (Update_Index).Source, P) = Table_DMA and then
+           Application_VM.Leaf_Table (Private_Contexts (Update_Index).Source, P)
+         then return Captured_Table_Mapping (P); end if;
+      end loop;
+      return (others => 0);
+   end Captured_Leaf_Mapping;
    procedure Remove_Leaf
      (Table_DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;
       Expected, Replacement : Unsigned_64; Success : out Boolean) is
+      M : Intel_GPU_Table_Provenance.Mapping;
    begin
       Success := False;
       if not In_Place_Active or else not Update_Exclusive then return; end if;
+      M := Captured_Leaf_Mapping (Table_DMA);
+      if M.Ticket = 0 then return; end if;
       Preparing_Index := Update_Index;
       Preparing_Session := Update_Session; Preparing_Identity := Update_Identity;
-      Live_Images.Remove_Leaf
+      Live_Images.Remove_Mapped_Leaf
         (Application_Images_State (Update_Index), Private_Contexts (Update_Index).Source,
-         Removal_Mappings, Table_DMA, Index, Expected, Replacement, Success);
+         (M.CPU, M.DMA), Table_DMA, Index, Expected, Replacement, Success);
       Preparing_Index := 0; Preparing_Session := 0; Preparing_Identity := 0;
    end Remove_Leaf;
    package Live_Removal is new Application_VM.Removal
      (Update_Exclusive, Remove_Leaf, Invalidate_Update);
    Removal_States : array (Private_Contexts'Range) of Live_Removal.Controller;
+   function Captured_Data_Page (Ordinal : Positive) return Unsigned_64 is
+      Delta_Bytes : constant Unsigned_64 := Unsigned_64 (Ordinal - 1) * 4096;
+   begin
+      if not Captured_Mapping_Ready or else
+        Unsigned_64 (Ordinal) > Removal_Bytes / 4096 or else
+        Removal_Offset > Unsigned_64'Last - Delta_Bytes
+      then return 0; end if;
+      return Intel_GPU_Buffer_Reply.Page_Address
+        (Removal_Backing, Removal_Offset + Delta_Bytes);
+   end Captured_Data_Page;
+   procedure Start_Removal_Stream is new Live_Removal.Start_From_Pages (Captured_Data_Page);
    procedure Insert_Leaf
      (Table_DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;
       Expected, Replacement : Unsigned_64; Success : out Boolean) is
+      M : Intel_GPU_Table_Provenance.Mapping;
    begin
       Success := False;
       if not In_Place_Active or else not In_Place_Inserting or else
         not Update_Exclusive then return; end if;
+      M := Captured_Leaf_Mapping (Table_DMA);
+      if M.Ticket = 0 then return; end if;
       Preparing_Index := Update_Index;
       Preparing_Session := Update_Session; Preparing_Identity := Update_Identity;
-      Live_Images.Insert_Leaf
+      Live_Images.Insert_Mapped_Leaf
         (Application_Images_State (Update_Index), Private_Contexts (Update_Index).Source,
-         Removal_Mappings, Table_DMA, Index, Expected, Replacement, Success);
+         (M.CPU, M.DMA), Table_DMA, Index, Expected, Replacement, Success);
       Preparing_Index := 0; Preparing_Session := 0; Preparing_Identity := 0;
    end Insert_Leaf;
    package Live_Insertion is new Application_VM.Insertion
      (Update_Exclusive, Insert_Leaf, Invalidate_Update);
+   function Insertion_Can_Reuse_Stream is new Live_Insertion.Can_Reuse_From_Pages (Captured_Data_Page);
+   procedure Start_Insertion_Stream is new Live_Insertion.Start_From_Pages (Captured_Data_Page);
    -- One serialized publication receipt, not a per-BO or per-context arena.
    Insertion_State : Live_Insertion.Controller renames Application_State.Insertion;
+   Insertion_Metadata_Pending : Boolean := False;
+   Insertion_Metadata_Epoch : Unsigned_64 := 0;
+   function Insertion_Word_Capacity return Positive is
+     (Application_VM.Insertion_Capacity (Insertion_State));
+   procedure Extend_Insertion_Words (Base, Bytes : Unsigned_64; OK : out Boolean) is
+   begin
+      OK := False;
+      if Insertion_Metadata_Pending and then In_Place_Active and then
+        not Update_Held and then Update_Owner
+      then
+         Application_VM.Extend_Insertion_Metadata (Insertion_State, Base, Bytes, OK);
+      end if;
+   end Extend_Insertion_Words;
+   package Insertion_Metadata_Growth is new Intel_GPU_Record_Growth
+     (Intel_GPU_Metadata_Platform.Storage, Insertion_Word_Capacity, Extend_Insertion_Words);
+   Insertion_Metadata : Insertion_Metadata_Growth.Controller;
+   use type Insertion_Metadata_Growth.Phase;
+   procedure Advance_Insertion_Metadata;
+   Directory_Metadata_Pending : Boolean := False;
+   Directory_Metadata_Epoch : Unsigned_64 := 0;
+   Directory_Metadata_Target : Positive := 1;
+   function Directory_Link_Capacity return Positive is
+     (if Update_Index not in Private_Contexts'Range then 1 else
+      Application_VM.Growth_Capacity (Private_Contexts (Update_Index).Growth));
+   procedure Extend_Directory_Links (Base, Bytes : Unsigned_64; OK : out Boolean) is
+   begin
+      OK := False;
+      if Directory_Metadata_Pending and then In_Place_Active and then
+        not Update_Held and then Update_Owner and then
+        Application_VM.Revision (Private_Contexts (Update_Index).Source) = Directory_Metadata_Epoch
+      then
+         Application_VM.Extend_Growth_Metadata
+           (Private_Contexts (Update_Index).Growth, Base, Bytes, OK);
+      end if;
+   end Extend_Directory_Links;
+   package Directory_Metadata_Growth is new Intel_GPU_Record_Growth
+     (Intel_GPU_Metadata_Platform.Storage, Directory_Link_Capacity, Extend_Directory_Links);
+   -- Each context owns its stable CPU reservation for its retained receipt.
+   -- Never reuse one context's metadata backing for another context's plan.
+   Directory_Metadata : array (Private_Contexts'Range) of Directory_Metadata_Growth.Controller;
+   use type Directory_Metadata_Growth.Phase;
+   procedure Advance_Directory_Metadata;
+   procedure Advance_Live_Metadata;
+   Leaf_Publication_Started : Boolean := False;
    procedure Capture_Removal
      (Backing : Intel_GPU_Buffer_Reply.Backing;
       GPU, Offset, Bytes, Revision : Unsigned_64; Accepted : out Boolean)
    is
       Ticket : Application_Buffers.Ticket;
-      Table_Pages : Application_VM.Backing_Pages;
-      Resolved : Boolean;
    begin
       Accepted := False;
+      Removal_Capture := (others => <>);
       if not In_Place_Active or else not Update_Exclusive then return; end if;
+      if not Application_VM.Sealed (Private_Contexts (Update_Index).Source) or else
+        Application_VM.Used (Private_Contexts (Update_Index).Source) = 0
+      then return; end if;
       Ticket := Current_Table_Ticket (Update_Index);
+      Removal_Capture :=
+        (Ready => True, Index => Update_Index, Session => Update_Session,
+         Identity => Update_Identity, Ticket => Ticket,
+         Root => Application_VM.Root_DMA (Private_Contexts (Update_Index).Source),
+         Revision => Revision, Generation => Private_Contexts (Update_Index).Table_Generation);
       if Ticket /= 0 then
          declare
             Slot : constant Intel_GPU_Buffer_Backing.Slot := Application_Buffers.Ticket_Slot (Ticket);
@@ -2365,53 +3101,32 @@ procedure Main is
               Saved.Superseded or else not Application_State.Has_Update (Slot) or else
               Saved.Root /= Application_VM.Root_DMA (Private_Contexts (Update_Index).Source)
             then return; end if;
+            Removal_Capture.Generation := Application_State.Updates (Slot).Table_Generation;
          end;
       end if;
       -- Each ledger lookup reauthenticates its exact table-only allocation
       -- slice. A live tree may span several tickets; a single aggregate
       -- backing descriptor is neither necessary nor sufficient authority.
-      for P in Application_VM.Page_Number loop
-         if Current_Table_Ticket (Update_Index) = 0 then
-            declare
-               M : constant Intel_GPU_Table_Provenance.Mapping :=
-                 Initial_Table_Mapping (Update_Index, Update_Session, P);
-            begin
-               Resolved := M.Ticket /= 0;
-               Removal_Mappings (P) := (M.CPU, M.DMA);
-            end;
-         else
-            declare
-               M : constant Intel_GPU_Table_Provenance.Mapping := Replacement_Table_Mapping
-                 (Application_Buffers.Ticket_Slot (Ticket), Update_Session, P);
-            begin
-               Resolved := M.Ticket /= 0;
-               Removal_Mappings (P) := (M.CPU, M.DMA);
-            end;
-         end if;
-         if not Resolved then return; end if;
-         Table_Pages (P) := Removal_Mappings (P).DMA;
+      -- Preflight every live ordinal, but retain no quota-sized address array.
+      -- The exact mapping is authenticated again immediately before each write.
+      for P in 1 .. Application_VM.Used (Private_Contexts (Update_Index).Source) loop
+         declare
+            M : constant Intel_GPU_Table_Provenance.Mapping := Captured_Table_Mapping (P);
+         begin
+            if M.Ticket = 0 then Removal_Capture.Ready := False; return; end if;
+         end;
       end loop;
-      if not Application_VM.Used_Tables_Match
-        (Private_Contexts (Update_Index).Source, Table_Pages)
-      then return; end if;
       Removal_Backing := Backing;
       Removal_GPU := GPU; Removal_Offset := Offset; Removal_Bytes := Bytes;
       Removal_Revision := Revision; Removal_Invalidated := False;
+      Leaf_Publication_Started := False;
       if In_Place_Inserting then
-         declare
-            Pages : Application_VM.Data_Pages (1 .. Positive (Bytes / 4096));
-         begin
-            for P in Pages'Range loop
-               Pages (P) := Intel_GPU_Buffer_Reply.Page_Address
-                 (Backing, Offset + Unsigned_64 (P - 1) * 4096);
-            end loop;
-            if not Live_Insertion.Can_Reuse (Insertion_State,
-              Private_Contexts (Update_Index).Source, Revision, GPU, Pages,
-              Intel_GPU_ADLN_PPGTT.Write_Back, Intel_GPU_ADLN_PPGTT.Read_Write)
-            then return; end if;
-         end;
+         if not Insertion_Can_Reuse_Stream (Insertion_State,
+           Private_Contexts (Update_Index).Source, Revision, GPU, Natural (Bytes / 4096),
+           Intel_GPU_ADLN_PPGTT.Write_Back, Intel_GPU_ADLN_PPGTT.Read_Write)
+         then Removal_Capture.Ready := False; return; end if;
       end if;
-      Accepted := Update_Exclusive;
+      Accepted := Captured_Mapping_Ready;
    end Capture_Removal;
    procedure Drain_Update (OK : out Boolean) is
    begin
@@ -2421,51 +3136,100 @@ procedure Main is
       OK := Update_Exclusive;
    end Drain_Update;
    procedure Publish_Update (OK : out Boolean) is
-      Mappings : Application_Images.Tables.Mappings;
    begin
       OK := False;
       if not Update_Exclusive then return; end if;
       if In_Place_Active then
-         declare
-            Pages : Application_VM.Data_Pages (1 .. Positive (Removal_Bytes / 4096));
-         begin
-            for P in Pages'Range loop
-               Pages (P) := Intel_GPU_Buffer_Reply.Page_Address
-                 (Removal_Backing, Removal_Offset + Unsigned_64 (P - 1) * 4096);
+         if not In_Place_Inserting then
+            Start_Removal_Stream (Removal_States (Update_Index),
+              Private_Contexts (Update_Index).Source, Removal_Revision, Removal_GPU,
+              Natural (Removal_Bytes / 4096), OK);
+            if not OK then return; end if;
+            while Live_Removal.Publishing (Removal_States (Update_Index)) loop
+               Live_Removal.Step (Removal_States (Update_Index), Private_Contexts (Update_Index).Source);
             end loop;
-            if In_Place_Inserting then
-               Live_Insertion.Publish (Insertion_State,
-                 Private_Contexts (Update_Index).Source, Removal_Revision, Removal_GPU,
-                 Pages, Intel_GPU_ADLN_PPGTT.Write_Back, Intel_GPU_ADLN_PPGTT.Read_Write, OK);
-            else
-               Live_Removal.Publish (Removal_States (Update_Index),
-                 Private_Contexts (Update_Index).Source, Removal_Revision, Removal_GPU, Pages, OK);
-            end if;
-         end;
+            OK := Live_Removal.Published (Removal_States (Update_Index));
+            return;
+         end if;
+         Start_Insertion_Stream (Insertion_State,
+           Private_Contexts (Update_Index).Source, Removal_Revision, Removal_GPU,
+           Natural (Removal_Bytes / 4096), Intel_GPU_ADLN_PPGTT.Write_Back,
+           Intel_GPU_ADLN_PPGTT.Read_Write, OK);
+         if not OK then return; end if;
+         while Live_Insertion.Publishing (Insertion_State) loop
+            Live_Insertion.Step (Insertion_State, Private_Contexts (Update_Index).Source);
+         end loop;
+         OK := Live_Insertion.Published (Insertion_State);
          return;
       end if;
       declare
          Tables : Intel_GPU_Buffer_Reply.Backing renames
            Application_State.Updates (Application_Buffers.Ticket_Slot (Update_Pending)).Tables;
+         Ticket : constant Application_Buffers.Ticket := Update_Pending;
+         Slot : constant Intel_GPU_Buffer_Backing.Slot := Application_Buffers.Ticket_Slot (Ticket);
+         Index : constant Positive := Update_Index;
+         Session : constant Unsigned_64 := Update_Session;
+         Identity : constant Unsigned_64 := Update_Identity;
+         Generation : constant Unsigned_64 := Application_State.Updates (Slot).Table_Generation;
+         function Held return Boolean is
+           (Update_Exclusive and then Update_Pending = Ticket and then Ticket /= 0
+            and then Update_Index = Index and then Update_Session = Session
+            and then Update_Identity = Identity and then Application_State.Has_Update (Slot)
+            and then Application_State.Updates (Slot).Table_Generation = Generation);
+         function Table_Page (Ordinal : Positive) return Application_Images.Tables.Page_Mapping is
+            M : Intel_GPU_Table_Provenance.Mapping;
+         begin
+            if not Held then return (0, 0); end if;
+            M := Replacement_Table_Mapping (Slot, Session, Ordinal);
+            if not Held or else M.Ticket /= Ticket then return (0, 0); end if;
+            return (M.CPU, M.DMA);
+         end Table_Page;
+         procedure Publish_Tables is new Live_Images.Publish_Tables_From_Mappings (Table_Page);
       begin
          if not Tables.Ready then return; end if;
-         for P in Application_VM.Page_Number loop
-            declare
-               M : constant Intel_GPU_Table_Provenance.Mapping := Replacement_Table_Mapping
-                 (Application_Buffers.Ticket_Slot (Update_Pending), Update_Session, P);
-            begin
-               if M.Ticket /= Update_Pending or else M.Ticket = 0 then return; end if;
-               Mappings (P) := (M.CPU, M.DMA);
-            end;
-         end loop;
          Preparing_Index := Update_Index;
          Preparing_Session := Update_Session; Preparing_Identity := Update_Identity;
-         Live_Images.Publish_Tables
+         Publish_Tables
            (Application_Images_State (Update_Index), Private_Contexts (Update_Index).Source,
-            Application_State.Updates (Application_Buffers.Ticket_Slot (Update_Pending)).Candidate, Mappings, OK);
+            Application_State.Updates (Slot).Candidate,
+            Application_VM.Used (Application_State.Updates (Slot).Candidate), OK);
          Preparing_Index := 0; Preparing_Session := 0; Preparing_Identity := 0;
       end;
    end Publish_Update;
+   procedure Advance_Update_Publication (Finished, Success : out Boolean) is
+   begin
+      Finished := True; Success := False;
+      if not Update_Exclusive then return; end if;
+      if not In_Place_Active then
+         Publish_Update (Success);
+         return;
+      end if;
+      if not Leaf_Publication_Started then
+         Leaf_Publication_Started := True;
+         if not In_Place_Inserting then
+            Start_Removal_Stream (Removal_States (Update_Index),
+              Private_Contexts (Update_Index).Source, Removal_Revision, Removal_GPU,
+              Natural (Removal_Bytes / 4096), Success);
+            Finished := not Success;
+            return;
+         end if;
+         Start_Insertion_Stream (Insertion_State,
+           Private_Contexts (Update_Index).Source, Removal_Revision, Removal_GPU,
+           Natural (Removal_Bytes / 4096), Intel_GPU_ADLN_PPGTT.Write_Back,
+           Intel_GPU_ADLN_PPGTT.Read_Write, Success);
+         Finished := not Success;
+         return;
+      end if;
+      if In_Place_Inserting then
+         Live_Insertion.Step (Insertion_State, Private_Contexts (Update_Index).Source);
+         Finished := not Live_Insertion.Publishing (Insertion_State);
+         Success := not Finished or else Live_Insertion.Published (Insertion_State);
+      else
+         Live_Removal.Step (Removal_States (Update_Index), Private_Contexts (Update_Index).Source);
+         Finished := not Live_Removal.Publishing (Removal_States (Update_Index));
+         Success := not Finished or else Live_Removal.Published (Removal_States (Update_Index));
+      end if;
+   end Advance_Update_Publication;
    procedure Invalidate_Update (OK : out Boolean) is
       Attempt : Live_TLB.Attempt;
       Status : Live_TLB.Result;
@@ -2492,6 +3256,7 @@ procedure Main is
    end Resume_Update;
    package Live_VM is new Intel_GPU_VM_Update
      (Update_Owner, Drain_Update, Publish_Update, Invalidate_Update, Resume_Update);
+   procedure Advance_Live_Update is new Live_VM.Advance (Advance_Update_Publication);
    Live_VM_States : array (Private_Contexts'Range) of Live_VM.State;
    procedure Report_Closed_Buffer (Session, ID : Unsigned_64) is
       Stored : constant Intel_GPU_Render_Sessions.Slot_Index :=
@@ -2528,6 +3293,7 @@ procedure Main is
    end Report_Closed_Buffer;
    procedure Finish_Buffer_Retirement is
       Accepted : Boolean := False;
+      Recycling : Boolean := False;
       Response : Message := NULL_MESSAGE;
       Delivered : Unsigned_64;
    begin
@@ -2561,10 +3327,15 @@ procedure Main is
                if Saved.Ticket = Buffer_Retirement_Pending and then Saved.Superseded and then
                  Saved.Session = Buffer_Retirement_Session
                then
-                  Live_Snapshots.Forget_Retired
-                    (Application_State.Updates (Slot).Candidate, Saved.Revision, Saved.Root, True, Accepted);
+                  if Recycle_In_Progress then
+                     Accepted := True;
+                  else
+                     Live_Snapshots.Forget_Retired
+                       (Application_State.Updates (Slot).Candidate, Saved.Revision, Saved.Root, True, Accepted);
+                  end if;
                   if Accepted then
-                     Recycle_Table_Ledger (Slot, Saved.Session, Saved.Ticket, Accepted);
+                     Recycle_Table_Ledger (Slot, Saved.Session, Saved.Ticket, Accepted, Recycling);
+                     if Recycling then return; end if;
                   end if;
                   if Accepted then
                      Application_Buffers.Acknowledge_Private_Retirement
@@ -2696,9 +3467,6 @@ procedure Main is
       Stored : constant Intel_GPU_Render_Sessions.Slot_Index :=
         Intel_GPU_Render_Control.Storage_Index (Render_Admission, Saved.Session);
       Started : Boolean;
-      function Conflicts (Page : Unsigned_64) return Boolean is
-        (Intel_GPU_Buffer_Reply.Overlaps_DMA (Backing, Page, 4096));
-      function Disjoint is new Application_VM.Backing_Disjoint (Conflicts);
    begin
       Next_Table_Retirement :=
         (if Slot = Positive'Min
@@ -2737,31 +3505,36 @@ procedure Main is
       -- Only exact, acknowledged offline receipt disposal can exempt a source.
       -- Failed or merely unsealed preparation must still block retirement.
       Last_Table_Retirement := Alias_Check;
-      for I in Private_Contexts'Range loop
-         if Private_Contexts (I).Attempted and then
-           not Live_Snapshots.Retired (Private_Contexts (I).Source) and then
-           (not Application_VM.Sealed (Private_Contexts (I).Source) or else
-            not Disjoint (Private_Contexts (I).Source))
-         then return; end if;
-      end loop;
+      -- Per-image alias checks now run in Prepare_Table_Retirement after the
+      -- pending gate closes admission, one retained image per service turn.
       Buffer_Retirement_Pending := Saved.Ticket;
       Buffer_Retirement_Session := Saved.Session;
       Buffer_Retirement_Sender := Saved.Sender;
       Buffer_Retirement_Stamp := Saved.Stamp;
       Buffer_Retirement_Has_Reply := False;
       Buffer_Retirement_Is_Private := True;
-      Buffer_Memory.Retire
-        (Buffer_Pool, Slot, Application_Buffers.Ticket_Generation (Saved.Ticket), True, Started);
+      Begin_Table_Recycling (Slot, Saved.Session, Saved.Ticket, Started);
       Last_Table_Retirement :=
-        (if Started then Retirement_Submitted else Retirement_Rejected);
+        (if Started then Retirement_Queued else Retirement_Rejected);
       if not Started then
          Buffer_Memory.Cancel (Buffer_Pool);
          Finish_Buffer_Retirement;
       end if;
    end Poll_Table_Retirement;
-   procedure Execute_Update is new Application_Binding.Handle_Update (Live_VM);
-   procedure Execute_Removal is new Application_Binding.Handle_In_Place (Live_VM, True, Capture_Removal);
-   procedure Execute_Insertion is new Application_Binding.Handle_In_Place (Live_VM, False, Capture_Removal);
+   function Read_Replacement_Page (Page : Application_VM.Page_Number) return Unsigned_64 is
+      M : Intel_GPU_Table_Provenance.Mapping;
+   begin
+      if not Update_Exclusive or else Update_Pending = 0 or else
+        Page > Update_Table_Pages then return 0; end if;
+      M := Replacement_Table_Mapping
+        (Application_Buffers.Ticket_Slot (Update_Pending), Update_Session, Page);
+      return (if Update_Exclusive and then M.Ticket /= 0 then M.DMA else 0);
+   end Read_Replacement_Page;
+   procedure Execute_Update is new Application_Binding.Handle_Update_From_Pages
+     (Read_Replacement_Page, Live_VM);
+   procedure Begin_Removal is new Application_Binding.Begin_In_Place (Live_VM, True, Capture_Removal);
+   procedure Begin_Insertion is new Application_Binding.Begin_In_Place (Live_VM, False, Capture_Removal);
+   procedure Finish_In_Place_Request is new Application_Binding.Finish_In_Place (Live_VM);
    procedure Fail_Update is
    begin
       if Update_Index in Private_Contexts'Range then
@@ -2771,8 +3544,173 @@ procedure Main is
          Retire_Application_Resources (Update_Session);
       end if;
    end Fail_Update;
+   procedure Reply_In_Place (Words : in out Application_Buffers.Words) is
+      Released : Boolean := False;
+      Response : Message := NULL_MESSAGE;
+      Delivered : Unsigned_64;
+   begin
+      if Words (0) = Application_Buffers.OK and then Update_Exclusive then
+         Context_Pool.Release_Work (Contexts, Update_Context, Released, Keep_Disabled => True);
+      end if;
+      if not Released then
+         Words := [Application_Buffers.Unavailable, 1, 0, 0];
+         Publish_Snapshot ("intel-gpu: in-place " &
+           (if In_Place_Inserting then "bind" else "unbind") & " failed; backing retained");
+         Fail_Update;
+      end if;
+      Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+      Response.words := [Words (0), Words (1), Words (2), Words (3)];
+      Delivered := replyCap (Application_Reply_Slot, Response);
+      if Delivered /= 1 then Fail_Update; end if;
+      In_Place_Active := False; Update_Held := False; Update_Index := 0;
+   end Reply_In_Place;
+   procedure Advance_In_Place is
+      Finished : Boolean;
+      Status : Live_VM.Result;
+      Words : Application_Buffers.Words := [Application_Buffers.Unavailable, 1, 0, 0];
+      use type Live_VM.Result;
+   begin
+      if not In_Place_Active then return; end if;
+      if Live_Metadata_Pending then Advance_Live_Metadata; return; end if;
+      if Insertion_Metadata_Pending then Advance_Insertion_Metadata; return; end if;
+      if Directory_Metadata_Pending then Advance_Directory_Metadata; return; end if;
+      if Update_Index not in Private_Contexts'Range then Reply_In_Place (Words); return; end if;
+      Advance_Live_Update (Live_VM_States (Update_Index), Finished, Status);
+      if not Finished then return; end if;
+      if Status = Live_VM.Complete then
+         Finish_In_Place_Request (Application_Buffer_State, Live_VM_States (Update_Index),
+           Update_Session, Update_Sender, Update_Stamp, Shift_Right (Update_Request.words (0), 32), Words);
+      end if;
+      Reply_In_Place (Words);
+   end Advance_In_Place;
+   procedure Finish_Directory_Update (Backing : Intel_GPU_Buffer_Reply.Backing) is
+      OK, Consumed, Started : Boolean := False;
+      Words : Application_Buffers.Words := [Application_Buffers.Unavailable, 1, 0, 0];
+      At_Phase : constant Directory_Phase := Directory_Update;
+      function New_Directory_Page (Ordinal : Positive) return Unsigned_64 is
+         M : Intel_GPU_Table_Provenance.Mapping;
+      begin
+         if not Directory_Exclusive or else Directory_First_ID = 0 or else
+           Ordinal > Update_Table_Pages or else
+           Directory_First_ID > Natural'Last - (Ordinal - 1)
+         then return 0; end if;
+         M := Table_Authority.Lookup
+           (Private_Contexts (Update_Index).Table_Owners, Update_Session,
+            Private_Contexts (Update_Index).Table_Generation,
+            Directory_First_ID + (Ordinal - 1));
+         if not Directory_Exclusive or else M.Ticket /= Update_Pending
+         then return 0; end if;
+         return M.DMA;
+      end New_Directory_Page;
+      procedure Start_Directory_Stream is new Directory_Writer.Start_From_Pages (New_Directory_Page);
+   begin
+      if Directory_Update = No_Directory_Update then return; end if;
+      if Directory_Exclusive and then Intel_GPU_Buffer_Reply.Valid (Backing) and then
+        Update_Table_Pages /= 0 and then
+        Backing.Bytes = Unsigned_64 (Update_Table_Pages) * 4096
+      then
+         case Directory_Update is
+            when Allocate_Directories =>
+               Table_Allocations.Install (Table_Backing_Registry,
+                 Application_Buffers.Ticket_Slot (Update_Pending), Update_Session,
+                 Update_Pending, Table_Allocations.Incremental_Tables, Backing, OK);
+               if OK then
+                  Table_Authority.Rearm (Table_Appends (Update_Index),
+                    Private_Contexts (Update_Index).Table_Owners, OK);
+               end if;
+               if OK then
+                  Table_Authority.Begin_Append (Table_Appends (Update_Index),
+                    Private_Contexts (Update_Index).Table_Owners, Update_Session,
+                    Private_Contexts (Update_Index).Table_Generation,
+                    Update_Pending, 0, Update_Table_Pages, OK);
+               end if;
+               if OK then Directory_Update := Register_Directories; return; end if;
+            when Register_Directories =>
+               Table_Authority.Step (Table_Appends (Update_Index),
+                 Private_Contexts (Update_Index).Table_Owners);
+               if Table_Authority.Status (Table_Appends (Update_Index)) = Table_Authority.Appending
+               then return; end if;
+               if Table_Authority.Status (Table_Appends (Update_Index)) = Table_Authority.Appended then
+                  Directory_First_ID := Table_Authority.First_ID (Table_Appends (Update_Index));
+                  Directory_Update := Start_Directories; return;
+               end if;
+            when Start_Directories =>
+               declare
+                  Source : Application_VM.Image renames Private_Contexts (Update_Index).Source;
+                  Receipt : Directory_Writer.State renames Private_Contexts (Update_Index).Growth;
+                  Root : constant Application_Images.Tables.Page_Mapping :=
+                    Application_Images.Retained_Root (Application_Images_State (Update_Index));
+               begin
+                  OK := Root.DMA = Application_VM.Root_DMA (Source) and then Directory_Owned (Root.DMA);
+                  if OK and then Directory_Writer.Attempted (Receipt) then
+                     Directory_Writer.Rearm (Receipt, Source, Root.DMA, OK);
+                  end if;
+                  if OK then
+                     Start_Directory_Stream (Receipt, Source,
+                       Update_Request.words (2), Update_Request.words (3), Root.DMA,
+                       Update_Table_Pages, OK);
+                  end if;
+                  if OK then Directory_Update := Publish_Directories; return; end if;
+               end;
+            when Publish_Directories =>
+               Directory_Writer.Step (Private_Contexts (Update_Index).Growth,
+                 Private_Contexts (Update_Index).Source);
+               if Directory_Writer.Pending (Private_Contexts (Update_Index).Growth) then return; end if;
+               if Directory_Writer.Published (Private_Contexts (Update_Index).Growth) then
+                  Directory_Update := Invalidate_Directories; return;
+               end if;
+            when Invalidate_Directories =>
+               -- Fresh, transaction-local receipt; never inherit the leaf
+               -- invalidation bit or a previous directory transaction's bit.
+               Invalidate_Update (Directory_Invalidated);
+               if Directory_Invalidated then Directory_Update := Commit_Directories; return; end if;
+            when Commit_Directories =>
+               Directory_Writer.Commit (Private_Contexts (Update_Index).Growth,
+                 Private_Contexts (Update_Index).Source, OK);
+               if OK then
+                  for P in 1 .. Update_Table_Pages loop
+                     Application_State.Table_References.Put
+                       (Private_Contexts (Update_Index).Table_IDs,
+                        Private_Contexts (Update_Index).Table_Generation,
+                        Directory_Previous_Used + P, Directory_First_ID + P - 1, OK);
+                     exit when not OK;
+                  end loop;
+                  if OK then
+                  Application_Buffers.Finish_Private (Application_Buffer_State, Update_Pending, Consumed);
+                  if Consumed then
+                     Publish_Snapshot ("intel-gpu: incremental directories committed pages=" &
+                       Natural'Image (Update_Table_Pages) & " (leaf bind pending)");
+                     -- Keep held work, request and reply. The public VM update
+                     -- generation advances once, after the separate leaf bind.
+                     In_Place_Active := True;
+                     Directory_Update := No_Directory_Update;
+                     Update_Pending := 0; Update_Table_Pages := 0;
+                     Begin_Insertion (Application_Buffer_State,
+                       Private_Contexts (Update_Index).Source, Live_VM_States (Update_Index),
+                       Update_Session, Update_Sender, Update_Stamp, Update_Request.tag.label,
+                       Update_Request.tag.length, Update_Request.tag.flags, Update_Request.tag.reserved,
+                       [Update_Request.words (0), Update_Request.words (1),
+                        Update_Request.words (2), Update_Request.words (3)], Words, Started);
+                     if not Started then Reply_In_Place (Words); end if;
+                     return;
+                  end if;
+                  end if;
+               end if;
+            when No_Directory_Update => null;
+         end case;
+      end if;
+      Publish_Snapshot ("intel-gpu: incremental directories failed stage=" &
+        Directory_Phase'Image (At_Phase) & "; backing retained");
+      -- No rollback, allocation reuse, or replacement fallback after failure.
+      -- Partial ledger installation or uncertain publication quarantines the
+      -- session; only confirmed full consumer retirement can release backing.
+      Application_Buffers.Finish_Private (Application_Buffer_State, Update_Pending, Consumed);
+      Fail_Update;
+      Directory_Update := No_Directory_Update;
+      Update_Pending := 0; Update_Table_Pages := 0;
+      Reply_In_Place (Words);
+   end Finish_Directory_Update;
    procedure Finish_VM_Update (Backing : Intel_GPU_Buffer_Reply.Backing) is
-      Tables : Application_VM.Backing_Pages;
       Response : Application_Buffers.Words := [Application_Buffers.Unavailable, 1, 0, 0];
       Message_Out : Message := NULL_MESSAGE;
       OK, Consumed : Boolean;
@@ -2781,36 +3719,54 @@ procedure Main is
       At_Stage : Finish_Stage := Storage_Check;
    begin
       if Update_Pending = 0 then return; end if;
+      if Offline_Bind_State /= No_Offline_Bind then
+         Finish_Offline_Bind (Backing); return;
+      end if;
+      if Directory_Update /= No_Directory_Update then
+         Finish_Directory_Update (Backing); return;
+      end if;
       if Application_State.Has_Update (Application_Buffers.Ticket_Slot (Update_Pending)) then
          Application_State.Updates (Application_Buffers.Ticket_Slot (Update_Pending)).Tables := Backing;
       end if;
       if Application_State.Has_Update (Application_Buffers.Ticket_Slot (Update_Pending)) and then
-        Backing.Ready and then Backing.Bytes = Private_Table_Pages * 4096 and then
+        Backing.Ready and then Update_Table_Pages /= 0 and then
+        Backing.Bytes = Unsigned_64 (Update_Table_Pages) * 4096 and then
         Update_Exclusive
       then
          declare
             Item : Application_State.Update_Record renames Application_State.Updates
               (Application_Buffers.Ticket_Slot (Update_Pending)).all;
          begin
-            OK := Intel_GPU_Table_Provenance.Count (Item.Table_Owners) = 0;
-            if OK then
-               for P in Application_VM.Page_Number loop
+            -- BEGIN STEPPED REPLACEMENT REGISTRATION
+            OK := Intel_GPU_Table_Provenance.Count (Item.Table_Owners) <= Update_Table_Pages;
+            if OK and then Intel_GPU_Table_Provenance.Count (Item.Table_Owners) = 0 then
+               Table_Allocations.Install (Table_Backing_Registry,
+                 Application_Buffers.Ticket_Slot (Update_Pending), Update_Session, Update_Pending,
+                 Table_Allocations.Replacement_Image, Backing, OK);
+            end if;
+            if OK and then Intel_GPU_Table_Provenance.Count (Item.Table_Owners) < Update_Table_Pages then
+               declare
+                  P : constant Positive := Intel_GPU_Table_Provenance.Count (Item.Table_Owners) + 1;
+               begin
                   Table_Authority.Install (Item.Table_Owners, Update_Session,
                     Item.Table_Generation, P, Update_Pending, Unsigned_64 (P - 1) * 4096, OK);
-                  exit when not OK;
-                  Item.Table_IDs (P) := P;
-                  Tables (P) := Replacement_Table_Mapping
-                    (Application_Buffers.Ticket_Slot (Update_Pending), Update_Session, P).DMA;
-                  OK := Tables (P) /= 0;
-                  exit when not OK;
-               end loop;
+                  if OK then
+                     Application_State.Table_References.Put
+                       (Item.Table_IDs, Item.Table_Generation, P, P, OK);
+                     -- Keep Update_Pending, held work and reply authority.
+                     -- The retained Buffer_Memory result is revisited next
+                     -- turn; no GPU publication occurs during registration.
+                     if OK then return; end if;
+                  end if;
+               end;
             end if;
+            -- END STEPPED REPLACEMENT REGISTRATION
          end;
          if OK then
          At_Stage := Execute;
          Execute_Update
            (Application_Buffer_State, Private_Contexts (Update_Index).Source,
-            Application_State.Updates (Application_Buffers.Ticket_Slot (Update_Pending)).Candidate, Tables,
+            Application_State.Updates (Application_Buffers.Ticket_Slot (Update_Pending)).Candidate, Update_Table_Pages,
             Live_VM_States (Update_Index), Update_Session, Update_Sender, Update_Stamp,
             Update_Request.tag.label, Update_Request.tag.length, Update_Request.tag.flags,
             Update_Request.tag.reserved,
@@ -2872,8 +3828,14 @@ procedure Main is
                   if Old.Ticket /= Previous or else Old.Session /= Update_Session then
                      Fail_Update; Runtime_Fault := True;
                   else
-                     Replacement_Records.Put
-                       (Replacement_Tables, Old_Slot, (Old with delta Superseded => True));
+                     Table_Allocations.Revoke
+                       (Table_Backing_Registry, Old_Slot, Old.Session, Old.Ticket, OK);
+                     if OK then
+                        Replacement_Records.Put
+                          (Replacement_Tables, Old_Slot, (Old with delta Superseded => True));
+                     else
+                        Fail_Update; Runtime_Fault := True;
+                     end if;
                   end if;
                end;
             end if;
@@ -2884,9 +3846,9 @@ procedure Main is
             Current_Table_Ticket (Update_Index) := Update_Pending;
          end;
       end if;
-      Update_Pending := 0; Update_Held := False; Update_Index := 0;
+      Update_Pending := 0; Update_Table_Pages := 0; Update_Held := False; Update_Index := 0;
    end Finish_VM_Update;
-   procedure Handle_VM_Update (From : ProcessID; Msg : Message) is
+   procedure Handle_VM_Update (From : ProcessID; Msg : Message; Saved_Reply : Boolean := False) is
       Session : constant Unsigned_64 := Application_Session (Unsigned_64 (From), Msg.authorityTag);
       Stored : constant Intel_GPU_Render_Sessions.Slot_Index :=
         Intel_GPU_Render_Control.Storage_Index (Render_Admission, Session);
@@ -2899,6 +3861,16 @@ procedure Main is
       type Admission_Stage is (Session_Check, Busy_Check, Owner_Check,
         Request_Check, Reserve_Tables, Hold_Context, Save_Reply);
       At_Stage : Admission_Stage := Session_Check;
+      Reply_Saved : Boolean := Saved_Reply;
+      function Save_Update_Reply return Boolean is
+      begin
+         if not Reply_Saved then
+            Reply_Saved := saveReplyCap (Unsigned_64 (Application_Reply_Slot)) = 1;
+         end if;
+         return Reply_Saved;
+      end Save_Update_Reply;
+      function Send_Update_Reply (Value : Message) return Unsigned_64 is
+        (if Reply_Saved then replyCap (Application_Reply_Slot, Value) else reply (From, Value));
    begin
       if Stored /= 0 then
          At_Stage := Busy_Check;
@@ -2925,6 +3897,39 @@ procedure Main is
                  when others => Application_Buffers.Unavailable);
                if Status = Application_Binding.Eligible then
                   In_Place_Inserting := (Shift_Right (Msg.words (0), 16) and 16#FFFF#) = 0;
+                  if In_Place_Inserting and then
+                    Msg.words (3) / 4096 > Unsigned_64 (Insertion_Word_Capacity)
+                  then
+                     Started := not Saved_Reply;
+                     if Started and then Insertion_Metadata_Growth.Snapshot (Insertion_Metadata).State =
+                       Insertion_Metadata_Growth.Empty
+                     then
+                        Insertion_Metadata_Growth.Configure (Insertion_Metadata,
+                          Unsigned_64 (Application_State.Table_Pages) * 4096,
+                          Application_State.Table_Pages * 512, Started);
+                     end if;
+                     -- Preserve reply authority before making growth non-idle.
+                     -- A failed save leaves the configured controller reusable;
+                     -- a later request rejection replies through the saved cap.
+                     if Started then Started := Save_Update_Reply; end if;
+                     if Started then
+                        Insertion_Metadata_Growth.Request (Insertion_Metadata,
+                          Positive (Msg.words (3) / 4096), Started);
+                     end if;
+                     if Started then
+                        Update_Request := Msg;
+                        Insertion_Metadata_Epoch := Application_VM.Revision (Private_Contexts (Stored).Source);
+                        Update_Held := False;
+                        In_Place_Active := True; Insertion_Metadata_Pending := True;
+                        return;
+                     end if;
+                     -- No GPU work started. Do not enter insertion without storage.
+                     Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+                     Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
+                     Delivered := Send_Update_Reply (Response);
+                     Update_Index := 0;
+                     return;
+                  end if;
                   if not In_Place_Inserting or else Live_Insertion.Range_Reusable
                     (Private_Contexts (Update_Index).Source, Msg.words (2), Msg.words (3)) then
                      -- Edit retained leaves: no replacement
@@ -2933,61 +3938,151 @@ procedure Main is
                      At_Stage := Hold_Context;
                      Context_Pool.Hold_Work (Contexts, Update_Context, Update_Held);
                      if Update_Exclusive then At_Stage := Save_Reply; end if;
-                     if Update_Exclusive and then saveReplyCap (Unsigned_64 (Application_Reply_Slot)) = 1 then
+                     if Update_Exclusive and then Save_Update_Reply then
                         declare
                            Words : Application_Buffers.Words;
-                           Released : Boolean := False;
                         begin
+                           Update_Request := Msg;
                            if In_Place_Inserting then
-                              Execute_Insertion (Application_Buffer_State,
+                              Begin_Insertion (Application_Buffer_State,
                                 Private_Contexts (Update_Index).Source, Live_VM_States (Update_Index),
                                 Session, Update_Sender, Update_Stamp, Msg.tag.label,
                                 Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
-                                [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Words);
+                                [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Words, Started);
                            else
-                              Execute_Removal (Application_Buffer_State,
+                              Begin_Removal (Application_Buffer_State,
                              Private_Contexts (Update_Index).Source, Live_VM_States (Update_Index),
                              Session, Update_Sender, Update_Stamp, Msg.tag.label,
                              Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
-                             [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Words);
+                             [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)], Words, Started);
                            end if;
-                           if Words (0) = Application_Buffers.OK and then Update_Exclusive then
-                              Context_Pool.Release_Work (Contexts, Update_Context, Released, Keep_Disabled => True);
-                           end if;
-                           if not Released then
-                              Words := [Application_Buffers.Unavailable, 1, 0, 0];
-                              Publish_Snapshot ("intel-gpu: in-place " &
-                                (if In_Place_Inserting then "bind" else "unbind") &
-                                " failed; backing retained");
-                              Fail_Update;
-                           end if;
-                           Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
-                           Response.words := [Words (0), Words (1), Words (2), Words (3)];
-                           Delivered := replyCap (Application_Reply_Slot, Response);
-                           if Delivered /= 1 then Fail_Update; end if;
+                           if not Started then Reply_In_Place (Words); end if;
                         end;
-                        In_Place_Active := False; Update_Held := False; Update_Index := 0;
+                        -- Hold, reply capability and captured request survive
+                        -- event-loop turns until commit or terminal failure.
                         return;
                      end if;
                      Fail_Update;
                      In_Place_Active := False; Update_Held := False; Update_Index := 0;
                      Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
                      Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
-                     Delivered := reply (From, Response);
+                     Delivered := Send_Update_Reply (Response);
                      return;
                   end if;
                   At_Stage := Reserve_Tables;
-                  Application_Buffers.Reserve_Private
-                    (Application_Buffer_State, Update_Session, Update_Pending, Reclaimable => True);
+                  declare
+                     Needed : constant Application_Topology.Requirements :=
+                       Application_Topology.Inspect (Private_Contexts (Update_Index).Source,
+                                                    Msg.words (2), Msg.words (3));
+                     -- Replacement pages have their own ledger. Only an
+                     -- incremental initial-root update appends to this one.
+                     Provenance_Demand : constant Natural :=
+                       Intel_GPU_Table_Provenance.Count (Private_Contexts (Stored).Table_Owners) +
+                       (if Current_Table_Ticket (Update_Index) = 0 then Needed.Additional_Tables else 0);
+                     use type Application_Topology.Plan_Status;
+                  begin
+                     Update_Table_Pages := 0;
+                     Directory_Update := No_Directory_Update;
+                     Directory_First_ID := 0; Directory_Invalidated := False;
+                     if Needed.Status = Application_Topology.Ready and then Needed.Fits_Quota and then
+                       Needed.Additional_Tables > 0 and then
+                       (not Needed.Fits_Reserved or else
+                        Needed.Required_Tables > Application_State.Table_References.Capacity
+                          (Private_Contexts (Stored).Table_IDs) or else
+                        (Current_Table_Ticket (Update_Index) = 0 and then
+                         Needed.Additional_Tables > Intel_GPU_Table_Provenance.Capacity
+                          (Private_Contexts (Stored).Table_Owners) -
+                            Intel_GPU_Table_Provenance.Count (Private_Contexts (Stored).Table_Owners)))
+                     then
+                        Started := Provenance_Demand <= 32768;
+                        if Started then Started := Save_Update_Reply; end if;
+                        if Started then
+                           Update_Request := Msg;
+                           Live_Metadata_Epoch := Application_VM.Revision (Private_Contexts (Stored).Source);
+                           Update_Held := False; In_Place_Active := True; Live_Metadata_Pending := True;
+                           Request_Context_Metadata
+                             (Stored, Needed.Required_Tables, Positive'Max (1, Provenance_Demand), Started);
+                           if Started then return; end if;
+                           Live_Metadata_Pending := False; In_Place_Active := False;
+                        end if;
+                        Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+                        Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
+                        Delivered := Send_Update_Reply (Response);
+                        Update_Index := 0;
+                        return;
+                     end if;
+                     if Needed.Status = Application_Topology.Ready and then Needed.Fits_Reserved then
+                        Directory_Previous_Used := Application_VM.Used
+                          (Private_Contexts (Update_Index).Source);
+                        if Current_Table_Ticket (Update_Index) = 0 and then
+                          Needed.Additional_Tables > 0 and then
+                          Needed.Additional_Tables <= Intel_GPU_Table_Provenance.Capacity
+                            (Private_Contexts (Update_Index).Table_Owners) -
+                              Intel_GPU_Table_Provenance.Count (Private_Contexts (Update_Index).Table_Owners)
+                        then
+                           if Needed.Additional_Tables > Directory_Link_Capacity then
+                              Started := True;
+                              if Directory_Metadata_Growth.Snapshot (Directory_Metadata (Stored)).State =
+                                Directory_Metadata_Growth.Empty
+                              then
+                                 Directory_Metadata_Growth.Configure (Directory_Metadata (Stored),
+                                   Unsigned_64 (Application_State.Table_Pages) * 4096,
+                                   Application_State.Table_Pages, Started);
+                              end if;
+                              -- Insertion metadata may already have saved this reply.
+                              -- Save_Update_Reply preserves that original authority.
+                              if Started then Started := Save_Update_Reply; end if;
+                              if Started then
+                                 Directory_Metadata_Growth.Request (Directory_Metadata (Stored),
+                                   Needed.Additional_Tables, Started);
+                              end if;
+                              if Started then
+                                 Update_Request := Msg;
+                                 Directory_Metadata_Epoch := Application_VM.Revision
+                                   (Private_Contexts (Stored).Source);
+                                 Directory_Metadata_Target := Needed.Additional_Tables;
+                                 Update_Held := False;
+                                 In_Place_Active := True; Directory_Metadata_Pending := True;
+                                 return;
+                              end if;
+                              Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+                              Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
+                              Delivered := Send_Update_Reply (Response);
+                              Update_Index := 0;
+                              return;
+                           end if;
+                           Update_Table_Pages := Needed.Additional_Tables;
+                           Directory_Update := Allocate_Directories;
+                        else
+                           Update_Table_Pages := Needed.Required_Tables;
+                        end if;
+                        Application_Buffers.Reserve_Private
+                          (Application_Buffer_State, Update_Session, Update_Pending, Reclaimable => True,
+                           Kind => (if Directory_Update = Allocate_Directories then
+                             Application_Buffers.Incremental_Tables else Application_Buffers.Replacement_Tables));
+                     end if;
+                  end;
                   if Update_Pending /= 0 then
                      At_Stage := Hold_Context;
                      Context_Pool.Hold_Work (Contexts, Update_Context, Update_Held);
                      if Update_Exclusive then At_Stage := Save_Reply; end if;
-                     if Update_Exclusive and then saveReplyCap (Unsigned_64 (Application_Reply_Slot)) = 1 then
+                     if Update_Exclusive and then Save_Update_Reply then
                         Update_Request := Msg;
-                        Update_Storage.Request (Update_Images,
-                          Application_Buffers.Ticket_Slot (Update_Pending),
-                          256 * 1024 * 1024, Started);
+                        if Directory_Update = Allocate_Directories then
+                           Buffer_Memory.Start (Buffer_Pool,
+                             Application_Buffers.Ticket_Slot (Update_Pending), Update_Table_Pages, Started);
+                           if not Started then Finish_Directory_Update ((Ready => False)); end if;
+                           return;
+                        end if;
+                        -- The replacement mirrors need the planned topology,
+                        -- not eager backing for the entire table quota.
+                        Started := False;
+                        if Update_Table_Pages /= 0 then
+                           Update_Storage.Request (Update_Images,
+                             Application_Buffers.Ticket_Slot (Update_Pending),
+                             256 * 1024 * 1024, Started,
+                             Tables => Update_Table_Pages);
+                        end if;
                         Update_Image_Pending := Started;
                         if not Started then Finish_VM_Update ((Ready => False)); end if;
                         return;
@@ -3008,8 +4103,94 @@ procedure Main is
         " handle=" & Unsigned_64'Image (Msg.words (1) and 16#FFFF_FFFF#));
       Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
       Response.words := [Code, 1, 0, 0];
-      Delivered := reply (From, Response);
+      Delivered := Send_Update_Reply (Response);
    end Handle_VM_Update;
+   procedure Advance_Live_Metadata is
+      Response : Message := NULL_MESSAGE;
+      Delivered : Unsigned_64;
+   begin
+      if not Live_Metadata_Pending then return; end if;
+      if Live_Metadata_Owner then
+         Context_Metadata_Growth.Step (Context_Metadata (Update_Index));
+         if not Live_Metadata_Owner then null;
+         elsif Context_Metadata_Growth.State (Context_Metadata (Update_Index)) = Context_Metadata_Growth.Idle then
+            -- Growth only prepares CPU bookkeeping. Re-run normal admission
+            -- with the original reply; GPU hold/publication/TLB gates remain
+            -- downstream and no table ticket exists during this wait.
+            Live_Metadata_Pending := False; In_Place_Active := False;
+            Handle_VM_Update (ProcessID (Update_Sender), Update_Request, Saved_Reply => True);
+            return;
+         elsif Context_Metadata_Growth.State (Context_Metadata (Update_Index)) /= Context_Metadata_Growth.Failed then
+            return;
+         end if;
+      end if;
+      Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+      Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
+      Fail_Update;
+      Delivered := replyCap (Application_Reply_Slot, Response);
+      Live_Metadata_Pending := False; In_Place_Active := False;
+      Update_Held := False; Update_Index := 0;
+   end Advance_Live_Metadata;
+   procedure Advance_Directory_Metadata is
+      Response : Message := NULL_MESSAGE;
+      Delivered : Unsigned_64;
+   begin
+      if not Directory_Metadata_Pending then return; end if;
+      if Update_Owner and then not Update_Held and then
+        Application_VM.Revision (Private_Contexts (Update_Index).Source) = Directory_Metadata_Epoch
+      then
+         Directory_Metadata_Growth.Step (Directory_Metadata (Update_Index));
+         if not Update_Owner or else Update_Held or else
+           Application_VM.Revision (Private_Contexts (Update_Index).Source) /= Directory_Metadata_Epoch
+         then null;
+         elsif Directory_Metadata_Growth.Snapshot (Directory_Metadata (Update_Index)).State =
+           Directory_Metadata_Growth.Idle
+         then
+            if Directory_Link_Capacity >= Directory_Metadata_Target then
+               Directory_Metadata_Pending := False; In_Place_Active := False;
+               Handle_VM_Update (ProcessID (Update_Sender), Update_Request, Saved_Reply => True);
+               return;
+            end if;
+         elsif Directory_Metadata_Growth.Snapshot (Directory_Metadata (Update_Index)).State /=
+           Directory_Metadata_Growth.Failed
+         then return;
+         end if;
+      end if;
+      -- No table ticket or GPU hold was acquired. Retain CPU metadata and
+      -- quarantine on lost authority; never publish from a stale saved request.
+      Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+      Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
+      Fail_Update;
+      Delivered := replyCap (Application_Reply_Slot, Response);
+      Directory_Metadata_Pending := False; In_Place_Active := False;
+      Update_Held := False; Update_Index := 0;
+   end Advance_Directory_Metadata;
+   procedure Advance_Insertion_Metadata is
+      Response : Message := NULL_MESSAGE;
+      Delivered : Unsigned_64;
+   begin
+      if not Insertion_Metadata_Pending then return; end if;
+      if Update_Owner and then not Update_Held and then
+        Application_VM.Revision (Private_Contexts (Update_Index).Source) = Insertion_Metadata_Epoch
+      then
+         Insertion_Metadata_Growth.Step (Insertion_Metadata);
+         if Insertion_Metadata_Growth.Snapshot (Insertion_Metadata).State = Insertion_Metadata_Growth.Idle then
+            Insertion_Metadata_Pending := False; In_Place_Active := False;
+            -- Re-run all admission checks, but consume the original saved reply
+            -- exactly once; never attempt another kernel reply-capability save.
+            Handle_VM_Update (ProcessID (Update_Sender), Update_Request, Saved_Reply => True);
+            return;
+         elsif Insertion_Metadata_Growth.Snapshot (Insertion_Metadata).State /= Insertion_Metadata_Growth.Failed then
+            return;
+         end if;
+      end if;
+      Response.tag := (Application_Binding.Update_Label, 4, 0, 0);
+      Response.words := [Application_Buffers.Unavailable, 1, 0, 0];
+      Fail_Update;
+      Delivered := replyCap (Application_Reply_Slot, Response);
+      Insertion_Metadata_Pending := False; In_Place_Active := False;
+      Update_Held := False; Update_Index := 0;
+   end Advance_Insertion_Metadata;
    -- Cleanup owns its own gate: revoked applications must never regain the
    -- live-session preparation authority merely to detach their mappings.
    Image_Retirement_Index : Natural range 0 .. Intel_GPU_Render_Sessions.Capacity := 0;
@@ -3119,6 +4300,144 @@ procedure Main is
    Context_Retirement_Revision : Unsigned_64 := 0;
    Context_Retirement_Attempted : array (Private_Contexts'Range) of Boolean := [others => False];
    Next_Context_Retirement : Positive := Private_Contexts'First;
+   type Table_Census_Record is record
+      Session, Revision, Generation : Unsigned_64 := 0;
+      Records : Natural := 0;
+      Limit, Cursor, Ledger_Cursor : Positive := 1;
+   end record;
+   Parent_Table_Census : array (Private_Contexts'Range) of Table_Census_Record;
+   procedure Advance_Context_Table_Census
+     (Index : Positive; Session : Unsigned_64; Complete, Accepted : out Boolean)
+   is
+      use type Table_Allocations.Allocation_Role;
+      Item : Table_Allocations.Retained_Allocation;
+      Found, OK : Boolean;
+      Next_Record : Natural;
+   begin
+      Complete := False; Accepted := False;
+      if Index not in Private_Contexts'Range or else Session = 0 then return; end if;
+      declare
+         Census : Table_Census_Record renames Parent_Table_Census (Index);
+         Ledger : Intel_GPU_Table_Provenance.Ledger renames Private_Contexts (Index).Table_Owners;
+         function Current return Boolean is
+           (Census.Session = Session and then
+            Census.Revision = Table_Allocations.Revision (Table_Backing_Registry) and then
+            Census.Limit = Table_Allocations.Capacity (Table_Backing_Registry) and then
+            Census.Generation = Intel_GPU_Table_Provenance.Generation (Ledger) and then
+            Census.Generation = Private_Contexts (Index).Table_Generation and then
+            Census.Records = Intel_GPU_Table_Provenance.Count (Ledger));
+      begin
+         if Private_Contexts (Index).Table_Generation /= Intel_GPU_Table_Provenance.Generation (Ledger)
+         then return; end if;
+         if not Current then
+            Census := (Session => Session,
+              Revision => Table_Allocations.Revision (Table_Backing_Registry),
+              Generation => Private_Contexts (Index).Table_Generation,
+              Records => Intel_GPU_Table_Provenance.Count (Ledger),
+              Limit => Table_Allocations.Capacity (Table_Backing_Registry),
+              Cursor => 1, Ledger_Cursor => 1);
+         end if;
+         Item := Table_Allocations.Retained_At (Table_Backing_Registry, Census.Cursor);
+         if Item.Present and then Item.Session = Session then
+            -- Observations include revoked allocations. Only exact closed
+            -- incremental tickets referenced by THIS ledger may join the group.
+            if Item.Role /= Table_Allocations.Incremental_Tables or else
+              Application_Buffers.Ticket_Slot (Item.Ticket) /= Census.Cursor or else
+              not Closed_Table_Tickets.Can_Retire (Application_Buffer_State, Session, Item.Ticket)
+            then Census := (others => <>); return; end if;
+            Intel_GPU_Table_Provenance.Scan_Ticket
+              (Ledger, Session, Item.Ticket, Census.Ledger_Cursor, Found, Next_Record, OK);
+            if not OK or else not Current or else (not Found and then Next_Record = 0)
+            then Census := (others => <>); return; end if;
+            if not Found then
+               Census.Ledger_Cursor := Next_Record;
+               Accepted := True; return;
+            end if;
+         end if;
+         if not Current then Census := (others => <>); return; end if;
+         Accepted := True;
+         Census.Ledger_Cursor := 1;
+         if Census.Cursor = Census.Limit then
+            Complete := True; Census.Cursor := 1;
+         else Census.Cursor := Census.Cursor + 1; end if;
+      end;
+   end Advance_Context_Table_Census;
+   function Context_Group_Exclusion (Owner : Unsigned_64) return Boolean is
+      Index : constant Natural := Recycle_Context_Index;
+      use type Context_Drain.Retirement_State;
+      use type Application_Maps.Retirement_State;
+   begin
+      return Index in Private_Contexts'Range and then Index = Context_Retirement_Index and then
+        not Runtime_Fault and then Context_Owner and then Buffer_Retirement_Is_Context and then
+        Owner /= 0 and then Owner = Recycle_Session and then Owner = Buffer_Retirement_Session and then
+        Owner = Intel_GPU_Render_Control.Issued_Tag (Render_Admission, Index) and then
+        Recycle_Ticket /= 0 and then Recycle_Ticket = Buffer_Retirement_Pending and then
+        Recycle_Ticket = Private_Contexts (Index).Parent_Ticket and then
+        Application_Buffers.Ticket_Slot (Recycle_Ticket) = Recycle_Slot and then
+        Private_Contexts (Index).Life = Application_Lifetime.Retired and then
+        Current_Table_Ticket (Index) = 0 and then
+        Context_Drain.Observe (Contexts, Owner) = Context_Drain.Deregistered and then
+        Application_Maps.Observe_Retirement (Application_Map_State, Owner) = Application_Maps.Clear and then
+        Context_Tickets.Can_Retire (Application_Buffer_State, Owner, Recycle_Ticket) and then
+        (Live_Snapshots.Retired (Private_Contexts (Index).Source) or else
+         (Application_VM.Sealed (Private_Contexts (Index).Source) and then
+          Application_VM.Revision (Private_Contexts (Index).Source) = Context_Retirement_Revision and then
+          Application_VM.Root_DMA (Private_Contexts (Index).Source) = Context_Retirement_Root.DMA));
+   end Context_Group_Exclusion;
+   procedure Begin_Context_Recycling (Index : Positive; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if Index not in Private_Contexts'Range or else Table_Release_Ticket /= 0 or else
+        Table_Recycle_Dispatch.Status (Table_Recycle_Control) /= Table_Recycle_Dispatch.Unused
+      then return; end if;
+      Recycle_Context_Index := Index;
+      Recycle_Session := Buffer_Retirement_Session; Recycle_Ticket := Buffer_Retirement_Pending;
+      if Recycle_Ticket = 0 then return; end if;
+      Recycle_Slot := Application_Buffers.Ticket_Slot (Recycle_Ticket);
+      if not Recycle_Exclusion_Ready (Recycle_Session) then return; end if;
+      Table_Recycle_Dispatch.Start (Table_Recycle_Control, Private_Contexts (Index).Table_Owners,
+        Recycle_Session, Private_Contexts (Index).Table_Generation, Accepted,
+        Last_Ticket => Recycle_Ticket);
+   end Begin_Context_Recycling;
+   procedure Recycle_Context_Ledger (Index : Positive; Accepted : out Boolean) is
+      function Released (Session : Unsigned_64) return Boolean is
+         use type Context_Drain.Retirement_State;
+         use type Application_Maps.Retirement_State;
+      begin
+         return Index in Private_Contexts'Range and then
+           Index = Context_Retirement_Index and then not Runtime_Fault and then Context_Owner and then
+           Buffer_Retirement_Is_Context and then Session /= 0 and then
+           Session = Buffer_Retirement_Session and then
+           Session = Intel_GPU_Render_Control.Issued_Tag (Render_Admission, Index) and then
+           Private_Contexts (Index).Life = Application_Lifetime.Retired and then
+           Context_Drain.Observe (Contexts, Session) = Context_Drain.Deregistered and then
+           Application_Maps.Observe_Retirement (Application_Map_State, Session) = Application_Maps.Clear;
+      end Released;
+      function Confirmed (Session, Ticket : Unsigned_64) return Boolean is
+        (Released (Session) and then Ticket /= 0 and then
+         Ticket = Buffer_Retirement_Pending and then
+         Ticket = Private_Contexts (Index).Parent_Ticket and then
+         Context_Tickets.Can_Retire (Application_Buffer_State, Session, Ticket) and then
+         Buffer_Memory.Retirement_Confirmed (Buffer_Pool,
+           Application_Buffers.Ticket_Slot (Ticket), Application_Buffers.Ticket_Generation (Ticket)));
+   begin
+      Accepted := False;
+      if Index not in Private_Contexts'Range or else Index /= Recycle_Context_Index or else
+        not Confirmed (Buffer_Retirement_Session, Buffer_Retirement_Pending) or else
+        Table_Recycle_Dispatch.Status (Table_Recycle_Control) /= Table_Recycle_Dispatch.Done
+      then return; end if;
+      Table_Recycle_Dispatch.Reopen
+        (Table_Recycle_Control, Private_Contexts (Index).Table_Owners, Accepted);
+      if Accepted then
+         Application_State.Table_References.Reopen
+           (Private_Contexts (Index).Table_IDs, Private_Contexts (Index).Table_Generation,
+            Intel_GPU_Table_Provenance.Generation (Private_Contexts (Index).Table_Owners), Accepted);
+         if not Accepted then return; end if;
+         Private_Contexts (Index).Table_Generation := Intel_GPU_Table_Provenance.Generation
+           (Private_Contexts (Index).Table_Owners);
+         Recycle_Context_Index := 0; Recycle_Session := 0; Recycle_Ticket := 0;
+      end if;
+   end Recycle_Context_Ledger;
    procedure Finish_Context_Retirement is
       Index : constant Natural := Context_Retirement_Index;
       Accepted : Boolean := False;
@@ -3151,6 +4470,9 @@ procedure Main is
               Image_Retirement_Addresses (Index), Context_Retirement_Root, True, Accepted);
          end if;
          if Accepted then
+            Recycle_Context_Ledger (Index, Accepted);
+         end if;
+         if Accepted then
             Context_Tickets.Acknowledge (Application_Buffer_State,
               Buffer_Retirement_Session, Buffer_Retirement_Pending, True, Accepted);
          end if;
@@ -3181,6 +4503,9 @@ procedure Main is
       Root : constant Application_Images.Tables.Page_Mapping :=
         Application_Images.Retained_Root (Application_Images_State (Index));
       Started : Boolean;
+      Table_Revision : constant Unsigned_64 := Table_Allocations.Revision (Table_Backing_Registry);
+      Census_Complete, Census_OK : Boolean;
+      Census : Table_Census_Record renames Parent_Table_Census (Index);
       use type Image_Retirement.Result;
       function Conflicts (Page : Unsigned_64) return Boolean is
         (Intel_GPU_Buffer_Reply.Overlaps_DMA (Parent, Page, 4096));
@@ -3197,6 +4522,8 @@ procedure Main is
          (not Application_VM.Sealed (Private_Contexts (Index).Source) or else
           Root.DMA /= Application_VM.Root_DMA (Private_Contexts (Index).Source)))
       then return; end if;
+      Advance_Context_Table_Census (Index, Session, Census_Complete, Census_OK);
+      if not Census_OK or else not Census_Complete then return; end if;
       -- Updated VMs need grouped replacement retirement; do not free their
       -- initial scratch/root parent while retained candidates still refer to it.
       for Slot in 1 .. Replacement_Records.Capacity (Replacement_Tables) loop
@@ -3217,7 +4544,12 @@ procedure Main is
       Image_Retirement_First := Image_Retirement_Addresses (Index);
       Started := Image_Retirement_Owner;
       Image_Retirement_Index := 0; Image_Retirement_First := 0;
-      if not Started then return; end if;
+      if not Started or else Table_Allocations.Revision (Table_Backing_Registry) /= Table_Revision or else
+        Intel_GPU_Table_Provenance.Generation (Private_Contexts (Index).Table_Owners) /= Census.Generation or else
+        Intel_GPU_Table_Provenance.Count (Private_Contexts (Index).Table_Owners) /= Census.Records
+      then
+         return;
+      end if;
       Context_Retirement_Attempted (Index) := True;
       Context_Retirement_Index := Index;
       Context_Retirement_Root := Root;
@@ -3227,8 +4559,7 @@ procedure Main is
       Buffer_Retirement_Has_Reply := False;
       Buffer_Retirement_Is_Private := False;
       Buffer_Retirement_Is_Context := True;
-      Buffer_Memory.Retire (Buffer_Pool, Application_Buffers.Ticket_Slot (Buffer_Retirement_Pending),
-        Application_Buffers.Ticket_Generation (Buffer_Retirement_Pending), True, Started);
+      Begin_Context_Recycling (Index, Started);
       if not Started then
          Buffer_Memory.Cancel (Buffer_Pool);
          Finish_Context_Retirement;
@@ -3243,6 +4574,7 @@ procedure Main is
       Saved : constant Replacement_Record := Replacement_Records.Get (Replacement_Tables, Slot);
       Index : constant Natural := Closed_Table_Index;
       Accepted : Boolean := False;
+      Recycling : Boolean := False;
       use type Context_Drain.Retirement_State;
       use type Application_Maps.Retirement_State;
    begin
@@ -3257,9 +4589,13 @@ procedure Main is
         Buffer_Memory.Retirement_Confirmed (Buffer_Pool, Slot,
           Application_Buffers.Ticket_Generation (Saved.Ticket))
       then
-         Live_Snapshots.Forget_Retired (Application_State.Updates (Slot).Candidate,
-           Saved.Revision, Saved.Root, True, Accepted);
-         if Accepted and then Closed_Table_Source_Revision /= 0 then
+         if Recycle_In_Progress then
+            Accepted := True;
+         else
+            Live_Snapshots.Forget_Retired (Application_State.Updates (Slot).Candidate,
+              Saved.Revision, Saved.Root, True, Accepted);
+         end if;
+         if Accepted and then not Recycle_In_Progress and then Closed_Table_Source_Revision /= 0 then
             Accepted := Current_Table_Ticket (Index) = Saved.Ticket;
             if Accepted then
                -- Adopted Source has its own epoch, not Candidate's epoch.
@@ -3268,7 +4604,8 @@ procedure Main is
             end if;
          end if;
          if Accepted then
-            Recycle_Table_Ledger (Slot, Saved.Session, Saved.Ticket, Accepted);
+            Recycle_Table_Ledger (Slot, Saved.Session, Saved.Ticket, Accepted, Recycling);
+            if Recycling then return; end if;
          end if;
          if Accepted then
             Closed_Table_Tickets.Acknowledge (Application_Buffer_State,
@@ -3303,9 +4640,6 @@ procedure Main is
       Source_Revision : Unsigned_64 := 0;
       Started : Boolean;
       use type Image_Retirement.Result;
-      function Conflicts (Page : Unsigned_64) return Boolean is
-        (Intel_GPU_Buffer_Reply.Overlaps_DMA (Backing, Page, 4096));
-      function Disjoint is new Application_VM.Backing_Disjoint (Conflicts);
    begin
       Next_Closed_Table_Retirement :=
         (if Slot = Replacement_Records.Capacity (Replacement_Tables) then 1 else Slot + 1);
@@ -3320,25 +4654,12 @@ procedure Main is
       then return; end if;
       Index := Positive (Stored);
       if Image_Retirement_Results (Index) /= Image_Retirement.Address_Released then return; end if;
-      for I in Private_Contexts'Range loop
-         if I = Index and then Current_Table_Ticket (Index) = Saved.Ticket then
-            if not Application_VM.Sealed (Private_Contexts (I).Source) or else
-              Application_VM.Root_DMA (Private_Contexts (I).Source) /= Saved.Root
-            then return; end if;
-            Source_Revision := Application_VM.Revision (Private_Contexts (I).Source);
-         elsif Private_Contexts (I).Attempted and then
-           not Live_Snapshots.Retired (Private_Contexts (I).Source) and then
-           (not Application_VM.Sealed (Private_Contexts (I).Source) or else
-            not Disjoint (Private_Contexts (I).Source))
+      if Current_Table_Ticket (Index) = Saved.Ticket then
+         if not Application_VM.Sealed (Private_Contexts (Index).Source) or else
+           Application_VM.Root_DMA (Private_Contexts (Index).Source) /= Saved.Root
          then return; end if;
-      end loop;
-      for Other in 1 .. Replacement_Records.Capacity (Replacement_Tables) loop
-         if Other /= Slot and then Application_State.Has_Update (Other) and then
-           Application_State.Updates (Other).Tables.Ready and then
-           (not Application_VM.Sealed (Application_State.Updates (Other).Candidate) or else
-            not Disjoint (Application_State.Updates (Other).Candidate))
-         then return; end if;
-      end loop;
+         Source_Revision := Application_VM.Revision (Private_Contexts (Index).Source);
+      end if;
       Image_Retirement_Index := Index;
       Image_Retirement_First := Image_Retirement_Addresses (Index);
       Started := Image_Retirement_Owner;
@@ -3352,12 +4673,92 @@ procedure Main is
       Buffer_Retirement_Is_Private := False;
       Buffer_Retirement_Is_Context := False;
       Buffer_Retirement_Is_Closed_Table := True;
-      Buffer_Memory.Retire (Buffer_Pool, Slot, Application_Buffers.Ticket_Generation (Saved.Ticket), True, Started);
+      Begin_Table_Recycling (Slot, Saved.Session, Saved.Ticket, Started);
       if not Started then
          Buffer_Memory.Cancel (Buffer_Pool);
          Finish_Closed_Table_Retirement;
       end if;
    end Poll_Closed_Table_Retirement;
+   type Recycle_Preparation_Phase is (Check_Contexts, Check_Images, Prepared);
+   Recycle_Preparation : Recycle_Preparation_Phase := Check_Contexts;
+   Recycle_Preparation_Ticket : Unsigned_64 := 0;
+   Recycle_Preparation_Revision : Unsigned_64 := 0;
+   Recycle_Preparation_Cursor, Recycle_Preparation_Limit : Positive := 1;
+   procedure Prepare_Table_Retirement
+     (Owner, ID : Unsigned_64; Complete, Failed : out Boolean) is
+   begin
+      Complete := False; Failed := True;
+      if not Recycle_May_Release (Owner, ID) then return; end if;
+      if Recycle_Preparation_Ticket /= ID then
+         Recycle_Preparation_Ticket := ID;
+         Recycle_Preparation_Revision := Table_Allocations.Revision (Table_Backing_Registry);
+         Recycle_Preparation := Check_Contexts;
+         Recycle_Preparation_Cursor := 1;
+         Recycle_Preparation_Limit := Replacement_Records.Capacity (Replacement_Tables);
+      end if;
+      if Recycle_Preparation_Limit /= Replacement_Records.Capacity (Replacement_Tables) or else
+        Recycle_Preparation_Revision /= Table_Allocations.Revision (Table_Backing_Registry)
+      then return; end if;
+      declare
+         Backing : constant Intel_GPU_Buffer_Reply.Backing :=
+           (if Buffer_Retirement_Is_Context then Private_Contexts (Recycle_Context_Index).Parent
+            else Application_State.Updates (Recycle_Slot).Tables);
+         Saved : constant Replacement_Record :=
+           (if Buffer_Retirement_Is_Context then
+              (Revision => Context_Retirement_Revision, Root => Context_Retirement_Root.DMA, others => <>)
+            else Replacement_Records.Get (Replacement_Tables, Recycle_Slot));
+         I : constant Positive := Recycle_Preparation_Cursor;
+         function Conflicts (Page : Unsigned_64) return Boolean is
+            Overlaps, Known : Boolean;
+         begin
+            if Buffer_Retirement_Is_Context and then ID = Recycle_Ticket then
+               return Intel_GPU_Buffer_Reply.Overlaps_DMA (Backing, Page, 4096);
+            end if;
+            Table_Allocations.Check_Retained_Range
+              (Table_Backing_Registry, Application_Buffers.Ticket_Slot (ID),
+               Owner, ID, Recycle_Preparation_Revision, Page, 4096, Overlaps, Known);
+            return not Known or else Overlaps;
+         end Conflicts;
+         function Disjoint is new Application_VM.Backing_Disjoint (Conflicts);
+      begin
+         if not Intel_GPU_Buffer_Reply.Valid (Backing) then return; end if;
+         case Recycle_Preparation is
+            when Check_Contexts =>
+               if Private_Contexts (I).Attempted and then
+                 not Live_Snapshots.Retired (Private_Contexts (I).Source)
+               then
+                  if (Buffer_Retirement_Is_Context and then I = Recycle_Context_Index) or else
+                    (Buffer_Retirement_Is_Closed_Table and then I = Closed_Table_Index and then
+                     Current_Table_Ticket (I) = Recycle_Ticket)
+                  then
+                     if not Application_VM.Sealed (Private_Contexts (I).Source) or else
+                       Application_VM.Root_DMA (Private_Contexts (I).Source) /= Saved.Root or else
+                       Application_VM.Revision (Private_Contexts (I).Source) /=
+                         (if Buffer_Retirement_Is_Context then Context_Retirement_Revision
+                          else Closed_Table_Source_Revision)
+                     then return; end if;
+                  elsif not Application_VM.Sealed (Private_Contexts (I).Source) or else
+                    not Disjoint (Private_Contexts (I).Source)
+                  then return; end if;
+               end if;
+               if I = Private_Contexts'Last then
+                  Recycle_Preparation := Check_Images; Recycle_Preparation_Cursor := 1;
+               else Recycle_Preparation_Cursor := I + 1; end if;
+            when Check_Images =>
+               if (Buffer_Retirement_Is_Context or else I /= Recycle_Slot) and then Application_State.Has_Update (I) and then
+                 Application_State.Updates (I).Tables.Ready and then
+                 (not Application_VM.Sealed (Application_State.Updates (I).Candidate) or else
+                  not Disjoint (Application_State.Updates (I).Candidate))
+               then return; end if;
+               if I = Recycle_Preparation_Limit then Recycle_Preparation := Prepared;
+               else Recycle_Preparation_Cursor := I + 1; end if;
+            when Prepared => Complete := True;
+         end case;
+         -- Buffer_Retirement_Pending excludes new work across all these turns.
+         -- Recheck hardware/context exclusion before accepting any progress.
+         Failed := not Recycle_May_Release (Owner, ID);
+      end;
+   end Prepare_Table_Retirement;
    -- Cleanup authority never resolves or reopens an application capability.
    -- This first path covers fully dismantled contexts only. Failed startup or
    -- incomplete table retirement remains retained for a separate recovery path.
@@ -5476,10 +6877,10 @@ begin
                   Started : Boolean := False;
                begin
                   Update_Image_Pending := False;
-                  if Update_Storage.Ready (Update_Images) then
+                  if Update_Storage.Ready (Update_Images) and then Update_Table_Pages /= 0 then
                      Buffer_Memory.Start (Buffer_Pool,
                        Application_Buffers.Ticket_Slot (Update_Pending),
-                       Private_Table_Pages, Started);
+                       Update_Table_Pages, Started);
                   end if;
                   if not Started then Finish_VM_Update ((Ready => False)); end if;
                end;
@@ -5488,7 +6889,8 @@ begin
          if not Update_Image_Pending and then
            (Application_Pending /= 0 or Private_Pending /= 0 or Update_Pending /= 0 or Buffer_Retirement_Pending /= 0) then
             Buffer_Memory.Tick (Buffer_Pool);
-            if not Buffer_Memory.Pending (Buffer_Pool) then
+            Advance_Table_Recycling;
+            if not Buffer_Memory.Pending (Buffer_Pool) and then not Recycle_In_Progress then
                if Buffer_Retirement_Pending /= 0 then
                   Finish_Buffer_Retirement;
                elsif Update_Pending /= 0 then
@@ -5500,6 +6902,7 @@ begin
                end if;
             end if;
          end if;
+         Advance_In_Place;
          Grow_Table_Ledger;
          Complete_Render_Activation;
          Intel_GPU_Diagnostics.Tick;
@@ -5511,7 +6914,7 @@ begin
          -- a queued client cannot obstruct the supervisor acknowledgement.
          Grow_Map_Metadata;
          if not Map_Metadata_Busy then Grow_Metadata; end if;
-         if not Metadata_Busy and then not Map_Metadata_Busy then
+         if not Metadata_Busy and then not Map_Metadata_Busy and then not In_Place_Active then
             Poll_Deferred_Closes (Deferred_Closes);
             Poll_Table_Retirement;
             Poll_Image_Retirement;
@@ -5520,7 +6923,8 @@ begin
             Poll_Teardown_Buffers;
          end if;
          Found := False;
-         if Buffer_Retirement_Pending = 0 and then not Metadata_Busy and then not Map_Metadata_Busy then
+         if Buffer_Retirement_Pending = 0 and then not Metadata_Busy and then not Map_Metadata_Busy
+           and then not In_Place_Active then
             Poll_Service_Request (Sender, Request, Found);
          end if;
          if Found and then Request.tag.label = Intel_GPU_Budget_Protocol.Label then
@@ -5574,7 +6978,7 @@ begin
                Unused := reply (Sender, Reply_Message);
             end;
          end if;
-         if not Metadata_Busy and then not Update_Image_Pending then
+         if not Metadata_Busy and then not Update_Image_Pending and then not In_Place_Active then
             Activity := Wait_For_Activity_Until
               (if Now < Unsigned_64'Last - 10 then Now + 10 else Now);
          end if;

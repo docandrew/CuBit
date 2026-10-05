@@ -22,6 +22,7 @@ mkdir -p "$build"
 # The font helper packages its own Cargo output; do not leak Servo's target dir.
 env -u CARGO_TARGET_DIR make -C "$repo/kernel" ui-fonts-native >/dev/null
 (cd "$repo/kernel" && alr exec -- gprbuild -p -P ../userspace/servo/native/servo_shell_host.gpr -j4)
+python3 "$repo/tests/servo/check_native_mmx.py" "$here/native/build/lib/libservo_shell_host.a"
 export CUBIT_SERVO_NATIVE_DIR="$here/native"
 
 # The main thread runs the embedder's event loop; give it 8 MiB. The stack

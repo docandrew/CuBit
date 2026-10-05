@@ -2,7 +2,8 @@ project Application_State is
    for Source_Dirs use (".", "../../userspace/services/intel-gpu");
    for Object_Dir use "build-application-state";
    for Main use ("application_state_tests.adb", "update_storage_tests.adb",
-                 "update_ledger_failure_tests.adb");
+                 "update_ledger_failure_tests.adb",
+                 "update_storage_revocation_tests.adb", "update_mirror_failure_tests.adb");
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
    end Compiler;

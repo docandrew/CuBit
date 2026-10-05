@@ -28,6 +28,11 @@ package body Owned_Demand_Pages with SPARK_Mode is
       Pages.Present (Index) := True;
       Pages.Backed := Pages.Backed + 1;
    end Commit;
+   procedure Discard (Pages : in out Map; Index : Page_Index) is
+   begin
+      Pages.Present (Index) := False;
+      Pages.Backed := Pages.Backed - 1;
+   end Discard;
    function Valid_Range
      (Pages : Map; First : Page_Index; Count : Page_Count) return Boolean is
      (Count > 0 and then First < Pages.Size

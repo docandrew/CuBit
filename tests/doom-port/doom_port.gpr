@@ -1,0 +1,17 @@
+--  Hosted tests and proofs for DOOM's Ada platform layer
+--  (userspace/ports/doom, run.sh).
+project Doom_Port is
+   for Source_Dirs use (".", "../../userspace/runtime/gnat", "../../userspace/ports/doom");
+   for Source_Files use ("cubit.ads",
+                         "cubit-doom_keys.ads", "cubit-doom_keys.adb",
+                         "cubit-doom_lumps.ads", "cubit-doom_lumps.adb",
+                         "cubit-doom_mixer.ads", "cubit-doom_mixer.adb",
+                         "main.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa");
+   end Compiler;
+end Doom_Port;

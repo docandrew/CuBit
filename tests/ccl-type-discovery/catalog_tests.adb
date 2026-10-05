@@ -122,5 +122,35 @@ begin
       CCL.Catalog.Initialize (Catalog);
       Check (Last (CCL.Catalog.Visible_Types (Catalog)) = Unit_Type);
    end;
+   -- Dotted operation names: a program's port accessor (ld.unix.stderr).
+   -- Well-formed only; a qualified name two interfaces would share is refused.
+   declare
+      type Name_Access is access constant String;
+      Bad_Names : constant array (1 .. 4) of Name_Access :=
+        [new String'(".unix"), new String'("unix."), new String'("unix..err"),
+         new String'("Unix.err")];
+      Program, Overlap : CCL.Catalog.Interface_Descriptor;
+      Operation : CCL.Catalog.Operation_Descriptor;
+      Error : CCL.Catalog.Catalog_Error;
+      Resolved : CCL.Catalog.Resolved_Operation;
+      Found : Boolean;
+   begin
+      for Bad of Bad_Names loop
+         CCL.Catalog.Define_Operation (Bad.all, 0, (others => <>), Operation, Error);
+         Check (Error = CCL.Catalog.Invalid_Operation_Name);
+      end loop;
+      CCL.Catalog.Define_Interface ("ld", 1, 0, [5, 6, 7, 8], Program, Error);
+      CCL.Catalog.Define_Operation ("unix.stderr", 0, (others => <>), Operation, Error);
+      Check (Error = CCL.Catalog.Catalog_Valid);
+      CCL.Catalog.Add_Operation (Program, Operation, Error); Check (Error = CCL.Catalog.Catalog_Valid);
+      CCL.Catalog.Publish (Catalog, Program, Error); Check (Error = CCL.Catalog.Catalog_Valid);
+      CCL.Catalog.Resolve (Catalog, "ld.unix.stderr", Resolved, Found);
+      Check (Found);
+      CCL.Catalog.Define_Interface ("ld.unix", 1, 0, [5, 6, 7, 9], Overlap, Error);
+      CCL.Catalog.Define_Operation ("stderr", 0, (others => <>), Operation, Error);
+      CCL.Catalog.Add_Operation (Overlap, Operation, Error);
+      CCL.Catalog.Publish (Catalog, Overlap, Error);
+      Check (Error = CCL.Catalog.Ambiguous_Name);
+   end;
    Ada.Text_IO.Put_Line ("Catalog type discovery/frontend/VM: PASS" & Checks'Image & " checks");
 end Catalog_Tests;

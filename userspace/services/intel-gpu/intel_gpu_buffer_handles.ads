@@ -31,10 +31,22 @@ package Intel_GPU_Buffer_Handles with SPARK_Mode is
    -- stale/foreign source and a quarantined registry without changing pins.
    procedure Retain_Referenced_Backing
      (Object : in out Registry; Source : Retained_Reference;
-      Destination : in out Retained_Reference; Accepted : out Boolean);
+      Destination : in out Retained_Reference; Accepted : out Boolean;
+      Exclude_Writes : Boolean := False);
+   -- Exclusion is inherited on splits and cannot be downgraded. The trusted
+   -- coordinator must first drain existing writers; this only gates NEW work.
+   function Writes_Excluded (Object : Registry; Session : Session_ID; ID : Handle)
+      return Boolean;
+   function Session_Writes_Excluded (Object : Registry; Session : Session_ID)
+      return Boolean;
    function Referenced_Backing
      (Object : Registry; Reference : Retained_Reference)
       return Intel_GPU_Buffer_Reply.Backing;
+   -- Exact original name/session retained by this token, including after
+   -- name closure. Not new client admission or permission to reopen a name.
+   function Reference_Matches
+     (Object : Registry; Reference : Retained_Reference;
+      Session : Session_ID; ID : Handle) return Boolean;
    procedure Return_Reference
      (Object : in out Registry; Reference : in out Retained_Reference;
       References_Retired : Boolean; Accepted : out Boolean);
@@ -128,9 +140,11 @@ private
       Released : Boolean := False;
       Backing : Intel_GPU_Buffer_Reply.Backing;
       Retained : Natural := 0;
+      Write_Holds : Natural := 0;
    end record;
    type Retained_Reference is limited record
       Active : Boolean := False;
+      Excludes_Writes : Boolean := False;
       Origin : System.Address := System.Null_Address;
       -- Internal stable slot, never a wire handle. Root and exact identity
       -- are still checked; growth never moves or renumbers existing records.
@@ -144,6 +158,9 @@ private
       Available : Natural := Initial_Capacity;
       Storage_Base, Storage_Bytes : Unsigned_64 := 0;
       Last_Issued : Handle := No_Handle;
+      -- Exact sum of per-record write holds. Zero avoids a whole-registry
+      -- scan on ordinary submissions; nonzero still requires session lookup.
+      Total_Write_Holds : Unsigned_64 := 0;
       Failed : Boolean := False;
       Entries : Items;
    end record;

@@ -39,7 +39,11 @@ is
       Catalog_Full,
       Runtime_Binding_In_Descriptor,
       Invalid_Zero_Parameter_Import,
-      Invalid_Host_Contract);
+      Invalid_Host_Contract,
+      --  Another published interface already gives some operation the
+      --  same qualified name (interface "ld", operation "unix.stderr"
+      --  against interface "ld.unix", operation "stderr").
+      Ambiguous_Name);
 
    type Operation_Descriptor is private;
    type Interface_Descriptor is private;

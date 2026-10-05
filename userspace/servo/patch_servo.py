@@ -657,9 +657,22 @@ query_paint = """                let mut update = || {
                     draw();
                 }"""
 
+previous_query_paint = query_paint
+# Opt-in bounded render-stage breadcrumbs for native freeze localization.
+for expression, stage in [
+    ('let (frame, timers, _) = renderer.gpu_profiler.build_samples();', 'queries'),
+    ('renderer.update();', 'update'),
+    ('let results = renderer.render(size, 0 /* buffer_age */);', 'draw'),
+]:
+    query_paint = query_paint.replace(expression,
+         'if time_profiler_channel.0.is_some() { warn!("PENNY-PAINT: begin '+stage+'"); }\n                        '+expression+
+         '\n                        if time_profiler_channel.0.is_some() { warn!("PENNY-PAINT: end '+stage+'"); }', 1)
+
 painter_source = open(painter_path, encoding="utf-8").read()
 if query_paint not in painter_source:
-    if stats_paint in painter_source:
+    if previous_query_paint in painter_source:
+        edit("components/paint/painter.rs", previous_query_paint, query_paint, 1)
+    elif stats_paint in painter_source:
         edit("components/paint/painter.rs", stats_paint, query_paint, 1)
     elif phase_paint in painter_source:
         edit("components/paint/painter.rs", phase_paint, query_paint, 1)
@@ -714,3 +727,12 @@ apply_profiler_output(edit)
 
 from script_profile import apply as apply_script_profile
 apply_script_profile(edit)
+
+
+# Weak-referenceable DOM objects use Rc; their data pointer is not a malloc base.
+edit('components/script_bindings/mem.rs', 'use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};', "use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};\n\n/// Measure an Rc-backed DOM object without consuming the reflector's strong reference.\n/// Safety: `obj` must be the live data pointer produced by Rc::into_raw for T.\n#[expect(unsafe_code)]\npub(crate) unsafe fn malloc_size_of_including_raw_rc_self<T: MallocSizeOf>(\n    ops: &mut MallocSizeOfOps,\n    obj: *const c_void,\n) -> usize {\n    use malloc_size_of::MallocUnconditionalSizeOf;\n    let object = std::mem::ManuallyDrop::new(unsafe { std::rc::Rc::from_raw(obj.cast::<T>()) });\n    object.unconditional_size_of(ops)\n}\n", 1)
+edit('components/script_bindings/import.rs', '    pub(crate) use crate::mem::malloc_size_of_including_raw_self;', '    pub(crate) use crate::mem::{malloc_size_of_including_raw_self, malloc_size_of_including_raw_rc_self};', 1)
+edit('components/script_bindings/codegen/codegen.py', '    mallocSizeOf = f"malloc_size_of_including_raw_self::<{descriptor.concreteType}>"', '    mallocSizeOfFunction = "malloc_size_of_including_raw_rc_self" if descriptor.weakReferenceable else "malloc_size_of_including_raw_self"\n    mallocSizeOf = f"{mallocSizeOfFunction}::<{descriptor.concreteType}>"', 1)
+
+from shutdown_exception import apply as apply_shutdown_exception
+apply_shutdown_exception(edit)

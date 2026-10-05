@@ -90,6 +90,8 @@ package Intel_GPU_Plane_Control with SPARK_Mode is
    end record;
    function Surface_From_Word is new Ada.Unchecked_Conversion
      (Interfaces.Unsigned_32, Surface_Register);
+   function Surface_To_Word is new Ada.Unchecked_Conversion
+     (Surface_Register, Interfaces.Unsigned_32);
    function Live_Surface_From_Word is new Ada.Unchecked_Conversion
      (Interfaces.Unsigned_32, Live_Surface_Register);
    type Stride_Register is record

@@ -411,6 +411,110 @@ package body Directory_Blocks with SPARK_Mode => On is
       Result := Prepared;
    end Remove_In_Place;
 
+   procedure Retarget
+     (Data : in out Block_Data; Size : Block_Length;
+      Maximum_Inode : Unsigned_32; Name : String;
+      New_Inode : Unsigned_32; New_Kind : Unsigned_8;
+      Old : out Unsigned_32; Changed_First, Changed_Last : out Positive;
+      Result : out Prepare_Result)
+   is
+      Position : Byte_Count := 0;
+      Start : Byte_Count;
+      Match_Start : Byte_Count := 0;
+      Found : Boolean := False;
+      Item : Header_Info;
+      Read_Status : Read_Result;
+      Number : Unsigned_32 := 0;
+   begin
+      Old := 0;
+      Changed_First := 1;
+      Changed_Last := 1;
+      Result := Invalid_Name;
+      if not CuBit.Directory_Paths.Valid_Child_Name (Name) then
+         return;
+      end if;
+      Result := Malformed_Block;
+      if Size mod 4 /= 0 then
+         return;
+      end if;
+      while Position < Size loop
+         pragma Loop_Invariant (Position <= Size);
+         pragma Loop_Invariant
+           (if Found then
+              Match_Start + Header_Bytes <= Position and
+              Number in 1 .. Maximum_Inode);
+         pragma Loop_Invariant (Data = Data'Loop_Entry);
+         pragma Loop_Variant (Decreases => Size - Position);
+         Start := Position;
+         Next_Header (Data, Size, Maximum_Inode, Position, Item, Read_Status);
+         exit when Read_Status = End_Of_Block;
+         if Read_Status = Malformed then
+            return;
+         end if;
+         if Item.Inode /= 0 and then Item.Length = Name'Length and then
+           Name_Is (Data, Start, Name)
+         then
+            if Found then
+               return; -- Duplicate names are malformed metadata.
+            end if;
+            Found := True;
+            Match_Start := Start;
+            Number := Item.Inode;
+         end if;
+      end loop;
+      if not Found then
+         Result := Source_Not_Found;
+         return;
+      end if;
+      Put_Inode (Data, Match_Start, New_Inode);
+      Data (Match_Start + 8) := New_Kind;
+      Changed_First := Match_Start + 1;
+      Changed_Last := Match_Start + 8;
+      Old := Number;
+      Result := Prepared;
+   end Retarget;
+
+   procedure Retarget_Parent
+     (Data : in out Block_Data; Size : Block_Length;
+      Maximum_Inode : Unsigned_32; New_Parent : Unsigned_32;
+      Old : out Unsigned_32; Changed_First : out Positive;
+      Result : out Prepare_Result)
+   is
+      Position : Byte_Count := 0;
+      Start : Byte_Count;
+      Item : Header_Info;
+      Read_Status : Read_Result;
+   begin
+      Old := 0;
+      Changed_First := 1;
+      Result := Malformed_Block;
+      if Size mod 4 /= 0 then
+         return;
+      end if;
+      --  ".": a live one-character record.
+      Next_Header (Data, Size, Maximum_Inode, Position, Item, Read_Status);
+      if Read_Status /= Available or else Item.Inode = 0 or else
+        Item.Length /= 1 or else Data (Header_Bytes + 1) /= Character'Pos ('.')
+      then
+         return;
+      end if;
+      --  "..": the next record (where it ends does not matter).
+      Start := Position;
+      Next_Header (Data, Size, Maximum_Inode, Position, Item, Read_Status);
+      Position := Start;
+      if Read_Status /= Available or else Item.Inode = 0 or else
+        Item.Length /= 2 or else
+        Data (Start + Header_Bytes + 1) /= Character'Pos ('.') or else
+        Data (Start + Header_Bytes + 2) /= Character'Pos ('.')
+      then
+         return;
+      end if;
+      Old := Item.Inode;
+      Put_Inode (Data, Start, New_Parent);
+      Changed_First := Start + 1;
+      Result := Prepared;
+   end Retarget_Parent;
+
    procedure Count_Children
      (Data : Block_Data; Size : Block_Length; Maximum_Inode : Unsigned_32;
       Children : out Byte_Count; Result : out Prepare_Result)
@@ -462,4 +566,10 @@ package body Directory_Blocks with SPARK_Mode => On is
       Data (Dot_Span + Header_Bytes + 1) := Character'Pos ('.');
       Data (Dot_Span + Header_Bytes + 2) := Character'Pos ('.');
    end Initial_Block;
+
+   procedure Empty_Block (Data : out Block_Data; Size : Block_Length) is
+   begin
+      Data := [others => 0];
+      Set_Span (Data, 0, Size);
+   end Empty_Block;
 end Directory_Blocks;

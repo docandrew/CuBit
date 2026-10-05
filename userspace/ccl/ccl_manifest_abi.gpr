@@ -8,7 +8,10 @@ project CCL_Manifest_ABI is
       "cubit-tls_scopes.ads", "cubit-tls_scopes.adb",
       "cubit-failures.ads", "cubit-failures.adb",
       "cubit-launch_authority.ads", "cubit-launch_authority.adb",
-      "cubit-file_access.ads", "cubit-file_access.adb");
+      "cubit-file_access.ads", "cubit-file_access.adb",
+      "cubit-launch_arguments.ads", "cubit-launch_arguments.adb",
+      "cubit-launch_grants.ads", "cubit-launch_grants.adb",
+      "cubit-program_descriptions.ads", "cubit-program_descriptions.adb");
    for Object_Dir use "build/manifest-abi";
    package Compiler is
       for Default_Switches ("Ada") use

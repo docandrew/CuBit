@@ -1,0 +1,6 @@
+# Processes test: a child asking for authority its launcher (spawn-check)
+# does not hold; procmgr must refuse to start it.
+(executable-manifest v1
+  (identity "com.cubit.greedy-check")
+  (version "0.1.0")
+  (request-service clock-control read-write clock-control))

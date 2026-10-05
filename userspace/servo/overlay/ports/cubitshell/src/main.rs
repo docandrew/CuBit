@@ -19,6 +19,10 @@ mod bookmarks;
 #[cfg(target_os = "cubit")]
 mod abort_trace;
 #[cfg(target_os = "cubit")]
+mod stderr_capture;
+#[cfg(target_os = "cubit")]
+mod memory_report;
+#[cfg(target_os = "cubit")]
 mod security;
 #[cfg(target_os = "cubit")]
 mod cubit_desktop;
@@ -326,6 +330,7 @@ fn say(message: &str) {
         let line = format!("{message}\n");
         unsafe { cubit_debug_write(line.as_ptr(), line.len()) };
     }
+    #[cfg(not(target_os = "cubit"))]
     eprintln!("{message}");
 }
 
@@ -405,10 +410,15 @@ mod socket_check;
 #[cfg(all(target_os = "cubit", feature = "media"))]
 mod media_init;
 
+mod stall_probe;
+
 fn spin_servo(servo: &servo::Servo) {
+    stall_probe::mark(2);
     #[cfg(all(target_os = "cubit", feature = "media"))]
     media_init::poll();
+    stall_probe::mark(3);
     servo.spin_event_loop();
+    stall_probe::mark(4);
 }
 
 fn main() {
@@ -810,6 +820,7 @@ impl BrowserWindow {
         let mut shown_frames = self.shown_frames;
         let mut request_window = false;
         let mut idle = true;
+        stall_probe::mark(1);
         if let Some(window) = context.window.borrow_mut().as_mut() { window.begin_input(); }
         // The Ada bridge bounds each batch to 32 polls and time-limits fresh
         // input fetches. Cached events can drain within that cap; individual
@@ -1029,6 +1040,7 @@ impl BrowserWindow {
             });
         }
         if self.closed { return (idle, request_window); }
+        stall_probe::mark(5);
         if let Some(window) = context.window.borrow().as_ref() {
             let capacity = window.tab_capacity();
             for id in tabs.projection(capacity.max(1)) {
@@ -1040,6 +1052,7 @@ impl BrowserWindow {
         let tab = tabs.get(active).expect("active tab");
         let webview = &tab.view;
         let delegate = &tab.delegate;
+        stall_probe::mark(6);
         synchronize_window(webview, context, delegate);
         let frames = delegate.frames.get();
         let pending = context.window.borrow().as_ref().is_some_and(|w| w.pending());
@@ -1048,6 +1061,7 @@ impl BrowserWindow {
             context.swgl.make_current();
             let started = Instant::now();
             if render {
+                stall_probe::mark(7);
                 webview.paint();
                 shown_frames = frames;
                 self.painted_size = Some(context.size());
@@ -1055,6 +1069,7 @@ impl BrowserWindow {
             let paint_ms = started.elapsed().as_millis();
             // Chrome-only changes reuse SWGL's current page pixels. Resizes,
             // tab switches and new engine frames still render before copying.
+            stall_probe::mark(8);
             context.present();
             if delegate.perf_check {
                 say(&format!("PENNY-FRAME: render={render} paint_ms={paint_ms} total_ms={}",
@@ -1073,11 +1088,15 @@ impl BrowserWindow {
 
 #[cfg(target_os = "cubit")]
 fn run_window(servo: &servo::Servo, webview: WebView, context: Rc<SwglContext>, delegate: &Rc<Delegate>) {
+    let _stall_probe = stall_probe::Probe::start();
+    let mut memory_reports = memory_report::Probe::new();
+    if delegate.browser_check { eprintln!("PENNY-DIAGNOSTIC: stderr capture ready"); }
     let mut windows = vec![BrowserWindow::new(context, webview, delegate.clone())];
     let measurement_start = Instant::now();
     let mut next_measurement = Duration::ZERO;
     let mut peak_owned = 0;
     loop {
+        memory_reports.poll(servo);
         if delegate.perf_check && measurement_start.elapsed() >= next_measurement {
             let owned = cubit_desktop::memory_owned();
             if owned == u64::MAX {
@@ -1135,6 +1154,7 @@ fn run_window(servo: &servo::Servo, webview: WebView, context: Rc<SwglContext>, 
             if delegate.perf_check { say("CUBITSHELL-WINDOWS: retire-request"); }
             false
         });
+        stall_probe::mark(9);
         if idle { std::thread::park_timeout(Duration::from_millis(1)); }
     }
 }

@@ -1,0 +1,25 @@
+--  Hosted tests and proofs for CuBit.Launch_Arguments (run.sh).
+project Launch_Arguments is
+   Runtime_Src := external ("LAUNCH_SRC", "../../userspace/runtime/gnat");
+   Kernel_Src := external ("LAUNCH_KERNEL_SRC", "../../kernel/src");
+   for Source_Dirs use (".", Runtime_Src, Kernel_Src);
+   for Source_Files use ("cubit.ads", "cubit-launch_arguments.ads",
+                         "cubit-launch_arguments.adb",
+                         "cubit-launch_arguments_c.ads",
+                         "cubit-launch_arguments_c.adb",
+                         "cubit-child_exits.ads", "process_launch.ads",
+                         "cubit-launch_authority.ads",
+                         "cubit-launch_authority.adb",
+                         "cubit-file_access.ads", "cubit-file_access.adb",
+                         "main.adb");
+   for Object_Dir use external ("LAUNCH_OBJ", "build");
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa", "-I-");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=1", "--checks-as-errors=on");
+   end Prove;
+end Launch_Arguments;

@@ -417,6 +417,28 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
       Complete_Checked_Host_Call (Item, State.Core, Result, Good, True);
    end Complete_Object;
 
+   procedure Complete_Text
+     (Item : Validated_Program; State : in out Machine; Response : String; Accepted : Boolean)
+   is
+      Good : Boolean;
+      Result : CCL.VM.Value := (Kind => Text_Value, others => <>);
+      Status : Text_Regions.Operation_Result;
+   begin
+      if not Ready_For_Completion (Item, State) then return; end if;
+      Good := Accepted and then State.Core.Waiting_Result_Kind = Text_Value and then
+        Response'Length <= Item.Content.Imports (State.Core.Waiting_Import).Result_Text_Limit;
+      if Good then
+         Text_Regions.Allocate_String (State.Core.Text, Response, Result.Text, Status);
+         if Status /= Text_Regions.Operation_Ok then
+            State.Core.Waiting := False;
+            State.Core.Terminal := True;
+            State.Core.Terminal_Status := Text_Storage_Exhausted;
+            return;
+         end if;
+      end if;
+      Complete_Checked_Host_Call (Item, State.Core, Result, Good, False);
+   end Complete_Text;
+
    procedure Complete_Stream_View
      (Item : Validated_Program; State : in out Machine; Reply : CCL.Streams.View_Reply)
    is

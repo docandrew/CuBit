@@ -194,8 +194,8 @@ authorize watching all future changes.
 
 ### More than an element type
 
-Applications declare typed ports; authorized runtime configuration wires them.
-The [stream wiring design](stream-wiring.md) describes stable app-facing ports,
+Applications declare typed inlets and outlets; authorized runtime configuration wires them.
+The [stream wiring design](stream-wiring.md) describes stable app-facing inlets and outlets,
 separate reconfiguration/release/acceptance approvals, explicit adapters, and
 generation-bound handoff. Its pure admission model is preparatory, not a live
 replacement for today's stream protocol.

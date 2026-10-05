@@ -1,4 +1,7 @@
 package body Compositor_Glyph_Software with SPARK_Mode is
+   --  Proved free of run-time errors; tests/ui-raster/run.sh re-proves every
+   --  unit carrying this pragma and fails on any unproved check.
+   pragma Suppress (All_Checks);
    use type P.A.Signed;
    function At_Pixel (Where : Placement; Pixel : G.Physical_Point) return Sample is
       X, Y : P.A.Signed;

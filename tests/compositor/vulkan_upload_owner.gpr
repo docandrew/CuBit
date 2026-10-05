@@ -1,0 +1,9 @@
+project Vulkan_Upload_Owner extends "vulkan_owned_source.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use Vulkan_Owned_Source'Source_Files &
+      ("vulkan_upload_owner.ads", "vulkan_upload_owner.adb", "vulkan_upload_ffi.ads", "vulkan_upload_ffi.adb",
+       "vulkan_upload_mock.c", "vulkan_upload_owner_tests.adb");
+   for Object_Dir use "build/vulkan-upload-owner/obj";
+   for Exec_Dir use "build/vulkan-upload-owner";
+   for Main use ("vulkan_upload_owner_tests.adb");
+end Vulkan_Upload_Owner;

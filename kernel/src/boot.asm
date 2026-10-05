@@ -168,6 +168,31 @@ enable_pae:
     or eax, 1 << 16     ; enable FSGSBASE instructions
     mov cr4, eax
 
+    ; XSAVE and AVX, on every CPU (the BSP and each AP pass through here):
+    ; CR4.OSXSAVE, then XCR0 = x87 | SSE, plus AVX when present. User FP/SIMD
+    ; state is saved eagerly with XSAVE (Process.saveUserCPUState). The
+    ; kernel itself is built without SSE/AVX. CPUID clobbers EBX, which holds
+    ; an AP's CPU number, so keep it in EBP meanwhile.
+    mov ebp, ebx
+    mov eax, 1
+    cpuid
+    test ecx, 1 << 26   ; XSAVE
+    jz .no_xsave
+    mov ebx, ecx
+    mov eax, cr4
+    or eax, 1 << 18     ; OSXSAVE
+    mov cr4, eax
+    mov eax, 3          ; XCR0: x87 (bit 0) | SSE (bit 1)
+    test ebx, 1 << 28   ; AVX
+    jz .set_xcr0
+    or eax, 4           ; XCR0: AVX (bit 2)
+.set_xcr0:
+    xor edx, edx
+    xor ecx, ecx        ; XCR0
+    xsetbv
+.no_xsave:
+    mov ebx, ebp
+
 enable_long_mode:
     ; set bits in EFER (extended feature) register
     mov ecx, 0xC0000080

@@ -8,6 +8,6 @@ library project Allocator_Native is
    package Compiler is
       for Default_Switches ("Ada") use
         ("-gnat2022", "-gnatp", "-gnatn2", "-O2", "-g", "-mno-red-zone",
-         "-fno-pic", "-mno-sse", "-mno-sse2", "-I-");
+         "-fno-pic", "-I-");
    end Compiler;
 end Allocator_Native;

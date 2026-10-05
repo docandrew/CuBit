@@ -78,14 +78,15 @@ package body CuBit.File_Access with SPARK_Mode => On is
          declare
             Base : constant Wire_Index :=
               Data'First + (Index - 1) * Wire_Entry_Bytes;
-            Length : constant Natural := Natural (Data (Base + 1));
+            Length : constant Natural :=
+              Natural (Data (Base + 1)) + 256 * Natural (Data (Base + 2));
          begin
             if not Valid_Rights (Data (Base)) or else
               Length > Maximum_Prefix_Bytes
             then
                return;
             end if;
-            for Reserved in 2 .. 7 loop
+            for Reserved in 3 .. 7 loop
                if Data (Base + Reserved) /= 0 then
                   return;
                end if;

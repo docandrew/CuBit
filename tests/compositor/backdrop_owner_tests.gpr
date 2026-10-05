@@ -1,0 +1,7 @@
+project Backdrop_Owner_Tests extends "desktop_backdrop.gpr" is
+   for Source_Dirs use ("desktop-backdrop-mocks") & Desktop_Backdrop'Source_Dirs;
+   for Source_Files use Desktop_Backdrop'Source_Files & ("backdrop_owner_tests.adb", "wallpaper_assets.ads");
+   for Main use ("backdrop_owner_tests.adb");
+   for Object_Dir use "build/desktop-backdrop/owner-test-build/obj";
+   for Exec_Dir use "build/desktop-backdrop/owner-test-build";
+end Backdrop_Owner_Tests;

@@ -1,3 +1,4 @@
+with Ada.Environment_Variables;
 with System.Storage_Elements;
 with Ada.Direct_IO;
 with Ada.Strings.Unbounded;
@@ -75,6 +76,17 @@ package body CuBit.Messages is
       type Region is array (Natural range <>) of Unsigned_8;
       type Region_Access is access Region;
    begin
+      if call = SYSCALL_GETTIME then
+         return 0;
+      elsif call = SYSCALL_INFO and then arg0 = SYSINFO_WALL_CLOCK_OFFSET then
+         declare
+            Clock : constant String :=
+              Ada.Environment_Variables.Value ("CUBIT_TEST_WALL_CLOCK", "");
+         begin
+            return (if Clock = "" then Unsigned_64'Last
+                    else Unsigned_64'Value (Clock) * 1_000);
+         end;
+      end if;
       if call /= SYSCALL_ALLOCATE_OWNED_MEMORY or else arg0 = 0 or else
         arg0 > 16 * 1024 * 1024
       then

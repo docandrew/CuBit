@@ -1,4 +1,5 @@
 with "../../lib/ui/fonts_native.gpr";
+with "../../lib/ui/toolkit_flags.gpr";
 library project Servo_Shell_Host is
    for Languages use ("Ada");
    for Source_Dirs use (".", "../../lib/ui", "../../lib/theme",
@@ -12,9 +13,11 @@ library project Servo_Shell_Host is
    for Library_Standalone use "standard";
    for Library_Auto_Init use "false";
    for Runtime ("Ada") use "../../runtime";
-   package Compiler is
+   -- User-thread FXSAVE/FXRSTOR preserves SSE2. Keep MMX disabled because
+   -- it aliases the x87 stack and generated initializers may omit EMMS.
+   package Compiler extends Toolkit_Flags.Compiler is
       for Default_Switches ("Ada") use
         ("-O2", "-gnat2022", "-gnatwa", "-gnatw.X", "-fstack-usage",
-         "-fomit-frame-pointer", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+         "-fomit-frame-pointer", "-mno-red-zone", "-fno-pic", "-mno-mmx", "-msse", "-msse2");
    end Compiler;
 end Servo_Shell_Host;

@@ -12,10 +12,20 @@ package Intel_GPU_Application_Image.Publication is
    -- Caller holds exclusive device/VA ownership and excludes retained scanout.
    -- Does not register a GuC context or authorize any application request.
    procedure Publish
-     (Object : in out State; Source : VM.Image; Backing : Tables.Mappings;
+     (Object : in out State; Source : VM.Image; Backing : Tables.Mapping_View;
       Allocation : Intel_GPU_Buffer_Reply.Backing;
       Reservations : in out Intel_GPU_GGTT_Reservations.Ledger;
       Status : out Result;
       Scratch : Tables.Scratch_Mappings := [others => (0, 0)]);
    function GPU_Address (Object : State) return Unsigned_64;
+   generic
+      with function Lookup (Ordinal : Positive) return Tables.Page_Mapping;
+   procedure Publish_From_Mappings
+     (Object : in out State; Source : VM.Image; Mapping_Count : Natural;
+      Allocation : Intel_GPU_Buffer_Reply.Backing;
+      Reservations : in out Intel_GPU_GGTT_Reservations.Ledger;
+      Status : out Result;
+      Scratch : Tables.Scratch_Mappings := [others => (0, 0)]);
+   -- Same ledger/publication/quarantine protocol, using the parent's stable
+   -- authenticated mapping resolver instead of a caller-sized array.
 end Intel_GPU_Application_Image.Publication;

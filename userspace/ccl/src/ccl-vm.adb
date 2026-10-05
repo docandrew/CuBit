@@ -311,7 +311,7 @@ is
       function Function_Data (Kind : Value_Kind; Ref : CCL.Types.Type_Reference) return Boolean is
         (case Kind is
             when Integer_Value =>
-               Ref = CCL.Types.Invalid_Type or else CCL.Types.Is_Stream (Candidate.Data_Types, Ref),
+               Ref = CCL.Types.Invalid_Type or else CCL.Types.Is_Handle (Candidate.Data_Types, Ref),
             when Boolean_Value | Text_Value | Character_Value => Ref = CCL.Types.Invalid_Type,
             when Variant_Value => CCL.Types.Is_Scalar_Sum (Candidate.Data_Types, Ref),
             when List_Value => Supported_List (Candidate.Data_Types, Ref),
@@ -376,8 +376,14 @@ is
          declare
             Op : constant Import_Declaration := Candidate.Imports (I - 1);
          begin
-            if not Known_Value_Type (Candidate.Data_Types, Op.Argument, Op.Argument_Data_Type) or else
-              not Known_Value_Type (Candidate.Data_Types, Op.Result, Op.Result_Data_Type)
+            --  Text crosses an import as its characters, within the contract's
+            --  limit; a limit means nothing for any other kind.
+            if not (Known_Value_Type (Candidate.Data_Types, Op.Argument, Op.Argument_Data_Type) or else
+                    (Op.Argument = Text_Value and then Op.Argument_Data_Type = CCL.Types.Invalid_Type)) or else
+              not (Known_Value_Type (Candidate.Data_Types, Op.Result, Op.Result_Data_Type) or else
+                   (Op.Result = Text_Value and then Op.Result_Data_Type = CCL.Types.Invalid_Type)) or else
+              (Op.Argument /= Text_Value and then Op.Argument_Text_Limit /= 0) or else
+              (Op.Result /= Text_Value and then Op.Result_Text_Limit /= 0)
             then Error := Invalid_Data_Type; return; end if;
             if Op.Result = Resource_Value then
                if Op.Result_Type_Tag >= Candidate.Types_Length or else
@@ -418,7 +424,7 @@ is
                  (Candidate.Local_Kinds (L - 1) = Function_Value and then
                   CCL.Types.Is_Function (Candidate.Data_Types, Candidate.Local_Data_Types (L - 1))) or else
                  (Candidate.Local_Kinds (L - 1) = Integer_Value and then
-                  CCL.Types.Is_Stream (Candidate.Data_Types, Candidate.Local_Data_Types (L - 1)))))
+                  CCL.Types.Is_Handle (Candidate.Data_Types, Candidate.Local_Data_Types (L - 1)))))
          then Error := Invalid_Data_Type; return; end if;
          if Candidate.Local_Kinds (L - 1) = Resource_Value and then
            (Candidate.Local_Types (L - 1) >= Candidate.Types_Length or else
@@ -527,7 +533,17 @@ is
                   end;
                end if;
             when Make_Closure =>
-               if not CCL.Types.Is_Function (Candidate.Data_Types, Instruction.Data_Type) or else
+               if Instruction.Data_Type = CCL.Types.Handler_Type then
+                  --  A handler: a function with no captures, as an inert
+                  --  value only a host import takes; Call_Value refuses it.
+                  if Instruction.Alternative /= 0 or else
+                    Instruction.Immediate not in 0 .. Integer_64 (Candidate.Functions_Length) - 1 or else
+                    Candidate.Functions (Function_Index (Instruction.Immediate)).Captures /= 0
+                  then Error := Invalid_Function;
+                  else
+                     Push_Kind (State, Function_Value, Error, CCL.Types.Handler_Type);
+                  end if;
+               elsif not CCL.Types.Is_Function (Candidate.Data_Types, Instruction.Data_Type) or else
                  Instruction.Alternative /= 0 or else
                  Instruction.Immediate not in 0 .. Integer_64 (Candidate.Functions_Length) - 1
                then Error := Invalid_Function;
@@ -656,7 +672,7 @@ is
                Push_Kind (State, Integer_Value, Error);
 
             when Push_Stream =>
-               if not CCL.Types.Is_Stream (Candidate.Data_Types, Instruction.Data_Type) or else
+               if not CCL.Types.Is_Handle (Candidate.Data_Types, Instruction.Data_Type) or else
                  Instruction.Immediate not in 1 .. CCL.Streams.Maximum_Handle or else
                  Instruction.Alternative /= 0
                then Error := Invalid_Data_Type;
@@ -2216,12 +2232,12 @@ is
    procedure Print_Value
      (Arena : Value_Arena; Texts : Text_Regions.Stack; Lists : List_Regions.Stack;
       Types : CCL.Types.Registry; Item : Value; Bound : Print_Bound; Level : Print_Level;
-      Output : in out Result_Text; Good : in out Boolean)
+      Output : in out Literal_Text; Good : in out Boolean)
      with Subprogram_Variant => (Decreases => Bound, Decreases => Level)
    is
       procedure Add (Text : String) is
       begin
-         if Good and then Text'Length <= MAX_RESULT_TEXT - Output.Length then
+         if Good and then Text'Length <= MAX_LITERAL_TEXT - Output.Length then
             Output.Data (Output.Length + 1 .. Output.Length + Text'Length) := Text;
             Output.Length := Output.Length + Text'Length;
          else
@@ -2329,6 +2345,20 @@ is
      (CCL.Types.Describe (Types, CCL.Types.Element_Of (Types, List_Type)).Form = CCL.Types.Product or else
       (CCL.Types.Describe (Types, CCL.Types.Element_Of (Types, List_Type)).Form = CCL.Types.Sum and then
        not CCL.Types.Is_Enumeration (Types, CCL.Types.Element_Of (Types, List_Type))));
+
+   function Import_Text_Of (Region : Text_Regions.Stack; Item : Value) return Import_Text is
+      Text : Import_Text;
+      Status : Text_Regions.Operation_Result;
+   begin
+      if Item.Kind = Text_Value and then Text_Regions.Is_Valid (Region, Item.Text) then
+         Text.Length := Text_Regions.Length (Item.Text);
+         Text_Regions.Copy_To (Region, Item.Text, Text.Data (1 .. Text.Length), Status);
+         if Status /= Text_Regions.Operation_Ok then
+            Text := (others => <>);
+         end if;
+      end if;
+      return Text;
+   end Import_Text_Of;
 
    function Result_Text_Of (Region : Text_Regions.Stack; Item : Value) return Result_Text is
       Text : Result_Text;
@@ -2498,7 +2528,7 @@ is
       begin
          if State.Iteration_Depth > 0 and then
            State.Iterations (State.Iteration_Depth).Active and then
-           State.Iterations (State.Iteration_Depth).Awaiting and then
+           State.Iterations (State.Iteration_Depth).In_Call and then
            State.Iterations (State.Iteration_Depth).At_PC = PC and then
            State.Iterations (State.Iteration_Depth).Frame_Level = State.Frame_Count
          then
@@ -2512,7 +2542,7 @@ is
                Good := Stack_Result = Runtime_Stacks.Stack_Ok and then It.Position >= 1 and then
                  It.Position <= List_Regions.Length (It.Subject.Items);
                if Good then
-                  It.Awaiting := False;
+                  It.In_Call := False;
                   case It.Operation is
                      when L.Each_Items =>
                         List_Regions.Write (State.Lists, It.Built.Items, List_Regions.Array_Index (It.Position),
@@ -2573,7 +2603,7 @@ is
                if Good then
                   State.Iteration_Depth := State.Iteration_Depth + 1;
                   State.Iterations (State.Iteration_Depth) :=
-                    (Active => True, Awaiting => False, At_PC => PC, Frame_Level => State.Frame_Count,
+                    (Active => True, In_Call => False, At_PC => PC, Frame_Level => State.Frame_Count,
                      Operation => Operation, List_Type => Ins.Data_Type, Subject => Subject, Callee => Callee,
                      Accumulator =>
                        (case Operation is
@@ -2658,7 +2688,7 @@ is
                   else
                      Arguments (1) := Argument;
                   end if;
-                  It.Awaiting := True;
+                  It.In_Call := True;
                   State.Iterations (Depth) := It;
                   if State.Frame_Count = MAX_FUNCTIONS then
                      Trap (Call_Depth_Exhausted);
@@ -2894,7 +2924,9 @@ is
                   Good : Boolean := True;
                begin
                   if Ins.Immediate not in 0 .. Integer_64 (Item.Content.Functions_Length) - 1 or else
-                    not CCL.Types.Is_Function (Item.Content.Data_Types, Ins.Data_Type)
+                    not (CCL.Types.Is_Function (Item.Content.Data_Types, Ins.Data_Type) or else
+                         (Ins.Data_Type = CCL.Types.Handler_Type and then
+                          Item.Content.Functions (Function_Index (Ins.Immediate)).Captures = 0))
                   then
                      Trap (Invalid_Bytecode);
                   else
@@ -3897,6 +3929,13 @@ is
                      Status := Invalid_Bytecode;
                      State.Terminal := True;
                      State.Terminal_Status := Invalid_Bytecode;
+                  elsif Operation.Argument = Text_Value and then
+                    (not Text_Regions.Is_Valid (State.Text, Right_Value.Text) or else
+                     Text_Regions.Length (Right_Value.Text) > Operation.Argument_Text_Limit)
+                  then
+                     Status := Host_Argument_Out_Of_Bounds;
+                     State.Terminal := True;
+                     State.Terminal_Status := Host_Argument_Out_Of_Bounds;
                   elsif Item.Content.Imports (Import_Number).Ownership_Argument
                   then
                      -- A terminal completion has already returned its borrow
@@ -3978,6 +4017,9 @@ is
          Steps          => CCL.Execution_Budgets.Steps (State.Execution_Budget),
          Requested_Import => State.Waiting_Import,
          Request_Argument => State.Waiting_Argument,
+         Has_Request_Text => Waiting and then State.Waiting_Argument.Kind = Text_Value and then
+           Text_Regions.Is_Valid (State.Text, State.Waiting_Argument.Text),
+         Request_Text => Import_Text_Of (State.Text, State.Waiting_Argument),
          Result_Text_Value => Result_Text_Of (State.Text, State.Result_Value),
          Has_Result_Text => State.Has_Value and then State.Result_Value.Kind = Text_Value and then
            Text_Regions.Is_Valid (State.Text, State.Result_Value.Text) and then
@@ -4181,7 +4223,7 @@ is
             end if;
          end if;
          if Response.Kind = Integer_Value and then Response.Data_Type = CCL.Types.Invalid_Type and then
-           CCL.Types.Is_Stream (Item.Content.Data_Types, Item.Content.Imports (State.Waiting_Import).Result_Data_Type)
+           CCL.Types.Is_Handle (Item.Content.Data_Types, Item.Content.Imports (State.Waiting_Import).Result_Data_Type)
          then
             Response.Data_Type := Item.Content.Imports (State.Waiting_Import).Result_Data_Type;
          end if;

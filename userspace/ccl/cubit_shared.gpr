@@ -1,6 +1,7 @@
 --  The CuBit runtime units that hosted (Linux) builds share with native
---  ones: the proved ring generics (docs/async-rings.md) and CuBit.Failures
---  (docs/ccl-errors.md). Native builds get them from the runtime library.
+--  ones: the proved ring generics (docs/async-rings.md), CuBit.Failures
+--  (docs/ccl-errors.md), and program descriptions with the launch block and
+--  grant formats they use (docs/ccl-launch-parameters.md). Native builds get them from the runtime library.
 --  It brings the runtime's root package CuBit, so an including project
 --  must not have another (the preview excludes its host/cubit.ads).
 project CuBit_Shared is

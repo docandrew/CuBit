@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with CCL.VM;
 with CCL.Declarations;
 with CCL.Scheduling_Limits;
@@ -43,9 +44,6 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
       Fixed_Count : Natural renames Cat.Fixed_Count;
       Scopes : Scope_Array renames Decl.Scopes;
       Scope_Count : Scope_Count_Type renames Decl.Scope_Count;
-      Streams : Stream_Array renames Decl.Streams;
-      Stream_Order : Stream_Order_Array renames Decl.Stream_Order;
-      Stream_Count : Stream_Count_Type renames Decl.Stream_Count;
       Explicit_No_Requests : Boolean renames Decl.Explicit_No_Requests;
       Match : Match_Kind renames Decl.Match;
       Match_Values : Match_Value_Array renames Decl.Match_Values;
@@ -148,7 +146,7 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
             Cursor := Cursor + 1;
          end loop;
          if Failed then return; end if;
-         CCL.Language.Interpret (Text (First .. Cursor - 1), 1_024, Value);
+         CCL.Evaluation.Evaluate (Text (First .. Cursor - 1), 1_024, Value);
          if Value.Status /= CCL.Language.Succeeded then
             Fail (Invalid_Expression, First);
             Result.Expression_Diagnostic := Value.Diagnostic;
@@ -634,37 +632,6 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
          end if;
       end Add_TLS_Scope;
 
-      procedure Add_Stream is
-         Name : Metadata_Text;
-         Kind : Stream_Kind;
-         Item : Stream_Declaration;
-      begin
-         Atom (Name);
-         if Is_Text (Name, "stdout") then Kind := Standard_Output;
-         elsif Is_Text (Name, "stderr") then Kind := Standard_Error;
-         elsif Is_Text (Name, "log") then Kind := Log_Output;
-         else Fail (Unknown_Stream, Cursor); return;
-         end if;
-         if Streams (Kind).Present then Fail (Duplicate_Stream, Cursor); return; end if;
-         Atom (Name);
-         if Is_Text (Name, "text") then Item.Format := Text_Lines;
-         elsif Is_Text (Name, "raw-bytes") then Item.Format := Raw_Bytes;
-         else Fail (Unknown_Stream, Cursor); return;
-         end if;
-         Expression;
-         if Failed then return; end if;
-         if not CCL.Language.Has_Scalar (Value)
-           or else Value.Result_Value.Kind /= CCL.VM.Integer_Value
-           or else Value.Result_Value.Integer not in 1 .. 256
-         then Fail (Invalid_Stream_Pages, Cursor); return;
-         end if;
-         Item.Pages := Positive (Value.Result_Value.Integer);
-         Item.Present := True;
-         Streams (Kind) := Item;
-         Stream_Count := Stream_Count + 1;
-         Stream_Order (Stream_Count) := Kind;
-      end Add_Stream;
-
       procedure Header (Kind : String) is
          Name : Metadata_Text;
       begin
@@ -809,7 +776,6 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
          elsif Is_Text (Name, "filesystem-scope") then Add_Scope (Filesystem_Domain);
          elsif Is_Text (Name, "config-scope") then Add_Scope (Config_Domain);
          elsif Is_Text (Name, "tls-scope") then Add_TLS_Scope;
-         elsif Is_Text (Name, "stream") then Add_Stream;
          elsif Is_Text (Name, "match-pci-class") then Add_Match (PCI_Class_Match);
          elsif Is_Text (Name, "match-pci-id") then Add_Match (PCI_ID_Match);
          elsif Is_Text (Name, "platform-device") then Add_Match (Platform_Match);

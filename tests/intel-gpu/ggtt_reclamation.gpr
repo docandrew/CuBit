@@ -1,0 +1,17 @@
+project GGTT_Reclamation is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("ggtt_reclamation_tests.adb", "ggtt_retire_tests.adb",
+     "intel_gpu_ggtt_reservations.ads", "intel_gpu_ggtt_reservations.adb",
+     "intel_gpu_ggtt_reservations-reclamation.ads",
+     "intel_gpu_ggtt_reservations-reclamation.adb",
+     "intel_gpu_ggtt_retire.ads", "intel_gpu_ggtt_retire.adb",
+     "intel_gpu_va_placement.ads", "intel_gpu_va_placement.adb",
+     "intel_gpu_ggtt.ads", "intel_gpu_ggtt.adb");
+   for Object_Dir use "build/ggtt-reclamation";
+   for Exec_Dir use "build/ggtt-reclamation";
+   for Main use ("ggtt_reclamation_tests.adb", "ggtt_retire_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-O2");
+   end Compiler;
+end GGTT_Reclamation;

@@ -1,4 +1,7 @@
 package body Client_Glyphs with SPARK_Mode is
+   --  Proved free of run-time errors; tests/ui-raster/run.sh re-proves every
+   --  unit carrying this pragma and fails on any unproved check.
+   pragma Suppress (All_Checks);
    use type C.Token, C.Phase;
    procedure Clear (V : in out View) with Post => not Ready (V) is
    begin

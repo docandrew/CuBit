@@ -1,0 +1,9 @@
+project Lease_Request is
+ for Source_Dirs use (".", "../../userspace/lib/compositor");
+ for Object_Dir use "build/lease-request/obj";
+ for Exec_Dir use "build/lease-request";
+ for Main use ("lease_request_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+ end Compiler;
+end Lease_Request;

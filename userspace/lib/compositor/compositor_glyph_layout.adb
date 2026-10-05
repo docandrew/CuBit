@@ -1,4 +1,7 @@
 package body Compositor_Glyph_Layout with SPARK_Mode is
+   --  Proved free of run-time errors; tests/ui-raster/run.sh re-proves every
+   --  unit carrying this pragma and fails on any unproved check.
+   pragma Suppress (All_Checks);
    function Plan (Scale : G.UI_Scale) return Layout is
       N : constant Positive := Positive (Scale.Numerator);
       D : constant Positive := Positive (Scale.Denominator);

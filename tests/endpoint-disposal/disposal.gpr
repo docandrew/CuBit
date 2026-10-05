@@ -1,0 +1,12 @@
+project Disposal is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use
+     ("disposal_tests.adb", "config.ads", "capabilities.ads",
+      "capabilities-endpoint_disposal.ads", "capabilities-endpoint_disposal.adb");
+   for Object_Dir use "build";
+   for Main use ("disposal_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Disposal;

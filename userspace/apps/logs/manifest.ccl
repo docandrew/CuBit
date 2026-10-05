@@ -1,0 +1,14 @@
+# Logs: every service's records, live. Reads through the log-observer role
+# and names sources through procmgr's process-observer role; publishes
+# only its own "started" record, may change the minimum logstore keeps
+# (log-control), writes nothing else and reaches no network.
+(executable-manifest v1
+  (identity "com.cubit.logs")
+  (version "0.1.0")
+  # One "started" record (CuBit.Logging.Announce).
+  (request-service logstore read-write logstore)
+  (request-service desktop read-write desktop)
+  (request-service log-observer read-write log-observer)
+  # (logs.set-minimum ...) / the Logs "Keep" box: what logstore keeps.
+  (request-service log-control read-write log-control)
+  (request-service process-observer read-write process-observer))

@@ -1,0 +1,10 @@
+project Focus is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("compositor_focus.ads", "compositor_focus.adb", "focus_proof.ads", "focus_tests.adb");
+   for Object_Dir use "build/focus/obj";
+   for Exec_Dir use "build/focus";
+   for Main use ("focus_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Focus;

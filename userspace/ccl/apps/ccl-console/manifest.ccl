@@ -1,23 +1,30 @@
 # The CCL console: a full-window REPL over the same host environment as the
 # Workbench, so it requests the same authority. Requested authority only;
 # the launch path remains in control.
-(executable-manifest v1
-  (identity "com.cubit.ccl-console")
-  (version "0.1.0")
-  # One "started" record (CuBit.Logging.Announce).
-  (request-service logstore read-write logstore)
-  (request-service desktop read-write desktop)
-  (request-service clock read-write clock)
-  # (logs.recent "service"): read-only log observation.
-  (request-service log-observer read-write log-observer)
-  # (logs.set-minimum ...) / the Logs "Keep" box: what logstore keeps.
-  (request-service log-control read-write log-control)
-  # :ps and (proc.list): see what runs, through procmgr's observer role.
-  (request-service process-observer read-write process-observer)
-  # Global non-secret Config read, never write/admin.
-  (request-service config read-write config)
-  (config-scope (rights read) all)
-  (request-service filesystem read-write filesystem)
-  # :files, :save and :load.
-  (filesystem-scope (rights read write create) "@nvme:0/work")
-  (filesystem-scope (rights read write create) "@mem:0/work"))
+(Executable_Manifest
+  identity => "com.cubit.ccl-console"
+  version => "0.1.0"
+  requests => [
+    # One "started" record (CuBit.Logging.Announce).
+    (service "logstore" "logstore")
+    (service "desktop" "desktop")
+    (service "clock" "clock")
+    # (logs.recent "service"): read-only log observation.
+    (service "log-observer" "log-observer")
+    # (logs.set-minimum ...) / the Logs "Keep" box: what logstore keeps.
+    (service "log-control" "log-control")
+    # :ps and (proc.list): see what runs, through procmgr's observer role.
+    (service "process-observer" "process-observer")
+    # Global non-secret Config read, never write/admin.
+    (service "config" "config")
+    (service "filesystem" "filesystem")
+    # Programs it may start with typed parameters (docs/ccl-launch-parameters.md).
+    (service "process-manager" "process-manager")]
+  scopes => [
+    (config-all [File_Right.Read])
+    # :files, :save and :load; and the files handed to programs it starts.
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@mem:0/work")]
+  # Each becomes a CCL interface generated from its description: as.run,
+  # ld.run, and their ports (as.unix.stderr ...).
+  may_launch => [(Launch "as.app") (Launch "ld.app")])

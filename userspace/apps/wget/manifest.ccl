@@ -1,9 +1,9 @@
 # Generated ELF metadata is tied to this executable; requests are not grants.
-(executable-manifest v1
-  (identity "com.cubit.wget")
-  (version "1.1.0")
-  # HTTPS through tls.svc only; no raw network scope. The tls-scope still
-  # needs launch approval for network use before procmgr installs it.
-  (request-service tls read-write tls)
-  (tls-scope "example.com:443")
-  (stream stdout text 4))
+# HTTPS through tls.svc only; no raw network scope. The TLS scope still
+# needs launch approval for network use before procmgr installs it.
+(Executable_Manifest
+  identity => "com.cubit.wget"
+  version => "1.1.0"
+  requests => [(service "tls" "tls")]
+  scopes => [(tls "example.com:443")]
+  outlets => [(Outlet "com.cubit.wget.progress" Element.Text pages => 4)])

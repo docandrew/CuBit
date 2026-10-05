@@ -37,9 +37,7 @@ project Metricsvc is
             "-fstack-usage",
             "-fomit-frame-pointer",
             "-mno-red-zone",
-            "-fno-pic",
-            "-mno-sse",
-            "-mno-sse2"
+            "-fno-pic"
         );
     end Compiler;
 

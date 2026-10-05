@@ -31,19 +31,36 @@
 (type Scope_Place (variant (Everything) (Under String)))
 (type Access_Scope (record (rights (List File_Right)) (place Scope_Place)))
 (type Scope (variant (Filesystem Access_Scope) (Config Access_Scope) (TLS String)))
-(type Stream_Kind (enum Standard_Output Standard_Error Log))
-(type Stream_Format (enum Text Raw_Bytes))
-(type Output_Stream (record (kind Stream_Kind) (format Stream_Format) (pages Integer)))
+# A program's inlets and outlets (docs/ccl-launch-parameters.md, "Inlets and
+# outlets, not stdio"): any number, each with a fully qualified name
+# (unix.stderr, com.cubit.stdlog), an element type, a signal kind and its
+# ring's size. A ported Unix program maps its file descriptors onto them
+# (porting glue).
+(type Element (enum Text Raw_Bytes Integers Log_Records))
+(type Signal (enum Stream One_Shot Level Edge))
+(type Outlet (record (name String) (element Element) (signal Signal Signal.Stream) (pages Integer 1)))
+(type Inlet (record (name String) (element Element) (signal Signal Signal.Stream) (pages Integer 1)))
+(type Descriptor (record (number Integer) (name String)))
 (type PCI_Class (record (class Integer) (subclass Integer) (interface Integer)))
 (type PCI_ID (record (vendor Integer) (device Integer)))
 (type Platform_Device (enum PS2_Controller ATA_Primary CMOS_RTC))
 (type Device_Match (variant (No_Device) (PCI_Class PCI_Class) (PCI_ID PCI_ID) (Platform Platform_Device)))
 (type Launch (record (program String) (invoked_as (List String) [])))
+# A ported tool's typed parameters and how they render into its argv
+# (docs/ccl-launch-parameters.md); file values become delegated places.
+# Pieces are written with the variant's constructors: helper functions would
+# exceed the CCL program's 16-function limit.
+(type Parameter_Kind (enum Input_File Output_File Input_Directory Output_Directory Flag Text))
+(type Parameter (record (name String) (kind Parameter_Kind) (many Boolean false) (required Boolean true)))
+(type Conditional_Literal (record (parameter String) (text String)))
+(type Argument_Piece (variant (Literal String) (Value String) (When_Set Conditional_Literal)))
 (type Executable_Manifest (record
   (identity String) (version String)
-  (requests (List Request) []) (scopes (List Scope) []) (streams (List Output_Stream) [])
+  (requests (List Request) []) (scopes (List Scope) [])
   (device Device_Match Device_Match.No_Device) (requests_none Boolean false)
-  (may_launch (List Launch) [])))
+  (may_launch (List Launch) [])
+  (parameters (List Parameter) []) (arguments (List Argument_Piece) [])
+  (outlets (List Outlet) []) (inlets (List Inlet) []) (descriptors (List Descriptor) [])))
 
 (define (service (name String) (binding String)) Request
   (Request.Service (Service_Request name binding)))

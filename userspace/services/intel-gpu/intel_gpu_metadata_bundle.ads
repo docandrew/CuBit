@@ -13,6 +13,19 @@ package Intel_GPU_Metadata_Bundle is
                   Admitting, Failed);
    type Bundle is limited private;
    function State (Object : Bundle) return Phase;
+   type Requirement is record
+      Records : Natural := 0;
+      Record_Quota : Positive := 1;
+      Byte_Quota : Unsigned_64 := 0;
+   end record;
+   type Requirements is array (Table_ID) of Requirement;
+   procedure Request
+     (Object : in out Bundle; Count : Positive; Demand : Requirements;
+      Accepted : out Boolean);
+   -- Count is the final admission token/target, not each store's capacity.
+   -- Each store may have a different demand and stable reservation byte quota.
+   -- All quotas validate before any mutation or allocation. Caller retains the
+   -- authenticated request/epoch; these values convey no allocation authority.
    procedure Request
      (Object : in out Bundle; Count, Record_Quota : Positive;
       Per_Table_Bytes : Unsigned_64; Accepted : out Boolean);
@@ -26,7 +39,7 @@ private
       Status : Phase := Idle;
       Target : Positive := 1;
       Current : Table_ID := Table_ID'First;
-      Byte_Limit : Unsigned_64 := 0;
+      Plan : Requirements := [others => (others => <>)];
       Items : Arenas;
    end record;
 end Intel_GPU_Metadata_Bundle;

@@ -85,3 +85,4 @@ userspace/apps/display-check/build-gpu-clear-failure/
 /tests/intel-gpu/prefix-transport.*/
 /tests/intel-gpu/transport-proof-tmp.*/
 /tests/intel-gpu/demand-backing.*/
+/kernel/desktop-logs/

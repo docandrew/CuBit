@@ -1,4 +1,4 @@
-# Typed application ports and authorized runtime wiring
+# Typed application inlets and outlets and authorized runtime wiring
 
 Status: design plus a pure, hosted-tested admission model. This is not a live
 connection registry, new syscall, CCL syntax, or replacement for current streams.
@@ -7,9 +7,9 @@ See [typed IPC](typed-ipc.md), [policy roadmap](authority-policy-roadmap.md), an
 
 ## Application contract
 
-Applications declare named typed input/output ports. Authorized runtime
+Applications declare named typed inlets and outlets. Authorized runtime
 configuration determines their connections. The application emits to or consumes
-from its assigned port; it need not discover a global collector, mixer, or backend.
+from its assigned outlet or inlet; it need not discover a global collector, mixer, or backend.
 Names such as `stdout` and `stdlog` are conventions, not ambient authority or Unix
 file descriptors. An ordinary settings UI, CCL, a graphical connection editor,
 and deployment configuration should all invoke the same authorized operations.
@@ -42,11 +42,11 @@ Each proposed connection requires:
 The latter approvals come from established resource/installation/session policy,
 not self-approval by untrusted endpoints. They need not involve a prompt for each
 connection. Curated defaults can attach stdlog to logstore and audio to the mixer
-at launch. A manifest requests authority; declaring a port does not approve data
+at launch. A manifest requests authority; declaring an outlet does not approve data
 disclosure, collection, or reconfiguration. Discovery and inspection are scoped.
 
 A UI requests a change with its own scoped authority. Human identity, clicking
-Allow, possession of port names, and compatible types do not supply that authority.
+Allow, possession of outlet and inlet names, and compatible types do not supply that authority.
 Audio routing authority must not silently include release to a network uploader.
 Every fan-out edge needs its own approval before granting access to shared memory.
 
@@ -62,14 +62,14 @@ exfiltration through all other authorized channels.
 
 ## Identity, approval and atomic handoff
 
-A stable app-facing port handle need not imply a permanent intermediary copying
+A stable app-facing outlet or inlet handle need not imply a permanent intermediary copying
 every payload. The control plane can establish direct shared-memory transport.
-Port references identify a process instance (not just a recycled PID), local port,
+Connector references (an inlet or an outlet) identify a process instance (not just a recycled PID), local connector,
 and generation. Binding references identify a registry object and current
 generation. Selected profiles, endpoint identity and direction are part of the
 approved request; changing a buffer budget also requires new admission.
 
-The implemented `CuBit.Protocols.Stream_Connections.Check` accepts resolved port
+The implemented `CuBit.Protocols.Stream_Connections.Check` accepts resolved inlet and outlet
 descriptors and three trusted approval records. Every approval is bound to the
 controller instance, binding identity/generation, both endpoint references, and
 their selected profiles/directions. Wrong or absent authority is rejected before
@@ -97,7 +97,7 @@ new requests to the new backend while admitted old requests complete. HTTP reque
 routing also needs response/reply ownership, cancellation and retry semantics;
 it is not modeled fully by a one-way stream alone.
 
-## Unconnected ports and delivery
+## Unconnected inlets and outlets and delivery
 
 Define required versus optional attachment and the unconnected behavior explicitly:
 reject before accepting, buffer within a budget, or discard with loss accounting.
@@ -159,7 +159,7 @@ One-shot commands use typed calls, not a stream-specific signal subsystem; see
 3. Single-host binding registry with atomic generation checks and bounded resource
    admission; app-facing emit/read API and automatic approved startup attachments.
 4. Connect the hosted text-to-log adapter to a native end-to-end demonstration.
-5. CCL port descriptors and connection operations using the same implementation.
+5. CCL inlet and outlet descriptors and connection operations using the same implementation.
 6. Inspection/editing UI, then domain-specific audio and request-routing handoffs.
 
 No live log API has been removed by this preparatory work. The isolated log broker

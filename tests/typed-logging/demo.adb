@@ -12,7 +12,7 @@ procedure Demo is
    Text_Binding : Binding (1);
    Log_Binding : Binding (2);
    Adapter : CuBit.Text_To_Log.Adapter;
-   Source, Converter_Input, Converter_Output, Collector : Port_Descriptor;
+   Source, Converter_Input, Converter_Output, Collector : Connector_Descriptor;
    Input_Request, Output_Request, Direct : Request;
    Outcome : Result;
    Ticket : Unsigned_64;
@@ -99,16 +99,16 @@ procedure Demo is
       end loop;
    end Send_Text;
 begin
-   Source := (Reference => (100, 1, 1), Direction => Output,
+   Source := (Reference => (100, 1, 1), Direction => Outlet,
               Profile => Profile (CuBit.Text_To_Log.Input_Contract));
    Converter_Input := Source;
    Converter_Input.Reference := (200, 1, 1);
-   Converter_Input.Direction := Input;
-   Converter_Output := (Reference => (200, 2, 1), Direction => Output,
+   Converter_Input.Direction := Inlet;
+   Converter_Output := (Reference => (200, 2, 1), Direction => Outlet,
                         Profile => Profile (Contract));
    Collector := Converter_Output;
    Collector.Reference := (300, 1, 1);
-   Collector.Direction := Input;
+   Collector.Direction := Inlet;
    Input_Request := (900, Reference (Text_Binding), Source, Converter_Input);
    Output_Request := (900, Reference (Log_Binding), Converter_Output, Collector);
    Direct := Output_Request;

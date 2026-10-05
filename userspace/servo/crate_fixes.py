@@ -206,6 +206,30 @@ FIXES["swgl-0.70.0"]["edits"] += [
 ]
 
 
+
+# Native KVM exposed a stall in libc's floating-point snprintf while logging a
+# completed SWGL draw. Format the already-integral nanoseconds without x87/float
+# conversion. Keep the exact milliseconds and three fractional decimal places.
+for index, (path, old, new, how) in enumerate(FIXES["swgl-0.70.0"]["edits"]):
+    if "char message[512];" not in new:
+        continue
+    instrumented = new.replace("      char message[512];",
+        '      cubit_debug_write("PENNY-SWGL: format begin\\n", 25);\n      char message[512];')
+    instrumented = instrumented.replace("      if (length > 0) {",
+        '      cubit_debug_write("PENNY-SWGL: format end\\n", 23);\n      if (length > 0) {')
+    final = new.replace('ms=%.3f', 'ms=%llu.%03llu').replace(
+        'double(elapsed) / 1000000.0',
+        'static_cast<unsigned long long>(elapsed / 1000000),\n             static_cast<unsigned long long>((elapsed / 1000) % 1000)')
+    FIXES["swgl-0.70.0"]["migrations"] += [(path, instrumented, final), (path, new, final)]
+    # Repair a duplicated experimental prefix left by an interrupted preparation.
+    anchor = "  if (ctx->samples_passed_query) {"
+    FIXES["swgl-0.70.0"]["migrations"] += [
+        (path, instrumented.split(anchor)[0], ""),
+        (path, new.split(anchor)[0], ""),
+    ]
+    FIXES["swgl-0.70.0"]["edits"][index] = (path, old, final, how)
+
+
 def apply(registry, out):
     lines = []
     for crate, fix in FIXES.items():

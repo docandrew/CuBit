@@ -190,12 +190,25 @@ package Process is
         rip at 56 range 0..63;
     end record;
 
-    type FPUState is array (1..512) of Unsigned_8 with
+    ---------------------------------------------------------------------------
+    -- A thread's user FP/SIMD state image: the XSAVE layout (FXSAVE uses its
+    -- first 512 bytes), one page, page aligned, kept outside the kernel stack
+    -- so a stack overflow reaches the guard page, never this state.
+    -- A page holds every component CuBit enables (x87, SSE, AVX) with room
+    -- for AVX-512; setup checks CPUID 0Dh against it.
+    ---------------------------------------------------------------------------
+    XSAVE_AREA_BYTES : constant := 4096;
+    type FPUState is array (1 .. XSAVE_AREA_BYTES) of Unsigned_8 with
         Convention => C,
-        Alignment  => 16;
+        Alignment  => 64;
+
+    --  A thread's kernel memory: an unmapped guard page, the kernel stack,
+    --  then the FP/SIMD state page. Allocated as one 4-page buddy block.
+    KERNEL_STACK_PAGES : constant := 2;
+    KERNEL_BLOCK_ORDER : constant := 2;
 
     ---------------------------------------------------------------------------
-    -- The ProcessKernelStack is a page of memory in the Kernel's
+    -- The ProcessKernelStack is KERNEL_STACK_PAGES pages of memory in the Kernel's
     --  address space. Our process will use the kernel stack during system
     --  calls, and when it is being scheduled. This structure represents the
     --  _initial_ state of the kernel stack. We have to set up the fields here
@@ -213,26 +226,23 @@ package Process is
     -- If there are unused bytes, adjust the size of PKStackFiller accordingly.
     --
     ---------------------------------------------------------------------------
-    type PKStackFiller is array (1..3328) of Unsigned_8;
+    type PKStackFiller is array (1..7936) of Unsigned_8;
     pragma Pack (PKStackFiller);
 
     KSTACK_CANARY : constant Unsigned_64 := 16#1BAD_CA11_D37EC7ED#;
 
     ---------------------------------------------------------------------------
-    -- @field fpuarea - 16-byte-aligned, initialized 512-byte FXSAVE64 image
-    --  for eager user-process FP/SIMD isolation.
     -- @field canary - @TODO will be used to detect kernel stack overflow
     ---------------------------------------------------------------------------
     type ProcessKernelStack is
     record
-        fpuarea         : FPUState;
         canary          : Unsigned_64 := KSTACK_CANARY;
         filler          : PKStackFiller;
         context         : SavedState;       -- used in switch
         returnAddress   : System.Address;   -- when switch returns the first
                                             -- time, it returns here
         interruptFrame  : Stackframe.InterruptStackFrame;
-    end record with Size => virtmem.FRAME_SIZE * 8;
+    end record with Size => virtmem.FRAME_SIZE * 8 * KERNEL_STACK_PAGES;
 
     type ProcessKernelStackPtr is access ProcessKernelStack;
     for ProcessKernelStackPtr'Simple_Storage_Pool use pool;
@@ -1216,9 +1226,10 @@ package Process is
     -- pageFault
     -- When a page fault occurs, this procedure determines whether this is due
     -- simply to a page that hasn't been demand-mapped yet, or an actual
-    -- violation.
+    -- violation. Call only for nonpresent data faults: instruction/protection
+    -- faults must be rejected by the interrupt dispatcher. Preserve Write.
     ---------------------------------------------------------------------------
-    procedure pageFault (pid : ProcessID; addr : System.Address);
+    procedure pageFault (pid : ProcessID; addr : System.Address; Write : Boolean);
 
     -- The instruction address of the most recent page fault, for fault
     -- reports only (not per CPU; a concurrent fault may overwrite it).
@@ -1231,7 +1242,7 @@ package Process is
     -- handled is False otherwise, and the caller treats it as a kernel bug.
     -- Never kills: the kernel may hold locks here.
     procedure kernelUserFault (pid : ProcessID; addr : System.Address;
-                               handled : out Boolean);
+                               Write : Boolean; handled : out Boolean);
 
     ---------------------------------------------------------------------------
     -- directSwitch

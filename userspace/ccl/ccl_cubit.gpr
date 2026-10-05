@@ -20,8 +20,6 @@ library project CCL_CuBit is
          "-fomit-frame-pointer",
          "-mno-red-zone",
          "-fno-pic",
-         "-mno-sse",
-         "-mno-sse2",
          "-I-");
    end Compiler;
 end CCL_CuBit;

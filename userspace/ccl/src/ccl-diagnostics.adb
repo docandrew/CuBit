@@ -4,7 +4,7 @@ package body CCL.Diagnostics with SPARK_Mode is
    begin
       return (case Code is
          when No_Diagnostic => "No diagnostic",
-         when Source_Too_Long => "Source exceeds the 1024-byte limit",
+         when Source_Too_Long => "Source exceeds its size limit",
          when Unexpected_End => "Expression ended before it was complete",
          when Unexpected_Token => "Unexpected token",
          when Unknown_Form => "Unknown operation or function; functions must be defined before use",
@@ -22,6 +22,7 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Expected_Comparable => "Equality requires two Integers or two members of the same enum type",
          when Expected_Printable => "to-string expects an Integer or enum member",
          when Expected_Stream => "Expected a stream: (stream T n), or a name bound to one",
+         when Expected_Task => "Expected a task: (task T n), or a name bound to one",
          when Invalid_Type_Declaration => "Invalid type declaration: use 1 to 16 uniquely named alternatives and a unique type name (at most 48 types)",
          when Invalid_Variant_Payload => "Variant payload must match its declared Integer or Boolean type",
          when Invalid_Match_Pattern => "Match patterns must name alternatives of the input type and bind exactly their payloads",
@@ -43,6 +44,8 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Host_Schema_Unavailable => "The host object's approved schema is not visible",
          when Unsupported_Host_Object => "This object shape is not supported by the interpreter yet",
          when Host_Object_Type_Mismatch => "The argument does not match the host object's declared type",
+         when Field_Type_Mismatch => "This field takes another type",
+         when Argument_Type_Mismatch => "This operation takes another type",
          when Invalid_Handler_Profile => "Handler must take no arguments and return Boolean",
          when Handler_Result_Not_Exportable => "Pass the handler to a service; it cannot be returned from this invocation",
          when List_Element_Mismatch => "Every element of a list must have the same type",
@@ -61,7 +64,9 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Unknown_Field_Argument => "This record has no field by that name",
          when Repeated_Field_Argument => "This field is already given, by position or by name",
          when Missing_Field_Argument => "This field has no default, so the construction must give it",
-         when Positional_After_Named => "Positional values come before named ones (field => value)");
+         when Positional_After_Named => "Positional values come before named ones (field => value)",
+         when Resource_Ownership_Violation =>
+            "A resource is copied, used after it was moved, or never released");
    end Message;
 
    function Message (Status : CCL.Language.Interpretation_Status) return String is
@@ -91,7 +96,9 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Stream_Unavailable => "This session holds no such stream",
          when Stream_Empty => "Nothing has arrived on the stream yet",
          when Stream_Window_Out_Of_Range => "A window holds 1 to 255 elements",
-         when Stream_Element_Mismatch => "The stream's elements are not of the type named");
+         when Stream_Element_Mismatch => "The stream's elements are not of the type named",
+         when Waiting_On_Task => "Waiting for the task to complete",
+         when Not_Compiled => "This program cannot be compiled to bytecode yet");
    end Message;
    function Message (Status : CCL.VM.Execution_Status) return String is
       use CCL.VM;
@@ -114,6 +121,7 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Stream_Empty => "Nothing has arrived on the stream yet",
          when Stream_Window_Out_Of_Range => "A window holds 1 to 255 elements",
          when Stream_Element_Mismatch => "The stream's elements are not of the type named",
+         when Host_Argument_Out_Of_Bounds => "A text argument is longer than the operation accepts",
          when Invalid_Bytecode => "Invalid bytecode",
          when Waiting_For_Host => "Waiting for service",
          when Host_Call_Failed => "Service call failed",

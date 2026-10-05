@@ -1,6 +1,28 @@
-package body CCL.Language.Handlers with SPARK_Mode is
+with CCL.Compiler;
+with CCL.Evaluation;
+with CCL.VM;
+
+package body CCL.Language.Handlers is
    use type Interfaces.Unsigned_32;
    use type CCL.Types.Type_Reference;
+   --  Whether Analysis compiles and links against Grants.
+   function Links
+     (Analysis : Analysis_Result; Catalog : CCL.Catalog.Interface_Catalog;
+      Grants : CCL.Catalog.Granted_Bindings) return Boolean
+   is
+      use type CCL.Compiler.Compilation_Status;
+      use type CCL.Catalog.Link_Result;
+      Compiled : CCL.Compiler.Compilation_Result;
+      Program : CCL.VM.Program;
+      Linked : CCL.Catalog.Link_Result;
+   begin
+      CCL.Compiler.Compile (Analysis, Compiled);
+      if Compiled.Status /= CCL.Compiler.Compilation_Succeeded then return False; end if;
+      Program := Compiled.Program;
+      CCL.Catalog.Link_Program (Grants, Compiled.Linkage, Program, Linked, Catalog);
+      return Linked = CCL.Catalog.Link_Valid;
+   end Links;
+
    procedure Prepare
      (Source, Entry_Name : String; Expected : Profile;
       Catalog : CCL.Catalog.Interface_Catalog;
@@ -32,15 +54,16 @@ package body CCL.Language.Handlers with SPARK_Mode is
                         return;
                      end if;
                end case;
-               Admit (Analysis.Tree, Grants, True, Diagnostic.Status, Diagnostic.Diagnostic_Position);
-               if Diagnostic.Status /= Succeeded then
-                  Status := Admission_Denied;
-                  return;
-               end if;
                --  Select the checked function body, never the top-level
                --  expression. There are no parameters or captured locals.
                Analysis.Tree.Root := Decl.Body_Node;
-               Item := (Valid => True, Program => Analysis, Bindings => Grants);
+               --  It must link against the grants it is registered with.
+               if not Links (Analysis, Catalog, Grants) then
+                  Diagnostic.Status := Host_Import_Required;
+                  Status := Admission_Denied;
+                  return;
+               end if;
+               Item := (Valid => True, Program => Analysis, Bindings => Grants, Catalog => Catalog);
                Status := Prepared;
                return;
             end if;
@@ -52,9 +75,7 @@ package body CCL.Language.Handlers with SPARK_Mode is
      (Item : Handler; Fuel : Natural;
       Current_Grants : CCL.Catalog.Granted_Bindings;
       Context : in out Host_Context; Outcome : out Interpretation_Result) is
-      procedure Run is new Process_Source_With_Host (Host_Context, Invoke);
-      Catalog : CCL.Catalog.Interface_Catalog;
-      Tree : Syntax_Tree;
+      procedure Run is new CCL.Evaluation.Evaluate_Analysis_With_Values (Host_Context, Invoke);
       Original, Current : Interfaces.Unsigned_32;
       Was_Granted, Still_Granted : Boolean;
    begin
@@ -73,9 +94,6 @@ package body CCL.Language.Handlers with SPARK_Mode is
             end if;
          end if;
       end loop;
-      Tree := Item.Program.Tree;
-      CCL.Catalog.Initialize (Catalog);
-      Run (Item.Program.Source_Text (1 .. Item.Program.Source_Length), Fuel,
-           Catalog, Item.Bindings, Context, True, False, True, Outcome, Tree);
+      Run (Item.Program, Fuel, Item.Catalog, Item.Bindings, Context, Outcome);
    end Execute;
 end CCL.Language.Handlers;

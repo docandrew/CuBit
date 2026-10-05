@@ -5,6 +5,7 @@ All writes target disposable temporary fixtures, never supplied disks.
 Run under nix develop after building interop.gpr.
 """
 import argparse
+import os
 from pathlib import Path
 import re
 import struct
@@ -13,6 +14,19 @@ import tempfile
 
 HERE = Path(__file__).resolve().parent
 PAYLOAD = b"CuBit roundtrip"
+# A UTC instant (2026-10-04 00:00:00) for the hosted wall clock.
+CLOCK = 1_791_072_000
+# i_atime, i_ctime, i_mtime: the 32-bit second fields CuBit stamps.
+ATIME, CTIME, MTIME = 8, 12, 16
+
+
+def times(inode):
+    return struct.unpack_from("<III", inode, ATIME)
+
+
+def untimed(inode):
+    """The inode without the times CuBit may legitimately change."""
+    return inode[:ATIME] + inode[MTIME + 4:]
 
 
 def run(*args):
@@ -132,7 +146,7 @@ def poison_free_inode(image):
     raise AssertionError("no free inode")
 
 
-def matrix_case(root, block, stride, profile):
+def matrix_case(root, block, stride, profile, clocked):
     stage = root / "stage"
     stage.mkdir()
     original = b"E" * 4096
@@ -193,12 +207,34 @@ def matrix_case(root, block, stride, profile):
         assert struct.unpack_from("<I", before_triple, 96)[0] != 0, "needs a triple root"
     next_inode = poison_free_inode(image)
     run("e2fsck", "-fn", image)
-    run(HERE / "build/main", image, next_inode)
+    before_root = inode_bytes(image, 2)
+    environment = dict(os.environ)
+    environment.pop("CUBIT_TEST_WALL_CLOCK", None)
+    if clocked:
+        environment["CUBIT_TEST_WALL_CLOCK"] = str(CLOCK)
+    result = subprocess.run([str(HERE / "build/main"), str(image), str(next_inode)],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, env=environment)
+    if result.returncode:
+        raise RuntimeError(f"hosted driver: exit {result.returncode}\n{result.stdout}")
     new_inode = inode_bytes(image, next_inode)
     assert new_inode[128:] == bytes(stride - 128), "stale inode tail exposed on reuse"
     after_existing = inode_bytes(image, existing_number)
     assert after_existing[128:] == before_existing[128:], "existing extended metadata changed"
-    assert inode_bytes(image, double_number) == before_double, "double overwrite changed inode"
+    after_double = inode_bytes(image, double_number)
+    assert untimed(after_double) == untimed(before_double), "double overwrite changed inode"
+    if clocked:
+        # Written, created and renamed-into: content changed at CLOCK.
+        _, ctime, mtime = times(after_double)
+        assert (ctime, mtime) == (CLOCK, CLOCK), "overwrite did not set ctime/mtime"
+        assert times(new_inode) == (CLOCK, CLOCK, CLOCK), "new inode times not CLOCK"
+        _, ctime, mtime = times(inode_bytes(image, 2))
+        assert (ctime, mtime) == (CLOCK, CLOCK), "directory change did not set its times"
+        assert times(after_existing)[0] == times(before_existing)[0], "write set atime"
+    else:
+        # While wall time is unknown, no time changes.
+        assert after_double == before_double, "unclocked overwrite changed inode"
+        assert times(inode_bytes(image, 2)) == times(before_root), "unclocked root times changed"
     assert "portable-metadata" in debug(image, "ea_get existing user.cubit.test")
     assert "File not found" in debug(image, "stat created")
     expected_new = bytearray(next_leaf + 7 + len(PAYLOAD))
@@ -223,7 +259,8 @@ def matrix_case(root, block, stride, profile):
         debug(image, f"dump {name} {dump}")
         assert dump.read_bytes() == expected, f"{name}: content mismatch"
     if triple:
-        assert inode_bytes(image, triple_number) == before_triple, "triple overwrite changed inode"
+        assert untimed(inode_bytes(image, triple_number)) == untimed(before_triple), \
+            "triple overwrite changed inode"
         check_sparse(image, "triple-existing", (first_triple + middle) * block + 64, {
             first_triple - 1: block_of(block, (0, b"D" * (block - 7)),
                                        (block - 7, PAYLOAD[:7])),
@@ -245,7 +282,8 @@ def matrix_case(root, block, stride, profile):
         assert re.search(r"Journal start:\s+0\b", summary), "journal left non-empty"
         sequence = int(re.search(r"Journal sequence:\s+(0x[0-9a-f]+)", summary).group(1), 16)
         assert sequence > 2, "no transaction was committed"
-    print(f"PASS block={block} inode={stride} profile={profile} triple={triple}", flush=True)
+    print(f"PASS block={block} inode={stride} profile={profile} triple={triple} "
+          f"clock={'set' if clocked else 'unknown'}", flush=True)
 
 
 def main():
@@ -257,7 +295,8 @@ def main():
         for p in ("default", "minimal", "ext3")]
     for block, stride, profile in cases:
         with tempfile.TemporaryDirectory(prefix="cubit-ext2-interop-") as tmp:
-            matrix_case(Path(tmp), block, stride, profile)
+            # 256-byte inodes run with a known wall clock, the rest without.
+            matrix_case(Path(tmp), block, stride, profile, stride == 256)
     print(f"EXT2-LINUX-ROUNDTRIP: PASS {len(cases)} images (hosted CuBit driver)")
 
 

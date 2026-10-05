@@ -22,7 +22,7 @@ if args.directory is not None:
         if not 0x150 <= rom.stat().st_size <= 8 * 1024 * 1024:
             parser.error(f'unsupported cartridge size: {rom.name}')
 args.destination.mkdir(parents=True, exist_ok=True)
-shutil.copyfile(root / 'userspace/c/sameboy_build/test.gb', args.destination / '00.gb')
+shutil.copyfile(root / 'userspace/ports/sameboy/build/test.gb', args.destination / '00.gb')
 for index, rom in enumerate(roms, 1):
     shutil.copyfile(rom, args.destination / f'{index:02d}.gb')
     print(f'SameBoy ROM {index:02d}: {rom.name}')

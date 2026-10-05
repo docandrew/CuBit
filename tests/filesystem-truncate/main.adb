@@ -94,17 +94,35 @@ procedure Main is
       Creation_Block := (if grow then 24 else 20);
       parent := NULL_INODE;
       parent.typeAndPermissions := 16#4000#;
-      if not grow then
-         parent.sizeLo := 1024;
-         parent.numDiskSectors := 2;
-         parent.directBlocks (0) := 20;
-         dot := (inode => 2, length => 12, nameLength => 1,
-                 fileType => FILETYPE_DIRECTORY);
-         Disk (20 * 1024 + 8) := Character'Pos ('.');
-         dotdot := (inode => 2, length => 1012, nameLength => 2,
-                    fileType => FILETYPE_DIRECTORY);
-         Disk (20 * 1024 + 20 .. 20 * 1024 + 21) :=
-           [others => Character'Pos ('.')];
+      parent.sizeLo := 1024;
+      parent.numDiskSectors := 2;
+      parent.directBlocks (0) := 20;
+      dot := (inode => 2, length => 12, nameLength => 1,
+              fileType => FILETYPE_DIRECTORY);
+      Disk (20 * 1024 + 8) := Character'Pos ('.');
+      dotdot := (inode => 2, length => (if grow then 12 else 1012),
+                 nameLength => 2, fileType => FILETYPE_DIRECTORY);
+      Disk (20 * 1024 + 20 .. 20 * 1024 + 21) :=
+        [others => Character'Pos ('.')];
+      if grow then
+         --  A full block: after "." and "..", four records with 240-byte
+         --  names, 248 bytes each but the last (256): 0 to 8 spare bytes,
+         --  too few for a new name, which then needs a new block.
+         for filler in 0 .. 3 loop
+            declare
+               at_byte : constant Natural := 20 * 1024 + 24 + filler * 248;
+               span : constant Unsigned_8 := (if filler = 3 then 0 else 248);
+            begin
+               Disk (at_byte) := 2;
+               Disk (at_byte + 1 .. at_byte + 3) := [others => 0];
+               Disk (at_byte + 4) := span;  --  record length, little-endian
+               Disk (at_byte + 5) := (if filler = 3 then 1 else 0);
+               Disk (at_byte + 6) := 240;
+               Disk (at_byte + 7) := FILETYPE_REGULAR;
+               Disk (at_byte + 8 .. at_byte + 247) :=
+                 [others => Character'Pos ('a') + Unsigned_8 (filler)];
+            end;
+         end loop;
       end if;
    end Setup_Create;
 begin
@@ -307,7 +325,7 @@ begin
       goodCalls := Calls;
       lookupInDir (fs, parent, "sample", found, lookupStatus);
       pragma Assert (lookupStatus = Lookup_Found and found = 3);
-      pragma Assert (parent.sizeLo = 1024);
+      pragma Assert (parent.sizeLo = (if grow then 2048 else 1024));
       for failure in 1 .. goodCalls loop
          for treatment in Failure_Mode loop
             Setup_Create (grow);
@@ -317,14 +335,19 @@ begin
             createFile (fs, 2, "sample", allocated, writeStatus);
             pragma Assert (Failed and Calls = failure);
             pragma Assert (allocated = 0 and writeStatus /= Write_Complete);
-            if Writes > 0 then
-               pragma Assert (fs.writeQuarantined);
-            end if;
             if fs.writeQuarantined then
                pragma Assert (writeStatus = Write_Recovery_Required);
                createFile (fs, 2, "again", allocated, writeStatus);
                pragma Assert (allocated = 0 and Calls = failure);
                pragma Assert (writeStatus = Write_Recovery_Required);
+            elsif Writes > 0 then
+               --  Only a completed growth may stand unquarantined: the
+               --  directory has a valid empty block (one unused record
+               --  spanning it) and no new name.
+               pragma Assert (grow and parent.sizeLo = 2048 and
+                              parent.directBlocks (1) = 24);
+               pragma Assert (Disk (24 * 1024 .. 24 * 1024 + 3) = [0, 0, 0, 0]);
+               pragma Assert (Disk (24 * 1024 + 4) = 0 and Disk (24 * 1024 + 5) = 4);
             else
                pragma Assert (Disk = original);
             end if;
@@ -351,8 +374,10 @@ begin
    fs.sb.freeInodes := 0;
    createFile (fs, 2, "sample", allocated, writeStatus);
    pragma Assert (allocated = 0 and writeStatus = Write_No_Space);
-   pragma Assert (not fs.writeQuarantined and fs.sb.freeBlocks = 40);
-   pragma Assert ((Disk (3074) and 128) = 0);
+   --  The directory grew first and keeps its (valid) empty block 24.
+   pragma Assert (not fs.writeQuarantined and fs.sb.freeBlocks = 39);
+   pragma Assert ((Disk (3074) and 128) /= 0);
+   pragma Assert (parent.sizeLo = 2048 and parent.directBlocks (1) = 24);
    goodCalls := Calls;
    for failure in 1 .. goodCalls loop
       for treatment in Failure_Mode loop
@@ -382,7 +407,12 @@ begin
    pragma Assert (allocated = 0 and writeStatus = Write_Device_Error);
    pragma Assert (Writes = 0 and not fs.writeQuarantined);
    Setup_Create (False);
-   parent.flags := 16#1000#; -- indexed directory requires different updates
+   parent.flags := 16#1000#; -- htree index: cleared before the change
+   createFile (fs, 2, "sample", allocated, writeStatus);
+   pragma Assert (allocated = 3 and writeStatus = Write_Complete);
+   pragma Assert (parent.flags = 0 and not fs.writeQuarantined);
+   Setup_Create (False);
+   parent.flags := 16#8_0000#; -- extents: a layout this service does not write
    createFile (fs, 2, "sample", allocated, writeStatus);
    pragma Assert
      (allocated = 0 and writeStatus = Write_File_Range_Unsupported);

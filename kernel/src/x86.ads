@@ -198,6 +198,16 @@ is
     -- Get/Set the current value of the CR4 register
     ---------------------------------------------------------------------------
     function getCR4 return Unsigned_64;
+
+    --  CR4.OSXSAVE: XSAVE is enabled (boot.asm), with XCR0's components.
+    CR4_OSXSAVE : constant Unsigned_64 := 2 ** 18;
+    --  Save or restore every state component XCR0 enables (x87, SSE, AVX)
+    --  at saveArea: 64-byte aligned and at least CPUID 0Dh.0 EBX bytes.
+    --  XSAVEOPT skips components in their initial state or unchanged since
+    --  the last XRSTOR from the same area.
+    procedure xsave (saveArea : System.Address);
+    procedure xsaveopt (saveArea : System.Address);
+    procedure xrstor (saveArea : System.Address);
     procedure setCR4 (cr4 : Unsigned_64);
 
     procedure stac with Inline;  -- Set AC flag (allow user access)

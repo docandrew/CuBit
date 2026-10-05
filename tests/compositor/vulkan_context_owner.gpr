@@ -1,0 +1,10 @@
+project Vulkan_Context_Owner extends "vulkan_submission_mock.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use Vulkan_Submission_Mock'Source_Files &
+     ("vulkan_context_owner.ads", "vulkan_context_owner.adb",
+      "vulkan_context_ffi.ads", "vulkan_context_ffi.adb",
+      "vulkan_context_policy_mock.c", "vulkan_context_owner_tests.adb");
+   for Object_Dir use "build/vulkan-context-owner/obj";
+   for Exec_Dir use "build/vulkan-context-owner";
+   for Main use ("vulkan_context_owner_tests.adb");
+end Vulkan_Context_Owner;

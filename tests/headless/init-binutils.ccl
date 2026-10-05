@@ -1,0 +1,7 @@
+# binutils on CuBit (userspace/ports/binutils): binutils-check assembles and
+# links a small program with as.app and ld.app, launched with typed
+# parameters, and compares the results with Linux's.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "binutils-check.app" (priority 3))
+)

@@ -1,0 +1,9 @@
+project Input_Delivery_Pool extends "input_delivery.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "build/input-batch-wire/source");
+   for Source_Files use Input_Delivery'Source_Files &
+     ("compositor_input_delivery_pool.ads", "compositor_input_delivery_pool.adb",
+      "input_delivery_pool_proof.ads", "input_delivery_pool_tests.adb");
+   for Object_Dir use "build/input-delivery-pool/obj";
+   for Exec_Dir use "build/input-delivery-pool";
+   for Main use ("input_delivery_pool_tests.adb");
+end Input_Delivery_Pool;

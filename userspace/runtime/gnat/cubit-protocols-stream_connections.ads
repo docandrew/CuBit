@@ -8,19 +8,19 @@ package CuBit.Protocols.Stream_Connections with Pure, SPARK_Mode is
    package Policy renames CuBit.Authority_Policy;
    use type Policy.Decision;
 
-   type Port_Direction is (Input, Output);
-   type Port_Reference is record
+   type Connector_Direction is (Inlet, Outlet);
+   type Connector_Reference is record
       Process_Instance : Unsigned_64 := 0;
-      Local_Port : Unsigned_32 := 0;
+      Local_Connector : Unsigned_32 := 0;
       Generation : Unsigned_64 := 0;
    end record;
-   function Valid (Port : Port_Reference) return Boolean is
-     (Port.Process_Instance /= 0 and then Port.Local_Port /= 0 and then
-      Port.Generation /= 0);
+   function Valid (Item : Connector_Reference) return Boolean is
+     (Item.Process_Instance /= 0 and then Item.Local_Connector /= 0 and then
+      Item.Generation /= 0);
 
-   type Port_Descriptor is record
-      Reference : Port_Reference;
-      Direction : Port_Direction := Input;
+   type Connector_Descriptor is record
+      Reference : Connector_Reference;
+      Direction : Connector_Direction := Inlet;
       Profile : Delivery.Policy;
    end record;
 
@@ -33,12 +33,12 @@ package CuBit.Protocols.Stream_Connections with Pure, SPARK_Mode is
    type Connection_Key is record
       Controller_Instance : Unsigned_64 := 0;
       Binding : Binding_Reference;
-      Source, Destination : Port_Descriptor;
+      Source, Destination : Connector_Descriptor;
    end record;
    type Request is record
       Controller_Instance : Unsigned_64 := 0;
       Binding : Binding_Reference;
-      Source, Destination : Port_Descriptor;
+      Source, Destination : Connector_Descriptor;
    end record;
    function Key (Item : Request) return Connection_Key is
      (Controller_Instance => Item.Controller_Instance,
@@ -78,8 +78,8 @@ package CuBit.Protocols.Stream_Connections with Pure, SPARK_Mode is
         not Valid (Item.Source.Reference) or else
         not Valid (Item.Destination.Reference)
       then Invalid_Reference
-      elsif Item.Source.Direction /= Output or else
-        Item.Destination.Direction /= Input
+      elsif Item.Source.Direction /= Outlet or else
+        Item.Destination.Direction /= Inlet
       then Wrong_Direction
       elsif not Delivery.Compatible
         (Item.Source.Profile, Item.Destination.Profile)

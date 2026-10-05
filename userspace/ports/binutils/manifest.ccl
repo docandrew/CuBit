@@ -1,0 +1,15 @@
+# GNU binutils on CuBit (userspace/ports/binutils): ar, objcopy, nm and
+# friends, ordinary x86-64 Linux (musl) tools with this manifest added after
+# the link (docs/self-hosting.md, tools). as and ld have their own manifests
+# with typed parameters (as.ccl, ld.ccl); the rest work in one place until
+# theirs are written. What they write to descriptors 1 and 2 goes to their
+# unix.stdout and unix.stderr outlets.
+(Executable_Manifest
+  identity => "org.gnu.binutils"
+  version => "2.46"
+  requests => [(service "filesystem" "filesystem")]
+  scopes => [(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")]
+  outlets => [
+    (Outlet "unix.stdout" Element.Text pages => 4)
+    (Outlet "unix.stderr" Element.Text pages => 4)]
+  descriptors => [(Descriptor 1 "unix.stdout") (Descriptor 2 "unix.stderr")])

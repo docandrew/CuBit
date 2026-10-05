@@ -108,7 +108,7 @@ def live_inputs(root):
     required = ["kernel/laptop_live_rw.img",
                 "userspace/ccl/build/image/ccl-image",
                 "userspace/ccl/build/config/ccl-config",
-                "userspace/c/sameboy_build/test.gb"]
+                "userspace/ports/sameboy/build/test.gb"]
     required += [str(p.relative_to(root)) for p in sorted((root / "kernel/isodir/boot").iterdir())
                  if p.suffix in (".svc", ".drv", ".app", ".elf")]
     if not any(p.endswith("devmgr.svc") for p in required):

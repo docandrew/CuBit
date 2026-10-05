@@ -15,6 +15,17 @@ package Intel_GPU_Buffer_Requests.Binding is
       return Boolean;
    type Preparation_Result is
      (Request_Denied, Malformed, Stale_Generation, Not_Ready, Eligible, Prepared);
+   procedure Check_Offline_Bind_Request
+     (Object : Service; Source : VM.Image;
+      VM_Session, Expected_Revision, Sender, Stamp : Unsigned_64;
+      Request_Label : Unsigned_32; Length, Flags : Unsigned_8;
+      Reserved : Unsigned_16; Request : Words; Status : out Preparation_Result);
+   -- Allocation-free initial bind preflight. Unlike Update_Label, the BO
+   -- offset is word0 high32 (4KiB pages), and word1 is the complete handle.
+   -- Only bind operation0 is eligible for backing growth. Captured source
+   -- revision must still match and image must be initialized/unsealed. Resolve
+   -- ownership/extent again after asynchronous allocation; Eligible is neither
+   -- retained authority nor a guarantee of mapping geometry/alias acceptance.
    procedure Check_Update_Request
      (Object : Service; Source : VM.Image;
       VM_Session, Current_Generation, Sender, Stamp : Unsigned_64;
@@ -29,6 +40,15 @@ package Intel_GPU_Buffer_Requests.Binding is
    procedure Handle_Update
      (Object : Service; Source : VM.Image; Candidate : in out VM.Image;
       Tables : VM.Backing_Pages; State : in out Coordinator.State;
+      VM_Session, Sender, Stamp : Unsigned_64; Request_Label : Unsigned_32;
+      Length, Flags : Unsigned_8; Reserved : Unsigned_16;
+      Request : Words; Response : out Words);
+   generic
+      with function Read_Page (Page : VM.Page_Number) return Unsigned_64;
+      with package Coordinator is new Intel_GPU_VM_Update (<>);
+   procedure Handle_Update_From_Pages
+     (Object : Service; Source : VM.Image; Candidate : in out VM.Image;
+      Table_Count : Natural; State : in out Coordinator.State;
       VM_Session, Sender, Stamp : Unsigned_64; Request_Label : Unsigned_32;
       Length, Flags : Unsigned_8; Reserved : Unsigned_16;
       Request : Words; Response : out Words);
@@ -53,6 +73,31 @@ package Intel_GPU_Buffer_Requests.Binding is
    -- No private replacement-table ticket or candidate image is required.
    -- Capture and callbacks must preserve session/BO lifetime and exclusion.
    -- Failure after effects or reply loss requires quarantine, never replay.
+   generic
+      with package Coordinator is new Intel_GPU_VM_Update (<>);
+      Remove : Boolean;
+      with procedure Capture
+        (Backing : Intel_GPU_Buffer_Reply.Backing;
+         GPU, Offset, Bytes, Revision : Unsigned_64; Accepted : out Boolean);
+   procedure Begin_In_Place
+     (Object : Service; Source : in out VM.Image;
+      State : in out Coordinator.State;
+      VM_Session, Sender, Stamp : Unsigned_64; Request_Label : Unsigned_32;
+      Length, Flags : Unsigned_8; Reserved : Unsigned_16;
+      Request : Words; Response : out Words; Started : out Boolean);
+   -- Same authenticated capture, but closes coordinator admission and returns
+   -- before any hardware stage. Started=True is NOT a successful wire reply;
+   -- caller retains reply authority, session/BO lifetime and context hold while
+   -- advancing the coordinator. Response is usable only for rejected starts.
+   generic
+      with package Coordinator is new Intel_GPU_VM_Update (<>);
+   procedure Finish_In_Place
+     (Object : Service; State : in out Coordinator.State;
+      VM_Session, Sender, Stamp, Previous_Generation : Unsigned_64;
+      Response : out Words);
+   -- Invoke only after terminal coordinator completion. Revalidates identity
+   -- and the exact next committed epoch. Failed/incomplete/stale completion
+   -- quarantines; no successful reply or implicit hardware resume is inferred.
    -- Serialized transaction handler, not native dispatch enablement. Coordinator
    -- callbacks must use THIS candidate, retain both generations, and complete
    -- drain/publication/invalidation/resume. Success contains the committed epoch.
@@ -74,6 +119,14 @@ package Intel_GPU_Buffer_Requests.Binding is
       Sender, Stamp : Unsigned_64; Request_Label : Unsigned_32;
       Length, Flags : Unsigned_8; Reserved : Unsigned_16;
       Request : Words; Status : out Preparation_Result);
+   generic
+      with function Read_Page (Page : VM.Page_Number) return Unsigned_64;
+   procedure Prepare_Request_From_Pages
+     (Object : Service; Source : VM.Image; Candidate : in out VM.Image;
+      Table_Count : Natural; VM_Session, Current_Generation : Unsigned_64;
+      Sender, Stamp : Unsigned_64; Request_Label : Unsigned_32;
+      Length, Flags : Unsigned_8; Reserved : Unsigned_16;
+      Request : Words; Status : out Preparation_Result);
    -- Submission preflight only: resolve the live handle in the authenticated
    -- session, then check the complete DWORD-sized batch slice against its
    -- sealed published VM generation. QWORD-aligned raw48 start. No command
@@ -85,6 +138,8 @@ package Intel_GPU_Buffer_Requests.Binding is
    -- Prepare a fresh sealed generation for the existing stable-root updater.
    -- Source remains untouched. Tables are trusted fresh retained DMA backing,
    -- never client addresses. Candidate is single-attempt; retain it on failure.
+   -- A zero suffix denotes unallocated capacity. The populated prefix must
+   -- cover the source and requested mapping; holes/nonzero suffixes reject.
    -- Success is NOT publication, invalidation, completion or address reuse.
    -- Caller serializes session/BO/VM lifetime and later establishes exclusion.
    procedure Prepare_Change
@@ -92,6 +147,17 @@ package Intel_GPU_Buffer_Requests.Binding is
       Tables : VM.Backing_Pages; VM_Session : Unsigned_64;
       Sender, Stamp, ID, GPU, Offset, Bytes : Unsigned_64;
       Remove : Boolean; Accepted : out Boolean);
+   generic
+      with function Read_Page (Page : VM.Page_Number) return Unsigned_64;
+   procedure Prepare_Change_From_Pages
+     (Object : Service; Source : VM.Image; Candidate : in out VM.Image;
+      Table_Count : Natural; VM_Session : Unsigned_64;
+      Sender, Stamp, ID, GPU, Offset, Bytes : Unsigned_64;
+      Remove : Boolean; Accepted : out Boolean);
+   -- Callback-fed variants read only Table_Count authenticated, retained
+   -- table pages. Caller serializes both images; zero rejects. Reader must
+   -- not mutate either image. No client address or backing allocation authority
+   -- is granted by this interface. Array callers use these same cores.
    -- Offline binding: [version | (operation << 16) | (BO offset in pages << 32),
    -- handle, GPU address, bytes]. Low16 is the version; operation is0(bind)
    -- or1(unbind) in bits16..31; high32 is an unsigned 4KiB

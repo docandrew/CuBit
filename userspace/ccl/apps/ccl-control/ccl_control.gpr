@@ -11,7 +11,7 @@ project CCL_Control is
    package Compiler is
       for Default_Switches ("Ada") use
         ("-O2", "-gnat2022", "-gnatwa", "-gnatw.X", "-fstack-usage",
-         "-fomit-frame-pointer", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+         "-fomit-frame-pointer", "-mno-red-zone", "-fno-pic");
    end Compiler;
    package Binder is
       for Default_Switches ("Ada") use ("-d_C");

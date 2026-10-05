@@ -1,0 +1,14 @@
+# GCC on CuBit (userspace/ports/gcc): the compiler proper, cc1
+# (docs/self-hosting.md, "GCC and GNAT"). Its argv is open-ended (temporary
+# names, -I directories), so it has no typed parameters, and no file scopes
+# of its own: it works only in the places its launcher delegates (the
+# driver passes on what it was given, decision D2). What it writes to
+# descriptors 1 and 2 goes to its unix.stdout and unix.stderr outlets.
+(Executable_Manifest
+  identity => "org.gnu.gcc.cc1"
+  version => "15.3.0"
+  requests => [(service "filesystem" "filesystem")]
+  outlets => [
+    (Outlet "unix.stdout" Element.Text pages => 4)
+    (Outlet "unix.stderr" Element.Text pages => 4)]
+  descriptors => [(Descriptor 1 "unix.stdout") (Descriptor 2 "unix.stderr")])

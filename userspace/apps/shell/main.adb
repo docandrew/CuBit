@@ -123,7 +123,9 @@ procedure main is
    EVENT_CHILD_EXIT : constant Unsigned_32 := 16#0103#;
    EVENT_CAP_FAULT  : constant Unsigned_32 := 16#0104#;
 
-   --  Child stdout stream subscription
+   --  The foreground child's first output port (ring 1), subscribed
+   --  when it starts. CuBit has no stdout; a program declares its ports.
+   FIRST_PORT_RING : constant := 1;
    childStream : CuBit.Streams.SubInfo;
    streamSubPending : Boolean := False;  -- async subscribe in flight
    streamDrainPolls : Natural := 0;      -- polls since child exit
@@ -840,7 +842,7 @@ procedure main is
          printDec (Unsigned_32 (foregroundPID));
          debugPrint ("" & LF);
 
-         --  Submit async subscription to child's stdout stream
+         --  Submit async subscription to the child's first output port
          declare
             subMsg : constant Message := (
                tag => (label  => CuBit.Streams.OP_STREAM_SUBSCRIBE_TYPED,
@@ -849,7 +851,7 @@ procedure main is
                        reserved  => 0),
                authorityTag => 0,
                words    =>
-                 (0 => Unsigned_64 (CuBit.Streams.STREAM_STDOUT),
+                 (0 => FIRST_PORT_RING,
                   1 => Unsigned_64
                     (CuBit.Protocols.TEXT_LINE_CONTRACT.Identity),
                   2 => Unsigned_64
@@ -2419,25 +2421,10 @@ procedure main is
                                           putDec (Unsigned_32 (e));
                                           putStr ("] ");
 
-                                          --  Stream name
-                                          case sid is
-                                             when 1 =>
-                                                putStr ("stdin ");
-                                             when 2 =>
-                                                putStr ("stdout");
-                                             when 3 =>
-                                                putStr ("stderr");
-                                             when 4 =>
-                                                putStr ("log   ");
-                                             when 6 =>
-                                                putStr ("metric");
-                                             when 9 =>
-                                                putStr ("health");
-                                             when others =>
-                                                putStr ("id=");
-                                                putDec (
-                                                   Unsigned_32 (sid));
-                                          end case;
+                                          --  A port's ring: its position
+                                          --  in the manifest plus one.
+                                          putStr ("ring=");
+                                          putDec (Unsigned_32 (sid));
 
                                           putStr ("  pages=");
                                           putDec (Unsigned_32 (pg));
@@ -2689,15 +2676,8 @@ procedure main is
                                                    Shift_Right (param0, 16)
                                                       and 16#FFFF#;
                                              begin
-                                                putStr ("  id=");
-                                                case sid is
-                                                   when 1 => putStr ("stdin");
-                                                   when 2 => putStr ("stdout");
-                                                   when 3 => putStr ("stderr");
-                                                   when 4 => putStr ("log");
-                                                   when others =>
-                                                      putDec (sid);
-                                                end case;
+                                                putStr ("  ring=");
+                                                putDec (sid);
                                                 putStr (" pages=");
                                                 putDec (pg);
                                              end;
@@ -3318,18 +3298,8 @@ procedure main is
                --  Scan bits 0..15 for active stream IDs
                for bit in 0 .. 15 loop
                   if (bitmask and Shift_Left (1, bit)) /= 0 then
-                     putStr ("  stream ");
+                     putStr ("  port ring ");
                      putDec (Unsigned_32 (bit));
-                     putStr (" = ");
-                     case bit is
-                        when 1 => putStr ("stdin");
-                        when 2 => putStr ("stdout");
-                        when 3 => putStr ("stderr");
-                        when 4 => putStr ("log");
-                        when others =>
-                           putStr ("id:");
-                           putDec (Unsigned_32 (bit));
-                     end case;
                      putChar (LF);
                   end if;
                end loop;

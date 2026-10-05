@@ -1,4 +1,7 @@
 package body Client_Canvas_Geometry with SPARK_Mode is
+   --  Proved free of run-time errors; tests/ui-raster/run.sh re-proves every
+   --  unit carrying this pragma and fails on any unproved check.
+   pragma Suppress (All_Checks);
    function Clamped_End (Start, Length, Limit : Natural) return Natural is
      (if Start >= Limit then Limit elsif Length >= Limit - Start then Limit
       else Start + Length);

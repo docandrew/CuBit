@@ -32,6 +32,6 @@ library project Worker_Host is
    for Runtime ("Ada") use "../../runtime";
    package Compiler is
       for Default_Switches ("Ada") use
-        ("-gnat2022", "-O2", "-g", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+        ("-gnat2022", "-O2", "-g", "-mno-red-zone", "-fno-pic");
    end Compiler;
 end Worker_Host;

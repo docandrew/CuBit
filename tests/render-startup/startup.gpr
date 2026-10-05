@@ -1,0 +1,10 @@
+project Startup is
+   for Source_Dirs use (".", "../../userspace/runtime/gnat");
+   for Source_Files use ("startup_tests.adb", "cubit.ads", "cubit-render_startup.ads");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("startup_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Startup;

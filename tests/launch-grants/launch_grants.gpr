@@ -1,0 +1,13 @@
+--  Hosted tests and proofs for delegated launch grants (run.sh).
+project Launch_Grants is
+   for Source_Dirs use (".", "../../userspace/runtime/gnat");
+   for Source_Files use ("cubit.ads", "cubit-launch_grants.ads",
+                         "cubit-launch_grants.adb", "main.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa", "-I-");
+   end Compiler;
+end Launch_Grants;

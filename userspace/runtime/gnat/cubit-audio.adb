@@ -35,8 +35,11 @@ package body CuBit.Audio is
    GRANT_REGION_BASE : constant Unsigned_64 := 16#4000_0000_0000#;
    GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096;
 
-   --  Local stream table
-   streamTable : array (StreamIndex) of StreamRecord;
+   --  Local stream table. A static aggregate, so the table needs no
+   --  elaboration code and the unit also links into libc (docs/c-removal.md).
+   streamTable : array (StreamIndex) of StreamRecord :=
+     (others => (active => False, streamId => 0, ringAddr => 0,
+                 bufferSize => 0, hdrSize => 0, channels => 2));
 
    ---------------------------------------------------------------------------
    --  Atomic U32 read/write at an address. Publishing writePtr is the release

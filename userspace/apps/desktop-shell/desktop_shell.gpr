@@ -1,4 +1,5 @@
 with "../../lib/ui/fonts_native.gpr";
+with "../../lib/ui/toolkit_flags.gpr";
 project Desktop_Shell is
 
     for Languages use ("Ada");
@@ -21,7 +22,7 @@ project Desktop_Shell is
         );
     end Builder;
 
-    package Compiler is
+    package Compiler extends Toolkit_Flags.Compiler is
         for Default_Switches ("Ada") use
         (
             "-O2",
@@ -29,9 +30,7 @@ project Desktop_Shell is
             "-fstack-usage",
             "-fomit-frame-pointer",
             "-mno-red-zone",
-            "-fno-pic",
-            "-mno-sse",
-            "-mno-sse2"
+            "-fno-pic"
         );
     end Compiler;
 

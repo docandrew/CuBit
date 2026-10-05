@@ -6,13 +6,19 @@ package body Intel_GPU_VM_Image.Snapshots is
    begin
       Accepted := False;
       if not Direct_Successor (Object, Candidate) or else
-        Candidate.Count > Metadata_Capacity (Object)
+        Candidate.Count > Metadata_Capacity (Object) or else
+        Candidate.Backed > Descriptor_Capacity (Object)
       then return; end if;
       -- A limited image cannot accidentally be assigned by callers. This is
       -- the explicit metadata-only transition; Candidate remains immutable.
-      Object.DMA := Candidate.DMA;
+      for P in 1 .. Candidate.Backed loop
+         Set_Descriptor (Object, P, Descriptor (Candidate, P));
+      end loop;
+      for P in Candidate.Backed + 1 .. Object.Backed loop
+         Set_Descriptor (Object, P, (others => <>));
+      end loop;
+      Object.Backed := Candidate.Backed;
       Object.Scratch := Candidate.Scratch;
-      Object.Levels := Candidate.Levels;
       for P in 1 .. Candidate.Count loop
          Table_Storage.Copy_Page (Object.Tables, P, Candidate.Tables, P);
       end loop;
@@ -31,14 +37,16 @@ package body Intel_GPU_VM_Image.Snapshots is
       Accepted := False;
       if not References_Retired or else not Object.Valid or else not Object.Frozen or else
         Expected_Revision = 0 or else Expected_Revision /= Object.Epoch or else
-        Expected_Root = 0 or else Expected_Root /= Object.DMA (1) or else
+        Expected_Root = 0 or else Expected_Root /= Descriptor (Object, 1).DMA or else
         Object.Epoch = Unsigned_64'Last
       then return; end if;
       Object.Attempted := False; Object.Valid := False; Object.Frozen := False;
       Object.Mapped_Pages := 0; Object.Count := 0;
       Object.Predecessor_Root := 0; Object.Predecessor_Epoch := 0;
-      Object.DMA := [others => 0]; Object.Scratch := [others => 0];
-      Object.Levels := [others => 0];
+      for P in 1 .. Object.Backed loop
+         Set_Descriptor (Object, P, (others => <>));
+      end loop;
+      Object.Backed := 0; Object.Scratch := [others => 0];
       for P in 1 .. Metadata_Capacity (Object) loop Clear_Table (Object, P); end loop;
       Object.Retired_Receipt := True;
       -- Keep Epoch: the next preparation advances it, never resets to one.

@@ -83,6 +83,10 @@ package CCL.Host_Values with SPARK_Mode => On is
       --  opens it in the session's table and replies with its handle, an
       --  Integer_Value (docs/ccl-streams.md).
       Result_Stream : Boolean := False;
+      --  The result is a task of Result (with Result_Schema): the host opens
+      --  it in the session's table, replies with its handle, and completes
+      --  it later (docs/control-language.md, Task<T>).
+      Result_Task : Boolean := False;
       Ownership_Argument : Boolean := False;
       Local : CCL.Ownership.Binding_Id := 0;
       Transfer : CCL.Imports.Transfer_Mode := CCL.Imports.Copy_Argument;
@@ -98,6 +102,8 @@ package CCL.Host_Values with SPARK_Mode => On is
           Item.Argument_Data_Type /= CCL.Types.Invalid_Type and Argument_Schema /= CCL.Objects.No_Schema
        elsif Item.Argument = CCL.VM.Variant_Value then
           Item.Argument_Data_Type in CCL.Types.Declared_Type and Argument_Schema /= CCL.Objects.No_Schema
+       elsif Item.Argument = CCL.VM.Function_Value then
+          Item.Argument_Data_Type = CCL.Types.Handler_Type and Argument_Schema = CCL.Objects.No_Schema
        else Item.Argument_Data_Type = CCL.Types.Invalid_Type) and then
       (if Item.Result in CCL.VM.Object_Value | CCL.VM.List_Value then
           Item.Result_Data_Type /= CCL.Types.Invalid_Type and Result_Schema /= CCL.Objects.No_Schema
@@ -132,9 +138,10 @@ package CCL.Host_Values with SPARK_Mode => On is
       (if Item.Argument = Resource_Value then Item.Ownership_Argument and
          Item.Transfer /= CCL.Imports.Copy_Argument) and
       Item.Result /= Handler_Value and
-      (if Item.Result_Stream then
+      (if Item.Result_Stream or Item.Result_Task then
          Item.Result in Integer_Value | Boolean_Value | Text_Value | Object_Value and
-         not Has_Resources (Item) and not Item.Ownership_Argument));
+         not Has_Resources (Item) and not Item.Ownership_Argument) and
+      not (Item.Result_Stream and Item.Result_Task));
    function Scalar_Only (Item : Import_Declaration) return Boolean is
      (Well_Formed (Item) and not Has_Resources (Item) and Item.Argument in Integer_Value | Boolean_Value and
       Item.Result in Integer_Value | Boolean_Value and not Item.Result_Stream);

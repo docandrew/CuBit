@@ -84,7 +84,11 @@ void cubit_test_mesa_init_stage(const char *stage, int returned, int result)
 }
 
 #ifdef CUBIT_TEST_PRESENT_TRIANGLE
+#ifdef CUBIT_TEAPOT_GALLERY
+#include "native-gallery-present.h"
+#else
 #include "native-triangle-present.h"
+#endif
 #endif
 
 static bool query(void *context, const struct cubit_gpu_query_message *request,
@@ -213,6 +217,9 @@ uint32_t cubit_test_mesa_authorized_discovery(uint64_t slot)
                                          NULL);
             report(DRAW_LOG " result=%d (offscreen; NOT presented)\n", result);
 #endif
+#endif
+#ifdef CUBIT_TEAPOT_GALLERY
+               finish_gallery_window();
 #endif
                if (result!=VK_SUCCESS) {
                   report(DRAW_LOG " cycle=%u stopped result=%d (NO replay)\n",

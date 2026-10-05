@@ -1,0 +1,9 @@
+project Desktop_Glyph_Upload extends "desktop_vulkan_startup.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat", "../../userspace/services/desktop");
+   for Source_Files use Desktop_Vulkan_Startup'Source_Files &
+      ("desktop_glyph_upload.ads", "desktop_glyph_upload.adb", "compositor_glyph_ffi.ads", "compositor_glyph_ffi.adb",
+       "desktop_glyph_raster_mock.c", "desktop_glyph_upload_tests.adb");
+   for Object_Dir use "build/desktop-glyph-upload/obj";
+   for Exec_Dir use "build/desktop-glyph-upload";
+   for Main use ("desktop_glyph_upload_tests.adb");
+end Desktop_Glyph_Upload;

@@ -1,0 +1,10 @@
+<!doctype html><title>CuBitBrowserPerfOriginStarting</title><body><h1>Cross-origin ancestry and CSP</h1><p id=state>Checking</p><script>
+const expected=__PARENT_ORIGIN__,child=__CHILD_ORIGIN__;let seen=new Set(),bad=false;
+function fail(s){bad=true;document.title='CuBitBrowserPerfOriginFAIL';document.getElementById('state').textContent=s;}
+window.addEventListener('message',e=>{if(e.origin!==child)return;
+const d=e.data;if(d.kind==='deny'){fail('CSP denied child executed');return;}
+if(!['allow','control'].includes(d.kind)||JSON.stringify(d.ancestors)!==JSON.stringify([expected])){fail('Wrong ancestors: '+JSON.stringify(d));return;}
+seen.add(d.kind);document.getElementById('state').textContent='Verified '+Array.from(seen).join(', ');});
+for(const kind of ['control','allow','deny']){const f=document.createElement('iframe');f.src=child+'/'+kind;document.body.appendChild(f);}
+setTimeout(()=>{if(!bad&&seen.size===2){document.title='CuBitBrowserPerfOriginPASS';document.getElementById('state').textContent='PASS: ancestry preserved; CSP allow executes; CSP deny does not execute';}else if(!bad)fail('Missing children: '+Array.from(seen));},12000);
+</script>

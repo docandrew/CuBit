@@ -3,6 +3,7 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with Intel_GPU_ADLN_PPGTT; use Intel_GPU_ADLN_PPGTT;
 with Intel_GPU_VM_Image;
+with Intel_GPU_VM_Image.Growth;
 with Intel_GPU_VM_Image.Snapshots;
 with Intel_GPU_VM_Materialize;
 with Intel_GPU_VM_Update;
@@ -17,8 +18,10 @@ with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Buffer_Backing;
 procedure VM_Update_Pipeline_Tests is
    procedure Run (Fail_Second_Invalidation : Boolean; Revoke_On_Resume : Boolean := False;
-                  Keep_Disabled : Boolean := False; Empty_Remapping : Boolean := False) is
+                  Keep_Disabled : Boolean := False; Empty_Remapping : Boolean := False;
+                  Sparse : Boolean := False; Streamed : Boolean := False) is
       package VM is new Intel_GPU_VM_Image (8);
+      package Topology is new VM.Growth;
       package Snapshots is new VM.Snapshots;
       Current_Image : VM.Image;
       type Page is array (Table_Index) of Unsigned_64;
@@ -94,7 +97,36 @@ procedure VM_Update_Pipeline_Tests is
       procedure Invalidate (Success : out Boolean);
       procedure Resume (Success : out Boolean);
       package Update is new Intel_GPU_VM_Update (Owner, Drain, Publish, Invalidate, Resume);
-      procedure Handle_Update is new Binding.Handle_Update (Update);
+      procedure Array_Update is new Binding.Handle_Update (Update);
+      procedure Handle_Update
+        (Object : Buffers.Service; Source : VM.Image; Candidate : in out VM.Image;
+         Tables : VM.Backing_Pages; State : in out Update.State;
+         VM_Session, Sender, Stamp : Unsigned_64; Request_Label : Unsigned_32;
+         Length, Flags : Unsigned_8; Reserved : Unsigned_16;
+         Request : Buffers.Words; Response : out Buffers.Words) is
+         Count, Reads : Natural := 0;
+         function Read_Page (Page : VM.Page_Number) return Unsigned_64 is
+         begin
+            Reads := Reads + 1;
+            pragma Assert (Page = Reads and Page <= Count);
+            return Tables (Page);
+         end;
+         procedure Stream_Update is new Binding.Handle_Update_From_Pages (Read_Page, Update);
+      begin
+         if Streamed then
+            for P in Tables'Range loop
+               exit when Tables (P) = 0;
+               Count := P;
+            end loop;
+            Stream_Update (Object, Source, Candidate, Count, State,
+              VM_Session, Sender, Stamp, Request_Label, Length, Flags, Reserved, Request, Response);
+            if Response (0) = Buffers.Denied then pragma Assert (Reads = 0); end if;
+            if Response (0) = Buffers.OK then pragma Assert (Reads = Count); end if;
+         else
+            Array_Update (Object, Source, Candidate, Tables, State,
+              VM_Session, Sender, Stamp, Request_Label, Length, Flags, Reserved, Request, Response);
+         end if;
+      end Handle_Update;
       State : Update.State;
       Status : Update.Result;
       use type Update.Result;
@@ -237,6 +269,17 @@ procedure VM_Update_Pipeline_Tests is
                Handle + (if Generation = 2 then 2 ** 32 else 0),
                (if Generation = 1 then 4096 else 2 ** 39), 4096];
          end if;
+         if Sparse then
+            declare
+               Required : Natural := VM.Used (Current_Image);
+            begin
+               if (Shift_Right (Request (0), 16) and 16#FFFF#) = 0 then
+                  Required := Required + Topology.Inspect
+                    (Current_Image, Request (2), Request (3)).Additional_Tables;
+               end if;
+               for P in Required + 1 .. VM.Page_Number'Last loop DMA (P) := 0; end loop;
+            end;
+         end if;
          -- Neither foreign identity nor stale epoch may consume the candidate
          -- or issue hardware/context callbacks.
          Handle_Update (Buffers_State, Current_Image, Images (Generation),
@@ -333,13 +376,18 @@ procedure VM_Update_Pipeline_Tests is
       end if;
    end Run;
 begin
-   Run (False); Run (True); Run (False, True);
-   Run (False, Keep_Disabled => True);
-   Run (True, Keep_Disabled => True);
-   Run (False, True, Keep_Disabled => True);
-   Run (False, Keep_Disabled => True, Empty_Remapping => True);
-   Run (True, Keep_Disabled => True, Empty_Remapping => True);
-   Run (False, True, Keep_Disabled => True, Empty_Remapping => True);
+   for Streamed in Boolean loop
+   for Sparse in Boolean loop
+      Run (False, Sparse => Sparse, Streamed => Streamed); Run (True, Sparse => Sparse, Streamed => Streamed);
+      Run (False, True, Sparse => Sparse, Streamed => Streamed);
+      Run (False, Keep_Disabled => True, Sparse => Sparse, Streamed => Streamed);
+      Run (True, Keep_Disabled => True, Sparse => Sparse, Streamed => Streamed);
+      Run (False, True, Keep_Disabled => True, Sparse => Sparse, Streamed => Streamed);
+      Run (False, Keep_Disabled => True, Empty_Remapping => True, Sparse => Sparse, Streamed => Streamed);
+      Run (True, Keep_Disabled => True, Empty_Remapping => True, Sparse => Sparse, Streamed => Streamed);
+      Run (False, True, Keep_Disabled => True, Empty_Remapping => True, Sparse => Sparse, Streamed => Streamed);
+   end loop;
+   end loop;
    Ada.Text_IO.Put_Line ("VM update pipeline PASS: GuC scheduling and holds, two stable-root generations, map/unmap, materialize then invalidate, failed invalidation retains backing and blocks resume (simulated GPU)");
    Ada.Text_IO.Put_Line ("Private table reuse pipeline PASS: disabled committed replacement +mock allocator ack permits metadata/ticket reuse; uncertainty retains both generations");
 end VM_Update_Pipeline_Tests;

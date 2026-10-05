@@ -4,7 +4,7 @@
 --
 --  @summary
 --  Userspace wget app: an HTTPS GET of https://example.com/, printed to
---  its stdout stream and the serial console.
+--  its progress connector and the serial console.
 --
 --  All networking goes through tls.svc (CuBit.TLS_Protocol): OPEN resolves,
 --  connects and verifies the certificate in one deferred call; WRITE, READ
@@ -20,7 +20,6 @@ with CuBit.Memory_Grants;
 with CuBit.TLS_Protocol;
 with CCL_Manifest_Bindings;
 with CuBit.Streams;
-with CuBit.Protocols;
 
 procedure main is
    use ASCII;
@@ -62,8 +61,11 @@ procedure main is
       debugPrint (buf (pos + 1 .. buf'Last));
    end printDec;
 
+   --  The connector progress lines go to (Open_Outlet at start).
+   Progress : CuBit.Streams.StreamId := CuBit.Streams.NO_STREAM;
+
    ---------------------------------------------------------------------------
-   --  streamDec - print a small unsigned number via stdout stream
+   --  streamDec - print a small unsigned number to the progress connector
    ---------------------------------------------------------------------------
    procedure streamDec (val : Unsigned_32) is
       buf : String (1 .. 10);
@@ -71,7 +73,7 @@ procedure main is
       v   : Unsigned_32 := val;
    begin
       if v = 0 then
-         CuBit.Streams.streamPrint (CuBit.Streams.STREAM_STDOUT, "0");
+         CuBit.Streams.streamPrint (Progress, "0");
          return;
       end if;
       while v > 0 loop
@@ -81,7 +83,7 @@ procedure main is
          pos := pos - 1;
       end loop;
       CuBit.Streams.streamPrint (
-         CuBit.Streams.STREAM_STDOUT, buf (pos + 1 .. buf'Last));
+         Progress, buf (pos + 1 .. buf'Last));
    end streamDec;
 
    ---------------------------------------------------------------------------
@@ -102,13 +104,11 @@ procedure main is
 begin
    debugPrint ("wget: starting..." & LF);
 
-   --  Create stdout stream (4 pages = 16KB ring buffer)
-   CuBit.Streams.streamCreateTyped
-     (CuBit.Streams.STREAM_STDOUT, 4, CuBit.Streams.TYPE_TEXT_LINE,
-      CuBit.Protocols.TEXT_LINE_CONTRACT);
+   --  The progress connector its manifest declares (a 4-page ring of text).
+   Progress := CuBit.Streams.Open_Outlet ("com.cubit.wget.progress");
 
    CuBit.Streams.streamPrint (
-      CuBit.Streams.STREAM_STDOUT, "wget: connecting..." & LF);
+      Progress, "wget: connecting..." & LF);
 
    --  2. Allocate data buffer via sbrk
    declare
@@ -174,7 +174,7 @@ begin
    --  (DNS resolve + TCP connect in one deferred call)
    debugPrint ("wget: opening " & SCHEME & "..." & LF);
    CuBit.Streams.streamPrint (
-      CuBit.Streams.STREAM_STDOUT, "Connecting to " & SCHEME & "..." & LF);
+      Progress, "Connecting to " & SCHEME & "..." & LF);
    declare
       buf : array (0 .. SCHEME'Length - 1) of Unsigned_8 with
          Import, Address => dataBuf;
@@ -206,7 +206,7 @@ begin
       begin
          debugPrint ("wget: open failed: " & Reason & LF);
          CuBit.Streams.streamPrint (
-            CuBit.Streams.STREAM_STDOUT, "Connection failed: " & Reason & LF);
+            Progress, "Connection failed: " & Reason & LF);
       end;
       declare
          ignore : Unsigned_64;
@@ -221,7 +221,7 @@ begin
    printDec (Unsigned_32 (chanHandle));
    debugPrint (", sending HTTP GET" & LF);
    CuBit.Streams.streamPrint (
-      CuBit.Streams.STREAM_STDOUT, "Connected, sending request..." & LF);
+      Progress, "Connected, sending request..." & LF);
 
    --  5. Write HTTP request into grant buffer, OP_NET_WRITE
    declare
@@ -280,14 +280,14 @@ begin
       if tag.label = REPLY_EOF then
          debugPrint ("wget: EOF, closing" & LF);
          CuBit.Streams.streamPrint (
-            CuBit.Streams.STREAM_STDOUT, "[EOF]" & LF);
+            Progress, "[EOF]" & LF);
          exit;
       end if;
 
       if tag.label /= REPLY_OK then
          debugPrint ("wget: read error" & LF);
          CuBit.Streams.streamPrint (
-            CuBit.Streams.STREAM_STDOUT, "[read error]" & LF);
+            Progress, "[read error]" & LF);
          exit;
       end if;
 
@@ -299,10 +299,10 @@ begin
          debugPrint (" bytes" & LF);
 
          CuBit.Streams.streamPrint (
-            CuBit.Streams.STREAM_STDOUT, "Received ");
+            Progress, "Received ");
          streamDec (Unsigned_32 (recvLen));
          CuBit.Streams.streamPrint (
-            CuBit.Streams.STREAM_STDOUT, " bytes" & LF);
+            Progress, " bytes" & LF);
 
          --  Log the HTTP status line once, for the serial console.
          if not statusLogged and then recvLen > 0 then
@@ -325,7 +325,7 @@ begin
                ignore : Unsigned_32;
             begin
                ignore := CuBit.Streams.streamWrite (
-                  CuBit.Streams.STREAM_STDOUT,
+                  Progress,
                   dataBuf,
                   Unsigned_32 (recvLen),
                   CuBit.Streams.TYPE_TEXT_LINE);
@@ -356,7 +356,7 @@ begin
 
    debugPrint ("wget: done" & LF);
    CuBit.Streams.streamPrint (
-      CuBit.Streams.STREAM_STDOUT, "Done." & LF);
+      Progress, "Done." & LF);
    declare
       ignore : Unsigned_64;
    begin

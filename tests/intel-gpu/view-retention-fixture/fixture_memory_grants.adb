@@ -5,6 +5,7 @@ package body CuBit.Memory_Grants is
       Reference : out CuBit.Grant_References.Reference; Success : out Boolean) is
    begin
       Creates := Creates + 1;
+      Last_Writable := ReadWrite;
       Reference := (Slot => 1, Generation => 1);
       Success := Create_OK;
    end Create_Via_Capability;
@@ -14,6 +15,7 @@ package body CuBit.Memory_Grants is
       Reference : out CuBit.Grant_References.Reference; Success : out Boolean) is
    begin
       pragma Assert (not ReadWrite);
+      Forwardable_Creates := Forwardable_Creates + 1;
       Create_Via_Capability (Slot, LocalAddr, NumPages, ReadWrite, Reference, Success);
    end Create_Forwardable_Via_Capability;
    procedure Revoke

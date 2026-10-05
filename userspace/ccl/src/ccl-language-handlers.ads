@@ -1,5 +1,5 @@
 --  Retained, checked entry points, not source strings or native addresses.
-package CCL.Language.Handlers with SPARK_Mode is
+package CCL.Language.Handlers is
    type Profile is (Boolean_Action);
    --  Boolean_Action is () -> Boolean. The Boolean is the application's
    --  result, not a request to retry or evidence of event delivery.
@@ -31,6 +31,8 @@ private
       Valid : Boolean := False;
       Program : Analysis_Result;
       Bindings : CCL.Catalog.Granted_Bindings;
+      --  The schemas its imports were checked against.
+      Catalog : CCL.Catalog.Interface_Catalog;
    end record;
    function Ready (Item : Handler) return Boolean is (Item.Valid);
 end CCL.Language.Handlers;

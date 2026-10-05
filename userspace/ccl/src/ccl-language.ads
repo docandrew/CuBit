@@ -114,7 +114,9 @@ is
       Ends_With_Builtin, Index_Of_Builtin, Replace_Builtin, Split_Builtin,
       Join_Builtin, Parse_Int_Builtin,
       --  Views of a stream the session holds (docs/ccl-streams.md).
-      Latest_Builtin, Window_Builtin, Arrived_Builtin, Lost_Builtin);
+      Latest_Builtin, Window_Builtin, Arrived_Builtin, Lost_Builtin,
+      --  A task's result (docs/control-language.md, Task<T>).
+      Wait_Builtin);
    function Builtin_Name (Operation : Builtin_Operation) return String is
      (case Operation is
         when No_Builtin => "", when Each_Builtin => "each",
@@ -132,15 +134,18 @@ is
         when Replace_Builtin => "replace", when Split_Builtin => "split",
         when Join_Builtin => "join", when Parse_Int_Builtin => "parse-int",
         when Latest_Builtin => "latest", when Window_Builtin => "window",
-        when Arrived_Builtin => "arrived", when Lost_Builtin => "lost");
-   --  The stream views: the stream is the last operand.
+        when Arrived_Builtin => "arrived", when Lost_Builtin => "lost",
+        when Wait_Builtin => "wait");
+   --  The stream views: the stream (or, for wait, the task) is the last
+   --  operand.
    function Is_Stream_View (Operation : Builtin_Operation) return Boolean is
-     (Operation in Latest_Builtin .. Lost_Builtin);
+     (Operation in Latest_Builtin .. Wait_Builtin);
    function Stream_View_Of (Operation : Builtin_Operation) return CCL.Streams.View_Kind is
      (case Operation is
          when Latest_Builtin => CCL.Streams.Latest_View,
          when Window_Builtin => CCL.Streams.Window_View,
          when Arrived_Builtin => CCL.Streams.Arrived_View,
+         when Wait_Builtin => CCL.Streams.Wait_View,
          when others => CCL.Streams.Lost_View)
      with Pre => Is_Stream_View (Operation);
    --  The string built-ins with a shared implementation (CCL.Text_Operations),
@@ -213,7 +218,7 @@ is
         when No_Builtin => 0,
         when Sum_Builtin | Reverse_Builtin | Sort_Builtin | Min_Builtin | Max_Builtin |
              Upper_Builtin | Lower_Builtin | Trim_Builtin | Parse_Int_Builtin |
-             Latest_Builtin | Arrived_Builtin | Lost_Builtin => 1,
+             Latest_Builtin | Arrived_Builtin | Lost_Builtin | Wait_Builtin => 1,
         when Fold_Builtin | Replace_Builtin => 3,
         when others => 2);
    --  Builtins whose subject (last operand) may be a String as well as a list.
@@ -350,7 +355,14 @@ is
       Stream_Empty,
       Stream_Window_Out_Of_Range,
       --  The session's elements do not have the type the evaluation named.
-      Stream_Element_Mismatch);
+      Stream_Element_Mismatch,
+      --  (wait t) on a task still pending: the evaluation stops, and the
+      --  session runs the entry again when the task completes, replaying
+      --  the host calls it already made (Waited_On names the task).
+      Waiting_On_Task,
+      --  A checked program the compiler or verifier refused (a size limit,
+      --  a form without bytecode yet). Diagnostic_Subject names the reason.
+      Not_Compiled);
 
    type Diagnostic_Code is
      (No_Diagnostic,
@@ -373,6 +385,7 @@ is
       Expected_Comparable,
       Expected_Printable,
       Expected_Stream,
+      Expected_Task,
       Invalid_Type_Declaration,
       Invalid_Variant_Payload,
       Invalid_Match_Pattern,
@@ -396,6 +409,11 @@ is
       Host_Schema_Unavailable,
       Unsupported_Host_Object,
       Host_Object_Type_Mismatch,
+      --  A record field, or a host operation's argument, given a value of
+      --  another type: the result names the field or operation (subject)
+      --  and both types (Diagnostic_Expected, Diagnostic_Found).
+      Field_Type_Mismatch,
+      Argument_Type_Mismatch,
       List_Element_Mismatch,
       Unsupported_List_Element,
       Unsupported_Stream_Element,
@@ -410,7 +428,9 @@ is
       Unknown_Field_Argument,
       Repeated_Field_Argument,
       Missing_Field_Argument,
-      Positional_After_Named);
+      Positional_After_Named,
+      --  A resource copied, used after it moved, or never released.
+      Resource_Ownership_Violation);
 
    type Text_Result is record
       Length : Natural range 0 .. MAX_TEXT_BYTES := 0;
@@ -462,6 +482,9 @@ is
      (Result : Analysis_Result) return Node_Reference;
    function Analysis_Diagnostic_Subject
      (Result : Analysis_Result) return Name;
+   --  For a type mismatch: the type wanted and the type given.
+   function Analysis_Diagnostic_Expected (Result : Analysis_Result) return Name;
+   function Analysis_Diagnostic_Found (Result : Analysis_Result) return Name;
    function Analysis_Types (Result : Analysis_Result) return CCL.Types.Registry;
    function Analysis_Resource_Policies (Result : Analysis_Result)
      return CCL.Resource_Policies.Policy_Table;
@@ -475,6 +498,9 @@ is
    function Analysis_Node
      (Result : Analysis_Result;
       Index  : Node_Index) return Node;
+
+   --  The source the analysis read (empty when it was too long to keep).
+   function Analysis_Source (Result : Analysis_Result) return String;
 
    --  A string literal node's text (empty for any other node).
    function Analysis_Literal
@@ -498,6 +524,8 @@ is
       --  The name a diagnostic is about, when it has one: the field a
       --  record construction left out, named twice or does not have.
       Diagnostic_Subject : Name;
+      --  For a type mismatch: the type wanted and the type given.
+      Diagnostic_Expected, Diagnostic_Found : Name;
       Has_Value      : Boolean := False;
       Has_Text       : Boolean := False;
       Has_Character  : Boolean := False;
@@ -534,6 +562,16 @@ is
       Has_Stream : Boolean := False;
       Stream : CCL.Streams.Handle := CCL.Streams.No_Handle;
       Stream_Element : Type_Text := (others => <>);
+      --  The handle is a task's (Task<T>, kept as (task T n)), not a
+      --  stream's: Stream_Element is then its result type.
+      Is_Task : Boolean := False;
+      --  A task's state when the evaluation ended, read without waiting:
+      --  Running, or Done with its result's literal in Task_Value (Erlang
+      --  style: look at a run without blocking on it).
+      Task_Done : Boolean := False;
+      Task_Value : Literal_Text := (others => <>);
+      --  Waiting_On_Task: the task the evaluation waits for.
+      Waited_On : CCL.Streams.Handle := CCL.Streams.No_Handle;
       --  A service call that produced no value (Host_Call_Failed,
       --  Host_Authority_Denied): which operation, and why, with how to
       --  allow it when the host says (docs/ccl-errors.md).
@@ -549,115 +587,18 @@ is
       not Item.Has_Literal and then not Item.Has_Stream and then
       CCL.Types."=" (Item.Variant_Type, Invalid_Type));
 
-   procedure Interpret
-     (Source : String;
-      Fuel   : Natural;
-      Result : out Interpretation_Result)
-   with
-      Post => Result.Fuel_Remaining <= Fuel;
-
-   procedure Interpret
-     (Source             : String;
-      Fuel               : Natural;
-      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
-      Result             : out Interpretation_Result)
-   with
-      Post => Result.Fuel_Remaining <= Fuel;
-
-   -- Trusted, statically instantiated host adapter. Source cannot supply a
-   -- callback or mint bindings. Initial support is synchronous scalar-copy
-   -- calls only, with full analysis/admission before any host invocation.
-   generic
-      type Host_Context is limited private;
-      with procedure Invoke
-        (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
-         Argument : CCL.VM.Value; Value : out CCL.VM.Value;
-         Success : out Boolean);
-   procedure Interpret_With_Host
-     (Source : String; Fuel : Natural;
-      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
-      Grants : CCL.Catalog.Granted_Bindings;
-      Context : in out Host_Context;
-      Result : out Interpretation_Result)
-     with Post => Result.Fuel_Remaining <= Fuel;
-
-   generic
-      type Host_Context is limited private;
-      with procedure Invoke
-        (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
-         Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result);
-      Allow_Text : Boolean := True;
-      --  Answers stream views (docs/ccl-streams.md). Reply arrives as
-      --  No_Such_Stream; a host without streams leaves it so.
-      with procedure Read_Stream
-        (Context : in out Host_Context; Request : CCL.Streams.View_Request;
-         Reply : in out CCL.Streams.View_Reply) is null;
-   procedure Interpret_With_Values
-     (Source : String; Fuel : Natural;
-      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
-      Grants : CCL.Catalog.Granted_Bindings;
-      Context : in out Host_Context; Result : out Interpretation_Result)
-     with Post => Result.Fuel_Remaining <= Fuel;
-
    type Object_Interpretation_Result is record
       Status : Interpretation_Status := Parse_Failed;
       Diagnostic : Diagnostic_Code := No_Diagnostic;
       Diagnostic_Position : Source_Position := 0;
       Diagnostic_Subject : Name;
+      Diagnostic_Expected, Diagnostic_Found : Name;
       Fuel_Remaining : Natural := 0;
       Has_Value : Boolean := False;
       Value : CCL.Objects.Image;
    end record;
-   -- Separate from the scalar/UI result: ordinary evaluations do not carry
-   -- an extra native image. Output is owned and remains valid after evaluation.
-   -- Expected is independently approved metadata, never a grant. Mismatch is
-   -- rejected before host effects; Has_Value requires validation against it.
-   generic
-      type Host_Context is limited private;
-      with procedure Invoke
-        (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
-         Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result);
-   procedure Interpret_Object_With_Values
-     (Source : String; Fuel : Natural;
-      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
-      Grants : CCL.Catalog.Granted_Bindings;
-      Context : in out Host_Context; Expected : CCL.Objects.Binding;
-      Result : out Object_Interpretation_Result)
-     with Post => Result.Fuel_Remaining <= Fuel;
-
-   procedure Interpret_Object
-     (Source : String; Fuel : Natural; Expected : CCL.Objects.Binding;
-      Result : out Object_Interpretation_Result)
-     with Post => Result.Fuel_Remaining <= Fuel;
-   -- Pure evaluation: no visible interfaces or host grants. Source must define
-   -- its own types (which must match Expected), or return a primitive value.
-
 private
-   --  Shared with the retained-handler child package. Only checked, private
-   --  frontend results may enter the analyze-free execution path.
-   generic
-      type Host_Context is limited private;
-      with procedure Invoke
-        (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
-         Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result);
-      Export_Native : Boolean := False;
-      with procedure Deliver_Native (Value : CCL.Objects.Image) is null;
-      with procedure Read_Stream
-        (Context : in out Host_Context; Request : CCL.Streams.View_Request;
-         Reply : in out CCL.Streams.View_Reply) is null;
-   procedure Process_Source_With_Host
-     (Source : String; Fuel : Natural;
-      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
-      Grants : CCL.Catalog.Granted_Bindings;
-      Context : in out Host_Context; Host_Enabled : Boolean;
-      Analyze_Input : Boolean; Evaluate : Boolean;
-      Result : out Interpretation_Result; Tree : in out Syntax_Tree)
-     with Post => Result.Fuel_Remaining <= Fuel;
 
-   procedure Admit
-     (Tree : Syntax_Tree; Grants : CCL.Catalog.Granted_Bindings;
-      Allow_Text : Boolean; Status : out Interpretation_Status;
-      Position : out Source_Position);
 
    type Analysis_Result is record
       Resource_Policies : CCL.Resource_Policies.Policy_Table := [others => (others => <>)];
@@ -665,6 +606,7 @@ private
       Diagnostic          : Diagnostic_Code := No_Diagnostic;
       Diagnostic_Position : Natural range 0 .. MAX_SOURCE_LENGTH + 1 := 0;
       Diagnostic_Subject  : Name;
+      Diagnostic_Expected, Diagnostic_Found : Name;
       Tree                : Syntax_Tree;
       Source_Length : Natural range 0 .. MAX_SOURCE_LENGTH := 0;
       Source_Text : String (1 .. MAX_SOURCE_LENGTH) := [others => ' '];

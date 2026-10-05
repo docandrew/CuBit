@@ -25,22 +25,30 @@ package body Intel_GPU_Submission_Image with SPARK_Mode is
       for P in Pages'Range loop Pages (P) := DMA_Start + Unsigned_64 (P) * 4096; end loop;
       return Build_For_VM (Pages, GGTT_Start, Root_DMA);
    end Build_For_VM;
-   function Build_For_VM
-     (Pages : Backing_Pages; GGTT_Start, Root_DMA : Unsigned_64) return Image is
-      Result : Image;
+   function Valid_For_VM
+     (Pages : Backing_Pages; GGTT_Start, Root_DMA : Unsigned_64)
+      return Boolean is
    begin
       if not Intel_GPU_Submission_Backing.Valid_Layout or else
         GGTT_Start = 0 or else GGTT_Start mod 4096 /= 0 or else
         GGTT_Start >= 16#FEE00000# or else GGTT_Bytes > 16#FEE00000# - GGTT_Start or else
         not Intel_GPU_ADLN_PPGTT.Valid_DMA_Page (Root_DMA)
-      then return Result; end if;
+      then return False; end if;
       for P in Pages'Range loop
          if not Intel_GPU_ADLN_PPGTT.Valid_DMA_Page (Pages (P)) or else
-           Pages (P) = Root_DMA then return Result; end if;
+           Pages (P) = Root_DMA then return False; end if;
          for Q in Pages'First .. P loop
-            if Q /= P and then Pages (Q) = Pages (P) then return Result; end if;
+            if Q /= P and then Pages (Q) = Pages (P) then return False; end if;
          end loop;
       end loop;
+      return Intel_GPU_ADLN_Context_Image.Admissible
+        (GGTT_Start, 65536, GGTT_Start + 65536, Root_DMA, 14);
+   end Valid_For_VM;
+   function Build_For_VM
+     (Pages : Backing_Pages; GGTT_Start, Root_DMA : Unsigned_64) return Image is
+      Result : Image;
+   begin
+      if not Valid_For_VM (Pages, GGTT_Start, Root_DMA) then return Result; end if;
       declare
          Context : constant Intel_GPU_ADLN_Context_Image.Prepared_Image :=
            Intel_GPU_ADLN_Context_Image.Build

@@ -1,0 +1,44 @@
+with AML_Decode; use AML_Decode;
+with AML_Objects; use AML_Objects;
+with AML_Objects.Package_References; use AML_Objects.Package_References;
+with Ada.Text_IO;
+with Ada.Command_Line;
+procedure Package_Reference_Tests is
+ use type Integer_Value;
+ Store : State := Empty;
+ P, Q, I, J, Got : Object_ID;
+ S : Allocation_Status;
+ RS : Result_Status;
+ R, Alias_R, Bad : Reference;
+ Before : State;
+ Checks : Natural := 0;
+ procedure Check (C : Boolean) is
+ begin if not C then raise Program_Error with Natural'Image (Checks); end if;
+ Checks := Checks + 1; end Check;
+begin
+ if Ada.Command_Line.Argument_Count = 1 then Check (Ada.Command_Line.Argument (1) /= "--negative-control"); end if;
+ New_Package (Store, 2, Q, S); Check (S = Allocated);
+ New_Package (Store, 2, P, S); Check (S = Allocated);
+ New_Integer (Store, 7, I, S); Check (S = Allocated);
+ New_Integer (Store, 9, J, S); Check (S = Allocated);
+ Make (Store, P, 1, R, RS); Check (RS = Ready);
+ Make (Store, P, 1, Alias_R, RS); Check (RS = Ready);
+ Read (Store, R, Got, RS); Check (RS = Ready and Got = 0);
+ Write (Store, R, I, RS); Check (RS = Ready);
+ Read (Store, Alias_R, Got, RS); Check (RS = Ready and Got = I);
+ Write (Store, R, J, RS); Check (RS = Ready);
+ Read (Store, Alias_R, Got, RS); Check (RS = Ready and Got = J);
+ Check (Integer_Data (Store, I) = 7);
+ Check (Element (Store, P, 0) = 0 and Element (Store, Q, 1) = 0);
+ Before := Store;
+ Write (Store, R, Max_Objects, RS); Check (RS = Invalid_Value and Store = Before);
+ Write (Store, Bad, I, RS); Check (RS = Invalid_Reference and Store = Before);
+ Make (Store, I, 0, Bad, RS); Check (RS = Wrong_Kind);
+ Make (Store, P, 2, Bad, RS); Check (RS = Out_Of_Bounds);
+ Make (Store, P, Integer_Value'Last, Bad, RS); Check (RS = Out_Of_Bounds);
+ Write (Store, R, P, RS); Check (RS = Ready);
+ Read (Store, R, Got, RS); Check (RS = Ready and Got = P);
+ Write (Store, R, 0, RS); Check (RS = Ready);
+ Read (Store, R, Got, RS); Check (RS = Ready and Got = 0);
+ Ada.Text_IO.Put_Line ("Package references explicit checks:" & Natural'Image (Checks) & " PASS");
+end Package_Reference_Tests;

@@ -19,6 +19,8 @@ procedure Main is
    Rename : Rename_Status;
    Truncate : Truncate_Status;
    Flushed : Flush_Status;
+   Replaced_Number : Unsigned_32;
+   Replaced : Inode;
    Completed : Unsigned_64;
    Payload : constant String := "CuBit roundtrip";
    Output : String (1 .. 15);
@@ -54,7 +56,7 @@ begin
    pragma Assert (Truncate = Truncate_Complete);
    --  Reallocate the removed leaf, zeroing the retained tail on the way.
    Write_At (Unsigned_64 ((12 + 2 * (Fs.blkSize / 4)) * Fs.blkSize) + 7);
-   renamePath (Fs, "created", "renamed", Rename);
+   renamePath (Fs, "created", "renamed", False, Replaced_Number, Replaced, Rename);
    pragma Assert (Rename = Rename_Complete);
 
    resolvePath (Fs, "existing", Number, Lookup);

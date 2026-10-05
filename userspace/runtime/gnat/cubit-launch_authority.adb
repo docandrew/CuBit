@@ -70,6 +70,32 @@ package body CuBit.Launch_Authority with SPARK_Mode is
       return False;
    end Contains;
 
+   procedure Name_At
+     (Item : Table_Bytes; Index : Positive; First : out Positive; Last : out Natural;
+      Found : out Boolean)
+   is
+      Count : constant Name_Count := Natural (U16_At (Item, Count_Offset));
+      Position : Positive := Header_Bytes + 1;
+      Length : Natural;
+   begin
+      First := 1;
+      Last := 0;
+      Found := False;
+      for Number in 1 .. Count loop
+         pragma Loop_Invariant (Position <= Item'Last + 1);
+         exit when Position > Item'Last;
+         Length := Natural (Item (Position));
+         exit when Length > Item'Last - Position;
+         if Number = Index then
+            First := Position + 1;
+            Last := Position + Length;
+            Found := True;
+            return;
+         end if;
+         Position := Position + 1 + Length;
+      end loop;
+   end Name_At;
+
    function Scope_Covered
      (Held_Service, Held_Rights : Unsigned_8; Held_Prefix : String;
       Service, Rights : Unsigned_8; Prefix : String) return Boolean is

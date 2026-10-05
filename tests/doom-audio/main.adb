@@ -10,43 +10,42 @@ procedure Main is
    Source : aliased Source_Array;
    Reference : Sink.Sample_Array;
    Expected_Frames : Natural;
+   Reopened : Boolean;
 
-   procedure Begin_Sound (Length : Unsigned_32; Rate : Unsigned_32 := 48_000) is
-      Result : Integer;
+   procedure Begin_Sound (Length : Natural; Rate : Positive := 48_000) is
+      Opened : Boolean;
    begin
       Sink.Reset;
-      Result := Sound.sndInit;
-      pragma Assert (Result = 1);
-      Result := Sound.sndStartChannel
-        (Source'Address, Length, Rate, 0, 100, 128);
-      pragma Assert (Result = 0);
+      Opened := Sound.Init;
+      pragma Assert (Opened);
+      Sound.Start (0, Source'Address, Length, Rate, 100, 128);
    end Begin_Sound;
 
-   procedure Run_Case (Length, Rate : Unsigned_32) is
+   procedure Run_Case (Length : Natural; Rate : Positive) is
       Limits : constant array (Positive range 1 .. 8) of Natural :=
         [0, 1, 17, 0, 511, 3, 1535, 79];
       Previous_Calls : Natural;
    begin
       Begin_Sound (Length, Rate);
-      for I in 1 .. 100 loop Sound.sndUpdate; end loop;
-      pragma Assert (Sound.sndIsPlaying (0) = 0);
+      for I in 1 .. 100 loop Sound.Update; end loop;
+      pragma Assert (not Sound.Is_Playing (0));
       Expected_Frames := Sink.Frame_Count;
       Reference := Sink.Captured;
       pragma Assert (Expected_Frames > 0);
-      Sound.sndShutdown;
+      Sound.Shutdown;
 
       Begin_Sound (Length, Rate);
       for I in 1 .. 1000 loop
          Sink.Limit := Limits ((I - 1) mod Limits'Length + 1);
          Previous_Calls := Sink.Calls;
-         Sound.sndUpdate;
+         Sound.Update;
          -- An update must never spin waiting for the ring to gain space.
          pragma Assert (Sink.Calls - Previous_Calls <= 2);
       end loop;
-      pragma Assert (Sound.sndIsPlaying (0) = 0);
+      pragma Assert (not Sound.Is_Playing (0));
       pragma Assert (Sink.Frame_Count = Expected_Frames);
       pragma Assert (Sink.Captured = Reference);
-      Sound.sndShutdown;
+      Sound.Shutdown;
    end Run_Case;
 begin
    for I in Source'Range loop
@@ -62,58 +61,55 @@ begin
    -- Explicitly leave the final frame pending, then drain after inactivity.
    Begin_Sound (73);
    Sink.Limit := 1535;
-   Sound.sndUpdate;
-   pragma Assert (Sink.Frame_Count = 1535 and Sound.sndIsPlaying (0) = 0);
+   Sound.Update;
+   pragma Assert (Sink.Frame_Count = 1535 and not Sound.Is_Playing (0));
    Sink.Limit := 1;
-   Sound.sndUpdate;
+   Sound.Update;
    pragma Assert (Sink.Frame_Count = 1536);
-   Sound.sndShutdown;
+   Sound.Shutdown;
 
    -- A full sink must not consume CPU or overwrite the retained batch.
    Begin_Sound (73);
    Sink.Limit := 0;
-   for I in 1 .. 100 loop Sound.sndUpdate; end loop;
+   for I in 1 .. 100 loop Sound.Update; end loop;
    pragma Assert (Sink.Frame_Count = 0);
    Sink.Limit := Natural'Last;
-   Sound.sndUpdate;
+   Sound.Update;
    pragma Assert (Sink.Frame_Count = 1536);
-   Sound.sndShutdown;
+   Sound.Shutdown;
 
    -- Channel reuse while old PCM is pending must not overwrite that tail.
-   declare
-      Result : Integer;
    begin
       Begin_Sound (73);
-      Sound.sndUpdate;
-      Result := Sound.sndStartChannel (Source (100)'Address, 41, 48_000, 0, 90, 20);
-      pragma Assert (Result = 0);
-      Sound.sndUpdate;
+      Sound.Update;
+      Sound.Start (0, Source (100)'Address, 41, 48_000, 90, 20);
+      Sound.Update;
       Reference := Sink.Captured;
       pragma Assert (Sink.Frame_Count = 3072);
-      Sound.sndShutdown;
+      Sound.Shutdown;
       Begin_Sound (73);
       Sink.Limit := 0;
-      Sound.sndUpdate;
-      Result := Sound.sndStartChannel (Source (100)'Address, 41, 48_000, 0, 90, 20);
-      pragma Assert (Result = 0);
+      Sound.Update;
+      Sound.Start (0, Source (100)'Address, 41, 48_000, 90, 20);
       Sink.Limit := 79;
-      for I in 1 .. 100 loop Sound.sndUpdate; end loop;
+      for I in 1 .. 100 loop Sound.Update; end loop;
       pragma Assert (Sink.Frame_Count = 3072 and Sink.Captured = Reference);
-      Sound.sndShutdown;
+      Sound.Shutdown;
    end;
 
    -- Shutdown discards pending output and active channels; reinitialization
    -- cannot replay either of them.
    Begin_Sound (5000);
    Sink.Limit := 0;
-   Sound.sndUpdate;
-   pragma Assert (Sound.sndIsPlaying (0) = 1);
-   Sound.sndShutdown;
+   Sound.Update;
+   pragma Assert (Sound.Is_Playing (0));
+   Sound.Shutdown;
    Sink.Reset;
-   pragma Assert (Sound.sndInit = 1);
-   Sound.sndUpdate;
+   Reopened := Sound.Init;
+   pragma Assert (Reopened);
+   Sound.Update;
    pragma Assert (Sink.Frame_Count = 0);
-   Sound.sndShutdown;
+   Sound.Shutdown;
    Ada.Text_IO.Put_Line
      ("DOOM-AUDIO: PASS (short/zero writes, exact PCM order, final tail, reuse, reset)");
 end Main;

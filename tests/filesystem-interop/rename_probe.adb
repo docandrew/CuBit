@@ -10,6 +10,8 @@ with CuBit.Block_Devices;
 --  Diagnostic against a DISPOSABLE copy only: creates one file, checks the
 --  actual directory-block preparation, then invokes the production rename.
 procedure Rename_Probe is
+   Replaced_Number : Interfaces.Unsigned_32;
+   Replaced : Ext2.Inode;
    Fs : Filesystem;
    Admission : Admission_Result;
    Root : Inode;
@@ -54,7 +56,7 @@ begin
       if P /= Directory_Blocks.Prepared then pragma Assert (Candidate = Original); end if;
       Can_Rename := Can_Rename or P = Directory_Blocks.Prepared;
    end loop;
-   renamePath (Fs, Before, After, Result);
+   renamePath (Fs, Before, After, False, Replaced_Number, Replaced, Result);
    Put_Line ("Production rename: " & Result'Image);
    pragma Assert (Result = (if Can_Rename then Rename_Complete else Rename_Range_Unsupported));
    resolvePath (Fs, (if Can_Rename then After else Before), Found, L);
@@ -64,7 +66,7 @@ begin
    -- The native test must not assume shared root fixtures leave spare bytes.
    -- Same-length root rename and longer nested rename exercise both paths
    -- without depending on which other apps were installed in the base image.
-   renamePath (Fs, (if Can_Rename then After else Before), "cubit-alt.dat", Result);
+   renamePath (Fs, (if Can_Rename then After else Before), "cubit-alt.dat", False, Replaced_Number, Replaced, Result);
    pragma Assert (Result = Rename_Complete);
    resolvePath (Fs, "cubit-alt.dat", Found, L);
    pragma Assert (L = Lookup_Found and Found = Created);
@@ -73,7 +75,7 @@ begin
    createFile (Fs, Parent, "rename-before.dat", Created, W);
    pragma Assert (W = Write_Complete);
    renamePath (Fs, "lost+found/rename-before.dat",
-               "lost+found/rename-after-much-longer.dat", Result);
+               "lost+found/rename-after-much-longer.dat", False, Replaced_Number, Replaced, Result);
    pragma Assert (Result = Rename_Complete);
    resolvePath (Fs, "lost+found/rename-after-much-longer.dat", Found, L);
    pragma Assert (L = Lookup_Found and Found = Created);

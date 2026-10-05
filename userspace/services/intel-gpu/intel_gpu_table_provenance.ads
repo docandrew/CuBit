@@ -1,5 +1,6 @@
 with Interfaces; use Interfaces;
 with Intel_GPU_Record_Store;
+with System;
 package Intel_GPU_Table_Provenance is
    type Mapping is record
       Ticket, Offset, CPU, DMA : Unsigned_64 := 0;
@@ -22,6 +23,36 @@ package Intel_GPU_Table_Provenance is
       Ticket, Offset : Unsigned_64; Accepted : out Boolean);
    function Lookup
      (Object : Ledger; Session, Expected_Generation : Unsigned_64; Index : Positive) return Mapping;
+   type Append_Phase is (Unused, Appending, Appended, Rejected);
+   type Append_State is limited private;
+   function Status (Operation : Append_State) return Append_Phase;
+   function First_ID (Operation : Append_State) return Natural;
+   function Installed (Operation : Append_State) return Natural;
+   procedure Begin_Append
+     (Operation : in out Append_State; Object : Ledger;
+      Session, Expected_Generation, Ticket, Offset : Unsigned_64;
+      Pages : Positive; Accepted : out Boolean);
+   procedure Step (Operation : in out Append_State; Object : in out Ledger);
+   procedure Rearm
+     (Operation : in out Append_State; Object : Ledger; Accepted : out Boolean);
+   -- Metadata-only controller reuse after Appended, on the exact same open
+   -- ledger, owner, generation and completed record count. Preserve every
+   -- registered reference. Caller captures First_ID before rearming; the next
+   -- append receives new IDs, never overwrites or releases previous backing.
+   -- Failed/partial operations cannot rearm. No resolver callback or GPU access;
+   -- the next Step must independently authenticate its new allocation.
+   -- One attempt per armed operation, one authenticated page per step, no DMA writes. Metadata must
+   -- already cover the whole group. Caller serializes mutation and validates
+   -- aliases as for Install. Partial failure retains all installed references;
+   -- never remove them or free the allocation merely because append failed.
+   -- First_ID is exposed only after complete registration, not GPU publication.
+   private
+      type Append_State is limited record
+         Phase : Append_Phase := Unused;
+         Ledger_Address : System.Address := System.Null_Address;
+         Session, Epoch, Ticket, Offset : Unsigned_64 := 0;
+         Before, Pages, Done : Natural := 0;
+      end record;
    end Authority;
    procedure Extend
      (Object : in out Ledger; Base, Bytes : Unsigned_64; Accepted : out Boolean);
@@ -47,6 +78,8 @@ private
       Used : Natural := 0;
       Phase : Retirement_Phase := Open;
       Pending : Unsigned_64 := 0;
+      Last_Ticket : Unsigned_64 := 0;
+      Include_Last : Boolean := False;
       Cursor : Positive := 1;
       Items : Records.Store;
    end record;

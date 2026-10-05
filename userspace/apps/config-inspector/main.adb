@@ -1,3 +1,5 @@
+with CuBit.Desktop_Protocol;
+with CuBit.UI.Input;
 with CuBit.Logging;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -211,7 +213,10 @@ procedure Main is
       Changed : Boolean := False;
       Old_Selection : constant Natural := Selected;
    begin
-      if Event.kind = CuBit.UI.App.INPUT_KEY_DOWN then
+      if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
+         Running := False;
+         return;
+      elsif Event.kind = CuBit.UI.App.INPUT_KEY_DOWN then
          if Event.payload0 = CuBit.UI.App.KEY_ESC then Running := False;
          elsif Event.payload0 = 16#3F# then Refresh; Changed := True;
          elsif Focused then
@@ -289,7 +294,8 @@ begin
    CuBit.UI.App.Open (Win, 860, 560,
      CuBit.UI.App.WINDOW_FLAG_DECORATED or CuBit.UI.App.WINDOW_FLAG_RESIZABLE or
      CuBit.UI.App.WINDOW_FLAG_MINIMIZABLE or CuBit.UI.App.WINDOW_FLAG_MAXIMIZABLE or
-     CuBit.UI.App.WINDOW_FLAG_CLOSEABLE, Opened, title => "Config Inspector", protected_frames => True);
+     CuBit.UI.App.WINDOW_FLAG_CLOSEABLE or
+     CuBit.Desktop_Protocol.Window_Feature'Enum_Rep (CuBit.Desktop_Protocol.Graceful_Close), Opened, title => "Config Inspector", protected_frames => True);
    if Opened then
       debugPrint ("config-inspector: native window ready" & ASCII.LF);
       Run_UI (Win);

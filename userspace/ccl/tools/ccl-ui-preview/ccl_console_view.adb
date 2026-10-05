@@ -1589,7 +1589,9 @@ package body CCL_Console_View is
                      begin
                         if State.Meta (I).Live and then Badge_Y >= Top and then Badge_Y + LH <= Bottom then
                            declare
-                              Label : constant String := "LIVE" & Elapsed_Seconds (State.Meta (I).Interval_Ms) &
+                              Label : constant String := "LIVE" &
+                                (if State.Meta (I).Interval_Ms = 0 then ""
+                                 else Elapsed_Seconds (State.Meta (I).Interval_Ms)) &
                                 "  x" & Image (State.Meta (I).Runs);
                               Live_W : constant Natural := Pill_Width (Label);
                               Live_X : constant Natural :=
@@ -1979,8 +1981,10 @@ package body CCL_Console_View is
                      M.Elapsed_Ms := (if Finished >= Now then Finished - Now else 0);
                      M.Fuel_Used := CCL.Sessions.Default_Fuel -
                        Natural'Min (Outcome.Fuel_Remaining, CCL.Sessions.Default_Fuel);
-                     --  From completion: a slow cell never queues up runs.
-                     M.Due_Ms := Finished + M.Interval_Ms;
+                     --  From completion: a slow cell never queues up runs. A
+                     --  cell with no period runs only when elements arrive.
+                     M.Due_Ms := (if M.Interval_Ms = 0 then Interfaces.Unsigned_64'Last
+                                  else Finished + M.Interval_Ms);
                   else
                      M.Live := False;
                      Set_Notice (State, "Entry" & Natural'Image (I) &
@@ -1993,6 +1997,38 @@ package body CCL_Console_View is
          end;
       end loop;
    end Refresh;
+
+   procedure Follow (State : in out View_State; Source : String) is
+      Outcome : CCL.Language.Interpretation_Result;
+      Before : constant CCL.Sessions.History_Count := CCL.Sessions.Length (State.Session);
+      Started : constant Interfaces.Unsigned_64 := Now_Ms;
+      Finished : Interfaces.Unsigned_64;
+      After : CCL.Sessions.History_Count;
+      Live : Natural := 0;
+   begin
+      Execute (State.Session, Source, CCL.Sessions.Default_Fuel, Outcome);
+      Finished := Now_Ms;
+      After := CCL.Sessions.Length (State.Session);
+      if After = 0 then return; end if;
+      if After = Before then
+         State.Meta (1 .. CCL.Sessions.Maximum_History - 1) :=
+           State.Meta (2 .. CCL.Sessions.Maximum_History);
+      end if;
+      for M of State.Meta loop
+         if M.Live then Live := Live + 1; end if;
+      end loop;
+      State.Meta (After) :=
+        (Elapsed_Ms => (if Finished >= Started then Finished - Started else 0),
+         Fuel_Used => CCL.Sessions.Default_Fuel -
+           Natural'Min (Outcome.Fuel_Remaining, CCL.Sessions.Default_Fuel),
+         Live => Live < MAXIMUM_LIVE_CELLS, Interval_Ms => 0,
+         Due_Ms => Interfaces.Unsigned_64'Last, others => <>);
+      State.Scroll := 0;
+   end Follow;
+
+   function Latest_Source (State : View_State) return String is
+     (if CCL.Sessions.Length (State.Session) = 0 then ""
+      else Cell_Source (State, CCL.Sessions.Length (State.Session)));
 
    function Next_Deadline (State : View_State) return Interfaces.Unsigned_64 is
       Earliest : Interfaces.Unsigned_64 := 0;

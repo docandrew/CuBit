@@ -1,9 +1,9 @@
 package body CCL.Types.Encoding with SPARK_Mode is
    use Interfaces;
    type Wire_Shape is (Wire_Product, Wire_Sum, Wire_Resource, Wire_Sequence,
-                       Wire_Callable, Wire_Stream);
+                       Wire_Callable, Wire_Stream, Wire_Task);
    for Wire_Shape use (Wire_Product => 1, Wire_Sum => 2, Wire_Resource => 3,
-                       Wire_Sequence => 4, Wire_Callable => 5, Wire_Stream => 7);
+                       Wire_Sequence => 4, Wire_Callable => 5, Wire_Stream => 7, Wire_Task => 8);
    subtype Name_Offset is Natural range 0 .. Definition_Size - Name_Size;
    function Encode (Item : Description) return Bytes is
       Data : Bytes := [others => 0];
@@ -23,6 +23,7 @@ package body CCL.Types.Encoding with SPARK_Mode is
         when Sequence => Wire_Shape'Enum_Rep (Wire_Sequence),
         when Callable => Wire_Shape'Enum_Rep (Wire_Callable),
         when Stream => Wire_Shape'Enum_Rep (Wire_Stream),
+        when Async => Wire_Shape'Enum_Rep (Wire_Task),
         --  Primitives are built in; ranges travel with their bounds in the
         --  bytecode and catalog formats (CCL.Format), not in this header.
         when Primitive | Bounded => 0);
@@ -58,6 +59,7 @@ package body CCL.Types.Encoding with SPARK_Mode is
          when Wire_Shape'Enum_Rep (Wire_Sequence) => D.Form := Sequence;
          when Wire_Shape'Enum_Rep (Wire_Callable) => D.Form := Callable;
          when Wire_Shape'Enum_Rep (Wire_Stream) => D.Form := Stream;
+         when Wire_Shape'Enum_Rep (Wire_Task) => D.Form := Async;
          when others => return;
       end case;
       D.Count := Natural (Data (Count_Offset));

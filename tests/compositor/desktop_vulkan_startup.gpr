@@ -1,0 +1,15 @@
+project Desktop_Vulkan_Startup extends "vulkan_device_owner.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat", "../../userspace/services/desktop");
+   for Source_Files use Vulkan_Device_Owner'Source_Files &
+     ("compositor_upload.ads", "compositor_upload.adb", "compositor_upload_progress.ads", "compositor_upload_progress.adb", "vulkan_upload_recording.ads", "vulkan_upload_recording.adb", "vulkan_upload_record_ffi.ads", "vulkan_upload_record_ffi.adb", "desktop_upload_record_mock.c", "vulkan_upload_owner.ads", "vulkan_upload_owner.adb", "vulkan_upload_ffi.ads", "vulkan_upload_ffi.adb", "vulkan_upload_mock.c", "vulkan_device_upload_ffi.ads", "vulkan_device_upload_ffi.adb", "vulkan_device_upload_metadata_mock.c", "desktop_vulkan_upload_tests.adb", "vulkan_owned_source.ads", "vulkan_owned_source.adb", "vulkan_device_source_ffi.ads", "vulkan_device_source_ffi.adb", "vulkan_device_source_metadata_mock.c", "desktop_vulkan_backing_tests.adb", "vulkan_device_pipeline_ffi.ads", "vulkan_device_pipeline_ffi.adb", "vulkan_device_pipeline_mock.c", "vulkan_scene_recording.ads", "vulkan_scene_recording.adb", "vulkan_device_targets_ffi.ads", "vulkan_device_targets_ffi.adb",
+      "vulkan_device_targets_metadata_mock.c", "desktop_vulkan_startup.ads", "desktop_vulkan_startup.adb", "desktop_vulkan_startup_tests.adb", "desktop_vulkan_targets_tests.adb", "desktop_vulkan_frames_tests.adb", "desktop_vulkan_pipeline_tests.adb", "desktop_vulkan_sources_tests.adb",
+      "vulkan_owned_targets.ads", "vulkan_owned_targets.adb",
+      "vulkan_owned_target_ffi.ads", "vulkan_owned_target_ffi.adb",
+      "vulkan_owned_targets_mock.c", "vulkan_image_owner_mock.c",
+      "vulkan_image_owner.ads", "vulkan_image_owner.adb",
+      "vulkan_image_ffi.ads", "vulkan_image_ffi.adb",
+      "compositor_storage.ads", "compositor_storage.adb");
+   for Object_Dir use "build/desktop-vulkan-startup/obj";
+   for Exec_Dir use "build/desktop-vulkan-startup";
+   for Main use ("desktop_vulkan_upload_tests.adb", "desktop_vulkan_backing_tests.adb", "desktop_vulkan_startup_tests.adb", "desktop_vulkan_targets_tests.adb", "desktop_vulkan_frames_tests.adb", "desktop_vulkan_pipeline_tests.adb", "desktop_vulkan_sources_tests.adb");
+end Desktop_Vulkan_Startup;

@@ -19,12 +19,12 @@ procedure Main is
                    Payload_Bytes => 1024),
       Normal_Close => Drain_Accepted);
    Log_Profile : CuBit.Protocols.Stream_Policies.Policy := Text_Profile;
-   Source : Port_Descriptor :=
-     (Reference => (Process_Instance => 10, Local_Port => 1, Generation => 1),
-      Direction => Output, Profile => Text_Profile);
-   Sink : Port_Descriptor :=
-     (Reference => (Process_Instance => 20, Local_Port => 1, Generation => 1),
-      Direction => Input, Profile => Text_Profile);
+   Source : Connector_Descriptor :=
+     (Reference => (Process_Instance => 10, Local_Connector => 1, Generation => 1),
+      Direction => Outlet, Profile => Text_Profile);
+   Sink : Connector_Descriptor :=
+     (Reference => (Process_Instance => 20, Local_Connector => 1, Generation => 1),
+      Direction => Inlet, Profile => Text_Profile);
    Item, Changed, First_Leg, Second_Leg : Request;
    Evidence, Modified : Approvals;
    Count : Natural := 0;
@@ -84,10 +84,10 @@ begin
          when 2 => Changed.Binding.Identity := 2;
          when 3 => Changed.Binding.Generation := 2;
          when 4 => Changed.Source.Reference.Process_Instance := 11;
-         when 5 => Changed.Source.Reference.Local_Port := 2;
+         when 5 => Changed.Source.Reference.Local_Connector := 2;
          when 6 => Changed.Source.Reference.Generation := 2;
          when 7 => Changed.Destination.Reference.Process_Instance := 21;
-         when 8 => Changed.Destination.Reference.Local_Port := 2;
+         when 8 => Changed.Destination.Reference.Local_Connector := 2;
          when 9 => Changed.Destination.Reference.Generation := 2;
          when 10 => Changed.Binding.Generation := Unsigned_64'Last;
       end case;
@@ -100,19 +100,19 @@ begin
          when 2 => Changed.Binding.Identity := 0;
          when 3 => Changed.Binding.Generation := 0;
          when 4 => Changed.Source.Reference.Process_Instance := 0;
-         when 5 => Changed.Source.Reference.Local_Port := 0;
+         when 5 => Changed.Source.Reference.Local_Connector := 0;
          when 6 => Changed.Source.Reference.Generation := 0;
          when 7 => Changed.Destination.Reference.Process_Instance := 0;
-         when 8 => Changed.Destination.Reference.Local_Port := 0;
+         when 8 => Changed.Destination.Reference.Local_Connector := 0;
          when 9 => Changed.Destination.Reference.Generation := 0;
       end case;
       Expect (Check (Changed, Approve (Changed)), Invalid_Reference);
    end loop;
    Changed := Item;
-   Changed.Source.Direction := Input;
+   Changed.Source.Direction := Inlet;
    Expect (Check (Changed, Approve (Changed)), Wrong_Direction);
    Changed := Item;
-   Changed.Destination.Direction := Output;
+   Changed.Destination.Direction := Outlet;
    Expect (Check (Changed, Approve (Changed)), Wrong_Direction);
    Changed := Item;
    Changed.Destination.Profile.Delivery := (Kind => Latest_Value);
@@ -134,11 +134,11 @@ begin
    --  An explicit adapter has distinct input/output ports and two approvals.
    First_Leg := Item;
    First_Leg.Destination :=
-     (Reference => (Process_Instance => 40, Local_Port => 1, Generation => 1),
-      Direction => Input, Profile => Text_Profile);
+     (Reference => (Process_Instance => 40, Local_Connector => 1, Generation => 1),
+      Direction => Inlet, Profile => Text_Profile);
    Second_Leg := Item;
    Second_Leg.Binding.Identity := 2;
-   Source.Reference := (Process_Instance => 40, Local_Port => 2, Generation => 1);
+   Source.Reference := (Process_Instance => 40, Local_Connector => 2, Generation => 1);
    Source.Profile := Log_Profile;
    Second_Leg.Source := Source;
    Expect (Check (First_Leg, Approve (First_Leg)), Connection_Allowed);

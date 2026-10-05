@@ -1,0 +1,22 @@
+--  Hosted tests of the Logs app's view: records and keys in, state and frames out.
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Log_Viewer_Tests is
+   for Source_Dirs use (".", "build/source", "../../userspace/apps/logs",
+                        "../../userspace/lib/ui", "../../userspace/lib/theme",
+                        "../../userspace/lib/compositor", "../../userspace/lib/display",
+                        "../../userspace/allocator/src");
+   --  The native app's entry point is not part of the hosted test.
+   for Excluded_Source_Files use ("main.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("log_viewer_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwJ");
+      for Switches ("log_viewer_tests.adb") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+      for Switches ("log_view.adb") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+      --  The blend core is proved (SPARK); checking its whole-target
+      --  contracts per pixel at run time is quadratic and impractical at
+      --  4K, so this test leaves them to the proof, as native builds do.
+      for Switches ("client_glyph_blend.adb") use ("-O2", "-gnat2022", "-gnatwa");
+   end Compiler;
+end Log_Viewer_Tests;

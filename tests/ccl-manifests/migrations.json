@@ -1,91 +1,91 @@
 [
   {
     "directory": "userspace/apps/bench-audio",
-    "fixture": "apps-bench-audio.c"
+    "fixture": "apps-bench-audio"
   },
   {
     "directory": "userspace/apps/bench-ipc-client",
-    "fixture": "apps-bench-ipc-client.c"
+    "fixture": "apps-bench-ipc-client"
   },
   {
     "directory": "userspace/apps/bench-ipc-server",
-    "fixture": "apps-bench-ipc-server.c"
+    "fixture": "apps-bench-ipc-server"
   },
   {
     "directory": "userspace/apps/bench-load",
-    "fixture": "apps-bench-load.c"
+    "fixture": "apps-bench-load"
   },
   {
     "directory": "userspace/apps/bench-storage",
-    "fixture": "apps-bench-storage.c"
+    "fixture": "apps-bench-storage"
   },
   {
     "directory": "userspace/apps/capability-test",
-    "fixture": "apps-capability-test.c"
+    "fixture": "apps-capability-test"
   },
   {
     "directory": "userspace/apps/desktop-check",
-    "fixture": "apps-desktop-check.c"
+    "fixture": "apps-desktop-check"
   },
   {
     "directory": "userspace/apps/desktop-shell",
-    "fixture": "apps-desktop-shell.c"
+    "fixture": "apps-desktop-shell"
   },
   {
     "directory": "userspace/apps/display-check",
-    "fixture": "apps-display-check.c"
+    "fixture": "apps-display-check"
   },
   {
     "directory": "userspace/apps/files",
-    "fixture": "apps-files.c"
+    "fixture": "apps-files"
   },
   {
     "directory": "userspace/apps/filesystem-scope-check",
-    "fixture": "apps-filesystem-scope-check.c"
+    "fixture": "apps-filesystem-scope-check"
   },
   {
     "directory": "userspace/apps/ipctest-client",
-    "fixture": "apps-ipctest-client.c"
+    "fixture": "apps-ipctest-client"
   },
   {
     "directory": "userspace/apps/ipctest-server",
-    "fixture": "apps-ipctest-server.c"
+    "fixture": "apps-ipctest-server"
   },
   {
     "directory": "userspace/apps/sleep",
-    "fixture": "apps-sleep.c"
+    "fixture": "apps-sleep"
   },
   {
     "directory": "userspace/apps/storage-check",
-    "fixture": "apps-storage-check.c"
+    "fixture": "apps-storage-check"
   },
   {
     "directory": "userspace/ccl/apps/ccl-workbench",
-    "fixture": "ccl-apps-ccl-workbench.c"
+    "fixture": "ccl-apps-ccl-workbench"
   },
   {
     "directory": "userspace/ccl/services/test-host",
-    "fixture": "ccl-services-test-host.c"
+    "fixture": "ccl-services-test-host"
   },
   {
     "directory": "userspace/services/clock",
-    "fixture": "services-clock.c"
+    "fixture": "services-clock"
   },
   {
     "directory": "userspace/services/logstore",
-    "fixture": "services-logstore.c"
+    "fixture": "services-logstore"
   },
   {
     "directory": "userspace/apps/bench-input",
-    "fixture": "apps-bench-input.c"
+    "fixture": "apps-bench-input"
   },
   {
     "directory": "userspace/apps/input-stress",
-    "fixture": "apps-input-stress.c"
+    "fixture": "apps-input-stress"
   },
   {
     "directory": "userspace/apps/network-check",
-    "fixture": "apps-network-check.c",
+    "fixture": "apps-network-check",
     "identity_update": {
       "id": "com.cubit.network-check",
       "version": "0.1.0",
@@ -94,16 +94,16 @@
   },
   {
     "directory": "userspace/apps/shell",
-    "fixture": "apps-shell.c",
-    "extra_fixture": "apps-shell-access.c"
+    "fixture": "apps-shell",
+    "extra_fixture": "apps-shell-access"
   },
   {
     "directory": "userspace/apps/wget",
-    "fixture": "apps-wget.c"
+    "fixture": "apps-wget"
   },
   {
     "directory": "userspace/ccl/apps/ccl-control",
-    "fixture": "ccl-apps-ccl-control.c",
+    "fixture": "ccl-apps-ccl-control",
     "identity_update": {
       "id": "com.cubit.ccl-control",
       "version": "0.1.0",
@@ -112,15 +112,15 @@
   },
   {
     "directory": "userspace/services/desktop",
-    "fixture": "services-desktop.c"
+    "fixture": "services-desktop"
   },
   {
     "directory": "userspace/services/display",
-    "fixture": "services-display.c"
+    "fixture": "services-display"
   },
   {
     "directory": "userspace/apps/devices",
-    "fixture": "apps-devices.c",
+    "fixture": "apps-devices",
     "identity_update": {
       "id": "com.cubit.devices",
       "version": "0.1.0",

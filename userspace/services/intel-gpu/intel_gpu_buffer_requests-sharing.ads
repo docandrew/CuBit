@@ -78,9 +78,17 @@ package Intel_GPU_Buffer_Requests.Sharing is
    -- Serialized dispatcher interlock: a presentation loan (including
    -- uncertain/retiring grants) forbids new GPU submissions for this session.
    -- A read-only grant alone is not a GPU-write exclusion mechanism.
+   -- CPU writer observation only; GPU producer completion is separate.
+   -- Covers this table only. Coordinator must account for any other aliases.
+   -- Pending/failed writable grants remain held until confirmed retired.
+   function Writable_Buffer_Held
+     (Table : Mapping_Table; Session, ID : Unsigned_64) return Boolean;
    function Presentation_Held (Table : Mapping_Table; Session : Unsigned_64)
       return Boolean;
    procedure Quarantine (Object : in out Service; Table : in out Mapping_Table);
+   -- One bounded round-robin pass; repeated calls eventually visit every
+   -- entry. Retirement observers remain conservative until that entry polls.
+   Poll_Budget : constant := 16;
    procedure Poll (Object : in out Service; Table : in out Mapping_Table);
    -- Dispatcher-owned view; caller supplies only its BO handle and range.
    -- Authenticate against the same registry that created the handle. No
@@ -104,6 +112,7 @@ private
    type Entries is array (Positive range 1 .. Initial_Capacity) of Mapping_Entry;
    type Mapping_Table is limited record
       Used : Natural := 0;
+      Next_Poll : Positive := 1;
       Available : Positive := Initial_Capacity;
       Storage_Base, Storage_Bytes : Unsigned_64 := 0;
       Last_ID : Mapping_ID := 0;

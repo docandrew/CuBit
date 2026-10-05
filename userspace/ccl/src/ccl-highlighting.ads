@@ -35,7 +35,7 @@ package CCL.Highlighting with SPARK_Mode is
    --  named built-ins are CCL.Language.Builtin_Operation.
    type Form_Word is
      (Define_Form, Type_Form, Let_Form, If_Form, Match_Form, Fn_Form,
-      Handler_Form, Field_Form, List_Form, List_Of_Form, Stream_Form, Thread_Form,
+      Handler_Form, Field_Form, List_Form, List_Of_Form, Stream_Form, Task_Form, Thread_Form,
       And_Form, Or_Form, Not_Form);
    function Special_Form_Name (Form : Form_Word) return String is
      (case Form is
@@ -44,7 +44,7 @@ package CCL.Highlighting with SPARK_Mode is
          when Match_Form => "match", when Fn_Form => "fn",
          when Handler_Form => "handler", when Field_Form => "field",
          when List_Form => "list", when List_Of_Form => "list-of",
-         when Stream_Form => "stream",
+         when Stream_Form => "stream", when Task_Form => "task",
          when Thread_Form => "->>", when And_Form => "and",
          when Or_Form => "or", when Not_Form => "not");
    type Core_Operator is

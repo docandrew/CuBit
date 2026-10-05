@@ -44,6 +44,13 @@ package CCL.VM.Native_Objects with SPARK_Mode is
    procedure Complete_Stream_View
      (Item : Validated_Program; State : in out Machine; Reply : CCL.Streams.View_Reply)
      with Pre => Is_Valid (Item);
+   --  Answer a call whose import returns text: Response, within the
+   --  import's Result_Text_Limit, copied into the run's text region. A
+   --  longer reply is refused like a failed call; a full region stops the
+   --  run with Text_Storage_Exhausted.
+   procedure Complete_Text
+     (Item : Validated_Program; State : in out Machine; Response : String; Accepted : Boolean)
+     with Pre => Is_Valid (Item);
    procedure Complete_Scalar
      (Item : Validated_Program; State : in out Machine; Response : Value; Accepted : Boolean)
      with Pre => Is_Valid (Item);

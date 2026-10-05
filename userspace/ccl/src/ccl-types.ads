@@ -45,7 +45,12 @@ package CCL.Types with SPARK_Mode is
    --  Stream: Stream<T>, a live source held by a session; Parts (1) is its
    --  element type, always persistable data (docs/ccl-streams.md). A stream
    --  value is a handle, never a record field or a list element.
-   type Shape is (Primitive, Product, Sum, Resource, Sequence, Callable, Bounded, Stream);
+   --  Async: Task<T> in CCL (Task is reserved in Ada), a result that arrives
+   --  later (docs/control-language.md,
+   --  "Asynchronous execution and streams"); Parts (1) is its result type,
+   --  persistable data. Like a stream, a task value is a handle held by a
+   --  session, never a record field or a list element.
+   type Shape is (Primitive, Product, Sum, Resource, Sequence, Callable, Bounded, Stream, Async);
    --  In a product these are fields; in a sum they are alternatives whose
    --  payload type may itself be a product. Unit is the empty product.
    --  Resource is an opaque live reference, not a constructible record or an
@@ -150,6 +155,25 @@ package CCL.Types with SPARK_Mode is
           Ref /= Invalid_Type and Item = Item'Old
         else Ref = Invalid_Type and Item = Item'Old);
    function Is_Stream (Item : Registry; Ref : Type_Reference) return Boolean;
+
+   --  Materialize Task<Result> (spelled Task-Result), as Specialize_Stream
+   --  does for streams: the result must be persistable data.
+   procedure Specialize_Task
+     (Item : in out Registry; Result_Type : Type_Reference;
+      Ref : out Type_Reference; Result : out Stream_Result)
+   with Global => null,
+     Post =>
+       (if Result = Stream_Specialized then Ref = Last (Item) and
+          Last (Item) = Last (Item'Old) + 1
+        elsif Result = Stream_Already_Specialized then
+          Ref /= Invalid_Type and Item = Item'Old
+        else Ref = Invalid_Type and Item = Item'Old);
+   function Is_Task (Item : Registry; Ref : Type_Reference) return Boolean;
+   --  The result type of a task type (Invalid_Type for other types).
+   function Task_Result (Item : Registry; Ref : Type_Reference) return Type_Reference;
+   --  A stream or a task: a session-held handle, not data.
+   function Is_Handle (Item : Registry; Ref : Type_Reference) return Boolean is
+     (Is_Stream (Item, Ref) or else Is_Task (Item, Ref));
    --  The element type of a stream type (Invalid_Type for other types).
    function Stream_Element (Item : Registry; Ref : Type_Reference) return Type_Reference;
 

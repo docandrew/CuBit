@@ -8,6 +8,11 @@
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Launch_Arguments;
+with CuBit.Program_Descriptions;
+with CuBit.Outlet_Rings;
+with CuBit.Memory_Grants;
+with CuBit.Grant_References;
 
 package body CuBit.Streams is
    use type CuBit.Protocols.Wire_Size_Kind;
@@ -405,6 +410,53 @@ package body CuBit.Streams is
    ---------------------------------------------------------------------------
    --  streamCreate
    ---------------------------------------------------------------------------
+   procedure Initialize_Ring
+     (Base : Unsigned_64; Pages : Positive; Id : StreamId; Entry_Type : TypeTag;
+      Subscriber : Unsigned_32 := 0)
+   is
+      Capacity : constant Unsigned_32 :=
+        Unsigned_32 (Unsigned_64 (Pages) * 4096) - Unsigned_32 (HEADER_SIZE);
+   begin
+      for i in 0 .. HEADER_SIZE - 1 loop
+         writeU8 (Base + Unsigned_64 (i), 0);
+      end loop;
+      writeU32 (Base + HDR_MAGIC, MAGIC);
+      writeU16 (Base + HDR_VERSION, 1);
+      writeU16 (Base + HDR_FLAGS, 0);
+      writeU32 (Base + HDR_PRODUCER_IDX, 0);
+      writeU32 (Base + HDR_CAPACITY, Capacity);
+      writeU16 (Base + HDR_DEFAULT_TYPE_TAG, Unsigned_16 (Entry_Type));
+      writeU8  (Base + HDR_OVERFLOW_POLICY, 1);  -- DROP_OLDEST
+      writeU16 (Base + HDR_STREAM_ID, Unsigned_16 (Id));
+      if Subscriber /= 0 then
+         writeU32 (Base + SUBSCRIBER_TABLE_OFF + SUB_OFF_PID, Subscriber);
+         writeU32 (Base + SUBSCRIBER_TABLE_OFF + SUB_OFF_CURSOR, 0);
+         writeU8 (Base + HDR_SUBSCRIBER_COUNT, 1);
+      else
+         writeU8 (Base + HDR_SUBSCRIBER_COUNT, 0);
+      end if;
+   end Initialize_Ring;
+
+   --  Take over a ring a launcher lent this process (its header is
+   --  initialized): produce into it as into one of our own.
+   procedure streamAdopt (id : StreamId; pages : Natural; base : Unsigned_64);
+   procedure streamAdopt (id : StreamId; pages : Natural; base : Unsigned_64) is
+   begin
+      for i in StreamIndex loop
+         if not streamTab (i).active then
+            streamTab (i) := (
+               active   => True,
+               id       => id,
+               pages    => pages,
+               baseAddr => base,
+               capacity => readU32 (base + HDR_CAPACITY),
+               schema   => CuBit.Protocols.NO_SCHEMA_CONTRACT,
+               grantIds => (others => 0));
+            return;
+         end if;
+      end loop;
+   end streamAdopt;
+
    procedure streamCreate (id        : StreamId;
                             pages     : Natural;
                             entryType : TypeTag) is
@@ -435,21 +487,7 @@ package body CuBit.Streams is
          cap  : constant Unsigned_32 :=
             Unsigned_32 (totalBytes) - Unsigned_32 (HEADER_SIZE);
       begin
-         --  Zero the header area
-         for i in 0 .. HEADER_SIZE - 1 loop
-            writeU8 (base + Unsigned_64 (i), 0);
-         end loop;
-
-         --  Initialize header fields
-         writeU32 (base + HDR_MAGIC, MAGIC);
-         writeU16 (base + HDR_VERSION, 1);
-         writeU16 (base + HDR_FLAGS, 0);
-         writeU8  (base + HDR_SUBSCRIBER_COUNT, 0);
-         writeU32 (base + HDR_PRODUCER_IDX, 0);
-         writeU32 (base + HDR_CAPACITY, cap);
-         writeU16 (base + HDR_DEFAULT_TYPE_TAG, Unsigned_16 (entryType));
-         writeU8  (base + HDR_OVERFLOW_POLICY, 1);  -- DROP_OLDEST
-         writeU16 (base + HDR_STREAM_ID, Unsigned_16 (id));
+         Initialize_Ring (base, pages, id, entryType);
 
          --  Store in local table
          streamTab (idx) := (
@@ -480,6 +518,103 @@ package body CuBit.Streams is
          streamTab (idx).schema := schema;
       end if;
    end streamCreateTyped;
+
+   function Open_Outlet (Name : String) return StreamId is
+      package LA renames CuBit.Launch_Arguments;
+      package PD renames CuBit.Program_Descriptions;
+      package PR renames CuBit.Outlet_Rings;
+      use type LA.Validation;
+      use type PD.Connector_Direction;
+      use type PD.Element_Kind;
+      Launch_Length : Unsigned_64
+      with Import, Convention => C,
+           External_Name => "__cubit_launch_arguments_length";
+      S : PD.Signature;
+      Rings : PR.Table;
+      Accepted, Found, Rings_Valid : Boolean := False;
+      Index : PD.Connector_Index;
+   begin
+      if Launch_Length not in LA.Header_Bytes .. LA.Maximum_Block_Bytes then
+         return NO_STREAM;
+      end if;
+      declare
+         Item : constant LA.Block (1 .. Natural (Launch_Length))
+         with Import, Address => System'To_Address (LA.Block_Address);
+      begin
+         if LA.Validate (Item) /= LA.Valid then
+            return NO_STREAM;
+         end if;
+         --  After the strings: the ring table, if the launcher lent rings,
+         --  then the description.
+         declare
+            First : constant Positive := LA.Strings_Last (Item) + 1;
+            Trailer : PR.Bytes (1 .. Item'Last - First + 1);
+            Present : Boolean;
+            Ring_Length : PR.Table_Length;
+         begin
+            for K in Trailer'Range loop
+               Trailer (K) := Item (First + K - 1);
+            end loop;
+            PR.Measure (Trailer, Present, Ring_Length);
+            if Present then
+               PR.Decode (Trailer (1 .. Ring_Length), Rings, Rings_Valid);
+            end if;
+            declare
+               Description : PD.Bytes (1 .. Trailer'Length - Ring_Length);
+            begin
+               if Description'Length = 0
+                 or else Description'Length > PD.Maximum_Descriptor_Bytes
+               then
+                  return NO_STREAM;
+               end if;
+               for K in Description'Range loop
+                  Description (K) := Trailer (Ring_Length + K);
+               end loop;
+               PD.Decode (Description, S, Accepted);
+            end;
+         end;
+      end;
+      if not Accepted then
+         return NO_STREAM;
+      end if;
+      PD.Find_Connector (S, Name, Index, Found);
+      if not Found or else S.Connectors (Index).Direction /= PD.Outlet then
+         return NO_STREAM;
+      end if;
+      declare
+         Ring : constant StreamId := StreamId (PD.Ring_Id (Index));
+         Pages : constant Natural := S.Connectors (Index).Pages;
+      begin
+         --  The launcher's ring, when it lent one.
+         if Rings_Valid then
+            for E in 1 .. Rings.Count loop
+               if Rings.Entries (E).Outlet = Index then
+                  declare
+                     Mapped : System.Address;
+                     Ok : Boolean;
+                  begin
+                     CuBit.Memory_Grants.Acquire
+                       (CuBit.Grant_References.Decode (Rings.Entries (E).Grant),
+                        ProcessID (Rings.Owner), 0, Unsigned_64 (Pages) * 4096,
+                        CuBit.Memory_Grants.Write_Access, Mapped, Ok);
+                     if Ok then
+                        streamAdopt (Ring, Pages,
+                                     Unsigned_64 (To_Integer (Mapped)));
+                        return Ring;
+                     end if;
+                  end;
+               end if;
+            end loop;
+         end if;
+         if S.Connectors (Index).Element = PD.Text_Lines then
+            streamCreateTyped (Ring, Pages, TYPE_TEXT_LINE,
+                               CuBit.Protocols.TEXT_LINE_CONTRACT);
+         else
+            streamCreate (Ring, Pages, TYPE_RAW_BYTES);
+         end if;
+         return Ring;
+      end;
+   end Open_Outlet;
 
    ---------------------------------------------------------------------------
    --  streamWrite
@@ -725,6 +860,21 @@ package body CuBit.Streams is
    --  Reads one entry from a subscribed stream. Handles sentinel entries
    --  by advancing the cursor to offset 0 and re-reading.
    ---------------------------------------------------------------------------
+   function Read_Owned
+     (Base : Unsigned_64; Buffer : System.Address; Maximum : Unsigned_32;
+      Entry_Type : out TypeTag) return Unsigned_32
+   is
+      Cursor_At : constant Unsigned_64 := Base + SUBSCRIBER_TABLE_OFF + SUB_OFF_CURSOR;
+      Sub : SubInfo :=
+        (active => True, grantBase => Base, cursor => 0,
+         cursorIdx => readU32 (Cursor_At), capacity => readU32 (Base + HDR_CAPACITY));
+      Read : Unsigned_32;
+   begin
+      Read := streamRead (Sub, Buffer, Maximum, Entry_Type);
+      writeU32 (Cursor_At, Sub.cursorIdx);
+      return Read;
+   end Read_Owned;
+
    function streamRead (sub       : in out SubInfo;
                          buf       : System.Address;
                          maxLen    : Unsigned_32;

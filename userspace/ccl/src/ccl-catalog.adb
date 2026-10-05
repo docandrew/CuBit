@@ -22,16 +22,17 @@ is
 
    function Empty_Catalog return Interface_Catalog is ((others => <>));
 
-   function Valid_Name_Character
-     (Item : Character; Interface_Name : Boolean) return Boolean
-   is
+   --  Names are [a-z0-9-] components separated by single dots, for
+   --  interfaces and operations alike (a program's port accessor is the
+   --  operation "unix.stderr" of the interface "ld"); Publish refuses a
+   --  qualified name that two interfaces would both give.
+   function Valid_Name_Character (Item : Character) return Boolean is
      ((Item >= 'a' and then Item <= 'z') or else
       (Item >= '0' and then Item <= '9') or else
-      Item = '-' or else (Interface_Name and then Item = '.'));
+      Item = '-' or else Item = '.');
 
    procedure Make_Name
      (Text           : String;
-      Interface_Name : Boolean;
       Item           : out Bounded_Name;
       Valid          : out Boolean)
    is
@@ -42,9 +43,14 @@ is
          return;
       end if;
 
+      if Text (Text'First) = '.' or else Text (Text'Last) = '.' then
+         Valid := False;
+         return;
+      end if;
       for Position in 0 .. Text'Length - 1 loop
-         if not Valid_Name_Character
-           (Text (Text'First + Position), Interface_Name)
+         if not Valid_Name_Character (Text (Text'First + Position))
+           or else (Position > 0 and then Text (Text'First + Position) = '.'
+                    and then Text (Text'First + Position - 1) = '.')
          then
             Valid := False;
             return;
@@ -87,7 +93,7 @@ is
       Valid : Boolean;
    begin
       Item := (others => <>);
-      Make_Name (Name, True, Item.Name, Valid);
+      Make_Name (Name, Item.Name, Valid);
       if not Valid then
          Error := Invalid_Interface_Name;
       elsif Major = 0 then
@@ -128,7 +134,7 @@ is
       Valid : Boolean;
    begin
       Item := (others => <>);
-      Make_Name (Name, False, Item.Name, Valid);
+      Make_Name (Name, Item.Name, Valid);
       if not Valid then
          Error := Invalid_Operation_Name;
       elsif not CCL.Host_Values.Well_Formed (Import) then
@@ -300,6 +306,21 @@ is
      return CCL.Types.Type_Reference is
      (CCL.Objects.Catalog.Root_Of (Item.Data_Types, Key));
 
+   --  Interface.Operation as one name, character K (1-based).
+   function Qualified_Character
+     (Interface_Name, Operation_Name : Bounded_Name; K : Positive) return Character is
+     (if K <= Interface_Name.Length then Interface_Name.Data (K)
+      elsif K = Interface_Name.Length + 1 then '.'
+      else Operation_Name.Data (K - Interface_Name.Length - 1))
+   with Pre => K <= Interface_Name.Length + 1 + Operation_Name.Length;
+
+   function Same_Qualified (A_Interface, A_Operation, B_Interface, B_Operation : Bounded_Name)
+     return Boolean is
+     (A_Interface.Length + A_Operation.Length = B_Interface.Length + B_Operation.Length
+      and then (for all K in 1 .. A_Interface.Length + 1 + A_Operation.Length =>
+                  Qualified_Character (A_Interface, A_Operation, K) =
+                  Qualified_Character (B_Interface, B_Operation, K)));
+
    procedure Publish
      (Item       : in out Interface_Catalog;
       Descriptor : Interface_Descriptor;
@@ -318,6 +339,20 @@ is
                Error := Duplicate_Interface;
                return;
             end if;
+            for Mine in 0 .. Descriptor.Operations_Length - 1 loop
+               if Item.Descriptors (Index).Operations_Length > 0 then
+                  for Theirs in 0 .. Item.Descriptors (Index).Operations_Length - 1 loop
+                     if Same_Qualified
+                       (Descriptor.Name, Descriptor.Operations (Mine).Name,
+                        Item.Descriptors (Index).Name,
+                        Item.Descriptors (Index).Operations (Theirs).Name)
+                     then
+                        Error := Ambiguous_Name;
+                        return;
+                     end if;
+                  end loop;
+               end if;
+            end loop;
          end loop;
          if Item.Count = MAX_INTERFACES then
             Error := Catalog_Full;
@@ -627,11 +662,18 @@ is
         (Kind : CCL.VM.Value_Kind; Local : CCL.Types.Type_Reference;
          Key : CCL.Objects.Schema_Key; Resource_Name : CCL.Types.Name) return Boolean
       is
+         --  A stream or task handle's schema describes its elements.
          Ref : constant CCL.Types.Type_Reference :=
-           (case Kind is when CCL.VM.Integer_Value => CCL.Types.Integer_Type,
+           (case Kind is
+             when CCL.VM.Integer_Value =>
+               (if Local = CCL.Types.Invalid_Type then CCL.Types.Integer_Type
+                elsif CCL.Types.Is_Task (Program.Data_Types, Local)
+                then CCL.Types.Task_Result (Program.Data_Types, Local)
+                elsif CCL.Types.Is_Stream (Program.Data_Types, Local)
+                then CCL.Types.Stream_Element (Program.Data_Types, Local)
+                else CCL.Types.Integer_Type),
              when CCL.VM.Boolean_Value => CCL.Types.Boolean_Type,
              when CCL.VM.Variant_Value | CCL.VM.Object_Value | CCL.VM.Resource_Value => Local,
-             --  Text imports are not linkable yet (Known_Value_Type refuses them).
              when CCL.VM.Text_Value => CCL.Types.String_Type,
              when CCL.VM.Character_Value => CCL.Types.Character_Type,
              when CCL.VM.List_Value | CCL.VM.Function_Value => Local);
@@ -639,8 +681,11 @@ is
            (if Kind = CCL.VM.Resource_Value then CCL.Types.Find (Visible_Types (Schemas), Resource_Name)
             else Schema_Type (Schemas, Key));
       begin
+         --  Scalars and text cross by value, handlers as inert references,
+         --  with no schema.
          if Key = CCL.Objects.No_Schema and Kind /= CCL.VM.Resource_Value then
-            return Kind in CCL.VM.Scalar_Kind;
+            return Kind in CCL.VM.Scalar_Kind or else Kind = CCL.VM.Text_Value or else
+              (Kind = CCL.VM.Function_Value and then Local = CCL.Types.Handler_Type);
          end if;
          return Expected /= CCL.Types.Invalid_Type and then
            CCL.Types.Correspondence.Resolve (Program.Data_Types, Ref, Visible_Types (Schemas)) = Expected;

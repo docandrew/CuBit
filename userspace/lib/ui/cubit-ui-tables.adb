@@ -390,6 +390,7 @@ package body CuBit.UI.Tables is
                CuBit.UI.Fill_Rect (c, (bounds.x + Left + Width - 1, bounds.y, 1, bounds.h), colors.edge);
             end if;
             if textStyle = CuBit.UI.Table_Code_Text then
+               --  Text cells over the row's own colour: cached blended glyphs.
                CuBit.UI.Draw_Code_Text
                  (Clipped, Cell_Area.x + Layout.Cell_Padding,
                   (if Cell_Area.h > CuBit.UI.Code_Text_Height

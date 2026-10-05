@@ -19,19 +19,17 @@ begin
       package Policy renames CuBit.Launch_Policy;
       use type Policy.Network_Approval;
    begin
+      --  NetSurf is retired: its old name no longer carries browser
+      --  approval.
       pragma Assert (Policy.Desktop_Approval ("netsurf.app", 42, 42) =
-        Policy.Browser_Outbound);
-      pragma Assert (Policy.Desktop_Approval ("netsurf.app", 41, 42) =
         Policy.No_Network);
-      pragma Assert (Policy.Desktop_Approval ("netsurf.app", 0, 0) =
+      pragma Assert (Policy.Desktop_Approval ("cubitshell.app", 0, 0) =
         Policy.No_Network);
       pragma Assert (Policy.Desktop_Approval
-        ("netsurf.app", Unsigned_64'Last, Unsigned_64'Last) = Policy.No_Network);
+        ("cubitshell.app", Unsigned_64'Last, Unsigned_64'Last) = Policy.No_Network);
       pragma Assert (Policy.Desktop_Approval ("other.app", 42, 42) =
         Policy.No_Network);
-      pragma Assert (Policy.Desktop_Approval ("netsurf.appx", 42, 42) =
-        Policy.No_Network);
-      pragma Assert (Policy.Desktop_Approval ("/netsurf.app", 42, 42) =
+      pragma Assert (Policy.Desktop_Approval ("/cubitshell.app", 42, 42) =
         Policy.No_Network);
       pragma Assert (Policy.Desktop_Approval ("cubitshell.app", 42, 42) =
         Policy.Browser_Outbound);

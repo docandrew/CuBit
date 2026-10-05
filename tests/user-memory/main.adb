@@ -53,6 +53,7 @@ procedure Main is
       Word := Words (L);
    end Read_Entry;
    function Walk is new User_Page_Walk.Readable_Frame (Read_Entry);
+   function Write_Walk is new User_Page_Walk.Writable_Frame (Read_Entry);
    Frame : Unsigned_64;
    Name : String (1 .. 16);
    Name_Source : Unsigned_64;
@@ -123,6 +124,31 @@ begin
    Frame := Walk (16#1001#, Address, 16#FFFF#);
    pragma Assert (Frame = 0 and then Reads = 0);
    Put_Line ("PASS actual walker: inherited user/present bits, large-page rejection, leaf PAT, invalid frames");
+
+   -- Permission is inherited at every paging level. A readable mapping
+   -- must not authorize retrying a write fault after a concurrent remap.
+   for Writable_Levels in Unsigned_64 range 0 .. 15 loop
+      Words := Baseline;
+      for L in Level loop
+         if (Writable_Levels and Shift_Left (Unsigned_64'(1), Level'Pos (L))) /= 0 then
+            Words (L) := Words (L) or Writable_Bit;
+         end if;
+      end loop;
+      Frame := Walk (16#1000#, Address, 16#FFFF#);
+      pragma Assert (Frame = 16#9000#);
+      Frame := Write_Walk (16#1000#, Address, 16#FFFF#);
+      pragma Assert (Frame = (if Writable_Levels = 15 then 16#9000# else 0));
+   end loop;
+   for L in Level loop
+      for Clear_Bit of Unsigned_64_Array'[Present_Bit, User_Bit] loop
+         Words := Baseline;
+         for J in Level loop Words (J) := Words (J) or Writable_Bit; end loop;
+         Words (L) := Words (L) and not Clear_Bit;
+         Frame := Write_Walk (16#1000#, Address, 16#FFFF#);
+         pragma Assert (Frame = 0);
+      end loop;
+   end loop;
+   Put_Line ("PASS write walker: 16 inherited permission combinations, absent/supervisor rejection");
 
    Name_Source := 16#10FFF#;
    Available := 1;

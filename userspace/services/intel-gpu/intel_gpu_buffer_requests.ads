@@ -19,6 +19,7 @@ package Intel_GPU_Buffer_Requests is
    Unavailable : constant Unsigned_64 := 3;
    type Words is array (Natural range 0 .. 3) of Unsigned_64;
    type Service is limited private;
+   function Image_Writes_Held (Object : Service; Session : Unsigned_64) return Boolean;
    function Close_Diagnostic
      (Object : Service; Sender, Stamp, ID : Unsigned_64)
       return Intel_GPU_Buffer_Handles.Close_Check;
@@ -72,16 +73,25 @@ package Intel_GPU_Buffer_Requests is
    -- application Create, but never registers an application-visible handle.
    -- Reserve before starting private context/VM allocation. Finish only after
    -- the allocator is terminal, including failed starts. Default tickets stay
-   -- pinned. Reclaimable=True is for replacement tables only, never original
+   -- pinned. Reclaimable=True is for private page tables only, never original
    -- context/root/scratch storage. Caller owns lifetime/backing validation.
    -- An acknowledged reusable replacement-table slot may cross sessions;
    -- its fresh ticket is rebound to Session before allocation starts. No old
    -- ticket, owner or acknowledgement can affect the replacement generation.
    -- Session is supplied by the trusted dispatcher. Zero explicitly denotes
    -- device-lifetime bootstrap storage, never reclaimable by closing a session.
+   type Private_Table_Kind is (Replacement_Tables, Incremental_Tables);
    procedure Reserve_Private
      (Object : in out Service; Session : Unsigned_64; ID : out Ticket;
-      Reclaimable : Boolean := False);
+      Reclaimable : Boolean := False;
+      Kind : Private_Table_Kind := Replacement_Tables);
+   -- Exact retained role, not physical allocation or GPU publication evidence.
+   -- Incremental purpose requires Reclaimable=True and a nonzero session.
+   -- Closed-but-unretired table allocations keep their role; acknowledged
+   -- reusable slots, pinned parents and application BOs do not qualify.
+   function Is_Table_Allocation
+     (Object : Service; Session : Unsigned_64; ID : Ticket;
+      Kind : Private_Table_Kind) return Boolean;
    -- Trusted coordinator only after exact supervisor retirement ack AND
    -- hardware/TLB retirement. Also retire/reset the offline VM image before
    -- reserving again. Never accepts bootstrap, pinned or application tickets.
@@ -167,6 +177,7 @@ private
       Reusable, Private_Reclaimable, Private_Reusable : Boolean := False;
       Private_Closed : Boolean := False;
       Context_Parent, Context_Closed, Context_Reusable : Boolean := False;
+      Table_Kind : Private_Table_Kind := Replacement_Tables;
    end record;
    package Records is new Intel_GPU_Record_Store
      (Allocation_Record, (others => <>));

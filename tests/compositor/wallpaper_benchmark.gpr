@@ -1,0 +1,11 @@
+project Wallpaper_Benchmark extends "wallpaper_output.gpr" is
+   for Source_Dirs use (".", "../../userspace/services/desktop", "../../userspace/lib/compositor",
+     "../../userspace/lib/display", "../../userspace/lib/theme", "../../userspace/runtime/gnat");
+   for Source_Files use Wallpaper_Output'Source_Files & ("wallpaper_benchmark.adb");
+   for Main use ("wallpaper_benchmark.adb");
+   for Object_Dir use "build/wallpaper-benchmark/obj";
+   for Exec_Dir use "build/wallpaper-benchmark";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnatp", "-O2");
+   end Compiler;
+end Wallpaper_Benchmark;

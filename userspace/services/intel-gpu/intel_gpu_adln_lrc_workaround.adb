@@ -7,9 +7,7 @@ package body Intel_GPU_ADLN_LRC_Workaround with SPARK_Mode is
       Result : Indirect_Batch;
       Base : Unsigned_32;
    begin
-      if Context_GPU = 0 or else Context_GPU mod 4096 /= 0 or else
-        Context_GPU >= 16#FEE0_0000# or else Capacity < 16 * 4096 or else
-        16 * 4096 > 16#FEE0_0000# - Context_GPU
+      if not Admissible (Context_GPU, Capacity)
       then return Result; end if;
       Base := Unsigned_32 (Context_GPU);
       -- Timestamp -> GPR0 -> timestamp twice; restore command-buffer control;

@@ -5,13 +5,12 @@
 --  @summary
 --  Sleep test app
 --
---  Long-lived process that creates a stdout stream and sleeps in a loop.
+--  Long-lived process that reports on its status connector and sleeps in a loop.
 --  Useful for testing `streams` shell command and process lifecycle.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Protocols;
 with CuBit.Streams;
 
 procedure main is
@@ -19,15 +18,14 @@ procedure main is
    count : Unsigned_32 := 0;
    ignore : Unsigned_64;
    handled : Boolean;
+   --  The connector this program reports on (its manifest declares it).
+   Status : CuBit.Streams.StreamId;
 begin
    debugPrint ("sleep: starting" & LF);
 
-   CuBit.Streams.streamCreateTyped
-     (CuBit.Streams.STREAM_STDOUT, 4, CuBit.Streams.TYPE_TEXT_LINE,
-      CuBit.Protocols.TEXT_LINE_CONTRACT);
-
+   Status := CuBit.Streams.Open_Outlet ("com.cubit.sleep.status");
    CuBit.Streams.streamPrint (
-      CuBit.Streams.STREAM_STDOUT, "sleep: running..." & LF);
+      Status, "sleep: running..." & LF);
 
    loop
       --  Handle pending stream IPC (OP_STREAM_LIST, subscribe, etc.)

@@ -228,6 +228,10 @@ package CuBit.UI is
    function Code_Text_Height return Natural;
    procedure Draw_Code_Text
       (c : Canvas; x, y : Natural; text : String; fg, bg : Color);
+   --  Over what is already drawn: no background fill, glyph edges blend with
+   --  the pixels beneath (for text on an already filled row or panel).
+   procedure Draw_Code_Text_Transparent
+      (c : Canvas; x, y : Natural; text : String; fg : Color);
    procedure Draw_Button_Frame
       (c : Canvas; r : Rect; colors : Theme; style : Button_Style);
    type Arrow_Direction is (Arrow_Up, Arrow_Down, Arrow_Left, Arrow_Right);
@@ -262,6 +266,10 @@ package CuBit.UI is
    function Table_Interior (r : Rect) return Rect;
    function Layout_Table (viewport : Rect) return Table_Regions;
    procedure Draw_Table_Viewport
+      (c : Canvas; r : Rect; colors : Theme);
+   --  Its sunken frame only: for callers that fill the interior themselves
+   --  and would otherwise paint it twice.
+   procedure Draw_Table_Viewport_Frame
       (c : Canvas; r : Rect; colors : Theme);
    procedure Draw_Table_Header
       (c : Canvas; r : Rect; colors : Theme; c1, c2, c3 : String;

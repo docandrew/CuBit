@@ -1,0 +1,7 @@
+project Vulkan_Device_Health extends "vulkan_device_owner.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use Vulkan_Device_Owner'Source_Files & ("vulkan_device_health_tests.adb");
+   for Object_Dir use "build/vulkan-device-health/obj";
+   for Exec_Dir use "build/vulkan-device-health";
+   for Main use ("vulkan_device_health_tests.adb");
+end Vulkan_Device_Health;

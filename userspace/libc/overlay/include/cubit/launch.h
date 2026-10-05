@@ -16,22 +16,25 @@ extern "C" {
 #endif
 
 #define CUBIT_LAUNCH_ARGUMENTS_ADDRESS 0x00005A0000000000UL
-#define CUBIT_LAUNCH_FORMAT_VERSION 1
+#define CUBIT_LAUNCH_FORMAT_VERSION 2
 #define CUBIT_LAUNCH_HEADER_BYTES 16
 #define CUBIT_LAUNCH_MAXIMUM_BYTES (64 * 1024)
-#define CUBIT_LAUNCH_MAXIMUM_STRINGS 4096
+#define CUBIT_LAUNCH_MAXIMUM_STRINGS 4096   /* the directory included */
+#define CUBIT_LAUNCH_MAXIMUM_DIRECTORIES 1
 #define CUBIT_LAUNCH_MAXIMUM_NAME_BYTES 255
 /* Header field offsets. */
 #define CUBIT_LAUNCH_VERSION_AT 0
-#define CUBIT_LAUNCH_RESERVED_AT 2
+#define CUBIT_LAUNCH_DIRECTORY_COUNT_AT 2
 #define CUBIT_LAUNCH_ARGUMENTS_AT 4
 #define CUBIT_LAUNCH_ENVIRONMENT_AT 8
 #define CUBIT_LAUNCH_STRING_BYTES_AT 12
 
 /* 1 if the length bytes at block are a well-formed launch block (then its
- * argument and environment counts are stored), 0 otherwise. */
+ * argument, environment and directory counts are stored), 0 otherwise. The
+ * strings are the arguments, then the environment, then the working
+ * directory (a qualified CuBit name, "@volume/..."), if there is one. */
 int __cubit_launch_arguments_validate(const void *block, uint32_t length,
-	uint32_t *arguments, uint32_t *environment);
+	uint32_t *arguments, uint32_t *environment, uint32_t *directory);
 
 /* OP_LAUNCH (procmgr) and its failure codes (CuBit.Launch_Arguments). */
 #define CUBIT_OP_LAUNCH 0x0106

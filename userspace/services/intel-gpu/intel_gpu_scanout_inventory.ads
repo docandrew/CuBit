@@ -31,6 +31,17 @@ package Intel_GPU_Scanout_Inventory with SPARK_Mode is
    -- disabled sample. Presence evidence must belong to this same device.
    function Collect (P : Planes; C : Cursors; Table_Bytes : Unsigned_64;
      Presence : Intel_GPU_Display_Presence.Snapshot) return Inventory;
+   -- Collect and plan from the same observations. Reject missing/unsupported
+   -- objects and any target allocation overlapping a live plane or cursor.
+   -- Caller retains power/serialization throughout; this is GGTT geometry,
+   -- not physical-alias exclusion, ownership, producer completion or latch.
+   function Plan_Linear_Flip
+     (P : Planes; C : Cursors;
+      Presence : Intel_GPU_Display_Presence.Snapshot;
+      Selected : Plane_Index;
+      Table_Bytes, Target_First, Target_Bytes : Unsigned_64)
+      return Intel_GPU_Plane_Decode.Flip_Plan
+     with Global => null;
    function Canonical (E : Intel_GPU_Scanout_Range.Extent) return Boolean is
      (E.Valid and then E.Bytes > 0 and then E.First <= Unsigned_64'Last - E.Bytes);
    function Disjoint (A, B : Intel_GPU_Scanout_Range.Extent) return Boolean is

@@ -1220,8 +1220,14 @@ procedure main is
             if msg.tag.label /= REPLY_MALFORMED_FILESYSTEM then
                return False;
             end if;
+            --  htree: admitted (no "old" in it, so not found).
+            Check_Metadata_Rename ("@nvme:0/indexed-dir", REPLY_NOT_FOUND);
+            if msg.tag.label /= REPLY_NOT_FOUND then
+               return False;
+            end if;
+            --  Extents: a layout this service does not write.
             Check_Metadata_Rename
-              ("@nvme:0/indexed-dir", REPLY_FILE_RANGE_UNSUPPORTED);
+              ("@nvme:0/extents-dir", REPLY_FILE_RANGE_UNSUPPORTED);
             if msg.tag.label /= REPLY_FILE_RANGE_UNSUPPORTED then
                return False;
             end if;
@@ -1237,6 +1243,7 @@ procedure main is
          renamed : constant String := "@nvme:0/cubit-alt.dat";
          nested : constant String := "@nvme:0/lost+found/rename-before.dat";
          nestedAfter : constant String := "@nvme:0/lost+found/rename-after-much-longer.dat";
+         movedAcross : constant String := "@nvme:0/lost+found/moved-across.dat";
 
          procedure Put (value : String) is
             view : String (value'Range)
@@ -1289,13 +1296,17 @@ procedure main is
             debugPrint ("STORAGE-CHECK: exclusive create reused existing file" & LF);
             return False;
          end if;
-         if not Rename_Is (CREATE_PATH, PATH, REPLY_ALREADY_EXISTS) or else
-           not Has_Payload (CREATE_PATH) or else not Has_Payload (PATH) or else
+         --  (Renaming onto an existing name replaces it, as POSIX requires;
+         --  the hosted tests check that, without disturbing these fixtures.)
+         if not Has_Payload (CREATE_PATH) or else not Has_Payload (PATH) or else
            not Rename_Is (CREATE_PATH, CREATE_PATH, REPLY_OK) or else
            not Rename_Is (CREATE_PATH, renamed, REPLY_OK) or else
            not Has_Payload (renamed) or else
            not Rename_Is (CREATE_PATH, renamed, REPLY_NOT_FOUND) or else
-           not Rename_Is (renamed, nested, REPLY_FILE_RANGE_UNSUPPORTED) or else
+           --  Across directories, and back.
+           not Rename_Is (renamed, movedAcross, REPLY_OK) or else
+           not Has_Payload (movedAcross) or else
+           not Rename_Is (movedAcross, renamed, REPLY_OK) or else
            not Has_Payload (renamed) or else
            not Rename_Is
              (renamed, "@nvme:1/elsewhere.dat", REPLY_ACCESS_DENIED) or else

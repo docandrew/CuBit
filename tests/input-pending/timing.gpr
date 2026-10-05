@@ -1,0 +1,12 @@
+project Timing is
+   for Source_Dirs use (".", "driver-fixture", "../../userspace/lib/input", "../../userspace/runtime/gnat");
+   for Source_Files use ("timing_tests.adb", "input_pending.ads", "input_pending.adb", "cubit.ads",
+     "cubit-input.ads", "cubit-input.adb", "cubit-click_sequences.ads", "cubit-click_sequences.adb",
+     "cubit-messages.ads", "cubit-messages.adb");
+   for Object_Dir use "build/timing/obj";
+   for Exec_Dir use "build/timing";
+   for Main use ("timing_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Timing;

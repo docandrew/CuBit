@@ -50,6 +50,10 @@ package Sysinfo is
     -- CPU info
     NUM_CPUS              : constant QueryID := 1400;
     MONOTONIC_DIAGNOSTIC  : constant QueryID := 1402;
+    --  UTC milliseconds since the Unix epoch at monotonic time zero (so UTC
+    --  now = this + SYSCALL_GETTIME), or 0 while unknown. Published by the
+    --  registered clock service; readable by every process.
+    WALL_CLOCK_OFFSET     : constant QueryID := 1403;
 
     -- Current-process IPC telemetry. This reveals only the caller's own
     -- mailbox state and therefore conveys no cross-process authority.

@@ -4,6 +4,14 @@
 -- Full MIT permission/warranty notice: intel_gpu_adln_lrc_template.adb.
 with Intel_GPU_ADLN_LRC_Workaround;
 package body Intel_GPU_ADLN_Context_Image with SPARK_Mode is
+   function Admissible
+     (Context_GPU, Capacity, Ring_GPU, Root_DMA : Unsigned_64;
+      Ring_Log2 : Intel_GPU_ADLN_LRC_Initial.Ring_Size_Log2) return Boolean is
+     (Intel_GPU_ADLN_LRC_Initial.Admissible (Ring_GPU, Root_DMA, Ring_Log2)
+      and then Intel_GPU_ADLN_LRC_Workaround.Admissible (Context_GPU, Capacity)
+      and then Context_GPU < 16#FEE00000#
+      and then (if Context_GPU <= Ring_GPU then Ring_GPU - Context_GPU >= 65536
+                else Context_GPU - Ring_GPU >= 2 ** Ring_Log2));
    function Build (Context_GPU, Capacity, Ring_GPU, Root_DMA : Unsigned_64;
                    Ring_Log2 : Intel_GPU_ADLN_LRC_Initial.Ring_Size_Log2)
       return Prepared_Image is
@@ -18,12 +26,8 @@ package body Intel_GPU_ADLN_Context_Image with SPARK_Mode is
       Predicate : Predicate_Words;
    begin
       if not Initial.Prepared or else not Indirect.Valid then return Result; end if;
-      -- Overflow-safe half-open GGTT interval separation.
-      if Context_GPU <= Ring_GPU then
-         if Ring_GPU - Context_GPU < 65536 then return Result; end if;
-      elsif Context_GPU - Ring_GPU < 2 ** Ring_Log2 then
-         return Result;
-      end if;
+      if not Admissible (Context_GPU, Capacity, Ring_GPU, Root_DMA, Ring_Log2)
+      then return Result; end if;
       -- Recheck locally for conversion proof; helpers already enforce this.
       if Context_GPU >= 16#FEE00000# then return Result; end if;
       Base := Unsigned_32 (Context_GPU);

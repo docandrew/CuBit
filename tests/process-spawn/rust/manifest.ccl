@@ -1,0 +1,4 @@
+# Rust std::env::args child for the processes test. No authority.
+(executable-manifest v1
+  (identity "com.cubit.rust-args-check")
+  (version "0.1.0"))

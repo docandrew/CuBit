@@ -11,6 +11,69 @@ remain in their subsystem documents.
   and make each grant chain understandable and inspectable. Track acceptance
   criteria in [SEC-020](security-hardening.md#sec-020--simplify-and-constrain-bootstrap-authority-delegation).
 
+### CTX-001 — Security contexts (user-requested, 2026-10-04)
+
+The authority a program gets should depend on the context it runs in, not
+only on its manifest and its launcher. The user's goal: open a console in a
+directory, and nothing run from it can affect anything outside that
+directory, except perhaps a temporary place. Delegated places
+(`CuBit.Launch_Grants`, docs/self-hosting.md item 4) and procmgr's
+attenuation give the mechanism: a child holds at most what its launcher
+holds. What is missing is a first-class description of the context the
+launcher itself holds authority in. Questions until now dodged:
+- **Identity.** Which user (or agent) a session acts for, how a process
+  carries that identity, and how services check it, beyond process IDs and
+  capabilities.
+- **Session kind.** Logged in locally, remotely (Observatory web REPL, CCL
+  remote), or as an automated agent. The same program could warrant
+  different authority in each.
+- **Location and network.** On a VPN, an untrusted network or an isolated
+  device, as an input to which grants a session may receive or delegate.
+- **Confined consoles and workspaces.** A console started in a directory
+  gets a context that names that directory (and a temporary place) as all
+  it may write. Everything launched from it inherits the context, and its
+  delegation and attenuation can never widen it.
+- **Visibility.** The capability graph (declared, granted, exercised,
+  denied) should show each context and why a grant was refused under it.
+- **Revocation.** Ending a session or leaving a network revokes what was
+  granted for it, including from running children.
+
+Acceptance: a design document covering identity, session kinds, context
+inheritance and attenuation, network and location inputs, revocation and
+inspection, reviewed with the user before code; then a first slice in which
+a console confined to a directory cannot write outside it (plus a temporary
+place), shown by a guest test. Related: SEC-020 (bootstrap delegation),
+docs/stream-wiring.md (approvals), and the capability graph plan.
+
+## Builds
+
+### BLD-001 — Content-addressable CCL builds, like Nix (user-requested, 2026-10-04)
+
+The CCL build tool that replaces make (docs/self-hosting.md, item 6) should
+be a full content-addressable build system in the spirit of Nix, not a
+timestamp-driven rule runner:
+- **Every input is named by its content.** Sources, tools (as, ld, gcc,
+  GNAT and their manifests), program descriptions, parameters and the
+  rendered arguments are hashed (SHA-256 through the verified SPARK crypto
+  stack, SPARKTLSCrypto over SPARKNaCl). A build step's identity is the
+  hash of all of it.
+- **Outputs are stored by that identity** in a store of immutable,
+  read-only entries. A step whose identity is already present is not run
+  again, and the same inputs give the same output on any CuBit machine.
+- **Typed steps.** A step is a typed tool call (`(ld.run (Ld_Parameters
+  ...))`, docs/ccl-launch-parameters.md), so each step's inputs and outputs
+  are exactly its file parameters and declared ports. The delegated places
+  give the sandbox: a step can read only its inputs and write only its
+  outputs, so undeclared dependencies cannot creep in.
+- **Visible.** Every step and store entry appears in the capability and
+  stream graphs: why it ran, what it read and wrote, and its ports' output
+  as cards.
+- **Open questions:** the store's place and its garbage collection;
+  sharing and substitution between machines (signed, through tls.svc);
+  pinning the bootstrap toolchain; how the store relates to the filesystem
+  journal and to Git and jj history; and whether CCL definitions
+  themselves (packages, docs/ccl-packages.md) are store entries.
+
 ## Code organization
 
 ### Qualified CCL names and debugger outcomes
@@ -23,6 +86,39 @@ remain in their subsystem documents.
   enumeration images from the minimal Ada runtime. Hosted diagnostics pass;
   native rebuild/visual verification pending the shared build handoff.
 - [ ] Expand aggregate result/locals inspection beyond `<native object>`.
+
+### Retire `apps/shell` (user-approved, 2026-10-03)
+
+- [ ] Delete `userspace/apps/shell/`. The CCL console replaces it, and git
+  holds the history. One change, under the build lock, announced in
+  `coordination/` first, because the compositor and graphics agents' tests
+  depend on it:
+  1. `kernel/Makefile`: remove the `shell` target, its `world` entry and
+     `isodir/boot/shell.app` from `DISK_CONTENTS`.
+  2. Init profiles: stop starting `shell.app` in
+     `tests/headless/init-desktop-display.ccl`, `init-desktop-session.ccl`,
+     `init-servo.ccl` and `tests/observatory-metrics/init-viewer.ccl`.
+  3. `tests/headless/run.sh`:
+     - Replace the `shell:` markers in `boot-shell-nvme` (procmgr/ps2
+       readiness; rename the test), `desktop-display`, `desktop-virtio-vga`,
+       `virtio-gpu`, `virtio-gpu-multi-output` and `virtio-vga-primary`.
+     - Delete the shell install block (about lines 937–948).
+  4. Mark it retired in `docs/ccl-repl.md` and `docs/ccl-system-data.md`.
+  5. Verify with `make -C kernel world` and the six affected headless tests.
+
+### Break up monolithic `main.adb` programs
+
+- [ ] Split large services and apps into a pure, testable core (SPARK where
+  it holds invariants) plus a thin IPC adapter in `main.adb`, one module per
+  concern. Keep behavior unchanged and run the headless tests at each step.
+  Each owner refactors its own files.
+  - **Largest:** desktop (8,647 lines), intel-gpu (5,673), filesystem
+    (3,887), devmgr (3,811), procmgr (3,287), display (1,718).
+  - **Order:** procmgr, filesystem, desktop/display, intel-gpu.
+  - **Desktop:** the compositor and window manager stay in one process
+    (user's choice, Windows style), as modules: window management,
+    taskbar/menu, settings, scene, input routing. Decide whether
+    `desktop-shell` still has a purpose.
 
 ### Separate the CuBit runtime library from GNAT internals
 
@@ -241,6 +337,41 @@ Keep force-termination authority separately scoped; do not grant blanket
 process-write authority to the compositor. Count and attribute rejected IPC
 alongside accepted traffic, with bounded reporting, and test endpoint budgets
 against sustained abusive clients.
+
+### UI-013 — Submenus in the Apps menu (user-requested, 2026-10-04)
+
+The desktop's Apps menu is one flat list (`desktop.launch.*` settings in
+system.ccl, `Desktop_Launch`), and it grows with every program: Console,
+Logs, Workbench, Files, DOOM, SameBoy, Penny, and soon the build tools.
+- **Submenus:** nest entries (Development, Games, System, Media), declared
+  in CCL like the entries themselves: a typed menu tree, not keyword
+  strings, checked when system.ccl is checked.
+- **Keyboard first:** arrows open and close submenus, type-to-find across
+  the whole tree, Enter launches. The headless tests launch by label, so
+  they keep working when entries move (tests/usb-optical/run-live.py
+  already does).
+- **Shared widget:** the submenu belongs to the shared UI toolkit's menu
+  (native menubars use it too), held to UI-011's reliability gate.
+
+### UI-012 — Copy and paste (user-requested, 2026-10-04)
+
+There is no clipboard. The CCL console (and every text field) has no way to
+copy a card's value or an error, or to paste a snippet. Pasting a multi-form
+CCL snippet is how people try examples. Needed:
+- **A typed clipboard service, not ambient global state.** A copy is a typed
+  value (`String` first; later CCL values with their type, images, places).
+  Reading the clipboard is a capability: a paste comes from the focused
+  window, by the user's own gesture, never a background read.
+- **Keyboard first:** Ctrl+C, Ctrl+X and Ctrl+V in the console input, the
+  Workbench and the shared text widgets, with a selection model in the text
+  widgets.
+- **Console specifics:** copy a card's value (as CCL source that reads back
+  to the same value), its type, or an error; paste multi-line input as one
+  entry, with clear rules for entries holding several forms.
+- **Visible:** the capability graph shows who wrote and who read the
+  clipboard. A paste from another security context (CTX-001) is marked.
+- **Remote:** the Observatory web REPL maps to the browser clipboard
+  through the same typed operation.
 
 ### UI-010 — Make input delivery recoverable under loss
 
@@ -507,6 +638,55 @@ display, storage, and audio paths. Gate migrations with QEMU and physical-laptop
 boot tests, unauthorized-device-access tests, and driver-failure/lifetime tests.
 Do not stall the current CCL REPL/widget milestones on this audit.
 
+
+### KERN-002 — Publications: read-only shared values (user-approved, 2026-10-04)
+
+A fast IPC cache, filled through a system call. A service owns a value. It
+publishes the value through the kernel, and processes read it from a page
+mapped read-only into them: a memory load instead of a system call or an IPC
+round trip. Linux's vDSO data page ("vvar") works this way for time. CuBit
+generalizes it to any value that changes rarely and is read constantly.
+Filesystem read delegations already use the pattern once: the service writes
+the queue header page, and clients check its valid word before and after
+reading.
+
+Design direction:
+- **Writer:** one per publication, set by capability. Updates go through a
+  system call, so the kernel is the only writer and every update can be
+  traced (visibility motto). A directly writable mapping could come later if
+  update rates ever need it.
+- **Reader protocol:** a seqlock. The writer makes the counter odd, writes,
+  then makes it even. Readers retry if the counter was odd or changed. After
+  a bounded number of retries they fall back to a system call or report
+  "unavailable", so a stalled writer cannot make readers spin forever. x86
+  needs only compiler barriers; write the reader with fences in mind for
+  other architectures.
+- **Data only, no code:** typed, versioned record layouts, declared once.
+  The proved readers live in the runtimes (libc, the Ada runtime, the Rust
+  std port). Linux ships code because its interface must stay stable across
+  kernel versions; we build all of user space, so we don't have to.
+- **Visibility:** pages per publication, so a manifest grant decides which
+  ones a process gets mapped. Each costs one physical frame, plus page-table
+  entries per process.
+- **Proof:** a SPARK model of the protocol: a value read with an even,
+  unchanged counter is one the writer finished (tests/ pattern).
+
+First users:
+- **Wall clock.** `SYSINFO_WALL_CLOCK_OFFSET` (1403) moves here, plus TSC
+  calibration, so `CLOCK_REALTIME`/`CLOCK_MONOTONIC` become memory reads
+  with nanosecond precision. The sysinfo call stays as the fallback.
+- **Log minimum level.** Publishers drop below-minimum messages before
+  sending them, instead of logstore dropping them after the IPC.
+- **Service registry generations.** A process sees that a service such as
+  logstore restarted or was replaced, and rebinds without polling.
+- **CPU count and topology.** libc's `sched_getaffinity` currently
+  hard-codes 4 CPUs.
+- **Time zone rules, boot ID, host name, DNS servers, and settings services
+  read often.**
+
+Not for secrets or per-request state. Wall time is not worth gating:
+attacker code can measure time in plenty of other ways.
+
 ## Shared UI toolkit
 
 ### CCL source-view proof and remaining surface integration
@@ -736,7 +916,62 @@ hidden controls must not receive focus, and client surfaces must not be able to
 spoof or consume desktop-owned shortcuts. Add interaction tests that exercise
 the entire Apps-to-application path with no mouse events.
 
+## CCL console
+
+### CCL-001 — Launched programs' output as live, re-wirable buffers
+
+Status: open (requested by the user, 2026-10-03)
+
+When the CCL console starts a program, its stdout and stderr each go into a
+console-owned buffer that CCL can name and manage, rather than straight to a
+fixed destination. While the program runs, the person can redirect a stream
+(into a file, another program's input, the log store, or a view) and then
+un-redirect it, live, without restarting the program and without losing
+output during the switch. A buffer keeps a bounded, inspectable history and
+reports what it dropped.
+
+Shape, building on docs/ccl-streams.md (phase 5 `launch`) and the self-hosting
+plan (docs/self-hosting.md, item 5):
+
+- `(launch "gcc" (arguments ...))` returns a process value whose `stdout` and
+  `stderr` are typed `Stream<String>` buffers held by the console.
+- Wiring is a CCL value that can be changed: attach a sink, detach it, attach
+  another, tee to several. The buffer stays the source of truth, so a sink
+  attached late can replay what is retained.
+- Transport: the program writes its fds 1 and 2 into shared rings
+  (CuBit.Channel_Rings, as the log streams now do), so redirection is a console
+  decision and never needs the child's cooperation or a restart.
+- Back pressure is per buffer: a full buffer either sheds (counting losses) or
+  makes the writer wait. The choice is visible and can be changed.
+- The buffers are visible in the console (and later the stream graph
+  inspector): rate, size, drops and current wiring.
+
+Depends on: posix_spawn file actions / descriptor inheritance (self-hosting
+item 4) and the CCL launch built-in (item 5).
+
 ## Storage and files
+
+### FS-020 — A deliberate directory layout (user-requested, 2026-10-04)
+
+CuBit's own directory layout is flat: on the boot disk and the ISO,
+programs, services and drivers (`*.app`, `*.svc`, `*.drv`), data (`tls/`,
+`fonts/`, `doom1.wad`), startup profiles (`init.ccl`) and work places
+(`work/`) all sit at or near the root, and `@cd:0` is an `apps/` tree. With
+self-hosting, compilers, a sysroot, build outputs and a build store
+(BLD-001) arrive. To consider:
+- **Kinds of things:** programs and services by package (identity), system
+  data, per-user and per-session places (CTX-001), temporary places,
+  the build store, logs once logstore persists.
+- **Names stay CuBit names** (`@nvme:0/...`, `@boot`, `@cd:0`), and launch
+  tables keep naming programs exactly, with no search path; a layout change
+  updates the tables, not a PATH.
+- **Grants follow the layout:** manifests scope to subtrees (a tool gets its
+  package's directory read-only, a session its own place), so the layout is
+  also the authority map. Keep paths short (docs/self-hosting.md: 4096-byte
+  limit, 256-byte scopes).
+- **Images:** images/artifacts.ccl and the disk tools place files by the
+  same layout. The repository tree may want the same review.
+
 
 ### FS-001 — Replace hardware-specific filesystem backends
 

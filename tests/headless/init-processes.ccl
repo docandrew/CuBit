@@ -1,0 +1,9 @@
+# Processes (docs/process-arguments.md): spawn-check starts children with
+# arguments through procmgr's OP_LAUNCH and collects their exit status;
+# args-check started here, without a launch block, checks the empty case.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "args-check.app" (priority 3))
+  (start "spawn-check.app" (priority 3))
+  (start "delegate-check.app" (priority 3))
+)

@@ -60,6 +60,10 @@ enum {
 	FS_QUEUE_PARK = 13,
 	/* Pairs of a directory page and its inspection page (metadata). */
 	FS_QUEUE_READ_DIRECTORY_INSPECTED = 14,
+	/* One Directory.Inspection.V1 record of an open handle (fstat). */
+	FS_QUEUE_DESCRIBE = 15,
+	/* A file's new size (ftruncate), after the client's earlier writes. */
+	FS_QUEUE_RESIZE = 16,
 	FS_TOKEN_AT = 0,
 	FS_OPERATION_AT = 8,
 	FS_OPTIONS_AT = 12,
@@ -71,6 +75,8 @@ enum {
 	FS_RIGHTS_AT = 12,
 	FS_RIGHTS_READ = 1,
 	FS_RIGHTS_WRITE = 2,
+	/* The policy would let it write the file or create in the directory. */
+	FS_RIGHTS_POLICY_WRITE = 4,
 	FS_VALUE_AT = 16,
 };
 

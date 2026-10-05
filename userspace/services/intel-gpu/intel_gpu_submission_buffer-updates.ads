@@ -8,7 +8,7 @@ package Intel_GPU_Submission_Buffer.Updates is
    package Tables is new Intel_GPU_VM_Materialize (VM, Owner_Ready, Flush_Page);
    procedure Publish_Boot_Tables
      (Object : in out Buffer_State; Candidate : VM.Image;
-      Backing : Tables.Mappings; Success : out Boolean);
+      Backing : Tables.Mapping_View; Success : out Boolean);
    -- One bootstrap update attempt, including rejected preflight. Uses retained
    -- source/root, never replaces the context root address. Trusted caller owns
    -- all candidate mappings and retains every generation. No IPC authority,

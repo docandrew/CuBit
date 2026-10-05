@@ -36,6 +36,8 @@ package CCL_Host_Environment is
       with function Held (Handle : CCL.Streams.Handle) return Boolean;
    procedure Retain_Streams;
    function Open_Streams return Natural;
+   --  Whether task Handle completed (an entry waiting on it can resume).
+   function Task_Done (Handle : CCL.Streams.Handle) return Boolean;
    --  Milliseconds until the next element is due: 0 when one is due now,
    --  Unsigned_64'Last when no stream is open.
    function Next_Stream_Delay return Interfaces.Unsigned_64;

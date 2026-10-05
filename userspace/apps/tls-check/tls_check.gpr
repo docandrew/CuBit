@@ -17,7 +17,7 @@ project TLS_Check is
    package Compiler is
       for Default_Switches ("Ada") use
         ("-O2", "-gnat2022", "-fstack-usage", "-fomit-frame-pointer",
-         "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+         "-mno-red-zone", "-fno-pic");
    end Compiler;
 
    package Binder is

@@ -6,9 +6,12 @@
 --  Named I/O Streams
 --
 --  @description
---  Producer-owned ring buffer model for structured process output.
---  Producers create streams (e.g. stdout) and handle subscription
---  requests opportunistically inside streamPrint via Poll_Service_Request.
+--  Producer-owned ring buffer model for a process's outlets
+--  (docs/ccl-launch-parameters.md, "Connectors, not stdio"). A program opens
+--  each connector its manifest declares by its qualified name (Open_Outlet); the
+--  ring's id is the connector's position plus one. CuBit has no stdout.
+--  Producers handle subscription requests opportunistically inside
+--  streamPrint via Poll_Service_Request.
 --  Subscribers send an async subscribe, receive a read-only grant
 --  to the ring buffer, then poll for new data.
 --
@@ -44,8 +47,8 @@ package CuBit.Streams is
    type TypeTag    is new Unsigned_16;
    type CursorSlot is range 0 .. 7;
 
-   STREAM_STDOUT : constant StreamId := 16#02#;
-   STREAM_STDERR : constant StreamId := 16#03#;
+   --  No stream: a connector the program's manifest does not declare.
+   NO_STREAM : constant StreamId := 0;
 
    TYPE_RAW_BYTES : constant TypeTag := 16#0000#;
    TYPE_TEXT_LINE : constant TypeTag := 16#0001#;
@@ -73,6 +76,33 @@ package CuBit.Streams is
    ---------------------------------------------------------------------------
    --  Producer API
    ---------------------------------------------------------------------------
+
+   --  Open the outlet Name (fully qualified, as the manifest declares
+   --  it), from the description procmgr attached to the launch block: map
+   --  the ring its launcher lent it when the block lists one, else create
+   --  one with the declared pages and element type. NO_STREAM when the
+   --  program declares no such outlet.
+   function Open_Outlet (Name : String) return StreamId;
+
+   ---------------------------------------------------------------------------
+   --  Launcher-owned rings (docs/ccl-launch-parameters.md, "Launcher-owned
+   --  outlet rings"): the launcher initializes a ring in its own memory with
+   --  itself as the one subscriber, lends it to the child, and reads it in
+   --  place.
+   ---------------------------------------------------------------------------
+
+   --  Write a ring header at Base (Pages pages, page aligned): empty, drop
+   --  oldest, and Subscriber (a PID; 0: none) registered at cursor 0.
+   procedure Initialize_Ring
+     (Base : Unsigned_64; Pages : Positive; Id : StreamId; Entry_Type : TypeTag;
+      Subscriber : Unsigned_32 := 0);
+
+   --  Read the next entry of a ring this process owns and subscribes to:
+   --  bytes read (0: none yet). The cursor is the subscriber slot's, so a
+   --  producer that drops old entries moves it, and reading moves it on.
+   function Read_Owned
+     (Base : Unsigned_64; Buffer : System.Address; Maximum : Unsigned_32;
+      Entry_Type : out TypeTag) return Unsigned_32;
 
    --  Create a named stream. Allocates pages via sbrk and initializes the
    --  ring buffer header. Must be called before streamWrite/streamPrint.

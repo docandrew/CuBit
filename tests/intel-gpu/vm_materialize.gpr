@@ -1,7 +1,9 @@
 project VM_Materialize is
    for Source_Dirs use (".", "../../userspace/services/intel-gpu");
    for Object_Dir use external ("VM_MATERIALIZE_OBJECT_DIR", "build-vm-materialize");
-   for Main use ("vm_materialize_tests.adb");
+   for Main use ("vm_materialize_tests.adb", "vm_materialize_stream_tests.adb",
+                 "vm_root_publish_tests.adb", "vm_root_stream_tests.adb",
+                 "scratch_materialize_tests.adb", "scratch_update_tests.adb");
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
    end Compiler;

@@ -1,5 +1,3417 @@
 # Filesystem agent
 
+2026-10-04 boot scanout admission audit ACTIVE private kernel candidate only.
+Current Sysinfo GPU_IS_PRIMARY setter permits1->0; MAPFB never checks native
+takeover. Existing Boot_Output retirement stops kernel drawing, not an existing
+Display mapping. Do NOT activate Intel surface writes on this basis. Test
+private monotonic boolean publication guard in kernel/src/sysinfo.adb with
+actual case-arm extraction and negative control. No primary kernel edits
+while shared builds are active. MAPFB check/serialization and existing-writer
+drain require follow-up; not claimed fixed by monotonic flag alone.
+
+2026-10-04 linear flip planner PASS.81287 TERM0 Nix hosted
+/tmp/cubit-plane-flip.JN0w3k:83 existing format/rejection cases plus prospective
+range/overlap/width/bounds/adjacency/top-page tests.64155 TERM0 private native
+unit compilation. Primary+private Plane_Control/Decode changes, hosted test
+primary only; no GPR/script/staging or MMIO change. Plan_Linear_Flip uses
+representation-clause encoder, retains current geometry and returns only
+geometric eligibility. Synthetic live value is NOT observed latch. No writer
+or permission bypass added. PRM printed840-841/848 read;840/848 rendered and
+visually checked. Linux moving codebrowser source cross-check, pinnedv6.16
+fetchfailed (not silently represented as pinned). Doc records implementation
+and remaining authority/power/physical-alias/latch gates. Alljobs terminal,
+no locks; v60 unchanged.
+
+2026-10-04 same-geometry scanout planner ACTIVE. Own Plane_Control.ads,
+Plane_Decode ads/adb, plane_decode_tests.adb. PRM Vol2c pp840-841,848
+read (PDF870-871,878; visual840); Linux icl_plane_update_arm and
+tgl_plane_min_alignment cross-check via codebrowser (v6.16 fetch unavailable).
+Pure prospective surface/footprint validation only; no MMIO or image changes.
+Do not infer ownership/latch/oldfront retirement from successful plan.
+
+2026-10-04 retained-reader NATIVE PASS.32191 TERM0 private views oracle,
+tests/intel-gpu/demand-backing.esKqSQ/serial.log:198 and200. Actual self-grant
+read-only/nonforwardable enforcement, producer-close/pin-return before reader,
+live alias content after revocation, blocked release until acquisition drain.
+Existing forwarding/queued retirement suites PASS too. Kernel f2e3301ed59e40898473a3e2664925a5c618925898775eaca593c91202a6b2a1;
+fixture d6c1c678306b9a8c9b01004d57b47b2e546b716e03846d91cb85dff8085790b1.
+Reviewed46line native fixture source addition promoted primary (no script/GPR
+edit). Private runner additionally requires new marker; primary final PASS
+already follows new assertions. Sharedlock attempt still1; pending runner
+promotion preserved. Tests use existing private kernel, not current-kernel
+certification; no Intel GPU or interprocess isolation claim. v60 unchanged.
+All own jobs terminal/no locks.
+
+2026-10-04 retained-reader native gate ACTIVE (private only). Add real
+self-grant test to private native/view_retention_check.adb and required marker
+to private run-demand.py. Producer handle closes before Share_Retained;
+producer pin returns before reader drains; verify read content, denied write/
+forwarding, revocation closes admission and delayed reader blocks release.
+Existing three-cycle/forwarded-grant coverage retained. No shared staging.
+
+2026-10-04 retained-reader handoff PASS. Share_Retained now reuses registry
+independent pins for terminal read-only CPU grants after producer BO closure.
+Existing Share uses same pin cleanup helper. New8scenario hosted suite covers
+producer-pin return, foreign/empty source, bad slice/endpoint, uncertain create/
+revoke, quarantine, no replay and no writable/forwardable grants.17467 TERM0,
+/tmp/cubit-retained-reader.ELxzpW. Existing view tests alsoPASS. Reviewed two
+driver files applied privately;92851 TERM0 native runtime unit compile (-c -u),
+NOT driver link or native execution. No wire endpoint/driver caller yet; no
+GPU completion, import or immutability inferred from pin. Provider coordinator
+still required. v60 image unchanged. All own jobs terminal/no locks.
+
+2026-10-04 retained reader handoff ACTIVE. Own Buffer_Views ads/adb and
+view_retention_tests.adb. Reuse existing Registry.Retained_Reference pins,
+not new ownership metadata. Add driver-private read-only CPU view from a
+trusted retained source; source/recipient authorization and GPU completion
+remain caller obligations. No GPU import/scanout/IPC endpoint or Desktop edit.
+Shared lock unavailable; no scripts/GPR/staging edits. Relocated hosted tests.
+
+2026-10-04 presentation-provider audit / compositor handoff. Read current
+gallery render/consumer, Buffer_Views, local Vulkan target storage, Desktop
+manifest and Display dispatch. Added current checkpoint atop
+docs/gpu-rendering-and-presentation.md; older bootstrap-only statements are
+historical, not current NUC capability. Gallery GPU render -> readback -> CPU
+copy into immutable frame pair remains distinct from GPU Desktop/scanout.
+Display Map_Backbuffer explicitly returns UNSUPPORTED; fixed GPU slot and no
+GPU image import/latch operation remain. Compositor manifest has no render.
+Request to compositor owner when resumed: review provider split (admitted
+render session, authenticated target/layout/output generation, separate
+accept/latch/old-front retirement). Do not activate backend using CPU grants
+or local VkImage numbers. No Desktop/provider ABI changes made; preserve paused
+scope. Next implementation must supply that contract, not another software
+optimization. Five-second hitch remains unclassified pending v60 timings.
+Documentation diff check PASS; no jobs/locks/artifact changes this turn.
+
+2026-10-04 primary interleaved-registration regression PASS.56940 TERM0,
+Nix relocated outputs /tmp/cubit-interleaved-primary.xPMNHD. Both requests
+reach Publishing for one span; winner generation99 survives stale loser and
+terminal replay. Test backing now procedure-scoped through every registry
+access. Hosted actual Application_State/range-index, not threads, native GPU
+or SPARK proof. No driver/image changes; native fixture runner promotion still
+pending sharedlock. All own jobs terminal/no locks. v60 remains NUC candidate.
+
+2026-10-04 primary interleaved-registration regression integration ACTIVE.
+Shared lock attempt returned1; native fixture runner/GPR promotion remains
+deferred. Own application_state_tests.adb only, no shared build definitions
+or driver edits. Promote reviewed two-preflight/one-publication case with
+test backing retained for the entire procedure, then Nix relocated hosted
+build. No image change; v60 still awaits physical feedback.
+
+2026-10-04 interleaved installation PRIVATE PASS.37806 TERM0, private
+tmp/interleaved-install.log. New application_state_tests case lets two requests
+preflight the same backing before either publishes; winner's generation sentinel
+99 survives losing request and repeated terminal steps. Tests actual staged
+registration, not threads/GPU. Test-owned backing remains live through all
+queries; no production/image changes. Native fixture promotion remains pending:
+read-only host lock inspection identified LIVE PID2986986/child2986989 running
+libc/processes/binutils/storage-grants under shared build lock (not orphaned).
+Do not interrupt. All own jobs terminal/no locks; v60 remains hardware candidate.
+Next shared promotion bundle also includes this reviewed private test addition.
+
+2026-10-04 v60 READY FOR NUC.74737 TERM0 exact-image UEFI/USB-flash4CPU
+checks PASS: boot log delivery, packaged CCL Console/Logs Apps launch, live
+boot with quiet xHCI. Evidence /tmp/cubit-usb-live.lbvl0cym; log
+/tmp/cubit-v60-boot-final.log. Image540768256bytes (516MiB), private
+kernel/cubit-intel-v60-metadata-growth.img SHA256
+a9abb6be5465b08b8cd894b4f3f84d17d020e40fed978827ba0ed4c911305324.
+v59 rehash unchanged5e59e2359e2d1ee0cb0bfc34b7e669580a15ab57eb49b7c511a948d7e5d8fb74.
+Native allocator fixture passed separately; this boot is not Intel hardware
+execution. Same Mesa binary/timing/600frame gallery as v59. NUC request:
+gallery completes, MESA-SERVICE result/retirement, startup-stage timings and
+interval-peak lines around5second hitch. No claim hitch fixed or VRAM support.
+All own jobs terminal/no locks. Native fixture promotion remains deferred
+until shared-lock window, while driver changes already landed primary.
+
+2026-10-04 v60 boot harness corrections.27825 stopped before boot oracle:
+private TMPDIR made QMP AF_UNIX path too long.75273 with TMPDIR=/tmp reached
+BOOT LOG DELIVERY PASS +GRAPHICS TOOLS PASS, then expected disabled xHCI
+debug markers (forgot --quiet-xhci). Serial /tmp/cubit-usb-live.61megi5o has
+native USB mount/procmgr filesystem load/display-ready and no xhci log lines.
+74737 reruns same read-only image with matching --quiet-xhci (also asserts
+no USB diagnostics), /tmp/cubit-v60-boot-final.log. Image not changed/rebuilt.
+
+2026-10-04 v60 PACKAGE PASS, BOOT TEST ACTIVE.92123 TERM0 builds native
+driver/packages image; source/payload/preserved-image checks allPASS.
+kernel/cubit-intel-v60-metadata-growth.img SHA256
+a9abb6be5465b08b8cd894b4f3f84d17d020e40fed978827ba0ed4c911305324.
+27825 now exact-image --uefi --usb-flash --cpus4 --boot-log-delivery
+--graphics-tools, log /tmp/cubit-v60-boot.log. Must reach terminal boot gates
+before handing off. Same Mesa binary as v59, not a stutter/renderer change.
+
+2026-10-04 v60 PRIVATE PACKAGING ACTIVE. Shared fixture-promotion lock still
+unavailable; independent new candidate warranted by completed native metadata
+gate. tmp/package-v60-metadata.sh builds latest private Intel driver and reuses
+EXACT v59 Mesa binary93e87ca76d0a54f92b60e8132c72525c4be21912dbbbd2dd65e5bc89fd0fa550.
+New kernel/cubit-intel-v60-metadata-growth.img; refuse overwrite. Source,
+payload and old-image hash checks; v59/v58/v57/v50 preserved. Same600-frame
+gallery/timing instrumentation; NOT a claimed periodic-stutter fix. Log
+/tmp/cubit-v60-package.log. Must test exact image USB/UEFI packaging afterward;
+QEMU cannot verify Intel rendering. No shared staging or build lock.
+
+2026-10-04 native update metadata PRIVATE QEMU PASS.40368 TERM0 compiled,
+linked, packaged disposable supervisor and passed4CPU/512MiB QEMU oracle.
+Evidence private tests/intel-gpu/demand-backing.jbadri/serial.log (markers196-198),
+input.sha256. Kernel f2e3301ed59e40898473a3e2664925a5c618925898775eaca593c91202a6b2a1;
+fixture92cd35e81c8715117807705a3780391c036aaa9627951d3f23727bd0ec71e8d6.
+Actual owned-memory reserve/commit/CPU access validated; Boolean owner-loss
+only, no GPU/IPC isolation or proof. Private native README records exactscope.
+Nonblocking sharedlock promotion attempt returned1; leave fixture/GPR/runner
+changes private rather than race ongoing builds. All own jobs terminal/no locks;
+v59 untouched. Next promote four fixture/runner files and scoped README section
+under sharedlock, preserving any newer primary runner modes.
+
+2026-10-04 native update metadata fixture PRIVATE ACTIVE.40368 builds/boots
+new disposable supervisor mode metadata via private run-demand runner; log
+/tmp/cubit-update-metadata-native.log. Production Metadata_Platform reserve/
+commit syscalls, Application_State/range index and Update_Storage: sparse17,
+18,900;6->64 demand, stable reference/sentinel, independent image capacity,
+exact charged commits, sparse alias rejection and callback owner-loss no replay.
+Owner loss is modeled Boolean, NOT process revocation or isolation. No GPU
+mapping/rendering. New fixture + private demand.gpr/run-demand.sh/.py only;
+uses existing private kernel with hash captured by runner. v59 unchanged.
+
+2026-10-04 broader CURRENT-SOURCE regression PASS.42468 TERM0: seven GPR
+projects/22 hosted mains and eight native-source extraction suites completed.
+Relocated outputs /tmp/cubit-gpu-regression.ua1EVr; full log
+/tmp/cubit-gpu-allocation-broad-relocated.log. Includes repeated growth+bind,
+stable-root pipeline, provenance/recycling, lifetime/context tickets, TLB
+failure retention, deferred retirement/FIFO, registration/resolution, startup
+and live metadata admission, parent completion and negative controls. These
+are hosted/mocked adapters, NOT QEMU/Intel runtime or SPARK proof. README
+scope/commands updated, diff --check clean.16454 private stale-test compile
+failure remains recorded (not a driver failure); no blanket snapshot sync.
+All own jobs terminal/no locks. Next useful gate: native disposable supervisor
+fixture for new Update_Storage/range-index path using actual owned-memory
+reserve/commit syscalls, then image only after that gate. v59 untouched.
+
+2026-10-04 broad regression recovery ACTIVE.16454 TERM4 on stale private
+vm_growth_writer_tests calling removed Publish; primary already has stepped
+fixture, so no production fix warranted. Shared nonblock retry also returned1
+without running tests.42468 now builds CURRENT primary sources with GPRbuild
+--relocate-build-tree/--root-dir into unique /tmp outputs, no shared outputs.
+Log /tmp/cubit-gpu-allocation-broad-relocated.log. Added owned Intel test README
+section distinguishing retained CPU metadata, physical backing, quotas, sparse
+range index, fault matrix and proof/hardware limits. No image/source changes.
+
+2026-10-04 broader GPU allocation regression ACTIVE. Shared locked launch
+returned1 with empty log (no tests ran); using isolated graphics workspace.
+Seven GPR projects /22 hosted mains plus8 native-source extraction suites,
+logs /tmp/cubit-gpu-allocation-broad-private.log. Tests cover metadata growth,
+VM pipeline/directory publication, provenance/recycling, lifetime/context
+tickets and retirement, not Intel hardware execution. No source/image edits.
+
+2026-10-04 sparse overlap PRIMARY PASS.88362 TERM0: independent AVL + four
+application/update suites pass in primary. Scoped diff --check clean. Found
+orphan update_mirror_failure_tests not listed in any GPR, still assuming old
+single arena/four commits. Replaced with parameterized fresh-process fault
+test, added GPR main + test-update-mirror-failures.sh under19254 lock.32672
+TERM0 matrix PASS79 yield boundaries +17 commit revocations; injection must
+be reached, charges/backing retained and no callbacks/replay after restore.
+Logs /tmp/cubit-metadata-ranges-primary.log, cubit-range-integration-primary.log,
+cubit-mirror-matrix-primary.log. Initial matrix launch denied Nix cache access;
+reran with authorized cache access. Mirrored reviewed3test files privately.
+19254 released; all own jobs terminal/no locks. No image changed; primary
+driver sources are promoted native-compiled private version, not a hardware
+runtime result or SPARK proof. Next broader metadata/native integration and
+separately named candidate only when warranted; keep v59 available unchanged.
+
+2026-10-04 sparse overlap PRIMARY INTEGRATION ACTIVE under sharedlock19254.
+Reviewed11-file promotion: AVL range module, staged Application_State API,
+Update_Storage installation receipt, structural/oracle tests and app-state
+tests. Removed old synchronous fresh-install interface; no fallback namespace
+scan. Existing-record installs now reject interval overlaps as well as duplicate
+pointers. Primary hosted88362 runs /tmp/cubit-metadata-ranges-primary.log and
+cubit-range-integration-primary.log. No unrelated snapshot sync or image edits.
+
+2026-10-04 sparse overlap PRIVATE INTEGRATED PASS.64688 TERM0 independent
+AVL tests:8192 ascending/descending/permuted retained nodes; structural
+height/balance/parent/order/count oracle and linear overlap comparison.62137
+TERM0: four application/update suites and native driver compile/link pass,
+tmp/update-range-integration.log and update-range-native.log. Application_State
+now embeds retained range node per record, registers16 bootstrap exact object
+spans, uses address index for fresh/default image installs. Fresh span retains
+full supplied bytes; no namespace walk. Begin/Checking/Publishing receipt keeps
+registry-epoch guard and delayed typed initialization. Sparse ID1500 alias
+rejected with<=64 probes. Stepped linear scan superseded privately, not carried
+as fallback. No SPARK proof/native runtime claim. All own jobs terminal/no locks;
+primary/v59 unchanged. Next review/promote range index + staged installation
+bundle and run primary suites; need separate hardware validation later.
+
+2026-10-04 sparse metadata range index PRIVATE ACTIVE. New intrusive AVL
+Intel_GPU_Metadata_Ranges embeds nodes in retained owner records; no heap or
+fixed node-array capacity, insertion-only. Bounds search64/insert128 visited
+nodes, rejects invalid/overlap/already-linked before mutation, adjacency valid.
+Independent host structural oracle checks parent/height/balance/inorder/count
+and linear overlap answers over8192 ascending/descending/permuted inserts.
+64688 Nix hosted compile/test running tmp/metadata-ranges.log. Not yet wired
+into Application_State or native driver; no proof/hardware claim. Existing
+stepped installation remains private too. Primary/image unchanged/no sharedlock.
+
+2026-10-04 bounded fresh installation PRIVATE PASS.20922 TERM0: all four
+application/update hosted suites and native driver compile/link pass; logs
+tmp/update-install-step-final.log and update-install-native.log.42039 TERM0
+adds late alias at sparse index1500 rejected after multiple<=64probe turns,
+tmp/update-install-late.log.10514 earlier test failure was a fixture asking
+Extend for unchanged8192bytes (correctly rejected); enlarged fixture and
+requested12288 actual growth, then reran. No obsolete synchronous fresh-install
+references remain in private driver/tests. Epoch changes on accepted registry
+extension or either install path; failed receipts never initialize/publish.
+All own jobs terminal/no locks. Primary and NUC image unchanged. Next review
+this stepped API for integration; total scan remains O(capacity) and needs a
+sparse overlap index for scale, not a claim that total allocation cost is fixed.
+
+2026-10-04 bounded fresh installation PRIVATE ACTIVE. Replacing synchronous
+Install_Fresh_Update with Begin/Step receipt (<=64 probes/turn), no source
+publication until entire overlap check passes. Captured registry epoch rejects
+concurrent index/install changes; failed/complete receipt never replays.
+Update_Storage retains receipt with each image's arenas. Test-only drain wraps
+new API; regression covers delayed publication, epoch mutation after64probes,
+no initialization/replay and unchanged overlap/guard checks.10514 runs hosted
+application-state suite then private native compile to tmp/update-install-*.log.
+This bounds per-turn work but total scanning remains O(index capacity), NOT
+a sparse interval index. Primary/image unchanged; no shared lock held.
+
+2026-10-04 retained metadata PRIMARY PASS.36476 TERM0: retained store and
+all four application/update suites pass on primary. Scoped diff --check clean;
+five driver files byte-match private native-tested inputs (31390). Primary
+hosted logs /tmp/cubit-retained-primary.log and cubit-update-demand-primary.log.
+No new native boot or SPARK proof claim.49030 lock released; all own jobs
+terminal. v59 remains unchanged. Next: bound Install_Fresh_Update overlap
+validation without weakening alias rejection; then further native integration.
+
+2026-10-04 retained metadata PRIMARY INTEGRATION ACTIVE under sharedlock49030.
+Reviewed/lifted retained-store generic + tests, per-image Update_Storage arenas
+and shared accounting, main planned-table demand, update test backend and
+three update regressions. Preserved primary application_state.gpr formatting;
+no unrelated snapshot sync. Replaced old eager monolithic update metadata
+implementation (no compatibility alias). Hosted primary verification36476
+running to /tmp/cubit-retained-primary.log and cubit-update-demand-primary.log.
+No boot images or staging changed. Remaining overlap-scan scalability work
+and hardware validation are not covered by this integration.
+
+2026-10-04 replacement demand PRIVATE PASS. main now passes planned table
+count into retained Update_Storage, zero guarded; no default64 allocation on
+that path. Nix31390 TERM0: four hosted suites plus native driver compile/link
+(tmp/update-demand-final.log, update-demand-native.log). Nix70309 TERM0:
+tmp/update-demand-topology.log adds actual offline six-table Prepare_Update
+and map at1GiB, checks original leaf preserved/source unchanged. Pending
+generation change aborts before backing commits and cannot replay even after
+generation restored. Synthetic DMA topology test is not GPU/TLB validation;
+no SPARK proof claim. All own jobs terminal, no locks. Private integration
+not yet promoted; preserve v59 image. Next review/land retained-store and
+update-region integration, then address existing full-index overlap scan in
+Install_Fresh_Update before claiming bounded whole-path service work.
+
+2026-10-04 retained per-image regions PRIVATE INTEGRATION. Prior76912 TERM0:
+four application-state/update-storage hosted suites PASS and native Intel
+driver compile/link PASS (tmp/update-regions-final.log, update-regions-native.log).
+Update_Storage now uses retained limited arena records for each image, five
+independently grown regions and a shared conservative backing budget. Tests
+cover17/18 revisits,6->64 growth, stable pointers/data, default-not-ready,
+owner/commit/clear failures, quota exhaustion and retained charges/no replay.
+Now privately wiring main replacement request to planned Required_Tables,
+explicitly rejecting zero without a Positive conversion exception; adding
+pending-generation mutation regression. Own private main/update-storage and
+tests only. Primary sources/images unchanged; v59 remains hardware candidate.
+Remaining boundedness caveat: Install_Fresh_Update still scans update capacity
+for overlap. No whole-path boundedness or SPARK proof claim. No shared lock.
+
+2026-10-04 explicit retained-budget identity PRIVATE PASS. Generic now takes
+Budget type + Charge(Account,Bytes); Request/Step take not-null typed budget
+access. First accepted request pins budget address; changed account at Request
+rejects without mutation, changed account mid-Step fails before callbacks.
+This lets Update_Storage.Pool embed aliased budget state instead of unsafe
+package-global current-pool context. Twelve test modes include account swap
+before any reservation and after charge/before commit; no alternate-budget
+debits or backing commits, old charges retained. Nix80512 TERM0 PASS
+tmp/retained-budget-identity-final.log. Initial65010/82144 compile failure from
+Account helper/parameter name collision; renamed helper Reserve_Charge and
+reran successfully. No old-API alias, no native integration/image changes.
+All own jobs terminal, no locks. Next still wire retained per-image arenas
+and aggregate budget into Update_Storage; don't claim eager replacement path
+fixed before that integration and demand/retirement regression evidence.
+
+2026-10-04 retained-store budget identity PRIVATE ACTIVE. Replace implicit
+Charge closure with explicit typed budget parameter, pinned by address for the
+store lifetime. Needed so Update_Storage.Pool can own its budget without a
+package-global current-pool pointer. Wrong-budget continuation must fail before
+callbacks. No live driver or image changes.
+
+2026-10-04 retained store SHARED BACKING BUDGET PRIVATE PASS. Required local
+atomic Charge callback precedes every backing request; bytes tracked separately
+from index/element virtual quotas. Charges survive uncertain commit/clear errors
+and owner revocation; no implicit refund. Caller must use one shared budget for
+registry and future independent per-image arenas. New tests: ten modes, quota
+rejection/revocation during charge cause zero commits/clears; commit/clear failure
+retains4096charge; second store cannot commit when same budget exhausted despite
+valid independent VA limits. Per-Step callback bound includes charging. Nix87854
+TERM0 PASS tmp/retained-budget.log (private). No driver wiring/native proof/image
+change. All own jobs terminal; no locks. Next integrate retained per-image arena
+records into Update_Storage, route all growth charges to same owner budget,
+then lower explicit table demand while retaining old identity/retirement tests.
+
+2026-10-04 retained-store aggregate charge PRIVATE ACTIVE. Add required local
+atomic Charge callback before any index/record backing request, shared with
+future per-image region growth. Accepted charges remain retained even after
+commit failure; reject/revoke cannot reach backing callbacks. No native/image
+integration yet. Own retained store source and its private test only.
+
+2026-10-04 retained store PRIVATE HOSTED PASS. New Intel_GPU_Retained_Store
+generic accepts passive limited record type + trusted Storage backend + owner
+guard. Two disjoint stable reservations: growable pointer index and demand
+typed records, separately fixed VA quotas. Sparse IDs17/9000/18 consume only
+three record pages; two allocator reservations, no fixed side-table ceiling.
+Bounded phases and<=64KiB work, placement typed defaults, exact stable pointers;
+existing records remain accessible after sticky pool failure if owner valid.
+Eight test modes include reserve failure/revocation, commit/clear failure,
+overlapping reservations, commit/clear revocation; no callback replay. Tests
+embed real limited Storage.Arena state and retain it across image switches;
+busy/invalid/change-quota rejection and exhaustion preserve old record values.
+17908 TERM0 PASS tmp/retained-store.log (private);31757 earlierPASS before extra
+fault cases. Initial64378 compile failed Ada address-clause rule; fixed with
+constant placement address.7412 test failed because Finish reused testbaseline
+counter; fixed separate Step_Before counter. Expected overlay-init warning
+retained: initialization is intentional, Import would incorrectly suppress it.
+No native integration, SPARK proof, or image change. No own live jobs/locks.
+Next: use retained records containing per-image independent Storage.Arenas
+in Update_Storage, enforce aggregate committed budget before region growth,
+preserve existing17->18->17 behavior, then make table demand explicit. The
+registry alone does not fix eager full64-table replacement backing.
+
+2026-10-04 retained CPU record store PRIVATE ACTIVE. New generic retained store
+will allocate typed limited records on demand behind a growable pointer index;
+one bounded initialization/commit phase per step, immutable identities and
+sticky failures. This supplies persistent per-update arena bookkeeping without
+copying limited arena state or introducing a fixed-sized side table. Own new
+intel_gpu_retained_store.ads/.adb and dedicated hosted tests in private workspace.
+Not yet connected to replacement VM updates; no image/shared edits.
+
+2026-10-04 page-first growth PRIMARY COMPLETE. Reviewed three-file delta
+landed under68516, scoped diff --check clean. Nix10954 TERM0 all six metadata
+suites PASS, /tmp/cubit-metadata-page-primary.log. Stable identity, bounded
+callbacks, geometric increments, heterogeneous demand with1TiB VA quota,
+failure/no-replay and final admission checks exercised. Regression evidence,
+not SPARK proof or hardware validation. Private native98538 compile/link
+passed unchanged implementation. No image/staging changes; v59 remains the
+hardware diagnostic candidate. Releasing68516; no own live jobs/locks.
+Replacement-image full64-table eager storage still outstanding; next change
+must retain per-image region growth state across17->18->17 switching.
+
+2026-10-04 page-first growth PRIMARY LANDING ACTIVE under lock68516.
+Reviewed main callers Grow_Metadata/Grow_Table_Ledger/Finish_Offline_Bind/
+Advance_Live_Metadata: progress by state and return while pending, not fixed
+growth-turn counts. Private3139 TERM0 exact growth-sequence + demand +
+revocation tests PASS. Three owned source/test files only; no boot artifacts.
+
+2026-10-04 metadata bundle page-first growth PRIVATE VERIFIED. Existing generic
+bundle now commits4KiB first and doubles published prefix, capped64KiB per Step;
+rechecks actual capacity after each publication. No arbitrary larger slot limit.
+Demand test reserves1TiB VA quota with only4KiB provenance backing; mirrors
+require8KiB, descriptors4KiB. Stable reservations, quota, failures and ownership
+guards preserved. Six Nix suites88428 TERM0 PASS in
+tmp/metadata-demand-growth-retest.log. Initial57181 failed because private GPR
+omitted two existing tests; registered them to match primary and reran all six.
+Bundle test iteration budget100->500 accommodates more bounded phases; per-Step
+onecallback/64KiB assertions retained. Native98538 TERM0 compile/link PASS
+(not executed), tmp/metadata-demand-native.log. Initial74380 wrong Alire cwd
+failed before compilation; corrected to kernel workspace. Shared lock busy;
+primary three source/test files pending, private GPR now matches primary.
+All own jobs terminal, no held locks. v59/v58 unchanged. This optimizes existing
+bundle consumers; replacement-image eager full64-table path remains separate
+and still needs retained per-image growth state before demand conversion.
+
+2026-10-04 metadata bundle growth PRIVATE ACTIVE. Before replacement-image
+state refactoring, remove existing bundle's unconditional first64KiB backing
+commit. Start at one page and grow geometrically, capped at64KiB per Step,
+preserving stable regions and callback ownership checks. Own private
+intel_gpu_metadata_bundle.adb and metadata demand/bundle hosted tests only.
+No image/shared staging changes; replacement-image eager path not yet fixed.
+
+2026-10-04 v59 SOURCE INTEGRATION COMPLETE. Three-file reviewed delta landed
+with apply_patch under lock75930; primary sources byte-identical to tested
+private sources, scoped diff --check clean. Nix14916 TERM0 baseline1/8/256
+reuse PASS (/tmp/cubit-teapot-render.wQ8m6I), gallery mode-mismatch guard,
+startup stages, clock fault and frozen/missing shader controls PASS
+(/tmp/cubit-teapot-gallery.AVwCRd), Vulkan validation zero errors/warnings.
+Logs /tmp/cubit-v59-primary-baseline.log, /tmp/cubit-v59-primary-gallery.log.
+Hosted regression only; native compile/image evidence remains v59 above.
+Releasing75930; all own jobs terminal, no staging/image changes or commits.
+Read-only cadence inspection found no obvious five-second timer in shipped
+Intel/desktop/display sources; Desktop stats uses1000ms, not proof of cause.
+Await v59 NUC timings before assigning startup/hitch cause.
+
+2026-10-04 v59 SOURCE INTEGRATION ACTIVE. Shared lock acquired by75930 after
+verified live binutils/CCL build2720297 terminated. Own three files only:
+tests/mesa-teapot/build-assets.py, render.h, test-gallery-host.sh. Landing
+reviewed private diagnostics/mode-guard delta; no boot/staging changes.
+
+2026-10-04 v59 READY FOR NUC: private kernel/cubit-intel-v59-gallery-timing.img
+SHA256 5e59e2359e2d1ee0cb0bfc34b7e669580a15ab57eb49b7c511a948d7e5d8fb74.
+Package25073 TERM0 source/payload/preserved-image hash checks PASS, log
+tmp/package-v59-gallery.log. Candidate zy4u2qp8 native app. Exact-image
+QEMU19024 TERM0: BOOT LOG DELIVERY PASS, GRAPHICS TOOLS PASS (Console/Logs
+from Apps), USB LIVE BOOT PASS. Evidence /tmp/cubit-usb-live.7u7g8n8y;
+no FAILED/panic/fatal/Assertion match in serial/qemu logs. Packaging/boot/tools
+validation only, NOT Intel hardware rendering. v58 unchanged. Same600-frame
+scene; added shader mode guard, clock hardening, startup-stage intervals and
+60-frame interval peaks. Hardware request: MESA-GALLERY startup stage=resources,
+pipeline, first-submit-wait, first-validation-present; frames/CPU-clock and
+interval-peak lines around hitch; final MESA-SERVICE result/retirement.
+Shared lock still unavailable; primary three-file delta pending. No own jobs
+or held locks remain. Broad driver goal not complete.
+
+2026-10-04 v59 PRIVATE PACKAGING ACTIVE. Own graphics-primary-v47-ws22fhfc
+tmp/package-v59-gallery.sh and private staging only; candidate native link
+zy4u2qp8. New separately named timing image; preserve v58 and prior images.
+No shared output edits or claim of measured NUC startup cause.
+
+2026-10-04 v58 NUC FEEDBACK: gallery appeared after ~one minute; user reports
+~29FPS, regular small hitch ~every5seconds, window duration consistent with
+600frames/~21seconds. No retirement/log evidence yet. No root cause assumed.
+PRIVATE diagnostics added: one-time resources/pipeline/first-submit-wait/
+first-validation-present CPU wall intervals; 60frame interval peak total frame
+period and independent submit-wait/presentation peaks. Peaks are not necessarily
+the same frame; not GPU timestamps. Added explicit rejected-readback counts.
+63728 baseline PASS but gallery failed overly broad clock grep; narrowed the
+assertion to sustained fps series (valid independent startup intervals allowed).
+10476 and86414 TERM0 gallery real hosted Vulkan + clock fault + shader negative
+controls PASS; /tmp/cubit-gallery-peaks.log, /tmp/cubit-teapot-gallery.FqMdDS.
+52814 TERM0 native compile/link PASS (not executed), private
+tests/mesa-anv/target/native-instance-link.zy4u2qp8 and
+tmp/gallery-startup-native-link.log. No new image built, v58 unchanged. Shared
+lock nonblocking unavailable; private build-assets.py/render.h/test-gallery-host.sh
+delta remains pending primary landing. All own jobs terminal, no held locks.
+
+2026-10-04 NUC v58 user reports gallery window DID appear after delay. No FPS,
+completion or retirement evidence yet. PRIVATE startup timing ACTIVE in
+graphics-primary-v47-ws22fhfc tests/mesa-teapot/render.h and test-gallery-host.sh.
+Measure resources, pipeline, first submission and first consumer separately;
+no claim which stage caused the NUC delay. Existing v58 remains unchanged.
+
+2026-10-04 shared integration VERIFIED WAIT. Current source reinspection confirms
+only intended three-file shader-mode delta pending. Nonblocking lock unavailable;
+bounded45s51957 and30s54675 both TERM73. Host lslocks/ps confirmed live holder
+2673627 running CCL Console build + headless240s test (child2678252), not merely
+a stale note/file. No interruption, own jobs/locks all terminal; v58 unchanged.
+Allocator reinspection: Update_Storage.Ready/Request still demand S.Table_Pages=64
+for every replacement candidate and eagerly commit60 nonbootstrap mirror pages.
+Context Metadata_Bundle already has independent arenas but is callback-bound;
+replacement growth needs retained per-image backing state, not a temporary bundle
+in the single shared Update_Images pool. No unsafe partial conversion made.
+
+2026-10-04 shader-mode contract PRIVATE VERIFIED. Generated assets now carry
+CUBIT_TEAPOT_ASSET_GALLERY; shared renderer rejects missing identity or wrong
+single/gallery mode at compile time. Actual renderer compile-negative tests
+cover both mismatched directions. Nix46656 TERM0: baseline single/8/256 tests,
+gallery per-cell animation, failed clock, frozen-all/frozen-one/missing-one
+negative controls PASS with zero Vulkan validation errors/warnings.
+Evidence /tmp/cubit-asset-mode-baseline.log, /tmp/cubit-asset-mode-gallery.log,
+/tmp/cubit-teapot-render.w7bj4z, /tmp/cubit-teapot-gallery.isug9h.
+Nix43934 TERM0 native compile/link PASS (not executed):
+tests/mesa-anv/target/native-instance-link.txwcb34t in private workspace;
+tmp/gallery-asset-mode-native-link.log. Shared lock still busy on second
+nonblocking check; three-file primary integration deferred. No own live jobs
+or locks, v58 untouched. Next landing must include build-assets.py and render.h
+together and regenerate shader headers; old untagged asset headers deliberately
+fail closed. Existing gallery test script includes both compile-negative cases.
+
+2026-10-04 asset-mode contract PRIVATE ACTIVE. Shared lock busy; primary source
+unchanged. Own private tests/mesa-teapot/build-assets.py, render.h and
+test-gallery-host.sh in graphics-primary-v47-ws22fhfc. Add generated shader mode
+identity and compile-time rejection of stale/mismatched assets. No image change.
+
+2026-10-04 gallery PRIMARY INTEGRATION COMPLETE. Seven reviewed existing files
+and ten new gallery files landed with apply_patch under shared lock27220;
+all17 byte-match private sources, scoped git diff --check clean. Nix91514 TERM0:
+baseline single/8/256 resource-reuse regressions PASS (/tmp/cubit-teapot-render.HSl0fW),
+gallery per-cell animation + failed-clock + frozen-all/frozen-one/missing-one
+negative controls PASS (/tmp/cubit-teapot-gallery.nYKiDZ), eight presentation
+wrapper modes PASS (/tmp/cubit-gallery-present.uGYzTC). Vulkan validation zero
+errors/warnings. Logs /tmp/cubit-gallery-primary-baseline.log and
+/tmp/cubit-gallery-primary.log. Hosted CPU Vulkan/mocked presentation tests,
+not Intel hardware validation or SPARK proofs. Native compile/link evidence
+remains private78942. No shared staging/image changes, no commits. Releasing
+lock27220 now; no further own jobs. v58 is ready for NUC and remains frozen;
+post-v58 clock hardening is source-only and not in that image.
+
+2026-10-04 gallery PRIMARY INTEGRATION ACTIVE. Shared lock held by own
+session27220. Landing reviewed seven existing Mesa test/renderer files and ten
+new gallery shader/presentation/test files from graphics-primary-v47-ws22fhfc.
+No Desktop/kernel sources or boot artifacts changed. v58 remains frozen.
+Will run primary hosted regressions and release the shared lock at completion.
+
+2026-10-04 gallery clock robustness PRIVATE VERIFIED. Failed/zero/backward
+timestamp invalidates aggregate measurements for the rest of the run; no uptime
+minuszero masquerading as stagework. Native FPS title uses sticky validity and
+UINT64_MAX sentinel -> clock N/A. New host --clock-negative injects everythird
+readfailure: rendering remains valid, CPU-clock=0/fps=0, neverclock=1. Nix45802
+TERM0 fullgallery+threevalidSPIRVmutantsPASS /tmp/cubit-teapot-gallery.MPbVTI.
+Nix23574 TERM0 eight wrapper modes including failedclocksticky PASS,
+/tmp/cubit-gallery-present.3wziJ0. Nix78942 TERM0 nativecompile/link (notexecuted)
+target/native-instance-link.hmnekwm4, tmp/gallery-clock-native-link.log.
+v58 remains byte-identical8b54f41d8ffb4872b8dee4996d918edf3c4b6e9b9fc20a21a960d69d3c1c8957;
+new fixes are not in that image. No ownjobs/locks. Shared bounded55swait22697
+TERM73; primary gallery integration remains pending. Reviewed changes plus
+this clockdelta should be landed only once the sharedbuild window is available.
+
+2026-10-04 integration review + VERIFIED SHARED WAIT. Reviewed complete primary
+vs private diffs for render.h, host-test.c, build-assets.py, test-host.sh,
+native-authorized-discovery.c, native-service-probe.h, test-native-instance-link.py:
+all are intended reuse/gallery additions, no unrelated snapshot rollback.
+Host lslocks/ps confirmed live holder2644354: other agent's ccl-console build
+and headless240s test. Nonblocking73 then bounded45s wait21164 also TERM73.
+Did not interrupt it; no held lock/jobs, no primary edits or image changes.
+Allocator audit correction for next implementation: Update_Images in main is
+ONE pool across ticket-indexed images, not a pool per context. Request at4066
+uses Ticket_Slot(Update_Pending), quota256MiB; current arenas append full image,
+ledger, refs, descriptors and64table mirror span. Thus five temporary arenas
+in Pool would lose per-image growth state when switching index. Demand-sized
+replacement storage needs stable per-image region state attached to the
+retained Update_Record (or a dynamically backed sidecar), with separate global
+quota accounting. Preserve tests switching17->18->17 and no-replay/quota guards.
+Do not simply shrink Needed or rebase offsets after later growth. Global
+append-only prefix commit would still back skipped VA holes; partitioned or
+independently reserved per-image spans are required for real backing savings.
+
+2026-10-04 gallery stronger tests PRIVATE VERIFIED. Nix62489 TERM0 real hosted
+Vulkan per-cell animation oracle PASS; valid-SPIRV frozen-all, frozen-one(id7),
+missing-one(id7) each rejected by expected pixel oracle, with zero Vulkan
+validation errors/warnings. /tmp/cubit-teapot-gallery.9A4Uhd. New
+tests/mesa-teapot/test-gallery-negative.py integrated into private host script.
+Nix53695 TERM0 actual native-gallery-present.h wrapper with controlled callbacks:
+normal3frames, userclose, publicationreject, pendingthenready, mapfailure,
+bounded1000waitexhaustion, invalidshape all PASS; initialization once, balanced
+map/unmap, no borrowed mapping at close, confirmed retirement polling.
+/tmp/cubit-gallery-present.BSLF1n; new tests/mesa-anv/gallery-present-test.c and
+test-gallery-present.sh. These are HOST MOCK boundary tests, not native Desktop
+or Intel runtime validation. No native rendering source changed this turn.
+v58 hash rechecked unchanged8b54f41d8ffb4872b8dee4996d918edf3c4b6e9b9fc20a21a960d69d3c1c8957.
+Shared lock73; integration still deferred. No own jobs/locks remain. Next shared
+landing when idle, or continue private allocation/driver work pending NUC data.
+
+2026-10-04 gallery regression strengthening PRIVATE ACTIVE. Shared lock73;
+no primary source edits. Own private gallery host test and generated negative
+controls: per-cell animation checks must detect a single frozen/missing pot,
+not only aggregate image changes. v58 immutable; no NUC result assumed.
+
+2026-10-04 v58 GALLERY READY FOR NUC TEST. Exact-image QEMU80515 TERM0:
+BOOT LOG DELIVERY PASS, GRAPHICS TOOLS PASS (Console/Logs from Apps), USB LIVE
+BOOT PASS. Logs /tmp/cubit-usb-live.mggysk55; no panic/fatal/assertion matches
+in serial. This validates packaging/boot/tools, NOT Intel rendering or gallery
+presentation. Image516MiB SHA remains8b54f41d8ffb4872b8dee4996d918edf3c4b6e9b9fc20a21a960d69d3c1c8957.
+NUC request: confirm20animatedcolored/shadedteapots in one persistent window,
+titleFPS, minimize/restore/close or completion600frames. Capture MESA-GALLERY
+timings (CPU/end-to-end), MESA-TEAPOT service completed=1 requested=1 result=0,
+MESA-SERVICE retirement=0/result=0. Failure: first transportfailure or gallery
+presentation stage (10shape,11create,12input,13configure,4writablewait,
+14address,15publish). Close early intentionally skips600frame milestone.
+Shared landing lock still73; private changes listed below preserved. No own
+jobs/locks remain; v57 unchanged. Do not rebuild/repackage this named image.
+
+2026-10-04 animated gallery v58 PACKAGED; exact-image QEMU test next/running.
+Private kernel/cubit-intel-v58-teapot-gallery.img SHA256
+8b54f41d8ffb4872b8dee4996d918edf3c4b6e9b9fc20a21a960d69d3c1c8957.
+Package90863 TERM0, all source/payload/preserved-image hashes pass. Native
+link51655 TERM0 target/native-instance-link.8ewqobz2 (600frames,20instances,
+800x600). Persistent native window uses Client_Frame_Pair immutable publication,
+explicit CPU copy/resize from completed Vulkan readback; not zero-copy WSI.
+Ada body elaboration explicitly invoked once from C; bounds checks fail-stop,
+not suppressed. Close input and bounded writable-frame wait added. Title FPS
+is end-to-end; MESA-GALLERY logs CPU submit/wait/readback and validation/present
+separately, NOT GPU timestamps. Early renderer failure closes CPU window too.
+Hosted14845 TERM0 baseline1/8/256frames and gallery16frame validation PASS;
+gallery68submissions/8pipelines/68recordings,34borrows;20occupiedcells and
+animation hash changes, no sync validation errors/warnings. Gallery artifacts
+/tmp/cubit-teapot-gallery.sgEPMw; visual preview /tmp/cubit-teapot-gallery.cwXgXD/gallery.png.
+Sources still PRIVATE: tests/mesa-teapot render/host/assets/gallery shaders/new
+test-gallery-host.sh; tests/mesa-anv native-gallery-present.h, mesa_gallery_surface
+ads/adb, gallery-check-failure.c, native-authorized-discovery.c,
+native-service-probe.h, test-native-instance-link.py. Shared landing pending.
+v57 unchanged; no hardware-run or performance claim. Next exact-image QEMU
+boot/tool smoke, then user NUC test (animation/close/FPS/gallery+service logs).
+
+2026-10-04 user-requested animated multi-teapot demo ACTIVE in private v47
+snapshot. Own tests/mesa-teapot gallery shaders, optional asset generation and
+render/host fixture changes; later native presentation/link glue. Aim20colored
+rotating teapots, varied lighting/materials, persistent resources/window.
+Do not label CPU submit/wait/readback timing as GPU timestamps. Existing NUC
+images unchanged. Check lifetime-safe persistent presentation before packaging.
+
+2026-10-04 repeated teapot PRIVATE VERIFIED. Opt-in CUBIT_TEAPOT_FRAME_COUNT
+1..256 now reuses producer pipeline/images/buffers/command/fence. Completion
+and synchronous consumer release precede remap/fence reset/resubmit. Consumer
+failure stops immediately. Host interceptors assert one pipeline+recording per
+cycle, exact submission counts. Nix58589 TERM0 default/depth negative/validation
+negative plus8and256frame runs PASS; /tmp/cubit-teapot-render.qv02Rw and
+/tmp/cubit-teapot-reuse-256.log. 256mode:1028submissions,8pipelines,8recordings,
+514imageborrows, zero validation errors/warnings (synchronization enabled).
+Linux CPU ICD ONLY, not native GPU validation or performance measurement.
+Initial defaultNix54081 failed missingglslang; corrected nested repository
+tests/mesa-anv/triangle-host-shell.nix. Earlier corrected24394 also PASS8frames.
+Shared lock acquisition73; nothing landed. Private edits limited to three
+teapot files below. Native link-script currently lacks frame-count option;
+next add opt-in --teapot-frames privately, compile/link against native archive,
+then review/land under sharedlock. Existing native callback opens/closes its
+window and sleeps5s each call: this is not a rotating persistent-window demo.
+v57 and all shipped images unchanged; no own jobs/locks remain.
+
+2026-10-04 sustained teapot PRIVATE ACTIVE. Own private v47 snapshot
+tests/mesa-teapot/{render.h,host-test.c,test-host.sh}: opt-in repeated command,
+fence and resource reuse with completion/consumer release before resubmission.
+Default single frame and frozen v57 unchanged. Hosted Vulkan synchronization
+validation and rejection cases first; not animation or HW performance evidence.
+
+2026-10-04 ownership fixes LANDED AND VERIFIED. Reviewed exact private source
+diffs applied to primary update_storage.adb / metadata_bundle.adb, both new
+revocation fixtures registered in their test GPRs. Nix36685 TERM0 all ten
+primary regression executables PASS, /tmp/cubit-primary-owner.FtBTnAch.
+Nix57472 TERM0 both registered test projects compile/link in isolated outputs,
+/tmp/cubit-owner-projects.X3quGOE3. Scoped diff check clean; both source files
+and new fixtures byte-match previously native-compiled private versions.
+Hosted regression evidence, not SPARK proof or fresh native runtime evidence.
+Release shared lock61125 after this note; no own jobs remain. v57 unchanged.
+Next: sustained teapot resource reuse test privately; larger demand-sized
+replacement storage work remains (stable per-image bases, not compact/rebase).
+
+2026-10-04 ownership fixes INTEGRATING. Shared build lock acquired (session61125).
+Own exact reviewed update_storage.adb and metadata_bundle.adb callback-authority
+checks, two revocation test fixtures and registration in application_state.gpr /
+metadata_arena.gpr. Running isolated Nix primary regressions before release.
+Preserve unrelated changes and frozen v57; no new hardware claim or image.
+
+2026-10-04 private ownership fixes BROADER REGRESSION VERIFIED. Nix89081
+TERM0 eight current primary fixtures against private driver sources:
+application_state, update_storage, update_ledger_failure, metadata_arena,
+record_growth, allocation_growth, metadata_bundle, metadata_demand all PASS.
+Evidence /tmp/cubit-metadata-integration.EGWtLwdE. Separate new fault fixtures
+and native compile already passed below. Shared integration still deferred:
+host lslocks/ps confirmed new holder2539001 with child2539004, another agent's
+ccl-console build/headless run (earlier2514604 gone). Last nonblocking acquisition
+still73; did not interrupt. Request to shared builders: leave a brief idle window
+for these two source fixes/new test registrations when your current test ends.
+No shared source edits, no jobs/locks left by this turn; v57 unchanged.
+
+2026-10-04 bundle callback revocation PRIVATE VERIFIED (not landed). Private
+Metadata_Bundle.Step now rechecks Owner_Ready after callbacks, including final
+Admit; callback success cannot expose Idle/success after revocation. Failure
+retains committed prefixes and is sticky. New five-boundary regression failed
+before assertion60, then64080 TERM0 three suites PASS
+/tmp/cubit-bundle-revoke-after.gxAMq6Lb (revocation,bundle,demand). Native82529
+TERM0 compile/link tmp/native-metadata-callback-owner.log. Shared lock still73
+after completion. No held locks/jobs. v57 unchanged; no HW/proof claim.
+NEXT land TWO reviewed private diffs (update_storage.adb and metadata_bundle.adb)
+and TWO new fixtures update_storage_revocation_tests / metadata_bundle_revocation_tests
+under shared lock. Register in application_state.gpr / metadata_arena.gpr; run
+primary regressions. Source files/tests remain private until that integration.
+
+2026-10-04 bundle callback revocation PRIVATE ACTIVE. Shared lock remains busy;
+independent private metadata_bundle.adb post-callback Owner_Ready check added
+with new metadata_bundle_revocation_tests. Before4959 TERM1 assertion60
+/tmp/cubit-bundle-revoke-before.eGORiZin reproduces success-state retention after
+callback revokes owner. Cover capacity/reserve/commit/extend/admit boundaries,
+sticky failure/no replay. Private regression64080 running. Existing private
+Update_Storage owner fix still awaits landing. No shared sources changed; v57
+frozen. Native private compile follows; keep all test results scoped correctly.
+
+2026-10-04 reserve-owner landing VERIFIED WAIT. Shared lock still unavailable.
+Host lslocks identifies PID2514604; ps confirms child2514607 executing another
+agent's make -C kernel world followed by CCL Console headless test under flock
+(tests/net-tcp/build-tmp). Not our idle lock; do not terminate or edit shared
+sources/build files during that run. Private fix/tests/native compile remain
+ready as detailed below; v57 immutable. This turn does not land or claim new
+driver functionality. Recheck actual holder/lock before next shared integration.
+
+2026-10-04 replacement reserve-owner check PRIVATE VERIFIED, not landed.
+Shared lock returned73 on all attempts; no shared source/test edits. Private
+intel_gpu_update_storage.adb now checks Owner_Ready after Storage.Open callback
+before accepting/requesting commits, leaving failed state+arena retained on loss.
+New private update_storage_revocation_tests covers Reserve owner loss, Commit
+owner loss, commit failure, initialization failure, no installed image and no
+replay after authority restored. Before34979 TERM1 assertion48 reproduces
+/tmp/cubit-update-revoke-before.q4bhisuw. After13634 new test PASS but obsolete
+private old existing fixture failed54; refreshed only that fixture from current
+primary (no source change). Current94842 TERM0 both suites PASS
+/tmp/cubit-update-revoke-current.ALmjZqww. Native30800 TERM0 compile/link
+tmp/native-update-reservation-owner.log. All jobs terminal/no held lock.
+NEXT land exact private one-file diff + new test under shared lock, register in
+tests/intel-gpu/application_state.gpr, recheck primary tests. v57 frozen/unchanged;
+private staged driver now newer than image. Candidate demand sizing remains
+separate larger work (retained per-image reservation identities across growth);
+do not compact/rebase existing metadata or simply alter byte counts. No commit/push.
+
+2026-10-04 replacement storage audit PRIVATE ACTIVE (shared lock returned73).
+Own private update_storage.adb + new fault regression. Request currently accepts
+after Reserve callback revokes owner; later Step rejects, but immediate acceptance
+should fail closed. Reproduce before fix, test reserve/commit/initialize failures,
+then land under lock if available. v57 immutable; demand sizing not yet changed.
+
+2026-10-04 v57 READY. Separate private image kernel/cubit-intel-v57.img,
+SHA2567324b88438398f449669b720942acc82b5d37b6f63e81edc56a48ee7237bb3c0.
+Package47884 TERM0 tmp/package-v57.log: source inputs, payloads and preserved
+v49..v56 checksums all PASS. Actual four-table startup metadata, async offline/
+live demand, replacement destination admission; same256-triangle payload, not
+teapot. Exact QEMU11708 TERM0 UEFI USB flash cpus4 quiet-xhci boot-log-delivery
+graphics-tools: all3 PASS, /tmp/cubit-usb-live.kpl_faln. Console/Logs Apps launch
+verified. QEMU does not validate Intel rendering/demand transitions. Hardware
+ask: completed=256 requested=256 result=0; MESA-SERVICE retirement=0 and result=0.
+On failure first MESA-TRANSPORT and adjacent intel-gpu records, especially
+initial table provenance ready / metadata / offline backing growth failure.
+All jobs terminal; no shared lock/staging, no commit/push. Freeze v57 awaiting
+NUC while continuing independent work. Candidate Update_Storage still eager64;
+per-client quotas/large-scale boundedness and full driver goal remain incomplete.
+
+2026-10-04 v57 packaging ACTIVE in private graphics-primary-v47-ws22fhfc.
+All Intel ads/adb byte-equal primary before package. New demand-sized startup,
+offline/live metadata orchestration and replacement adoption capacity admission.
+Same256-triangle payload (not teapot), separate immutable image, preserves
+v49..v56 hashes. tmp/package-v57.sh input/payload/preserved checksum gates.
+Exact QEMU UEFI USB flash/log delivery/graphics-tools checks next; not Intel
+hardware rendering validation. No shared staging/source/build lock required.
+
+2026-10-04 demand-sized context startup PROGRESS. Audit confirmed replacement
+candidate Update_Storage grows independently/eagerly64, but Adopt_Committed
+requires destination mirror/descriptor capacity too. Removed initial-root-only
+restriction from live metadata wait. Replacement demand grows destination stores
+without charging old provenance ledger for new replacement pages; incremental
+updates still request Count+Additional. Start_Table_Ledger now requests actual
+Private_Table_Pages=4, not hardquota64, preserving stable reservation quotas.
+Offline and live waits added earlier supply later growth; no quota enlargement.
+Native20357 TERM0 compile/link tmp/native-demand-startup.log, main copied private.
+Nix54851 TERM0 startup PASS5+2mutants
+/tmp/nix-shell.7urwbQ/cubit-startup-metadata.rbwc0xno and real-planner directory
+PASS10+2mutants /tmp/nix-shell.7urwbQ/cubit-native-directory-admission.y4za9t7k
+(case9 replacement source mirror/descriptor bootstrap4, target7, no old-ledger
+append). Revised bootstrap fixture ran separately64067 TERM0 PASS+2mutants
+/tmp/nix-shell.jevSrK/cubit-bootstrap-growth.i00m84az: starts VM metadata4 and
+backing4, rejects append before both stores extended, then provenance/scratch/
+seven-page RAM publication. Not hardware/SPARK proof. Replacement candidate's
+own eager allocation remains independent follow-up. v56 unchanged. Lock48709
+released; all jobs terminal; scoped diff clean. No commit/push.
+
+2026-10-04 replacement adoption demand ACTIVE under lock48709. Audit found
+Adopt_Committed requires destination metadata capacity even though replacement
+candidate Update_Storage independently grows to64. Extend existing live wait to
+replacement source capacity without charging old ledger for replacement pages;
+then lower startup demand to actual four initial tables. Own main.adb + native
+directory/bootstrap tests. v56 remains frozen.
+
+2026-10-04 live initial-root metadata demand LANDED/VERIFIED. Native main waits
+for context Bundle capacities before incremental live directory allocation when
+Current_Table_Ticket=0. Retains original reply, captures source epoch, no GPU hold
+or backing ticket during wait. Same retained arenas/adapters as startup/offline;
+Live_Metadata_Owner checks ownership, epoch, no hold/ticket. Advance rechecks
+after Step, then re-enters full admission Saved_Reply=True; lost authority fails
+and retains backing. Separate provenance-count target, no quotas increased.
+Physical publication, scheduling exclusion and TLB retirement gates unchanged.
+Private native74993 TERM0 tmp/native-live-metadata-demand.log; private tests
+89738 directory PASS9+2mutants;10940 wait PASS12+2mutants. Shared lock37810 then
+reviewed exact main/test delta landed via apply_patch, main byte-equal private.
+Main Nix11037 TERM0: live wait PASS12+2mutants
+/tmp/nix-shell.LiLyn3/cubit-live-metadata.dd5u6w0w; directory PASS9+2mutants
+/tmp/nix-shell.LiLyn3/cubit-native-directory-admission.5ccs9tzv; context adapters
+PASS+3mutants /tmp/nix-shell.LiLyn3/cubit-native-context-metadata.uper9_jl.
+No full hardware execution or SPARK proof. Initial eager64 still unchanged;
+replacement-image metadata demand path needs review before reducing startup.
+v56 unchanged; shared lock released/all jobs terminal/no commit/push.
+
+2026-10-04 live context metadata demand PRIVATE ACTIVE. Shared lock attempts
+returned73 twice; no shared source/test edits. Own private graphics-primary-v47-
+ws22fhfc main.adb + focused tests, metadata wait before physical table ticket/
+GPU hold, saved reply and epoch revalidation. Shared main remains offline-demand
+version. Review/land only under shared lock. Frozen v56 unchanged.
+
+2026-10-04 offline bind metadata demand PROGRESS. Native main now saves exact
+bind authority/ticket then requests metadata before supervisor backing. Same
+retained Context_Metadata bundle/arenas serve startup and offline demand via
+owner/index adapters. Separate table/provenance targets (provenance counts old
+retained records too), final capacity admission, unchanged quota64/32768. New
+Grow_Offline_Metadata phase advances once per event turn; ignores prior pool
+result, rechecks owner/epoch and real topology/size/provenance space, then starts
+physical backing. Request rejection/owner loss/failure retain normal rejection
+and retirement. No live-context demand support or eager-target reduction yet.
+Native87218 TERM0 compile/link tmp/native-offline-metadata-demand.log; main only
+copied to private graphics-primary-v47-ws22fhfc, v56 remains frozen. Tests Nix:
+context dispatch/admission PASS+3mutants (89935 partial run; subsequent admission
+mutant exposed fixture's missing saved-size assertion, repaired); actual native
+offline admission with real VM bootstrap4/quota8 PASS20+3mutants, 91862 TERM0,
+/tmp/nix-shell.TxCaXl/cubit-offline-admission.z12ylj6m. Handoff PASS10+3mutants
+/tmp/nix-shell.YWC9Zd/cubit-offline-metadata-step.ymwgah4p (68195 TERM0).
+Full extracted completion enters metadata phase then real VM/provenance/refmap
+commit:54586 TERM0 PASS10+3mutants,
+/tmp/nix-shell.bQz8jh/cubit-native-offline-bind.57q98wpq. Tests mock allocator/
+metadata completion; not a proof/full native execution or GPU validation.
+Scoped diff check clean; lock2359 released, all jobs terminal. No commit/push.
+
+2026-10-04 offline bind metadata demand ACTIVE under lock2359. Own main.adb
+context metadata adapters and offline growth admission/completion, extracted
+native context/offline tests. Reuse retained context Bundle arenas for async
+metadata admission before physical backing; preserve exact owner/epoch checks.
+No eager-target reduction until live path also supports demand. v56 frozen.
+
+2026-10-04 native context metadata bundle integration VERIFIED. Replaced four
+per-context Record_Growth controllers/manual sequencing in main.adb with one
+existing heterogeneous Bundle instance (references/descriptors/mirrors/provenance).
+Per-store capacity/extend adapters retained; final Admit requires owner and all
+four capacities. Grow rechecks owner after Step, starts provenance only at Idle,
+and retains backing/retirement behavior on failure. Same target64 and quotas;
+this is orchestration integration, NOT on-demand policy or larger GPU capacity.
+Native96968 TERM0 compile/link tmp/native-context-metadata-bundle.log in private
+graphics-primary-v47-ws22fhfc; main.adb copied only. Nix66906 TERM0: extracted
+native dispatch/admission all16 shortage combinations plus three negativecontrols
+(/tmp/nix-shell.R3ORTE/cubit-native-context-metadata.4_cmn79j); native bootstrap
+slices/provenance/RAM writer plus two negativecontrols
+(/tmp/nix-shell.R3ORTE/cubit-bootstrap-growth.4iegeg1r); metadata demand/bundle/
+arena suites PASS (/tmp/cubit-context-bundle.RPTHKUlS). Hosted regressions and
+native compilation, not SPARK proof or new hardware evidence. v56 untouched.
+Next: consume planner demand before offline/live bind, then reduce eager startup
+metadata target without blocking future topology growth. Shared lock54234 released
+after scoped edits/tests; no jobs left active, no commit/push.
+
+2026-10-04 native context metadata bundle integration ACTIVE lock54234.
+Replace four Record_Growth controllers/manual sequencing with existing Bundle
+over refs/descriptors/mirrors/provenance. Preserve initial target64 and byte
+quotas for regression isolation; final admission checks all capacities+owner.
+No quota change, GPU publication or eager-target policy change this slice.
+
+2026-10-04 heterogeneous metadata bundle PROGRESS. Existing Metadata_Bundle
+now accepts per-table Requirements(Records,Record_Quota,Byte_Quota); uniform
+Request delegates, preserving existing native allocation behavior. Validates
+entire plan before mutation; byte quotas stay stable across rounds, existing
+arenas retained. Per-table capacity target distinct from final Admit token,
+allowing mirror/descriptor/provenance needs without forcing all to max count.
+No new orchestrator or enlarged fixed limit. Metadata_demand_tests checks
+6/12/24 targets,8/4/16KiB reservations,finaltoken42,one action/step,all-ready
+admission,reuse,busy/invalidlaststore/changedquota rejection. Registered in
+metadata_arena.gpr under69924; earlier source lock24930 released. Nix37317
+TERM0 three suites /tmp/cubit-metadata-demand.WKjcTGr1 including old bundle
+fault/second-round tests. Native68372 TERM0 tmp/native-metadata-demand.log.
+Two sources copied privately; new fixture/GPR primary only. v56 unchanged
+51188d9f...; all jobs terminal/no held locks. Next integrate heterogeneous
+bundle into native context table-demand path; initial metadata still eager64.
+Final Admit callback must independently validate its namespace/operation
+invariants; different per-table targets are not themselves publication authority.
+
+2026-10-04 heterogeneous bundle demand ACTIVE under lock24930. Reuse existing
+Metadata_Bundle instead of adding another orchestrator: per-table record/byte
+quotas and targets, retained reservation identities, one step/callback phase,
+separate final Admit. Existing uniform Request delegates. Native table-store
+orchestration integration remains next; current allocation bundle must regress.
+
+2026-10-04 topology demand reporting PROGRESS. Existing Growth.Requirements
+now reports Required_Tables and Fits_Quota separately from Fits_Reserved/current
+metadata. Native replacement allocation uses exact planner target. Ready-but-
+metadata-short can now be distinguished from hard-quota rejection; no admission
+relaxation or quota increase. Capacity fixture tests target7 within quota8 with
+each independent store shortage, and target14 beyond quota8. Nix24887 TERM0
+four suites /tmp/cubit-topology-demand.v7MLAetE (capacity,growth,backing,bind).
+Extracted native admission59008 TERM0 PASS9+2negativecontrols, evidence
+/tmp/nix-shell.mKMqOH/cubit-native-directory-admission.lias0ohw. Native99557
+TERM0 tmp/native-topology-demand.log; three source files copied privately.
+Lock63622 released; jobs terminal. v56 hash51188d9f... unchanged. Still need
+asynchronous growth orchestrator to consume demand before offline/live bind;
+initial CPU metadata still eager64 despite physical backing4. No new NUC/proof.
+
+2026-10-04 topology demand reporting ACTIVE under lock63622. Physical initial
+backing already4pages; CPU metadata grows eagerly64. Add exact required table
+target and separate hard-quota fit to existing Growth.Requirements; native
+replacement allocation consumes planner target instead of recomputing sum.
+This enables distinguishing growable metadata shortage from quota exhaustion;
+does not yet enable on-demand service orchestration or increase any quota.
+
+2026-10-04 independent mirror growth capacity PROGRESS. Added VM.Mirror_Capacity
+and switched native Context_Mirror_Capacity adapter to it; combined
+Metadata_Capacity still min(mirror,descriptor) at all publication/adoption gates.
+Existing startup descriptor-first ordering masked coupling; this makes future
+independent/on-demand mirror growth measurable without descriptor completion.
+No quota increase or admission relaxation. Extended4-mode fixture checks both
+capacities independently plus same-transaction growth retries. Nix45818 TERM0
+four suites /tmp/cubit-mirror-capacity.n9zyfcfS (growth_capacity,metadata_growth,
+growth_writer,descriptor_writer). Native85067 TERM0 tmp/native-mirror-capacity.log
+compile/link; source3 copied privately, fixture change primary only. Lock14275
+released; all jobs terminal. v56 SHA unchanged51188d9f...; newer staged private
+driver not in v56. No new HW/proof claim. Remaining eager native preparation
+still requests full Table_Pages64; next design demand target orchestration across
+reference/descriptor/mirror/provenance stores while retaining bounded steps.
+
+2026-10-04 independent mirror capacity ACTIVE under lock14275. Own VM_Image
+Mirror_Capacity API, native Context_Mirror_Capacity adapter and capacity fixture.
+Metadata_Capacity stays min(mirrors,descriptors) for safe image mutation; growth
+controller must measure its own store instead of depend on descriptor ordering.
+Do not change v56 or raise fixed native quota.
+
+2026-10-04 v56 READY. Private package16262 TERM0; inputs/payloads/preserved
+hashes PASS. Image kernel/cubit-intel-v56.img SHA256
+51188d9f780bde4f9bcaca2c0ee03b95900b601bf8745bcd4cf2f099ddd512fb.
+Exact QEMU97713 TERM0 UEFI USB flash cpus4 quiet-xhci boot-log-delivery and
+graphics-tools: all3 PASS; evidence /tmp/cubit-usb-live._4p6zm5_. No panic/fatal/
+assertion_error/page-fault matches serial. QEMU not Intel rendering validation.
+All private Intel ads/adb compare equal to primary before package (intentional
+private gpr no-SSE flags retained). Same256-cycle triangle payload, not teapot.
+Prior v49..v55 unchanged. New native initial/replacement streamed lookups and
+capacity gates now packaged. No shared staging/commit/push. All jobs terminal,
+no held locks. NUC ask: completed=256 requested=256 result=0; retirement=0;
+MESA-SERVICE result=0; first MESA-TRANSPORT+adjacent GPU lines if failed. Next
+continue scale work while awaiting hardware, preserve v56 exact artifact.
+
+2026-10-04 v56 packaging ACTIVE private workspace. Same256-triangle payload,
+newly compiled streamed initial/replacement table mapping paths and capacity
+guard. tmp/package-v56.sh nonoverwrite/input/payload/preserved hash gates.
+Keep v49..v55 unchanged. Exact QEMU UEFI USB-flash boot/logs/graphics-tools next;
+not Intel GPU validation. No shared build/staging or lock needed.
+
+2026-10-04 replacement caller migration COMPLETE (not full GPU goal). Shared
+Application_Image.Updates.Publish_Tables_From_Mappings captures both VM
+roots/epochs, rechecks exclusion and context CPU overlap after each lookup;
+existing array adapter delegates and failures remain sticky. Main replacement
+Publish_Update removes Mapping_View; captured ticket/slot/index/session/identity/
+generation checked before+after Replacement_Table_Mapping; exact returned ticket
+required. No main Mapping_View remains. Does not change GPU disable, TLB
+invalidation, retirement or resume ordering. Shared lock45389 released after
+owned edits and new test; copied3 source files to private native workspace.
+Nix17279 TERM0 submission_buffer/root_stream/scratch_update suites, evidence
+/tmp/cubit-stream-replacement.rghQ05fV. Extracted native resolver PASS13 plus
+3negativecontrols (postlookup owner/exactticket/generation), evidence
+/tmp/nix-shell.CC8Jp7/cubit-native-replacement-resolver.nmrmyk1k.
+Native45301 TERM0 compile/bind/link tmp/native-stream-replacement.log. v55
+SHA unchanged43320fc7...; private staged driver is newer, no new image/runtime
+test yet. All jobs terminal/no heldlocks. Next separately named image with
+exact QEMU lifecycle checks, then NUC request; continue scale boundaries rather
+than inflate fixed native quota. Private GPR flags unchanged, no commit/push.
+
+2026-10-04 replacement caller migration ACTIVE under shared lock45389.
+Own Application_Image.Updates ads/adb, main Publish_Update replacement branch,
+new extracted replacement resolver test. Preserve exclusion/TLB sequencing,
+context CPU overlap, exact ticket/session/incarnation/generation admission.
+
+2026-10-04 pending private changes LANDED+VERIFIED in primary. Lock3730 used
+for reviewed eight source files/four fixtures/two test adjustments; first
+primary49784 passed8 suites but submission compile caught misplaced insertion
+in two specs. Reacquired24998, corrected exact declarations and verified byte
+equality of ALL8 source files with previously native-compiled private versions.
+Both locks released. Registered capacity test in vm_growth.gpr, streamed/root/
+scratch suites in vm_materialize.gpr. Nix59599 TERM0 both GPR builds; nine tests
+PASS including primary submission_buffer with newer mapped-leaf coverage kept.
+Evidence /tmp/cubit-primary-landing.R3Vj6DSB; primary extracted initial resolver
+PASS10+2mutants /tmp/nix-shell.UiLqxi/cubit-native-initial-resolver.icxl0k36.
+No shared native rebuild/staging, commit or push. Private native build evidence
+applies to byte-identical eight source files, NOT to a fresh primary-linked
+binary/runtime. v55 SHA unchanged43320fc7...; private gpr flags preserved.
+All own jobs terminal/no held locks. Remaining next: Application.Updates
+Publish_Tables_From_Mappings and native replacement caller exact ticket/session/
+generation lookup, then source scaling beyond fixed native quota. Overall
+driver/hardware goal incomplete; no new NUC result assumed.
+
+2026-10-04 shared landing ACTIVE. Acquired lock3730, reviewed exact private
+deltas and applied eight owned production files (main, materialize ads/adb,
+application image ads/adb, publication ads/adb, growth writer capacity gate).
+Added four fixtures: growth_capacity, materialize_stream, root_stream,
+native-initial-table-resolver. Ported ONLY owner-count loop changes to primary
+submission_buffer_tests (kept its newer unrelated coverage) and materialize
+fixture. No gpr/kernel/runtime/image changes. Release lock after edits; run
+isolated primary tests before calling landing verified. Native replacement
+caller migration deferred until landing verification; remains array-facing.
+
+2026-10-04 private retained-root materializer PROGRESS. New generic
+Publish_Update_From_Mappings captures Previous/Candidate roots+epochs; resolver
+checks owner/generations and retained-root CPU exclusion after every callback.
+Existing Publish_Update array wrapper delegates. Preserve complete alias
+preflight, candidate fill/flush/readback, old-root recheck, then stable-root
+write/flush/readback; no change to required later TLB invalidation. Native
+application replacement wrapper still supplies Mapping_View; next migrate it
+and Publish_Update caller to exact authenticated replacement ticket/generation.
+Nix85755 TERM0 four suites /tmp/cubit-stream-root.Okggkeot: direct streamed
+root test, existing array-root, scratch_update, submission_buffer. Direct test
+injects revocation and live-root alias at EVERY lookup and asserts live root
+unchanged.62399 TERM0 negativecontrol removed root-alias gate is detected by
+old-root visibility assertion35 in /tmp/cubit-stream-root-mutant.f8h1pLID.
+Native92344 TERM0 tmp/native-stream-root.log compile/link. v55 SHA unchanged
+43320fc7...; no image/native execution/GPU validation/proof claim. Shared lock73;
+private-only materializer source and vm_root_stream_tests plus prior pending
+deltas remain unlanded. All jobs terminal/no held locks.
+
+2026-10-04 private retained-root materializer ACTIVE. Own private
+VM_Materialize.Publish_Update_From_Mappings plus streamed root fixture. Recheck
+both source generations after lookup, reject retained-root CPU aliases on every
+resolution, preserve child visibility/old root recheck/stable root flush order.
+Outer application/native replacement adapters not migrated yet. Shared lock73.
+
+2026-10-04 private initial publication stream INTEGRATED. Parent Application
+Prepare_From_Mappings and Publication.Publish_From_Mappings propagate stable
+resolver; existing array APIs delegate. Parent preflights CPU overlap with
+context allocation, rechecks source root/epoch/owner after lookup; retains exact
+root receipt. Native Handle_Context_Preparation no longer builds Mapping_View:
+Table_Page checks preparing slot/session/incarnation/generation before and after
+Initial_Table_Mapping, rejects missing ticket. Existing provenance resolver
+retains CPU/DMA authority. Retained-root replacement still array-facing.
+Nix71434 TERM0 four suites /tmp/cubit-stream-application-retest.YbQMnqJg
+(submission_buffer, application_submit, materialize_stream, scratch_update).
+First27933 failed stale exact owner-count fixture; private fixture now enumerates
+all measured successful owner checks instead of hardcoded21. Do NOT overwrite
+primary submission_buffer_tests wholesale: private snapshot differs elsewhere;
+port just the dynamic owner-count loop when landing. Native77329 TERM0
+tmp/native-stream-application.log compile/link; Nix28420 TERM0 extracted actual
+resolver PASS10 +two negativecontrols (postlookup owner, generation), evidence
+/tmp/nix-shell.DimPbu/cubit-native-initial-resolver.gjbn_8o1.
+Shared lock73; all changes remain private, including pending capacity guard.
+v55 SHA remains43320fc7...; no new image/HW result/proof. All jobs terminal.
+Next remaining outer live-root Mapping_View and native scale boundaries.
+Teapot lifetime source confirms native-triangle-present.h keeps image visible
+5 seconds before destroy/grant retirement; native-authorized-discovery invokes
+that presenter for teapot too. User saw brief teapot without artifacts/lag;
+final result/teardown logs still absent, not sustained performance evidence.
+
+2026-10-04 private streamed materializer PROGRESS. Prepare_From_Mappings uses
+trusted stable authenticated resolver; generic core validates full alias set,
+rechecks owner/root/epoch after each lookup and resolves again before every
+write/flush/readback. Existing array Prepare and retained-root update delegate
+to that core. Source API requires immutable CPU/DMA association while owned;
+numeric checks do not prove mapping authority. Native callers still use arrays;
+next migrate authenticated native initial-publication wrapper, then retained
+root update outer mapping view. Preflight remains quadratic, not bounded turns.
+Nix70319 TERM0 five suites /tmp/cubit-stream-materialize.YpGaU7uV. Nix48615
+TERM0 direct stream test /tmp/cubit-stream-materialize-direct.9UlYXKGE:22 owner
+revocations +22 bad DMA results, short/alias preflight, guards/no retry.10830
+TERM0 negativecontrol /tmp/cubit-stream-materialize-mutant.HH6Vj2L4 detects
+removed postlookup owner gate (assert line57: unauthorized write observed).
+Native65922 TERM0 tmp/native-stream-materializer-build.log compile/bind/link.
+Earlier81133 TERM0 was no-op wrong make file target, NOT compile evidence.
+v55 SHA unchanged43320fc7...; private staged driver now newer than frozen v55.
+Private-only source deltas: capacity writer guards plus materializer ads/adb;
+private tests vm_growth_capacity, vm_materialize_stream, vm_materialize owner
+count fixture. Primary unchanged while shared lock73. No livejobs/heldlocks.
+No new image, native execution, hardware validation or formal proof claim.
+
+2026-10-04 private streamed materializer ACTIVE. Shared lock73. Scope private
+intel_gpu_vm_materialize.ads/.adb and isolated fixture: resolver-based initial
+table preparation with stable authenticated mapping contract, postcallback
+owner/root/epoch validation, complete alias preflight; array API delegates.
+Retained-root update remains array-facing for this slice. No image changes.
+
+2026-10-04 capacity retry regression PASS. Shared lock acquisition73; primary
+driver/test sources untouched. Extended private vm_growth_capacity_tests with
+three same-transaction retries: neither/mirror-only/descriptor-only admission
+performs no IO, consumes no attempt, preserves epoch; growing missing stores
+allows publication and adoption on the same state. Nix65586 TERM0 PASS4+3,
+evidence /tmp/cubit-growth-capacity.gsSsd3Zq/retry-{build,run}.log. Fixture now
+also preserved in private tests/intel-gpu/vm_growth_capacity_tests.adb. Private
+writer retains source-capacity guards; primary still lacks them. Native caller
+audit: Start_Table_Ledger grows source mirrors/descriptors to Table_Pages before
+online publication; Finish_Directory_Update does not itself grow these stores.
+No new native/hardware/proof claim. v55 and all prior images unchanged; no own
+live jobs/held locks. Next land guard+fixture when safe, then streamed table
+publication and native quota scaling. User reports teapot visible; image version
+and sustained teardown evidence not established by that message.
+
+2026-10-04 v55 READY. Package70625 TERM0 input/payload/preserved hashes allPASS.
+Image private kernel/cubit-intel-v55.img SHA256
+43320fc7e1f30bf0ac3cd45bc2c180a4555d518859c965cb058ff43e6b4b9b5d.
+Exact QEMU59674 TERM0 UEFI USB-flash cpus4 quiet-xhci boot-log-delivery and
+graphics-tools: all3 PASS, Logs+Console launched from Apps, no panic/fatal/
+assertion_error/page-fault matches in serial. Evidence /tmp/cubit-usb-live.38jof065.
+First49183 TERM1 socket path too long under private TMPDIR; terminal process,
+rerun with env TMPDIR=/tmp resolved without image change. PPM screenshots saved;
+view_image cannot decode PPM here, no manual visual QA claim. QEMU is not
+Intel rendering evidence. Same256-triangle payload, not teapot payload.
+Prior images v49..v54 preserved. Private Intel source equality check reports
+only capacity-guard writer differs from primary; intentional private gpr flags
+unchanged. Root capacity fix/test still waiting for shared lock (all attempts73).
+No own livejobs/heldlocks. Next land tested private delta+fixture when safe and
+continue table-publication mapping array migration/native quota scaling.
+Hardware ask: completed=256 requested=256 result=0; retirement=0; result=0;
+on failure first MESA-TRANSPORT and adjacent VM/directory/allocation messages.
+
+2026-10-04 v55 private packaging ACTIVE. Shared lock still73; tested capacity
+fix not landed in primary, retained in private writer. Build separately named
+v55 (same256-triangle payload) to validate streamed mapping/insertion/removal/
+directory receipts and source capacity gate; preserve v49..v54 hashes. Use
+private tmp/package-v55.sh with input/payload hashes and nonoverwrite guard.
+Next exact QEMU boot-log-delivery/graphics-tools; no Intel HW claim.
+
+2026-10-04 source-capacity bug VERIFIED + PRIVATE FIX. Shared lock acquisitions
+returned73 throughout turn; no shared test or production source edited.
+Isolated /tmp/cubit-growth-capacity.gsSsd3Zq/vm_growth_capacity_tests.adb
+reproduces missing gate: before-run.log fails line58 when unexpanded source
+accepts3 tables. Private writer copy adds source Count/Metadata_Capacity guard
+before Start staging and before Commit adoption. After76302 TERM0 PASS4
+neither/mirror-only/descriptor-only/both-expanded;6126 TERM0 existing writer,
+storage,descriptor_writer,stream suites. New test not yet in repo tests.
+Native26062 TERM0 tmp/native-source-capacity.log with private writer copied
+from that /tmp directory. IMPORTANT private workspace writer now has two
+capacity guards absent from primary checkout. Preserve this tested delta;
+land via apply_patch once safe, copy fixture under shared lock. Do not blindly
+copy primary writer back over it. All own jobs terminal, no held locks.
+v54 unchanged; no new hardware image. This is a concrete correctness defect,
+not only optimization: avoid GPU publication software cannot later represent.
+
+2026-10-04 source capacity gate ACTIVE. Own Growth.Backing.Writer admission
+and vm_growth_capacity_tests. Reproduce writer accepting growth when receipt
+fits but source mirrors/descriptors do not, then reject before IO. Preserve
+pure topology planning for requests that need capacity growth. v54 frozen.
+
+2026-10-04 retained directory topology PROGRESS. Growth_Link now includes
+Existing_Parent/New_Parent/Level; backing Resolve_Into emits link+node into
+private staging. Writer.Start stores straight into growable receipt, no Links
+array. Commit rederives full plan and compares every field to receipt, then
+adopts from validated records without callbacks/fallible validation. Removed
+Commit Nodes/Checked arrays. Record-size-dependent metadata growth gates pass.
+Nix96600 TERM0 eight suites /tmp/cubit-retained-topology.BEZnSfiB (backing,
+writer,ownership,stream,bind,storage,directory_metadata,descriptor_writer).
+Native55271 TERM0 tmp/native-retained-topology.log; four sources copied privately.
+All own jobs terminal, v54 hash unchanged, scoped diff clean. Compiler inlines
+writer into native adapters: no standalone Start/Commit stack size reported;
+do not claim whole-stack proof from source array removal. Next check explicit
+source mirror/descriptor capacity admission before hardware directory writes
+(receipt capacity alone is not source capacity), then table publication views
+and native quota scaling. Full driver goal remains incomplete.
+
+2026-10-04 retained directory topology ACTIVE. Own VM_Image Growth_Link and
+Growth.Backing/Writer specs/bodies. Stream resolved links+topology into receipt,
+compare rederived plan against receipt before commit; mutation phase reads only
+validated receipt (no callbacks/temporary plans). Receipt record size changes
+must pass metadata-growth tests/native compile. v54 frozen, no concurrent jobs.
+
+2026-10-04 topology streaming PROGRESS. Growth.Describe_Into uses constant
+traversal state and private staging callback, capacity preflight and source/
+authority recheck after each emit. Array adapter delegates and clears output
+on failure. Backing.Resolve_From_Pages no longer allocates Node_List: streamed
+parent preflight then streamed output construction (extra traversal, no timing
+claim). Writer Start/Commit Links and Commit Nodes arrays still remain.
+Nix58752 TERM0 six suites /tmp/cubit-topology-emitter.Xx8cU2q8 including49-range
+oracle/512 conflicts, stream equivalence and emitter8 fault/capacity scenarios.
+Resolver batch91068 evidence /tmp/cubit-topology-resolver.jcL27rj6; native11497
+TERM0 tmp/native-topology-emitter.log, three production sources copied privately.
+Shared88565 released; v54 SHA unchanged; no new image/hardware/proof claim.
+Next stream resolved links directly into receipt and store topology needed for
+commit there, eliminating Writer's remaining stack plans without callbacks or
+fallible validation after software mutation. Table-publication views/quota64
+remain separate unfinished scale boundaries.
+
+2026-10-04 streamed topology emitter ACTIVE. Own Growth.Describe spec/body and
+focused tests. Introduce private-staging emitter with bounded traversal state,
+capacity preflight and post-callback authority/source identity checks; array
+Describe adapter remains atomic. Foundation for eliminating Writer Node/Links
+copies, not removal of those copies yet. No own concurrent build; v54 frozen.
+
+2026-10-04 streamed live-directory input PROGRESS. Growth.Backing generic
+Resolve_From_Pages consumes trusted stable input; array adapter delegates.
+Writer.Start_From_Pages reads input once into growable receipt and resolves
+those retained values, with root/epoch/owner/Commit_Tried checks. Commit also
+resolves receipt directly: its Data_Pages copy removed. Native directory start
+uses exact-ticket-checked callback, no Data_Pages array. Fill/flush/verify all
+children before parent publication and separate TLB receipt remain unchanged.
+Nix73530 TERM0 five suites /tmp/cubit-directory-stream-base.y45q3xzM;34639 TERM0
+PASS4 /tmp/cubit-directory-stream.sb0uUArW (retained input across publication/
+commit; duplicate, owner loss, Commit callback reject before IO/no retry).
+Native4338 TERM0 tmp/native-directory-stream.log, five source files copied
+privately. Native dispatcher fixture updated for generic API:5821 TERM0 PASS14
+plus all3 negative controls /tmp/nix-shell.5hIwt6/cubit-native-directories.mrxgw8io.
+All jobs terminal; shared31309/38338 released; v54 SHA unchanged; no new image.
+IMPORTANT remaining stack boundaries: Writer.Start Links, Backing.Resolve
+Node_List, Writer.Commit Nodes/Checked all range-sized; stream topology/output
+into growable receipt next, preserving complete validation before source commit.
+Table publication views and native quota64 also remain; not scale completion.
+
+2026-10-04 streamed live directory input ACTIVE. Own Growth.Backing and Writer
+spec/body, native directory starter and growth tests. Stage input DMA once in
+existing growable receipt, resolve plans from retained values; remove page
+arrays while preserving fill/flush/verify before parent publication. Node/link
+planning arrays remain a later boundary. v54 frozen; no own concurrent jobs.
+
+2026-10-04 streamed offline append PROGRESS. VM.Append_Offline_From_Pages stages
+one authenticated address per callback in unused descriptor records; rechecks
+authority/epoch/root/count/backed identity, validates all aliases/duplicates,
+then commits Backed+Epoch once. Uncommitted private descriptors on failure are
+not exposed by Table_Backing_DMA/Map_Pages and overwritten on retry. Array API
+delegates, stable/high indices preserved. Native Finish_Offline_Bind uses
+ticket-checked Appended_Page/Offline_Bind_Owner; no temporary page array.
+Nix93225 TERM0 four library suites /tmp/cubit-offline-stream-base.ufeUfUWi;
+56896 TERM0 new stream PASS5 /tmp/cubit-offline-stream.fNHTvOcm plus native
+offline extraction PASS10+three negative controls
+/tmp/nix-shell.OOI5eX/cubit-native-offline-bind.wg280n83. Native73083 TERM0
+tmp/native-offline-stream.log; main + VM_Image spec/body copied privately.
+All jobs terminal/shared68130 released, scoped diff clean, v54 SHA unchanged.
+Next live Directory_Writer.Start still receives quota-related temporary array;
+then table publication views and actual native quota scaling. No hardware or
+new proof claim; no new packaged image.
+
+2026-10-04 streamed offline backing append ACTIVE. Own VM_Image append spec/
+body, native Finish_Offline_Bind and focused tests. Stage authenticated addresses
+in unused descriptor capacity without exposing backed prefix until full group
+validates; preserve alias/epoch/source checks and array adapter semantics.
+Live directory publication separate and unchanged for this step. v54 frozen.
+
+2026-10-04 streamed insertion receipt PROGRESS. Insertion exposes generic
+Can_Reuse_From_Pages metadata hint and Start_From_Pages. Start reads input once
+into growable exact-word storage, checks owner/source after callbacks, validates
+stored DMA/encoding/table/scratch/cache aliases before publication. Array APIs
+delegate with overflow-safe bounds; Start/Commit reentry poisons admission.
+Native capture hint, blocking publish and stepped publication use authenticated
+Captured_Data_Page (renamed shared unbind getter). Removed whole-range arrays
+from bind/unbind; main still has directory-growth Data_Pages at2583/3554 and
+Used-sized table publication views. No claim of full scale/bounded admission.
+Nix88327 TERM0 six suites /tmp/cubit-insertion-stream-base.wkA1oV9e. New97085
+TERM0 /tmp/cubit-insertion-stream.WE9z8La8 PASS8 input read-once, retained words,
+owner/reentry/misalignment/table/cache rejection plus Positive'Last adapter.
+Native66233 TERM0 tmp/native-insertion-stream.log, main/insertion spec/body
+copied privately. All jobs terminal; shared16808 released, scoped diff clean.
+v54 hash unchanged. Regression evidence, no new SPARK proof/hardware validation.
+Next directory-growth arrays + streamed table publication before native quota
+scale work; keep full preflight and retirement invariants. No new image yet.
+
+2026-10-04 streamed insertion receipt ACTIVE. Own VM_Image.Insertion spec/body,
+native insertion adapters and focused fixture. Stage each input once into
+growable receipt, validate retained exact words before publication; preserve
+cache-alias/table/scratch checks and callback owner/source/reentry rejection.
+No own concurrent jobs; v54 stays frozen.
+
+2026-10-04 streamed removal admission PROGRESS. Removal.Start_From_Pages
+validates full expected range via trusted ordinal resolver, rechecks owner/
+source after callbacks, retains no input array. Old array API delegates with
+overflow-safe index arithmetic. Callback reentry Start/Commit fails closed.
+Native removal paths (blocking Publish and stepped Start) now use authenticated
+Removal_Expected_Page; insertion still uses arrays intentionally. Metadata
+commit and GPU/TLB retirement sequencing unchanged. No new hardware image.
+Nix25556 TERM0 five suites /tmp/cubit-removal-stream.DLhynR8U (new stream6,
+removal_steps, scratch_update, vm_update_pipeline, buffer_requests). First57284
+failed fixture typo, corrected. New stream tests validate all3 pages before
+writes, final callback failure/mismatch/owner loss/reentry, empty range and
+array at Positive'Last; boundary suite71876 TERM0
+/tmp/cubit-removal-stream-bound.eMJrRVwv. Native10375 and final44043 TERM0,
+tmp/native-removal-stream-bound.log. Main + removal spec/body copied privately.
+All jobs terminal, shared17408/30590/71681 released, v54 SHA unchanged.
+Remaining: insertion exact-word receipt streaming; publication table mapping
+views; full-range admission still linear synchronous, not fully bounded service
+turns; native quota64 still not scalable completion. Regression, not new proof.
+
+2026-10-04 streamed removal admission ACTIVE. Own VM_Image.Removal spec/body,
+native removal Start/Publish adapters and focused tests. Replace expected-page
+stack array with authenticated ordinal callback; full-range preflight before
+writes remains, with post-callback owner/source checks. Insertion unchanged
+until its exact retained-word receipt can safely stage streamed input.
+
+2026-10-04 streamed native leaf capture PROGRESS. main no longer retains
+Removal_Mappings quota array. Constant-size capture records index/session/
+identity/ticket/root/revision/table-generation; all-live-page preflight remains.
+Each write resolves exact leaf through provenance again, then rechecks capture
+after resolver callback; direct mapped writer independently validates mapping
+and word. Controller source epoch only advances at commit after invalidation,
+so capture revision stays valid throughout bounded Step publication.
+Native99231 TERM0 tmp/native-streamed-capture.log (main copied privately).
+Nix24854 TERM0: extracted native PASS18 + owner/root/recheck/generation negative
+controls all fail; /tmp/nix-shell.ySZ8vc/cubit-mapping-capture.8l9i5st6. Initial
+negative-control run67725 failed because root guard was duplicated; mutant now
+removes both checks, not a production fix. Sparse live preflight PASS10 + both
+mutants fail /tmp/nix-shell.ySZ8vc/cubit-live-table-capture.415t89r3.
+Nix39479 TERM0 four suites /tmp/cubit-streamed-capture-regression.o0g5EQ5o;
+Nix37767 TERM0 removal_steps/insertion/insertion_binding suites
+/tmp/cubit-streamed-capture-steps.vggQCB0h. These are regression evidence, not
+new proofs or hardware validation. All jobs terminal; shared70044/18688 released.
+v54 hash unchanged; no new image. Remaining scale boundaries include Used-sized
+publication arrays and whole-range data arrays, plus native quota64. Next
+eliminate those transient arrays with authenticated bounded streaming, preserving
+whole-range admission and confirmed retirement; do not just raise quota.
+
+2026-10-04 native streamed leaf capture ACTIVE. Own main capture/resolver/leaf
+callbacks and extracted mapping-capture test. Replace retained mapping array
+with constant-size capture identity, freshly authenticate each leaf mapping;
+retain all-live-page preflight and revision/generation guards. Prior turn
+PROGRESS six suites and native compile. No own concurrent build; v54 frozen.
+
+2026-10-04 mapped leaf writer PROGRESS. Native58145 TERM0 compile/link in private
+workspace, tmp/native-mapped-leaf.log. New Insert/Remove_Mapped_Leaf accept one
+freshly authenticated CPU/DMA pair; array APIs delegate to same guarded core.
+Retain expected word, reserved-table/scratch alias, context CPU overlap, owner/
+exclusion, flush/readback and sticky failure checks. Native Capture_Removal and
+its quota-sized array remain unchanged: this is tested migration groundwork,
+not completed scalable capture or fresh hardware evidence. Six Nix7367 suites
+PASS /tmp/cubit-mapped-leaf.o6YGDEkA; expanded success-removal suite36532 TERM0
+/tmp/cubit-mapped-leaf-positive.aRqYPOj5 covers both entry paths (8 removal and
+20 insertion cases including retry rejection). Shared38282 and93861 released;
+all own jobs terminal. Only Updates spec/body copied to private; v54 frozen.
+Next native migration must bind capture identity/session/root/ticket/generation/
+revision, authenticate each selected ledger mapping and recheck after callbacks;
+preserve whole-range preflight and GPU/TLB/CPU retirement before reuse.
+
+2026-10-04 mapped leaf writer ACTIVE. Prior turn PROGRESS wrapper tests passed.
+Own Application_Image.Updates spec/body and submission fixture. Introduce direct
+single-table mapping entry points with same source/expected-word/owner/exclusion/
+flush checks and full reserved table alias check. Existing array entry points
+delegate; native capture not changed yet. Later resolve authenticated ledger
+mapping per write with capture identity validation before removing persistent
+array. v54 frozen, no own concurrent builds.
+
+2026-10-04 wrapper publication view gate PROGRESS. Nix2174 TERM0 full submission
+suite including new boot8 and application14 (7 x scratch on/off) publication
+scenarios. Success uses exact Used prefix; short/shifted/empty views preserve
+all context/root/candidate RAM and fail sticky. Boot retains zero flush count;
+application corrected-view retry still rejects. Existing reserved backing/data
+alias, context overlap, scratch-data preservation and retirement tests pass.
+Evidence /tmp/cubit-publication-views.HyYBM4Vr/{build,run}.log. Shared82156 released,
+all jobs terminal; scoped diff clean. No production/image changes this turn.
+Next scale boundary: retained Removal_Mappings capture still quota-sized; native
+transient arrays now Used-sized but still stack-dependent. Need demand-backed
+stable capture storage or authenticated streaming access without weakening
+snapshot identity/owner/retirement checks. Do not just raise quota64.
+
+2026-10-04 publication wrapper view tests ACTIVE. Prior turn PROGRESS six
+suites/native compile passed. Shared82156 held for submission_buffer_tests.adb:
+boot and application publication malformed views preserve RAM/receipts and fail
+sticky; success passes only live prefix. Production unchanged, v54 frozen.
+
+2026-10-04 native89098 TERM0 compile/link passed; supersedes LIVE below.
+All own jobs terminal, no held locks. v54 hash unchanged. No packaged candidate
+for bounded views yet; remaining focused wrapper negative tests as below.
+
+2026-10-04 wrapper mapping views PROGRESS. Application_Image Prepare/Publication/
+Updates and Submission_Buffer.Updates now accept Mapping_View. Bounds checked
+before wrapper indexing; initial and replacement main transient arrays scoped
+after admission, sized to Used rather than quota. Persistent Removal_Mappings
+unchanged. Submission fixture extended under shared77957 held/released: malformed
+prepare views preserve RAM/one-shot state; insertion exact4 vs quota5, short and
+shifted views, reserved fifth page absent from view. First50229 TERM1 test caught
+reserved alias: Page_DMA intentionally exposes only live pages. Added explicit
+VM.Table_Backing_DMA (valid, backed ordinal including reserved) and use it for
+leaf/boot reserved alias checks. Do not use broad DMA_Disjoint here: mapped data
+aliases have different semantics. Nix61692 TERM0 six suites PASS, evidence
+/tmp/cubit-wrapper-views-fixed.dpU2k2hT (submission_buffer, vm_materialize,
+vm_root_publish, scratch_update, vm_update_pipeline, buffer_requests).
+Thirteen selected source files copied to private; native89098 LIVE, log
+tmp/native-bounded-mapping-views.log. Resume same handle; no edits during build.
+v54 image unchanged, no packaging; scoped diff check clean. Next native result
+and focused wrapper Publish_Tables malformed-view tests before further migration.
+
+2026-10-04 application mapping views ACTIVE. Own Application_Image spec/body,
+Publication/Updates specs/bodies, Submission_Buffer.Updates spec/body, main
+transient publication mappings. Propagate Mapping_View with explicit bounds
+before wrapper indexing; keep reserved DMA alias checks independent of view.
+No concurrent own build. v54 frozen, peers' scopes unchanged.
+
+2026-10-04 bounded materializer view gate PROGRESS. VM_Materialize Prepare and
+Publish_Update accept common unconstrained Mapping_View, reject First/=1 or
+Last<Used before indexing/write; retain one-attempt failure. Existing Mappings
+is quota-sized storage subtype for unchanged callers. Nix42830 TERM0 seven
+suites PASS (same list as shared-type gate), evidence
+/tmp/cubit-mapping-views.BwVjDJGL. New Prepare tests exact four live entries vs
+quota8 plus short/shifted/empty reject with unchanged RAM/no owner or flush calls.
+Root tests extended under shared71848 held/released: Nix46954 TERM0 exact live
+prefix succeeds; short/shifted/empty views preserve root and all candidate RAM,
+no callback/replay; evidence /tmp/cubit-root-views.9AbnsFuG. Initial shared lock
+attempt returned73, no shared build/staging performed; isolated tests only.
+All own jobs terminal, scoped diff check clean, v54 unchanged. No native compile
+of this follow-on yet; next propagate Mapping_View through higher-level wrappers
+with guards before their own indexing, then size native transient mappings to
+used pages. Do NOT simply shrink capture storage while leaf alias checks still
+assume quota-wide indexing; preserve reserved DMA checks separately.
+
+2026-10-04 bounded materializer views ACTIVE. Prior turn PROGRESS common types
+compiled and seven suites passed. Own VM_Materialize spec/body and its hosted
+test: accept common unconstrained Mapping_View with explicit one-based coverage
+before any indexing/writes; existing Mappings remains useful quota-sized local
+storage subtype. Short/shifted views must fail closed. Higher-level wrappers
+and persistent capture migration follows after low-level tests. v54 frozen.
+
+2026-10-04 compiled stack evidence: native main.su Publish_Update frame now1344
+bytes versus2368 in /tmp/cubit-before-shared-mapping-main.su:1024-byte reduction
+at current64 table quota, consistent with removing one64x16 mapping copy. Both
+marked dynamic: not total call-chain stack or timing measurement. v54 SHA rechecked
+unchanged995637488677df7c997983bc3e795af7b57fa01336aed62182c2246234b72485.
+
+2026-10-04 native35964 TERM0 compile/link passed (completion arrived during
+previous note write; supersedes LIVE below). All own jobs terminal. No repackaging.
+
+2026-10-04 shared mapping value types PROGRESS. Added Intel_GPU_Table_Mappings
+common Page_Mapping/unconstrained array values; VM_Materialize exposes its existing
+quota-constrained view of same type. Removed duplicate quota-sized conversion
+arrays from Application_Image.Updates.Publish_Tables and Submission_Buffer.
+Updates.Publish_Boot_Tables; pass caller Backing directly to independently gated
+writer. Application overlap scan now only used pages (same prior condition);
+boot DMA scan still full quota, preserving reserved-page overlap rejection.
+Nix83323 TERM0 all seven suites PASS: vm_materialize, scratch_materialize,
+scratch_update, vm_root_publish, submission_buffer, vm_update_pipeline,
+buffer_requests. Evidence /tmp/cubit-shared-mapping-types.gz1mos1j.
+Four source files copied explicitly into private workspace. Native35964 LIVE
+compiling main, log tmp/native-shared-mapping-types.log; resume same handle.
+Pre-change main.su saved /tmp/cubit-before-shared-mapping-main.su for comparison.
+No claim about stack improvement until compiled report checked. v54 image frozen,
+no package. No held shared lock or source edits while native compile runs.
+This removes conversion copies, NOT persistent Removal_Mappings or quota64 limit.
+
+2026-10-04 writer mapping scale audit ACTIVE. v54 frozen. Found duplicate
+quota-sized mapping copies in Application_Image.Updates and Submission_Buffer.
+Updates solely to convert types between materializer generic instantiations.
+Own common CPU/DMA mapping value type and those two wrappers/materializer spec;
+preserve fixed bounds for now, remove conversion buffers and copy only authority
+checks over used pages. Not elimination of persistent main Removal_Mappings or
+full dynamic VM claim. Shared test changes, if needed, require lock.
+
+2026-10-04 v54 READY FOR NUC TEST, NOT Intel hardware validated. Exact-image
+QEMU96301 TERM0: BOOT LOG DELIVERY PASS, GRAPHICS TOOLS PASS (packaged Console
+and Logs from Apps), USB LIVE BOOT PASS. Evidence /tmp/cubit-usb-live.yusbl563.
+Image private kernel/cubit-intel-v54.img SHA256
+995637488677df7c997983bc3e795af7b57fa01336aed62182c2246234b72485.
+Includes growable generation-scoped table-ID maps plus streamed VM backing
+initialization/replacement; same triangle256 payload, NOT teapot payload.
+Native table quota remains64; not complete dynamic/large-memory driver support.
+NUC request: completed=256 requested=256 result=0, MESA-SERVICE retirement=0 and
+result=0. On failure first MESA-TRANSPORT line plus nearby Intel allocation/VM/
+retirement lines. All own jobs terminal, no held lock; v49-v53/teapot preserved.
+Next independent scale work: persistent writer mapping arrays and per-demand
+metadata sizing; do not infer hardware result. Broad driver/compositor goal open.
+
+2026-10-04 v54 package73688 TERM0. Prior turn VERIFIED WAIT resolved; native
+compile/package and all source/payload/preservation hashes passed. v54 SHA256
+995637488677df7c997983bc3e795af7b57fa01336aed62182c2246234b72485.
+Exact-image QEMU boot/logs/menu verification launched through private helper,
+USB-flash/UEFI/4 CPUs, no image mutation. Do not claim Intel rendering validated
+by QEMU. Await boot gate before handoff; v49-v53/teapot untouched.
+
+2026-10-04 v54 packaging VERIFIED LIVE session73688. Native Intel build passed
+into build-live packaging; currently compiling Console/toolkit dependencies.
+Command: nix develop -c python3 tools/build-workspace.py run
+.build-workspaces/graphics-primary-v47-ws22fhfc -- bash -c
+'bash tmp/package-v54.sh > tmp/package-v54.log 2>&1'. Resume SAME handle; do not
+restart on observation timeout. Private helper lock only, no shared lock.
+After success verify source/payload/preservation guards and image hash, then
+run exact v54 via private helper: TMPDIR=/tmp python3 tests/usb-optical/run-live.py
+--image kernel/cubit-intel-v54.img --uefi --usb-flash --cpus 4
+--boot-log-delivery --graphics-tools --quiet-xhci --timeout 240.
+No readiness/hardware claim before that gate. No source edits during packaging.
+
+2026-10-04 v54 candidate packaging ACTIVE. Prior turn PROGRESS combined eight
+suites passed; read peer notes. Audited all main/private Intel Ada sources:
+byte-identical. Sole gpr difference is existing private -mno-sse/-mno-sse2 flags,
+retained for same target as earlier images (not silently aligned). Own private
+tmp/package-v54.sh: native make intel-gpu then separately named v54 image,
+record source/gpr/payload hashes and verify v49/v50-teapot/v51/v52/v53 plus
+triangle256 payload unchanged. No production edits or shared staging. After
+packaging succeeds require exact-image QEMU boot/log/menu gate before handoff;
+QEMU does not validate Intel rendering. No v54 readiness claim yet.
+
+2026-10-04 combined map lifecycle gate PROGRESS. Nix92272 TERM0 all eight
+standalone Ada suites pass with checks/assertions enabled: table_reference_store,
+update_storage, update_ledger_failure, application_state, vm_initial_stream,
+vm_replacement_stream, vm_update_pipeline, buffer_requests. Full build/run logs
+/tmp/cubit-map-lifecycle.URV1enDH/<test>/{build,run}.log. All own jobs terminal,
+no held locks; scoped diff check clean. Identified extracted map adapters passed
+in preceding turns (resolution, initial-owner, context-retirement, offline bind,
+replacement registration, directory IO/update). Native map production compile
+previously60022 TERM0; not repackaged. Next verify current/private source identity
+and native integration/build for combined changes before a separately named
+candidate; retain v53 and earlier hardware images unchanged. No hardware/proof
+claim from these hosted gates. Dynamic scaling/persistent writer arrays and
+broader driver/compositor functionality remain unfinished.
+
+2026-10-04 directory map fixtures PROGRESS. Nix36354 TERM0 IO pass with real
+RAM/provenance/map, bootstrap failure denies IO, adopted nonidentity ID65 and
+stale map epoch denied; wrong-ticket/ordinal negatives rejected. Evidence
+/tmp/nix-shell.sy9LYB/cubit-native-directory-io.tjx7jzu8. Dispatcher PASS14 with
+real ID map, failed capacity and generation after directory commit block leaf
+handoff/quarantine; invalidation/wrong-ID/ignore-Put negatives rejected. Evidence
+/tmp/nix-shell.sy9LYB/cubit-native-directories.d4yrpiys. Shared7345 released.
+All identified map fixtures migrated; combined isolated library regression
+now running (table_reference_store, update_storage, update_ledger_failure,
+application_state, initial/replacement streams, update pipeline, buffer requests).
+No production source edits or image changes. This is hosted regression, not HW
+or new proof. Broader gate remains open until combined run completes.
+
+2026-10-04 directory map fixtures ACTIVE. Previous turn PROGRESS offline and
+replacement passed. Shared7345 held for test-native-directory-io.py and
+test-native-directory-update.py real reference maps, failure capacity/generation
+and adopted ordinal authority. No production edits, v53 unchanged.
+
+2026-10-04 offline/replacement map fixtures PROGRESS. Nix78598 TERM0:
+offline bind PASS10 real map, new failed capacity/stale epoch after private
+backing append: no leaf mapping/epoch adoption/success reply, backing retained;
+omit-reply-loss/wrong-id/ignore-Put negatives rejected. Evidence
+/tmp/nix-shell.fAGn1F/cubit-native-offline-bind.f_icqgd3. Replacement registration
+PASS2332 real map, sizes1..64, all resolver failure offsets, final owner loss,
+64 stale-generation and60 insufficient-capacity cases; early-publication and
+ignore-Put negatives rejected. Evidence
+/tmp/nix-shell.fAGn1F/cubit-replacement-registration.hecpmw_j. Replaced obsolete
+array fake and obsolete no-op negative pattern; runner now direct Nix gprbuild
+in isolated temp rather than alr in kernel. Initial95562 compile-only API typo
+Backed corrected to Backed_Tables. Shared24401/56409 released, all jobs terminal,
+scoped diff check clean. No production changes, no image change, no HW/proof claim.
+Remaining map fixture migrations: native-directory-io, native-directory-update.
+
+2026-10-04 replacement registration fixture ACTIVE. Shared56409 for
+test-replacement-registration.py real map/capacity/generation errors and
+offline fixture compile correction (Backed_Tables API; first95562 TERM1).
+No production/source builds or image edits.
+
+2026-10-04 offline bind fixture ACTIVE. Prior turn PROGRESS owner+retirement
+tests passed. Shared24401 held for test-native-offline-bind.py: use real ID map,
+test capacity exhaustion and stale map generation at commit, verify no data leaf
+binding/success reply after failed Put. No production edits or image changes.
+
+2026-10-04 lifecycle fixture migration PROGRESS. Nix48757 TERM0 owner PASS15
+including new reference growth revocation/remapping/failure/order/no replay;
+four negative controls fail as expected. Evidence
+/tmp/nix-shell.SjiQbA/cubit-initial-owner.ag6ykvit. Retirement fixture uses real
+Table_References.Map, seeded IDs and explicit generation invisibility checks;
+fault19 ledger retirement succeeds but map reopen fails: no parent acknowledgement,
+backing retained, quarantine. First59463 TERM1 exposed fixture cross-case reuse
+of Failed dispatcher from fault18; each case now has its own non-resettable
+controller. Rerun59570 TERM0 PASS20 + omit-retirement, parent-first and ignored-map-
+failure negatives. Evidence /tmp/nix-shell.os6dn9/context-parent-completion.5f7ojapb.
+Shared22002/75741/70387 released; all own jobs terminal, scoped diff check clean.
+Hosted extracted native behavior with modeled receipts, NOT hardware or proof.
+No production/image changes. Remaining map-fixture migrations: native-directory-io,
+native-directory-update, native-offline-bind, replacement-registration. v53 frozen.
+
+2026-10-04 retirement completion fixture ACTIVE alongside isolated owner test
+48757 (no production source edits). Own test-context-retirement-completion.py:
+real reference maps, successful epoch reset and failed map reopen propagation
+after completed ledger retirement. Preserve receipt/quarantine checks.
+
+2026-10-04 initial metadata owner fixture ACTIVE. Prior turn PROGRESS:
+reference resolution and mapping capture passed. Hold shared22002 for editing
+test-initial-metadata-owner.py. Add reference-growth callback loss/failure,
+ordering and no-replay cases to extracted native prefix. Production unchanged,
+v53 frozen; no concurrent own builds.
+
+2026-10-04 reference-resolution regression PROGRESS. Shared16068 released;
+Nix35155 TERM0: actual Initial/Replacement_Table_Mapping with real growable
+Table_References.Map passes capacity growth, nonidentity IDs, absent references,
+stale captured generation (no authority lookup), revoked authority and reopened
+generation hiding old entries. Ordinal-as-ID negative control fails as expected.
+Evidence /tmp/nix-shell.7SiQiC/cubit-table-resolution.hd1k_4ab. Removed obsolete
+array-shaped Capture_Removal fragment from this fixture; separate current native
+capture test Nix71647 TERM0 PASS10 plus omit-owner/omit-root negatives, evidence
+/tmp/nix-shell.yo5iRj/cubit-mapping-capture.i_121hpk. No production changes,
+no new hardware/SPARK claim; v53 untouched. All own jobs terminal, no held lock.
+Remaining fixture migrations: initial-metadata-owner, native-directory-io,
+native-directory-update, native-offline-bind, replacement-registration,
+context-retirement-completion. New map wiring remains unready for packaging
+until those gates pass. User reports seeing teapot; teardown not yet confirmed.
+
+2026-10-04 reference-resolution fixture migration ACTIVE. Revalidated live
+shared lock session16068; previous patch was rejected without edits. Own
+test-table-reference-resolution.py, replacing array fake with real growable map
+and generation checks. Capture_Removal has separate extracted coverage. No
+production edits or image changes; v53 frozen. Prior conversational turn made
+no code progress; now resuming the open regression gate.
+
+2026-10-04 native ID-map wiring PROGRESS. Application_State contexts/updates now
+use Table_References.Map (bootstrap4), no eager ID arrays. Main Get uses captured
+ledger generation; every Put propagates failure (no leaf/replace continuation),
+both retirement paths Reopen map to ledger's confirmed next generation before
+updating captured generation. Initial Context_Reference_Growth allocates before
+descriptor/mirror/ledger installation, owner-checked before/after Step. Update_Storage
+adds distinct reference region/Referencing phase with <=64KiB attachment and
+capacity+generation readiness checks. Native60022 TERM0 compile/link private
+tmp/native-reference-map.log. Shared85719 held/released for storage fixture edits;
+Nix93226 TERM0 update_storage+table_reference_store PASS, evidence
+/tmp/cubit-native-reference-storage.nPHiI6. All jobs terminal, no held locks,
+scoped diff check clean. v53 frozen; NOT ready to package this change.
+Required next: adapt/run extracted fixtures still declaring ID arrays:
+test-initial-metadata-owner.py (new reference growth stage),
+test-table-reference-resolution.py, test-native-directory-io.py,
+test-native-directory-update.py, test-native-offline-bind.py,
+test-replacement-registration.py, test-context-retirement-completion.py.
+Use real generation map when possible; include failed Put/capacity/stale-generation
+and Reopen failure paths, not just success. Broader regression gate remains open.
+
+2026-10-04 native reference-map wiring ACTIVE. Previous turn PROGRESS generic
+store passed. Own Application_State, Update_Storage, main ID access/install/reset
+and initial growth stage. Replace eager ID arrays with generation-scoped maps;
+require capacity before installation and propagate every failed Put/Reopen.
+Existing extracted fixtures modeling arrays will need adapter updates before
+integration gate is complete. No image change or concurrent own source build.
+
+2026-10-04 growable reference-map library PROGRESS, NOT native-wired yet.
+New intel_gpu_table_references.ads/adb generic Quota/Bootstrap4, Record_Store of
+{Epoch,ID}, checked Get/Put, bounded Extend, exact-next-generation Reopen O(1).
+Caller must independently authorize retirement; no release or hardware receipt.
+Shared51421 held/released for table_reference_store_tests.adb. First56894 TERM4
+typed others aggregate compile error corrected to named Epoch/ID defaults.
+Nix4230 TERM0 PASS bootstrap4->4096, nonordinal IDs, prefix preservation,
+out-of-capacity/stale/replay rejection, reset leaves RAM byte-identical, fresh
+generation installation and suffix guard. Evidence /tmp/cubit-table-references.v52LTP.
+All own jobs terminal; scoped diff check clean; v53 untouched.
+Next native wiring: Application_State Table_IDs -> map with quota Table_Pages;
+per-context owner-checked Record_Growth before ID installation; Update_Storage
+separate ID region and readiness gate; all Get/Put use captured ledger generation;
+Reopen only after existing ledger retirement path (verify exact next generation).
+Adapt extracted fixtures that currently model Table_IDs arrays; do not silently
+ignore failed Put/Reopen. Persistent writer mappings remain another scale limit.
+
+2026-10-04 batch66897 TERM0 all eight adapter scripts + negatives passed.
+Final directory IO/dispatcher/capture evidence under /tmp/nix-shell.uDfx3W:
+cubit-native-directory-io.fi3zidmg, cubit-native-directories.f944knro,
+cubit-mapping-capture.h6a5lxwm. Previous turn VERIFIED WAIT now resolved.
+Own new Intel_GPU_Table_References generic + tests: retained Record_Store with
+generation-tagged IDs, small bootstrap, checked reads/writes, O(1) logical reset
+only to exact next generation. Caller still owns hardware retirement authority;
+the map grants no reuse permission. Native wiring to follow after library gates.
+v53 unchanged, no running own tests/builds before this edit.
+
+2026-10-04 regression66897 VERIFIED LIVE, prior turn PROGRESS owner-loss fixture.
+Resumed same handle (including async observation11590, completed); no restart.
+Now passed allocation routing15, bootstrap, offline admission20, offline bind8,
+directory admission9 plus their negatives. Evidence /tmp/nix-shell.uDfx3W
+(routing.r39d34lj, bootstrap.1bkwon0s, offline-admission.jgyrunu_,
+native-offline-bind.6w8wxvr8, native-directory-admission.t8iha1no with cubit- prefixes).
+Remaining directory IO/dispatcher and mapping-capture; still no production edits
+while batch checks source stability. No new hardware image, v53 remains frozen.
+
+2026-10-04 callback ownership regression PROGRESS. Shared lock89767 held/released
+for buffer_requests_tests.adb: revoke Ready during each of four page callbacks,
+require immediate read stop, invalid candidate/root, unchanged source and no
+replay after restoring Ready. Nix91574 TERM0 PASS4 plus full buffer requests;
+evidence /tmp/cubit-stream-owner.Ip0rAJ. Native adapter batch66897 LIVE (main Nix
+isolated outputs): allocation routing15 + negatives passed, now bootstrap,
+offline admission/bind, directory admission/IO/dispatcher, mapping capture.
+No production source edits until batch terminal. v53 unchanged, no held lock.
+Next scale boundary: keep ordinal->provenance IDs separate from VM DMA descriptors
+(different lifecycle/generation), replace Table_References array with retained
+Record_Store and add owner-checked metadata capacity before any ordinal adoption.
+Reset only installed IDs after confirmed ledger reopen; retain metadata itself.
+Update_Storage needs distinct ID region/readiness check, initial context stage
+needs allocation ordering before publishing ledger IDs. Do not merge provenance
+IDs into hardware descriptors or infer retirement from metadata growth.
+
+2026-10-04 streamed adapter regression audit ACTIVE. Previous turn PROGRESS
+native adapter compiled/direct pipeline+registration tests passed. Own
+buffer_requests_tests.adb callback owner-loss cases, plus broader main native
+adapter scripts in isolated Nix outputs. No production source edits; v53 frozen.
+
+2026-10-04 native7812 TERM0 compile/link passed. All own jobs terminal, no held
+locks. Streamed replacement adapter ready for broader native regression audit,
+not packaged or NUC-validated. No image change; v53 remains current test target.
+
+2026-10-04 streamed native binding PROGRESS. Binding Handle_Update/Prepare_Request/
+Prepare_Change now have callback/count cores; array callers delegate. Each DMA
+read checks service/session before and after callback. Native Read_Replacement_Page
+also requires exclusive owner, pending ticket and bounded ordinal, resolving real
+ledger authority. Finish_VM_Update no longer builds quota-sized Tables array.
+Registration still one page/turn; all publication/retirement ordering retained.
+Nix33308 TERM0 existing buffer requests + update pipeline. Shared17398 held then
+released for pipeline direct+array modes and registration reader extraction.
+Nix19063 TERM0 both modes (sparse/full, failed TLB, revoked resume, disabled reuse),
+registration PASS2208 + early-publication negative. Evidence
+/tmp/cubit-binding-stream-direct.0BkVQI and
+/tmp/nix-shell.yUkZdF/cubit-replacement-registration.p3xg02_x.
+First28371 failed nonexistent test filename before compilation; corrected to
+actual buffer_requests_tests/vm_update_pipeline_tests. Native7812 LIVE private
+compile tmp/native-binding-stream.log. Poll same handle; no source edits during
+compile. No shared lock held, scoped diff check clean; v53 unchanged. Remaining
+arrays: Table_IDs and persistent writer mappings; native quota64 unchanged.
+
+2026-10-04 native11636 TERM0. Previous turn PROGRESS replacement core tested.
+Own Buffer_Requests.Binding ads/adb + main Finish_VM_Update adapter: callback/count
+path through Handle_Update, Prepare_Request, Prepare_Change; existing arrays
+delegate rather than duplicate implementation. Native resolver reauthenticates
+replacement ticket/page and exclusive owner. Remove Finish_VM_Update Tables
+temporary; keep registration and publication/retirement ordering unchanged.
+No v53 image mutation, no concurrent own build, tests next.
+
+2026-10-04 native11636 LIVE private helper compile, log
+tmp/native-replacement-stream.log; poll same handle before any source sync/edit.
+No shared lock held. All hosted jobs terminal.
+
+2026-10-04 replacement-stream library PROGRESS. VM.Prepare_Update_From_Pages
+validates allocated prefix once into candidate descriptors before mirror copy;
+old array entry delegates to same core, retains nonzero-tail rejection. No
+changes to source on failure, candidate remains invalid/consumed. Shared lock
+97787 held/released for vm_replacement_stream_tests.adb + README. Nix49467 TERM0
+PASS8 new scenarios plus existing backed inventory/descriptor/initial-stream
+fixtures; evidence /tmp/cubit-replacement-stream.P7mBig. Scoped diff check clean.
+Private native compile launching tmp/native-replacement-stream.log. Remaining
+integration: Buffer_Requests.Binding Handle_Update/Prepare_Request/Prepare_Change
+still use Backing_Pages; Finish_VM_Update still builds full Tables. Adapt that
+pipeline to callback/count without weakening authenticated lookup or request
+admission. v53 frozen; no claim that native replacement array is eliminated yet.
+
+2026-10-04 main1815 TERM0: installed initial-stream/scale/capture/bootstrap
+fixtures all pass including negative controls. Evidence /tmp/cubit-stream-main.m4AYIM
+and /tmp/nix-shell.cstTym/{cubit-mapping-capture.ux6vw6_x,cubit-bootstrap-growth.2paopjz_}.
+Prior turn PROGRESS. Own VM_Image ads/adb next: replacement preparation reads
+authenticated allocated prefix once into candidate descriptors; array API uses
+same core. Preserve source/failed-candidate semantics and validate all backing
+before copying mirrors. Native binding adapter still takes full arrays; next
+integration boundary, no claim that all quota-sized bookkeeping is gone.
+
+2026-10-04 main verification1815 LIVE: isolated Nix initial-stream/sparse-scale
+Ada tests then native mapping-capture/bootstrap scripts; poll same handle.
+All own native/private jobs terminal, no held lock; scoped diff check clean.
+
+2026-10-04 streamed initialization native/regression PROGRESS. Native81280 TERM0
+compile/link. Bootstrap39551 failed stale fixture assertion on removed Pages
+temporary (not production failure); adapted fixture to retained DMA inventory.
+Private38008 TERM0 PASS plus overlap-scratch/omit-backed-count negatives; evidence
+private tmp/cubit-bootstrap-growth.ccrnt2l1. Shared lock40746 held and released:
+installed vm_sparse_scale_tests.adb, vm_initial_stream_tests.adb,
+test-native-mapping-capture.py, adapted bootstrap test and README. Main isolated
+verification launching; no source edits until complete. v53 frozen, no new image.
+
+2026-10-04 live handles: bootstrap39551 (main test-native-bootstrap-growth.py,
+isolated Nix outputs); native81280 (private helper, make -C kernel intel-gpu,
+tmp/native-initial-stream.log). Poll same handles, do not restart on observation
+timeout. Shared fixture installation still pending lock; no shared lock held.
+
+2026-10-04 streamed initialization library gates PASS. VM.Initialize_From_Pages
+reads allocated prefix once into retained descriptors; invalid callback result
+consumes attempt but exposes no valid inventory/root. Array Initialize delegates
+to same core with suffix check, no second implementation. Native bootstrap now
+uses buffer Page_Address callback, removed quota-sized Pages temporary.
+Nix20248 TERM2 only because private bootstrap script absent AFTER all three Ada
+fixtures passed: new Initial_Stream PASS6, existing backed inventory/descriptors.
+Evidence /tmp/cubit-vm-initial-stream.HvevSb. Retrying existing bootstrap script
+from main (isolated outputs), native compile separately starting private
+tmp/native-initial-stream.log. No source edits until both terminal, v53 frozen.
+
+2026-10-04 native55898 TERM0 compile/link passed. Shared edit lock still73;
+private capture/scale fixtures pending installation. Previous turn PROGRESS
+streamed capture + negative controls. Own VM_Image ads/adb initialization core
+and main Finish_Private_Context: callback-fed allocated prefix, no quota-sized
+bootstrap temporary. Existing array entry delegates to same core, retaining
+suffix validation and one-attempt behavior. Private Nix regression next; v53
+unchanged. No shared script edits or concurrent own builds.
+
+2026-10-04 native55898 LIVE: nix develop -c python3 tools/build-workspace.py run
+.build-workspaces/graphics-primary-v47-ws22fhfc -- bash -c
+'make -C kernel intel-gpu > tmp/native-streamed-capture.log 2>&1'. Resume same
+handle; no shared lock held. No source edits during this private compile.
+
+2026-10-04 streamed mapping capture PROGRESS. main.adb Capture_Removal removed
+quota-sized duplicate DMA stack array; rejects unsealed/empty VM and validates
+each resolved DMA directly against Page_DMA with post-resolver Update_Exclusive.
+Persistent writer mappings remain; this is not complete dynamic VM ownership.
+Private test-native-mapping-capture.py extracts actual admission/capture prefix,
+real VM + modeled provenance callbacks: Nix2146 TERM0 PASS10, omit-owner and
+omit-root negatives fail as expected. Evidence private tmp/
+cubit-mapping-capture.nx4gs_l0. Shared test edit lock busy73, fixture remains
+private pending installation, along with vm_sparse_scale_tests.adb. Main/private
+main synced; native compile launching log tmp/native-streamed-capture.log.
+v53 remains byte-for-byte frozen; no new image or hardware claim.
+
+2026-10-04 native mapping capture ACTIVE. Prior turn PROGRESS sparse hosted
+scale fixture passed beyond64 tables. Own main.adb Capture_Removal only: remove
+quota-sized temporary DMA array, validate each authenticated mapping against
+sealed VM identity as it is resolved, recheck update ownership after callbacks.
+Keep persistent Removal_Mappings (writer input) for now. Private extracted
+capture test planned; no other shared sources/scripts or v53 image changes.
+
+2026-10-04 sparse VM scale regression PROGRESS, private-only. Nix61307 TERM0
+initial eight-table probe, Nix45879 TERM0 expanded fixture at
+.build-workspaces/graphics-primary-v47-ws22fhfc/tests/intel-gpu/vm_sparse_scale_tests.adb.
+Evidence /tmp/cubit-vm-sparse-scale.6DQym8: real production VM quota4096 with
+bootstrap4, incremental <=64KiB metadata expansion, eight then128 backed/87 used
+tables, forty GiB-spaced plus low/high raw48 mappings, stable root/old contents,
+reserved backing alias exclusion and suffix guards. Metadata-only mapping
+attempts rejected without epoch/used mutation. Main/private Intel source bytes
+match. This establishes library operation beyond native64 policy, not native
+dynamic growth or hardware visibility. Shared test edit lock busy73 twice;
+install fixture/update README when held, no shared script edits performed.
+All own jobs terminal; v53 and all prior images untouched. Next production
+scale work: decouple ordinal/provenance ID storage and backing arguments from
+quota-sized arrays, then demand-driven native metadata admission (not just
+raising Table_Pages). No SPARK or hardware claim from this hosted regression.
+
+2026-10-04 sparse VM scale audit ACTIVE. Prior turn PROGRESS v53 exact-image
+gate passed and handed off; v53 frozen. Shared edit lock returned73 (busy), so
+new vm_sparse_scale_tests.adb will be private-only pending installation window.
+Scope: quota4096 with bootstrap4 descriptors/mirrors, incremental external
+metadata, eight backed tables, low/high raw48 mappings and guards. Hosted test,
+not native quota increase nor Intel validation. No production source edits.
+
+2026-10-04 v53 READY FOR NUC TEST, not Intel-HW-validated. QEMU83244 TERM0:
+BOOT LOG DELIVERY PASS, GRAPHICS TOOLS PASS (Console+Logs Apps launch), USB LIVE
+BOOT PASS. Evidence /tmp/cubit-usb-live.7746c8l7. Image private kernel/
+cubit-intel-v53.img SHA256
+90298c4d638485c32c111fca2ec39b4fd2e5e1ac40eeac7c5f42a8121cc9fab7.
+Native descriptor bootstrap4/growable storage and initial owner rechecks now
+packaged; same triangle256 payload as v52. User teapot confirmation applies to
+v50, not this candidate. Hardware request: completed=256 requested=256 result=0,
+MESA-SERVICE retirement=0 and result=0; first transport failure plus nearby Intel
+lines if unsuccessful. All own jobs terminal; no held locks. Full driver goal
+active. Remaining scale work includes eager Table_IDs/backing parameter arrays,
+native VM table quota64 and on-demand metadata sizing; no full dynamic VM claim.
+
+2026-10-04 v53 package61280 TERM0. Prior turn PROGRESS: regression batch and
+native compile passed, separate packaging launched. Input/payload guards and
+v49/v50-teapot/v51/v52 preservation checks passed. v53 SHA256
+90298c4d638485c32c111fca2ec39b4fd2e5e1ac40eeac7c5f42a8121cc9fab7.
+Exact-image QEMU boot/logs/menu gate launching; no Intel hardware claim yet.
+
+2026-10-04 v53 packaging LIVE session61280, private workspace helper lock.
+Command: nix develop -c python3 tools/build-workspace.py run
+.build-workspaces/graphics-primary-v47-ws22fhfc -- bash -c
+'bash tmp/package-v53.sh > tmp/package-v53.log 2>&1'. Poll same handle;
+last observed compiling packaged Console dependencies, not terminal. No driver
+edits during packaging. After terminal success inspect hash guards and run exact
+v53 QEMU with TMPDIR=/tmp, --uefi --usb-flash --cpus 4 --boot-log-delivery
+--graphics-tools --quiet-xhci --timeout 240. Do not hand off before that gate.
+
+2026-10-04 descriptor candidate regression PASS. Prior turn PROGRESS with
+native/integration validation; resumed handles, no duplicate jobs. Native52943
+TERM0 compile/link. Batch29803 TERM0 all nine scripts plus negative controls;
+evidence /tmp/nix-shell.vbbJXi (bootstrap, offline admission/bind, directory
+admission/IO/dispatcher, metadata admission/resume, initial owner). Hosted RAM
+and extracted service coverage, not Intel hardware validation. Main/private
+Intel sources byte-identical; scoped diff check clean. Own private
+tmp/package-v53.sh: preserve v49/v50-teapot/v51/v52 and existing triangle payload;
+separate descriptor candidate packaging next, then exact-image QEMU gate.
+v52 remains frozen; no v53 hardware readiness claim yet. No shared lock held.
+
+2026-10-04 descriptor candidate audit ACTIVE. Previous turn PROGRESS initial
+owner rechecks tested/native compiled. Main/private Intel source audit found only
+Update_Storage spec documentation mismatch; reviewed/synced, native52943 running
+tmp/native-descriptor-final.log. Main combined integration batch29803 running
+bootstrap, offline admission/bind, directory admission/IO/dispatcher, deferred
+metadata admission/resume and initial ownership. Do not edit driver sources
+during the batch. No artifact change; v52 remains frozen/current hardware target.
+
+2026-10-04 native98263 TERM0 compile/link passed. Initial owner regression also
+preserved privately. All own jobs terminal, no held lock. v52 unchanged. Native
+descriptor-allocation candidate still needs complete regression/input audits
+and packaging/boot checks before any newer NUC handoff. Driver goal unfinished.
+
+2026-10-04 initial ownership rechecks PROGRESS. main central Table_Ledger_Owner
+checks index, publication owner, offline life and session->slot identity. Used
+by all initial metadata extension callbacks and startup admission. Grow stage
+rechecks after descriptor/mirror steps and provenance growth/append callbacks;
+lost authority retires/retains instead of reporting readiness. Shared30960 held
+for new tests/intel-gpu/test-initial-metadata-owner.py, then released. Nix72139
+TERM0 extracted native owner helper/metadata prefix PASS10 + omit-post-owner and
+omit-session negatives. Evidence /tmp/nix-shell.nZrlPo/cubit-initial-owner.az5gsg0p.
+Fixture models allocators/ownership and forwarding to provenance, not full GPU
+publication or real syscalls. Native98263 live tmp/native-initial-owner.log.
+No image or other-agent work changed; no new hardware/proof claim.
+
+2026-10-04 initial ledger ownership ACTIVE. Previous turn PROGRESS shared
+regression gap closed. Native bootstrap73613 TERM0 PASS + overlap/backed-count
+negatives (/tmp/nix-shell.qtIsNz/cubit-bootstrap-growth.lkzskd2c). It models VM8,
+not actual native descriptor allocation. Own main Table_Ledger_Owner/stop helper
+and callback rechecks in initial metadata/provenance; new extracted owner gate
+fixture. Shared test lock30960 held for script edits; no native build started.
+
+2026-10-04 shared regression gap CLOSED. Lock59513 released after edits.
+Nix1659 TERM0 all8 installed Ada fixtures pass. Nix28057 TERM0 installed scripts:
+topology9 + size/role negatives, admission5+recovery/wrongreply, resume10 with
+resave/capacity/epoch negatives. Evidence /tmp/nix-shell.ywVKUa:
+cubit-native-directory-admission.5r1mndwu, cubit-directory-admission.7z84y7uc,
+cubit-directory-resume.u254co3r. Scoped diff --check clean. No native source or
+image changed this turn; native40609 remains most recent descriptor build.
+All own jobs terminal, no lock held. Remaining check before next image: actual
+initial-stage ownership/ordering extraction, rather than only composed library
+test, plus any native regressions impacted by smaller descriptor bootstrap.
+v52 remains current frozen NUC target. Full driver/graphics goal unfinished.
+
+2026-10-04 shared regression installation ACTIVE. Shared lock59513 acquired
+and held through apply_patch. Installed all validated private candidates into
+tests/intel-gpu: updated native directory admission and update_storage_tests;
+new directory admission/resume scripts plus boundary, directory growth/store,
+backed inventory, descriptor storage/writer and context descriptor growth Ada
+fixtures. README documents scope and isolated Nix command. No native code/image
+change this turn. Previous turn PROGRESS descriptor allocation wired/tested.
+
+2026-10-04 native descriptor integration PROGRESS. Bootstrap_Descriptors now4.
+Initial contexts stage per-context descriptor Record_Growth before mirror growth;
+descriptor failures retire/retain. VM.Descriptor_Metadata_Bytes gives rounded
+external quota. Update_Storage adds disjoint descriptor region and Describing
+stage before mirrors, bounded attachment and readiness requiring both capacities.
+Native40609 TERM0 compile/link tmp/native-descriptor-allocation.log. Nix1462
+TERM0 adapted real Update_Storage test: initial/demand images, exact quota incl
+descriptors, reuse, no-backing inference, suffix guards. Nix18943 TERM0 real
+descriptor-before-mirror composition PASS6, descriptor commit failure blocks
+mirror allocation, all four mirror commit failures retain prefix/epoch.
+Fixtures preserved under private tests/intel-gpu/{update_descriptor_storage_tests,
+context_descriptor_growth_tests}.adb and /tmp/cubit-growth-store-fixture.ivuDCD.
+Shared original update_storage_tests.adb still needs quota formula update under
+lock, alongside earlier pending script updates; do not claim shared suite green.
+No images modified; all own jobs terminal. Native initial-stage extraction and
+cross-owner failure coverage still needed before a new candidate image. Table_IDs
+and public Backing_Pages arrays still quota-sized, goal remains incomplete.
+
+2026-10-04 native descriptor allocation ACTIVE. Prior turn PROGRESS growable
+descriptors and failure gates tested/native compiled. Own main initial ledger
+staging, Update_Storage CPU layout/state machine and Application_State bootstrap.
+Allocate descriptors before effective mirror capacity can reach quota; replacement
+images need separate descriptor span between ledger and mirror. Preserve v52.
+
+2026-10-04 growable descriptor verification PROGRESS. Native26926 TERM0
+compile/link, tmp/native-descriptor-store.log. Dynamic descriptor writer14017
+TERM0 PASS28+callback interruption2 using real external CPU descriptor memory,
+repeat growth and suffix guards. First9768 failed because replacement-image
+fixture still assumed full inline descriptors; gave that distinct image its own
+metadata backing, no production change needed. Preserved both new fixtures in
+private tests/intel-gpu/{descriptor_storage_tests,vm_descriptor_writer_tests}.adb.
+All own jobs terminal, no lock held, v52 unchanged. Native descriptors still
+bootstrap at full quota until allocation wiring covers initial/replacement images,
+mirror-growth effective capacity and candidate adoption. Table_IDs and public
+Backing_Pages parameter arrays still quota-sized; full dynamic VM not complete.
+
+2026-10-04 descriptor conversion PROGRESS. DMA+Levels replaced by typed
+Descriptor_Storage Record_Store. Bootstrap_Descriptors defaults to Capacity until
+native allocator integration. Metadata_Capacity=min(mirror,descriptor); explicit
+Descriptor_Capacity/Extend_Descriptors; missing descriptors reject initialization
+and candidate prep before consuming attempt. Snapshots copy backed prefix and
+reject insufficient descriptor space; retirement clears only backed IDs, retains
+stable CPU storage. VM child reads/writes use descriptors; insertion alias scan
+now also uses backed prefix. Nix64299 TERM0 offline14/growth20+4/snapshot128+20/
+VM mapping/removal/range tests. Nix42356 TERM0 small-bootstrap descriptor test
+/tmp/cubit-growth-store-fixture.ivuDCD/descriptor_storage_tests.adb: grow4->8,
+preserved mappings/epoch, preparation retry after metadata growth, snapshot and
+retirement/reuse, suffix guards. Initial Nix sandbox could not write cache locks;
+approved escalation used for builds. Native26926 live tmp/native-descriptor-store.log;
+dynamic descriptor writer fault fixture launched separately. No images changed.
+
+2026-10-04 growable VM descriptors ACTIVE. Prior turn PROGRESS backed-prefix
+accounting regression/native gates passed. Own VM image and its child bodies:
+combine DMA and level into Record_Store descriptors with independent bootstrap,
+explicit retained CPU extension, admission bounded by descriptor capacity.
+Native bootstrap remains full until separate metadata allocation is integrated.
+Snapshot adoption must check/copy backed prefix, retirement clear retained IDs.
+No images, shared scripts still locked (conflict73).
+
+2026-10-04 backed-prefix verification COMPLETE for this change, not driver goal.
+Stable final suite9426 TERM0 all six suites passed (offline backing/planning,
+live growth+bind, aliases, snapshots/reuse and VM mapping/removal). Native87262
+TERM0 compile/link. New count-transition fixture also preserved in private
+tests/intel-gpu/backed_inventory_tests.adb. All own jobs terminal, no lock held.
+v52 remains frozen. DMA/Levels/Table_ID arrays still eager quota-sized: next
+dynamic descriptor storage must retain these backed/used distinctions rather
+than infer physical allocation from available CPU metadata. Shared test candidate
+installation remains pending lock; no new image or NUC behavior claim.
+
+2026-10-04 backed prefix PROGRESS. Image.Backed maintained by Initialize,
+Prepare_Update, offline append, live directory commit(max old/new used), snapshot
+adoption and authenticated retirement. Alias loops and offline planner use actual
+allocated prefix, not quota or repeated zero-tail scan. Backed_Tables read-only
+query returns0 for invalid images. Main suite93705 TERM0 offline14/planning22,
+growth-bind20+repeat4, backing6/54, snapshot128+20/lifecycle and image/range tests.
+Added query after launching first suite, so final stable-source rerun launched
+before relying on complete-current revision. Temporary backed_inventory_tests.adb
+in /tmp/cubit-growth-store-fixture.ivuDCD, Nix54202 TERM0 exact count checks for
+reserved/used distinction, append rejection, snapshot adoption, failed/successful
+retirement and reinitialization. Native87262 live tmp/native-backed-prefix.log.
+v52 image untouched; no performance measurement or SPARK/HW proof claimed.
+
+2026-10-04 backed-table inventory ACTIVE. Previous turn PROGRESS v52 packaged
+and exact-image integration passed. Shared scripts still locked. Own VM image
+body/spec/growth/writer/snapshots: track validated backed prefix separately from
+used tables and metadata quota. This removes quota-sized zero-tail scans from
+repeated append/planning/alias checks, preparing DMA inventory for dynamic storage.
+All construction/adoption/retirement transitions must maintain count. v52 frozen.
+
+2026-10-04 v52 READY FOR NUC (not Intel-HW-validated). Exact-image QEMU51414
+TERM0 USB UEFI4CPU/logdelivery/graphics-tools/quiet-xhci; Logs and Console from
+Apps passed. /tmp/cubit-usb-live.n5anx45r, serial/qemu fatal scan empty. Image
+SHA rechecked d6649d735b66857e6560da41a67e16faf578af4d8199a1e390ba822415e03174
+at graphics-primary-v47-ws22fhfc/kernel/cubit-intel-v52.img. Same triangle256
+payload asv51; growable directory receipts with2inline links, per-context CPU
+metadata reservations, savedreply prehold growth, revalidated ownership/epoch
+and publication capacity. v49/v50/v51 preserved by packaging hash checks.
+NUC ask sustained completed256/requested256/result0, retirement0/result0; first
+transportfailure+nearbyintel records if failing. Do not claim individual metadata
+growth executed on NUC without corresponding runtime evidence. Shared fixture
+installation still pending lock (explicit conflict73); all6 passed privately.
+All own jobs terminal, no held lock. Full dynamic VM DMA/level/reference metadata
+and broader driver objective unfinished; no goal completion claim.
+
+2026-10-04 v52 package80573 TERM0. Source/payload/preserved v49/v50/v51 hash
+audits passed. v52 SHA256 d6649d735b66857e6560da41a67e16faf578af4d8199a1e390ba822415e03174.
+Exact-image private QEMU launched USB UEFI4CPU/logdelivery/graphics-tools/
+quiet-xhci, TMPDIR=/tmp, timeout240. No NUC-ready claim until gate terminal.
+Previous turn PROGRESS private regression preservation + packaging launched;
+current read confirms successful packaging, not Intel rendering verification.
+
+2026-10-04 v52 package80573 VERIFIED LIVE on last write_stdin, private helper
+holds only workspace lock. Log tmp/package-v52.log now compiling UI dependencies.
+Poll80573; do not restart packaging or edit source inputs while it runs. If
+terminal success, verify end-of-log source/payload/preserved hashes then exact
+image QEMU via helper with env TMPDIR=/tmp python3 tests/usb-optical/run-live.py
+--image kernel/cubit-intel-v52.img --uefi --usb-flash --cpus 4
+--boot-log-delivery --graphics-tools --quiet-xhci --timeout 240. No current
+NUC-ready claim; shared scripts remain untouched, private suite already passed.
+
+2026-10-04 private regressions94253 TERM0 all six PASS: topology9 + role/size
+negatives, admission5+recovery/wrongreply, resume10+3 negatives, boundary12,
+real arena/controller/receipt multi-growth, small-bootstrap writer28+reentry2.
+Private evidence tmp/cubit-native-directory-admission.6sndx3jz,
+tmp/cubit-directory-admission.s0_yarw7, tmp/cubit-directory-resume.09njnm1f.
+All Intel .ads/.adb main/private SHA lists identical. Prepared and launched
+tmp/package-v52.sh via private helper, output tmp/package-v52.log. Separate
+triangle256 artifact, hashes guard v49/v50/v51 and Mesa payload. No image ready
+claim until packaging audits and exact-image QEMU USB/log/apps gate pass. Shared
+fixture installation still pending lock; private verified files retained.
+
+2026-10-04 private regression preservation ACTIVE. Prior turn PROGRESS two-link
+native bootstrap built + isolated topology9/controller composition tests passed.
+Shared editlock again conflict73; did not alter shared scripts. Installed six
+validated test candidates in graphics-primary-v47-ws22fhfc/tests/intel-gpu:
+test-native-directory-admission.py (9 cases), test-directory-metadata-admission.py,
+test-directory-metadata-resume.py, growth_boundary_tests.adb,
+directory_metadata_growth_tests.adb, vm_growth_storage_tests.adb. Paths now
+repo-relative; last renamed Ada main matches file. Private helper94253 running
+all six against private driver sources under its own lock. First patch attempt
+assumed older fixture existed privately; failed before changes, then added it.
+Shared installation still pending; no image change and no new HW claim.
+
+2026-10-04 regression81135 TERM0: insertion resume6 and both negative controls
+also passed (/tmp/nix-shell.1Ue9Wc/cubit-insertion-resume.k516533t). All own jobs
+terminal, no lock held. Next install isolated regression updates when shared
+lock available, then native/QEMU packaging gate before asking NUC validation.
+
+2026-10-04 native two-link bootstrap50342 TERM0 compile/link passed, log
+graphics-primary-v47-ws22fhfc/tmp/native-directory-bootstrap-two.log. Native source
+now uses two inline directory-growth links; three-page growth enters prehold CPU
+metadata stage. No packaged artifact changed. Regression batch81135 live last
+poll: existing directory dispatcher12 + invalidation/ID negativecontrols passed,
+insertion admission5+recovery + wrongreplynegative passed. Evidence under
+/tmp/nix-shell.1Ue9Wc (cubit-native-directories.k5zqe3d3,
+cubit-insertion-admission.98dzct0n). Insertion resume still running; poll81135.
+Shared old directory-admission script remains unadapted until edit lock; isolated
+candidate already passed9. Do not mistake pending script installation for full
+repository regression green, or compile for Intel hardware validation.
+
+2026-10-04 directory metadata regression PROGRESS. Isolated adapted old fixture
+/tmp/test-native-directory-admission-grown.py passes topology9 + oversized/role
+negative controls, Nix28830 TERM0 evidence /tmp/nix-shell.RXCUYQ/cubit-native-directory-admission.9n7vgzlo.
+Real controller/arena/store composition Nix26715 TERM0, source
+/tmp/cubit-growth-store-fixture.ivuDCD/directory_metadata_growth_tests.adb:
+2 inline links, lazy reserve, two bounded commits, stable prefix, quota and
+retained failed commit; VM quota4096 exercises more than one metadata increment.
+Shared lock confirmed busy via explicit conflict exit73 (not read EOF). Pending
+fixture installation still required. Now select native Bootstrap_Growth_Links=2
+so three-directory transactions use the tested prehold growth path. Private
+native compile only, images unchanged; first NUC runtime of this path pending.
+
+2026-10-04 regression closure ACTIVE. Previous turn PROGRESS native deferred
+metadata admission implemented and targeted tests passed, prior allocation-choice
+fixture needs new endpoints. Shared script-edit lock still unavailable; preparing
+/tmp/test-native-directory-admission-grown.py against exact main source with
+original 8 topology cases plus real-topology small-capacity case: defer before
+table reservation/hold, correct requested count and captured revision. No shared
+script changes, no images. Preserve candidate for lock-protected installation.
+
+2026-10-04 existing directory admission65163 TERM1 confirmed fixture compile
+failure (undefined Directory_Link_Capacity/new metadata stubs), evidence
+/tmp/nix-shell.yWb1YG/cubit-native-directory-admission.hs9i3gbr/native-build.log.
+Not a native compiler failure; native22767 passed. Do not report full regression
+green until adapting this fixture under shared lock. All own jobs terminal.
+
+2026-10-04 directory metadata native wiring PROGRESS, NOT ready for inline shrink.
+main now has per-context CPU Record_Growth controllers, pending request before
+Reserve_Private/Hold_Work, saved reply reuse after insertion metadata, epoch and
+owner checks before AND after Step, capacity check before re-admission. Native
+55550 TERM0 initial; updated recheck22767 TERM0. Nix97681 TERM0 extracted admission
+PASS5+recovery/wrongreplynegative; /tmp/test-directory-metadata-admission.py,
+/tmp/nix-shell.wQcYFn/cubit-directory-admission.my47jicn. Nix38991 TERM0 resume
+PASS10 + resave/omitcapacity/omitepoch negatives; /tmp/test-directory-metadata-resume.py,
+/tmp/nix-shell.75czEw/cubit-directory-resume.x8b0gpc5. First resume mutation removed
+only pre-Step epoch guard, correctly still protected by post-Step guard; amended
+negative to omit both. First admission extraction typo fixed (no code defect).
+Shared script-edit lock unavailable again. Existing directory-admission extractor
+includes new branch but its fixture lacks new metadata endpoint stubs: needs
+fixture update under lock before this work is regression-complete. Keep native
+inline Capacity unchanged, no image packaging, no hardware claim. Next preserve
+new scripts + adapt prior admission fixture; test controller/receipt composition
+and smaller native bootstrap. Source and images otherwise preserved.
+
+2026-10-04 native directory metadata admission ACTIVE. Previous turn PROGRESS
+terminal-success expansion tested/native compiled. Own main.adb per-context
+Record_Growth controllers, saved-reply pending stage before Reserve_Private and
+Hold_Work, epoch/owner/capacity revalidation. Keep native inline quota unchanged
+until extracted admission/continuation regressions verify new path. No images.
+
+2026-10-04 native adopted-receipt compile83463 TERM0. All own processes terminal,
+no held lock, no packaging. Native request handling still uses existing inline
+growth capacity; next step is per-context deferred metadata admission, not a new
+NUC image for these library-only changes.
+
+2026-10-04 prehold receipt evidence PROGRESS. Successful adopted directory
+receipts may now extend stable metadata BEFORE Rearm; active/failed/consumed
+unadopted receipts still reject. Start also rejects Commit_Tried, including an
+idle receipt consumed by premature Commit (previously Start could report accepted
+even though Step would reject). Nix51777 TERM0 updated small-bootstrap writer
+fixture PASS28+interruption2, adopted-prefix preservation through all Rearm
+ownership checks and repeat, plus boundary PASS12 including Commit-before-Start.
+Temporary fixture paths above retained; shared test-script lock still unavailable.
+Private copy21849 TERM1 typo missing source before any build; corrected copy/build
+83463 launched at tmp/native-growth-adopted.log. No image modified.
+Integration map: per-context controllers analogous to Mirror_Controllers, growth
+pending under In_Place_Active before Hold_Work, receipt capacity request after
+Needed plan and before Reserve_Private, saved reply reused after insertion
+metadata continuation, revalidate owner/source epoch on resume. Native default
+must remain full capacity until admission/retirement wiring and tests are ready.
+
+2026-10-04 prehold growth integration prerequisite ACTIVE. Previous turn
+PROGRESS: growable retained plan built/tested. Current source confirms receipt
+is PER CONTEXT (Private_Contexts.Growth), not global insertion scratch. Native
+Start_Directories currently Rearms only after hold; prehold metadata growth must
+preserve already adopted receipt evidence rather than clear it prematurely.
+Own Extend_Growth_Metadata terminal-success gate and Start consumed-attempt
+guard; test extension after successful adoption before Rearm. Native per-context
+metadata controller lifetime/retirement still must be integrated, not replaced
+with one global reservation. No image changes.
+
+2026-10-04 native growable-receipt compile17554 TERM0, compile/link passed.
+All own jobs terminal; images unchanged and no build lock held. Next integrate
+growth receipt capacity admission with native CPU metadata allocation before
+the context hold, then shrink native inline bootstrap. Retained DMA/level and
+reference arrays still quota-sized; do not claim dynamic VM work complete.
+
+2026-10-04 directory receipt storage PROGRESS. VM generic adds independent
+Bootstrap_Growth_Links (default Capacity); retained plan now Record_Store.
+Growth_Capacity/Extend_Growth_Metadata expose committed CPU storage only before
+attempt or after Rearm; begun/failed/commit-consumed receipts reject extension.
+Start rejects insufficient metadata before consuming attempt or callbacks.
+Rearm clears only used records, preserves stable storage. Native defaults remain
+full quota until prehold growth admission is integrated. Nix68746 TERM0 existing
+writer28+interruption2+bind20+repeat4. Nix3785 TERM0 temporary small-bootstrap
+fixture /tmp/cubit-growth-store-fixture.ivuDCD: two inline links, overcapacity
+rejection, extension, all writer failures/owner loss/reentry, extension blocked
+after attempt, successful Rearm extension and second growth, suffix guards.
+Shared script-edit lock unavailable. Preserve both temporary fixtures for repo
+installation. Private native compile17554 LIVE, tmp/native-growth-store.log.
+No image packaging; no Intel hardware validation or fresh SPARK proof claimed.
+
+2026-10-04 growable directory receipt ACTIVE. Previous turn PROGRESS: duplicate
+DMA list removed, transient request-sized plans tested/native compiled. Own VM
+image spec/body and growth writer: replace retained plan array with Record_Store,
+independent bootstrap size, and explicit pre-attempt metadata extension. Native
+bootstrap selection/service growth wiring remains a later integration step;
+do not silently reduce native capacity before that exists. Images stay frozen.
+
+2026-10-04 native receipt compile83299 TERM0. Private intel-gpu compile/link
+passed; no image packaged. Hosted results above remain regression evidence,
+not SPARK proof or NUC validation. All own processes terminal, no lock held.
+
+2026-10-04 receipt footprint PROGRESS. Growth receipt now has one authoritative
+Child_DMA per plan entry, not a duplicate capacity-sized Pages array. Start and
+Resolve temporary plans are min(quota, request length); Commit temporary plans
+are actual receipt Count. Retained plan remains quota-sized: this is preparatory
+reduction, not completion of growable VM metadata. Nix13842 TERM0 writer PASS28,
+callback interruption PASS2, growth/bind PASS20 + repeated PASS4. Temporary
+boundary fixture /tmp/cubit-growth-boundaries.uKhlCi, Nix45242 TERM0 PASS12:
+empty/short/exact/over-quota requests and idle/premature commit, no GPU callbacks.
+Shared test-script edit lock unavailable; preserve fixture for later installation.
+Private native compile83299 running, log tmp/native-growth-receipt.log. Only
+three owned VM source files copied to private workspace; v49/v50/v51 images
+unchanged. Next poll83299; no hardware claim for this receipt change.
+
+2026-10-04 graphics continuation ACTIVE. User reports teapot visible on NUC;
+three-cycle completion/retirement not yet reported. This is physical rendering
+evidence, not validation of v51 (teapot is separate v50). Previous implementation
+turn PROGRESS (admission regression preserved); latest chat adds hardware evidence.
+Own VM growth receipt/backing writer and resolver: remove duplicate retained DMA
+list and size transient plans to actual transaction length, bounded by VM quota.
+Will run isolated Nix growth regressions. No image changes, no native build or
+shared script edits planned. Full dynamic VM metadata remains unfinished.
+
+2026-10-04 deferred regression preservation PROGRESS. Sharedlock24362 acquired
+and released for installing tests/intel-gpu/test-insertion-metadata-admission.py
+from verified temporary fixture; repo-relative source path and uniquemktemp
+outputs. Nix76468 TERM0 PASS5+recovery, wrong-reply mutation fails. Evidence
+/tmp/nix-shell.gah3sO/cubit-insertion-admission.fmhsr7xg. README documents saved
+authority ordering. v51 remains frozen/current NUC target, no source/image
+behavior changed this turn. No live jobs/held lock. Next actual growth work:
+DMA/level/reference arrays and directory plan are still capacity-sized; do not
+increase Table_Pages as substitute for dynamic metadata. Await NUC evidence for
+new native offline/live backing and prehold insertion allocation paths.
+
+2026-10-04 v51 READY FOR NUC, not Intel-HW-validated. Correct-profile QEMU94080
+TERM0: USB UEFI4CPU boot-log-delivery, graphics-tools Logs+CCL Console from Apps,
+USB LIVE BOOT PASS. Evidence /tmp/cubit-usb-live.z01gvuhy. v49/v50 preserved hashes
+rechecked. v51 SHA23ce5b9f37e8367fdb01d174df2ba74931c9841bc4c74425014916ac918eee75
+at graphics-primary-v47-ws22fhfc/kernel/cubit-intel-v51.img. Same256triangle Mesa
+payload asv49, driver now offline/live incremental backing and child/parent
+retirement plus512word growable insertion scratch/prehold savedreply stage.
+NativeVM metadata quota64 remains, not claimed fullydynamic. QEMU exercises
+CuBit boot/apps/logging, not Intel graphics. NUC ask256/256result0, retirement0/
+result0, initial table provenance ready records4, final contexttable+parentslice
+retirement acknowledged; firsttransportfailure+adjacentintel logs if failure.
+All jobs terminal, no buildlock held. Temporary admission regression still
+awaits shared script-edit lock before repo installation. v50teapot remains
+separate olderdriver experiment; do not conflate its result withv51.
+
+2026-10-04 v51 QEMU44466 TERM1 after BOOT LOG DELIVERY and GRAPHICS TOOLS PASS:
+final harness expected noisy xhci optical/reset markers but image quiet-xhci.
+Serial has native USB ISO mount, procmgr filesystem load and desktop displayready;
+panic/exception/fatal/assertion scan empty. Exactimage rerun94080 with supported
+--quiet-xhci plus prior USBUEFI4CPU/logdelivery/graphics-tools flags. Not image
+change or weakened script assertions; explicit correct image profile selected.
+Poll94080. Shared script lock still unavailable on first current-turn check.
+
+2026-10-04 exactimage QEMU44466 LIVE confirmed: /tmp/cubit-usb-live.wdicklqc,
+BOOT LOG DELIVERY PASS already printed. graphics-tools check stillrunning.
+Failed94698 process cleanup confirmed by script finally terminate/wait. Poll44466
+before any new run; no NUC-ready final until fulltest terminal.
+
+2026-10-04 QEMU94698 TERM1 harness AF_UNIX path too long before monitor attach
+(private helper's long TMPDIR). No boot result inferred. Restart authorized by
+terminal failure with env TMPDIR=/tmp inside same private helper, unique tempfile
+directory generated by run-live.py. This is harness-path repair, not image change.
+
+2026-10-04 v51 packaged:78973 TERM0 input/payload/preserved-image hash audits
+passed. New image SHA25623ce5b9f37e8367fdb01d174df2ba74931c9841bc4c74425014916ac918eee75.
+Exactimage QEMU94698 launched private helper: USB UEFI4CPU boot-log-delivery and
+graphics-tools, timeout240. Poll94698; do not rerun packaging or restart QEMU
+on observation timeout. Not yet NUC-ready; QEMU cannot validate Intel rendering.
+
+2026-10-04 v51 regression batch PROGRESS / package VERIFIED WAIT. Nix84270
+TERM0: offline admission20, directory admission8, directory dispatcher12,
+allocation routing15, metadata resume6, all respective negative controls fail.
+Evidence under /tmp/nix-shell.IiIWeu (offline-admission.l0g2yo9r,
+native-directory-admission.md_pmsm6, native-directories.yidasc6k,
+allocation-routing.hpszkc0p, insertion-resume.bou8294_). Package78973 confirmed
+LIVE on last write_stdin; private build now compiling CCL dependencies, log
+tmp/package-v51.log. DO NOT restart. On completion inspect audits/hash, then
+private run tests/usb-optical/run-live.py --image kernel/cubit-intel-v51.img
+--uefi --usb-flash --cpus 4 --boot-log-delivery --graphics-tools --timeout 240.
+Use private workspace helper/lock, not shared script (private has graphics-tools).
+Existing image hashes guarded in package script. Shared build lock remainsbusy;
+temporary admissionfixture not yet installed. No NUC-ready claim until gates.
+
+2026-10-04 v51 candidate ACTIVE. Prior turn PROGRESS reply ordering fixed.
+Sharedlock stillbusy; temporary admission fixture preserved. Native source
+directory hashes match private snapshot exactly. Own private tmp/package-v51.sh,
+new cubit-intel-v51.img triangle256 profile, existing Mesa hash asserted. Script
+checks oldv49/v50 hashes, currentdriverinputs/payloads before/after build. Main
+hosted regression batch84270 running offline/directory admission, directory
+finalizer, routing, metadata resume. Candidate not yet NUC-ready; QEMU gate next.
+
+2026-10-04 metadata reply ordering PROGRESS verified. Native34251 TERM0 private
+compile/link. Nix98853 TERM0 extracted admission PASS5+recovery; wrong-reply
+negative fails. Evidence/source /tmp/cubit-insertion-admission.qm0fjF/test.py and
+native.log/wrong-reply.log. Tests configure failure, save failure then successful
+next caller, request rejection AFTER save, already-saved insufficient storage.
+Reply_Saved prevents direct reply after cap consumption. Shared lock still busy
+on second nonblocking check: preserve temporary fixture and install it into
+tests/intel-gpu/test-insertion-metadata-admission.py when script-edit lock free;
+make root relative and output mktemp then rerun. No live jobs/held lock, images
+unchanged. Next broader native integration/packaging and dynamic VM metadata.
+
+2026-10-04 metadata reply ordering ACTIVE. Previous turn PROGRESS native pending
+stage. Save_Update_Reply now tracks local Reply_Saved and terminal response routes
+by actual saved authority, not original parameter. Save occurs before Request so
+failed save leaves controllerIdle. Shared buildlock busy: new extracted admission
+fixture under /tmp/cubit-insertion-admission.qm0fjF/test.py, test98853 running.
+Private native34251 running tmp/native-insertion-reply-order.log. No shared test
+scripts/build outputs edited; images unchanged.
+
+2026-10-04 native insertion metadata PROGRESS. Native65281 TERM0 compiled/linked
+private driver; resume9816 TERM0 PASS6 extracted actual continuation and two
+negative controls (resave-reply, omitted epoch) fail. Evidence
+/tmp/nix-shell.6HIkkh/cubit-insertion-resume.vtvi587i. Native512 inline words now
+grow on demand before Hold_Work; old32768-word eager storage removed. VM64quota
+still unchanged. Remaining: full admission fault fixture incl configure/request/
+saveReply failures, combined reusable and directory-growth path, native runtime
+packaging. A failed save after accepted metadata request currently leaves that
+controller non-idle (fail-closed, no allocation); audit recovery/explicit terminal
+handling before shipping. No images changed; all jobs terminal/no lock. This is
+source and compile/hosted evidence only, no Intel HW claim.
+
+2026-10-04 native insertion metadata stage ACTIVE. main now captures saved reply
+before GPU Hold_Work for oversized insertion, one Record_Growth phase per turn,
+rechecks owner/source epoch then re-enters admission with explicit Saved_Reply
+mode (no second cap save; all terminal replies use cap). Global In_Place_Active
+blocks competing mutations during metadata growth, but Update_Held remainsFalse.
+Application_State bootstrap words512 replaces eager32768; quota unchanged.
+Native65281 TERM0 tmp/native-insertion-metadata-pending.log. New resume fixture
+pending; not packaged/tested on HW, existing images unchanged.
+
+2026-10-04 insertion allocator composition PROGRESS. Nix36102 TERM0 new
+insertion_metadata_growth_tests: actual Record_Growth/Metadata_Arena/receipt
+storage lazily reserves, commits64KiB bounded steps, preserves old prefix on
+second extension, quota rejects unchanged, commit failure retains capacity/no
+retry. Native inspection: Metadata_Platform uses CPU Owned_Reservations syscalls,
+NOT Buffer_Memory supervisor ticket allocator. Integration must preserve that
+separation. Handle_VM_Update validates before Hold_Work but saves reply after
+hold; implement a distinct pre-hold metadata-pending request stage with captured
+identity/generation, saved reply and revalidation, covering both reusable-leaf
+and directory-growth insertion. Do not rerun whole handler and save reply twice.
+Native inline default unchanged; no image edits. All jobs terminal/no lock.
+
+2026-10-04 insertion allocator composition ACTIVE. Prior turn PROGRESS (growable
+word storage). Read native update handler: request validation precedes Hold_Work,
+but reply ownership currently transfers after hold. Before changing that order,
+compose actual Record_Growth/Metadata_Arena with insertion store, test bounded
+reserve/commit/publish and failures preserving capacity. Native hook not claimed.
+
+2026-10-04 insertion storage PROGRESS. Nix23916 TERM0 new dynamic storage fixture,
+existing in-place insertion and steppedPASS10. Private native18329 TERM0 compile/
+link tmp/native-insertion-storage.log. Exact words now stable Record_Store with
+configurable inline bootstrap and guarded extension; native defaults unchanged
+until supervisor metadata-growth integration. Still not a growable native VM
+quota: DMA/level/reference arrays and growth plan remain capacity-sized. Next
+wire scratch-storage capacity to native asynchronous metadata provider before
+reducing inline words. All jobs terminal, no locks/images/commits changed;
+scoped diff check passed. No new HW or SPARK proof evidence.
+
+2026-10-04 insertion storage growth ACTIVE. Prior turn PROGRESS (bootstrap and
+retirement). Own VM_Image spec/body/insertion child: exact leaf receipt words
+now Record_Store, configurable bootstrap independent of VM quota. New guarded
+Extend_Insertion_Metadata accepts only idle/unpoisoned state, capacity check
+rejects before writes. Defaults preserve native capacity until allocator hook
+is added; no claim native64quota removed. New vm_insertion_storage_tests plus
+existing insertion regression running23916; native private compile running.
+First test82094 caught fixture's wrong assumption that successful Commit poisons
+receipt: actual API deliberately allows reuse. Corrected tests cover idle growth,
+active rejection and failed-attempt rejection. No images changed.
+
+2026-10-04 retirement recheck COMPLETE: stable-source19081 TERM0 PASS19 native
+group-start/completion paths with child-before-parent and missing-recycle/order
+negative controls. Evidence tests/intel-gpu/build/context-parent-completion.jgptbltd.
+Together with bootstrap52523 this covers composed CPU initialization/growth/
+materialization plus separately tested retirement callbacks, NOT one end-to-end
+kernel/GPU run. All jobs terminal; no lock held. Next native integration checkpoint
+should preserve existing images and report new adapter separately; remaining64
+VM metadata ceiling still needs real dynamic design, not a raised fixed limit.
+
+2026-10-04 bootstrap growth composition PROGRESS. Nix52523 TERM0 actual native
+slices/Initialize -> real backing/VM/provenance -> volatile RAM materializer
+passes seven tables/four scratch pages, word/guard checks, scratch-first and
+child-before-root flush order; overlap-scratch/wrong-backed-count controls fail.
+Evidence /tmp/nix-shell.vo3aDs/cubit-bootstrap-growth.75lk1zm3. First fixture
+correctly rejected omitted scratch mappings; corrected fixture, not production.
+Retirement32820 failed source-stability guard after transient comment edit
+(reverted); no valid new retirement result claimed. Re-running stable-source
+retirement test; no image changes. Full dynamic VM quota and native HW pending.
+
+2026-10-04 bootstrap composition ACTIVE. Prior turn PROGRESS: physical bootstrap
+four, native compiled, admission20/finalizer8 passed. Own new bootstrap fixture
+extracting native slicing/initialization with real backing/VM/provenance and RAM
+materialization after offline expansion. Preserve native images and peer sources.
+
+2026-10-04 four-page bootstrap PROGRESS verified compilation, not HW. Native64357
+TERM0 compiled/linked private driver; finalizer58136 TERM0 PASS8 plus both
+negative controls. Evidence /tmp/nix-shell.86LReZ/cubit-native-offline-bind.s84blmxn.
+Admission PASS20 precedes this production switch; function itself unchanged.
+Source now reserves16KiB rather than256KiB initial GPU page tables per context;
+later backing via offline/live incremental allocation. CPU mirrors/VM quota
+remain64pages and broader dynamic quota work is incomplete. Next verify native
+bootstrap slices/provenance and composed initialize-grow-publish-retire with
+four-page physical parent before packaging new image. No current NUC image was
+changed; no live jobs/build lock; git diff --check passed scoped files.
+
+2026-10-04 physical table bootstrap reduction ACTIVE. Admission63276 TERM0
+PASS20 + wrong sizing/save-failure/role negatives fail. Evidence
+/tmp/nix-shell.Ub3MuH/cubit-offline-admission.9z29m7is. main Private_Table_Pages
+now4, ledger/mirror requests remain Application_State.Table_Pages64: startup
+physical slices and provenance enumerate4 while metadata has growth room.
+Native64357 running private tmp/native-four-page-bootstrap.log; finalizer58136
+running against current main. Images unchanged. Remaining native VM quota64 is
+not represented as full dynamic capacity; this removes eager physical backing.
+
+2026-10-04 offline admission fixture ACTIVE. Prior turn PROGRESS (routing15).
+Own new test-native-offline-admission.py: actual Try_Offline_Bind_Growth with
+real preflight/topology/service/tickets, modeled render lookup/IPC/allocator.
+Nix63276 running; shared script lock released. Production/images unchanged.
+
+2026-10-04 allocation routing PROGRESS. Nix68343 TERM0: extracted actual
+service-loop continuation block and VM dispatcher pass15 checkpoints; removing
+pending gate, offline route or ticket gate each fails. Evidence
+/tmp/nix-shell.u8JAHQ/cubit-allocation-routing.19fwgagr. Supervisor progress and
+finalizer effects modeled; real finalizer separately PASS8 in prior turn.
+Read-only inspection also confirms preparation/register/submission and metadata
+growth gate on Update_Pending. Actual offline admission gate fixture remains
+next before reducing physical bootstrap. No production/image changes this turn,
+no HW/proof claim, no live jobs or held build lock.
+
+2026-10-04 deferred allocation routing ACTIVE. Previous turn PROGRESS (native
+finalizer PASS8). Own new tests/intel-gpu/test-native-allocation-routing.py and
+README: extract actual event-loop completion and VM dispatcher branches, model
+supervisor progress, check no early or misrouted offline continuation. Native
+startup reservation and published images remain unchanged.
+
+2026-10-04 overnight handoff: native offline bind adapter PROGRESS, follow-up
+stopped at verified checkpoint. Native compile/link34743 TERM0 in private
+graphics-primary-v47-ws22fhfc, tmp/native-offline-bind-dispatch.log. Hosted
+17752 TERM0: actual Finish_Offline_Bind with real service/binding/VM/provenance
+PASS8; omitted reply-loss quarantine and wrong ordinal negative controls fail.
+Evidence /tmp/nix-shell.An7lMj/cubit-native-offline-bind.45kys5qo. Initial failed
+fixture used incorrect Arena_DMA for its CPU offset; corrected test only and
+added explicit valid-backing assertion. Native admission/allocator/IPC/event-loop
+integration remains untested at runtime; no SPARK proof or HW claim. All jobs
+terminal, no build lock held. Images v49 and v50-teapot unchanged.
+Next: test actual offline admission and event-loop gates, then separate four-page
+physical bootstrap from 64-page mirror/quota and provenance capacity. Do not
+equate metadata capacity with allocated RAM or widen fixed limits as a fix.
+NUC request remains v49: sustained256/256 result0, service retirement0/result0,
+context table/parent retirement acknowledgments and MESA-TIMING1/32/256; on
+failure first transport error plus adjacent intel-gpu records. New adapter is
+source/private-binary only, not in those images. Broader GPU goal unfinished.
+
+2026-10-04 native offline bind allocation ACTIVE. Prior turn PROGRESS
+(authenticated preflight). Own main deferred offline grow dispatcher using shared
+Update_Pending gate/reply slot, but offline ownership checks, not live GPU hold.
+Revalidate source/session/BO after yields, install ticket and append provenance,
+append CPU image backing then bind/reply; failures retain/quarantine. Keep native
+startup allocation unchanged until composed adapter tests pass.
+
+2026-10-04 authenticated offline bind preflight PROGRESS. Allocation-free
+Check_Offline_Bind_Request verifies initial wire format (offsetword0high32,
+fullhandleword1), exact session/owned extent, initialized/unsealed VM and captured
+revision. Existing Handle now invokes it on bind; unbind behavior unchanged.
+Eligibility doesn't claim topology/data aliases or physical table capacity.
+Nix51530 TERM0 actualservice+handles+binding+VM PASS21 incl unavailable backing,
+append then stale-capture rejection, revalidated offset binding and unbind.
+Existing buffer requests identity/retirement/revocation/race/growth suites and
+in-place binding10 PASS. Private native15467 TERM0
+tmp/native-offline-bind-preflight.log. README command added. All ownjobs terminal,
+no lock held, images unchanged; no GPU/proof claim. Next native async allocation
+and deferred reply adapter must use this preflight before and after allocation,
+then append/register and bind without allowing intervening context publication.
+
+2026-10-04 authenticated offline bind preflight ACTIVE. Prior turn PROGRESS
+(offline planner). Own Buffer_Requests.Binding preflight and tests. Validate
+offline wire offset format, exact session/BO extent and captured source revision
+without allocations. Integrate check in existing offline bind handler; later
+asynchronous adapter must repeat it after allocation, not trust saved eligibility.
+
+2026-10-04 offline allocation planning PROGRESS. Growth shares read-only topology
+traversal with explicit frozen-state requirement; live Inspect stays sealed-only.
+Inspect_Offline reports topology and additional physical backing after subtracting
+unused reserved prefix; metadata Fits_Reserved is independent. No page allocation,
+publication or weakened live gate. Native offline adapter must capture/revalidate
+epoch and authenticate whole backing group before Append_Offline_Backing.
+Nix97416 TERM0 planner22 composition cases PASS, existing topology49+512 conflict
+positions PASS, writer28+callbackinterruption2 PASS. Private native53093 TERM0
+tmp/native-offline-planning.log. README updated, all ownjobs terminal, no lock held.
+No image changes or new HW/proof claim. Goal remainsactive; next wire bounded
+offline allocation/provenance and deferred bind reply before reducing bootstrap.
+
+2026-10-04 offline allocation planning ACTIVE after goal continuation. Previous
+turn PROGRESS (completed offline append tests and handoff). Own VM_Image.Growth
+offline topology preflight and tests. Share traversal but preserve sealed-only
+live Inspect; offline plan distinguishes absent directories from unbacked slots,
+accounts for already reserved unused pages, no allocation/authority mutation.
+No test-image change; native offline async adapter remains next.
+
+2026-10-04 MORNING HANDOFF — overnight follow-up stopped after this handoff;
+full graphics goal remains unfinished. Previous work was PROGRESS, not blocked.
+
+Source changes since the v49 checkpoint:
+- Initial-root native VM updates allocate missing directories only. Each new
+  allocation keeps its own ticket/provenance, publication is stepped, directory
+  TLB confirmation precedes adoption, then the original held request proceeds
+  through leaf binding and a distinct invalidation. Receipts are per-context.
+- Initial-parent retirement now validates incremental ledger membership and
+  releases child tickets before the combined context/ring/scratch parent.
+- Added offline Append_Offline_Backing with atomic alias/geometry/quota checks,
+  stable prefix/mappings and revision advancement. This is a CPU-image primitive,
+  not yet an asynchronous native offline allocation path.
+
+Latest verification: native52947 TERM0 tmp/native-offline-backing.log. Hosted
+61643 TERM0 offline13 + growthbind20/repeated4; final documented command39747
+TERM0 offline14 (adds unused-reserved alias rejection). Earlier native72501 and
+extracted dispatcher12, admission8, real-memory IO, mutation negatives, writer28,
+interruption2 and lifecycle11 are recorded below. No additional physical Intel
+GPU runs, no new SPARK proof claim. All own jobs terminal; no build lock held.
+
+Remaining: wire authenticated bounded offline allocation/provenance before
+reducing physical startup64->4 (current initial binds otherwise regress); extend
+incremental growth to replacement-root contexts; remove the native64table quota
+through genuinely dynamic image/backing metadata rather than a larger constant;
+continue allocation accounting/retirement, multi-client and Mesa/compositor work.
+Device-local VRAM, system backing, GPU VA and client quotas remain distinct
+requirements; this work does not establish discrete-GPU support.
+
+Hardware request: test existing cubit-intel-v49.img in private
+graphics-primary-v47-ws22fhfc/kernel. Expect sustained completed256/requested256/
+result0, MESA-SERVICE retirement0/result0, context-table and parent retirement
+acknowledgedTRUE; capture MESA-TIMING call1/32/256. On failure send first transport
+failure and adjacent intel-gpu records. v49 does NOT include the newer incremental
+directory/offline append work above. Optional v50-teapot is a separate existing
+three-cycle workload after v49; expect3/3 result0 and final retirement0/result0.
+No image overwritten, no commit/push. Do not infer HW validation from compilation,
+hosted memory fixtures or the previously recorded QEMU USB/desktop checks.
+
+2026-10-03 offline backing prerequisite ACTIVE. Previous turn PROGRESS (native
+IO/admission tests). Inspection: Handle_Application_Bind maps unsealed offline
+image before first submission, so changing physical bootstrap64->4 now would
+regress multi-directory initial binds. Own VM_Image offline backing append API
+and tests; keep native allocation unchanged until offline async adapter exists.
+Authenticate backing at caller, validate aliases/geometry atomically, no GPU IO.
+
+2026-10-03 native directory ownership/admission audit PROGRESS. New extracted
+IO fixture executes actual Directory_Exclusive/Table_ID/Initial_Table_Mapping/
+read/write/flush functions with real ledger and volatile hostRAM. PASS reserved
+and foreign-ticket rejection, staged ID absence, owner/generation/changedDMA/
+revocation, callback exclusionloss, adopted ordinal5->ledger65. Two mutation
+negatives wrongticket/wrongordinal fail. Nix18731 TERM0 evidence
+/tmp/nix-shell.aE8cWl/cubit-native-directory-io.kwp3f_94. Initial1642 extraction
+matched forwarddecl; corrected to actualbody. New admission fixture extracts
+allocation-selection block, uses actual VM/topology planner; PASS8 exact1/2/3
+page incremental size/role, replacement/headroom fallback, occupied/misaligned/
+overquota noallocation. Oversized/wrongrole mutations fail. Nix15041 TERM0,
+/tmp/nix-shell.BILSgn/cubit-native-directory-admission.c8rhpfo6. Initial24682
+fixture type/component namecollision fixed. README commands added. All ownjobs
+terminal; script locks39468/72153/25332/91542 released. Production/images unchanged.
+Hardware visibility/allocation callbacks still modeled, not GPU/proof evidence.
+Next reduce initial physical table reservation to used bootstrap distinct from
+mirror/quota capacity now incremental publication exists, then broader growth.
+
+2026-10-03 native directory ownership IO audit ACTIVE. Previous turn PROGRESS
+(initial-root incremental path). Own extracted native directory gate/resolver/IO
+fixture with actual provenance and volatile CPU memory, modeled ticket authority
+and cache visibility. Check reserved pages, staged-ticket identity, generation,
+owner loss and actual image ordinal remapping. No image changes.
+
+2026-10-03 native incremental initial-root growth PROGRESS. main now reserves
+Incremental_Tables ticket and allocates only missing directories for initial-root
+contexts with ledger headroom. Installs registry then appends one page/turn;
+authenticated ledger IO resolves used ordinals plus staged IDs. Real writer runs
+one IO/turn, fresh directory TLB then commit maps appendedIDs to newordinals.
+FinishPrivate retains backing; same held request/reply transfers to existing
+leaf-bind state machine with independent TLB/publicgeneration. No fallback after
+failure. Per-context Growth receipt replaces unused global receipt; rearm checks
+same source/root. Replacement-root fallback and64tablequota remain.
+Private native72501 TERM0 tmp/native-incremental-directories.log; images unchanged.
+Nix37534 TERM0 extracted dispatcher12cases + omit-TLB/wrong-ID negatives PASS,
+real provenance modeled writer/TLB/supervisor. Evidence
+/tmp/nix-shell.2MP0A0/cubit-native-directories.pzl638dn. Initial80713 fixture compile
+name shadowing fixed. Nix10672 TERM0 real writer28+interruption2, growthbind20,
+repeated4, lifecycle11 PASS (real RAM, modeled GPU/TLB receipts). README updated.
+All ownjobs terminal; shared script locks87377/85534 released. No HW/proof claim.
+Next strengthen native DMA/ledger adapter and request admission coverage, then
+replacement-root incremental support and native mirror/backing quota growth.
+
+2026-10-03 native incremental initial-root growth ACTIVE. Prior turn PROGRESS
+(typed metadata budget evidence). Own intel-gpu main.adb/application_state.ads
+and adapter tests. Wire new table-only ticket allocation, append provenance,
+stepped authenticated directory writes, fresh directory TLB confirmation, then
+existing stepped leaf bind with separate invalidation under one held request.
+Retain full replacement fallback for replacement-root contexts; no fallback after
+partial incremental publication. Private compile, no image replacement.
+
+2026-10-03 provenance bootstrap budget PROGRESS. Real typed composition confirms
+first64KiB metadata commit gives2064refs at native1MiB/32768 quotas; initial64
+plus incremental60 needs no further allocator phase. New table_metadata_growth
+fixture also crosses measured capacity with secondcommit, stable existing IDs/
+generation, wrongowner/stalegen rejection, one resolver/page and bounded growth
+phases, untouched uncommitted suffix. Nix38409 and documented existingGPR56159
+TERM0 PASS. Initial49263/27972 failures were fixture DMA addresses above existing
+4GiB encoding restriction; corrected model addresses, production unchanged.
+README command verified. All ownjobs terminal. No HW/SPARK proof claim or image
+changes. Next native incremental directory allocation/publication can use current
+ledger headroom under64table quota, but must still check capacity before append;
+larger quotas need normal growth, not an assumed fixed cap. Goal remains active.
+
+2026-10-03 provenance bootstrap budget ACTIVE. Previous goal work PROGRESS
+(native membership census); latest user answer was status only. Revalidating
+actual typed ledger capacity under native 1MiB/32768 quotas before wiring
+incremental allocation. Own new table_metadata_growth_tests.adb and isolated
+temporary GPR; real provenance/store/growth with modeled memory grant callbacks.
+Check bootstrap64 plus incremental60 without new commits, then capacity crossing
+with stable IDs and owner/generation rejection. Images v49/v50 unchanged.
+
+2026-10-03 initial-parent membership census PROGRESS. Native parent preflight now
+observes1registry slot and <=64ledger refs/turn, admitting only exact canonical
+closed incremental tickets found in that context ledger. Revoked entries included;
+unknown/foreign-ledger/replacement rows retain parent. Captures registry revision/
+capacity and ledger generation/count; mutation restarts prefix, cached generation
+mismatch rejects; final parent handoff rechecks ledger snapshot. Per-ticket reverse
+admission and alias guards remain, dispatcher keeps parent last. Native61950 TERM0
+tmp/native-context-membership.log. Nix69870 TERM0 census14+2negatives, evidence
+/tmp/nix-shell.g0XlyC/cubit-context-membership.mac3uwsg. Completion52581 TERM0
+native group start+exclusion+helper+finish with real dispatcher PASS19 includes
+65-record mixed group, exact child-before-parent submission, omitted-recycle and
+parent-first negatives; evidence context-parent-completion.xpuhw227. Initial44852
+fixture child resolver denied56; fixed model to distinct child backing. Prep95092
+TERM0 PASS23+3negatives includes context child-specific aliases and revoked ranges;
+evidence /tmp/nix-shell.MiWbJE/cubit-retirement-preparation.dpwkpeu2. All ownjobs
+terminal, shared script locks released, README updated. No image changes/HW/proof
+claims. Native incremental allocation/publication still needs wiring; cleanup
+membership prerequisite is now implemented. Full goal remains active.
+
+2026-10-03 initial-parent membership census ACTIVE. Prior turn PROGRESS. Own
+main bounded registry-to-ledger census, new extracted hosted membership fixture
+and README. Require exact incremental closed-ticket identity and ledger membership
+for every retained session allocation, including revoked rows. Capture registry
+revision/capacity and ledger generation/count across yields; one registry slot
+and at most64ledger references per call. Keep reverse per-ticket admission and
+parent-last dispatcher. Private native compile; shared script edits underlock.
+
+2026-10-03 initial-parent dispatcher integration PROGRESS. Native Poll_Context
+starts parent-last dispatcher on context ledger; event loop advances selected
+context/replacement ledger under shared pending gate. Context exclusion checks
+exact issued session/parent, closed GPU+CPU consumers, no replacement ticket and
+captured source root/epoch (or already retired source). Prepare observes physical
+parent without registry and checks ALL candidates, including equal numeric slot.
+Finish requires completed dispatcher and reopens its ledger before context ack;
+old synchronous single-ticket recycle adapter removed from native path. Existing
+census STILL rejects additional allocations; membership scan remains next.
+Native23524 TERM0 tmp/native-context-dispatcher.log. Nix30073 TERM0 actual
+completion/helper/group gate with real dispatcher PASS18 +3 gate rejection checks,
+preparation20+3negatives, transport12+3negatives all PASS. Evidence
+context-parent-completion.ey_r4oum; /tmp/nix-shell.Pvcv44/cubit-retirement-preparation.xk1k_dql
+and cubit-grouped-table-transport.e8o1rqx_. Initial60478 failed negative-control
+verification: stale incremental binary; force-build47951 confirmed assertion.
+All three mutation fixtures now gprbuild -f, rerun above passed. Script locks held
+and released; all ownjobs terminal. README updated, images unchanged. No NUC or
+formal-proof claim; full goal active, native incremental growth not yet enabled.
+
+2026-10-03 initial-parent dispatcher integration ACTIVE. Prior turn PROGRESS.
+Own main exclusion/start/advance/preflight/completion adapters, parent completion
+and preparation fixtures. Route existing single-parent census-approved cleanup
+through grouped dispatcher; keep census refusing extra allocations until its
+membership proof is added. Same parent-last exact receipt, no early completion.
+Private compile and isolated hosted fixtures; shared script edits only underlock.
+
+2026-10-03 context-parent grouped transport PROGRESS. Shared native callbacks now
+distinguish context anchor (exact Context_Tickets authority, no table registry row)
+from incremental children (registry identity +closed-ticket authority). Parent
+finalization preserves outer context acknowledgment; child retirement uses exact
+per-ticket supervisor receipts and closed-child ack. Registry receipt predicate
+accepts context cleanup only with active release ticket. Native51245 TERM0 private
+compile/link tmp/native-context-group-transport.log. Sharedlock initially busy;
+private fixture55021 PASS12 while waiting, then lock78592 held/applied/released.
+Root fixture46314 TERM0 PASS12 +parent-identity/anchor-slot/receipt-generation
+negative controls. Evidence /tmp/nix-shell.btF0nR/cubit-grouped-table-transport.hvnhh0_n.
+README updated; all ownjobs terminal. Initial-parent exclusion/census/dispatcher
+still need wiring; new context transport branch is not yet reachable natively.
+No new image or physical-HW/proof claim. Full goal remains active.
+
+2026-10-03 context-parent grouped transport ACTIVE. Prior turn PROGRESS.
+Own main grouped callbacks and test-grouped-table-transport.py/README. Extend
+shared transport to distinguish combined context-parent anchor (Context_Tickets
+authority, not table registry) from table-only children; preserve exact receipts
+and closed-child ticket acknowledgments. First integration slice: transport,
+then initial-parent exclusion/census/dispatcher wiring. Do not enable growth
+before remaining wiring. Shared script edit lock, private build, images retained.
+
+2026-10-03 integrated native retirement regression PROGRESS. Nix42488 TERM0:
+actual native gate95/query48 checks; dispatch96 plus2 omitted-guard negatives;
+grouped transport10 pluswrong-slot/stale-generation negatives; preparation17
+plusalias/closed-identity/child-as-anchor negatives all PASS. Current main includes
+initial-parent ledger cleanup. Evidence retirement-dispatch.gz4ginji and
+/tmp/nix-shell.WkYuvq/cubit-grouped-table-transport.wisa8k9r plus
+/tmp/nix-shell.WkYuvq/cubit-retirement-preparation.pl3a3i0v. These compose real
+extracted native decisions with modeled hardware/supervisor facts, NOT NUC/proof.
+All own jobs terminal. No production/image changes this turn. Initial-parent
+incremental-child cleanup is the native integration gap; do not bypass census
+or weaken reserved-page alias rejection to enable growth. Upstream comparison:
+https://raw.githubusercontent.com/torvalds/linux/v6.16/drivers/gpu/drm/i915/gt/gen8_ppgtt.c
+__gen8_ppgtt_cleanup recursively releases descendants before each directory;
+gen8_ppgtt_cleanup then frees scratch. Full goal remains active.
+
+2026-10-03 integrated native retirement regression ACTIVE. Prior turn PROGRESS.
+Read-only integration trace confirms initial-parent census still refuses any
+retained registry allocation; replacement groups already use per-ticket prepare,
+dispatch/receipt/finalize. Initial reserved Source.DMA slots remain protected by
+DMA_Disjoint, so reusing those as new growth pages is not a valid shortcut.
+Cross-checked Linux v6.16 gen8_ppgtt.c cleanup: descendant-first recursion then
+free_scratch, consistent with needed grouped parent-last ownership model (not a
+substitute for CuBit GPU/TLB/CPU authority). Run current native gate/dispatcher/
+group transport/preparation extractors in isolated hosted outputs, no source or
+image changes. Need verify recent parent cleanup preserves combined boundaries.
+
+2026-10-03 native initial-parent ledger cleanup PROGRESS. Finish now calls real
+Recycle_Context_Ledger after source/backing receipt retirement and before context
+ticket ack. Helper rechecks exact session/parent slot-generation receipt, GPU
+deregistered/CPU grants clear; consumes existing receipt via Recycle_Confirmed,
+advances ledger generation and zeros cached table IDs, no second allocator send.
+Mixed ledgers still blocked by census/recycler; grouped initial-parent integration
+not enabled. Nix80640 TERM0 extracted completion+actual helper+real provenance
+PASS18 with64records, stale-generation failure, retained failures, old-ID rejection;
+omitted-call negative control rejected. Evidence context-parent-completion.wmgz3sf0.
+Initial fixture27038 failed install beyond16 inline records; added explicit
+metadata extension;75506 passed. Native25060 TERM0 private compile/link
+tmp/native-parent-ledger-retirement.log. Shared test edits held locks; all released.
+All own jobs terminal; README updated; v49/v50 unchanged. Hardware receipts modeled
+in hosted fixture; no NUC or proof claim. Full goal remains active.
+
+2026-10-03 native initial parent provenance retirement ACTIVE. Prior turn
+PROGRESS. Own main.adb, parent completion fixture and README. Audit: current
+initial parent completion drops backing views after exact supervisor receipt but
+does not sweep/reopen its table ledger or invalidate cached ordinal IDs. Wire
+existing single-ticket receipt recycler (not a second release request), preserve
+census blocking mixed groups. Shared fixture edits under build lock; private
+native compile, no image changes. Grouped initial-parent growth remains pending.
+
+2026-10-03 directory interrupted-commit PROGRESS. Nix64041 TERM1 reproduced
+assertion316: callback-time premature Commit allowed outer Step to continue.
+Writer Held now checks sticky Commit_Tried before and after authority callbacks;
+post-IO checks cannot restore a pending phase or Done after consumed receipt.
+Regression injects at first child store and last parent readback, requires exact
+IO stop, unchanged source and no later commit. Nix84950 TERM0 PASS2 new +28writer
++20growthbind +4repeated +11lifecycle. Objects /tmp/cubit-growth-interrupt-oct3.
+Private native18365 TERM0 compile/link tmp/native-growth-interruption.log.
+README updated; all own jobs terminal; no image changes, no HW/proof claim.
+Native incremental allocation/publication remains unwired; full goal active.
+
+2026-10-03 directory publication interrupted-commit ACTIVE. Prior turn PROGRESS.
+Own growth-backing-writer.adb, vm_growth_writer_tests.adb and README. Native
+integration trace found callback-time premature Commit can be followed by outer
+Step restoring a pending phase. Add failing regression before guard; consume
+attempt with no further IO. No image changes or shared staging; peer scopes
+preserved. Hosted Nix output isolated; private native compile if fixed.
+
+2026-10-03 provenance growth-bind-retirement composition PROGRESS. Recovered
+live Nix session27180; now TERM0, PASS11. Actual volatile provenance IO now
+composes append, directory publication, stepped leaf publication and parent-last
+retirement. Distinct modeled directory/leaf TLB gates required; failed leaf flush
+after store or failed leaf invalidation retain all67ledger records and cannot
+commit/replay. Existing child/parent receipt failure coverage preserved. Evidence
+objects /tmp/cubit-provenance-growth-bind-oct3; README updated. Prior user-answer
+turn was status-only (no progress); this turn completes outstanding test evidence.
+No native source/staging/image changes; v49/v50 unchanged. GPU exclusion,
+visibility and allocator receipts modeled, not HW validation or formal proof.
+All own jobs terminal. Native incremental allocation/publication wiring remains.
+
+2026-10-03 provenance growth-bind-retirement composition ACTIVE. Prior turn
+PROGRESS. Own table_growth_lifecycle_tests/README; extend real volatile-memory
+provenance fixture through stepped leaf publication and distinct leaf TLB gate
+before grouped retirement. Test post-store flush ambiguity and failed leaf TLB
+retain all records. No native source/staging changes; no GPU claims.
+
+2026-10-03 repeated growth/bind composition PROGRESS. Hosted combined fixture
+now reuses same source, retained hardware root and controllers after first
+directory+leaf commit; second growth allocates1PT after first3pages, preserves
+prior leaf and historical-root contents, requires2fresh visibility gates and
+one public generation per request. Leaf phase uses production Start/Step, not
+synchronous Publish. Nix12955 TERM0 PASS20 existingfault/composition cases +4
+repeated full/partial bootstrap and sync/async cases. README updated; no native
+source/image changes this turn, all own jobs terminal. Evidence removes the
+single-growth-only gap in combined tests; native missing-directory allocation,
+provenance registration, IO adapters and publication still need wiring. Full
+goal active; not HW validation or formal proof.
+
+2026-10-03 repeated growth/bind composition ACTIVE. Prior turn PROGRESS. Own
+vm_growth_bind_tests and README. Audit found hosted combined path only exercises
+one growth per VM; validate receipt rearm after intervening leaf epoch, second
+directory allocation on same stable hardware root and monotonically advancing
+public VM generation before wiring native allocation/publication. No root or
+image staging change; peer browser/kernel ownership preserved.
+
+2026-10-03 native stepped removal PROGRESS. Removal Start validates entire range,
+retains immutable source identity; Step invokes at most1 compare/write with
+owner/root/epoch checks across yields and after callbacks. Partial writes,
+premature commit and reentry consume attempt; metadata clears only after exact
+invalidation/Commit. Publish/Execute share implementation. Native main now
+uses common leaf publication stage for both bind/unbind (Leaf_Publication_Started).
+Nix7846 TERM0 new vm_removal_steps_tests PASS20 scratch/fault +existing vm_image
+range/removal/coordinator and insertion/reuse tests PASS. Native26026 TERM0
+compile/link tmp/native-stepped-removal.log. Nix28167 TERM0 application-image
+retirement29, scattered32, retained leaf/insertion writer failure checks PASS.
+All own jobs terminal; README updated. No HW/proof claim, v49/v50 unchanged.
+Directory growth allocation/publication still unfinished; no new timing claim.
+Next integration can compose stepped directory publication and these leaf
+stages while preserving one public VM generation and held exclusion. Goalactive.
+
+2026-10-03 native stepped removal ACTIVE. Prior turn PROGRESS. Own removal
+ads/adb, main publication adapter, dedicated stepped removal tests and README.
+Make unbind match bounded insertion writes, preserve stable source/owner across
+yields, no metadata removal before invalidation. Private build only; preserve
+test images and peer browser/kernel work. No shared build/test scripts planned.
+
+2026-10-03 native stepped insertion PROGRESS. Insertion Start copies exact leaves
+without writes; Step at most1 Write_Leaf, owner/root/epoch checks before/after,
+reentry/premature Commit consume uncertain attempt. Publish/Execute convenience
+use same state machine. Main Advance_Update_Publication wired into Live_VM.Advance:
+native binds yield between leaf writes under held context/admission/reply authority.
+Unbind publication still synchronous; Start validation and Commit metadata scale
+with request. Growth directory allocation/publication remains unfinished; this
+removes a native synchronous leaf loop prerequisite rather than enabling growth.
+Nix60794 TERM0 insertion PASS existing synchronous+4096cycle reuse and10newstepped
+cases;79254 TERM0 binding10 nowactualstepped publication andgrowth+bind20 PASS.
+Native2849 TERM0 compile/link tmp/native-stepped-insertion.log (subsequent spec
+edit comment-only). All own jobs terminal. README updated, v49/v50 unchanged.
+No hardware timing/coherence/proof claim; goalactive.
+
+2026-10-03 native stepped insertion ACTIVE. Prior turn PROGRESS. Growth-path
+trace found native leaf Publish still synchronous; wire coordinator Advance
+publication callback and bounded one-leaf insertion steps before directory
+composition. Own VM image insertion receipt/spec/body, main, insertion tests,
+README. Keep existing synchronous convenience API for existing compositions;
+no new hardware register semantics or image overwrite. Peer kernel/UI untouched.
+
+2026-10-03 native grouped-ticket transport PROGRESS. Active Table_Release_Ticket
+separated from group anchor/pending gate. Native callback admission authenticates
+registry session/ticket and incremental role; Submit uses actual ticket slot;
+receipt includes active ticket+slot+generation. Finalize retires registry then
+acknowledges child request slot (live or closed), clears active identity only on
+success. Anchor remains last; failed sends/finalization prevent replay. Closed
+source preflight uses group anchor/root/revision even for child allocation.
+Initial-context-parent incremental children and actual incremental allocation/
+publication remain unfinished; no native growth enabled merely by this change.
+New extracted test includes actual native registry receipt predicate+transport,
+real registry, modeled supervisor/request-state:76526 TERM0 PASS10 +anchor-slot/
+wrong-generation negatives. Evidence /tmp/nix-shell.PXJtLT/cubit-grouped-table-transport.hwxk8o06.
+67947 TERM0 native preparation PASS17 incl closed-source child +3negatives,
+evidence /tmp/nix-shell.x6PJrr/cubit-retirement-preparation.ucg95qtj; fullbuffer
+suite PASS incl128cycles/7transport. Initial fixtures had child initialized
+reusable and incorrect linear arena identity; corrected, not driver faults.
+Native66113 TERM0 compile/link tmp/native-grouped-table-transport-final.log.
+Script edits held shared locks then released; all own jobs terminal. v49/v50
+unchanged, README updated; no HW/proof claim. Full driver goal remains active.
+
+2026-10-03 native grouped-ticket transport ACTIVE. Own main retirement callbacks,
+extracted native callback fixture, preparation fixture and README. Separate
+active release ticket from group anchor; authenticate incremental role/registry
+identity, use exact slot+generation receipts, finalize child slots only after
+their receipt/sweep. Preserve anchor-last and whole-group admission exclusion.
+No native incremental allocation/publication enabled or image replacement.
+
+2026-10-03 retained allocation range inspection PROGRESS. Registry observation
+checks exact session/ticket/revision, retains revoked visibility, returns no
+addresses/authority; invalid or unknown ranges conservatively conflict. Native
+preflight uses queried ticket's registry backing, captures registry revision
+across yields. Single-ticket release gate unchanged; mixed-ticket cleanup is
+still unfinished (exact receipt/role/slot lifecycle must be connected).
+Nix50249 TERM0 extracted native PASS16 +alias/identity negatives; evidence
+/tmp/nix-shell.hTh9um/cubit-retirement-preparation.z9_cvzbs. Nix12842 TERM0
+registry100-slot range/reuse/census checks +real role resolution128 PASS.
+Native69596 TERM0 compile/link tmp/native-retained-range.log. Script edit held
+shared lock3120 then released. All own jobs terminal; README updated, v49/v50
+unchanged. No hardware validation or proof claim; goal remains active.
+
+2026-10-03 retained allocation alias inspection ACTIVE. Own table_allocations
+ads/adb, main preparation callback, allocation tests, extracted preparation
+fixture and README. Add identity/revision-bound overlap observation usable after
+revocation (no address export or release authority); use it for native preflight
+instead of assuming every queried ticket uses anchor backing. Child release
+admission remains closed pending full per-ticket lifecycle integration.
+
+2026-10-03 retirement callback transaction guards PROGRESS. Added shared exact
+owner/epoch/Awaiting_Ack/pending-ticket validation after Prepare, Submit and Poll.
+Fault fixture advances ledger itself inside each callback at each of3tickets;
+prefixed11252 TERM1 assertion129 (unexpected progress); fixed43289 TERM0 PASS42
+dispatcher +parent5+lifecycle9. References retained, no replay after ambiguity.
+Native90429 TERM0 compile/link private tmp/native-retirement-callback.log;
+Nix92690 TERM0 full Buffer_Memory PASS incl128 cycles and7transport cases.
+This hardens callback contract, not a diagnosed native backend mutation or
+hardware fix. README updated, all own jobs terminal, v49/v50 unchanged.
+Next native integration remains per-ticket authority for mixed-allocation
+retirement, then incremental root-stable allocation/publication. Goal active.
+
+2026-10-03 retirement callback transaction validation ACTIVE. Prior turn PROGRESS.
+Own dispatcher body/spec, table_dispatcher_tests and README. Check transaction
+identity after Submit/Poll as after Prepare; regression callbacks deliberately
+advance ledger phase through public API, require fail before metadata sweep.
+Private compile only; preserve v49/v50 and unrelated kernel/UI work.
+
+2026-10-03 stepped pre-release validation PROGRESS, finished validation.
+Mandatory dispatcher Prepare_Ticket yields before Submit; failed preparation
+or lost exclusion prevents release. Native scans one retained image per turn
+under admission gate, preserves exact closed-source identity exception and
+single-ticket release guard. Per-image scan still depends on configured capacity.
+Nix95388 TERM0 extracted native preflight PASS14; alias/closed-identity negative
+controls rejected; evidence /tmp/nix-shell.91a4qq/cubit-retirement-preparation.bnjx1lwf.
+Nix57627 TERM0 admission PASS96 plus omitted-guard negatives. Prior completed
+43486 dispatcher33/parent5/lifecycle9 and21793 full Buffer_Memory suite PASS;
+native22655 compile/link log tmp/native-retirement-prepare.log inspected.
+README updated. All own jobs terminal. v49/v50 images unchanged; no hardware
+validation or formal proof claimed. Native mixed-ticket release and root-stable
+incremental table allocation remain unfinished; full graphics goal active.
+
+2026-10-03 stepped pre-release validation ACTIVE. Prior turn PROGRESS.
+Own table_provenance-retirement-dispatcher.ads/adb, main native preparation
+callback, dispatcher/parent/lifecycle/buffer-memory tests and README. Require
+explicit prepare callback before Submit, bounded per-turn native alias scan.
+Keep child admission closed until per-ticket native ownership is connected.
+Private compile only; preserve v49/v50 and peer kernel work.
+
+2026-10-03 anchor-last transport PROGRESS. Native Begin_Table_Recycling explicitly
+passes Last_Ticket=>Ticket so group's final allocator receipt belongs to anchor;
+existing single-ticket May_Release guard unchanged. Real Buffer_Memory+Dispatcher
+fixture7 cases nowchild2thenanchor1: success/stale token, send/wrong-generation
+failure at first or second allocation, child-finalizer failure. Delayed polls
+retain refs; failures retain parent, forbidReopen/replay; success exactreceipt
+anchorTRUE/childFALSE. Nix54371 TERM0 fullbuffer suite PASS incl128retirement cycles.
+Private native89159 TERM0 compile/link tmp/native-anchor-retirement.log. README
+updated. No hardware claims, no v49/v50 changes. All own jobs terminal. Native
+mixed-ticket preflight/alias exclusion and per-ticket callbacks still required;
+ordering is not new release authority. Goalactive.
+
+2026-10-03 native retirement anchor ordering ACTIVE. Prior turn PROGRESS.
+Own main.adb Begin_Table_Recycling and buffer_memory_tests.adb/README. Explicit
+Last_Ticket preserves anchor's final Buffer_Memory receipt after child tickets;
+do not broaden May_Release beyond currently proved single-ticket native guard.
+Extend real allocator+dispatcher fixture to child-first order and second-release
+send/wrong-generation/finalization failures, exact final receipt/no replay.
+
+2026-10-03 topology span walking PROGRESS. Growth.Inspect/Describe now walk
+directories once per intersected PT span, rather than per4KiB page. Inspect
+still checks every existing leaf; missing subtrees count prefixes. Handles
+partial first/last spans and48bit end without Locate beyondlimit. No hugepage
+mapping change, no measured speedup claim. Expanded vm_growth_tests49 boundary
+ranges +512 occupied positions, before/after empty subranges, missing->occupied
+cross-table range and rejected Describe output. Nix3755 TERM0: topology49+512,
+backing6/54, writer28, bind20, lifecycle9 PASS. Native79074 TERM0 compile/link
+private tmp/native-topology-spans.log. README updated. All own jobs terminal;
+v49/v50 untouched. Native mixed-ticket retirement integration stillneeded before
+incremental directory allocation can be enabled; existing single-ticket guards
+and parent census deliberately preserved. Goalactive.
+
+2026-10-03 topology span walking ACTIVE. Prior turn PROGRESS(native stepping).
+Read native bind/retirement: missing directories still Reserve_Private replacement;
+grouped native release remains single-ticket and parent census blocks incremental
+children. Do not bypass. Own vm_image-growth.adb/ads, vm_growth_tests.adb, README:
+eliminate repeated directory walks for every4KiB leaf, walk once per2MiB PT span
+but inspect every existing leaf for occupancy. No register/hardware semantic change.
+
+2026-10-03 native stepped replacement registration PROGRESS. Finish_VM_Update
+registers one retained page per invocation and returns before Execute_Update;
+ledger Count is resume cursor, registry installed only at zero. Pending work,
+reply authority and ticket retained; final preflight resolves all registered
+pages again, failures use existing quarantine. No early root publication. New
+test-replacement-registration.py extracts exact marked block, real registry+
+provenance, modeled backing ownership. Nix6952 TERM0 PASS2208 (sizes1..64, every
+failure page, final owner loss), early-publication negative rejected. Evidence
+/tmp/nix-shell.zuamGl/cubit-replacement-registration.pmx4w0h7. Initial fixture
+89771 field typo/92362 missing metadata Extend fixed (not driver defects).
+Private native65563 TERM0 compile/link tmp/native-stepped-replacement-registration.log.
+Test script edits held shared build lock; README updated. v49/v50 untouched;
+new native behavior not hardware tested, still replacement fallback rather than
+enabled incremental root-stable allocation. All own jobs terminal; goalactive.
+
+2026-10-03 native replacement registration stepping ACTIVE. Prior turn PROGRESS.
+Own main.adb Finish_VM_Update registration block, new extracted adapter test and
+README. Use retained ledger count as resume cursor; one authenticated page per
+service-loop turn before publication. Keep pending request/exclusion/reply held.
+Failed registration follows existing quarantine path; no retries or root changes
+before complete registration. Private build only; v49/v50 immutable.
+
+2026-10-03 repeated append rearm PROGRESS. Authority.Rearm resets only completed
+operation bound to same open ledger/address/owner/epoch/exact recordcount; leaves
+all registered IDs/backing untouched, no resolver calls. Pending/failed/stale or
+interleaved operations cannot rearm. Hosted85851 TERM0: append6 + repeated10
+allocations for each success fixture, wrongledger/pending/failed/countchange/
+retiredphase/newgeneration rejection; lifecycle9 regression PASS. Initial88651
+fixture failed because Recycle_Confirmed already reopens; replaced fixture with
+explicit Start/Take/Ack/sweep/Reopen to test both closed and new generations.
+Native99171 TERM0 compile/link tmp/native-table-append-rearm.log in private
+graphics-primary-v47-ws22fhfc. README updated. This is reusable growth-registration
+primitive, not enabled native incremental allocation/root-stable growth yet.
+Both v49/v50 image hashes preserved. All own jobs terminal; goal remainsactive.
+
+2026-10-03 repeated append rearm ACTIVE. Prior turn PROGRESS(v50teapot packaged).
+Own table_provenance.ads/adb, table_append_tests.adb, README. Add metadata-only
+reuse of successful append controller on exact unchanged open ledger, preserving
+registered refs/IDs. Failure/partial/wrong-ledger/generation/count cannot rearm.
+This enables repeated growth registration; not native directory growth activation.
+No image changes; private native compile only after hosted checks.
+
+2026-10-03 v50-teapot READY FOR NUC (NOT Intel-hardware-validated). Private
+kernel/cubit-intel-v50-teapot.img in graphics-primary-v47-ws22fhfc SHA256
+70d137981cd16b04af9f5af68b6efb0dd16e84355f65a96c6b973b1aa4aef43d.
+Package73675 TERM0 build/input hashes/firmware/Mesa/image audits PASS. Preserved
+v49 SHA dd07e762...f4a and its mesa-triangle.app. Current append-enabled driver
+included (not native incremental table growth). Candidate3lg3n82s mesa-service.app
+staged under mesa-triangle-window.app diagnostic slot; actualteapot flags recorded
+in inputs.json, includes FreeGLUT notice. Three256x256 vertex/depth cycles, each
+Desktop presentation held5s then grants retired before Vulkan cleanup. Expected
+MESA-TEAPOT service sustained completed=3 requested=3 result=0, MESA-SERVICE
+retirement=0/result=0; presentation shim still logs MESA-TRIANGLE Desktop lines.
+QEMU19591 TERM0 exact image USB UEFI4CPUs boot-log-delivery +graphics-tools PASS.
+Evidence /tmp/cubit-v50-OlTbbs/cubit-usb-live.ri7onhug; screenshot
+/tmp/cubit-v50-graphics-tools.png inspected live Logs filters/retention+Console.
+Serial panic/exception/fatal/assertion scan empty. No Intel rendering in QEMU.
+All own jobs terminal. v49 remains separate allocation checkpoint; v50 optional
+next workload, not a replacement result for v49. Full driver goal stillactive.
+
+2026-10-03 separate v50-teapot packaging ACTIVE. Prior turn PROGRESS (mixed-ticket
+failure integration tests). Own private graphics-primary-v47-ws22fhfc staging,
+tmp/package-v50-teapot.sh, named image only. Fresh linked service teapot candidate
+3lg3n82s, three presented cycles; current private Intel append code (newer than
+v49) compiled again. Preserve v49 and its offscreen triangle app hash. Includes
+existing Logs/Console profile. QEMU checks boot/tools only, no Intel execution.
+
+2026-10-03 mixed-ticket failure coverage PROGRESS. table_growth_lifecycle_tests
+now9 composed cases including child receipt failure, parent receipt failure after
+child acknowledged/swept, child finalizer failure, and delayed receipt (3polls
+per ticket, no resubmit). All four follow real volatile-RAM directory publication
+and VM adoption. Failure retains parent refs, prevents generation reopen, remains
+terminal on10extraSteps; acknowledged child refs stay swept. Nix2577/85259 TERM0
+PASS9, plus parent-last PASS5 and grouped-retirement PASS6. Objects/executables:
+/tmp/cubit-table-lifecycle-retirement-oct3. Hardware/TLB/receipts modeled; not
+SPARK proof or physical release validation. README updated. No production edits,
+native builds, image changes, or new hardware claims. All own jobs terminal.
+
+2026-10-03 mixed-ticket retirement failure coverage ACTIVE. Prior turn PROGRESS
+(fresh hosted/native teapot evidence). Own table_growth_lifecycle_tests.adb and
+README only; no production/image edits. Exercise failed child/parent receipts,
+failed finalization, delayed receipts after actual directory growth/adoption.
+Native single-ticket adapter remains a known integration gap; do not relax its
+release checks. All hardware exclusion/receipts in fixture are modeled.
+
+2026-10-03 teapot validation PROGRESS. Dedicated Nix Vulkan shell hosted98947
+TERM0: eight lavapipe cycles, foreground14147/background51389/bad0, expected
+consumer failures propagated, completed-image borrows4, validation0errors0warnings.
+Depth-off negative changes9944pixels with background unchanged; invalid Vulkan
+negative detected. Artifacts /tmp/cubit-teapot-render.hftXeF. Linux software only.
+Private native16999 TERM0 links current ANV archives with teapot+presentation+
+service lifecycle, three cycles. Output tests/mesa-anv/target/native-instance-link.
+3lg3n82s/mesa-service.app in graphics-primary-v47-ws22fhfc; SHA256
+97697127883b91ad1911e61937be946dc851f1a2c69dd46567def0471085647e.
+inputs.json records teapot_smoke=true/present_triangle=true/triangle_cycles=3;
+service output basename takes precedence over mesa-teapot-window.app. Confirmed
+native-service-probe passes present_completed_triangle. Link-only NOT executed,
+not packaged and no Intel teapot rendering claim. v49 SHA still dd07e762...f4a.
+Plain shell initial jobs73131/76371 failed missingglslang; dedicated shell fixed
+tooling. All own jobs terminal. No production/source/staging/image changes.
+
+2026-10-03 teapot validation ACTIVE. Prior response was status-only (no progress);
+next safe action is fresh hosted teapot oracle plus native teapot linkage in
+graphics-primary-v47-ws22fhfc. Own isolated outputs only and this note; no shared
+build scripts or staging edits. Preserve v49 byte-for-byte. Hosted lavapipe is
+not native CuBit execution and native linkage is not Intel hardware validation.
+
+2026-10-03 composed table lifecycle PROGRESS. New table_growth_lifecycle_tests
+composes real Authority.Append, provenance IO (volatile RAM), directory Writer,
+VM adoption, parent-last retirement Dispatcher and stale-generation IO rejection.
+Ledger IDs65..67 map to image positions5..7; retained HW root differs from image
+root. Five cases: success, missing TLB confirmation, revocation after first store,
+partial append (subsequent Writer.Start denied before writes), stale IO generation.
+Success retires child2 before parent1 only after explicit modeled consumers-gone;
+failure retains allocations and cannot dispatch release. Hardware/TLB/flush/
+allocator receipts modeled, not Intel evidence. Hosted34854/54775 TERM0 PASS5.
+No production edits/builds or image changes this turn; v49 still awaiting NUC.
+All own jobs terminal. Evidence advances native integration requirements; goalactive.
+
+2026-10-03 composed table growth lifecycle IN PROGRESS. Previous turn PROGRESS.
+Own new table_growth_lifecycle_tests.adb and README. Exercise real append,
+provenance IO, directory writer, source adoption and parent-last retirement in
+one hosted fixture. GPU exclusion/TLB/allocator receipts modeled explicitly;
+volatile CPU pages real. Preserve v49 and all production sources this turn.
+
+2026-10-03 allocation append PROGRESS. Authority.Begin_Append binds ledger address,
+session, exact epoch/count, ticket, aligned offset and full metadata capacity.
+Step registers one page; terminal no replay; partial references retained; First_ID
+only after complete registration. Install now rechecks ledger identity/count/phase
+after resolver callback. Main initial table provenance uses same stepped operation,
+publishes ordinal->IDs only after complete. This is not GPU publication and does
+not enable native live directory growth yet. Hosted23987 TERM0 append6 PASS:
+IDs65..67 after64 retained pages, extension during append, wrong ledger, interleaving,
+revocation, bad DMA and offset overflow; provenance80 and generation IO regressions
+PASS. Native97316 TERM0 link PASS tmp/native-table-append-build.log. Allownjobs
+terminal. v49 immutable checkpoint unchanged; latest driver changes NOT inimage.
+
+2026-10-03 bounded table allocation append IN PROGRESS. Prior turn PROGRESS
+(v49 packaged/QEMU checked); preserve v49 image. Own table_provenance.ads/adb,
+main initial ledger adapter, new table_append_tests.adb. Append binds ledger
+address/session/generation/count and registers one owned page per step; partial
+failure retains references and cannot replay. No GPU publication or reuse claim.
+
+2026-10-03 v49 READY FOR NUC TEST (not Intel-hardware-validated). Package50617
+TERM0 native build/image audits and Intel input hashes PASS. Image private
+kernel/cubit-intel-v49.img SHA256
+dd07e762467817337d94c7e2e877e6f6704a177486c3b56aeac374de627a0f4a.
+v48 remains60c0a0c2...cea1. USB30878 TERM0 exact read-only image --uefi --cpus4
+--usb-flash --quiet-xhci --boot-log-delivery --graphics-tools PASS. Screenshot
+/tmp/cubit-v49-graphics-tools.png inspected: live searchable Logs, retention
+control, Console and Boot diagnostics windows. Serial fatal/panic/assert/exception
+scan no matches. Evidence /tmp/cubit-v49-RWu8fl/cubit-usb-live.zre_jjjb.
+Initial61488 TERM1 fixture Unix socket path too long; QEMU finally cleaned;
+reran with short explicit TMPDIR (not an observation-timeout restart).
+Allownjobs terminal. New NUC ask: sustained256result0, service retirement0/result0,
+closed context table +parent retirement acknowledgedTRUE, MESA-TIMING call1/32/256;
+if failure first transport error and adjacent intel-gpu records. No new teapots
+or compositor acceleration, no native dynamic table growth claim. Previous turn
+PROGRESS; this turn packaged/tested tangible checkpoint. Independent incremental
+allocation/publication/retirement integration remains while awaiting hardware.
+
+2026-10-03 v49 packaging IN PROGRESS private workspace. All root/private Intel
+Ada inputs cmp-identical. No new source edits this turn; prior turn PROGRESS.
+v49 will carry stepped bind/retirement, registry/census and right-sized replacement
+backing plus existing timing-enabled Mesa. Same Mesa ELF/notices as v48. Own
+private tmp/package-v49.sh; preserves v48 hash and refuses overwrite ofv49.
+Not dynamic native table growth/teapots/compositor acceleration. Need QEMU boot/
+menu/log validation then NUC retirement/sustained/timing evidence.
+
+2026-10-03 right-sized native replacement PROGRESS. Missing-directory fallback
+uses Growth.Inspect after authenticated request preflight; captures used+additional
+count only for Ready/Fits_Reserved. Async allocator receives that count; response
+bytes must match exactly; provenance prefix installed, remaining DMA zeroed;
+publication resolves candidate-used tables. Binding.Prepare_Change derives trusted
+prefix and calls VM.Prepare_Update with explicit count (holes rejected by core).
+Reset count atfinish; no allocator start ifzero. Existing fallback remains, not
+claiming root-stable incremental allocation or removal of64-page native limit.
+Hosted16510 TERM0 18 full/sparse update pipeline scenarios PASS plus in-place10.
+Hosted53646 TERM0 VM image/range (513 failure positions)/unmap/candidate/removal PASS.
+Native29585/47691 TERM0 private compile/link PASS; latest log
+tmp/native-sized-replacement-final.log. Allownjobs terminal. v48 unchanged; no NUC
+result or performance claim. Previous turn PROGRESS; independent work remains.
+
+2026-10-03 right-sized native replacement backing IN PROGRESS. Own main.adb,
+buffer_requests-binding.adb, vm_update_pipeline_tests.adb. Missing-directory
+fallback plans used+additional tables before reserve, allocates exact page count,
+installs that prefix, publishes only candidate-used mappings. Binding derives
+trusted backing prefix and VM rejects nonzero suffix/holes. This reduces existing
+fallback allocations; NOT a substitute for root-stable incremental table growth.
+Native29585 live private build tmp/native-sized-replacement-build.log.
+
+2026-10-03 native bootstrap capture PROGRESS. Finish_Private_Context zeroes backing
+array, fills allocated Private_Table_Pages prefix and passes explicit Backing_Count.
+Handle_Context_Preparation zeroes mappings and resolves only VM.Used tables before
+publication. Allocator count still64, deliberately unchanged until growth enabled.
+Native65076 TERM0 compile/link PASS tmp/native-bootstrap-capture-build.log.
+Hosted57622 TERM0 real volatile RAM materialization/readback/CLFLUSH PASS with
+capacity8 and4 physical pages: guard pages,14 ownership losses, flush failures,
+corruption, unrelated source and no retry. Initial43502 TERM1 remaining four-entry
+aggregate in unrelated-source fixture corrected to explicit partial descriptor.
+Allownjobs terminal; v48 unchanged; hosted cache flush is not GPU coherence proof.
+Next native incremental allocation dispatch and directory publication/lifetime.
+
+2026-10-03 native bootstrap capture IN PROGRESS. Previous turn PROGRESS (partial
+VM initialization). Own main.adb Finish_Private_Context/Handle_Context_Preparation,
+vm_materialize_tests.adb. Separate allocated prefix from capacity at initializer,
+capture only used tables for initial context publication; test sparse metadata
+capacity through actual CPU materializer. No change to bootstrap allocation count.
+
+2026-10-03 partial bootstrap backing PROGRESS. VM.Initialize and Prepare_Update
+accept explicit Backing_Count (default full capacity). Validate allocated prefix
+and zero-only suffix; replacement must cover Source.Count. Offline Map_Pages
+checks every newly required backing ordinal before mutation, independently of
+metadata availability. Growth+bind now20 full/partial x sync/stepped scenarios;
+additional malformed prefix/suffix/default, undersized replacement and successful
+partial replacement tests. Hosted61225/42876 TERM0 PASS20 plus topology28 and
+insertion aliases/failure regressions. Native55717 TERM0 compile/link PASS
+tmp/native-partial-bootstrap-build.log; last spec edit after build comment-only.
+Allownjobs terminal. Native caller still defaults to64 physical pages; no claim
+of enabling allocation-on-demand yet. Next wire incremental ticket allocation,
+provenance/ordinal adoption and grouped retirement into native event loop. v48
+unchanged. Previous turn was PROGRESS, not blocked or awaiting NUC feedback.
+
+2026-10-03 partial initial table backing IN PROGRESS. Own vm_image.ads/adb and
+vm_growth_bind_tests.adb. Add explicit initialized backing count independent of
+metadata/capacity; trailing slots must be zero; offline Map_Pages must reject
+unbacked directory slots before any mutation. Existing full backing default stays
+unchanged. Compose partial bootstrap with stepped live growth; native enable later.
+
+2026-10-03 sparse native capture PROGRESS. Capture_Removal now initializes DMA
+and CPU mapping arrays, authenticates only VM.Used live ordinals, still requires
+Used_Tables_Match. VM.Insertion retains all-reserved-DMA/scratch alias rejection.
+Hosted69490 TERM0 actual extracted capture PASS10 (initial/replacement resolver,
+each missing live table, unused unresolved slots, stale previous mapping reset);
+both negativecontrols (old full-capacity loop, missing clear) rejected. Initial
+43357 TERM1 fixture missing Mapping.Offset corrected. Hosted95636 TERM0 insertion
+regressions PASS incl unused reserved backing alias rejection. Native76069 TERM0
+compile/link PASS tmp/native-sparse-capture-build.log. Allownjobs terminal;
+v48 unchanged, not yet native dynamic table allocation/publication or HW evidence.
+Remaining structural constraints: VM capacity64, Initial_Table IDs vs ledger IDs,
+native missing-directory branch still replacement image, mixed-ticket teardown.
+
+2026-10-03 sparse live-table capture IN PROGRESS. Previous turn PROGRESS (native
+dispatcher/allocator composed regression). Own main.adb Capture_Removal and
+tests/intel-gpu sparse capture fixture. Remove all-reserved-slots requirement
+from live mapping capture; authenticate every used table and clear unused mapping
+slots. VM.Insertion.Can_Reuse still checks all reserved DMA and scratch aliases.
+Not enabling native incremental allocation until publication/retirement complete.
+
+2026-10-03 native retirement dispatch verification PROGRESS. Previous answer-only
+turn made no implementation progress; revalidated current main and native link log.
+Native adapter now owns single submit -> exact pending receipt -> bounded sweep ->
+registry finalization -> whole-ledger reopen. Scheduling exclusion is rechecked
+across yields; no mixed-ticket native enable yet. Native79677 TERM0 link evidence
+tmp/native-retirement-dispatch-build.log confirmed. Updated README accordingly.
+Hosted65218 TERM0 now composes actual Dispatcher with Buffer_Memory over two
+allocations: delayed/stale receipts, wrong generation, send failure, once-only
+finalization after sweep, <=1 callback per step and terminal no replay. Initial
+68420 TERM1 missing explicit GPR sources corrected under shared build lock26643
+(released TERM0). Hosted62087 TERM0 dispatcher27/parentlast5/recycle256 PASS.
+Admission fixture37301 TERM0 actual native guard96 cases PASS and two negative
+controls (removed retirement / in-place-update exclusion) rejected. Own changes
+buffer_memory_tests.adb, buffer_memory.gpr, test-retirement-dispatch.py and README.
+All own jobs terminal; v48/v47 unchanged; no new hardware or proof claim. Next
+native incremental backing dispatch/publication and mixed-ticket release remain.
+
+2026-10-03 native retirement transport dispatch IN PROGRESS main.adb. Replace
+postack-only adoption with dispatcher-owned single-submit/poll; preserve existing
+preflight alias/context checks, global pending gate, exact ticket identity and
+slot reuse after group reopen. No mixed-ticket enable yet, v48 unchanged.
+
+2026-10-03 per-ticket finalization PROGRESS. Dispatcher retains exact ticket
+afterack through bounded sweep; once Searching, rechecks exactreceipt and calls
+Finalize_Ticket once before nextgroup. Failure/ownerloss quarantine no replay.
+Main callback retires backing registry; removed duplicate outer Retire calls,
+private/closed slot acknowledgments remain after completed ledger reopen. Native
+75618 TERM0 compile/link PASS tmp/native-ticket-finalization-build.log. Hosted
+86685/94344 TERM0 dispatcher27 PASS (asserts no retained ticketrefs atfinalize),
+parentlast5 PASS, recycle256 PASS. Allownjobsterminal. v48/v47 unchanged; no
+hardwareclaim. Native receipt adapter still single-ticket postack; actual mixed
+allocation transport dispatch/publication remains next, not yet enabled.
+
+2026-10-03 per-ticket retirement finalization IN PROGRESS. Own dispatcher.ads/adb,
+main.adb native receipt adapter and dispatcher/parent tests. Keep exact ticket
+through bounded sweep; finalize registry metadata once before next release.
+Move native registry Retire from outer finishers into this callback; ticket slot
+acknowledgment stays after complete ledger reopen. v48 unchanged.
+
+2026-10-03 parent teardown registry census PROGRESS. Table_Allocations now
+exposes retained identities (no backing address), monotonic mutation revision,
+bounded Scan_Session<=64entries. Revoked/owner-lost allocations remain observable;
+stale partial scans reject even if insertion occurs behindcursor. Main parent
+retirement keeps per-context session/revision/cursor, waits for zero retained
+registry allocations and rechecks revision before supervisor retire; no unbounded
+newscan. Existing replacement/source alias scans unchanged. Hosted60243 TERM0
+census+100slot registry+128composedrole generations PASS. Native71508 TERM0
+compile/link PASS tmp/native-table-census-build.log. All ownjobs terminal.
+v48/v47 unchanged; no hardwareclaim. Still need actual incremental backing request,
+directory publication and grouped transport retirement integration.
+
+2026-10-03 parent teardown discovery IN PROGRESS. Own table_allocations.ads/adb,
+main.adb parent-retirement guard, table_allocations_tests.adb. Add retained identity
+observation +bounded session census with mutation revision. Parent check must see
+incremental allocations independently of replacement images; no full unbounded
+registry scan added. Earlier stepped native bind turn PROGRESS, jobs terminal.
+
+2026-10-03 native stepped bind/unbind PROGRESS. Binding Begin_In_Place performs
+same authenticated capture then closes coordinator; Finish_In_Place validates
+identity +exact next epoch. Handle_In_Place wraps same Begin/Advance_Once/Finish,
+no duplicate validation/transaction engine. Main replaced synchronous insertion/
+removal handlers with Begin then Advance_In_Place eachservice-loop; retained
+Update_Request/replycap/context hold/In_Place_Active until Reply_In_Place terminal.
+Blocks new Poll_Service_Request/reclamation and skips idlewait whileactive; failed
+completion/reply stillretire. Hosted82560 TERM0 insertion10+removal/image+async7+
+VM/lifecycle regressions PASS. Native16667 TERM0 compile/link PASS private
+tmp/native-stepped-binding-build.log. Allownjobsterminal; no native execution or
+hardware claim. v48/v47 unchanged. Replacement path remains synchronous; this
+actual eventloopintegration enables later stepped directory publication, which
+still needs allocator +mixed-ticket retirement integration before enablement.
+
+2026-10-03 native stepped bind/unbind IN PROGRESS. Own vm_update.ads/adb,
+buffer_requests-binding.ads/adb, main.adb and insertion binding tests. Split
+authenticated begin from final committed reply; native loop keeps reply cap,
+context hold, In_Place_Active gate across stages, blocks new service requests and
+reclamation until completion. Existing synchronous handler remains same-machine
+test/caller convenience, not alternate GPU implementation. v48 preserved.
+
+2026-10-03 stepped VM coordinator PROGRESS. Added Begin_Update/generic Advance
+on existing VM_Update.State; one stage callback/advance, publication mayyield,
+admission staysclosed, nestedadvance rejected via Advancing guard, owner+Fail
+rechecked before/aftercallbacks. Execute now same machine with synchronous
+publication adapter, removed unreachable Program_Error branch. Hosted85301
+TERM0 async7 and existingVMUpdate/lifecycle PASS.91498 TERM0 realGrowthWriter+
+leaf insertion synchronous/stepped10scenarios PASS, VMpipeline/private-reuse/
+dispatch regression PASS. Native10058 TERM0 compile/link PASS private
+tmp/native-async-vm-update-build.log. All own jobs terminal. Native Main still
+calls synchronous Execute, not asynchronous directory publication yet; newAPI
+needed for event-loop writer integration. v48/v47 unchanged, no hardwareclaim.
+
+2026-10-03 bounded VM transaction integration IN PROGRESS. Own vm_update.ads/adb
+and new vm_update_async_tests.adb. Existing coordinator Execute is synchronous;
+directory Writer.Step cannot yield safely through it yet. Add Begin_Update plus
+generic bounded Advance on same State, retain Execute through synchronous adapter,
+reject nested advancement and keep admission closed across publication yields.
+
+2026-10-03 parent-last retirement PROGRESS. Retirement/Dispatcher.Start accepts
+optional Last_Ticket; bounded first passes skip exact parent, final pass still
+requires May_Release+exactack, no skipped-reference completion. Reopen resets
+ordering state. Hosted56738 TERM0 new5scenarios/150interleavedrefs PASS including
+blocked parent and partial child/parent failures; existing dispatcher21/group6/
+recycle256generations PASS. Native29591 TERM0 compile/link PASS private log
+tmp/native-parent-last-retirement-build.log. Default native single-ticket caller
+unchanged; mixed-ticket caller must supply combined parent and prove every other
+consumer retired. No new image or hardware claim; v48/v47 unchanged. All own
+jobs terminal. Actual native growth allocation/publication and multi-allocation
+transport dispatch remain unfinished, not blocked on NUC feedback.
+
+2026-10-03 parent-last group retirement IN PROGRESS: own table_provenance.ads,
+retirement.ads/.adb, dispatcher.ads/.adb, new table_parent_retirement_tests.adb.
+Defer one exact combined-parent ticket until other table allocations are fully
+acknowledged/swept; NEVER bypass parent's May_Release/Release_Confirmed gates.
+Native caller integration still gated, existing default order unchanged.
+
+2026-10-03 independent incremental-role resolution PROGRESS. main's admitted
+callback now authenticates exact incremental private tickets without Has_Update;
+stored session, publication owner and canonical slot remain checked. Resolver
+selects exact registry role from authenticated ticket kind; no backing registry
+entry means no page. Replacement-specific pending/superseded checks retained.
+Hosted27052 TERM0 PASS128 composed real ticket+registry+page resolver generations
+with modeled supervisor receipts, no replacement images. Native20915 TERM0
+compile/link PASS tmp/native-table-role-resolution-build.log. All own jobs terminal.
+No new incremental tickets requested by native flow yet, no dynamic publication/
+hardware claim, v48/v47 unchanged. Investigation: initial context ledger includes
+parent allocation's reserved pages; future grouped retirement must not free that
+combined context/ring/scratch parent merely because table references are drained.
+Actual allocator dispatch and parent-aware multi-ticket retirement remain next.
+
+2026-10-03 independent growth-role resolution IN PROGRESS main.adb + new
+table_role_resolution_tests.adb. Prior turn PROGRESS private ticket roles/native
+compile. Remove replacement-image requirement for exact incremental private
+tickets only; owner/session/storage identity plus registry install still required.
+No caller yet requests incremental backing, mixed-ticket retirement remains gate.
+
+2026-10-03 private table-ticket roles PROGRESS. buffer_requests Reserve_Private
+now records explicit replacement/incremental purpose; incremental requires
+reclaimable nonzero session. Is_Table_Allocation authenticates exact ticket,
+session, purpose, private flags and excludes pinned/app/reusable records. Main
+registry-admission now requires replacement role; no native incremental allocation
+request or directory publication yet. Hosted38040 TERM0 PASS256alternating
+role/session generations, no app completion, pending/closed retirement gates,
+stale ticket; full preexisting buffer_requests suite PASS. Private native2307
+TERM0 compile/link PASS tmp/native-table-ticket-build.log. All own jobs terminal,
+v48/v47 images unchanged. Next actual growth allocation dispatch and grouped
+retirement protocol must use incremental kind, registry and ledger identities;
+do not simply accept arbitrary ticket ownership or raise the fixed64table quota.
+
+2026-10-03 private table-ticket role work IN PROGRESS. Own buffer_requests.ads/
+adb, main.adb callback, and new table_ticket_tests.adb. Previous turn PROGRESS:
+native registry integration linked and hosted regression passed. Add explicit
+replacement/incremental purpose to private reclaimable tickets, with exact role
+query; no application handle/export and no native growth publication enabled.
+
+2026-10-03 registry native integration COMPLETE for replacement path, not new
+incremental ticket admission.39869 TERM0 private native compile/link PASS,
+tmp/native-table-registry-build.log; staged drv SHA256
+08411ad87118476d230fb761645473c7060138d1d279cf06c82e5490a260f972.
+Main metadata bundle grows Table_Backing registry and admission takes minimum
+replacement/registry capacity. Finish_VM_Update installs authenticated backing
+before provenance pages; resolver uses registry for replacements, initialparent
+slice remains separate. Supersession revokes resolution; exact retirement after
+ledger completion clears registry before reusable ticket acknowledgment. Failure
+continues quarantine. Hosted56432 TERM0 registry+resolver100slots PASS, dispatcher
+21scenarios PASS, groupedretirement6scenarios PASS. README updated. No new image,
+v48/v47 unchanged, no Intel runtime/SPARK proof claim. All own jobs terminal.
+Next growth-ticket transport role and mixed-allocation retirement receipts before
+enabling incremental directory publication; current Admitted callback deliberately
+requires pending or retained replacement authority, not arbitrary client BOs.
+
+2026-10-03 registry native integration IN PROGRESS, own main.adb plus private
+graphics-primary-v47-ws22fhfc staged driver sources. Prior turn PROGRESS hosted
+registry tests. Integrate capacity bundle, replacement backing install/lookup,
+supersession revoke and exact retirement before slot acknowledgment. Independent
+growth-ticket admission remains disabled. Preserve v48/v47 image files.
+
+2026-10-03 table-allocation backing registry component PROGRESS. New
+intel_gpu_table_allocations.ads/.adb: growable Record_Store, distinct replacement/
+incremental roles, authenticated canonical slot/session/ticket install+lookup,
+revoke retains entry, exact retirement permits reuse. Tests90739 and19002 TERM0
+PASS100slots including metadata growth, revoked lookup, stale ticket after reuse,
+wrong role/session/slot, unauthorized/invalid backing; existing backing resolver
+also PASS19002. Nix outputs /tmp/cubit-table-allocation-roles. README documents
+trusted transport alias/lifetime boundary. NOT yet wired into main, no native or
+hardware claim, v48 unchanged. Next integrate registry capacity into Metadata_Bundle
+and replacement install/select/revoke/exact-retirement paths before accepting
+independent growth tickets. All own jobs terminal.
+
+2026-10-03 resumed graphics goal after v48 status answer (answer-only turn, no
+implementation progress). Own new intel_gpu_table_allocations.ads/.adb and
+tests/intel-gpu/table_allocations_tests.adb: growable backing-role registry for
+replacement and incremental table-only allocations. Exact ticket/session and
+retirement authority required; no native growth enable until main integration.
+v48 unchanged. Hosted tests use disjoint /tmp outputs through Nix.
+
+2026-10-03 native bounded table recycling LINK18726 TERM0 PASS. Root main now
+instantiates Retirement.Dispatcher; replacement + closed-context table finishers
+yield while sweeping, keep Buffer_Retirement_Pending/admission gate and replycap,
+skip repeat Forget_Retired, acknowledge handle reuse only after dispatcher Done
+and exact ledger generation-changing Reopen. Reopen resets controller only for
+its own completed ledger;81803 hosted21 scenarios PASS with wrongledger reopen/
+failed reset rejection. New no-duplicate-release adapter adopts the supervisor
+receipt already received; rejects any other ticket. Physical mixedticket allocation
+and release submission still not wired. Removed old synchronous native64record
+recycle helper, not its separate tested library convenience API. Private driver
+staged only; v48/v47 images unchanged, no hardwareclaim. Log tmp/native-table-
+recycling-build.log. All own jobs terminal. Next native allocation role for new
+table-only growth tickets + exact group retirement dispatch before writerenable.
+
+2026-10-03 native bounded recycling integration IN PROGRESS, own main.adb plus
+dispatcher Reopen API/tests. Replacement/closed-table finishers retain pending
+ticket and return across event-loop turns until provenance swept/reopened. Exact
+already-received supervisor ack is adopted, NEVER resubmitted. Admission stays
+closed through Buffer_Retirement_Pending; snapshot forgetting occurs once.
+No native mixed-ticket release claim: adapter still accepts only exact current
+receipt; growth-ticket role/allocation dispatch remains next. v48 unchanged.
+
 2026-10-03 dispatcher component COMPLETE, native integration NOT complete.
 4072 initial6tests PASS;29042 identity/partialgroup21 PASS;58165 expanded150entry/
 3ticket21scenarios PASS plus prior group-retirement6/80entries and recycle256

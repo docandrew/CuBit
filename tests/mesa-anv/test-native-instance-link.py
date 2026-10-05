@@ -42,6 +42,9 @@ parser.add_argument('--compositor-smoke', action='store_true',
                     help='exercise production compositor submission and a green fill over the triangle')
 parser.add_argument('--teapot-smoke', action='store_true',
                     help='use the 256x256 vertex-buffer/depth teapot; shader-dir must contain teapot-assets.h')
+parser.add_argument('--teapot-gallery', action='store_true',
+                    help='animate 20 teapots at 800x600 with a persistent CPU-copy presentation window')
+parser.add_argument('--teapot-frames', type=int, default=1, choices=range(1, 3601))
 parser.add_argument('--scene-link-check', type=Path,
                     help='link and retain the complete native Ada scene bridge from a verified private snapshot; does not execute it')
 parser.add_argument('--scene-smoke', action='store_true',
@@ -53,6 +56,10 @@ parser.add_argument('--triangle-cycles', type=int, default=1, choices=range(1, 1
 parser.add_argument('--shader-dir', type=Path,
                     help='validated output of build-triangle-shaders.py')
 args = parser.parse_args()
+if args.teapot_gallery and (not args.teapot_smoke or not args.present_triangle or args.scene_smoke or args.triangle_cycles != 1):
+    parser.error('--teapot-gallery requires teapot/presentation, one cycle and no scene-smoke')
+if args.teapot_frames != 1 and not args.teapot_smoke:
+    parser.error('--teapot-frames requires --teapot-smoke')
 if args.service_smoke:
     if not (args.authorized_discovery and args.logical_device and args.retain_transport):
         parser.error('--service-smoke requires authorized discovery, logical device and transport')
@@ -153,6 +160,8 @@ if args.authorized_discovery:
                    (['-DCUBIT_TEST_COMPOSITOR=1'] if args.compositor_smoke else []) +
                    (['-DCUBIT_TEST_SCENE=1'] if args.scene_smoke else []) +
                    (['-DCUBIT_TEST_TEAPOT=1', '-DCUBIT_TEST_FRAME_SIZE=256'] if args.teapot_smoke else []) +
+                   (['-DCUBIT_TEAPOT_FRAME_COUNT=' + str(args.teapot_frames)] if args.teapot_smoke else []) +
+                   (['-DCUBIT_TEAPOT_GALLERY=1'] if args.teapot_gallery else []) +
                    ['-I' + str(root / 'userspace/mesa/anv'), '-c',
                     str(root / 'tests/mesa-anv/native-authorized-discovery.c'),
                     '-o', str(obj)], cwd=entry['directory'], check=True)
@@ -235,15 +244,26 @@ for unit in ('native_build_id', 'native_build_id_link'):
     native_objects.append(str(native_object))
 if args.authorized_discovery:
     for unit in ('mesa_discovery_slot', 'mesa_probe_log',
-                 *(['mesa_triangle_surface'] if args.present_triangle else [])):
+                 *(['mesa_triangle_surface'] if args.present_triangle else []),
+                 *(['mesa_gallery_surface'] if args.teapot_gallery else [])):
         subprocess.run(['gnatmake', '-q', '-c', '-gnatA', '-gnat2022', '-O2',
                     '-mno-red-zone', '-fno-pic',
                     '--RTS=' + str(root / 'userspace/runtime'),
                     '-I' + str(out),
                     '-I' + str(root / 'tests/mesa-anv'),
+                    '-I' + str(root / 'userspace/lib/ui'),
                     str(root / 'tests/mesa-anv' / (unit + '.adb'))],
                    cwd=out, check=True)
         native_objects.append(str(out / (unit + '.o')))
+    if args.teapot_gallery:
+        checks = out / 'gallery-check-failure.o'
+        subprocess.run(['bash', str(wrapper), 'c', '-c',
+                        str(root / 'tests/mesa-anv/gallery-check-failure.c'),
+                        '-o', str(checks)], check=True)
+        native_objects.append(str(checks))
+        for unit in ('client_frame_pair', 'client_frame_buffer', 'client_frame_state',
+                     'client_frame_damage', 'client_canvas_geometry'):
+            native_objects.append(str(out / (unit + '.o')))
 if args.present_triangle:
     presenter = out / 'native_gpu_presenter.o'
     subprocess.run(['bash', str(wrapper), 'c', '-c',
@@ -382,6 +402,8 @@ if result.returncode == 0:
         'present_triangle': args.present_triangle,
         'compositor_smoke': args.compositor_smoke,
         'teapot_smoke': args.teapot_smoke,
+        'teapot_gallery': args.teapot_gallery,
+        'teapot_frames': args.teapot_frames,
         'scene_link_only': bool(args.scene_link_check) and not args.scene_smoke,
         'scene_smoke': args.scene_smoke,
         'service_link_only': args.service_link_check and not args.service_smoke,

@@ -1,0 +1,8 @@
+project Wallpaper_Strips extends "wallpaper_output.gpr" is
+   for Source_Dirs use (".", "../../userspace/services/desktop", "../../userspace/lib/compositor",
+     "../../userspace/lib/display", "../../userspace/lib/theme", "../../userspace/runtime/gnat");
+   for Source_Files use Wallpaper_Output'Source_Files & ("wallpaper_strips_tests.adb");
+   for Main use ("wallpaper_strips_tests.adb");
+   for Object_Dir use "build/wallpaper-strips/obj";
+   for Exec_Dir use "build/wallpaper-strips";
+end Wallpaper_Strips;

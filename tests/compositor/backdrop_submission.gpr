@@ -1,0 +1,13 @@
+project Backdrop_Submission is
+   for Languages use ("Ada", "C");
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use ("compositor_source_region.ads", "vulkan_region_ffi.ads", "vulkan_region_ffi.adb", "vulkan_affine_binding-regions.ads", "vulkan_affine_binding-regions.adb", "vulkan_submission-regions.ads", "vulkan_submission-regions.adb", "region_binding_mock.c",
+      "vulkan_checker_ffi.ads", "vulkan_checker_ffi.adb", "vulkan_submission-checkers.ads", "vulkan_submission-checkers.adb", "checker_submission_mock.c", "vulkan_checker.h", "vulkan_checker_request.h", "vulkan_submission-backdrops.ads", "vulkan_submission-backdrops.adb", "compositor_backdrop.ads", "compositor_backdrop.adb", "compositor_image_sampling.ads", "compositor_image_sampling.adb", "vulkan_backdrop_binding.ads", "vulkan_backdrop_binding.adb", "vulkan_backdrop_ffi.ads", "vulkan_backdrop_ffi.adb", "backdrop_submission_mock.c", "vulkan_glyph_sources.ads", "vulkan_glyph_sources.adb", "compositor_glyph_cache.ads", "compositor_glyph_cache.adb", "compositor_identity.ads", "compositor_glyph_placement.ads", "compositor_glyph_placement.adb", "compositor_glyph_layout.ads", "compositor_glyph_layout.adb", "compositor_text.ads", "compositor_text.adb", "compositor_gradient.ads", "compositor_gradient.adb", "vulkan_scene.adb", "vulkan_scene.ads", "compositor_damage.adb", "compositor_damage.ads", "compositor_target_damage.adb", "compositor_target_damage.ads", "vulkan_target_owner.ads", "vulkan_target_owner.adb", "vulkan_target_ffi.ads", "vulkan_target_ffi.adb", "compositor_pool.ads", "compositor_pool.adb", "vulkan_frame.ads", "vulkan_frame.adb", "backdrop_submission_tests.adb", "vulkan_submission_mock.c", "vulkan_submission.ads", "vulkan_submission.adb", "vulkan_submission_ffi.ads", "vulkan_submission_ffi.adb", "vulkan_affine_binding.ads", "vulkan_affine_binding.adb", "vulkan_affine_ffi.ads", "vulkan_affine_ffi.adb", "compositor_affine.ads", "compositor_affine.adb", "compositor_transform.ads", "compositor_transform.adb", "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb");
+   for Object_Dir use "build/backdrop-submission/obj";
+   for Exec_Dir use "build/backdrop-submission";
+   for Main use ("backdrop_submission_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+      for Default_Switches ("C") use ("-std=c11", "-O2", "-Wall", "-Wextra", "-Werror");
+   end Compiler;
+end Backdrop_Submission;

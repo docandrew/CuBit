@@ -1,0 +1,32 @@
+# The gcc driver on CuBit (userspace/ports/gcc): what userspace/libc/cubit-cc
+# passes, as specs, installed as toolchain/lib/gcc/x86_64-linux-musl/15.3.0/specs
+# where the driver reads it. Programs are static, non-PIE ELF linked with
+# the libc's script (cubit.ld) and a 1 MiB stack contract (a later
+# -Wl,-z,stack-size=N overrides it); the start code is cubit-crt1.o, then
+# gcc's static init/fini frame. ld links directly: no collect2, no LTO
+# (decision D4).
+
+*cc1:
++ -mno-red-zone
+
+*startfile:
+cubit-crt1.o%s crti.o%s crtbeginT.o%s
+
+*endfile:
+crtend.o%s crtn.o%s
+
+*link:
+-m elf_x86_64 -static -T cubit.ld%s -z stack-size=1048576 -z noexecstack -z noseparate-code
+
+*lib:
+-lc
+
+*libgcc:
+-lgcc
+
+*link_gcc_c_sequence:
+--start-group %G %L --end-group
+
+*linker:
+ld
+

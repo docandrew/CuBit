@@ -415,6 +415,36 @@ begin
       Binding.Bind (Object, Source, First, 42, First, ID, 4096, 0, 4096, Accepted);
       pragma Assert (Accepted);
       VM.Seal (Source, Accepted); pragma Assert (Accepted);
+      -- Losing authority on any streamed DMA read must reject before mirror
+      -- copying; valid-looking returned addresses are not retained authority.
+      for Loss_Page in 1 .. 4 loop
+         declare
+            Candidate : VM.Image;
+            Reads : Natural := 0;
+            Epoch : constant Unsigned_64 := VM.Revision (Source);
+            function Read_Page (Page : VM.Page_Number) return Unsigned_64 is
+            begin
+               Reads := Reads + 1;
+               pragma Assert (Page = Reads);
+               if Page = Loss_Page then Ready := False; end if;
+               return Fresh (Page);
+            end;
+            procedure Prepare is new Binding.Prepare_Change_From_Pages (Read_Page);
+         begin
+            Ready := True;
+            Prepare (Object, Source, Candidate, 4, First,
+              42, First, ID, 8192, 0, 4096, False, Accepted);
+            pragma Assert (not Accepted and Reads = Loss_Page);
+            pragma Assert (VM.Root_DMA (Candidate) = 0 and VM.Backed_Tables (Candidate) = 0);
+            pragma Assert (VM.Used (Candidate) = 0 and not VM.Sealed (Candidate));
+            pragma Assert (VM.Revision (Source) = Epoch and VM.Lookup (Source, 8192) = 0);
+            Ready := True;
+            Prepare (Object, Source, Candidate, 4, First,
+              42, First, ID, 8192, 0, 4096, False, Accepted);
+            pragma Assert (not Accepted and Reads = Loss_Page);
+         end;
+      end loop;
+      Ada.Text_IO.Put_Line ("Streamed replacement owner loss PASS4: stop at each callback, no candidate root, unchanged source and no replay");
       Binding.Prepare_Change (Object, Source, Rejected, Fresh, First,
         43, Second, ID, 8192, 0, 4096, False, Accepted);
       pragma Assert (not Accepted and VM.Used (Rejected) = 0);

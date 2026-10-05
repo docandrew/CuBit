@@ -1,0 +1,10 @@
+project Storage_Capacity is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("storage_capacity_tests.adb", "storage_gpu_model.ads", "compositor_storage.ads", "compositor_storage.adb");
+   for Object_Dir use "build/storage-capacity/obj";
+   for Exec_Dir use "build/storage-capacity";
+   for Main use ("storage_capacity_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Storage_Capacity;

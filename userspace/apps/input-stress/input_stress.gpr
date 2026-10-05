@@ -15,7 +15,7 @@ project Input_Stress is
    package Compiler is
       for Default_Switches ("Ada") use
         ("-O2", "-fstack-usage", "-fomit-frame-pointer", "-mno-red-zone",
-         "-fno-pic", "-mno-sse", "-mno-sse2");
+         "-fno-pic");
    end Compiler;
 
    package Binder is

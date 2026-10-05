@@ -10,6 +10,8 @@ with Volume_Admission; use Volume_Admission;
 --  unsynchronized write, with a flush after each step. "SYNCED k" is printed
 --  only after step k's flush completed: its state must survive any cut.
 procedure Workload is
+   Replaced_Number : Interfaces.Unsigned_32;
+   Replaced : Ext2.Inode;
    Fs : Filesystem;
    Admission : Admission_Result;
    Flushed : Flush_Status;
@@ -73,7 +75,7 @@ begin
    Resize ("alpha", 10 * Kib);
    Fill ("victim", 5 * Kib, 6 * Kib, 'D'); -- a Linux-created file's blocks
    Sync (3);
-   renamePath (Fs, "beta", "gamma", Renamed);
+   renamePath (Fs, "beta", "gamma", False, Replaced_Number, Replaced, Renamed);
    pragma Assert (Renamed = Rename_Complete);
    Fill ("gamma", 40 * Kib, 30 * Kib, 'E');
    Create ("delta");

@@ -40,7 +40,8 @@ procedure VM_Root_Publish_Tests is
    end Flush;
    package Writer is new Intel_GPU_VM_Materialize (VM, Owner, Flush);
    Backing : Writer.Mappings;
-   procedure Run (Expected : Boolean; Stale : Boolean := False) is
+   procedure Run (Expected : Boolean; Stale : Boolean := False;
+                  First : Positive := 1; Last : Natural := 8) is
       State : Writer.State;
       Success : Boolean;
       Saved : Natural;
@@ -49,7 +50,7 @@ procedure VM_Root_Publish_Tests is
       for I in Table_Index loop RAM (0) (I) := VM.Entry_Value (Old_Image, 1, I); end loop;
       if Stale then RAM (0) (0) := 42; end if;
       Calls := 0; Owner_Calls := 0;
-      Writer.Publish_Update (State, Old_Image, New_Image, Backing,
+      Writer.Publish_Update (State, Old_Image, New_Image, Backing (First .. Last),
                              (CPU (0), 4096), Success);
       pragma Assert (Success = Expected);
       if Expected then
@@ -60,8 +61,17 @@ procedure VM_Root_Publish_Tests is
       end if;
       for I in Table_Index loop pragma Assert (RAM (9) (I) = Sentinel); end loop;
       if Stale then pragma Assert (Calls = 0); end if;
+      if First /= 1 or Last < VM.Used (New_Image) then
+         pragma Assert (Calls = 0 and Owner_Calls = 0);
+         for I in Table_Index loop
+            pragma Assert (RAM (0) (I) = VM.Entry_Value (Old_Image, 1, I));
+         end loop;
+         for P in 1 .. 9 loop
+            for I in Table_Index loop pragma Assert (RAM (P) (I) = Sentinel); end loop;
+         end loop;
+      end if;
       Saved := Owner_Calls;
-      Writer.Publish_Update (State, Old_Image, New_Image, Backing,
+      Writer.Publish_Update (State, Old_Image, New_Image, Backing (First .. Last),
                              (CPU (0), 4096), Success);
       pragma Assert (not Success and Owner_Calls = Saved);
    end Run;
@@ -79,6 +89,10 @@ begin
    VM.Map_Page (New_Image, 2 ** 39, 16#201000#, Write_Back, Read_Write, OK);
    pragma Assert (OK); VM.Seal (New_Image, OK); pragma Assert (OK);
    Run (True); Owner_Count := Owner_Calls;
+   Run (True, Last => VM.Used (New_Image));
+   Run (False, Last => VM.Used (New_Image) - 1);
+   Run (False, First => 2);
+   Run (False, Last => 0);
    for Failure in 1 .. Owner_Count loop Fail_Owner := Failure; Run (False); end loop;
    Fail_Owner := 0;
    for Failure in 1 .. VM.Used (New_Image) + 1 loop

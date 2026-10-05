@@ -1,0 +1,10 @@
+project Text_Background is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use ("text_background_tests.adb", "compositor_text.ads", "compositor_text.adb", "compositor_affine.ads", "compositor_affine.adb", "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb");
+   for Object_Dir use "build/text-background/obj";
+   for Exec_Dir use "build/text-background";
+   for Main use ("text_background_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Text_Background;

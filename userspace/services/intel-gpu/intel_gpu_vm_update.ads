@@ -27,8 +27,27 @@ package Intel_GPU_VM_Update is
    function Current_Phase (Object : State) return Phase;
    function Generation (Object : State) return Unsigned_64;
    function Can_Submit (Object : State) return Boolean;
+   procedure Begin_Update
+     (Object : in out State; Expected_Generation : Unsigned_64;
+      Accepted : out Boolean; Status : out Result);
+   -- Accepted closes submission before any owner callback; Status is only an
+   -- outcome when Accepted=False. Serialized caller retains the same state,
+   -- context hold and backing across all subsequent event-loop turns.
+   generic
+      with procedure Advance_Publication (Finished, Success : out Boolean);
+   procedure Advance
+     (Object : in out State; Finished : out Boolean; Status : out Result);
+   -- At most one stage callback. Publication may yield Finished=False with
+   -- Success=True; failure is terminal even if not finished. Status is an
+   -- outcome only when Finished=True. Nested Advance rejects without effects.
+   -- Owner/retirement are rechecked on each turn and after every callback.
+   -- Epoch advances only after successful invalidation and resume; callers
+   -- must not treat an unfinished step as a reply or submission authorization.
    procedure Execute (Object : in out State; Expected_Generation : Unsigned_64;
                       Status : out Result);
+   procedure Advance_Once
+     (Object : in out State; Finished : out Boolean; Status : out Result);
+   -- Event-loop step using the original one-shot Publish callback.
    -- A stale generation or nested attempt is rejected without callbacks.
    -- Once drain starts, any failure permanently closes admission. No rollback
    -- or page reclamation is inferred. Owner retains both generations and must
@@ -38,5 +57,6 @@ private
    type State is limited record
       Value : Phase := Idle;
       Epoch : Unsigned_64 := 0;
+      Advancing : Boolean := False;
    end record;
 end Intel_GPU_VM_Update;

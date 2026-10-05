@@ -220,6 +220,21 @@ with (run / 'qemu.log').open('w') as log:
             hmp(f'sendkey {name}')
             time.sleep(0.2)
 
+        # The Apps menu lists the live settings' desktop.launch.* entries in
+        # key order, starting on the first. Navigate by label, so new entries
+        # do not silently shift every launch to the wrong program.
+        live_settings = (pathlib.Path(__file__).resolve().parents[1] /
+                         'hardware/system-live.ccl').read_text()
+        apps_menu = [label for _, label in sorted(re.findall(
+            r'\(setting "desktop\.launch\.([^"]+)" "\(launch v1 \(label \\"([^"\\]+)\\"',
+            live_settings))]
+
+        def launch(label):
+            key('meta_l')
+            for _ in range(apps_menu.index(label)):
+                key('down')
+            key('ret')
+
         if args.early_text:
             wait_for('GNU GRUB')
             key('down'); key('down'); key('ret')
@@ -380,10 +395,7 @@ with (run / 'qemu.log').open('w') as log:
             before = serial.read_text(errors='replace')
             windows = before.count('boot-logs: window ready')
             replays = before.count('boot-logs: xhci: controller running;')
-            key('meta_l')
-            for _ in range(9):
-                key('down')
-            key('ret')
+            launch('Boot Diagnostics')
             wait_for('boot-logs: window ready', windows + 1)
             wait_for('boot-logs: xhci: controller running;', replays + 1)
             hmp(f'screendump {run}/boot-logs-menu.ppm')
@@ -434,10 +446,7 @@ with (run / 'qemu.log').open('w') as log:
                 raise RuntimeError('popup/cursor left wallpaper damage')
             print('WALLPAPER DAMAGE PASS: popup and pointer restore exact background.', flush=True)
         if args.sameboy:
-            key('meta_l')
-            for _ in range(5):
-                key('down')
-            key('ret')
+            launch('SameBoy')
             wait_for('sameboy: loaded ROM 00')
             if args.without_audio:
                 wait_for('sameboy: mixer unavailable; continuing silently')
@@ -574,8 +583,7 @@ with (run / 'qemu.log').open('w') as log:
                     raise RuntimeError('SameBoy exit left the audio hardware running')
                 print('SAMEBOY AUDIO CLOSE PASS: final stream stopped hardware.', flush=True)
             print('SAMEBOY PASS: cartridge read from USB CD, frames and keyboard response, clean exit.', flush=True)
-        # Apps menu starts on CCL Workbench, followed by DOOM.
-        key('meta_l'); key('down'); key('ret')
+        launch('DOOM')
         wait_for('doom.elf')
         for _ in range(100):
             hmp('mouse_move 2 1')
@@ -586,8 +594,8 @@ with (run / 'qemu.log').open('w') as log:
         key('ret'); key('ret'); key('ret')
         time.sleep(5)
         hmp(f'screendump {run}/doom-game.ppm')
-        wait_for('I_InitGraphics: DOOM screen size:')
-        key('meta_l'); key('ret')
+        wait_for('DOOM: Running inside desktop surface')
+        launch('CCL Workbench')
         wait_for('ccl-workbench: native window ready')
         time.sleep(2)
         hmp(f'screendump {run}/workbench.ppm')
@@ -675,28 +683,19 @@ with (run / 'qemu.log').open('w') as log:
                                      clicked.crop(label_bounds)).getbbox() is None:
                 raise RuntimeError('native CCL button click did not change its label')
             print('CCL BUTTON PASS: native input dispatched retained CCL and repainted its label.', flush=True)
-        key('meta_l')
-        for _ in range(4):
-            key('down')
-        key('ret')
+        launch('Files')
         wait_for('files: native window ready')
         time.sleep(2)
         hmp(f'screendump {run}/files.ppm')
         if args.servo:
-            key('meta_l')
-            for _ in range(3):
-                key('down')
-            key('ret')
+            launch('Penny')
             wait_for('CUBITSHELL: desktop window')
             wait_for('CUBITSHELL: PASS')
             time.sleep(2)
             hmp(f'screendump {run}/servo.ppm')
             print('SERVO LIVE PASS: native optical load and rendered built-in page; inspect screenshot.', flush=True)
         if args.mesa:
-            key('meta_l')
-            for _ in range(8):
-                key('down')
-            key('ret')
+            launch('Mesa Cube (software)')
             wait_for('MESA-WINDOW: attached immutable Mesa buffer')
             time.sleep(2)
             hmp(f'screendump {run}/mesa.ppm')
@@ -714,10 +713,7 @@ with (run / 'qemu.log').open('w') as log:
                 raise RuntimeError('native Mesa application reported a failure')
             print('MESA LIVE PASS: optical Apps launch, software-rendered pixels, animation and close.', flush=True)
         if args.settings:
-            key('meta_l')
-            for _ in range(7):
-                key('down')
-            key('ret')
+            launch('Settings')
             time.sleep(1)
             hmp(f'screendump {run}/settings-light.ppm')
             key('tab'); key('ret')  # Select Alloy Dark, still only a preview.
@@ -759,10 +755,7 @@ with (run / 'qemu.log').open('w') as log:
             print('SETTINGS PASS: keyboard selection, Apply, live palette and Cubie wallpaper.', flush=True)
         if args.eject:
             qmp('eject', {'device': 'cd', 'force': True})
-            key('meta_l')
-            for _ in range(2):
-                key('down')
-            key('ret')
+            launch('Devices')
             # A fresh Devices launch must need directory/image reads. The
             # storage session is invalidated, but the mouse must remain live.
             removal_deadline = time.monotonic() + 10

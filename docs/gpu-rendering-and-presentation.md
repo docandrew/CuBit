@@ -1,5 +1,114 @@
 # GPU rendering and presentation boundaries
 
+## Rendering-to-presentation checkpoint (2026-10-04)
+
+This checkpoint supersedes the dated bring-up status below, not the historical
+test evidence. The user has observed the animated 20-teapot gallery on the NUC
+at approximately 29 FPS. That is the complete application/presentation path,
+not a GPU timestamp measurement. The roughly five-second hitch is unresolved.
+The v60 candidate retains v59's gallery binary and timing instrumentation;
+its allocation changes do not establish a performance fix.
+
+The present source path is:
+
+```
+ANV GPU color/depth rendering
+  -> completed image-to-buffer transfer + fence wait
+  -> CPU readback validation
+  -> Mesa_Gallery_Surface.Frame: CPU copy/scale into Client_Frame_Pair
+  -> immutable Desktop frame publication
+  -> Desktop composition -> display service -> existing output backend
+```
+
+`tests/mesa-teapot/render.h` owns the GPU resources and waits before invoking
+its synchronous consumer. `tests/mesa-anv/native-gallery-present.h` maps the
+completed readback buffer; `mesa_gallery_surface.adb` copies it into a frame
+pair. Successful publication withdraws the application's writable frame
+access. This is real native hardware rendering with copy-based presentation,
+not a hardware Desktop compositor, Mesa WSI, or direct Intel scanout.
+
+### Provider boundary still required
+
+The driver now has `Intel_GPU_Plane_Decode.Plan_Linear_Flip`, a pure
+same-geometry linear-buffer planner. It uses the existing representation-clause
+surface record and footprint decoder, rejecting unstable/unsupported current
+state, non-page-aligned or wider-than-32-bit addresses, incomplete target
+ranges and overlap with the old plane range. Its synthetic prospective live
+address exists only to validate geometry; it is not a hardware observation.
+No register-writing caller exists yet. Other planes, physical aliases,
+producer completion, exclusive display ownership and flip retirement remain
+separate admission requirements.
+
+Sources: Intel IHD-OS-TGL-Vol2c-12.21 printed pp840–841 and848
+(`~/Downloads/intel-gfx-prm-osrc-tgl-vol-02-c-command-reference-registers-part-2.pdf`,
+PDF pages870–871 and878) describe SURF[31:12], flip arming and the live address.
+The [Linux plane implementation](https://codebrowser.dev/linux/linux/drivers/gpu/drm/i915/display/skl_universal_plane.c.html)
+was cross-checked: `icl_plane_update_arm` places CTL immediately before SURF;
+`tgl_plane_min_alignment` distinguishes ordinary linear surfaces from DPT and
+async-flip requirements. This moving source view is not the pinned v6.16
+audit: both v6.16 URL fetches failed this session. The planner is not a
+complete modeset sequence and does not enable async flipping.
+
+`Intel_GPU_Buffer_Views.Share_Retained` now supplies one driver-private
+lifetime building block: a trusted coordinator can create a read-only,
+nonforwardable CPU reader from an existing registry pin, even after the BO
+name closes. It takes an independent pin before grant creation and releases
+it only after confirmed reader retirement (or rejection before any creation
+attempt). Uncertain creation/revocation retains the pin. It does not reopen
+the BO name or infer delegation rights from a pin. Recipient authorization,
+producer completion and exclusion of writes remain coordinator obligations.
+Hosted `view_retention_tests` exercises the actual registry/view code with
+mock grant operations; this is not a new wire endpoint or GPU image import.
+The native `view_retention_check.adb` also passes in the private four-CPU QEMU
+fixture: real self-grants deny writable acquisition/forwarding, preserve an
+already acquired read alias during revocation, and block backing release until
+the reader drains. Evidence is `demand-backing.esKqSQ/serial.log` under the
+private graphics workspace's `tests/intel-gpu` directory. This uses an existing
+built kernel; it does not establish interprocess isolation or Intel rendering.
+
+The following are distinct contracts, not interchangeable handles:
+
+| Existing object | What it establishes | What it does not establish |
+| --- | --- | --- |
+| Intel BO presentation grant | Read-only CPU forwarding and retained backing | GPU import, image layout, GPU completion |
+| Local compositor target set | Three process-local image views/framebuffers | Display authority, scanout compatibility or a latched front buffer |
+| Vulkan fence completion | Completion of the associated GPU submission | Completion of Desktop/display reads |
+| Desktop publication reply | Acceptance under the frame protocol | Permission to overwrite a still-consumed image |
+
+The checked sources are `Intel_GPU_Buffer_Views.Share`,
+`userspace/lib/compositor/vulkan_targets.h`,
+`vulkan_device_storage.h`, and `Client_Frame_Pair`. Desktop's current manifest
+requests display authority but no render authority. Display still routes GPU
+calls through `CAP_SLOT_GPU`; its operation list has no GPU-image import/latch
+contract. Enabling the Vulkan backend or accepting a numeric VkImage would
+not fill these gaps. Existing CPU-grant checks must remain intact.
+
+The next provider implementation needs these separately testable steps:
+
+1. Admit a compositor render session through the existing startup authority
+   policy, with software startup retained when admission is unavailable.
+2. Create driver-backed output targets with authenticated adapter/session
+   incarnations, stable allocation identity and validated format, layout,
+   plane offsets, pitch and extent. A process-local Vulkan handle is not the
+   descriptor sent over IPC; pixel storage remains in the data plane.
+3. Bind each target to the selected output generation. Reject incompatible
+   backing/layout or cross-adapter imports rather than silently claiming
+   zero-copy support. Keep rendering ownership distinct from scanout ownership.
+4. Transfer a completed target to display under an explicit consumer lease.
+   Acceptance, latch and old-front retirement are distinct events. Reuse
+   requires all GPU, CPU and display consumers to have retired; an ambiguous
+   reply or device reset retains uncertain backing.
+5. Exercise stale generations, duplicate completions, pending old-front reads,
+   partial import failure, resize and adapter loss before enabling the Desktop
+   path. Hosted/native protocol tests cannot validate Intel scanout registers;
+   that final gate requires physical hardware.
+
+The same-device scene probe is useful for shader/scene integration, but does
+not substitute for steps 2–4. Do not enable external-memory Vulkan extensions
+or writable presentation grants as a shortcut. The existing Gen12 read-only
+PPGTT restriction below also means a read-only CPU grant is not enforceable
+GPU read-only sharing authority.
+
 ## Allocation scaling checkpoint (2026-10-02)
 
 Hardware candidate **v26**:

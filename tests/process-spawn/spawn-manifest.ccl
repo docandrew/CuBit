@@ -1,0 +1,8 @@
+# Processes test parent: starts children through procmgr (OP_LAUNCH). Reads
+# tls/ only to change its working directory there (inherited by children).
+(executable-manifest v1
+  (identity "com.cubit.spawn-check")
+  (version "0.1.0")
+  (request-service process-manager read-write process-manager)
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read) "@nvme:0/tls"))

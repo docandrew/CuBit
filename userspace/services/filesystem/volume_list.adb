@@ -12,7 +12,9 @@ package body Volume_List with SPARK_Mode is
    begin
       Volume := No_Volume;
       Result := Invalid_Name;
-      if Name'Length = 0 or else Name'Length > Maximum_Name_Bytes then
+      if Name'Length = 0 or else Name'Length > Maximum_Name_Bytes
+        or else Name = Boot_Archive_Name or else Name = Optical_Name
+      then
          return;
       end if;
       for Ch of Name loop
@@ -68,6 +70,16 @@ package body Volume_List with SPARK_Mode is
       end loop;
       if Separator = Path'First + 1 then
          Selection := Invalid_Path;
+         return;
+      end if;
+      if Path (Path'First + 1 .. Separator - 1) = Boot_Archive_Name then
+         Selection := Boot_Archive;
+      elsif Path (Path'First + 1 .. Separator - 1) = Optical_Name then
+         Selection := Optical_Volume;
+      end if;
+      if Selection in Boot_Archive | Optical_Volume then
+         Relative_First := (if Separator <= Path'Last then Separator + 1
+                            else Separator);
          return;
       end if;
       for I in 1 .. List.Used loop

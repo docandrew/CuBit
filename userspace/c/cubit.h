@@ -187,9 +187,6 @@ typedef char cubit_message_words_offset_must_be_16[
 typedef char cubit_completion_size_must_be_88[
     sizeof(cubit_completion_t) == 88 ? 1 : -1];
 
-int cubit_cap_submit(uint64_t cap_slot, const cubit_async_message_t *message,
-                     uint64_t token);
-int cubit_poll_completion(cubit_completion_t *completion);
 
 /* Capability minting (for process managers) */
 #define SYSCALL_POLICY_MINT_CAPABILITY        72
@@ -244,7 +241,6 @@ int cubit_poll_completion(cubit_completion_t *completion);
 #define CUBIT_REQ_DEVICE_MEM   5
 #define CUBIT_REQ_PROCESS      6
 #define CUBIT_REQ_NOTIFICATION 7
-#define CUBIT_REQ_STREAM       8
 #define CUBIT_REQ_RESOURCE     9
 
 /* Well-known stream IDs */
@@ -382,96 +378,6 @@ static inline long cubit_syscall7(long num, long a0, long a1, long a2,
     cubit_syscall(num, (long)(a0), (long)(a1), (long)(a2), (long)(a3), (long)(a4), (long)(a5))
 
 /*---------------------------------------------------------------------------
- * System Call Wrappers
- *---------------------------------------------------------------------------*/
-void cubit_exit(int code);
-long cubit_write(int fd, const void *buf, size_t count);
-
-/* Memory */
-void *cubit_sbrk(intptr_t increment);
-
-/* Heap allocation */
-void *malloc(size_t size);
-void *calloc(size_t nmemb, size_t size);
-void *realloc(void *ptr, size_t size);
-void  free(void *ptr);
-
-/* Time */
-uint64_t cubit_gettime_ms(void);
-void     cubit_sleep_ms(uint32_t ms);
-
-/* Framebuffer */
-typedef struct {
-    void    *addr;
-    uint32_t width;
-    uint32_t height;
-    uint32_t pitch;
-    uint32_t bpp;
-} cubit_framebuffer_t;
-
-long cubit_map_framebuffer(cubit_framebuffer_t *fb);
-
-/* Keyboard input */
-typedef struct {
-    uint8_t scancode;   /* PS/2 Set 1 scan code (without break bit) */
-    int     pressed;    /* 1 = pressed, 0 = released */
-} cubit_key_event_t;
-
-void cubit_keyboard_init(void);
-void cubit_keyboard_poll(void);
-int  cubit_keyboard_get(cubit_key_event_t *ev);
-
-/* Mouse input */
-typedef struct {
-    int16_t dx, dy;
-    int8_t  dz;
-    uint8_t buttons;    /* bit 0=L, 1=R, 2=M */
-} cubit_mouse_event_t;
-
-void cubit_mouse_init(void);
-void cubit_mouse_poll(void);
-int  cubit_mouse_get(cubit_mouse_event_t *ev);
-
-/* String functions */
-void *memcpy(void *dest, const void *src, size_t n);
-void *memmove(void *dest, const void *src, size_t n);
-void *memset(void *s, int c, size_t n);
-int   memcmp(const void *s1, const void *s2, size_t n);
-size_t strlen(const char *s);
-char  *strcpy(char *dest, const char *src);
-char  *strncpy(char *dest, const char *src, size_t n);
-int    strcmp(const char *s1, const char *s2);
-int    strncmp(const char *s1, const char *s2, size_t n);
-char  *strcat(char *dest, const char *src);
-char  *strchr(const char *s, int c);
-char  *strrchr(const char *s, int c);
-char  *strstr(const char *haystack, const char *needle);
-long   strtol(const char *nptr, char **endptr, int base);
-unsigned long strtoul(const char *nptr, char **endptr, int base);
-int    atoi(const char *nptr);
-long   atol(const char *nptr);
-int    abs(int x);
-
-int    snprintf(char *str, size_t size, const char *fmt, ...);
-
-/*---------------------------------------------------------------------------
- * Convenience: print a null-terminated string to serial console (STDOUT)
- *---------------------------------------------------------------------------*/
-static inline void cubit_puts(const char *s)
-{
-    size_t len = 0;
-    while (s[len]) len++;
-    cubit_write(STDOUT, s, len);
-}
-
-/* File open flags */
-#define O_RDONLY   0
-#define O_WRONLY   1
-#define O_RDWR     2
-#define O_CREAT    64
-#define O_TRUNC    512
-
-/*---------------------------------------------------------------------------
  * I/O Streams - Producer-owned ring buffer model
  *
  * Same shared memory layout as the Ada CuBit.Streams package.
@@ -491,15 +397,12 @@ static inline void cubit_puts(const char *s)
 #define OP_STREAM_SUBSCRIBE   0x0700
 #define OP_STREAM_UNSUBSCRIBE 0x0701
 
-/* Producer API */
+/* Producer API (the libc's CuBit.Libc_Streams) */
 void     cubit_stream_create(uint16_t stream_id, unsigned pages,
                              uint16_t type_tag);
 uint32_t cubit_stream_write(uint16_t stream_id, const void *data,
                             uint32_t len, uint16_t type_tag);
-void     cubit_stream_print(uint16_t stream_id, const char *msg);
-int      cubit_stream_handle_subscription(void);
 int      cubit_stream_handle_message(long from, const void *msg);
 extern int cubit_stream_poll_on_write;
-void     cubit_stream_flush(uint16_t stream_id);
 
 #endif /* CUBIT_H */

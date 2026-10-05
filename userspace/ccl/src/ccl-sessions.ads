@@ -1,3 +1,4 @@
+with CuBit.Failures;
 with CCL.Catalog;
 with CCL.Catalog.Completion;
 with CCL.Completions;
@@ -127,6 +128,32 @@ package CCL.Sessions with SPARK_Mode is
       Grants : CCL.Catalog.Granted_Bindings; Context : in out Host_Context;
       Outcome : out CCL.Language.Interpretation_Result; Reevaluated : out Boolean)
      with Post => Outcome.Fuel_Remaining <= Fuel;
+
+   --  An entry that stopped at (wait t) on a pending task
+   --  (Waiting_On_Task): run it again once t completes. Unlike a live cell
+   --  this finishes the entry as its submission would have, so a name it
+   --  defines is bound now. The caller answers the host calls the first run
+   --  made from its log (CCL.Host_Replay), so none is made twice. Resumed
+   --  is False when entry Index is not waiting on a task.
+   generic
+      type Host_Context is limited private;
+      with procedure Invoke
+        (Context : in out Host_Context; Binding : Interfaces.Unsigned_32;
+         Argument : CCL.Host_Values.Value; Reply : out CCL.Host_Values.Call_Result);
+      with procedure Read_Stream
+        (Context : in out Host_Context; Request : CCL.Streams.View_Request;
+         Reply : in out CCL.Streams.View_Reply) is null;
+   procedure Resume_With_Values
+     (Item : in out Session; Index : History_Index; Fuel : Fuel_Budget;
+      Grants : CCL.Catalog.Granted_Bindings; Context : in out Host_Context;
+      Outcome : out CCL.Language.Interpretation_Result; Resumed : out Boolean)
+     with Post => Outcome.Fuel_Remaining <= Fuel;
+   --  The entry waiting on task Waited_On, or 0 when none does.
+   function Waiting_Entry (Item : Session; Waited_On : CCL.Streams.Handle) return History_Count;
+   --  A waiting entry that cannot run again (its host calls were not all
+   --  logged): it fails with Why instead of waiting for ever.
+   procedure Abandon_Wait
+     (Item : in out Session; Index : History_Index; Why : CuBit.Failures.Failure);
 
    function Result_Type (Outcome : CCL.Language.Interpretation_Result)
      return CCL.Language.Static_Type;

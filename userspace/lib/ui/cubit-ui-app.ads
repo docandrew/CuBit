@@ -63,6 +63,9 @@ package CuBit.UI.App is
 
    type Window is limited private;
 
+   -- A removed surface stops input/painting, but retains frame retirement state.
+   function Input_Stopped (win : Window) return Boolean;
+
    -- Protected frames are enabled per client during migration. Raw-renderer
    -- callers retain the existing attachment path until their density handling
    -- is adapted. Run manages acquisition, repair and publication automatically.
@@ -251,6 +254,8 @@ private
       pitch : Natural := 0;
       lastEvent : Unsigned_64 := 0;
       inputMayRemain : Boolean := False;
+      inputStopped : Boolean := False;
+      inputErrorReported : Boolean := False;
       batchedInput : Boolean := False;
       inputCache : Client_Input_Batch_Cache.State;
       inputStats : Input_Diagnostics;

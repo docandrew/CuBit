@@ -5,7 +5,7 @@
 --  @summary
 --  C entry points for CuBit.Channel_Rings, so C, C++ and Rust programs
 --  keep their network channel rings with the proved code rather than a C
---  copy. Part of this runtime (NetSurf's fetcher links it) and compiled
+--  copy. Part of this runtime and compiled
 --  into the libc (userspace/libc/build.sh). The C declarations are in
 --  userspace/libc/overlay/src/cubit/net_channel.h.
 --

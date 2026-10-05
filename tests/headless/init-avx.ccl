@@ -1,0 +1,7 @@
+# AVX state isolation (kernel XSAVE): two avx-check processes on one CPU,
+# each holding its own pattern in all sixteen YMM registers while yielding.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "avx-check.app" (priority 3))
+  (start "avx-check.app" (priority 3))
+)

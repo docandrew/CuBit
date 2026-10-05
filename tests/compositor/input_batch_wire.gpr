@@ -1,0 +1,15 @@
+project Input_Batch_Wire is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "build/input-batch-wire/source");
+   for Source_Files use ("input_batch_wire_tests.adb",
+     "compositor_input_batch_wire.ads", "compositor_input_batch_wire.adb",
+     "compositor_input_batches.ads", "compositor_input_batches.adb",
+     "compositor_input_queue.ads", "compositor_input_queue.adb",
+     "cubit.ads", "cubit-grant_references.ads",
+     "cubit-desktop_protocol.ads", "cubit-desktop_protocol.adb");
+   for Object_Dir use "build/input-batch-wire/obj";
+   for Exec_Dir use "build/input-batch-wire";
+   for Main use ("input_batch_wire_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Input_Batch_Wire;

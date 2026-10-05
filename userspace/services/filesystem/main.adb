@@ -1166,7 +1166,7 @@ procedure main is
       if entryCount > 0 then
          acquireClientMemory
            (sender, msg.words (2), msg.words (3),
-            Unsigned_64 (entryCount * 72),
+            Unsigned_64 (entryCount * CuBit.File_Access.Wire_Entry_Bytes),
             CuBit.Memory_Grants.Read_Access, grantAddr, grantOk);
          if not grantOk then
             sendReply (sender, REPLY_ACCESS_DENIED, 0);
@@ -1179,7 +1179,7 @@ procedure main is
          CuBit.File_Access.Allow_All_For_Bootstrap (candidate);
       else
          declare
-            buf : CuBit.File_Access.Wire_Bytes (1 .. entryCount * 72)
+            buf : CuBit.File_Access.Wire_Bytes (1 .. entryCount * CuBit.File_Access.Wire_Entry_Bytes)
               with Import, Address => grantAddr;
             snapshot : constant CuBit.File_Access.Wire_Bytes := buf;
          begin
@@ -1424,6 +1424,7 @@ procedure main is
       pathStatus : Ext2.Directory_Lookup_Status := Ext2.Lookup_Not_Found;
       attached : Open_Inodes.Attach_Result;
       mayRead : Boolean := False;
+      mayWrite : Boolean := False;
    begin
       if msg.tag.length /= 4 or else
          pathLen = 0 or else pathLen > MAXIMUM_PATH_BYTES or else
@@ -1486,6 +1487,9 @@ procedure main is
                sendReply (sender, REPLY_ACCESS_DENIED, Unsigned_64'Last);
                return;
             end if;
+            --  Whether the policy would let it write (access(W_OK)).
+            mayWrite := (requiredRights and ACL_WRITE) /= 0 or else
+              checkAccess (sender, pathStr, ACL_WRITE);
          end;
 
          Select_Path (Volumes, pathStr, selection, reference, relStart);
@@ -1507,6 +1511,27 @@ procedure main is
             Ext2.resolvePath
               (Contexts (useVolume).Fs, pathStr (relStart .. pathStr'Last),
                inodeNum, pathStatus);
+         elsif selection = Boot_Archive then
+            --  "@boot/<name>": the bootstrap archive only.
+            if cpioOk then
+               cpioIdx := Cpio.findFile
+                 (cpioArchive, pathStr (relStart .. pathStr'Last));
+               if cpioIdx < cpioArchive.count then
+                  selectedKind := CPIO_ARCHIVE;
+                  inodeNum := 1;
+               end if;
+            end if;
+         elsif selection = Optical_Volume then
+            --  "@cd:0/<name>": the optical disc only.
+            ISO9660.Find
+              (pathStr (relStart .. pathStr'Last), opticalFile, opticalFound);
+            if opticalFound then
+               selectedKind := ISO_FILESYSTEM;
+               inodeNum := 1;
+            elsif ISO9660.Media_Failed then
+               sendReply (sender, REPLY_IO_ERROR, 0);
+               return;
+            end if;
          else
             --  Preserve bootstrap lookup order. Names confer no authority:
             --  the caller's original path was checked before selection.
@@ -1821,7 +1846,9 @@ procedure main is
               (REPLY_OK, handleId, fsize,
                rights => (if parkable (handle) then FQ.Rights_Read else 0) or
                          (if (files (handle).openRights and ACL_WRITE) /= 0
-                          then FQ.Rights_Write else 0));
+                          then FQ.Rights_Write else 0) or
+                         (if mayWrite and then selectedKind = EXT2_FILESYSTEM
+                          then FQ.Rights_Policy_Write else 0));
          else
             ignore := reply (sender, replyMsg);
          end if;
@@ -2335,6 +2362,7 @@ procedure main is
       handleId : Unsigned_64;
       allocated : Boolean;
 
+      mayCreate : Boolean := False;
    begin
       if msg.tag.length /= 3 or else pathLen > MAXIMUM_PATH_BYTES then
          sendReply (sender, REPLY_ERR, 0);
@@ -2375,6 +2403,8 @@ procedure main is
                sendReply (sender, REPLY_ACCESS_DENIED, 0);
                return;
             end if;
+            --  Whether the policy would let it create here (access(W_OK)).
+            mayCreate := checkAccess (sender, path, ACL_WRITE or ACL_CREATE);
             Select_Path (Volumes, path, selection, reference, relStart);
             for index in path'Range loop
                if path (index) /= '/' then
@@ -2388,7 +2418,9 @@ procedure main is
          end if;
 
          if pathLen = 0 or else
-           (selection = Unqualified and then onlySeparators)
+           (selection = Unqualified and then onlySeparators) or else
+           (selection = Boot_Archive and then
+              (for all index in relStart .. path'Last => path (index) = '/'))
          then
             if not cpioOk then
                sendReply (sender, REPLY_ERR, 0);
@@ -2474,7 +2506,10 @@ procedure main is
            (if filesystemKind = CPIO_ARCHIVE then 0 else
               Unsigned_64 (dirIno.generationNumber));
          if curRoute.queue /= No_Client_Queue then
-            answerEntry (REPLY_OK, replyMsg.words (0), replyMsg.words (1));
+            answerEntry
+              (REPLY_OK, replyMsg.words (0), replyMsg.words (1),
+               rights => (if mayCreate and then filesystemKind = EXT2_FILESYSTEM
+                          then FQ.Rights_Policy_Write else 0));
          else
             ignored := reply (sender, replyMsg);
          end if;
@@ -2649,6 +2684,33 @@ procedure main is
       sendReply (sender, REPLY_OK, 0);
    end handleRewindDirectory;
 
+   --  What an ext2 inode records, as Directory.Inspection.V1. Ext2 keeps
+   --  seconds since the epoch; i_ctime is the change time.
+   function inspectionOf
+     (ino : Ext2.Inode; volume : Volume_Index; inodeNum : Unsigned_32)
+      return Entry_Inspection
+   is
+      MS_PER_SECOND : constant := 1_000;
+      VOLUME_SHIFT : constant := 32;
+      function Ms (seconds : Unsigned_32) return Unsigned_64 is
+        (Unsigned_64 (seconds) * MS_PER_SECOND);
+   begin
+      return
+        (valid => INSPECTED_SIZE or INSPECTED_TIMES or INSPECTED_MODE or
+                  INSPECTED_LINKS or INSPECTED_OWNER or INSPECTED_OBJECT,
+         mode => Unsigned_32 (ino.typeAndPermissions),
+         sizeBytes => Ext2.fileSize (ino),
+         modifiedMs => Ms (ino.modifiedTime),
+         changedMs => Ms (ino.creationTime),
+         accessedMs => Ms (ino.accessedTime),
+         links => Unsigned_32 (ino.numHardLinks),
+         owner => Unsigned_32 (ino.uid),
+         group => Unsigned_32 (ino.gid),
+         reserved => 0,
+         objectId => Shift_Left (Unsigned_64 (volume), VOLUME_SHIFT) or
+                     Unsigned_64 (inodeNum));
+   end inspectionOf;
+
    --  Return one Directory.Page.V1 into a fixed one-page writable grant.
    --  Inspected: OP_READ_DIRECTORY_INSPECTED, whose grant carries a second
    --  page of Entry_Inspection records after the listing.
@@ -2778,10 +2840,6 @@ procedure main is
             declare
                inspections : Directory_Inspections
                  with Import, Address => grantAddr + Storage_Offset (DIRECTORY_PAGE_BYTES);
-               --  Ext2 keeps seconds since the epoch.
-               MS_PER_SECOND : constant := 1_000;
-               function Ms (seconds : Unsigned_32) return Unsigned_64 is
-                 (Unsigned_64 (seconds) * MS_PER_SECOND);
             begin
                for index in 0 .. entryCount - 1 loop
                   if files (handle).filesystemKind = CPIO_ARCHIVE then
@@ -2798,18 +2856,9 @@ procedure main is
                           (Contexts (files (handle).volume).Fs,
                            Unsigned_32 (pageEntries (index).objectHint), ino, inodeStatus);
                         if inodeStatus = Ext2.Read_Complete then
-                           inspections (index) :=
-                             (valid => INSPECTED_SIZE or INSPECTED_TIMES or INSPECTED_MODE or
-                                       INSPECTED_LINKS or INSPECTED_OWNER,
-                              mode => Unsigned_32 (ino.typeAndPermissions),
-                              sizeBytes => Ext2.fileSize (ino),
-                              modifiedMs => Ms (ino.modifiedTime),
-                              createdMs => Ms (ino.creationTime),
-                              accessedMs => Ms (ino.accessedTime),
-                              links => Unsigned_32 (ino.numHardLinks),
-                              owner => Unsigned_32 (ino.uid),
-                              group => Unsigned_32 (ino.gid),
-                              reserved => 0, reserved2 => 0);
+                           inspections (index) := inspectionOf
+                             (ino, files (handle).volume,
+                              Unsigned_32 (pageEntries (index).objectHint));
                            --  The listing's own size field, now known.
                            pageEntries (index).sizeBytes := inspections (index).sizeBytes;
                            pageEntries (index).flags :=
@@ -2863,6 +2912,38 @@ procedure main is
    --  words(2) = new_path_length
    --  words(3) = grant generation
    --  Grant buffer layout: [old_path][new_path]
+   --  A file's last name is gone while handles hold it: they keep a
+   --  zero-link inode (their writes must not restore the link), freed at
+   --  the last close (reclaimOrphan).
+   procedure keepOrphan (volume : Volume_Index; target : Unsigned_32; holder : Natural) is
+      current : Ext2.Inode :=
+        Open_Inodes.Value (inodeObjects, Open_Inodes.Owner_Index (holder));
+      recorded : Boolean := False;
+   begin
+      current.numHardLinks := 0;
+      Open_Inodes.Replace
+        (inodeObjects, Open_Inodes.Owner_Index (holder), current);
+      for orphan of orphans loop
+         if orphan.number = 0 then
+            orphan := (volume, target);
+            orphanCount := orphanCount + 1;
+            recorded := True;
+         end if;
+         exit when recorded;
+      end loop;
+   end keepOrphan;
+
+   --  A handle on (volume, target) other than a dropped parked one, or -1.
+   function holderOf (volume : Volume_Index; target : Unsigned_32) return Integer is
+      object : constant Open_Inodes.Link :=
+        Open_Inodes.Object_Of (inodeObjects, (volume, target));
+   begin
+      if object /= 0 and then Open_Inodes.Holding (inodeObjects, object) > 0 then
+         return Open_Inodes.Holder (inodeObjects, object, 0);
+      end if;
+      return -1;
+   end holderOf;
+
    procedure handleRename (sender : ProcessID; msg : Message) is
       oldPathLen : constant Unsigned_64 := msg.words (1);
       newPathLen : constant Unsigned_64 := msg.words (2);
@@ -2941,7 +3022,7 @@ procedure main is
             sendReply (sender, REPLY_NOT_FOUND, 0);
             return;
          elsif oldSelection /= newSelection or else oldVolume /= newVolume then
-            sendReply (sender, REPLY_ERR, 0);
+            sendReply (sender, REPLY_CROSS_VOLUME, 0);
             return;
          elsif oldVolume = No_Volume then
             sendReply (sender, REPLY_READ_ONLY, 0);
@@ -2949,6 +3030,10 @@ procedure main is
          end if;
          declare
             status : Ext2.Rename_Status;
+            target, replacedNumber : Unsigned_32 := 0;
+            replaced : Ext2.Inode;
+            holder : Integer := -1;
+            volume : constant Volume_Index := Volume_Index (oldVolume);
             admission : Admission_Result;
             inodeNum : Unsigned_32;
             lookup : Ext2.Directory_Lookup_Status;
@@ -2973,14 +3058,40 @@ procedure main is
                sendReply (sender, REPLY_SHARING_VIOLATION, 0);
                return;
             end if;
+            --  A replaced destination is checked as unlink checks its file:
+            --  no exclusive hold, and a held one keeps its inode until the
+            --  last close (the ext3 orphan list).
+            Ext2.resolvePath
+              (Contexts (volume).Fs, newPath (newRelStart .. newPath'Last),
+               target, lookup);
+            if lookup not in Ext2.Lookup_Found | Ext2.Lookup_Not_Found then
+               sendReply (sender, Lookup_Reply_Label (lookup), 0);
+               return;
+            elsif lookup = Ext2.Lookup_Found and then target /= inodeNum then
+               if Open_Inodes.Exclusively_Held (inodeObjects, (volume, target)) then
+                  sendReply (sender, REPLY_SHARING_VIOLATION, 0);
+                  return;
+               end if;
+               holder := holderOf (volume, target);
+            else
+               target := 0;
+            end if;
             --  No source identity means no hold can conflict. Let rename's
             --  own preflight distinguish an unsupported parent layout from
             --  an absent source; failed metadata I/O was already stopped above.
             bumpNamespace;
             Ext2.renamePath
-              (Contexts (Volume_Index (oldVolume)).Fs,
+              (Contexts (volume).Fs,
                oldPath (oldRelStart .. oldPath'Last),
-               newPath (newRelStart .. newPath'Last), status);
+               newPath (newRelStart .. newPath'Last),
+               holder >= 0, replacedNumber, replaced, status);
+            if target /= 0 and then replacedNumber = target and then holder >= 0 then
+               keepOrphan (volume, target, holder);
+            end if;
+            if target /= 0 and then Ext2."=" (status, Ext2.Rename_Complete) then
+               --  The replaced file's number may name another file next.
+               bumpVersion ((volume, target));
+            end if;
 
             declare
                label : Unsigned_32;
@@ -2999,6 +3110,11 @@ procedure main is
                   when Ext2.Rename_Recovery_Required =>
                      label := REPLY_RECOVERY_REQUIRED;
                      debugPrint ("FS Server: rename rollback failed; volume write-quarantined" & LF);
+                  when Ext2.Rename_Not_Directory => label := REPLY_WRONG_OBJECT_TYPE;
+                  when Ext2.Rename_Is_Directory => label := REPLY_IS_DIRECTORY;
+                  when Ext2.Rename_Not_Empty => label := REPLY_NOT_EMPTY;
+                  when Ext2.Rename_Invalid_Move => label := REPLY_INVALID_MOVE;
+                  when Ext2.Rename_No_Room => label := REPLY_FILE_RANGE_UNSUPPORTED;
                end case;
                sendReply (sender, label, 0);
             end;
@@ -3194,25 +3310,7 @@ procedure main is
            (Contexts (volume).Fs, relPath, holder >= 0, unlinkedNumber, unlinked, status);
       end;
       if holder >= 0 and then unlinkedNumber = target then
-         --  The name is gone: handles keep a zero-link inode (their writes
-         --  must not restore the link), freed at the last close.
-         declare
-            current : Ext2.Inode :=
-              Open_Inodes.Value (inodeObjects, Open_Inodes.Owner_Index (holder));
-            recorded : Boolean := False;
-         begin
-            current.numHardLinks := 0;
-            Open_Inodes.Replace
-              (inodeObjects, Open_Inodes.Owner_Index (holder), current);
-            for orphan of orphans loop
-               if orphan.number = 0 then
-                  orphan := (volume, target);
-                  orphanCount := orphanCount + 1;
-                  recorded := True;
-               end if;
-               exit when recorded;
-            end loop;
-         end;
+         keepOrphan (volume, target, holder);
       end if;
       if unlinkedNumber = target and then target /= 0 then
          --  A later file with this inode number is another file: pages a
@@ -3441,6 +3539,79 @@ procedure main is
       sendReply (sender, REPLY_ERR, 0);
    end handleWait;
 
+   --  Queue_Describe: the open handle's object as one Directory.Inspection.V1
+   --  record at the request's arena range. A write-delegated handle's
+   --  buffered pages are written first, so size and times include them.
+   procedure handleDescribe (owner : ProcessID; handleWord : Unsigned_64) is
+      fileHandle : constant Integer := resolveHandle (handleWord, owner, FILE_OBJECT);
+      handle : constant Integer :=
+        (if fileHandle >= 0 then fileHandle
+         else resolveHandle (handleWord, owner, DIRECTORY_OBJECT));
+      described : Entry_Inspection :=
+        (valid | mode | links | owner | group | reserved => 0,
+         sizeBytes | modifiedMs | changedMs | accessedMs | objectId => 0);
+      label : Unsigned_32 := REPLY_OK;
+   begin
+      if handle < 0 then
+         sendReply (owner, REPLY_ERR, 0);
+         return;
+      elsif curArena = System.Null_Address or else
+        curArenaBytes < DIRECTORY_INSPECTION_BYTES
+      then
+         sendReply (owner, REPLY_ERR, 0);
+         return;
+      end if;
+      case files (handle).filesystemKind is
+         when EXT2_FILESYSTEM =>
+            if fileHandle >= 0 then
+               if writeDelegated (handle) then
+                  harvest (handle);
+               end if;
+               described := inspectionOf
+                 (Open_Inodes.Value (inodeObjects, Open_Inodes.Owner_Index (handle)),
+                  files (handle).volume, files (handle).inodeNum);
+            else
+               declare
+                  ino : Ext2.Inode;
+                  inodeStatus : Ext2.Read_Status;
+               begin
+                  Ext2.readInode
+                    (Contexts (files (handle).volume).Fs, files (handle).inodeNum,
+                     ino, inodeStatus);
+                  if inodeStatus = Ext2.Read_Complete then
+                     described := inspectionOf
+                       (ino, files (handle).volume, files (handle).inodeNum);
+                  else
+                     label := REPLY_ERR;
+                  end if;
+               end;
+            end if;
+         when CPIO_ARCHIVE =>
+            if fileHandle >= 0 then
+               described.valid := INSPECTED_SIZE;
+               described.sizeBytes :=
+                 cpioArchive.files (files (handle).cpioFileIdx).dataSize;
+            end if;
+         when ISO_FILESYSTEM =>
+            if fileHandle >= 0 then
+               described.valid := INSPECTED_SIZE;
+               described.sizeBytes := Unsigned_64 (extras (handle).opticalFile.Bytes);
+            end if;
+      end case;
+      if label = REPLY_OK then
+         declare
+            type Record_Bytes is array (1 .. DIRECTORY_INSPECTION_BYTES) of Unsigned_8
+              with Component_Size => 8;
+            function Bytes_Of is new Ada.Unchecked_Conversion (Entry_Inspection, Record_Bytes);
+            --  Byte-aligned: the arena offset is the client's.
+            target : Record_Bytes with Import, Address => curArena;
+         begin
+            target := Bytes_Of (described);
+         end;
+      end if;
+      sendReply (owner, label, 0);
+   end handleDescribe;
+
    --  Handle one request entry of queue q as its message twin would be.
    procedure dispatchEntry (q : Client_Queue_Index; item : FQueues.Submission) is
       owner : constant ProcessID := clientQueues (q).owner;
@@ -3572,6 +3743,17 @@ procedure main is
                sendReply (owner, (if pages = 0 then REPLY_ERR else label),
                           Unsigned_64 (filled));
             end;
+         when FQ.Queue_Resize =>
+            m.tag := (label => OP_RESIZE_FILE, length => 2, flags => 0, reserved => 0);
+            m.words (0) := r.Handle;
+            m.words (1) := r.Length;
+            handleResize (owner, m);
+         when FQ.Queue_Describe =>
+            if inArena then
+               handleDescribe (owner, r.Handle);
+            else
+               sendReply (owner, REPLY_ERR, 0);
+            end if;
          when FQ.Queue_Writeback =>
             declare
                handle : constant Integer := resolveHandle (r.Handle, owner, FILE_OBJECT);

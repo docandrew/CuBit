@@ -5,48 +5,78 @@ package body Intel_GPU_VM_Image.Growth.Backing.Writer is
    function Committed (Object : State) return Boolean is (Object.Adopted);
    function Pending (Object : State) return Boolean is
      (Object.Phase in Fill_Child .. Verify_Parent);
-   procedure Start
+   function Retained_Link (Item : Link; Topology : Node) return Growth_Link is
+     (Parent_DMA => Item.Parent_DMA, Child_DMA => Item.Child_DMA,
+      Expected => Item.Expected, Value => Item.Value, Fill => Item.Fill,
+      Index => Item.Index, Existing_Parent => Topology.Existing_Parent,
+      New_Parent => Topology.New_Parent, Level => Topology.Level);
+   procedure Start_From_Pages
      (Object : in out State; Source : Image; GPU, Bytes, Retained_Root : Unsigned_64;
-      New_Pages : Data_Pages; Accepted : out Boolean)
+      Page_Count : Natural; Accepted : out Boolean)
    is
-      Plan : Links (1 .. Capacity);
       OK : Boolean;
       Epoch : constant Unsigned_64 := Revision (Source);
+      Root : constant Unsigned_64 := Root_DMA (Source);
+      DMA : Unsigned_64;
+      function Retained_Page (Ordinal : Positive) return Unsigned_64 is
+        (Growth_Storage.Get (Object.Plan, Ordinal).Child_DMA);
       function Held (DMA : Unsigned_64) return Boolean is
-        (Exclusive and then Sealed (Source) and then Revision (Source) = Epoch
-         and then Owned_Table (DMA) and then Exclusive);
+        (not Object.Commit_Tried and then Exclusive and then Sealed (Source)
+         and then Root_DMA (Source) = Root and then Revision (Source) = Epoch
+         and then Owned_Table (DMA) and then Exclusive and then not Object.Commit_Tried);
+      procedure Store_Link (Ordinal : Positive; Item : Link; Topology : Node; OK : out Boolean) is
+      begin
+         OK := Held (Retained_Root) and then Item.Child_DMA = Retained_Page (Ordinal);
+         if OK then Growth_Storage.Put (Object.Plan, Ordinal, Retained_Link (Item, Topology)); end if;
+      end Store_Link;
+      procedure Resolve_Retained is new Resolve_Into (Retained_Page, Store_Link);
       -- Provenance resolution is a trusted callback, but may observe/revoke
       -- an owner while returning its lookup result. Do not let an earlier
       -- exclusion sample authorize the next memory access after that callback.
    begin
       Accepted := False;
-      if Object.Begun then return; end if;
+      if Object.Begun or else Object.Commit_Tried then return; end if;
+      if Page_Count > Growth_Capacity (Object) then return; end if;
+      -- Receipt storage does not imply source mirror/descriptor capacity.
+      -- Reject before publishing directories that software cannot adopt.
+      if Source.Count > Metadata_Capacity (Source) or else
+        Page_Count > Metadata_Capacity (Source) - Source.Count then return; end if;
       Object.Begun := True;
       Object.Phase := Failed;
       if not Held (Retained_Root) then return; end if;
-      Resolve (Source, GPU, Bytes, Retained_Root, New_Pages, Plan, OK);
+      for N in 1 .. Page_Count loop
+         DMA := Read_Page (N);
+         if not Held (Retained_Root) then return; end if;
+         Growth_Storage.Put (Object.Plan, N, (Child_DMA => DMA, others => <>));
+      end loop;
+      Resolve_Retained (Source, GPU, Bytes, Retained_Root, Page_Count, Growth_Capacity (Object), OK);
       if not OK or else not Held (Retained_Root) then return; end if;
       Object.Root := Root_DMA (Source); Object.Epoch := Epoch;
       Object.GPU := GPU; Object.Bytes := Bytes;
       Object.Hardware_Root := Retained_Root;
-      Object.Count := New_Pages'Length;
-      for N in 1 .. Object.Count loop
-         Object.Pages (N) := Plan (N).Child_DMA;
-         Object.Plan (N) := (Plan (N).Parent_DMA, Plan (N).Child_DMA,
-           Plan (N).Expected, Plan (N).Value, Plan (N).Fill, Plan (N).Index);
-      end loop;
+      Object.Count := Page_Count;
       Object.Cursor := 1; Object.Word := 0; Object.Phase := Fill_Child;
       Accepted := True;
+   end Start_From_Pages;
+   procedure Start
+     (Object : in out State; Source : Image; GPU, Bytes, Retained_Root : Unsigned_64;
+      New_Pages : Data_Pages; Accepted : out Boolean) is
+      function Page (Ordinal : Positive) return Unsigned_64 is
+        (New_Pages (New_Pages'First + (Ordinal - 1)));
+      procedure Stream is new Start_From_Pages (Page);
+   begin
+      Stream (Object, Source, GPU, Bytes, Retained_Root, New_Pages'Length, Accepted);
    end Start;
    procedure Step (Object : in out State; Source : Image) is
       Phase : constant Growth_Phase := Object.Phase;
-      Item : constant Growth_Link := Object.Plan (Object.Cursor);
+      Item : constant Growth_Link := Growth_Storage.Get (Object.Plan, Object.Cursor);
       OK : Boolean;
       Value : Unsigned_64;
       function Held (DMA : Unsigned_64) return Boolean is
-        (Exclusive and then Sealed (Source) and then Root_DMA (Source) = Object.Root
+        (not Object.Commit_Tried and then Exclusive and then Sealed (Source)
+         and then Root_DMA (Source) = Object.Root
          and then Revision (Source) = Object.Epoch and then Owned_Table (DMA)
-         and then Exclusive);
+         and then Exclusive and then not Object.Commit_Tried);
       procedure Next_Word (Following : Growth_Phase) is
          use type Intel_GPU_ADLN_PPGTT.Table_Index;
       begin
@@ -58,6 +88,9 @@ package body Intel_GPU_VM_Image.Growth.Backing.Writer is
       if not Pending (Object) then return; end if;
       -- Any rejection permanently consumes this attempt, including ownership
       -- or epoch loss between service-loop turns. No rollback/retry of stores.
+      -- Commit can consume the attempt during a callback while Phase is already
+      -- Failed. Recheck that sticky receipt in Held before restoring any phase
+      -- or setting Done, including after the final parent readback.
       Object.Phase := Failed;
       if not Held (Object.Hardware_Root) or else not Held (Item.Child_DMA) then return; end if;
       if Phase in Read_Parent .. Verify_Parent and then not Held (Item.Parent_DMA)
@@ -104,10 +137,17 @@ package body Intel_GPU_VM_Image.Growth.Backing.Writer is
    procedure Commit
      (Object : in out State; Source : in out Image; Accepted : out Boolean)
    is
-      Nodes : Node_List (1 .. Capacity);
-      Checked : Links (1 .. Capacity);
-      Count, Base, Parent : Natural;
+      Base, Parent : Natural;
       OK : Boolean;
+      function Retained_Page (Ordinal : Positive) return Unsigned_64 is
+        (Growth_Storage.Get (Object.Plan, Ordinal).Child_DMA);
+      procedure Check_Link (Ordinal : Positive; Item : Link; Topology : Node; OK : out Boolean) is
+      begin
+         OK := Exclusive and then Sealed (Source) and then
+           Revision (Source) = Object.Epoch and then Root_DMA (Source) = Object.Root and then
+           Growth_Storage.Get (Object.Plan, Ordinal) = Retained_Link (Item, Topology);
+      end Check_Link;
+      procedure Resolve_Retained is new Resolve_Into (Retained_Page, Check_Link);
    begin
       Accepted := False;
       if Object.Commit_Tried then return; end if;
@@ -117,27 +157,31 @@ package body Intel_GPU_VM_Image.Growth.Backing.Writer is
         or else Root_DMA (Source) /= Object.Root or else Revision (Source) /= Object.Epoch
         or else Source.Epoch = Unsigned_64'Last or else not Invalidation_Confirmed
       then return; end if;
-      Resolve (Source, Object.GPU, Object.Bytes, Object.Hardware_Root,
-               Object.Pages (1 .. Object.Count), Checked, OK);
+      if Source.Count > Metadata_Capacity (Source) or else
+        Object.Count > Metadata_Capacity (Source) - Source.Count then return; end if;
+      Resolve_Retained (Source, Object.GPU, Object.Bytes, Object.Hardware_Root,
+               Object.Count, Object.Count, OK);
       if not OK then return; end if;
-      Describe (Source, Object.GPU, Object.Bytes, Nodes, Count, OK);
-      if not OK or else Count /= Object.Count or else not Exclusive
+      if not Exclusive or else not Sealed (Source) or else Root_DMA (Source) /= Object.Root
         or else Revision (Source) /= Object.Epoch or else not Invalidation_Confirmed
       then return; end if;
       Base := Source.Count;
       -- All fallible checks/callbacks precede mutation. Serialized owner only.
       -- Logical holes stay zero; Entry_Value exports the scratch fallback.
-      for N in 1 .. Count loop
-         Source.DMA (Base + N) := Object.Pages (N);
-         Source.Levels (Base + N) := Nodes (N).Level;
+      for N in 1 .. Object.Count loop
+         Set_Descriptor (Source, Base + N,
+           (Growth_Storage.Get (Object.Plan, N).Child_DMA, Growth_Storage.Get (Object.Plan, N).Level));
          Clear_Table (Source, Base + N);
       end loop;
-      for N in 1 .. Count loop
-         Parent := (if Nodes (N).Existing_Parent /= 0 then Nodes (N).Existing_Parent
-                    else Base + Nodes (N).New_Parent);
-         Set_Raw_Word (Source, Parent, Nodes (N).Index, Checked (N).Value);
+      for N in 1 .. Object.Count loop
+         declare Item : constant Growth_Link := Growth_Storage.Get (Object.Plan, N); begin
+            Parent := (if Item.Existing_Parent /= 0 then Item.Existing_Parent
+                       else Base + Item.New_Parent);
+            Set_Raw_Word (Source, Parent, Item.Index, Item.Value);
+         end;
       end loop;
-      Source.Count := Base + Count; Source.Epoch := Source.Epoch + 1;
+      Source.Count := Base + Object.Count; Source.Epoch := Source.Epoch + 1;
+      Source.Backed := Natural'Max (Source.Backed, Source.Count);
       Source.Predecessor_Root := 0; Source.Predecessor_Epoch := 0;
       Object.First_Adopted := Base + 1;
       Object.Adopted := True; Accepted := True;
@@ -157,8 +201,9 @@ package body Intel_GPU_VM_Image.Growth.Backing.Writer is
         not Owned_Table (Retained_Root)
       then return; end if;
       for N in 1 .. Object.Count loop
-         if Source.DMA (Object.First_Adopted + N - 1) /= Object.Pages (N) or else
-           not Owned_Table (Object.Pages (N)) or else not Exclusive
+         if Descriptor (Source, Object.First_Adopted + N - 1).DMA /=
+           Growth_Storage.Get (Object.Plan, N).Child_DMA or else
+           not Owned_Table (Growth_Storage.Get (Object.Plan, N).Child_DMA) or else not Exclusive
          then return; end if;
       end loop;
       if not Exclusive or else not Sealed (Source) or else
@@ -166,12 +211,13 @@ package body Intel_GPU_VM_Image.Growth.Backing.Writer is
       then return; end if;
       -- The source/provenance retains the pages. Only this transaction receipt
       -- is cleared; no hardware writes, TLB actions or allocator releases.
+      for N in 1 .. Object.Count loop
+         Growth_Storage.Put (Object.Plan, N, (others => <>));
+      end loop;
       Object.Begun := False; Object.Done := False;
       Object.Commit_Tried := False; Object.Adopted := False;
       Object.Root := 0; Object.Epoch := 0; Object.GPU := 0; Object.Bytes := 0;
       Object.Hardware_Root := 0; Object.Count := 0; Object.First_Adopted := 0;
-      Object.Pages := [others => 0];
-      Object.Plan := [others => (others => <>)];
       Object.Phase := Idle; Object.Cursor := 1; Object.Word := 0;
       Accepted := True;
    end Rearm;

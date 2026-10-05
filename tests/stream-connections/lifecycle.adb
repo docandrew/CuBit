@@ -18,12 +18,12 @@ begin
    Desired.Controller_Instance := 30;
    Desired.Binding := Reference (Item);
    Desired.Source.Reference := (10, 1, 1);
-   Desired.Source.Direction := Output;
+   Desired.Source.Direction := Outlet;
    Desired.Source.Profile.Element := INTEGER_64_CONTRACT;
    Desired.Source.Profile.Capacity.Payload_Bytes := 8;
    Desired.Destination := Desired.Source;
    Desired.Destination.Reference := (20, 1, 1);
-   Desired.Destination.Direction := Input;
+   Desired.Destination.Direction := Inlet;
    Evidence := Approve (Desired);
    Before := Inspect (Item);
    Prepare (Item, Desired, Denied, Other, Outcome);

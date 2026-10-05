@@ -34,6 +34,9 @@ with CuBit.Memory_Grants;
 with CuBit.Process_Observer;
 with CuBit.Grant_References;
 with CuBit.Launch_Arguments;
+with CuBit.Launch_Grants;
+with CuBit.Program_Descriptions;
+with CuBit.Outlet_Rings;
 with CuBit.Child_Exits;
 with CuBit.Launch_Authority;
 with CuBit.Failures;
@@ -62,6 +65,9 @@ procedure main is
    Render_Launcher : Render_Launch.Launcher;
    Render_Source_Slot : constant CapabilitySlot := 58;
    Failed_Launch_Control_Slot : constant CapabilitySlot := 59;
+   --  procmgr's endpoint to the child being started, naming it as the
+   --  recipient of the port rings derived for it (launcher-owned rings).
+   Ring_Recipient_Slot : constant CapabilitySlot := 57;
    type Render_Request is record
       Requested, Valid : Boolean := False;
       Destination : CapabilitySlot := 0;
@@ -121,6 +127,10 @@ procedure main is
 
    --  Service routing identifiers
    SERVICE_FS     : constant Unsigned_8 := 0;
+   --  One filesystem scope in an OP_SET_ACL batch (CuBit.File_Access): the
+   --  rights, the prefix length (u16), reserved bytes, then the prefix.
+   FS_ENTRY_BYTES : constant := CuBit.File_Access.Wire_Entry_Bytes;
+   FS_PREFIX_AT   : constant := CuBit.File_Access.Wire_Header_Bytes;
    SERVICE_CONFIG : constant Unsigned_8 := 1;
    SERVICE_TLS    : constant Unsigned_8 := 2;
 
@@ -150,6 +160,15 @@ procedure main is
    launchBlock : CuBit.Launch_Arguments.Block
      (1 .. CuBit.Launch_Arguments.Maximum_Block_Bytes) := [others => 0];
    pendingArgumentBytes : CuBit.Launch_Arguments.Block_Length := 0;
+   --  The places the launcher delegates to the child being started
+   --  (CuBit.Launch_Grants), validated; none when pendingGrantBytes is 0.
+   pendingGrants : CuBit.Launch_Grants.Bytes (1 .. CuBit.Launch_Grants.Maximum_Bytes) :=
+     [others => 0];
+   pendingGrantBytes : CuBit.Launch_Grants.Byte_Count := 0;
+   --  The rings the launcher lends the child for its output ports
+   --  (CuBit.Outlet_Rings, its grants to procmgr), validated; none when
+   --  pendingRings.Count is 0.
+   pendingRings : CuBit.Outlet_Rings.Table;
 
    --  Launch authority (CuBit.Launch_Authority), per process: the programs it
    --  may start (its .cubit.launch table; none without one) and what it was
@@ -164,6 +183,8 @@ procedure main is
      array (1 .. CuBit.File_Access.Maximum_Entries) of Held_Scope;
    --  Service roles below this are tracked as held; others never pass on.
    TRACKED_SERVICE_ROLES : constant := 64;
+   type Ring_Parent_Array is array (1 .. CuBit.Outlet_Rings.Maximum_Entries)
+     of CuBit.Memory_Grants.Grant_Reference;
    type Launch_State is record
       Table        : LAuth.Table_Bytes (1 .. LAuth.Maximum_Table_Bytes) :=
                        [others => 0];
@@ -171,6 +192,10 @@ procedure main is
       Services     : Unsigned_64 := 0;
       Scope_Count  : Natural range 0 .. CuBit.File_Access.Maximum_Entries := 0;
       Scopes       : Held_Scope_Array;
+      --  The launcher's ring grants procmgr acquired to derive this
+      --  process's port rings; returned when it ends.
+      Ring_Parents : Ring_Parent_Array := [others => (others => <>)];
+      Ring_Parent_Count : Natural range 0 .. CuBit.Outlet_Rings.Maximum_Entries := 0;
    end record;
    MAX_LAUNCH_PID : constant := 255;
    launchStates : array (Unsigned_64 range 1 .. MAX_LAUNCH_PID) of Launch_State;
@@ -178,8 +203,23 @@ procedure main is
    --  spawned (0: none), and whether the child asked for more.
    attenuateFor : Unsigned_64 := 0;
    attenuationRefused : Boolean := False;
+   --  The launched child could not read the working directory its launch
+   --  block names; refused like an attenuation failure.
+   directoryRefused : Boolean := False;
    --  The launched child's generation (CuBit.Child_Exits), for the reply.
    launchedGeneration : Unsigned_64 := 0;
+
+   --  Return the ring grants procmgr acquired to derive pid's port rings.
+   procedure releaseRings (pid : Unsigned_64) is
+      Returned : Boolean;
+   begin
+      if pid in launchStates'Range then
+         for P of launchStates (pid).Ring_Parents (1 .. launchStates (pid).Ring_Parent_Count) loop
+            CuBit.Memory_Grants.Return_Acquisition (P, Returned);
+         end loop;
+         launchStates (pid).Ring_Parent_Count := 0;
+      end if;
+   end releaseRings;
 
    procedure resetLaunchState (pid : Unsigned_64) is
    begin
@@ -609,14 +649,12 @@ procedure main is
    ---------------------------------------------------------------------------
    MANIFEST_MAGIC   : constant Unsigned_32 := 16#43424954#;  -- "CBIT" LE
    ID_MAGIC         : constant Unsigned_32 := 16#44494243#;  -- "CBID" LE
-   STREAMS_MAGIC    : constant Unsigned_32 := 16#54534243#;  -- "CBST" LE
 
    --  Manifest request types
    REQ_FRAMEBUFFER  : constant Unsigned_8 := 1;
    REQ_SERVICE      : constant Unsigned_8 := 2;
    REQ_IOPORT       : constant Unsigned_8 := 3;
    REQ_NOTIFICATION : constant Unsigned_8 := 7;
-   REQ_STREAM       : constant Unsigned_8 := 8;
    REQ_RESOURCE     : constant Unsigned_8 := 9;
 
    --  Stream notification label
@@ -826,92 +864,80 @@ procedure main is
    end parseIdSection;
 
    ---------------------------------------------------------------------------
-   --  parseStreamsSection
-   --  Parse the .cubit.streams section from the ELF in elfBuf. Builds a
-   --  64-bit bitmask where bit N means stream ID N is declared.
+   --  findDescription
+   --  The program's .cubit.description (CuBit.Program_Descriptions) in the
+   --  ELF in elfBuf: where it is and how long (0: none), whether it decodes,
+   --  and the rings of its output ports (bit N: ring N, the port's position
+   --  plus one) for OP_STREAM_AVAILABLE.
    ---------------------------------------------------------------------------
-   procedure parseStreamsSection
-     (elfSize       : Unsigned_64;
-      streamBitmask : out Unsigned_64)
+   procedure findDescription
+     (elfSize : Unsigned_64; Found_At : out Unsigned_64;
+      Found_Length : out CuBit.Program_Descriptions.Descriptor_Length;
+      Valid : out Boolean; Rings : out Unsigned_64)
    is
+      package PD renames CuBit.Program_Descriptions;
+      use type PD.Connector_Direction;
+      Magic : constant Unsigned_32 :=
+        Unsigned_32 (PD.Magic_0) or Shift_Left (Unsigned_32 (PD.Magic_1), 8)
+        or Shift_Left (Unsigned_32 (PD.Magic_2), 16)
+        or Shift_Left (Unsigned_32 (PD.Magic_3), 24);
       e_shoff : Unsigned_64;
       e_shnum : Unsigned_16;
    begin
-      streamBitmask := 0;
-
+      Found_At := 0;
+      Found_Length := 0;
+      Valid := False;
+      Rings := 0;
       if elfSize < 64 then
          return;
       end if;
-
       e_shoff := readU64 (40);
       e_shnum := readU16 (60);
-
-      if readU16 (58) /= 64 or e_shoff = 0 or e_shnum = 0 then
+      if readU16 (58) /= 64 or else e_shoff = 0 or else e_shnum = 0
+        or else e_shoff > elfSize
+        or else Unsigned_64 (e_shnum) > (elfSize - e_shoff) / 64
+      then
          return;
       end if;
-
-      if e_shoff + Unsigned_64 (e_shnum) * 64 > elfSize then
-         return;
-      end if;
-
       for i in 0 .. Unsigned_16'(e_shnum - 1) loop
          declare
-            shBase    : constant Unsigned_64 :=
-               e_shoff + Unsigned_64 (i) * 64;
-            sh_type   : constant Unsigned_32 := readU32 (shBase + 4);
-            sh_offset : Unsigned_64;
-            sh_size   : Unsigned_64;
+            shBase    : constant Unsigned_64 := e_shoff + Unsigned_64 (i) * 64;
+            sh_offset : constant Unsigned_64 := readU64 (shBase + 24);
+            sh_size   : constant Unsigned_64 := readU64 (shBase + 32);
          begin
-            if sh_type = SHT_PROGBITS then
-               sh_offset := readU64 (shBase + 24);
-               sh_size   := readU64 (shBase + 32);
-
-               if sh_size >= 8 and then
-                  sh_offset + sh_size <= elfSize and then
-                  readU32 (sh_offset) = STREAMS_MAGIC
-               then
-                  declare
-                     version : constant Unsigned_16 :=
-                        readU16 (sh_offset + 4);
-                     count   : constant Unsigned_16 :=
-                        readU16 (sh_offset + 6);
-                  begin
-                     if version /= 1 then
-                        return;
-                     end if;
-
-                     if sh_size < 8 + Unsigned_64 (count) * 8 then
-                        return;
-                     end if;
-
-                     --  Avoid count - 1 underflow for an empty stream list.
-                     if count > 0 then
-                     for j in 0 .. Unsigned_16'(count - 1) loop
-                        declare
-                           entBase  : constant Unsigned_64 :=
-                              sh_offset + 8 + Unsigned_64 (j) * 8;
-                           streamId : constant Unsigned_16 :=
-                              readU16 (entBase);
-                        begin
-                           if Unsigned_64 (streamId) < 64 then
-                              streamBitmask := streamBitmask or
-                                 Shift_Left (Unsigned_64'(1),
-                                    Natural (streamId));
-                           end if;
-                           debugPrint ("procmgr: stream decl id=");
-                           printDec (Unsigned_32 (streamId));
-                           debugPrint ("" & LF);
-                        end;
-                     end loop;
-                     end if;
-
-                     return;
-                  end;
+            if readU32 (shBase + 4) = SHT_PROGBITS
+              and then sh_size >= PD.Header_Bytes
+              and then sh_offset <= elfSize
+              and then sh_size <= elfSize - sh_offset
+              and then readU32 (sh_offset) = Magic
+            then
+               if sh_size > PD.Maximum_Descriptor_Bytes then
+                  Found_Length := PD.Maximum_Descriptor_Bytes;   --  present, invalid
+                  return;
                end if;
+               Found_At := sh_offset;
+               Found_Length := Natural (sh_size);
+               declare
+                  Source : constant PD.Bytes (1 .. Found_Length)
+                    with Import, Address => elfBuf + Storage_Offset (sh_offset);
+                  Copy : constant PD.Bytes (1 .. Found_Length) := Source;
+                  Decoded : PD.Signature;
+               begin
+                  PD.Decode (Copy, Decoded, Valid);
+                  if Valid then
+                     for P in 0 .. Decoded.Connector_Total - 1 loop
+                        if Decoded.Connectors (P).Direction = PD.Outlet then
+                           Rings := Rings or
+                             Shift_Left (Unsigned_64'(1), Natural (PD.Ring_Id (P)));
+                        end if;
+                     end loop;
+                  end if;
+               end;
+               return;
             end if;
          end;
       end loop;
-   end parseStreamsSection;
+   end findDescription;
 
    ---------------------------------------------------------------------------
    --  parseAndGrantManifest
@@ -925,7 +951,7 @@ procedure main is
    function launcherHolds (reqType : Unsigned_8; role : Unsigned_32)
      return Boolean is
    begin
-      if reqType = REQ_STREAM or else reqType = REQ_RESOURCE then
+      if reqType = REQ_RESOURCE then
          return True;
       elsif reqType = REQ_SERVICE and then role < TRACKED_SERVICE_ROLES then
          return (launchStates (attenuateFor).Services and
@@ -945,7 +971,6 @@ procedure main is
    procedure parseAndGrantManifest
      (childPID      : Unsigned_64;
       elfSize       : Unsigned_64;
-      streamBitmask : in out Unsigned_64;
       render : in out Render_Request;
       approveNetwork : Network_Approval := No_Network;
       systemStartup : Boolean := False;
@@ -1333,29 +1358,6 @@ procedure main is
                                    "procmgr: invalid notification role" & LF);
                               end if;
 
-                           when REQ_STREAM =>
-                              --  Fallback: only use .cubit.caps stream
-                              --  entries if no .cubit.streams section found
-                              if streamBitmask = 0 then
-                                 declare
-                                    sid : constant Unsigned_64 :=
-                                       Unsigned_64 (
-                                          param0 and 16#FFFF#);
-                                 begin
-                                    if sid < 64 then
-                                       streamBitmask :=
-                                          streamBitmask or
-                                          Shift_Left (
-                                             Unsigned_64'(1),
-                                             Natural (sid));
-                                    end if;
-                                    debugPrint (
-                                       "procmgr: stream id=");
-                                    printDec (Unsigned_32 (sid));
-                                    debugPrint ("" & LF);
-                                 end;
-                              end if;
-
                            when REQ_RESOURCE =>
                               --  param0 = maxFrames
                               --  param1 = cpuQuotaUs(lo32)|cpuPeriodUs(hi32)
@@ -1438,6 +1440,81 @@ procedure main is
       end if;
       return TLS_Policy_Ready;
    end ensureTLSPolicy;
+
+   ---------------------------------------------------------------------------
+   --  Delegated places (CuBit.Launch_Grants): how many the launch carries,
+   --  and placing them into an OP_SET_ACL batch (72-byte entries: rights,
+   --  prefix length, then the prefix: FS_ENTRY_BYTES each) from entry idx. Each must
+   --  be covered by a scope the launcher holds (attenuateFor); it is then
+   --  recorded as held by the child, which may delegate it in turn. ok is
+   --  False, and nothing should be installed, when one is not covered.
+   ---------------------------------------------------------------------------
+   function delegatedCount return Natural is
+     (if pendingGrantBytes = 0 then 0
+      else CuBit.Launch_Grants.Count_Of (pendingGrants (1 .. pendingGrantBytes)));
+
+   procedure placeDelegated
+     (childPID : Unsigned_64; batch : System.Address; batchEntries : Natural;
+      idx : in out Natural; ok : out Boolean)
+   is
+      package LG renames CuBit.Launch_Grants;
+      grantBuf : array (0 .. batchEntries * FS_ENTRY_BYTES - 1) of Unsigned_8
+        with Import, Address => batch;
+      position : Positive := LG.Header_Bytes + 1;
+      rights : Unsigned_8;
+      first, last : Positive;
+   begin
+      ok := True;
+      if pendingGrantBytes = 0 or else attenuateFor not in launchStates'Range then
+         ok := pendingGrantBytes = 0;
+         return;
+      end if;
+      for g in 1 .. delegatedCount loop
+         LG.Next (pendingGrants (1 .. pendingGrantBytes), position, rights, first, last);
+         declare
+            name : constant String :=
+              [for k in first .. last => Character'Val (pendingGrants (k))];
+            Launcher : Launch_State renames launchStates (attenuateFor);
+            covered : Boolean := False;
+         begin
+            for h in 1 .. Launcher.Scope_Count loop
+               covered := covered or else LAuth.Scope_Covered
+                 (Launcher.Scopes (h).Service, Launcher.Scopes (h).Rights,
+                  Launcher.Scopes (h).Prefix (1 .. Launcher.Scopes (h).Length),
+                  SERVICE_FS, rights, name);
+            end loop;
+            if not covered or else idx >= batchEntries then
+               debugPrint ("procmgr: delegated place not held by the launcher: " &
+                           name & LF);
+               attenuationRefused := True;
+               ok := False;
+               return;
+            end if;
+            grantBuf (idx * FS_ENTRY_BYTES) := rights;
+            grantBuf (idx * FS_ENTRY_BYTES + 1) := Unsigned_8 (name'Length mod 256);
+            grantBuf (idx * FS_ENTRY_BYTES + 2) := Unsigned_8 (name'Length / 256);
+            for c in name'Range loop
+               grantBuf (idx * FS_ENTRY_BYTES + FS_PREFIX_AT + (c - name'First)) :=
+                 Character'Pos (name (c));
+            end loop;
+            idx := idx + 1;
+            if childPID in launchStates'Range then
+               declare
+                  Held : Launch_State renames launchStates (childPID);
+                  prefix : String (1 .. LAuth.Maximum_Prefix_Bytes) := [others => ' '];
+               begin
+                  prefix (1 .. name'Length) := name;
+                  if Held.Scope_Count < Held.Scopes'Last then
+                     Held.Scope_Count := Held.Scope_Count + 1;
+                     Held.Scopes (Held.Scope_Count) :=
+                       (Service => SERVICE_FS, Rights => rights,
+                        Length => name'Length, Prefix => prefix);
+                  end if;
+               end;
+            end if;
+         end;
+      end loop;
+   end placeDelegated;
 
    ---------------------------------------------------------------------------
    --  parseAndSendACL
@@ -1729,7 +1806,11 @@ procedure main is
                                       (Service => locals (j).service,
                                        Rights => locals (j).rights,
                                        Length => Natural (locals (j).prefixLen),
-                                       Prefix => locals (j).prefix);
+                                       --  A manifest prefix (64 bytes at
+                                       --  most), padded to a held scope.
+                                       Prefix => locals (j).prefix &
+                                         [1 .. LAuth.Maximum_Prefix_Bytes -
+                                               locals (j).prefix'Length => ' ']);
                                  end if;
                               end;
                            end if;
@@ -1746,14 +1827,17 @@ procedure main is
                            end if;
                         end loop;
 
-                        --  Pass 1: Write FS entries to elfBuf and send
-                        if fsCount > 0 then
+                        --  Pass 1: Write FS entries (the manifest's, then any
+                        --  the launcher delegates) to elfBuf and send
+                        if fsCount + delegatedCount > 0 then
                            declare
-                              grantBuf : array (0 .. fsCount * 72 - 1)
+                              fsTotal : constant Natural := fsCount + delegatedCount;
+                              grantBuf : array (0 .. fsTotal * FS_ENTRY_BYTES - 1)
                                  of Unsigned_8 with
                                  Import, Address => elfBuf;
                               base : Natural;
                               idx  : Natural := 0;
+                              placed : Boolean;
                            begin
                               for b in grantBuf'Range loop
                                  grantBuf (b) := 0;
@@ -1762,20 +1846,25 @@ procedure main is
                               for j in 0 .. Natural (count) - 1 loop
                                  if locals (j).service = SERVICE_FS
                                  then
-                                    base := idx * 72;
+                                    base := idx * FS_ENTRY_BYTES;
                                     grantBuf (base) := locals (j).rights;
                                     grantBuf (base + 1) :=
                                        locals (j).prefixLen;
                                     pLen :=
                                        Natural (locals (j).prefixLen);
                                     for c in 0 .. pLen - 1 loop
-                                       grantBuf (base + 8 + c) :=
+                                       grantBuf (base + FS_PREFIX_AT + c) :=
                                           Unsigned_8 (Character'Pos (
                                              locals (j).prefix (1 + c)));
                                     end loop;
                                     idx := idx + 1;
                                  end if;
                               end loop;
+                              placeDelegated (childPID, elfBuf, fsTotal, idx, placed);
+                              if not placed then
+                                 policyReady := False;
+                                 return;
+                              end if;
                            end;
 
                            declare
@@ -1787,7 +1876,7 @@ procedure main is
                                              flags  => 0,
                                              reserved  => 0);
                               aclMsg.words := [0 => childPID,
-                                               1 => Unsigned_64 (fsCount),
+                                               1 => Unsigned_64 (fsCount + delegatedCount),
                                                2 => fsGrant.slot,
                                                3 => fsGrant.generation];
                               aclTag := capCall (
@@ -1925,11 +2014,97 @@ procedure main is
       end loop;
 
    <<No_Access_Policy>>
-      --  No .cubit.access section: deny-by-default.
-      --  FS server denies access for processes with no ACL profile,
+      --  No .cubit.access section: deny-by-default, except for places the
+      --  launcher delegates (checked against what it holds).
+      if delegatedCount > 0 then
+         declare
+            idx : Natural := 0;
+            placed : Boolean;
+            batch : array (0 .. delegatedCount * FS_ENTRY_BYTES - 1) of Unsigned_8
+              with Import, Address => elfBuf;
+            aclMsg : Message := NULL_MESSAGE;
+            aclTag : MessageTag;
+         begin
+            batch := [others => 0];
+            placeDelegated (childPID, elfBuf, delegatedCount, idx, placed);
+            if not placed then
+               policyReady := False;
+               return;
+            end if;
+            aclMsg.tag := (label => OP_SET_ACL, length => 4, flags => 0, reserved => 0);
+            aclMsg.words := [0 => childPID, 1 => Unsigned_64 (delegatedCount),
+                             2 => fsGrant.slot, 3 => fsGrant.generation];
+            aclTag := capCall (CAP_SLOT_FS_LOCAL, aclMsg);
+            if aclTag.label /= REPLY_OK or else aclTag.length /= 1 or else
+              aclTag.flags /= 0 or else aclTag.reserved /= 0
+            then
+               debugPrint ("procmgr: delegated scope installation failed" & LF);
+               policyReady := False;
+            end if;
+            return;
+         end;
+      end if;
+      --  The FS server denies access for processes with no ACL profile,
       --  so we simply don't send OP_SET_ACL.
       debugPrint ("procmgr: absent/invalid .cubit.access, deny-by-default" & LF);
    end parseAndSendACL;
+
+   ---------------------------------------------------------------------------
+   --  A launched child may start only in a working directory its own
+   --  filesystem scopes let it read: a launcher cannot place it anywhere
+   --  else. True when there is no launch block or it names no directory.
+   ---------------------------------------------------------------------------
+   function launchDirectoryVisible (childPID : Unsigned_64) return Boolean is
+      package LA renames CuBit.Launch_Arguments;
+      use type LA.Validation;
+      Length : constant LA.Block_Length := pendingArgumentBytes;
+      Read_Only : constant CuBit.File_Access.Rights_Set :=
+        [CuBit.File_Access.Read_Objects => True, others => False];
+   begin
+      if attenuateFor = 0 or else Length = 0 then
+         return True;
+      elsif LA.Validate (launchBlock (1 .. Length)) /= LA.Valid then
+         return False;
+      elsif LA.Directory_Declared (launchBlock (1 .. Length)) = 0 then
+         return True;
+      elsif childPID not in launchStates'Range then
+         return False;
+      end if;
+      declare
+         Item : LA.Block renames launchBlock (1 .. Length);
+         First : Positive;
+         Last : Natural;
+         Found : Boolean;
+      begin
+         LA.Locate (Item, LA.Strings_Declared (Item), First, Last, Found);
+         if not Found then
+            return False;
+         end if;
+         declare
+            Directory : String (1 .. Last - First + 1);
+            Held : Launch_State renames launchStates (childPID);
+         begin
+            for K in Directory'Range loop
+               Directory (K) := Character'Val (Item (First + K - 1));
+            end loop;
+            for H in 1 .. Held.Scope_Count loop
+               if Held.Scopes (H).Service = SERVICE_FS
+                 and then CuBit.File_Access.Includes
+                   (CuBit.File_Access.Rights_From_Wire (Held.Scopes (H).Rights),
+                    Read_Only)
+                 and then CuBit.File_Access.Scope_Matches
+                   (Held.Scopes (H).Prefix (1 .. Held.Scopes (H).Length),
+                    Directory)
+               then
+                  return True;
+               end if;
+            end loop;
+            debugPrint ("procmgr: launched child cannot read its working " &
+                        "directory: " & Directory & LF);
+            return False;
+         end;
+      end;
+   end launchDirectoryVisible;
 
    ---------------------------------------------------------------------------
    --  queryConfigQuota
@@ -2085,6 +2260,94 @@ procedure main is
          end;
       end loop;
    end loadLaunchTable;
+
+   ---------------------------------------------------------------------------
+   --  deriveRings
+   --  The rings the OP_LAUNCH launcher lends the child (pendingRings): for
+   --  each, acquire the launcher's grant, derive one for the child (named by
+   --  procmgr's endpoint to it) over the port's declared pages, and list it
+   --  for the child's launch block with the launcher as owner. A ring that
+   --  cannot be derived is left out: the child then makes its own.
+   ---------------------------------------------------------------------------
+   function deriveRings
+     (childPID : Unsigned_64; Description : CuBit.Launch_Arguments.Block)
+      return CuBit.Outlet_Rings.Table
+   is
+      package PD renames CuBit.Program_Descriptions;
+      use type PD.Connector_Direction;
+      Result : CuBit.Outlet_Rings.Table;
+      S : PD.Signature;
+      Decoded : Boolean;
+      Copy : PD.Bytes (1 .. Description'Length);
+      Minted : Unsigned_64;
+   begin
+      if pendingRings.Count = 0 or else attenuateFor = 0
+        or else childPID not in launchStates'Range
+        or else Description'Length > PD.Maximum_Descriptor_Bytes
+      then
+         if attenuateFor /= 0 then
+            debugPrint ("procmgr: port rings lent" & Natural'Image (pendingRings.Count) & LF);
+         end if;
+         return Result;
+      end if;
+      for K in Copy'Range loop
+         Copy (K) := Description (Description'First + K - 1);
+      end loop;
+      PD.Decode (Copy, S, Decoded);
+      if not Decoded then
+         return Result;
+      end if;
+      Minted := syscall (SYSCALL_POLICY_MINT_CAPABILITY, syscall (SYSCALL_GETPID),
+        CAP_TYPE_ENDPOINT, childPID, 0, 3, Unsigned_64 (Ring_Recipient_Slot));
+      if Minted = Unsigned_64'Last then
+         debugPrint ("procmgr: port rings: no endpoint to the child" & LF);
+         return Result;
+      end if;
+      --  Derived grants live in procmgr's grant namespace: the child names
+      --  procmgr as their owner when it acquires them.
+      Result.Owner := syscall (SYSCALL_GETPID);
+      for E of pendingRings.Entries (1 .. pendingRings.Count) loop
+         if E.Outlet < S.Connector_Total and then S.Connectors (E.Outlet).Direction = PD.Outlet
+           and then CuBit.Grant_References.Valid_Wire (E.Grant)
+         then
+            declare
+               Parent : constant CuBit.Memory_Grants.Grant_Reference :=
+                 CuBit.Grant_References.Decode (E.Grant);
+               Pages : constant Natural := S.Connectors (E.Outlet).Pages;
+               Mapped : System.Address;
+               Child : CuBit.Memory_Grants.Grant_Reference;
+               Ok : Boolean;
+               State : Launch_State renames launchStates (childPID);
+            begin
+               CuBit.Memory_Grants.Acquire
+                 (Parent, attenuateFor, 0, Unsigned_64 (Pages) * PAGE_SIZE,
+                  CuBit.Memory_Grants.Write_Access, Mapped, Ok);
+               if not Ok then
+                  debugPrint ("procmgr: port ring not acquired from the launcher" & LF);
+               end if;
+               if Ok then
+                  CuBit.Memory_Grants.Derive_Via_Capability
+                    (Ring_Recipient_Slot, Parent, 0, Pages, True, Child, Ok);
+                  if not Ok then
+                     debugPrint ("procmgr: port ring not derived for the child" & LF);
+                  end if;
+                  if Ok and then State.Ring_Parent_Count < State.Ring_Parents'Last then
+                     State.Ring_Parent_Count := State.Ring_Parent_Count + 1;
+                     State.Ring_Parents (State.Ring_Parent_Count) := Parent;
+                     Result.Count := Result.Count + 1;
+                     Result.Entries (Result.Count) :=
+                       (Outlet => E.Outlet, Grant => CuBit.Grant_References.Encode (Child));
+                  else
+                     CuBit.Memory_Grants.Return_Acquisition (Parent, Ok);
+                  end if;
+               end if;
+            end;
+         end if;
+      end loop;
+      debugPrint ("procmgr: port rings lent" & Natural'Image (pendingRings.Count) &
+                  ", derived" & Natural'Image (Result.Count) & LF);
+      return Result;
+   end deriveRings;
 
    function Spawn_Attempt
      (Force_Software : Boolean;
@@ -2262,21 +2525,87 @@ procedure main is
       debugPrint ("ms" & LF);
 
       --  Launch arguments go in before anything else, while the child has
-      --  never run; the kernel accepts them only then, and only once.
-      if pendingArgumentBytes > 0 then
-         declare
-            Installed : constant Unsigned_64 := syscall
-              (SYSCALL_INSTALL_LAUNCH_ARGUMENTS, newPID,
-               Unsigned_64 (To_Integer (launchBlock'Address)),
-               Unsigned_64 (pendingArgumentBytes));
-         begin
-            if Installed /= 0 then
-               debugPrint ("procmgr: launch arguments not installed" & LF);
+      --  never run; the kernel accepts them only then, and only once. A
+      --  program with a description (its ports and descriptor map) gets it
+      --  attached to its block, so it learns its ports at start; it gets a
+      --  block with just its name when its launcher gave none. A malformed
+      --  description refuses the launch.
+      declare
+         package LA renames CuBit.Launch_Arguments;
+         Description_At : Unsigned_64;
+         Description_Length : CuBit.Program_Descriptions.Descriptor_Length;
+         Description_Valid : Boolean;
+         Block_Length : LA.Block_Length := pendingArgumentBytes;
+         Accepted : Boolean := True;
+      begin
+         findDescription
+           (elfSize, Description_At, Description_Length, Description_Valid, streamBitmask);
+         if Description_Length > 0 and then not Description_Valid then
+            debugPrint ("procmgr: invalid program description" & LF);
+            Stop_Suspended_Child;
+            return 0;
+         end if;
+         if Description_Length > 0 then
+            if Block_Length = 0 then
+               declare
+                  Builder : LA.Builder;
+                  Length : LA.Present_Length;
+               begin
+                  LA.Start (Builder);
+                  LA.Add_Argument (Builder, name, Accepted);
+                  if Accepted then
+                     LA.Finish (Builder, Length, Accepted);
+                  end if;
+                  if Accepted then
+                     launchBlock (1 .. Length) := Builder.Data (1 .. Length);
+                     Block_Length := Length;
+                  end if;
+               end;
+            end if;
+            if Accepted then
+               declare
+                  Source : constant LA.Block (1 .. Description_Length)
+                    with Import, Address => elfBuf + Storage_Offset (Description_At);
+                  Rings : constant CuBit.Outlet_Rings.Table :=
+                    deriveRings (newPID, Source);
+                  Ring_Table : CuBit.Outlet_Rings.Bytes (1 .. CuBit.Outlet_Rings.Maximum_Bytes);
+                  Ring_Length : CuBit.Outlet_Rings.Table_Length;
+                  Length : LA.Present_Length := Block_Length;
+               begin
+                  CuBit.Outlet_Rings.Encode (Rings, Ring_Table, Ring_Length);
+                  declare
+                     Trailer : LA.Block (1 .. Ring_Length + Description_Length);
+                  begin
+                     for K in 1 .. Ring_Length loop
+                        Trailer (K) := Ring_Table (K);
+                     end loop;
+                     Trailer (Ring_Length + 1 .. Trailer'Last) := Source;
+                     LA.Attach_Description (launchBlock, Length, Trailer, Accepted);
+                  end;
+                  Block_Length := Length;
+               end;
+            end if;
+            if not Accepted then
+               debugPrint ("procmgr: program description does not fit its launch block" & LF);
                Stop_Suspended_Child;
                return 0;
             end if;
-         end;
-      end if;
+         end if;
+         if Block_Length > 0 then
+            declare
+               Installed : constant Unsigned_64 := syscall
+                 (SYSCALL_INSTALL_LAUNCH_ARGUMENTS, newPID,
+                  Unsigned_64 (To_Integer (launchBlock'Address)),
+                  Unsigned_64 (Block_Length));
+            begin
+               if Installed /= 0 then
+                  debugPrint ("procmgr: launch arguments not installed" & LF);
+                  Stop_Suspended_Child;
+                  return 0;
+               end if;
+            end;
+         end if;
+      end;
       resetLaunchState (newPID);
       loadLaunchTable (elfSize, newPID);
       if attenuateFor /= 0 then
@@ -2323,14 +2652,11 @@ procedure main is
       --  Parse .cubit.id section for package identity
       parseIdSection (elfSize, pkgId, pkgIdLen);
 
-      --  Parse .cubit.streams section for stream declarations
-      parseStreamsSection (elfSize, streamBitmask);
-
-      --  Parse .cubit.caps manifest (streams fallback if no .cubit.streams)
+      --  Parse .cubit.caps manifest
       t0 := syscall (SYSCALL_GETTIME);
       noteProcess (newPID, requester, pkgId (1 .. pkgIdLen));
       parseAndGrantManifest
-        (newPID, elfSize, streamBitmask, Render, approveNetwork, systemStartup,
+        (newPID, elfSize, Render, approveNetwork, systemStartup,
          approveLogViewer => Log_Viewer_Approved,
          approveProcessViewer => Process_Viewer_Approved,
          approveLogControl => Log_Control_Approved);
@@ -2610,7 +2936,12 @@ procedure main is
          parseAndSendACL (newPID, elfSize, Policy_Ready,
                           sandboxMode, cwd, name,
                           networkApproved => approveNetwork /= No_Network);
-         if not Policy_Ready or else attenuationRefused then
+         if Policy_Ready and then not attenuationRefused and then
+           not launchDirectoryVisible (newPID)
+         then
+            directoryRefused := True;
+         end if;
+         if not Policy_Ready or else attenuationRefused or else directoryRefused then
             -- Child has never run. Remove partial service-side installation
             -- BEFORE killing it, while its PID is still occupied; cleanup
             -- must not accidentally address a later occupant of that PID.
@@ -2892,7 +3223,12 @@ procedure main is
       use type LA.Validation;
       Name_Bytes     : constant Unsigned_64 := msg.words (1);
       Argument_Bytes : constant Unsigned_64 := msg.words (2);
-      Priority       : constant Unsigned_64 := msg.words (3);
+      Priority       : constant Unsigned_64 :=
+        Unsigned_64 (CuBit.Launch_Grants.Request_Priority (msg.words (3)));
+      Grant_Bytes    : constant Unsigned_64 :=
+        CuBit.Launch_Grants.Request_Grant_Bytes (msg.words (3));
+      Ring_Bytes     : constant Unsigned_64 :=
+        CuBit.Launch_Grants.Request_Ring_Bytes (msg.words (3));
       Reference : CuBit.Memory_Grants.Grant_Reference;
       Mapped    : System.Address;
       Ok, Returned : Boolean;
@@ -2905,6 +3241,8 @@ procedure main is
    begin
       if msg.tag.length /= LA.Launch_Request_Words
         or else not LA.Request_Valid (Name_Bytes, Argument_Bytes)
+        or else not CuBit.Launch_Grants.Grant_Bytes_Valid (Grant_Bytes)
+        or else Ring_Bytes > CuBit.Outlet_Rings.Maximum_Bytes
         or else not CuBit.Grant_References.Valid_Wire (msg.words (0))
       then
          Fail (LA.Malformed_Request);
@@ -2916,7 +3254,8 @@ procedure main is
       end if;
       Reference := CuBit.Grant_References.Decode (msg.words (0));
       CuBit.Memory_Grants.Acquire
-        (Reference, Unsigned_64 (sender), 0, Name_Bytes + Argument_Bytes,
+        (Reference, Unsigned_64 (sender), 0,
+         Name_Bytes + Argument_Bytes + Grant_Bytes + Ring_Bytes,
          CuBit.Memory_Grants.Read_Access, Mapped, Ok);
       if not Ok then
          Fail (LA.Grant_Unavailable);
@@ -2940,9 +3279,51 @@ procedure main is
                launchBlock (1 .. Arguments_Length) := Source_Block;
             end;
          end if;
+         pendingGrantBytes := 0;
+         if Grant_Bytes > 0 then
+            declare
+               Source_Grants : constant CuBit.Launch_Grants.Bytes
+                 (1 .. Natural (Grant_Bytes))
+                 with Import,
+                      Address => Mapped + Storage_Offset (Name_Length) +
+                                 Storage_Offset (Arguments_Length);
+            begin
+               pendingGrants (1 .. Natural (Grant_Bytes)) := Source_Grants;
+            end;
+         end if;
+         pendingRings := (others => <>);
+         if Ring_Bytes > 0 then
+            declare
+               Source_Rings : constant CuBit.Outlet_Rings.Bytes (1 .. Natural (Ring_Bytes))
+                 with Import,
+                      Address => Mapped + Storage_Offset (Name_Length) +
+                                 Storage_Offset (Arguments_Length) +
+                                 Storage_Offset (Grant_Bytes);
+               Copy : constant CuBit.Outlet_Rings.Bytes (1 .. Natural (Ring_Bytes)) := Source_Rings;
+               Rings_Valid : Boolean;
+            begin
+               CuBit.Outlet_Rings.Decode (Copy, pendingRings, Rings_Valid);
+               if not Rings_Valid then
+                  CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
+                  debugPrint ("procmgr: port rings rejected" & LF);
+                  Fail (LA.Arguments_Rejected);
+                  return;
+               end if;
+            end;
+         end if;
          CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
          if not Returned then
             debugPrint ("procmgr: launch grant return failed" & LF);
+         end if;
+         if Grant_Bytes > 0 then
+            if not CuBit.Launch_Grants.Valid
+              (pendingGrants (1 .. Natural (Grant_Bytes)))
+            then
+               debugPrint ("procmgr: delegated places rejected" & LF);
+               Fail (LA.Arguments_Rejected);
+               return;
+            end if;
+            pendingGrantBytes := Natural (Grant_Bytes);
          end if;
          if Arguments_Length > 0
            and then LA.Validate (launchBlock (1 .. Arguments_Length)) /= LA.Valid
@@ -2978,12 +3359,25 @@ procedure main is
          pendingArgumentBytes := Arguments_Length;
          attenuateFor := Unsigned_64 (sender);
          attenuationRefused := False;
+         directoryRefused := False;
          newPID := spawnByName (Name, Priority, Unsigned_64 (sender));
          pendingArgumentBytes := 0;
+         pendingGrantBytes := 0;
+         pendingRings := (others => <>);
          attenuateFor := 0;
       end;
 
-      if newPID = 0 and then attenuationRefused then
+      if newPID = 0 and then directoryRefused then
+         debugPrint ("procmgr: " & CuBit.Failures.Explain
+           ("Starting a program",
+            CuBit.Failures.Failed
+              (CuBit.Failures.Not_Granted,
+               "its working directory is outside what it may read",
+               "start it in a directory its manifest grants, or grant " &
+               "that directory")) & LF);
+         directoryRefused := False;
+         Fail (LA.Not_Granted);
+      elsif newPID = 0 and then attenuationRefused then
          debugPrint ("procmgr: " & CuBit.Failures.Explain
            ("Starting a program",
             CuBit.Failures.Failed
@@ -3008,6 +3402,137 @@ procedure main is
          end;
       end if;
    end handleLaunch;
+
+   ---------------------------------------------------------------------------
+   --  handleLaunchTable
+   --  OP_LAUNCH_TABLE (CuBit.Launch_Authority): the requester's own launch
+   --  table, written into the grant it lends.
+   ---------------------------------------------------------------------------
+   procedure handleLaunchTable (sender : ProcessID; msg : Message) is
+      Reference : CuBit.Memory_Grants.Grant_Reference;
+      Mapped    : System.Address;
+      Ok, Returned : Boolean;
+   begin
+      if msg.tag.length /= LAuth.Table_Request_Words
+        or else not CuBit.Grant_References.Valid_Wire (msg.words (0))
+        or else Unsigned_64 (sender) not in launchStates'Range
+      then
+         sendReply (sender, REPLY_ERR, CuBit.Launch_Arguments.Launch_Failure'Enum_Rep
+                      (CuBit.Launch_Arguments.Malformed_Request));
+         return;
+      end if;
+      Reference := CuBit.Grant_References.Decode (msg.words (0));
+      CuBit.Memory_Grants.Acquire
+        (Reference, Unsigned_64 (sender), 0, LAuth.Maximum_Table_Bytes,
+         CuBit.Memory_Grants.Write_Access, Mapped, Ok);
+      if not Ok then
+         sendReply (sender, REPLY_ERR, CuBit.Launch_Arguments.Launch_Failure'Enum_Rep
+                      (CuBit.Launch_Arguments.Grant_Unavailable));
+         return;
+      end if;
+      declare
+         Launcher : Launch_State renames launchStates (Unsigned_64 (sender));
+         Target : LAuth.Table_Bytes (1 .. LAuth.Maximum_Table_Bytes)
+           with Import, Address => Mapped;
+      begin
+         Target (1 .. Launcher.Table_Length) := Launcher.Table (1 .. Launcher.Table_Length);
+         CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
+         sendReply (sender, REPLY_OK, Unsigned_64 (Launcher.Table_Length));
+      end;
+   end handleLaunchTable;
+
+   ---------------------------------------------------------------------------
+   --  handleProgramDescription
+   --  OP_PROGRAM_DESCRIPTION (CuBit.Program_Descriptions): a program's
+   --  parameters, for a requester that may launch it. The descriptor is
+   --  validated with Decode before it is written back after the name.
+   ---------------------------------------------------------------------------
+   procedure handleProgramDescription (sender : ProcessID; msg : Message) is
+      package LA renames CuBit.Launch_Arguments;
+      package PP renames CuBit.Program_Descriptions;
+      Name_Bytes : constant Unsigned_64 := msg.words (1);
+      Reference : CuBit.Memory_Grants.Grant_Reference;
+      Mapped    : System.Address;
+      Ok, Returned : Boolean;
+      elfSize   : Unsigned_64;
+      Found_Length : PP.Descriptor_Length := 0;
+      Found_At  : Unsigned_64 := 0;
+      Valid     : Boolean := False;
+      Rings     : Unsigned_64;
+
+      procedure Fail (Reason : LA.Launch_Failure) is
+      begin
+         sendReply (sender, REPLY_ERR, LA.Launch_Failure'Enum_Rep (Reason));
+      end Fail;
+   begin
+      if msg.tag.length /= PP.Description_Request_Words
+        or else Name_Bytes not in 1 .. LA.Maximum_Name_Bytes
+        or else not CuBit.Grant_References.Valid_Wire (msg.words (0))
+        or else Unsigned_64 (sender) not in launchStates'Range
+      then
+         Fail (LA.Malformed_Request);
+         return;
+      end if;
+      Reference := CuBit.Grant_References.Decode (msg.words (0));
+      CuBit.Memory_Grants.Acquire
+        (Reference, Unsigned_64 (sender), 0,
+         Name_Bytes + PP.Maximum_Descriptor_Bytes,
+         CuBit.Memory_Grants.Write_Access, Mapped, Ok);
+      if not Ok then
+         Fail (LA.Grant_Unavailable);
+         return;
+      end if;
+
+      declare
+         Name_Length : constant LA.Name_Length := LA.Name_Length (Name_Bytes);
+         Source_Name : constant String (1 .. Name_Length)
+           with Import, Address => Mapped;
+         Name : constant String (1 .. Name_Length) := Source_Name;
+         Launcher : Launch_State renames launchStates (Unsigned_64 (sender));
+         Reason : LA.Launch_Failure := LA.Malformed_Request;
+         Answered : Boolean := False;
+      begin
+         --  Only programs the requester may launch: the same check as
+         --  OP_LAUNCH, before anything is read.
+         if Launcher.Table_Length = 0 or else not LAuth.Contains
+           (Launcher.Table (1 .. Launcher.Table_Length), Name)
+         then
+            Reason := LA.Not_Granted;
+         else
+            elfSize := readFileFromFS (Name);
+            if elfSize < 64 then
+               Reason := LA.Spawn_Failed;
+            else
+               findDescription (elfSize, Found_At, Found_Length, Valid, Rings);
+               Answered := Found_Length = 0 or else Valid;
+               if not Answered then
+                  debugPrint ("procmgr: invalid program description" & LF);
+                  Reason := LA.Arguments_Rejected;
+               end if;
+            end if;
+         end if;
+
+         if Answered and then Found_Length > 0 then
+            declare
+               Source : constant PP.Bytes (1 .. Found_Length)
+                 with Import, Address => elfBuf + Storage_Offset (Found_At);
+               Target : PP.Bytes (1 .. Found_Length)
+                 with Import, Address => Mapped + Storage_Offset (Name_Length);
+            begin
+               Target := Source;
+            end;
+         end if;
+         CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
+         if not Returned then
+            debugPrint ("procmgr: description grant return failed" & LF);
+         end if;
+         if Answered then
+            sendReply (sender, REPLY_OK, Unsigned_64 (Found_Length));
+         else
+            Fail (Reason);
+         end if;
+      end;
+   end handleProgramDescription;
 
    ---------------------------------------------------------------------------
    --  handleSpawn
@@ -3263,6 +3788,10 @@ begin
             handleSpawn (sender, msg);
          when OP_LAUNCH =>
             handleLaunch (sender, msg);
+         when LAuth.Table_Operation =>
+            handleLaunchTable (sender, msg);
+         when CuBit.Program_Descriptions.Description_Operation =>
+            handleProgramDescription (sender, msg);
          when CuBit.Process_Observer.List_Label =>
             handleProcessList (sender, msg);
          when EVENT_CHILD_EXIT =>
@@ -3272,6 +3801,7 @@ begin
                  (msg.tag.length, msg.words (0), msg.words (1), msg.words (2))
               and then not processListed (msg.words (0))
             then
+               releaseRings (msg.words (0));
                resetLaunchState (msg.words (0));
                if msg.words (0) in processRecords'Range then
                   processRecords (msg.words (0)) := (others => <>);

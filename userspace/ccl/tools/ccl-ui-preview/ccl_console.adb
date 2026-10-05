@@ -11,6 +11,7 @@ with CCL_Desktop_Platform;
 with CCL_Window;
 with CCL_Execution;
 with CCL_Host_Environment;
+with CCL_Program_Bindings;
 with CCL_Console_Bindings;
 with CCL.Interfaces.Console;
 with CCL_REPL_Commands;
@@ -107,6 +108,51 @@ package body CCL_Console is
    procedure Submit_Entry is new CCL_REPL_Commands (Submit_Granted);
    function Now_Ms return Unsigned_64 is (CCL_Window.Ticks);
    procedure Handle is new CCL_Console_View.Handle (Submit_Entry, Now_Ms);
+   procedure Follow is new CCL_Console_View.Follow (Submit_Entry, Now_Ms);
+
+   --  Every outlet of a program the last entry started gets its own live
+   --  card (docs/ccl-launch-parameters.md, "Every outlet gets a card"):
+   --  by the run's name when the entry defined one, as in
+   --  (window 64 (as.unix.stderr bad)), else by its session stream.
+   procedure Follow_Started (State : in out CCL_Console_View.View_State) is
+      Items : CCL_Program_Bindings.Started_Array;
+      Count : Natural;
+      Source : constant String := CCL_Console_View.Latest_Source (State);
+      DEFINE : constant String := "(define ";
+      function Defined_Name return String is
+      begin
+         if Source'Length > DEFINE'Length
+           and then Source (Source'First .. Source'First + DEFINE'Length - 1) = DEFINE
+         then
+            for K in Source'First + DEFINE'Length .. Source'Last loop
+               if Source (K) = ' ' then
+                  return Source (Source'First + DEFINE'Length .. K - 1);
+               elsif Source (K) not in 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' then
+                  return "";
+               end if;
+            end loop;
+         end if;
+         return "";
+      end Defined_Name;
+      Name : constant String := Defined_Name;
+   begin
+      CCL_Program_Bindings.Take_Started (Items, Count);
+      for I in 1 .. Count loop
+         declare
+            O : CCL_Program_Bindings.Started_Outlet renames Items (I);
+            Accessor : constant String :=
+              O.Program (1 .. O.Program_Length) & "." & O.Outlet (1 .. O.Outlet_Length);
+            Stream_Image : constant String := Integer_64'Image (O.Stream);
+            Reference : constant String :=
+              (if Name'Length > 0 then "(" & Accessor & " " & Name & ")"
+               else "(stream " & (if O.Integers then "Integer" else "String") & " " &
+                    Stream_Image (Stream_Image'First + 1 .. Stream_Image'Last) & ")");
+         begin
+            Follow (State, (if O.Integers then "(latest " & Reference & ")"
+                            else "(window 64 " & Reference & ")"));
+         end;
+      end loop;
+   end Follow_Started;
    procedure Reevaluate_Live is new CCL.Sessions.Reevaluate_With_Values
      (Live_Context, Invoke_Live, Read_Stream => Read_Live);
    procedure Reevaluate
@@ -250,6 +296,7 @@ package body CCL_Console is
                              Submitted, Redraw);
                      Needs_Render := Needs_Render or else Redraw;
                      if Submitted then
+                        Follow_Started (Console);
                         Retain_Streams;
                         Platform.REPL_Completed (CCL_Console_View.Latest_Result (Console));
                      end if;

@@ -10,6 +10,13 @@ generic
    with function Invalidation_Confirmed return Boolean;
 package Intel_GPU_VM_Image.Growth.Backing.Writer is
    subtype State is Growth_Receipt;
+   generic
+      with function Read_Page (Ordinal : Positive) return Unsigned_64;
+   procedure Start_From_Pages
+     (Object : in out State; Source : Image; GPU, Bytes, Retained_Root : Unsigned_64;
+      Page_Count : Natural; Accepted : out Boolean);
+   -- Read authenticated input once into private growable receipt storage.
+   -- Resolve/Commit use those same retained values, never a borrowed array.
    procedure Start
      (Object : in out State; Source : Image; GPU, Bytes, Retained_Root : Unsigned_64;
       New_Pages : Data_Pages; Accepted : out Boolean);

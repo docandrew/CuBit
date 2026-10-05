@@ -11,7 +11,7 @@ project Network_Check is
    end Builder;
    package Compiler is
       for Default_Switches ("Ada") use
-        ("-O2", "-gnat2022", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+        ("-O2", "-gnat2022", "-mno-red-zone", "-fno-pic");
    end Compiler;
    package Binder is
       for Default_Switches ("Ada") use ("-d_C");

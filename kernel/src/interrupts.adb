@@ -348,11 +348,19 @@ is
         reservedWrite   : constant Boolean := Util.isBitSet (err, 3);
         nxeViolation    : constant Boolean := Util.isBitSet (err, 4);
     begin
-        -- handle NXE violations separately.
+        -- Reserved PTE bits indicate invalid paging structures, never a
+        -- demand-page request. Do not try to repair them by allocating RAM.
+        if reservedWrite then
+            raise PageFaultException with "Reserved bit in paging structure";
+        end if;
+
+        -- Instruction fetches are never demand-backed by the data allocator.
         if nxeViolation then
             if userMode then
                 -- if it was a user process, then kill it.
                 println("NXE violation in user process!");
+                Process.kill (pid);
+                return;
             else
                 -- if it was the kernel, we goofed up.
                 println("NXE violation in kernel!");
@@ -403,7 +411,7 @@ is
                                 -- user wrote non-present page. see if it's in their
                                 -- allocated range and page in if it is. If it's not,
                                 -- then may be a stack overflow or OoM.
-                                Process.pageFault (pid, faultAddr);
+                                Process.pageFault (pid, faultAddr, Write => write);
                             when False =>
                                 -- kernel wrote non-present page. see if it's something
                                 -- that we should have, page it in if it is.
@@ -413,7 +421,7 @@ is
                                 declare
                                     handled : Boolean;
                                 begin
-                                    Process.kernelUserFault (pid, faultAddr, handled);
+                                    Process.kernelUserFault (pid, faultAddr, write, handled);
                                     if handled then
                                         return;
                                     end if;
@@ -428,7 +436,7 @@ is
                                 -- user read non-present page. see if it's in their
                                 -- allocated range and page in if it is. If it's not,
                                 -- may be a stack overflow or OoM.
-                                Process.pageFault (pid, faultAddr);
+                                Process.pageFault (pid, faultAddr, Write => write);
                             when False =>
                                 -- kernel read non-present page. see if it's something
                                 -- that we should have. see if it's something that we should
@@ -439,7 +447,7 @@ is
                                 declare
                                     handled : Boolean;
                                 begin
-                                    Process.kernelUserFault (pid, faultAddr, handled);
+                                    Process.kernelUserFault (pid, faultAddr, write, handled);
                                     if handled then
                                         return;
                                     end if;

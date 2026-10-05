@@ -39,7 +39,6 @@ package body Desktop_Launch is
       Append (Items, Make ("DOOM", "doom.elf", Doom, Single => True));
       Append (Items, Make ("Devices", "devices.app", Files));
       Append (Items, Make ("Penny", "cubitshell.app", Penny));
-      Append (Items, Make ("NetSurf", "netsurf.app", Files));
       Append (Items, Make ("Files", "files.app", Files));
       Append (Items, Make ("SameBoy", "sameboy.app", Doom));
       Append (Items, Make ("Settings", "", UILab, Kind => Internal_Settings));

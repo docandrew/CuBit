@@ -7,9 +7,14 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 
 package CuBit.File_Access with SPARK_Mode => On is
-   Maximum_Prefix_Bytes : constant := 64;
+   --  A scope may name any path the service takes
+   --  (CuBit.Directory_Paths.Maximum_Bytes).
+   Maximum_Prefix_Bytes : constant := 256;
    Maximum_Entries : constant := 16;
-   Wire_Entry_Bytes : constant := 72;
+   --  Per entry: rights, the prefix length (u16, little-endian), five zero
+   --  bytes, then the prefix.
+   Wire_Header_Bytes : constant := 8;
+   Wire_Entry_Bytes : constant := Wire_Header_Bytes + Maximum_Prefix_Bytes;
    subtype Wire_Index is
      Positive range 1 .. Maximum_Entries * Wire_Entry_Bytes;
    type Wire_Bytes is array (Wire_Index range <>) of Unsigned_8;

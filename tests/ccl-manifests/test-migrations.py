@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Compile every migrated declaration and compare all .cubit sections with C.
+"""Compile every migrated declaration and compare all .cubit sections with
+the recorded bytes of the hand-written manifests it replaced.
 
-The old C exists only as an independent regression oracle, never as an app input.
+fixtures/<name>/<section>.bin hold those bytes (extracted once from the old
+C byte arrays, docs/c-removal.md): an independent regression oracle, never
+an app input.
 """
 import argparse
 import json
@@ -18,6 +21,12 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--linked', action='store_true',
                     help='also compare the already-built native ELF metadata')
 args = parser.parse_args()
+
+
+def recorded(name):
+    """The recorded sections of fixture `name`: .cubit.<x> from <x>.bin."""
+    return {'.' + path.name[:-len('.bin')]: path.read_bytes()
+            for path in sorted((root / 'tests/ccl-manifests/fixtures' / name).glob('*.bin'))}
 
 
 def identity_bytes(identity, version):
@@ -45,20 +54,14 @@ with tempfile.TemporaryDirectory(prefix='ccl-migrations.') as temporary:
     directory = pathlib.Path(temporary)
     for index, entry in enumerate(migrations):
         source = root / entry['directory'] / 'manifest.ccl'
-        fixture = root / 'tests/ccl-manifests/fixtures' / entry['fixture']
-        old = directory / f'{index}-old.o'
         new = directory / f'{index}-new.o'
         asm = directory / f'{index}.S'
         with asm.open('w') as output:
             subprocess.run([tool, catalog, source], stdout=output, check=True)
-        subprocess.run(['gcc', '-c', fixture, '-o', old], check=True)
         subprocess.run(['gcc', '-c', asm, '-o', new], check=True)
-        expected, actual = extract(old, directory), extract(new, directory)
+        expected, actual = recorded(entry['fixture']), extract(new, directory)
         if 'extra_fixture' in entry:
-            extra = directory / f'{index}-extra.o'
-            subprocess.run(['gcc', '-c', root / 'tests/ccl-manifests/fixtures' /
-                            entry['extra_fixture'], '-o', extra], check=True)
-            extra_sections = extract(extra, directory)
+            extra_sections = recorded(entry['extra_fixture'])
             assert not expected.keys() & extra_sections.keys(), entry
             expected.update(extra_sections)
         if 'identity_update' in entry:
@@ -82,7 +85,7 @@ with tempfile.TemporaryDirectory(prefix='ccl-migrations.') as temporary:
             expected['.cubit.id'] = corrected
             print(f'IDENTITY UPDATE {entry["directory"]}: {update["reason"]}', flush=True)
         # Intentional post-migration additions for the native taskbar. Keep the
-        # original C fixtures unchanged and specify the exact added authority
+        # recorded fixtures unchanged and specify the exact added authority
         # bytes independently of the compiler under test.
         if entry['directory'] == 'userspace/services/clock':
             assert '.cubit.caps' not in expected and '.cubit.access' not in expected
@@ -98,6 +101,19 @@ with tempfile.TemporaryDirectory(prefix='ccl-migrations.') as temporary:
                                       struct.pack('<BBHIQ', 2, 3, 26, 20, 0) +
                                       struct.pack('<BBHIQ', 2, 3, 25, 19, 0) + old_caps[8:])
             print('AUTHORITY UPDATE desktop: master-audio and read-clock endpoints', flush=True)
+        # Outlets replaced streams (docs/ccl-launch-parameters.md, "Inlets and
+        # outlets, not stdio"): the recorded stdout stream becomes one text outlet named
+        # under the program's identity, in .cubit.description.
+        renamed_outlets = {'userspace/apps/sleep': b'com.cubit.sleep.status',
+                         'userspace/apps/wget': b'com.cubit.wget.progress'}
+        if entry['directory'] in renamed_outlets:
+            old_streams = expected.pop('.cubit.streams')
+            assert old_streams == (struct.pack('<IHH', 0x54534243, 1, 1) +
+                                   struct.pack('<HHHH', 2, 4, 1, 0)), 'unexpected stream fixture'
+            name = renamed_outlets[entry['directory']]
+            expected['.cubit.description'] = (b'PDSC' + struct.pack('<HBBBBH', 1, 0, 0, 1, 0, 0) +
+                                              bytes([2, 1, 1, 4, len(name)]) + name)
+            print(f'OUTLET UPDATE {entry["directory"]}: stdout stream -> {name.decode()}', flush=True)
         assert expected.keys() == actual.keys(), (entry, expected.keys(), actual.keys())
         for section in expected:
             assert expected[section] == actual[section], (entry, section, expected[section].hex(), actual[section].hex())

@@ -116,7 +116,7 @@ begin
    Check (Outcome.Status = Type_Check_Failed and Outcome.Diagnostic = Host_Schema_Unavailable);
    Check (Context.Calls = 0);
    Run ("(objects.echo 42)", 4096, Catalog, Grants, Context, Outcome);
-   Check (Outcome.Status = Type_Check_Failed and Outcome.Diagnostic = Host_Object_Type_Mismatch);
+   Check (Outcome.Status = Type_Check_Failed and Outcome.Diagnostic = Argument_Type_Mismatch);
    Check (Context.Calls = 0);
    Run ("(objects.echo Reading.Unavailable)", 4096, Catalog, No_Grants, Context, Outcome);
    Check (Outcome.Status = Host_Authority_Denied and Context.Calls = 0);

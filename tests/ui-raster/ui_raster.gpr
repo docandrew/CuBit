@@ -1,0 +1,15 @@
+--  Proof and hosted equivalence tests of Client_Raster (userspace/lib/ui).
+project UI_Raster is
+   for Source_Dirs use (".", "../../userspace/lib/ui");
+   for Source_Files use ("main.adb", "client_raster.ads", "client_raster.adb",
+                         "client_glyph_blend.ads", "client_glyph_blend.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on", "--report=fail");
+   end Prove;
+end UI_Raster;

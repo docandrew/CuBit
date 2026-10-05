@@ -16,11 +16,13 @@ with System;
 package CuBit.Launch_Arguments_C with Preelaborate is
 
    --  1 if the Length bytes at Block are a well-formed launch block, and
-   --  then its argument and environment counts; 0 (counts untouched)
+   --  then its argument, environment and directory counts; 0 (counts
+   --  untouched)
    --  otherwise, including a null Block or a Length out of range.
    function Validate
      (Block : System.Address; Length : Unsigned_32;
-      Arguments, Environment : access Unsigned_32) return Interfaces.C.int
+      Arguments, Environment, Directory :
+        access Unsigned_32) return Interfaces.C.int
    with Export, Convention => C,
         External_Name => "__cubit_launch_arguments_validate";
 

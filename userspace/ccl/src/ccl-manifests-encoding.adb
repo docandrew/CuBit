@@ -2,6 +2,7 @@ with Interfaces;
 with CCL.Resource_Sections;
 with CuBit.Network_Authority;
 with CuBit.Launch_Authority;
+with CuBit.Program_Descriptions;
 
 package body CCL.Manifests.Encoding with SPARK_Mode => On is
    use Interfaces;
@@ -16,9 +17,6 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
       Count : Request_Count renames Decl.Count;
       Scopes : Scope_Array renames Decl.Scopes;
       Scope_Count : Scope_Count_Type renames Decl.Scope_Count;
-      Streams : Stream_Array renames Decl.Streams;
-      Stream_Order : Stream_Order_Array renames Decl.Stream_Order;
-      Stream_Count : Stream_Count_Type renames Decl.Stream_Count;
       Match : Match_Kind renames Decl.Match;
       Match_Values : Match_Value_Array renames Decl.Match_Values;
       Explicit_No_Requests : Boolean renames Decl.Explicit_No_Requests;
@@ -207,17 +205,6 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
             Append (Result.Access_Scopes, 0, 8);
          end loop;
       end if;
-      if Stream_Count > 0 then
-         Append (Result.Streams, 16#5453_4243#, 4);
-         Append (Result.Streams, 1, 2);
-         Append (Result.Streams, Unsigned_64 (Stream_Count), 2);
-         for Kind of Stream_Order (1 .. Stream_Count) loop
-            Append (Result.Streams, Unsigned_64 (Stream_Kind'Enum_Rep (Kind)), 2);
-            Append (Result.Streams, Unsigned_64 (Streams (Kind).Pages), 2);
-            Append (Result.Streams, Unsigned_64 (Stream_Type'Enum_Rep (Streams (Kind).Format)), 2);
-            Append (Result.Streams, 0, 2);
-         end loop;
-      end if;
       Result.Binding_Count := Count;
       for Index in 1 .. Count loop
          Result.Bindings (Index) := (Name => Requests (Index).Name,
@@ -245,6 +232,72 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
                Result.Diagnostic := Invalid_Launch;
                Result.Launch := (others => <>);
             end if;
+         end;
+      end if;
+      --  .cubit.description: the descriptor CuBit.Program_Descriptions decodes;
+      --  emitted only when it decodes.
+      if Decl.Description.Parameter_Total > 0 or else Decl.Description.Piece_Total > 0
+        or else Decl.Description.Connector_Total > 0
+      then
+         declare
+            package PP renames CuBit.Program_Descriptions;
+            use type PP.Piece_Kind;
+            S : PP.Signature renames Decl.Description;
+         begin
+            Write_Text (Result.Description, "PDSC");
+            Append (Result.Description, PP.Version, 2);
+            Append (Result.Description, Unsigned_64 (S.Parameter_Total), 1);
+            Append (Result.Description, Unsigned_64 (S.Piece_Total), 1);
+            Append (Result.Description, Unsigned_64 (S.Connector_Total), 1);
+            Append (Result.Description, Unsigned_64 (S.Descriptor_Total), 1);
+            Append (Result.Description, 0, 2);
+            for P of S.Parameters (0 .. S.Parameter_Total - 1) loop
+               Append (Result.Description, Unsigned_64 (PP.Kind'Enum_Rep (P.Of_Kind)), 1);
+               Append (Result.Description,
+                       (if P.Many then Unsigned_64 (PP.Many_Flag) else 0)
+                       + (if P.Optional then Unsigned_64 (PP.Optional_Flag) else 0), 1);
+               Append (Result.Description, Unsigned_64 (P.Name_Length), 1);
+               Write_Text (Result.Description, P.Name (1 .. P.Name_Length));
+            end loop;
+            for Item of S.Pieces (1 .. S.Piece_Total) loop
+               Append (Result.Description, Unsigned_64 (PP.Piece_Kind'Enum_Rep (Item.Of_Kind)), 1);
+               Append (Result.Description,
+                       (if Item.Of_Kind = PP.Literal then 0 else Unsigned_64 (Item.Parameter)), 1);
+               Append (Result.Description,
+                       (if Item.Of_Kind = PP.Value then 0 else Unsigned_64 (Item.Text_Length)), 1);
+               if Item.Of_Kind /= PP.Value then
+                  Write_Text (Result.Description, Item.Text (1 .. Item.Text_Length));
+               end if;
+            end loop;
+            for P of S.Connectors (0 .. S.Connector_Total - 1) loop
+               Append (Result.Description, Unsigned_64 (PP.Connector_Direction'Enum_Rep (P.Direction)), 1);
+               Append (Result.Description, Unsigned_64 (PP.Element_Kind'Enum_Rep (P.Element)), 1);
+               Append (Result.Description, Unsigned_64 (PP.Signal_Kind'Enum_Rep (P.Signal)), 1);
+               Append (Result.Description, Unsigned_64 (P.Pages), 1);
+               Append (Result.Description, Unsigned_64 (P.Name_Length), 1);
+               Write_Text (Result.Description, P.Name (1 .. P.Name_Length));
+            end loop;
+            for D of S.Descriptors (1 .. S.Descriptor_Total) loop
+               Append (Result.Description, Unsigned_64 (D.Number), 1);
+               Append (Result.Description, Unsigned_64 (D.Target), 1);
+            end loop;
+            declare
+               Bytes : PP.Bytes (1 .. Result.Description.Length);
+               Check : PP.Signature;
+               Accepted : Boolean;
+            begin
+               for I in Bytes'Range loop Bytes (I) := Result.Description.Data (I); end loop;
+               if Bytes'Length > PP.Maximum_Descriptor_Bytes then
+                  Accepted := False;
+               else
+                  PP.Decode (Bytes, Check, Accepted);
+               end if;
+               if not Accepted then
+                  Result.Success := False;
+                  Result.Diagnostic := Invalid_Parameters;
+                  Result.Description := (others => <>);
+               end if;
+            end;
          end;
       end if;
    end Encode;

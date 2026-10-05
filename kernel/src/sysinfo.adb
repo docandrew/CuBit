@@ -22,6 +22,7 @@ package body Sysinfo is
     registeredDrivers : DriverList := (others => Process.NO_PROCESS)
         with Volatile;
     netIOBase : Unsigned_64 := 0;
+    wallClockOffset : Unsigned_64 := 0 with Atomic;
     nvmeBar0  : Unsigned_64 := 0;
     nvmeDma   : Unsigned_64 := 0;
     hdaBar0   : Unsigned_64 := 0;
@@ -89,6 +90,8 @@ package body Sysinfo is
                 return gpuNotifyMult;
             when GPU_IS_PRIMARY =>
                 return gpuIsPrimary;
+            when WALL_CLOCK_OFFSET =>
+                return wallClockOffset;
             when NUM_CPUS =>
                 return Unsigned_64 (acpi.numCPUs);
             when MONOTONIC_DIAGNOSTIC =>
@@ -166,6 +169,9 @@ package body Sysinfo is
     is
     begin
         case queryID is
+            when WALL_CLOCK_OFFSET =>
+                wallClockOffset := value;
+                return True;
             when NVME_BAR0 =>
                 nvmeBar0 := value;
                 return True;

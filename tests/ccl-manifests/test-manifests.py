@@ -140,14 +140,58 @@ class Manifests(unittest.TestCase):
                 self.assertEqual(failed.returncode, 1)
                 self.assertIn(message, failed.stderr)
 
+    def test_typed_parameters_match_program_parameters_layout(self):
+        # The binutils ld manifest: an independent encoding of the
+        # .cubit.description descriptor (CuBit.Program_Descriptions).
+        catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
+        source = (ROOT / 'userspace/ports/binutils/ld.ccl').read_text()
+        result = self.compile(source, catalog)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        INPUT_FILE, OUTPUT_FILE, TEXT, FLAG = 1, 2, 6, 5
+        MANY, OPTIONAL = 1, 2
+        LITERAL, VALUE, WHEN_SET = 1, 2, 3
+        parameters = [(OUTPUT_FILE, 0, 'output'), (INPUT_FILE, MANY, 'inputs'),
+                      (INPUT_FILE, OPTIONAL, 'script'), (TEXT, OPTIONAL, 'entry'),
+                      (FLAG, OPTIONAL, 'static')]
+        pieces = [(WHEN_SET, 4, '-static'), (WHEN_SET, 3, '-e'), (VALUE, 3, ''),
+                  (WHEN_SET, 2, '-T'), (VALUE, 2, ''), (LITERAL, 0, '-o'), (VALUE, 0, ''),
+                  (VALUE, 1, '')]
+        OUTLET, TEXT, STREAM = 2, 1, 1
+        outlets = [(OUTLET, TEXT, STREAM, 4, 'unix.stdout'), (OUTLET, TEXT, STREAM, 4, 'unix.stderr')]
+        expected = b'PDSC' + struct.pack('<HBBBBH', 1, len(parameters), len(pieces), len(outlets), 2, 0)
+        expected += b''.join(bytes([k, f, len(n)]) + n.encode() for k, f, n in parameters)
+        expected += b''.join(bytes([k, p, len(t)]) + t.encode() for k, p, t in pieces)
+        expected += b''.join(bytes([d, e, m, g, len(n)]) + n.encode() for d, e, m, g, n in outlets)
+        expected += bytes([1, 0, 2, 1])
+        self.assertEqual(self.sections(result.stdout)['.cubit.description'], expected)
+        for old, new, message in [
+                ('(Argument_Piece.Value "inputs")', '(Argument_Piece.Value "input")',
+                 'no parameter "input"'),
+                ('(Argument_Piece.Value "inputs")', '(Argument_Piece.Value "static")',
+                 'flag "static" has no value'),
+                ('(Argument_Piece.Value "inputs")', '(Argument_Piece.Literal "-v")',
+                 'parameter "inputs" is never rendered'),
+                ('"entry" Parameter_Kind.Text', '"output" Parameter_Kind.Text',
+                 'parameter "output" is declared twice'),
+                ('"entry" Parameter_Kind.Text', '"Entry" Parameter_Kind.Text',
+                 'name "Entry" is not 1 to 32'),
+                ('(Parameter "static" Parameter_Kind.Flag)',
+                 '(Parameter "static" Parameter_Kind.Flag many => true)',
+                 'flag "static" cannot take many values'),
+                ('(Argument_Piece.Literal "-o")', '(Argument_Piece.Literal "%s")' % ('x' * 49),
+                 'literal is not 1 to 48 printable')]:
+            with self.subTest(new=new):
+                failed = self.compile(source.replace(old, new, 1), catalog)
+                self.assertEqual(failed.returncode, 1)
+                self.assertIn(message, failed.stderr)
+
     def test_existing_elf_bytes_unchanged(self):
-        legacy = self.directory / 'legacy.o'
-        subprocess.run(['gcc', '-c', ROOT / 'tests/ccl-manifests/fixtures/ccl-vm-legacy.c',
-                        '-o', legacy], check=True, capture_output=True)
+        legacy = {'.' + path.name[:-len('.bin')]: path.read_bytes() for path in
+                  sorted((ROOT / 'tests/ccl-manifests/fixtures/ccl-vm-legacy').glob('*.bin'))}
         result = self.compile()
         self.assertEqual(result.returncode, 0, result.stderr)
         sections = self.sections(result.stdout)
-        self.assertEqual(sections, self.extract(legacy))
+        self.assertEqual(sections, legacy)
         self.assertEqual(sections['.cubit.caps'],
                          struct.pack('<IHH', 0x43424954, 1, 2) +
                          struct.pack('<BBHIQ', 2, 3, 24, 18, 0) +
@@ -336,19 +380,55 @@ class Manifests(unittest.TestCase):
         many = ''.join(f'(filesystem-scope (rights read) "p{i}")' for i in range(17))
         self.reject(SOURCE[:-2] + many + ')', diagnostic='TOO_MANY_SCOPES')
 
-    def test_streams_exact_encoding(self):
-        source = SOURCE[:-2] + ' (stream stdout text (* 2 2)) (stream log raw-bytes 1))'
-        result = self.compile(source)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.sections(result.stdout)['.cubit.streams'],
-                         struct.pack('<IHH', 0x54534243, 1, 2) +
-                         struct.pack('<HHHH', 2, 4, 1, 0) + struct.pack('<HHHH', 4, 1, 0, 0))
-        self.reject(source.replace('log raw-bytes', 'stdout raw-bytes'), diagnostic='DUPLICATE_STREAM')
-        self.reject(source.replace('stdout text', 'unknown text'), diagnostic='UNKNOWN_STREAM')
-        self.reject(source.replace('stdout text', 'stdout unknown'), diagnostic='UNKNOWN_STREAM')
-        for pages in ['0', '-1', '257', 'true', '"4"']:
-            self.reject(source.replace('(* 2 2)', pages), diagnostic='INVALID_STREAM_PAGES')
+    def test_keyword_stream_form_is_gone(self):
+        # Outlets replace (stream stdout ...): CuBit has no stdout.
+        self.reject(SOURCE[:-2] + ' (stream stdout text 4))')
 
+    CONNECTORS_TYPED = TLS_TYPED.replace('  scopes =>', """  outlets => [
+    (Outlet "unix.stderr" Element.Text pages => 4)
+    (Outlet "com.example.tool.progress" Element.Integers signal => Signal.Level)
+    (Outlet "com.cubit.stdlog" Element.Log_Records)]
+  inlets => [(Inlet "unix.stdin" Element.Text)]
+  descriptors => [(Descriptor 2 "unix.stderr") (Descriptor 0 "unix.stdin")]
+  scopes =>""")
+
+    def test_inlets_and_outlets_exact_encoding(self):
+        catalog = (ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl').read_text()
+        result = self.compile(self.CONNECTORS_TYPED, catalog)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        INLET, OUTLET = 1, 2
+        TEXT, BYTES, INTEGERS, LOGS = 1, 2, 3, 4
+        STREAM, ONE_SHOT, LEVEL, EDGE = 1, 2, 3, 4
+        # Outlets first, then inlets.
+        connectors = [(OUTLET, TEXT, STREAM, 4, 'unix.stderr'),
+                      (OUTLET, INTEGERS, LEVEL, 1, 'com.example.tool.progress'),
+                      (OUTLET, LOGS, STREAM, 1, 'com.cubit.stdlog'),
+                      (INLET, TEXT, STREAM, 1, 'unix.stdin')]
+        expected = b'PDSC' + struct.pack('<HBBBBH', 1, 0, 0, len(connectors), 2, 0)
+        expected += b''.join(bytes([d, e, m, p, len(n)]) + n.encode() for d, e, m, p, n in connectors)
+        expected += bytes([2, 0, 0, 3])
+        sections = self.sections(result.stdout)
+        self.assertEqual(sections['.cubit.description'], expected)
+        self.assertNotIn('.cubit.streams', sections)
+        for old, new, message in [
+                ('(Outlet "unix.stderr"', '(Outlet "stderr"', 'outlet "stderr" is not a qualified name'),
+                ('(Outlet "unix.stderr"', '(Outlet "unix.tty"', 'unix.* names only stdin, stdout and stderr'),
+                ('(Inlet "unix.stdin"', '(Inlet "unix.stdout"', 'unix.stdout is an outlet'),
+                ('(Outlet "unix.stderr"', '(Outlet "unix.stdin"', 'unix.stdin is an inlet'),
+                ('(Outlet "com.cubit.stdlog" Element.Log_Records)', '(Outlet "com.cubit.stdlog" Element.Text)',
+                 'com.cubit.stdlog is a CuBit contract'),
+                ('"com.cubit.stdlog"', '"com.cubit.exit"', 'com.cubit.exit is supplied by the system'),
+                ('"com.cubit.stdlog"', '"unix.stderr"', '"unix.stderr" is declared twice'),
+                ('pages => 4', 'pages => 256', 'not 1 to 255'),
+                ('(Descriptor 2 "unix.stderr")', '(Descriptor 2 "unix.stdout")', 'no outlet or inlet "unix.stdout"'),
+                ('(Descriptor 2 "unix.stderr")', '(Descriptor 2 "unix.stdin")',
+                 'descriptor 2 writes, so it must name an outlet'),
+                ('(Descriptor 0 "unix.stdin")', '(Descriptor 2 "unix.stderr")',
+                 'descriptor 2 is mapped twice')]:
+            with self.subTest(new=new):
+                failed = self.compile(self.CONNECTORS_TYPED.replace(old, new, 1), catalog)
+                self.assertEqual(failed.returncode, 1)
+                self.assertIn(message, failed.stderr)
 
     def test_native_manifest_sources_are_ccl(self):
         for directory in ('userspace/apps', 'userspace/services',

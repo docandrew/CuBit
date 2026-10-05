@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 package body CCL.Declarations with SPARK_Mode => On is
    use type CCL.Language.Interpretation_Status;
    function Select_Format (Token : String) return Format_Selection is
@@ -132,7 +133,7 @@ package body CCL.Declarations with SPARK_Mode => On is
          Item.Cursor := Item.Cursor + 1;
       end loop;
       if Failed (Item) then return; end if;
-      CCL.Language.Interpret (Item.Text (First .. Item.Cursor - 1), 1_024, Value);
+      CCL.Evaluation.Evaluate (Item.Text (First .. Item.Cursor - 1), 1_024, Value);
       if Value.Status /= CCL.Language.Succeeded then
          Item.Error := Invalid_Expression;
          if Value.Diagnostic_Position > 0 and then

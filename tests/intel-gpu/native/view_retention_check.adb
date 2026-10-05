@@ -174,6 +174,52 @@ begin
          Check (Word = 16#CAFE_0000# + Unsigned_64 (Cycle), "owner backing retained");
       end;
    end loop;
+   declare
+      Producer : H.Retained_Reference;
+      Reader : V.View;
+      Name : H.Handle;
+      Reference, Rejected : G.Grant_Reference;
+      Address, Denied : System.Address;
+      Word : Unsigned_64 with Import, Volatile,
+        Address => To_Address (Integer_Address (Backing.CPU_Address));
+   begin
+      Word := 16#C105_ED01#;
+      H.Register (Registry, Identity, Backing, Name);
+      Check (Name /= 0, "retained reader register");
+      H.Retain_Backing (Registry, Identity, Name, Producer, OK);
+      Check (OK, "producer pin");
+      H.Close (Registry, Identity, Name, OK);
+      Check (OK and then not H.Resolve (Registry, Identity, Name).Ready,
+        "producer name closed before handoff");
+      V.Share_Retained (Reader, Registry, Producer, 15, Identity, 0, 4096);
+      Check (V.State (Reader) = V.Shared, "reader handoff from retained backing");
+      H.Return_Reference (Registry, Producer, True, OK);
+      Check (OK and then not H.Can_Release_Backing (Registry, Identity, Name),
+        "reader pin outlives producer pin");
+      Reference := CuBit.Grant_References.Decode (V.Wire_Reference (Reader));
+      G.Acquire_Via_Capability (15, Reference, 0, 4096, G.Write_Access, Denied, OK);
+      Check (not OK and Denied = System.Null_Address, "retained reader write denied");
+      G.Acquire_Via_Capability (15, Reference, 0, 4096, G.Read_Access, Address, OK);
+      Check (OK, "retained reader acquisition");
+      G.Derive_Via_Capability (15, Reference, 0, 1, False, Rejected, OK);
+      Check (not OK, "retained reader forwarding denied");
+      V.Retire (Reader, Registry);
+      Check (V.State (Reader) = V.Retiring and V.Wire_Reference (Reader) = 0,
+        "retained reader revoke pending");
+      H.Release_Retired_Backing (Registry, Identity, Name, True, OK);
+      Check (not OK, "held reader blocks backing release");
+      G.Acquire_Via_Capability (15, Reference, 0, 4096, G.Read_Access, Denied, OK);
+      Check (not OK, "revoked reader denies new acquisition");
+      declare Alias : Unsigned_64 with Import, Volatile, Address => Address; begin
+         Check (Alias = Word, "held reader content after producer closure and revoke");
+      end;
+      G.Return_Acquisition (Reference, OK); Check (OK, "reader drain");
+      V.Poll_Retirement (Reader, Registry);
+      Check (V.State (Reader) = V.Retired, "reader retirement confirmed");
+      H.Release_Retired_Backing (Registry, Identity, Name, True, OK);
+      Check (OK, "backing release after reader drain");
+   end;
+   debugPrint ("native retained reader: closed producer read-only terminal grant drain PASS" & ASCII.LF);
    -- Eight simultaneously held roots force multiple lazy forwarding blocks
    -- with the current seven-scopes/page native layout. Ordinary root/child
    -- identities cross the former sixteen-slot ceiling; later rounds reuse identities

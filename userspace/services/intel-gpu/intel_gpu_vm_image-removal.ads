@@ -11,6 +11,27 @@ generic
    -- Return success only after completed hardware translation invalidation.
 package Intel_GPU_VM_Image.Removal is
    type Controller is limited private;
+   generic
+      with function Expected_Page (Ordinal : Positive) return Unsigned_64;
+   procedure Start_From_Pages
+     (State : in out Controller; Object : Image;
+      Expected_Revision, GPU : Unsigned_64; Page_Count : Natural;
+      Accepted : out Boolean);
+   -- Trusted retained-backing resolver; zero rejects. No array/callback is
+   -- retained. Recheck exclusion and source identity after every callback;
+   -- validate the complete range before enabling any hardware publication.
+   procedure Start
+     (State : in out Controller; Object : Image;
+      Expected_Revision, GPU : Unsigned_64; Expected : Data_Pages;
+      Accepted : out Boolean);
+   procedure Step (State : in out Controller; Object : Image);
+   function Publishing (State : Controller) return Boolean;
+   function Published (State : Controller) return Boolean;
+   -- Start validates the entire range without hardware writes. Expected need
+   -- not survive Start: the exact sealed source stays immutable through Commit.
+   -- Step performs at most one compare/write callback; owner, root and epoch
+   -- are checked before/after it. Premature Commit or callback reentry consumes
+   -- the attempt, retaining metadata/backing. Start/Commit still walk the range.
    procedure Publish
      (State : in out Controller; Object : Image;
       Expected_Revision, GPU : Unsigned_64; Expected : Data_Pages;
@@ -39,6 +60,8 @@ private
    type Controller is limited record
       Poisoned : Boolean := False;
       Pending : Boolean := False;
+      Active, Executing : Boolean := False;
+      Cursor : Natural := 0;
       Root, Epoch, First : Unsigned_64 := 0;
       Pages : Natural := 0;
    end record;

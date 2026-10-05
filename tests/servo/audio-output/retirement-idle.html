@@ -1,0 +1,9 @@
+<!doctype html><title>CuBitBrowserPerfAudioStarting</title><body style="font:20px sans-serif"><h1>Penny repeated video playback</h1><p id="status">Starting</p><script>
+const src=__MEDIA_URL__;(async()=>{for(let n=1;n<=8;n++){
+ const v=document.createElement('video');v.width=640;v.height=360;v.controls=true;v.src=src;document.body.appendChild(v);
+ const ended=new Promise((resolve,reject)=>{v.onended=resolve;v.onerror=reject;});await v.play();await ended;
+ if(v.videoWidth!==640||v.videoHeight!==360)throw new Error('wrong decoded dimensions');
+ await new Promise(resolve=>setTimeout(resolve,300));v.removeAttribute('src');v.load();v.remove();
+ document.title='CuBitBrowserPerfVideoCycle'+n;document.getElementById('status').textContent='Played and removed '+n+' / 8 video elements';
+ await new Promise(resolve=>setTimeout(resolve,300));
+}document.title='CuBitBrowserPerfVideoRetired';location.replace("data:text/html;base64,PHRpdGxlPkN1Qml0QnJvd3NlclBlcmZJZGxlQmFzZWxpbmU8L3RpdGxlPjxwPk1lZGlhIHJldGlyZWQ7IG1lYXN1cmluZyBpZGxlIG1lbW9yeS48L3A+PHNjcmlwdD5zZXRUaW1lb3V0KCgpPT5kb2N1bWVudC50aXRsZT0nQ3VCaXRCcm93c2VyUGVyZkF1ZGlvRW5kZWQnLDYwMDAwKTwvc2NyaXB0Pg==");})().catch(e=>{document.title='CuBitBrowserPerfAudioError';document.getElementById('status').textContent=String(e);});</script>

@@ -104,6 +104,56 @@ begin
          end if;
       end;
    end loop;
+   for Scenario in 1 .. 8 loop
+      declare
+         Pool, Other : H.Registry;
+         Source, Empty : H.Retained_Reference;
+         Reader : V.View;
+         ID : H.Handle;
+         Before : constant Natural := G.Creates;
+         Forwards : constant Natural := G.Forwardable_Creates;
+      begin
+         G.Create_OK := Scenario /= 6;
+         G.Revoke_OK := Scenario /= 7;
+         G.Gone := False;
+         CuBit.Capability_Grants.Endpoint_Ready := Scenario /= 5;
+         H.Register (Pool, 42, Backing, ID);
+         H.Retain_Backing (Pool, 42, ID, Source, OK); pragma Assert (OK);
+         H.Close_Session (Pool, 42);
+         pragma Assert (not H.Resolve (Pool, 42, ID).Ready);
+         if Scenario = 2 then
+            V.Share_Retained (Reader, Other, Source, 7, 42, 0, 4096);
+         elsif Scenario = 3 then
+            V.Share_Retained (Reader, Pool, Empty, 7, 42, 0, 4096);
+         else
+            V.Share_Retained (Reader, Pool, Source, 7, 42,
+              (if Scenario = 4 then 1 else 0), 4096);
+         end if;
+         pragma Assert (G.Forwardable_Creates = Forwards);
+         pragma Assert (G.Creates = Before + (if Scenario in 1 | 6 .. 8 then 1 else 0));
+         if Scenario in 1 | 6 .. 8 then pragma Assert (not G.Last_Writable); end if;
+         H.Return_Reference (Pool, Source, True, OK); pragma Assert (OK);
+         -- The independent reader must survive producer closure/pin return.
+         H.Release_Retired_Backing (Pool, 42, ID, True, OK);
+         pragma Assert (OK = (Scenario in 2 .. 5));
+         if Scenario in 1 | 6 .. 8 then
+            if Scenario = 8 then H.Quarantine (Pool); end if;
+            V.Retire (Reader, Pool);
+            pragma Assert (V.Wire_Reference (Reader) = 0);
+            H.Release_Retired_Backing (Pool, 42, ID, True, OK);
+            pragma Assert (not OK);
+            G.Gone := True;
+            V.Poll_Retirement (Reader, Pool);
+            H.Release_Retired_Backing (Pool, 42, ID, True, OK);
+            pragma Assert (OK = (Scenario = 1));
+            pragma Assert (V.State (Reader) = (if Scenario = 1 then V.Retired else V.Failed));
+         end if;
+         V.Share_Retained (Reader, Pool, Source, 7, 42, 0, 4096);
+         pragma Assert (G.Creates = Before + (if Scenario in 1 | 6 .. 8 then 1 else 0));
+      end;
+   end loop;
+   CuBit.Capability_Grants.Endpoint_Ready := True;
+   Ada.Text_IO.Put_Line ("Retained reader handoff PASS: closed producer, independent pin, read-only nonforwardable, rejection and uncertainty retention");
    declare Probe : V.View; begin
       G.Create_OK := True; G.Revoke_OK := True; G.Gone := True;
       Probe_Share (Probe, 7, 42);

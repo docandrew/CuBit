@@ -1,6 +1,31 @@
 package body Intel_GPU_Application_Submit is
+   use type System.Address;
+   function Receipt_Confirmed (Object : State; Receipt : Completion_Receipt)
+      return Boolean is
+     (Receipt.Attempted and then Receipt.Origin = Object'Address and then
+      Completion_Confirmed (Object, Receipt.Sequence));
+   function Receipt_Sequence (Object : State; Receipt : Completion_Receipt)
+      return Unsigned_32 is
+     (if Receipt_Confirmed (Object, Receipt) then Receipt.Sequence else 0);
+   procedure Execute_With_Receipt
+     (Object : in out State; Handle, GPU, Offset, Bytes : Unsigned_64;
+      Receipt : in out Completion_Receipt; Status : out Result) is
+      Sequence : Unsigned_32;
+   begin
+      Status := Rejected;
+      if Receipt.Attempted then return; end if;
+      Receipt.Attempted := True;
+      Execute (Object, Handle, GPU, Offset, Bytes, Status, Sequence);
+      if Status = Complete then
+         Receipt.Origin := Object'Address;
+         Receipt.Sequence := Sequence;
+      end if;
+   end Execute_With_Receipt;
    function Current (Object : State) return Phase is (Object.Value);
    function Last_Completed (Object : State) return Unsigned_32 is (Object.Completed);
+   function Completion_Confirmed (Object : State; Sequence : Unsigned_32)
+      return Boolean is
+     (Object.Value = Idle and then Sequence > 1 and then Sequence <= Object.Completed);
    procedure Initialize (Object : in out State; Setup_Complete : Boolean) is
    begin
       if Object.Value /= Uninitialized then return; end if;

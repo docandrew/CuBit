@@ -1,0 +1,14 @@
+project Storage is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use
+     ("main.adb", "forwarding.adb", "retained_record_blocks.ads",
+      "retained_record_blocks.adb", "memory_grants.ads", "memory_grants.adb",
+      "memory_grants-loans.ads", "memory_grants-loans.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb", "forwarding.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe", "-O2");
+   end Compiler;
+end Storage;

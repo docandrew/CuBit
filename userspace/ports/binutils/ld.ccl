@@ -1,0 +1,23 @@
+# GNU ld on CuBit (userspace/ports/binutils): typed parameters over argv
+# (docs/ccl-launch-parameters.md). It touches exactly the files a call
+# names: each file value is a place the launcher delegates.
+(Executable_Manifest
+  identity => "org.gnu.binutils.ld"
+  version => "2.46"
+  requests => [(service "filesystem" "filesystem")]
+  outlets => [
+    (Outlet "unix.stdout" Element.Text pages => 4)
+    (Outlet "unix.stderr" Element.Text pages => 4)]
+  descriptors => [(Descriptor 1 "unix.stdout") (Descriptor 2 "unix.stderr")]
+  parameters => [
+    (Parameter "output" Parameter_Kind.Output_File)
+    (Parameter "inputs" Parameter_Kind.Input_File many => true)
+    (Parameter "script" Parameter_Kind.Input_File required => false)
+    (Parameter "entry" Parameter_Kind.Text required => false)
+    (Parameter "static" Parameter_Kind.Flag)]
+  arguments => [
+    (Argument_Piece.When_Set (Conditional_Literal "static" "-static"))
+    (Argument_Piece.When_Set (Conditional_Literal "entry" "-e")) (Argument_Piece.Value "entry")
+    (Argument_Piece.When_Set (Conditional_Literal "script" "-T")) (Argument_Piece.Value "script")
+    (Argument_Piece.Literal "-o") (Argument_Piece.Value "output")
+    (Argument_Piece.Value "inputs")])

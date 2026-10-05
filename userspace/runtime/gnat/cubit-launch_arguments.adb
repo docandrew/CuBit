@@ -11,33 +11,35 @@ package body CuBit.Launch_Arguments with SPARK_Mode is
    begin
       if Item'Length not in Present_Length then
          return Wrong_Length;
-      elsif Field_16 (Item, Version_Offset) /= Format_Version
-        or else Field_16 (Item, Reserved_Offset) /= 0
-      then
+      elsif Field_16 (Item, Version_Offset) /= Format_Version then
          return Unknown_Format;
+      elsif Field_16 (Item, Directory_Count_Offset) > Maximum_Directories then
+         return Too_Many_Directories;
       elsif Field_32 (Item, Argument_Count_Offset) > Maximum_Strings
         or else Field_32 (Item, Environment_Count_Offset) >
                 Maximum_Strings - Field_32 (Item, Argument_Count_Offset)
+        or else Unsigned_32 (Field_16 (Item, Directory_Count_Offset)) >
+                Maximum_Strings - Field_32 (Item, Argument_Count_Offset)
+                  - Field_32 (Item, Environment_Count_Offset)
       then
          return Too_Many_Strings;
-      elsif Field_32 (Item, String_Bytes_Offset) /=
-            Unsigned_32 (Item'Length - Header_Bytes)
-      then
+      elsif not Lengths_Valid (Item) then
          return Length_Mismatch;
-      elsif Item'Length > Header_Bytes
-        and then Item (Item'Last) /= Terminator
+      end if;
+      pragma Assert (Header_Valid (Item));
+      if Strings_Last (Item) > Header_Bytes
+        and then Item (Strings_Last (Item)) /= Terminator
       then
          return Unterminated;
       end if;
-      pragma Assert (Header_Valid (Item));
 
-      for I in Header_Bytes + 1 .. Item'Last loop
+      for I in Header_Bytes + 1 .. Strings_Last (Item) loop
          if Item (I) = Terminator then
             Count := Count + 1;
          end if;
          pragma Loop_Invariant (Count = Terminators (Item, I));
       end loop;
-      pragma Assert (Count = Terminators (Item, Item'Last));
+      pragma Assert (Count = Terminators (Item, Strings_Last (Item)));
 
       if Count /= Strings_Declared (Item) then
          return Count_Mismatch;
@@ -51,10 +53,10 @@ package body CuBit.Launch_Arguments with SPARK_Mode is
    is
       I : Positive := Position;
    begin
-      pragma Assert (Item (Item'Last) = Terminator);
+      pragma Assert (Item (Strings_Last (Item)) = Terminator);
       loop
          pragma Loop_Invariant
-           (I in Position .. Item'Last
+           (I in Position .. Strings_Last (Item)
             and then (for all K in Position .. I - 1 =>
                         Item (K) /= Terminator));
          pragma Loop_Variant (Increases => I);
@@ -76,7 +78,7 @@ package body CuBit.Launch_Arguments with SPARK_Mode is
       Last := Header_Bytes;
       Found := False;
       for Number in 1 .. Index loop
-         exit when Position > Item'Last;
+         exit when Position > Strings_Last (Item);
          Next_String (Item, Position, Last, Next);
          if Number = Index then
             First := Position;
@@ -84,14 +86,14 @@ package body CuBit.Launch_Arguments with SPARK_Mode is
             return;
          end if;
          Position := Next;
-         pragma Loop_Invariant (Position in Header_Bytes + 1 .. Item'Last + 1);
+         pragma Loop_Invariant (Position in Header_Bytes + 1 .. Strings_Last (Item) + 1);
       end loop;
    end Locate;
 
    procedure Start (B : out Builder) is
    begin
       B := (Data => [others => 0], Used => Header_Bytes, Arguments => 0,
-            Environment => 0, In_Environment => False);
+            Environment => 0, Directory => 0, In_Environment => False);
    end Start;
 
    --  Appends Value and its terminator if it fits and holds no NUL.
@@ -101,6 +103,7 @@ package body CuBit.Launch_Arguments with SPARK_Mode is
         Post => Builder_Valid (B)
                 and then B.Arguments = B.Arguments'Old
                 and then B.Environment = B.Environment'Old
+                and then B.Directory = B.Directory'Old
                 and then B.In_Environment = B.In_Environment'Old;
 
    procedure Append
@@ -108,7 +111,7 @@ package body CuBit.Launch_Arguments with SPARK_Mode is
    is
    begin
       Accepted := False;
-      if B.Arguments + B.Environment >= Maximum_Strings
+      if B.Arguments + B.Environment + B.Directory >= Maximum_Strings
         or else Value'Length >= Maximum_Block_Bytes - B.Used
       then
          return;
@@ -133,8 +136,8 @@ package body CuBit.Launch_Arguments with SPARK_Mode is
    is
    begin
       Accepted := False;
-      if B.In_Environment
-        or else B.Arguments + B.Environment >= Maximum_Strings
+      if B.In_Environment or else B.Directory > 0
+        or else B.Arguments + B.Environment + B.Directory >= Maximum_Strings
       then
          return;
       end if;
@@ -149,7 +152,9 @@ package body CuBit.Launch_Arguments with SPARK_Mode is
    is
    begin
       Accepted := False;
-      if B.Arguments + B.Environment >= Maximum_Strings then
+      if B.Directory > 0
+        or else B.Arguments + B.Environment + B.Directory >= Maximum_Strings
+      then
          return;
       end if;
       Append (B, Value, Accepted);
@@ -159,10 +164,27 @@ package body CuBit.Launch_Arguments with SPARK_Mode is
       end if;
    end Add_Environment;
 
+   procedure Add_Directory
+     (B : in out Builder; Value : String; Accepted : out Boolean)
+   is
+   begin
+      Accepted := False;
+      if B.Directory = Maximum_Directories
+        or else B.Arguments + B.Environment + B.Directory >= Maximum_Strings
+      then
+         return;
+      end if;
+      Append (B, Value, Accepted);
+      if Accepted then
+         B.Directory := B.Directory + 1;
+      end if;
+   end Add_Directory;
+
    procedure Put_16 (B : in out Builder; Offset : Natural; Value : Unsigned_16)
    with Pre => Offset <= Header_Bytes - Field_16_Bytes,
         Post => B.Used = B.Used'Old and then B.Arguments = B.Arguments'Old
-                and then B.Environment = B.Environment'Old;
+                and then B.Environment = B.Environment'Old
+                and then B.Directory = B.Directory'Old;
 
    procedure Put_16 (B : in out Builder; Offset : Natural; Value : Unsigned_16)
    is
@@ -174,7 +196,8 @@ package body CuBit.Launch_Arguments with SPARK_Mode is
    procedure Put_32 (B : in out Builder; Offset : Natural; Value : Unsigned_32)
    with Pre => Offset <= Header_Bytes - Field_32_Bytes,
         Post => B.Used = B.Used'Old and then B.Arguments = B.Arguments'Old
-                and then B.Environment = B.Environment'Old;
+                and then B.Environment = B.Environment'Old
+                and then B.Directory = B.Directory'Old;
 
    procedure Put_32 (B : in out Builder; Offset : Natural; Value : Unsigned_32)
    is
@@ -190,12 +213,32 @@ package body CuBit.Launch_Arguments with SPARK_Mode is
    is
    begin
       Put_16 (B, Version_Offset, Format_Version);
-      Put_16 (B, Reserved_Offset, 0);
+      Put_16 (B, Directory_Count_Offset, Unsigned_16 (B.Directory));
       Put_32 (B, Argument_Count_Offset, Unsigned_32 (B.Arguments));
       Put_32 (B, Environment_Count_Offset, Unsigned_32 (B.Environment));
       Put_32 (B, String_Bytes_Offset, Unsigned_32 (B.Used - Header_Bytes));
       Length := B.Used;
       Accepted := Validate (B.Data (1 .. Length)) = Valid;
    end Finish;
+
+   procedure Attach_Description
+     (Data : in out Block; Length : in out Present_Length;
+      Description : Block; Accepted : out Boolean)
+   is
+   begin
+      Accepted := False;
+      --  A finished block without a description: its strings fill it.
+      if Validate (Data (1 .. Length)) /= Valid
+        or else Natural (Field_32 (Data (1 .. Length), String_Bytes_Offset)) /= Length - Header_Bytes
+        or else Description'Length > Maximum_Block_Bytes - Length
+      then
+         return;
+      end if;
+      Data (Length + 1 .. Length + Description'Length) := Description;
+      if Validate (Data (1 .. Length + Description'Length)) = Valid then
+         Length := Length + Description'Length;
+         Accepted := True;
+      end if;
+   end Attach_Description;
 
 end CuBit.Launch_Arguments;

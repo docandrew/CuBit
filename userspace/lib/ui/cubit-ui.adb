@@ -1,3 +1,4 @@
+with Client_Raster;
 ------------------------------------------------------------------------------
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
@@ -166,50 +167,20 @@ package body CuBit.UI is
 
    procedure Fill_Rect (c : Canvas; r : Rect; fill : Color) is
       clipped : constant Rect := Raster_Rect (c, r);
-      pairFill : constant Unsigned_64 :=
-         Shift_Left (Unsigned_64 (fill), 32) or Unsigned_64 (fill);
-      startX : Natural;
-      endX : Natural;
-      offset : Storage_Offset;
    begin
-      if c.addr = System.Null_Address or else Is_Empty (clipped) then
+      if c.addr = System.Null_Address or else Is_Empty (clipped) or else c.pitch mod 4 /= 0 or else
+        clipped.x + clipped.w > c.pitch / 4
+      then
          return;
       end if;
-
-      for yy in clipped.y .. clipped.y + clipped.h - 1 loop
-         startX := clipped.x;
-         endX := clipped.x + clipped.w;
-
-         if startX < endX and then startX mod 2 /= 0 then
-            declare
-               offset : constant Storage_Offset :=
-                  Storage_Offset (yy * c.pitch + startX * 4);
-               pixel : Color with Import, Address => c.addr + offset;
-            begin
-               pixel := fill;
-            end;
-            startX := startX + 1;
-         end if;
-
-         while startX + 1 < endX loop
-            offset := Storage_Offset (yy * c.pitch + startX * 4);
-            declare
-               pixels : Unsigned_64 with Import, Address => c.addr + offset;
-            begin
-               pixels := pairFill;
-            end;
-            startX := startX + 2;
-         end loop;
-
-         if startX < endX then
-            offset := Storage_Offset (yy * c.pitch + startX * 4);
-            declare
-               pixel : Color with Import, Address => c.addr + offset;
-            begin
-               pixel := fill;
-            end;
-         end if;
-      end loop;
+      declare
+         Pitch : constant Positive := c.pitch / 4;
+         --  Only the rows touched, from the first of them (Client_Raster).
+         Target : Client_Raster.Pixels (0 .. (clipped.h - 1) * Pitch + clipped.x + clipped.w - 1)
+           with Import, Address => c.addr + Storage_Offset (clipped.y * c.pitch);
+      begin
+         Client_Raster.Fill (Target, Pitch, (clipped.x, 0, clipped.w, clipped.h), fill);
+      end;
    end Fill_Rect;
 
    procedure Stroke_Rect
@@ -436,7 +407,7 @@ package body CuBit.UI is
             Source, Destination : B.Rectangle;
             Mask_Address : constant Integer_Address := To_Integer (F.Pixels (View));
             Target_Address : constant Integer_Address := To_Integer (c.addr);
-            Target_Bytes : Integer_Address;
+            Target_Bytes, Row_Address : Integer_Address;
          begin
             if Clipped.x >= Right or else Clipped.y >= Bottom or else
               Clipped.x < Left or else Clipped.y < Top or else
@@ -447,26 +418,29 @@ package body CuBit.UI is
             if Right > Pitch or else Right > Natural'Last / 4 or else
               Bottom - 1 > (Natural'Last / 4 - Right) / Pitch
             then return; end if;
-            Length := (Bottom - 1) * Pitch + Right;
+            --  Only the rows the glyph touches: the imported target starts at
+            --  its first row, so its contracts never span the whole surface.
+            Length := (Bottom - 1 - Clipped.y) * Pitch + Right;
             Source := (Clipped.x - Left, Clipped.y - Top,
                        Right - Clipped.x, Bottom - Clipped.y);
-            Destination := (Clipped.x, Clipped.y, Source.Width, Source.Height);
+            Destination := (Clipped.x, 0, Source.Width, Source.Height);
             if not B.Fits (Layout.Bytes, Layout.Pitch, Source) or else
               not B.Fits (Length, Pitch, Destination)
             then return; end if;
             Target_Bytes := Integer_Address (Length) * 4;
+            Row_Address := Target_Address + Integer_Address (Clipped.y) * Integer_Address (c.pitch);
             if Mask_Address = 0 or else
               Mask_Address > Integer_Address'Last - Integer_Address (Layout.Bytes) or else
-              Target_Address > Integer_Address'Last - Target_Bytes
+              Row_Address > Integer_Address'Last - Target_Bytes
             then return; end if;
-            if Mask_Address < Target_Address + Target_Bytes and then
-              Target_Address < Mask_Address + Integer_Address (Layout.Bytes)
+            if Mask_Address < Row_Address + Target_Bytes and then
+              Row_Address < Mask_Address + Integer_Address (Layout.Bytes)
             then return; end if;
             declare
                Mask : B.Bytes (0 .. Layout.Bytes - 1)
                  with Import, Address => F.Pixels (View);
                Target : B.Pixels (0 .. Length - 1)
-                 with Import, Address => c.addr;
+                 with Import, Address => To_Address (Row_Address);
             begin
                B.Paint (Mask, Target, Layout.Pitch, Pitch, Source, Destination, fg);
             end;
@@ -477,48 +451,169 @@ package body CuBit.UI is
       F.Finish (Density_Fonts, View);
    end Draw_Density_Glyph;
 
+   --  Paint Glyph, drawn with its top-left at (x, y), into clipped: the
+   --  part of the glyph cell inside the 1:1 surface. The pixel loop is
+   --  Client_Raster's, proved; this checks everything it relies on.
+   procedure Blit_Glyph
+     (c : Canvas; clipped : Rect; Glyph : CuBit.Fonts.Glyph_Access; x, y : Natural;
+      fg : Color; Opaque : Boolean; bg : Color)
+   is
+      package R renames Client_Raster;
+   begin
+      if c.addr = System.Null_Address or else Is_Empty (clipped) or else c.pitch mod 4 /= 0 or else
+        clipped.x + clipped.w > c.pitch / 4 or else clipped.x < x or else clipped.y < y or else
+        clipped.y - y > R.Mask_Row'Last or else clipped.x - x > R.Mask_Column'Last or else
+        clipped.h > R.MASK_ROWS - (clipped.y - y) or else clipped.w > R.MASK_COLUMNS - (clipped.x - x)
+      then
+         return;
+      end if;
+      declare
+         Row : constant R.Mask_Row := clipped.y - y;
+         Column : constant R.Mask_Column := clipped.x - x;
+         Pitch : constant Positive := c.pitch / 4;
+         Target : R.Pixels (0 .. (clipped.h - 1) * Pitch + clipped.x + clipped.w - 1)
+           with Import, Address => c.addr + Storage_Offset (clipped.y * c.pitch);
+         Source : R.Mask with Import, Address => Glyph.Alpha'Address;
+      begin
+         R.Blit_Mask (Target, Pitch, (clipped.x, 0, clipped.w, clipped.h), Source, Row, Column, fg, Opaque, bg);
+      end;
+   end Blit_Glyph;
+
+   --  Glyphs already blended over a solid background, for text whose
+   --  background is known: drawing one is then row copies of its cell
+   --  instead of blending every pixel. Whole-number densities up to 2 only
+   --  (a cell's physical width is then the same everywhere); a glyph whose
+   --  ink leaves its cell, or that does not fit a block, is never cached.
+   COMPOSITE_ENTRIES : constant := 256;
+   COMPOSITE_WIDTH : constant := 64;
+   COMPOSITE_HEIGHT : constant := 34;
+   subtype Composite_Index is Natural range 0 .. COMPOSITE_ENTRIES - 1;
+   type Composite_Key is record
+      Face : CuBit.Fonts.Face := CuBit.Fonts.Sans;
+      Ch : Character := ' ';
+      Scale : Positive := 1;
+      Ink, Under : Color := 0;
+   end record;
+   type Composite_Entry is record
+      Key : Composite_Key;
+      Filled : Boolean := False;
+      --  False: the glyph is drawn by blending (overhang, or too large).
+      Usable : Boolean := False;
+      Cell_Width : Natural := 0;
+      Pixels : Client_Raster.Pixels (0 .. COMPOSITE_WIDTH * COMPOSITE_HEIGHT - 1) := [others => 0];
+   end record;
+   type Composite_Table is array (Composite_Index) of Composite_Entry;
+   Composites : Composite_Table;
+
+   function Composite_Slot (Key : Composite_Key) return Composite_Index is
+      H : Unsigned_32 := Unsigned_32 (Character'Pos (Key.Ch)) * 16#9E37_79B1#;
+   begin
+      H := H xor (Unsigned_32 (CuBit.Fonts.Face'Pos (Key.Face)) * 16#85EB_CA6B#);
+      H := H xor (Key.Ink * 16#C2B2_AE35#) xor (Key.Under * 16#27D4_EB2F#) xor Unsigned_32 (Key.Scale);
+      H := H xor Shift_Right (H, 15);
+      return Composite_Index (H mod COMPOSITE_ENTRIES);
+   end Composite_Slot;
+
+   --  The glyph's whole cell (Advance logical pixels wide, a line high),
+   --  ink over Under: what an opaque density glyph draws.
+   procedure Draw_Density_Cell
+     (c : Canvas; x, y : Natural; ch : Character; face : CuBit.Fonts.Face; fg, bg : Color;
+      Advance : Natural)
+   is
+      package F renames Client_Glyphs;
+      package B renames Client_Glyph_Blend;
+      package G renames Client_Canvas_Geometry;
+      Cell : constant Rect := Raster_Rect (c, (x, y, Advance, CuBit.Fonts.Line_Height));
+      Scale : constant Natural :=
+        (if c.densityDenominator /= 0 and then c.densityNumerator mod c.densityDenominator = 0
+         then Natural (c.densityNumerator / c.densityDenominator) else 0);
+      Key : constant Composite_Key := (face, ch, Positive'Max (1, Scale), fg, bg);
+      Slot : constant Composite_Index := Composite_Slot (Key);
+      E : Composite_Entry renames Composites (Slot);
+
+      procedure Fill_Entry is
+         Glyph_Key : F.C.Key;
+         View : F.View;
+         Layout : F.L.Layout;
+      begin
+         E.Key := Key;
+         E.Filled := True;
+         E.Usable := False;
+         E.Cell_Width := Advance * Scale;
+         if Scale not in 1 .. 2 or else E.Cell_Width > COMPOSITE_WIDTH then
+            return;
+         end if;
+         Glyph_Key := (CuBit.Fonts.Face'Pos (face),
+           (if Character'Pos (ch) in 32 .. 126 then Character'Pos (ch) else 63),
+           (F.L.G.Scale_Component (c.densityNumerator), F.L.G.Scale_Component (c.densityDenominator)));
+         F.Read (Density_Fonts, Glyph_Key, View);
+         if not F.Ready (View) then
+            return;
+         end if;
+         Layout := F.Raster (View);
+         if Layout.Width <= COMPOSITE_WIDTH and then Layout.Height <= COMPOSITE_HEIGHT and then
+           Layout.Height >= CuBit.Fonts.Line_Height * Scale
+         then
+            declare
+               Mask : B.Bytes (0 .. Layout.Bytes - 1) with Import, Address => F.Pixels (View);
+               Ink_Outside : Boolean := False;
+            begin
+               for Row in 0 .. Layout.Height - 1 loop
+                  for Column in E.Cell_Width .. Layout.Width - 1 loop
+                     Ink_Outside := Ink_Outside or else Mask (Row * Layout.Pitch + Column) /= 0;
+                  end loop;
+               end loop;
+               if not Ink_Outside then
+                  E.Pixels := [others => bg];
+                  B.Paint (Mask, B.Pixels (E.Pixels), Layout.Pitch, COMPOSITE_WIDTH,
+                           (0, 0, Layout.Width, Layout.Height), (0, 0, Layout.Width, Layout.Height), fg);
+                  E.Usable := True;
+               end if;
+            end;
+         end if;
+         F.Finish (Density_Fonts, View);
+      end Fill_Entry;
+   begin
+      if c.addr = System.Null_Address or else Is_Empty (Cell) then
+         return;
+      end if;
+      if not E.Filled or else E.Key /= Key then
+         Fill_Entry;
+      end if;
+      if not E.Usable then
+         Fill_Rect (c, (x, y, Advance, CuBit.Fonts.Line_Height), bg);
+         Draw_Density_Glyph (c, x, y, ch, face, fg);
+         return;
+      end if;
+      declare
+         Left : constant Natural := G.Relative (c.originX, x, c.densityNumerator, c.densityDenominator);
+         Top : constant Natural := G.Relative (c.originY, y, c.densityNumerator, c.densityDenominator);
+      begin
+         if c.pitch mod 4 /= 0 or else Cell.x + Cell.w > c.pitch / 4 or else Cell.x < Left or else Cell.y < Top
+           or else Cell.x - Left + Cell.w > E.Cell_Width or else Cell.y - Top + Cell.h > COMPOSITE_HEIGHT
+         then
+            return;
+         end if;
+         declare
+            Pitch : constant Positive := c.pitch / 4;
+            Target : Client_Raster.Pixels (0 .. (Cell.h - 1) * Pitch + Cell.x + Cell.w - 1)
+              with Import, Address => c.addr + Storage_Offset (Cell.y * c.pitch);
+         begin
+            Client_Raster.Copy_Block
+              (Target, Pitch, (Cell.x, 0, Cell.w, Cell.h), E.Pixels, COMPOSITE_WIDTH, Cell.x - Left, Cell.y - Top);
+         end;
+      end;
+   end Draw_Density_Cell;
+
    procedure Draw_UI_Glyph
       (c : Canvas; x, y : Natural; ch : Character; fg, bg : Color)
    is
       glyph : constant CuBit.Fonts.Glyph_Access := CuBit.Fonts.Get (CuBit.Fonts.Sans, ch);
-      width : Natural;
-      alpha : Unsigned_8;
-      clipped : Rect;
-      offset : Storage_Offset;
-      srcX : Natural;
-      srcY : Natural;
+      clipped : constant Rect :=
+        Clamp_Rect (c, (x => x, y => y, w => Natural (glyph.Advance), h => CuBit.Fonts.Line_Height));
    begin
-      width := Natural (glyph.Advance);
-      clipped := Clamp_Rect
-        (c, (x => x, y => y, w => width, h => CuBit.Fonts.Line_Height));
-
-      if c.addr = System.Null_Address or else Is_Empty (clipped) then
-         return;
-      end if;
-
-      Fill_Rect (c, (x => x, y => y, w => width, h => CuBit.Fonts.Line_Height), bg);
-      for yy in clipped.y .. clipped.y + clipped.h - 1 loop
-         srcY := yy - y;
-         for xx in clipped.x .. clipped.x + clipped.w - 1 loop
-            srcX := xx - x;
-            alpha := glyph.Alpha (srcY, srcX);
-            if alpha = 255 then
-               offset := Storage_Offset (yy * c.pitch + xx * 4);
-               declare
-                  pixel : Color with Import, Address => c.addr + offset;
-               begin
-                  pixel := fg;
-               end;
-            elsif alpha > 0 then
-               offset := Storage_Offset (yy * c.pitch + xx * 4);
-               declare
-                  pixel : Color with Import, Address => c.addr + offset;
-               begin
-                  pixel := Blend (fg, bg, alpha);
-               end;
-            end if;
-         end loop;
-      end loop;
+      --  Opaque: the glyph cell is painted whole, background where uncovered.
+      Blit_Glyph (c, clipped, glyph, x, y, fg, True, bg);
    end Draw_UI_Glyph;
 
    procedure Draw_UI_Text
@@ -528,10 +623,10 @@ package body CuBit.UI is
       width : constant Natural := UI_Text_Width (text);
    begin
       if c.densityNumerator /= c.densityDenominator then
-         Fill_Rect (c, (x, y, width, CuBit.Fonts.Line_Height), bg);
+         --  Each glyph paints its own cell over bg; the cells tile the text.
          for i in text'Range loop
-            exit when cx >= c.width;
-            Draw_Density_Glyph (c, cx, y, text (i), CuBit.Fonts.Sans, fg);
+            exit when cx >= c.width or else (c.clipEnabled and then cx >= c.clip.x + c.clip.w);
+            Draw_Density_Cell (c, cx, y, text (i), CuBit.Fonts.Sans, fg, bg, CuBit.Fonts.Width (CuBit.Fonts.Sans, text (i)));
             cx := cx + CuBit.Fonts.Width (CuBit.Fonts.Sans, text (i));
          end loop;
          return;
@@ -567,10 +662,6 @@ package body CuBit.UI is
       glyph : CuBit.Fonts.Glyph_Access;
       glyphWidth : Natural;
       clipped : Rect;
-      alpha : Unsigned_8;
-      offset : Storage_Offset;
-      srcX : Natural;
-      srcY : Natural;
    begin
       if c.densityNumerator /= c.densityDenominator then
          for i in text'Range loop
@@ -597,28 +688,44 @@ package body CuBit.UI is
          clipped := Clamp_Rect
            (c, (x => cx, y => y, w => glyphWidth,
                 h => CuBit.Fonts.Line_Height));
-         if c.addr /= System.Null_Address and then not Is_Empty (clipped) then
-            for yy in clipped.y .. clipped.y + clipped.h - 1 loop
-               srcY := yy - y;
-               for xx in clipped.x .. clipped.x + clipped.w - 1 loop
-                  srcX := xx - cx;
-                  alpha := glyph.Alpha (srcY, srcX);
-                  if alpha > 0 then
-                     offset := Storage_Offset (yy * c.pitch + xx * 4);
-                     declare
-                        pixel : Color with Import, Address => c.addr + offset;
-                     begin
-                        pixel :=
-                          (if alpha = 255 then fg
-                           else Blend (fg, pixel, alpha));
-                     end;
-                  end if;
-               end loop;
-            end loop;
-         end if;
+         Blit_Glyph (c, clipped, glyph, cx, y, fg, False, 0);
          cx := cx + glyphWidth;
       end loop;
    end Draw_UI_Text_Transparent;
+
+   procedure Draw_Code_Text_Transparent
+      (c : Canvas; x, y : Natural; text : String; fg : Color)
+   is
+      cx : Natural := x;
+      width : constant Natural := text'Length * CuBit.Fonts.Mono_Width;
+      glyph : CuBit.Fonts.Glyph_Access;
+      clipped : Rect;
+   begin
+      if c.densityNumerator /= c.densityDenominator then
+         for i in text'Range loop
+            exit when cx >= c.width or else (c.clipEnabled and then cx >= c.clip.x + c.clip.w);
+            Draw_Density_Glyph (c, cx, y, text (i), CuBit.Fonts.Monospace, fg);
+            cx := cx + CuBit.Fonts.Mono_Width;
+         end loop;
+         return;
+      end if;
+      if c.clipEnabled and then
+        (text'Length = 0 or else
+         x >= c.clip.x + c.clip.w or else
+         x + width <= c.clip.x or else
+         y >= c.clip.y + c.clip.h or else
+         y + CuBit.Fonts.Line_Height <= c.clip.y)
+      then
+         return;
+      end if;
+      for i in text'Range loop
+         exit when cx >= c.width or else (c.clipEnabled and then cx >= c.clip.x + c.clip.w);
+         glyph := CuBit.Fonts.Get (CuBit.Fonts.Monospace, text (i));
+         clipped := Clamp_Rect (c, (x => cx, y => y, w => CuBit.Fonts.Mono_Width, h => CuBit.Fonts.Line_Height));
+         Blit_Glyph (c, clipped, glyph, cx, y, fg, False, 0);
+         cx := cx + CuBit.Fonts.Mono_Width;
+      end loop;
+   end Draw_Code_Text_Transparent;
 
    function Code_Text_Width (text : String) return Natural is
      (text'Length * CuBit.Fonts.Mono_Width);
@@ -630,37 +737,10 @@ package body CuBit.UI is
       (c : Canvas; x, y : Natural; ch : Character; fg, bg : Color)
    is
       glyph : constant CuBit.Fonts.Glyph_Access := CuBit.Fonts.Get (CuBit.Fonts.Monospace, ch);
-      alpha : Unsigned_8;
-      clipped : Rect;
-      offset : Storage_Offset;
-      srcX : Natural;
-      srcY : Natural;
+      clipped : constant Rect :=
+        Clamp_Rect (c, (x => x, y => y, w => CuBit.Fonts.Mono_Width, h => CuBit.Fonts.Line_Height));
    begin
-      clipped := Clamp_Rect
-        (c, (x => x, y => y, w => CuBit.Fonts.Mono_Width,
-             h => CuBit.Fonts.Line_Height));
-      if c.addr = System.Null_Address or else Is_Empty (clipped) then
-         return;
-      end if;
-      Fill_Rect
-        (c, (x => x, y => y, w => CuBit.Fonts.Mono_Width,
-             h => CuBit.Fonts.Line_Height), bg);
-      for yy in clipped.y .. clipped.y + clipped.h - 1 loop
-         srcY := yy - y;
-         for xx in clipped.x .. clipped.x + clipped.w - 1 loop
-            srcX := xx - x;
-            alpha := glyph.Alpha (srcY, srcX);
-            if alpha > 0 then
-               offset := Storage_Offset (yy * c.pitch + xx * 4);
-               declare
-                  pixel : Color with Import, Address => c.addr + offset;
-               begin
-                  pixel :=
-                    (if alpha = 255 then fg else Blend (fg, bg, alpha));
-               end;
-            end if;
-         end loop;
-      end loop;
+      Blit_Glyph (c, clipped, glyph, x, y, fg, True, bg);
    end Draw_Code_Glyph;
 
    procedure Draw_Code_Text
@@ -670,10 +750,9 @@ package body CuBit.UI is
       width : constant Natural := Code_Text_Width (text);
    begin
       if c.densityNumerator /= c.densityDenominator then
-         Fill_Rect (c, (x, y, width, CuBit.Fonts.Line_Height), bg);
          for i in text'Range loop
-            exit when cx >= c.width;
-            Draw_Density_Glyph (c, cx, y, text (i), CuBit.Fonts.Monospace, fg);
+            exit when cx >= c.width or else (c.clipEnabled and then cx >= c.clip.x + c.clip.w);
+            Draw_Density_Cell (c, cx, y, text (i), CuBit.Fonts.Monospace, fg, bg, CuBit.Fonts.Mono_Width);
             cx := cx + CuBit.Fonts.Mono_Width;
          end loop;
          return;
@@ -986,6 +1065,13 @@ package body CuBit.UI is
       Fill_Rect (c, r, colors.field);
       Stroke_Sunken (c, r, colors);
    end Draw_Table_Viewport;
+
+   procedure Draw_Table_Viewport_Frame
+      (c : Canvas; r : Rect; colors : Theme)
+   is
+   begin
+      Stroke_Sunken (c, r, colors);
+   end Draw_Table_Viewport_Frame;
 
    function Table_Interior (r : Rect) return Rect is
       FRAME_WIDTH : constant Natural := 2;

@@ -1,0 +1,29 @@
+project Lifetime is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../../userspace/services/filesystem");
+   for Source_Files use ("lifetime.adb", "capacity.adb", "cpio.ads", "cpio.adb");
+   for Object_Dir use external ("LIFETIME_BUILD");
+   for Exec_Dir use external ("LIFETIME_BUILD");
+   for Main use (external ("LIFETIME_MAIN", "lifetime.adb"));
+   for Runtime ("Ada") use "../../../userspace/runtime";
+   package Builder is
+      for Default_Switches ("Ada") use ("-nostdlib");
+      for Executable ("lifetime.adb") use "devmgr.svc";
+      for Executable ("capacity.adb") use "devmgr.svc";
+   end Builder;
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-fstack-usage", "-mno-red-zone",
+         "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-d_C");
+   end Binder;
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("-nostdlib", "-static", "-no-pie", "-Wl,-z,noexecstack",
+         "-Wl,-z,stack-size=16777216", "-lgnat-user",
+         "-T", Lifetime'Project_Dir & "../../../userspace/c/link.ld",
+         Lifetime'Project_Dir & "../../../userspace/c/build/crt0.o");
+   end Linker;
+end Lifetime;

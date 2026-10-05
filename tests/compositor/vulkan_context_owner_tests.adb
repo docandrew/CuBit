@@ -1,0 +1,75 @@
+with Ada.Text_IO;
+with Interfaces; use Interfaces;
+with System; use System;
+with System.Storage_Elements; use System.Storage_Elements;
+with Vulkan_Context_Owner;
+procedure Vulkan_Context_Owner_Tests is
+   package C renames Vulkan_Context_Owner;
+   package V renames C.V;
+   use type C.Phase, C.Child, V.Observation, V.Source_Ticket;
+   procedure Mock (Create, Release : Unsigned_32) with Import, Convention => C, External_Name => "context_mock_set";
+   function Releases return Unsigned_32 with Import, Convention => C, External_Name => "context_mock_releases";
+   procedure Submission_Reset with Import, Convention => C, External_Name => "submission_mock_reset";
+   procedure Submission_Result (Index, Value : Unsigned_32) with Import, Convention => C, External_Name => "submission_mock_set";
+   S, Other : C.State;
+   Submission : V.State;
+   Tickets : array (1 .. C.Maximum_Children) of C.Child;
+   Extra, Stale, Foreign : C.Child;
+   Source : V.Source_Ticket;
+   Address : System.Address;
+   OK : Boolean;
+   Outcome : V.Observation;
+begin
+   Submission_Reset; Mock (0, 0);
+   C.Initialize (S, To_Address (256), OK); pragma Assert (OK);
+   Submission := V.Open (C.Context (S));
+   for I in Tickets'Range loop C.Register_Child (S, Tickets (I)); pragma Assert (C.Held (S, Tickets (I))); end loop;
+   C.Register_Child (S, Extra); pragma Assert (Extra = C.No_Child);
+   C.Close (S, Submission, OK); pragma Assert (not OK and Releases = 0);
+   C.Retire_Child (S, Tickets (1), False); pragma Assert (C.Held (S, Tickets (1)));
+   Stale := Tickets (1); C.Retire_Child (S, Stale, True);
+   C.Register_Child (S, Tickets (1)); pragma Assert (Tickets (1) /= Stale);
+   C.Retire_Child (S, Stale, True); pragma Assert (C.Held (S, Tickets (1)));
+   C.Initialize (Other, To_Address (512), OK); pragma Assert (OK);
+   C.Register_Child (Other, Foreign); C.Retire_Child (S, Foreign, True);
+   pragma Assert (C.Held (S, Tickets (1)));
+   for Ticket of Tickets loop C.Retire_Child (S, Ticket, True); end loop;
+   pragma Assert (C.Empty (S));
+   C.Close (S, V.Open (To_Address (512)), OK); pragma Assert (not OK and Releases = 0);
+   V.Install_Source (Submission, 0, To_Address (1024), Source);
+   pragma Assert (Source /= V.No_Source);
+   C.Close (S, Submission, OK); pragma Assert (not OK and Releases = 0);
+   V.Remove_Source (Submission, Source, Address); pragma Assert (Address /= Null_Address);
+   V.Begin_Record (Submission, OK); pragma Assert (OK);
+   C.Close (S, Submission, OK); pragma Assert (not OK and Releases = 0);
+   V.Begin_Scene (Submission, To_Address (2048), 64, 64, OK); pragma Assert (OK);
+   V.End_Scene (Submission, OK); pragma Assert (OK);
+   V.Seal (Submission, OK); pragma Assert (OK);
+   V.Submit (Submission, OK); pragma Assert (OK);
+   C.Close (S, Submission, OK); pragma Assert (not OK and Releases = 0);
+   Submission_Result (3, 1); V.Poll (Submission, Outcome); pragma Assert (Outcome = V.Still_Pending);
+   C.Close (S, Submission, OK); pragma Assert (not OK and Releases = 0);
+   Submission_Result (3, 0); V.Poll (Submission, Outcome); pragma Assert (Outcome = V.Finished);
+   C.Close (S, Submission, OK); pragma Assert (OK and Releases = 1 and C.Current (S) = C.Closed);
+   C.Close (S, Submission, OK); pragma Assert (not OK and Releases = 1);
+   C.Register_Child (S, Extra); pragma Assert (Extra = C.No_Child);
+   declare F : C.State; begin
+      Mock (1, 0); C.Initialize (F, To_Address (768), OK);
+      pragma Assert (not OK and C.Current (F) = C.Closed);
+   end;
+   declare F : C.State; begin
+      Mock (42, 0); C.Initialize (F, To_Address (768), OK);
+      pragma Assert (not OK and C.Current (F) = C.Quarantined);
+   end;
+   declare F : C.State; begin
+      Mock (2, 0); C.Initialize (F, To_Address (768), OK);
+      pragma Assert (not OK and C.Current (F) = C.Quarantined);
+   end;
+   declare F : C.State; begin
+      Mock (0, 2); C.Initialize (F, To_Address (768), OK);
+      pragma Assert (OK); C.Close (F, V.Open (C.Context (F)), OK);
+      pragma Assert (not OK and C.Current (F) = C.Quarantined and Releases = 1);
+      C.Close (F, V.Open (C.Context (F)), OK); pragma Assert (not OK and Releases = 1);
+   end;
+   Ada.Text_IO.Put_Line ("VULKAN CONTEXT OWNER: PASS child capacity, stale/foreign tokens, retained sources, pending GPU, exact release and quarantine");
+end Vulkan_Context_Owner_Tests;
