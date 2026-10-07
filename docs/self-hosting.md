@@ -319,6 +319,227 @@ Not done yet: Ada and the Moto-based Rust runtime ignore the directory, and
   (`@nvme:0/work`) until their manifests are written. Its search of default
   library paths is refused, harmlessly.
 
+- **GCC 15.3.0** (2026-10-05, `userspace/ports/gcc`): `cc1` and the `gcc`
+  driver, cross-built static with the CuBit libc. Guest test `gcc`
+  (`tests/gcc`), all PASS on CuBit, each compared with the same GCC and
+  binutils on Linux:
+  - stage 2: `cc1` compiles `hello.c` and `as.app` assembles it, both
+    byte-identical;
+  - stage 3: `gcc -O2 -fno-pie -c hello.c`: the driver starts `cc1` and `as`
+    itself through the libc's `posix_spawn`, and the object file is
+    byte-identical.
+  - **stage 3, linked and run (2026-10-05):** `gcc -O2 -fno-pie hello.c
+    hello-manifest.s -o hello` on CuBit. The driver runs cc1, as twice (the
+    program and its CCL manifest) and ld. The program is byte-identical to
+    the same link on Linux, and it runs on CuBit, exiting with 42. All 10
+    checks PASS, in 117 s under TCG.
+
+  How it runs:
+  - **Install layout (D6):** everything under `@nvme:0/toolchain`
+    (`--prefix=/toolchain`): `bin/gcc`, `libexec/gcc/x86_64-linux-musl/15.3.0/cc1`,
+    `x86_64-linux-musl/bin/{as,ld}`, and the CuBit libc's headers in
+    `include`. The default include directories are configured inside it
+    (`--with-local-prefix`, `--with-native-system-header-dir`). cc1 treats a
+    refused `/usr/include` as an error, unlike a missing one.
+  - **Names:** the driver finds its programs from `argv[0]`
+    (`/toolchain/bin/gcc`). The libc's `posix_spawn` resolves a name with a
+    `/` like a path, so `/toolchain/bin/../lib/gcc/.../../../../x86_64-linux-musl/bin/as`
+    matches the driver's `may_launch` entry `toolchain/x86_64-linux-musl/bin/as`
+    exactly.
+  - **Authority (D2, implemented):** cc1 and the driver have no file scopes.
+    The launcher delegates `work` (read, write, create) and `toolchain`
+    (read). procmgr records which held places were delegated and answers
+    `OP_DELEGATED_PLACES` (`16#010B#`, `CuBit.Launch_Grants`), and
+    `posix_spawn` passes those on whole to cc1 and as. Per-file delegation
+    is CCL-004.
+  - Temporary files go in the work place (`TMPDIR=/work`).
+  - **Linking:** a specs file (`userspace/ports/gcc/cubit.specs`, installed
+    as `lib/gcc/x86_64-linux-musl/15.3.0/specs`) reproduces `cubit-cc`:
+    `-mno-red-zone`, `cubit-crt1.o`, `-static -T cubit.ld`, a 1 MiB stack,
+    libc and libgcc in a group. ld runs directly, with no collect2 and no
+    LTO (D4). libgcc, crtbeginT and crtend come from the musl cross
+    compiler of the same version.
+  - **Diagnostics (D3, implemented):** the libc's `posix_spawn` lends each
+    child a ring for its `unix.stderr` (`CuBit.Libc_Child_Outlets`) and
+    copies it to the caller's descriptor 2 while it waits. ld's errors reach
+    the test through the driver.
+  - **Found and fixed on the way:** the libc page cache zero-filled a page
+    the filesystem answered short (allowed) and served the zeros as file
+    bytes; on the write path it would have written them back. It now caches
+    a partial page only at the end of the file. `archive-walk` (in the
+    test) checks that `libc.a` reads correctly through `pread`, `lseek` +
+    `read` and `mmap`.
+  - **Still open:** the driver's harmless probes of `/lib` and `/usr/lib`;
+    D8 (`@` response files); why the filesystem service answers short there;
+    and an intermittent hang, seen twice, where the driver did not continue
+    after a child exited. The move to `Applications/gcc/15.3.0/` (FS-020)
+    comes next.
+
+## jj: feasibility (audit, 2026-10-05)
+
+Verified on the Linux host (build and link); nothing has run on CuBit yet.
+
+- **jj 0.44.0** (pinned nixpkgs) builds and links for `x86_64-unknown-cubit`
+  the way Servo does, with no unresolved symbols, using
+  `--no-default-features --features git`.
+  - Beyond Servo's crate fixes, it needs the CuBit target in libc 0.2.189,
+    socket2, getrandom, nix 0.29/0.31, termios, mac_address and errno.
+  - It has no C crypto or compression: zlib-rs and RustCrypto.
+- **The plan's premise was wrong: jj has no in-process fetch or push.**
+  Since 0.30 every network operation runs `git` (`GitSubprocessContext`:
+  fetch, remote show, branch prune, push). gix 0.85 can fetch, but has no
+  push.
+- **Local operations are blocked by four libc and filesystem gaps:**
+  - **`flock`:** ENOSYS. jj locks its op heads and working copy, and treats
+    the error as fatal.
+  - **`chmod`/`fchmod`:** ENOSYS. jj sets exec bits on every checkout.
+  - **Symlinks:** none. jj's symlink probe must return false for CuBit, so
+    links are checked out as files, like git's `core.symlinks=false`.
+  - **`mmap` of files:** a private copy of at most 256 MiB. CuBit's own
+    packs are 430 and 302 MB.
+- **Smaller points:**
+  - mtime has one-second resolution, so more files get rehashed.
+  - jj must not snapshot before the wall clock is set.
+  - There is no `HOME`, so the user's name and email go in the repository
+    config.
+  - The pager, editor and diff tools are unusable without a terminal: use
+    `-m` and filesets.
+- **Network:** DNS and TCP already work through the netstack for Rust std.
+  For TLS, either rustls with aws-lc in-process (it compiles), or gix's HTTP
+  transport over tls.svc (SPARKTLS), which is recommended.
+- **Plan:**
+  0. A `userspace/ports/jj` build.
+  1. Local jj on CuBit: handle-owned `flock`, `fchmod`, and a way past the
+     256 MiB pack limit.
+  2. A typed manifest and launch from CCL.
+  3. In-process fetch and clone through gix, over tls.svc.
+  4. In-process push: a send-pack. This is the hard part; consider
+     upstreaming it.
+- **Decisions needed:**
+  - fork or upstream;
+  - the TLS route;
+  - real `flock` or lock files;
+  - large packs;
+  - exec bits;
+  - a raw argument list for the interim manifest;
+  - whether to start fetch-only, pushing from Linux meanwhile.
+
+## GCC and GNAT: feasibility (audit, 2026-10-05)
+
+Verified on the Linux host only; nothing below has run on CuBit yet.
+
+- **Version: GCC 15.3.0**, the one the pinned nixpkgs ships for gcc, gcc15
+  and gnat15. It is also the musl cross compiler `cubit-c++` links with, so
+  its `libgcc*.a`, crt files and `libstdc++` are reused. libiberty selects
+  `posix_spawn` (`HAVE_POSIX_SPAWN`).
+- **Already builds against the CuBit libc.** Configured as a cross-native
+  compiler (build x86_64-pc-linux-gnu, host = target x86_64-linux-musl),
+  with `CC=cubit-cc` and `CXX=cubit-c++`, `cc1`, `cc1plus`, `xgcc`,
+  `collect2` and `lto-wrapper` link static with no missing libc symbols.
+  - GMP, MPFR and MPC build in-tree unchanged.
+  - GCC itself builds with `-fno-exceptions -fno-rtti`. `libstdc++` is
+    already linked by `cubit-c++`, and C++ exceptions work on CuBit (the
+    `cxx-check` guest test).
+  - Sizes, static and stripped: `cc1` 40 MB, `cc1plus` 42 MB, `gnat1`
+    44 MB, `xgcc` 2.4 MB.
+- **How the driver runs its tools:**
+  - Without `-pipe` it runs one command at a time and passes no file
+    actions, which the libc accepts.
+  - It passes `COLLECT_GCC`, `COMPILER_PATH` and the rest in the
+    environment, which travels in the launch block.
+  - Temporary files go under `TMPDIR`.
+  - With `--disable-lto` and no `collect2`, it runs only `cc1`, `as` and
+    `ld`.
+  - A fixed `--prefix=/toolchain` with `--with-as`/`--with-ld` makes it
+    find its pieces whatever `argv[0]` is.
+- **Arguments and authority.** procmgr does not check argv, by design: it
+  checks the places delegated and the child's manifest scopes
+  (docs/ccl-launch-parameters.md). That settles the open point in item 4:
+  `cc1`'s argv is open-ended (temporary names, many `-I`), so a typed
+  mapping cannot cover it. Today, the libc's `posix_spawn` delegates no
+  places and lends no rings.
+- **GNAT:**
+  - `gnat1` needs no tasking runtime, and `gnatbind` is pure file I/O.
+  - `gnatlink` and `gnatmake` spawn through `fork`/`exec`, which CuBit
+    lacks.
+  - Building GNAT needs a GNAT with a musl `libgnat`: the dev shell's is
+    glibc. `nixpkgs#pkgsCross.musl64.buildPackages.gnat15` provides one
+    (one GCC build, everything else cached).
+  - The target `libgnat` (what user programs link) is the x86_64-linux one,
+    built against the CuBit libc. Small musl fixes are expected.
+- **Memory:**
+  - The 1 TiB owned aperture and the 256 MiB per mapping are enough.
+  - The compilers need a large stack: they link with `CUBIT_STACK_SIZE`
+    64 MiB.
+  - **Gap:** `munmap` accepts only a whole original allocation, while
+    GCC's garbage collector unmaps parts of 2 MiB blocks. The failure is
+    ignored, so the memory leaks; runs don't fail. Precompiled headers need
+    fixed-address `mmap`, so they stay off.
+- **Files at run time:**
+  - Everything goes under one read-only place, e.g. `@nvme:0/toolchain`:
+    `bin`, `libexec/gcc/x86_64-linux-musl/15.3.0/cc1`, `lib/gcc/…`, and the
+    CuBit sysroot.
+  - A specs file reproduces what `cubit-cc` passes: `cubit-crt1.o`,
+    `-static -no-pie -T cubit.ld`, `-z stack-size`.
+
+### Plan
+
+1. `userspace/ports/gcc/build.sh` cross-builds `cc1` and the driver
+   (started 2026-10-05). It uses an interim manifest: work and toolchain
+   scopes, no typed parameters.
+2. Run `cc1 hello.c -o hello.s` on CuBit from a test launcher. Assemble and
+   link it with `as` and `ld`, and compare with the same `cc1` on Linux.
+3. The driver end to end (`gcc hello.c`). This needs its `may_launch`
+   table, its children's access (D2), stderr (D3) and a `TMPDIR` place.
+4. A musl `libgnat`, then `gnat1 -c hello.adb`.
+5. `gnatbind`, then link through `gcc`. Skip `gnatlink`, or patch its spawn
+   (D5).
+6. Hardening: partial `munmap` (D7), response files for long links, and
+   building CuBit units on CuBit byte for byte against Linux.
+
+### Decisions needed
+
+- **D1, bootstrap GNAT (decided, user 2026-10-05):** nix
+  `pkgsCross.musl64.buildPackages.gnat15`.
+  Built 2026-10-05: it supplies the musl cross Ada compiler (`gnat1`,
+  `gnatbind`, `gnatmake` for x86_64-linux-musl), but no musl Ada runtime
+  (nixpkgs builds no target libada). Our GCC build, with
+  `--enable-languages=c,ada` and this compiler for Ada, builds the musl
+  `libgnat` as a target library (stage 4).
+- **D2, authority for driver-launched tools (decided, user 2026-10-05;
+  implemented 2026-10-05):** the libc's `posix_spawn` re-delegates the
+  places the driver was given (`OP_DELEGATED_PLACES`), never its own
+  manifest scopes. Never widening. No fixed-scope interim was needed.
+- **D3, children's stderr from a C launcher (decided, user 2026-10-05;
+  implemented 2026-10-05):** compiler diagnostics reach the console. The
+  libc lends each child its own stderr ring and copies it to the launcher's
+  descriptor 2 while waiting (`CuBit.Libc_Child_Outlets`). This replaces
+  sharing the launcher's ring: no grant forwarding, and never two writers on
+  one ring.
+- **D4:** drop `collect2` and LTO (done 2026-10-05: the specs run ld
+  directly; GCC is configured `--disable-lto`).
+- **D5:** `gnatlink` patched to use `posix_spawn`, or the CCL build tool
+  binds and links directly.
+- **D6:** install place and layout (FS-020), e.g. `@nvme:0/toolchain` with
+  `--prefix=/toolchain`.
+- **D7:** partial `munmap` in the kernel or libc (recommended), or a GCC
+  configure workaround.
+- **D8, CuBit names in a GNU tool's argv (found 2026-10-05):** GCC and
+  binutils read any argument starting with `@` as a response file
+  (libiberty's `expandargv`). A CuBit name such as `@nvme:0/work/hello.s` is
+  therefore first opened as the response file `nvme:0/work/hello.s`,
+  relative to the working directory. When that fails, the argument is kept
+  as written, so the binutils and gcc tests pass despite the refusals. When
+  a readable file has that name, its contents become arguments. This applies
+  to as.app's typed parameters too, which render CuBit names. Options:
+  - Render names on the system volume as POSIX paths (`/work/hello.s`), and
+    others as CuBit names. Generic, but other volumes still collide.
+  - A per-manifest argv form for file parameters (`posix` or `cubit`),
+    declared in the program's description: generic, no per-tool code.
+    Recommended, together with CCL-004's argv grammar.
+  - Until then, launchers pass relative names from a working directory
+    (the gcc test does).
+
 ## Ownership
 
 - **Mine (CCL, networking, logging, filesystem):** 1 (filesystem side), 2,

@@ -1,5 +1,7 @@
+with CCL.Evaluation;
 with Ada.Text_IO; use Ada.Text_IO;
 with CCL.Language; use CCL.Language;
+   use CCL.Evaluation;
 with CCL.Language.Views; use CCL.Language.Views;
 with CCL.Catalog;
 with CCL.Compiler;
@@ -15,7 +17,7 @@ procedure Enum_Tests is
    Prefix : constant String := "(type Color (enum Red Blue Green)) ";
    procedure Check (Source, Expected : String) is
    begin
-      Interpret (Source, 4096, R);
+      Evaluate (Source, 4096, R);
       if R.Status /= Succeeded then Put_Line (CCL.Sessions.Result_Image (R)); end if;
       pragma Assert (R.Status = Succeeded);
       pragma Assert (CCL.Sessions.Result_Image (R) = Expected);
@@ -23,12 +25,12 @@ procedure Enum_Tests is
       pragma Assert (A.Status = Converted);
       Convert (A.Rendered.Data (1 .. A.Rendered.Length), Basic, Lisp, Catalog, B);
       pragma Assert (B.Status = Converted and A.Canonical = B.Canonical);
-      Interpret (B.Canonical.Data (1 .. B.Canonical.Length), 4096, R);
+      Evaluate (B.Canonical.Data (1 .. B.Canonical.Length), 4096, R);
       pragma Assert (CCL.Sessions.Result_Image (R) = Expected);
    end Check;
    procedure Reject (Source : String; Code : Diagnostic_Code) is
    begin
-      Interpret (Source, 4096, R);
+      Evaluate (Source, 4096, R);
       if R.Diagnostic /= Code then
          Put_Line (Source & " -> " & R.Diagnostic'Image & "; expected " & Code'Image);
       end if;
@@ -75,12 +77,12 @@ begin
    Reject ("(type Color (enum Red)) (Color.Red)", Unknown_Form);
    -- Every truncated declaration must fail without an unchecked exception.
    for Last in 0 .. Prefix'Length loop
-      Interpret (Prefix (1 .. Last), 4096, R);
+      Evaluate (Prefix (1 .. Last), 4096, R);
       pragma Assert (R.Status = Parse_Failed and not R.Has_Value);
    end loop;
-   Interpret (Prefix & "Color.Red", 1, R);
+   Evaluate (Prefix & "Color.Red", 1, R);
    pragma Assert (R.Status = Evaluation_Fuel_Exhausted and not R.Has_Value);
-   Interpret (Prefix & "Color.Red", 2, R);
+   Evaluate (Prefix & "Color.Red", 2, R);
    pragma Assert (R.Status = Succeeded and R.Fuel_Remaining = 0);
    Analyze (Prefix & "Color.Red", Analysis);
    CCL.Compiler.Compile (Analysis, Compiled);

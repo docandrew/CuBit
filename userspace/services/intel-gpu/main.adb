@@ -350,17 +350,17 @@ procedure Main is
      (From, Stamp : Unsigned_64; Slot : out CapabilitySlot;
       Identity : out Unsigned_64) is
       Session : constant Unsigned_64 := Application_Session (From, Stamp);
-      Index : constant Intel_GPU_Render_Sessions.Slot_Index :=
-        Intel_GPU_Render_Control.Storage_Index (Render_Admission, Session);
+      Recorded_Slot : constant Unsigned_64 :=
+        Intel_GPU_Render_Control.Stored_Recipient_Slot (Render_Admission, Session);
    begin
       Slot := 0;
       Identity := 0;
-      if Index = 0 then return; end if;
+      if Recorded_Slot = 0 then return; end if;
       -- Startup layout: one immutable recipient endpoint per session
       -- in40..55, after hardware pages32..39. No capability is minted here.
       -- The broker populates this range before activation and retains slots
       -- through retirement. Activation checks the kernel recipient identity.
-      Slot := CapabilitySlot (39 + Index);
+      Slot := CapabilitySlot (Recorded_Slot);
       Identity := Intel_GPU_Render_Control.Recipient_Identity
         (Render_Admission, From, Stamp);
    end Application_Recipient;
@@ -670,7 +670,8 @@ procedure Main is
          Index : constant Positive := Stored;
       begin
          if Private_Contexts (Index).Attempted then return; end if;
-         Context_Tickets.Reserve (Application_Buffer_State, Session, Private_Pending);
+         Context_Tickets.Reserve (Application_Buffer_State, Session, Private_Pending,
+           Pages => Private_Pages);
          if Private_Pending = 0 then return; end if;
          Private_Contexts (Index).Attempted := True;
          Private_Contexts (Index).Parent_Ticket := Private_Pending;
@@ -686,18 +687,18 @@ procedure Main is
    function Try_Offline_Bind_Growth (From : ProcessID; Msg : Message) return Boolean;
    procedure Complete_Render_Activation is
       package Control renames Intel_GPU_Render_Control;
-      Index : constant Intel_GPU_Render_Sessions.Slot_Index :=
-        Control.Storage_Index (Render_Admission, Activation_Session);
+      Recorded_Slot : constant Unsigned_64 :=
+        Control.Stored_Recipient_Slot (Render_Admission, Activation_Session);
       Response : Message := NULL_MESSAGE;
       Accepted : Boolean;
       Delivery : Unsigned_64;
    begin
       if not Activation_Reply_Pending or else Private_Pending /= 0 or else
         Table_Ledger_Busy then return; end if;
-      Accepted := Index /= 0 and then Control.Recipient_Identity (Render_Admission,
+      Accepted := Recorded_Slot /= 0 and then Control.Recipient_Identity (Render_Admission,
           Activation_Identity and 16#FFFF_FFFF#, Activation_Session) = Activation_Identity
         and then CuBit.Capability_Grants.Endpoint_Matches
-          (CapabilitySlot (39 + Index),
+          (CapabilitySlot (Recorded_Slot),
            Activation_Identity)
         and then Session_Healthy (Activation_Session);
       if not Accepted then
@@ -936,16 +937,16 @@ procedure Main is
         (Render_Admission, Unsigned_64 (From), Msg.authorityTag,
          Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
          [Msg.words (0), Msg.words (1), Msg.words (2), Msg.words (3)]);
-      Recipient_Index : constant Intel_GPU_Render_Sessions.Slot_Index :=
-        Control.Storage_Index (Render_Admission, Msg.words (2));
+      Recorded_Slot : constant Unsigned_64 :=
+        Control.Stored_Recipient_Slot (Render_Admission, Msg.words (2));
       Recipient_Ready : Boolean := False;
       Backend_Ready : Boolean := False;
    begin
-      if Recipient /= 0 and then Recipient_Index /= 0 then
+      if Recipient /= 0 and then Recorded_Slot /= 0 then
          -- Same immutable slots as Application_Recipient. Inspection does
          -- not authorize replacement: bootstrap must pin through retirement.
          Recipient_Ready := CuBit.Capability_Grants.Endpoint_Matches
-           (CapabilitySlot (39 + Recipient_Index),
+           (CapabilitySlot (Recorded_Slot),
             Recipient);
       end if;
       -- Authenticate before probing backend registers. Abort requires no
@@ -2725,7 +2726,8 @@ procedure Main is
       Offline_Epoch := Application_VM.Revision (Private_Contexts (Stored).Source);
       Update_Table_Pages := Needed.Additional_Backing;
       Application_Buffers.Reserve_Private (Application_Buffer_State, Session, Update_Pending,
-        Reclaimable => True, Kind => Application_Buffers.Incremental_Tables);
+        Reclaimable => True, Kind => Application_Buffers.Incremental_Tables,
+        Pages => Update_Table_Pages);
       if Update_Pending = 0 then Update_Index := 0; Update_Table_Pages := 0; return False; end if;
       Offline_Bind_State := Grow_Offline_Metadata;
       if not Offline_Bind_Owner or else saveReplyCap (Unsigned_64 (Application_Reply_Slot)) /= 1 then
@@ -4056,10 +4058,13 @@ procedure Main is
                         else
                            Update_Table_Pages := Needed.Required_Tables;
                         end if;
-                        Application_Buffers.Reserve_Private
-                          (Application_Buffer_State, Update_Session, Update_Pending, Reclaimable => True,
-                           Kind => (if Directory_Update = Allocate_Directories then
-                             Application_Buffers.Incremental_Tables else Application_Buffers.Replacement_Tables));
+                        if Update_Table_Pages /= 0 then
+                           Application_Buffers.Reserve_Private
+                             (Application_Buffer_State, Update_Session, Update_Pending, Reclaimable => True,
+                              Kind => (if Directory_Update = Allocate_Directories then
+                                Application_Buffers.Incremental_Tables else Application_Buffers.Replacement_Tables),
+                              Pages => Update_Table_Pages);
+                        end if;
                      end if;
                   end;
                   if Update_Pending /= 0 then
@@ -6463,6 +6468,26 @@ begin
                   end;
                end if;
                if Firmware_Mapped then
+                  declare
+                     Policy : constant Intel_GPU_Buffer_Backing.Heap_Policy :=
+                       Intel_GPU_Buffer_Backing.Native_System_Heap
+                         (getInfo (Intel_GPU_Buffer_Backing.Managed_RAM_Query));
+                     Accepted : Boolean;
+                  begin
+                     Buffer_Memory.Configure_Heap
+                       (Buffer_Pool, Policy.Byte_Quota, Policy.DMA_Limit,
+                        Policy.Metadata_Bytes, Accepted);
+                     if Accepted then
+                        Application_Buffers.Configure_Client_Budgets
+                          (Application_Buffer_State, Policy.Byte_Quota / 8192 * 4096, Accepted);
+                     end if;
+                     Publish_Snapshot ("intel-gpu: system backing policy accepted=" &
+                       Boolean'Image (Accepted) & " quota=" & Unsigned_64'Image (Policy.Byte_Quota) &
+                       " (NOT reserved)");
+                     if not Accepted then Firmware_Mapped := False; end if;
+                  end;
+               end if;
+               if Firmware_Mapped then
                   -- Bootstrap is serialized: no non-logger IPC request remains
                   -- in flight here. Allocate before preparing any context PTEs.
                   Submission_Allocation := Buffer_Memory.Acquire
@@ -6484,7 +6509,7 @@ begin
                         Ticket : Application_Buffers.Ticket;
                         Consumed : Boolean;
                      begin
-                        Application_Buffers.Reserve_Private (Application_Buffer_State, 0, Ticket);
+                        Application_Buffers.Reserve_Private (Application_Buffer_State, 0, Ticket, Pages => 4);
                         if Ticket /= 0 then
                            Boot_Update_Allocation := Buffer_Memory.Acquire
                              (Buffer_Pool, Application_Buffers.Ticket_Slot (Ticket), 4);
@@ -6496,7 +6521,7 @@ begin
                           Boolean'Image (Boot_Update_Allocation.Ready));
                         if Boot_Update_Allocation.Ready then
                            Application_Buffers.Reserve_Private
-                             (Application_Buffer_State, 0, Ticket);
+                             (Application_Buffer_State, 0, Ticket, Pages => 1);
                            if Ticket /= 0 then
                               Retirement_Scratch := Buffer_Memory.Acquire
                                 (Buffer_Pool, Application_Buffers.Ticket_Slot (Ticket), 1);
@@ -6978,7 +7003,8 @@ begin
                Unused := reply (Sender, Reply_Message);
             end;
          end if;
-         if not Metadata_Busy and then not Update_Image_Pending and then not In_Place_Active then
+         if not Metadata_Busy and then not Update_Image_Pending and then not In_Place_Active
+           and then not Buffer_Memory.Local_Work_Pending (Buffer_Pool) then
             Activity := Wait_For_Activity_Until
               (if Now < Unsigned_64'Last - 10 then Now + 10 else Now);
          end if;

@@ -30,7 +30,8 @@ package CuBit.Memory_Grants is
       numPages  : Natural;
       readWrite : Boolean;
       reference : out Grant_Reference;
-      success   : out Boolean);
+      success   : out Boolean;
+      notify    : Boolean := False);
 
    procedure Create_Via_Capability
      (slot      : CuBit.Messages.CapabilitySlot;
@@ -38,7 +39,8 @@ package CuBit.Memory_Grants is
       numPages  : Natural;
       readWrite : Boolean;
       reference : out Grant_Reference;
-      success   : out Boolean);
+      success   : out Boolean;
+      notify    : Boolean := False);
 
    procedure Acquire
      (reference     : Grant_Reference;
@@ -52,10 +54,13 @@ package CuBit.Memory_Grants is
    --  Explicit owner opt-in; only caller-owned pages can be granted. Existing
    --  creation APIs remain nonforwardable. This does not create a child loan;
    --  use Derive_Via_Capability only after acquiring the parent.
+   --  notify: the kernel posts grant lifecycle events for it and the grants
+   --  derived from it (CuBit.Control_Events).
    procedure Create_Forwardable_Via_Capability
      (slot : CuBit.Messages.CapabilitySlot; localAddr : System.Address;
       numPages : Natural; readWrite : Boolean;
-      reference : out Grant_Reference; success : out Boolean);
+      reference : out Grant_Reference; success : out Boolean;
+      notify : Boolean := False);
 
    --  The acquired parent's owner must have opted into forwarding. Children
    --  cannot be forwarded, widen the page range or add write permission.

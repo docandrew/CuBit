@@ -37,7 +37,10 @@ package Intel_GPU_Render_Sessions with SPARK_Mode is
        (Sender /= 0 and Resolve'Result = Stamped_Tag and
         Stamped_Tag > Tag_Base and Stamped_Tag <= Tag_Last and
         Storage_Index (Object, Stamped_Tag) /= 0));
-   procedure Close (Object : in out Registry; Sender, Tag : Unsigned_64);
+   -- Closing revokes work authorization, not the retained cleanup identity.
+   procedure Close (Object : in out Registry; Sender, Tag : Unsigned_64)
+     with Post => Storage_Index (Object, Tag) = Storage_Index (Object, Tag)'Old
+       and then Resolve (Object, Sender, Tag) = 0;
    -- Read-only cleanup observation only. Must NEVER substitute for Resolve
    -- in allocation, mapping, binding or submission authorization. Inputs are
    -- kernel envelope values, not application words. Quarantine fails closed.

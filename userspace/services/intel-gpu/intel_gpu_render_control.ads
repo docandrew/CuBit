@@ -41,6 +41,14 @@ package Intel_GPU_Render_Control with SPARK_Mode is
    -- admitting work. Zero rejects unissued identities, not just bad ranges.
    function Storage_Index (Object : Controller; Tag : Unsigned_64)
                           return Intel_GPU_Render_Sessions.Slot_Index;
+   -- Trusted metadata observation, NOT authentication. Retained after close
+   -- and quarantine for cleanup. Authenticate independently before use.
+   -- Zero denotes no recorded recipient slot; never reconstruct from index.
+   function Stored_Recipient_Slot
+     (Object : Controller; Tag : Unsigned_64) return Unsigned_64
+     with Post => Stored_Recipient_Slot'Result = 0 or else
+       (Stored_Recipient_Slot'Result in 40 .. 55 and
+        Storage_Index (Object, Tag) /= 0);
    function Issued_Tag
      (Object : Controller; Index : Intel_GPU_Render_Sessions.Slot_Index)
       return Unsigned_64
@@ -140,5 +148,10 @@ private
       Broker, Broker_Tag : Unsigned_64 := 0;
       Sessions : Intel_GPU_Render_Sessions.Registry;
       Recipients : Identities := [others => 0];
+      Recipient_Slots : Identities := [others => 0];
+      -- Bootstrap capability pool, separate from issued-record indices.
+      -- Permanently consume on reservation, including failed activation.
+      -- 56 is exhaustion, never a destination. Growth needs owned new slots.
+      Next_Recipient_Slot : Unsigned_64 range 40 .. 56 := 40;
    end record;
 end Intel_GPU_Render_Control;

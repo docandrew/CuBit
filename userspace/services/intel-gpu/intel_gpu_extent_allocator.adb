@@ -1,5 +1,12 @@
 package body Intel_GPU_Extent_Allocator is
+   use Intel_GPU_Buffer_Reply.Layout;
    package Directory renames Intel_GPU_Extent_Directory;
+   function Last_Allocation_Reason (Object : Pool) return Allocation_Reason is
+     (Object.Allocation_Check);
+   procedure Reset_Allocation_Diagnostic (Object : in out Pool) is
+   begin
+      Object.Allocation_Check := Not_Attempted;
+   end Reset_Allocation_Diagnostic;
    procedure Quarantine (Object : in out Pool) is
    begin
       Object.Broken := True;
@@ -115,16 +122,20 @@ package body Intel_GPU_Extent_Allocator is
    begin
       Buffer := Empty;
       Success := False;
+      Object.Allocation_Check := Request_Check;
       if Index > Record_Capacity (Object) or else Arena_ID = 0 or else Generation = 0 or else
         (Object.Identity /= 0 and then Object.Identity /= Arena_ID)
       then return; end if;
+      Object.Allocation_Check := Generation_Check;
       if Records.Get (Object.Items, Index).Bytes = 0 then
          if Records.Get (Object.Items, Index).Generation = Unsigned_32'Last or else
            Generation /= Records.Get (Object.Items, Index).Generation + 1 then return; end if;
       elsif Records.Get (Object.Items, Index).Generation /= Generation or else
         Records.Get (Object.Items, Index).Bytes /= Requested then return; end if;
       if Records.Get (Object.Items, Index).Bytes = 0 then
+         Object.Allocation_Check := Quota_Check;
          if Requested > Object.Limit - Object.Used then return; end if;
+         Object.Allocation_Check := Gap_Check;
          Find_Gap (Object, Requested, Offset, Previous, Following, Found);
          if not Found then return; end if;
       else
@@ -153,9 +164,11 @@ package body Intel_GPU_Extent_Allocator is
          return;
       end if;
       Object.Identity := Arena_ID;
+      Object.Allocation_Check := View_Check;
       Buffer := Views.From_Extents
         (Directory.Borrow (Object.Directory), Arena_ID, Records.Get (Object.Items, Index).Offset, Requested);
       Success := Views.Valid (Buffer);
+      if Success then Object.Allocation_Check := Ready; end if;
    end Acquire_Buffer;
 
    procedure Step_Buffer
@@ -171,6 +184,7 @@ package body Intel_GPU_Extent_Allocator is
    begin
       Buffer := Empty; Success := False; Pending := False;
       Object.Metadata_Required := 0;
+      Object.Allocation_Check := Request_Check;
       if Object.Broken or else Index > Record_Capacity (Object) or else
         Arena_ID = 0 or else Generation = 0 or else
         (Object.Identity /= 0 and then Object.Identity /= Arena_ID) then return; end if;
@@ -178,15 +192,19 @@ package body Intel_GPU_Extent_Allocator is
          Acquire_Buffer (Object, Arena_ID, Index, Pages, Generation, Buffer, Success);
          return;
       end if;
+      Object.Allocation_Check := Generation_Check;
       if Records.Get (Object.Items, Index).Generation = Unsigned_32'Last or else
-        Generation /= Records.Get (Object.Items, Index).Generation + 1 or else
-        Bytes > Object.Limit - Object.Used then return; end if;
+        Generation /= Records.Get (Object.Items, Index).Generation + 1 then return; end if;
+      Object.Allocation_Check := Quota_Check;
+      if Bytes > Object.Limit - Object.Used then return; end if;
+      Object.Allocation_Check := Gap_Check;
       Find_Gap (Object, Bytes, Offset, Previous, Following, Found);
       if not Found then return; end if;
       Target := Offset + Bytes;
       Committed := Directory.Committed_Bytes (Object.Directory);
       if Target > Committed then
          if Committed / E.Block_Bytes >= Unsigned_64 (Extent_Capacity (Object)) then
+            Object.Allocation_Check := Metadata_Check;
             Object.Metadata_Required := Natural (Committed / E.Block_Bytes) + 1;
             Pending := True;
             return;
@@ -270,13 +288,16 @@ package body Intel_GPU_Extent_Allocator is
    begin
       Backing := Empty;
       Success := False;
+      Object.Allocation_Check := Backing_Check;
       if Object.Broken then return; end if;
+      Object.Allocation_Check := Owner_Check;
       if not Owner_Ready then
          if Object.Attempted then Quarantine (Object); end if;
          return;
       end if;
       -- Geometry only: address-space reservation/authority is the adapter's
       -- responsibility. Restrict to low canonical, aligned user addresses.
+      Object.Allocation_Check := Geometry_Check;
       if Required_Bytes = 0 or else Required_Bytes > Object.Limit or else
         CPU_Base = 0 or else CPU_Base mod E.Block_Bytes /= 0 or else
         CPU_Base > 2 ** 47 - Object.Limit
@@ -286,6 +307,7 @@ package body Intel_GPU_Extent_Allocator is
       else
          Object.Attempted := True;
          Object.CPU := CPU_Base;
+         Object.Allocation_Check := Directory_Check;
          Directory.Initialize (Object.Directory, Object.Limit, Object.DMA_Limit, Success);
          if not Success then Quarantine (Object); return; end if;
          Success := False;
@@ -294,16 +316,21 @@ package body Intel_GPU_Extent_Allocator is
       -- Metadata pressure is recoverable before any physical callback. The
       -- serialized caller may grow its independently budgeted directory and
       -- resume this request; no ambiguous physical allocation is replayed.
+      Object.Allocation_Check := Metadata_Check;
       if Required_Blocks > Extent_Capacity (Object) then return; end if;
       Committed_Blocks := Natural (Directory.Committed_Bytes (Object.Directory) / E.Block_Bytes);
       if Required_Blocks > Committed_Blocks then
          for I in Committed_Blocks .. Required_Blocks - 1 loop
+            Object.Allocation_Check := Owner_Check;
             if not Owner_Ready then Quarantine (Object); return; end if;
+            Object.Allocation_Check := Physical_Call;
             Value := Allocate (CPU_Base + Unsigned_64 (I) * E.Block_Bytes);
+            Object.Allocation_Check := Owner_Check;
             if not Owner_Ready then
                Quarantine (Object);
                return;
             end if;
+            Object.Allocation_Check := Physical_Result_Check;
             Directory.Append (Object.Directory, Value, Success);
             if not Success then
                Quarantine (Object);
@@ -312,8 +339,11 @@ package body Intel_GPU_Extent_Allocator is
             Success := False;
          end loop;
       end if;
+      Object.Allocation_Check := Owner_Check;
       if not Owner_Ready then Quarantine (Object); Success := False; return; end if;
+      Object.Allocation_Check := View_Check;
       Backing := Directory.Borrow (Object.Directory);
       Success := Directory.Valid (Backing);
+      if Success then Object.Allocation_Check := Ready; end if;
    end Acquire;
 end Intel_GPU_Extent_Allocator;

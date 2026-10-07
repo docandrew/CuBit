@@ -20,8 +20,10 @@ package body Intel_GPU_Buffer_Requests.Closed_Tables is
    begin
       Accepted := False;
       if not References_Retired or else not Can_Retire (Object, Session, ID) then return; end if;
+      if not Refund_Client (Object, Ticket_Slot (ID)) then return; end if;
       Records.Put (Object.Items, Ticket_Slot (ID),
-        (Records.Get (Object.Items, Ticket_Slot (ID)) with delta Private_Reusable => True));
+        (Records.Get (Object.Items, Ticket_Slot (ID)) with delta Private_Reusable => True,
+         Charge_Bytes => 0));
       Accepted := True;
    end Acknowledge;
 end Intel_GPU_Buffer_Requests.Closed_Tables;

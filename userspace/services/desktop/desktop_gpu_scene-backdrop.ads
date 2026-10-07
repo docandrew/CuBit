@@ -5,6 +5,17 @@ with Vulkan_Submission;
 -- its CPU snapshot and confirmed GPU readers retire.
 package Desktop_GPU_Scene.Backdrop with SPARK_Mode is
    pragma Unevaluated_Use_Of_Old (Allow);
+   -- Settings preview: logical bounds follow output DPI/rotation; unlike the
+   -- full wallpaper, it must not use the physical-output backdrop sampler.
+   procedure Capture_Preview
+     (S : in out State; Style : CuBit.Appearance.Preferences;
+      Source : Vulkan_Submission.Source_Ticket; Bounds : V.A.G.Logical_Rectangle;
+      Accepted : out Boolean)
+     with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid,
+       Post => Valid (S) and D.Valid and
+         (if Accepted then Current (S) = Capturing and
+          Layer_Count (S) = Layer_Count (S)'Old +
+            (if Style.Backdrop in CuBit.Appearance.Wallpaper | CuBit.Appearance.Cubie then 2 else 1));
    procedure Capture
      (S : in out State; Style : CuBit.Appearance.Preferences;
       Source : Vulkan_Submission.Source_Ticket; Accepted : out Boolean)

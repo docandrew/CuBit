@@ -144,8 +144,18 @@ is
    CLOCK_OP_MONOTONIC_MS : constant Unsigned_32 := 16#0B00#;
 
    TEXT_LINE_SCHEMA : constant Schema_Id := 16#4355_4249_5454_5801#;
+   --  The largest text record: what a one-page ring takes (a record is at
+   --  most half the ring, CuBit.Stream_Rings.Fits). Writers split longer
+   --  text into several records.
+   TEXT_LINE_RECORD_BYTES : constant := 2_044;
    TEXT_LINE_CONTRACT : constant Schema_Contract :=
      (Identity => 16#4355_4249_5454_5801#,
-      Version => 1, Sizing => Bounded_Size, Wire_Size => 16#FFFE#);
+      Version => 1, Sizing => Bounded_Size, Wire_Size => TEXT_LINE_RECORD_BYTES);
+
+   --  Untyped bytes (a raw outlet), in records of at most the same size.
+   RAW_BYTES_SCHEMA : constant Schema_Id := 16#4355_4249_5241_5701#;
+   RAW_BYTES_CONTRACT : constant Schema_Contract :=
+     (Identity => RAW_BYTES_SCHEMA,
+      Version => 1, Sizing => Bounded_Size, Wire_Size => TEXT_LINE_RECORD_BYTES);
 
 end CuBit.Protocols;

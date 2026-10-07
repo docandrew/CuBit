@@ -42,8 +42,8 @@ adapters, with pure functions as built-in forms in the shared frontend.**
   built-in forms. Today these are hand-written parser keywords
   (`concat`, `length`, `at`). They should become a **table of built-in
   functions**: each entry gives a name, a signature, an effect set (empty)
-  and an evaluator. The checker, the tree interpreter, the bytecode
-  compiler and REPL completion all read the same table, so a function is
+  and an evaluator. The checker, the bytecode compiler, the
+  verifier and REPL completion all read the same table, so a function is
   added in one place. Source: `userspace/ccl/src/ccl-builtins*.ad[sb]`.
 - **Effectful functions** (`fetch`, later `resolve`, `listen`, file and
   config access) are **catalog interfaces** (`userspace/ccl/interfaces/
@@ -86,7 +86,9 @@ exist).
 
 ## Where CCL is today
 
-(From a survey of `userspace/ccl`.)
+(From an earlier survey of `userspace/ccl`. Since 2026-10-05 the tree
+interpreter is gone: every program is compiled to CCLB, verified and run on
+the VM.)
 
 - **Frontend:** one shared frontend (`ccl-language`) feeds a tree
   interpreter (strings, functions, records, variants) and a bytecode VM
@@ -120,13 +122,13 @@ exist).
    - larger, still bounded arenas, sized by typed launch parameters
      (ccl-launch-parameters.md) rather than fixed at 1 KB.
 2. **The built-in function table,** replacing the keyword chain, used by
-   the checker, both evaluators and completion.
+   the checker, the compiler and verifier, and completion.
 3. **Bytecode VM:** text values and call frames, so library functions
-   run in both evaluators; otherwise the library is interpreter-only.
+   run on the VM, now the only evaluator.
 4. **Host operations** with more than one argument (`fetch` takes a
    locator and a request).
 5. **`Task` for effectful calls.** The VM's host-call suspension is most
-   of it; the interpreter's host calls are synchronous today.
+   of it.
 6. **Proved parsers** for URLs, HTTP/1.1 responses and JSON, in
    `userspace/net/src` style.
 

@@ -2,6 +2,7 @@ project Fanout is
    for Source_Dirs use (".", "build/source");
    for Source_Files use ("main.adb", "cubit.ads", "cubit-log_protocol.ads",
                         "cubit-authority_policy.ads", "cubit-protocols.ads",
+                        "cubit-channel_contracts.ads", "cubit-channel_contracts.adb",
                         "cubit-process_observer.ads",
                         "cubit-log_records.ads", "cubit-log_records.adb",
                         "policy_proof.ads", "log_budgets.ads", "log_budgets.adb",

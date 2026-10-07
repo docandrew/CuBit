@@ -17,18 +17,19 @@ procedure Context_Tickets_Tests is
    Old_Session : Unsigned_64 := 0;
    Accepted, Consumed : Boolean;
 begin
-   C.Reserve (Pool, 0, ID); pragma Assert (ID = 0);
-   P.Reserve_Private (Pool, 100, Pinned);
+   C.Reserve (Pool, 0, ID, Pages => 1); pragma Assert (ID = 0);
+   P.Reserve_Private (Pool, 100, Pinned, Pages => 1);
    P.Finish_Private (Pool, Pinned, Consumed); pragma Assert (Consumed);
-   P.Reserve_Private (Pool, 100, Tables, Reclaimable => True);
+   P.Reserve_Private (Pool, 100, Tables, Reclaimable => True, Pages => 1);
    P.Finish_Private (Pool, Tables, Consumed); pragma Assert (Consumed);
    P.Retire_Session (Pool, 100);
    C.Acknowledge (Pool, 100, Pinned, True, Accepted); pragma Assert (not Accepted);
    C.Acknowledge (Pool, 100, Tables, True, Accepted); pragma Assert (not Accepted);
    for Session in Unsigned_64 range 1001 .. 1128 loop
-      C.Reserve (Pool, Session, ID);
+      C.Reserve (Pool, Session, ID, Pages => 1);
       pragma Assert (ID = 3 + (Session - 1001) * P.Ticket_Stride);
       pragma Assert (P.Ticket_Session (Pool, ID) = Session);
+      pragma Assert (P.Ticket_Bytes (Pool, ID) = 4096);
       if Old /= 0 then
          P.Retire_Session (Pool, Old_Session);
          P.Finish_Private (Pool, Old, Consumed); pragma Assert (not Consumed);
@@ -41,19 +42,21 @@ begin
       P.Acknowledge_Private_Retirement (Pool, Session, ID, True, Accepted);
       pragma Assert (not Accepted); -- never a replacement table
       P.Retire_Session (Pool, Session);
+      pragma Assert (P.Ticket_Bytes (Pool, ID) = 4096);
       pragma Assert (C.Can_Retire (Pool, Session, ID));
       C.Acknowledge (Pool, Session + 1, ID, True, Accepted); pragma Assert (not Accepted);
       C.Acknowledge (Pool, Session, ID + P.Ticket_Stride, True, Accepted); pragma Assert (not Accepted);
       C.Acknowledge (Pool, Session, ID, False, Accepted); pragma Assert (not Accepted);
       Live := False;
       C.Acknowledge (Pool, Session, ID, True, Accepted); pragma Assert (not Accepted);
-      C.Reserve (Pool, Session + 1, Other); pragma Assert (Other = 0);
+      C.Reserve (Pool, Session + 1, Other, Pages => 1); pragma Assert (Other = 0);
       Live := True;
       C.Acknowledge (Pool, Session, ID, True, Accepted); pragma Assert (Accepted);
+      pragma Assert (P.Ticket_Bytes (Pool, ID) = 0);
       C.Acknowledge (Pool, Session, ID, True, Accepted); pragma Assert (not Accepted);
       pragma Assert (not C.Can_Retire (Pool, Session, ID));
       if Session = 1001 then
-         P.Reserve_Private (Pool, 2000, Other, Reclaimable => True);
+         P.Reserve_Private (Pool, 2000, Other, Reclaimable => True, Pages => 1);
          pragma Assert (Other = 4); -- cannot take acknowledged context slot3
          P.Finish_Private (Pool, Other, Consumed); pragma Assert (Consumed);
          P.Acknowledge_Private_Retirement (Pool, 2000, Other, True, Accepted);
@@ -67,13 +70,13 @@ begin
          Parent, Pending : P.Ticket;
       begin
          Live := True;
-         C.Reserve (State, 77, Parent);
+         C.Reserve (State, 77, Parent, Pages => 1);
          pragma Assert (Parent = 1);
          -- Revocation during allocation does not discard the pending receipt.
          P.Retire_Session (State, 77);
          C.Acknowledge (State, 77, Parent, True, Accepted); pragma Assert (not Accepted);
          P.Finish_Private (State, Parent, Consumed); pragma Assert (Consumed);
-         if (Mask and 1) /= 0 then P.Reserve_Private (State, 88, Pending); end if;
+         if (Mask and 1) /= 0 then P.Reserve_Private (State, 88, Pending, Pages => 1); end if;
          if (Mask and 2) /= 0 then P.Quarantine (State); end if;
          Live := (Mask and 4) = 0;
          C.Acknowledge (State, 77, Parent, (Mask and 8) = 0, Accepted);
@@ -108,7 +111,8 @@ begin
       Neighbor_CPU := V.CPU_Address (Neighbor);
       Neighbor_DMA := V.Page_Address (Neighbor, 0);
       for Generation in Unsigned_32 range 1 .. 256 loop
-         C.Reserve (Driver, 1000 + Unsigned_64 (Generation), Parent);
+         C.Reserve (Driver, 1000 + Unsigned_64 (Generation), Parent, Pages => 72);
+         pragma Assert (P.Ticket_Bytes (Driver, Parent) = 72 * 4096);
          pragma Assert (P.Ticket_Slot (Parent) = 1);
          pragma Assert (P.Ticket_Generation (Parent) = Generation);
          Supervisor.Acquire_Buffer (Arena, 7, P.Ticket_Slot (Parent), 72,
@@ -161,15 +165,15 @@ begin
       State : P.Service;
       Parent, Pinned_Table, Replacement, Previous : P.Ticket := 0;
    begin
-      C.Reserve (State, 77, Parent);
+      C.Reserve (State, 77, Parent, Pages => 1);
       P.Finish_Private (State, Parent, Consumed); pragma Assert (Consumed);
-      P.Reserve_Private (State, 77, Pinned_Table);
+      P.Reserve_Private (State, 77, Pinned_Table, Pages => 1);
       P.Finish_Private (State, Pinned_Table, Consumed); pragma Assert (Consumed);
       P.Retire_Session (State, 77);
       T.Acknowledge (State, 77, Parent, True, Accepted); pragma Assert (not Accepted);
       T.Acknowledge (State, 77, Pinned_Table, True, Accepted); pragma Assert (not Accepted);
       for Generation in Unsigned_64 range 1 .. 128 loop
-         P.Reserve_Private (State, 100 + Generation, Replacement, Reclaimable => True);
+         P.Reserve_Private (State, 100 + Generation, Replacement, Reclaimable => True, Pages => 1);
          pragma Assert (Replacement = 3 + (Generation - 1) * P.Ticket_Stride);
          P.Retire_Session (State, 100 + Generation);
          pragma Assert (not T.Can_Retire (State, 100 + Generation, Replacement));
@@ -198,7 +202,7 @@ begin
       end loop;
       -- Re-reservation clears the closed latch and restores ordinary private
       -- allocation behavior; only a new close can enter the cleanup path.
-      P.Reserve_Private (State, 300, Replacement, Reclaimable => True);
+      P.Reserve_Private (State, 300, Replacement, Reclaimable => True, Pages => 1);
       P.Finish_Private (State, Replacement, Consumed); pragma Assert (Consumed);
       pragma Assert (not T.Can_Retire (State, 300, Replacement));
       P.Acknowledge_Private_Retirement (State, 300, Replacement, True, Accepted);
@@ -207,10 +211,10 @@ begin
    for Mask in Unsigned_32 range 0 .. 15 loop
       declare State : P.Service; Replacement, Pending : P.Ticket; begin
          Live := True;
-         P.Reserve_Private (State, 77, Replacement, Reclaimable => True);
+         P.Reserve_Private (State, 77, Replacement, Reclaimable => True, Pages => 1);
          P.Finish_Private (State, Replacement, Consumed); pragma Assert (Consumed);
          P.Retire_Session (State, 77);
-         if (Mask and 1) /= 0 then P.Reserve_Private (State, 88, Pending); end if;
+         if (Mask and 1) /= 0 then P.Reserve_Private (State, 88, Pending, Pages => 1); end if;
          if (Mask and 2) /= 0 then P.Quarantine (State); end if;
          Live := (Mask and 4) = 0;
          T.Acknowledge (State, 77, Replacement, (Mask and 8) = 0, Accepted);
@@ -220,10 +224,10 @@ begin
    Live := True;
    Ada.Text_IO.Put_Line ("Closed replacement tickets PASS128 generations +16 faults; revoked cleanup, kind isolation, stale rejection and live-path separation");
    declare State : P.Service; First, Second : P.Ticket; begin
-      C.Reserve (State, 77, First);
+      C.Reserve (State, 77, First, Pages => 1);
       P.Finish_Private (State, First, Consumed); pragma Assert (Consumed);
       P.Retire_Session (State, 77);
-      C.Reserve (State, 88, Second);
+      C.Reserve (State, 88, Second, Pages => 1);
       pragma Assert (First = 1 and Second = 2); -- close alone never releases
    end;
    Ada.Text_IO.Put_Line ("Context tickets PASS128 owner generations +16 failure combinations; revoked cleanup, kind isolation, stale/duplicate rejection, pending receipt retention (metadata only)");

@@ -11,7 +11,9 @@ project Demand is
       for Executable ("demand_backing_check.adb") use "devmgr.svc";
       for Executable ("allocation_ipc_check.adb") use "devmgr.svc";
       for Executable ("view_retention_check.adb") use "devmgr.svc";
+      for Executable ("image_provider_check.adb") use "devmgr.svc";
       for Executable ("mapping_growth_check.adb") use "devmgr.svc";
+      for Executable ("update_metadata_check.adb") use "devmgr.svc";
    end Builder;
    package Compiler is
       for Default_Switches ("Ada") use

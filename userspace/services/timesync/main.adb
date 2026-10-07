@@ -250,8 +250,6 @@ procedure Main is
    Ignore : Unsigned_64;
    Wait_Seconds : Unsigned_64;
 begin
-   --  timesync sleeps between polls: no event loop, so records go out as written.
-   CuBit.Log.Set_Delivery (CuBit.Log.Immediate);
    CuBit.Log.Info ("timesync: started");
    if Allocation = Unsigned_64'Last then
       CuBit.Log.Warning ("timesync: buffer allocation failed");

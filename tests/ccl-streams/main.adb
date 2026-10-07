@@ -1,6 +1,7 @@
 --  Stream views in both engines (docs/ccl-streams.md, phase 1): every
 --  expression runs in the interpreter and as verified bytecode against the
 --  same session table, and both must give the same answer or failure.
+with CCL.Evaluation;
 with Ada.Command_Line; use Ada.Command_Line;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
@@ -45,6 +46,13 @@ procedure Main is
    QUIET : constant := 2;
    WORDS : constant := 3;
    POINTS : constant := 4;
+   --  Tasks: 5 completed with 42, 6 still pending, 7 completed with (P 5 6).
+   DONE : constant := 5;
+   PENDING : constant := 6;
+   POINT_DONE : constant := 7;
+   --  8: completed with (O.Finished (P 5 6)); 9: completed with (O.Stopped).
+   FINISHED_DONE : constant := 8;
+   STOPPED_DONE : constant := 9;
    type Integer_Ring is array (Positive range <>) of Integer_64;
    Tick_Ring : constant Integer_Ring := [10, 20, 30, 40];
    Tick_Losses : constant := 2;
@@ -112,6 +120,27 @@ procedure Main is
    begin
       Context.Reads := Context.Reads + 1;
       Reply.Status := S.View_Answered;
+      if Request.View = S.Wait_View then
+         case Request.Stream is
+            when DONE => Add (CCL.Objects.Integer_Cell (42));
+            when PENDING => Reply.Status := S.Stream_Empty;
+            when POINT_DONE =>
+               Add (CCL.Objects.Product_Cell (2));
+               Add (CCL.Objects.Integer_Cell (5));
+               Add (CCL.Objects.Integer_Cell (6));
+            when FINISHED_DONE =>
+               Add (CCL.Objects.Variant_Cell (1));
+               Add (CCL.Objects.Product_Cell (2));
+               Add (CCL.Objects.Integer_Cell (5));
+               Add (CCL.Objects.Integer_Cell (6));
+            when STOPPED_DONE =>
+               Add (CCL.Objects.Variant_Cell (2));
+               Add (CCL.Objects.Unit_Cell);
+            --  A stream's handle (or none): as the session table answers.
+            when others => Reply.Status := S.No_Such_Stream;
+         end case;
+         return;
+      end if;
       case Request.Stream is
          when TICKS =>
             Reply.Total := (if Request.View = S.Lost_View then Tick_Losses
@@ -143,14 +172,14 @@ procedure Main is
       Reply := (Value => CCL.Host_Values.Integer_Constant (0), Success => False, Why => <>);
    end Deny;
 
-   procedure Interpret is new L.Interpret_With_Values (Session, Deny, Read_Stream => Read);
+   procedure Interpret is new CCL.Evaluation.Evaluate_With_Values (Session, Deny, Read_Stream => Read);
 
    Catalog : CCL.Catalog.Interface_Catalog;
    Grants : CCL.Catalog.Granted_Bindings;
    FUEL : constant := 100_000;
 
    Prelude : constant String :=
-     "(type P (record (x Integer) (y Integer))) " &
+     "(type P (record (x Integer) (y Integer))) (type O (variant (Finished P) (Stopped))) " &
      "(let ((ticks (stream Integer 1))) (let ((quiet (stream Integer 2))) " &
      "(let ((words (stream String 3))) (let ((points (stream P 4))) ";
    Closing : constant String := "))))";
@@ -195,6 +224,10 @@ procedure Main is
          exit when Executed.Status /= CCL.VM.Waiting_For_Host or else not Executed.Stream_Requested;
          Reply := (others => <>);
          Read (Context, Executed.Stream_Request, Reply);
+         --  A pending task: the host does not answer, so the VM stays
+         --  suspended on it (a live host answers when it completes).
+         exit when S."=" (Executed.Stream_Request.View, S.Wait_View) and then
+                   S."=" (Reply.Status, S.Stream_Empty);
          N.Complete_Stream_View (Checked, Machine, Reply);
       end loop;
    end Run_Both;
@@ -307,6 +340,43 @@ begin
    Expect_Refused ("(stream Integer x)", L.Expected_Stream, "a stream number is a literal");
    Expect_Refused ("(stream Integer 0)", L.Value_Out_Of_Range, "stream numbers start at 1");
    Expect_Refused ("(stream (Stream Integer) 1)", L.Unsupported_Stream_Element, "no stream of streams");
+
+   --  Tasks (Task<T>, docs/control-language.md): wait a completed task in
+   --  both engines; a pending one stops the interpreter (the session runs
+   --  the entry again) and suspends the VM on that task.
+   Expect_Integer ("(wait (task Integer 5))", 42, "wait a completed task");
+   Expect_Integer ("(field (wait (task P 7)) y)", 6, "wait a task of a record");
+   Expect_Integer ("(match (wait (task O 8)) ((O.Finished p) (field p y)) ((O.Stopped) -1))", 6,
+                   "wait a task of a variant with a record payload");
+   Expect_Integer ("(match (wait (task O 9)) ((O.Finished p) (field p y)) ((O.Stopped) -1))", -1,
+                   "wait a task of a variant without payload");
+   declare
+      Interpreted : L.Interpretation_Result;
+      Executed : CCL.VM.Execution_Result;
+      Compiled_Ok : Boolean;
+   begin
+      Run_Both ("(+ 1 (wait (task Integer 6)))", Interpreted, Executed, Compiled_Ok);
+      Check (Interpreted.Status = L.Waiting_On_Task and then
+             S."=" (Interpreted.Waited_On, S.Handle (PENDING)),
+             "a pending task stops the interpreter, naming it");
+      Check (Compiled_Ok and then Executed.Status = CCL.VM.Waiting_For_Host and then
+             Executed.Stream_Requested and then
+             S."=" (Executed.Stream_Request.View, S.Wait_View) and then
+             S."=" (Executed.Stream_Request.Stream, S.Handle (PENDING)),
+             "a pending task suspends the VM on it");
+   end;
+   --  A handle written as the other kind names nothing: an error, never a
+   --  wait that cannot end or another kind's elements.
+   Expect_Failure ("(wait (task Integer 1))", L.Stream_Unavailable, CCL.VM.Stream_Unavailable,
+                   "waiting on a stream's handle");
+   Expect_Failure ("(latest (stream Integer 5))", L.Stream_Unavailable, CCL.VM.Stream_Unavailable,
+                   "a stream view of a task's handle");
+   Expect_Refused (Prelude & "(latest (task Integer 5))" & Closing, L.Expected_Stream,
+                   "a task has no latest element");
+   Expect_Refused (Prelude & "(wait ticks)" & Closing, L.Expected_Task,
+                   "a stream is not waited for");
+   Expect_Refused ("(type R (record (t (Task Integer)))) 0", L.Stream_Not_Data,
+                   "a task is not a record field");
 
    if Failures = 0 then
       Put_Line ("ccl-streams: all passed");

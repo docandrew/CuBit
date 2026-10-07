@@ -1,6 +1,10 @@
 # CCL Bytecode Module Format
 
-Status: version 8 (CBOR, 2026-09-30); native objects plus opaque live VM resource values.
+Status: version 9 (CBOR, 2026-10-05); native objects plus opaque live VM resource values.
+Version 9 adds `argument_text_limit` and `result_text_limit` to each import, so
+text arguments and results cross host imports in bytecode. Since 2026-10-05 the
+VM is CCL's only engine: every program is analysed, compiled to CCLB, linked,
+verified and run on it (`CCL.Evaluation`); the tree-walking interpreter was removed.
 Version 8 replaces version 7's fixed little-endian layout with CBOR and adds
 the function table. The history below describes what versions 6 and 7 added
 to the program model, which version 8 keeps.
@@ -48,8 +52,8 @@ the import's declared ownership tag; resources cannot use an unrestricted
 ownership type. Ordinary scalar completion and external-local injection reject
 resources. The host authenticates/correlates the acquisition and validates every
 outgoing use against the registry. Static ownership cannot by itself prove
-external handle cleanup or authenticate IPC. The source interpreter and public
-factory/compiler linkage are not yet connected to this boundary.
+external handle cleanup or authenticate IPC. Public factory/compiler linkage is not yet
+connected to this boundary (nor was the source interpreter, removed 2026-10-05).
 
 CCL bytecode modules use the `.cclb` extension. The core payload has a single
 canonical little-endian representation so it can later be hashed and signed
@@ -58,6 +62,10 @@ implemented in SPARK, and always invokes the ordinary CCL bytecode verifier
 before returning a `Validated_Program`.
 
 ## Version 8 plan: canonical CBOR and interpreter parity (2026-09-30)
+
+*Historical: the interpreter this section compares against was removed on
+2026-10-05, and the VM is now the only engine. "The interpreter's bounds" and
+"deliberate differences" below record how the VM's behaviour was chosen.*
 
 **Why.** The interpreter now has:
 - a value arena (records, payload variants);
@@ -339,7 +347,7 @@ verified and run, and the literals must match):
 **Limits to revisit:** 256 instructions and a 64-slot stack per module are
 small for a full startup profile.
 
-## Version 8 layout
+## Version 9 layout
 
 A module is **one CBOR item** in the restricted profile that
 `CCL.Objects.Persistence` also uses:
@@ -352,7 +360,7 @@ and signed as they are. The codec (`userspace/ccl/modules/ccl-format.ad?`)
 lives outside the CCL core, so embedding the core doesn't pull in CBOR.
 
 ```text
-["CCLB" (bytes), 8, [fuel, memory, in_flight],
+["CCLB" (bytes), 9, [fuel, memory, in_flight],
  ownership_types, data_types, matches,
  [dynamic_locals, locals], imports, functions, constants, code]
 
@@ -364,6 +372,7 @@ imports         [[argument, result, authority, ownership_argument, local,
                   transfer, cancellation, parameters, success_verb,
                   failure_verb, cancel_verb, major, minor, operation,
                   argument_type, result_type,
+                  argument_text_limit, result_text_limit,
                   digest, argument_schema, result_schema] ...]
 functions       [[entry, captures, [[kind, type] ...], result_kind, result_type] ...]
 constants       [text ...]      (byte strings: Push_Text's pool)
@@ -474,7 +483,7 @@ session policy must still decide which declared imports are resolved.
 
 ## Future: a verified JIT (not planned soon)
 
-The interpreter and this VM cover current needs. The format should not rule
+This VM covers current needs. The format should not rule
 out a later native-code compiler, for the same reason eBPF pairs a verifier with
 a JIT: verification once makes checks at run time unnecessary.
 

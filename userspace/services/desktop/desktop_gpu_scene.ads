@@ -53,7 +53,10 @@ package Desktop_GPU_Scene with SPARK_Mode is
        Post => Valid (S) and D.Valid;
    -- Desktop output integration gate. Repaint authorizes a complete software
    -- reconstruction only after this capture and renderer readers have retired.
-   -- Complete authorizes publication, not release of the display's front buffer.
+   -- Complete means the private GPU scene has finished. It does NOT authorize
+   -- publication of a CPU output: the adapter must still complete readback and
+   -- copy into the exact held output writer before reporting renderer Complete.
+   -- Neither completion releases the display's front buffer.
    -- Repeated finish/cancel while a submission is live never submits again.
    type Output_Completion is (Output_Complete, Output_Pending, Output_Repaint, Output_Unsafe);
    function Software_Ready (S : State) return Boolean

@@ -12,7 +12,7 @@ package Vulkan_Scene with SPARK_Mode is
    package D renames Compositor_Target_Damage;
    package R renames Compositor_Source_Region;
    use type R.Rectangle;
-   use type V.Phase, V.Source_Ticket, D.P.Slot, A.G.Output;
+   use type V.Phase, V.Source_Ticket, D.P.Slot, A.G.Output, A.G.Logical_Rectangle;
    Maximum_Layers : constant := V.Maximum_Draws / D.D.Capacity;
    subtype Length is Natural range 0 .. Maximum_Layers;
    subtype Index is Positive range 1 .. Maximum_Layers;
@@ -24,7 +24,8 @@ package Vulkan_Scene with SPARK_Mode is
    -- Physical_Solid uses output pixel coordinates in Surface, validated at
    -- admission. It shares existing storage and ordering with logical layers.
    type Layer_Kind is (Textured, Straight_Textured, Solid, Set_Clip, Reset_Clip, Glyph_Mask, Physical_Solid,
-      Backdrop_Fill, Backdrop_Fit, Backdrop_Center, Set_Physical_Clip, Checker_Grid, Region_Textured, Straight_Region);
+      Backdrop_Fill, Backdrop_Fit, Backdrop_Center, Set_Physical_Clip, Checker_Grid, Region_Textured, Straight_Region,
+      Preview);
    -- Backdrop kinds retain a source ticket and store its physical dimensions
    -- in Surface.Right/Bottom; Left/Top, tint and blend flags must be zero.
    -- Use Append_Backdrop to capture this representation without extra storage.
@@ -36,12 +37,27 @@ package Vulkan_Scene with SPARK_Mode is
       Kind : Layer_Kind := Textured;
    end record;
    type Phase is (Collecting, Sealed, Rejected);
+   type Preview_Description is record
+      Width, Height : Compositor_Image_Sampling.Extent := 1;
+      Mode : Compositor_Image_Sampling.Placement := Compositor_Image_Sampling.Fill;
+   end record;
    type State is private;
    function Current (S : State) return Phase;
    function Count (S : State) return Length;
    function Output (S : State) return A.G.Output;
    function Item (S : State; I : Index) return Layer with Pre => I <= Count (S);
    function Region_At (S : State; I : Index) return R.Rectangle with Pre => I <= Count (S);
+   function Preview_At (S : State; I : Index) return Preview_Description with Pre => I <= Count (S);
+   -- Only typed capture initializes preview metadata. Surface retains logical
+   -- bounds; source dimensions are separate, never encoded in coordinates.
+   procedure Append_Preview
+     (S : in out State; Source : V.Source_Ticket; Bounds : A.G.Logical_Rectangle;
+      Description : Preview_Description; Accepted : out Boolean)
+     with Post => Output (S) = Output (S'Old) and
+       (if Accepted then Current (S) = Collecting and Count (S) = Count (S'Old) + 1 and
+          Item (S, Count (S)).Kind = Preview and Item (S, Count (S)).Source = Source and
+          Item (S, Count (S)).Surface = Bounds and Preview_At (S, Count (S)) = Description
+        else Current (S) = Rejected and Count (S) = Count (S'Old));
    function Sources_Ready (S : State; Submission : V.State) return Boolean;
    function Open (Screen : A.G.Output; Background : A.Word := 0) return State
      with Post => Current (Open'Result) = Collecting and Count (Open'Result) = 0 and Output (Open'Result) = Screen;
@@ -133,6 +149,7 @@ package Vulkan_Scene with SPARK_Mode is
 private
    type Layers is array (Index) of Layer;
    type Region_Table is array (Index) of R.Rectangle;
+   type Preview_Table is array (Index) of Preview_Description;
    type State is record
       Status : Phase := Collecting;
       Used : Length := 0;
@@ -140,13 +157,15 @@ private
       Background : A.Word := 0;
       Entries : Layers;
       Regions : Region_Table;
+      Previews : Preview_Table;
    end record;
    function Current (S : State) return Phase is (S.Status);
    function Count (S : State) return Length is (S.Used);
    function Output (S : State) return A.G.Output is (S.Screen);
    function Item (S : State; I : Index) return Layer is (S.Entries (I));
    function Region_At (S : State; I : Index) return R.Rectangle is (S.Regions (I));
+   function Preview_At (S : State; I : Index) return Preview_Description is (S.Previews (I));
    function Sources_Ready (S : State; Submission : V.State) return Boolean is
      (for all I in 1 .. S.Used =>
-        (if S.Entries (I).Kind in Textured | Straight_Textured | Glyph_Mask | Backdrop_Fill | Backdrop_Fit | Backdrop_Center | Region_Textured | Straight_Region then V.Source_Valid (Submission, S.Entries (I).Source)));
+        (if S.Entries (I).Kind in Textured | Straight_Textured | Glyph_Mask | Backdrop_Fill | Backdrop_Fit | Backdrop_Center | Region_Textured | Straight_Region | Preview then V.Source_Valid (Submission, S.Entries (I).Source)));
 end Vulkan_Scene;

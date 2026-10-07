@@ -23,7 +23,6 @@ project Libc_Ada is
                          "cubit-libc_net_addresses.ads", "cubit-libc_net_addresses.adb",
                          "cubit-libc_net_targets.ads", "cubit-libc_net_targets.adb",
                          "cubit-libc_net_names.ads", "cubit-libc_net_names.adb",
-                         "cubit-libc_stream_rings.ads", "cubit-libc_stream_rings.adb",
                          "main.adb");
    for Object_Dir use external ("LIBC_ADA_OBJ", "build");
    for Exec_Dir use "build";

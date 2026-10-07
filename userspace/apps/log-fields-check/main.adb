@@ -30,7 +30,6 @@ procedure Main is
    Kept_Text : constant String := "log-fields: frame presented late";
 
    Ignore : Unsigned_64;
-   Token : Unsigned_64 := 1;
    Result : P.Status;
    Value : P.Event;
    Lost : Unsigned_64;
@@ -48,26 +47,14 @@ procedure Main is
    end Check;
 
    procedure Publish (Item : L.Log_Record) is
-      Submitted, Handled : Boolean;
-      Completion : CompletionEntry;
-      Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + Wait_Ms;
-      Activity : Activity_Result;
+      Submitted, Drained : Boolean;
       Before : constant Unsigned_64 := CuBit.Logging.Dropped (Writer);
    begin
-      CuBit.Logging.Emit (Writer, Item, Token, Submitted);
-      Check (Submitted, "publication submitted");
-      loop
-         if Poll_Completion (Completion'Address) = 1 then
-            CuBit.Logging.Complete (Writer, Completion, Handled);
-            Check (Handled, "completion correlation");
-         end if;
-         exit when not CuBit.Logging.Pending (Writer);
-         Check (syscall (SYSCALL_GETTIME) < Deadline, "publication timeout");
-         Activity := Wait_For_Activity_Until (Deadline);
-         Check (Activity /= Unavailable, "completion wait available");
-      end loop;
+      CuBit.Logging.Emit (Writer, Item, Submitted);
+      Check (Submitted, "record written into the ring");
+      CuBit.Logging.Flush (Writer, Drained, Wait_Ms => Natural (Wait_Ms));
+      Check (Drained, "logstore took the record");
       Check (CuBit.Logging.Dropped (Writer) = Before, "record accepted");
-      Token := Token + 1;
    end Publish;
 
    function Field_Record return L.Log_Record is

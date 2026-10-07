@@ -46,9 +46,11 @@ package CuBit.Log_Protocol with Pure, SPARK_Mode is
    function Publication_Budget (Tag : Unsigned_64) return Budget_Id is
      ((Tag / 16#1000_0000#) mod 16)
      with Pre => Is_Publisher (Tag);
-   type Operation is (Publish, Subscribe, Close, Set_Minimum, Get_Minimum);
+   --  Publishing is a channel a publisher opens (CuBit.Log_Publish_Rings,
+   --  CuBit.Channel_Protocol), not an operation.
+   type Operation is (Subscribe, Close, Set_Minimum, Get_Minimum);
    for Operation use
-     (Publish => 16#0C00#, Subscribe => 16#0C01#, Close => 16#0C03#,
+     (Subscribe => 16#0C01#, Close => 16#0C03#,
       Set_Minimum => 16#0C04#, Get_Minimum => 16#0C05#);
    --  The node an event was published on: a 16-byte identity, stamped by the
    --  logstore that ingested it, never by the publisher. This_Node (zero)
@@ -73,28 +75,30 @@ package CuBit.Log_Protocol with Pure, SPARK_Mode is
       Below_Minimum => 16#F009#);
    --  Rate_Limited: all-zero words, no acquisition and no record accepted.
    --  All requests/replies: length four, zero flags/reserved.
-   --  Publish: read-only grant slot, generation, encoded length, zero.
-   --    OK or Below_Minimum (valid, not kept: under logstore's minimum)
-   --    reply: the minimum kept (Log_Records.Severity'Pos), zeroes.
+   --  Publishing (publisher role, May_Publish): a channel opened to
+   --    logstore with CuBit.Log_Publish_Rings.CONTRACT; opening again
+   --    replaces the caller's previous channel.
    --  Set_Minimum (log-control only): the new minimum's 'Pos, zeroes. OK
    --    reply: the previous minimum, zeroes.
    --  Get_Minimum (any logstore role): zeroes. OK reply: the minimum, zeroes.
    --  Subscribe: minimum severity (Log_Records.Severity'Pos, zero = all),
-   --    source (Every_Source: all), and the reader's stream region: a
-   --    writable grant's slot and generation (CuBit.Log_Streams layout).
-   --    logstore keeps the region mapped and writes the reader's events into
-   --    its ring; reading takes no IPC. OK reply: subscription handle, the
+   --    source (Every_Source: all), the reader's stream channel (its number
+   --    at logstore: CuBit.Log_Streams.CONTRACT, opened consuming first),
+   --    zero. logstore writes the reader's events into it; reading takes no
+   --    IPC. OK reply: subscription handle, the
    --    source filter applied, zero, zero. Repeating it (same owner and
    --    authority) renews the lease and updates the filter; it keeps the
    --    stream.
-   --  Close: subscription, zero, zero, zero. logstore stops writing and
-   --    returns the stream region before replying.
-   --  Buffers belong to clients. Service returns acquisitions BEFORE replying.
+   --  Close: subscription, zero, zero, zero. logstore stops writing into
+   --    the stream; the reader then closes its channel.
    --  Tags are kernel-stamped; knowing these numeric values grants nothing.
+   --  Whether a publishing channel may be opened with this tag.
+   function May_Publish (Authority_Tag : Unsigned_64) return Boolean is
+     (Is_Publisher (Authority_Tag));
+
    function May_Invoke
      (Authority_Tag : Unsigned_64; Op : Operation) return Boolean is
      (case Op is
-         when Publish => Is_Publisher (Authority_Tag),
          when Set_Minimum => Is_Control (Authority_Tag),
          when Get_Minimum =>
            Is_Publisher (Authority_Tag) or else Is_Observer (Authority_Tag) or else Is_Control (Authority_Tag),

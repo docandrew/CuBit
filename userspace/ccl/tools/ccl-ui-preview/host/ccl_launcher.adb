@@ -23,11 +23,11 @@ package body CCL_Launcher is
       Why_Length := Text'Length;
    end Start;
 
-   procedure Poll (Item : Run; Ended : out Boolean; Code : out Interfaces.Integer_64) is
+   procedure Poll (Item : Run; Ended : out Boolean; How : out Ending) is
       pragma Unreferenced (Item);
    begin
       Ended := True;
-      Code := 0;
+      How := (others => <>);
    end Poll;
 
    procedure Release (Item : Run) is null;

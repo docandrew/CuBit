@@ -24,7 +24,8 @@ package body Vulkan_Upload_Owner with SPARK_Mode is
    end Discard_Unbound;
    procedure Initialize (S : in out State; Context : in out C.State;
       Submission : V.State; Request : System.Address; Size : Capacity_Range;
-      Budget : in out A.State; Accepted : out Boolean)
+      Budget : in out A.State; Accepted : out Boolean;
+      Kind : Transfer_Direction := Upload)
    is
       Bytes : F.U64; Types, Result : F.U32; Selected : F.U32 := 32;
       Address : System.Address;
@@ -37,7 +38,8 @@ package body Vulkan_Upload_Owner with SPARK_Mode is
       C.Register_Child (Context, S.Parent);
       if S.Parent = C.No_Child then return; end if;
       S.Request := Request; S.Ticket := A.No_Ticket; S.Mapped := System.Null_Address; S.Size := 0;
-      F.Prepare (Request, F.U32 (Size), Bytes, Types, Result);
+      S.Kind := Kind;
+      F.Prepare (Request, F.U32 (Size), Bytes, Types, Result, Readback => Kind = Readback);
       if Result = 1 then Retire (S, Context); return;
       elsif Result /= 0 then S.Mode := Quarantined; return;
       end if;

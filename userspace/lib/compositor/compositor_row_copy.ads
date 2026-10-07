@@ -6,6 +6,27 @@ package Compositor_Row_Copy with SPARK_Mode, Pure is
    type Region is record
       Source_X, Source_Y, Target_X, Target_Y, Width, Height : Natural := 0;
    end record;
+   type Readback_Batch is record
+      Source_Offset, Target_Offset, Row_Bytes, Rows : Natural := 0;
+   end record;
+   -- Tight BGRA GPU readback into a pitched output writer. At most Byte_Budget
+   -- payload bytes per event-loop call; no padding writes. Pointer authority,
+   -- completion, nonaliasing and holding both owners remain caller obligations.
+   function Readback_Plan
+     (Width, Height, First_Row : G.Pixel_Edge;
+      Source_Bytes, Target_Bytes, Target_Pitch, Byte_Budget : Natural)
+      return Readback_Batch
+     with Post =>
+       (if Readback_Plan'Result.Rows > 0 then
+          Readback_Plan'Result.Row_Bytes = Natural (Width) * 4 and
+          Readback_Plan'Result.Rows <= Natural (Height - First_Row) and
+          Wide (Readback_Plan'Result.Rows) * Wide (Readback_Plan'Result.Row_Bytes) <= Wide (Byte_Budget) and
+          Wide (Readback_Plan'Result.Source_Offset) +
+            Wide (Readback_Plan'Result.Rows) * Wide (Readback_Plan'Result.Row_Bytes) <= Wide (Source_Bytes) and
+          Wide (Readback_Plan'Result.Target_Offset) +
+            Wide (Readback_Plan'Result.Rows - 1) * Wide (Target_Pitch) +
+            Wide (Readback_Plan'Result.Row_Bytes) <= Wide (Target_Bytes)
+        else Readback_Plan'Result = (0, 0, 0, 0));
    -- Opaque, unrotated 1:1 pixels only. No resampling or blending is skipped.
    -- Mapping authority and physical alias exclusion remain caller obligations.
    function Plan

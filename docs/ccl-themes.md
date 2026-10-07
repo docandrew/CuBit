@@ -88,7 +88,7 @@ captures desktop/client screenshots while applying a theme.
 
 The proof target includes the shared CCL declaration scanner, including bounded
 comment scanning, as well as palette decoding and failure atomicity. It does not
-claim that the entire CCL interpreter, toolkit or Config service is proven by
+claim that the entire CCL compiler and VM, toolkit or Config service is proven by
 this target.
 
 Validation (2026-09-14): 133 SPARK obligations discharged, zero unproved;

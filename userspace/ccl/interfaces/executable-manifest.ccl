@@ -37,7 +37,7 @@
 # ring's size. A ported Unix program maps its file descriptors onto them
 # (porting glue).
 (type Element (enum Text Raw_Bytes Integers Log_Records))
-(type Signal (enum Stream One_Shot Level Edge))
+(type Signal (enum Stream Level Edge))
 (type Outlet (record (name String) (element Element) (signal Signal Signal.Stream) (pages Integer 1)))
 (type Inlet (record (name String) (element Element) (signal Signal Signal.Stream) (pages Integer 1)))
 (type Descriptor (record (number Integer) (name String)))
@@ -51,7 +51,9 @@
 # Pieces are written with the variant's constructors: helper functions would
 # exceed the CCL program's 16-function limit.
 (type Parameter_Kind (enum Input_File Output_File Input_Directory Output_Directory Flag Text))
-(type Parameter (record (name String) (kind Parameter_Kind) (many Boolean false) (required Boolean true)))
+# in_arguments false: a file or directory delegated as a place only, never
+# rendered into argv (a work directory, a toolchain).
+(type Parameter (record (name String) (kind Parameter_Kind) (many Boolean false) (required Boolean true) (in_arguments Boolean true)))
 (type Conditional_Literal (record (parameter String) (text String)))
 (type Argument_Piece (variant (Literal String) (Value String) (When_Set Conditional_Literal)))
 (type Executable_Manifest (record

@@ -3,6 +3,7 @@
 --  parameters, file kinds are distinct types, connectors are reached by their
 --  qualified names, and mistakes are type errors before anything runs.
 pragma Ada_2022;
+with CCL.Evaluation;
 with Ada.Text_IO; use Ada.Text_IO;
 with CCL.Catalog;
 with CCL.Language;
@@ -76,6 +77,28 @@ procedure Main is
       return CCL.Language.Analysis_Status_Of (Analysis) = CCL.Language.Analysis_Succeeded;
    end Checks_Out;
 
+   --  Compiles, then links against the grants Publish installed.
+   function Links (Text : String) return Boolean is
+      use type CCL.Catalog.Link_Result;
+      Analysis : CCL.Language.Analysis_Result;
+      Compiled : CCL.Compiler.Compilation_Result;
+      Program : CCL.VM.Program;
+      Linked : CCL.Catalog.Link_Result;
+   begin
+      CCL.Language.Analyze (Text, Catalog, Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      if Compiled.Status /= CCL.Compiler.Compilation_Succeeded then
+         Put_Line ("  compile: " & Compiled.Status'Image);
+         return False;
+      end if;
+      Program := Compiled.Program;
+      CCL.Catalog.Link_Program (Grants, Compiled.Linkage, Program, Linked, Catalog);
+      if Linked /= CCL.Catalog.Link_Valid then
+         Put_Line ("  link: " & Linked'Image);
+      end if;
+      return Linked = CCL.Catalog.Link_Valid;
+   end Links;
+
    function Compiles (Text : String) return Boolean is
       Analysis : CCL.Language.Analysis_Result;
       Compiled : CCL.Compiler.Compilation_Result;
@@ -85,9 +108,13 @@ procedure Main is
       CCL.Language.Analyze (Text, Catalog, Analysis);
       CCL.Compiler.Compile (Analysis, Compiled);
       if Compiled.Status /= CCL.Compiler.Compilation_Succeeded then
+         Put_Line ("  compile: " & Compiled.Status'Image);
          return False;
       end if;
       CCL.VM.Verify (Compiled.Program, Program, Valid);
+      if Valid /= CCL.VM.Valid then
+         Put_Line ("  verify: " & Valid'Image);
+      end if;
       return Valid = CCL.VM.Valid;
    end Compiles;
 begin
@@ -99,18 +126,30 @@ begin
    Programs.Publish (Catalog, Grants, 0, "ld.app", Description, Bound, Error);
    Check (Error = CCL.Catalog.Catalog_Valid, "ld publishes: " & Error'Image);
 
-   --  The typed call, its connectors, and its exit, in both engines.
+   --  The typed call, its connectors, and its outcome, in both engines.
    Check (Checks_Out (Call), "the typed ld call checks");
    Check (Compiles (Call), "the typed ld call compiles and verifies");
    Check (Checks_Out ("(ld.unix.stderr " & Call & ")"), "a connector by its qualified name");
    Check (Checks_Out ("(latest (ld.org.gnu.ld.progress " & Call & "))"), "an Integer connector");
    Check (Checks_Out ("(window 10 (ld.unix.stderr " & Call & "))"), "a text window");
-   Check (Checks_Out ("(latest (ld.com.cubit.exit " & Call & "))"), "the exit connector");
+   Check (Checks_Out ("(ld.outcome " & Call & ")"), "a run's outcome is a task");
+   Check (Checks_Out ("(match (wait (ld.outcome " & Call & ")) ((Run_Outcome.Finished e) (field e code)) ((Run_Outcome.Stopped) -1))"),
+          "waiting on it gives a Run_Outcome: Finished with a Unix_Exit, or Stopped");
+   Check (Compiles ("(match (wait (ld.outcome " & Call & ")) ((Run_Outcome.Finished e) (field e code)) ((Run_Outcome.Stopped) -1))"),
+          "waiting on the outcome compiles and verifies");
+   Check (Compiles ("(ld.outcome " & Call & ")"), "a task-returning import compiles and verifies");
+   Check (not Checks_Out ("(latest (ld.outcome " & Call & "))"), "an outcome is no stream");
+   Check (not Checks_Out ("(ld.com.cubit.exit " & Call & ")"), "there is no exit outlet");
    Check (Compiles ("(ld.unix.stderr " & Call & ")"), "a connector accessor compiles and verifies");
    Check (Checks_Out ("(ld.outlets " & Call & ")"), "a run lists its outlets");
    Check (Checks_Out ("(where (fn ((o Outlet_State)) (field o ended)) (ld.outlets " & Call & "))"),
           "outlet states are records with their counts");
    Check (Compiles ("(ld.outlets " & Call & ")"), "outlets compiles and verifies");
+   --  Each operation links against its grant (what a session's run needs).
+   Check (Links (Call), "ld.run links");
+   Check (Links ("(ld.unix.stderr " & Call & ")"), "an outlet accessor links");
+   Check (Links ("(ld.outcome " & Call & ")"), "ld.outcome links");
+   Check (Links ("(ld.outlets " & Call & ")"), "ld.outlets links");
 
    --  Mistakes are type errors.
    Check (not Checks_Out ("(ld.unix.stdin " & Call & ")"), "an inlet has no output accessor");
@@ -146,14 +185,14 @@ begin
              and then Image (CCL.Language.Analysis_Diagnostic_Expected (Analysis)) = "Ld_Parameters"
              and then Image (CCL.Language.Analysis_Diagnostic_Found (Analysis)) = "Input_File",
              "an argument mismatch names the operation and both types");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(ld.run (Ld_Parameters output => (Input_File ""x"") inputs => []))", 4096, Catalog, Interpreted);
       Put_Line (CCL.Sessions.Result_Value_Image (Interpreted));
       Check (CCL.Sessions.Result_Value_Image (Interpreted) =
                "Expression does not type-check: field output takes Output_File, not Input_File" &
                " at character 34",
              "the console's message for a field mismatch");
-      CCL.Language.Interpret ("(ld.run (Input_File ""x""))", 4096, Catalog, Interpreted);
+      CCL.Evaluation.Evaluate ("(ld.run (Input_File ""x""))", 4096, Catalog, Interpreted);
       Put_Line (CCL.Sessions.Result_Value_Image (Interpreted));
    end;
 
@@ -168,10 +207,45 @@ begin
       As.Parameter_Total := 1;
       Programs.Publish (Catalog, Grants, 1, "as.app", As, As_Bound, Error);
       Check (Error = CCL.Catalog.Catalog_Valid, "as publishes beside ld: " & Error'Image);
-      Check (Checks_Out ("(as.com.cubit.exit (as.run (As_Parameters output => (Output_File ""o""))))"),
+      Check (Checks_Out ("(as.outcome (as.run (As_Parameters output => (Output_File ""o""))))"),
              "as runs with the shared types");
       Programs.Publish (Catalog, Grants, 2, "ld.app", Description, Bound, Error);
       Check (Error /= CCL.Catalog.Catalog_Valid, "a program publishes once");
+   end;
+
+   --  A program installed in a tree (userspace/ports/gcc/driver.ccl): named
+   --  by its last component, with place-only directory parameters.
+   declare
+      Gcc : PD.Signature;
+      Gcc_Bound : Programs.Contracts;
+      procedure Parameter (Name : String; Kind : PD.Kind; Many, Optional : Boolean := False) is
+      begin
+         Gcc.Parameters (Gcc.Parameter_Total) :=
+           (Of_Kind => Kind, Many => Many, Optional => Optional,
+            Name => [others => ' '], Name_Length => Name'Length);
+         Gcc.Parameters (Gcc.Parameter_Total).Name (1 .. Name'Length) := Name;
+         Gcc.Parameter_Total := Gcc.Parameter_Total + 1;
+      end Parameter;
+      Gcc_Call : constant String :=
+        "(gcc.run (Gcc_Parameters output => (Output_File ""@nvme:0/work/hello"") " &
+        "sources => [(Input_File ""@nvme:0/work/hello.c"")] " &
+        "work => (Output_Directory ""@nvme:0/work"") " &
+        "toolchain => (Input_Directory ""@nvme:0/toolchain"") optimize => true))";
+   begin
+      Parameter ("output", PD.Output_File);
+      Parameter ("sources", PD.Input_File, Many => True);
+      Parameter ("work", PD.Output_Directory);
+      Parameter ("toolchain", PD.Input_Directory);
+      Parameter ("compile_only", PD.Flag, Optional => True);
+      Parameter ("optimize", PD.Flag, Optional => True);
+      Check (Programs.Interface_Name ("toolchain/bin/gcc") = "gcc", "a tree program's interface name");
+      Check (Programs.Parameters_Type ("toolchain/bin/gcc") = "Gcc_Parameters",
+             "a tree program's record name");
+      Put_Line (Programs.Type_Source ("toolchain/bin/gcc", Gcc));
+      Programs.Publish (Catalog, Grants, 3, "toolchain/bin/gcc", Gcc, Gcc_Bound, Error);
+      Check (Error = CCL.Catalog.Catalog_Valid, "gcc publishes: " & Error'Image);
+      Check (Checks_Out (Gcc_Call), "the typed gcc call checks");
+      Check (Checks_Out ("(gcc.outcome " & Gcc_Call & ")"), "a gcc run's outcome");
    end;
 
    Put_Line ("ccl-programs:" & Checks'Image & " checks," & Failures'Image & " failures");

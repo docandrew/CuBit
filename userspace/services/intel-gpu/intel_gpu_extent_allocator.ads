@@ -14,6 +14,11 @@ generic
 package Intel_GPU_Extent_Allocator is
    package E renames Intel_GPU_Physical_Extents;
    type Pool is limited private;
+   subtype Allocation_Reason is Intel_GPU_Buffer_Reply.Layout.Allocation_Reason;
+   function Last_Allocation_Reason (Object : Pool) return Allocation_Reason;
+   procedure Reset_Allocation_Diagnostic (Object : in out Pool);
+   -- Observational checkpoint only. On failure it identifies the check that
+   -- did not complete; it never authorizes reuse or changes quarantine policy.
    -- Trusted device policy, before any allocation. This reserves/allocates
    -- nothing and does not change CPU/GPU/IOMMU mapping authority. Defaults
    -- retain the current NUC policy; clients must negotiate matching limits
@@ -95,6 +100,7 @@ private
    end record;
    package Records is new Intel_GPU_Record_Store (Entry_Record, (others => <>));
    type Pool is limited record
+      Allocation_Check : Allocation_Reason := Intel_GPU_Buffer_Reply.Layout.Not_Attempted;
       Attempted, Broken, Configured : Boolean := False;
       Limit : Unsigned_64 := Intel_GPU_Buffer_Reply.Layout.Default_Heap.Byte_Quota;
       DMA_Limit : Unsigned_64 := Intel_GPU_Buffer_Reply.Layout.Default_Heap.DMA_Limit;

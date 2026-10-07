@@ -1,5 +1,103 @@
 # Intel probe foundation (Linux-hosted)
 
+## Bounded presentation retirement
+
+`Buffer_Requests.Sharing.Poll` visits at most 16 mapping entries per call,
+rotating across the table. Observers remain conservative until each grant is
+confirmed retired. This bounds entry visits, not kernel-call latency; other
+mapping-table scans are not made constant-time by this change.
+
+Hosted tests exercise 33 pending readers, 52 stalled readers preceding a
+completed reader, wraparound, and writer/presentation exclusion through delayed
+retirement. The grant fixture uses distinct generations and exact completion
+identities. A growth interleaving fills the inline table with pending grants,
+leaves the poll cursor mid-pass, extends twice at a stable CPU address, and
+checks both inline and extension grant identities survive. The last extension
+reader drains despite older stalled readers; all drain after confirmation.
+This is hosted retained-storage coverage, not physical GPU memory growth.
+Run in Nix from `kernel`:
+
+```sh
+alr exec -- gprbuild -p -P../tests/intel-gpu/presentation_lifecycle.gpr
+../tests/intel-gpu/build-presentation-lifecycle/poll_budget_tests
+../tests/intel-gpu/build-presentation-lifecycle/presentation_exclusion_tests
+```
+
+The old full-table polling implementation fails the first budget assertion.
+The exclusion suite also injects ownership loss, session closure and session
+replacement during recipient lookup: each must deny before creating a grant.
+Production recipient lookup is currently local; these tests harden the generic
+boundary rather than demonstrate an existing dispatcher race.
+`view_retention.gpr` additionally covers all six drain orders for three readers.
+Native `run-demand.sh mappings` (under the shared lock and Nix) requires the
+bounded-poll completion marker and tests real self-grants across metadata
+growth, including a pending extension grant during a second expansion. It uses
+the existing built kernel, recorded in `input.sha256`, and is
+not Intel GPU rendering, cross-process isolation, or a new SPARK proof.
+
+Common BO lookup, close and backing-release paths use one matched record
+instead of repeated table searches. Identity/session/closed-state and retained
+pin checks remain mandatory; handles are not indices. This reduces redundant
+linear work but does not provide indexed lookup or a hardware speed estimate.
+
+## Context preflight without a full image temporary
+
+Application-image preflight now calls `Submission_Image.Valid_For_VM` instead
+of constructing and discarding a full submission image. Page validity,
+duplicates, root overlap and GGTT bounds use the same validation path as the
+builder. Context/workaround `Admissible` predicates are shared with their
+builders; no hardware command words or publication sequence changed.
+
+The primary-tree submission-image, context-image and submission-buffer tests
+pass, including bytewise image expectations, all ring sizes at overlapping and
+adjacent positions, scattered backing and retirement failure cases. A fresh
+three-unit SPARK run proves 22 checks, with zero unproved or justified checks
+and no warnings/Assume pragmas in its report. Its scope is Initial, Workaround
+and Context image builders, including validity-equivalence contracts; it does
+not prove the whole driver, submission-page validator or hardware behavior.
+
+```sh
+flock --exclusive --nonblock coordination/build.lock nix develop -c bash -c 'cd kernel && alr exec -- gnatprove -P ../tests/intel-gpu/sparse_vm.gpr --subdirs=preflight-admission-20261004 -u intel_gpu_adln_lrc_initial.adb intel_gpu_adln_lrc_workaround.adb intel_gpu_adln_context_image.adb --level=1 --report=all --checks-as-errors=on -j2'
+```
+
+Evidence: `build-sparse-vm/preflight-admission-20261004/gnatprove/gnatprove.out`.
+The private native driver also compiles/links. Its compiler reports the local
+`Prepare_Image` frame reduced from 271232 to 624 bytes; the two admission
+functions report 8 bytes each. These are individual frames, not a whole-stack
+bound or a measured startup/FPS improvement. Actual materialization still
+uses a large temporary. This change is not in the preserved v60 NUC image.
+
+## Native metadata and retained-reader gates (2026-10-04)
+
+These two modes run privileged disposable CuBit fixtures, not Linux-hosted
+simulations or Intel hardware rendering. Run each under the shared build lock:
+
+```sh
+flock --exclusive --nonblock coordination/build.lock nix develop -c bash tests/intel-gpu/native/run-demand.sh metadata
+flock --exclusive --nonblock coordination/build.lock nix develop -c bash tests/intel-gpu/native/run-demand.sh views
+```
+
+`metadata` uses real owned-memory reservations and committed prefixes. Sparse
+records 17, 18 and 900 retain independent metadata; growth from 6 to 64 table
+records preserves an existing pointer and sentinel. It checks one commit per
+step, shared accounting, overlap rejection and sticky failure after the test's
+owner callback becomes false. That callback is not kernel authority revocation.
+Placement initialization of a fresh typed record intentionally triggers GNAT's
+overlaid-storage initialization warning; this is not a warning-free build.
+
+`views` now requires the retained-reader marker in addition to the existing
+grant lifecycle markers. A producer BO name closes and its original pin is
+returned while a separate read-only, nonforwardable reader remains alive.
+Backing cannot be released until the real self-grant acquisition drains.
+These self-grants do not establish interprocess isolation or GPU completion.
+
+Both primary-tree runs passed on 2026-10-04: evidence directories
+`demand-backing.j5ncsd` (metadata) and `demand-backing.7jwdye` (views), each
+containing `serial.log` and `input.sha256`. They use the existing built kernel
+`c3ccc9c442b4eef1bc8cdc6f31c4d92a493a2a6e7489d89c8c6ebe40c4664a01`;
+the harness records it rather than rebuilding or certifying current kernel
+sources. Production staging and the NUC image are not changed.
+
 ## Demand-grown replacement metadata
 
 Replacement images now retain independent CPU-metadata arenas for the image

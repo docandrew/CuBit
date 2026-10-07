@@ -10,6 +10,8 @@ with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Buffer_Handles;
 with Intel_GPU_Buffer_Views;
 with Intel_GPU_Deferred_Retirement;
+with Intel_GPU_Image_Lease;
+with Intel_GPU_Image_Layout;
 -- Privileged disposable bootstrap; real self-grants, not GPU or isolation proof.
 procedure View_Retention_Check is
    package B renames Intel_GPU_Buffer_Reply;
@@ -175,8 +177,10 @@ begin
       end;
    end loop;
    declare
-      Producer : H.Retained_Reference;
-      Reader : V.View;
+      Producer, Frozen : H.Retained_Reference;
+      Image_Lease : Intel_GPU_Image_Lease.Lease;
+      Image_Key : Intel_GPU_Image_Lease.Identity := (1, Identity, 0, 1, 1, 1, 0, Identity);
+      Reader, Writer : V.View;
       Name : H.Handle;
       Reference, Rejected : G.Grant_Reference;
       Address, Denied : System.Address;
@@ -188,11 +192,27 @@ begin
       Check (Name /= 0, "retained reader register");
       H.Retain_Backing (Registry, Identity, Name, Producer, OK);
       Check (OK, "producer pin");
+      H.Retain_Referenced_Backing (Registry, Producer, Frozen, OK,
+        Exclude_Writes => True);
+      Check (OK, "native write hold acquired");
+      Check (H.Is_Open (Registry, Identity, Name), "write denial uses open name");
+      V.Share (Writer, Registry, Identity, Name, 15, Identity, 0, 4096, True);
+      Check (V.State (Writer) = V.Retired and V.Wire_Reference (Writer) = 0,
+        "independent hold denies writable export with open producer");
       H.Close (Registry, Identity, Name, OK);
       Check (OK and then not H.Resolve (Registry, Identity, Name).Ready,
         "producer name closed before handoff");
-      V.Share_Retained (Reader, Registry, Producer, 15, Identity, 0, 4096);
+      Image_Key.Allocation := Unsigned_64 (Name);
+      Intel_GPU_Image_Lease.Prepare
+        (Image_Lease, Registry, Producer, Image_Key,
+         (Intel_GPU_Image_Layout.BGRA8_UNorm, Intel_GPU_Image_Layout.Linear,
+          16, 16, 64, 0), True, True, OK);
+      Check (OK, "native retained image lease");
+      V.Share_Retained (Reader, Registry, Frozen, 15, Identity, 0, 4096);
       Check (V.State (Reader) = V.Shared, "reader handoff from retained backing");
+      H.Return_Reference (Registry, Frozen, True, OK);
+      Check (OK and H.Writes_Excluded (Registry, Identity, Name),
+        "derived reader retains exclusion");
       H.Return_Reference (Registry, Producer, True, OK);
       Check (OK and then not H.Can_Release_Backing (Registry, Identity, Name),
         "reader pin outlives producer pin");
@@ -206,6 +226,9 @@ begin
       V.Retire (Reader, Registry);
       Check (V.State (Reader) = V.Retiring and V.Wire_Reference (Reader) = 0,
         "retained reader revoke pending");
+      Intel_GPU_Image_Lease.Retire
+        (Image_Lease, Registry, Image_Key, True, False, True, OK);
+      Check (not OK, "image lease waits for CPU reader");
       H.Release_Retired_Backing (Registry, Identity, Name, True, OK);
       Check (not OK, "held reader blocks backing release");
       G.Acquire_Via_Capability (15, Reference, 0, 4096, G.Read_Access, Denied, OK);
@@ -217,8 +240,21 @@ begin
       V.Poll_Retirement (Reader, Registry);
       Check (V.State (Reader) = V.Retired, "reader retirement confirmed");
       H.Release_Retired_Backing (Registry, Identity, Name, True, OK);
+      Check (not OK and then Intel_GPU_Image_Lease.Backing
+        (Image_Lease, Registry, Image_Key).Ready, "image lease independently retains backing");
+      Intel_GPU_Image_Lease.Retire
+        (Image_Lease, Registry, (Image_Key with delta Output_Epoch => 2), True, True, True, OK);
+      Check (not OK, "stale image output epoch denied");
+      Intel_GPU_Image_Lease.Retire
+        (Image_Lease, Registry, Image_Key, True, True, True, OK);
+      Check (OK, "image lease returned after reader drain");
+      Check (not H.Session_Writes_Excluded (Registry, Identity),
+        "final image lease and reader drain clears exclusion");
+      H.Release_Retired_Backing (Registry, Identity, Name, True, OK);
       Check (OK, "backing release after reader drain");
    end;
+   debugPrint ("native image write exclusion: open producer denied and final retirement clears hold PASS" & ASCII.LF);
+   debugPrint ("native image lease: independent pin and real CPU reader drain PASS" & ASCII.LF);
    debugPrint ("native retained reader: closed producer read-only terminal grant drain PASS" & ASCII.LF);
    -- Eight simultaneously held roots force multiple lazy forwarding blocks
    -- with the current seven-scopes/page native layout. Ordinary root/child

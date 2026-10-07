@@ -66,6 +66,7 @@ package Vulkan_Frame with SPARK_Mode is
      with Pre => P.Valid (Pool) and V.Current (Submission) = V.Idle,
        Post => P.Valid (Pool) and
          P.Front (Pool) = P.Front (Pool'Old) and P.Displayed (Pool) = P.Displayed (Pool'Old) and
+         P.Readback (Pool) = P.Readback (Pool'Old) and
          V.Same_Sources (Submission, Submission'Old) and
          (case Result is
             when Started => V.Current (Submission) = V.Recording and
@@ -80,6 +81,7 @@ package Vulkan_Frame with SPARK_Mode is
          V.Current (Submission) = V.Recording and not V.Pass_Started (Submission) and V.Complete_Frame (Submission),
        Post => P.Valid (Pool) and P.Writer (Pool) = P.Writer (Pool'Old) and
          P.Front (Pool) = P.Front (Pool'Old) and P.Displayed (Pool) = P.Displayed (Pool'Old) and
+         P.Readback (Pool) = P.Readback (Pool'Old) and
          V.Same_Sources (Submission, Submission'Old) and
          (if Accepted then P.Rendering (Pool) and V.Pass_Active (Submission) and V.Current (Submission) = V.Recording
           else P.Faulted (Pool));
@@ -91,6 +93,7 @@ package Vulkan_Frame with SPARK_Mode is
          V.Current (Submission) = V.Recording and V.Pass_Active (Submission),
        Post => P.Valid (Pool) and P.Writer (Pool) = P.Writer (Pool'Old) and
          P.Front (Pool) = P.Front (Pool'Old) and P.Displayed (Pool) = P.Displayed (Pool'Old) and
+         P.Readback (Pool) = P.Readback (Pool'Old) and
          V.Same_Sources (Submission, Submission'Old) and
          V.Complete_Frame (Submission) = V.Complete_Frame (Submission'Old) and
          (if Accepted then P.Rendering (Pool) and V.Pass_Finished (Submission) and V.Current (Submission) = V.Recording
@@ -101,6 +104,7 @@ package Vulkan_Frame with SPARK_Mode is
          V.Current (Submission) = V.Recording and V.Pass_Finished (Submission) and V.Complete_Frame (Submission),
        Post => P.Valid (Pool) and P.Writer (Pool) = P.Writer (Pool'Old) and
          P.Front (Pool) = P.Front (Pool'Old) and P.Displayed (Pool) = P.Displayed (Pool'Old) and
+         P.Readback (Pool) = P.Readback (Pool'Old) and
          V.Same_Sources (Submission, Submission'Old) and
          (if Accepted then V.Current (Submission) = V.Pending else P.Faulted (Pool));
    procedure Cancel
@@ -108,6 +112,7 @@ package Vulkan_Frame with SPARK_Mode is
      with Pre => P.Valid (Pool) and P.Rendering (Pool) and V.Current (Submission) in V.Recording | V.Sealed,
        Post => P.Valid (Pool) and P.Ready (Pool) = P.Ready (Pool'Old) and
          P.Front (Pool) = P.Front (Pool'Old) and P.Displayed (Pool) = P.Displayed (Pool'Old) and
+         P.Readback (Pool) = P.Readback (Pool'Old) and
          V.Same_Sources (Submission, Submission'Old) and
          (if Released then V.Quiescent (Submission) and P.Writer (Pool) = P.None and not P.Faulted (Pool)
           else P.Faulted (Pool) and P.Writer (Pool) = P.Writer (Pool'Old));
@@ -117,6 +122,7 @@ package Vulkan_Frame with SPARK_Mode is
      with Pre => P.Valid (Pool) and P.Rendering (Pool) and V.Current (Submission) = V.Pending,
        Post => P.Valid (Pool) and
          P.Front (Pool) = P.Front (Pool'Old) and P.Displayed (Pool) = P.Displayed (Pool'Old) and
+         P.Readback (Pool) = P.Readback (Pool'Old) and
          V.Same_Sources (Submission, Submission'Old) and
          (case Result is
             when Still_Pending => Submission = Submission'Old and Pool = Pool'Old,

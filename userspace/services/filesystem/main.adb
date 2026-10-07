@@ -19,6 +19,10 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Filesystem_Queues;
+with CuBit.Channel_Contracts;
+with CuBit.Protocols;
+with CuBit.Channel_Protocol;
+with CuBit.Channels;
 with CuBit.Busy_Poll;
 with CuBit.Grant_References;
 with CuBit.Directory_Paths;
@@ -347,20 +351,37 @@ procedure main is
    --  Saved reply capabilities for deferred WAITs, one per queue.
    WAIT_REPLY_SLOT_BASE : constant := 40;
 
+   --  A client's queue: three channels it opened (FQ: the queue pair, the
+   --  transfer arena, the dirty arena), docs/data-plane.md.
    type Client_Queue is record
-      owner      : ProcessID := NO_PROCESS;
-      queueGrant : CuBit.Memory_Grants.Grant_Reference;
-      arenaGrant : CuBit.Memory_Grants.Grant_Reference;
-      base       : System.Address := System.Null_Address;
+      owner      : ProcessID := NO_PROCESS;   --  set once the queue pair is open
+      queueLink  : CuBit.Channels.Channel;
+      transferLink : CuBit.Channels.Channel;
+      dirtyLink  : CuBit.Channels.Channel;
+      clientBase : System.Address := System.Null_Address;   --  its region, read-only
+      serverBase : System.Address := System.Null_Address;   --  ours
       arena      : System.Address := System.Null_Address;
       arenaBytes : Unsigned_64 := 0;
       server     : FQueues.Server;
       waiting    : Boolean := False;   --  a WAIT's reply is saved
       --  The dirty arena (FQ.Dirty_*), if the client lent one.
-      dirtyGrant : CuBit.Memory_Grants.Grant_Reference;
       dirty      : System.Address := System.Null_Address;
    end record;
    clientQueues : array (Client_Queue_Index) of Client_Queue;
+   --  Arenas a client lent before its queue pair: taken in when it opens.
+   type Pending_Arenas is record
+      owner : ProcessID := NO_PROCESS;
+      transferLink, dirtyLink : CuBit.Channels.Channel;
+   end record;
+   --  A transfer arena of the queue's layout, of any size up to the
+   --  largest (a client that lists directories lends a small one).
+   function transferArena (offered : CuBit.Channel_Contracts.Contract) return Boolean is
+     (CuBit.Protocols."=" (offered.Element.Identity, FQ.TRANSFER_CONTRACT.Element.Identity)
+      and then CuBit.Protocols."=" (offered.Element.Version, FQ.TRANSFER_CONTRACT.Element.Version)
+      and then CuBit.Channel_Contracts."=" (offered.Kind, FQ.TRANSFER_CONTRACT.Kind)
+      and then offered.Pages = FQ.TRANSFER_CONTRACT.Pages
+      and then offered.Buffers <= FQ.Transfer_Pages);
+   pendingArenas : array (Client_Queue_Index) of Pending_Arenas;
    clientQueueEpoch : Unsigned_32 := 0;
    --  When a queue last had requests (TSC): the service polls its queues
    --  for a short window after that before it blocks, so back-to-back
@@ -382,10 +403,13 @@ procedure main is
    curArena : System.Address := System.Null_Address;
    curArenaBytes : Unsigned_64 := 0;
 
-   function queueWord (q : Client_Queue_Index; offset : Natural) return System.Address is
-     (clientQueues (q).base + Storage_Offset (offset));
+   --  A word of the client's region (it writes them) or of ours.
+   function clientWord (q : Client_Queue_Index; offset : Natural) return System.Address is
+     (clientQueues (q).clientBase + Storage_Offset (offset));
+   function serverWord (q : Client_Queue_Index; offset : Natural) return System.Address is
+     (clientQueues (q).serverBase + Storage_Offset (offset));
 
-   --  The namespace generation (FQ.Namespace_Generation_At), published in
+   --  The namespace generation (FQ.Server_Namespace_At), published in
    --  every client's queue page. It moves on before any change that could
    --  alter what a name resolves to, or whether a client may open it, so a
    --  client never reuses a parked handle across such a change.
@@ -393,7 +417,7 @@ procedure main is
 
    procedure publishNamespace (q : Client_Queue_Index) is
       word : Unsigned_32 with Volatile, Import,
-        Address => queueWord (q, FQ.Namespace_Generation_At);
+        Address => serverWord (q, FQ.Server_Namespace_At);
    begin
       word := namespaceGeneration;
    end publishNamespace;
@@ -405,7 +429,7 @@ procedure main is
       namespaceGeneration :=
         (if namespaceGeneration = Unsigned_32'Last then 1 else namespaceGeneration + 1);
       for q in clientQueues'Range loop
-         if clientQueues (q).base /= System.Null_Address and then
+         if clientQueues (q).serverBase /= System.Null_Address and then
            (owner = NO_PROCESS or else clientQueues (q).owner = owner)
          then
             publishNamespace (q);
@@ -599,15 +623,15 @@ procedure main is
       declare
          entryAt : constant Natural := FQ.Delegations_At + slot * FQ.Delegation_Bytes;
          valid : Unsigned_32 with Volatile, Import,
-           Address => queueWord (q, entryAt + FQ.Delegation_Valid_At);
+           Address => serverWord (q, entryAt + FQ.Delegation_Valid_At);
          mode : Unsigned_32 with Volatile, Import,
-           Address => queueWord (q, entryAt + FQ.Delegation_Mode_At);
+           Address => serverWord (q, entryAt + FQ.Delegation_Mode_At);
          inode : Unsigned_64 with Volatile, Import,
-           Address => queueWord (q, entryAt + FQ.Delegation_Inode_At);
+           Address => serverWord (q, entryAt + FQ.Delegation_Inode_At);
          version : Unsigned_64 with Volatile, Import,
-           Address => queueWord (q, entryAt + FQ.Delegation_Version_At);
+           Address => serverWord (q, entryAt + FQ.Delegation_Version_At);
          size : Unsigned_64 with Volatile, Import,
-           Address => queueWord (q, entryAt + FQ.Delegation_Size_At);
+           Address => serverWord (q, entryAt + FQ.Delegation_Size_At);
          key : constant Inode_Identity := (files (slot).volume, files (slot).inodeNum);
       begin
          valid := 0;
@@ -992,9 +1016,9 @@ procedure main is
       end if;
       declare
          ring : FQueues.Completions.Ring with Import,
-           Address => queueWord (q, FQ.Answers_At);
+           Address => serverWord (q, FQ.Server_Answers_At);
          produced : Unsigned_32 with Volatile, Import,
-           Address => queueWord (q, FQ.Completions_At + FQ.Produced_At);
+           Address => serverWord (q, FQ.Server_Answered_At);
          ignore : Unsigned_64;
       begin
          --  Owed <= Space (FQueues.Valid): the answer has its slot.
@@ -1483,7 +1507,8 @@ procedure main is
             if checkAccess (sender, pathStr, requiredRights or ACL_READ) then
                mayRead := True;
             elsif not checkAccess (sender, pathStr, requiredRights) then
-               debugPrint ("FS: access denied for PID" & LF);
+               debugPrint ("FS: access denied for PID" & ProcessID'Image (sender)
+                           & ": " & pathStr & LF);
                sendReply (sender, REPLY_ACCESS_DENIED, Unsigned_64'Last);
                return;
             end if;
@@ -3398,93 +3423,108 @@ procedure main is
    rdSize : Unsigned_64;
 
    ---------------------------------------------------------------------------
-   --  handleQueue: a client lends its request queue and transfer arena
-   --  (FQ.OP_FS_QUEUE): words 0 = queue grant, 1 = arena grant (wire form),
-   --  2 = arena bytes. One queue per process.
+   --  handleOpen: a client opens its queue's channels (FQ, docs/data-plane.md):
+   --  the transfer arena and the optional dirty arena first, then the queue
+   --  pair, which takes them in. One queue per process.
    ---------------------------------------------------------------------------
-   procedure handleQueue (sender : ProcessID; msg : Message) is
+   --  A channel's number here: its queue (or pending entry) and connector.
+   function channelNumber (index : Client_Queue_Index; connector : Unsigned_16) return Unsigned_64 is
+     (Unsigned_64 (index) * 4 + Unsigned_64 (connector));
+
+   procedure handleChannelOpen (sender : ProcessID; msg : Message) is
+      use type CuBit.Channel_Contracts.Contract;
+      isOpen, valid : Boolean;
+      offered : CuBit.Channel_Contracts.Contract;
+      openerSide : CuBit.Channels.Side;
+      connector : Unsigned_16;
+      answer : Message;
+      ignore : Unsigned_64;
+      pending : Client_Queue_Count := No_Client_Queue;
       free : Client_Queue_Count := No_Client_Queue;
-      queueRef, arenaRef : CuBit.Grant_References.Reference;
-      queueGrant, arenaGrant : CuBit.Memory_Grants.Grant_Reference;
-      base, arena : System.Address;
-      ok, returned : Boolean;
+
+      procedure refuse (why : CuBit.Channel_Protocol.Open_Refusal) is
+      begin
+         ignore := reply (sender, CuBit.Channels.Refusal_Reply (why));
+      end refuse;
    begin
-      if msg.tag.length not in 3 .. 4 or else
-        not CuBit.Grant_References.Valid_Wire (msg.words (0)) or else
-        not CuBit.Grant_References.Valid_Wire (msg.words (1)) or else
-        msg.words (2) = 0 or else
-        (msg.tag.length = 4 and then msg.words (3) /= 0 and then
-         not CuBit.Grant_References.Valid_Wire (msg.words (3)))
-      then
-         sendReply (sender, REPLY_ERR, 0);
-         return;
-      end if;
+      CuBit.Channels.Decode_Open (msg, isOpen, valid, offered, openerSide, connector);
       for q in clientQueues'Range loop
          if clientQueues (q).owner = sender then
-            sendReply (sender, REPLY_ERR, 0);
+            refuse (CuBit.Channel_Protocol.No_Room);     --  one queue per process
             return;
          end if;
-         if free = No_Client_Queue and then clientQueues (q).owner = NO_PROCESS then
+      end loop;
+      for q in pendingArenas'Range loop
+         if pendingArenas (q).owner = sender then
+            pending := q;
+         elsif free = No_Client_Queue and then pendingArenas (q).owner = NO_PROCESS then
             free := q;
          end if;
       end loop;
-      if free = No_Client_Queue then
-         sendReply (sender, REPLY_ERR, 0);
+      if pending = No_Client_Queue then
+         pending := free;
+      end if;
+      if not valid or else pending = No_Client_Queue then
+         refuse ((if valid then CuBit.Channel_Protocol.No_Room
+                  else CuBit.Channel_Protocol.Unsupported));
          return;
       end if;
-      queueRef := CuBit.Grant_References.Decode (msg.words (0));
-      arenaRef := CuBit.Grant_References.Decode (msg.words (1));
-      queueGrant := (slot => queueRef.slot, generation => queueRef.generation);
-      arenaGrant := (slot => arenaRef.slot, generation => arenaRef.generation);
-      CuBit.Memory_Grants.Acquire
-        (queueGrant, sender, 0, FQ.Queue_Bytes,
-         CuBit.Memory_Grants.Write_Access, base, ok);
-      if not ok then
-         sendReply (sender, REPLY_ACCESS_DENIED, 0);
-         return;
-      end if;
-      CuBit.Memory_Grants.Acquire
-        (arenaGrant, sender, 0, msg.words (2),
-         CuBit.Memory_Grants.Write_Access, arena, ok);
-      if not ok then
-         CuBit.Memory_Grants.Return_Acquisition (queueGrant, returned);
-         sendReply (sender, REPLY_ACCESS_DENIED, 0);
-         return;
-      end if;
-      clientQueues (free) := (owner      => sender,
-                              queueGrant => queueGrant,
-                              arenaGrant => arenaGrant,
-                              base       => base,
-                              arena      => arena,
-                              arenaBytes => msg.words (2),
-                              server     => <>,
-                              waiting    => False,
-                              dirtyGrant => <>,
-                              dirty      => System.Null_Address);
-      --  The dirty arena is optional: without it, no write delegations.
-      if msg.tag.length = 4 and then msg.words (3) /= 0 then
-         declare
-            dirtyRef : constant CuBit.Grant_References.Reference :=
-              CuBit.Grant_References.Decode (msg.words (3));
-            dirtyGrant : constant CuBit.Memory_Grants.Grant_Reference :=
-              (slot => dirtyRef.slot, generation => dirtyRef.generation);
-            dirty : System.Address;
-         begin
-            CuBit.Memory_Grants.Acquire
-              (dirtyGrant, sender, 0, FQ.Dirty_Arena_Bytes,
-               CuBit.Memory_Grants.Write_Access, dirty, ok);
-            if ok then
-               clientQueues (free).dirtyGrant := dirtyGrant;
-               clientQueues (free).dirty := dirty;
+      declare
+         p : Pending_Arenas renames pendingArenas (pending);
+      begin
+         if connector = FQ.Transfer_Connector and then transferArena (offered)
+           and then not p.transferLink.Active
+         then
+            CuBit.Channels.Accept_Open
+              (sender, msg, channelNumber (pending, connector), p.transferLink, answer);
+            if p.transferLink.Active then
+               p.owner := sender;
             end if;
-         end;
-      end if;
-      publishNamespace (free);
-      sendReply (sender, REPLY_OK, 0);
-   end handleQueue;
+            ignore := reply (sender, answer);
+         elsif connector = FQ.Dirty_Connector and then offered = FQ.DIRTY_CONTRACT
+           and then not p.dirtyLink.Active
+         then
+            CuBit.Channels.Accept_Open
+              (sender, msg, channelNumber (pending, connector), p.dirtyLink, answer);
+            if p.dirtyLink.Active then
+               p.owner := sender;
+            end if;
+            ignore := reply (sender, answer);
+         elsif connector = FQ.Queue_Connector and then offered = FQ.QUEUE_CONTRACT
+           and then p.transferLink.Active and then clientQueues (pending).owner = NO_PROCESS
+         then
+            declare
+               c : Client_Queue renames clientQueues (pending);
+            begin
+               CuBit.Channels.Accept_Open
+                 (sender, msg, channelNumber (pending, connector), c.queueLink, answer);
+               if c.queueLink.Active then
+                  c.owner := sender;
+                  c.clientBase := System.Storage_Elements.To_Address
+                    (System.Storage_Elements.Integer_Address (c.queueLink.Peer_Base));
+                  c.serverBase := System.Storage_Elements.To_Address
+                    (System.Storage_Elements.Integer_Address (c.queueLink.Own_Base));
+                  c.transferLink := p.transferLink;
+                  c.arena := CuBit.Channels.Buffer_Address (c.transferLink, 0);
+                  c.arenaBytes := Unsigned_64 (c.transferLink.Item.Buffers) * FQ.Page_Bytes;
+                  c.server := (others => <>);
+                  c.waiting := False;
+                  if p.dirtyLink.Active then
+                     c.dirtyLink := p.dirtyLink;
+                     c.dirty := CuBit.Channels.Buffer_Address (c.dirtyLink, 0);
+                  end if;
+                  p := (others => <>);
+                  publishNamespace (pending);
+               end if;
+               ignore := reply (sender, answer);
+            end;
+         else
+            refuse (CuBit.Channel_Protocol.Unknown_Type);
+         end if;
+      end;
+   end handleChannelOpen;
 
    procedure releaseClientQueue (owner : ProcessID) is
-      returned : Boolean;
       ignore : Unsigned_64;
    begin
       for q in clientQueues'Range loop
@@ -3497,12 +3537,17 @@ procedure main is
                   (tag => (label => REPLY_ERR, length => 0, flags => 0, reserved => 0),
                    authorityTag => 0, words => [others => 0]));
             end if;
-            CuBit.Memory_Grants.Return_Acquisition (clientQueues (q).queueGrant, returned);
-            CuBit.Memory_Grants.Return_Acquisition (clientQueues (q).arenaGrant, returned);
-            if clientQueues (q).dirty /= System.Null_Address then
-               CuBit.Memory_Grants.Return_Acquisition (clientQueues (q).dirtyGrant, returned);
-            end if;
+            CuBit.Channels.Close (clientQueues (q).queueLink);
+            CuBit.Channels.Close (clientQueues (q).transferLink);
+            CuBit.Channels.Close (clientQueues (q).dirtyLink);
             clientQueues (q) := (others => <>);
+         end if;
+      end loop;
+      for p of pendingArenas loop
+         if p.owner = owner then
+            CuBit.Channels.Close (p.transferLink);
+            CuBit.Channels.Close (p.dirtyLink);
+            p := (others => <>);
          end if;
       end loop;
    end releaseClientQueue;
@@ -3510,7 +3555,7 @@ procedure main is
    --  Take the client's reaped index: its answers' slots are free again.
    procedure acceptReaped (q : Client_Queue_Index) is
       consumed : Unsigned_32 with Volatile, Import,
-        Address => queueWord (q, FQ.Completions_At + FQ.Consumed_At);
+        Address => clientWord (q, FQ.Client_Reaped_At);
       ignore : Boolean;
    begin
       FQueues.Accept_Reaped
@@ -3780,13 +3825,13 @@ procedure main is
    --  Take queue q's requests and handle each.
    procedure serviceQueue (q : Client_Queue_Index) is
       produced : Unsigned_32 with Volatile, Import,
-        Address => queueWord (q, FQ.Submissions_At + FQ.Produced_At);
+        Address => clientWord (q, FQ.Client_Submitted_At);
       consumed : Unsigned_32 with Volatile, Import,
-        Address => queueWord (q, FQ.Submissions_At + FQ.Consumed_At);
+        Address => serverWord (q, FQ.Server_Taken_At);
       wake : Unsigned_32 with Volatile, Import,
-        Address => queueWord (q, FQ.Submissions_At + FQ.Wake_At);
-      requests : FQueues.Submissions.Ring with Import,
-        Address => queueWord (q, FQ.Requests_At);
+        Address => serverWord (q, FQ.Server_Wake_At);
+      requests : constant FQueues.Submissions.Ring with Import,
+        Address => clientWord (q, FQ.Client_Requests_At);
       item : FQueues.Submission;
       ok   : Boolean;
       took : Boolean := False;
@@ -3824,7 +3869,7 @@ procedure main is
          if clientQueues (q).owner /= NO_PROCESS then
             declare
                produced : Unsigned_32 with Volatile, Import,
-                 Address => queueWord (q, FQ.Submissions_At + FQ.Produced_At);
+                 Address => clientWord (q, FQ.Client_Submitted_At);
             begin
                if FQueues.Submissions.Index (produced) /=
                  clientQueues (q).server.Requests.Consumed
@@ -3874,9 +3919,9 @@ procedure main is
          if clientQueues (q).owner /= NO_PROCESS then
             declare
                produced : Unsigned_32 with Volatile, Import,
-                 Address => queueWord (q, FQ.Submissions_At + FQ.Produced_At);
+                 Address => clientWord (q, FQ.Client_Submitted_At);
                wake : Unsigned_32 with Volatile, Import,
-                 Address => queueWord (q, FQ.Submissions_At + FQ.Wake_At);
+                 Address => serverWord (q, FQ.Server_Wake_At);
             begin
                wake := clientQueueEpoch;
                System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
@@ -4008,10 +4053,13 @@ begin
       receiveUntil (nextCommit, sender, msg, received);
       if received then
       case msg.tag.label is
-         when FQ.OP_FS_QUEUE =>
-            handleQueue (sender, msg);
-         when FQ.OP_FS_KICK =>
+         when CuBit.Channel_Protocol.OP_OPEN_PRODUCING =>
+            handleChannelOpen (sender, msg);
+         when CuBit.Channel_Protocol.OP_KICK =>
             null;   --  one-way: the queue is serviced at the loop's top
+         when CuBit.Channel_Protocol.OP_CLOSE =>
+            --  One-way: a client let go of its queue.
+            releaseClientQueue (sender);
          when FQ.OP_FS_WAIT =>
             handleWait (sender);
          when OP_OPEN =>

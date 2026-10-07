@@ -1,4 +1,47 @@
 package body Intel_GPU_Buffer_Requests is
+   procedure Configure_Client_Budgets
+     (Object : in out Service; Limit : Unsigned_64; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if Object.Failed or else not Owner_Ready or else Object.Client_Limit /= 0 or else
+        Object.Attempted /= First_Slot - 1 or else Object.Pending /= 0 or else
+        Object.Private_Pending /= 0 or else Limit = 0 or else Limit mod 4096 /= 0 then return; end if;
+      Object.Client_Limit := Limit; Accepted := True;
+   end Configure_Client_Budgets;
+   procedure Extend_Client_Accounts
+     (Object : in out Service; Base, Bytes : Unsigned_64; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if Object.Failed or else not Owner_Ready or else Object.Pending /= 0 or else
+        Object.Private_Pending /= 0 then return; end if;
+      Intel_GPU_Client_Budgets.Extend (Object.Client_Accounts, Base, Bytes, Accepted);
+   end Extend_Client_Accounts;
+   function Client_Usage (Object : Service; Session : Unsigned_64)
+     return Intel_GPU_Client_Budgets.Usage is
+     (Intel_GPU_Client_Budgets.Snapshot (Object.Client_Accounts, Session));
+   function Charge_Client
+     (Object : in out Service; Session, Bytes : Unsigned_64) return Boolean is
+      Accepted : Boolean;
+   begin
+      if Object.Client_Limit = 0 or Session = 0 then return True; end if;
+      if not Client_Usage (Object, Session).Known then
+         Intel_GPU_Client_Budgets.Open (Object.Client_Accounts, Session, Object.Client_Limit, Accepted);
+         if not Accepted then return False; end if;
+      end if;
+      Intel_GPU_Client_Budgets.Reserve (Object.Client_Accounts, Session, Bytes, Accepted);
+      return Accepted;
+   end Charge_Client;
+   function Refund_Client
+     (Object : in out Service; Index : Intel_GPU_Buffer_Backing.Slot) return Boolean is
+      Item : constant Allocation_Record := Records.Get (Object.Items, Index);
+      Accepted : Boolean;
+   begin
+      if Object.Client_Limit = 0 or Item.Owner = 0 then return True; end if;
+      Intel_GPU_Client_Budgets.Release_Confirmed
+        (Object.Client_Accounts, Item.Owner, Item.Charge_Bytes, True, Accepted);
+      if not Accepted then Quarantine (Object); end if;
+      return Accepted;
+   end Refund_Client;
    function Image_Writes_Held (Object : Service; Session : Unsigned_64) return Boolean is
      (Object.Failed or else not Owner_Ready or else
       Intel_GPU_Buffer_Handles.Session_Writes_Excluded (Object.Handles, Session));
@@ -82,10 +125,15 @@ package body Intel_GPU_Buffer_Requests is
       return (True, ID, Issued.Session, Issued.Handle,
         Ticket_Generation (ID));
    end Closed_At;
+   function Ticket_Bytes (Object : Service; ID : Ticket) return Unsigned_64 is
+     (if ID = 0 or else Ticket_Slot (ID) > Committed_Slots (Object) or else
+         Records.Get (Object.Items, Ticket_Slot (ID)).Identity /= ID
+      then 0 else Records.Get (Object.Items, Ticket_Slot (ID)).Charge_Bytes);
    procedure Reserve_Private
      (Object : in out Service; Session : Unsigned_64; ID : out Ticket;
       Reclaimable : Boolean := False;
-      Kind : Private_Table_Kind := Replacement_Tables) is
+      Kind : Private_Table_Kind := Replacement_Tables;
+      Pages : Intel_GPU_Buffer_Backing.Page_Count) is
    begin
       ID := 0;
       if Object.Failed or else Object.Pending /= 0 or else
@@ -95,6 +143,7 @@ package body Intel_GPU_Buffer_Requests is
       if Reclaimable then
          for Index in 1 .. Committed_Slots (Object) loop
             if Records.Get (Object.Items, Index).Private_Reusable then
+               if not Charge_Client (Object, Session, Unsigned_64 (Pages) * 4096) then return; end if;
                Object.Private_Pending := Records.Get (Object.Items, Index).Identity + Ticket_Stride;
                Records.Put (Object.Items, Index,
            (Records.Get (Object.Items, Index) with delta Identity => Object.Private_Pending));
@@ -104,13 +153,15 @@ package body Intel_GPU_Buffer_Requests is
            (Records.Get (Object.Items, Index) with delta Private_Reusable => False));
                Records.Put (Object.Items, Index,
                  (Records.Get (Object.Items, Index) with delta
-                  Private_Closed => False, Private_Reclaimable => True, Table_Kind => Kind));
+                  Private_Closed => False, Private_Reclaimable => True, Table_Kind => Kind,
+                  Charge_Bytes => Unsigned_64 (Pages) * 4096));
                ID := Object.Private_Pending;
                return;
             end if;
          end loop;
       end if;
       if Object.Attempted >= Committed_Slots (Object) then return; end if;
+      if not Charge_Client (Object, Session, Unsigned_64 (Pages) * 4096) then return; end if;
       Object.Attempted := Object.Attempted + 1;
       Object.Private_Pending := Ticket (Object.Attempted);
       Records.Put (Object.Items, Object.Attempted,
@@ -119,7 +170,8 @@ package body Intel_GPU_Buffer_Requests is
            (Records.Get (Object.Items, Object.Attempted) with delta Owner => Session));
       Records.Put (Object.Items, Object.Attempted,
            (Records.Get (Object.Items, Object.Attempted) with delta
-            Private_Reclaimable => Reclaimable, Table_Kind => Kind));
+            Private_Reclaimable => Reclaimable, Table_Kind => Kind,
+            Charge_Bytes => Unsigned_64 (Pages) * 4096));
       ID := Object.Private_Pending;
    end Reserve_Private;
    function Is_Table_Allocation
@@ -154,8 +206,10 @@ package body Intel_GPU_Buffer_Requests is
         not Records.Get (Object.Items, Index).Private_Reclaimable or else Records.Get (Object.Items, Index).Private_Reusable or else
         Records.Get (Object.Items, Index).Issued.Handle /= 0 or else Records.Get (Object.Items, Index).Reusable
       then return; end if;
+      if not Refund_Client (Object, Index) then return; end if;
       Records.Put (Object.Items, Index,
-           (Records.Get (Object.Items, Index) with delta Private_Reusable => True));
+           (Records.Get (Object.Items, Index) with delta Private_Reusable => True,
+            Charge_Bytes => 0));
       Accepted := True;
    end Acknowledge_Private_Retirement;
    procedure Finish_Private
@@ -200,6 +254,9 @@ package body Intel_GPU_Buffer_Requests is
       Object.Pending_Previous_Session := 0;
       for I in 1 .. Committed_Slots (Object) loop
          if Records.Get (Object.Items, I).Reusable then
+            if not Charge_Client (Object, Session, Request (2)) then
+               Object.Outcome := Client_Quota_Unavailable; return;
+            end if;
             Object.Pending_Previous := Records.Get (Object.Items, I).Issued.Handle;
             Object.Pending_Previous_Session := Records.Get (Object.Items, I).Issued.Session;
             Object.Pending := Records.Get (Object.Items, I).Identity + Ticket_Stride;
@@ -219,6 +276,9 @@ package body Intel_GPU_Buffer_Requests is
             Object.Outcome := Slots_Exhausted;
             return;
          end if;
+         if not Charge_Client (Object, Session, Request (2)) then
+            Object.Outcome := Client_Quota_Unavailable; return;
+         end if;
          Object.Attempted := Object.Attempted + 1;
          Object.Pending := Ticket (Object.Attempted);
          Records.Put (Object.Items, Object.Attempted,
@@ -231,6 +291,9 @@ package body Intel_GPU_Buffer_Requests is
       Object.Pending_Sender := Sender;
       Object.Pending_Stamp := Stamp;
       Object.Pending_Bytes := Request (2);
+      Records.Put (Object.Items, Ticket_Slot (Object.Pending),
+        (Records.Get (Object.Items, Ticket_Slot (Object.Pending)) with delta
+         Charge_Bytes => Request (2)));
       Deferred := Object.Pending;
       Object.Outcome := Awaiting_Backing;
    end Handle;
@@ -316,11 +379,22 @@ package body Intel_GPU_Buffer_Requests is
       then return; end if;
       Handles.Release_Retired_Backing
         (Object.Handles, Session, Records.Get (Object.Items, Index).Issued.Handle, True, Accepted);
+      if Accepted and then not Refund_Client (Object, Index) then Accepted := False; end if;
       if Accepted then Records.Put (Object.Items, Index,
-           (Records.Get (Object.Items, Index) with delta Reusable => True)); end if;
+           (Records.Get (Object.Items, Index) with delta Reusable => True,
+            Charge_Bytes => 0)); end if;
    end Acknowledge_Retirement;
    procedure Retire_Session (Object : in out Service; Session : Unsigned_64) is
    begin
+      if Object.Client_Limit /= 0 and then Session /= 0 and then
+        not Client_Usage (Object, Session).Known then
+         declare Accepted : Boolean; begin
+            Intel_GPU_Client_Budgets.Open
+              (Object.Client_Accounts, Session, Object.Client_Limit, Accepted);
+            if not Accepted then Quarantine (Object); end if;
+         end;
+      end if;
+      Intel_GPU_Client_Budgets.Close (Object.Client_Accounts, Session);
       Handles.Close_Session (Object.Handles, Session);
       for I in 1 .. Committed_Slots (Object) loop
          if Records.Get (Object.Items, I).Owner = Session then
@@ -350,6 +424,7 @@ package body Intel_GPU_Buffer_Requests is
    procedure Quarantine (Object : in out Service) is
    begin
       Object.Failed := True;
+      Intel_GPU_Client_Budgets.Quarantine (Object.Client_Accounts);
       Handles.Quarantine (Object.Handles);
    end Quarantine;
 end Intel_GPU_Buffer_Requests;

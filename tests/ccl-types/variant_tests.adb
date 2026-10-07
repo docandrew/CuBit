@@ -1,5 +1,7 @@
+with CCL.Evaluation;
 with Ada.Text_IO; use Ada.Text_IO;
 with CCL.Language; use CCL.Language;
+   use CCL.Evaluation;
 with CCL.Language.Views; use CCL.Language.Views;
 with CCL.Catalog;
 with CCL.Compiler;
@@ -34,7 +36,7 @@ procedure Variant_Tests is
       " ((Reading.Flag b) (if b 7 8)))");
    procedure Check (Source, Expected, VM_Expected : String) is
    begin
-      Interpret (Source, 4096, R);
+      Evaluate (Source, 4096, R);
       Put_Line ("checking: " & Source);
       if R.Status /= Succeeded then Put_Line (CCL.Sessions.Result_Image (R)); end if;
       pragma Assert (R.Status = Succeeded);
@@ -44,7 +46,7 @@ procedure Variant_Tests is
       Convert (A.Rendered.Data (1 .. A.Rendered.Length), Basic, Lisp, Catalog, B);
       if B.Status /= Converted then Put_Line (A.Rendered.Data (1 .. A.Rendered.Length)); end if;
       pragma Assert (B.Status = Converted and A.Canonical = B.Canonical);
-      Interpret (B.Canonical.Data (1 .. B.Canonical.Length), 4096, R);
+      Evaluate (B.Canonical.Data (1 .. B.Canonical.Length), 4096, R);
       pragma Assert (R.Status = Succeeded and CCL.Sessions.Result_Image (R) = Expected);
       Analyze (Source, Analysis);
       CCL.Compiler.Compile (Analysis, Compiled);
@@ -69,7 +71,7 @@ procedure Variant_Tests is
    end Check;
    procedure Reject (Source : String; Code : Diagnostic_Code) is
    begin
-      Interpret (Source, 4096, R);
+      Evaluate (Source, 4096, R);
       if R.Diagnostic /= Code then Put_Line (Source & " -> " & R.Diagnostic'Image & "; expected " & Code'Image); end if;
       pragma Assert (R.Status in Parse_Failed | Type_Check_Failed);
       pragma Assert (R.Diagnostic = Code and not R.Has_Value);

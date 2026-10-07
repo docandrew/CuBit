@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with CCL.List_Operations;
 with Ada.Text_IO; use Ada.Text_IO;
 with CCL.Sessions;
@@ -481,7 +482,7 @@ procedure Main is
          CCL.Language.Analysis_Diagnostic_Position (Analysis) = 1,
          "report shared frontend type diagnostic");
 
-      CCL.Language.Interpret ("(+ 20 22)", 16, Outcome);
+      CCL.Evaluation.Evaluate ("(+ 20 22)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Has_Value and then
@@ -489,46 +490,46 @@ procedure Main is
          Outcome.Result_Value.Integer = 42,
          "interpret integer expression");
 
-      CCL.Language.Interpret ("(* 6 7)", 16, Outcome);
+      CCL.Evaluation.Evaluate ("(* 6 7)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Result_Value.Integer = 42,
          "interpret checked integer multiplication");
-      CCL.Language.Interpret ("(/ 3661000 3600000)", 16, Outcome);
+      CCL.Evaluation.Evaluate ("(/ 3661000 3600000)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Result_Value.Integer = 1,
          "interpret integer division");
-      CCL.Language.Interpret ("(mod 3661000 3600000)", 16, Outcome);
+      CCL.Evaluation.Evaluate ("(mod 3661000 3600000)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Result_Value.Integer = 61_000,
          "interpret integer modulo");
-      CCL.Language.Interpret ("(/ 1 0)", 16, Outcome);
+      CCL.Evaluation.Evaluate ("(/ 1 0)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Evaluation_Division_By_Zero,
          "report typed division-by-zero failure");
-      CCL.Language.Interpret ("(* 9223372036854775807 2)", 16, Outcome);
+      CCL.Evaluation.Evaluate ("(* 9223372036854775807 2)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Evaluation_Overflow,
          "trap multiplication overflow");
 
       --  Subtraction, comparisons and short-circuit connectives.
-      CCL.Language.Interpret ("(- 50 8)", 16, Outcome);
+      CCL.Evaluation.Evaluate ("(- 50 8)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Result_Value.Integer = 42,
          "interpret checked integer subtraction");
-      CCL.Language.Interpret ("(- 5 8)", 16, Outcome);
+      CCL.Evaluation.Evaluate ("(- 5 8)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Result_Value.Integer = -3,
          "subtraction below zero");
-      CCL.Language.Interpret ("(- -9223372036854775807 2)", 16, Outcome);
+      CCL.Evaluation.Evaluate ("(- -9223372036854775807 2)", 16, Outcome);
       Check
         (Outcome.Status /= CCL.Language.Succeeded,
          "reject or trap subtraction below the integer range");
-      CCL.Language.Interpret ("(- 0 9223372036854775807)", 16, Outcome);
+      CCL.Evaluation.Evaluate ("(- 0 9223372036854775807)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Result_Value.Integer = -9223372036854775807,
@@ -557,7 +558,7 @@ procedure Main is
             (S10'Access, True), (S11'Access, False), (S12'Access, True)];
       begin
          for C of Cases loop
-            CCL.Language.Interpret (C.Source.all, 32, Outcome);
+            CCL.Evaluation.Evaluate (C.Source.all, 32, Outcome);
             Check
               (Outcome.Status = CCL.Language.Succeeded and then
                Outcome.Result_Value.Kind = Boolean_Value and then
@@ -566,7 +567,7 @@ procedure Main is
          end loop;
       end;
       --  Lists: [a b c] and (list a b c), length, at, element types.
-      CCL.Language.Interpret ("[10 20 30]", 32, Outcome);
+      CCL.Evaluation.Evaluate ("[10 20 30]", 32, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_List and then
          Outcome.List_Length = 3 and then
@@ -574,40 +575,40 @@ procedure Main is
          Outcome.List_Values (3).Integer = 30 and then
          not CCL.Language.Has_Scalar (Outcome),
          "list literal result");
-      CCL.Language.Interpret ("(length (list 1 2 3 4))", 32, Outcome);
+      CCL.Evaluation.Evaluate ("(length (list 1 2 3 4))", 32, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Result_Value.Integer = 4,
          "length of a list");
-      CCL.Language.Interpret ("(at [7 8 9] 2)", 32, Outcome);
+      CCL.Evaluation.Evaluate ("(at [7 8 9] 2)", 32, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Result_Value.Integer = 8,
          "at reads an element with 1-based bounds");
-      CCL.Language.Interpret ("(at [7 8 9] 4)", 32, Outcome);
+      CCL.Evaluation.Evaluate ("(at [7 8 9] 4)", 32, Outcome);
       Check
         (Outcome.Status = CCL.Language.Evaluation_Index_Error,
          "at past the bounds is a typed index error");
-      CCL.Language.Interpret ("(at [7 8 9] 0)", 32, Outcome);
+      CCL.Evaluation.Evaluate ("(at [7 8 9] 0)", 32, Outcome);
       Check
         (Outcome.Status = CCL.Language.Evaluation_Index_Error,
          "at below the bounds is a typed index error");
-      CCL.Language.Interpret ("[1 true]", 32, Outcome);
+      CCL.Evaluation.Evaluate ("[1 true]", 32, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.List_Element_Mismatch,
          "list elements share one type");
-      CCL.Language.Interpret ("[]", 32, Outcome);
+      CCL.Evaluation.Evaluate ("[]", 32, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Empty_List_Needs_Type,
          "an empty list needs a declared type");
-      CCL.Language.Interpret ("(let ((xs [1 2 3])) (+ (at xs 1) (length xs)))", 64, Outcome);
+      CCL.Evaluation.Evaluate ("(let ((xs [1 2 3])) (+ (at xs 1) (length xs)))", 64, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Result_Value.Integer = 4,
          "a let-bound list");
-      CCL.Language.Interpret ("[""alpha"" ""be"" (concat ""g"" ""amma"")]", 64, Outcome);
+      CCL.Evaluation.Evaluate ("[""alpha"" ""be"" (concat ""g"" ""amma"")]", 64, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_List and then
          Outcome.List_Length = 3 and then
@@ -615,18 +616,18 @@ procedure Main is
          Outcome.List_Text.Data (Outcome.List_Text_Ends (1) + 1 .. Outcome.List_Text_Ends (2)) = "be" and then
          Outcome.List_Text.Data (Outcome.List_Text_Ends (2) + 1 .. Outcome.List_Text_Ends (3)) = "gamma",
          "a list of strings");
-      CCL.Language.Interpret ("(length (at [""cubit"" ""os""] 1))", 64, Outcome);
+      CCL.Evaluation.Evaluate ("(length (at [""cubit"" ""os""] 1))", 64, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Result_Value.Integer = 5,
          "at on a string list gives a string");
-      CCL.Language.Interpret ("[(< 1 2) (> 1 2)]", 64, Outcome);
+      CCL.Evaluation.Evaluate ("[(< 1 2) (> 1 2)]", 64, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.List_Length = 2 and then
          Outcome.List_Values (1).Boolean and then not Outcome.List_Values (2).Boolean,
          "a list of Booleans");
       --  Literals longer than one syntax node's 16 components chain chunks.
-      CCL.Language.Interpret ("[1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17]", 64, Outcome);
+      CCL.Evaluation.Evaluate ("[1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17]", 64, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.List_Total = 17 and then
          Outcome.List_Values (17).Integer = 17,
@@ -641,16 +642,16 @@ procedure Main is
          procedure Literal (Program, Expected, Name : String) is
             Again : CCL.Language.Interpretation_Result;
          begin
-            CCL.Language.Interpret (Types_Source & Program, 100_000, Outcome);
+            CCL.Evaluation.Evaluate (Types_Source & Program, 100_000, Outcome);
             Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_Literal and then
                    Outcome.Literal.Data (1 .. Outcome.Literal.Length) = Expected, Name);
-            CCL.Language.Interpret (Types_Source & Expected, 100_000, Again);
+            CCL.Evaluation.Evaluate (Types_Source & Expected, 100_000, Again);
             Check (Again.Status = CCL.Language.Succeeded and then Again.Has_Literal and then
                    Again.Literal.Data (1 .. Again.Literal.Length) = Expected, Name & " reads back");
          end Literal;
          procedure Count (Program : String; Expected : Integer_64; Name : String) is
          begin
-            CCL.Language.Interpret (Types_Source & Program, 100_000, Outcome);
+            CCL.Evaluation.Evaluate (Types_Source & Program, 100_000, Outcome);
             Check (Outcome.Status = CCL.Language.Succeeded and then
                    Outcome.Result_Value = CCL.VM.Integer_Constant (Expected), Name);
          end Count;
@@ -684,10 +685,10 @@ procedure Main is
             Again : CCL.Language.Interpretation_Result;
             procedure Recursive (Types, Program, Expected, Name : String) is
             begin
-               CCL.Language.Interpret (Types & Program, 100_000, Outcome);
+               CCL.Evaluation.Evaluate (Types & Program, 100_000, Outcome);
                Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_Literal and then
                       Outcome.Literal.Data (1 .. Outcome.Literal.Length) = Expected, Name);
-               CCL.Language.Interpret (Types & Expected, 100_000, Again);
+               CCL.Evaluation.Evaluate (Types & Expected, 100_000, Again);
                Check (Again.Status = CCL.Language.Succeeded and then Again.Has_Literal and then
                       Again.Literal.Data (1 .. Again.Literal.Length) = Expected, Name & " reads back");
             end Recursive;
@@ -702,11 +703,11 @@ procedure Main is
                    "(length (field (Launch ""c"" [(Launch ""a"" (list-of Launch))]) after))",
                    1, "a recursive field's length");
             --  A direct self field has no base case; only a list of itself.
-            CCL.Language.Interpret ("(type T (record (next T))) 1", 1024, Outcome);
+            CCL.Evaluation.Evaluate ("(type T (record (next T))) 1", 1024, Outcome);
             Check (Outcome.Status = CCL.Language.Parse_Failed, "no direct self field");
-            CCL.Language.Interpret ("(type T (record (x (List (List T))))) 1", 1024, Outcome);
+            CCL.Evaluation.Evaluate ("(type T (record (x (List (List T))))) 1", 1024, Outcome);
             Check (Outcome.Status = CCL.Language.Parse_Failed, "no list of a list of itself");
-            CCL.Language.Interpret ("(type T (record (x Integer))) (type U (record (y (List T)))) " &
+            CCL.Evaluation.Evaluate ("(type T (record (x Integer))) (type U (record (y (List T)))) " &
               "(field (U [(T 1)]) y)", 1024, Outcome);
             Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_Literal,
                    "ordinary list fields still work beside self lists");
@@ -720,7 +721,7 @@ procedure Main is
             procedure Status (Program : String; Expected : CCL.Language.Interpretation_Status;
                               Name : String) is
             begin
-               CCL.Language.Interpret (Ranges & Program, 100_000, Outcome);
+               CCL.Evaluation.Evaluate (Ranges & Program, 100_000, Outcome);
                Check (Outcome.Status = Expected, Name);
             end Status;
          begin
@@ -744,18 +745,18 @@ procedure Main is
                Decls : constant String :=
                  "(type Priority (range 1 10)) (type L (record (name String) (pri Priority))) ";
             begin
-               CCL.Language.Interpret (Decls & "(L ""a"" (+ 3 4))", 100_000, Outcome);
+               CCL.Evaluation.Evaluate (Decls & "(L ""a"" (+ 3 4))", 100_000, Outcome);
                Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_Literal and then
                       Outcome.Literal.Data (1 .. Outcome.Literal.Length) = "(L ""a"" 7)",
                       "a record with a range field");
-               CCL.Language.Interpret (Decls & "(L ""a"" 7)", 100_000, Outcome);
+               CCL.Evaluation.Evaluate (Decls & "(L ""a"" 7)", 100_000, Outcome);
                Check (Outcome.Status = CCL.Language.Succeeded and then
                       Outcome.Literal.Data (1 .. Outcome.Literal.Length) = "(L ""a"" 7)",
                       "a record with a range field reads back");
             end;
-            CCL.Language.Interpret ("(type Bad (range 5 1)) 1", 1024, Outcome);
+            CCL.Evaluation.Evaluate ("(type Bad (range 5 1)) 1", 1024, Outcome);
             Check (Outcome.Status = CCL.Language.Parse_Failed, "an empty range is refused");
-            CCL.Language.Interpret ("(type P (range 1 10)) (type R (record (xs (List P)))) 1", 1024, Outcome);
+            CCL.Evaluation.Evaluate ("(type P (range 1 10)) (type R (record (xs (List P)))) 1", 1024, Outcome);
             Check (Outcome.Status = CCL.Language.Parse_Failed and then
                    Outcome.Diagnostic = CCL.Language.Unsupported_List_Element,
                    "no lists of range types yet");
@@ -764,14 +765,14 @@ procedure Main is
          declare
             procedure Refused (Source : String; Code : CCL.Language.Diagnostic_Code; Name : String) is
             begin
-               CCL.Language.Interpret (Source, 4096, Outcome);
+               CCL.Evaluation.Evaluate (Source, 4096, Outcome);
                Check (Outcome.Status = CCL.Language.Parse_Failed and then
                       Outcome.Diagnostic = Code, Name);
             end Refused;
          begin
-            CCL.Language.Interpret ("(define (f (s (Stream Integer))) Integer 1) 1", 4096, Outcome);
+            CCL.Evaluation.Evaluate ("(define (f (s (Stream Integer))) Integer 1) 1", 4096, Outcome);
             Check (Outcome.Status = CCL.Language.Succeeded, "a stream parameter type-checks");
-            CCL.Language.Interpret
+            CCL.Evaluation.Evaluate
               ("(type P (record (x Integer) (y Integer))) " &
                "(define (f (s (Stream P)) (t (Stream (List P)))) Integer 1) 1", 4096, Outcome);
             Check (Outcome.Status = CCL.Language.Succeeded, "streams of records and of lists");
@@ -787,15 +788,15 @@ procedure Main is
                      CCL.Language.Unsupported_List_Element, "no lists of streams");
          end;
          --  Still refused: lists of lists, and lists across a host boundary.
-         CCL.Language.Interpret ("[[1] [2]]", 1024, Outcome);
+         CCL.Evaluation.Evaluate ("[[1] [2]]", 1024, Outcome);
          Check (Outcome.Status = CCL.Language.Type_Check_Failed, "no lists of lists yet");
-         CCL.Language.Interpret ("(list-of Nope)", 1024, Outcome);
+         CCL.Evaluation.Evaluate ("(list-of Nope)", 1024, Outcome);
          Check (Outcome.Status in CCL.Language.Parse_Failed | CCL.Language.Type_Check_Failed,
                 "list-of an unknown type");
       end;
       --  First-class functions: named functions as values, calls through
       --  values, function-typed parameters.
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(define (double (x Integer)) Integer (* x 2)) " &
          "(define (apply (f (Function (Integer) Integer)) (x Integer)) Integer (f x)) " &
          "(apply double 21)", 256, Outcome);
@@ -803,21 +804,21 @@ procedure Main is
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Result_Value.Integer = 42,
          "pass a named function and call it through a parameter");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(define (double (x Integer)) Integer (* x 2)) " &
          "(let ((f double)) (f 5))", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Result_Value.Integer = 10,
          "a let-bound function value");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(define (double (x Integer)) Integer (* x 2)) double", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_Function and then
          CCL.Types.Image (Outcome.Function_Name) = "double" and then
          not CCL.Language.Has_Scalar (Outcome),
          "a function value as the result");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(define (positive (x Integer)) Boolean (> x 0)) " &
          "(define (apply (f (Function (Integer) Integer)) (x Integer)) Integer (f x)) " &
          "(apply positive 3)", 256, Outcome);
@@ -825,14 +826,14 @@ procedure Main is
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Function_Argument_Mismatch,
          "a function of the wrong type is rejected");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(define (apply (f (Function (Integer) Integer)) (x Integer)) Integer (f x true)) " &
          "0", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Function_Arity_Mismatch,
          "a call through a value checks its arity");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(define (twice (f (Function (Integer) Integer)) (x Integer)) Integer (f (f x))) " &
          "(define (inc (x Integer)) Integer (+ x 1)) " &
          "(define (compose-test (g (Function ((Function (Integer) Integer) Integer) Integer))) Integer (g inc 5)) " &
@@ -842,161 +843,161 @@ procedure Main is
          Outcome.Result_Value.Integer = 7,
          "higher-order function types nest");
       --  Anonymous functions.
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(define (apply (f (Function (Integer) Integer)) (x Integer)) Integer (f x)) " &
          "(apply (fn ((n Integer)) (* n n)) 9)", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 81,
          "pass an anonymous function");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(let ((twice (fn ((n Integer)) (+ n n)))) (twice 21))", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 42,
          "a let-bound anonymous function");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(define (make-test (limit Integer)) Boolean " &
          "  (let ((above (fn ((n Integer)) (> n 10)))) (above limit))) " &
          "(make-test 11)", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Boolean,
          "an anonymous function inside a define takes its own slot");
-      CCL.Language.Interpret ("(fn ((s String)) (length s))", 256, Outcome);
+      CCL.Evaluation.Evaluate ("(fn ((s String)) (length s))", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_Function,
          "an anonymous function as the result");
-      CCL.Language.Interpret ("(fn (n) (* n 2))", 256, Outcome);
+      CCL.Evaluation.Evaluate ("(fn (n) (* n 2))", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Lambda_Parameter_Needs_Type,
          "an untyped parameter with nothing to infer from asks for its type");
-      CCL.Language.Interpret ("(sum (each (fn (n) (* n n)) [1 2 3]))", 256, Outcome);
+      CCL.Evaluation.Evaluate ("(sum (each (fn (n) (* n n)) [1 2 3]))", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 14,
          "each infers its function's parameter from the elements");
-      CCL.Language.Interpret ("(fold (fn (acc n) (+ acc n)) 0 (range 1 10))", 1024, Outcome);
+      CCL.Evaluation.Evaluate ("(fold (fn (acc n) (+ acc n)) 0 (range 1 10))", 1024, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 55,
          "fold infers the accumulator from init and the element from the list");
-      CCL.Language.Interpret ("(each (fn (s) (upper s)) [1 2])", 256, Outcome);
+      CCL.Evaluation.Evaluate ("(each (fn (s) (upper s)) [1 2])", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Expected_String,
          "an inferred parameter is checked like a written one");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(define (twice (f (Function (Integer) Integer)) (x Integer)) Integer (f (f x))) " &
          "(twice (fn (n) (* n 3)) 2)", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 18,
          "a call infers from the declared function type");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(let ((limit 10)) (let ((above (fn ((n Integer)) (> n limit)))) (above 11)))", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Boolean,
          "an anonymous function captures an enclosing let");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(let ((k 3)) (each (fn ((n Integer)) (* n k)) [1 2 3]))", 512, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.List_Length = 3 and then
          Outcome.List_Values (3).Integer = 9,
          "a builtin calls a capturing function");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(define (scale-all (k Integer) (xs (List Integer))) (List Integer) " &
          "  (each (fn ((n Integer)) (* n k)) xs)) (scale-all 10 [1 2])", 512, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.List_Values (2).Integer = 20,
          "a function parameter is captured");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(let ((k 5)) (let ((f (fn ((n Integer)) (+ n k)))) (let ((k 100)) (f 1))))", 512, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 6,
          "captures are by value at creation: a later let does not change them");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(let ((a 1)) (each (fn ((x Integer)) (sum (each (fn ((y Integer)) (+ a y)) [x x]))) [1 2]))",
          512, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.List_Values (2).Integer = 6,
          "a nested function captures through its enclosing function");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(let ((p ""ab"")) (each (fn ((s String)) (concat p s)) [""x"" ""y""]))", 512, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.List_Length = 2 and then
          Outcome.List_Text.Data (1 .. Outcome.List_Text_Ends (1)) = "abx",
          "a String is captured");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(let ((xs [1 2])) (let ((f (fn ((n Integer)) (length xs)))) (f 1)))", 512, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Lambda_Capture_Unsupported,
          "capturing a list is reported clearly");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(let ((a 1)) (let ((b 2)) (let ((c 3)) (let ((d 4)) (let ((e 5)) " &
          "(let ((f (fn ((n Integer)) (+ a (+ b (+ c (+ d (+ e n)))))))) (f 0)))))))", 512, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Too_Many_Captures,
          "at most four captures");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(define (sum (x Integer) (y Integer)) Integer (+ x y)) (sum 20 22)", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 42,
          "a defined function shadows the builtin of the same name");
       --  List builtins taking functions; the collection comes last.
-      CCL.Language.Interpret ("(each (fn ((n Integer)) (* n n)) [1 2 3 4])", 512, Outcome);
+      CCL.Evaluation.Evaluate ("(each (fn ((n Integer)) (* n n)) [1 2 3 4])", 512, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_List and then
          Outcome.List_Length = 4 and then Outcome.List_Values (4).Integer = 16,
          "each maps a function over a list");
-      CCL.Language.Interpret ("(where (fn ((n Integer)) (= (mod n 2) 0)) (range 1 10))", 1024, Outcome);
+      CCL.Evaluation.Evaluate ("(where (fn ((n Integer)) (= (mod n 2) 0)) (range 1 10))", 1024, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.List_Length = 5 and then
          Outcome.List_Values (1).Integer = 2 and then Outcome.List_Values (5).Integer = 10,
          "where keeps matching elements");
-      CCL.Language.Interpret ("(fold (fn ((acc Integer) (n Integer)) (+ acc n)) 0 (range 1 100))", 4096, Outcome);
+      CCL.Evaluation.Evaluate ("(fold (fn ((acc Integer) (n Integer)) (+ acc n)) 0 (range 1 100))", 4096, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 5050,
          "fold accumulates");
-      CCL.Language.Interpret ("(sum (each (fn ((s String)) (length s)) [""ab"" ""cde"" """"]))", 512, Outcome);
+      CCL.Evaluation.Evaluate ("(sum (each (fn ((s String)) (length s)) [""ab"" ""cde"" """"]))", 512, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 5,
          "each changes the element type; sum adds");
-      CCL.Language.Interpret ("(any (fn ((n Integer)) (> n 3)) [1 5 (/ 1 0)])", 512, Outcome);
+      CCL.Evaluation.Evaluate ("(any (fn ((n Integer)) (> n 3)) [1 5 (/ 1 0)])", 512, Outcome);
       Check
         (Outcome.Status = CCL.Language.Evaluation_Division_By_Zero,
          "operands are evaluated before the builtin runs");
-      CCL.Language.Interpret ("(any (fn ((n Integer)) (> (/ 10 n) 3)) [1 0])", 512, Outcome);
+      CCL.Evaluation.Evaluate ("(any (fn ((n Integer)) (> (/ 10 n) 3)) [1 0])", 512, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Boolean,
          "any stops at the first match");
-      CCL.Language.Interpret ("(all (fn ((n Integer)) (> n 0)) [1 2 -3])", 512, Outcome);
+      CCL.Evaluation.Evaluate ("(all (fn ((n Integer)) (> n 0)) [1 2 -3])", 512, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then not Outcome.Result_Value.Boolean,
          "all finds a counterexample");
-      CCL.Language.Interpret ("(first 2 [""x"" ""y"" ""z""])", 512, Outcome);
+      CCL.Evaluation.Evaluate ("(first 2 [""x"" ""y"" ""z""])", 512, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.List_Length = 2 and then
          Outcome.List_Text.Data (1 .. Outcome.List_Text_Ends (2)) = "xy",
          "first takes a prefix");
-      CCL.Language.Interpret ("(length (range 5 1))", 256, Outcome);
+      CCL.Evaluation.Evaluate ("(length (range 5 1))", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 0,
          "an empty range");
-      CCL.Language.Interpret ("(range 1 100000)", 256, Outcome);
+      CCL.Evaluation.Evaluate ("(range 1 100000)", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Evaluation_List_Storage_Exhausted,
          "a range beyond the list region is a typed failure");
-      CCL.Language.Interpret ("(where (fn ((n Integer)) (* n 2)) [1 2])", 256, Outcome);
+      CCL.Evaluation.Evaluate ("(where (fn ((n Integer)) (* n 2)) [1 2])", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Function_Argument_Mismatch,
          "where needs a Boolean-valued function");
-      CCL.Language.Interpret ("(each (fn ((s String)) (length s)) [1 2])", 256, Outcome);
+      CCL.Evaluation.Evaluate ("(each (fn ((s String)) (length s)) [1 2])", 256, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Function_Argument_Mismatch,
          "each checks the function's parameter against the elements");
-      CCL.Language.Interpret ("(each (fn ((n Integer)) (* n n)) (range 1 500))", 64, Outcome);
+      CCL.Evaluation.Evaluate ("(each (fn ((n Integer)) (* n n)) (range 1 500))", 64, Outcome);
       Check
         (Outcome.Status = CCL.Language.Evaluation_Fuel_Exhausted,
          "builtins spend fuel per element, so they always end");
@@ -1005,26 +1006,26 @@ procedure Main is
          type Integer_Array is array (Positive range <>) of Integer_64;
          procedure Text_Is (Source, Expected, Label : String) is
          begin
-            CCL.Language.Interpret (Source, 100_000, Outcome);
+            CCL.Evaluation.Evaluate (Source, 100_000, Outcome);
             Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_Text and then
                    Outcome.Result_Text.Data (1 .. Outcome.Result_Text.Length) = Expected, Label);
          end Text_Is;
          procedure Integer_Is (Source : String; Expected : Integer_64; Label : String) is
          begin
-            CCL.Language.Interpret (Source, 100_000, Outcome);
+            CCL.Evaluation.Evaluate (Source, 100_000, Outcome);
             Check (Outcome.Status = CCL.Language.Succeeded and then
                    Outcome.Result_Value.Integer = Expected, Label);
          end Integer_Is;
          procedure Boolean_Is (Source : String; Expected : Boolean; Label : String) is
          begin
-            CCL.Language.Interpret (Source, 100_000, Outcome);
+            CCL.Evaluation.Evaluate (Source, 100_000, Outcome);
             Check (Outcome.Status = CCL.Language.Succeeded and then
                    Outcome.Result_Value.Boolean = Expected, Label);
          end Boolean_Is;
          procedure Integers_Are (Source : String; Expected : Integer_Array; Label : String) is
             Same : Boolean;
          begin
-            CCL.Language.Interpret (Source, 100_000, Outcome);
+            CCL.Evaluation.Evaluate (Source, 100_000, Outcome);
             Same := Outcome.Status = CCL.Language.Succeeded and then Outcome.Has_List and then
               Outcome.List_Length = Expected'Length;
             if Same then
@@ -1036,7 +1037,7 @@ procedure Main is
          end Integers_Are;
          procedure Status_Is (Source : String; Expected : CCL.Language.Interpretation_Status; Label : String) is
          begin
-            CCL.Language.Interpret (Source, 100_000, Outcome);
+            CCL.Evaluation.Evaluate (Source, 100_000, Outcome);
             Check (Outcome.Status = Expected, Label);
          end Status_Is;
       begin
@@ -1084,28 +1085,28 @@ procedure Main is
                     "min of an empty list is a typed error");
          Integer_Is ("(sum (sort (range 1 400)))", 80_200, "sort four hundred elements");
          Status_Is ("(sort (range 1 400))", CCL.Language.Succeeded, "sort within the default REPL fuel");
-         CCL.Language.Interpret ("(sort (range 1 400))", 2_000, Outcome);
+         CCL.Evaluation.Evaluate ("(sort (range 1 400))", 2_000, Outcome);
          Check (Outcome.Status = CCL.Language.Evaluation_Fuel_Exhausted,
                 "sorting charges fuel per comparison");
-         CCL.Language.Interpret ("(upper 42)", 256, Outcome);
+         CCL.Evaluation.Evaluate ("(upper 42)", 256, Outcome);
          Check (Outcome.Status = CCL.Language.Type_Check_Failed, "upper needs text");
-         CCL.Language.Interpret ("(sort [true false])", 256, Outcome);
+         CCL.Evaluation.Evaluate ("(sort [true false])", 256, Outcome);
          Check (Outcome.Status = CCL.Language.Type_Check_Failed, "Booleans have no order");
       end;
       --  Pipelines: (->> x (f a) g) threads x through each stage as its last
       --  argument; a bare name stage is a one-argument call.
-      CCL.Language.Interpret ("(->> (range 1 20) (where (fn (n) (= (mod n 3) 0))) sum)", 10_000, Outcome);
+      CCL.Evaluation.Evaluate ("(->> (range 1 20) (where (fn (n) (= (mod n 3) 0))) sum)", 10_000, Outcome);
       Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 63,
              "a pipeline threads the value through builtins");
-      CCL.Language.Interpret ("(define (double (n Integer)) Integer (* n 2)) (->> 5 double double)", 256, Outcome);
+      CCL.Evaluation.Evaluate ("(define (double (n Integer)) Integer (* n 2)) (->> 5 double double)", 256, Outcome);
       Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 20,
              "a bare-name stage calls a defined function");
-      CCL.Language.Interpret ("(->> ""abc"" length)", 256, Outcome);
+      CCL.Evaluation.Evaluate ("(->> ""abc"" length)", 256, Outcome);
       Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 3,
              "length is a stage");
-      CCL.Language.Interpret ("(->> 1 (+ 2))", 256, Outcome);
+      CCL.Evaluation.Evaluate ("(->> 1 (+ 2))", 256, Outcome);
       Check (Outcome.Status = CCL.Language.Parse_Failed, "an operator is not a stage");
-      CCL.Language.Interpret ("(->> [1 2] (each (fn (n) (* n 10))) (join "",""))", 256, Outcome);
+      CCL.Evaluation.Evaluate ("(->> [1 2] (each (fn (n) (* n 10))) (join "",""))", 256, Outcome);
       Check (Outcome.Status = CCL.Language.Type_Check_Failed, "stages are type-checked like calls");
 
       --  The persistent session environment (CCL.Sessions).
@@ -1154,64 +1155,64 @@ procedure Main is
          Check (CCL.Sessions.Kept_Definitions (S) = 0 and CCL.Sessions.Kept_Values (S) = 0,
                 ":reset forgets everything");
       end;
-      CCL.Language.Interpret ("(and 1 true)", 16, Outcome);
+      CCL.Evaluation.Evaluate ("(and 1 true)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Expected_Boolean,
          "and requires Boolean operands");
-      CCL.Language.Interpret ("(< true 1)", 16, Outcome);
+      CCL.Evaluation.Evaluate ("(< true 1)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Expected_Integer,
          "ordering requires Integer operands");
 
-      CCL.Language.Interpret ("""clock""", 8, Outcome);
+      CCL.Evaluation.Evaluate ("""clock""", 8, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Has_Value and then Outcome.Has_Text and then
          Outcome.Result_Text.Length = 5 and then
          Outcome.Result_Text.Data (1 .. 5) = "clock",
          "interpret immutable string literal");
-      CCL.Language.Interpret ("(length ""clock"")", 8, Outcome);
+      CCL.Evaluation.Evaluate ("(length ""clock"")", 8, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Result_Value.Integer = 5,
          "read string length");
-      CCL.Language.Interpret ("(at ""clock"" 2)", 8, Outcome);
+      CCL.Evaluation.Evaluate ("(at ""clock"" 2)", 8, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Has_Character and then Outcome.Result_Character = 'l',
          "index string from one");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(let ((left ""human"")) (concat left "" time""))", 24, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Has_Text and then Outcome.Result_Text.Length = 10 and then
          Outcome.Result_Text.Data (1 .. 10) = "human time",
          "concatenate constrained string values");
-      CCL.Language.Interpret ("""line\nnext""", 8, Outcome);
+      CCL.Evaluation.Evaluate ("""line\nnext""", 8, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Has_Text and then Outcome.Result_Text.Length = 9 and then
          Outcome.Result_Text.Data (5) = ASCII.LF,
          "decode bounded string escapes");
-      CCL.Language.Interpret ("(at ""clock"" 0)", 8, Outcome);
+      CCL.Evaluation.Evaluate ("(at ""clock"" 0)", 8, Outcome);
       Check
         (Outcome.Status = CCL.Language.Evaluation_Index_Error,
          "reject string index outside actual bounds");
-      CCL.Language.Interpret ("(length 42)", 8, Outcome);
+      CCL.Evaluation.Evaluate ("(length 42)", 8, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Expected_String,
          "type-check string operation operand");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(to-string -9223372036854775808)", 8, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Has_Text and then Outcome.Result_Text.Length = 20 and then
          Outcome.Result_Text.Data (1 .. 20) = "-9223372036854775808",
          "format full-range signed integer text");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(let ((ms 3661000)) " &
          "(let ((h (/ ms 3600000))) " &
          "(let ((m (/ (mod ms 3600000) 60000))) " &
@@ -1231,7 +1232,7 @@ procedure Main is
          Outcome.Result_Text.Data (1 .. 8) = "01:01:01",
          "express human-readable clock formatting with typed primitives");
 
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("# Whole-line comment" & ASCII.LF &
          "(+ 20 # Comment between operands" & ASCII.LF &
          "   22) # Trailing comment at end of input",
@@ -1243,7 +1244,7 @@ procedure Main is
          Outcome.Result_Value.Integer = 42,
          "ignore hash line comments as source trivia");
 
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(let ((answer (+ 20 22))) (= answer 42))", 32, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
@@ -1252,7 +1253,7 @@ procedure Main is
          Outcome.Result_Value.Boolean,
          "interpret lexical binding");
 
-      CCL.Language.Interpret ("(if false 10 20)", 16, Outcome);
+      CCL.Evaluation.Evaluate ("(if false 10 20)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Succeeded and then
          Outcome.Result_Value.Integer = 20,
@@ -1287,7 +1288,7 @@ procedure Main is
               (CCL.Language.Analysis_Root (Analysis))).Static_Kind =
            CCL.Language.Integer_Type,
          "analyze host form through explicit catalog view");
-      CCL.Language.Interpret
+      CCL.Evaluation.Evaluate
         ("(test.service.increment 41)", 8, Catalog, Outcome);
       Check
         (Outcome.Status = CCL.Language.Host_Import_Required and then
@@ -1303,43 +1304,43 @@ procedure Main is
            CCL.Language.Expected_Integer,
          "type-check catalog operation argument");
 
-      CCL.Language.Interpret ("(+ true 4)", 16, Outcome);
+      CCL.Evaluation.Evaluate ("(+ true 4)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Expected_Integer and then
          Outcome.Diagnostic_Position = 1,
          "reject source operand type mismatch");
 
-      CCL.Language.Interpret ("(if true 1 false)", 16, Outcome);
+      CCL.Evaluation.Evaluate ("(if true 1 false)", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Branch_Type_Mismatch and then
          Outcome.Diagnostic_Position = 1,
          "reject mismatched conditional branches");
 
-      CCL.Language.Interpret ("missing", 16, Outcome);
+      CCL.Evaluation.Evaluate ("missing", 16, Outcome);
       Check
         (Outcome.Status = CCL.Language.Type_Check_Failed and then
          Outcome.Diagnostic = CCL.Language.Unknown_Name and then
          Outcome.Diagnostic_Position = 1,
          "reject unbound name");
 
-      CCL.Language.Interpret ("(+ 1 2)", 2, Outcome);
+      CCL.Evaluation.Evaluate ("(+ 1 2)", 2, Outcome);
       Check
         (Outcome.Status = CCL.Language.Evaluation_Fuel_Exhausted,
          "bound source evaluation with fuel");
 
-      CCL.Language.Interpret ("(+ 9223372036854775807 1)", 8, Outcome);
+      CCL.Evaluation.Evaluate ("(+ 9223372036854775807 1)", 8, Outcome);
       Check
         (Outcome.Status = CCL.Language.Evaluation_Overflow,
          "trap source arithmetic overflow");
 
-      CCL.Language.Interpret ("(+ -9223372036854775808 -1)", 8, Outcome);
+      CCL.Evaluation.Evaluate ("(+ -9223372036854775808 -1)", 8, Outcome);
       Check
         (Outcome.Status = CCL.Language.Evaluation_Overflow,
          "trap negative source arithmetic overflow");
 
-      CCL.Language.Interpret ("(+ 1)", 8, Outcome);
+      CCL.Evaluation.Evaluate ("(+ 1)", 8, Outcome);
       Check
         (Outcome.Status = CCL.Language.Parse_Failed and then
          Outcome.Diagnostic_Position = 5,
@@ -1437,7 +1438,7 @@ procedure Main is
          procedure Same (Source : String; Label : String) is
             Interpreted : CCL.Language.Interpretation_Result;
          begin
-            CCL.Language.Interpret (Source, 256, Interpreted);
+            CCL.Evaluation.Evaluate (Source, 256, Interpreted);
             CCL.Language.Analyze (Source, Analysis);
             CCL.Compiler.Compile (Analysis, Compiled);
             if Compiled.Status /= CCL.Compiler.Compilation_Succeeded then
@@ -2104,7 +2105,7 @@ procedure Main is
            "(let ((e (concat d d))) (let ((f (concat e e))) (concat f ""!"")))))))";
          Interpreted : CCL.Language.Interpretation_Result;
       begin
-         CCL.Language.Interpret (Program, 256, Interpreted);
+         CCL.Evaluation.Evaluate (Program, 256, Interpreted);
          Check (Interpreted.Status = CCL.Language.Evaluation_Text_Storage_Exhausted,
                 "the REPL refuses a text result past 1 KiB");
          CCL.Language.Analyze (Program, Analysis);
@@ -2174,7 +2175,7 @@ procedure Main is
          Program : constant String := "(type W (record (c Character))) (W (at ""x"" 1))";
          Interpreted : CCL.Language.Interpretation_Result;
       begin
-         CCL.Language.Interpret (Program, 256, Interpreted);
+         CCL.Evaluation.Evaluate (Program, 256, Interpreted);
          Check (Interpreted.Status /= CCL.Language.Succeeded, "the REPL has no literal for a Character field");
          CCL.Language.Analyze (Program, Analysis);
          CCL.Compiler.Compile (Analysis, Compiled);

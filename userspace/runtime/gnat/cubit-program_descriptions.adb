@@ -140,9 +140,13 @@ package body CuBit.Program_Descriptions with SPARK_Mode is
             return;
          end if;
          Length := Natural (Item (Position + 4));
-         if Item (Position) not in 1 .. 2
-           or else Item (Position + 1) not in 1 .. 4
-           or else Item (Position + 2) not in 1 .. 4
+         if Item (Position) not in
+             Connector_Direction'Enum_Rep (Connector_Direction'First) ..
+             Connector_Direction'Enum_Rep (Connector_Direction'Last)
+           or else Item (Position + 1) not in
+             Element_Kind'Enum_Rep (Element_Kind'First) .. Element_Kind'Enum_Rep (Element_Kind'Last)
+           or else Item (Position + 2) not in
+             Signal_Kind'Enum_Rep (Signal_Kind'First) .. Signal_Kind'Enum_Rep (Signal_Kind'Last)
            or else Item (Position + 3) = 0
            or else Length not in Minimum_Connector_Name_Bytes .. Maximum_Connector_Name_Bytes
            or else Length > Item'Last - Position - 4
@@ -175,14 +179,18 @@ package body CuBit.Program_Descriptions with SPARK_Mode is
             end loop;
             S.Connectors (P).Name (1 .. Length) := Name;
          end;
-         S.Connectors (P).Direction := (if Item (Position) = 1 then Inlet else Outlet);
+         S.Connectors (P).Direction :=
+           (if Item (Position) = Connector_Direction'Enum_Rep (Inlet) then Inlet else Outlet);
          S.Connectors (P).Element :=
            (case Item (Position + 1) is
-               when 1 => Text_Lines, when 2 => Raw_Bytes, when 3 => Integers,
+               when Element_Kind'Enum_Rep (Text_Lines) => Text_Lines,
+               when Element_Kind'Enum_Rep (Raw_Bytes) => Raw_Bytes,
+               when Element_Kind'Enum_Rep (Integers) => Integers,
                when others => Log_Records);
          S.Connectors (P).Signal :=
            (case Item (Position + 2) is
-               when 1 => Stream, when 2 => One_Shot, when 3 => Level,
+               when Signal_Kind'Enum_Rep (Stream) => Stream,
+               when Signal_Kind'Enum_Rep (Level) => Level,
                when others => Edge);
          S.Connectors (P).Pages := Natural (Item (Position + 3));
          S.Connectors (P).Name_Length := Length;

@@ -5,7 +5,9 @@
 struct push_data { uint32_t u0[2], v0[2], ud[2], vd[2]; int32_t steps[4]; float tint[4]; uint32_t mask, padding[3], region[4]; };
 _Static_assert(sizeof(struct push_data)==96,"push ABI");
 _Static_assert(offsetof(struct push_data,mask)==64,"push mask ABI");
+_Static_assert(offsetof(struct push_data,padding)==68,"preview logical extent ABI");
 _Static_assert(offsetof(struct push_data,region)==80,"push region ABI");
+_Static_assert(sizeof(struct cubit_vulkan_preview)==16,"preview placement ABI");
 _Static_assert(sizeof(struct cubit_mesa_affine)==56,"Ada affine ABI");
 _Static_assert(sizeof(struct cubit_vulkan_coefficients)==64,"Ada coefficient ABI");
 void cubit_vulkan_affine_destroy(struct cubit_vulkan_affine_engine *e)
@@ -87,14 +89,15 @@ done:
 }
 static uint32_t record_affine(void *borrowed,const struct cubit_mesa_affine *d,
     const struct cubit_vulkan_coefficients *c,uint32_t width,uint32_t height,uint32_t mask,uint32_t argb,
-    const struct cubit_vulkan_source_region *region)
+    const struct cubit_vulkan_source_region *region,const struct cubit_vulkan_preview *preview)
 {
     const struct cubit_vulkan_affine_draw *b=borrowed;
     if(!b||!b->engine||!b->command||!b->source||!d||!c)return 1;
     const struct cubit_vulkan_affine_engine *e=b->engine;
     if(!e->layout||!e->pipeline[0]||!e->pipeline[1]||!e->pipeline[2]||!e->bind_pipeline||!e->bind_descriptors||
        !e->viewport||!e->scissor||!e->constants||!e->draw)return 1;
-    if(!b->width||b->width>65535||!b->height||b->height>65535||mask>1||d->over>2||(mask&&d->over!=1)||
+    if(!b->width||b->width>65535||!b->height||b->height>65535||
+       (preview?(mask!=4||d->over!=0):(mask>1||d->over>2||(mask&&d->over!=1)))||
        d->clip_x>=b->width||d->clip_y>=b->height||!d->clip_w||!d->clip_h||
        d->clip_w>b->width-d->clip_x||d->clip_h>b->height-d->clip_y||
        width!=b->width||height!=b->height||c->ud<1||c->vd<1||
@@ -107,7 +110,15 @@ static uint32_t record_affine(void *borrowed,const struct cubit_mesa_affine *d,
        !region->image_height||region->image_height>65535||
        !region->width||!region->height||region->x>=region->image_width||region->y>=region->image_height||
        region->width>region->image_width-region->x||region->height>region->image_height-region->y))return 1;
+    if(preview&&(!d->logical_w||d->logical_w>65535||!d->logical_h||d->logical_h>65535||
+       !preview->width||preview->width>UINT32_C(4294836225)||
+       !preview->height||preview->height>UINT32_C(4294836225)||
+       (int64_t)preview->left!=((int64_t)d->logical_w-preview->width)/2||
+       (int64_t)preview->top!=((int64_t)d->logical_h-preview->height)/2))return 1;
     struct push_data push={.mask=mask};
+    if(preview){push.padding[0]=d->logical_w;push.padding[1]=d->logical_h;
+        push.region[0]=(uint32_t)preview->left;push.region[1]=(uint32_t)preview->top;
+        push.region[2]=preview->width;push.region[3]=preview->height;}
     if(region){push.region[0]=region->x;push.region[1]=region->y;
         push.region[2]=region->width;push.region[3]=region->height;}
     const uint64_t values[4]={(uint64_t)c->u0,(uint64_t)c->v0,(uint64_t)c->ud,(uint64_t)c->vd};
@@ -132,12 +143,19 @@ static uint32_t record_affine(void *borrowed,const struct cubit_mesa_affine *d,
 uint32_t cubit_vulkan_record_affine(void *borrowed,const struct cubit_mesa_affine *d,
     const struct cubit_vulkan_coefficients *c,uint32_t width,uint32_t height,uint32_t mask,uint32_t argb)
 {
-    return record_affine(borrowed,d,c,width,height,mask,argb,NULL);
+    return record_affine(borrowed,d,c,width,height,mask,argb,NULL,NULL);
 }
 uint32_t cubit_vulkan_record_affine_region(void *borrowed,const struct cubit_mesa_affine *d,
     const struct cubit_vulkan_coefficients *c,uint32_t width,uint32_t height,uint32_t mask,uint32_t argb,
     const struct cubit_vulkan_source_region *region)
 {
     if(!region)return 1;
-    return record_affine(borrowed,d,c,width,height,mask,argb,region);
+    return record_affine(borrowed,d,c,width,height,mask,argb,region,NULL);
+}
+uint32_t cubit_vulkan_record_preview(void *borrowed,const struct cubit_mesa_affine *d,
+    const struct cubit_vulkan_coefficients *c,uint32_t width,uint32_t height,
+    const struct cubit_vulkan_preview *preview)
+{
+    if(!preview)return 1;
+    return record_affine(borrowed,d,c,width,height,4,0,NULL,preview);
 }

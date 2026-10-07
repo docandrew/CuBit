@@ -6,7 +6,8 @@ package Intel_GPU_Buffer_Requests.Contexts is
    -- Reuse requires this child's exact acknowledgment; each new reservation
    -- advances the allocation generation and changes its session owner.
    procedure Reserve
-     (Object : in out Service; Session : Unsigned_64; ID : out Ticket);
+     (Object : in out Service; Session : Unsigned_64; ID : out Ticket;
+      Pages : Intel_GPU_Buffer_Backing.Page_Count);
    -- Cleanup authority is independent of live application request authority.
    -- Requires Retire_Session to have closed this exact parent, no pending
    -- allocation, current device ownership, and an unused full ticket identity.

@@ -32,7 +32,8 @@ private
    function Can_Close (S : State; Submission : V.State; Pool : P.State) return Boolean is
      (Current (S) = Live and P.Epoch (Pool) = S.Epoch and V.Can_Destroy (Submission) and P.Valid (Pool) and not P.Faulted (Pool) and
       P.Writer (Pool) = P.None and P.Ready (Pool) = P.None and
-      P.Displayed (Pool) = P.None and P.Front (Pool) = P.None);
+      P.Displayed (Pool) = P.None and P.Front (Pool) = P.None and
+      P.Readback (Pool) = P.None);
    function Current (S : State) return Phase is (S.Mode);
    function Output_Epoch (S : State) return P.ID is (S.Epoch);
    function Bindings (S : State) return Vulkan_Frame.Targets is (S.Views);

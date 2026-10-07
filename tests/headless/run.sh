@@ -45,7 +45,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, avx, rust-std, libc, processes, binutils, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, avx, rust-std, libc, processes, control-events, binutils, gcc, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
@@ -274,7 +274,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|avx|rust-std|libc|processes|binutils|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary|bench-latency)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary|bench-latency)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -406,6 +406,36 @@ if [ "$BUILD_WORLD" -eq 1 ]; then
     make -C "$KERNEL_DIR" world
 fi
 
+# The gcc toolchain as installed (--prefix=/toolchain), read-only to the
+# compilers, on $TEMP_DISK: the gcc port's tree (driver, cc1, specs, libgcc,
+# the libc's start files, archives and headers) and binutils' as and ld, in
+# one debugfs run over a command list (gcc test, console gcc demo).
+install_gcc_toolchain() {
+    local tree="$ROOT_DIR/userspace/ports/gcc/build/toolchain"
+    local commands="$TEMP_DISK.gcc-toolchain"
+    {
+        echo "mkdir toolchain"
+        (cd "$tree" && find . -mindepth 1 -type d | sort | sed "s|^\./|mkdir toolchain/|")
+        echo "mkdir toolchain/x86_64-linux-musl"
+        echo "mkdir toolchain/x86_64-linux-musl/bin"
+        (cd "$tree" && find . -type f | sort |
+           sed "s|^\./\(.*\)|rm toolchain/\1\nwrite $tree/\1 toolchain/\1|")
+        for tool in as ld; do
+            echo "rm toolchain/x86_64-linux-musl/bin/$tool"
+            echo "write $KERNEL_DIR/isodir/boot/$tool.app toolchain/x86_64-linux-musl/bin/$tool"
+        done
+    } > "$commands"
+    debugfs -w -f "$commands" "$TEMP_DISK" >/dev/null 2>&1 || return 1
+    rm -f "$commands"
+    local check
+    for check in toolchain/bin/gcc toolchain/x86_64-linux-musl/bin/ld toolchain/lib/libc.a; do
+        if ! debugfs -R "stat $check" "$TEMP_DISK" 2>/dev/null | grep -q "Size:"; then
+            echo "headless: $check was not installed" >&2
+            return 1
+        fi
+    done
+}
+
 if [ -z "$BASE_DISK" ]; then
     BASE_DISK="$KERNEL_DIR/nvme_disk.img"
 fi
@@ -476,6 +506,8 @@ case "$TEST_NAME" in
         ;;
     ccl-console)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-console.ccl"
+        # The gcc demo runs cc1, a 45 MB image procmgr reads whole.
+        if [ "${CCL_CONSOLE_DEMO:-}" = gcc ]; then QEMU_MEMORY="${QEMU_MEMORY:-1G}"; fi
         ;;
     logs)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-logs.ccl"
@@ -550,6 +582,17 @@ case "$TEST_NAME" in
     binutils)
         # userspace/ports/binutils: as and ld on CuBit, compared with Linux.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-binutils.ccl"
+        ;;
+    gcc)
+        # userspace/ports/gcc, stages 2 and 3: cc1, then the gcc driver, on
+        # CuBit, compared with Linux.
+        # cc1 is a 45 MB image that procmgr reads whole before mapping it.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-gcc.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-1G}"
+        ;;
+    control-events)
+        # docs/data-plane.md: grant lifecycle events and control messages.
+        INIT_PROFILE="$ROOT_DIR/tests/control-events/init.ccl"
         ;;
     processes)
         # docs/process-arguments.md: launch arguments, posix_spawn, waitpid.
@@ -1010,6 +1053,26 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
             rm -f "$CONSOLE_PICTURE"
+            if [ "${CCL_CONSOLE_DEMO:-}" = gcc ]; then
+                # gcc, typed from the console: the toolchain, and hello.c (its
+                # manifest as assembly) and bad.c in @nvme:0/work.
+                if ! make -C "$KERNEL_DIR" libc user_runtime ccl-manifest >/dev/null ||
+                   ! bash "$ROOT_DIR/tests/binutils/build.sh" "$KERNEL_DIR/isodir/boot" >/dev/null ||
+                   ! bash "$ROOT_DIR/tests/gcc/build.sh" "$KERNEL_DIR/isodir/boot" >/dev/null; then
+                    echo "headless: failed to build gcc for the console demo" >&2
+                    exit 1
+                fi
+                install_gcc_toolchain || exit 1
+                for PROGRAM_INPUT in "$ROOT_DIR/tests/gcc/hello.c" \
+                  "$ROOT_DIR/tests/gcc/build/hello-manifest.s" "$ROOT_DIR/tests/ccl-console/bad.c"; do
+                    debugfs -w -R "rm work/$(basename "$PROGRAM_INPUT")" "$TEMP_DISK" >/dev/null 2>&1
+                    debugfs -w -R "write $PROGRAM_INPUT work/$(basename "$PROGRAM_INPUT")" \
+                      "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+                done
+                for PROGRAM_OUTPUT in hello bad; do
+                    debugfs -w -R "rm work/$PROGRAM_OUTPUT" "$TEMP_DISK" >/dev/null 2>&1
+                done
+            fi
             if [ "${CCL_CONSOLE_DEMO:-}" = programs ]; then
                 # as and ld, typed from the console (docs/ccl-launch-parameters.md):
                 # built by tests/binutils/build.sh into isodir/boot.
@@ -1210,6 +1273,21 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
     fi
+    if [ "$TEST_NAME" = "control-events" ]; then
+        if ! make -C "$KERNEL_DIR" user_runtime ccl-manifest >/dev/null ||
+           ! bash "$ROOT_DIR/tests/control-events/build.sh" "$KERNEL_DIR/isodir/boot" >/dev/null; then
+            echo "headless: failed to build the control-events test programs" >&2
+            exit 1
+        fi
+        for CONTROL_IMAGE in logstore.svc control-check.app control-child.app control-producer.app; do
+            debugfs -w -R "rm $CONTROL_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$CONTROL_IMAGE $CONTROL_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $CONTROL_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
     if [ "$TEST_NAME" = "processes" ]; then
         # The children link the current libc (crt1 builds argv from the
         # launch block); stage-1 services, procmgr included, come from initrd.
@@ -1257,6 +1335,49 @@ if [ -n "$INIT_PROFILE" ]; then
           "$ROOT_DIR/tests/binutils/build/expected-hello.elf"; do
             debugfs -w -R "write $BINUTILS_FILE work/$(basename "$BINUTILS_FILE")" \
               "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
+    fi
+    if [ "$TEST_NAME" = "gcc" ]; then
+        # The launcher, as.app and the comparer (from the binutils test) at
+        # the root; the toolchain; hello.c, its manifest and Linux's outputs
+        # in @nvme:0/work.
+        if ! make -C "$KERNEL_DIR" libc user_runtime ccl-manifest >/dev/null ||
+           ! bash "$ROOT_DIR/tests/binutils/build.sh" "$KERNEL_DIR/isodir/boot" >/dev/null ||
+           ! bash "$ROOT_DIR/tests/gcc/build.sh" "$KERNEL_DIR/isodir/boot" >/dev/null; then
+            echo "headless: failed to build the gcc test" >&2
+            exit 1
+        fi
+        for GCC_IMAGE in logstore.svc as.app gcc-check.app binutils-compare.app archive-walk.app; do
+            debugfs -w -R "rm $GCC_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$GCC_IMAGE $GCC_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
+        # The toolchain as installed (--prefix=/toolchain): install_gcc_toolchain.
+        install_gcc_toolchain || exit 1
+        GCC_COMMANDS="$TEMP_DISK.gcc-work"
+        {
+            echo "mkdir work"
+            for GCC_OUTPUT in hello.s hello.o hello-driver.o hello bad bad.i bad.s; do
+                echo "rm work/$GCC_OUTPUT"
+            done
+            for GCC_FILE in "$ROOT_DIR/tests/gcc/hello.c" \
+              "$ROOT_DIR/tests/gcc/build/hello-manifest.s" \
+              "$ROOT_DIR/tests/gcc/build/expected-hello.s" \
+              "$ROOT_DIR/tests/gcc/build/expected-hello.o" \
+              "$ROOT_DIR/tests/gcc/build/expected-hello-driver.o" \
+              "$ROOT_DIR/tests/gcc/build/expected-hello" \
+              "$ROOT_DIR/tests/ccl-console/bad.c"; do
+                echo "rm work/$(basename "$GCC_FILE")"
+                echo "write $GCC_FILE work/$(basename "$GCC_FILE")"
+            done
+        } > "$GCC_COMMANDS"
+        debugfs -w -f "$GCC_COMMANDS" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        rm -f "$GCC_COMMANDS"
+        for GCC_CHECK in work/expected-hello; do
+            if ! debugfs -R "stat $GCC_CHECK" "$TEMP_DISK" 2>/dev/null | grep -q "Size:"; then
+                echo "headless: $GCC_CHECK was not installed" >&2
+                exit 1
+            fi
         done
     fi
     if [ "$TEST_NAME" = "libc" ]; then
@@ -2180,7 +2301,44 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                     sleep 0.3
                 done
             }
-            if [ "${CCL_CONSOLE_DEMO:-}" = programs ]; then
+            if [ "${CCL_CONSOLE_DEMO:-}" = gcc ]; then
+            # gcc from the console (CCL_CONSOLE_DEMO=gcc): build hello (cc1, as
+            # and ld, started by the driver), watch the run, see it end; then a
+            # compile error, cc1's diagnostic forwarded by the driver.
+            send_text() {
+                python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$1"
+            }
+            # Ask for a run's outcome until it is done (TCG: minutes, not seconds).
+            wait_done() {
+                local name=$1 before tries=0
+                while [ $tries -lt 60 ]; do
+                    before=$(grep -ac "Task<Run_Outcome>: Done" "$SERIAL_LOG" 2>/dev/null || true)
+                    send_text "(gcc.outcome $name)"
+                    sleep 5
+                    if [ "$(grep -ac "Task<Run_Outcome>: Done" "$SERIAL_LOG" 2>/dev/null || true)" -gt "$before" ]; then
+                        return 0
+                    fi
+                    tries=$((tries + 1))
+                done
+                return 1
+            }
+            sleep 0.5
+            send_text '(define hello (gcc.run (Gcc_Parameters output => (Output_File "@nvme:0/work/hello") sources => [(Input_File "@nvme:0/work/hello.c") (Input_File "@nvme:0/work/hello-manifest.s")] work => (Output_Directory "@nvme:0/work") toolchain => (Input_Directory "@nvme:0/toolchain") optimize => true)))'
+            sleep 4
+            send_text 'hello'
+            sleep 2
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-gcc-running.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            wait_done hello || echo "headless: gcc demo: hello did not finish" >&2
+            sleep 1
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-gcc.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            send_text '(define bad (gcc.run (Gcc_Parameters output => (Output_File "@nvme:0/work/bad") sources => [(Input_File "@nvme:0/work/bad.c")] work => (Output_Directory "@nvme:0/work") toolchain => (Input_Directory "@nvme:0/toolchain"))))'
+            sleep 4
+            wait_done bad || echo "headless: gcc demo: bad did not finish" >&2
+            send_text '(gcc.outlets bad)'
+            sleep 2
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-gcc-error.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.5
+            elif [ "${CCL_CONSOLE_DEMO:-}" = programs ]; then
             # Typed programs (CCL_CONSOLE_DEMO=programs): as on a bad source,
             # its unix.stderr port and its exit; then ld on a good object.
             send_text() {
@@ -2196,6 +2354,11 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             sleep 3
             send_text '(ld.outlets linked)'
             sleep 2
+            # Looking at a run's outcome never waits: these have ended.
+            send_text '(as.outcome bad)'
+            sleep 1
+            send_text '(ld.outcome linked)'
+            sleep 1
             send_text '(ld.run (Ld_Parameters output => (Input_File "@nvme:0/work/x") inputs => []))'
             sleep 2
             printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-programs.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
@@ -2570,6 +2733,22 @@ if { [ "$TEST_NAME" = "display-dual-output" ] || [ "$TEST_NAME" = "desktop-dual-
     INPUT_INJECTOR_PID=$!
 fi
 
+if [ "$TEST_NAME" = "gcc" ]; then
+    # Quit QEMU once gcc-check reports (TCG runs of the compilers are slow;
+    # the timeout is only the bound).
+    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "GCC-CHECK: PASS" "GCC-CHECK: FAIL" &
+    INPUT_INJECTOR_PID=$!
+fi
+if [ "$TEST_NAME" = "control-events" ]; then
+    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "CONTROL-CHECK: PASS" "CONTROL-CHECK: FAIL" &
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "bench-latency" ]; then
     # Quit QEMU once the benchmark prints its final marker.
     QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
@@ -2797,7 +2976,7 @@ config-inspector: native window ready
         required_markers="
 logstore: authorized typed diagnostics ready
 TEST: PASS log-unapproved
-TEST: PASS log-quota
+TEST: PASS log-burst
 TEST: PASS log-disconnect
 TEST: log collector exiting with acquired grant
 TEST: PASS log-collector-death
@@ -3024,6 +3203,28 @@ CXX: PASS
 "
         python3 "$ROOT_DIR/userspace/libc/tests/check-protection-faults.py" "$SERIAL_LOG" || exit 1
         ;;
+    gcc)
+        required_markers="
+gcc-check: cc1 compiles hello.c PASS
+gcc-check: cc1 output matches Linux PASS
+gcc-check: as assembles it PASS
+gcc-check: as output matches Linux PASS
+gcc-check: gcc -c compiles and assembles hello.c PASS
+gcc-check: gcc -c output matches Linux PASS
+gcc-check: archive-walk reads libc.a PASS
+gcc-check: a child's stderr arrives through the lent ring PASS
+gcc-check: gcc links hello PASS
+gcc-check: gcc link output matches Linux PASS
+gcc-check: hello runs and exits with 42 PASS
+gcc-check: gcc reports a compile error and exits with 1 PASS
+gcc-check: cc1's diagnostic arrives through the driver PASS
+GCC-CHECK: PASS
+"
+        if grep -qF 'GCC-CHECK: FAIL' "$SERIAL_LOG"; then
+            echo "headless: gcc test reported a failure" >&2
+            exit 1
+        fi
+        ;;
     binutils)
         required_markers="
 binutils-check: procmgr describes as.app PASS
@@ -3041,6 +3242,23 @@ BINUTILS-CHECK: PASS
             echo "headless: binutils test reported a failure" >&2
             exit 1
         fi
+        ;;
+    control-events)
+        required_markers="
+control-producer: ready
+control-check: the child starts with a lent ring PASS
+control-child: read the producer's outlet through a channel
+control-child: closed and reopened the channel past the reader limit
+control-check: the child writes into it PASS
+control-check: a control message to a process it did not launch is refused PASS
+control-check: the launcher revokes the ring PASS
+control-check: a Stop to its own child is accepted PASS
+control-child: the ring was revoked and returned
+control-child: Stop received
+control-check: the child saw the revoke (its runtime returned the ring), then the Stop PASS
+control-check: the launcher is told its ring came back PASS
+CONTROL-CHECK: PASS
+"
         ;;
     processes)
         required_markers="
@@ -3354,6 +3572,23 @@ desktop: active outputs= 1 primary= 0
 ccl-console: native window ready
 ccl-console: first frame presented
 ui-app: protected frame published
+"
+        # A named demo (CCL_CONSOLE_DEMO) types its own entries instead of
+        # the default ones, so only its own results are required.
+        if [ "${CCL_CONSOLE_DEMO:-}" = gcc ]; then
+            required_markers="$required_markers
+ccl-console: REPL completed: Task<Run_Outcome>: Done (Run_Outcome.Finished (Unix_Exit 0))
+ccl-console: REPL completed: Task<Run_Outcome>: Done (Run_Outcome.Finished (Unix_Exit 1))
+"
+        elif [ "${CCL_CONSOLE_DEMO:-}" = programs ]; then
+            required_markers="$required_markers
+ccl-console: REPL completed: List<Outlet_State>: [(Outlet_State \"unix.stdout\" \"Stream<String>\"
+ccl-console: REPL completed: Expression does not type-check: field output takes Output_File, not Input_File
+ccl-console: REPL completed: Task<Run_Outcome>: Done (Run_Outcome.Finished (Unix_Exit 1))
+ccl-console: REPL completed: Task<Run_Outcome>: Done (Run_Outcome.Finished (Unix_Exit 0))
+"
+        elif [ -z "${CCL_CONSOLE_DEMO:-}" ]; then
+            required_markers="$required_markers
 ccl-console: REPL completed: Integer: 42
 ccl-console: REPL completed: List<Integer>: [1, 2, 3]
 ccl-console: REPL completed: Boolean: true
@@ -3361,6 +3596,7 @@ ccl-console: REPL completed: List<LogEntry>: [(LogEntry
 ccl-console: REPL completed: Image: (Image 160 100
 ccl-console: REPL completed: Image: (Image 320 120
 "
+        fi
         ;;
     ccl-workspace)
         required_markers="

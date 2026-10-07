@@ -129,10 +129,14 @@ is
     type Permission is (Borrowed_Read_Only, Borrowed_Read_Write);
 
     -- Grant creation wire flags: bit0 writable, bit1 owner allows one level
-    -- of forwarding. Unknown bits and out-of-range page counts are rejected
-    -- before syscall arguments are narrowed to kernel scalar types.
+    -- of forwarding, bit2 post grant lifecycle events (docs/data-plane.md).
+    -- Unknown bits and out-of-range page counts are rejected before syscall
+    -- arguments are narrowed to kernel scalar types.
+    Creation_Flag_Bits : constant := 3;
+    Maximum_Creation_Flags : constant := 2 ** Creation_Flag_Bits - 1;
     function Valid_Creation_Request (Pages, Flags : Unsigned_64) return Boolean is
-      (Pages in 1 .. Unsigned_64 (Maximum_Page_Count) and then Flags <= 3);
+      (Pages in 1 .. Unsigned_64 (Maximum_Page_Count)
+       and then Flags <= Maximum_Creation_Flags);
 
     --  Ordinary grants contain only owner pages. Received grant mappings must
     --  use the future explicit derivation operation so parentage is retained.

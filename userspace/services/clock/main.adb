@@ -39,14 +39,11 @@ begin
         CuBit.Log_Records.Make ("clock: service ready");
    begin
       if Entry_Value.Success then
-         CuBit.Logging.Emit (Logger, Entry_Value.Value, 1, Submitted);
+         CuBit.Logging.Emit (Logger, Entry_Value.Value, Submitted);
       end if;
    end;
 
    loop
-      if Poll_Completion (Completion'Address) = 1 then
-         CuBit.Logging.Complete (Logger, Completion, Handled);
-      end if;
       --  This clock service has no device/event subscriptions. Deliberately
       --  consume all IPC here so lifecycle notifications cannot cause a spin.
       Poll_Any_Ipc (From, Request, Found);

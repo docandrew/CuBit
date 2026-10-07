@@ -37,7 +37,10 @@ with CuBit.Launch_Arguments;
 with CuBit.Launch_Grants;
 with CuBit.Program_Descriptions;
 with CuBit.Outlet_Rings;
+with CuBit.Stream_Regions;
+with CuBit.Stream_Rings;
 with CuBit.Child_Exits;
+with CuBit.Control_Events;
 with CuBit.Launch_Authority;
 with CuBit.Failures;
 with CuBit.Filesystems;
@@ -178,6 +181,8 @@ procedure main is
       Service, Rights : Unsigned_8 := 0;
       Length : Natural range 0 .. LAuth.Maximum_Prefix_Bytes := 0;
       Prefix : String (1 .. LAuth.Maximum_Prefix_Bytes) := [others => ' '];
+      --  Delegated by its launcher (CuBit.Launch_Grants), not its manifest.
+      Delegated : Boolean := False;
    end record;
    type Held_Scope_Array is
      array (1 .. CuBit.File_Access.Maximum_Entries) of Held_Scope;
@@ -1508,7 +1513,8 @@ procedure main is
                      Held.Scope_Count := Held.Scope_Count + 1;
                      Held.Scopes (Held.Scope_Count) :=
                        (Service => SERVICE_FS, Rights => rights,
-                        Length => name'Length, Prefix => prefix);
+                        Length => name'Length, Prefix => prefix,
+                        Delegated => True);
                   end if;
                end;
             end if;
@@ -1810,7 +1816,8 @@ procedure main is
                                        --  most), padded to a held scope.
                                        Prefix => locals (j).prefix &
                                          [1 .. LAuth.Maximum_Prefix_Bytes -
-                                               locals (j).prefix'Length => ' ']);
+                                               locals (j).prefix'Length => ' '],
+                                       Delegated => False);
                                  end if;
                               end;
                            end if;
@@ -2313,7 +2320,11 @@ procedure main is
             declare
                Parent : constant CuBit.Memory_Grants.Grant_Reference :=
                  CuBit.Grant_References.Decode (E.Grant);
-               Pages : constant Natural := S.Connectors (E.Outlet).Pages;
+               --  The whole region the launcher lent (control page and
+               --  ring), as the child will map it.
+               Pages : constant Positive :=
+                 CuBit.Stream_Rings.Region_Pages
+                   (CuBit.Stream_Regions.Declared (S.Connectors (E.Outlet).Pages));
                Mapped : System.Address;
                Child : CuBit.Memory_Grants.Grant_Reference;
                Ok : Boolean;
@@ -3442,6 +3453,60 @@ procedure main is
    end handleLaunchTable;
 
    ---------------------------------------------------------------------------
+   --  handleDelegatedPlaces
+   --  OP_DELEGATED_PLACES (CuBit.Launch_Grants): the places the requester's
+   --  launcher delegated to it, as a region written into the grant it lends.
+   ---------------------------------------------------------------------------
+   procedure handleDelegatedPlaces (sender : ProcessID; msg : Message) is
+      package LG renames CuBit.Launch_Grants;
+      Reference : CuBit.Memory_Grants.Grant_Reference;
+      Mapped    : System.Address;
+      Ok, Returned, Added : Boolean;
+      Places : LG.Builder;
+      Region : LG.Bytes (1 .. LG.Maximum_Bytes);
+      Length : LG.Byte_Count;
+   begin
+      if msg.tag.length /= LG.Places_Request_Words
+        or else not CuBit.Grant_References.Valid_Wire (msg.words (0))
+        or else Unsigned_64 (sender) not in launchStates'Range
+      then
+         sendReply (sender, REPLY_ERR, CuBit.Launch_Arguments.Launch_Failure'Enum_Rep
+                      (CuBit.Launch_Arguments.Malformed_Request));
+         return;
+      end if;
+      LG.Start (Places);
+      declare
+         Held : Launch_State renames launchStates (Unsigned_64 (sender));
+      begin
+         for h in 1 .. Held.Scope_Count loop
+            if Held.Scopes (h).Delegated and then Held.Scopes (h).Service = SERVICE_FS then
+               LG.Add (Places, Held.Scopes (h).Rights,
+                       Held.Scopes (h).Prefix (1 .. Held.Scopes (h).Length), Added);
+               --  Each was a valid delegation when it was recorded.
+               pragma Assert (Added);
+            end if;
+         end loop;
+      end;
+      LG.Finish (Places, Region, Length);
+      Reference := CuBit.Grant_References.Decode (msg.words (0));
+      CuBit.Memory_Grants.Acquire
+        (Reference, Unsigned_64 (sender), 0, LG.Maximum_Bytes,
+         CuBit.Memory_Grants.Write_Access, Mapped, Ok);
+      if not Ok then
+         sendReply (sender, REPLY_ERR, CuBit.Launch_Arguments.Launch_Failure'Enum_Rep
+                      (CuBit.Launch_Arguments.Grant_Unavailable));
+         return;
+      end if;
+      declare
+         Target : LG.Bytes (1 .. LG.Maximum_Bytes) with Import, Address => Mapped;
+      begin
+         Target (1 .. Length) := Region (1 .. Length);
+      end;
+      CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
+      sendReply (sender, REPLY_OK, Unsigned_64 (Length));
+   end handleDelegatedPlaces;
+
+   ---------------------------------------------------------------------------
    --  handleProgramDescription
    --  OP_PROGRAM_DESCRIPTION (CuBit.Program_Descriptions): a program's
    --  parameters, for a requester that may launch it. The descriptor is
@@ -3790,6 +3855,8 @@ begin
             handleLaunch (sender, msg);
          when LAuth.Table_Operation =>
             handleLaunchTable (sender, msg);
+         when CuBit.Launch_Grants.Places_Operation =>
+            handleDelegatedPlaces (sender, msg);
          when CuBit.Program_Descriptions.Description_Operation =>
             handleProgramDescription (sender, msg);
          when CuBit.Process_Observer.List_Label =>
@@ -3810,6 +3877,12 @@ begin
                releaseNetworkOwner (msg.words (0));
                releaseFilesystemOwner (msg.words (0));
             end if;
+         when CuBit.Control_Events.Grant_Revoked_Label
+            | CuBit.Control_Events.Grant_Returned_Label =>
+            --  A launcher revoked a ring procmgr holds for a child: the
+            --  child's derived grant goes with it, and procmgr returns its
+            --  own hold when the child ends (releaseRings). Not a request.
+            null;
          when others =>
             sendReply (sender, REPLY_ERR, 0);
       end case;

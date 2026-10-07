@@ -100,6 +100,7 @@ package body Syscall is
             when 124  => number := SYSCALL_COMMIT_OWNED_MEMORY_PREFIX;
             when 125  => number := SYSCALL_RELEASE_OWNED_RESERVATION;
             when 126  => number := SYSCALL_INSTALL_LAUNCH_ARGUMENTS;
+            when 127  => number := SYSCALL_SEND_CONTROL;
             when 118  => number := SYSCALL_YIELD;
             when 119  => number := SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND;
             when 120  => number := SYSCALL_POLICY_MINT_CAPABILITY_FOR_INCARNATION;
@@ -529,6 +530,11 @@ package body Syscall is
             when SYSCALL_RESUME =>
                 Admin.handleResume (
                     Process.processOf (percpu.currentThread), arg0, retval);
+
+            when SYSCALL_SEND_CONTROL =>
+                Admin.handleSendControl (
+                    Process.processOf (percpu.currentThread),
+                    arg0, arg1, arg2, retval);
 
             when SYSCALL_INSTALL_LAUNCH_ARGUMENTS =>
                 Admin.handleInstallLaunchArguments (

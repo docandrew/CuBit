@@ -13,4 +13,10 @@ package body Vulkan_Owned_Target_FFI with SPARK_Mode => Off is
       Result := Native_Prepare (Description, Submission, Slot, Width, Height,
                                 (if Discard then 1 else 0));
    end Prepare_Frame;
+   function Native_Readback (Description, Submission, Staging : System.Address;
+      Slot : Interfaces.Unsigned_32) return Interfaces.Unsigned_32
+     with Import, Convention => C, External_Name => "cubit_vulkan_owned_targets_record_readback";
+   procedure Record_Readback (Description, Submission, Staging : System.Address;
+      Slot : Interfaces.Unsigned_32; Result : out Interfaces.Unsigned_32) is
+   begin Result := Native_Readback (Description, Submission, Staging, Slot); end Record_Readback;
 end Vulkan_Owned_Target_FFI;

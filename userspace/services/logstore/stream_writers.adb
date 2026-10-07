@@ -1,119 +1,120 @@
-with System.Storage_Elements; use System.Storage_Elements;
-with System.Machine_Code;
-with CuBit.Messages;
-with CuBit.Datagram_Rings;
+with CuBit.Channel_Contracts;
+with CuBit.Channel_Protocol;
 with CuBit.Log_Protocol;
 with CuBit.Log_Streams;
 
 package body Stream_Writers is
-   package Grants renames CuBit.Memory_Grants;
-   package Rings renames CuBit.Channel_Rings;
+   package Channels renames CuBit.Channels;
    package Streams renames CuBit.Log_Streams;
-   use type System.Address;
    use type CuBit.Log_Protocol.Status;
-   use type CuBit.Datagram_Rings.Put_Result;
-   use type Grants.Grant_Reference;
+   use type Channels.Put_Result;
+   use type Channels.Side;
+   use type CuBit.Channel_Contracts.Contract;
 
-   procedure Release_Fence;
-   function Shared_Index (Base : System.Address; Offset : Natural) return Rings.Index;
-   procedure Set_Shared_Index (Base : System.Address; Offset : Natural; Value : Rings.Index);
-   procedure Release (S : in out Stream);
+   function Number_Of (Index : Positive) return Unsigned_64 is
+     (First_Number + Unsigned_64 (Index));
 
-   --  Ring bytes before the index that publishes them: no reordering past it.
-   procedure Release_Fence is
-   begin
-      System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
-   end Release_Fence;
+   --  The stream numbered Number that From opened, or 0.
+   function Find (Item : Table; Number : Unsigned_64; From : CuBit.Messages.ProcessID) return Natural is
+     (if Number > First_Number and then Number - First_Number <= Unsigned_64 (Item'Last)
+        and then Item (Natural (Number - First_Number)).Link.Active
+        and then Item (Natural (Number - First_Number)).Owner = Unsigned_64 (From)
+      then Natural (Number - First_Number) else 0);
 
-   function Shared_Index (Base : System.Address; Offset : Natural) return Rings.Index is
-      Value : Rings.Index with Import, Volatile, Address => Base + Storage_Offset (Offset);
+   procedure Let_Go (S : in out Stream);
+   procedure Let_Go (S : in out Stream) is
    begin
-      return Value;
-   end Shared_Index;
-   procedure Set_Shared_Index (Base : System.Address; Offset : Natural; Value : Rings.Index) is
-      Target : Rings.Index with Import, Volatile, Address => Base + Storage_Offset (Offset);
-   begin
-      Target := Value;
-   end Set_Shared_Index;
-
-   procedure Release (S : in out Stream) is
-      Returned : Boolean;
-   begin
-      if S.Base /= System.Null_Address then
-         Grants.Return_Acquisition (S.Ref, Returned);
-      end if;
+      Channels.Close (S.Link);
       S := (others => <>);
-   end Release;
+   end Let_Go;
 
-   procedure Attach
-     (Item : in out Table; Handle, Owner, Authority : Unsigned_64;
-      Ref : Grants.Grant_Reference; Attached : out Boolean)
+   procedure Open
+     (Item : in out Table; From : CuBit.Messages.ProcessID; Authority : Unsigned_64;
+      Request : CuBit.Messages.Message; Reply : out CuBit.Messages.Message)
    is
-      Free : Natural := 0;
-      Base : System.Address;
+      Is_Open, Valid : Boolean;
+      Offered : CuBit.Channel_Contracts.Contract;
+      Opener_Side : Channels.Side;
+      Ignore_Connector : Unsigned_16;
    begin
-      Attached := False;
-      for I in Item'Range loop
-         if Item (I).Handle = Handle and then Item (I).Base /= System.Null_Address then
-            if Item (I).Ref = Ref then
-               Attached := True;
-               return;
-            end if;
-            Release (Item (I));
-         end if;
-         if Free = 0 and then Item (I).Base = System.Null_Address then
-            Free := I;
-         end if;
-      end loop;
-      if Free = 0 then
+      Channels.Decode_Open (Request, Is_Open, Valid, Offered, Opener_Side, Ignore_Connector);
+      if not Valid or else Offered /= Streams.CONTRACT or else Opener_Side /= Channels.Consuming then
+         Reply := Channels.Refusal_Reply (CuBit.Channel_Protocol.Unknown_Type);
          return;
       end if;
-      Grants.Acquire
-        (Ref, CuBit.Messages.ProcessID (Owner), 0, Streams.STREAM_BYTES, Grants.Write_Access, Base, Attached);
-      if Attached then
-         Item (Free) :=
-           (Handle => Handle, Owner => Owner, Authority => Authority, Ref => Ref, Base => Base,
-            Producer => Rings.New_Producer (Streams.RING_BYTES));
-         --  logstore's index is its own; the reader starts from zero too.
-         Set_Shared_Index (Base, Streams.PRODUCED_OFFSET, 0);
-      end if;
-   end Attach;
-
-   procedure Detach (Item : in out Table; Handle : Unsigned_64) is
-   begin
-      for S of Item loop
-         if S.Handle = Handle and then S.Base /= System.Null_Address then
-            Release (S);
+      for I in Item'Range loop
+         if not Item (I).Link.Active then
+            Channels.Accept_Open (From, Request, Number_Of (I), Item (I).Link, Reply);
+            if Item (I).Link.Active then
+               Item (I).Owner := Unsigned_64 (From);
+               Item (I).Authority := Authority;
+               Item (I).Handle := 0;
+            end if;
+            return;
          end if;
       end loop;
-   end Detach;
+      Reply := Channels.Refusal_Reply (CuBit.Channel_Protocol.No_Room);
+   end Open;
+
+   procedure Bind
+     (Item : in out Table; Number, Handle : Unsigned_64; From : CuBit.Messages.ProcessID;
+      Authority : Unsigned_64; Bound : out Boolean)
+   is
+      Index : constant Natural := Find (Item, Number, From);
+   begin
+      Bound := Index /= 0 and then Item (Index).Authority = Authority
+        and then (Item (Index).Handle = 0 or else Item (Index).Handle = Handle);
+      if Bound then
+         Item (Index).Handle := Handle;
+      end if;
+   end Bind;
+
+   procedure Unbind (Item : in out Table; Handle : Unsigned_64) is
+   begin
+      for S of Item loop
+         if S.Link.Active and then S.Handle = Handle then
+            S.Handle := 0;
+         end if;
+      end loop;
+   end Unbind;
+
+   procedure Close (Item : in out Table; From : CuBit.Messages.ProcessID; Number : Unsigned_64) is
+      Index : constant Natural := Find (Item, Number, From);
+   begin
+      if Index /= 0 then
+         Let_Go (Item (Index));
+      end if;
+   end Close;
+
+   procedure Ended (Item : in out Table; Event : CuBit.Control_Events.Event) is
+   begin
+      for S of Item loop
+         if Channels.Ended (S.Link, Event) then
+            Let_Go (S);
+         end if;
+      end loop;
+   end Ended;
 
    procedure Drain (Item : in out Table; Store : in out Log_Fanout.Broker; Backlog : out Boolean) is
    begin
       Backlog := False;
       for S of Item loop
-         if S.Base /= System.Null_Address then
+         if S.Link.Active and then S.Handle /= 0 then
             if not Log_Fanout.Active (Store, S.Handle) then
-               --  Closed or expired: the region goes back to its owner.
-               Release (S);
+               --  Closed or expired: nothing more for it until it is bound again.
+               S.Handle := 0;
             else
                declare
-                  Ring : Rings.Bytes (0 .. Streams.RING_BYTES - 1)
-                    with Import, Address => S.Base + Storage_Offset (Streams.CONTROL_BYTES);
-                  Accepted : Boolean;
-                  Wrote : Boolean := False;
                   Value : CuBit.Log_Protocol.Event;
                   Lost : Unsigned_64;
                   Result : CuBit.Log_Protocol.Status;
                   Entry_Bytes : Streams.Entry_Buffer;
                   Length : Streams.Entry_Length;
-                  Put : CuBit.Datagram_Rings.Put_Result;
+                  Put : Channels.Put_Result;
                begin
-                  --  The reader's index is untrusted: an index that does not
-                  --  move forward within the ring is ignored.
-                  Rings.Accept_Consumed (S.Producer, Shared_Index (S.Base, Streams.CONSUMED_OFFSET), Accepted);
                   loop
-                     if Rings.Space (S.Producer) < Streams.Room_Needed then
+                     --  Room first: an event taken from the queue is never lost.
+                     if Channels.Free_Bytes (S.Link) < Streams.Room_Needed then
                         Backlog := True;
                         exit;
                      end if;
@@ -125,13 +126,9 @@ package body Stream_Writers is
                      else
                         Streams.Encode_Event (Value, Entry_Bytes, Length);
                      end if;
-                     CuBit.Datagram_Rings.Put (S.Producer, Ring, Entry_Bytes (0 .. Length - 1), Put);
-                     Wrote := Wrote or else Put = CuBit.Datagram_Rings.Put;
+                     Channels.Put (S.Link, Entry_Bytes'Address, Length, Put);
+                     exit when Put /= Channels.Put;
                   end loop;
-                  if Wrote then
-                     Release_Fence;
-                     Set_Shared_Index (S.Base, Streams.PRODUCED_OFFSET, S.Producer.Produced);
-                  end if;
                end;
             end if;
          end if;

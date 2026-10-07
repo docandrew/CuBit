@@ -277,10 +277,10 @@ accounting, and successful publication after refill.
 **How it works:**
 - **Subscribe** carries a source filter in word 1 (`Every_Source` = 0). A new subscription replays only that process's retained records, so one query is subscribe, drain, close.
 - **Result size:** one result carries up to `CCL.Interfaces.Logs.MAX_ENTRIES` (42) entries; when they don't all fit, the newest are kept.
-- **Host boundary:** lists of records cross it as typed images (`CCL.Objects` sequences), which the interpreter and the VM copy into their own regions.
+- **Host boundary:** lists of records cross it as typed images (`CCL.Objects` sequences), which the VM copies into its own regions.
 
 **Status:**
-- **Hosted:** the interpreter path is tested (`tests/ccl-type-discovery/log_view_tests.adb`), as is logstore's source filter (`tests/log-fanout`).
+- **Hosted:** the evaluation path (`CCL.Evaluation`, on the VM) is tested (`tests/ccl-type-discovery/log_view_tests.adb`), as is logstore's source filter (`tests/log-fanout`).
 - **Native:** the Workbench builds.
 - **Not yet live:** procmgr approves log observation only for `boot-logs.app`. The Workbench needs the same transitional approval; I've asked the graphics agent, who owns procmgr.
 - **Later:** typed log fields in entries, live tailing (a subscription left open), a table view in the Workbench and Observatory, and persistence to disk.

@@ -168,7 +168,7 @@ arguments => [
 The pieces use the variant's constructors directly: short helpers
 (`literal`, `value`, `when-set`) would take the schema past the CCL
 program's 16-function limit. They can come back when that limit is raised
-(interpreter and VM together).
+(in the compiler, verifier and VM).
 
 - Kinds: `Input_File` (read access to exactly that file), `Output_File`
   (create and write; its directory must be one the launcher holds),
@@ -184,7 +184,12 @@ program's 16-function limit. They can come back when that limit is raised
 - The manifest tool also checks that names are 1 to 32 of `[a-z0-9_-]` and
   unique, that every piece names a declared parameter, that literals are 1
   to 48 printable characters, and that every parameter is rendered by some
-  piece, so no file is delegated without being passed. Limits: 16
+  piece, so no file is delegated without being passed. The one exception is
+  explicit: a file or directory parameter declared `in_arguments => false`
+  is a place only. It is delegated but never rendered, and rendering it is
+  an error. The gcc driver's `work` (where its intermediate files go) and
+  `toolchain` are places only. A `Flag` or `Text` cannot be one, since
+  neither is a place. Limits: 16
   parameters and 24 pieces, so a descriptor fits a 2 KiB manifest section.
 - The manifest tool emits both as a `.cubit.parameters` section: a versioned
   descriptor that the proved Ada unit `CuBit.Program_Parameters` validates
@@ -205,8 +210,8 @@ program's 16-function limit. They can come back when that limit is raised
   returns a process: an identifier for that incarnation, not a holder of
   streams. Its inlets and outlets are reached through the program's accessors (below),
   and its exit status comes from its own operation once it ends.
-- As a CCL feature, it lands in the interpreter and in the bytecode
-  compiler, verifier and VM together (docs: bytecode parity).
+- As a CCL feature, it lands in the analyser and in the bytecode
+  compiler, verifier and VM together.
 
 ## Inlets and outlets, not stdio (user decisions, 2026-10-04)
 
@@ -241,8 +246,6 @@ descriptors => [(Descriptor 1 "unix.stdout") (Descriptor 2 "unix.stderr")]  # po
   review).** Besides its element type, each declares how values arrive:
   - `Stream`: a sequence of elements, each delivered in order (with any gaps
     counted), such as a transcript.
-  - `One_Shot`: exactly one value, ever, then done (a future). Examples: a
-    tool's result, or the process's exit status.
   - `Level`: a current state. Readers see the latest value, and
     intermediate values may be coalesced (e.g. progress, "ready", a volume).
     A card shows the value, not a history.
@@ -252,9 +255,10 @@ descriptors => [(Descriptor 1 "unix.stdout") (Descriptor 2 "unix.stderr")]  # po
   The signal kind is part of the type (a `Level` outlet cannot be wired to
   something that wants every element), maps onto the existing delivery
   policies (`Stream_Policies`: lossless, ordered with gaps, latest value),
-  and decides what a card and a graph node draw. Every process has a
-  system-supplied one-shot outlet, `com.cubit.exit`, carrying its exit
-  status, so the exit status is just another outlet.
+  and decides what a card and a graph node draw. A single value is not a
+  connector: a run's outcome is a `Task` (`ld.outcome`, below), and a
+  single message is a typed operation. The earlier `One_Shot` kind and the
+  system-supplied `com.cubit.exit` outlet are removed (2026-10-05).
 - **They replace** `Output_Stream`, `Stream_Kind` (`Standard_Output`,
   `Standard_Error`, `Log`), the `.cubit.streams` section, procmgr's stream
   bitmask, and the fixed ring IDs 2 and 3 with their four-ring limit. The
@@ -273,13 +277,51 @@ descriptors => [(Descriptor 1 "unix.stdout") (Descriptor 2 "unix.stderr")]  # po
   `Ld_Parameters`, `ld.run`, and one accessor per outlet named by its
   qualified name, so `(ld.unix.stderr r)` is a `Stream<String>`. Anything the
   program does not declare is a type error, and completion lists the real
-  ones. They are host operations, so the interpreter, compiler, verifier and
+  ones. They are host operations, so the type checker, compiler, verifier and
   VM check and run them like any other. `(outlets r)` lists a run's outlets
   (name, element, signal, arrived, lost) for discovery and the node graph.
 - **Every outlet gets a card (user's choice).** When a program starts from
   the console, each declared outlet appears as its own card and as a node in
   the stream graph, live and kept for inspection. Wiring an outlet elsewhere
   moves the edge; the card shows where it goes.
+
+**Outcomes and messages (user decisions, 2026-10-04).**
+- **A run's outcome is a `Task`, not a stream.** `(ld.outcome r)` is a
+  `Task<Run_Outcome<R>>`, where `R` is the result type the program's
+  manifest declares: `Unix_Exit` (the exit code) for ported tools, and a
+  program-specific type for native ones, typically a variant for the overall
+  outcome with fields for the details. `Run_Outcome` is `Finished(R)` or
+  `Stopped(reason)` (faulted or killed, so no result). `(wait t)` waits
+  without blocking a thread (docs/control-language.md, "Asynchronous
+  execution and streams"); a console card over a task shows it
+  pending and fills in when it completes. The `com.cubit.exit` outlet and
+  the `One_Shot` signal kind go away.
+- **Single messages are a `messages` list**, apart from inlets: each a
+  qualified name and a typed payload, sent with a typed operation on a run
+  that returns a `Task` (`(mixer.com.example.mixer.set-volume r 50)`).
+  Inlets stay streams: `Stream`, `Level` and `Edge`.
+- Order of work: `Task<T>` in the language (analyser, compiler, verifier
+  and VM together) and its card; then outcomes and messages on it; then
+  waiting with real suspension in the VM.
+- Status: step 1 is done: `Task<T>` and `(wait t)` (renamed from `await`,
+  2026-10-05) work on the VM (docs/control-language.md, "Asynchronous
+  execution and streams"), and the console resumes a waiting entry when
+  its task completes.
+- Step 2 (2026-10-05): `(ld.outcome r) : Task<Run_Outcome>`, with
+  `Run_Outcome = (variant (Finished Unix_Exit) (Stopped))` and
+  `Unix_Exit = (record (code Integer))`. The kernel reports only "exited
+  with a code" or "stopped" (killed, faulted, or main thread ended), so
+  `Stopped` carries no reason. Every program's result is `Unix_Exit` until a
+  manifest can declare its own result type (native programs, with typed
+  results through a lent result slot). The console gives each run a live
+  outcome card, `(ld.outcome r)`. It shows `Running` until the run ends,
+  then `Done` with how it ended, at once for a run that is already over.
+- Messages travel as typed IPC calls, not over rings (user decision,
+  2026-10-05; backlog CCL-002). They are infrequent commands that need a
+  reply and per-operation authority, which typed IPC and the capability
+  model already give. Still to build: discovery (the manifest declaration,
+  plus the endpoint handed over at launch) and reflection (generated,
+  separately granted CCL operations returning a `Task`).
 
 **Launcher-owned outlet rings (design, 2026-10-04).** A launcher that
 reads a child's outlets (the console) owns their rings. Before
@@ -319,7 +361,8 @@ describes, which redirection will re-point.
   A host operation takes one data argument, so a call's values travel as
   one record.
 - ccl-manifest runs its compilation on a 256 MiB task: interpreter frames
-  are about 240 KiB, and typed manifests were close to overflowing a
+  were about 240 KiB (measured before the interpreter's removal on
+  2026-10-05), and typed manifests were close to overflowing a
   default 8 MiB stack.
 
 **Inlets and outlets, status 2026-10-04.**
@@ -334,8 +377,7 @@ describes, which redirection will re-point.
   `Port_Mode` and `Descriptor`. `Output_Stream`, `Stream_Kind`,
   `.cubit.streams`, the keyword `(stream ...)` form, procmgr's stream
   parsing and the dead `REQ_STREAM` caps entry are removed. The manifest
-  tool enforces the `unix.*` and `com.cubit.*` rules, and `com.cubit.exit`
-  is reserved for the system.
+  tool enforces the `unix.*` and `com.cubit.*` rules.
 - The launch block is format 3. procmgr attaches the program's validated
   description after the strings (`Attach_Description`, re-validated), and
   builds a name-only block when the launcher gave none, so every program
@@ -354,7 +396,7 @@ describes, which redirection will re-point.
 - `CCL.Interfaces.Programs` generates a program's interface from its
   description: `Ld_Parameters` plus shared `Input_File`, `Output_File`,
   `Input_Directory`, `Output_Directory` and `Run` types; `ld.run`; one
-  accessor per outlet by qualified name; and `ld.com.cubit.exit`.
+  accessor per outlet by qualified name; `ld.outlets`; and `ld.outcome`.
   Keys are SHA-256 through SPARKTLSCrypto (the whole SPARKTLS project is a
   dependency of the CCL front ends: `sparktls_cubit.gpr` natively,
   `sparktls_host.gpr` hosted). tests/ccl-programs: typed calls check and

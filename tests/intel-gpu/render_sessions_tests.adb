@@ -85,5 +85,5 @@ begin
       pragma Assert (not Intel_GPU_Buffer_Handles.Resolve
         (Buffers, Resolve (Sessions, 42, Old_Tag), Buffer_ID).Ready);
    end;
-   Ada.Text_IO.Put_Line ("Render sessions PASS: reservation, grant acknowledgement, failed grant, PID reuse, wrong sender, retirement, quarantine");
+   Ada.Text_IO.Put_Line ("Render sessions PASS: 32768 five-operation model sequences, reservation, grant acknowledgement, failed grant, PID reuse, wrong sender, retirement, quarantine");
 end Render_Sessions_Tests;

@@ -4,7 +4,8 @@ project Calls extends "vm_client.gpr" is
      ("call_tests.adb", "outcome_tests.adb", "config_object_client-vm-calls.ads", "config_object_client-vm-calls.adb",
       "config_object_outcomes.ads", "config_object_outcomes.adb",
       "config_read_outcomes.ads", "config_read_outcomes.adb",
-      "ccl-vm-native_objects.ads", "ccl-vm-native_objects.adb", "native_call_tests.adb");
+      "ccl-vm-native_objects.ads", "ccl-vm-native_objects.adb", "native_call_tests.adb",
+      "ccl-evaluation.ads", "ccl-evaluation.adb");
    for Object_Dir use "build/calls";
    for Exec_Dir use "build/calls";
    for Main use ("call_tests.adb", "outcome_tests.adb", "native_call_tests.adb");

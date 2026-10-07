@@ -68,10 +68,17 @@ for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gn
     "$here/ada/cubit-libc_net_addresses.adb" "$here/ada/cubit-libc_net_targets.adb" \
     "$here/ada/cubit-libc_net_names.adb" "$here/ada/cubit-libc_net.adb" \
     "$here/../runtime/gnat/cubit-net_control_queues.ads" "$here/ada/cubit-libc_threads.adb" \
-    "$here/ada/cubit-libc_stream_rings.adb" "$here/ada/cubit-libc_streams.adb"; do
+    "$here/../runtime/gnat/cubit-stream_rings.adb" "$here/../runtime/gnat/cubit-stream_regions.adb" \
+    "$here/../runtime/gnat/cubit-channel_contracts.adb" \
+    "$here/ada/cubit-libc_streams.adb" \
+    "$here/../allocator/src/heap_classes.adb" "$here/../allocator/src/heap_bitmap.adb" \
+    "$here/../allocator/src/heap_extents.adb" "$here/../allocator/src/heap_slab_instance.ads" \
+    "$here/../allocator/process/cualloc_native.adb" "$here/ada/cubit-libc_memory.adb" \
+    "$here/ada/cubit-libc_child_outlets.adb"; do
     (cd "$ada_obj" && "$gnat_gcc" -c -O2 -g -gnatp -gnatn -fno-pic -ffunction-sections \
         -gnat2022 -gnatwa -gnatys -gnatec="$here/libc-ada.adc" \
-        -I"$here/ada" -I"$here/../runtime/gnat" "$unit")
+        -I"$here/ada" -I"$here/../runtime/gnat" \
+        -I"$here/../allocator/src" -I"$here/../allocator/process" "$unit")
 done
 ar rcs "$sysroot/lib/libc.a" "$ada_obj"/*.o
 

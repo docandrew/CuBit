@@ -1,29 +1,36 @@
 /*
  * CuBit filesystem request queue (cubit-filesystem_queues.ads): the layout
- * a client and the filesystem service share. Checked against the Ada by
- * tests/fs-bench/queue-layout-check.py.
+ * a client and the filesystem service share. The client opens three
+ * channels on the filesystem endpoint (docs/data-plane.md): the transfer
+ * arena, the dirty arena, then the queue pair, whose client region holds
+ * the requests and the indices the client writes, and whose service region
+ * (granted back, read-only) holds the answers, the service's indices, its
+ * wake word, the namespace generation and the delegations. Checked against
+ * the Ada by tests/fs-bench/queue-layout-check.py.
  */
 #ifndef CUBIT_FS_QUEUE_H
 #define CUBIT_FS_QUEUE_H
 
 enum {
-	OP_FS_QUEUE = 0x0020,
-	OP_FS_KICK = 0x0021,
 	OP_FS_WAIT = 0x0022,
-	FS_QUEUE_BYTES = 77824,
+	FS_QUEUE_CONNECTOR = 1,
+	FS_TRANSFER_CONNECTOR = 2,
+	FS_DIRTY_CONNECTOR = 3,
 	FS_SLOT_BITS = 6,
 	FS_SLOTS = 64,
 	FS_REQUEST_BYTES = 64,
 	FS_ANSWER_BYTES = 32,
-	FS_SUBMISSIONS_AT = 0,
-	FS_COMPLETIONS_AT = 2048,
-	FS_REQUESTS_AT = 4096,
-	FS_ANSWERS_AT = 8192,
-	FS_PRODUCED_AT = 0,
-	FS_CONSUMED_AT = 64,
-	FS_WAKE_AT = 68,
-	FS_NAMESPACE_GENERATION_AT = 72,
-	FS_DELEGATIONS_AT = 12288,
+	FS_PAGE_BYTES = 4096,
+	FS_CLIENT_PAGES = 2,
+	FS_CLIENT_SUBMITTED_AT = 0,
+	FS_CLIENT_REAPED_AT = 64,
+	FS_CLIENT_REQUESTS_AT = 4096,
+	FS_SERVER_ANSWERED_AT = 0,
+	FS_SERVER_TAKEN_AT = 64,
+	FS_SERVER_WAKE_AT = 128,
+	FS_SERVER_NAMESPACE_AT = 192,
+	FS_SERVER_ANSWERS_AT = 4096,
+	FS_DELEGATIONS_AT = 8192,
 	FS_DELEGATION_BYTES = 32,
 	FS_MAXIMUM_DELEGATIONS = 2048,
 	FS_DELEGATION_VALID_AT = 0,
@@ -78,6 +85,7 @@ enum {
 	/* The policy would let it write the file or create in the directory. */
 	FS_RIGHTS_POLICY_WRITE = 4,
 	FS_VALUE_AT = 16,
+	FS_TRANSFER_PAGES = 256,
 };
 
 #endif

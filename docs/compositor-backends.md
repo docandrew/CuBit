@@ -45,6 +45,190 @@ is active and exact cube pixels, nine-frame retirement and the full animation
 cycle pass. The animation rerun uses a 45-second correctness deadline. The existing renderer
 remains the default; no 240 Hz or physical latency claim is made.
 
+## Private runtime-dispatch candidate (2026-10-05)
+
+This checkpoint describes a **private integration candidate**, not the shared
+source tree's default build or the installed NUC image. Its directory is
+`/tmp/cubit-desktop-vulkan-active-link-1`. The authoritative packaging record is
+`compositor-result.json`, naming `desktop-vulkan-compositor.svc` with SHA-256
+`71ae3084dad673459024f90810220c053a2afed2167189788a90b73ccf488cde`.
+`compositor-sources.json` records its source inputs. The older startup-only
+records have different semantics and must not substitute for this manifest.
+Graphics independently verified the binary, manifest and source hashes.
+
+The facade contains both software and existing Vulkan implementations. Software
+is the default until the one-shot selector accepts admission, device health,
+targets, pipeline, upload, readback and configuration readiness. Present GPU
+admission supports one primary output and at most 16 MiB of readback storage;
+other configurations select software. This is an implementation limit to remove,
+not completion of the multi-output hardware goal. A single 128 MiB owner
+budget is shared by GPU targets, upload, readback and runtime source backings;
+it is not a separate allowance for each resource class. Upload capacity is
+2 MiB. Owners charge the memory requirements returned by Vulkan, which can
+exceed logical pixel or buffer capacity. These bounds do **not** describe total
+Mesa, service, kernel or application memory.
+
+The October 6 backing-denial NUC candidate reported a quota rejection for an
+8,388,608-byte request after committed backing reached 33,554,432 bytes. Graphics'
+reproduction uses 16 MiB aggregate setup plus three 8 MiB targets: it fails with
+the existing 32 MiB backing quota and fits a test-only 64 MiB quota. That hosted
+fixture does not establish full compositor readiness. Startup still creates a
+pipeline, a 2 MiB upload buffer and a full-output readback buffer after targets;
+normal rendering then allocates source backings. At 1080p, adding nominal
+transfer capacities to that fixture already approaches 50 MiB, before further
+pipeline/source allocations and implementation padding. The trusted backing
+policy must account for these later allocations and concurrent clients; simply
+passing target setup is not a whole-desktop memory admission test. Driver
+allocation diagnostics, rather than this approximate sum, determine the actual
+backing charge. Physical allocation, client quotas and shared backing limits
+remain separate constraints.
+
+Full output teardown is terminal for the current GPU scene. A new output-pool
+epoch alone cannot reopen it: the actual hosted dispatcher rejects that attempt,
+then succeeds through explicit owner retirement and software recovery. Main's
+future teardown/reopen or hotplug integration must invoke that recovery (or use
+a fresh admitted process) before drawing. Scale-only Settings changes preserve
+physical target dimensions. The internal shell remains a used surface, so
+closing the last external application does not by itself trigger full teardown.
+This is a reconfiguration limit, not an observed ordinary-window failure.
+
+A separate follow-up in `/tmp/cubit-compositor-reopen-1` connects that recovery
+to Main. It retains the old writer identity until all old output owners retire,
+blocks drawing while no replacement output exists, and invalidates every enabled
+new output before switching to software. The actual extracted Main helper passes
+with real hosted Vulkan cleanup and the existing SPARK selection/repaint/damage
+policies. Native driver/Display retirement observations remain a separate test
+gate. This follow-up does not modify the packaged `71ae3084` candidate.
+
+The GPU route renders into private Vulkan targets and reads back into Desktop's
+acquired CPU output target. It is not zero-copy hardware scanout. The next copy
+reduction gate is a supported driver/Display sharing and retirement contract;
+removing this readback without that contract would violate ownership. Likewise,
+Display's publication acknowledgment does not establish vblank synchronization,
+tear-free physical presentation or photon timing.
+
+New backend selection and recovery decisions live in
+`Compositor_Backend_Selection`, a SPARK policy. Recovery is keyed by output,
+epoch, frame and buffer. It closes capture admission, requires renderer,
+source, readback and output-writer retirement plus queued full repaint, and
+permits one transition to software. Uncertain retirement quarantines; stale
+identities and attempts to re-enable GPU are rejected. Proof establishes these
+policy implications **given the supplied observations**. It does not prove Mesa,
+Vulkan, mapping validity, driver fence semantics, or the SPARK-Off dispatch and
+Main adapters. Those observations require audited adapters and integration tests.
+
+Evidence retained under `tests/compositor/build/`:
+
+| Evidence directory | What it establishes | What it does not establish |
+| --- | --- | --- |
+| `recovery-preview-20261005` | Reconciled native link and seeded CuBit/QEMU software boot; exact menu/cursor restoration; extracted Main recovery branches with real pool/repaint/damage policies | Native GPU recovery or hardware performance |
+| `dispatch-recovery-real-20261005` | Actual combined dispatcher on hosted llvmpipe; real Vulkan owner retirement, zero owner-accounted charge, CPU admission, no GPU reactivation | Real kernel admission, native faults, total process memory or physical scanout |
+| `dispatch-capacity-real-20261005` | Eight retained client sources fill the cache; ninth triggers recovery with destination unchanged; all 18 fixture source allocations retired | Native overload scheduling or arbitrary device-loss recovery |
+| `gpu-markers-20261005` | Exact marker-enabled binary boots in software; no false GPU progress logs; marker identity/duplicate checks | Successful Intel rendering or a latency distribution |
+
+The existing Desktop log route carries these bounded process-lifetime markers:
+
+- `DESKTOP-VULKAN: startup=READY`: resources and admission passed startup gates.
+- `DESKTOP-VULKAN: frame=COMPLETE`: first successful GPU output completion,
+  including output, epoch, frame and buffer.
+- `DESKTOP-VULKAN: frame=PUBLISHED`: first matching authenticated Display
+  publication/release acknowledgment, additionally including session and token.
+- `desktop: renderer retired; full software repaint queued`: recovery switched
+  only after the required retirement observations.
+
+Completion and publication each log at most once per output per process. They
+are readiness diagnostics, not a per-frame metrics stream or latency samples.
+A visible desktop alone cannot distinguish GPU rendering from software fallback.
+
+Hardware acceptance still requires the exact candidate identity, output mode,
+resolution/scale and refresh rate; real GPU completion/publication markers;
+focus, drag, resize, Settings, cursor and browser interaction; exhaustion and
+load tests; and measurements of missed frame deadlines, input age, copy traffic,
+queue depth and total steady-state memory. At 240 Hz the nominal frame interval
+is 4.167 ms; meeting that interval is separate from the 1 ms physical response
+stretch goal. Physical keypress-to-photon measurements need external observation
+and display scanout context. Hosted llvmpipe and TCG functional results supply
+neither hardware timing nor physical latency evidence.
+
+### Rebuilding an isolated runtime-dispatch artifact
+
+`tools/build_desktop_vulkan_compositor.py` replaces the path-specific private
+link recipe. Run it in `tests/compositor/vulkan-affine-shell.nix` with explicit
+`--source-root`, `--toolchain-root`, `--bundle`, `--mesa-source`,
+`--manifest-compiler`, `--schema`, `--catalog` and a new `--output` directory.
+The source root must already contain the integrated dispatcher; the builder
+does not inject startup code or patch capability metadata. The compiler/schema
+must support the selected Desktop manifest's optional render request.
+
+It copies sources to a new tree, generates manifest bindings normally, compiles
+the Vulkan Ada scenario, generates and validates SPIR-V, rebuilds the C bridges,
+and links the verified existing Mesa bundle. The bundle's C++ link driver is
+kept distinct from its C bridge compiler. Prebuilt Ada runtime, font archive and
+wallpaper objects are recorded inputs; this is not a complete system rebuild.
+The default variant has timing/metrics off and production storage. Select
+`--metrics on` to publish structured stage and release metrics. This generates
+a separate keyword manifest requesting the metrics service and compiles its
+matching generated binding; the source manifest is unchanged. The selected
+manifest, generated binding and assembly are included in the source inventory.
+The textual timing reporter remains off; structured metrics enable their own
+clock sampling. This is not the final hardware performance configuration.
+
+Successful output includes `compositor-result.json`, `compositor-sources.json`,
+`build-inputs.json` and `build-commands.json`. Copied inputs and external inputs
+are hash-checked again after linking, including Mesa headers. A failed run keeps
+an `INCOMPLETE` result and cannot be confused with a linked candidate. The tool
+does not stage, install or alter the input Desktop sources. Keep source and
+bundle owners coordinated; use the shared build lock when selected inputs can
+be changed by shared builds. This helper does not change the Makefile default.
+
+The normal-build adapter `tools/build_vulkan_desktop.py` invokes this clean
+builder, checks its artifact and variant, then atomically replaces the selected
+`build-vulkan[-metrics]/desktop.svc`. Its `compositor-build.json` points to the
+retained artifact under `/tmp/cubit-vulkan-desktop-*`. Unsupported timing,
+limited-storage and delayed-display scenarios fail before building instead of
+silently producing a different variant.
+
+The `desktop` and `desktop-metrics` helpers now have an opt-in Vulkan branch
+using `CUBIT_COMPOSITOR=vulkan`, `CUBIT_MESA_BUNDLE` and `CUBIT_MESA_SOURCE`
+(use absolute paths). This is preparatory wiring: the shared default remains
+legacy, and Vulkan still requires publication of the coherent Main/API and
+optional-render manifest/compiler changes. The adapter can be verified against
+an explicit complete `--source-root` without staging the shared Desktop image.
+
+`tools/verify_desktop_vulkan_compositor.py ARTIFACT_DIRECTORY` checks the
+packaging record, binary and complete copied-input inventory. The guard's
+negative tests live in `tests/compositor/test-vulkan-compositor-artifact.py`.
+For native software regression, run `tests/compositor/test-desktop-vulkan-boot.py`
+in Nix with positional artifact directory, explicit prebuilt seed directory and
+new evidence directory; `--approve-render --cursor-motion` covers denied GPU
+admission, fresh-child software retry, exact menu restoration and cursor damage.
+The runner consumes the dedicated compositor manifest directly and checks
+artifact identity both before and after the VM run. Seeds are recorded, not
+represented as a current-source kernel/services rebuild. A passing run tests
+software fallback and must not be cited as native hardware GPU validation.
+
+For a metrics-enabled artifact, the runner also requires `--metrics-seed DIR`
+containing `metrics.svc` and `desktop-metrics-observer.app`, built against the
+candidate runtime. It starts the collector before Desktop and verifies an
+authenticated, growing `desktop.out0.submit_release` series, plus nonempty
+input-dispatch, scene-draw and submit-call series with their expected names,
+kinds and microsecond units. Producer loss, batch gaps and schema rejection
+fail the test. Request-dispatch samples are not required by this workload,
+which does not launch a client application. Stage durations can overlap and
+must not be added as disjoint work or interpreted as physical input latency.
+Old collector/observer binaries are not interchangeable merely because their
+protocol source files match: runtime memory-grant ABI compatibility matters.
+
+`--metrics-stall --metrics-seed DIR` instead loads the test-only
+`desktop-metrics-stall.svc`. This collector holds the first acquired batch for
+600 checks at 50 ms intervals, verifies the shared page never changes, then
+returns it and resumes consumption. The harness requires a complete native
+menu open/close and exact pixel restoration while the grant is held, plus
+resumed publication with a nonzero producer-drop count. It still checks cursor
+damage when `--cursor-motion` is selected. This tests bounded telemetry loss
+under backpressure, rather than expecting the renderer to wait for collection.
+It is a software-fallback overload test, not a GPU or latency benchmark.
+
 ## Implementation and ownership
 
 ### Private Vulkan image backing (2026-10-02)

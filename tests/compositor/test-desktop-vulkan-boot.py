@@ -6,6 +6,7 @@ startup is a separate gate. Check keyboard-driven menu pixels.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -26,35 +27,50 @@ parser.add_argument("--cursor-motion", action="store_true",
                     help="check native mouse motion and exact old/new cursor damage restoration")
 parser.add_argument("--scaled-cursor-motion", action="store_true",
                     help="apply 125 percent through native Settings and check scaled cursor damage")
+parser.add_argument("--metrics-seed", type=Path,
+                    help="directory containing metrics.svc and desktop-metrics-observer.app")
+parser.add_argument("--metrics-stall", action="store_true",
+                    help="use a test collector holding its first grant for 30 seconds")
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[2]
 assert os.environ.get("IN_NIX_SHELL"), "Use Nix"
 linked, seed, output = args.linked.resolve(), args.seed.resolve(), args.output.resolve()
-executable = linked / "desktop-vulkan-link.svc"
-manifest = json.loads((linked / "result.json").read_text())
+guard_path = root / "tools/verify_desktop_vulkan_compositor.py"
+guard_spec = importlib.util.spec_from_file_location("compositor_guard", guard_path)
+guard = importlib.util.module_from_spec(guard_spec)
+guard_spec.loader.exec_module(guard)
+executable = guard.verify(linked)
+manifest_path = linked / "compositor-result.json"
+manifest = json.loads(manifest_path.read_text())
+metrics_on = manifest.get("build_variant", {}).get("metrics") == "on"
+assert not args.metrics_stall or metrics_on, "Stall test needs a metrics-enabled artifact"
+assert bool(args.metrics_seed) == metrics_on, "Metrics build requires its explicit collector/observer seeds"
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
-assert manifest["status"] == "LINKED" and not manifest["gpu_enabled"]
-assert not args.approve_render or manifest.get("optional_render_probe")
-assert digest(executable) == manifest["binary_sha256"]
 output.mkdir(parents=True, exist_ok=False)
 stage = output / "stage"
 stage.mkdir()
 names = ("cubit_kernel", "initrd.img", "display.svc", "clock.svc", "logstore.svc")
+metric_names = (("desktop-metrics-stall.svc",) if args.metrics_stall else
+                ("metrics.svc", "desktop-metrics-observer.app")) if metrics_on else ()
+metric_seed = args.metrics_seed.resolve() if metrics_on else seed
 builder = root / "tools/build_development_disk.py"
 inputs = {str(p): digest(p) for p in
-          [*[seed / n for n in names], executable, Path(__file__).resolve(), builder]}
+          [*[seed / n for n in names], *[metric_seed / n for n in metric_names], executable, manifest_path, guard_path, Path(__file__).resolve(), builder]}
 (output / "inputs.json").write_text(json.dumps(inputs, indent=2) + "\n")
 for name in names:
     shutil.copyfile(seed / name, stage / name)
     assert digest(stage / name) == inputs[str(seed / name)]
+for name in metric_names:
+    shutil.copyfile(metric_seed / name, stage / name)
+    assert digest(stage / name) == inputs[str(metric_seed / name)]
 shutil.copyfile(executable, stage / "desktop.svc")
 assert digest(stage / "desktop.svc") == inputs[str(executable)]
 shutil.copyfile(__file__, output / "runner.py")
 serial, monitor = output / "serial.log", output / "monitor.sock"
 result = {"status": "INCOMPLETE", "gpu_enabled": False,
-          "scope": ("native CuBit legacy Desktop with explicit boot seeds" if manifest.get("backend") == "legacy" else
-                    "native CuBit software Desktop with linked Mesa and explicit boot seeds"),
+          "scope": "native CuBit runtime-dispatch software fallback with explicit boot seeds",
           "binary_sha256": inputs[str(executable)], "memory": "1G",
           "render_approved": args.approve_render}
 vm = None
@@ -99,11 +115,13 @@ try:
     profile = output / "init.ccl"
     profile.write_text('(startup v1 (start "logstore.svc" (priority 5)) '
                        '(start "clock.svc" (priority 5)) '
-                       '(start "display.svc" (priority 5)) '
+                       '(start "display.svc" (priority 5)) ' +
+                       ('(start "' + metric_names[0] + '" (priority 2)) ' if metrics_on else '') +
                        '(start "desktop.svc" (priority 4)' +
-                       (' (render approve-declared)' if args.approve_render else '') + '))')
+                       (' (render approve-declared)' if args.approve_render else '') + ')' +
+                       (' (start "desktop-metrics-observer.app" (priority 3))' if metrics_on and not args.metrics_stall else '') + ')')
     run("python3", str(builder), str(output / "desktop.img"), "--boot",
-        *[str(stage / n) for n in ("logstore.svc", "clock.svc", "display.svc", "desktop.svc")],
+        *[str(stage / n) for n in ("logstore.svc", "clock.svc", "display.svc", "desktop.svc", *metric_names)],
         "--file", "init.ccl=" + str(profile))
     iso = output / "iso"
     (iso / "boot/grub").mkdir(parents=True)
@@ -111,7 +129,7 @@ try:
         shutil.copyfile(stage / name, iso / "boot" / name)
     (iso / "boot/grub/grub.cfg").write_text(
         'serial --speed=115200 --unit=0\nterminal_output serial\nset timeout=0\n'
-        'set default=0\nmenuentry "Desktop Mesa startup" {\n'
+        'set default=0\nmenuentry "Desktop Vulkan compositor fallback" {\n'
         ' multiboot /boot/cubit_kernel\n set gfxpayload=1024x768x32\n'
         ' module /boot/initrd.img init.img\n}\n')
     run("grub-mkrescue", "-o", str(output / "boot.iso"), str(iso))
@@ -126,39 +144,24 @@ try:
             "-device", "nvme,serial=cubitnvme,drive=nvme0", "-no-reboot"],
             cwd=root, stdout=log, stderr=log)
     wait(lambda: "desktop: internal shell active" in text(), 90 if args.approve_render else 45)
-    if manifest.get("device_startup_probe"):
-        assert "DESKTOP-GPU-STARTUP: PASS no authority" in text()
-        assert "DESKTOP-GPU-STARTUP: FAIL" not in text()
-        result["device_startup_probe"] = "PASS no authority"
-    if manifest.get("admitted_startup"):
-        assert text().count("DESKTOP-VULKAN: startup=SOFTWARE") == 1
-        assert "DESKTOP-VULKAN: admitted endpoint; starting Mesa" not in text()
-        assert "DESKTOP-VULKAN: startup=READY" not in text()
-        assert "DESKTOP-VULKAN: invalid render authority" not in text()
-        result["admitted_startup"] = "PASS software branch; hardware branch untested"
-    if manifest.get("prepare_targets"):
-        assert text().count("DESKTOP-VULKAN: targets skipped; device unavailable") == 1
-        assert "DESKTOP-VULKAN: targets ready=" not in text()
-        result["prepare_targets"] = "PASS no allocation without ready device"
-    if manifest.get("prepare_pipeline"):
-        assert "DESKTOP-VULKAN: pipeline ready=" not in text()
-        result["prepare_pipeline"] = "PASS no pipeline creation without targets"
-    if manifest.get("optional_render_probe"):
-        assert "procmgr: render software-only admitted" in text()
-        assert "DESKTOP-OPTIONAL-RENDER: PASS empty slot" in text()
-        assert "DESKTOP-OPTIONAL-RENDER: FAIL" not in text()
-        result["optional_render_probe"] = "PASS empty slot"
-        attempts = re.findall(r'procmgr: render attempt incarnation=\s*(\d+) software=(TRUE|FALSE)', text())
-        if args.approve_render:
-            assert "procmgr: render admission denied; child not resumed" in text()
-            assert "procmgr: render retry software with fresh child" in text()
-            assert len(attempts) == 2 and [a[1] for a in attempts] == ["FALSE", "TRUE"]
-            assert attempts[0][0] != attempts[1][0]
-        else:
-            assert len(attempts) == 1 and attempts[0][1] == "TRUE"
-        assert all(int(identity) >> 32 and int(identity) % 2**32 for identity, _ in attempts)
-        assert text().count("DESKTOP-OPTIONAL-RENDER: PASS empty slot") == 1
-        result["render_attempts"] = attempts
+    assert text().count("DESKTOP-VULKAN: startup=SOFTWARE") == 1
+    assert "DESKTOP-VULKAN: startup=READY" not in text()
+    assert "DESKTOP-VULKAN: frame=" not in text()
+    assert "procmgr: render software-only admitted" in text()
+    assert text().count("DESKTOP-OPTIONAL-RENDER: PASS empty slot") == 1
+    attempts = re.findall(r'procmgr: render attempt incarnation=\s*(\d+) software=(TRUE|FALSE)', text())
+    if args.approve_render:
+        assert "procmgr: render admission denied; child not resumed" in text()
+        assert "procmgr: render retry software with fresh child" in text()
+        assert len(attempts) == 2 and [a[1] for a in attempts] == ["FALSE", "TRUE"]
+        assert attempts[0][0] != attempts[1][0]
+    else:
+        assert len(attempts) == 1 and attempts[0][1] == "TRUE"
+    assert all(int(identity) >> 32 and int(identity) % 2**32 for identity, _ in attempts)
+    result.update(render_attempts=attempts, software_fallback="PASS", hardware_validated=False)
+    if args.metrics_stall:
+        wait(lambda: "TEST: metrics-stall grant held" in text())
+    held_restorations = 0
     time.sleep(2)
     baseline = screenshot("desktop")
     assert baseline.getextrema() != ((0, 0), (0, 0), (0, 0))
@@ -168,7 +171,7 @@ try:
         time.sleep(2)
         opened = screenshot("menu-" + str(cycle))
         difference = ImageChops.difference(baseline, opened)
-        changed = sum(1 for p in difference.getdata() if p != (0, 0, 0))
+        changed = sum(1 for p in difference.get_flattened_data() if p != (0, 0, 0))
         assert changed > 10000, "Apps menu did not visibly open"
         counts.append(changed)
         command("sendkey esc")
@@ -177,6 +180,8 @@ try:
         # No mouse motion; exclude live clock/taskbar from restoration oracle.
         area = (0, 0, 1024, 700)
         assert ImageChops.difference(baseline.crop(area), closed.crop(area)).getbbox() is None
+        if args.metrics_stall and "TEST: metrics-stall held page unchanged" not in text():
+            held_restorations += 1
     if args.cursor_motion:
         # Native PS/2 input, no direct mutation of Desktop state. Check both old
         # cursor repair and the new footprint; clock/taskbar are outside the oracle.
@@ -257,7 +262,30 @@ try:
         result.update(native_scales=scale_results, output_pixels=[1024,768])
     healthy()
     assert all(Path(p).is_file() and digest(Path(p)) == h for p, h in inputs.items())
-    result.update(status="PASS", menu_changed_pixels=counts, restored_cycles=3)
+    if args.metrics_stall:
+        wait(lambda: "TEST: metrics-stall held page unchanged checks=600" in text(), 60)
+        # Loss is carried in the next published batch; generate fresh input
+        # after the held grant is returned even if the pixel workload is done.
+        for _ in range(3):
+            command("sendkey shift")
+            time.sleep(0.2)
+        wait(lambda: "TEST: PASS metrics-stall resumed batches=" in text(), 60)
+        assert held_restorations > 0, "No menu restoration completed during collector hold"
+        assert "TEST: metrics-stall held page unchanged checks=600" in text()
+        recovered = re.search(r"TEST: PASS metrics-stall resumed batches=\s*(\d+) dropped=\s*(\d+)", text())
+        assert recovered and int(recovered[1]) > 2 and int(recovered[2]) > 0
+        assert "desktop: metrics quarantined" not in text()
+        result["metrics_stall"] = {"held_page_checks": 600,
+            "menu_restorations_during_hold": held_restorations,
+            "resumed_batches": int(recovered[1]), "producer_dropped": int(recovered[2])}
+    elif metrics_on:
+        wait(lambda: "TEST: PASS desktop-metrics frames=" in text(), 30)
+        assert "stages=input,draw,submit" in text()
+        assert "desktop: metrics quarantined" not in text()
+        result["metrics"] = "PASS authenticated release growth and input/draw/submit samples; no schema/loss rejection"
+    assert "DESKTOP-VULKAN: frame=" not in text()
+    assert guard.verify(linked) == executable
+    result.update(status="PASS", menu_changed_pixels=counts, restored_cycles=3, false_gpu_markers=0)
 finally:
     if vm is not None and vm.poll() is None:
         vm.terminate()

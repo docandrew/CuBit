@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with Interfaces;
 with CCL.VM;
 with CCL.Language;
@@ -11,7 +12,7 @@ package Interpreter_Host with SPARK_Mode is
    procedure Invoke
      (Context : in out State; Binding : Interfaces.Unsigned_32;
       Argument : CCL.VM.Value; Value : out CCL.VM.Value; Success : out Boolean);
-   procedure Evaluate is new CCL.Language.Interpret_With_Host (State, Invoke);
+   procedure Evaluate is new CCL.Evaluation.Evaluate_With_Host (State, Invoke);
    function Now (Context : State) return Interfaces.Unsigned_64 is (Context.Tick);
    procedure Pump is new CCL.Periodic_Programs.Evaluate_Due (State, Now, Invoke);
 end Interpreter_Host;

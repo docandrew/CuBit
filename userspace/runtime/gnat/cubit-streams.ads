@@ -6,40 +6,27 @@
 --  Named I/O Streams
 --
 --  @description
---  Producer-owned ring buffer model for a process's outlets
---  (docs/ccl-launch-parameters.md, "Connectors, not stdio"). A program opens
---  each connector its manifest declares by its qualified name (Open_Outlet); the
---  ring's id is the connector's position plus one. CuBit has no stdout.
---  Producers handle subscription requests opportunistically inside
---  streamPrint via Poll_Service_Request.
---  Subscribers send an async subscribe, receive a read-only grant
---  to the ring buffer, then poll for new data.
+--  Producer-owned rings for a process's outlets (docs/ccl-launch-parameters.md,
+--  "Connectors, not stdio"). A program opens each connector its manifest
+--  declares by its qualified name (Open_Outlet); the ring's id is the
+--  connector's position plus one. CuBit has no stdout.
 --
---  Ring buffer layout:
---    Offset 0x000: StreamHeader (128 bytes)
---      +0x00  magic           : U32  ("STRI" = 0x53545249)
---      +0x04  version         : U16  (1)
---      +0x06  flags           : U16
---      +0x08  subscriberCount : U8
---      +0x0C  producerIdx     : U32  (producer advances after writing)
---      +0x10  capacity        : U32  (ring data area bytes)
---      +0x14  defaultTypeTag  : U16
---      +0x16  overflowPolicy  : U8   (1 = DROP_OLDEST)
---      +0x18  streamId        : U16
---      +0x20  subscribers     : SubscriberTable (8 x 12 bytes = 96 bytes)
---    Offset 0x080: Ring data (capacity bytes)
---
---  Ring entry format:
---    [length:u16][typeTag:u16][payload bytes][pad to 8-byte alignment]
---
---  Sentinel entry:
---    length=0xFFFF means "skip to offset 0". Used when an entry would
---    straddle the buffer boundary. The reader advances its cursor to
---    the next capacity-aligned position and re-reads from offset 0.
+--  Each ring is a CuBit.Stream_Rings region (docs/ccl-streams.md, "The ring
+--  underneath"): a control page and a power-of-two data ring of the
+--  connector's declared pages. One producer, any number of readers; the
+--  producer never waits, and a slow reader loses the oldest records.
+--  A reader opens a channel on the outlet's connector (CuBit.Outlet_Channels),
+--  receives its own read-only grant of the region, and reads with its own
+--  cursor. Producers answer those requests opportunistically inside
+--  streamWrite (or streamHandleSubscription).
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Protocols;
+with CuBit.Channels;
+with CuBit.Control_Events;
+with CuBit.Messages;
+with CuBit.Stream_Rings;
 
 package CuBit.Streams is
 
@@ -50,28 +37,19 @@ package CuBit.Streams is
    --  No stream: a connector the program's manifest does not declare.
    NO_STREAM : constant StreamId := 0;
 
-   TYPE_RAW_BYTES : constant TypeTag := 16#0000#;
-   TYPE_TEXT_LINE : constant TypeTag := 16#0001#;
+   TYPE_RAW_BYTES : constant TypeTag := CuBit.Stream_Rings.ELEMENT_RAW_BYTES;
+   TYPE_TEXT_LINE : constant TypeTag := CuBit.Stream_Rings.ELEMENT_TEXT_LINE;
 
-   --  IPC labels
-   OP_STREAM_SUBSCRIBE   : constant Unsigned_32 := 16#0700#;
-   OP_STREAM_SUBSCRIBE_TYPED : constant Unsigned_32 := 16#0708#;
-   OP_STREAM_UNSUBSCRIBE : constant Unsigned_32 := 16#0701#;
-   OP_STREAM_NOTIFY      : constant Unsigned_32 := 16#0702#;
-   OP_STREAM_WAKEUP      : constant Unsigned_32 := 16#0704#;
+   --  IPC labels. Reading an outlet is a channel (CuBit.Outlet_Channels):
+   --  these are the queries around it.
+   --  Which streams a process has (reply: word 0 a bitmask of ids, 1 count).
    OP_STREAM_LIST        : constant Unsigned_32 := 16#0705#;
+   --  procmgr to a launcher: a child's declared streams (word 0 the PID,
+   --  1 the bitmask).
    OP_STREAM_AVAILABLE   : constant Unsigned_32 := 16#0706#;
-   OP_STREAM_GONE        : constant Unsigned_32 := 16#0707#;
 
    MAX_STREAMS     : constant := 4;
    MAX_SUBSCRIBERS : constant := 8;
-
-   HEADER_SIZE : constant := 128;
-   DATA_OFFSET : constant := 128;
-
-   ENTRY_HEADER_SIZE : constant := 4;  -- 2 bytes length + 2 bytes typeTag
-
-   SENTINEL_LENGTH : constant Unsigned_16 := 16#FFFF#;
 
    ---------------------------------------------------------------------------
    --  Producer API
@@ -86,23 +64,14 @@ package CuBit.Streams is
 
    ---------------------------------------------------------------------------
    --  Launcher-owned rings (docs/ccl-launch-parameters.md, "Launcher-owned
-   --  outlet rings"): the launcher initializes a ring in its own memory with
-   --  itself as the one subscriber, lends it to the child, and reads it in
-   --  place.
+   --  outlet rings"): the launcher makes a ring in its own memory, lends it
+   --  to the child, and reads it in place.
    ---------------------------------------------------------------------------
 
-   --  Write a ring header at Base (Pages pages, page aligned): empty, drop
-   --  oldest, and Subscriber (a PID; 0: none) registered at cursor 0.
-   procedure Initialize_Ring
-     (Base : Unsigned_64; Pages : Positive; Id : StreamId; Entry_Type : TypeTag;
-      Subscriber : Unsigned_32 := 0);
-
-   --  Read the next entry of a ring this process owns and subscribes to:
-   --  bytes read (0: none yet). The cursor is the subscriber slot's, so a
-   --  producer that drops old entries moves it, and reading moves it on.
-   function Read_Owned
-     (Base : Unsigned_64; Buffer : System.Address; Maximum : Unsigned_32;
-      Entry_Type : out TypeTag) return Unsigned_32;
+   --  A grant revoke event (CuBit.Control_Events) for a ring a launcher lent
+   --  this process: the outlet is closed and its mapping returned. False
+   --  when no outlet holds that grant. CuBit.Process_Events calls this.
+   function Return_Revoked (Slot, Generation : Unsigned_64) return Boolean;
 
    --  Create a named stream. Allocates pages via sbrk and initializes the
    --  ring buffer header. Must be called before streamWrite/streamPrint.
@@ -137,26 +106,33 @@ package CuBit.Streams is
    procedure streamPrint (id  : StreamId;
                            msg : String);
 
-   --  Handle one pending subscription/unsubscription service request.
+   --  A reader's grant came back (CuBit.Control_Events): its slot is freed.
+   --  False when it was not one of this process's readers.
+   --  CuBit.Process_Events calls this.
+   function Forget_Returned (Event : CuBit.Control_Events.Event) return Boolean;
+
+   --  Handle one pending open, close or list request.
    --  Returns True if a request was handled. Call this periodically in
    --  processes that produce streams but may not call streamWrite frequently.
    function streamHandleSubscription return Boolean;
 
-   --  Best-effort flush: poll until all subscribers have caught up with
-   --  the producer, or timeout after ~100 iterations with 1ms sleeps.
-   procedure streamFlush (id : StreamId);
-
    ---------------------------------------------------------------------------
-   --  Subscriber API (used by shell)
+   --  Reading another process's outlet: a channel opened on its connector
    ---------------------------------------------------------------------------
 
    type SubInfo is record
-      active    : Boolean     := False;
-      grantBase : Unsigned_64 := 0;
-      cursor    : CursorSlot  := 0;
-      cursorIdx : Unsigned_32 := 0;  -- local read cursor (avoids RO fault)
-      capacity  : Unsigned_32 := 0;
+      Link : CuBit.Channels.Channel;
    end record;
+
+   --  Ask the process behind Endpoint to let this one read its outlet
+   --  Stream, of Element records, without waiting: the completion that
+   --  carries Token goes to Subscribe_Finish.
+   procedure Subscribe_Begin
+     (Endpoint : CuBit.Messages.CapabilitySlot; Stream : StreamId;
+      Element : CuBit.Protocols.Schema_Contract; Token : Unsigned_64;
+      Sub : out SubInfo; Submitted : out Boolean);
+   procedure Subscribe_Finish
+     (Sub : in out SubInfo; Reply : CuBit.Messages.Message; Subscribed : out Boolean);
 
    --  Non-blocking: read one entry from a subscribed stream.
    --  Returns bytes read (0 if no data available).
@@ -165,7 +141,9 @@ package CuBit.Streams is
                          maxLen    : Unsigned_32;
                          entryType : out TypeTag) return Unsigned_32;
 
-   --  Check how many bytes are available to read.
+   --  How many bytes are available to read.
    function streamAvailable (sub : SubInfo) return Unsigned_32;
+
+   procedure Unsubscribe (Sub : in out SubInfo);
 
 end CuBit.Streams;

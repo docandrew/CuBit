@@ -23,6 +23,60 @@ procedure Scanout_Inventory_Tests is
       end loop;
    end Reset;
 begin
+   -- Prospective flips must protect every live object, using the same sample
+   -- set for the selected plane and the exclusion inventory.
+   declare
+      Free_Target : constant Unsigned_64 := 16#200000#;
+      Presence : DP.Snapshot := Present_Pipes;
+      function Admitted (First : Unsigned_64 := Free_Target;
+                         Bytes : Unsigned_64 := 4096) return Boolean is
+        (Plan_Linear_Flip (P, C, Presence, 1, 8_388_608,
+                          First, Bytes).Valid);
+   begin
+      Reset;
+      pragma Assert (Admitted);
+      for Selected in Plane_Index loop
+         pragma Assert (Plan_Linear_Flip
+           (P, C, Presence, Selected, 8_388_608, Free_Target, 4096).Valid);
+         declare
+            Missing_Pipe : DP.Snapshot := Presence;
+         begin
+            Missing_Pipe.Pipes (DP.Pipe'Val ((Selected - 1) / 5)) := DP.Absent;
+            pragma Assert (not Plan_Linear_Flip
+              (P, C, Missing_Pipe, Selected, 8_388_608, Free_Target, 4096).Valid);
+         end;
+      end loop;
+      for I in 1 .. 24 loop
+         pragma Assert (not Admitted (Unsigned_64 (I) * 65536));
+         pragma Assert (Admitted (Unsigned_64 (I) * 65536 - 4096));
+         -- The small rendered footprint fits, but the allocation crosses
+         -- the next live object: the whole allocation must be excluded.
+         pragma Assert (not Admitted (Unsigned_64 (I) * 65536 - 4096, 8192));
+      end loop;
+      for I in Plane_Index loop
+         Reset; P (I).Collected := False;
+         pragma Assert (not Admitted);
+      end loop;
+      for I in Cursor_Index loop
+         Reset; C (I).Collected := False;
+         pragma Assert (not Admitted);
+      end loop;
+      Reset; P (2).After.Surface := 0;
+      pragma Assert (not Admitted);
+      Reset; C (4).After.Base := 0;
+      pragma Assert (not Admitted);
+      Reset; Presence.Pipes (DP.Pipe'First) := DP.Absent;
+      pragma Assert (not Admitted); -- fabricated sample on absent pipe
+      Presence := Present_Pipes; Presence.Known := False;
+      pragma Assert (not Admitted);
+      Presence := Present_Pipes; Reset;
+      P (1).Before.Control := 0; P (1).After := P (1).Before;
+      pragma Assert (not Admitted); -- disabled selected plane is not a flip
+      Reset;
+      pragma Assert (not Admitted (Free_Target + 1));
+      pragma Assert (not Admitted (Free_Target, 0));
+      pragma Assert (not Admitted (Unsigned_64'Last, 4096));
+   end;
    declare
       Presence : DP.Snapshot;
       Expected : Natural;

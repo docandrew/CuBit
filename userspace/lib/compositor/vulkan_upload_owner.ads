@@ -6,8 +6,10 @@ package Vulkan_Upload_Owner with SPARK_Mode is
    use type A.State, A.Ticket, A.Phase, C.State, C.Child, C.Phase, System.Address;
    subtype Capacity_Range is Positive range 1 .. 16 * 1024 * 1024;
    type Phase is (Fresh, Live, Closed, Quarantined);
+   type Transfer_Direction is (Upload, Readback);
    type State is private;
    function Current (S : State) return Phase;
+   function Direction (S : State) return Transfer_Direction;
    function Parent_Held (S : State; Context : C.State) return Boolean;
    function Lease (S : State) return A.Ticket;
    function Capacity (S : State) return Natural;
@@ -17,11 +19,12 @@ package Vulkan_Upload_Owner with SPARK_Mode is
    function Description (S : State) return System.Address;
    procedure Initialize (S : in out State; Context : in out C.State;
       Submission : V.State; Request : System.Address; Size : Capacity_Range;
-      Budget : in out A.State; Accepted : out Boolean)
+      Budget : in out A.State; Accepted : out Boolean;
+      Kind : Transfer_Direction := Upload)
      with Pre => A.Valid (Budget),
        Post => A.Valid (Budget) and A.Limit (Budget) = A.Limit (Budget'Old) and
          C.Current (Context) = C.Current (Context'Old) and C.Context (Context) = C.Context (Context'Old) and
-         (if Accepted then Current (S) = Live and Parent_Held (S, Context) and
+         (if Accepted then Current (S) = Live and Direction (S) = Kind and Parent_Held (S, Context) and
             Capacity (S) = Size and Mapping (S) /= System.Null_Address and
             A.Current (Budget, Lease (S)) and A.Status (Budget, Lease (S)) = A.Live) and
          (if Current (S'Old) in Fresh | Closed and Current (S) in Live | Quarantined then Parent_Held (S, Context)) and
@@ -37,12 +40,14 @@ package Vulkan_Upload_Owner with SPARK_Mode is
 private
    type State is record
       Mode : Phase := Fresh;
+      Kind : Transfer_Direction := Upload;
       Request, Mapped : System.Address := System.Null_Address;
       Size : Natural := 0;
       Ticket : A.Ticket := A.No_Ticket;
       Parent : C.Child := C.No_Child;
    end record;
    function Current (S : State) return Phase is (S.Mode);
+   function Direction (S : State) return Transfer_Direction is (S.Kind);
    function Parent_Held (S : State; Context : C.State) return Boolean is (C.Held (Context, S.Parent));
    function Lease (S : State) return A.Ticket is (S.Ticket);
    function Capacity (S : State) return Natural is (if S.Mode = Live then S.Size else 0);

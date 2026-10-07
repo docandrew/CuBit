@@ -7,6 +7,7 @@ from pathlib import Path
 repo = Path(__file__).resolve().parents[2]
 abi = (repo / "userspace/runtime/gnat/cubit-kernel_abi.ads").read_text()
 kernel = (repo / "kernel/src/syscall.ads").read_text()
+labels_text = (repo / "kernel/src/ipc_labels.ads").read_text()
 def value(text):
     """An Ada literal: decimal, or based (16#FF#, 8#777#), underscores allowed."""
     text = text.replace("_", "")
@@ -26,11 +27,17 @@ pairs = {
     "Call_Via_Endpoint_Capability": "SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY",
     "Submit_Via_Endpoint_Capability": "SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY",
     "Revoke_Shared_Memory_Grant": "SYSCALL_REVOKE_SHARED_MEMORY_GRANT",
+    "Revoke_Shared_Memory_Grant_Reference": "SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE",
+    "Reserve_Owned_Memory": "SYSCALL_RESERVE_OWNED_MEMORY",
+    "Commit_Owned_Memory_Prefix": "SYSCALL_COMMIT_OWNED_MEMORY_PREFIX",
+    "Release_Owned_Reservation": "SYSCALL_RELEASE_OWNED_RESERVATION",
+    "Send_Control": "SYSCALL_SEND_CONTROL",
     "Thread_Exit": "SYSCALL_THREAD_EXIT", "Futex_Wait": "SYSCALL_FUTEX_WAIT",
     "Futex_Wake": "SYSCALL_FUTEX_WAKE",
     "Create_Shared_Memory_Grant_Via_Capability": "SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY",
     "Get_Owned_Shared_Memory_Grant_Generation": "SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION",
     "Acquire_Shared_Memory_Grant": "SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT",
+    "Acquire_Shared_Memory_Grant_Via_Capability": "SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY",
     "Wait_For_IPC_Or_Completion_Until_Monotonic_Millisecond": "SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND",
     "Read_Monotonic_Microseconds": "SYSCALL_READ_MONOTONIC_MICROSECONDS",
     "Allocate_Owned_Memory": "SYSCALL_ALLOCATE_OWNED_MEMORY",
@@ -44,6 +51,21 @@ ours = {n: value(v) for n, v in re.findall(
 bad = [f"{n}: Kernel_ABI {ours.get(n)}, kernel {known.get(m)}"
        for n, m in pairs.items() if ours.get(n) is None or ours.get(n) != known.get(m)]
 bad += [f"{n}: not checked" for n in ours if n not in pairs]
+# The grant and control events (CuBit.Control_Events) and control kinds,
+# against kernel/src/ipc_labels.ads.
+events = (repo / "userspace/runtime/gnat/cubit-control_events.ads").read_text()
+for ours_name, theirs in (("Grant_Revoked_Label", "EVENT_GRANT_REVOKED"),
+                          ("Grant_Returned_Label", "EVENT_GRANT_RETURNED"),
+                          ("Control_Label", "EVENT_CONTROL")):
+    a = re.search(r"\b" + ours_name + r"\s*:\s*constant[^:]*:=\s*([\w#]+)\s*;", events)
+    b = re.search(r"\b" + theirs + r"\s*:\s*constant[^:]*:=\s*([\w#]+)\s*;", labels_text)
+    if not a or not b or value(a.group(1)) != value(b.group(1)):
+        bad.append(f"{ours_name} differs from the kernel's {theirs}")
+a = re.search(r"for Control_Kind use \(([^)]*)\)", events)
+b = re.search(r"for Control_Kind use \(([^)]*)\)", labels_text)
+norm = lambda t: re.sub(r"Control_|\s", "", t)
+if not a or not b or norm(a.group(1)) != norm(b.group(1)):
+    bad.append("Control_Kind differs from the kernel's")
 # The futex results and owned-memory limit, against the kernel's.
 futex = (repo / "kernel/src/process-futex.ads").read_text()
 for ours_name, theirs in (("Futex_Woken", "FUTEX_WOKEN"), ("Futex_Retry", "FUTEX_RETRY"),
@@ -70,22 +92,10 @@ for name in ("OP_NET_SHUT",):
 streams_ads = (repo / "userspace/runtime/gnat/cubit-streams.ads").read_text()
 streams_adb = (repo / "userspace/runtime/gnat/cubit-streams.adb").read_text()
 ours_streams = (repo / "userspace/libc/ada/cubit-libc_streams.adb").read_text()
-for ours_name, theirs in (("Stream_Magic", "MAGIC"), ("Header_Size", "HEADER_SIZE"),
-                          ("Data_Offset", "DATA_OFFSET"), ("Maximum_Streams", "MAX_STREAMS"),
-                          ("Maximum_Subscribers", "MAX_SUBSCRIBERS"),
-                          ("Subscriber_Entry_Size", "SUBSCRIBER_ENTRY_SIZE"),
-                          ("Sentinel_Length", "SENTINEL_LENGTH"),
-                          ("HDR_MAGIC", "HDR_MAGIC"), ("HDR_VERSION", "HDR_VERSION"),
-                          ("HDR_SUBSCRIBER_COUNT", "HDR_SUBSCRIBER_COUNT"),
-                          ("HDR_PRODUCER_IDX", "HDR_PRODUCER_IDX"), ("HDR_CAPACITY", "HDR_CAPACITY"),
-                          ("HDR_DEFAULT_TYPE_TAG", "HDR_DEFAULT_TYPE_TAG"),
-                          ("HDR_OVERFLOW_POLICY", "HDR_OVERFLOW_POLICY"),
-                          ("HDR_STREAM_ID", "HDR_STREAM_ID"),
-                          ("SUBSCRIBER_TABLE_OFF", "SUBSCRIBER_TABLE_OFF"),
-                          ("SUB_OFF_PID", "SUB_OFF_PID"), ("SUB_OFF_CURSOR", "SUB_OFF_CURSOR"),
-                          ("SUB_OFF_FLAGS", "SUB_OFF_FLAGS"),
-                          ("OP_STREAM_SUBSCRIBE", "OP_STREAM_SUBSCRIBE"),
-                          ("OP_STREAM_UNSUBSCRIBE", "OP_STREAM_UNSUBSCRIBE")):
+#  The ring (CuBit.Stream_Regions) and the channel protocol
+#  (CuBit.Channel_Protocol) are shared units; the limits are each side's.
+for ours_name, theirs in (("Maximum_Streams", "MAX_STREAMS"),
+                          ("Maximum_Subscribers", "MAX_SUBSCRIBERS")):
     a = re.search(r"\b" + ours_name + r"\s*:\s*constant[^:]*:=\s*([\w#]+)\s*;", ours_streams)
     b = (re.search(r"\b" + theirs + r"\s*:\s*constant[^:]*:=\s*([\w#]+)\s*;", streams_adb)
          or re.search(r"\b" + theirs + r"\s*:\s*constant[^:]*:=\s*([\w#]+)\s*;", streams_ads))

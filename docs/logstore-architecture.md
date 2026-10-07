@@ -24,7 +24,8 @@ native Logs app and CCL `logs.recent` on QEMU.
 Nothing ever slows a producer down; diagnostics are shed instead.
 
 - Budgets refuse with `Rate_Limited`.
-- A publisher has one record in flight.
+- A publisher writes into its own ring (step 1). A full ring sheds and
+  counts; logstore reports what it shed.
 - `CuBit.Log`'s 32-record queue drops when full.
 - Every loss is counted and reported.
 
@@ -40,10 +41,44 @@ the signal, and the stream declares how to answer it:
 
 ## Next steps, in order
 
-1. **Publisher rings.** Each publisher lends a ring. logstore consumes it, with a
-   doorbell only when the ring goes from empty to non-empty. Publishing costs no
-   IPC while logstore keeps up. The ring also carries batching, and the
-   shed/wait policy above.
+1. **Publisher rings (done 2026-10-05, backlog LOG-001; `log-authority`
+   guest test: 3,000 records in 14 ms, shedding counted).** Each
+   publisher lends a ring. logstore consumes it, with a doorbell only when the
+   ring goes from empty to non-empty. Publishing costs no IPC while logstore
+   keeps up. The ring also carries batching, and the shed/wait policy above.
+   It was planned here on 2026-10-03 and slipped. Meanwhile the one-in-flight
+   publisher and the 10 records/s budget made a benchmark's logging adapter
+   sleep 125 ms per record, which stuttered its rendering.
+   - **Channel (since 2026-10-06, docs/data-plane.md):** the publisher
+     opens a Shed_Newest channel to logstore once
+     (`CuBit.Log_Publish_Rings.CONTRACT`: encoded records, a 64 KiB ring).
+     The publisher owns the data region and grants it read-only to
+     logstore; logstore owns an index page, granted read-only to the
+     publisher, holding its read index, its waiting word and, as consumer
+     word 0, the minimum severity it keeps (so `Wanted` takes no IPC).
+     logstore stamps identity (pid, node, authority tag) from the opener,
+     so a publisher cannot forge it. This replaced the earlier Attach, Kick
+     and Detach operations, in which logstore wrote into the publisher's
+     region.
+   - **Publishing:** encode and `Put`. A full ring sheds the record and
+     counts it in the producer's control page. A kick is sent only if
+     logstore armed its waiting word. No reply and no wait.
+   - **logstore:** drains every channel in batches through the existing
+     admission and fan-out, arms the waits, re-checks, then sleeps until a
+     kick, an IPC or its timer. A publisher that closes, exits or dies ends
+     its channel through the kernel's grant events: logstore drains it one
+     last time and lets it go (the earlier design could not tell a dead
+     publisher from an idle one).
+   - **Budget:** per publisher, in bytes per second with a generous burst.
+     Excess is shed and reported as a gap, never refused at the caller.
+   - **API:** `CuBit.Log.Write` copies into the ring. `Pump`, `Collect` and
+     `Set_Delivery` go. `Flush` (exit paths) kicks and waits briefly for
+     logstore's index to catch up. The low-level `Emit`/`Complete`
+     publisher is replaced.
+   - **Not yet moved:** readers (`Subscribe`, `Read_Next`, `Close`) still
+     lend logstore a writable stream region and renew a lease. They become
+     consuming channels next (IPC-001): logstore produces, the filter moves
+     into the reader's consumer words, and grant events replace the lease.
 2. **Sequence numbers.** Each event gets a per-node offset, as `(node, offset)`.
    Readers can resume from an offset. Replication can deduplicate by it.
 3. **Persistence** (docs/filesystem-journaling-decision.md): records stay in a

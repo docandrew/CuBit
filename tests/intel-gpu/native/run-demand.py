@@ -11,21 +11,39 @@ required = (
     "native demand backing: 4112 page sentinels and metadata extension PASS",
     "TEST: PASS native demand backing 18MiB 17 objects (NO GPU/IPC)",
 )
+if len(sys.argv) > 2 and sys.argv[2] == "metadata":
+    required = (
+        "native update metadata: real owned-memory reservations (NO GPU/ISOLATION)",
+        "native update metadata: sparse17/18/900 stable growth and overlap PASS",
+        "TEST: PASS native update metadata independent demand stable ranges retained failure (NO GPU/ISOLATION)",
+    )
+if len(sys.argv) > 2 and sys.argv[2] == "images":
+    required = (
+        "native image provider: real CPU grants, synthetic GPU/output (NO GPU/ISOLATION)",
+        "native image consumers: real reader retirement discharges exact obligation PASS",
+        "TEST: PASS native image provider writer drain lease exclusion and retirement (NO GPU/ISOLATION)",
+    )
 if len(sys.argv) > 2 and sys.argv[2] == "ipc":
     required = (
         "native allocation IPC: real loopback transport (NO GPU/ISOLATION)",
+        "native allocation IPC: bounded local work and interleaved completion PASS",
         "TEST: PASS native allocation IPC 17 saved replies 18 extents both directories grew 1 interleaved request (NO GPU/ISOLATION)",
     )
 if len(sys.argv) > 2 and sys.argv[2] == "views":
     required = (
         "native view retention: real self-grants (NO GPU/ISOLATION)",
         "native legacy revoke: locked admission and reader drain PASS",
+        "native image write exclusion: open producer denied and final retirement clears hold PASS",
+        "native image lease: independent pin and real CPU reader drain PASS",
+        "native retained reader: closed producer read-only terminal grant drain PASS",
         "native forwarding blocks: 32 rounds eight retained roots and children PASS",
         "TEST: PASS native view retention 3 cycles two pins terminal child queued retirement (NO GPU/ISOLATION)",
     )
 if len(sys.argv) > 2 and sys.argv[2] == "mappings":
     required = (
         "native mapping growth: forced metadata, real self-grants (NO GPU/ISOLATION)",
+        "TEST: PASS native mapping growth preserves pending retirement",
+        "TEST: PASS native bounded mapping poll retained readers drained",
         "TEST: PASS native mapping growth 64-128-256 record65 retained readers drained (NO GPU/ISOLATION)",
     )
 if len(sys.argv) > 2 and sys.argv[2] == "lifetime":

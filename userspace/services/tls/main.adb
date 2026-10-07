@@ -944,33 +944,28 @@ begin
 
    loop
       Progress := False;
-      CuBit.Log.Pump;
       while Poll_Completion (Completion'Address) = 1 loop
-         if CuBit.Log.Owns (Completion.token) then
-            CuBit.Log.Collect (Completion);
-         else
-            declare
-               Index : constant Unsigned_64 := Shift_Right (Completion.token, 4) and 15;
-               Op : constant Unsigned_64 := Completion.token and 15;
-               Id : constant Unsigned_64 := Shift_Right (Completion.token, 8);
-            begin
-               if Completion.token = Wait_Token then
-                  --  netstack has news for a waiting channel: drive them all.
-                  Wait_Outstanding := False;
-                  for I in Channel_Index loop
-                     if Channels (I).Blocked then
-                        Drive (I);
-                     end if;
-                  end loop;
-               elsif Index < Maximum_Channels and then Op = 1 and then
-                 Channels (Natural (Index)).Id = Id and then
-                 Channels (Natural (Index)).Phase /= Free
-               then
-                  Complete (Natural (Index), Net_Operation'Enum_Val (Op),
-                            Completion.msg);
-               end if;
-            end;
-         end if;
+         declare
+            Index : constant Unsigned_64 := Shift_Right (Completion.token, 4) and 15;
+            Op : constant Unsigned_64 := Completion.token and 15;
+            Id : constant Unsigned_64 := Shift_Right (Completion.token, 8);
+         begin
+            if Completion.token = Wait_Token then
+               --  netstack has news for a waiting channel: drive them all.
+               Wait_Outstanding := False;
+               for I in Channel_Index loop
+                  if Channels (I).Blocked then
+                     Drive (I);
+                  end if;
+               end loop;
+            elsif Index < Maximum_Channels and then Op = 1 and then
+              Channels (Natural (Index)).Id = Id and then
+              Channels (Natural (Index)).Phase /= Free
+            then
+               Complete (Natural (Index), Net_Operation'Enum_Val (Op),
+                         Completion.msg);
+            end if;
+         end;
          Progress := True;
       end loop;
 

@@ -1,49 +1,51 @@
 pragma Ada_2022;
-with System.Storage_Elements; use System.Storage_Elements;
-with CuBit.Datagram_Rings;
+with CuBit.Channel_Protocol;
+with CuBit.Log_Publish_Rings;
+with CuBit.Log_Streams;
 package body CuBit.Logging is
    use CuBit.Messages;
    use CuBit.Log_Protocol;
    package Logs renames CuBit.Log_Records;
-   package Grants renames CuBit.Memory_Grants;
+   package Channels renames CuBit.Channels;
+   package Publish_Rings renames CuBit.Log_Publish_Rings;
+   use type Channels.Put_Result;
+   use type Channels.Open_Result;
 
    function Request (Op : Operation) return Message;
    function Reply_Status (Value : Message) return Status;
    procedure Drop (Item : in out Publisher);
    function Valid_Minimum (Value : Message) return Boolean;
 
-   --  Announce's page stays granted to logstore for the process's life, so
-   --  later announcements reuse it.
-   Announce_Page : Transfer_Page := [others => 0];
-   Announce_Grant : Grants.Grant_Reference;
-   Announce_Granted : Boolean := False;
+   --  The publisher Publish_Now and Announce use: one per process, its
+   --  channel open to logstore for the process's life.
+   Announcer : Publisher;
+
+   --  Open the channel to logstore, once.
+   procedure Attach (Item : in out Publisher);
+   procedure Attach (Item : in out Publisher) is
+      Result : Channels.Open_Result;
+      Ignore_Refusal : CuBit.Channel_Protocol.Open_Refusal;
+   begin
+      Channels.Open (Item.Slot, Publish_Rings.CONTRACT, Channels.Producing, Item.Link, Result,
+                     Ignore_Refusal);
+      Item.State := (if Result = Channels.Opened then Ready else Disabled);
+   end Attach;
 
    procedure Publish_Now
      (Value : Logs.Log_Record; Result : out Status; Kept_From : out Logs.Severity)
    is
-      Bytes : Logs.Wire_Buffer;
-      Used : Logs.Wire_Count;
-      Msg : Message := Request (Publish);
-      Tag : MessageTag;
+      Submitted, Drained : Boolean;
    begin
-      Kept_From := Logs.Trace;
       Result := Unavailable;
-      if not Announce_Granted then
-         Grants.Create_Via_Capability
-           (Publisher_Slot, Announce_Page'Address, 1, False, Announce_Grant, Announce_Granted);
-         if not Announce_Granted then
-            return;
-         end if;
+      Kept_From := Logs.Trace;
+      Emit (Announcer, Value, Submitted);
+      if not Submitted then
+         return;
       end if;
-      Logs.Encode (Value, Bytes, Used);
-      for I in Bytes'Range loop
-         Announce_Page (I) := Bytes (I);
-      end loop;
-      Msg.words := [Announce_Grant.slot, Announce_Grant.generation, Unsigned_64 (Used), 0];
-      Tag := capCall (Publisher_Slot, Msg);
-      Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
-      if Result in OK | Below_Minimum and then Valid_Minimum (Msg) then
-         Kept_From := Logs.Severity'Val (Msg.words (0));
+      Flush (Announcer, Drained);
+      Kept_From := Minimum (Announcer);
+      if Drained then
+         Result := (if Logs."<=" (Kept_From, Logs.Level (Value)) then OK else Below_Minimum);
       end if;
    end Publish_Now;
 
@@ -89,9 +91,14 @@ package body CuBit.Logging is
       end if;
    end Drop;
    function Dropped (Item : Publisher) return Unsigned_64 is (Item.Loss);
-   function Minimum (Item : Publisher) return Logs.Severity is (Item.Kept_From);
+   function Minimum (Item : Publisher) return Logs.Severity is
+     (if Item.State = Ready
+        and then Channels.Consumer_Word (Item.Link, Publish_Rings.Minimum_Word)
+                   <= Logs.Severity'Pos (Logs.Severity'Last)
+      then Logs.Severity'Val (Channels.Consumer_Word (Item.Link, Publish_Rings.Minimum_Word))
+      else Logs.Trace);
    function Wanted (Item : Publisher; Level : Logs.Severity) return Boolean is
-     (Logs."<=" (Item.Kept_From, Level));
+     (Logs."<=" (Minimum (Item), Level));
 
    --  A minimum carried in a reply's first word, if it is one.
    function Valid_Minimum (Value : Message) return Boolean is
@@ -135,112 +142,69 @@ package body CuBit.Logging is
          end if;
       end if;
    end Get_Minimum;
-   function Pending (Item : Publisher) return Boolean is
-     (Item.State = In_Flight);
-
    procedure Emit
      (Item : in out Publisher; Value : Logs.Log_Record;
-      Token : Unsigned_64; Submitted : out Boolean) is
+      Submitted : out Boolean)
+   is
       Bytes : Logs.Wire_Buffer;
       Used : Logs.Wire_Count;
-      Created : Boolean;
-      Msg : Message := Request (Publish);
+      Result : Channels.Put_Result;
    begin
       Submitted := False;
-      if Item.Disconnecting or else Item.State in In_Flight | Disabled then
+      if Item.Disconnecting or else Item.State = Disabled then
          Drop (Item);
          return;
       end if;
       if Item.State = Uninitialized then
-         Grants.Create_Via_Capability
-           (Item.Slot, Item.Page'Address, 1, False, Item.Grant, Created);
-         if not Created then
-            Item.State := Disabled;
+         Attach (Item);
+         if Item.State /= Ready then
             Drop (Item);
             return;
          end if;
-         Item.State := Ready;
-         Item.Has_Grant := True;
       end if;
       Logs.Encode (Value, Bytes, Used);
-      for I in Bytes'Range loop
-         Item.Page (I) := Bytes (I);
-      end loop;
-      Msg.words := [Item.Grant.slot, Item.Grant.generation,
-                    Unsigned_64 (Used), 0];
-      Submitted := capSubmit (Item.Slot, Msg, Token);
-      if Submitted then
-         Item.State := In_Flight;
-         Item.Token := Token;
-      else
-         Item.State := Disabled;
+      --  Shed when full: logstore reports the channel's count as a gap.
+      Channels.Put (Item.Link, Bytes'Address, Natural (Used), Result);
+      Submitted := Result = Channels.Put;
+      if not Submitted then
          Drop (Item);
       end if;
    end Emit;
 
-   procedure Complete
-     (Item : in out Publisher; Completion : CompletionEntry;
-      Handled : out Boolean) is
+   procedure Flush (Item : in out Publisher; Drained : out Boolean; Wait_Ms : Natural := 200) is
+      Waited : Natural := 0;
+      Ignore : Unsigned_64;
    begin
-      Handled := Item.State = In_Flight and then
-        Completion.token = Item.Token;
-      if not Handled then
+      if Item.State /= Ready then
+         Drained := Item.State /= Disabled;
          return;
       end if;
-      if Completion.status = COMPLETION_OK and then
-        Reply_Status (Completion.msg) = Rate_Limited and then
-        Completion.msg.words = [0, 0, 0, 0]
-      then
-         Item.State := Ready;
-         Drop (Item);
-      elsif Completion.status = COMPLETION_OK and then
-        Reply_Status (Completion.msg) in OK | Below_Minimum and then
-        Completion.msg.words (1 .. 3) = [0, 0, 0] and then
-        Completion.msg.words (0) <= Logs.Severity'Pos (Logs.Severity'Last)
-      then
-         --  Kept, or discarded under logstore's minimum: either way delivered.
-         Item.State := Ready;
-         Item.Kept_From := Logs.Severity'Val (Completion.msg.words (0));
-      else
-         --  Do not recycle the page after an ambiguous/failed acquisition.
-         Item.State := Disabled;
-         Drop (Item);
+      Drained := Channels.All_Taken (Item.Link);
+      if Drained then
+         return;
       end if;
-   end Complete;
+      Channels.Kick (Item.Link);
+      while Waited < Wait_Ms loop
+         if Channels.All_Taken (Item.Link) then
+            Drained := True;
+            return;
+         end if;
+         Ignore := syscall (SYSCALL_SLEEP, 1);
+         Waited := Waited + 1;
+      end loop;
+   end Flush;
 
    procedure Disconnect (Item : in out Publisher; Done : out Boolean) is
-      Accepted : Boolean;
    begin
+      --  logstore drains what is left when the channel ends; the pages are
+      --  freed once it has let go of them (CuBit.Channels.Close).
+      if Item.State = Ready then
+         Channels.Close (Item.Link);
+      end if;
       Item.Disconnecting := True;
-      if Item.Has_Grant then
-         --  Repetition is harmless, including already-retired references.
-         --  Accepted alone is deliberately not used as the release condition.
-         Grants.Revoke (Item.Grant, Accepted);
-         if Grants.Retirement_Confirmed (Item.Grant) then
-            Item.Has_Grant := False;
-         end if;
-      end if;
-      Done := not Item.Has_Grant and then not Pending (Item);
-      if Done then
-         Item.State := Disabled;
-      end if;
+      Item.State := Disabled;
+      Done := True;
    end Disconnect;
-
-   --  The stream's shared indices, each written by one side only.
-   function Shared_Index (Item : Reader; Offset : Natural) return CuBit.Channel_Rings.Index;
-   procedure Set_Shared_Index (Item : Reader; Offset : Natural; Value : CuBit.Channel_Rings.Index);
-   function Shared_Index (Item : Reader; Offset : Natural) return CuBit.Channel_Rings.Index is
-      Value : CuBit.Channel_Rings.Index with Import, Volatile,
-        Address => Item.Region'Address + System.Storage_Elements.Storage_Offset (Offset);
-   begin
-      return Value;
-   end Shared_Index;
-   procedure Set_Shared_Index (Item : Reader; Offset : Natural; Value : CuBit.Channel_Rings.Index) is
-      Target : CuBit.Channel_Rings.Index with Import, Volatile,
-        Address => Item.Region'Address + System.Storage_Elements.Storage_Offset (Offset);
-   begin
-      Target := Value;
-   end Set_Shared_Index;
 
    procedure Subscribe
      (Item : in out Reader; Result : out Status;
@@ -248,23 +212,18 @@ package body CuBit.Logging is
       Source : Unsigned_64 := Every_Source) is
       Msg : Message := Request (CuBit.Log_Protocol.Subscribe);
       Tag : MessageTag;
-      Fresh : constant Boolean := Item.Subscription = 0;
+      Opened : Channels.Open_Result;
+      Ignore_Refusal : CuBit.Channel_Protocol.Open_Refusal;
    begin
       Result := Unavailable;
-      if not Item.Has_Grant then
-         Grants.Create_Via_Capability
-           (Item.Slot, Item.Region'Address, CuBit.Log_Streams.STREAM_PAGES, True, Item.Grant, Item.Has_Grant);
-         if not Item.Has_Grant then
+      if not Item.Link.Active then
+         Channels.Open (Item.Slot, CuBit.Log_Streams.CONTRACT, Channels.Consuming, Item.Link,
+                        Opened, Ignore_Refusal);
+         if Opened /= Channels.Opened then
             return;
          end if;
       end if;
-      if Fresh then
-         --  A new stream starts empty at index zero on both sides.
-         Set_Shared_Index (Item, CuBit.Log_Streams.PRODUCED_OFFSET, 0);
-         Set_Shared_Index (Item, CuBit.Log_Streams.CONSUMED_OFFSET, 0);
-         Item.Consumer := CuBit.Channel_Rings.New_Consumer (CuBit.Log_Streams.RING_BYTES);
-      end if;
-      Msg.words := [Logs.Severity'Pos (Minimum), Source, Item.Grant.slot, Item.Grant.generation];
+      Msg.words := [Logs.Severity'Pos (Minimum), Source, Item.Link.Peer_Number, 0];
       Tag := capCall (Item.Slot, Msg);
       Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
       --  The reply confirms the handle and the source filter applied.
@@ -286,17 +245,14 @@ package body CuBit.Logging is
    procedure Read_Next
      (Item : in out Reader; Value : out Event; Lost : out Unsigned_64;
       Result : out Status) is
-      Ring : CuBit.Channel_Rings.Bytes (0 .. CuBit.Log_Streams.RING_BYTES - 1)
-        with Import, Address => Item.Region'Address +
-          System.Storage_Elements.Storage_Offset (CuBit.Log_Streams.CONTROL_BYTES);
       Entry_Bytes : CuBit.Log_Streams.Entry_Buffer := [others => 0];
       Length : Natural;
-      Truncated, Accepted, Valid : Boolean;
-      Taken : CuBit.Datagram_Rings.Take_Result;
+      Valid : Boolean;
+      Taken : Channels.Take_Result;
       Kind : CuBit.Log_Streams.Entry_Kind;
       Now : Unsigned_64;
       Renewal : Status;
-      use type CuBit.Datagram_Rings.Take_Result;
+      use type Channels.Take_Result;
       use type CuBit.Log_Streams.Entry_Kind;
    begin
       Value := (others => <>);
@@ -305,14 +261,8 @@ package body CuBit.Logging is
       if Item.Subscription = 0 then
          return;
       end if;
-      CuBit.Channel_Rings.Accept_Produced
-        (Item.Consumer, Shared_Index (Item, CuBit.Log_Streams.PRODUCED_OFFSET), Accepted);
-      if not Accepted then
-         Result := Invalid_Request;
-         return;
-      end if;
-      CuBit.Datagram_Rings.Take (Item.Consumer, Ring, Entry_Bytes, Length, Truncated, Taken);
-      if Taken = CuBit.Datagram_Rings.Empty then
+      Channels.Take (Item.Link, Entry_Bytes'Address, Entry_Bytes'Length, Length, Taken);
+      if Taken = Channels.Empty then
          Result := Empty;
          --  Nothing to read: a good moment to keep the subscription alive.
          Now := syscall (SYSCALL_GETTIME);
@@ -321,8 +271,7 @@ package body CuBit.Logging is
          end if;
          return;
       end if;
-      Set_Shared_Index (Item, CuBit.Log_Streams.CONSUMED_OFFSET, Item.Consumer.Consumed);
-      if Taken /= CuBit.Datagram_Rings.Taken or else Truncated then
+      if Taken /= Channels.Taken then
          Result := Invalid_Request;
          return;
       end if;
@@ -338,9 +287,9 @@ package body CuBit.Logging is
       Tag := capCall (Item.Slot, Msg);
       Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
       if Result = OK or Result = Denied then
-         --  logstore returned the region before replying; a later Subscribe
-         --  starts a fresh stream in it.
+         --  The channel goes too; a later Subscribe opens a fresh one.
          Item.Subscription := 0;
+         Channels.Close (Item.Link);
       end if;
    end Close;
 end CuBit.Logging;

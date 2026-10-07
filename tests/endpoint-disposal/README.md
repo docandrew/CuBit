@@ -35,6 +35,49 @@ need to retain their successful-disposal receipt for idempotent protocols.
 
 ## Private native wrapper experiment (2026-10-02)
 
+### Own-install cleanup authorization audit (2026-10-06)
+
+The user approved a broker removing endpoints it installed. This is narrower
+than general CSPACE revocation and does not authorize recycling GPU resources
+merely because an endpoint was removed.
+
+Current production `Capability` records contain type, rights, authority tag,
+object and target generation, but **no installer identity or installation
+serial**. `handleMintCap` and `handleDelegateEndpoint` accept a policy-supplied
+tag. Exact record equality therefore detects a changed record, not who
+installed it, and cannot distinguish reinstallation of an identical record.
+Neither knowledge of a tag nor current GRANT authority proves installation
+ownership. Do not promote the experimental REVOKE wrapper as this narrower API.
+
+Implementation gates before enabling own-install disposal:
+
+1. Record kernel-authenticated installer incarnation and a fresh, nonwrapping
+   installation identity atomically with installation. A kernel-held receipt or
+   per-slot provenance can implement this; a caller-supplied identity cannot.
+   Define invalidation for every replacement, clearing and process teardown
+   path, including legacy insertion paths, before enabling the wrapper.
+2. Require that provenance, exact recipient incarnation/slot and expected
+   endpoint record under the established mailbox lock order. Reject foreign,
+   stale and replayed disposal without modifying the table. A dead endpoint
+   target must not prevent cleanup of its original record.
+3. Define closure of new admission and outstanding requests/replies separately.
+   Removing a capability does not retroactively cancel queued IPC, copies of
+   delegated authority or a saved reply. Retain their bookkeeping until drained
+   or explicitly cancelled by the relevant protocol.
+4. Recycle broker/session metadata only after those obligations and confirmed
+   GPU context, TLB, CPU mapping and backing retirement. Keep stable external
+   identities separate from reusable internal slots; do not reset tag counters
+   or increase a fixed lifetime limit as a substitute for this lifecycle.
+5. Test foreign-installer denial, same-record reinstallation, issuer/recipient
+   PID reuse, serial exhaustion, replacement races and independent GPU-retirement
+   failure. Pure table proofs do not establish wrapper authorization or SMP
+   safety; native tests must freshly build the wrapper and test programs.
+
+Audit evidence: the unchanged hosted exact-record suite passed all 1,024 cases
+in Nix using `--subdirs=own-endpoint-audit-20261006`. No syscall, grant policy,
+session reuse, image or runtime behavior changed in this audit. The private
+experiment below remains evidence for its explicitly broader policy only.
+
 In `.build-workspaces/graphics-admission-reply-qmsr03hg` only, experimental
 syscall127 wraps this primitive. Its six scalar arguments describe destination
 incarnation, slot, expected endpoint incarnation, tag, rights and parameter.

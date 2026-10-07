@@ -4,11 +4,16 @@ Run from the repository root in Nix under the shared build lock after
 `make -C kernel desktop-metrics`. Uses existing staged desktop dependencies.
 """
 import hashlib
+import os
+import sys
 from pathlib import Path
 import subprocess
 import tempfile
 
 root=Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(root / 'tools'))
+from desktop_build_variant import directory
+variant = directory('on', os.environ)
 def digest(p):
     return hashlib.file_digest(p.open('rb'),'sha256').hexdigest()
 def run(*args):
@@ -23,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix='cubit-metrics-session-disk-') as tmp:
         f'DESKTOP_BASE_DISK={base}',f'DESKTOP_SCRATCH_DISK={out}')
     assert digest(base)==original,'base image was modified'
     for name,source in (
-        ('desktop.svc',root/'userspace/services/desktop/build-metrics/desktop.svc'),
+        ('desktop.svc',root/'userspace/services/desktop'/variant/'desktop.svc'),
         ('metrics.svc',root/'kernel/isodir/boot/metrics.svc'),
         ('init.ccl',root/'tests/headless/init-desktop-session.ccl')):
         extracted=d/name

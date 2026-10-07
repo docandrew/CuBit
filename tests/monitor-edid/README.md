@@ -7,6 +7,19 @@ stereo, bordered, missing and malformed timings return typed failures. Physical
 dimensions may be unspecified. Reported millihertz is the advertised nominal
 pixel-clock/total calculation, **not measured refresh**.
 
+The decoded timing now retains horizontal/vertical front porches and sync pulse
+widths. `Sync_Info` distinguishes analog composite, bipolar analog composite,
+digital composite and digital separate semantics; only the separate variant
+exposes independent H/V polarities. These are decoded values, not an MMIO or
+wire-layout overlay. `Decode` proves each porch plus pulse fits its blanking
+interval. Hardware admission must still decide which sync kinds it supports.
+
+VESA A2 table 3.22 defines bit 0 as don't-care when stereo bits 6:5 are zero;
+both encodings are accepted. Interlaced and stereo modes remain unsupported.
+Cross-check: Linux v6.16 `drm_mode_detailed` in
+`drivers/gpu/drm/drm_edid.c` retains the same offset/pulse fields. CuBit continues
+to reject invalid sync geometry rather than adopting Linux's clamping behavior.
+
 The native virtio driver negotiates EDID support, validates completion identity
 and full response length, bounds the declared blob length, snapshots its base
 block, and chooses the preferred virtual resource size only when two separately
@@ -40,6 +53,15 @@ pairs of legal DTD extents for page-rounded storage. The strict proof audit
 requires full SPARK coverage, no skipped/assumed obligations, absence of runtime
 errors and the buffer-size/alignment postcondition. It does not prove EDID
 standards completeness, device correctness or the DMA adapter.
+
+Additional sync regressions cover all 256 descriptor flag bytes and maximal
+10-bit horizontal / 6-bit vertical offset and pulse fields. The isolated
+2026-10-06 Nix run passed hosted tests and the strict proof audit (35 proof
+diagnostics, no skips or assumptions), including the new decoded-geometry
+postcondition. This does not validate a physical monitor or set a native mode.
+The existing virtio-GPU `main.adb` consumer also compiled with GNAT16 against
+the expanded record in an isolated object directory; that was a compile check,
+not a native link or boot test.
 
 Native QEMU/KVM tests additionally exercise actual 1024x768 + 1280x720 scanouts:
 

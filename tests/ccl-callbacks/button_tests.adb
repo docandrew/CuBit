@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Callbacks;
@@ -5,6 +6,7 @@ with CCL.Catalog; use CCL.Catalog;
 with CCL.Host_Values;
 with CCL.Interfaces.Workbench_UI;
 with CCL.Language; use CCL.Language;
+   use CCL.Evaluation;
 with CCL.Language.Views;
 with CCL.UI_Buttons;
 with CCL.UI_Labels;
@@ -42,7 +44,7 @@ procedure Button_Tests is
       end if;
       Reply.Value := CCL.Host_Values.Boolean_Constant (Accepted);
    end Invoke;
-   procedure Run is new Interpret_With_Values (Host_State, Invoke);
+   procedure Run is new Evaluate_With_Values (Host_State, Invoke);
    procedure Dispatch is new Buttons.Dispatch_One (Host_State, Invoke);
    Host : Host_State;
    Outcome : Interpretation_Result;

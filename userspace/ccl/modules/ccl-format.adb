@@ -61,6 +61,7 @@ is
          when CCL.Types.Callable => SHAPE_CALLABLE,
          when CCL.Types.Bounded => SHAPE_BOUNDED,
          when CCL.Types.Stream => SHAPE_STREAM,
+         when CCL.Types.Async => SHAPE_TASK,
          when CCL.Types.Primitive => 0);
 
    function Op_Number (Item : Op_Code) return Unsigned_8 is
@@ -442,6 +443,8 @@ is
             Put_Unsigned (Unsigned_64 (Resolved.Operation));
             Put_Type (Item.Argument_Data_Type);
             Put_Type (Item.Result_Data_Type);
+            Put_Unsigned (Unsigned_64 (Item.Argument_Text_Limit));
+            Put_Unsigned (Unsigned_64 (Item.Result_Text_Limit));
             Put_Bytes (Encoded_Digest (From_Descriptor (Resolved.Interface_Digest)));
             Put_Bytes (Encoded_Digest (From_Schema (Resolved.Import.Argument_Schema)));
             Put_Bytes (Encoded_Digest (From_Schema (Resolved.Import.Result_Schema)));
@@ -853,7 +856,7 @@ is
                Own : constant CCL.Types.Type_Reference := CCL.Types.Unit_Type + CCL.Types.Type_Reference (T);
             begin
                Expect_Array (5);
-               Get_Unsigned (Value, SHAPE_STREAM);
+               Get_Unsigned (Value, SHAPE_TASK);
                Shape := Natural (Value);
                Get_Name (Item.Identifier);
                Get_Array (Parts, CCL.Types.Maximum_Components);
@@ -866,6 +869,7 @@ is
                   when SHAPE_CALLABLE => CCL.Types.Callable,
                   when SHAPE_BOUNDED => CCL.Types.Bounded,
                   when SHAPE_STREAM => CCL.Types.Stream,
+                  when SHAPE_TASK => CCL.Types.Async,
                   when others => CCL.Types.Primitive);
                Item.Count := Parts;
                for P in 1 .. Parts loop
@@ -962,6 +966,7 @@ is
             Argument, Result : Value_Kind;
             Authority, Ownership, Local, Transfer, Cancellation, Parameters,
               Success, Failure, Cancel, Major, Minor : Unsigned_64;
+            Argument_Limit, Result_Limit : Unsigned_64;
             Operation : CCL.Catalog.Operation_Index;
             Argument_Type, Result_Type : CCL.Types.Type_Reference;
             Digest, Argument_Key, Result_Key : Digest_Words;
@@ -995,6 +1000,9 @@ is
             Get_Type (Argument_Type);
             Get_Type (Result_Type);
             if Error /= Format_Valid then Error := Invalid_Type_Metadata; return; end if;
+            Get_Unsigned (Argument_Limit, MAX_STRING_BYTES);
+            Get_Unsigned (Result_Limit, MAX_STRING_BYTES);
+            if Error /= Format_Valid then Error := Invalid_Type_Metadata; return; end if;
             Get_Digest (Digest);
             Get_Digest (Argument_Key);
             Get_Digest (Result_Key);
@@ -1002,6 +1010,8 @@ is
             Candidate.Imports (I) :=
               (Argument => Argument, Result => Result,
                Argument_Data_Type => Argument_Type, Result_Data_Type => Result_Type,
+               Argument_Text_Limit => Import_Text_Length (Argument_Limit),
+               Result_Text_Limit => Import_Text_Length (Result_Limit),
                Authority => Authority_Class'Enum_Val (Authority),
                Binding => 0,
                Ownership_Argument => Ownership = 1,

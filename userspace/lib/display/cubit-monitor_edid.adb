@@ -25,6 +25,7 @@ package body CuBit.Monitor_EDID with SPARK_Mode is
         Natural (Shift_Right (Data (65), 2) and 3) * 16;
       VW : constant Natural := Natural (Data (64) and 15) +
         Natural (Data (65) and 3) * 16;
+      Sync : Sync_Info;
    begin
       for I in Header'Range loop
          if Data (I) /= Header (I) then return (Status => Bad_Header); end if;
@@ -39,7 +40,8 @@ package body CuBit.Monitor_EDID with SPARK_Mode is
       end if;
       --  Interlaced, stereo and border modes need additional semantics. Never
       --  silently reinterpret one as a plain progressive buffer.
-      if (Data (71) and 16#E1#) /= 0 or else
+      -- Bit 0 is don't-care when stereo bits 6:5 are zero (table 3.22).
+      if (Data (71) and 16#E0#) /= 0 or else
         Data (69) /= 0 or else Data (70) /= 0
       then
          return (Status => Unsupported_Timing);
@@ -49,8 +51,27 @@ package body CuBit.Monitor_EDID with SPARK_Mode is
       then
          return (Status => Invalid_Timing);
       end if;
+      case Shift_Right (Data (71), 3) and 3 is
+         when 0 =>
+            Sync := (Kind => Analog_Composite,
+              Analog_Serrations => (Data (71) and 4) /= 0,
+              Sync_On_All_Channels => (Data (71) and 2) /= 0);
+         when 1 =>
+            Sync := (Kind => Bipolar_Analog_Composite,
+              Analog_Serrations => (Data (71) and 4) /= 0,
+              Sync_On_All_Channels => (Data (71) and 2) /= 0);
+         when 2 =>
+            Sync := (Digital_Composite,
+              Composite_Positive => (Data (71) and 2) /= 0,
+              Digital_Serrations => (Data (71) and 4) /= 0);
+         when others =>
+            Sync := (Digital_Separate,
+              Horizontal_Positive => (Data (71) and 2) /= 0,
+              Vertical_Positive => (Data (71) and 4) /= 0);
+      end case;
       return (Accepted, (Width, Height, HB, VB, Clock,
-        Low_High (Data (66), Data (68)), Low_Low (Data (67), Data (68))));
+        Low_High (Data (66), Data (68)), Low_Low (Data (67), Data (68)),
+        HX, HW, VX, VW, Sync));
    end Decode;
 
    function Refresh_Millihertz (Mode : Timing) return Unsigned_64 is

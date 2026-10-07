@@ -163,7 +163,8 @@ Before claiming the Config boundary is complete:
 - [ ] Test delayed replies, full queues, death during issuance/close and lost
       acknowledgments; preserve required quarantine instead of inventing success.
 - [ ] Demonstrate native Workbench write/read/reboot persistence and independent
-      storage validation; distinguish the bytecode path from interpreter/REPL.
+      storage validation (the REPL now uses the bytecode path; the interpreter
+      was removed 2026-10-05).
 - [ ] Publish proof boundaries, remaining privileged issuance paths and native
       test results. No whole-system soundness claim from a pure policy predicate.
 

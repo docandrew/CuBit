@@ -1,4 +1,7 @@
-# CuBit C++ runtime checks (userspace/libc). No authority.
-(executable-manifest v1
-  (identity "com.cubit.cxx-check")
-  (version "0.1.0"))
+# CuBit C++ runtime checks (userspace/libc). No authority; stdout is a
+# declared outlet (descriptor 1).
+(Executable_Manifest
+  identity => "com.cubit.cxx-check"
+  version => "0.1.0"
+  outlets => [(Outlet "unix.stdout" Element.Text pages => 4)]
+  descriptors => [(Descriptor 1 "unix.stdout")])

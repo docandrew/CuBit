@@ -2,6 +2,7 @@ with Vulkan_Frame;
 with Vulkan_Submission.Checkers;
 with Vulkan_Submission.Regions;
 with Vulkan_Submission.Backdrops;
+with Vulkan_Submission.Previews;
 with Compositor_Gradient;
 with Compositor_Damage;
 package body Vulkan_Scene with SPARK_Mode is
@@ -25,7 +26,7 @@ package body Vulkan_Scene with SPARK_Mode is
    begin
       Accepted := False;
       if S.Status /= Collecting or S.Used = Maximum_Layers or
-        Value.Kind in Region_Textured | Straight_Region or
+        Value.Kind in Region_Textured | Straight_Region | Preview or
         (Value.Kind in Physical_Solid | Set_Physical_Clip and then not Physical_Coordinates (Value.Surface)) or
         (if Value.Kind in Textured | Straight_Textured | Glyph_Mask | Backdrop_Fill | Backdrop_Fit | Backdrop_Center then
            Value.Source = V.No_Source or
@@ -39,6 +40,16 @@ package body Vulkan_Scene with SPARK_Mode is
       end if;
       S.Used := S.Used + 1; S.Entries (S.Used) := Value; Accepted := True;
    end Append;
+   procedure Append_Preview
+     (S : in out State; Source : V.Source_Ticket; Bounds : A.G.Logical_Rectangle;
+      Description : Preview_Description; Accepted : out Boolean) is
+   begin
+      Append (S, (Source, Bounds, False, False, 0, Textured), Accepted);
+      if Accepted then
+         S.Previews (S.Used) := Description;
+         S.Entries (S.Used).Kind := Preview;
+      end if;
+   end Append_Preview;
    procedure Append_Region (S : in out State; Source : V.Source_Ticket;
       Surface : A.G.Logical_Rectangle; Region : R.Rectangle;
       Over, Straight_Alpha : Boolean; Accepted : out Boolean) is
@@ -204,6 +215,11 @@ package body Vulkan_Scene with SPARK_Mode is
                   when Backdrop_Fill => Compositor_Image_Sampling.Fill,
                   when Backdrop_Fit => Compositor_Image_Sampling.Fit,
                   when others => Compositor_Image_Sampling.Center), Clip, Accepted);
+         elsif S.Entries (I).Kind = Preview then
+            Vulkan_Submission.Previews.Replay
+              (Submission, Damage, S.Entries (I).Source, S.Screen,
+               S.Entries (I).Surface, S.Previews (I).Width, S.Previews (I).Height,
+               S.Previews (I).Mode, Clip, Accepted);
          elsif S.Entries (I).Kind = Physical_Solid then
             Physical := S.Entries (I).Surface;
             if not Physical_Coordinates (Physical) then

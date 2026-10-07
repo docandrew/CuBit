@@ -69,6 +69,9 @@ VkResult anv_cubit_install_discovery(struct anv_instance *i,
 static VkResult enumerate(VkInstance i, uint32_t *count, VkPhysicalDevice *out)
 {
    assert(i == anv_instance_to_handle(&instance));
+   if (out && mode == 20) return VK_ERROR_DEVICE_LOST;
+   if (out && mode == 21) { *count = 0; return VK_SUCCESS; }
+   if (out && mode == 22) return VK_INCOMPLETE;
    if (mode == 4) return VK_ERROR_INITIALIZATION_FAILED;
    *count = mode == 11 ? 0 : mode == 15 ? 2 : 1;
    if (out) *out = mode == 14 ? VK_NULL_HANDLE : (VkPhysicalDevice)(uintptr_t)1;
@@ -108,6 +111,7 @@ static void get_queue(VkDevice d, uint32_t family, uint32_t index, VkQueue *out)
 PFN_vkVoidFunction anv_GetInstanceProcAddr(VkInstance i, const char *name)
 {
    assert(i);
+   if (mode == 19 && !strcmp(name, "vkEnumeratePhysicalDevices")) return NULL;
    if (mode == 13 && !strcmp(name, "vkCreateDevice")) return NULL;
 #define PROC(n, f) if (!strcmp(name, n)) return (PFN_vkVoidFunction)f
    PROC("vkEnumeratePhysicalDevices", enumerate);
@@ -132,13 +136,16 @@ uint32_t anv_cubit_memory_poll(void)
 
 int main(int argc, char **argv)
 {
-   assert(argc == 2); mode = (unsigned)atoi(argv[1]); assert(mode <= 18);
+   assert(argc == 2); mode = (unsigned)atoi(argv[1]); assert(mode <= 22);
    instance.vk.base.type = VK_OBJECT_TYPE_INSTANCE;
    device.vk.base.type = VK_OBJECT_TYPE_DEVICE;
    struct cubit_mesa_service *owner = NULL, *other = NULL;
    assert(cubit_mesa_service_start(64, &owner) != VK_SUCCESS && !owner);
    VkResult result = cubit_mesa_service_start(7, &owner);
-   assert((result == VK_SUCCESS) == (mode == 0 || mode >= 16));
+   assert((result == VK_SUCCESS) == (mode == 0 || (mode >= 16 && mode <= 18)));
+   if (mode == 19 || mode == 21) assert(result == VK_ERROR_INITIALIZATION_FAILED);
+   if (mode == 20) assert(result == VK_ERROR_DEVICE_LOST);
+   if (mode == 22) assert(result == VK_INCOMPLETE);
    assert(owner); /* Accepted endpoint remains owned even when setup fails. */
    assert(cubit_mesa_service_start(7, &other) != VK_SUCCESS && !other);
    struct cubit_mesa_service_device facts;
@@ -162,12 +169,26 @@ int main(int argc, char **argv)
    const unsigned health_before_close = health_queries;
    assert(cubit_mesa_service_status(owner) == VK_ERROR_INITIALIZATION_FAILED);
    assert(health_queries == health_before_close);
+   /* Recovery polls may span many event-loop turns. Pending retirement must
+    * not replay destruction, expose a borrowed device, or allow rebinding. */
+   const unsigned instances_after_close = instance_destroys;
+   const unsigned devices_after_close = device_destroys;
+   const unsigned closes_after_close = closes;
+   for (unsigned i = 0; i < 4; i++) {
+      assert(cubit_mesa_service_close(owner) ==
+         (mode == 8 ? CUBIT_MESA_SERVICE_UNSAFE : CUBIT_MESA_SERVICE_PENDING));
+      assert(instance_destroys == instances_after_close);
+      assert(device_destroys == devices_after_close && closes == closes_after_close);
+      assert(!cubit_mesa_service_device(owner, &facts) && !facts.device);
+      assert(cubit_mesa_service_start(7, &other) != VK_SUCCESS && !other);
+   }
    allow_retire = true;
    for (unsigned i=0; i<4; i++)
       assert(cubit_mesa_service_close(owner) ==
          (mode == 8 ? CUBIT_MESA_SERVICE_UNSAFE : CUBIT_MESA_SERVICE_RETIRED));
    assert(instance_destroys == (mode == 1 || mode == 2 || mode == 9 || mode == 10 ? 0u : 1u));
-   assert(device_destroys == (mode == 0 || mode == 7 || mode >= 16 ? 1u : 0u));
+   assert(device_destroys == (mode == 0 || mode == 7 ||
+      (mode >= 16 && mode <= 18) ? 1u : 0u));
    assert(closes == (transferred ? 0u : 1u));
    assert(cubit_mesa_service_start(7, &other) != VK_SUCCESS && !other);
    printf("Service bootstrap scenario %u PASS: retained failure, borrowed facts, one-shot teardown\n", mode);

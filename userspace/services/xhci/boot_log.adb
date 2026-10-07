@@ -33,7 +33,7 @@ package body Boot_Log is
    end Write;
    procedure Poll is
       Receipt : aliased CompletionEntry;
-      Found, Handled, Accepted : Boolean;
+      Found, Accepted : Boolean;
       Now : Unsigned_64;
       Msg : Message := NULL_MESSAGE;
    begin
@@ -45,7 +45,7 @@ package body Boot_Log is
             debugPrint ("xhci-log: grant reply received" & ASCII.LF);
             Requested := False;
             Granted := Receipt.status = COMPLETION_OK and then Receipt.msg.tag.label = 16#F000#;
-         else CuBit.Logging.Complete (Writer, Receipt, Handled); end if;
+         end if;
       end if;
       if Now < Due then return; end if;
       Due := Now + 100;
@@ -60,14 +60,14 @@ package body Boot_Log is
             if Requested then debugPrint ("xhci-log: grant requested" & ASCII.LF); end if;
          end if;
          Due := Now + 1000;
-      elsif not CuBit.Logging.Pending (Writer) then
+      else
          if Sent < Used then
             declare
                Record_Value : constant CuBit.Log_Records.Decoded :=
                  CuBit.Log_Records.Make (Lines (Sent + 1) (1 .. Lengths (Sent + 1)));
             begin
                if Record_Value.Success then
-                  CuBit.Logging.Emit (Writer, Record_Value.Value, Token + 1, Accepted);
+                  CuBit.Logging.Emit (Writer, Record_Value.Value, Accepted);
                end if;
                Sent := Sent + 1;
             end;
@@ -78,7 +78,7 @@ package body Boot_Log is
                   " publication losses" & Unsigned_64'Image (CuBit.Logging.Dropped (Writer)));
             begin
                if Summary.Success then
-                  CuBit.Logging.Emit (Writer, Summary.Value, Token + 1, Accepted);
+                  CuBit.Logging.Emit (Writer, Summary.Value, Accepted);
                end if;
                Summary_Sent := True;
             end;

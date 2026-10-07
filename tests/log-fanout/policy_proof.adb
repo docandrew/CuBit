@@ -41,7 +41,7 @@ package body Policy_Proof with SPARK_Mode is
       --  A control holder cannot read records or publish through that tag.
       pragma Assert (not CuBit.Log_Protocol.May_Invoke
         (CuBit.Log_Protocol.Control_Tag (1), CuBit.Log_Protocol.Subscribe));
-      pragma Assert (not CuBit.Log_Protocol.May_Invoke
-        (CuBit.Log_Protocol.Control_Tag (1), CuBit.Log_Protocol.Publish));
+      pragma Assert (not CuBit.Log_Protocol.May_Publish (CuBit.Log_Protocol.Control_Tag (1)));
+      pragma Assert (CuBit.Log_Protocol.May_Publish (CuBit.Log_Protocol.Publisher_Authority_Tag));
    end Check;
 end Policy_Proof;

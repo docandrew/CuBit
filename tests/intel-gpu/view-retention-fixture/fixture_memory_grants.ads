@@ -1,4 +1,5 @@
 with System;
+with Interfaces;
 with CuBit.Messages;
 with CuBit.Grant_References;
 package CuBit.Memory_Grants is
@@ -6,7 +7,11 @@ package CuBit.Memory_Grants is
    Create_OK : Boolean := True;
    Revoke_OK : Boolean := True;
    Gone : Boolean := False;
+   -- Selective acknowledgement for independent reader lifetimes. Gone retains
+   -- the existing all-confirmed mode; otherwise only this exact wire retires.
+   Completed_Wire : Interfaces.Unsigned_64 := 0;
    Creates, Revokes : Natural := 0;
+   Retirement_Queries : Natural := 0;
    Forwardable_Creates : Natural := 0;
    Last_Writable : Boolean := False;
    procedure Create_Via_Capability

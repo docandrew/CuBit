@@ -16,7 +16,7 @@ values**, checked by CCL's type checker, with no hand-written keyword
 readers. Their types come from imported interfaces the type checker can
 see, and a profile is an argument to operations such as `startup.load`.
 The whole startup sequence can then be type-checked and emulated in a
-Linux-hosted CCL interpreter against a simulated `startup` host.
+Linux-hosted CCL evaluation (compiler and VM) against a simulated `startup` host.
 
 ```lisp
 (type Priority     (range 1 10))
@@ -76,8 +76,10 @@ startup profile (about 23 launches plus nested records) fits.
 | named-field record construction | positional only |
 | imports that carry types (descriptors are scalar-only) | unsupported |
 
-Each gap lands in the interpreter and in the CCLB compiler, verifier and VM
-together.
+Each gap lands in the analyser and in the CCLB compiler, verifier and VM
+together. (The table is the 2026-09-30 probe. The interpreter was removed
+2026-10-05; manifests and profiles are now compiled and run on the VM, so
+the "interpreter only" and "not started" entries above are historical.)
 
 **Scaffolding to be replaced.** The keyword forms added earlier on
 2026-09-30 are frozen:

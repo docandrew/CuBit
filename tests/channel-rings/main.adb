@@ -15,6 +15,9 @@ with Slot_Ring_Small;
 with Slot_Ring_Frames;
 with CuBit.Frame_Rings;
 with Queue_Small;
+with CuBit.Stream_Rings;
+with CuBit.Stream_Regions;
+with System.Storage_Elements;
 with CuBit.Net_Control_Queues;
 with CuBit.Net_Channel_Layout;
 
@@ -432,6 +435,212 @@ procedure Main is
              "control queue: answer layout");
    end Control_Layout;
 
+   --  CuBit.Stream_Rings: one producer, a reader that keeps up and one that
+   --  falls behind. Payloads carry a sequence number (4 bytes) and a length
+   --  that varies, so records wrap with pads.
+   procedure Broadcast_Streams (Size : Ring_Size; Origin : Index; Total : Natural) is
+      package SR renames CuBit.Stream_Rings;
+      use type SR.Publish_Result;
+      use type SR.Read_Result;
+      Ring : Bytes (0 .. Size - 1) := [others => 0];
+      P : Producer := (Size => Size, Produced => Origin, Fill => 0);
+      Fast, Slow : Index := Origin;
+      Expected_Fast : Unsigned_32 := 0;
+      Slow_Last : Unsigned_32 := 0;
+      Slow_Lost : Natural := 0;
+      Into : Bytes (0 .. 255);
+      Length : Natural;
+      Truncated, Lost : Boolean;
+      Evicted : Natural;
+      Put : SR.Publish_Result;
+      Got : SR.Read_Result;
+      function Sequence_Of (B : Bytes) return Unsigned_32 is
+        (Unsigned_32 (B (B'First)) or Shift_Left (Unsigned_32 (B (B'First + 1)), 8)
+         or Shift_Left (Unsigned_32 (B (B'First + 2)), 16)
+         or Shift_Left (Unsigned_32 (B (B'First + 3)), 24));
+   begin
+      for N in 0 .. Total - 1 loop
+         declare
+            Payload_Length : constant Natural := 4 + (N * 37) mod 200;
+            Data : Bytes (0 .. Payload_Length - 1);
+            Seq : constant Unsigned_32 := Unsigned_32 (N);
+         begin
+            Data (0) := Unsigned_8 (Seq and 255);
+            Data (1) := Unsigned_8 (Shift_Right (Seq, 8) and 255);
+            Data (2) := Unsigned_8 (Shift_Right (Seq, 16) and 255);
+            Data (3) := Unsigned_8 (Shift_Right (Seq, 24) and 255);
+            for K in 4 .. Data'Last loop
+               Data (K) := Unsigned_8 ((N + K) mod 251);
+            end loop;
+            SR.Publish (P, Ring, Data, Evicted, Put);
+            Check (Put = SR.Published, "stream publish");
+         end;
+         --  The fast reader reads everything as it comes: no loss, in order.
+         loop
+            SR.Read (Fast, Size, Ring, P.Produced, Consumed (P), Into, Length, Truncated, Lost, Got);
+            exit when Got /= SR.Taken;
+            Check (not Lost and then not Truncated and then Length >= 4, "fast reader keeps up");
+            Check (Sequence_Of (Into (0 .. 3)) = Expected_Fast, "fast reader in order");
+            for K in 4 .. Length - 1 loop
+               Check (Into (K) = Unsigned_8 ((Natural (Expected_Fast) + K) mod 251), "payload intact");
+            end loop;
+            Expected_Fast := Expected_Fast + 1;
+         end loop;
+         Check (Got = SR.Empty, "fast reader drained");
+         --  The slow reader looks every 97 records: it loses the oldest,
+         --  then reads the newest in order.
+         if N mod 97 = 96 then
+            declare
+               First_Read : Boolean := True;
+            begin
+               loop
+                  declare
+                     Start : constant Index := Slow;
+                  begin
+                     SR.Read (Slow, Size, Ring, P.Produced, Consumed (P), Into, Length, Truncated, Lost, Got);
+                     exit when Got /= SR.Taken;
+                     Check (SR.Intact ((if Lost then Consumed (P) else Start), P.Produced, Consumed (P)),
+                            "nothing overwrote the record meanwhile");
+                     if Lost then
+                        Slow_Lost := Slow_Lost + 1;
+                     elsif not First_Read then
+                        Check (Sequence_Of (Into (0 .. 3)) = Slow_Last + 1, "slow reader in order after a gap");
+                     end if;
+                     Slow_Last := Sequence_Of (Into (0 .. 3));
+                     First_Read := False;
+                  end;
+               end loop;
+               Check (Slow_Last = Unsigned_32 (N), "slow reader reaches the newest");
+            end;
+         end if;
+      end loop;
+      Check (Natural (Expected_Fast) = Total, "fast reader read every record");
+      Check (Size > 16_384 or else Slow_Lost > 0, "a small ring made the slow reader lose records");
+      --  A record over half the ring is refused, and nothing changes.
+      declare
+         Big : constant Bytes (0 .. Size / 2) := [others => 7];
+         Before : constant Producer := P;
+      begin
+         SR.Publish (P, Ring, Big, Evicted, Put);
+         Check (Put = SR.Too_Large and then P = Before and then Evicted = 0, "too large refused");
+      end;
+      --  A copy the producer overwrote is not Intact.
+      declare
+         Start : constant Index := Fast;
+         Data : constant Bytes (0 .. 99) := [others => 1];
+      begin
+         for N in 1 .. Size / 64 loop
+            SR.Publish (P, Ring, Data, Evicted, Put);
+         end loop;
+         Check (not SR.Intact (Start, P.Produced, Consumed (P)), "an overwritten record is not intact");
+      end;
+      --  A corrupt header at OLDEST: the producer empties the ring and goes on.
+      declare
+         At_Oldest : constant Natural := Position (Consumed (P), Size);
+         Data : constant Bytes (0 .. 9) := [others => 3];
+      begin
+         if P.Fill > 0 then
+            Ring (At_Oldest + 2) := 99;     --  no such record kind
+         end if;
+         for N in 1 .. Size / 8 loop
+            SR.Publish (P, Ring, Data, Evicted, Put);
+            Check (Put = SR.Published and then Valid (P), "producer survives a corrupt header");
+         end loop;
+      end;
+   end Broadcast_Streams;
+
+   --  The adapters' order (CuBit.Stream_Regions): Make_Room, publish OLDEST,
+   --  then Put. Put must then succeed, and change no byte of the records
+   --  OLDEST still covers (a reader's copy of them stays whole). Records of
+   --  Largest_Payload go in wherever the ring stands.
+   procedure Room_Before_Put (Size : Ring_Size; Origin : Index; Total : Natural) is
+      package SR renames CuBit.Stream_Rings;
+      package DR renames CuBit.Datagram_Rings;
+      use type SR.Publish_Result;
+      use type DR.Put_Result;
+      Ring : Bytes (0 .. Size - 1) := [others => 0];
+      P : Producer := (Size => Size, Produced => Origin, Fill => 0);
+      Largest : constant Natural := SR.Largest_Payload (Size);
+      Evicted : Natural;
+      Room : SR.Publish_Result;
+      Put : DR.Put_Result;
+   begin
+      Check (SR.Fits (Size, Largest) and then not SR.Fits (Size, Largest + 1),
+             "largest payload is the largest that fits");
+      for N in 0 .. Total - 1 loop
+         declare
+            Length : constant Natural :=
+              (if N mod 11 = 0 then Largest else (N * 53) mod (Largest + 1));
+            Data : constant Bytes (0 .. Length - 1) := [others => Unsigned_8 (N mod 256)];
+            Before : constant Bytes := Ring;
+         begin
+            SR.Make_Room (P, Ring, Length, Evicted, Room);
+            Check (Room = SR.Published, "room made");
+            declare
+               Kept_From : constant Index := Consumed (P);
+               Kept : constant Natural := P.Fill;
+            begin
+               DR.Put (P, Ring, Data, Put);
+               Check (Put = DR.Put, "put after making room");
+               for K in 0 .. Kept - 1 loop
+                  declare
+                     At_Byte : constant Natural := Position (Kept_From + Index (K), Size);
+                  begin
+                     Check (Ring (At_Byte) = Before (At_Byte), "kept records untouched");
+                  end;
+               end loop;
+            end;
+         end;
+      end loop;
+   end Room_Before_Put;
+
+   --  CuBit.Stream_Regions over a real region, as a launcher lends one:
+   --  initialized by the owner, adopted by a writer (Writer_Of), read in
+   --  place by the owner (Read_Owned), across many wraps.
+   procedure Region_Round_Trip (Pages : Positive; Total : Natural) is
+      package Regions renames CuBit.Stream_Regions;
+      type Page_Array is array (1 .. Natural (Regions.Region_Bytes (Pages))) of Unsigned_8
+        with Alignment => 4_096;
+      Region : Page_Array := [others => 16#AA#];
+      Base : constant Unsigned_64 :=
+        Unsigned_64 (System.Storage_Elements.To_Integer (Region'Address));
+      Writer : Producer;
+      Into : Bytes (0 .. 4_095);
+      Length : Natural;
+      Expected : Natural := 0;
+   begin
+      Regions.Initialize (Base, 1);
+      Check (Regions.Element (Base) = 1 and then Regions.Produced (Base) = 0, "region initialized");
+      Writer := Regions.Writer_Of (Base, Pages);
+      Check (Writer.Fill = 0 and then Writer.Size = CuBit.Stream_Rings.Ring_Bytes (Pages),
+             "writer adopts an empty region");
+      Check (Regions.Read_Owned (Base, Pages, Into'Address, Into'Length) = 0, "empty region reads nothing");
+      for N in 0 .. Total - 1 loop
+         declare
+            Data : Bytes (0 .. 1 + N mod 300) := [others => Unsigned_8 (N mod 256)];
+         begin
+            Check (Regions.Write (Base, Writer, Data'Address, Data'Length), "region write");
+            --  Writer re-adopted from the words, as a new process would.
+            if N mod 7 = 0 then
+               Writer := Regions.Writer_Of (Base, Pages);
+            end if;
+         end;
+         if N mod 3 = 2 then
+            loop
+               Length := Regions.Read_Owned (Base, Pages, Into'Address, Into'Length);
+               exit when Length = 0;
+               while Expected <= N and then 2 + Expected mod 300 /= Length loop
+                  Expected := Expected + 1;      --  dropped as oldest
+               end loop;
+               Check (Expected <= N and then Into (0) = Unsigned_8 (Expected mod 256),
+                      "owner reads records in order");
+               Expected := Expected + 1;
+            end loop;
+            Check (Expected = N + 1, "owner caught up");
+         end if;
+      end loop;
+   end Region_Round_Trip;
+
 begin
    Control_Layout;
    Queue_Pair;
@@ -442,6 +651,14 @@ begin
    Datagrams (4_096, Index'Last - 703);   --  aligned: 2 ** 32 - 704
    Datagrams (65_536, Index'Last - 29_999);   --  aligned: 2 ** 32 - 30_000
    Hostile_Datagrams;
+   Broadcast_Streams (4_096, 0, 20_000);
+   Broadcast_Streams (4_096, Index'Last - 1_023, 20_000);
+   Broadcast_Streams (65_536, Index'Last - 40_959, 50_000);
+   Room_Before_Put (4_096, 0, 5_000);
+   Region_Round_Trip (1, 3_000);
+   Region_Round_Trip (4, 3_000);
+   Room_Before_Put (4_096, Index'Last - 1_023, 5_000);
+   Room_Before_Put (65_536, Index'Last - 40_959, 5_000);
    Check (Valid_Size (4_096) and then Valid_Size (1_048_576), "sizes");
    Check (not Valid_Size (0) and then not Valid_Size (6_000) and then
           not Valid_Size (2_097_152) and then not Valid_Size (2_048), "bad sizes");

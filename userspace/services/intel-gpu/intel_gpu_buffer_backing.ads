@@ -13,6 +13,29 @@ package Intel_GPU_Buffer_Backing with SPARK_Mode is
    Ticket_Stride : constant Unsigned_64 := 2 ** 32;
    Ticket_Limit : constant Unsigned_64 := Unsigned_64'Last - Ticket_Stride;
    subtype Page_Count is Positive range 1 .. 4096;
+   type Allocation_Reason is
+     (Not_Attempted, Request_Check, Generation_Check, Quota_Check, Gap_Check,
+      Backing_Check, Owner_Check, Geometry_Check, Directory_Check,
+      Metadata_Check, Physical_Call, Physical_Result_Check, View_Check, Ready);
+   -- F001 length4 diagnostic denial: [version, allocation key, bytes, reason].
+   -- No addresses or authority. Plain F001 length0 remains an admission denial.
+   Denial_Version : constant Unsigned_64 := 1;
+   function Allocation_Reason_Name (Reason : Allocation_Reason) return String is
+     (case Reason is
+        when Not_Attempted => "not-entered",
+        when Request_Check => "request",
+        when Generation_Check => "generation-or-size",
+        when Quota_Check => "quota",
+        when Gap_Check => "virtual-gap",
+        when Backing_Check => "quarantined-backing",
+        when Owner_Check => "owner",
+        when Geometry_Check => "geometry",
+        when Directory_Check => "directory",
+        when Metadata_Check => "extent-metadata",
+        when Physical_Call => "physical-call",
+        when Physical_Result_Check => "physical-result",
+        when View_Check => "view",
+        when Ready => "ready");
    -- Shared by early readiness and normal supervisor dispatch. This checks
    -- wire shape only; both callers must independently authenticate the sender.
    function Valid_Allocation_Request
@@ -46,6 +69,30 @@ package Intel_GPU_Buffer_Backing with SPARK_Mode is
    -- Backing quota, DMA address ceiling and CPU metadata budget are independent.
    Default_Heap : constant Heap_Policy :=
      (Byte_Quota => Capacity, DMA_Limit => 2 ** 32, Metadata_Bytes => 65536);
+   -- Existing kernel SYSINFO MEM_TOTAL: immutable buddy-managed RAM bytes,
+   -- not free memory and not device-local VRAM. Both native endpoints select
+   -- the same policy before their first allocation. Unknown inventory fails
+   -- closed rather than silently retaining the experimental 32MiB default.
+   Managed_RAM_Query : constant Unsigned_64 := 1601;
+   -- System-backed Intel bring-up policy: at most one quarter of managed RAM
+   -- and half the current DMA aperture. Neither quantity reserves physical
+   -- pages; allocator failure remains possible. The 32-bit DMA ceiling is
+   -- deliberately unchanged until hardware/IOMMU addressing is validated.
+   function Native_System_Heap (Managed_RAM : Unsigned_64) return Heap_Policy is
+     (Byte_Quota =>
+        (if Managed_RAM = Unsigned_64'Last then 0 else
+           Unsigned_64'Min (Managed_RAM / 4, Default_Heap.DMA_Limit / 2) /
+             Intel_GPU_Physical_Extents.Block_Bytes * Intel_GPU_Physical_Extents.Block_Bytes),
+      DMA_Limit => Default_Heap.DMA_Limit,
+      Metadata_Bytes => Default_Heap.Metadata_Bytes)
+     with Post =>
+       Native_System_Heap'Result.DMA_Limit = Default_Heap.DMA_Limit and then
+       Native_System_Heap'Result.Metadata_Bytes = Default_Heap.Metadata_Bytes and then
+       Native_System_Heap'Result.Byte_Quota mod Intel_GPU_Physical_Extents.Block_Bytes = 0 and then
+       Native_System_Heap'Result.Byte_Quota <= Default_Heap.DMA_Limit / 2 and then
+       (if Managed_RAM = Unsigned_64'Last then
+          Native_System_Heap'Result.Byte_Quota = 0
+        else Native_System_Heap'Result.Byte_Quota <= Managed_RAM / 4);
    function Heap_Geometry_Valid
      (Byte_Quota, DMA_Limit, CPU : Unsigned_64) return Boolean is
      (CPU /= 0 and then CPU < 2 ** 47 and then

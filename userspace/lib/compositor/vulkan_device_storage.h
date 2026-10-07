@@ -42,5 +42,7 @@ uint32_t cubit_vulkan_device_source_prepare(uint32_t slot,uint32_t width,
  * Stage zero can be a clean pre-create failure; it is not reset authority.
  * No allocation, mapping, command recording or queue operation occurs here. */
 void *cubit_vulkan_device_upload_prepare(void);
+/* Separate stable metadata; same Fresh/confirmed-Closed ownership rule. */
+void *cubit_vulkan_device_readback_prepare(void);
 
 #endif

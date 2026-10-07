@@ -203,10 +203,10 @@ begin
       Consumed : Boolean;
    begin
       Ready := False;
-      Native_Buffers.Reserve_Private (Pool, First, Private_ID);
+      Native_Buffers.Reserve_Private (Pool, First, Private_ID, Pages => 1);
       pragma Assert (Private_ID = 0);
       Ready := True;
-      Native_Buffers.Reserve_Private (Pool, First, Private_ID);
+      Native_Buffers.Reserve_Private (Pool, First, Private_ID, Pages => 1);
       pragma Assert (Private_ID = 2); -- bootstrap slot1 remains excluded
       pragma Assert (Native_Buffers.Ticket_Session (Pool, Private_ID) = First);
       pragma Assert (Native_Buffers.Pending_For (Pool, First));
@@ -218,7 +218,7 @@ begin
       pragma Assert (Native_Buffers.Ticket_Session (Pool, Private_ID) = First);
       pragma Assert (Native_Buffers.Ticket_Session (Pool, 1) = 0);
       pragma Assert (Native_Buffers.Ticket_Session (Pool, 0) = 0);
-      Native_Buffers.Reserve_Private (Pool, First, Private_ID);
+      Native_Buffers.Reserve_Private (Pool, First, Private_ID, Pages => 1);
       pragma Assert (Private_ID = 0);
    end;
    declare
@@ -227,10 +227,10 @@ begin
       Consumed : Boolean;
       Response : Buffers.Words;
    begin
-      Buffers.Reserve_Private (Pool, 0, Private_ID);
+      Buffers.Reserve_Private (Pool, 0, Private_ID, Pages => 1);
       pragma Assert (Private_ID = 1);
       pragma Assert (Buffers.Ticket_Session (Pool, Private_ID) = 0);
-      Buffers.Reserve_Private (Pool, 0, Other); pragma Assert (Other = 0);
+      Buffers.Reserve_Private (Pool, 0, Other, Pages => 1); pragma Assert (Other = 0);
       Buffers.Handle (Pool, 42, First, Buffers.Label, 4, 0, 0,
         [Buffers.Version, Buffers.Create, 4096, 0], Response, Deferred);
       pragma Assert (Deferred = 0 and Response (0) = Buffers.Unavailable);
@@ -247,7 +247,7 @@ begin
       pragma Assert (Buffers.Ticket_Session (Pool, Deferred) = First);
       pragma Assert (Buffers.Pending_For (Pool, First));
       pragma Assert (not Buffers.Pending_For (Pool, Second));
-      Buffers.Reserve_Private (Pool, 0, Other); pragma Assert (Other = 0);
+      Buffers.Reserve_Private (Pool, 0, Other, Pages => 1); pragma Assert (Other = 0);
       Buffers.Finish_Private (Pool, Deferred, Consumed); pragma Assert (not Consumed);
       Buffers.Complete (Pool, Deferred, (Ready => False), Response, Consumed);
       pragma Assert (Consumed);
@@ -258,11 +258,11 @@ begin
       pragma Assert (Buffers.Ticket_Session (Pool, Deferred) = First);
       pragma Assert (Buffers.Ticket_Session (Pool, 3) = 0);
       for Expected in 3 .. Layout.Bootstrap_Slots loop
-         Buffers.Reserve_Private (Pool, 0, Private_ID);
+         Buffers.Reserve_Private (Pool, 0, Private_ID, Pages => 1);
          pragma Assert (Private_ID = Unsigned_64 (Expected));
          Buffers.Finish_Private (Pool, Private_ID, Consumed); pragma Assert (Consumed);
       end loop;
-      Buffers.Reserve_Private (Pool, 0, Private_ID); pragma Assert (Private_ID = 0);
+      Buffers.Reserve_Private (Pool, 0, Private_ID, Pages => 1); pragma Assert (Private_ID = 0);
       Buffers.Handle (Pool, 42, First, Buffers.Label, 4, 0, 0,
         [Buffers.Version, Buffers.Create, 4096, 0], Response, Deferred);
       pragma Assert (Deferred = 0 and Response (0) = Buffers.Unavailable);
@@ -703,6 +703,7 @@ begin
       Handle := Response (2);
       for Cycle in 1 .. 128 loop
          pragma Assert (not Buffers.Closed_At (Pool, Buffers.Ticket_Slot (Current)).Ready);
+         pragma Assert (Buffers.Ticket_Bytes (Pool, Current) = 4096);
          pragma Assert (not Buffers.Can_Retire (Pool, Second, Current));
          Buffers.Acknowledge_Retirement (Pool, Second, Current, True, Accepted);
          pragma Assert (not Accepted); -- still open
@@ -719,6 +720,7 @@ begin
          end;
          Buffers.Acknowledge_Retirement (Pool, Second, Current, False, Accepted);
          pragma Assert (not Accepted);
+         pragma Assert (Buffers.Ticket_Bytes (Pool, Current) = 4096);
          pragma Assert (Buffers.Can_Retire (Pool, Second, Current));
          pragma Assert (not Buffers.Can_Retire (Pool, First, Current));
          pragma Assert (not Buffers.Can_Retire (Pool, Second, 0));
@@ -728,6 +730,7 @@ begin
          pragma Assert (not Accepted);
          Buffers.Acknowledge_Retirement (Pool, Second, Current, True, Accepted);
          pragma Assert (Accepted);
+         pragma Assert (Buffers.Ticket_Bytes (Pool, Current) = 0);
          pragma Assert (not Buffers.Closed_At (Pool, Buffers.Ticket_Slot (Current)).Ready);
          pragma Assert (not Buffers.Can_Retire (Pool, Second, Current));
          Buffers.Acknowledge_Retirement (Pool, Second, Current, True, Accepted);
@@ -736,6 +739,8 @@ begin
          Buffers.Handle (Pool, 43, Second, Buffers.Label, 4, 0, 0,
            [1, Buffers.Create, 4096, 0], Response, Next_ID);
          pragma Assert (Next_ID = Current + Buffers.Ticket_Stride);
+         pragma Assert (Buffers.Ticket_Bytes (Pool, Next_ID) = 4096);
+         pragma Assert (Buffers.Ticket_Bytes (Pool, Current) = 0);
          pragma Assert (not Buffers.Closed_At (Pool, Buffers.Ticket_Slot (Current)).Ready);
          Buffers.Complete (Pool, Current, (Ready => False), Response, Consumed);
          pragma Assert (not Consumed);
@@ -779,7 +784,7 @@ begin
          Deferred_Binding.Check_Update_Request (State, Source, 99, Epoch, 42, 99,
            Deferred_Binding.Update_Label, 4, 0, 0, [1, Handle, 8192, 4096], Status);
          pragma Assert (Status = Deferred_Binding.Eligible);
-         Deferred_Buffers.Reserve_Private (State, 99, Private_Ticket);
+         Deferred_Buffers.Reserve_Private (State, 99, Private_Ticket, Pages => 1);
          pragma Assert (Private_Ticket /= 0);
          pragma Assert (Deferred_Buffers.Ticket_Session (State, Private_Ticket) = 99);
          -- Model event-loop changes while the supervisor allocation is pending.
@@ -817,14 +822,14 @@ begin
       Consumed : Boolean;
    begin
       Ready := True;
-      P.Reserve_Private (Pool, 0, ID, Reclaimable => True);
+      P.Reserve_Private (Pool, 0, ID, Reclaimable => True, Pages => 1);
       pragma Assert (ID = 0);
-      P.Reserve_Private (Pool, 99, ID); -- pinned context-style allocation
+      P.Reserve_Private (Pool, 99, ID, Pages => 1); -- pinned context-style allocation
       pragma Assert (ID = 1);
       P.Finish_Private (Pool, ID, Consumed); pragma Assert (Consumed);
       P.Acknowledge_Private_Retirement (Pool, 99, ID, True, Accepted);
       pragma Assert (not Accepted);
-      P.Reserve_Private (Pool, 0, ID); -- pinned bootstrap allocation
+      P.Reserve_Private (Pool, 0, ID, Pages => 1); -- pinned bootstrap allocation
       pragma Assert (ID = 2);
       P.Finish_Private (Pool, ID, Consumed); pragma Assert (Consumed);
       P.Acknowledge_Private_Retirement (Pool, 0, ID, True, Accepted);
@@ -837,7 +842,7 @@ begin
       pragma Assert (not Accepted);
       Initial_ID := 4; Old_ID := 0;
       for Generation in Unsigned_64 range 1 .. 128 loop
-         P.Reserve_Private (Pool, 99, ID, Reclaimable => True);
+         P.Reserve_Private (Pool, 99, ID, Reclaimable => True, Pages => 1);
          pragma Assert (ID = Initial_ID + (Generation - 1) * P.Ticket_Stride);
          pragma Assert (P.Ticket_Session (Pool, ID) = 99);
          P.Acknowledge_Private_Retirement (Pool, 99, ID, True, Accepted);
@@ -868,7 +873,7 @@ begin
             pragma Assert (App_ID = 5); -- must not consume reusable private slot4
             P.Complete (Pool, App_ID, (Ready => False), Response, Consumed);
             pragma Assert (Consumed);
-            P.Reserve_Private (Pool, 100, Other);
+            P.Reserve_Private (Pool, 100, Other, Pages => 1);
             pragma Assert (Other = 6); -- pinned storage cannot consume slot4
             P.Finish_Private (Pool, Other, Consumed); pragma Assert (Consumed);
          end if;
@@ -877,7 +882,7 @@ begin
       P.Retire_Session (Pool, 99);
       P.Acknowledge_Private_Retirement (Pool, 99, ID, True, Accepted);
       pragma Assert (not Accepted);
-      P.Reserve_Private (Pool, 99, Other, Reclaimable => True);
+      P.Reserve_Private (Pool, 99, Other, Reclaimable => True, Pages => 1);
       pragma Assert (Other = ID + Buffers.Ticket_Stride); -- exact acknowledged slot survives close
       P.Finish_Private (Pool, Other, Consumed); pragma Assert (Consumed);
       P.Quarantine (Pool);
@@ -895,7 +900,7 @@ begin
    begin
       Ready := True;
       for Session in Unsigned_64 range 1001 .. 1128 loop
-         P.Reserve_Private (Pool, Session, ID, Reclaimable => True);
+         P.Reserve_Private (Pool, Session, ID, Reclaimable => True, Pages => 1);
          pragma Assert (ID = 1 + (Session - 1001) * P.Ticket_Stride);
          pragma Assert (P.Ticket_Session (Pool, ID) = Session);
          if Previous /= 0 then
@@ -919,18 +924,18 @@ begin
          P.Acknowledge_Private_Retirement (Pool, Session, ID, True, Accepted);
          pragma Assert (not Accepted); -- no duplicate acknowledgement
          Ready := False;
-         P.Reserve_Private (Pool, Session + 1, Denied_ID, Reclaimable => True);
+         P.Reserve_Private (Pool, Session + 1, Denied_ID, Reclaimable => True, Pages => 1);
          pragma Assert (Denied_ID = 0);
          Ready := True;
          Previous := ID; Previous_Session := Session;
       end loop;
       -- Closing an unacknowledged replacement must not make it reusable.
-      P.Reserve_Private (Pool, 2000, ID, Reclaimable => True);
+      P.Reserve_Private (Pool, 2000, ID, Reclaimable => True, Pages => 1);
       P.Retire_Session (Pool, 2000);
       P.Finish_Private (Pool, ID, Consumed); pragma Assert (Consumed);
       P.Acknowledge_Private_Retirement (Pool, 2000, ID, True, Accepted);
       pragma Assert (not Accepted);
-      P.Reserve_Private (Pool, 2001, ID, Reclaimable => True);
+      P.Reserve_Private (Pool, 2001, ID, Reclaimable => True, Pages => 1);
       pragma Assert (ID = 2); -- uncertain slot1 retained, not recycled
       P.Finish_Private (Pool, ID, Consumed); pragma Assert (Consumed);
    end;
@@ -1209,7 +1214,7 @@ begin
       Before : Positive;
       Admitted : Positive;
    begin
-      Growth.Reserve_Private (Object, 99, ID, Reclaimable => True);
+      Growth.Reserve_Private (Object, 99, ID, Reclaimable => True, Pages => 1);
       Growth.Extend_Tickets (Object, Ticket_Base, 4096, OK);
       pragma Assert (not OK and Growth.Record_Capacity (Object) = 16);
       Growth.Extend_Handles (Object, Handle_Base, 4096, OK);
@@ -1266,7 +1271,7 @@ begin
       pragma Assert (OK and Growth.Committed_Slots (Object) = Admitted);
       -- Growth must preserve the retirement receipt of the original private
       -- slot, not just active application handles. Reuse is generation-tagged.
-      Growth.Reserve_Private (Object, 99, Other, Reclaimable => True);
+      Growth.Reserve_Private (Object, 99, Other, Reclaimable => True, Pages => 1);
       pragma Assert (Other = 1 + Growth.Ticket_Stride);
       pragma Assert (Growth.Ticket_Session (Object, 1) = 0);
       pragma Assert (Growth.Ticket_Session (Object, Other) = 99);

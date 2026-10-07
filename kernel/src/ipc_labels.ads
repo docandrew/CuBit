@@ -32,6 +32,18 @@ is
     EVENT_CHILD_EXIT    : constant Unsigned_32 := 16#0103#;
     EVENT_CAP_FAULT     : constant Unsigned_32 := 16#0104#;
     EVENT_PROCESS_FAULT : constant Unsigned_32 := 16#0105#;
+    --  Grant lifecycle (docs/data-plane.md). Words: the grant's global
+    --  slot, its generation, the peer's PID.
+    --  To the grantee: the owner revoked the grant, or died; return it.
+    EVENT_GRANT_REVOKED  : constant Unsigned_32 := 16#010C#;
+    --  To the owner: the grant retired (returned, or its grantee died);
+    --  its pages are the owner's again.
+    EVENT_GRANT_RETURNED : constant Unsigned_32 := 16#010D#;
+    --  A control message (docs/data-plane.md, "Control messages"). Words:
+    --  the kind (Control_Kind), the sender's PID.
+    EVENT_CONTROL        : constant Unsigned_32 := 16#010E#;
+    type Control_Kind is (Control_Stop, Control_Interrupt, Control_Reload);
+    for Control_Kind use (Control_Stop => 1, Control_Interrupt => 2, Control_Reload => 3);
 
     -- Device operations
     OP_IOCTL       : constant Unsigned_32 := 16#0200#;

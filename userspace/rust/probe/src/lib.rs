@@ -50,6 +50,11 @@ fn report(outcome: u64, sample: u64) {
     }
 }
 
+/// Larger than a CuAlloc arena (16 MiB), so served by its own reservation.
+const HUGE_BYTES: usize = 24 << 20;
+/// More than the process heap's whole address window (1 TiB).
+const IMPOSSIBLE_BYTES: usize = 2 << 40;
+
 fn allocation_probe() {
     let mut values = Vec::<u64>::new();
     // Exercise multiple size classes, then cross into page-run allocations.
@@ -59,8 +64,9 @@ fn allocation_probe() {
     for (i, value) in values.iter().enumerate() {
         assert_eq!(*value, i as u64 ^ 0xc0b17);
     }
-    // A failed fallible request must leave the original Vec usable.
-    assert!(values.try_reserve(cubit_allocator::ARENA_BYTES).is_err());
+    // A failed fallible request (beyond the address space CuAlloc may
+    // reserve) must leave the original Vec usable.
+    assert!(values.try_reserve(IMPOSSIBLE_BYTES).is_err());
     assert_eq!(values.len(), 16384);
     assert_eq!(values[16383], 16383 ^ 0xc0b17);
     let mut text = String::from("CuBit ");
@@ -71,21 +77,23 @@ fn allocation_probe() {
     let aligned = Box::new(Aligned([0x5a; 8192]));
     assert_eq!((&*aligned as *const Aligned as usize) % 8192, 0);
     assert!(aligned.0.iter().all(|b| *b == 0x5a));
-    // Explicit exhaustion/zeroing through GlobalAlloc, followed by recovery.
+    // A block beyond any one arena, a refusal, then zeroing, through
+    // GlobalAlloc.
     drop(aligned);
     drop(text);
     drop(values);
     use core::alloc::{GlobalAlloc, Layout};
-    let full = Layout::from_size_align(cubit_allocator::ARENA_BYTES, 1048576).unwrap();
+    let huge = Layout::from_size_align(HUGE_BYTES, 1048576).unwrap();
     unsafe {
-        let p = ALLOCATOR.alloc(full);
+        let p = ALLOCATOR.alloc(huge);
         assert!(!p.is_null());
         p.write(0xa5);
-        p.add(full.size() - 1).write(0x5a);
-        assert!(ALLOCATOR.alloc(full).is_null());
+        p.add(huge.size() - 1).write(0x5a);
+        let impossible = Layout::from_size_align(IMPOSSIBLE_BYTES, 1048576).unwrap();
+        assert!(ALLOCATOR.alloc(impossible).is_null());
         assert_eq!(p.read(), 0xa5);
-        assert_eq!(p.add(full.size() - 1).read(), 0x5a);
-        ALLOCATOR.dealloc(p, full);
+        assert_eq!(p.add(huge.size() - 1).read(), 0x5a);
+        ALLOCATOR.dealloc(p, huge);
         let zero_layout = Layout::from_size_align(8192, 8192).unwrap();
         let zero = ALLOCATOR.alloc_zeroed(zero_layout);
         assert!(!zero.is_null());

@@ -3,6 +3,9 @@ pragma Ada_2022;
 with System.Storage_Elements;
 
 with CuBit.Grant_References;
+with CuBit.Process_Events;
+with CuBit.Stream_Regions;
+with CuBit.Stream_Rings;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Messages; use CuBit.Messages;
@@ -99,18 +102,21 @@ package body CuBit.Launching is
    end Launch;
 
    procedure Lend_Ring
-     (Outlet : CuBit.Program_Descriptions.Connector_Index; Pages : Positive;
+     (Pages : Positive;
       Entry_Type : CuBit.Streams.TypeTag;
       Base : in out Unsigned_64; Grant : out Unsigned_64;
       Reference : out CuBit.Memory_Grants.Grant_Reference; Success : out Boolean)
    is
+      --  The whole region: the control page and the data ring.
+      Region : constant Positive :=
+        CuBit.Stream_Rings.Region_Pages (CuBit.Stream_Regions.Declared (Pages));
    begin
       Grant := 0;
       Reference := (others => <>);
       if Base = 0 then
          --  The break is not page aligned and grants are whole pages: take
          --  one page more and start the ring on a page boundary.
-         Base := syscall (SYSCALL_SBRK, Unsigned_64 (Pages + 1) * Page_Bytes);
+         Base := syscall (SYSCALL_SBRK, Unsigned_64 (Region + 1) * Page_Bytes);
          Success := Base /= Unsigned_64'Last;
          if not Success then
             Base := 0;
@@ -118,64 +124,29 @@ package body CuBit.Launching is
          end if;
          Base := (Base + Page_Bytes - 1) / Page_Bytes * Page_Bytes;
       end if;
-      CuBit.Streams.Initialize_Ring
-        (Base, Pages, CuBit.Streams.StreamId (CuBit.Program_Descriptions.Ring_Id (Outlet)),
-         Entry_Type, Subscriber => Unsigned_32 (syscall (SYSCALL_GETPID)));
+      CuBit.Stream_Regions.Initialize (Base, Unsigned_16 (Entry_Type));
       CuBit.Memory_Grants.Create_Forwardable_Via_Capability
         (CAP_SLOT_PROCMGR, System.Storage_Elements.To_Address
            (System.Storage_Elements.Integer_Address (Base)),
-         Pages, True, Reference, Success);
+         Region, True, Reference, Success, notify => True);
       if Success then
          Grant := CuBit.Grant_References.Encode (Reference);
       end if;
    end Lend_Ring;
 
    --  Exit reports drained from the event queue, until asked for.
-   Kept_Exits : constant := 32;
-   Exits : array (1 .. Kept_Exits) of CuBit.Child_Exits.Report;
-   Exit_Used : array (1 .. Kept_Exits) of Boolean := [others => False];
-
-   procedure Drain_Exits;
-   procedure Drain_Exits is
-      package CE renames CuBit.Child_Exits;
-      package KA renames CuBit.Kernel_ABI;
-      package KC renames CuBit.Kernel_Calls;
-      M : aliased Message;
+   procedure Send_Control
+     (Started : Child; Kind : CuBit.Control_Events.Control_Kind; Sent : out Boolean) is
    begin
-      while KC.Call (KA.Receive_Event_Nonblocking,
-                     Unsigned_64 (System.Storage_Elements.To_Integer (M'Address)))
-            = KA.Event_Received
-      loop
-         if M.tag.label = CE.Event_Label
-           and then CE.Valid (M.tag.length, M.words (0), M.words (1), M.words (2))
-         then
-            for K in Exits'Range loop
-               if not Exit_Used (K) then
-                  Exits (K) := CE.Decode (M.words (0), M.words (1), M.words (2), M.words (3));
-                  Exit_Used (K) := True;
-                  exit;
-               end if;
-            end loop;
-         end if;
-      end loop;
-   end Drain_Exits;
+      Sent := CuBit.Kernel_Calls.Call
+        (CuBit.Kernel_ABI.Send_Control, Started.Process,
+         CuBit.Control_Events.Control_Kind'Enum_Rep (Kind), Started.Generation) = 0;
+   end Send_Control;
 
    procedure Poll_Exit
      (Started : Child; Has_Ended : out Boolean; Ended : out CuBit.Child_Exits.Report) is
    begin
-      Drain_Exits;
-      Ended := (others => <>);
-      Has_Ended := False;
-      for K in Exits'Range loop
-         if Exit_Used (K) and then Exits (K).Process = Started.Process
-           and then Exits (K).Generation = Started.Generation
-         then
-            Ended := Exits (K);
-            Exit_Used (K) := False;
-            Has_Ended := True;
-            return;
-         end if;
-      end loop;
+      CuBit.Process_Events.Take_Exit (Started.Process, Started.Generation, Has_Ended, Ended);
    end Poll_Exit;
 
    procedure Wait (Started : Child; Ended : out CuBit.Child_Exits.Report) is
@@ -242,6 +213,51 @@ package body CuBit.Launching is
          Result := Refused;
       end if;
    end Launch_Table;
+
+   Places_Pages : constant :=
+     (CuBit.Launch_Grants.Maximum_Bytes + Page_Bytes - 1) / Page_Bytes;
+   type Places_Area is array (1 .. Places_Pages * Page_Bytes) of Unsigned_8;
+   Places_Answer : Places_Area with Alignment => Page_Bytes;
+   Places_Lent : Boolean := False;
+   Places_Reference : CuBit.Memory_Grants.Grant_Reference;
+
+   procedure Delegated_Places
+     (Region : out CuBit.Launch_Grants.Bytes;
+      Length : out CuBit.Launch_Grants.Byte_Count;
+      Result : out Launch_Result)
+   is
+      Msg : Message := NULL_MESSAGE;
+      Reply : MessageTag;
+      Success : Boolean;
+   begin
+      Region := [others => 0];
+      Length := 0;
+      if not Places_Lent then
+         CuBit.Memory_Grants.Create_Via_Capability
+           (CAP_SLOT_PROCMGR, Places_Answer'Address, Places_Pages, True,
+            Places_Reference, Success);
+         if not Success then
+            Result := No_Process_Manager;
+            return;
+         end if;
+         Places_Lent := True;
+      end if;
+      Msg.tag := (label => CuBit.Launch_Grants.Places_Operation,
+                  length => CuBit.Launch_Grants.Places_Request_Words, flags => 0, reserved => 0);
+      Msg.words (0) := CuBit.Grant_References.Encode (Places_Reference);
+      Reply := capCall (CAP_SLOT_PROCMGR, Msg);
+      if Reply.label = CuBit.Kernel_ABI.Reply_OK
+        and then Msg.words (0) <= CuBit.Launch_Grants.Maximum_Bytes
+      then
+         Length := Natural (Msg.words (0));
+         for I in 1 .. Length loop
+            Region (I) := Places_Answer (I);
+         end loop;
+         Result := Launched;
+      else
+         Result := Refused;
+      end if;
+   end Delegated_Places;
 
    procedure Describe
      (Program    : String;

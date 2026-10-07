@@ -9,8 +9,10 @@ case "$mode" in
     memory) main_source=demand_backing_check.adb ;;
     ipc) main_source=allocation_ipc_check.adb ;;
     views) main_source=view_retention_check.adb ;;
+    images) main_source=image_provider_check.adb ;;
     mappings) main_source=mapping_growth_check.adb ;;
-    *) echo 'Expected memory, ipc, views or mappings' >&2; exit 2 ;;
+    metadata) main_source=update_metadata_check.adb ;;
+    *) echo 'Expected memory, ipc, views, images, mappings or metadata' >&2; exit 2 ;;
 esac
 task_dir=$(mktemp -d "$root/tests/intel-gpu/demand-backing.XXXXXX")
 mkdir -p "$task_dir/tmp" "$task_dir/obj" "$task_dir/cpio" "$task_dir/iso/boot/grub"

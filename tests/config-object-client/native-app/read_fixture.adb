@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with CCL.Types;
 with CCL.Host_Values;
 with CCL.Catalog;
@@ -113,8 +114,8 @@ package body Read_Fixture is
          end if;
          Last_Reply := Reply;
       end Invoke;
-      procedure Evaluate is new CCL.Language.Interpret_With_Values (Context_Type, Invoke);
-      procedure Evaluate_Object is new CCL.Language.Interpret_Object_With_Values (Context_Type, Invoke);
+      procedure Evaluate is new CCL.Evaluation.Evaluate_With_Values (Context_Type, Invoke);
+      procedure Evaluate_Object is new CCL.Evaluation.Evaluate_Object_With_Values (Context_Type, Invoke);
    begin
       Good := False;
       R.Define (Contract, CCL.Types.Named ("NestedSnapshot"), CCL.Types.Named ("NestedRead"),

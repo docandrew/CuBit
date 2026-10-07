@@ -9,3 +9,18 @@ src/linux/wait4.c               # CuBit.Libc_Process
 src/stdio/popen.c               # CuBit.Libc_Process
 src/network/lookup_name.c       # CuBit.Libc_Net (__lookup_name)
 src/thread/pthread_getattr_np.c # CuBit.Libc_Threads
+src/malloc/calloc.c              # CuBit.Libc_Memory (CuAlloc)
+src/malloc/free.c                # CuBit.Libc_Memory
+src/malloc/libc_calloc.c         # CuBit.Libc_Memory
+src/malloc/lite_malloc.c         # CuBit.Libc_Memory
+src/malloc/memalign.c            # CuBit.Libc_Memory
+src/malloc/posix_memalign.c      # CuBit.Libc_Memory
+src/malloc/realloc.c             # CuBit.Libc_Memory
+src/malloc/reallocarray.c        # CuBit.Libc_Memory
+src/malloc/replaced.c            # CuBit.Libc_Memory
+src/malloc/mallocng/aligned_alloc.c       # CuBit.Libc_Memory
+src/malloc/mallocng/donate.c              # CuBit.Libc_Memory
+src/malloc/mallocng/free.c                # CuBit.Libc_Memory
+src/malloc/mallocng/malloc.c              # CuBit.Libc_Memory
+src/malloc/mallocng/malloc_usable_size.c  # CuBit.Libc_Memory
+src/malloc/mallocng/realloc.c             # CuBit.Libc_Memory

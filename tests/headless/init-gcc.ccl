@@ -1,0 +1,7 @@
+# GCC on CuBit (userspace/ports/gcc, stages 2 and 3): gcc-check compiles
+# hello.c with cc1 and assembles it with as.app, then has the gcc driver do
+# both (gcc -c), and compares every output with Linux's.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "gcc-check.app" (priority 3))
+)

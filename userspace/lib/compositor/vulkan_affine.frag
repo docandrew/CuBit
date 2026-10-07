@@ -8,6 +8,8 @@ layout(push_constant) uniform Draw {
     ivec4 steps;
     vec4 tint;
     uint mask;
+    layout(offset=68) uint preview_width;
+    layout(offset=72) uint preview_height;
     layout(offset=80) uvec4 region;
 } draw;
 layout(location=0) out vec4 color;
@@ -40,7 +42,7 @@ uint texel(uvec2 base,ivec2 steps,uvec2 denominator,uint size,ivec2 centre) {
     else if(q+1u<size&&le(product(denominator,q+1u),numerator))++q;
     if(le(product(denominator,q),numerator)&&!le(product(denominator,q+1u),numerator))return q;
     q=0u;
-    for(int bit=15;bit>=0;--bit) {
+    for(int bit=23;bit>=0;--bit) {
         uint candidate=q|(1u<<bit);
         if(candidate<size&&le(product(denominator,candidate),numerator))q=candidate;
     }
@@ -93,9 +95,35 @@ vec4 backdrop_color(uvec2 size) {
     return vec4(vec3(backdrop_blend(top,bottom,y.z))/255.0,1.0);
 }
 
+bool preview_axis(uint centre,uint logical_size,int origin,uint extent,uint size,out uvec3 axis) {
+    uint point=min(centre>128u?centre-128u:0u,(logical_size-1u)*256u);
+    uvec2 local=add(uvec2(point,0),negate_pair(product(signed_word(origin),256u)));
+    if((local.y&0x80000000u)!=0u||le(product(uvec2(extent,0),256u),local))return false;
+    uint coordinate=0u;
+    if(extent!=1u) {
+        uvec2 end_point=product(uvec2(extent-1u,0),256u);
+        if(le(end_point,local))local=end_point;
+        coordinate=backdrop_quotient(product(local,size-1u),uvec2(extent-1u,0),(size-1u)*256u);
+    }
+    uint first=coordinate/256u;
+    axis=uvec3(first,min(first+1u,size-1u),coordinate%256u);
+    return true;
+}
+vec4 preview_color(uvec2 size) {
+    ivec2 centre=2*ivec2(gl_FragCoord.xy)+ivec2(1);
+    uint cx=texel(draw.u0,draw.steps.xy,draw.ud,draw.preview_width*256u,centre);
+    uint cy=texel(draw.v0,draw.steps.zw,draw.vd,draw.preview_height*256u,centre);
+    uvec3 x,y;
+    if(!preview_axis(cx,draw.preview_width,int(draw.region.x),draw.region.z,size.x,x)||
+       !preview_axis(cy,draw.preview_height,int(draw.region.y),draw.region.w,size.y,y))discard;
+    uvec3 top=backdrop_blend(backdrop_pixel(ivec2(x.x,y.x)),backdrop_pixel(ivec2(x.y,y.x)),x.z);
+    uvec3 bottom=backdrop_blend(backdrop_pixel(ivec2(x.x,y.y)),backdrop_pixel(ivec2(x.y,y.y)),x.z);
+    return vec4(vec3(backdrop_blend(top,bottom,y.z))/255.0,1.0);
+}
 void main() {
     uvec2 size=uvec2(textureSize(source_image,0));
     if(draw.mask==2u) { color=backdrop_color(size); return; }
+    if(draw.mask==4u) { color=preview_color(size); return; }
     uvec2 origin=uvec2(0);
     if(draw.region.z!=0u) {
         origin=draw.region.xy;

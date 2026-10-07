@@ -136,7 +136,8 @@ begin
    begin
       Analyze ("(ui.label-text ""hello"")", Catalog, Analysis);
       CCL.Compiler.Compile (Analysis, Compiled);
-      pragma Assert (Compiled.Status = CCL.Compiler.Unsupported_Form);
+      --  Text crosses host imports in bytecode too (2026-10-05).
+      pragma Assert (Compiled.Status = CCL.Compiler.Compilation_Succeeded);
       Resolve (Catalog, "ui.label-text", Resolved, Found); pragma Assert (Found);
       Initialize (Linkage);
       Intern (Linkage, Resolved, Index, Interned); pragma Assert (Interned = Linkage_Added);

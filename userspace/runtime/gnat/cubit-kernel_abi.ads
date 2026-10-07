@@ -33,9 +33,13 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Submit_Via_Endpoint_Capability : constant System_Call := 42;
    Create_Shared_Memory_Grant_For_Process_Id : constant System_Call := 102;
    Revoke_Shared_Memory_Grant   : constant System_Call := 103;
+   Revoke_Shared_Memory_Grant_Reference : constant System_Call := 110;
    Create_Shared_Memory_Grant_Via_Capability : constant System_Call := 106;
    Get_Owned_Shared_Memory_Grant_Generation  : constant System_Call := 108;
    Acquire_Shared_Memory_Grant  : constant System_Call := 109;
+   --  The same, the owner named by an endpoint capability (slot, grant
+   --  slot, generation, offset, length, access).
+   Acquire_Shared_Memory_Grant_Via_Capability : constant System_Call := 112;
    Wait_For_IPC_Or_Completion_Until_Monotonic_Millisecond :
      constant System_Call := 113;
    Thread_Exit                  : constant System_Call := 91;
@@ -48,6 +52,17 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Protect_Owned_Memory         : constant System_Call := 117;
    Yield                        : constant System_Call := 118;
    Sleep_Until_Monotonic_Microsecond : constant System_Call := 119;
+   --  Growable owned memory (kernel Process.Owned_Memory): reserve address
+   --  space with no backing, back an exact prefix, give it all back. CuAlloc
+   --  grows the process heap with these.
+   Reserve_Owned_Memory         : constant System_Call := 123;
+   Commit_Owned_Memory_Prefix   : constant System_Call := 124;
+   Release_Owned_Reservation    : constant System_Call := 125;
+   --  A control message to a child, or to a process this one holds the
+   --  process capability for (CuBit.Control_Events).
+   Send_Control                 : constant System_Call := 127;
+   --  The most one commit may add (kernel Owned_Reservation_Policy).
+   Maximum_Owned_Commit_Bytes : constant := 16 * 1024 * 1024;
 
    --  What a call returns when it fails or has nothing to give.
    Failed : constant Unsigned_64 := Unsigned_64'Last;
@@ -103,6 +118,13 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
 
    --  Shared-memory grants (SYSCALL_CREATE_SHARED_MEMORY_GRANT_*).
    Grant_Read_Only : constant := 0;
+   Grant_Read_Write : constant := 1;
+   --  Added to the above: the recipient (procmgr) may derive grants from it.
+   Grant_Forwardable : constant := 2;
+   Grant_Forwardable_Read_Write : constant := Grant_Forwardable + Grant_Read_Write;
+   --  Added to the above: post grant lifecycle events for it
+   --  (CuBit.Control_Events; docs/data-plane.md).
+   Grant_Notify : constant := 4;
    Generation_Shift : constant := 32;   --  wire form: generation << 32 | slot
 
    Page_Bytes : constant := 4_096;

@@ -1,21 +1,30 @@
+--  The log-authority guest test (tests/headless, log-authority): typed
+--  logging's authority and its publisher rings (docs/logstore-architecture.md,
+--  step 1; backlog LOG-001). Started trusted, it is an observer as well as a
+--  publisher; it then launches itself as an ordinary child, which is only a
+--  publisher.
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
 with CuBit.Logging;
 with CuBit.Memory_Grants;
+with CuBit.Channel_Contracts;
+with CuBit.Channel_Protocol;
+with CuBit.Grant_References;
+with CuBit.Kernel_ABI;
+with CuBit.Log_Publish_Rings;
 
 procedure Main is
    package P renames CuBit.Log_Protocol;
-   --  Records published in the delivery check: within one publisher's rate
-   --  burst, so none is rate-limited. (Overflowing an observer queue takes
-   --  CuBit.Log_Protocol.Observer_Queue_Records of them, minutes at the
-   --  sustained publication rate; the explicit Gap on overflow is covered by
-   --  the hosted Log_Fanout tests and proofs, tests/log-fanout.)
-   Delivered : constant := 19;
    package L renames CuBit.Log_Records;
    package G renames CuBit.Memory_Grants;
    use type P.Status;
+   --  Records published in the delivery check, all read back in order.
+   Delivered : constant := 19;
+   --  A burst well past logstore's per-pool budget (Log_Budgets.Burst,
+   --  2048): logstore sheds the excess and says so.
+   Burst_Records : constant := 3_000;
    Reader : CuBit.Logging.Reader;
    Writer : CuBit.Logging.Publisher;
    Value : P.Event;
@@ -23,14 +32,12 @@ procedure Main is
    Lost, Ignore : Unsigned_64;
    Msg : Message;
    Tag : MessageTag;
-   Completion : CompletionEntry;
-   Submitted, Handled, Created : Boolean;
-   Token : Unsigned_64 := 1;
+   Submitted, Drained, Created : Boolean;
    type Page is array (Positive range 1 .. 4096) of Unsigned_8
      with Alignment => 4096;
    Buffer : Page := [others => 0];
    Grant : G.Grant_Reference;
-   Last_Handle : Unsigned_64;
+   Never_Issued_Handle : constant Unsigned_64 := 16#DEAD_0000#;
    Saw_Clock : Boolean := False;
 
    procedure Check (Condition : Boolean; Name : String) is
@@ -51,89 +58,53 @@ procedure Main is
       return Item;
    end Request;
 
-   procedure Publish_Record is
-      Record_Value : constant L.Decoded := L.Make ("native log check");
-      Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 2000;
-      Activity : Activity_Result;
-      Before : constant Unsigned_64 := CuBit.Logging.Dropped (Writer);
+   package CP renames CuBit.Channel_Protocol;
+
+   --  A raw request to open a publishing log channel, with Grant (wire form)
+   --  as the publisher's data region.
+   function Open_Publishing (Grant : Unsigned_64) return Message is
+      Words : constant CuBit.Channel_Contracts.Words :=
+        CuBit.Channel_Contracts.Encode (CuBit.Log_Publish_Rings.CONTRACT);
+      Item : Message := NULL_MESSAGE;
+   begin
+      Item.tag := (CP.OP_OPEN_PRODUCING, CP.Open_Words, 0, 0);
+      Item.words := [Words (0), Words (1), Words (2), Grant];
+      return Item;
+   end Open_Publishing;
+
+   --  One record into the channel: no IPC after the first (the open), no
+   --  waiting.
+   procedure Publish_Record (Text : String := "native log check") is
+      Record_Value : constant L.Decoded := L.Make (Text);
    begin
       Check (Record_Value.Success, "make record");
-      CuBit.Logging.Emit (Writer, Record_Value.Value, Token, Submitted);
-      Check (Submitted, "publication submitted");
-      --  Busy publication must drop locally, without recycling the live page.
-      CuBit.Logging.Emit (Writer, Record_Value.Value, Token + 1, Submitted);
-      Check (not Submitted, "busy publication is nonblocking");
-      loop
-         if Poll_Completion (Completion'Address) = 1 then
-            CuBit.Logging.Complete (Writer, Completion, Handled);
-            Check (Handled, "completion correlation");
-         end if;
-         exit when not CuBit.Logging.Pending (Writer);
-         Check (syscall (SYSCALL_GETTIME) < Deadline, "publication timeout");
-         Activity := Wait_For_Activity_Until (Deadline);
-         Check (Activity /= Unavailable, "completion wait available");
-      end loop;
-      Check (CuBit.Logging.Dropped (Writer) = Before + 1,
-             "exactly the busy record was dropped");
-      Token := Token + 1;
+      CuBit.Logging.Emit (Writer, Record_Value.Value, Submitted);
+      Check (Submitted, "record written into the ring");
    end Publish_Record;
 
-   procedure Check_Quota is
-      Record_Value : constant L.Decoded := L.Make ("quota check");
-      Before : Unsigned_64;
-      Throttled : Boolean := False;
-      Deadline : Unsigned_64;
-      Activity : Activity_Result;
+   --  Far more records than the budget admits, as fast as possible: the
+   --  publisher never waits, and what logstore cannot keep is shed and
+   --  counted, never refused back.
+   procedure Check_Burst is
+      Record_Value : constant L.Decoded := L.Make ("burst check");
+      Start : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Written : Natural := 0;
    begin
-      --  The client is still asynchronous: only this test waits for each CQE.
-      --  A normal event loop simply forwards it and continues other work.
-      for Attempt in 1 .. 256 loop
-         Before := CuBit.Logging.Dropped (Writer);
-         CuBit.Logging.Emit (Writer, Record_Value.Value, Token, Submitted);
-         Check (Submitted, "publisher remains usable");
-         Deadline := syscall (SYSCALL_GETTIME) + 2000;
-         loop
-            if Poll_Completion (Completion'Address) = 1 then
-               CuBit.Logging.Complete (Writer, Completion, Handled);
-               Check (Handled, "quota completion correlation");
-               exit;
-            end if;
-            Check (syscall (SYSCALL_GETTIME) < Deadline, "quota timeout");
-            Activity := Wait_For_Activity_Until (Deadline);
-            Check (Activity /= Unavailable, "quota wait available");
-         end loop;
-         Token := Token + 1;
-         Throttled := Completion.msg.tag.label =
-           P.Status'Enum_Rep (P.Rate_Limited);
-         if Throttled then
-            Check (CuBit.Logging.Dropped (Writer) = Before + 1,
-                   "rate-limited record counted exactly once");
-            exit;
+      for I in 1 .. Burst_Records loop
+         CuBit.Logging.Emit (Writer, Record_Value.Value, Submitted);
+         if Submitted then
+            Written := Written + 1;
          end if;
-         Check (Completion.msg.tag.label = P.Status'Enum_Rep (P.OK) and then
-                CuBit.Logging.Dropped (Writer) = Before,
-                "admitted quota record accepted");
       end loop;
-      Check (Throttled, "native shared budget enforced");
-      --  A producer cannot move to a fresh pool by forging the authority tag.
-      --  Invalid grants still consume admission credits before acquisition.
-      Throttled := False;
-      for Attempt in 1 .. 16 loop
-         Msg := Request (P.Publish);
-         Msg.authorityTag := P.Publisher_Tag
-           (P.Budget_Id (2 + Attempt mod 14), Unsigned_64 (Attempt));
-         Msg.words := [G.MAXIMUM_GLOBAL_SLOT, G.MAXIMUM_GENERATION,
-                       L.Header_Bytes, 0];
-         Tag := capCall (P.Publisher_Slot, Msg);
-         Throttled := Tag.label = P.Status'Enum_Rep (P.Rate_Limited);
-         exit when Throttled;
-      end loop;
-      Check (Throttled and then Msg.words = [0, 0, 0, 0],
-             "forged budget cannot bypass rate limit");
-      Ignore := syscall (SYSCALL_SLEEP, 250);
-      Publish_Record;
-      debugPrint ("TEST: PASS log-quota" & ASCII.LF);
-   end Check_Quota;
+      debugPrint ("log-check: burst of" & Natural'Image (Burst_Records) & " records in" &
+                  Unsigned_64'Image (syscall (SYSCALL_GETTIME) - Start) & " ms, ring shed" &
+                  Unsigned_64'Image (CuBit.Logging.Dropped (Writer)) & ASCII.LF);
+      Check (Written + Natural (CuBit.Logging.Dropped (Writer)) = Burst_Records,
+             "every burst record written or counted");
+      CuBit.Logging.Flush (Writer, Drained, Wait_Ms => 2_000);
+      Check (Drained, "logstore drains the ring");
+      debugPrint ("TEST: PASS log-burst" & ASCII.LF);
+   end Check_Burst;
 
    procedure Check_Disconnect is
       Logger : CuBit.Logging.Publisher;
@@ -144,31 +115,27 @@ procedure Main is
    begin
       CuBit.Logging.Disconnect (Fresh, Done);
       Check (Done, "unused publisher disconnects immediately");
-      CuBit.Logging.Emit (Fresh, Record_Value.Value, 9000, Submitted);
+      CuBit.Logging.Emit (Fresh, Record_Value.Value, Submitted);
       Check (not Submitted, "disconnected publisher cannot reconnect");
-      CuBit.Logging.Emit (Logger, Record_Value.Value, 9001, Submitted);
-      Check (Submitted, "disconnect fixture submitted");
-      CuBit.Logging.Disconnect (Logger, Done);
-      Check (not Done, "outstanding completion prevents premature release");
-      CuBit.Logging.Emit (Logger, Record_Value.Value, 9002, Submitted);
-      Check (not Submitted, "disconnect stops new publication");
+      CuBit.Logging.Emit (Logger, Record_Value.Value, Submitted);
+      Check (Submitted, "disconnect fixture written");
       loop
-         if Poll_Completion (Completion'Address) = 1 then
-            CuBit.Logging.Complete (Logger, Completion, Handled);
-            Check (Handled, "disconnect drains original completion");
-         end if;
+         --  logstore drains and returns the ring (Detach); then the grant
+         --  retires.
          CuBit.Logging.Disconnect (Logger, Done);
          exit when Done;
          Check (syscall (SYSCALL_GETTIME) < Deadline, "disconnect timeout");
          Ignore := syscall (SYSCALL_SLEEP, 1);
       end loop;
+      CuBit.Logging.Emit (Logger, Record_Value.Value, Submitted);
+      Check (not Submitted, "disconnect stops new publication");
       CuBit.Logging.Disconnect (Logger, Done);
       Check (Done, "disconnect idempotent");
-      --  Both local objects may now leave scope: their pages are unshared and
-      --  no completion belonging to them remains in the application's queue.
       debugPrint ("TEST: PASS log-disconnect" & ASCII.LF);
    end Check_Disconnect;
 
+   --  Slot 18 is log-retire (the fault fixture): it maps the ring region
+   --  and exits without answering Attach.
    procedure Check_Collector_Death is
       Logger : CuBit.Logging.Publisher (Slot => 18);
       Stale : CuBit.Logging.Publisher (Slot => 18);
@@ -176,30 +143,18 @@ procedure Main is
       Done : Boolean;
       Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 2000;
    begin
-      CuBit.Logging.Emit (Logger, Record_Value.Value, 9010, Submitted);
-      Check (Submitted, "death fixture submitted");
-      loop
-         if Poll_Completion (Completion'Address) = 1 then
-            Check (Completion.token = 9010 and then
-                   Completion.status = COMPLETION_TARGET_DIED,
-                   "collector death completes pending publication");
-            CuBit.Logging.Complete (Logger, Completion, Handled);
-            Check (Handled and then CuBit.Logging.Dropped (Logger) = 1,
-                   "dead collector loss counted once");
-            exit;
-         end if;
-         Check (syscall (SYSCALL_GETTIME) < Deadline, "death timeout");
-         Ignore := syscall (SYSCALL_SLEEP, 1);
-      end loop;
-      --  TARGET_DIED need not imply mapping retirement has completed yet.
+      CuBit.Logging.Emit (Logger, Record_Value.Value, Submitted);
+      Check (not Submitted and then CuBit.Logging.Dropped (Logger) = 1,
+             "a collector dying in Attach costs one counted record, no wait");
+      --  Its mapping retires with it; then the grant does.
       loop
          CuBit.Logging.Disconnect (Logger, Done);
          exit when Done;
          Check (syscall (SYSCALL_GETTIME) < Deadline, "retirement timeout");
          Ignore := syscall (SYSCALL_SLEEP, 1);
       end loop;
-      CuBit.Logging.Emit (Stale, Record_Value.Value, 9011, Submitted);
-      Check (not Submitted, "dead endpoint cannot create a new grant");
+      CuBit.Logging.Emit (Stale, Record_Value.Value, Submitted);
+      Check (not Submitted, "dead endpoint cannot take a new ring");
       CuBit.Logging.Disconnect (Stale, Done);
       Check (Done, "failed fresh binding has no grant to retire");
       debugPrint ("TEST: PASS log-collector-death" & ASCII.LF);
@@ -216,7 +171,7 @@ begin
       Check (Tag.label = P.Status'Enum_Rep (P.Denied) and then
              Msg.words = [0, 0, 0, 0], "forged observer tag denied");
       Publish_Record;
-      Check_Quota;
+      Check_Burst;
       Check_Disconnect;
       Check_Collector_Death;
       debugPrint ("TEST: PASS log-unapproved" & ASCII.LF);
@@ -240,34 +195,28 @@ begin
    Tag := capCall (P.Publisher_Slot, Msg);
    Check (Tag.label = P.Status'Enum_Rep (P.Denied) and then
           Msg.words = [0, 0, 0, 0], "publisher cannot observe with forged tag");
-   Msg := Request (P.Publish);
+   Msg := Open_Publishing (0);
    Tag := capCall (P.Observer_Slot, Msg);
-   Check (Tag.label = P.Status'Enum_Rep (P.Denied),
-          "observer cannot publish");
-   Msg := Request (P.Subscribe);
-   Tag := capCall (P.Observer_Slot, Msg);
-   Check (Tag.label = P.Status'Enum_Rep (P.OK), "idempotent subscribe");
-   Last_Handle := Msg.words (0);
+   Check (Tag.label = CuBit.Kernel_ABI.Reply_Error, "observer cannot publish");
+   --  Subscribing again renews the lease and keeps the stream.
+   CuBit.Logging.Subscribe (Reader, Result);
+   Check (Result = P.OK, "idempotent subscribe");
 
+   --  A region that is not the channel's: refused before it is used.
    G.Create_Via_Capability
      (P.Publisher_Slot, Buffer'Address, 1, False, Grant, Created);
    Check (Created, "malformed-input grant created");
-   Msg := Request (P.Publish);
-   Msg.words := [Grant.slot, Grant.generation, L.Header_Bytes, 0];
+   Msg := Open_Publishing (CuBit.Grant_References.Encode (Grant));
    Tag := capCall (P.Publisher_Slot, Msg);
-   Check (Tag.label = P.Status'Enum_Rep (P.Invalid_Request),
-          "malformed wire record rejected");
-   Msg := Request (P.Publish);
-   Msg.words := [Grant.slot, Grant.generation + 1, L.Header_Bytes, 0];
+   Check (Tag.label = CuBit.Kernel_ABI.Reply_Error
+          and then Msg.words (0) = CP.Open_Refusal'Enum_Rep (CP.Bad_Grant),
+          "a one-page region is not the channel's ring");
+   Msg := Open_Publishing
+     (CuBit.Grant_References.Encode ((Grant.slot, Grant.generation + 1)));
    Tag := capCall (P.Publisher_Slot, Msg);
-   Check (Tag.label = P.Status'Enum_Rep (P.Invalid_Request),
+   Check (Tag.label = CuBit.Kernel_ABI.Reply_Error
+          and then Msg.words (0) = CP.Open_Refusal'Enum_Rep (CP.Bad_Grant),
           "wrong grant generation rejected");
-   Msg := Request (P.Read_Next);
-   Msg.words := [Last_Handle, Grant.slot, Grant.generation,
-                 Unsigned_64 (L.Wire_Count'Last)];
-   Tag := capCall (P.Observer_Slot, Msg);
-   Check (Tag.label = P.Status'Enum_Rep (P.Invalid_Request),
-          "read-only output grant rejected");
    G.Revoke (Grant, Created);
    Check (Created, "malformed-input grant revoked");
 
@@ -285,6 +234,8 @@ begin
    for I in 1 .. Delivered loop
       Publish_Record;
    end loop;
+   CuBit.Logging.Flush (Writer, Drained);
+   Check (Drained, "logstore took the records");
    for I in 1 .. Delivered loop
       CuBit.Logging.Read_Next (Reader, Value, Lost, Result);
       Check (Result = P.OK and then
@@ -297,8 +248,9 @@ begin
    Check (Result = P.Empty, "bounded queue drained");
    CuBit.Logging.Close (Reader, Result);
    Check (Result = P.OK, "close reader");
+   --  A handle logstore never issued (or no longer holds) names nothing.
    Msg := Request (P.Close);
-   Msg.words (0) := Last_Handle;
+   Msg.words (0) := Never_Issued_Handle;
    Tag := capCall (P.Observer_Slot, Msg);
    Check (Tag.label = P.Status'Enum_Rep (P.Denied), "stale handle rejected");
 

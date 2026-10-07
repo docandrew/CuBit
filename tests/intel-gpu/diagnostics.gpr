@@ -2,7 +2,7 @@ project Diagnostics is
    for Source_Dirs use (".", "diagnostic-fixture", "../../userspace/services/intel-gpu");
    for Source_Files use ("diagnostics_tests.adb", "intel_gpu_diagnostics.ads",
      "intel_gpu_diagnostics.adb", "intel_gpu_diagnostic_capture.ads",
-     "intel_gpu_diagnostic_capture.adb", "intel_gpu_log_completion.ads",
+     "intel_gpu_diagnostic_capture.adb",
      "cubit.ads", "cubit-messages.ads", "cubit-messages.adb",
      "cubit-log_records.ads", "cubit-log_records.adb", "cubit-logging.ads", "cubit-logging.adb");
    for Object_Dir use "build-diagnostics";

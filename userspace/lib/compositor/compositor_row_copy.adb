@@ -1,4 +1,22 @@
 package body Compositor_Row_Copy with SPARK_Mode is
+   function Readback_Plan
+     (Width, Height, First_Row : G.Pixel_Edge;
+      Source_Bytes, Target_Bytes, Target_Pitch, Byte_Budget : Natural)
+      return Readback_Batch
+   is
+      Row : constant Wide := Wide (Width) * 4;
+      Rows : Wide;
+   begin
+      if Width = 0 or else Height = 0 or else First_Row >= Height or else
+         Row > Wide (Target_Pitch) or else Row > Wide (Byte_Budget) or else
+         Wide (Height) * Row > Wide (Source_Bytes) or else
+         Wide (Height - 1) * Wide (Target_Pitch) + Row > Wide (Target_Bytes)
+      then return (others => 0); end if;
+      Rows := Wide'Min (Wide (Height - First_Row), Wide (Byte_Budget) / Row);
+      return (Natural (Wide (First_Row) * Row),
+              Natural (Wide (First_Row) * Wide (Target_Pitch)),
+              Natural (Row), Natural (Rows));
+   end Readback_Plan;
    function Plan
      (Screen : G.Output; Surface : G.Logical_Rectangle;
       Source_Width, Source_Height : G.Physical_Extent;

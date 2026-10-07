@@ -1168,6 +1168,51 @@ package body Syscall.Admin is
         end if;
     end handleKill;
 
+    procedure handleSendControl (callerPID : Process.ProcessID;
+                                 arg0, arg1, arg2 : Unsigned_64;
+                                 retval     : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        use type Process.ProcessState;
+        Control_Words : constant := 2;
+        targetPID : Process.ProcessID;
+        known : Boolean := False;
+        msg : Process.Message := Process.NULL_MESSAGE;
+        accepted : Boolean;
+    begin
+        retval := reterr;
+        for kind in IPC_Labels.Control_Kind loop
+            known := known or else arg1 = IPC_Labels.Control_Kind'Enum_Rep (kind);
+        end loop;
+        if not known or else arg0 = 0 or else arg0 > Unsigned_64 (Process.ProcessID'Last) then
+            return;
+        end if;
+        targetPID := Process.ProcessID (arg0);
+        if Process.threadOf (targetPID).state = Process.INVALID
+          or else Unsigned_64 (Process.generationOf (targetPID)) /= arg2
+        then
+            return;
+        end if;
+        -- Its launcher (the kernel's parent, this incarnation of it), or a
+        -- holder of the process capability kill needs.
+        if not ((Process.proctab (targetPID).ppid = callerPID
+                 and then Process.proctab (targetPID).parentGeneration =
+                            Process.generationOf (callerPID))
+                or else hasCapProcessFor (callerPID, targetPID, Capabilities.RIGHT_WRITE))
+        then
+            return;
+        end if;
+        msg.tag := (label => IPC_Labels.EVENT_CONTROL, length => Control_Words,
+                    flags => 0, reserved => 0);
+        msg.words (0) := arg1;
+        msg.words (1) := Unsigned_64 (callerPID);
+        Process.IPC.trySendEvent (targetPID, msg, accepted,
+                                  Process.generationOf (targetPID));
+        if accepted then
+            retval := 0;
+        end if;
+    end handleSendControl;
+
     ---------------------------------------------------------------------------
     -- handleSetWellKnown
     -- arg0 = role (ServiceRole), arg1 = PID to register

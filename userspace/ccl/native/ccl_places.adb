@@ -2,7 +2,8 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Filesystem_Queues;
-with CuBit.Memory_Grants;
+with CuBit.Channel_Protocol;
+with CuBit.Channels;
 
 --  Places through the filesystem's request queue (docs/filesystem-data-
 --  plane.md): one queue and arena lent once, then a listing is a handful of
@@ -21,64 +22,54 @@ package body CCL_Places is
      (if Index = 1 then "@nvme:0/work" else "@mem:0/work");
 
    PAGE_BYTES : constant := DIRECTORY_PAGE_BYTES;
-   QUEUE_PAGES : constant := FQ.Queue_Bytes / PAGE_BYTES;
    --  Room for eight page and inspection pairs per request.
    PAIRS_PER_REQUEST : constant := 8;
    ARENA_BYTES : constant := PAIRS_PER_REQUEST * DIRECTORY_INSPECTED_BYTES;
    ARENA_PAGES : constant := ARENA_BYTES / PAGE_BYTES;
    MAXIMUM_REQUESTS : constant := 64;   --  per listing: 512 pages
    ANSWER_SPINS : constant := 256;
-   NO_COMPLETION_TOKEN : constant Unsigned_64 := Unsigned_64'Last;
 
-   Queue_Address, Arena_Address : Unsigned_64 := 0;
+   --  The queue's channels (FQ): a small transfer arena, then the pair.
+   Transfer_Link, Queue_Link : CuBit.Channels.Channel;
+   Queue_Address, Server_Address, Arena_Address : Unsigned_64 := 0;
    Ready, Refused : Boolean := False;
    Client : Q.Client;
    Next_Tag : Q.Token := 0;
    Kicked : Unsigned_32 := 0;
 
+   --  This client's region (it writes) and the service's (read-only here).
    function Word (Offset : Natural) return System.Address is
      (To_Address (Integer_Address (Queue_Address + Unsigned_64 (Offset))));
+   function Server_Word (Offset : Natural) return System.Address is
+     (To_Address (Integer_Address (Server_Address + Unsigned_64 (Offset))));
 
-   --  Page-aligned memory of Pages pages.
-   function Pages_Of (Pages : Positive) return Unsigned_64 is
-      Raw : constant Unsigned_64 := syscall (SYSCALL_SBRK, (Unsigned_64 (Pages) + 1) * PAGE_BYTES);
-   begin
-      if Raw = Unsigned_64'Last then return 0; end if;
-      return (Raw + PAGE_BYTES - 1) and not Unsigned_64 (PAGE_BYTES - 1);
-   end Pages_Of;
-
-   function Lend (Address : Unsigned_64; Pages : Positive) return Unsigned_64 is
-      Loan : CuBit.Memory_Grants.Grant_Reference;
-      OK : Boolean;
-      GENERATION_SHIFT : constant := 32;
-   begin
-      CuBit.Memory_Grants.Create_Via_Capability
-        (CAP_SLOT_FS, To_Address (Integer_Address (Address)), Pages, True, Loan, OK);
-      return (if OK then Shift_Left (Loan.generation, GENERATION_SHIFT) or Loan.slot else 0);
-   end Lend;
-
-   --  Lend the queue and arena once.
+   --  Open the queue's channels once: no dirty arena (listings never
+   --  write).
    function Initialize return Boolean is
-      Request : Message := NULL_MESSAGE;
-      Queue_Ref, Arena_Ref : Unsigned_64;
+      use type CuBit.Channels.Open_Result;
+      Result : CuBit.Channels.Open_Result;
+      Ignore_Refusal : CuBit.Channel_Protocol.Open_Refusal;
    begin
       if Ready then return True; end if;
       if Refused then return False; end if;
       Refused := True;
-      Queue_Address := Pages_Of (QUEUE_PAGES);
-      Arena_Address := Pages_Of (ARENA_PAGES);
-      if Queue_Address = 0 or else Arena_Address = 0 then return False; end if;
-      Queue_Ref := Lend (Queue_Address, QUEUE_PAGES);
-      Arena_Ref := Lend (Arena_Address, ARENA_PAGES);
-      if Queue_Ref = 0 or else Arena_Ref = 0 then return False; end if;
-      Request.tag := (label => FQ.OP_FS_QUEUE, length => 4, flags => 0, reserved => 0);
-      Request.words (0) := Queue_Ref;
-      Request.words (1) := Arena_Ref;
-      Request.words (2) := ARENA_BYTES;
-      Request.words (3) := 0;   --  no dirty arena: listings never write
-      Request.tag := capCall (CAP_SLOT_FS, Request);
-      Ready := Request.tag.label = REPLY_OK;
-      Refused := not Ready;
+      CuBit.Channels.Open
+        (CAP_SLOT_FS, (FQ.TRANSFER_CONTRACT with delta Buffers => ARENA_PAGES),
+         CuBit.Channels.Producing, Transfer_Link, Result, Ignore_Refusal,
+         Connector => FQ.Transfer_Connector);
+      if Result /= CuBit.Channels.Opened then return False; end if;
+      CuBit.Channels.Open
+        (CAP_SLOT_FS, FQ.QUEUE_CONTRACT, CuBit.Channels.Producing, Queue_Link, Result,
+         Ignore_Refusal, Connector => FQ.Queue_Connector);
+      if Result /= CuBit.Channels.Opened then
+         CuBit.Channels.Close (Transfer_Link);
+         return False;
+      end if;
+      Queue_Address := Queue_Link.Own_Base;
+      Server_Address := Queue_Link.Peer_Base;
+      Arena_Address := Unsigned_64 (To_Integer (CuBit.Channels.Buffer_Address (Transfer_Link, 0)));
+      Ready := True;
+      Refused := False;
       return Ready;
    end Initialize;
 
@@ -89,18 +80,17 @@ package body CCL_Places is
    is
       --  The rings are written and read only inside the proved Submit and
       --  Reap; the shared header words are volatile.
-      Requests : Q.Submissions.Ring with Import, Address => Word (FQ.Requests_At);
-      Answers : Q.Completions.Ring with Import, Address => Word (FQ.Answers_At);
-      Submitted : Unsigned_32 with Import, Volatile, Address => Word (FQ.Submissions_At + FQ.Produced_At);
-      Taken : Unsigned_32 with Import, Volatile, Address => Word (FQ.Submissions_At + FQ.Consumed_At);
-      Wake : Unsigned_32 with Import, Volatile, Address => Word (FQ.Submissions_At + FQ.Wake_At);
-      Answered : Unsigned_32 with Import, Volatile, Address => Word (FQ.Completions_At + FQ.Produced_At);
-      Reaped : Unsigned_32 with Import, Volatile, Address => Word (FQ.Completions_At + FQ.Consumed_At);
+      Requests : Q.Submissions.Ring with Import, Address => Word (FQ.Client_Requests_At);
+      Answers : constant Q.Completions.Ring with Import, Address => Server_Word (FQ.Server_Answers_At);
+      Submitted : Unsigned_32 with Import, Volatile, Address => Word (FQ.Client_Submitted_At);
+      Taken : constant Unsigned_32 with Import, Volatile, Address => Server_Word (FQ.Server_Taken_At);
+      Wake : constant Unsigned_32 with Import, Volatile, Address => Server_Word (FQ.Server_Wake_At);
+      Answered : constant Unsigned_32 with Import, Volatile, Address => Server_Word (FQ.Server_Answered_At);
+      Reaped : Unsigned_32 with Import, Volatile, Address => Word (FQ.Client_Reaped_At);
       Result : Q.Completion;
       Accepted : Boolean;
       Waiting : Message := NULL_MESSAGE;
       Tag : MessageTag;
-      Sent : Boolean;
       Armed : Unsigned_32;
    begin
       Status := REPLY_ERR;
@@ -115,10 +105,7 @@ package body CCL_Places is
       Armed := Wake;
       if Armed /= 0 and then Armed /= Kicked then
          Kicked := Armed;
-         Sent := capSubmit (CAP_SLOT_FS,
-                            (tag => (label => FQ.OP_FS_KICK, length => 0, flags => 0, reserved => 0),
-                             authorityTag => 0, words => [others => 0]),
-                            NO_COMPLETION_TOKEN);
+         CuBit.Channels.Kick (Queue_Link);
       end if;
       for Look in 1 .. Natural'Last loop
          Q.Completions.Accept_Produced (Client.Answers, Q.Completions.Index (Answered), Accepted);

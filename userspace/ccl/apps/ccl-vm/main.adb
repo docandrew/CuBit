@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with Interfaces; use Interfaces;
 
 with CCL.Catalog;
@@ -89,7 +90,7 @@ begin
       end if;
    end;
 
-   CCL.Language.Interpret
+   CCL.Evaluation.Evaluate
      ("(let ((answer (+ 20 22))) (= answer 42))", 64, Source_Result);
    if Source_Result.Status = CCL.Language.Succeeded and then
      Source_Result.Has_Value and then
@@ -102,7 +103,7 @@ begin
       All_Passed := False;
    end if;
 
-   CCL.Language.Interpret
+   CCL.Evaluation.Evaluate
      ("(type Color (enum Red Blue Green)) " &
       "(define (caption (color Color)) String (to-string color)) " &
       "(caption (if (= Color.Red Color.Blue) Color.Red Color.Green))",
@@ -116,7 +117,7 @@ begin
       debugPrint ("ccl-vm: enum source FAIL" & LF);
       All_Passed := False;
    end if;
-   CCL.Language.Interpret
+   CCL.Evaluation.Evaluate
      ("(type Color (enum Red)) (type Other (enum Red)) (= Color.Red Other.Red)",
       64, Source_Result);
    if Source_Result.Status = CCL.Language.Type_Check_Failed then
@@ -138,7 +139,7 @@ begin
       Limits : CCL.Format.Resource_Limits;
       Passed : Boolean;
    begin
-      CCL.Language.Interpret (Source, 256, Source_Result);
+      CCL.Evaluation.Evaluate (Source, 256, Source_Result);
       Passed := Source_Result.Status = CCL.Language.Succeeded and then
         Source_Result.Result_Value.Integer = 42;
       CCL.Language.Analyze (Source, Analysis);

@@ -81,11 +81,12 @@ package CuBit.Program_Descriptions with Pure, SPARK_Mode is
    type Element_Kind is (Text_Lines, Raw_Bytes, Integers, Log_Records);
    for Element_Kind use
      (Text_Lines => 1, Raw_Bytes => 2, Integers => 3, Log_Records => 4);
-   --  How values arrive: a sequence of elements; exactly one value, ever;
-   --  a current state (intermediate values may be coalesced); discrete
-   --  transitions, never coalesced.
-   type Signal_Kind is (Stream, One_Shot, Level, Edge);
-   for Signal_Kind use (Stream => 1, One_Shot => 2, Level => 3, Edge => 4);
+   --  How values arrive: a sequence of elements; a current state
+   --  (intermediate values may be coalesced); discrete transitions, never
+   --  coalesced. A single value is not a connector: a run's outcome is a
+   --  Task, and single messages are typed operations.
+   type Signal_Kind is (Stream, Level, Edge);
+   for Signal_Kind use (Stream => 1, Level => 2, Edge => 3);
 
    subtype Parameter_Count is Natural range 0 .. Maximum_Parameters;
    subtype Parameter_Index is Natural range 0 .. Maximum_Parameters - 1;

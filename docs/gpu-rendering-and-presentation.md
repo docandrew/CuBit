@@ -9,6 +9,28 @@ not a GPU timestamp measurement. The roughly five-second hitch is unresolved.
 The v60 candidate retains v59's gallery binary and timing instrumentation;
 its allocation changes do not establish a performance fix.
 
+Source-only update (2026-10-05): gallery interval-peak diagnostics now report
+work, presentation and pre-submit durations belonging to the same slowest
+frame. Previously the component maxima could belong to different frames.
+Extracted C regression tests and the Linux-hosted gallery pass, including
+invalid-clock negative controls. These are CPU intervals, not GPU timestamps;
+the hitch is not yet diagnosed. The unchanged v60 image still uses the older,
+independent component maxima and must be interpreted accordingly.
+
+Periodic-work audit (2026-10-05): the inspected source does not establish a
+five-second timer as the hitch source. Intel diagnostic publication is paced
+at 100 ms; Desktop's `maybePrintStats` threshold is 1000 ms; gallery title and
+timing reports occur every 60 frames (about 2.1 seconds at 29 FPS, not five).
+The title update performs a synchronous Desktop call. Driver `Capture` and
+Desktop statistics also use `debugPrint`, so asynchronous logstore publication
+does not establish that diagnostic work is nonblocking. These are candidates
+for measurement, not proof of a stall or reasons to remove retirement waits.
+Use correlated peak-frame stages to distinguish submission/wait, validation/
+presentation, and pre-submit/reporting gaps before changing synchronization.
+The driver's main-loop 10 ms activity deadline is not an unconditional sleep:
+queued IPC or completions wake it. No FPS gain follows from deleting that wait
+without first measuring the actual scheduling path.
+
 The present source path is:
 
 ```
@@ -29,6 +51,49 @@ not a hardware Desktop compositor, Mesa WSI, or direct Intel scanout.
 
 ### Provider boundary still required
 
+#### Firmware writer handoff audit (2026-10-04)
+
+The boot discovery flag is not a display lease. `Sysinfo.setInfo` currently
+accepts arbitrary `GPU_IS_PRIMARY` values, including a return to zero after
+native publication. Its nonzero case retires the kernel `Boot_Output`
+renderer, but does not revoke mappings in userspace. Display chooses its
+backend once in `setupBackend`; an existing firmware mapping survives later
+publication. Only the registered device manager (or kernel-mode caller) may
+set this device configuration through `handleSetSysinfo`.
+
+The mapping admission audit found three paths in `kernel/src/syscall-ipc.adb`:
+
+| Path | Existing admission | Handoff gap |
+| --- | --- | --- |
+| `handleMapFB` | Device-memory capability, physical-conflict check | No native-takeover check; partial mapping attempts may leave aliases |
+| `handleMapDevice` | Physical device-memory capability with requested access rights, physical-conflict check | No framebuffer-specific lease check for a capability covering that range |
+| `handleMapInto` | Process grant authority for the destination, physical-conflict check | Physical mapping can bypass a MAPFB-only gate |
+
+These are potential routes subject to their existing authority checks, not
+evidence that an ordinary application possesses those capabilities. All three
+hold `Process.Owned_Memory.Lock` while mapping and then lock the destination
+address space. This is an existing serialization point to evaluate, not a
+license to add an independently ordered display lock. A check before acquiring
+the common lock would still allow an admitted mapper to race takeover.
+
+The implementation must close admission for the actual framebuffer physical
+range, account for already published and partially published aliases, stop the
+current writer, remove its mappings, and confirm the required CPU TLB drain
+before native ownership becomes usable. Revoking a capability alone does not
+remove existing page-table entries. Kernel renderer retirement is a separate
+drain. Failure or uncertainty must retain the old backing and withhold native
+write authority; clearing a discovery flag cannot restore a firmware mode.
+There is no implemented runtime Display writer-drain protocol in this audit.
+
+A private candidate makes boot publication boolean and monotonic. Its extracted
+setter regression and guard-removed negative control pass; its native Sysinfo
+unit compilation also passes. This is neither SMP synchronization nor mapping
+revocation and has not been promoted to the primary kernel or the v60 image.
+Before integrating takeover, tests must exercise both mapper/takeover orders,
+all three admission paths, partial map failure, stale process incarnations,
+and delayed remote TLB acknowledgment. Hardware plane writes remain disabled
+until the complete ownership handoff exists.
+
 The driver now has `Intel_GPU_Plane_Decode.Plan_Linear_Flip`, a pure
 same-geometry linear-buffer planner. It uses the existing representation-clause
 surface record and footprint decoder, rejecting unstable/unsupported current
@@ -38,6 +103,18 @@ address exists only to validate geometry; it is not a hardware observation.
 No register-writing caller exists yet. Other planes, physical aliases,
 producer completion, exclusive display ownership and flip retirement remain
 separate admission requirements.
+
+`Intel_GPU_Scanout_Inventory.Plan_Linear_Flip` composes that planner with a
+fresh collection from the supplied plane/cursor observations. It rejects an
+absent selected pipe, incomplete or unsupported inventory, and overlap of the
+entire target allocation with any of the 24 possible active objects. The
+selected-plane decode uses the same observations as the inventory. Hosted
+tests cover all 20 selected-plane indices, their absent-pipe rejection, all
+24 collision targets, adjacency, allocation-tail overlap, missing/changing
+observations and invalid targets. These are GGTT-address checks: distinct
+GGTT addresses can still alias physical backing. The caller must keep the
+observations current under its power/serialization contract; this wrapper
+does not provide that contract or perform a register write.
 
 Sources: Intel IHD-OS-TGL-Vol2c-12.21 printed pp840–841 and848
 (`~/Downloads/intel-gfx-prm-osrc-tgl-vol-02-c-command-reference-registers-part-2.pdf`,
@@ -1113,10 +1190,22 @@ wire output selector is service-local (0..15), not persistent identity or
 authority. Multiple heads behind that endpoint are supported; independent driver
 instance routing is not established.
 
+Display now captures its own process incarnation from its self-process
+capability for the output-registry lifetime. Firmware outputs use that same
+incarnation as their backend identity; virtio outputs capture and validate the
+GPU endpoint incarnation. Failed capture prevents output registration. These
+identities prevent the former constant-1 lifetime alias, but are correlation
+metadata, not image-import authority or an implemented multi-adapter broker.
+The endpoint slot must remain bound to that admitted backend; endpoint
+replacement and cross-service output/image admission still need explicit
+lifetime handling.
+
 `Map_Backbuffer` remains unavailable. Compositor paint/transfer storage and
 firmware/virtio presentation include copies. Existing session/frame validation
-and retained grants must survive optimization. Native Intel has a private
-read-only bootstrap/mapping experiment, not a presentation or rendering backend.
+and retained grants must survive optimization. Native Intel rendering through
+the CuBit Mesa path has hardware test evidence; its gallery currently uses
+completed readback and CPU copies into Desktop frames. It is not yet a native
+Intel presentation/scanout backend or a GPU-composited Desktop.
 
 Implementation order:
 

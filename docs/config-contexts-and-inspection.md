@@ -122,8 +122,8 @@ Try in the **native CuBit Workbench**, using Interpret/REPL:
 
 The appearance key can be absent until Settings first writes it. The sample
 `config-inspector.ccl` is picked up by the existing Live CD sample collection.
-CCLB text imports and richer typed error outcomes are not implemented here;
-the current interpreter reports host-call failure on an unsuccessful query.
+Richer typed error outcomes are not implemented here; evaluation reports
+host-call failure on an unsuccessful query.
 
 The ELF interface description is a schema fingerprint, not a signature or
 proof of service identity. Dynamic authenticated schema discovery remains

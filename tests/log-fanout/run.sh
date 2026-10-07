@@ -6,7 +6,7 @@ cp ../userspace/runtime/gnat/cubit.ads ../userspace/runtime/gnat/cubit-log_proto
    ../userspace/runtime/gnat/cubit-authority_policy.ads \
    ../userspace/runtime/gnat/cubit-process_observer.ads \
    ../userspace/runtime/gnat/cubit-grant_references.ads \
-   ../userspace/runtime/gnat/cubit-protocols.ads \
+   ../userspace/runtime/gnat/cubit-protocols.ads ../userspace/runtime/gnat/cubit-channel_contracts.ads ../userspace/runtime/gnat/cubit-channel_contracts.adb \
    ../userspace/runtime/gnat/cubit-log_records.ads \
    ../userspace/runtime/gnat/cubit-log_records.adb \
    ../userspace/runtime/gnat/cubit-channel_rings.ads ../userspace/runtime/gnat/cubit-channel_rings.adb \

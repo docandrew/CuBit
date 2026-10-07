@@ -98,6 +98,18 @@ is
                           arg0      : Unsigned_64;
                           retval    : out Unsigned_64);
 
+    -- A control message (docs/data-plane.md): arg0 = target PID, arg1 = its
+    -- kind (IPC_Labels.Control_Kind), arg2 = the target's generation (its
+    -- incarnation, as OP_LAUNCH and EVENT_CHILD_EXIT report it). The caller must be the target's
+    -- parent (the process that launched it, the same incarnation), or hold
+    -- the process capability kill needs (RIGHT_WRITE). The target gets EVENT_CONTROL
+    -- (kind, sender) in its event lane; retval 0, or an error when the kind
+    -- is unknown, the target absent, the caller unauthorized, or the
+    -- target's event lane full.
+    procedure handleSendControl (callerPID : Process.ProcessID;
+                                 arg0, arg1, arg2 : Unsigned_64;
+                                 retval     : out Unsigned_64);
+
     procedure handleSetWellKnown (callerPID : Process.ProcessID;
                                    arg0, arg1 : Unsigned_64;
                                    retval     : out Unsigned_64);

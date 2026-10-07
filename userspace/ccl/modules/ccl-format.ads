@@ -37,7 +37,7 @@ package CCL.Format with
 is
    use Interfaces;
 
-   FORMAT_VERSION : constant := 8;
+   FORMAT_VERSION : constant := 9;
    FORMAT_MAGIC   : constant String := "CCLB";
 
    --  Shape codes of data type definitions.
@@ -48,10 +48,11 @@ is
    SHAPE_CALLABLE : constant := 5;
    SHAPE_BOUNDED  : constant := 6;
    SHAPE_STREAM   : constant := 7;
+   SHAPE_TASK     : constant := 8;
 
    --  Fields of one import, instruction and function (fixed-length arrays).
    --  A function: entry, captures, parameters, result kind, result type.
-   IMPORT_FIELDS      : constant := 19;
+   IMPORT_FIELDS      : constant := 21;
    INSTRUCTION_FIELDS : constant := 8;
    FUNCTION_FIELDS    : constant := 5;
    DIGEST_BYTES       : constant := 32;

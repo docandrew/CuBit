@@ -47,6 +47,11 @@ use type Process.ProcessMode;
 use type Capabilities.Operations.OperationStatus;
 
 package body Syscall.IPC is
+    -- Shared-memory grant flags (arg3 of the create-grant calls): bit 0
+    -- read-write, then these.
+    Grant_Flag_Forwardable : constant Unsigned_64 := 2;
+    -- Post grant lifecycle events for it (docs/data-plane.md).
+    Grant_Flag_Notify      : constant Unsigned_64 := 4;
     -- Bring-up only: successful mode-1 allocations are charged until reboot,
     -- including owner death. No timeout/reset message refunds this budget.
     Retained_DMA_Lock : Spinlocks.Spinlock;
@@ -1266,7 +1271,8 @@ package body Syscall.IPC is
                 id        => gid,
                 success   => ok,
                 expectedGeneration => generation,
-                forwardable => (arg3 and 2) /= 0);
+                forwardable => (arg3 and Grant_Flag_Forwardable) /= 0,
+                notify => (arg3 and Grant_Flag_Notify) /= 0);
 
             if ok then
                 retval := Unsigned_64(gid);
@@ -1564,7 +1570,7 @@ package body Syscall.IPC is
         if arg0 > Unsigned_64 (Capabilities.CapabilitySlot'Last) or else
            not Memory_Grants.Valid_Creation_Request (arg2, arg3) then
             println
-              ("CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY: invalid slot");
+              ("CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY: invalid slot, size or flags");
             retval := reterr;
             return;
         end if;
@@ -1623,7 +1629,8 @@ package body Syscall.IPC is
             id        => gid,
             success   => ok,
                 expectedGeneration => cap.gen,
-                forwardable => (arg3 and 2) /= 0);
+                forwardable => (arg3 and Grant_Flag_Forwardable) /= 0,
+                notify => (arg3 and Grant_Flag_Notify) /= 0);
 
         if ok then
             retval := Unsigned_64(gid);

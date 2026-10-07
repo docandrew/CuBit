@@ -2,6 +2,7 @@ with CCL_Log_IO;
 with Interfaces; use Interfaces;
 with System;
 with CCL.Catalog;
+with CCL.Host_Replay;
 with CCL.Host_Values;
 with CCL.Language;
 with CCL.Sessions;
@@ -16,6 +17,7 @@ with CCL_Console_Bindings;
 with CCL.Interfaces.Console;
 with CCL_REPL_Commands;
 with Client_Input_Budget;
+with CuBit.Failures;
 with CuBit.UI;
 
 package body CCL_Console is
@@ -92,8 +94,89 @@ package body CCL_Console is
    begin
       Host.Read_Stream (Request, Reply);
    end Read_Live;
+   --  Every entry's host calls are logged, so one that stops at (wait t)
+   --  on a pending task can run again once t completes without making
+   --  them twice (CCL.Host_Replay, CCL.Sessions.Resume_With_Values).
+   package Replay is new CCL.Host_Replay (Live_Context, Invoke_Live, Read_Live);
    procedure Submit_Live is new CCL.Sessions.Submit_With_Values
-     (Live_Context, Invoke_Live, Read_Stream => Read_Live);
+     (Replay.Context, Replay.Invoke_Logged, Read_Stream => Replay.Read_Logged);
+   procedure Resume_Live is new CCL.Sessions.Resume_With_Values
+     (Replay.Context, Replay.Invoke_Logged, Read_Stream => Replay.Read_Logged);
+   Fresh : Replay.Context;
+   --  Entries waiting on a task: the task, and the calls to answer again.
+   MAXIMUM_PENDING_AWAITS : constant := 4;
+   type Pending_Index is range 1 .. MAXIMUM_PENDING_AWAITS;
+   Pending : array (Pending_Index) of Replay.Context;
+   Waited_On : array (Pending_Index) of CCL.Streams.Handle := [others => CCL.Streams.No_Handle];
+
+   function Not_Resumable (Why : String) return CuBit.Failures.Failure is
+     (CuBit.Failures.Failed (CuBit.Failures.Exhausted, Why,
+        "wait in an entry of its own, or wait for fewer tasks at a time"));
+
+   --  Entry Index stopped waiting on task Handle; its calls are in Calls.
+   procedure Keep_Wait
+     (Item : in out CCL.Sessions.Session; Handle : CCL.Streams.Handle; Calls : Replay.Log)
+   is
+      use type CCL.Streams.Handle;
+      Index : constant CCL.Sessions.History_Count := CCL.Sessions.Waiting_Entry (Item, Handle);
+      Free : Pending_Index'Base := 0;
+   begin
+      if Index = 0 then return; end if;
+      if Replay.Overflowed (Calls) then
+         CCL.Sessions.Abandon_Wait
+           (Item, Index, Not_Resumable ("the entry made more than" &
+              Natural'Image (Replay.MAX_CALLS) & " service calls before it waited"));
+         return;
+      end if;
+      for P in Pending_Index loop
+         --  A slot whose entry is gone (cleared, or scrolled away) is free.
+         if Waited_On (P) /= CCL.Streams.No_Handle
+           and then CCL.Sessions.Waiting_Entry (Item, Waited_On (P)) = 0
+         then
+            Waited_On (P) := CCL.Streams.No_Handle;
+         end if;
+         if Waited_On (P) = CCL.Streams.No_Handle and then Free = 0 then
+            Free := P;
+         end if;
+      end loop;
+      if Free = 0 then
+         CCL.Sessions.Abandon_Wait
+           (Item, Index, Not_Resumable ("more than" & Natural'Image (MAXIMUM_PENDING_AWAITS) &
+              " entries are waiting on tasks"));
+         return;
+      end if;
+      Waited_On (Free) := Handle;
+      Pending (Free).Calls := Calls;
+   end Keep_Wait;
+
+   --  Resume every entry whose task completed.
+   procedure Resume_Ready (Item : in out CCL.Sessions.Session; Changed : out Boolean) is
+      use type CCL.Streams.Handle;
+      use type CCL.Language.Interpretation_Status;
+      Outcome : CCL.Language.Interpretation_Result;
+      Index : CCL.Sessions.History_Count;
+      Resumed : Boolean;
+   begin
+      Changed := False;
+      for P in Pending_Index loop
+         if Waited_On (P) /= CCL.Streams.No_Handle and then Host.Task_Done (Waited_On (P)) then
+            Index := CCL.Sessions.Waiting_Entry (Item, Waited_On (P));
+            Waited_On (P) := CCL.Streams.No_Handle;
+            if Index > 0 then
+               Replay.Rewind (Pending (P).Calls);
+               Resume_Live (Item, Index, CCL.Sessions.Default_Fuel, Granted_Interfaces,
+                            Pending (P), Outcome, Resumed);
+               Changed := Changed or else Resumed;
+               if Resumed and then Outcome.Status = CCL.Language.Waiting_On_Task then
+                  Keep_Wait (Item, Outcome.Waited_On, Pending (P).Calls);
+               elsif Resumed then
+                  --  Reported like an entry that completed when submitted.
+                  Platform.REPL_Completed (CCL.Sessions.Result_Image (Outcome));
+               end if;
+            end if;
+         end if;
+      end loop;
+   end Resume_Ready;
    procedure Submit_Granted
      (Item : in out CCL.Sessions.Session; Source : String;
       Fuel : CCL.Sessions.Fuel_Budget; Outcome : out CCL.Language.Interpretation_Result;
@@ -103,7 +186,11 @@ package body CCL_Console is
       Fuel : CCL.Sessions.Fuel_Budget; Outcome : out CCL.Language.Interpretation_Result;
       Shown : String := "") is
    begin
-      Submit_Live (Item, Source, Fuel, Granted_Interfaces, Live_Host, Outcome, Shown);
+      Replay.Clear (Fresh);
+      Submit_Live (Item, Source, Fuel, Granted_Interfaces, Fresh, Outcome, Shown);
+      if CCL.Language."=" (Outcome.Status, CCL.Language.Waiting_On_Task) then
+         Keep_Wait (Item, Outcome.Waited_On, Fresh.Calls);
+      end if;
    end Submit_Granted;
    procedure Submit_Entry is new CCL_REPL_Commands (Submit_Granted);
    function Now_Ms return Unsigned_64 is (CCL_Window.Ticks);
@@ -113,7 +200,8 @@ package body CCL_Console is
    --  Every outlet of a program the last entry started gets its own live
    --  card (docs/ccl-launch-parameters.md, "Every outlet gets a card"):
    --  by the run's name when the entry defined one, as in
-   --  (window 64 (as.unix.stderr bad)), else by its session stream.
+   --  (window 64 (as.unix.stderr bad)), else by its session stream. Its
+   --  outcome gets a live card showing its state: (as.outcome bad).
    procedure Follow_Started (State : in out CCL_Console_View.View_State) is
       Items : CCL_Program_Bindings.Started_Array;
       Count : Natural;
@@ -139,17 +227,36 @@ package body CCL_Console is
       CCL_Program_Bindings.Take_Started (Items, Count);
       for I in 1 .. Count loop
          declare
+            use type CCL_Program_Bindings.Started_Kind;
             O : CCL_Program_Bindings.Started_Outlet renames Items (I);
-            Accessor : constant String :=
-              O.Program (1 .. O.Program_Length) & "." & O.Outlet (1 .. O.Outlet_Length);
-            Stream_Image : constant String := Integer_64'Image (O.Stream);
-            Reference : constant String :=
-              (if Name'Length > 0 then "(" & Accessor & " " & Name & ")"
-               else "(stream " & (if O.Integers then "Integer" else "String") & " " &
-                    Stream_Image (Stream_Image'First + 1 .. Stream_Image'Last) & ")");
+            Program : constant String := O.Program (1 .. O.Program_Length);
+            function Image (Value : Integer_64) return String is
+               Text : constant String := Integer_64'Image (Value);
+            begin
+               return Text (Text'First + 1 .. Text'Last);
+            end Image;
+            --  The run: by its name, else as a Run value.
+            Run : constant String :=
+              (if Name'Length > 0 then Name
+               else "(Run program => """ & O.Launched (1 .. O.Launched_Length) & """ pid => " &
+                    Image (O.Pid) & " generation => " & Image (O.Generation) & ")");
          begin
-            Follow (State, (if O.Integers then "(latest " & Reference & ")"
-                            else "(window 64 " & Reference & ")"));
+            if O.Kind = CCL_Program_Bindings.Outcome_Started then
+               --  Its state, live: Running until it ends, then Done with
+               --  how it ended (at once, for a run that was already over).
+               Follow (State, "(" & Program & ".outcome " & Run & ")");
+            else
+               declare
+                  Accessor : constant String := Program & "." & O.Outlet (1 .. O.Outlet_Length);
+                  Reference : constant String :=
+                    (if Name'Length > 0 then "(" & Accessor & " " & Name & ")"
+                     else "(stream " & (if O.Integers then "Integer" else "String") & " " &
+                          Image (O.Stream) & ")");
+               begin
+                  Follow (State, (if O.Integers then "(latest " & Reference & ")"
+                                  else "(window 64 " & Reference & ")"));
+               end;
+            end if;
          end;
       end loop;
    end Follow_Started;
@@ -163,9 +270,11 @@ package body CCL_Console is
       Reevaluate_Live (Item, Index, Fuel, Granted_Interfaces, Live_Host, Outcome, Reevaluated);
    end Reevaluate;
    procedure Refresh is new CCL_Console_View.Refresh (Reevaluate, Now_Ms);
+   procedure Resume_Waits is new CCL_Console_View.Update_Session (Resume_Ready);
 
    function Console_Holds (Handle : CCL.Streams.Handle) return Boolean is
-     (CCL_Console_View.Holds_Stream (Console, Handle));
+     (CCL_Console_View.Holds_Stream (Console, Handle) or else
+      (for some Task_Handle of Waited_On => CCL.Streams."=" (Task_Handle, Handle)));
    --  After every entry and live run: close the streams nothing binds.
    procedure Retain_Streams is new Host.Retain_Streams (Console_Holds);
    Canvas : CuBit.UI.Canvas :=
@@ -316,6 +425,14 @@ package body CCL_Console is
             begin
                Host.Pump_Streams (Arrived);
                if Arrived then CCL_Console_View.Note_Arrival (Console); end if;
+            end;
+            --  Entries whose task completed.
+            declare
+               Redraw : Boolean;
+            begin
+               Resume_Waits (Console, Redraw);
+               if Redraw then Retain_Streams; end if;
+               Needs_Render := Needs_Render or else Redraw;
             end;
             --  Live cells whose time has come.
             declare

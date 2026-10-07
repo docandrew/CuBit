@@ -9,8 +9,10 @@ package Vulkan_Context_Owner with SPARK_Mode is
    type State is private;
    type Child is private;
    No_Child : constant Child;
-   -- One target bundle, one pipeline, 140 source images and one upload buffer.
-   Maximum_Children : constant := 143;
+   -- One target bundle, one pipeline, all sources and upload/readback staging.
+   -- Derive from the bounded scene inventory, not the general driver BO limit.
+   Maximum_Children : constant := 1 + 1 +
+     (V.Source_Slot'Pos (V.Source_Slot'Last) - V.Source_Slot'Pos (V.Source_Slot'First) + 1) + 2;
    function Current (S : State) return Phase;
    function Context (S : State) return System.Address;
    function Sequence (S : State) return Serial;

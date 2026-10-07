@@ -13,6 +13,7 @@ with BuddyAllocator;
 with Capabilities.Operations;
 with Config;
 with Grant_Page_Installation;
+with IPC_Labels;
 with IPI;
 with Memory_Grants;
 with Memory_Grants.Loans;
@@ -1581,6 +1582,73 @@ package body Process.IPC is
     ---------------------------------------------------------------------------
 
     package Grant_Loans is new Memory_Grants.Loans;
+
+    -- Grant lifecycle events (docs/data-plane.md): queued under grantLock
+    -- where a grant is revoked or retires, and posted by postGrantEvents
+    -- once the lock is released, so delivery never runs inside it. The
+    -- queue is bounded; an event that does not fit is dropped and counted
+    -- (events are hints, the grant generation is authoritative).
+    Max_Pending_Grant_Events : constant := 64;
+    type Pending_Grant_Event is record
+        dest       : ProcessID := NO_PROCESS;
+        label      : Unsigned_32 := 0;
+        slot       : Memory_Grants.Global_Slot := 0;
+        generation : Unsigned_64 := 0;
+        peer       : ProcessID := NO_PROCESS;
+    end record;
+    subtype Pending_Grant_Count is Natural range 0 .. Max_Pending_Grant_Events;
+    pendingGrantEvents : array (1 .. Max_Pending_Grant_Events) of Pending_Grant_Event;
+    pendingGrantEventCount : Pending_Grant_Count := 0;
+    droppedGrantEvents : Unsigned_64 := 0;
+    Grant_Event_Words : constant := 3;
+
+    -- Caller holds grantLock.
+    procedure queueGrantEventLocked
+      (dest : ProcessID; label : Unsigned_32; slot : Memory_Grants.Global_Slot;
+       generation : Unsigned_64; peer : ProcessID) is
+    begin
+        if dest = NO_PROCESS then
+            return;
+        end if;
+        if pendingGrantEventCount = Max_Pending_Grant_Events then
+            droppedGrantEvents := droppedGrantEvents + 1;
+            return;
+        end if;
+        pendingGrantEventCount := pendingGrantEventCount + 1;
+        pendingGrantEvents (pendingGrantEventCount) :=
+          (dest => dest, label => label, slot => slot, generation => generation, peer => peer);
+    end queueGrantEventLocked;
+
+    -- Caller does not hold grantLock. Posts every queued event, one at a
+    -- time, each taken under the lock and sent outside it.
+    procedure postGrantEvents is
+        item : Pending_Grant_Event;
+        msg : Message;
+        accepted : Boolean;
+    begin
+        loop
+            Spinlocks.enterCriticalSection (grantLock);
+            if pendingGrantEventCount = 0 then
+                Spinlocks.exitCriticalSection (grantLock);
+                return;
+            end if;
+            item := pendingGrantEvents (1);
+            for index in 1 .. pendingGrantEventCount - 1 loop
+                pendingGrantEvents (index) := pendingGrantEvents (index + 1);
+            end loop;
+            pendingGrantEventCount := pendingGrantEventCount - 1;
+            Spinlocks.exitCriticalSection (grantLock);
+            msg := NULL_MESSAGE;
+            msg.tag := (label => item.label, length => Grant_Event_Words,
+                        flags => 0, reserved => 0);
+            msg.words (0) := Unsigned_64 (item.slot);
+            msg.words (1) := item.generation;
+            msg.words (2) := Unsigned_64 (item.peer);
+            -- A dead or full destination drops it.
+            trySendEvent (item.dest, msg, accepted);
+        end loop;
+    end postGrantEvents;
+
     use type Grant_Loans.Parent_Phase;
     use type Grant_Loans.Loan_Phase;
     use type Grant_Loans.Reservation_Result;
@@ -1798,7 +1866,8 @@ package body Process.IPC is
            granteeAddr => System.Null_Address,
            numPages    => 0,
            permission  => GRANT_READ,
-           forwardable => False);
+           forwardable => False,
+           notify      => False);
     end invalidateGrant;
 
     function overlapsGrantRegion (localAddr : System.Address;
@@ -1833,7 +1902,8 @@ package body Process.IPC is
                            id        : out Natural;
                            success   : out Boolean;
                            expectedGeneration : Capabilities.Generation := 0;
-                           forwardable : Boolean := False)
+                           forwardable : Boolean := False;
+                           notify : Boolean := False)
     is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
         owner : constant ProcessID :=
@@ -1939,7 +2009,8 @@ package body Process.IPC is
                     granterAddr => localAddr,
                     granteeAddr => To_Address (GRANT_REGION_BASE +
                         Integer_Address (globalId) * GRANT_SLOT_SIZE),
-                    permission => perm, forwardable => forwardable, others => <>);
+                    permission => perm, forwardable => forwardable, notify => notify,
+                    others => <>);
 
         installPages (numPages, installed, ok);
         if not ok then
@@ -2095,6 +2166,7 @@ package body Process.IPC is
         end if;
         staging := (globalSlot => childSlot, granterPID => caller,
           granteePID => grantee, permission => perm, forwardable => False,
+          notify => source.notify,
           granterAddr => To_Address (To_Integer (source.granteeAddr) +
             Integer_Address (pageOffset) * Virtmem.PAGE_SIZE),
           granteeAddr => To_Address (GRANT_REGION_BASE +
@@ -2179,6 +2251,11 @@ package body Process.IPC is
         applied : Boolean;
     begin
         if value = null then return; end if;
+        if value.notify then
+            queueGrantEventLocked
+              (value.granterPID, IPC_Labels.EVENT_GRANT_RETURNED, slot,
+               Unsigned_64 (value.generation), value.granteePID);
+        end if;
         unmapGrantPages (value.all);
         if link.active then
             Grant_Loans.Finish_Retirement
@@ -2268,6 +2345,11 @@ package body Process.IPC is
         if g = null or else not Memory_Grants.Is_Active (g.lifecycle) then
             return;
         end if;
+        if g.notify then
+            queueGrantEventLocked
+              (g.granteePID, IPC_Labels.EVENT_GRANT_REVOKED, slot,
+               Unsigned_64 (g.generation), g.granterPID);
+        end if;
 
         if link.active and then Grant_Loans.Phase_Of
           (scopeFor (link.parent.slot).all, link.loan) = Grant_Loans.Available
@@ -2309,6 +2391,7 @@ package body Process.IPC is
           (Memory_Grants.Process_Index (owner), id));
         success := True;
         Spinlocks.exitCriticalSection (grantLock);
+        postGrantEvents;
     end revokeGrant;
 
     ---------------------------------------------------------------------------
@@ -2332,6 +2415,7 @@ package body Process.IPC is
             slot := slot + 1;
         end loop;
         Spinlocks.exitCriticalSection (grantLock);
+        postGrantEvents;
     end revokeAllGrants;
 
     ---------------------------------------------------------------------------
@@ -2413,6 +2497,7 @@ package body Process.IPC is
             completeOwnerPIDIfReady (owner);
         end loop;
         Spinlocks.exitCriticalSection (grantLock);
+        postGrantEvents;
     end revokeAllGrantsTo;
 
     procedure getOwnedGrantGeneration
@@ -2625,6 +2710,7 @@ package body Process.IPC is
 
         success := True;
         Spinlocks.exitCriticalSection (grantLock);
+        postGrantEvents;
     end returnGrant;
 
     procedure revokeGrantReference
@@ -2656,6 +2742,7 @@ package body Process.IPC is
         revokeGrantLocked (reference.slot);
         success := True;
         Spinlocks.exitCriticalSection (grantLock);
+        postGrantEvents;
     end revokeGrantReference;
 
     procedure prepareGrantProtectedTeardown
@@ -2687,6 +2774,7 @@ package body Process.IPC is
             completeOwnerPIDIfReady (pid);
         end if;
         Spinlocks.exitCriticalSection (grantLock);
+        postGrantEvents;
     end finishGrantProtectedTeardown;
 
     ---------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with Ada.Text_IO;
 with GNAT.Source_Info;
 with Interfaces;
@@ -80,7 +81,7 @@ procedure Signature_Tests is
       State.Calls := State.Calls + 1;
       Reply := (others => <>);
    end Invoke;
-   procedure Evaluate is new L.Interpret_With_Values (Context, Invoke);
+   procedure Evaluate is new CCL.Evaluation.Evaluate_With_Values (Context, Invoke);
    Result : L.Interpretation_Result;
 begin
    T.Define (Types, (Identifier => T.Named ("IntegerCollection"), Form => T.Resource,
@@ -176,7 +177,10 @@ begin
    C.Install (Grants, Resolved, 2, Installed); Check (Installed = C.Grant_Added);
    Evaluate ("(let ((earlier (collections.tick))) (collections.set (collections.open) 42))",
      100, Catalog, Grants, State, Result);
-   Check (Result.Status = L.Host_Contract_Unsupported and State.Calls = 0);
+   --  The opened collection is never closed: an ownership error, found
+   --  before anything runs.
+   Check (Result.Status = L.Type_Check_Failed and then
+          L."=" (Result.Diagnostic, L.Resource_Ownership_Violation) and then State.Calls = 0);
    Evaluate ("(let ((earlier (collections.tick))) (collections.open))",
      100, Catalog, Grants, State, Result);
    Check (Result.Status = L.Host_Contract_Unsupported and State.Calls = 0);

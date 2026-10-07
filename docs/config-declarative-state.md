@@ -30,6 +30,27 @@ The distinction is independent of namespace, profile and context. A development
 profile can have declarative settings and mutable application state without
 implying broader authority than a production profile.
 
+## Generations (direction, user 2026-10-05)
+
+Config follows the Storehouse-and-views model of backlog FS-020 (Guix/Nix):
+- **One generation, one switch.** A generation records both the program
+  views (which Storehouse entries `Applications/`, `Services/` and `Drivers/`
+  show) and the config revision. Activation switches both at once, and
+  rollback restores both, so a program never runs against another
+  generation's config.
+- **Revisions are content-addressed.** A realized revision is identified by
+  its hash, like a Storehouse entry: identical config is shared between generations, a generation
+  pins its revision by hash, and garbage collection drops revisions that no
+  kept generation references.
+- **Removal is declarative.** Config an application declares leaves the next
+  generation when the application leaves the declaration. Application-owned
+  state goes when the last generation referencing the application is
+  collected, so rollback still finds it.
+- **Mutable application state** is not content-addressed. A schema change in
+  a new application version migrates it into a new revision at activation,
+  and the old revision is kept until its generation is collected.
+  Copy-on-write snapshots may follow once the filesystem journal exists.
+
 ## Installed systems and boot
 
 An installed system should keep its authoritative CCL on disk, alongside the

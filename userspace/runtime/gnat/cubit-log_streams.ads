@@ -1,15 +1,17 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
+with CuBit.Channel_Contracts;
 with CuBit.Channel_Rings;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Protocols;
 
---  A reader's log stream: a region the reader lends logstore at Subscribe.
---  Its first page holds the ring's free-running byte indices
---  (CuBit.Channel_Rings), each on its own cache line: logstore writes
---  PRODUCED, the reader writes CONSUMED. The rest is a CuBit.Datagram_Rings
---  ring of entries. logstore produces, the reader consumes; neither trusts
---  the other's index (Channel_Rings' Accept_* checks) or entries (Decode).
+--  A reader's log stream (docs/data-plane.md): a lossless channel the
+--  reader opens to logstore, consuming, before Subscribe binds its filter to
+--  it (the channel's number). logstore produces into memory it owns; the
+--  reader's index page tells it how far the reader has read. Neither trusts
+--  the other's index (CuBit.Channels, through the proved rings) or entries
+--  (Decode).
 --
 --  An entry is a 56-byte header (kind, source, node high, node low, observed
 --  ms, publisher authority tag, encoded length; little-endian 64-bit words)
@@ -18,22 +20,24 @@ with CuBit.Log_Records;
 --  (in the observed-ms word) and carries no record.
 package CuBit.Log_Streams with Pure, SPARK_Mode is
    package Logs renames CuBit.Log_Records;
-   PAGE_BYTES : constant := 4_096;
-   CONTROL_BYTES : constant := PAGE_BYTES;
-   RING_BYTES : constant CuBit.Channel_Rings.Ring_Size := 65_536;
-   STREAM_BYTES : constant := CONTROL_BYTES + 65_536;
-   STREAM_PAGES : constant := STREAM_BYTES / PAGE_BYTES;
-   PRODUCED_OFFSET : constant := 0;
-   CONSUMED_OFFSET : constant := 64;
-   --  Page-aligned: it is lent as a grant.
-   type Stream_Region is array (Positive range 1 .. STREAM_BYTES) of Unsigned_8
-     with Alignment => PAGE_BYTES;
-
+   RING_PAGES : constant := 16;
+   RING_BYTES : constant CuBit.Channel_Rings.Ring_Size :=
+     RING_PAGES * CuBit.Channel_Contracts.Page_Bytes;
    type Entry_Kind is (Event_Entry, Gap_Entry);
    HEADER_BYTES : constant := 56;
    Maximum_Entry_Bytes : constant := HEADER_BYTES + Natural (Logs.Wire_Count'Last);
    subtype Entry_Length is Natural range HEADER_BYTES .. Maximum_Entry_Bytes;
    subtype Entry_Buffer is CuBit.Channel_Rings.Bytes (0 .. Maximum_Entry_Bytes - 1);
+
+   LOG_EVENT_SCHEMA : constant CuBit.Protocols.Schema_Id := 16#4C4F_4745_5654_0001#;
+   CONTRACT : constant CuBit.Channel_Contracts.Contract :=
+     (Element => (Identity => LOG_EVENT_SCHEMA, Version => 1,
+                  Sizing => CuBit.Protocols.Bounded_Size, Wire_Size => Maximum_Entry_Bytes),
+      Kind    => CuBit.Channel_Contracts.Queue,
+      Policy  => CuBit.Channel_Contracts.Lossless,
+      Pages   => RING_PAGES,
+      Buffers => 1,
+      Rule    => CuBit.Channel_Contracts.Copy_Then_Validate);
    --  Ring bytes logstore keeps free before taking another event from a
    --  reader's queue: the largest entry, and the pad a wrap may need.
    Room_Needed : constant := 2 * (Maximum_Entry_Bytes + 8);

@@ -440,6 +440,38 @@ package body CuBit.Libc_Process is
    is (Spawn (Result, Path, File_Actions, Attributes, Arguments,
                     Environment));
 
+   --  Exits other threads received (Note_Event), until a waiter moves them
+   --  into Children. Under Exit_Lock only, which nests inside Child_Lock.
+   Pending_Capacity : constant := 32;
+   Exit_Lock : aliased Lock_Word := 0;
+   Pending : array (1 .. Pending_Capacity) of CuBit.Child_Exits.Report;
+   pragma Suppress_Initialization (Pending);
+   Pending_Count : Natural := 0;
+   Pending_Lost : Natural := 0;
+
+   procedure Note_Event (Item : System.Address) is
+      M : constant CuBit.Kernel_ABI.Message with Import, Address => Item;
+   begin
+      if M.Label = CuBit.Child_Exits.Event_Label
+        and then CuBit.Child_Exits.Valid (M.Length, M.Words (0), M.Words (1), M.Words (2))
+      then
+         Lock (Exit_Lock'Access);
+         if Pending_Count < Pending_Capacity then
+            Pending_Count := Pending_Count + 1;
+            Pending (Pending_Count) := CuBit.Child_Exits.Decode
+              (M.Words (0), M.Words (1), M.Words (2), M.Words (3));
+         else
+            Pending_Lost := Pending_Lost + 1;
+         end if;
+         Unlock (Exit_Lock'Access);
+      end if;
+   end Note_Event;
+
+   --  Whether the stream dispatcher thread runs (it receives this process's
+   --  messages and events; CuBit.Libc_Descriptors).
+   function Dispatcher_Running return int
+   with Import, Convention => C, External_Name => "__cubit_dispatcher_running";
+
    --  Move every queued exit event of our children into Children. Other
    --  events are dropped: nothing else in the libc consumes events.
    --  Child_Lock is held.
@@ -448,6 +480,12 @@ package body CuBit.Libc_Process is
    procedure Drain_Events is
       M : aliased Message;
    begin
+      Lock (Exit_Lock'Access);
+      for K in 1 .. Pending_Count loop
+         CuBit.Child_Table.Exited (Children, Pending (K));
+      end loop;
+      Pending_Count := 0;
+      Unlock (Exit_Lock'Access);
       while CuBit.Kernel_Calls.Call
         (Receive_Event_Nonblocking, Unsigned_64 (To_Integer (M'Address)))
         = Event_Received
@@ -517,10 +555,12 @@ package body CuBit.Libc_Process is
          end if;
          --  Woken by any traffic, not only events: when no exit event
          --  came, pause briefly rather than spin on someone else's.
-         --  While children's diagnostics are watched, wake to copy them.
+         --  While children's diagnostics are watched, wake to copy them; and
+         --  while the stream dispatcher runs, an exit it receives wakes no
+         --  one (Note_Event), so look again soon.
          Ignore := CuBit.Kernel_Calls.Call
            (Wait_For_IPC_Or_Completion_Until_Monotonic_Millisecond,
-            (if Forwarding
+            (if Forwarding or else Dispatcher_Running /= 0
              then CuBit.Kernel_Calls.Call (Get_Time) + Forward_Pause_Milliseconds
              else Forever));
          Lock (Child_Lock'Access);

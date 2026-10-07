@@ -2,9 +2,12 @@ with Interfaces; use Interfaces;
 with CuBit.Log_Protocol;
 package Log_Budgets with SPARK_Mode is
    --  One record is one credit (the wire record is already bounded to 800 B).
-   --  Development defaults, not a throughput/latency guarantee.
-   Burst : constant := 64;
-   Refill_Ms : constant Unsigned_64 := 100;
+   --  Per pool: a burst of 2048, then 1000 records a second. Records over
+   --  budget are shed and reported, never refused back to the caller
+   --  (publishers write into rings: docs/logstore-architecture.md). Not a
+   --  throughput guarantee; bytes per second is the next refinement.
+   Burst : constant := 2_048;
+   Refill_Ms : constant Unsigned_64 := 1;
    subtype Credits is Unsigned_64 range 0 .. Burst;
    type Limiter is limited private;
    function Remaining

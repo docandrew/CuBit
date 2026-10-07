@@ -58,8 +58,9 @@ begin
          Role : constant Registry.Allocation_Role :=
            (if Cycle mod 2 = 0 then Registry.Replacement_Image else Registry.Incremental_Tables);
       begin
-         Tickets.Reserve_Private (Pool, Session, ID, True, Kind);
+         Tickets.Reserve_Private (Pool, Session, ID, True, Kind, Pages => 2);
          pragma Assert (ID /= 0);
+         pragma Assert (Tickets.Ticket_Bytes (Pool, ID) = Backing.Bytes);
          Resolve (Session, ID, False); -- ticket alone is not backing authority
          Registry.Install (Backings, Tickets.Ticket_Slot (ID), Session, ID, Role, Backing, OK);
          pragma Assert (OK);

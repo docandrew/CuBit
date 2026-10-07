@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with Ada.Text_IO;
 with Interfaces;
 with CCL.Types; use CCL.Types;
@@ -45,7 +46,7 @@ procedure Catalog_Tests is
       Limits : CCL.Format.Resource_Limits := (4096, 4096, 1);
       Encoded_As : CCL.Format.Format_Error;
    begin
-      CCL.Language.Interpret (Text, 4096, Catalog, Interpreted);
+      CCL.Evaluation.Evaluate (Text, 4096, Catalog, Interpreted);
       Check (Interpreted.Status = CCL.Language.Succeeded and Interpreted.Has_Value);
       Check (Same (Interpreted.Variant_Member_Name, Describe (Source, Root).Parts (Expected).Identifier));
       Check (Interpreted.Result_Value.Copyable and Interpreted.Result_Value.Type_Tag = 0);
@@ -93,11 +94,11 @@ begin
    declare
       R : CCL.Language.Interpretation_Result;
    begin
-      CCL.Language.Interpret ("Reading.Unavailable", 4096, Empty_Catalog, R);
+      CCL.Evaluation.Evaluate ("Reading.Unavailable", 4096, Empty_Catalog, R);
       Check (R.Status /= CCL.Language.Succeeded and not R.Has_Value);
-      CCL.Language.Interpret ("(type Reading (enum Fake)) Reading.Fake", 4096, Catalog, R);
+      CCL.Evaluation.Evaluate ("(type Reading (enum Fake)) Reading.Fake", 4096, Catalog, R);
       Check (R.Status = CCL.Language.Parse_Failed and not R.Has_Value);
-      CCL.Language.Interpret ("(Reading.Value true)", 4096, Catalog, R);
+      CCL.Evaluation.Evaluate ("(Reading.Value true)", 4096, Catalog, R);
       Check (R.Status = CCL.Language.Type_Check_Failed and not R.Has_Value);
    end;
    -- Type/operation discovery alone must not turn into a runnable host import.

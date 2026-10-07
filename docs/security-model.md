@@ -282,8 +282,8 @@ The [CCL exposure model](ccl-interactive-composition.md#one-interface-definition
 does not introduce another authority system. Embedded-only, published-only and
 dual exposure describe where an operation may be offered, not who may use it.
 Catalog discovery, invocation, stream opening and delegation remain scoped by
-the existing grants and handles. There is no privileged global CCL interpreter.
-For embedded scripts, the interpreter and host adapters enforce the narrower
+the existing grants and handles. There is no privileged global CCL evaluator.
+For embedded scripts, the VM and host adapters enforce the narrower
 script binding set inside the process; the kernel does not isolate scripts
 from their native host. Published IPC adapters must preserve authenticated
 caller scope rather than silently substituting the provider's broader authority.

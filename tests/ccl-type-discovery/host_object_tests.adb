@@ -1,3 +1,5 @@
+with GNAT.Source_Info;
+with CCL.Evaluation;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Types; use CCL.Types;
@@ -6,6 +8,7 @@ with CCL.Objects.Catalog;
 with CCL.Catalog; use CCL.Catalog;
 with CCL.Host_Values;
 with CCL.Language; use CCL.Language;
+   use CCL.Evaluation;
 with CCL.VM;
 with CCL.Compiler;
 
@@ -25,10 +28,12 @@ procedure Host_Object_Tests is
    Grants, No_Grants : Granted_Bindings;
    Outcome : Interpretation_Result;
    Checks : Natural := 0;
-   procedure Check (Good : Boolean) is
+   procedure Check (Good : Boolean; Line : Natural := GNAT.Source_Info.Line) is
    begin
       Checks := Checks + 1;
-      if not Good then raise Program_Error with "host object check" & Checks'Image; end if;
+      if not Good then
+         raise Program_Error with "host object check" & Checks'Image & " at line" & Line'Image;
+      end if;
    end Check;
    type Fault is (None, Wrong_Key, Bad_Padding, Wrong_Kind, Failed);
    type Host is record
@@ -55,7 +60,7 @@ procedure Host_Object_Tests is
          when Failed => Reply.Success := False;
       end case;
    end Invoke;
-   procedure Run is new Interpret_With_Values (Host, Invoke);
+   procedure Run is new Evaluate_With_Values (Host, Invoke);
    procedure Describe_Interface (View : in out Interface_Catalog; Result_Key : Schema_Key) is
       D : Interface_Descriptor;
       O : Operation_Descriptor;

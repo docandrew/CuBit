@@ -1,4 +1,4 @@
-# A portable, verifiable userspace allocator
+# CuAlloc: a portable, verifiable userspace allocator
 
 Status: bounded Linux-hosted benchmark plus native Rust opt-in trial, September
 2026. Not a general runtime replacement or dynamic backing provider.
@@ -213,6 +213,75 @@ Useful design references, not implementation dependencies:
   statistics and purge controls.
 - [glibc allocation tunables](https://sourceware.org/glibc/manual/latest/html_node/Memory-Allocation-Tunables.html):
   capture defaults/settings when comparing rather than assuming identical policy.
+
+## CuAlloc: one allocator for everything (user decision, 2026-10-05)
+
+This allocator is **CuAlloc**. Every CuBit process uses it, whatever its
+language:
+- Ada, through `System.Memory` (allocators, `Unchecked_Deallocation`);
+- C, through the libc `malloc` family, replacing musl's mallocng;
+- Rust, through `GlobalAlloc`: Penny (the Servo browser), the fonts library,
+  config-storage and the probe.
+
+There are no other allocators. The sbrk bump allocator that Doom and SameBoy
+used (`userspace/c/cubit_mem.c`) is gone with the old freestanding libc.
+
+- **One heap per process, one owner.** The same code holds the metadata and
+  the payload backing. A process mixing Ada, C and Rust (an Ada app linking
+  the Rust fonts library, Penny with its C dependencies) has one heap, never
+  two adapters mapping the same offsets to different memory.
+- **No limits but policy.** The heap grows until the process's frame quota
+  (or the owned-memory aperture) says no. There is no fixed arena size and no
+  per-allocation cap of its own.
+
+### Stages
+
+**A. A growable process heap** (Ada, behind an address-level API):
+- **Small requests** (up to 4 KiB): any number of 16 MiB arenas, each with its
+  own proved `Heap_Slabs` metadata.
+  - Each arena is one reservation (`SYSCALL_RESERVE_OWNED_MEMORY`), created
+    on demand: its metadata first, then the payload.
+  - Backing is committed with `SYSCALL_COMMIT_OWNED_MEMORY_PREFIX`, in 1 MiB
+    steps, as blocks reach further into the arena.
+- **Medium requests** (up to 1 MiB, alignment up to 4 KiB): any number of
+  16 MiB page-run arenas, each with its own proved `Heap_Extents` metadata,
+  laid out the same way.
+- **Huge requests:** each in its own reservation, committed in full. Freeing
+  it releases the reservation, so the memory goes back to the kernel.
+- **Routing:** a directory of arena records (huge blocks included), itself
+  reserved and committed as it grows, with an index sorted by address. `free`,
+  `realloc` and `usable_size` find a block's arena by binary search.
+- **Metadata:** reserved and committed as arenas appear, never fixed.
+- **Proofs and tests:** the routing directory is to be SPARK, aiming at
+  level 2; today it is regression-tested (`tests/cualloc`), not proved.
+  System calls sit behind one thin boundary (the generic's `Reserve`,
+  `Commit` and `Release`) that hosted tests replace with Linux memory.
+- **Locking:** one lock serializes the heap at first (stage D adds
+  per-thread caches).
+
+**B. Adapters, all over that one heap:**
+- `System.Memory` in the user runtime.
+- The libc `malloc`, `free`, `calloc`, `realloc`, `reallocarray`,
+  `aligned_alloc`, `posix_memalign`, `memalign` and `malloc_usable_size`, as
+  Ada exports (musl's legacy `valloc` calls `memalign`; musl has no
+  `pvalloc`). musl's malloc is dropped through
+  `replaced-by-ada.txt`.
+- A thin Rust `GlobalAlloc`, which no longer manages its own backing.
+- CuAlloc is linked once per program.
+
+**C. Kernel policy instead of arbitrary bounds:**
+- One reservation is capped at 2 GiB and one commit at 16 MiB. The heap
+  works around the commit cap by committing repeatedly.
+- A single allocation above 2 GiB needs the reservation cap to become a
+  quota policy. That is a kernel change, made with tests and a proof.
+
+**D. Tuning against jemalloc and mimalloc:**
+- per-thread caches, with remote frees batched to their owner;
+- finer size classes;
+- returning backing to the kernel;
+- measured on the existing traces, multithreaded traces, and traces from
+  real programs (Penny, `cc1`, the CCL console, fonts), reporting tail
+  latency, retained memory and waste as well as throughput.
 
 ## Next milestones, in order
 

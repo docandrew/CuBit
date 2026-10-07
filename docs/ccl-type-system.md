@@ -613,7 +613,7 @@ These are the theorems the system is designed to satisfy. Each is to be proved
 | 3.2 schema key is a digest of the descriptor | ◐ | Interfaces use SHA-256 of schema text; `CCL.Objects` treats keys as opaque |
 | 4 kinds | ◐ | `Persistable`/`Storable` as specified; `Comparable` lacks records and lists; `Printable` lacks Boolean, String and records; ranges are not list elements (Q-6) |
 | 5.1 uniform narrowing and widening | ⇄ | Lambda parameters keep `ρ` (Q-1); named calls narrow but value calls compare bases (Q-2); `if`/`match`/list/host positions require exact types |
-| 5.2 core expressions | ✓ | `Check_Node`; interpreter and VM differential (`Same`, about 145 cases) |
+| 5.2 core expressions | ✓ | `Check_Node`; interpreter and VM differential (`Same`, about 145 cases) until the interpreter's removal (2026-10-05) |
 | 5.3 named arguments and defaults | ✓ | landed 2026-10-02; `tests/ccl-types/record_default_tests.adb` covers all paths |
 | 5.4 string and record defaults | ✗ | integer, Boolean, member and `[]` only (C-5) |
 | 5.5 match | ✓ | exhaustive, no duplicates; wildcard is future |
@@ -635,7 +635,7 @@ These are the theorems the system is designed to satisfy. Each is to be proved
 | 10 stage 0 intervals | ✓ | range types, static literal check, `Check_Range` |
 | 10 stages 1–4 | ✗ | design only; manifests are the first client |
 | 11 verifier | ◐ | abstract interpretation as specified; value calls bounded only at run time |
-| C1–C3 | ◐ | tested (differential, tampered programs, byte sweep); not proved |
+| C1–C3 | ◐ | tested (differential, tampered programs, byte sweep); not proved. With the interpreter removed (2026-10-05), C3 has no executable reference engine |
 | T2 termination, fuel | ◐ | fuel bound proved (`Steps ≤ Fuel`); termination by construction, not proved |
 | T3, B1 | ◐ | VM and ownership verifier proved free of run-time errors (level 2, 212 checks); semantic soundness not proved |
 | canonical modules | ◐ | byte-sweep tested; codec proved AoRTE at level 1 only |
@@ -662,7 +662,7 @@ These are the theorems the system is designed to satisfy. Each is to be proved
 
 ## 14. Order of work
 
-1. **Fix the quirks** Q-1 to Q-7 (small, local; interpreter and VM together).
+1. **Fix the quirks** Q-1 to Q-7 (small, local; in the checker, compiler, verifier and VM).
 2. **Source ownership judgment** (O-1, O-4), with lexical borrows (O-3). Then typestate syntax.
 3. **Effects in function types**, and admission as `ε ⊆ G`. Derive minimal manifests from effects.
 4. **Refinement stage 1** with manifests as the first client. Typed manifests (docs/ccl-typed-manifests.md) then express their path, identity and network rules as types.

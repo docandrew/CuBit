@@ -73,4 +73,22 @@ package body Compositor_Pool with SPARK_Mode is
       if not S.Failed and T /= None and T = S.F and Confirmed then S.F := None;
       else S.Failed := True; end if;
    end Retire_Front;
+   procedure Take_Readback (S : in out State; T : out Ticket) is
+   begin
+      T := None;
+      if not S.Failed and S.B = None and S.R /= None then
+         S.B := S.R;
+         S.R := None;
+         T := S.B;
+      end if;
+   end Take_Readback;
+   procedure Retire_Readback
+     (S : in out State; T : Ticket; Transfer_Complete, CPU_Drained : Boolean) is
+   begin
+      if not S.Failed and T /= None and T = S.B and
+         Transfer_Complete and CPU_Drained
+      then S.B := None;
+      else S.Failed := True;
+      end if;
+   end Retire_Readback;
 end Compositor_Pool;

@@ -89,7 +89,7 @@ static VkResult mesa_teapot_probe_with_source(VkInstance instance,VkPhysicalDevi
     uint64_t animation_start=0;
     uint64_t submit_ns=0,consumer_ns=0,submit_start=0,consumer_start=0;
     uint64_t previous_finish=0;
-    uint64_t peak_frame_ns=0,peak_work_ns=0,peak_present_ns=0;
+    uint64_t peak_frame_ns=0,peak_work_ns=0,peak_present_ns=0,peak_gap_ns=0;
     unsigned peak_frame=0;
     int timing_valid=1;
 #else
@@ -304,9 +304,14 @@ submit_frame:
     if(timing_valid){
         const uint64_t work=consumer_start-submit_start, present=finished-consumer_start;
         const uint64_t duration=finished-previous_finish;
-        if(duration>peak_frame_ns){peak_frame_ns=duration;peak_frame=frame+1;}
-        if(work>peak_work_ns)peak_work_ns=work;
-        if(present>peak_present_ns)peak_present_ns=present;
+        /* Correlate every component with this exact peak frame. The gap
+         * includes command recording, previous reporting and scheduling;
+         * none of these CPU intervals is a GPU timestamp. */
+        if(duration>peak_frame_ns){
+            peak_frame_ns=duration;peak_frame=frame+1;
+            peak_work_ns=work;peak_present_ns=present;
+            peak_gap_ns=submit_start-previous_finish;
+        }
         if(work>UINT64_MAX-submit_ns || present>UINT64_MAX-consumer_ns)timing_valid=0;
         else {submit_ns+=work;consumer_ns+=present;}
     }
@@ -319,12 +324,13 @@ submit_frame:
         log("MESA-GALLERY mean-submit-wait-readback-ns=%llu mean-validation-present-ns=%llu (NOT GPU timestamps)\n",
             (unsigned long long)(timing_valid?submit_ns/(frame+1):0),
             (unsigned long long)(timing_valid?consumer_ns/(frame+1):0));
-        log("MESA-GALLERY interval-peak-frame=%u period-ns=%llu submit-wait-ns=%llu validation-present-ns=%llu CPU-clock=%u\n",
+        log("MESA-GALLERY interval-peak-frame=%u period-ns=%llu submit-wait-ns=%llu validation-present-ns=%llu pre-submit-ns=%llu CPU-clock=%u\n",
             timing_valid?peak_frame:0,
             (unsigned long long)(timing_valid?peak_frame_ns:0),
             (unsigned long long)(timing_valid?peak_work_ns:0),
-            (unsigned long long)(timing_valid?peak_present_ns:0),timing_valid);
-        peak_frame_ns=peak_work_ns=peak_present_ns=0;peak_frame=0;
+            (unsigned long long)(timing_valid?peak_present_ns:0),
+            (unsigned long long)(timing_valid?peak_gap_ns:0),timing_valid);
+        peak_frame_ns=peak_work_ns=peak_present_ns=peak_gap_ns=0;peak_frame=0;
     }
 #endif
 #if CUBIT_TEAPOT_FRAME_COUNT > 1

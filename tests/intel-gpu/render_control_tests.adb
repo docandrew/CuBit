@@ -53,16 +53,21 @@ begin
       end Check;
    begin
       Check (Storage_Index (Fresh, 0) = 0);
+      Check (Stored_Recipient_Slot (Fresh, 0) = 0);
+      Check (Stored_Recipient_Slot (Fresh, Unsigned_64'Last) = 0);
       Check (Issued_Tag (Fresh, 0) = 0);
       Check (Storage_Index (Fresh, Unsigned_64'Last) = 0);
       Bind (Fresh, 42, 99);
       for I in Tags'Range loop
          Check (Storage_Index (Fresh, Base + Unsigned_64 (I)) = 0);
+         Check (Stored_Recipient_Slot (Fresh, Base + Unsigned_64 (I)) = 0);
          Check (Issued_Tag (Fresh, I) = 0);
          Handle (Fresh, 42, 99, True, Label, 4, 0, 0,
            [Version, Identity, 0, Reserve], Reply);
          Check (Reply (0) = OK);
          Tags (I) := Reply (2);
+         Check (Reply (3) = Unsigned_64 (39 + I));
+         Check (Stored_Recipient_Slot (Fresh, Tags (I)) = Reply (3));
          Check (Storage_Index (Fresh, Tags (I)) = I);
          Check (Issued_Tag (Fresh, I) = Tags (I));
          Check (Resolve (Fresh, 42, Tags (I)) = 0);
@@ -72,12 +77,14 @@ begin
          Check (Resolve (Fresh, 42, Tags (I)) = Tags (I));
          Check (Resolve (Fresh, 43, Tags (I)) = 0);
          Reject_Delivery (Fresh, Identity, Tags (I));
+         Check (Stored_Recipient_Slot (Fresh, Tags (I)) = Unsigned_64 (39 + I));
          Check (Storage_Index (Fresh, Tags (I)) = I);
          Check (Resolve (Fresh, 42, Tags (I)) = 0);
       end loop;
       Quarantine (Fresh);
       for I in Tags'Range loop
          Check (Storage_Index (Fresh, Tags (I)) = I);
+         Check (Stored_Recipient_Slot (Fresh, Tags (I)) = Unsigned_64 (39 + I));
          Check (Issued_Tag (Fresh, I) = Tags (I));
          Check (Resolve (Fresh, 42, Tags (I)) = 0);
          Check (Resolve_Retired (Fresh, 42, Tags (I)) = 0);

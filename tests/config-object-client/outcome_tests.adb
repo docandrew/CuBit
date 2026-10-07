@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Catalog; use CCL.Catalog;
@@ -52,7 +53,7 @@ procedure Outcome_Tests is
       State.Calls := State.Calls + 1;
       O.To_Host (State.Valid, State.Code, State.Revision, Reply);
    end Invoke;
-   procedure Evaluate is new CCL.Language.Interpret_With_Values (Context, Invoke);
+   procedure Evaluate is new CCL.Evaluation.Evaluate_With_Values (Context, Invoke);
    Source : constant String :=
      "(match (config-test.set 7) ((ConfigWrite.Committed revision) revision) " &
      "((ConfigWrite.InvalidRequest) 2) ((ConfigWrite.Denied) 3) ((ConfigWrite.Busy) 4) " &

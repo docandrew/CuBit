@@ -7,8 +7,10 @@ Status: design proposal
 The native and Linux Workbench REPLs now use `CCL.Sessions.Submit_With_Values`:
 the entire expression is analyzed and its service imports admitted against
 explicit granted bindings before execution. The source editor, REPL, Watch,
-and scalar bytecode debugger share the host dispatcher. REPL execution is still
-interpreted, preserving string operations; it does not compile strings to CCLB.
+and scalar bytecode debugger share the host dispatcher. REPL execution was
+interpreted at the time; since 2026-10-05 the interpreter is gone and every entry
+is compiled to CCLB (with text crossing host imports, format version 9),
+verified and run on the VM.
 
 The first UI hooks target exactly one host-owned numeric/text label:
 
@@ -25,21 +27,22 @@ The first UI hooks target exactly one host-owned numeric/text label:
 `ui.label-visible : Boolean -> Boolean` changes its visibility. Boolean success
 means the model update was accepted, not that pixels reached the display.
 `ui.label-text : String[0..1024 bytes] -> Boolean` copies text into the label and
-shows it. Empty text is valid; hiding remains a separate operation. Interpret/F5,
+shows it. Empty text is valid; hiding remains a separate operation. Run/F5,
 the REPL, and Watch/F7 accept text imports. The runnable sample is
 `userspace/ccl/samples/clock-label.ccl`. Watch owns a source snapshot; stop and
 restart it to pick up edits.
 
 `CCL.Host_Values` separates source/host contracts from scalar CCLB imports.
 Arguments and results carry explicit integer, boolean, or bounded-text tags.
-Text has owned storage, never an interpreter-region pointer. Both argument and
-result bounds participate in exact grant matching. The interpreter checks an
+Text has owned storage, never an evaluator-region pointer. Both argument and
+result bounds participate in exact grant matching. The evaluator checks an
 argument's size before calling the host, and checks returned type/size before
 copying a text result into its own temporary region. Already completed effects
 are not rolled back if a later argument exceeds a bound. Scalar-only adapters
 reject text contracts during whole-program admission, before any effects.
-CCLB compilation and linking reject text imports rather than encoding strings
-as integer addresses; bytecode string support remains future work.
+CCLB never encodes strings as integer addresses. (Originally CCLB rejected text
+imports; format version 9 carries `Argument_Text_Limit`/`Result_Text_Limit`, so
+text now crosses host imports in bytecode.)
 
 The descriptor is `userspace/ccl/interfaces/workbench-ui.ccl-interface`; the
 compiler has no special UI syntax or operation names. Completion/type hints use
@@ -77,7 +80,7 @@ do not claim end-to-end proof of the host adapter or transcript formatter.
 
 The focused host-value/label proof passes 45 obligations (22 flow/termination,
 23 prover, zero unproved), using an isolated `--subdirs=text-proof` report.
-This covers `CCL.Host_Values` and `CCL.UI_Labels`, not the complete interpreter,
+This covers `CCL.Host_Values` and `CCL.UI_Labels`, not the complete evaluator,
 host dispatch, or asynchronous lifetime model. A discriminant failure in the
 original text-copy API was fixed by returning a concrete bounded `Text` record
 and constructing tagged values separately, rather than adding an assumption
@@ -98,7 +101,7 @@ It snapshots the editor source and evaluates it once per second through
 `CCL.Periodic_Programs.Evaluate_Due`. The default source formats a live
 `clock.monotonic-ms` sample as HH:MM:SS (uptime, not wall-clock time).
 CuBit calls the manifested clock endpoint; Linux emulates that binding.
-Ordinary Interpret/F5 now uses that same host adapter for one-shot evaluation.
+Ordinary Run/F5 now uses that same host adapter for one-shot evaluation.
 
 In the original Watch mode the host owns the label and source returns its value.
 The new hooks above can also update that display area. This is **not yet
@@ -107,7 +110,7 @@ or a new UI service. Closing Workbench stops it. Edits do not alter a running
 snapshot; stop and Watch again to apply them. Open/Save persists source only,
 never handles, grants, or running state. A loaded file must be explicitly run.
 
-The interpreter currently accepts at most 1,024 source bytes (less than the
+The interpreter (removed 2026-10-05) accepted at most 1,024 source bytes (less than the
 editor's 4,096-byte storage capacity); Watch reports an oversized source rather
 than evaluating a truncated prefix. Each sample gets 4,096 fuel, missed
 deadlines coalesce, and an evaluation error stops subsequent samples. Clock
@@ -355,12 +358,14 @@ handler registration are distinct operations internally even when the authoring
 API combines them for convenience.
 
 Ordinary named typed definitions/calls and `(handler name)` are implemented in
-the interpreter and both source views. The latter requires an earlier named
+the analyser, compiler and VM, and in both source views. The latter requires an earlier named
 `() -> Boolean` function. This is a dedicated handler type, not an integer ID,
 native pointer, general closure, or arbitrary callable value.
-Advertised interpreter imports now support owned handler references alongside
-bounded text and integers/booleans. Handler-valued results are not exportable;
-CCLB and the remote wire boundary do not serialize these references.
+Advertised host imports support owned handler references alongside
+bounded text and integers/booleans. In CCLB, `(handler f)` compiles to an inert,
+capture-free function value typed `Handler` that only a host import accepts.
+Handler-valued results are not exportable; the remote wire boundary does not
+serialize these references.
 
 Implementation order:
 
@@ -394,7 +399,7 @@ Implementation order:
 ### Implemented callback runtime foundation
 
 `CCL.Language.Handlers.Prepare` analyzes a complete source snapshot, validates the
-named entry's profile, and uses the same admission check as ordinary interpreted
+named entry's profile, and uses the same admission check as ordinary
 programs. No main expression or function body runs during preparation. The
 retained tree selects the checked function body as its entry point; invocation
 does not reparse source or borrow an editor/history buffer. All referenced imports,
@@ -426,7 +431,7 @@ but does not implement suspension or a general async runtime yet.
 
 Headless tests, a focused queue proof, and handler/dispatcher flow analysis are
 in `tests/ccl-callbacks`. The queue's completion-matching and close-state
-specifications are Ghost. This does not prove the whole interpreter or IPC path.
+specifications are Ghost. This does not prove the whole evaluator or IPC path.
 Workbench now exposes the shared `CCL.UI_Buttons` owner model through the
 advertised `ui` version 1.2 interface:
 
@@ -454,7 +459,7 @@ a new Desktop-service widget protocol.
 
 The reference/host-value/queue proof covers 77 checks (34 flow, 38 runtime,
 5 functional), all discharged, without assumptions. This is focused coverage,
-not proof of the whole interpreter, host adapter, rendering or native IPC.
+not proof of the whole evaluator, host adapter, rendering or native IPC.
 
 Later closures may capture immutable unrestricted values by owned copy. They
 must not retain pointers into the evaluator's temporary string region. Captured

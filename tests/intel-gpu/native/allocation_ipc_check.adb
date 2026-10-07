@@ -22,6 +22,8 @@ procedure Allocation_IPC_Check is
    PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
    Calls, Saves, Responses, Extents, Pings : Natural := 0;
    Ping_Sent : Boolean := False;
+   Local_Ping_Sent : Boolean := False;
+   Local_Pings, Local_Turns : Natural := 0;
    Ignore : Unsigned_64;
    function Owner return Boolean is (True);
    procedure Check (Condition : Boolean; Detail : String) is
@@ -127,6 +129,10 @@ begin
             elsif Msg.tag = (16#7777#, 0, 0, 0) then
                Check (D.Pending (Dispatcher), "ping must interleave pending allocation");
                Check (reply (From, Msg) = 1, "interleaved reply");
+            elsif Msg.tag = (16#7778#, 0, 0, 0) then
+               Check (Client.Local_Work_Pending (Driver), "ping must interleave local work");
+               Check (not Client.Result (Driver).Ready, "local work published early");
+               Check (reply (From, Msg) = 1, "local work reply");
             elsif Msg.tag = (L.Extent_Request_Label, 2, 0, 0) then
                Check (L.Extent_Request_Authorized
                  (Msg.tag.label, Msg.tag.length, Msg.tag.flags, Msg.tag.reserved,
@@ -152,6 +158,11 @@ begin
                Check (Receipt.status = COMPLETION_OK and Receipt.msg.tag.label = 16#7777#,
                  "interleaved completion");
                Pings := Pings + 1;
+            elsif Receipt.token = 16#7778# then
+               Check (Receipt.status = COMPLETION_OK and Receipt.msg.tag = (16#7778#, 0, 0, 0),
+                 "local work completion");
+               Check (Client.Local_Work_Pending (Driver), "local completion after publication");
+               Local_Pings := Local_Pings + 1;
             else
                Client.Complete (Driver, Receipt, Consumed);
                Check (Consumed, "allocation completion token");
@@ -159,6 +170,16 @@ begin
          end if;
          Driver_Metadata_Observed := Driver_Metadata_Observed or else
            Client.Last_Stage (Driver) = Client.Awaiting_Extent_Metadata;
+         if Client.Local_Work_Pending (Driver) then
+            Check (not Client.Result (Driver).Ready, "partial backing exposed");
+            Local_Turns := Local_Turns + 1;
+            if not Local_Ping_Sent then
+               Answer := NULL_MESSAGE;
+               Answer.tag := (16#7778#, 0, 0, 0);
+               Check (capSubmit (15, Answer, 16#7778#), "local work submit");
+               Local_Ping_Sent := True;
+            end if;
+         end if;
          Client.Tick (Driver);
          Check (syscall (SYSCALL_GETTIME) < Deadline, "deadline");
       end loop;
@@ -180,6 +201,8 @@ begin
    Check (not D.Pending (Dispatcher), "pending saved request");
    Check (Driver_Metadata_Observed and A.Extent_Capacity (Pool) > 16, "both directories grew");
    Check (Poll_Completion (Receipt'Address) = 0, "duplicate completion");
+   Check (Local_Pings = 1 and Local_Turns >= 32, "local initialization interleave counters");
+   debugPrint ("native allocation IPC: bounded local work and interleaved completion PASS" & ASCII.LF);
    debugPrint ("TEST: PASS native allocation IPC 17 saved replies 18 extents both directories grew 1 interleaved request (NO GPU/ISOLATION)" & ASCII.LF);
    loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
 end Allocation_IPC_Check;

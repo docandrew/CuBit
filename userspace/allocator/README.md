@@ -20,7 +20,8 @@ growth and concurrency. Empty-slab reuse is now implemented. See the
 | `Heap_Slabs` | Dynamic size-class assignment; recycle only empty slabs; preserve live blocks | SPARK contracts + mixed-lifetime tests |
 | `Heap_Extents` | Aligned contiguous page runs for large requests; exact ownership and failure preservation | SPARK contracts + checked extent tests |
 | `host/Heap_Bridge` | Static arena, machine addresses, exported hosted test ABI | Tested, **not SPARK-proved** |
-| `runtime/Heap_Runtime`, Rust `cubit-allocator` | Offset routing, GlobalAlloc, zeroing/realloc, singleton serialization | Hosted/native tests, **not SPARK-proved** |
+| `process/CuAlloc`, `CuAlloc_Native`, `host/CuAlloc_Host` | The process heap: arenas grown from owned reservations, address routing, huge blocks, zeroing/realloc, the C entry points and their lock | `tests/cualloc`, hosted Rust tests, guest tests; **not SPARK-proved** |
+| libc `CuBit.Libc_Memory`, GNAT `System.Memory`, Rust `cubit-allocator` | malloc family, `__gnat_malloc`, GlobalAlloc: thin adapters over the C entry points | Hosted/guest tests |
 | Rust/Python harness | Identical allocation traces and reference comparisons | Regression checks, not formal proof |
 
 The core uses integers, arrays and records, not raw/access pointers, system

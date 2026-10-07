@@ -124,7 +124,7 @@ model, not two languages or a new Unix shell.
    The Workbench, a recovery console, and a remote typed management transport
    should use this same API; none requires stdin/stdout, a TTY, or user identity
    to imply authority.
-2. Share interpreter/compiler/VM and import-linking paths. Do not give REPL
+2. Share analyser/compiler/VM and import-linking paths. Do not give REPL
    snippets the host Workbench's filesystem or desktop authority implicitly.
    Do not concatenate unbounded history and silently replay effectful commands
    to simulate persistent bindings. Pending noncancelable imports survive as

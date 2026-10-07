@@ -119,9 +119,15 @@ begin
    Check (Expanded = 65, "expanded mapping");
    Expanded_Ref := CuBit.Grant_References.Decode (Wire);
    Acquire (Expanded_Ref);
-   Grow (256);
    Acquire (Expanded_Ref);
    G.Return_Acquisition (Expanded_Ref, OK); Check (OK, "return extra expanded reader");
+   S.Retire (Object, Table, PID, 16#4947#, Expanded, OK, State);
+   Check (OK and State = V.Retiring, "expanded reader retirement pending");
+   S.Poll (Object, Table); -- Cursor is not at the start when metadata grows.
+   Grow (256);
+   S.Retire (Object, Table, PID, 16#4947#, Expanded, OK, State);
+   Check (OK and State = V.Retiring, "pending expanded grant survived growth");
+   debugPrint ("TEST: PASS native mapping growth preserves pending retirement" & ASCII.LF);
    B.Handle (Object, PID, 16#4947#, B.Label, 4, 0, 0,
      [1, B.Close, ID, 0], Response, Ticket);
    Check (Response (0) = B.OK and Ticket = 0, "close name");
@@ -134,8 +140,14 @@ begin
    Check (S.Observe_Retirement (Table, Identity) = S.Outstanding,
      "expanded reader still retains");
    G.Return_Acquisition (Expanded_Ref, OK); Check (OK, "return expanded reader");
-   S.Poll (Object, Table);
+   -- Poll is deliberately bounded. Walk at most one full table rotation;
+   -- these are incremental metadata visits, not retries of grant revocation.
+   for Turn in 1 .. (Capacity + S.Poll_Budget - 1) / S.Poll_Budget loop
+      S.Poll (Object, Table);
+      exit when S.Observe_Retirement (Table, Identity) = S.Clear;
+   end loop;
    Check (S.Observe_Retirement (Table, Identity) = S.Clear, "confirmed drain");
+   debugPrint ("TEST: PASS native bounded mapping poll retained readers drained" & ASCII.LF);
    G.Acquire_Via_Capability (15, Expanded_Ref, 0, 4096, G.Read_Access, Address, OK);
    Check (not OK and Address = System.Null_Address, "stale grant denied");
    S.Map (Object, Table, PID, 16#4947#, ID, 0, 4096, False, Current, Wire);

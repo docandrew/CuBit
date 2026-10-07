@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with Ada.Text_IO;
 with CCL.Types; use CCL.Types;
 with CCL.Catalog;
@@ -44,7 +45,7 @@ begin
      Sum_Type, Defined_As); Check (Defined_As = Defined);
    CCL.Catalog.Publish_Type (Catalog, Source, Sum_Type, Ref, Imported_As);
    Check (Imported_As = Imported);
-   CCL.Language.Interpret ("MaybeDocument.Missing", 4096, Catalog, Interpreted);
+   CCL.Evaluation.Evaluate ("MaybeDocument.Missing", 4096, Catalog, Interpreted);
    -- A general aggregate result comes out as its canonical literal.
    Check (Interpreted.Status = CCL.Language.Succeeded and Interpreted.Has_Literal and
           Interpreted.Literal.Data (1 .. Interpreted.Literal.Length) = "MaybeDocument.Missing");
@@ -66,7 +67,7 @@ begin
       CCL.Catalog.Publish_Type (Catalog, Source, Ref, Local, Imported_As);
       Check (Imported_As = Imported);
    end;
-   CCL.Language.Interpret ("(TextReading.Value ""hello"")", 4096, Catalog, Interpreted);
+   CCL.Evaluation.Evaluate ("(TextReading.Value ""hello"")", 4096, Catalog, Interpreted);
    Check (Interpreted.Status = CCL.Language.Succeeded and Interpreted.Has_Literal and
           Interpreted.Literal.Data (1 .. Interpreted.Literal.Length) = "(TextReading.Value ""hello"")");
    CCL.Language.Analyze ("(TextReading.Value ""hello"")", Catalog, Analysis);
@@ -75,10 +76,10 @@ begin
    CCL.VM.Execute (Program, 4096, Executed);
    Check (Executed.Status = CCL.VM.Completed and Executed.Has_Literal and
           Executed.Literal.Data (1 .. Executed.Literal.Length) = "(TextReading.Value ""hello"")");
-   CCL.Language.Interpret
+   CCL.Evaluation.Evaluate
      ("(match (TextReading.Value ""hello"") ((TextReading.Value text) (length text)))", 4096, Catalog, Interpreted);
    Check (Interpreted.Status = CCL.Language.Succeeded and Interpreted.Result_Value = CCL.VM.Integer_Constant (5));
-   CCL.Language.Interpret ("42", 4096, Catalog, Interpreted);
+   CCL.Evaluation.Evaluate ("42", 4096, Catalog, Interpreted);
    Check (Interpreted.Status = CCL.Language.Succeeded);
    CCL.Language.Analyze ("42", Catalog, Analysis);
    CCL.Compiler.Compile (Analysis, Compiled); Check (Compiled.Status = CCL.Compiler.Compilation_Succeeded);

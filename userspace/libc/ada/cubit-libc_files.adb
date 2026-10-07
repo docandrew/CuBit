@@ -9,6 +9,8 @@ with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Libc_ABI; use CuBit.Libc_ABI;
 with CuBit.Libc_Imports;
+with CuBit.Channel_Contracts;
+with CuBit.Channel_Protocol;
 with CuBit.Filesystem_Queues;
 with CuBit.Libc_File_Cache;
 with CuBit.Libc_Dirty_Map;
@@ -73,10 +75,13 @@ package body CuBit.Libc_Files is
 
    Bounce_Pages : constant := 64;
    Bounce_Bytes : constant := Bounce_Pages * K.Page_Bytes;
-   Arena_Pages : constant := 256;
-   Arena_Bytes : constant := Arena_Pages * K.Page_Bytes;
-   Queue_Pages : constant := FQ.Queue_Bytes / K.Page_Bytes;
-   Dirty_Pages : constant := FQ.Dirty_Arena_Bytes / K.Page_Bytes;
+   Arena_Bytes : constant := FQ.Transfer_Bytes;
+   --  The regions this client lends (CuBit.Channel_Protocol.Region_Pages):
+   --  an arena has a control page before its buffers.
+   Queue_Region_Pages : constant := FQ.Client_Pages;
+   Arena_Region_Pages : constant := 1 + FQ.Transfer_Pages;
+   Dirty_Region_Pages : constant := 1 + FQ.Dirty_Arena_Pages;
+   Control_Bytes : constant := CuBit.Channel_Protocol.CONTROL_BYTES;
    Grant_Read_Write : constant := 1;
    --  Waiting for an answer: spin (the service answers within
    --  microseconds on another CPU), then yield between looks (it may need
@@ -281,7 +286,10 @@ package body CuBit.Libc_Files is
    ---------------------------------------------------------------------------
    --  The request queue.
    ---------------------------------------------------------------------------
-   Queue, Arena, Dirty : Unsigned_64 := 0;
+   --  This client's region, the service's (mapped read-only), the arenas'
+   --  first buffers, and the queue pair's channel number at the service.
+   Queue, Server, Arena, Dirty : Unsigned_64 := 0;
+   Queue_Number : Unsigned_64 := 0;
    Queue_Refused : Boolean := False;
    Client : Q.Client :=
      (Requests => (Produced => 0, Fill => 0),
@@ -300,37 +308,101 @@ package body CuBit.Libc_Files is
    Last_Token : Unsigned_64 := 0;
    Last_Rights : Unsigned_32 := 0;
 
-   function Header (Offset : Natural) return Unsigned_32;
-   function Header (Offset : Natural) return Unsigned_32 is
-      Word : constant Unsigned_32 with Import, Volatile,
-        Address => To_Address (Queue + Unsigned_64 (Offset));
-   begin
-      return Word;
-   end Header;
-
-   procedure Set_Header (Offset : Natural; Value : Unsigned_32);
-   procedure Set_Header (Offset : Natural; Value : Unsigned_32) is
+   --  The words of this client's region (it writes them) and of the
+   --  service's (read-only here).
+   procedure Set_Client_Word (Offset : Natural; Value : Unsigned_32);
+   procedure Set_Client_Word (Offset : Natural; Value : Unsigned_32) is
       Word : Unsigned_32 with Import, Volatile,
         Address => To_Address (Queue + Unsigned_64 (Offset));
    begin
       Word := Value;
-   end Set_Header;
+   end Set_Client_Word;
 
-   --  KICK (one-way, no reply): the service's wake word showed it asleep.
+   function Server_Word (Offset : Natural) return Unsigned_32;
+   function Server_Word (Offset : Natural) return Unsigned_32 is
+      Word : constant Unsigned_32 with Import, Volatile,
+        Address => To_Address (Server + Unsigned_64 (Offset));
+   begin
+      return Word;
+   end Server_Word;
+
+   --  The service's wake word showed it asleep: the channel protocol's
+   --  one-way kick on the queue's channel.
    procedure Kick;
    procedure Kick is
       Ignore : constant Unsigned_64 := CuBit.Kernel_Calls.Submit
-        (Filesystem_Slot, FQ.OP_FS_KICK, 0, 0, 0, 0, 0, CuBit.Kernel_Calls.No_Completion_Token);
+        (Filesystem_Slot, CuBit.Channel_Protocol.OP_KICK, 1, Queue_Number, 0, 0, 0,
+         CuBit.Kernel_Calls.No_Completion_Token);
    begin
       null;
    end Kick;
 
-   --  Lend the queue and arenas once; whether the queue is usable.
+   --  Open one channel on the filesystem endpoint (CuBit.Channel_Protocol),
+   --  lending Area (Pages pages): its number there, and the service's
+   --  region when it grants one back (Peer_Bytes of it), or False.
+   function Open_Channel
+     (Connector : Unsigned_16; Item : CuBit.Channel_Contracts.Contract;
+      Area : Unsigned_64; Pages : Unsigned_64; Peer_Bytes : Unsigned_64;
+      Number, Peer : out Unsigned_64; Own_Grant : out Unsigned_64) return Boolean;
+   function Open_Channel
+     (Connector : Unsigned_16; Item : CuBit.Channel_Contracts.Contract;
+      Area : Unsigned_64; Pages : Unsigned_64; Peer_Bytes : Unsigned_64;
+      Number, Peer : out Unsigned_64; Own_Grant : out Unsigned_64) return Boolean
+   is
+      use type CuBit.Channel_Contracts.Channel_Kind;
+      Words : constant CuBit.Channel_Contracts.Words := CuBit.Channel_Contracts.Encode (Item);
+      Flags : constant Unsigned_64 :=
+        (if Item.Kind = CuBit.Channel_Contracts.Arena then Grant_Read_Write else 0) + K.Grant_Notify;
+      Slot, Generation, Tag, Mapped : Unsigned_64;
+      M : aliased K.Message;
+   begin
+      Number := 0;
+      Peer := 0;
+      Own_Grant := 0;
+      Slot := Kernel (K.Create_Shared_Memory_Grant_Via_Capability, Filesystem_Slot, Area, Pages, Flags);
+      if Slot = K.Failed then
+         return False;
+      end if;
+      Generation := Kernel (K.Get_Owned_Shared_Memory_Grant_Generation, Slot);
+      if Generation = K.Failed or else Generation = 0 then
+         Revoke (Slot);
+         return False;
+      end if;
+      Own_Grant := Shift_Left (Generation, K.Generation_Shift) or Slot;
+      M := (Label => CuBit.Channel_Protocol.OP_OPEN_PRODUCING,
+            Length => CuBit.Channel_Protocol.Open_Words, Reserved => Connector,
+            Words => [Words (0), Words (1), Words (2), Own_Grant], others => <>);
+      Tag := Kernel (K.Call_Via_Endpoint_Capability, Filesystem_Slot, Value_Of (M'Address));
+      if Unsigned_32 (Tag and 16#FFFF_FFFF#) /= K.Reply_OK then
+         Revoke (Own_Grant);
+         Own_Grant := 0;
+         return False;
+      end if;
+      Number := M.Words (0);
+      if Peer_Bytes > 0 then
+         Mapped := Kernel
+           (K.Acquire_Shared_Memory_Grant_Via_Capability, Filesystem_Slot,
+            M.Words (1) and 16#FFFF_FFFF#, Shift_Right (M.Words (1), K.Generation_Shift),
+            0, Peer_Bytes, 0);
+         if Mapped = K.Failed or else Mapped = 0 then
+            Revoke (Own_Grant);
+            Own_Grant := 0;
+            return False;
+         end if;
+         Peer := Mapped;
+      end if;
+      return True;
+   end Open_Channel;
+
+   --  Open the queue's channels once: the transfer arena, the dirty arena
+   --  (without it, no write delegations; fine), then the queue pair.
+   --  Whether the queue is usable.
    function Queue_Ready return Boolean;
    function Queue_Ready return Boolean is
       Q_Area, A_Area, D_Area : Unsigned_64;
       Q_Ref, A_Ref, D_Ref : Unsigned_64 := 0;
-      Reply : Unsigned_64;
+      Ignore_Number, Ignore_Peer, Server_Region : Unsigned_64;
+      Dirty_Opened : Boolean := False;
    begin
       if Queue /= 0 then
          return True;
@@ -338,28 +410,31 @@ package body CuBit.Libc_Files is
          return False;
       end if;
       Queue_Refused := True;
-      Q_Area := Map_Pages (FQ.Queue_Bytes);
-      A_Area := Map_Pages (Arena_Bytes);
-      D_Area := Map_Pages (FQ.Dirty_Arena_Bytes);
-      if Q_Area /= 0 and then A_Area /= 0 then
-         Q_Ref := Lend (Q_Area, Queue_Pages);
-         A_Ref := Lend (A_Area, Arena_Pages);
-         --  Without a dirty arena there are no write delegations; fine.
-         D_Ref := (if D_Area = 0 then 0 else Lend (D_Area, Dirty_Pages));
-         if Q_Ref /= 0 and then A_Ref /= 0
-           and then Call (FQ.OP_FS_QUEUE, 4, Q_Ref, A_Ref, Arena_Bytes, D_Ref, Reply)
-                    = K.Reply_OK
+      Q_Area := Map_Pages (Queue_Region_Pages * Page_Bytes);
+      A_Area := Map_Pages (Arena_Region_Pages * Page_Bytes);
+      D_Area := Map_Pages (Dirty_Region_Pages * Page_Bytes);
+      if Q_Area /= 0 and then A_Area /= 0
+        and then Open_Channel (FQ.Transfer_Connector, FQ.TRANSFER_CONTRACT, A_Area,
+                               Arena_Region_Pages, 0, Ignore_Number, Ignore_Peer, A_Ref)
+      then
+         Dirty_Opened := D_Area /= 0
+           and then Open_Channel (FQ.Dirty_Connector, FQ.DIRTY_CONTRACT, D_Area,
+                                  Dirty_Region_Pages, 0, Ignore_Number, Ignore_Peer, D_Ref);
+         Zero (Q_Area, Queue_Region_Pages * Page_Bytes);
+         if Open_Channel (FQ.Queue_Connector, FQ.QUEUE_CONTRACT, Q_Area, Queue_Region_Pages,
+                          FQ.Server_Pages * Page_Bytes, Queue_Number, Server_Region, Q_Ref)
          then
             Queue := Q_Area;
-            Arena := A_Area;
+            Server := Server_Region;
+            Arena := A_Area + Control_Bytes;
             --  Touched once now, so no read or write later takes a
             --  first-touch fault on them.
-            Zero (A_Area, Arena_Bytes);
-            if D_Ref /= 0 then
-               Zero (D_Area, FQ.Dirty_Arena_Bytes);
-               Dirty := D_Area;
+            Zero (Arena, Arena_Bytes);
+            if Dirty_Opened then
+               Dirty := D_Area + Control_Bytes;
+               Zero (Dirty, FQ.Dirty_Arena_Bytes);
             else
-               Unmap (D_Area, FQ.Dirty_Arena_Bytes);
+               Unmap (D_Area, Dirty_Region_Pages * Page_Bytes);
             end if;
             Queue_Refused := False;
             return True;
@@ -368,9 +443,9 @@ package body CuBit.Libc_Files is
       Revoke (D_Ref);
       Revoke (A_Ref);
       Revoke (Q_Ref);
-      Unmap (D_Area, FQ.Dirty_Arena_Bytes);
-      Unmap (A_Area, Arena_Bytes);
-      Unmap (Q_Area, FQ.Queue_Bytes);
+      Unmap (D_Area, Dirty_Region_Pages * Page_Bytes);
+      Unmap (A_Area, Arena_Region_Pages * Page_Bytes);
+      Unmap (Q_Area, Queue_Region_Pages * Page_Bytes);
       return False;
    end Queue_Ready;
 
@@ -380,7 +455,7 @@ package body CuBit.Libc_Files is
       Looks : Natural := 0;
       OK : Boolean;
       Answer : Q.Completion;
-      Ring : constant Q.Completions.Ring with Import, Address => To_Address (Queue + FQ.Answers_At);
+      Ring : constant Q.Completions.Ring with Import, Address => To_Address (Server + FQ.Server_Answers_At);
       Ignore : Unsigned_32;
    begin
       Token := 0;
@@ -389,7 +464,7 @@ package body CuBit.Libc_Files is
       Spare := 0;
       loop
          Q.Completions.Accept_Produced
-           (Client.Answers, Q.Completions.Index (Header (FQ.Completions_At + FQ.Produced_At)), OK);
+           (Client.Answers, Q.Completions.Index (Server_Word (FQ.Server_Answered_At)), OK);
          Compiler_Barrier;              --  the answer after its count
          exit when Client.Answers.Available > 0;
          if Looks < Answer_Spins then
@@ -404,7 +479,7 @@ package body CuBit.Libc_Files is
       end loop;
       Q.Reap (Client, Ring, Answer, OK);
       Compiler_Barrier;                 --  copied out before the slot goes back
-      Set_Header (FQ.Completions_At + FQ.Consumed_At, Unsigned_32 (Client.Answers.Consumed));
+      Set_Client_Word (FQ.Client_Reaped_At, Unsigned_32 (Client.Answers.Consumed));
       if not OK then
          return;                        --  an answer nobody asked for
       end if;
@@ -437,7 +512,7 @@ package body CuBit.Libc_Files is
    procedure Reap_Ready is
    begin
       while Async_Pending > 0
-        and then Header (FQ.Completions_At + FQ.Produced_At) /= Unsigned_32 (Client.Answers.Consumed)
+        and then Server_Word (FQ.Server_Answered_At) /= Unsigned_32 (Client.Answers.Consumed)
       loop
          Reap_One;
       end loop;
@@ -449,13 +524,13 @@ package body CuBit.Libc_Files is
    function Submit (Operation, Options : Unsigned_32; Handle, Position, Length : Unsigned_64;
                     Is_Async : Boolean) return Unsigned_64
    is
-      Ring : Q.Submissions.Ring with Import, Address => To_Address (Queue + FQ.Requests_At);
+      Ring : Q.Submissions.Ring with Import, Address => To_Address (Queue + FQ.Client_Requests_At);
       OK : Boolean;
       Token : Unsigned_64;
       Wake : Unsigned_32;
    begin
       loop
-         Q.Accept_Taken (Client, Q.Submissions.Index (Header (FQ.Submissions_At + FQ.Consumed_At)), OK);
+         Q.Accept_Taken (Client, Q.Submissions.Index (Server_Word (FQ.Server_Taken_At)), OK);
          exit when Q.Can_Submit (Client);
          Reap_One;                      --  only async answers can be out
       end loop;
@@ -472,9 +547,9 @@ package body CuBit.Libc_Files is
       if Hold then
          return Token;
       end if;
-      Set_Header (FQ.Submissions_At + FQ.Produced_At, Unsigned_32 (Client.Requests.Produced));
+      Set_Client_Word (FQ.Client_Submitted_At, Unsigned_32 (Client.Requests.Produced));
       Full_Fence;                       --  the count before the wake word
-      Wake := Header (FQ.Submissions_At + FQ.Wake_At);
+      Wake := Server_Word (FQ.Server_Wake_At);
       if Wake /= 0 and then Wake /= Kicked then
          Kicked := Wake;
          Kick;
@@ -663,12 +738,12 @@ package body CuBit.Libc_Files is
 
 
    function Delegation_Word (Slot : Handle_Slot; At_Byte : Natural) return Unsigned_32 is
-     (Header (FQ.Delegations_At + Slot * FQ.Delegation_Bytes + At_Byte));
+     (Server_Word (FQ.Delegations_At + Slot * FQ.Delegation_Bytes + At_Byte));
 
    function Delegation_Long (Slot : Handle_Slot; At_Byte : Natural) return Unsigned_64;
    function Delegation_Long (Slot : Handle_Slot; At_Byte : Natural) return Unsigned_64 is
       Word : constant Unsigned_64 with Import, Volatile,
-        Address => To_Address (Queue + Unsigned_64 (FQ.Delegations_At
+        Address => To_Address (Server + Unsigned_64 (FQ.Delegations_At
                                + Slot * FQ.Delegation_Bytes + At_Byte));
    begin
       return Word;
@@ -1238,7 +1313,7 @@ package body CuBit.Libc_Files is
       while Last_Token < Handles (Slot).Park_Token loop
          Reap_One;
       end loop;
-      Generation := Header (FQ.Submissions_At + FQ.Namespace_Generation_At);
+      Generation := Server_Word (FQ.Server_Namespace_At);
       Compiler_Barrier;
       Inode := Delegation_Long (Slot, FQ.Delegation_Inode_At);
       Compiler_Barrier;
@@ -1331,7 +1406,7 @@ package body CuBit.Libc_Files is
             end if;
             --  Read before the open: a namespace change after it resolves
             --  the name leaves this generation behind.
-            Generation := Header (FQ.Submissions_At + FQ.Namespace_Generation_At);
+            Generation := Server_Word (FQ.Server_Namespace_At);
             Compiler_Barrier;
             Arena_Put (N);
             Label := (if Directory /= 0

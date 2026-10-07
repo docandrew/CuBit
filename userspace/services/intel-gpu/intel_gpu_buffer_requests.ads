@@ -3,6 +3,7 @@ with Intel_GPU_Buffer_Backing;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Buffer_Handles;
 with Intel_GPU_Record_Store;
+with Intel_GPU_Client_Budgets;
 generic
    -- Resolve from the kernel's sender/tag envelope, never request words.
    with function Session_Of (Sender, Stamp : Unsigned_64) return Unsigned_64;
@@ -19,6 +20,14 @@ package Intel_GPU_Buffer_Requests is
    Unavailable : constant Unsigned_64 := 3;
    type Words is array (Natural range 0 .. 3) of Unsigned_64;
    type Service is limited private;
+   -- Trusted startup only, before any ticket is reserved. Disabled by default
+   -- for independently embedded users; native driver must explicitly enable.
+   procedure Configure_Client_Budgets
+     (Object : in out Service; Limit : Unsigned_64; Accepted : out Boolean);
+   procedure Extend_Client_Accounts
+     (Object : in out Service; Base, Bytes : Unsigned_64; Accepted : out Boolean);
+   function Client_Usage (Object : Service; Session : Unsigned_64)
+     return Intel_GPU_Client_Budgets.Usage;
    function Image_Writes_Held (Object : Service; Session : Unsigned_64) return Boolean;
    function Close_Diagnostic
      (Object : Service; Sender, Stamp, ID : Unsigned_64)
@@ -51,7 +60,8 @@ package Intel_GPU_Buffer_Requests is
    type Allocation_Outcome is
      (Not_Create, Quarantined, Application_Pending, Private_Pending,
       Owner_Unavailable, Slots_Exhausted, Awaiting_Backing, Backing_Unavailable,
-      Backing_Size_Mismatch, Handle_Unavailable, Allocation_Ready);
+      Backing_Size_Mismatch, Handle_Unavailable, Allocation_Ready,
+      Client_Quota_Unavailable);
    function Last_Allocation (Object : Service) return Allocation_Outcome;
    -- Immutable identity layout, independent of allocated registry capacity.
    -- Low32 is the one-based slot; high32 is generation minus one. Zero is
@@ -84,7 +94,8 @@ package Intel_GPU_Buffer_Requests is
    procedure Reserve_Private
      (Object : in out Service; Session : Unsigned_64; ID : out Ticket;
       Reclaimable : Boolean := False;
-      Kind : Private_Table_Kind := Replacement_Tables);
+      Kind : Private_Table_Kind := Replacement_Tables;
+      Pages : Intel_GPU_Buffer_Backing.Page_Count);
    -- Exact retained role, not physical allocation or GPU publication evidence.
    -- Incremental purpose requires Reclaimable=True and a nonzero session.
    -- Closed-but-unretired table allocations keep their role; acknowledged
@@ -101,6 +112,10 @@ package Intel_GPU_Buffer_Requests is
    -- Retained allocation ownership, including failed/deferred allocations.
    -- Observation only, not proof that GPU mappings or CPU grants are retired.
    function Ticket_Session (Object : Service; ID : Ticket) return Unsigned_64;
+   -- Conservative retained charge, including pending/failed allocations.
+   -- Exact internal ticket only; not client authority or committed RAM usage.
+   -- Close/failed delivery cannot refund it; confirmed retirement can.
+   function Ticket_Bytes (Object : Service; ID : Ticket) return Unsigned_64;
    function Pending_For (Object : Service; Session : Unsigned_64) return Boolean;
    procedure Finish_Private
      (Object : in out Service; ID : Ticket; Consumed : out Boolean);
@@ -174,6 +189,7 @@ private
       Issued : Issued_Result := (others => <>);
       Owner : Unsigned_64 := 0;
       Identity : Ticket := 0;
+      Charge_Bytes : Unsigned_64 := 0;
       Reusable, Private_Reclaimable, Private_Reusable : Boolean := False;
       Private_Closed : Boolean := False;
       Context_Parent, Context_Closed, Context_Reusable : Boolean := False;
@@ -194,5 +210,11 @@ private
       Private_Pending : Ticket := 0;
       Cancelled : Boolean := False;
       Pending_Session, Pending_Sender, Pending_Stamp, Pending_Bytes : Unsigned_64 := 0;
+      Client_Limit : Unsigned_64 := 0;
+      Client_Accounts : Intel_GPU_Client_Budgets.Ledger;
    end record;
+   function Charge_Client
+     (Object : in out Service; Session, Bytes : Unsigned_64) return Boolean;
+   function Refund_Client
+     (Object : in out Service; Index : Intel_GPU_Buffer_Backing.Slot) return Boolean;
 end Intel_GPU_Buffer_Requests;

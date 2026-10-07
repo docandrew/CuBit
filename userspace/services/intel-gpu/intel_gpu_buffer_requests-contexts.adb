@@ -1,6 +1,7 @@
 package body Intel_GPU_Buffer_Requests.Contexts is
    procedure Reserve
-     (Object : in out Service; Session : Unsigned_64; ID : out Ticket) is
+     (Object : in out Service; Session : Unsigned_64; ID : out Ticket;
+      Pages : Intel_GPU_Buffer_Backing.Page_Count) is
    begin
       ID := 0;
       if Session = 0 or else Object.Failed or else not Owner_Ready or else
@@ -11,16 +12,17 @@ package body Intel_GPU_Buffer_Requests.Contexts is
             if Item.Context_Parent and then Item.Context_Closed and then Item.Context_Reusable
               and then Item.Identity /= 0 and then Item.Identity <= Ticket'Last - Ticket_Stride
             then
+               if not Charge_Client (Object, Session, Unsigned_64 (Pages) * 4096) then return; end if;
                ID := Item.Identity + Ticket_Stride;
                Records.Put (Object.Items, Index, (Item with delta
                  Identity => ID, Owner => Session, Context_Closed => False,
-                 Context_Reusable => False));
+                 Context_Reusable => False, Charge_Bytes => Unsigned_64 (Pages) * 4096));
                Object.Private_Pending := ID;
                return;
             end if;
          end;
       end loop;
-      Reserve_Private (Object, Session, ID);
+      Reserve_Private (Object, Session, ID, Pages => Pages);
       if ID /= 0 then
          Records.Put (Object.Items, Ticket_Slot (ID),
            (Records.Get (Object.Items, Ticket_Slot (ID)) with delta Context_Parent => True));
@@ -47,8 +49,10 @@ package body Intel_GPU_Buffer_Requests.Contexts is
    begin
       Accepted := False;
       if not References_Retired or else not Can_Retire (Object, Session, ID) then return; end if;
+      if not Refund_Client (Object, Ticket_Slot (ID)) then return; end if;
       Records.Put (Object.Items, Ticket_Slot (ID),
-        (Records.Get (Object.Items, Ticket_Slot (ID)) with delta Context_Reusable => True));
+        (Records.Get (Object.Items, Ticket_Slot (ID)) with delta Context_Reusable => True,
+         Charge_Bytes => 0));
       Accepted := True;
    end Acknowledge;
 end Intel_GPU_Buffer_Requests.Contexts;

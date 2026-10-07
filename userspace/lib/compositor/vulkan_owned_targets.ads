@@ -19,6 +19,14 @@ package Vulkan_Owned_Targets with SPARK_Mode is
    use type I.Phase, T.Phase, A.State, System.Address, C.Child, C.Phase;
    type Phase is (Fresh, Backed, Live, Closed, Quarantined);
    type State is private;
+   use type V.Phase;
+   procedure Record_Readback (S : State; Submission : in out V.State;
+      Pool : P.State; Staging : System.Address; Accepted : out Boolean)
+     with Pre => P.Valid (Pool) and V.Current (Submission) = V.Recording and
+       V.Complete_Frame (Submission) and not V.Pass_Started (Submission),
+       Post => V.Current (Submission) = V.Recording and
+       not V.Pass_Started (Submission) and Accepted = V.Complete_Frame (Submission) and
+       (if Accepted then V.Draws (Submission) > 0);
    function Current (S : State) return Phase;
    function Output_Epoch (S : State) return P.ID;
    function Untouched (S : State) return Boolean;

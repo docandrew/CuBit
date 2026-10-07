@@ -1160,10 +1160,10 @@ procedure main is
       lastInputQueueOverflows := inputQueueOverflows;
 
       if statsFrames > 0 or else statsEvents > 0 then
-         -- One write, not a scheduling opportunity between every field.
-         -- This fixes same-CPU service interleaving; the debug console is not
-         -- a cross-CPU structured or bounded-latency logging transport.
-         debugPrint
+         -- Keep the serial regression-test record out of logsvc. Work metrics
+         -- are published below; startup and failure messages still use logs.
+         -- One write avoids a scheduling opportunity between every field.
+         CuBit.Messages.debugPrint
            ("desktop: stats ev=" & Decimal (statsEvents) &
             " key=" & Decimal (statsKeyboardEvents) &
             " mouse=" & Decimal (statsMouseEvents) &
@@ -2044,9 +2044,7 @@ procedure main is
             return;
          end if;
          DB.Charge_Completion (Batch);
-         if Desktop_Logs.Matches (completion.token) then
-            Desktop_Logs.Collect (completion);
-         elsif DM.Enabled and then DM.Matches (completion.token) then
+         if DM.Enabled and then DM.Matches (completion.token) then
             DM.Collect (completion);
          elsif CR.Token (launchRequest) /= 0 and then completion.token = CR.Token (launchRequest) then
             collectLaunch (completion);
@@ -8574,7 +8572,6 @@ begin
               " invalid=" & Decimal (DM.Invalid) & " rejected=" & Decimal (DM.Rejected) & LF);
          end if;
          maybePrintStats;
-         Desktop_Logs.Pump (requestSequence);
          expireInputWaiters;
          if DM.Enabled and then DM.Pending then metricsDelayUs := DM.Delay_Us (dispatchNow); end if;
 

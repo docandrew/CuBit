@@ -483,6 +483,9 @@ package Process is
         -- A derived child must always clear this; ordinary acquisition does
         -- not grant delegation authority.
         forwardable  : Boolean := False;
+        -- Post grant lifecycle events (docs/data-plane.md) for this grant:
+        -- set by the owner at creation, inherited by derived children.
+        notify       : Boolean := False;
     end record;
 
 

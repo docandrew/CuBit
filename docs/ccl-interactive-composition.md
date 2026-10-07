@@ -72,14 +72,14 @@ This applies to typed streams as well as request/reply operations; see
   authority or object held by the app. There is no unrestricted native FFI.
 * Local host adapters enforce the script's admitted scope at use, including
   object/session lifetime checks. The kernel cannot distinguish scripts within
-  one process: the interpreter and native adapters are part of that isolation
+  one process: the CCL compiler, verifier, VM and native adapters are part of that isolation
   boundary's trusted computing base. Use process isolation where this trust
   boundary is insufficient; do not claim kernel isolation between embedded scripts.
 * IPC adapters use authenticated caller, endpoint and service-handle checks.
   Do not substitute the provider's broader authority merely because a shared
   implementation function executes inside the provider process.
 * A system-wide Workbench or remote control client is another CCL host with
-  explicit grants, not a privileged global interpreter. Publishing, knowing a
+  explicit grants, not a privileged global evaluator. Publishing, knowing a
   name, or drawing a graph connection cannot elevate it.
 
 Current implementation: Workbench advertises typed `ui` host operations backed
@@ -95,7 +95,7 @@ surfaces and CCL stream composition remain planned.
 fuel, and a 16-entry transcript. It depends on the CCL catalog/language/VM value
 types, not on a windowing library, filesystem, IPC adapter, or terminal streams.
 The native and Linux Workbench call it through the same shared REPL view.
-The source editor's Interpret action uses a separate session so its history
+The source editor's Run action uses a separate session so its history
 does not pollute interactive commands.
 
 This first implementation evaluates each submitted expression independently.
@@ -174,7 +174,7 @@ the insertion rather than inserting a truncated name. This is call-head
 completion after `(` (with optional whitespace), not local-variable completion
 or a dropdown. `CCL.Call_Context` performs bounded, inert context inspection;
 the normal language parser/type checker remains authoritative.
-The Workbench REPL interprets with its explicitly admitted host bindings;
+The Workbench REPL evaluates with its explicitly admitted host bindings;
 seeing/completing a name does not make it callable. Other hosts may keep the
 default pure evaluator or supply their own narrower bindings.
 

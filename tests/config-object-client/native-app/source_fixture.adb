@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with CuBit.Messages; use CuBit.Messages;
 with CCL.Catalog; use CCL.Catalog;
 with CCL.Objects.Catalog;
@@ -127,7 +128,7 @@ package body Source_Fixture is
             Config_Object_Outcomes.To_Host (Taken and Saved.Valid, Saved.Code, Saved.Revision, Reply);
          end if;
       end Invoke;
-      procedure Evaluate is new CCL.Language.Interpret_With_Values (Context_Type, Invoke);
+      procedure Evaluate is new CCL.Evaluation.Evaluate_With_Values (Context_Type, Invoke);
    begin
       Configure (Catalog, Grants, Contract, Types, Write, Good);
       if not Good then return; end if;

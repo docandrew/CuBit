@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with Ada.Text_IO; use Ada.Text_IO;
 with CCL.Catalog;
 with CCL.Language.Views; use CCL.Language.Views;
@@ -54,7 +55,7 @@ procedure Main is
    begin
       Convert (Source, Basic, Lisp, Catalog, View);
       pragma Assert (View.Status = Converted);
-      CCL.Language.Interpret (View.Canonical.Data (1 .. View.Canonical.Length), 4096, Outcome);
+      CCL.Evaluation.Evaluate (View.Canonical.Data (1 .. View.Canonical.Length), 4096, Outcome);
       pragma Assert (Outcome.Status = CCL.Language.Succeeded);
       pragma Assert (Outcome.Result_Value.Integer = Expected);
    end Value_Is;
@@ -64,7 +65,7 @@ procedure Main is
    begin
       Convert (Source, Basic, Lisp, Catalog, View);
       pragma Assert (View.Status = Converted);
-      CCL.Language.Interpret (View.Canonical.Data (1 .. View.Canonical.Length), 4096, Outcome);
+      CCL.Evaluation.Evaluate (View.Canonical.Data (1 .. View.Canonical.Length), 4096, Outcome);
       pragma Assert (Outcome.Status = CCL.Language.Succeeded);
       pragma Assert (Outcome.Result_Value.Boolean = Expected);
    end Truth_Is;
@@ -271,7 +272,7 @@ begin
             when Failed => Success := False;
          end case;
       end Invoke;
-      procedure Run is new CCL.Language.Interpret_With_Host (Host_State, Invoke);
+      procedure Run is new CCL.Evaluation.Evaluate_With_Host (Host_State, Invoke);
       Grants : CCL.Catalog.Granted_Bindings;
       Operation : CCL.Catalog.Resolved_Operation;
       Found : Boolean;
@@ -346,7 +347,7 @@ begin
    begin
       Convert ("(9223372036854775807 + 1) + -1", Basic, Lisp, Catalog, View);
       pragma Assert (View.Status = Converted);
-      CCL.Language.Interpret (View.Canonical.Data (1 .. View.Canonical.Length), 4096, Outcome);
+      CCL.Evaluation.Evaluate (View.Canonical.Data (1 .. View.Canonical.Length), 4096, Outcome);
       pragma Assert (Outcome.Status = CCL.Language.Evaluation_Overflow);
    end;
    Check ("(let ((x 1)) (let ((x (+ x 1))) (if (= x 2) x 0)))");

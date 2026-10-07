@@ -1,3 +1,4 @@
+with GNAT.Source_Info;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Catalog; use CCL.Catalog;
@@ -44,10 +45,12 @@ procedure Portable_Object_Tests is
    Linked : Link_Result;
    Patched : Boolean;
    Checks : Natural := 0;
-   procedure Check (OK : Boolean) is
+   procedure Check (OK : Boolean; Line : Natural := GNAT.Source_Info.Line) is
    begin
       Checks := Checks + 1;
-      if not OK then raise Program_Error with "portable object check" & Checks'Image; end if;
+      if not OK then
+         raise Program_Error with "portable object check" & Checks'Image & " at line" & Line'Image;
+      end if;
    end Check;
    procedure Schema (View : in out Interface_Catalog; Prefix, Bad : Boolean) is
       Local : Registry;
@@ -180,7 +183,9 @@ begin
          case Mutation is
             when 1 => Patch (Header, [16#44#, 16#43#, 16#43#, 16#4C#, 16#42#, 4]);
             when 2 => Patch (Interface_Digest, [1 => 16#58#, 2 => 16#20#, 3 .. 34 => 0], Occurrence => 1);
-            when 3 => Patch (Result_Type & Interface_Digest, [16#18#, 16#FF#] & Interface_Digest, Occurrence => 1);
+            --  The result type, then the text limits (0, 0), then the digest.
+            when 3 => Patch ([Result_Type, 0, 0] & Interface_Digest,
+                             [16#18#, 16#FF#, 0, 0] & Interface_Digest, Occurrence => 1);
             when 4 => Patch (Result_Schema, Zeroed, Occurrence => 1);
             when others => Patch (Result_Schema, Moved, Occurrence => 1);
          end case;

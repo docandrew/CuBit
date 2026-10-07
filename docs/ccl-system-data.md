@@ -42,7 +42,7 @@ builtin and pipeline stage already works on it.
 ## Work, in order
 
 1. **Host results that are lists of records.** Extend `CCL.Host_Values` and
-   the interpreter's host-call path. Records already exist as typed objects;
+   the VM's host-import path. Records already exist as typed objects;
    lists of them need an element representation in the list region.
 2. **Multi-argument host operations** (`read-text path limit`), already
    listed in the standard-library doc.

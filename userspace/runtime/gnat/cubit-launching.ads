@@ -20,6 +20,7 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 
 with CuBit.Child_Exits;
+with CuBit.Control_Events;
 with CuBit.Launch_Arguments;
 with CuBit.Launch_Authority;
 with CuBit.Launch_Grants;
@@ -44,7 +45,8 @@ package CuBit.Launching is
    --  Launch_Arguments builder's block, or empty) and delegated places
    --  (Grants: a finished Launch_Grants region, or empty).
    --  Rings: rings this launcher lends the child for its outlets
-   --  (Lend_Ring), which it then reads in place (CuBit.Streams.Read_Owned).
+   --  (Lend_Ring), which it then reads in place
+   --  (CuBit.Stream_Regions.Read_Owned).
    procedure Launch
      (Program   : String;
       Arguments : CuBit.Launch_Arguments.Block;
@@ -58,30 +60,35 @@ package CuBit.Launching is
                and then Grants'Length <= CuBit.Launch_Grants.Maximum_Bytes;
 
    --  A ring for a child's outlet (docs/ccl-launch-parameters.md,
-   --  "Launcher-owned outlet rings"): Pages pages of this process's memory
-   --  at Base (a fresh allocation when Base is 0 on entry, else those pages
-   --  again, page aligned and at least Pages long), initialized with this
-   --  process as its one subscriber and lent to procmgr, which derives the
-   --  child's grant at launch. Add the entry (Outlet, Grant) to the Rings
-   --  passed to Launch; revoke Reference (CuBit.Memory_Grants.Revoke) once
+   --  "Launcher-owned outlet rings"): a Stream_Rings region for Pages
+   --  declared pages (Stream_Rings.Region_Pages of them) of this process's
+   --  memory at Base (a fresh allocation when Base is 0 on entry, else that
+   --  region again, page aligned and at least as long), made empty and lent
+   --  to procmgr (with grant events: CuBit.Control_Events), which derives the
+   --  child's grant at launch. Add the entry (its outlet, Grant) to the
+   --  Rings passed to Launch; revoke Reference (CuBit.Memory_Grants.Revoke) once
    --  the run is over, before reusing the pages.
    procedure Lend_Ring
-     (Outlet : CuBit.Program_Descriptions.Connector_Index; Pages : Positive;
+     (Pages : Positive;
       Entry_Type : CuBit.Streams.TypeTag;
       Base : in out Unsigned_64; Grant : out Unsigned_64;
       Reference : out CuBit.Memory_Grants.Grant_Reference; Success : out Boolean);
 
-   --  Block until Started ends; Ended is its exit report. Exit events of
-   --  other children that arrive meanwhile are kept for Poll_Exit; any
-   --  other event is dropped: a program that waits here owns its event
-   --  queue.
+   --  Block until Started ends; Ended is its exit report. Other events
+   --  that arrive meanwhile are kept (CuBit.Process_Events).
    procedure Wait (Started : Child; Ended : out CuBit.Child_Exits.Report);
 
    --  Whether Started has ended, without blocking (Ended its report). A
    --  program polling several children calls this for each; other
-   --  children's exits are kept until asked for (at most 32 at a time).
+   --  children's exits are kept until asked for (CuBit.Process_Events).
    procedure Poll_Exit
      (Started : Child; Has_Ended : out Boolean; Ended : out CuBit.Child_Exits.Report);
+
+   --  Send Started a control message (docs/data-plane.md, "Control
+   --  messages"): the kernel accepts it from the process that launched it.
+   --  Sent is False when Started has ended or its event lane is full.
+   procedure Send_Control
+     (Started : Child; Kind : CuBit.Control_Events.Control_Kind; Sent : out Boolean);
 
    --  This process's own launch table (CuBit.Launch_Authority, procmgr's
    --  OP_LAUNCH_TABLE): Table (1 .. Length), Length 0 when it may start
@@ -92,6 +99,17 @@ package CuBit.Launching is
       Result : out Launch_Result)
    with Pre => Table'First = 1
                and then Table'Length = CuBit.Launch_Authority.Maximum_Table_Bytes;
+
+   --  The places this process's launcher delegated to it
+   --  (OP_DELEGATED_PLACES), as a Launch_Grants region to pass on to a child
+   --  it starts: Region (1 .. Length), Length 0 when it was given none,
+   --  when Result = Launched (here: answered).
+   procedure Delegated_Places
+     (Region : out CuBit.Launch_Grants.Bytes;
+      Length : out CuBit.Launch_Grants.Byte_Count;
+      Result : out Launch_Result)
+   with Pre => Region'First = 1
+               and then Region'Length = CuBit.Launch_Grants.Maximum_Bytes;
 
    --  A program's .cubit.description descriptor, through procmgr
    --  (OP_PROGRAM_DESCRIPTION): Descriptor (1 .. Length), Length 0 when it

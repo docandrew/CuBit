@@ -7,7 +7,8 @@ static uint32_t discard(struct cubit_vulkan_upload_buffer *s)
     s->mapped=NULL;s->buffer=VK_NULL_HANDLE;s->memory=VK_NULL_HANDLE;s->stage=3;
     return 1;
 }
-uint32_t cubit_vulkan_upload_prepare(void *request,uint32_t capacity,uint64_t *bytes,uint32_t *types)
+static uint32_t prepare(void *request,uint32_t capacity,uint64_t *bytes,uint32_t *types,
+    VkBufferUsageFlags usage)
 {
     if(!bytes||!types)return 1;
     *bytes=0;*types=0;
@@ -38,10 +39,10 @@ uint32_t cubit_vulkan_upload_prepare(void *request,uint32_t capacity,uint64_t *b
     }
     if(!allowed)return 1;
     const VkBufferCreateInfo info={.sType=VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,.size=capacity,
-        .usage=VK_BUFFER_USAGE_TRANSFER_SRC_BIT,.sharingMode=VK_SHARING_MODE_EXCLUSIVE};
+        .usage=usage,.sharingMode=VK_SHARING_MODE_EXCLUSIVE};
     VkBuffer buffer=VK_NULL_HANDLE;
     if(create(s->device,&info,NULL,&buffer)!=VK_SUCCESS){s->stage=3;return 1;}
-    s->buffer=buffer;s->capacity=capacity;
+    s->buffer=buffer;s->capacity=capacity;s->usage=usage;
     if(!buffer){s->stage=4;return 2;}
     const VkBufferMemoryRequirementsInfo2 query={.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2,.buffer=buffer};
     VkMemoryDedicatedRequirements dedicated={.sType=VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
@@ -51,6 +52,14 @@ uint32_t cubit_vulkan_upload_prepare(void *request,uint32_t capacity,uint64_t *b
     s->types=allowed&s->requirements.memoryTypeBits;
     if(!s->types)return discard(s);
     s->stage=1;*bytes=s->requirements.size;*types=s->types;return 0;
+}
+uint32_t cubit_vulkan_upload_prepare(void *request,uint32_t capacity,uint64_t *bytes,uint32_t *types)
+{
+    return prepare(request,capacity,bytes,types,VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+}
+uint32_t cubit_vulkan_readback_prepare(void *request,uint32_t capacity,uint64_t *bytes,uint32_t *types)
+{
+    return prepare(request,capacity,bytes,types,VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 }
 uint32_t cubit_vulkan_upload_bind(void *request,uint64_t charged,uint32_t type,void **mapped)
 {

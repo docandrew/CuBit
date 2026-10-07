@@ -36,11 +36,22 @@ begin
    for Offset in Unsigned_64 range 0 .. 15 loop
       Result := Build (Context, 65536, Context + Offset * 4096, 4096, 12);
       pragma Assert (not Result.Valid);
+      pragma Assert (not Admissible (Context, 65536, Context + Offset * 4096, 4096, 12));
       pragma Assert (for all Word of Result.Words => Word = 0);
    end loop;
    pragma Assert (Build (Context, 65536, Context - 4096, 4096, 12).Valid);
    pragma Assert (not Build (Context, 65536, Context - 4096, 4096, 13).Valid);
    pragma Assert (not Build (Context, 65535, 16#110000#, 4096, 12).Valid);
    pragma Assert (not Build (Context, 65536, 16#110000#, 0, 12).Valid);
+   for Ring_Size in Intel_GPU_ADLN_LRC_Initial.Ring_Size_Log2 loop
+      for Offset in Unsigned_64 range 0 .. 32 loop
+         declare
+            Ring : constant Unsigned_64 := Context - 65536 + Offset * 4096;
+         begin
+            pragma Assert (Admissible (Context, 65536, Ring, 4096, Ring_Size) =
+              Build (Context, 65536, Ring, 4096, Ring_Size).Valid);
+         end;
+      end loop;
+   end loop;
    Ada.Text_IO.Put_Line ("ADL-N64KiB context composition PASS (offline)");
 end ADLN_Context_Image_Tests;

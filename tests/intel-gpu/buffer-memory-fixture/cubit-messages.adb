@@ -1,3 +1,4 @@
+with Intel_GPU_Buffer_Backing;
 package body CuBit.Messages is
    Last_Request : Message;
    function syscall (Op : Natural) return Unsigned_64 is
@@ -15,12 +16,14 @@ package body CuBit.Messages is
          pragma Assert (Msg.words (2 .. 3) = [0, 0]);
          pragma Assert (Msg.words (0) <= 600 and Msg.words (1) /= 0);
       elsif Msg.tag = (16#0239#, 4, 0, 0) then
-         pragma Assert (Msg.words (0) in 1 .. 16 and Msg.words (1) in 1 .. 2 ** 32 - 2);
+         pragma Assert (Msg.words (0) in 1 .. Unsigned_64 (Intel_GPU_Buffer_Backing.Slot'Last)
+           and Msg.words (1) in 1 .. 2 ** 32 - 2);
          pragma Assert (Msg.words (2) = 7 and Msg.words (3) = 1);
       else
          pragma Assert (Msg.tag = (16#0236#, 3, 0, 0));
          pragma Assert (Msg.words (2) in 1 .. 2 ** 32 - 1 and Msg.words (3) = 0);
-         pragma Assert (Msg.words (0) in 1 .. 16 and Msg.words (1) in 1 .. 4096);
+         pragma Assert (Msg.words (0) in 1 .. Unsigned_64 (Intel_GPU_Buffer_Backing.Slot'Last)
+           and Msg.words (1) in 1 .. 4096);
          Submissions := Submissions + 1;
       end if;
       Last_Token := Token; Last_Request := Msg;

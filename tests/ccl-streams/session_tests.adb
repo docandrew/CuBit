@@ -5,6 +5,7 @@ with Ada.Command_Line; use Ada.Command_Line;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Catalog;
+with CCL.Host_Replay;
 with CCL.Host_Values;
 with CCL.Interfaces.Timer;
 with CCL.Language;
@@ -12,6 +13,7 @@ with CCL.Objects;
 with CCL.Sessions;
 with CCL.Streams;
 with CCL_Stream_Table;
+with CCL.VM;
 
 procedure Session_Tests is
    package S renames CCL.Streams;
@@ -168,10 +170,58 @@ procedure Session_Tests is
       Check (Text (View (Table, Lines, S.Latest_View), 1)'Length = T.MAX_LINE, "a long line is cut");
    end Port_Tests;
 
+   --  Tasks: pending until completed once; the result is read by Wait_View.
+   procedure Task_Tests is
+      Table : T.Table;
+      Job, Stream : S.Handle;
+      Jobs : array (1 .. T.MAX_RESULTS + 1) of S.Handle;
+      Result : CCL.Objects.Image;
+      Completed, Pushed : Boolean;
+   begin
+      Result.Cells (1) := CCL.Objects.Integer_Cell (42);
+      Result.Used_Cells := 1;
+      T.Open_Task (Table, Job);
+      Check (Job /= S.No_Handle and then not T.Task_Done (Table, Job), "a task opens pending");
+      Check (View (Table, Job, S.Wait_View).Status = S.Stream_Empty, "a pending task has no result");
+      T.Push_Integer (Table, Job, 1, Pushed);
+      Check (not Pushed, "a task takes no stream elements");
+      T.Complete_Task (Table, Job, Result, Completed);
+      Check (Completed and then T.Task_Done (Table, Job), "a task completes");
+      Check (View (Table, Job, S.Wait_View).Status = S.View_Answered and then
+             Cell (View (Table, Job, S.Wait_View), 1) = 42, "wait reads its result");
+      T.Complete_Task (Table, Job, Result, Completed);
+      Check (not Completed, "a task completes once");
+      T.Open_Outlet (Table, T.Integer_Elements, Stream);
+      T.Complete_Task (Table, Stream, Result, Completed);
+      Check (not Completed and then View (Table, Stream, S.Wait_View).Status = S.No_Such_Stream,
+             "a stream is no task: waiting on it names nothing");
+      Check (View (Table, Job, S.Latest_View).Status = S.No_Such_Stream and then
+             View (Table, Job, S.Arrived_View).Status = S.No_Such_Stream,
+             "a task is no stream: its views name nothing");
+      T.Close (Table, Job);
+      T.Close (Table, Stream);
+      for I in Jobs'Range loop
+         T.Open_Task (Table, Jobs (I));
+         T.Complete_Task (Table, Jobs (I), Result, Completed);
+         Check (Completed = (I <= T.MAX_RESULTS),
+                (if I <= T.MAX_RESULTS then "a closed task's result slot is reused"
+                 else "results beyond MAX_RESULTS wait"));
+      end loop;
+      T.Close (Table, Jobs (1));
+      T.Complete_Task (Table, Jobs (Jobs'Last), Result, Completed);
+      Check (Completed and then Cell (View (Table, Jobs (Jobs'Last), S.Wait_View), 1) = 42,
+             "closing a task frees its result");
+   end Task_Tests;
+
    --  A session with timer.every, reading through the same table.
    Clock_Now : Unsigned_64 := 5_000;
    Table : T.Table;
    TIMER_BINDING : constant := 7;
+   --  job.start: a Task<Integer> the test completes itself, counting starts.
+   JOB_BINDING : constant := 8;
+   JOB_DIGEST : constant CCL.Catalog.Descriptor_Digest := [1, 2, 3, 4];
+   Job_Starts : Natural := 0;
+   Last_Job : S.Handle := S.No_Handle;
    type Host is null record;
    procedure Invoke
      (Context : in out Host; Binding : Unsigned_32;
@@ -187,6 +237,12 @@ procedure Session_Tests is
          T.Open_Timer (Table, T.Period_Ms (Argument.Integer), Clock_Now, Handle);
          Reply := (Value => CCL.Host_Values.Integer_Constant (Integer_64 (Handle)),
                    Success => Handle /= S.No_Handle, Why => <>);
+      elsif Binding = JOB_BINDING then
+         T.Open_Task (Table, Handle);
+         Job_Starts := Job_Starts + 1;
+         Last_Job := Handle;
+         Reply := (Value => CCL.Host_Values.Integer_Constant (Integer_64 (Handle)),
+                   Success => Handle /= S.No_Handle, Why => <>);
       end if;
    end Invoke;
    procedure Read (Context : in out Host; Request : S.View_Request; Reply : in out S.View_Reply) is
@@ -195,6 +251,118 @@ procedure Session_Tests is
       T.Read (Table, Request, Reply);
    end Read;
    procedure Submit is new CCL.Sessions.Submit_With_Values (Host, Invoke, Read_Stream => Read);
+   package Replay is new CCL.Host_Replay (Host, Invoke, Read);
+   procedure Submit_Logged is new CCL.Sessions.Submit_With_Values
+     (Replay.Context, Replay.Invoke_Logged, Read_Stream => Replay.Read_Logged);
+   procedure Resume is new CCL.Sessions.Resume_With_Values
+     (Replay.Context, Replay.Invoke_Logged, Read_Stream => Replay.Read_Logged);
+
+   --  Publish job.start, a host operation whose result is a Task<Integer>.
+   procedure Publish_Job (Catalog : in out CCL.Catalog.Interface_Catalog; Error : out CCL.Catalog.Catalog_Error) is
+      Descriptor : CCL.Catalog.Interface_Descriptor;
+      Operation : CCL.Catalog.Operation_Descriptor;
+   begin
+      CCL.Catalog.Define_Interface ("job", 1, 0, JOB_DIGEST, Descriptor, Error);
+      if Error = CCL.Catalog.Catalog_Valid then
+         CCL.Catalog.Define_Host_Operation
+           ("start", 1,
+            (Argument => CCL.Host_Values.Integer_Value, Result => CCL.Host_Values.Integer_Value,
+             Result_Task => True, Authority => CCL.VM.Observe_Authority, others => <>),
+            Operation, Error);
+      end if;
+      if Error = CCL.Catalog.Catalog_Valid then
+         CCL.Catalog.Add_Operation (Descriptor, Operation, Error);
+      end if;
+      if Error = CCL.Catalog.Catalog_Valid then
+         CCL.Catalog.Publish (Catalog, Descriptor, Error);
+      end if;
+   end Publish_Job;
+
+   --  Awaiting a pending task in the interpreter: the entry stops, and once
+   --  the task completes it runs again with its host calls answered from
+   --  the log, so the job starts once.
+   procedure Wait_Tests is
+      Session : CCL.Sessions.Session;
+      Catalog : CCL.Catalog.Interface_Catalog;
+      Grants : CCL.Catalog.Granted_Bindings;
+      Error : CCL.Catalog.Catalog_Error;
+      Resolved : CCL.Catalog.Resolved_Operation;
+      Found, Resumed, Completed : Boolean;
+      Grant : CCL.Catalog.Grant_Result;
+      Context : Replay.Context;
+      Outcome : CCL.Language.Interpretation_Result;
+      Result : CCL.Objects.Image;
+      procedure Enter (Source : String) is
+      begin
+         Replay.Clear (Context);
+         Submit_Logged (Session, Source, CCL.Sessions.Default_Fuel, Grants, Context, Outcome);
+      end Enter;
+      procedure Again is
+      begin
+         Replay.Rewind (Context.Calls);
+         Resume (Session, CCL.Sessions.Length (Session), CCL.Sessions.Default_Fuel, Grants,
+                 Context, Outcome, Resumed);
+      end Again;
+      procedure Finish_Job (Value : Integer_64) is
+      begin
+         Result := (others => <>);
+         --  As a host builds it: under its schema's key (the table keeps a
+         --  local image, which the reader checks against the type it waits for).
+         Result.Schema := [others => 16#C0DE#];
+         Result.Cells (1) := CCL.Objects.Integer_Cell (Value);
+         Result.Used_Cells := 1;
+         T.Complete_Task (Table, Last_Job, Result, Completed);
+      end Finish_Job;
+      function Shown return String is (CCL.Sessions.Result_Image (Outcome));
+   begin
+      CCL.Catalog.Initialize (Catalog);
+      CCL.Catalog.Initialize (Grants);
+      Publish_Job (Catalog, Error);
+      CCL.Catalog.Resolve (Catalog, "job.start", Resolved, Found);
+      Check (Error = CCL.Catalog.Catalog_Valid and then Found and then Resolved.Import.Result_Task,
+             "job.start is published as a task source");
+      CCL.Catalog.Install (Grants, Resolved, JOB_BINDING, Grant);
+      CCL.Sessions.Initialize (Session, Catalog);
+
+      Enter ("(job.start 1)");
+      Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Is_Task and then
+             CCL.Sessions.Result_Type_Image (Outcome) = "Task<Integer>", "a task source returns a task: " & Shown);
+      Enter ("(+ 1 (wait (job.start 1)))");
+      Check (Outcome.Status = CCL.Language.Waiting_On_Task and then
+             S."=" (Outcome.Waited_On, Last_Job) and then Replay.Length (Context.Calls) = 1,
+             "waiting on a pending task stops the entry, its call logged");
+      Again;
+      Check (Resumed and then Outcome.Status = CCL.Language.Waiting_On_Task and then Job_Starts = 2,
+             "still pending: it stops again, starting nothing new");
+      Finish_Job (42);
+      Again;
+      Check (Resumed and then Outcome.Status = CCL.Language.Succeeded and then
+             Outcome.Result_Value.Integer = 43 and then Job_Starts = 2,
+             "once complete the entry finishes, the job started once: " & Shown);
+      Again;
+      Check (not Resumed, "a finished entry does not resume");
+
+      Enter ("(define answer (wait (job.start 2)))");
+      Check (Outcome.Status = CCL.Language.Waiting_On_Task, "a definition can wait");
+      Finish_Job (7);
+      Again;
+      Enter ("(* answer 6)");
+      Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 42,
+             "resuming binds the name: " & Shown);
+      Check (Job_Starts = 3, "each waiting entry started its job once");
+
+      --  Looking at a task never waits: Running, then Done with its result.
+      Enter ("(define job (job.start 3))");
+      Check (Shown = "Task<Integer>: Running", "a pending task shows Running: " & Shown);
+      Enter ("job");
+      Check (Shown = "Task<Integer>: Running", "and still does when looked at again: " & Shown);
+      Finish_Job (9);
+      Enter ("job");
+      Check (Shown = "Task<Integer>: Done 9", "a finished task shows Done and its result: " & Shown);
+      Enter ("(+ (wait job) 1)");
+      Check (Outcome.Status = CCL.Language.Succeeded and then Outcome.Result_Value.Integer = 10,
+             "waiting on a finished task does not stop");
+   end Wait_Tests;
 
    procedure Session_Tests_Run is
       Session : CCL.Sessions.Session;
@@ -250,7 +418,9 @@ procedure Session_Tests is
 begin
    Table_Tests;
    Port_Tests;
+   Task_Tests;
    Session_Tests_Run;
+   Wait_Tests;
    if Failures = 0 then
       Put_Line ("ccl-streams sessions: all passed");
    else

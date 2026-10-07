@@ -1,14 +1,13 @@
 # CCL: reclaiming storage within an evaluation (proposal)
 
-Status: **proposal**, not implemented. Written 2026-10-02 after the console's fractal demo hit the limit.
+Status: **proposal**, not implemented. Written 2026-10-02 after the console's fractal demo hit the limit. The tree-walking interpreter was removed 2026-10-05; every program now runs on the VM, so only the VM's regions remain to be reclaimed.
 
 ## The problem
 
-An evaluation allocates from four bounded regions:
+An evaluation allocates from bounded regions in the VM (`CCL.VM` arena, `List_Regions`, `Text_Regions`):
 - the value arena (512 records, 2048 component slots);
 - list storage (4096 elements);
-- text storage;
-- the VM's equivalents (`CCL.VM` arena, `List_Regions`, `Text_Regions`).
+- text storage.
 
 Nothing is freed until the evaluation ends. A computation that makes a record or a list on every step therefore exhausts a region even when no value escapes the step:
 
@@ -40,18 +39,17 @@ Bounded cost: the evacuation copies only what the result reaches above the marks
 - Captured values are copied in when the closure is built (the existing `Make_Closure` semantics), so a closure never refers into a released region.
 - Host objects (`Object_Owner` views) live in their own bounded table and are not affected.
 
-### What must be proved (interpreter and VM, per the parity rule)
+### What must be proved (in the VM)
 
 1. **Evacuation preserves the value:** the copy prints the same literal (`Print_Value`) and compares equal, element for element.
 2. **References still point backwards after evacuation:** the acyclic and termination invariants hold.
 3. **Release never frees anything a live binding can reach:** bindings below the marks are untouched.
 4. **Region accounting:** the marks are restored exactly, with no leak and no double use.
 
-The VM gets the same rule in `Enter_Call`/return and in `Run_Apply`'s per-element calls. The differential tests (`Same` in `userspace/ccl/tests/native`) gain allocation-heavy cases. Each must succeed in both engines, with the same results and the same fuel.
+The VM applies the rule in `Enter_Call`/return and in `Run_Apply`'s per-element calls. The CCL tests gain allocation-heavy cases, each checked for its result and fuel.
 
 ## Order of work
 
-1. Interpreter: marks and release for scalar results only. This is the common case (the fractal's `escape` returns an Integer) and needs no evacuation.
-2. VM: the same, with the differential tests.
-3. Evacuation of compound results, in both engines.
-4. Proofs at level 1, or level 2 where needed; then rerun the console fractal with records and 24 iterations as the regression.
+1. VM: marks and release for scalar results only. This is the common case (the fractal's `escape` returns an Integer) and needs no evacuation.
+2. Evacuation of compound results.
+3. Proofs at level 1, or level 2 where needed; then rerun the console fractal with records and 24 iterations as the regression.

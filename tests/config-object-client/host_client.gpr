@@ -4,6 +4,7 @@ project Host_Client extends "vm_client.gpr" is
      ("host_tests.adb", "read_outcome_tests.adb", "view_tests.adb", "read_source_tests.adb",
       "ccl-language-views.ads", "ccl-language-views.adb",
       "ccl-vm-native_objects.ads", "ccl-vm-native_objects.adb",
+      "ccl-evaluation.ads", "ccl-evaluation.adb",
       "config_read_outcomes.ads", "config_read_outcomes.adb",
       "config_object_client-host.ads", "config_object_client-host.adb");
    for Object_Dir use "build/host";

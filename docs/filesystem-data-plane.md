@@ -28,10 +28,16 @@ opens and closes. Those go over a queue pair, not a call each
 
 ### 1. A request queue pair per client
 
-- `OP_FS_QUEUE` lends the filesystem service a queue grant (layout as
-  `CuBit.Net_Channel_Layout`'s control queue: `CuBit.Submission_Queues`
-  over fixed 32-byte entries), plus a **transfer arena**: a grant the
-  client registers once.
+- The client opens three channels on the filesystem endpoint
+  (docs/data-plane.md; `CuBit.Filesystem_Queues`), once: the **transfer
+  arena** and the dirty arena (arena channels it lends, both sides
+  writing), then the **queue pair** (a duplex channel). The queue is
+  `CuBit.Submission_Queues` over 64-byte requests and 32-byte answers.
+  Since 2026-10-06 each side writes only memory it owns: the client's
+  region holds the requests and the indices it writes, the service's
+  region (granted back, read-only) the answers, the service's indices,
+  its wake word, the namespace generation and the delegations. This
+  replaced `OP_FS_QUEUE`, one client-lent region the service wrote into.
 - Requests name data as (arena offset, length) within the arena, never
   as a grant per request.
 - Entries: `OPEN`, `CLOSE`, `READ_AT`, `WRITE_AT`, `FLUSH`, `RESIZE`,
@@ -40,7 +46,8 @@ opens and closes. Those go over a queue pair, not a call each
   Each entry is admitted like its IPC twin. Handles resolve only in the
   owner's table.
 - The service answers on the completion ring. Its wake word and the
-  client's KICK work as in netstack's control queue.
+  client's kick (the channel protocol's `OP_KICK`) work as in netstack's
+  control queue.
 - Many requests are in flight. The service may complete them out of order
   (tokens pair them).
 - The service can also post **unsolicited entries** (token 0, kind
@@ -225,8 +232,8 @@ are:
   - returns the queue, arena and dirty-arena grants, freeing the queue
     slot (16 at most);
   - clears the process's access profile.
-- **The namespace generation** (`Namespace_Generation_At`, a word in the
-  queue's header page). The service moves it on before any unlink,
+- **The namespace generation** (`Server_Namespace_At`, a word in the
+  service's region of the queue pair). The service moves it on before any unlink,
   rename, rmdir or mkdir, when a volume is (re)admitted (for every
   client), and when a client's access policy changes (`SET_ACL`,
   `REVOKE_ACL`, for that client). A client reads it before sending an

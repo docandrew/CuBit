@@ -17,6 +17,9 @@ procedure Submission_Image_Tests is
 begin
    declare
       Pages : Backing_Pages;
+      GPUs : constant array (Positive range 1 .. 8) of Unsigned_64 :=
+        [0, 1, 4095, 4096, 16#FED_EC000#, 16#FED_ED000#,
+         16#FEE00000#, Unsigned_64'Last];
    begin
       for P in Pages'Range loop
          Pages (P) := 16#4000000# - Unsigned_64 (P) * 8192;
@@ -32,20 +35,28 @@ begin
       -- A gap between scattered pages is not part of this allocation.
       Result := Build_For_VM (Pages, 16#2000000#, Pages (0) - 4096);
       pragma Assert (Result.Valid and Result.Words (1075) = Unsigned_32 (Pages (0) - 4096));
+      pragma Assert (Valid_For_VM (Pages, 16#2000000#, Pages (0) - 4096));
+      for GPU of GPUs loop
+         pragma Assert (Valid_For_VM (Pages, GPU, 4096) =
+           Build_For_VM (Pages, GPU, 4096).Valid);
+      end loop;
       for P in Pages'Range loop
          Result := Build_For_VM (Pages, 16#2000000#, Pages (P));
          pragma Assert (not Result.Valid and (for all Word of Result.Words => Word = 0));
+         pragma Assert (not Valid_For_VM (Pages, 16#2000000#, Pages (P)));
       end loop;
       for P in Pages'Range loop
          declare
             Bad : Backing_Pages := Pages;
          begin
             Bad (P) := 0;
+            pragma Assert (not Valid_For_VM (Bad, 16#2000000#, 4096));
             Result := Build (Bad, 16#2000000#);
             pragma Assert (not Result.Valid and
               (for all Word of Result.Words => Word = 0));
             pragma Assert (not Build_For_VM (Bad, 16#2000000#, 4096).Valid);
             Bad (P) := Pages ((P + 1) mod Pages'Length);
+            pragma Assert (not Valid_For_VM (Bad, 16#2000000#, 4096));
             pragma Assert (not Build (Bad, 16#2000000#).Valid);
             pragma Assert (not Build_For_VM (Bad, 16#2000000#, 4096).Valid);
          end;

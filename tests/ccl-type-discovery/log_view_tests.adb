@@ -1,9 +1,11 @@
+with CCL.Evaluation;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Objects; use CCL.Objects;
 with CCL.Catalog; use CCL.Catalog;
 with CCL.Host_Values;
 with CCL.Language; use CCL.Language;
+   use CCL.Evaluation;
 with CCL.Interfaces.Logs;
 
 --  The REPL log viewer's path, hosted: (logs.recent "service") through the
@@ -49,7 +51,7 @@ procedure Log_View_Tests is
       end if;
       Reply := (Value => CCL.Host_Values.Object_Constant (Image), Success => True, Why => <>);
    end Invoke;
-   procedure Run is new Interpret_With_Values (Host, Invoke);
+   procedure Run is new Evaluate_With_Values (Host, Invoke);
    procedure Evaluate (Source : String) is
    begin
       Run (Source, 4096, Catalog, Grants, Context, Outcome);

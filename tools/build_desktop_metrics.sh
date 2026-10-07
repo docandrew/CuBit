@@ -29,6 +29,10 @@ alr exec -- gcc -c ../userspace/services/desktop/build-metrics-manifest/manifest
 if [ "${CUBIT_COMPOSITOR:-legacy}" = mesa ]; then
   : "${CUBIT_MESA_BUILD:?Set CUBIT_MESA_BUILD to the existing native Mesa build}"
   python3 ../tools/build_mesa_desktop.py "$CUBIT_MESA_BUILD" --metrics on --scenario-output
+elif [ "${CUBIT_COMPOSITOR:-legacy}" = vulkan ]; then
+  : "${CUBIT_MESA_BUNDLE:?Set CUBIT_MESA_BUNDLE to the verified Mesa service bundle}"
+  : "${CUBIT_MESA_SOURCE:?Set CUBIT_MESA_SOURCE to the matching Mesa source}"
+  python3 ../tools/build_vulkan_desktop.py "$CUBIT_MESA_BUNDLE" "$CUBIT_MESA_SOURCE" --metrics on
 else
 alr exec -- gprbuild -p -P ../userspace/services/desktop/desktop.gpr \
   -XCUBIT_COMPOSITOR="${CUBIT_COMPOSITOR:-legacy}" \

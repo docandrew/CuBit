@@ -160,18 +160,21 @@ uint32_t cubit_vulkan_device_source_prepare(uint32_t slot,uint32_t width,
 }
 
 static struct cubit_vulkan_upload_buffer upload;
-void *cubit_vulkan_device_upload_prepare(void)
+static struct cubit_vulkan_upload_buffer readback;
+static void *prepare_staging(struct cubit_vulkan_upload_buffer *staging)
 {
     if(!prepared||!context.live||!pipeline_live||!targets_prepared||
        !device.instance||!device.physical||!device.device||!device.instance_proc||
        context.device!=device.device||!target_request.proc||
-       upload.buffer||upload.memory||upload.mapped||
-       (upload.stage!=0&&upload.stage!=3))return NULL;
+       staging->buffer||staging->memory||staging->mapped||
+       (staging->stage!=0&&staging->stage!=3))return NULL;
     for(unsigned n=0;n<3;n++)
         if(images[n].stage!=2||!images[n].image||!images[n].memory||
            !targets.views[n]||!targets.framebuffers[n])return NULL;
-    upload=(struct cubit_vulkan_upload_buffer){
+    *staging=(struct cubit_vulkan_upload_buffer){
         .instance=device.instance,.physical=device.physical,.device=device.device,
         .instance_proc=device.instance_proc,.proc=target_request.proc};
-    return &upload;
+    return staging;
 }
+void *cubit_vulkan_device_upload_prepare(void){return prepare_staging(&upload);}
+void *cubit_vulkan_device_readback_prepare(void){return prepare_staging(&readback);}

@@ -245,6 +245,8 @@ procedure main is
    package Buffer_Allocations is new Intel_GPU_Extent_Allocator
      (Context_Allocation_Ready, Allocate_Buffer_Block);
    Intel_Buffer_Pool : Buffer_Allocations.Pool;
+   Intel_Heap_Configured : Boolean := False;
+   Intel_Requested_Bytes : Unsigned_64 := 0;
    function Allocate_Buffer_Block (CPU : Unsigned_64) return Unsigned_64 is
      (syscall (SYSCALL_ALLOC_DMA, Intel_Inspection_PID,
        Intel_GPU_Physical_Extents.Allocation_Order, CPU, 3,
@@ -273,7 +275,24 @@ procedure main is
      (Index : Positive; Pages : Intel_GPU_Buffer_Backing.Page_Count;
       Generation : Unsigned_32; Buffer : out Intel_GPU_Buffer_Reply.Extent_View;
       Success, Pending : out Boolean) is
+      Empty : Intel_GPU_Buffer_Reply.Extent_View;
    begin
+      if not Intel_Heap_Configured then
+         declare
+            Policy : constant Intel_GPU_Buffer_Backing.Heap_Policy :=
+              Intel_GPU_Buffer_Backing.Native_System_Heap
+                (getInfo (Intel_GPU_Buffer_Backing.Managed_RAM_Query));
+         begin
+            Buffer_Allocations.Configure_Heap
+              (Intel_Buffer_Pool, Policy.Byte_Quota, Policy.DMA_Limit,
+               Intel_Heap_Configured);
+         end;
+         if not Intel_Heap_Configured then
+            Buffer := Empty;
+            Success := False; Pending := False;
+            return;
+         end if;
+      end if;
       Intel_Extent_Growth.Step
         (Intel_Inspection_PID, Index, Pages, Generation, Buffer, Success, Pending);
    end Acquire_Intel_Buffer;
@@ -292,6 +311,14 @@ procedure main is
             words => [Intel_GPU_Buffer_Reply.CPU_Address (Buffer),
               Intel_GPU_Buffer_Reply.Byte_Count (Buffer), Intel_Inspection_PID,
               Intel_GPU_Buffer_Backing.Allocation_Key (Index, Generation)]);
+      else
+         Response :=
+           (tag => (16#F001#, 4, 0, 0), authorityTag => 0,
+            words => [Intel_GPU_Buffer_Backing.Denial_Version,
+              Intel_GPU_Buffer_Backing.Allocation_Key (Index, Generation),
+              Intel_Requested_Bytes,
+              Unsigned_64 (Intel_GPU_Buffer_Backing.Allocation_Reason'Pos
+                (Buffer_Allocations.Last_Allocation_Reason (Intel_Buffer_Pool)))]);
       end if;
       -- Delivery failure consumes the saved capability, not the allocation.
       -- Retained backing must not be recycled on ambiguous client delivery.
@@ -3561,7 +3588,12 @@ begin
               (Intel_Allocations, Intel_GPU_Buffer_Backing.Slot (msg.words (0)),
                Intel_GPU_Buffer_Backing.Page_Count (msg.words (1)),
                Unsigned_32 (msg.words (2)), Accepted);
-            if not Accepted then
+            if Accepted then
+               -- Begin_Request only saves the request; Step runs later.
+               -- Do not reset the pending request's evidence on a rejection.
+               Intel_Requested_Bytes := msg.words (1) * 4096;
+               Buffer_Allocations.Reset_Allocation_Diagnostic (Intel_Buffer_Pool);
+            else
                ret := Unsigned_64 (reply (from,
                  (tag => (16#F001#, 0, 0, 0), authorityTag => 0, words => [others => 0])));
             end if;

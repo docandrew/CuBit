@@ -38,8 +38,10 @@ package Intel_GPU_Buffer_Memory is
    -- Event-loop API: at most one allocation per pool in flight. Start never
    -- waits. Route matching completions here and call Tick even when no reply
    -- arrives. Unrelated completions remain the caller's responsibility.
-   -- Complete performs bounded zero/flush/readback work before returning;
-   -- it avoids IPC waits, not memory initialization cost. Cancel quarantines
+   -- Complete and subsequent Tick calls initialize at most 64KiB each
+   -- (zero/flush/readback). Result remains unavailable until all chunks pass.
+   -- Overlap validation examines at most 64 backing records per call, before
+   -- any RAM initialization. Cancel quarantines
    -- the pool; late completions cannot publish or reuse its retained backing.
    procedure Start
      (Object : in out Pool; Index : Intel_GPU_Buffer_Backing.Slot;
@@ -63,6 +65,9 @@ package Intel_GPU_Buffer_Memory is
    procedure Tick (Object : in out Pool);
    procedure Cancel (Object : in out Pool);
    function Pending (Object : Pool) return Boolean;
+   -- Local validation/initialization can advance without a completion or timer.
+   -- Service other event-loop work, then Tick again instead of sleeping.
+   function Local_Work_Pending (Object : Pool) return Boolean;
    function Result (Object : Pool) return Intel_GPU_Buffer_Reply.Backing;
    -- Serialized caller, one pinned supervisor endpoint15, no other nonlogger
    -- request in flight. One attempt per slot generation. Uncertain failures quarantine
@@ -98,6 +103,11 @@ private
       Pages : Intel_GPU_Buffer_Backing.Page_Count := 1;
       Started_At, Previous : Interfaces.Unsigned_64 := 0;
       Current : Intel_GPU_Buffer_Reply.Backing;
+      Initializing : Boolean := False;
+      Validating : Boolean := False;
+      Validated_Records : Natural := 0;
+      Initialization_Offset : Interfaces.Unsigned_64 := 0;
+      Initialization_Backing : Intel_GPU_Buffer_Reply.Backing;
       Fetching : Boolean := False;
       Extent_Index : Natural := 0;
       Arena_ID, Requested_CPU, Requested_Bytes : Interfaces.Unsigned_64 := 0;

@@ -17,7 +17,7 @@ This is the CCL side of the stream model in [typed IPC](typed-ipc.md#calls-and-s
 The non-negotiables are the ones CCL already keeps:
 - every evaluation is bounded (fuel and storage);
 - authority is explicit and visible;
-- the interpreter and the VM behave the same.
+- every program is checked, compiled and verified before it runs on the VM.
 
 ## Streams are session resources; evaluations see windows
 
@@ -48,7 +48,7 @@ So `(image.scope (window 1024 mic))` is an ordinary bounded expression: 1024 sam
   - Only an authorized operation opens one, such as `(logs.tail "netstack")`. Source may name a stream its own session already holds, `(stream T n)`; that grants nothing, and every read is checked against `T` (see [phase 1](#naming-a-stream-stream-t-n)).
   - It prints as a description, `#<Stream LogEntry logs.tail "netstack">`, never as a literal that reads back.
   - It works like an image id, except that an image id names data, while a stream handle names a live subscription the session holds.
-- **Both engines read a stream the same way.** `latest`, `window`, `since`, `arrived` and `lost` read the session's buffer through one callback that both engines call.
+- **One read path.** `latest`, `window`, `since`, `arrived` and `lost` read the session's buffer through one callback the VM calls.
   - Elements are copied in as values of `T`, exactly as host lists are today.
   - Bytecode never holds a stream's storage.
 
@@ -224,11 +224,85 @@ CCL streams follow the split the rest of the system already uses ([async rings](
   Both counted frame by frame by the `Frame_Stats` streams.
 
 
+## The ring underneath: one proved format (2026-10-06)
+
+Program outlets (`unix.stdout`, typed outlets, everything the console
+shows) used their own ring format, `CuBit.Streams` ("STRI"). It was
+unproved and implemented three times: the runtime's producer and reader, the
+libc's writer, and the libc's child-stderr reader. Everything else that
+moves records between processes already used one proved family
+(tests/channel-rings):
+- `CuBit.Channel_Rings`: indices;
+- `CuBit.Datagram_Rings`: records;
+- `CuBit.Slot_Rings` and `CuBit.Submission_Queues`: generic slots and queue
+  pairs.
+
+Network channels, filesystem queues and both directions of logging use that
+family. Outlets move onto it too.
+
+**`CuBit.Stream_Rings`** is a proved broadcast layer over that family. One
+producer, any number of readers, and the producer never waits for a reader.
+- **Records** are `Datagram_Rings` records: a 4-byte header, padding, and a
+  pad record where a record would wrap. The element type is the stream's,
+  declared in the program's description, not stored per record.
+- **The region** is a control page and a power-of-two data ring. The control
+  page has one word per cache line:
+  - PRODUCED (the end of the newest record);
+  - OLDEST (the start of the oldest whole record still in the ring);
+  - ENDED (the producer is done).
+- **The producer** makes room by moving OLDEST past whole records, which it
+  wrote itself and so can trust (`Make_Room`, which writes nothing). It
+  publishes OLDEST, then writes the record (`Datagram_Rings.Put`), then
+  publishes PRODUCED, so no byte a reader may still be copying changes
+  before OLDEST says it is gone. A record takes at most half the ring
+  (`Largest_Payload`); a byte-stream writer such as the libc's splits longer
+  writes into such records. A typed outlet refuses a record that large and
+  writes nothing.
+- **A reader** keeps its cursor in its own memory. Readers hold read-only
+  grants and write nothing into the region.
+  - If OLDEST has passed its cursor, the records in between are lost. It
+    resumes at OLDEST and reports a gap.
+  - After copying a record, it re-checks OLDEST. A record the producer
+    overwrote during the copy is discarded and counted lost, never returned
+    torn.
+- **Proved:** indices and accesses stay within the ring, eviction moves only
+  over whole records, a put is whole or nothing, a read never exceeds the
+  caller's buffer, and `Largest_Payload` always fits.
+- **Tested on the host, not proved** (tests/channel-rings): after
+  `Make_Room`, `Put` succeeds and changes no byte of the records OLDEST
+  still covers.
+- **The adapter:** the ordering itself (OLDEST, fence, bytes, fence,
+  PRODUCED), the region's words, and the reader's retry live in one
+  address-level unit, `CuBit.Stream_Regions`. The runtime, the libc and
+  launchers all use it. It is not proved, and the guest tests cover it. The
+  fences are compiler barriers: x86-64 keeps stores in order, and loads in
+  order.
+- **Policy:** this is drop-oldest, right for outlets and their viewers. Logs
+  keep their shedding single-consumer rings (`CuBit.Log_Publish_Rings`):
+  logstore is one reader with a cursor the producer can see.
+
+**Moved onto it:**
+- the runtime's outlets (`CuBit.Streams` keeps its program-facing calls,
+  `Open_Outlet` and `streamPrint`);
+- launcher-owned rings (`CuBit.Launching.Lend_Ring`);
+- the libc's writer for C, C++ and Rust outlets;
+- the libc's child-stderr forwarding;
+- the CCL console's readers;
+- subscribing, which since the same day is a channel
+  (`CuBit.Outlet_Channels`, docs/data-plane.md): a reader opens a consuming
+  channel on the outlet's connector and gets its own read-only grant of the
+  one broadcast region; `OP_STREAM_SUBSCRIBE` and its typed variant are
+  removed.
+
+The "STRI" format code is removed, including `CuBit.Libc_Stream_Rings`.
+Element-type tags (`ELEMENT_RAW_BYTES`, `ELEMENT_TEXT_LINE`) are defined
+once, in `CuBit.Stream_Rings`.
+
 ## Phases
 
 1. **Stream type and session table** (with the element-type rule and the fuel model):
    - the `Stream<T>` type form;
-   - handles, the five window operations and the session's stream table, in the interpreter and the VM together, with proofs;
+   - handles, the five window operations and the session's stream table, in the VM, with proofs;
    - `timer.every` as the first source.
    - Stream cells with history, `%N` cell references, and derived streams (`where`, `each`, `take`).
    - Reactive cells and the frame budget in the console then replace `:watch`.
@@ -243,7 +317,7 @@ jj is the flagship for phase 5. It also needs file writes in the Unix std and it
 
 ## Phase 1: what landed (2026-10-02)
 
-Status: implemented in both engines.
+Status: implemented in both engines. (The interpreter was removed 2026-10-05; streams now run only on the VM, through `CCL.Evaluation`.)
 - **Proved (GNATprove):**
   - level 1: `CCL_Stream_Table`, `CCL.Interfaces.Timer` and `CCL.Types` (all of it);
   - level 2: every changed line of `CCL.Language`, `CCL.VM`, `CCL.VM.Native_Objects`, `CCL.Host_Values` and `CCL.Scheduler`.
@@ -281,8 +355,8 @@ Change from the design above: source *can* name a stream, but only one its sessi
   - `(arrived s)` and `(lost s)` : `Integer`.
 - **Window size:** a window is at most 255 elements, one image: its count cell, then the elements.
 - **One reader contract,** `CCL.Streams.View_Request` and `View_Reply`. The reply's elements are an image laid out as the evaluation's own `T` or `List<T>`, validated with `Capture_Local` before use.
-- **Interpreter:**
-  - `Interpret_With_Values` and the session generics gain a `Read_Stream` formal. It defaults to a null reader, so existing hosts are unchanged.
+- **Evaluation:**
+  - `CCL.Evaluation.Evaluate_With_Values` and the session generics take a `Read_Stream` formal (it was added to the interpreter's `Interpret_With_Values`, now removed). It defaults to a null reader, so existing hosts are unchanged.
   - A scalar element frees its object slot at once, so a cell may read `latest` any number of times.
 - **VM:**
   - `Push_Stream` (53) pushes a handle.
@@ -329,11 +403,11 @@ The console pumps the table every frame. When an element arrives, every live cel
 
 ### Tests
 
-- `tests/ccl-streams/main.adb`: 62 checks, each expression run by the interpreter and as verified bytecode against one fake table:
+- `tests/ccl-streams/main.adb`: 62 checks, each expression run against one fake table (they compared the interpreter with verified bytecode; since 2026-10-05 both paths run on the VM):
   - every view;
   - Strings and records;
   - streams through functions and conditionals;
-  - every typed failure in both engines;
+  - every typed failure;
   - opacity, and the definition-site refusals.
 - `tests/ccl-streams/session_tests.adb`:
   - the table: rings, loss, catch-up, generations, `Retain`, a full table;

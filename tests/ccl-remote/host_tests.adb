@@ -1,8 +1,10 @@
+with CCL.Evaluation;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Catalog; use CCL.Catalog;
 with CCL.Interfaces.Clock;
 with CCL.Language; use CCL.Language;
+   use CCL.Evaluation;
 with CCL.Sessions;
 with CCL.Imports;
 with Interpreter_Host;
@@ -41,7 +43,7 @@ begin
    Initialize (Grants); Install (Grants, Operation, 77, Grant); pragma Assert (Grant = Grant_Added);
    Interpreter_Host.Evaluate ("(clock.monotonic-ms)", 4096, Empty, Grants, Context, Result);
    pragma Assert (Result.Status = Parse_Failed and Context.Calls = 0);
-   Interpret ("(clock.monotonic-ms)", 4096, Catalog, Result);
+   Evaluate ("(clock.monotonic-ms)", 4096, Catalog, Result);
    pragma Assert (Result.Status = Host_Import_Required and Context.Calls = 0);
    Run ("(+ true (clock.monotonic-ms))");
    pragma Assert (Result.Status = Type_Check_Failed and Context.Calls = 0);
@@ -59,7 +61,7 @@ begin
          Plain : Interpretation_Result;
       begin
          Run (Expression);
-         Interpret (Expression, 4096, Plain);
+         Evaluate (Expression, 4096, Plain);
          pragma Assert (Result.Status = Succeeded and Plain.Status = Succeeded);
          pragma Assert (Result.Has_Text and Plain.Has_Text);
          pragma Assert (Result.Result_Text.Data (1 .. Result.Result_Text.Length) = Expected);

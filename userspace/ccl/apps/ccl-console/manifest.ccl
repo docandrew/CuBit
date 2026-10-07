@@ -24,7 +24,10 @@
     (config-all [File_Right.Read])
     # :files, :save and :load; and the files handed to programs it starts.
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")
-    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@mem:0/work")]
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@mem:0/work")
+    # The toolchain, read-only: handed to gcc (its toolchain parameter).
+    (filesystem [File_Right.Read] "@nvme:0/toolchain")]
   # Each becomes a CCL interface generated from its description: as.run,
-  # ld.run, and their ports (as.unix.stderr ...).
-  may_launch => [(Launch "as.app") (Launch "ld.app")])
+  # ld.run, gcc.run (named by the last component), and their ports
+  # (as.unix.stderr ...).
+  may_launch => [(Launch "as.app") (Launch "ld.app") (Launch "toolchain/bin/gcc")])

@@ -4,54 +4,65 @@
 --
 --  @summary
 --  The filesystem service's request queue (docs/filesystem-data-plane.md):
---  a queue pair a client lends once (OP_FS_QUEUE), with a transfer arena
---  its requests name data in, instead of a message and a grant per
---  request. The byte layout is the one C clients use (cubit_fs_queue.h).
+--  a queue pair a client opens once, with a transfer arena its requests
+--  name data in, instead of a message and a grant per request. The byte
+--  layout is the one C clients use (cubit_fs_queue.h).
 --
---  OP_FS_QUEUE (call): words 0 = the queue grant, 1 = the arena grant
---  (CuBit.Grant_References wire form), 2 = the arena's bytes, 3 = the
---  dirty arena grant (Dirty_Arena_Bytes), or 0 for none. Replies
---  REPLY_OK. One queue per client process.
---  OP_FS_KICK (one-way): the client produced requests while the service's
---  wake word was armed.
+--  The client opens three channels on the filesystem endpoint
+--  (CuBit.Channels, docs/data-plane.md), lending what it owns:
+--    Transfer_Connector: the transfer arena (TRANSFER_CONTRACT), which both
+--      sides write: request data, read results.
+--    Dirty_Connector (optional): the dirty arena (DIRTY_CONTRACT); without
+--      it, no write delegations.
+--    Queue_Connector, last: the queue pair (QUEUE_CONTRACT, duplex). The
+--      client's region holds the requests and the indices it writes; the
+--      service's region (granted back, read-only) the answers, the indices
+--      it writes, its wake word, the namespace generation and the
+--      delegations. Each side writes only its own region.
+--  One queue per client process. Kicks are the channel protocol's OP_KICK
+--  on the queue's channel number.
 --  OP_FS_WAIT (submit): completes once answers wait in the client's queue.
---
---  Queue grant: a header page (submission header at Submissions_At,
---  completion header at Completions_At; words as CuBit.Frame_Rings), then
---  Slots requests of Request_Bytes at Requests_At and Slots answers of
---  Answer_Bytes at Answers_At, then the delegation pages (one entry per
---  service handle slot) at Delegations_At.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
+with CuBit.Channel_Contracts;
+with CuBit.Protocols;
 with CuBit.Submission_Queues;
 
 package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
 
-   OP_FS_QUEUE : constant := 16#0020#;
-   OP_FS_KICK  : constant := 16#0021#;
    OP_FS_WAIT  : constant := 16#0022#;
 
-   Queue_Bytes    : constant := 77_824;       --  3 pages + delegations
+   Queue_Connector    : constant := 1;
+   Transfer_Connector : constant := 2;
+   Dirty_Connector    : constant := 3;
+
    Slot_Bits      : constant := 6;
    Slots          : constant := 64;
    Request_Bytes  : constant := 64;
    Answer_Bytes   : constant := 32;
-   Submissions_At : constant := 0;
-   Completions_At : constant := 2_048;
-   Requests_At    : constant := 4_096;
-   Answers_At     : constant := 8_192;
-   --  Header words (as CuBit.Frame_Rings).
-   Produced_At : constant := 0;
-   Consumed_At : constant := 64;
-   Wake_At     : constant := 68;
-   --  The namespace generation (32 bits, in the submission header page):
-   --  the service moves it on before any change that could alter what a
-   --  name resolves to or whether this client may open it (unlink,
-   --  rename, rmdir, mkdir, a change to the client's access policy). A
-   --  client reuses a closed ("parked") handle for a name only while it
-   --  is unchanged since the handle was parked.
-   Namespace_Generation_At : constant := 72;
+   Page_Bytes     : constant := 4_096;
+
+   --  The client's region: what the client writes (indices as
+   --  CuBit.Slot_Rings, free-running entry counts, 32 bits).
+   Client_Pages       : constant := 2;
+   Client_Submitted_At : constant := 0;      --  requests produced
+   Client_Reaped_At    : constant := 64;     --  answers consumed
+   Client_Requests_At  : constant := 4_096;
+
+   --  The service's region: what the service writes.
+   Server_Answered_At  : constant := 0;      --  answers produced
+   Server_Taken_At     : constant := 64;     --  requests consumed
+   --  Nonzero while the service sleeps and wants a kick for new requests;
+   --  it changes each time it arms, so one kick answers one arming.
+   Server_Wake_At      : constant := 128;
+   --  The namespace generation (32 bits): the service moves it on before
+   --  any change that could alter what a name resolves to or whether this
+   --  client may open it (unlink, rename, rmdir, mkdir, a change to the
+   --  client's access policy). A client reuses a closed ("parked") handle
+   --  for a name only while it is unchanged since the handle was parked.
+   Server_Namespace_At : constant := 192;
+   Server_Answers_At   : constant := 4_096;
 
    --  Read delegations (docs/filesystem-data-plane.md), written by the
    --  service in the header page, one entry per file handle slot (a
@@ -62,7 +73,7 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
    --  resize or writable open by another handle takes effect. The version
    --  changes with every change to the file, so a reopen may keep cached
    --  pages of an unchanged version.
-   Delegations_At        : constant := 12_288;
+   Delegations_At        : constant := 8_192;    --  in the service's region
    Delegation_Bytes      : constant := 32;
    Maximum_Delegations   : constant := 2_048;
    Delegation_Valid_At   : constant := 0;
@@ -215,19 +226,52 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
      (Queues.Submission'Size /= Request_Bytes * 8 or else
       Queues.Completion'Size /= Answer_Bytes * 8,
       "filesystem queue entries must be Request_Bytes and Answer_Bytes");
+   Server_Pages : constant := (Delegations_At + Maximum_Delegations * Delegation_Bytes) / Page_Bytes;
+   Dirty_Arena_Pages : constant := Dirty_Arena_Bytes / Page_Bytes;
+   Transfer_Pages : constant := 256;
+   Transfer_Bytes : constant := Transfer_Pages * Page_Bytes;
+
    pragma Compile_Time_Error
      (Queues.Submissions.Slots /= Slots or else
-      Requests_At + Slots * Request_Bytes > Answers_At or else
-      Answers_At + Slots * Answer_Bytes > Queue_Bytes or else
-      Namespace_Generation_At < Wake_At + 4 or else
-      Namespace_Generation_At + 4 > Completions_At or else
-      Delegations_At < Answers_At + Slots * Answer_Bytes or else
-      Delegations_At mod 4_096 /= 0 or else
-      Delegations_At + Maximum_Delegations * Delegation_Bytes /=
-        Queue_Bytes or else
+      Client_Requests_At + Slots * Request_Bytes > Client_Pages * Page_Bytes or else
+      Server_Answers_At + Slots * Answer_Bytes > Delegations_At or else
+      Delegations_At mod Page_Bytes /= 0 or else
+      (Delegations_At + Maximum_Delegations * Delegation_Bytes) mod Page_Bytes /= 0 or else
       Dirty_Pages_At /= Dirty_Entries * Dirty_Entry_Bytes or else
-      Dirty_Arena_Bytes /= Dirty_Pages_At + Dirty_Entries * Dirty_Page_Bytes,
+      Dirty_Arena_Bytes /= Dirty_Pages_At + Dirty_Entries * Dirty_Page_Bytes or else
+      Dirty_Arena_Bytes mod Page_Bytes /= 0,
       "filesystem queue layout");
+
+   --  The channels (schema identities name these layouts).
+   QUEUE_SCHEMA    : constant CuBit.Protocols.Schema_Id := 16#4653_5155_4555_0001#;
+   TRANSFER_SCHEMA : constant CuBit.Protocols.Schema_Id := 16#4653_5452_414E_0001#;
+   DIRTY_SCHEMA    : constant CuBit.Protocols.Schema_Id := 16#4653_4449_5254_0001#;
+
+   QUEUE_CONTRACT : constant CuBit.Channel_Contracts.Contract :=
+     (Element => (Identity => QUEUE_SCHEMA, Version => 1,
+                  Sizing => CuBit.Protocols.Fixed_Size, Wire_Size => Request_Bytes),
+      Kind    => CuBit.Channel_Contracts.Duplex,
+      Policy  => CuBit.Channel_Contracts.Lossless,
+      Pages   => Client_Pages,
+      Buffers => Server_Pages,
+      Rule    => CuBit.Channel_Contracts.Copy_Then_Validate);
+   --  One-page buffers; requests name byte ranges within them.
+   TRANSFER_CONTRACT : constant CuBit.Channel_Contracts.Contract :=
+     (Element => (Identity => TRANSFER_SCHEMA, Version => 1,
+                  Sizing => CuBit.Protocols.Bounded_Size, Wire_Size => Page_Bytes),
+      Kind    => CuBit.Channel_Contracts.Arena,
+      Policy  => CuBit.Channel_Contracts.Lossless,
+      Pages   => 1,
+      Buffers => Transfer_Pages,
+      Rule    => CuBit.Channel_Contracts.Copy_Then_Validate);
+   DIRTY_CONTRACT : constant CuBit.Channel_Contracts.Contract :=
+     (Element => (Identity => DIRTY_SCHEMA, Version => 1,
+                  Sizing => CuBit.Protocols.Fixed_Size, Wire_Size => Dirty_Page_Bytes),
+      Kind    => CuBit.Channel_Contracts.Arena,
+      Policy  => CuBit.Channel_Contracts.Lossless,
+      Pages   => 1,
+      Buffers => Dirty_Arena_Pages,
+      Rule    => CuBit.Channel_Contracts.Copy_Then_Validate);
 
    --  A request's arena range lies inside an arena of Arena_Bytes.
    function In_Arena

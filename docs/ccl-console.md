@@ -37,7 +37,7 @@ should be able to show the same way.
   - Field names head the columns; numbers align right.
   - Rows are zebra-striped; at most 20 are shown, then "+N more rows".
   - Hovering a cell shows `field : Type = value`; clicking inserts that value.
-  - The row shape (`CCL.Types.Shapes`) is computed where the result is produced, by both the interpreter and the VM.
+  - The row shape (`CCL.Types.Shapes`) is computed where the result is produced, by the VM.
   - `CCL.Literal_Tables` (SPARK) splits the canonical literal into cells, so the Observatory can use the same cells.
 - **Pictures:** an `Image` result is drawn inline.
   - It is enlarged by a whole-number factor while it fits, otherwise reduced, with a caption giving its size.
@@ -116,7 +116,7 @@ Composition keeps images immutable: each operation makes a new image from stored
 - Generated pictures are therefore small and shown enlarged.
 - An evaluation's value arena (512 records) and list storage (4096 elements) are not reclaimed until it ends.
   - A computation that builds a record or a range per step runs out of space; the fractal packs its state and uses 12 iterations for this reason.
-  - Freeing a call's temporaries when it returns, in both the interpreter and the VM, is the next memory-model step.
+  - Freeing a call's temporaries when it returns, in the VM, is the next memory-model step.
 - Screenshots and GPU output as images come next.
 
 ## Structure
@@ -183,7 +183,7 @@ On a locked-down CuBit system, a newcomer's first surprise is a refusal. Each re
   - It defines a `Reason` (`Not_Granted`, `Outside_Scope`, `Refused`, `Not_Found`, `Invalid_Argument`, `Unavailable`, `Exhausted`, `Device_Error`) and a bounded `Failure` record: Why, a Detail, and a Remedy.
   - `Explain` writes the sentence. A grant question ends "To allow it: …"; anything else ends "Instead: …".
 - **Host bindings** return a `Failure` in `Call_Result.Why`. The `fs.*`, `logs.recent`, `timer.every`, `clock.monotonic-ms` and `image.load` bindings fill it, and workspace storage results map through `CCL_Workspace.Failure_Of`.
-- **The interpreter** records the failing operation's name and the failure (`Interpretation_Result.Failed_Operation`/`Failure`), and sessions render them in the cell.
+- **Evaluation** (`CCL.Evaluation`) records the failing operation's name and the failure (`Interpretation_Result.Failed_Operation`/`Failure`), and sessions render them in the cell.
 - **Refused before running:** a program that names an operation its grants lack is refused before anything runs, and the message says so: "this program's grants do not include it, so nothing was run". The remedy names the manifest request and the system grant it needs.
 
 **Tested:** the hosted console tests check the refused-name and missing-directory messages word for word.

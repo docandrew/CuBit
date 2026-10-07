@@ -91,6 +91,7 @@ is
         SYSCALL_COMMIT_OWNED_MEMORY_PREFIX,
         SYSCALL_RELEASE_OWNED_RESERVATION,
         SYSCALL_INSTALL_LAUNCH_ARGUMENTS,
+        SYSCALL_SEND_CONTROL,
         SYSCALL_REGISTER_DRIVER)
     with Size => Unsigned_64'Size;
 
@@ -107,6 +108,8 @@ is
         SYSCALL_RELEASE_OWNED_RESERVATION => 125,
         -- docs/process-arguments.md
         SYSCALL_INSTALL_LAUNCH_ARGUMENTS => 126,
+        -- docs/data-plane.md, "Control messages"
+        SYSCALL_SEND_CONTROL         => 127,
         SYSCALL_YIELD                => 118,
         SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND => 119,
         SYSCALL_POLICY_MINT_CAPABILITY_FOR_INCARNATION => 120,

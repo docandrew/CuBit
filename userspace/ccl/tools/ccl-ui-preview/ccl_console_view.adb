@@ -2004,7 +2004,7 @@ package body CCL_Console_View is
       Started : constant Interfaces.Unsigned_64 := Now_Ms;
       Finished : Interfaces.Unsigned_64;
       After : CCL.Sessions.History_Count;
-      Live : Natural := 0;
+      Live_Count : Natural := 0;
    begin
       Execute (State.Session, Source, CCL.Sessions.Default_Fuel, Outcome);
       Finished := Now_Ms;
@@ -2015,16 +2015,21 @@ package body CCL_Console_View is
            State.Meta (2 .. CCL.Sessions.Maximum_History);
       end if;
       for M of State.Meta loop
-         if M.Live then Live := Live + 1; end if;
+         if M.Live then Live_Count := Live_Count + 1; end if;
       end loop;
       State.Meta (After) :=
         (Elapsed_Ms => (if Finished >= Started then Finished - Started else 0),
          Fuel_Used => CCL.Sessions.Default_Fuel -
            Natural'Min (Outcome.Fuel_Remaining, CCL.Sessions.Default_Fuel),
-         Live => Live < MAXIMUM_LIVE_CELLS, Interval_Ms => 0,
+         Live => Live_Count < MAXIMUM_LIVE_CELLS, Interval_Ms => 0,
          Due_Ms => Interfaces.Unsigned_64'Last, others => <>);
       State.Scroll := 0;
    end Follow;
+
+   procedure Update_Session (State : in out View_State; Redraw : out Boolean) is
+   begin
+      Act (State.Session, Redraw);
+   end Update_Session;
 
    function Latest_Source (State : View_State) return String is
      (if CCL.Sessions.Length (State.Session) = 0 then ""

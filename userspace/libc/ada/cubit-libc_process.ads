@@ -70,4 +70,11 @@ package CuBit.Libc_Process is
      (Text : System.Address; Length : Interfaces.C.size_t)
    with Export, Convention => C, External_Name => "cubit_debug_write";
 
+   --  An event another of the program's threads received (the stream
+   --  dispatcher, a write polling for subscriptions): a child's exit is kept
+   --  for Wait_For_Child, anything else is ignored. Takes only its own
+   --  lock, so it may be called with the stream lock or the child lock held.
+   procedure Note_Event (Item : System.Address)
+   with Export, Convention => C, External_Name => "__cubit_note_event";
+
 end CuBit.Libc_Process;

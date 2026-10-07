@@ -7,6 +7,7 @@ uint32_t cubit_vulkan_upload_record(void *submission,void *upload,void *image,
     struct cubit_vulkan_owned_image *s=image;
     if(!c||!u||!s||!r||!c->device||!c->command||u->stage!=2||s->stage!=2||
        !u->buffer||!u->memory||!u->mapped||!s->image||!s->memory||!u->proc||
+       u->usage!=VK_BUFFER_USAGE_TRANSFER_SRC_BIT||
        u->device!=c->device||s->device!=c->device||s->proc!=u->proc||u->memory==s->memory||
        !u->capacity||u->capacity>CUBIT_VULKAN_UPLOAD_MAX_BYTES||r->mask>1||r->discard>1||
        s->format!=(r->mask?VK_FORMAT_R8_UNORM:VK_FORMAT_B8G8R8A8_UNORM)||

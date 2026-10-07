@@ -9,13 +9,13 @@ The desired/active/application-state split and next activation steps are in
 [declarative configuration and mutable state](config-declarative-state.md).
 
 CuBit evaluates configuration source **inside userspace during boot**. GRUB
-and the kernel do not contain the CCL interpreter. Linux is not required to
+and the kernel do not contain the CCL compiler or VM. Linux is not required to
 translate configuration into another language before an image can boot.
 
 ## Evaluation and effects
 
-The shared `CCL.Configurations` frontend uses the real CCL interpreter to
-evaluate declaration fields and returns an owned, bounded configuration plan.
+The shared `CCL.Configurations` frontend uses the real CCL compiler and VM
+(`CCL.Evaluation`) to evaluate declaration fields and returns an owned, bounded configuration plan.
 It has no host adapter: expressions cannot access files, clocks, networking,
 launch processes, or mint authority.
 

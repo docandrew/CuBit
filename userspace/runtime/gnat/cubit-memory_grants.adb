@@ -3,6 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 with Ada.Unchecked_Conversion;
+with CuBit.Kernel_ABI;
 
 package body CuBit.Memory_Grants is
    function To_Address is new Ada.Unchecked_Conversion
@@ -46,27 +47,34 @@ package body CuBit.Memory_Grants is
       success := True;
    end Finish_Creation;
 
+   function To_Number is new Ada.Unchecked_Conversion (System.Address, Unsigned_64);
+
+   function Creation_Flags (readWrite, notify : Boolean) return Unsigned_64 is
+     ((if readWrite then CuBit.Kernel_ABI.Grant_Read_Write else CuBit.Kernel_ABI.Grant_Read_Only)
+      + (if notify then CuBit.Kernel_ABI.Grant_Notify else 0));
+
    procedure Create_For_Process
      (grantee   : CuBit.Messages.ProcessID;
       localAddr : System.Address;
       numPages  : Natural;
       readWrite : Boolean;
       reference : out Grant_Reference;
-      success   : out Boolean)
+      success   : out Boolean;
+      notify    : Boolean := False)
    is
-      rawSlot : Unsigned_64;
-      created : Boolean;
+      Raw : constant Unsigned_64 := CuBit.Messages.syscall
+        (CuBit.Messages.SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID,
+         Unsigned_64 (grantee), To_Number (localAddr), Unsigned_64 (numPages),
+         Creation_Flags (readWrite, notify));
    begin
-      CuBit.Messages.createGrant
-        (grantee, localAddr, numPages, readWrite, rawSlot, created);
-      if not created then
+      reference := (slot => 0, generation => 1);
+      success := False;
+      if Raw = Unsigned_64'Last then
          CuBit.Messages.debugPrint
            ("memory-grants: create-for-process syscall failed" & ASCII.LF);
-         reference := (slot => 0, generation => 1);
-         success := False;
          return;
       end if;
-      Finish_Creation (rawSlot, reference, success);
+      Finish_Creation (Raw, reference, success);
    end Create_For_Process;
 
    procedure Create_Via_Capability
@@ -75,30 +83,31 @@ package body CuBit.Memory_Grants is
       numPages  : Natural;
       readWrite : Boolean;
       reference : out Grant_Reference;
-      success   : out Boolean)
+      success   : out Boolean;
+      notify    : Boolean := False)
    is
-      rawSlot : Unsigned_64;
-      created : Boolean;
+      Raw : constant Unsigned_64 := CuBit.Messages.syscall
+        (CuBit.Messages.SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
+         Unsigned_64 (slot), To_Number (localAddr), Unsigned_64 (numPages),
+         Creation_Flags (readWrite, notify));
    begin
-      CuBit.Messages.createGrantViaCap
-        (slot, localAddr, numPages, readWrite, rawSlot, created);
-      if not created then
+      reference := (slot => 0, generation => 1);
+      success := False;
+      if Raw = Unsigned_64'Last then
          CuBit.Messages.debugPrint
            ("memory-grants: create-via-capability syscall failed" & ASCII.LF);
-         reference := (slot => 0, generation => 1);
-         success := False;
          return;
       end if;
-      Finish_Creation (rawSlot, reference, success);
+      Finish_Creation (Raw, reference, success);
    end Create_Via_Capability;
 
    procedure Create_Forwardable_Via_Capability
      (slot : CuBit.Messages.CapabilitySlot; localAddr : System.Address;
       numPages : Natural; readWrite : Boolean;
-      reference : out Grant_Reference; success : out Boolean)
+      reference : out Grant_Reference; success : out Boolean;
+      notify : Boolean := False)
    is
-      function To_Number is new Ada.Unchecked_Conversion
-        (System.Address, Unsigned_64);
+      package KA renames CuBit.Kernel_ABI;
       Raw : Unsigned_64;
    begin
       reference := (slot => 0, generation => 1);
@@ -109,7 +118,8 @@ package body CuBit.Memory_Grants is
       Raw := CuBit.Messages.syscall
         (CuBit.Messages.SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
          slot, To_Number (localAddr), Unsigned_64 (numPages),
-         (if readWrite then 3 else 2));
+         KA.Grant_Forwardable + (if readWrite then KA.Grant_Read_Write else KA.Grant_Read_Only)
+         + (if notify then KA.Grant_Notify else 0));
       if Raw = Unsigned_64'Last then
          return;
       end if;

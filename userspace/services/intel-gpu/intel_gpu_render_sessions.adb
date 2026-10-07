@@ -1,7 +1,12 @@
 package body Intel_GPU_Render_Sessions with SPARK_Mode is
    function Storage_Index (Object : Registry; Tag : Unsigned_64) return Slot_Index
      with Refined_Post =>
-       (if Storage_Index'Result /= 0 then Tag > Tag_Base and Tag <= Tag_Last) and
+       (if Storage_Index'Result /= 0 then
+          Tag > Tag_Base and then Tag <= Tag_Last and then
+          Storage_Index'Result <= Object.Used and then
+          Object.Items (Storage_Index'Result).Tag = Tag and then
+          (for all I in 1 .. Storage_Index'Result - 1 =>
+             Object.Items (I).Tag /= Tag)) and
        (if Tag > Tag_Base and Tag <= Tag_Last then
          (Storage_Index'Result = 0) =
            (for all I in 1 .. Object.Used => Object.Items (I).Tag /= Tag))
@@ -66,7 +71,17 @@ package body Intel_GPU_Render_Sessions with SPARK_Mode is
       return (if Index /= 0 and then Object.Items (Index).State = Active
               then Stamped_Tag else 0);
    end Resolve;
-   procedure Close (Object : in out Registry; Sender, Tag : Unsigned_64) is
+   procedure Close (Object : in out Registry; Sender, Tag : Unsigned_64)
+     with Refined_Post =>
+       Storage_Index (Object, Tag) = Storage_Index (Object, Tag)'Old and then
+       Resolve (Object, Sender, Tag) = 0 and then
+       Object.Used = Object.Used'Old and then
+       Object.Last_Issued = Object.Last_Issued'Old and then
+       Object.Failed = Object.Failed'Old and then
+       (for all I in Object.Items'Range =>
+          Object.Items (I).Sender = Object.Items'Old (I).Sender and
+          Object.Items (I).Tag = Object.Items'Old (I).Tag)
+   is
       Index : constant Natural := Index_Of (Object, Sender, Tag);
    begin
       if Index /= 0 then Object.Items (Index).State := Retired; end if;
@@ -78,6 +93,11 @@ package body Intel_GPU_Render_Sessions with SPARK_Mode is
       return (if Index /= 0 and then Object.Items (Index).State = Retired
               then Stamped_Tag else 0);
    end Resolve_Retired;
-   procedure Quarantine (Object : in out Registry) is
+   procedure Quarantine (Object : in out Registry)
+     with Refined_Post => Object.Failed and then
+       Object.Used = Object.Used'Old and then
+       Object.Last_Issued = Object.Last_Issued'Old and then
+       Object.Items = Object.Items'Old
+   is
    begin Object.Failed := True; end Quarantine;
 end Intel_GPU_Render_Sessions;

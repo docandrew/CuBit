@@ -1,3 +1,1692 @@
+2026-10-07 Dependency blocked audit satisfied after three consecutive checks.
+No further actionable handoff: Graphics revision52 unchanged/idle; no exactNUC
+pipeline diagnostic; Networking/menubar ownership acknowledgment absent. Shared
+publication still fails nonblocking lock; host ps confirms benchmark393114/393115
+live at12minutes. Earlier checks were verified waits, but all available next
+integration steps still require external state change. No own live jobs.
+Goal marked blocked, NOT complete. Resume when source window is acknowledged,
+benchmark releases lock for test publication, or physical pipeline record arrives.
+Private tested UI candidate+nativeFiles, reusable visualtest and frozen diagnostic
+artifacts retained at paths above. No speculative fixes, duplicate tests or image
+changes. Full objective and its remaining hardware/performance gates unchanged.
+
+2026-10-07 Verified wait continued: host ps confirms benchmark393114/393115
+live with build.lock; bounded publication waiter66647 exited124 after55seconds,
+no files published and no own job remains. UI/menus ownership and physical
+pipeline diagnostic still unchanged. Previous and current goal turns are
+verified waits, not completion; exact validated artifacts retained.
+
+2026-10-07 Verified external build-lock wait; no competing workload launched.
+Read-only host lslocks/ps identifies flock393114 and childbash393115 executing
+Networking scratchpad ab-bench.sh, still live on recheck45seconds later. This
+explains failed nonblocking publication; not a stale file or permission error.
+Leave benchmark undisturbed. Exact validated focus test ready for locked copy.
+No UI owner acknowledgment, no new physical pipeline record. Prior turnPROGRESS
+(private nativeFiles linked); current turn verified wait on these live PIDs.
+All own validation jobs terminal; frozen artifacts unchanged.
+
+2026-10-07 Private repaired Files app native build PASS.
+Pinned Alire GNAT16 compile+bind19488TERM0, link38053TERM0. Uses current Files
+source and private UI candidate, existing current runtime/fonts/manifest; shared
+outputs untouched. /tmp/cubit-ui-repair-1/native16-obj/files.app
+SHA 173ef6fb9a834cb5d8904457f89390a8dc80ea531015e9dcb7e63989c4406c19. Not booted/staged, no native regression-pass claim yet.
+This supersedes compile-only evidence using shell-default GNAT15; native build
+now uses correct pinned toolchain. All own jobs terminal. Graphics confirmed
+Networking/App/Surfaces and Servo/native-menubar claims and posted seven-file
+idle-window request; await acknowledgment before shared edits. Focus fixture
+publication still deferred by shared build lock; validated private copy intact.
+Goal turn PROGRESS (full candidate native compile/bind/link and owner handoff).
+
+2026-10-07 Reusable native focus gate validated; publication lock deferred.
+Build34390TERM0 and native82373TERM0. Exact tested portable sources remain at
+/tmp/cubit-focus-review-root/tests/compositor/focus-visual; replay evidence
+/tmp/cubit-focus-replay-native-1/result.json. Runner integrates six changes,
+three initial full-redraw pixel restorations and inactive-title strip checks.
+Explicit boot/build inputs recorded, frozen Desktop unchanged. Publication to
+tests/compositor/focus-visual still absent: last lock acquisition exited1; do
+not bypass another shared build. Copy exact validated directory under lock in
+next idle window. All own jobs terminal. Prior goal turn PROGRESS (nativevisual),
+this turn PROGRESS (reusable fixture build/replay). Full goal not complete.
+
+2026-10-07 Reusable focus visual gate being preserved/tested privately.
+/tmp/cubit-focus-review-root/tests/compositor/focus-visual has fixture, explicit
+frozen-runtime builder, runner with integrated initial-full-redraw/title-strip
+pixel assertions, and scope README. Build34390TERM0; native replay82373live.
+Shared publication attempts could not acquire build.lock, no shared tests edited.
+Earlier shallow temporary path builder attempt failed before compiling; corrected
+private directory layout and explicit --toolchain-root now pass. Ownership
+request for seven UI repair files still pending (separate from this test).
+
+2026-10-07 Native titlebar visual gate PASS; corrected stale task status.
+Earlier2026-10-03 source fix already present (damagePreviousFocus); recent
+messages saying artifact unresolved referred too broadly. Missing gate was
+native visual confirmation. Exact released diagnostic Desktop f6fc080d contains
+helper+focus/restore/maximize calls. Built private matching-runtime two-window
+fixture80734TERM0 after correcting compiler selection to pinned alr GNAT16.
+Native89929TERM0 /tmp/cubit-focus-visual-native-1,6 Alt-Tab changes,3 exact returns
+to initial creation/full-redraw reference (excluding HUD/taskbar). Exposed old
+title strip fully inactive, screenshot inspected. Pixelcheck77474 terminal0.
+Fixture/scripts /tmp/cubit-focus-visual-1; no production or frozen image edits.
+Software-only QEMU at100% DPI, no NUC/high-DPI visual/nativeGPU claim. Shared
+UI repaint candidate still separate and not integrated. All own jobs terminal.
+
+2026-10-07 Expanded private UI candidate PASS; no shared source changes.
+Now seven files in /tmp/cubit-ui-repair-1/candidate.patch and sources.json:
+previous five plus cubit-ui-menus.adb and cubit-ui-combo_boxes.adb. Audit found
+both also registered through paint clips. Menu layout/hits use Input_Rect;
+combo preserves its existing stable unclipped layout but uses Input_Rect for
+hits. Removing that layout workaround failed existing pixel equivalence test;
+it is preserved, all existing tests then pass.
+3172TERM0 new full hit-map equivalence at100/125/200% for open menus/combos,
+57885TERM0 CuBit native App compile-only,56323TERM0 existing menu/combosuites
+and new regression. Combo includes100 pointer cycles,609 tiny fields,10
+palette/density clipping cases. No native boot or new proof claim. All own jobs
+terminal. Need acknowledged shared UI source window for seven files, then
+shared apply/native Files and focus/damage regression. Request remains posted;
+private work avoids shared source races. Full goal remains active/incomplete.
+
+2026-10-07 Private hit-map candidate hosted PASS (19860TERM0).
+/tmp/cubit-ui-repair-1/{candidate.patch,sources.json,result.json,check.adb}.
+Five candidate files: cubit-ui.ads/adb, cubit-ui-app.adb, cubit-ui-widgets.adb,
+cubit-ui-surfaces.adb. No shared edits. Input_Rect and With_Repair_Clip retain
+layout/input constraints while preserving old drawing clip; With_Clip preserves
+both and translated View carries both. Actual widgets/control map + pixel
+sentinels at100/125/200%, nonzero origins, nested/empty clips pass. Original
+hosted regression failed; candidate now retains Refresh after scrollbar repair.
+No native or formal-proof claim. App Canvas wiring still needs native compile.
+REQUEST Networking/UI owners: please acknowledge an idle source window for
+these five files so candidate can be reviewed/applied and native Files tested.
+Need audit other retained controls (e.g combo-box workaround) and explicit Canvas
+aggregates before promotion. Frozen NUC diagnostic remains independent.
+All own jobs terminal; goal turn PROGRESS.
+
+2026-10-07 Private UI hit-map candidate /tmp/cubit-ui-repair-1 active.
+Separate repair clip from input/layout clip, preserve nested parent constraints
+and view translations. Actual widgets regression plus paint sentinel checks next.
+Shared UI ownership request remains pending; no shared UI production edits.
+Prior goal turn PROGRESS (diagnostic gaps,50 hosted cases,native fallback,handoff).
+
+2026-10-07 Corrected pipeline diagnostic READY for Graphics packaging.
+Missing required proc coverage: stage110 affine16,210 checker11,310 sources6;
+explicit one-based indices in tests/compositor/pipeline-diagnostic/lookups.json.
+Hosted26866TERM0: 50 cases including all33 null-proc exits,14 creation failures,
+success,precondition guard,positive non-success. Updated patch/tests/stage key
+published under shared build lock in tests/compositor/pipeline-diagnostic/.
+Private build16115TERM0: /tmp/cubit-desktop-pipeline-diag-build-2
+Desktop SHA f6fc080d3ac0c61ede35dd04294ccf053a95e5a3231acf25db9de272504d6f85.
+Native68425TERM0: /tmp/cubit-desktop-pipeline-diag-native-2/result.json;
+software fallback,3 menu restorations,32 cursor moves/8 round trips PASS.
+All8 changed build sources match reviewed snapshot. All own jobs terminal.
+No hardware pipeline execution or logsvc-delivery claim from these tests.
+Graphics owns separate matched-system-budget candidate packaging; old28d39a8e
+artifact superseded. Existing images unchanged; no shared production/UI edit.
+
+2026-10-07 Task priorities updated for Graphics handoff.
+1. Close every missing-proc diagnostic exit in affine/checker/source setup;
+   explicit stable stage/index, inject each absent proc, preserve first failure.
+2. Rebuild private diagnostic Desktop, repeat native software fallback, hand
+   Graphics the new hash/manifests for a separately named matched image.
+   Prior 28d39a8e artifact is superseded and MUST NOT be packaged.
+3. Interpret physical NUC pipeline result with Graphics and fix supported cause.
+4. Retain titlebar focus repaint regression and independent Files hit-map fix;
+   coordinate shared UI ownership. Preserve SPARK policy/proof boundaries.
+No frozen image or shared production source modified. Private diagnostics active.
+
+2026-10-07 Pipeline diagnostic implemented privately at Graphics request.
+Source /tmp/cubit-desktop-pipeline-diag-1 from exact quiet indicator baseline;
+8changed files listed /tmp/cubit-pipeline-diag-tests-1/changes.json, patch there.
+Scalar firstfailure stage/index/int32VkResult, no IPC/allocation/Mesa callbacks;
+Ada Main emits after Prepare_Pipeline returns. Diagnostic FFI SPARK off,
+policy/return behavior unchanged. Stage ranges100affine/200checker/300descriptors.
+Build60421TERM0 SHA28d39a8ee1293fddb8fc9fb33ac445ee441add7cbe0da9a3ee2c328997e258d4.
+Hosted82911TERM0 all14creation failures +success pass. Additional guard/positive
+status tests running; native fallback59390live. No shared production/UI edits.
+FrozenNUC image unchanged; artifact not released until native checks complete.
+
+2026-10-07 New NUC pipeline fallback: read-only exact source trace delivered.
+Graphics reports f0d2a706 policy quota2069889024, backing40->42MiB, metadata32->64,
+targets passed; PIPELINE pair then SELECTED without upload/readback, startupCPU.
+Exact Prepare_Pipeline child/preconditions + C affine/checker/source-descriptor
+sequence reviewed. Affine creates layout/sampler/modules/3pipelines; checker
+layout/modules/1pipeline; source initialization pool+140sampler sets. Every
+Vulkan failure collapsed to1; no substage/VkResult record. Cleanup occurs before
+return, so total backing snapshot cannot localize stage. Existing allocator
+and device-lost logs may help; optional transport fixture hook absent from
+exact linked binary (nm), not a promised log source. Suggested scalar stage/
+index/signedVkResult captured C-side and emitted Ada after return if existing
+logs insufficient; no instrumentation yet. Shared UI ownership/fix separately
+pending; all own jobs terminal. Frozen images unchanged.
+
+2026-10-07 Files regression REPRODUCED and root cause isolated.
+Native9311TERM1 reproduces exactly both missing markers with fresh dependencies;
+/tmp/cubit-files-pointer-repro-1.log and -run.log. Input still reaches152,139;
+title ptr hit-down/drag-up present. Hosted39768TERM1 actual UI widgets/control
+map repro /tmp/cubit-files-hit-repro-1: full canvas Refresh Hit=1, then Clear+
+Button on scrollbar-only paint clip gives Hit=0 and fails assertion. This
+establishes hit-map loss independently of logging/driver/event transport.
+Fix needed: separate layout/input clipping from repaint clipping while retaining
+all pixel writes inside repair region. Do not just remove paint clipping or
+force whole-window redraw. Widgets use damage-clipped Parent_Canvas for hit
+registration; app Canvas(win,damage) supplies that repair clip. Nested viewport
+clipping must still constrain hit testing. Shared UI ownership request above
+remains pending; no shared UI/Files edits. Native move fixture must replace
+legacy retained-base marker with verified movement (existing drag-up evidence
+alone is not a pixel-position oracle). Build lock released; all own jobs terminal.
+Graphics notified; frozen system-budget image remains unchanged.
+
+Files diagnosis update/request to Networking: native source confirms
+prepareMoveBase returns immediately for nativeScene; legacy retained-move
+marker is invalid for current default. Original serial has actual title
+hit-down/drag-up, so that failure is fixture drift.
+Likely independent Refresh defect: Files.Render uses Canvas(win, damage) and
+Controls.Clear; Widgets.Button registers Clamp_Rect(Parent_Canvas(c, toolbar),
+bounds). A scrollbar-only repaint can therefore rebuild the map without the
+Refresh control. Request ownership coordination for shared UI widgets/canvas
+fix or your preferred owner; I will first establish hosted regression, not
+blindly broaden drawing beyond owned repair bounds. Current native repro9311
+running under shared build lock, /tmp/cubit-files-pointer-repro-1*.log; it is
+rebuilding dependencies (not yet native test outcome). No shared UI edits.
+
+2026-10-07 Files regression handoff accepted, read-only diagnosis/repro.
+Networking20:40 reports missing Refresh/move markers. Original serial
+ tests/net-tcp/build-tmp/nix-shell.AuhDKK/cubit-headless-files-serial.log shows
+pointer reaches152,139, releases, keyboard navigation works, title hit-down and
+drag-up; native output rendering active (no legacy dragBase allocation). Scope
+Desktop/Files event tracing and tests/headless/run.sh fixture; not editing Files
+or shared UI source yet. Request to Networking via folder: preserve input/log
+sources during reproduction; I will coordinate any shared-script edit under
+build lock. Frozen NUC image remains untouched. Fresh native repro next.
+
+2026-10-07 Hardware dependency audit3: blocked audit satisfied.
+Third consecutive goal turn with unchanged NUC/CCL dependency. Graphics
+revision51 unchanged, physical candidate test pending, no Desktop request;
+all validation jobs terminal. Shared optional-render absent and compiler owner
+reservation remains. Completed current compositor artifact/tests/review; cannot
+advance matched hardware integration or default activation without external
+result/handoff. No duplicate tests, speculative changes or image overwrite.
+Mark broad goal blocked/incomplete. Resume on NUC result, actionable Graphics
+request or CCL ownership handoff; original full acceptance gates remain open.
+
+2026-10-07 Hardware dependency audit2.
+Previous goal turn no-progress audit1. Graphics confirms NUC test pending and
+is independently reviewing driver client accounting; no Desktop handoff or
+physical evidence. Shared CCL optional-render support remains absent/reserved.
+No own jobs or concrete live validation handle, no changed compositor source.
+No-progress audit2 for same hardware/CCL dependency; goal active/incomplete.
+
+2026-10-07 Hardware dependency audit1 after candidate validation.
+Last goal work established final exact-image tools PASS (progress); intervening
+handoff acknowledgment added no work. Revalidated ready candidate and all jobs
+terminal in Graphics note; no new NUC result/source request. New Graphics turn
+alone is not a live process/test handle. CCL optional-render support still absent
+under owner reservation. No safe additional integration change follows without
+handoff/evidence; no duplicate runs or speculative renderer changes. Goal active,
+no-progress audit1 for current hardware/CCL dependencies.
+
+2026-10-07 Exact system-budget candidate validation COMPLETE (Graphics).
+Read authoritative command exec-fdfd80ed terminal0: quiet-xHCI corrected
+USB/UEFI4CPU graphics-tools PASS /tmp/cubit-usb-live.nvie6sla. Prior noPS2
+PASS crayi8wt retained. Final rehash f0d2a706e460a5bc49e89d5a79654716eeceefbb7e496d45125b4eb0a9970b2c
+unchanged. New result advances release gate; no blocked mark this turn.
+Next discriminating NUC evidence: system backing policy accepted/quota, all
+startup checkpoint pairs through readback, startup READY/SOFTWARE, liveHUD,
+input/Apps responsiveness. Neither QEMU test establishes GPU frame success,
+physical latency or fairness. No own source/image changes or live jobs.
+
+2026-10-07 Dependency audit2 after quiet-mode retry.
+Previous turn no-progress audit1. Graphics bounded snapshot revision47
+unchanged; no new failure/result/source handoff. CCL optional-render absent
+and reservation unchanged. No own jobs or accessible live test handle; not a
+verified wait. Existing validated Desktop preserved, duplicate tests would not
+advance current gate. Goal active/incomplete; same integration dependency,
+second consecutive no-progress audit.
+
+2026-10-07 Dependency audit1 after candidate boot evidence.
+Previous turn advanced noPS2 evidence. Graphics reports tools launched but
+final harness assertion expected suppressed xHCI diagnostics; owner retrying
+with existing quiet-xHCI option, unchanged image. No compositor defect/request
+identified, no own accessible live process handle. Shared CCL optional-render
+still missing/reserved. No implementation progress this turn; remain at same
+integration dependency until completed result or handoff. Goal active, own jobs
+terminal, no duplicate tests/edits/images.
+
+2026-10-07 Matched candidate validation advances.
+Graphics reports native12099 compile/private80639 link PASS and noPS2 exact
+image PASS /tmp/cubit-usb-live.crayi8wt; directory and capture confirmed.
+Graphics-tools evidence /tmp/cubit-usb-live.o6_843br contains final tools capture;
+no terminal result claimed here until owner confirms. Owner session8201 not
+accessible via this thread write_stdin (Unknown process id); that cross-thread
+lookup failure does not prove process terminal. No duplicate run/restart.
+No Desktop source/image change. Prior turn no-progress audit1; new exact-image
+boot evidence advances validation, but GPU hardware/full goal remain unverified.
+
+2026-10-07 Dependency audit1 after harness-path diagnosis.
+Previous turn progressed identifying AF_UNIX harness failure and corrective
+handoff. Latest Graphics says corrected image checks running but retrieved
+markers terminal; no exact live process handle confirmed here. Bounded thread
+snapshot unchanged, so not classified verified wait or test success. Candidate
+f0d2a706 remains awaiting result; no new compositor request or changed Desktop
+source. No duplicate builds/VMs, no image edits, no own jobs. No-progress audit1;
+full goal active/incomplete with native result and CCL handoff pending.
+
+2026-10-07 Candidate launch failure diagnosed; sent corrective handoff.
+Previous turn no-progress audit2. New authoritative evidence: Graphics packaged
+system-budget image f0d2a706e460a5bc49e89d5a79654716eeceefbb7e496d45125b4eb0a9970b2c.
+Exact-image test failed before guest validation: AF_UNIX path too long under
+private-workspace TMPDIR at monitor connect. Suggested inner export TMPDIR=/tmp
+for short unique test paths, preserve failed evidence and handle own VM cleanup
+before retry. No duplicate run/source edit. This is harness failure, not GPU/
+Desktop regression; image not yet validated. Concrete new diagnosis/handoff is
+progress; blocked audit not met. Broad goal active/incomplete.
+
+2026-10-07 Dependency audit2: no new compositor handoff.
+Prior turn no-progress audit1. Graphics latest private matched devmgr/intel
+build command terminal; preparing exact-image packaging/tests, no process
+handle supplied here and no new Desktop request. CCL optional-render support
+still absent in reserved shared compiler/schema. Existing Desktop regression
+remains authoritative; no changed source to justify rerun. No new edits beyond
+this audit, no own jobs, goal active/incomplete. Same dependency condition;
+second no-progress audit, not yet blocked threshold.
+
+2026-10-07 Dependency audit1 following production-policy review.
+Previous turn completed independent review (progress). Revalidated Graphics
+now preparing matched private packaging; latest visible commands terminal,
+no live build/test handle supplied to this thread. No additional Desktop change
+requested. Frozen1d2112d2 native result still PASS; root CCL optional-render
+support still absent under unchanged owner reservation. Do not duplicate
+Graphics packaging or regenerate unchanged Desktop. No implementation/evidence
+advance this turn; no-progress audit1, goal active/incomplete. Await concrete
+candidate result or coordinated source handoff, not a claimed verified wait.
+
+2026-10-07 Read-only backing policy integration review sent to Graphics.
+Reviewed actual shared Native_System_Heap expression, both endpoint callsites,
+supervisor growth callback, Configure_Heap admission and Memory_Budget. Shared
+query1601 and rounded min(RAM/4,DMA/2) match; configure occurs before first
+attempt. Potential stale32MiB preallocation query ruled out: budget unknown
+until directory committed bytes nonzero, then reports configured Object.Limit.
+No actionable mismatch found in inspected change. No source/test/image edits;
+review does not establish native runtime behavior, fairness or resource supply.
+Next gate matched native candidate then all startup stages and workload onNUC.
+Own jobs terminal; full goal incomplete. Prior audit no progress; this turn
+completed independent review of new production policy, evidence sent to owner.
+
+2026-10-07 Dependency audit1 after memory-budget review.
+Previous goal turn progressed by identifying post-target startup/runtime budget
+coverage and correcting its shared-owner scope. Current audit read Graphics'
+active policy work; no own or supplied live process handle to classify as a
+verified wait. Shared optional-render compiler/schema support still absent;
+CCL typed-manifest ownership reservation persists. Frozen Desktop1d2112d2
+already passed native fallback; no changed Desktop behavior to rebuild/retest.
+Asked Graphics for next concrete Desktop integration/review handoff. No source
+or image changes this turn; classify no progress toward implementation. Goal
+remains active/incomplete; first dependency audit, not blocked threshold.
+
+2026-10-07 Memory admission audit: post-target allocations sent to Graphics.
+Previous turn progress repaired current logging regression. Current exact
+indicator source audit confirms single128MiB owner Budget shared by targets,
+upload/readback and runtime source backings. Targets-only16+3x8MiB=40MiB
+fixture omits later pipeline,2MiB upload,full-output readback (~8MiB1080p),
+and normal runtime sources. Approx50MiB before extra allocations/padding is
+not a measured total or sufficient quota recommendation. Graphics notified to
+validate complete readiness/workload under trusted shared/client policy.
+Corrected docs/compositor-backends.md budget scope and physical-denial evidence.
+No production/image changes or live jobs; whole goal still incomplete.
+
+2026-10-07 Goal continuation: hosted logging regression repaired, PASS.
+Previous goal turn made concrete progress: frozen stats artifact built/native
+validated and handed off. Latest physical quota evidence changes next action;
+Graphics owns trusted backing-budget integration, not awaiting more NUC data.
+Independent gap fixed in tests/compositor/test-desktop-logs.py under shared
+build lock: retired CQ fixture replaced by current immediate Emit fixture.
+Real Desktop_Logs/Text_To_Log compiled unchanged. Tests check split CRLF lines,
+serial echo,40 immediate publications, oversized/control-byte drop reports,
+1000 rejected writes bounded to two attempts each, and accepted recovery with
+cumulative loss accounting. No transport ring/proof/native claims from fixture.
+Nix50503TERM0 PASS; evidence tests/compositor/build/desktop-logs-host-87l62e6z.
+Diff whitespace clean. Production sources/artifacts/images unchanged; no own
+live jobs. Broad goal incomplete; continue integration with Graphics budget fix.
+
+2026-10-06 Frozen indicator quiet artifact READY; sent to Graphics.
+/tmp/cubit-desktop-indicator-quiet-build-1/desktop-vulkan-compositor.svc
+SHA256 1d2112d21bed78ab87395b90d4b7f9bd7501f4edec55ad52087aedfab033f5b0.
+Build87422TERM0; native72410TERM0 PASS (software fallback,3menu restores,
+32cursor moves/8roundtrips; oracle excludes deliberate HUD strip). Evidence
+/tmp/cubit-desktop-indicator-quiet-native-1/result.json; screenshot inspected
+selectedCPU loop143/frame41/key18/mouse34/button2/request0. Full manifest diff
+only Main periodic-stats serial call/comment; remaining entries identical to
+indicator3. Original binary hash eca2acbd unchanged. No native GPU/NUC claim;
+logsvc bypass verified at callsite, no separate collector assertion. All jobs
+terminal; Graphics authorized separately named candidate packaging.
+
+2026-10-06 Graphics requests frozen indicator3 stats-suppression artifact.
+Private source /tmp/cubit-desktop-indicator-quiet-1 verified matching original
+source manifest before sole Main stats call edit; private build
+/tmp/cubit-desktop-indicator-quiet-build-1 active session87422 under Nix.
+Existing source/artifacts/images immutable. Native regression pending.
+
+2026-10-06 Exact target-size trace delivered to Graphics (read-only).
+Indicator3 creates three sequential BGRA8 optimal-tiled full-output images,
+one mip/layer/sample, color attachment + transfer source. At 1080p nominal
+8,294,400 pixel bytes each; allocation uses vkGetImageMemoryRequirements2.size
+unchanged with dedicated-image pNext, not pixel-byte calculation. ANV may add
+CCS/alignment; native gem_create rounds to 4096 and caps each request at16MiB.
+Current logs do not expose exact requested bytes or failed target index. Record
+bytes at native create-buffer/driver boundary with denial subreason. Final
+charged scene bytes=0 follows clean rejection/release; cannot infer zero request
+or first-image failure. Graphics owns devmgr denial instrumentation/fix.
+
+Nix serial input parser regression PASS (2 tests). Stats suppression handoff
+sent to Graphics; Main released for candidate packaging, no own live jobs.
+
+Stats logsvc suppression validation: git diff --check clean. Nix hosted
+Desktop logging harness failed compiling its pre-existing obsolete interface
+(Collect/Pump/Matches absent from current write-only Desktop_Logs); unchanged
+harness/API mismatch, not a passing logging test. No native build/image claimed.
+
+2026-10-06 Graphics returns Main ownership for stats logging change.
+Implemented narrow logsvc suppression: periodic desktop: stats now uses
+CuBit.Messages.debugPrint directly (serial only), bypassing Desktop_Logs.Write.
+Existing serial consumers retain their exact record; metrics publishing/reset,
+HUD counters, startup and failure logging unchanged. This does not disable
+serial emission or counter collection. No build/test script or image changes.
+Graphics owns allocation backing denial diagnosis: reason7=Backing_Unavailable,
+stage10=Denied after explicit F001 zero-word receipt, not allocation timeout.
+
+2026-10-06 TASK UPDATE — aligned with Graphics at user request.
+Current priority: diagnose exact indicator3 native render-target setup, read-only
+first. NUC TARGETS_BEFORE 00:07.703 -> TARGETS_AFTER 01:29.420 (~81.7s),
+explicit startup=SOFTWARE confirms initial fallback. First event_drop=83506 is
+consistent with startup backlog, not proof of the allocation failure mechanism.
+New Graphics photo reports allocation unavailable reason=7, backing stage=10,
+scene allocation bytes=0; Graphics owns exact-image driver enum decoding.
+
+Ordered compositor tasks:
+1. Trace Configure_Targets -> three owned Vulkan images -> native allocation;
+   identify blocking/failure/cleanup boundaries and useful existing diagnostics.
+   Correlate with Graphics' exact driver decode before proposing a fix.
+2. Coordinate the smallest fix and any missing allocation failure diagnostics
+   with Graphics; preserve bounded ownership and functional CPU fallback.
+3. Validate an agreed candidate in native CuBit, including input responsiveness,
+   allocation failure and fallback. Physical NUC confirmation remains required;
+   hosted results cannot establish hardware correctness or latency.
+4. Return to compositor performance and rendering defects after this blocker;
+   defer speculative per-frame async redesign until evidence warrants it.
+
+Ownership handoff: shared userspace/services/desktop/main.adb RELEASED to
+Graphics for narrow periodic desktop: stats removal/default-off and coordinated
+fixture changes. Preserve metrics publishing/reset, HUD counters and startup/
+failure diagnostics. Existing tests consume exact stats text; retain meaningful
+assertions via explicit test opt-in or updated fixtures. Shared build/test script
+edits require build lock. Release sent directly to Graphics. No own active builds
+or source edits. Existing NUC images must remain unchanged; no commit/push.
+This updates priorities and ownership, not completion status of the broad goal.
+
+2026-10-06 physical indicator advanced; fallback log interpretation.
+Graphics relays blue transient then Desktop, user reports keys responding.
+Photo selectedCPU loop4289/frame733/key0/mouse741/button0/request3583; snapshot
+key0 not used to contradict user. Live CPU label does not prove startupCPU:
+READY can later recoverCPU; first inspect startup=READY/SOFTWARE plus renderer
+retired/fullsoftware repaint marker and frameCOMPLETE/PUBLISHED. Existing paired
+CHECKPOINT logs denote returns/branches, not success booleans or VkResults.
+Configuration gate oneoutput/primary0/enabled/output<=16MiB is not logged.
+Health/noTargets and upload/readback failure remain ambiguous; absent records
+cannot establish failure under loss. SOFTWARE precedes GPU.Stop; SELECTED follows
+Start_Renderer return. Raw Mesa startup result discarded locally in FFI adapter.
+Sent exact field map to Graphics. No persistent-blue variant or source changes;
+next ask existing Logs chain before choosing bounded summary/timing instrument.
+
+2026-10-06 indicator photo bootstrap-only: read-only boundary audit.
+Graphics relays photo of blue Desktop-reached screen, persistence not yet
+confirmed. Exact indicator3 leaves identical pixels during bootstrap receipt
+wait/unconfirmed hold, all renderer startup phases, CPU fallback GPU.Stop, and
+initial event/request/capture/submit/readback until first complete normal frame.
+No HUD cannot identify Initialize as stalled. Proposed if persistent: CPU status
+checkpoints through authenticated pool before each startup stage while selection
+unselected, final readiness before Configure, CPUcleanup checkpoint before Stop.
+Each stage confirms its own release before nextoperation; missing release retains
+ownership. Label checkpoint-before-X, not definitive call-entry/hang claim.
+Need per-stage hold fixtures and final first-framehold. Existing images unchanged;
+no own live processes or new implementation. Await coordinated persistence result.
+
+2026-10-06 resumed dependency audit3: blocked pending evidence/handoff.
+Third consecutive resumed audit; previous turn no progress. Graphics now idle
+and explicitly blocked pending indicator NUC test. No new physical result or
+source request, no own live jobs. CCL reservation/missing support unchanged;
+prepared patch still applies. Existing ready indicator discriminates next branch;
+additional speculative variants/repeated tests do not resolve this dependency.
+Mark compositor goal blocked/incomplete. Tested images/evidence preserved; no
+production or image changes. Resume on indicator result or CCL ownership release.
+
+2026-10-06 resumed dependency audit2: unchanged.
+Previous turn no progress (audit1). No indicator NUC evidence, CCL ownership
+release or shared optional-render support found. Graphics new turn active but
+no live process/test handle; all own tests terminal. Existing tested indicator
+is still the discriminating next physical action. No repeated tests/new source
+changes. Goal remains active/incomplete through second resumed audit.
+
+2026-10-06 resumed dependency audit1 after healthy physical software A/B.
+Goal tool now active. Previous physical evidence changed next action to existing
+indicator trial; this turn no new implementation/test result. Revalidated
+Graphics note: indicator69aae60b still untested NUC; all prior root build/test
+jobs terminal. Graphics thread active but no specific live tool/process to await.
+CCL reservation and missing optional-render support unchanged. No source/image
+changes or repeated tests. Next safe discriminating action depends on indicator
+backend/counter result or shared compiler ownership release; first audit after
+resume, not yet blocked threshold. Original full goal remains incomplete.
+
+2026-10-06 PHYSICAL software A/B healthy; next recommendation delivered.
+Graphics reports verified2ab1bf3b NUC cursor/click/key/Logs/Console all work.
+Same kernel/services/apps except Desktop bypass GPU startup. This isolates a
+Vulkan startup/selected-path dependency, not a sole synchronous-submit cause.
+Reviewed exact indicator3: next use existing69aae60b, record selectedGPU/CPU and
+counter deltas around motion/key/Apps click/release/further motion. HUD updates
+only on completed frames; frozen HUD is not proof of missing input, framecount
+is not scanout/photons, requests include background clients. GPU+regression ->
+per-stage submission/readback timing; CPU+regression -> initialization/cleanup
+or side effects; healthyindicator -> reproduce original, account observer effect.
+No new variant/image/source changes. Initialization-with-retained-resources but
+CPU-before-first-GPU-scene is a possible later isolation, not implemented.
+No own live jobs. Physical accelerated performance and sharedCCL still unproven.
+
+2026-10-06 PROGRESS native cooperative vs blocking backend comparison.
+Graphics relayed user overnight authorization; private job80552TERM0 both modes
+PASS. Cooperative5s Pending:7input events/49Desktop GET_INFORMATION replies.
+Synchronous5s inside-call delay:0input/0replies untilreturn, then progress resumes.
+Actual Main/facade with test-only injection and headless typedrequestprobe;
+not nativeGPUexecution or NUC timing/cause. No structural starvation found when
+backend yields Pending. Admission budgets cannot preempt entered FFI; safe fix
+requires async submission/completion or separate bounded render execution with
+ownership proof, not timeout-as-retirement. Graphics independently matched exact
+linked Mesa source synchronous capCall path; no speculative production change.
+Evidence /tmp/cubit-dispatch-{pending,blocking}-native-1 and
+/tmp/cubit-dispatch-comparison-result.json; review JSON saved under startup-
+diagnostics when lock available. Indicator image69aae60b exactboots pass per
+Graphics; software_ab2 remains first physical comparison. All own jobs terminal.
+Next genuinely missing evidence: NUC software/indicator result; shared CCL release
+still separate. Preserve all three images/candidates.
+
+2026-10-06 PROGRESS visible indicator native21621TERM0 PASS.
+Private source /tmp/cubit-desktop-indicator-3, artifact
+/tmp/cubit-desktop-indicator-build-3 SHA
+ eca2acbdd8d4f80494a1efd462e78d1fb95816517fb830ef0bcc212cb218d216.
+CPU overlay writes only after Complete_Output and before BP.Present; guarded
+pool rendering/transfer writable/nonemptywriter,900x64physicalclamped damage
+piggybacks existingframes. No new timer/CQpoll/per-eventlog. Selected label reads
+live facade Full_Output (CPUfalse/GPUtrue); not proof of completedGPUframe.
+Cumulative saturating loop/key/mouse/button/request/frame counters. Native3menu/
+32cursor checks PASS excluding intentionalHUDregion; separate click changes
+buttonrow. Screenshot visually shows selectedCPU,key18,mouse34,button2,request0.
+Evidence /tmp/cubit-desktop-indicator-native-3/indicator-result.json and
+indicator-after-click.png. Earlier indicator1/2 also passed;3is released successor.
+Root software A/B image2ab1bf3b exactboots pass, baselinepayloads verified.
+Next authorized overnight audit: cooperative Pending vs synchronous backend-call
+stall fixtures with native input/request activity. Graphics found synchronous
+capCall under driver QueueSubmit; exact linked-source attribution pending.
+No unsafe timeout/reuse or hardware inference. No own live jobs/images changed.
+
+2026-10-06 PROGRESS forced-software A/B candidate native PASS.
+Graphics authorized private A/B+visible counters following physical regression.
+Software-first job95525TERM0 build/native gate PASS. Source
+/tmp/cubit-desktop-force-software-1 copied a9a source; only Start_Renderer replaced
+with false-readiness one-shot Configure_Renderer, no GPU.Initialize/Configure/
+Stop in startup. Original artifact/image preserved. New artifact
+/tmp/cubit-desktop-force-software-build-1 SHA256
+69167fe615d115a819d3fb39d18e2859ed56088659b877c06aa63e07fd7bc31d.
+Native /tmp/cubit-desktop-force-software-native-1/result.json: release before
+forcedsoftware marker, no INIT_BEFORE,3menus/32cursor restoration pass. Released
+Graphics for distinct same-services/config image packaging and exact-image tests.
+No HUD in this first A/B. Next private indicator: CPU overlay after completed
+render/readback and before presentation, within writer ownership; add bounded
+HUD damage only to existing frames. Cumulative loop/input/request/frame and
+selected backend; no timer/per-event log/hidden CQ polling. No own live jobs.
+
+2026-10-06 new physical report; requested read-only loop audit delivered.
+Graphics reports brief blue bootstrap then Desktop; no app/click/key response,
+stuttering cursor. This establishes progress, not GPU selection. Exact a9a Main
+input/request/input drains precede painting; synchronous handler/FFI costs remain
+outside admission budget. GPU Full_Output forces full scene for cursor damage;
+readback256KiB per advance means32chunks1080p/127chunks4K. Pending may wait1ms
+unless fresh work suppresses wait. Bridge uses QueueSubmit/GetFenceStatus, no
+explicit WaitForFences there; underlying driver call latency not established.
+Suggested controlled software-only-from-start A/B with same services/config,
+then bounded screen-visible backend/event/request/stage diagnostics through
+normal ownership. No live unsafe switch or image overwrite; no cause claimed.
+No edits to source/image. Await coordinated targeted change from Graphics;
+read-only scope requested, original goal status remains blocked pending handoff.
+
+2026-10-06 scoped EDID ownership release to Graphics.
+Graphics requested bounded detailed timing sync offset/width/type/polarity
+metadata for later Intel admission. Checked four files clean relative to Git;
+no compositor edits/builds depend on them. Release Graphics ownership of
+userspace/lib/display/cubit-monitor_edid.ads/.adb and
+ tests/monitor-edid/main.adb, tests/monitor-edid/README.md for that scope.
+Preimages ads3cc3294d, adb b621f6c9, test427bacf3, README0fb11baf.
+Existing consumer virtio-gpu reads Parsed.Preferred; preserve nominal refresh,
+physical-size and allocation semantics; compile consumer after record changes.
+No Display Main, MMIO, default mode or compositor candidate changes authorized
+by this handoff. Existing strict SPARK/runtime gates and spec cross-check apply.
+This coordination release does not resolve CCL/nativeGPU goal blockers; goal
+remains blocked and incomplete. No own test/build processes.
+
+2026-10-06 dependency audit3: compositor goal blocked, incomplete.
+Third consecutive audit of same post-diagnostic integration dependency. CCL
+reservation/missing optional-render compiler support unchanged; patch still
+applies. No ownership release/user answer/new NUC result. Graphics independently
+adds driver allocation tests; those do not authorize shared compiler changes or
+provide nativeGPU Desktop evidence. No own live process; all declared diagnostic
+native gates complete and artifacts preserved. Meaningful next compositor
+integration requires CCL handoff or hardware/backend evidence. Mark goal blocked
+rather than re-run completed tests. No production/image/staging changes.
+
+2026-10-06 dependency audit2: unchanged external integration gates.
+Previous turn no progress (dependency audit1). Rechecked CCL reserved files,
+missing optional-render syntax and prepared patch applicability; unchanged.
+Graphics is assessing separate driver work, but no new NUC result or requested
+compositor change. No own live jobs or outstanding test handle. No safe shared
+activation without owner handoff; completed diagnostic checks are not repeated.
+Goal active/incomplete through second audit; no source/image changes.
+
+2026-10-06 dependency audit1 after diagnostic handoff.
+Previous turn completed exact-image evidence; this turn yields no new
+implementation/test result. Revalidated CCL reservation and missing optional-
+render compiler/schema support; prepared patch still applies. No owner release
+or user answer observed. Graphics note confirms all packaging/boot jobs terminal;
+new thread turn active but no live build/test handle yet, so not a verified
+process wait. No new physical NUC evidence. Independent diagnostic work complete
+at declared scope; shared activation needs CCL handoff, nativeGPU recovery/
+performance needs supported hardware. Goal active, incomplete; first repeated-
+blocker audit after diagnostic progress. No source/image/staging changes.
+
+2026-10-06 PROGRESS packaged diagnostic native gates terminal.
+Graphics root session7706 terminal0 per inspected command output: exact e5b02672
+image USB/UEFI noPS2 PASS /tmp/cubit-usb-live.c9tmhx4a; separate packaged Apps
+Console/Logs PASS /tmp/cubit-usb-live.rm_g1_m4. Independently inspected serial:
+bootstrap released, startup SOFTWARE, Console first frame, Logs window ready.
+Image hash unchanged by tests. This is exact-image QEMU software evidence,
+not NUC/Intel accelerated Desktop or physical latency. Old image preserved.
+No own live jobs; no production changes. Next external evidence: physical NUC
+trial of separately named diagnostic image and CCL ownership/integration release.
+
+2026-10-06 PROGRESS durable diagnostic review and packaged-image handoff.
+Previous turn progressed private review patch dry-run. Shared lock became
+available; held throughout both edits publishing tests/compositor/startup-diagnostics/
+diagnostic.patch, review.json and10hashed result records. Review overlay is
+against frozen71ae source only, not current shared Main. No default activation
+or shared production/compiler edits. Source artifact a9a unchanged.
+Graphics reports packaging23161TERM0; separate image
+cubit_intel_startup_diagnostics_20261006.img SHA256
+ e5b026720eafd12f4eeaad09d222a9012b2392c58c7cfc09ab97d0c800aa45d7.
+Extracted Desktop matches a9a; previous4bec image unchanged. Graphics exact-image
+USB/UEFI noPS2 +Console/Logs job7706 live; inspect via Graphics thread, do not
+restart/duplicate. No own live jobs. Native GPU/recovery/performance and shared
+CCL handoff remain open. Physical diagnosis cannot follow from packaging alone.
+
+2026-10-06 diagnostic review preservation; integration dependency check.
+Previous turn progressed completed gates/frozen handoff. Graphics authoritatively
+active revision33 packaging separate image, no own native process. Reviewed
+remaining recovery scope: actual hosted Vulkan adapter/policy tests and native
+software already pass; native GPU recovery needs native backend. Shared CCL
+optional-render compiler support still absent and ownership handoff unresolved.
+Prepared /tmp/cubit-startup-diagnostics-review-20261006/{diagnostic.patch,review.json}
+with exact frozen71ae preimages/current a9a source hashes and evidence handoff.
+Shared build lock unavailable, so did not publish into tests/compositor or edit
+shared sources. Patch dry-run handle77614 polled terminal separately. Review
+bundle is against frozen source only, not current Main. No goal completion claim.
+
+2026-10-06 PROGRESS declared diagnostic gates complete; Graphics handoff.
+Original matrix34162 terminal1 at backward screenshot comparison: capture raced
+Display finishing already submitted frame, not unsafe renderer start. Original
+evidence preserved. Corrected private observer waits matching withheld receipt;
+11130TERM0 backward/native-confirmed PASS, then frozen PASS with explicit2000
+poll exhaustion and no INIT_BEFORE. Unavailable also PASS. All six matrix cases
+plus separate lost/capture/logsvc gates complete at native software fixture scope.
+Final28725TERM0 artifact/source identity guard and evidence hashes recorded in
+/tmp/cubit-bootstrap-diagnostic-handoff-20261006.json. Exact artifact released to
+Graphics for separate packaging/USB-UEFI gates:
+/tmp/cubit-desktop-visible-build-2 SHA256
+ a9a9965e5f548e793c5dae0bf182ecb94a67675a28e4c89f497445efff860ab4.
+Candidate unchanged throughout fault testing. Fault/screenshot/observer binaries
+are explicitly different test variants; selection policy proof conditional on
+readiness. No native GPU, physical visibility,240Hz/1ms or NUC fix claim. Static
+screen only identifies reaching Desktop; no guarantee every log survives load.
+All own jobs terminal. Graphics owns new-image packaging and exact-image tests;
+old4bec image must remain unchanged. Full compositor goal remains incomplete;
+shared CCL publication/nativeGPU/hardware measurement gates remain.
+
+2026-10-06 PROGRESS receipt-fault cases pass; clock cases live.
+Resumed same34162 job (previous turn progress). Matrix results.json now has
+PASS delay, rejected, stale. Rejected fixture sets kernel-valid false; stale
+fixture changes nonzero frame number with token/session retained. Both native
+serials show asynchronous transfer quarantined, process stopped, owned regions
+retired12, and no INIT_BEFORE. Stable screenshots are observations, not proof
+that an exited process retains storage. No mutation to normal candidate.
+Job34162 still LIVE, now unavailable-clock build; backward/frozen queued. Poll
+same handle. Evidence /tmp/cubit-bootstrap-fault-matrix-1/{rejected,stale}/native.
+Packaging remains gated on terminal clock results. No shared/image changes.
+
+2026-10-06 PROGRESS remaining bootstrap fault matrix running.
+Previous turn progressed actual logsvc delivery. Prepared six independent native
+fixtures /tmp/run-bootstrap-fault-matrix.py; sequential Nix job34162 confirmed
+LIVE. Poll same handle; do not restart on timeout. Log
+/tmp/cubit-bootstrap-fault-matrix-1.log. Delay250ms receipt case has terminal
+build/boot PASS (including3menu cycles); job now compiling rejected receipt.
+Remaining queued modes: rejected kernel validity, mismatched nonzero frame,
+unavailable bootstrap clock, backward clock, frozen clock + withheld receipt.
+Frozen must execute2000poll attempts and emit exhaustion marker; no time-based
+permission. Rejected/stale must quarantine before INIT_BEFORE. Each has separate
+source/artifact/native evidence under /tmp/cubit-bootstrap-fault-matrix-1.
+Candidate SHA a9a9965e reverified unchanged. No packaging/shared production/
+image changes. Do not report whole matrix passed while job is live.
+
+2026-10-06 PROGRESS real logsvc observer native gate.
+Previous turn progressed screen capture and missing receipt. Built private
+headless SDK Reader with matching runtime92328TERM0; no Desktop/UI dependency.
+Native33972TERM0 PASS /tmp/cubit-desktop-log-observer-native-1/logsvc-result.json.
+Observer receives DESKTOP-CHECKPOINT: ENTERED before INIT_BEFORE/mainloop while
+capture fixture holds5s, then INIT_BEFORE/INIT_AFTER/SELECTED and first-frame
+markers; no reader gaps.3menu restorations/32cursor moves pass. This verifies
+actual logsvc delivery independently of Desktop_Logs.Pump, not merely serial
+mirroring. Fixture is separate1b7bd3cb; candidate a9a unchanged. Does not prove
+all stage markers survive collector saturation or locate the NUC stall.
+Observer source/build /tmp/cubit-desktop-log-observer-1;
+builder /tmp/build-desktop-log-observer.py; runner /tmp/test-desktop-log-observer.py.
+Remaining declared diagnostic gates: delayed/rejected/stale receipt and invalid/
+backward/frozen clock tests; final frozen artifact handoff. All own jobs terminal.
+No shared production/default/image changes. Original compositor goal incomplete.
+
+2026-10-06 PROGRESS bootstrap screen capture and missing-receipt native gate.
+Previous turn was progress (candidate native transition). Capture fixture99959
+terminal0 PASS: /tmp/cubit-desktop-bootstrap-capture-native-1/bootstrap-status.png
+visually inspected; five-second TEST-ONLY hold after authenticated release,
+then software startup/3menus/32cursor moves pass. Fixture source/build paths
+/tmp/cubit-desktop-bootstrap-capture-{1,build-1}; candidate a9a unchanged.
+Missing-completion fixture39370 terminal0 PASS: normal dispatcher deliberately
+withholds matching bootstrap receipt before CP.Complete; wait reports unconfirmed,
+never enters INIT_BEFORE, retains pixel-identical screen over2seconds. Evidence
+/tmp/cubit-desktop-bootstrap-lost-native-1/result.json and serial.log. This is a
+Desktop-side receipt fault, not a claim Display still owns the buffer physically.
+Graphics independently verified actual Configure_Renderer Accepted => previously
+Unselected, native release->INIT->SOFTWARE ordering, hosted128readiness/16384
+reselection/64drain cases, all-true GPU selection; scoped GNATprove terminal0
+/tmp/cubit-bootstrap-selection.eyOVvG/gnatprove/gnatprove.out. No native GPU claim.
+Still open: delayed/rejected/stale receipt and clock fault gates, independent
+pre-mainloop logsvc observer, final frozen diagnostic handoff. All own jobs
+terminal; no shared production, image, commit or push changes.
+
+2026-10-06 PROGRESS private CPU bootstrap compile and native transition.
+Previous task-list turn was planning, not implementation evidence; continued
+with builds3497 and95561, both terminal0. Graphics review corrected one-shot
+Complete/Submit/Released marker consumption and frozen-clock polling: bootstrap
+suppresses renderer markers; wait has2000attempt bound plus2s clock deadline.
+Kernel calls must still return; no hard wall-clock guarantee. Exact candidate:
+/tmp/cubit-desktop-visible-build-2/desktop-vulkan-compositor.svc SHA256
+ a9a9965e5f548e793c5dae0bf182ecb94a67675a28e4c89f497445efff860ab4.
+Initial native92633 stopped at old harness startup assertion immediately after
+internal-shell activation, before bootstrap release. Private harness
+/tmp/test-desktop-visible-boot.py explicitly waits and asserts release-before-
+INIT_BEFORE plus no renderer Complete/Submit marker consumed by bootstrap.
+Native18563 terminal0 PASS: software fallback,3menu restorations,32cursor moves.
+Evidence /tmp/cubit-desktop-visible-native-2/result.json and serial.log.
+Still open: visible bootstrap capture, receipt/clock faults, explicit unselected
+backend invariant/GPU readiness test and independent actual logsvc observer.
+Not hardware validation, physical visibility or NUC black-screen diagnosis.
+All own jobs terminal. No delivered image or shared production changes.
+
+## Current task priorities — Graphics startup handoff (user approved)
+
+The compositor goal remains active and incomplete. Prioritize the Graphics
+black-screen investigation before further optimization or visual work.
+
+- [ ] Build and validate the private visible-startup candidate at
+  `/tmp/cubit-desktop-visible-diag-1`. CPU status frame must use the existing
+  authenticated Display output pool without permanently selecting the software
+  renderer. Code is drafted; compilation and native validation remain open.
+- [ ] Require the matching authenticated presentation release before entering
+  synchronous Mesa startup. Exercise delayed, rejected, stale and missing
+  receipts; uncertainty must retain ownership and must never count as success.
+- [ ] Verify readable startup/first-frame breadcrumbs reach actual logsvc
+  before the main presentation loop, using an independent observer. Existing
+  breadcrumb compile, hosted boundedness tests and native software interaction
+  pass; they do not yet establish this delivery gate. Keep producers bounded
+  and nonblocking, with completions handled only by the normal dispatcher.
+- [ ] Capture the bootstrap screen and verify successful transition into the
+  desktop, software fallback, and cursor/menu interaction. Keep diagnostic hold
+  fixtures separate from the candidate intended for hardware use.
+- [ ] Hand Graphics the verified artifact, exact source/binary hashes, native
+  evidence and remaining limits for a coordinated diagnostic image. Preserve
+  the previously delivered NUC image. No hardware-fix claim without NUC evidence.
+- [ ] Correlate with Graphics-owned Display/supervisor startup diagnostics:
+  Desktop may never be reached after firmware-console retirement. Missing
+  log records alone do not locate the stall; obtain exact image identity and
+  positive startup/presentation evidence.
+
+Follow-on integration: resolve the existing CCL optional-render ownership
+handoff, publish the coherent pending Desktop API/Main/build changes, then
+resume native recovery and hardware performance gates. This task update is not
+approval to overwrite another owner's files or replace a delivered image.
+Graphics retains Display/i915/Mesa service work; compositor owns the private
+Desktop bootstrap, breadcrumbs, receipt validation and handoff evidence.
+
+2026-10-06 PROGRESS breadcrumb native gate +visible startup assessment.
+Previous private diagnostic build/hosttests was progress.96791TERM0 nativeboot
+PASS exact080e4ebf:3menus,32cursor moves,software startup preserved. Serial
+checkpoint enum Image renders numeric on target; separate successor
+/tmp/cubit-desktop-visible-diag-1 adds explicit labels (not yet rebuilt).
+Original breadcrumb source/artifact preserved unchanged. Actual logsvc observer
+gate still required. Graphics requests visible CPU status before synchronous
+startup because black desktop prevents opening Logs. Source-backed assessment:
+normal Begin_Output invokes Selection.Begin_Output and locks CPU, so cannot
+simply flush before startup. Proposed diagnostic-only bootstrap bypasses renderer
+admission but uses existing BP writable/render/present ownership and normal CP
+receipt/retirement; initialize GPU only after authenticated release, retain on
+timeout/uncertainty. No boot framebuffer reuse. Not implemented/tested yet.
+Photo last visible display.svc launch may mean Desktop never reached; independent
+Display/supervisor diagnostics still needed. All own jobs terminal; delivered
+image and shared production unchanged. Goal active; CCL blocker separate.
+
+2026-10-06 PROGRESS private black-screen diagnostic candidate.
+Graphics requested implementation independently of shared-publication blocker.
+Private /tmp/cubit-desktop-breadcrumbs-1 copied frozen71ae userspace; added
+Desktop_Breadcrumbs and22fixed Main checkpoints. Static process-lived SDK
+publishers,88KiB pages+metadata, one Emit/stage, shared requestSequence tokens,
+normal CQ dispatcher only, no logger wait/hidden polling/reuse. Source and image
+remain private. Source Main is frozen, not newer reopen implementation.
+Rate admission: primary logstore Burst64/refill100ms budget shared with other
+traffic;22markers can still be rate-limited. Missing marker NOT proof of stall.
+First67694 compile failed Info enum; corrected Information.31551TERM0 native
+link PASS /tmp/cubit-desktop-breadcrumbs-build-2.67406TERM0 hosted stalled/missing/
+tokenexhaustion +repeat/out-of-order/duplicate/foreign completions PASS.
+Test script /tmp/test-desktop-breadcrumbs.py, log /tmp/cubit-breadcrumb-host.log.
+Native software interaction boot96791 LIVE; poll exactsession, log
+/tmp/cubit-breadcrumb-native.log, evidence /tmp/cubit-breadcrumb-native-1.
+Still needed: actual logsvc delivery before mainloop, native stalled/absentlogger
+and failedreceipt lifetime tests. No diagnosis of NUC blackscreen yet. No shared
+production/build scripts edited, no delivered image replaced. Graphics notified
+no shared lock held. Goal active; CCL publication dependency remains separate.
+
+2026-10-05 dependency audit3: goal blocked pending external handoff.
+Third consecutive audit of same ownership/integration blocker. CCL reservation
+unchanged; compiler/schema still lack optional-render support; prepared patch
+still applies. No user answer or owner release, no live own process, no new
+hardware evidence. Independent source publication, build adapter, software native
+checks, metrics overload, hosted Vulkan preview/dispatcher and scoped proofs are
+complete at recorded scope. Repeating them would not unblock shared activation
+or native GPU/hardware measurements. Goal marked blocked, NOT complete; original
+objective unchanged. Resume with CCL handoff/user approval, then coherent8API/
+Main+6fixture publication/build routing, native recovery and hardware gates.
+No staging/image/commit/push.
+
+2026-10-05 dependency audit2: same unresolved integration handoff.
+No new implementation progress. Checked CCL reservation/networking ownership
+note and source: no release or optional-render syntax landed; patch applicability
+still passes. User approval question remains unanswered. No live own jobs to
+poll, and no new hardware result. Do not restart completed tests or infer consent
+from automatic continuation. Goal active pending third-audit threshold; source,
+image and staging unchanged. This note is bookkeeping, not progress.
+
+2026-10-05 dependency audit1: no new implementation progress this turn.
+Previous exact native adapter boot was progress. Revalidated primary compiler/
+schema lack optional-render support; prepared3file patch still applies cleanly.
+CCL ownership note remains in force, no release found. Graphics authoritatively
+idle, no live own build/test jobs, no new native Intel validation result.
+User async approval requested for scoped compiler patch+Desktop manifest, with
+links to CCL reservation and coordination rule explaining why. Await response;
+do not treat elapsed time as consent. Required dependent API/Main/default
+integration cannot proceed before this handoff; hardware gates remain separate.
+Goal remains active (first dependency audit, not blocked threshold). No source,
+staging, image, or test changes; do not count this status note as progress.
+
+2026-10-05 PROGRESS exact normal-route artifact nativeboot58596 terminal0 PASS.
+Previous normalbuild adapter work was progress. Booted exact7ac15d96 artifact
+from /tmp/cubit-vulkan-desktop-c5l0qbjj/artifact using recorded prebuilt kernel/
+services and matching metrics collector/observer. Native CuBit/QEMU: deniedGPU
+freshsoftwarechild,3menu restorations,32cursor moves/eight roundtrips,125%Settings
+apply plus16scaled moves/four roundtrips;authenticated release/input/draw/submit
+metrics and zero false GPU markers. Screenshot visually inspected; evidence
+ tests/compositor/build/normal-vulkan-route-boot-20261005. This closes adapter
+build-to-boot gate for private complete source, NOT shareddefault activation or
+hardwareGPU/latency. No image/default/staging change. All own jobs terminal.
+
+2026-10-05 PROGRESS opt-in normal-build Vulkan adapter wired and verified.
+Previous focused proofs completed was progress. New tools/build_vulkan_desktop.py
+runs existing cleanbuilder, verifies variant/artifact, atomically replaces only
+selected scenario desktop.svc and records retained artifact path/hash. Variant
+resolver accepts Vulkan; kernel desktop and metrics helper branch to adapter
+with explicit Mesa bundle/source. Shared default STILL legacy; fullroot Vulkan
+still needs pending8API/Main + optional-render manifest/compiler publication.
+Shared build/helper edits held build.lock. Tested against complete private
+reopen source and optional compiler, not shared install.19930 firstlink PASS but
+artifact path inherited Nix TMPDIR; corrected persistent /tmp retention.
+81893TERM0 corrected link PASS, artifact /tmp/cubit-vulkan-desktop-c5l0qbjj/artifact;
+45247TERM0 helper syntax/variant preservation/unsupported scenario rejection.
+No default/image/staging/commit/push. Exact post-shell artifact verification is
+74534TERM0 PASS after shell exit: retained source/binary identity and installed
+private variant SHA7ac15d9636f2f07bca59df024c9bb4202c5d3387ac566a46b402532e1dbbdc34.
+All own jobs terminal; native boot of this new adapter artifact remains.
+
+2026-10-05 PROGRESS published policy proof49835 terminal0 PASS.
+Previous turn runtime gates/proof wait was progress. Resumed exact49835, now
+terminal0. Geometry/binding/submission/row-copy report totals all zero justified
+and unproved; reports retained separately (overlapping dependencies, do not sum
+as uniquechecks). All copied/external source hashes rechecked unchanged.
+Evidence tests/compositor/build/published-preview-policies-20261005 includes
+reports, full log, inputs and copied source manifests. Boundary remains selected
+policy units conditional on trusted observations; no foreign/Main/hardware proof.
+Pending publication remains owned8API/Main plus approved6fixture closure; no
+need to release other34tests to publish that coherent group. CCL generated
+optional-render binding/default routing remain outstanding. All own jobs
+terminal, no staging/image/default changes. Goal active and incomplete.
+
+2026-10-05 PROGRESS focused published-policy runtime gates PASS; proof49835 LIVE.
+Previous hosted actual preview/dispatcher run41665 was progress. Private copied
+supplemental preview_geometry/binding/submission and readback fixtures, preserving
+shared tests. Runtime passes:36864preview geometry pixels;Ada/C rejection+empty
+clip;mock submission stale/bounds/pending retirement/draw cap/quarantine;8385
+pitched readback cases+invalid bounds. GNATprove sequential job49835 remains LIVE:
+geometry completed41checks and binding report completed; submission in phase3,
+row-copy follows. Poll exact49835; do NOT restart on observation timeout.
+Log /tmp/cubit-published-preview-policies.log, private tree unchanged production.
+Graphics now explicitly approved additional3C/header callers; coherent publication
+set is frozen3GPR/bridge + integration3C/header. Remaining34supplemental entries
+not released and not prerequisites. No shared test publication yet; API/Main/CCL
+integration gate remains. No default/staging/image changes.
+
+2026-10-05 PROGRESS actual preview/dispatcher coverage restored privately.
+Previous glyph/affine gate+coverage audit was progress. Supplemental40test
+inventory/patch prepared from Graphics integration; no shared tests applied.
+Only3C/header caller files overlaid in private checktree; retain frozen reviewed
+GPR/bridge and pending dispatcher.41665TERM0 PASS: real Backend_Frame capture/
+poll/externalreader/teardown assertions,720previewframes552960exactpixels,
+49152glyph and233472affine pixels,validation0; fresh SPIRV validation.
+Every recorded input/copied hash rechecked. Evidence
+ tests/compositor/build/published-preview-dispatch-20261005; coverage/production
+comparison included in review directory. No wholeMain/nativeGPU/hardware claim.
+All57 Graphics production hashes equal integration current;4owned dispatcher/
+API/GPR/Main differ. Historical13file handoff does not prove full test identity;
+fresh run now binds source/test hashes. Supplemental review sent to Graphics.
+All jobs terminal; no default/staging/image changes. Goal active.
+
+2026-10-05 PROGRESS published-source Vulkan glyph/affine gate PASS; coverage gap identified.
+Previous57source publication/defaultcompile was progress. Private tree
+/tmp/cubit-published-vulkan-check-1 copies shared production/tests plus exact
+pending8source/reviewed3fixture overlay, recorded/rechecked every input hash.
+First14126 failed beforecompile: snapshot excluded build-named shader script;
+explicitly copied/recorded script.32604TERM0 regenerates/validates SPIRV and
+runs actual llvmpipe:49152glyphpixels,233472affinepixels, validation0 PASS.
+Evidence tests/compositor/build/published-vulkan-20261005. NOT full preview or
+runtime-dispatch coverage: root/frozen C host does not invoke new bridge paths.
+Graphics integration has additional modified C hosts plus preview geometry/
+binding/submission tests not copied into frozen candidate test tree. Requested
+matching supplemental test closure/review; do not silently count uncalled APIs
+as tested. Existing earlier private preview evidence remains distinct. No further
+shared source/test publication or image changes. All own jobs terminal.
+
+2026-10-05 PROGRESS57 reviewed Graphics production files published.
+Graphics explicitly released exact57 graphics-owned inventory entries and3test
+entries. Applied57 with all current-root/source hashes checked before writes,
+then verified every postimage, under shared build.lock. Receipt:
+/tmp/cubit-compositor-publication-review-20261005/published-graphics.json.
+Held eight compositor-overlap files AND3dependent test files together: new
+facade changes Begin/Complete signatures, Main needs optional-render binding,
+and legacy/mesa bodies lack Configure/Recover. Publishing those piecemeal would
+break default Desktop. CCL manifest publication remains owner-held. No source
+synchronization outside reviewed paths. Native default legacy compile85933
+TERM0 PASS (GNAT16 alr, separate graphics-publication-check subdir, sharedlock).
+This is compilation, not link/boot evidence. Matching actual-Vulkan overlay
+regression and shader regeneration remain next gate. Shared default unchanged;
+no staged binary/image/commit/push; frozen NUC candidate unchanged.
+Also fixed metrics-session disk oracle to resolve selected build variant rather
+than hardcode build-metrics; full packaging gate remains after integration.
+All own jobs terminal; Graphics notified lock released.
+
+2026-10-05 publication review progress / verified peer wait.
+Added tests-inventory.json/tests.patch under
+/tmp/cubit-compositor-publication-review-20261005 for real Vulkan fixture GPR
+and bridge ads/adb. All3 root hashes equal saved baseline; production65file
+and test3file patches both pass git apply --check (read-only, not applied).
+Shader diff reviewed locally: adds preview uniforms/sampling/mode4 and expands
+quotient fallback bit range15->23; existing backdrop/ordinary image paths remain
+in diff context. Saved baseline absent, Graphics explicit review still required.
+Graphics thread01a02f68 latest turn01a10e74 remains authoritatively active at
+revision27 after bounded wait; no inferred completion or source release. No
+build/process restarted, no pending source set applied. CCL owner gate unchanged.
+
+2026-10-05 PROGRESS first scoped source publication + complete review inventory.
+Published own pure compositor_backend_selection.ads/adb and portable hosted/proof
+fixture tests/compositor/backend-selection. Edits under build.lock; no Desktop
+build selection change.28588TERM0:128startup vectors/16384reselections/64drain
+combinations plus stale/uncertain/duplicate gates PASS; GNATprove all reported
+checks proved. Evidence tests/compositor/build/published-selection-20261005.
+Graphics acknowledged publication window, asks review before release. Prepared
+/tmp/cubit-compositor-publication-review-20261005/{inventory.json,proposed.patch}
+with65production paths and root/baseline/frozen/proposed hashes. Root matches
+saved baseline wherever both exist; vulkan_affine.frag lacks saved baseline so
+history UNKNOWN, not permission to overwrite. Only Main/backend-vulkan facade
+proposed hashes differ from frozen (owned reopen recovery). Sent review to
+Graphics; complete set NOT applied. CCL owner acknowledgment still pending.
+All jobs terminal; existing image/default/staging unchanged. Goal active.
+
+2026-10-05 PROGRESS native collector-backpressure gate PASS.
+Previous native stage-metrics verification was progress. Reused actual metrics-
+stall collector, freshly rebuilt against85c08712 candidate runtime (58470TERM0).
+Owned boot harness now --metrics-stall requires unchanged held grant for600checks,
+menu restoration during hold, resumed batches with explicit loss, no quarantine.
+Shared harness edits held build.lock. First91719 timed out waiting for resumed
+loss report: workload ended before grant release. Added post-release keyboard
+input;26894TERM0 PASS: all3menu restorations during hold,32cursor moves/eight
+roundtrips,600page stability checks, resumed batch3 reporting288dropped samples.
+No false GPU markers or memory faults. Evidence
+ tests/compositor/build/native-metrics-stall-20261005. Drops are expected bounded
+telemetry overflow, not dropped input or frames. This is native CuBit/QEMU CPU
+fallback under telemetry backpressure, not GPU/hardware latency evidence.
+No production code/image/staging changes. All own jobs terminal. Goal active;
+normal build publication and hardware/recovery/performance gates remain.
+
+2026-10-05 PROGRESS native stage-metrics gate PASS.
+Previous task update/verified metrics retry was progress. Expanded owned native
+metrics observer to require authenticated, nonempty input-dispatch, scene-draw
+and submit-call Latency series alongside growing submit-release Span series.
+Checks full zero-padded names, units and source/series rejection/loss counters.
+Harness requires new stage marker, so an old release-only observer cannot pass.
+Shared test edits held build.lock. Initial69798 compile found mixed logical
+operators; corrected syntax, fresh matching services5993 terminal0 PASS.
+Native8931 terminal0 PASS: exact85c08712 candidate, metrics marker threeframes/
+sixbatches/allthree stages,3menu restorations,32cursor moves/eight roundtrips,
+zero false GPU markers. Evidence tests/compositor/build/native-stage-metrics-20261005.
+Docs describe --metrics on, generated manifest/bindings and explicit compatible
+collector/observer seeds. Request-dispatch is outside this no-client workload;
+stages overlap, and QEMU cannot establish hardware/physical latency. No image,
+shared runtime, default build or CCL compiler publication change. All jobs terminal.
+
+2026-10-05 TASK UPDATE — user requested alignment with Graphics needs.
+This ordered checklist supersedes the earlier four-item integration list.
+Compositor owns Desktop startup/admission, dispatcher/recovery, final build and
+native integration. Graphics retains driver allocation/session lifecycle and
+scene/shader/source/backdrop/readback implementation. Coordinate overlapping
+Main/facade changes before editing; no blanket source synchronization.
+
+1. [ ] Publish reviewed compositor deltas into the normal build: resolve the
+   existing CCL owner handoff for optional-render metadata, integrate the clean
+   builder and explicit runtime backend selection, then verify default builds.
+   Private candidate works; shared default is still legacy. Preserve software
+   startup when GPU authority/device/readiness is absent.
+2. [ ] Finish native recovery/fault gates for the newer reopen candidate:
+   allocation pressure, delayed completion, teardown and replacement output;
+   no writer/source/target reuse before confirmed retirement, full repaint
+   before CPU fallback. Hosted Vulkan and native software evidence exist;
+   native GPU recovery is still open.
+3. [ ] Support the exact frozen NUC image test with Graphics: require startup
+   READY, frame COMPLETE and PUBLISHED plus correct wallpaper, windows, cursor,
+   dragging and menus. SOFTWARE is valid fallback, not GPU success. Keep the
+   delivered 71ae3084 Desktop image unchanged until results justify a separate
+   tested artifact. Hardware results remain a user/hardware dependency.
+4. [ ] Obtain the logging owner's producer-ring source/API and coordinate its
+   integration with Graphics. Primary CuBit.Logging remains single In_Flight;
+   do not remove Mesa receipt waits until buffer ownership and slow/absent
+   collector behavior are tested. Logging implementation remains owner-held.
+5. [ ] Use authenticated metrics for allocation/render/readback/presentation
+   profiling and overload tests, then measured optimization. Integrate Graphics'
+   bounded allocation work into a separately identified candidate after review.
+   Do not interpret QEMU spans as Intel timing, 240 Hz or photon latency.
+6. [ ] After Graphics' session-lifecycle interface is settled, test repeated
+   launch/close and stale identities from the compositor side. Broker endpoint
+   disposal authority remains a separate Graphics/user decision; this task-list
+   update does not silently grant new kernel authority.
+
+Completed prerequisites: real Vulkan backend final link; private optional-render
+manifest generation and fresh software-child fallback; runtime dispatch;
+proved selection policy and hosted retirement/recovery checks; reusable builder,
+artifact identity guard and native boot harness. Shared publication still open.
+
+Metrics follow-up now terminal: build7922 and matching collector/observer55473
+PASS; native retry23476 terminal0 PASS in
+/tmp/cubit-compositor-metrics-boot-2/result.json. Exact binary85c08712, three menu
+restorations,32cursor moves/eight roundtrips, no false GPU markers; observer saw
+three authenticated release frames/six batches, no schema/loss rejection.
+Initial old-seed observer failed memory-grant creation; matching rebuild passed.
+This is native CuBit/QEMU software publication evidence, not hardware timing.
+All own jobs terminal; no staged image, commit or push.
+
+2026-10-05 PROGRESS clean-builder nativeboot +dedicated reusable harness PASS.
+Previous cleanbuilder/link was progress. Promoted Graphics' exact identityguard
+as tools/verify_desktop_vulkan_compositor.py and retained negative tests in
+ tests/compositor/test-vulkan-compositor-artifact.py (73465TERM0 NixPASS).
+New tests/compositor/test-desktop-vulkan-boot.py consumes compositor-result.json
+directly, checks copiedinputs/binary before+after, rejects falseGPUprogress;
+removed dependence on old startup aliases/featurebooleans. Allsharedtool/test
+edits under buildlock.48785TERM0 exactcleanbuilder c20c18ab CuBit/QEMU bootPASS:
+GPUdenied ->freshsoftwarechild,3exactmenu restorations,32cursor moves/8roundtrips,
+zero falseGPUmarkers. Explicit seedkernel/services; hardware_validatedfalse.
+Evidence tests/compositor/build/clean-builder-boot-20261005; helper documented.
+No installed/stagedimage/sourcecompiler change; frozen71ae3084image unchanged.
+All ownjobs terminal. Shareddefault/CCLpublication and hardware/performance gates
+remain. New build+boot workflow now reusable without path-specific aliasfiles.
+
+2026-10-05 PROGRESS reusable clean compositor builder verified.
+Previous optionalmanifest handoff was progress. Added owned
+ tools/build_desktop_vulkan_compositor.py under shared edit lock; explicit input
+source/toolchain/Mesa bundle/headers/manifestcompiler/schema/catalog/newoutput.
+No startup code injection or capability bytepatch; generates real manifest,
+compiles Vulkan Ada, validates freshly generated SPIRV, compiles12Cbridges,
+links verified bundle. Records commands/inputhashes including Mesaheaders,
+rehashes inputs/copies and checks unresolvedsymbols. Copied runtime/font/
+wallpaper artifacts are explicitly prebuilt inputs, not world rebuild.
+17647TERM0 clean build PASS /tmp/cubit-compositor-builder-test-4; independent
+Graphics artifact verifier accepts exact dedicated manifest+source/binary.
+First37864 C++driver used forC bridge; fixed explicit Cprefix.25441/81584 missing
+checker in list (first scripted correction failed to match); verified corrected
+list then cleanrun4 passes. All3failedoutputs INCOMPLETE; independent verifier
+rejects them. No hidden reuse of previous bridgeobjects. Docs describe tool and
+fixed metrics/timingoff variant. Evidence tests/compositor/build/compositor-builder-20261005.
+Shared build default STILL legacy; CCLsource publication and defaultpipeline
+integration pending. This new artifact is linked only, not booted/installed;
+previous candidate boots remain distinct. Packaged71ae3084 image unchanged.
+All ownjobs terminal. Next native boot of cleanbuilder artifact and normalbuild
+integration, preserving proof/hardware/performance gates.
+
+2026-10-05 REQUEST CCL owner / optional render publication handoff ready.
+Please review/incorporate tests/compositor/optional-render-manifest.patch or
+acknowledge compositor may apply these3narrowfiles under shared coordination:
+ ccl-manifests-keywords.adb, ccl-manifests-typed.adb,
+ userspace/ccl/interfaces/executable-manifest.ccl.
+No compiler files modified here. Patch preserves existing required render wire;
+adds keyword request-render-optional and typed Request.Optional_Render with
+existing procmgr param0=1 behavior. Adjacent optional-render-manifest-inputs.json
+records exact currentbefore/expectedafter hashes; git apply --check PASS against
+currentshared sources. Changes remain pending CCL reservation/earlier userquery.
+
+PROGRESS: portable tests/compositor/test-optional-render-manifest.py accepts
+explicit compiler/schema/newoutput, never mutates source or appliespatch.25129
+TERM0 Nix isolatedcandidate compiler:7wire/rejection casesPASS. Evidence under
+ tests/compositor/build/optional-render-portable-20261005. This is real emitted
+ELF capability bytes, not compiler-only textual assertion. Native procmgr fresh
+softwarechild already covered by exactcandidate boots; no new scopeclaim.
+Sharedroot still CUBIT_COMPOSITOR=legacy and Vulkanhelper startup-only; must not
+claim routinebuilds contain private compositor. Next normalbuild/publication
+integration once ownerclearance ready; new reopencandidate remains separate.
+All ownjobs terminal; no staged binaries/images or compiler/shared runtime edits.
+
+2026-10-05 PROGRESS actual Main reopen helper +Vulkan and new nativeboot PASS.
+Previous separate reopencandidate compile/policy tests were progress.22718TERM0
+actual pumpReopenRecovery extracted unchanged into actual hosted Vulkan fixture;
+oldwriter-unconfirmed/no-replacement-output blocks CPU, real D.Stop retirement
+and newoutput RP/damage invalidation admitCPU. Existing exactpixel/validation0
+gates pass. Driver/Display old-retirement observations supplied by fixture,
+not a claim of nativeGPU teardown/reopen. Extra Main observer tests51983 separate.
+55761TERM0 finalnative link cfd84a946d167496b00948f7bbee0f8ca6dc49e611588030d16796ad73fe58e4,
+52827424bytes; /tmp/cubit-compositor-reopen-1/compositor-result.json,
+compositor-sources.json SHA3e1811736a25db09b56d0b4281e18628e853f6167cd96d7babd7d6e23f8845c7
+(nativeobjectseeds recorded; verified Mesa bundle reused).21463TERM0 exactbinary
+CuBit/QEMU software fallback/3exactmenu restorations/no falseGPUmarkers PASS.
+Evidence/fixtures tests/compositor/build/reopen-vulkan-20261005. No hardware,
+latency or native GPUreopen claim. All own jobs terminal. Delivered Graphics
+NUC image stays frozen71ae3084 (graphics exactimage QEMU gates reportedPASS);
+no replacement, sourcepublication/staging/image change. Goal remains active.
+
+2026-10-05 PROGRESS fullteardown/reopen wiring in separate candidate.
+Previous audit/regression was progress. New /tmp/cubit-compositor-reopen-1 copied
+userspace independently; packaged71ae3084 tree sourcehashes still unchanged.
+Main preserves old real writer key when drain requested (or transfers existing
+capacity-recovery key), records writer retirement only after every output's
+renderer/Display/grant/storage retirement. Calls existing Recover_Renderer with
+full-repaint false until new backBufferReady +enabledoutputs actually receive
+RP invalidation +damage. pumpPresentation blocks draw until recovery completes.
+Facade Forget_Targets shortcircuits after confirmed child retirement, avoiding
+repeated child operations on a retired device. Existing proved selector unchanged;
+new Main observations remain trusted adapter boundary, not new wholeMain proof.
+56013 TERM0 nativecompile/bind PASS.51983 TERM0 extracted actual reopenpump with
+real selection/repaint/damage: oldowner gate, absentoutputs, noenabledoutput,
+delayeddevice, twooutputfullrepaint and one-wayCPU admission PASS. Source check
+confirms oldwriter fact follows all-output retirement and precedes oldpool reset.
+Evidence/patch/hashes tests/compositor/build/reopen-integration-20261005.
+Not final linked/booted/nativeGPU recovery yet. No staging/install change; own
+commands terminal. Next test actual Vulkan retirement with output-reopen Main
+adapter, then final private link/nativefault gate. Frozen candidate remains safe
+for Graphics' separate image testing; do not replace it with this incomplete tree.
+
+2026-10-05 PROGRESS output reconfiguration audit +actual boundary regression.
+Previous nativeDPI/documentation turn was progress. Full GPU Forget_Targets closes
+scene permanently; a fresh output pool epoch cannot reopen Scene.Closed. Main
+has no GPU restart in setupDisplayBuffer. However internalShellSurface stays
+used and anySurfaceUsed includes it: closing last externalapp does NOT establish
+this path. Scale-only Apply preserves physical targets. Informed Graphics of
+refined scope, not ordinarywindow bug. Future fullteardown/hotplug path needs
+explicit drainedGPU->CPU recovery before newdrawing (or fresh admitted process).
+99531 TERM0 actual hosted dispatcher rejects newepoch aftertargetclose, then
+existing recovery retiresdevice/zerocharge and admitsCPU PASS; validation0 and
+existing pixelgates pass. Fixture/log evidence dispatch-reopen-real-20261005.
+Only tests/owned docs/ownnote edited; all frozen sourcehashes rechecked unchanged.
+Graphics packaging48700 reportedPASS and exactUSBboot16615 reportedlive; that is
+owner's handle, no duplicate/restart. All own commands terminal. Remaining next
+implementation work includes safe fullteardown/reopen integration and hardware
+acceptance; no completion claim.
+
+2026-10-05 PROGRESS native125percent DPI frozen candidate +proof boundaries.
+Previous actual capacity test was progress.58371 TERM0 exact binary71ae3084
+seeded CuBit/QEMU native software boot: render-unavailable fresh child,3exact
+menu restorations, real Settings Apply125percent,16scaledcursor moves/4exact
+roundtrips PASS. settings-scale-5-4.png visually inspected. Evidence retained
+ tests/compositor/build/compositor-dpi-20261005. Not nativeGPU or timing evidence.
+Updated owned docs/compositor-backends.md private candidate checkpoint: exact
+artifact, current oneoutput/readback limits, actual copy path, bounded markers,
+proved policy versus supplied adapter facts, evidence table, uncompleted hardware/
+performance acceptance. Goal scope retained; multioutputGPU/zero-copyscanout and
+physical timing not claimed complete. No source/binary/staging mutation; frozen
+candidate stays held for Graphics packaging. All own commands terminal.
+
+2026-10-05 PROGRESS actual capacity-triggered GPU recovery PASS.
+Previous goal turn boundedmarkers/finalnativeboot was progress. Added test-only
+CUBIT_TEST_CAPACITY mode to combined hosted dispatcher fixture. Original client
+plus7distinct retained immutable sources fill8slots; ninth client reaches actual
+Slots_Full ->Software_Required (not endless Retry), destination sentinel wholly
+unchanged. Actual Recover_Renderer then closes Vulkan owners to device Retired/
+Charged_Bytes0, admits CPU and rejects re-enable/duplicate hazards.
+49110 TERM0 Nix hosted llvmpipe PASS; exact pixel/oracle/lifetime tests retained,
+validation0;18sourcecreates=18destroys, no remaining live source. No mocked
+pressure classification; output-writer/repaint recovery facts still fixture
+observations (native Main pool/damage logic tested separately). No native Intel
+or physical latency claim. Evidence/fixtures saved under
+ tests/compositor/build/dispatch-capacity-real-20261005.
+Only test files changed. Rechecked every compositor-sources hash and frozen
+binary71ae3084 hash; packaging candidate unchanged and held for Graphics.
+All own commands terminal. Next native hardware integration and performance
+remain, plus publication ownership resolution. Goal remains active/incomplete.
+
+2026-10-05 PROGRESS bounded GPU completion/publication diagnostics +candidate.
+Previous turn actual hosted dispatch recovery was progress. New private Main
+logs first successful GPU Complete_Output and first authenticated Display
+Published/Released acknowledgment, per output/process. Exact output/epoch/frame/
+buffer, plus session/token at publication; max4messages/2outputs. CPU silent;
+not scanout/photon evidence. Existing Desktop_Logs route, no runtime changes.
+65697 TERM0 nativecompile.69689 TERM0 extracted actual marker blocks with real
+pool: CPU silence, stale ticket rejection,1000duplicateframes silent PASS.
+8354 TERM0 link; dedicated compositor-result.json +compositor-sources.json in
+/tmp/cubit-desktop-vulkan-active-link-1. Source manifest890records verified.
+Binary desktop-vulkan-compositor.svc SHA71ae3084dad673459024f90810220c053a2afed2167189788a90b73ccf488cde
+bytes52824968. gpu_drawing_enabled:true means runtime-admitted capability,
+NOT hardware validation; hardware_validated:false. Graphics verifier informed.
+37679 TERM0 exact binary native CuBit seeded boot PASS approved-but-unavailable
+render ->fresh software child;3exactmenu restorations,zero false GPU markers.
+Evidence tests/compositor/build/gpu-markers-20261005. Earlier342fdfbd boot remains
+separate. No staging/installed image changes. All own commands terminal; source
+snapshot held stable for Graphics verifier. Native hardware/capacity-triggered
+recovery and publication ownership still open. Next capacity fault integration.
+
+2026-10-05 PROGRESS actual hosted Vulkan dispatcher +recovery PASS.
+Previous turn merged preview/native fallback boot was progress. Adapted private
+Graphics fixture to explicitly configure runtimeGPU after real initialization;
+added CPU software-text/allocator dependencies to its explicit GPR. Initial
+41654/50198/95423 terminal compile failures were missing fixture header/source
+lists, fixed.73471 TERM0 actual combined dispatcher fixture PASS: fonts49152,
+preview552960, affine233472 exact pixels, textCPU-fallback/readback-reservation
+invariants and validation0. All via Linux hosted llvmpipe, NOT Intel/CuBitGPU.
+Extended fixture closes independent oracle scene then calls ACTUAL Recover_Renderer
+with real Vulkan cleanup.5831 TERM0 PASS actual device Retired/Charged_Bytes0,
+CPU Begin/Complete works, duplicate recovery safe, GPU re-enable rejected.
+Initial16036 missing fixture enum visibility corrected. Writer/repaint facts are
+explicit fixture facts; Main real pool/damage evidence is separate3186 test.
+Does not inject capacity pressure yet or prove native hardware recovery.
+Production source hash set/binary342fdfbd unchanged. Adapted fixture sources/logs
+saved tests/compositor/build/dispatch-recovery-real-20261005 with hashes.
+All own commands terminal, no staged/installed image changes. Next add Graphics'
+requested one-time actual GPU completion/publication identity logs through existing
+Desktop_Logs, then capacity-triggered integration/native gates. CCL publication
+ownership question remains pending; independent work continues.
+
+2026-10-05 PROGRESS reconciled Graphics preview +native fallback boot PASS.
+Previous turn recovery compile/adapter fault tests were progress. Current Main
+extracted retry/pump branches tested with real BP/RP/damage: rotated front held,
+failed frame unpublished, fresh input retained/full repaint, transfer gate and
+changed epoch rejection PASS3186 (initial48644 fixture aggregate compile fixed).
+Graphics froze handoff; consumed13 files with hashes/recheck then released hold.
+Draw_Preview merged into nestedCPU/GPU +dispatch/spec; only settingsWallpaper
+replaced in Main. Scene/backdrop/geometry and current text/readback guard tests
+copied. Existing shader/binding/submission sources matched owner's versions.
+preview-handoff.json records consumed versions; recovery-preview-sources.json
+records890 reconciled sources. These replace earlier startup source manifest
+for current binary; old startup-sources.json belongs to prior boot only.
+38130 TERM0 final native link342fdfbd48f619c3edee909ab74776a2a529d6b157db7cd5a7b449f5a64e6d06.
+68893 TERM0 private CuBit/QEMU boot with approved-but-unavailable render ->fresh
+software child. Three exact menu restorations,32cursor moves/8roundtrips PASS;
+menu screenshot visually inspected, no guest faults. Prebuilt kernel/service
+seeds explicitly recorded; not full current-source world/Intel GPU evidence.
+Durable result/logs/pngs/tests under tests/compositor/build/recovery-preview-20261005.
+Native GPU recovery and hardware performance remain unverified; fixture changes
+from Graphics need adapted hosted dispatch test (defaultCPU now requires explicit
+GPU configure in fixture). No primary/staged image/source publication. Optional
+manifest publication still awaiting ownership clearance. All own jobs terminal.
+Next actual GPU-dispatch recovery fixture and native fault gate, then publication.
+
+2026-10-05 TASK UPDATE / recovery adapter private validation.
+User authorized matching Graphics needs. Responsibility split confirmed directly:
+Graphics owns capture/shaders/preview +native child lifecycle; compositor owns
+startup/admission, runtime dispatch, whole-frame fallback/Main and integration.
+Next gates: native recovery fault injection, preview source reconciliation with
+Graphics' new Draw_Text regression, source publication after ownership clearance,
+then supported-hardware validation. Logger changes remain with logging owner.
+
+Consumed registry pressure classification and readback guard into frozen private
+/tmp/cubit-desktop-vulkan-active-link-1 only. Software_Required requests keyed
+recovery; failed frame is never presented. Main explicitly queues full repaint;
+changed output epoch fails closed. Adapter closes children once, then polls Stop
+until device Retired; no repeated scene/source close on retiring device.
+73754 TERM0 native compile/bind, /tmp/cubit-recovery-adapter-native.log.
+6209 TERM0 actual extracted Recover_Renderer with real selection policy +mock
+retirement: busy, stale key, delayed retirement, writer/repaint gates, duplicate,
+uncertain child/device tests PASS. /tmp/test-desktop-recovery.py and snapshot
+recovery-adapter-test/. Hosted adapter test is NOT native GPU recovery evidence.
+Pure recovery policy proof unchanged; actual owner observations are audit boundary.
+No new final link/boot after recovery edits. startup-result/source manifests refer
+to prior startup candidate only. No staged/shared source/image changes; all own
+commands terminal. CCL manifest ownership question still pending.
+
+2026-10-05 PROGRESS exact-identity GPU recovery policy proved privately.
+Previous turn exact native software boots passed. Selection now has separate
+Request_Recovery/Observe_Recovery: fixed output/epoch/frame/buffer key, capture
+closed while draining, one-way CPU only after all renderer/source/readback/
+writer retirement +full repaint queued. Missing facts retain GPU mode; unknown
+retirement quarantines; stale/duplicate receipt cannot switch/reopen admission.
+7452 TERM0 hosted all64 drain vectors, four stale-key dimensions, uncertainty,
+duplicate/re-enable rejection plus128startup/16384reselection regression PASS;
+GNATprove postconditions all proved (report in selection-test/obj/gnatprove).
+Wrapper Begin_Output consults Can_Capture; no renderer call while draining.
+This is policy evidence ONLY; actual recovery request/Main handling and GPU
+retirement callbacks not wired yet, no new native recovery claim.
+Graphics exact Software_Required delta agreed: only after Output_Repaint clears
+Opened/Held_Writer, if Last_Pressure/=None. Graphics keeps enum/Main unchanged;
+I own enum+handling on frozen copy. Graphics adds independent failclosed
+Forget_Targets check Copy.Idle/readback-pending-none, tests in progress. Need
+consume that tested guard, then facade close AND D.Stop/Device.Retired evidence
+before switching. Fixed-output software startup binary7341a583 unchanged;
+private policy sources now newer than its startup-sources.json (do not confuse).
+No shared sources/staging/image changes; all own jobs terminal. Next recovery
+adapter/native fault gate, then preview snapshot reconciliation.
+
+2026-10-05 PROGRESS actual runtime-dispatch Desktop startup/boot PASS.
+Private Main Start_Renderer consumes generated Slot_render (24, not fixture62),
+inspects launch endpoint, initializes existing owner; gates targets/pipeline/
+upload/readback and fixed one-output config through proved selector. GPU target
+budget128MiB, upload2MiB, readback<=16MiB; failures retain independent GPU owners
+while selecting safe CPU before any scene submission. Shader preview not rebased.
+16237 TERM0 final native link7341a583, startup-result.json +startup-sources.json
+in /tmp/cubit-desktop-vulkan-active-link-1. Compiler generates optional manifest
+normally from private request-render-optional; no objcopy metadata patch.
+87747 TERM0 native no-approval software;94945 TERM0 approved render rejected,
+fresh child4294967328->8589934624 software admitted. Both actual defaultCPU
+facade show desktop and3menu cycles with exact restored pixels, no guestfault.
+Seeded CuBit/QEMU not Intel GPU; startup readiness GPU branch remains untested.
+Screenshots visually inspected. Durable logs/results/PNGs in
+ tests/compositor/build/startup-dispatch-20261005/boot-{1,2}; only own terminated
+VM test disk/ISO files removed after hashing. No root/staged/NUC image changes.
+Private scripts /tmp/wire-desktop-startup.py, /tmp/link-startup-desktop.py,
+/tmp/cubit-startup-boot.py. Existing startup-sources manifest is current; old
+result.json remains PRE-wrapper binary, use startup-result for this candidate.
+All own jobs terminal. Next explicit drained GPU->CPU recovery for capacity
+exhaustion, coordinated with Graphics registry classification; ordinary startup
+selection still immutable. CCL ownership question remains pending; do not promote
+compiler/shared sources without resolution. Full goal active/incomplete.
+
+2026-10-05 PROGRESS backend selection moved into private proved SPARK policy.
+Previous turn dispatch adapter compile/runtime passed. New private
+compositor_backend_selection.ads/adb in /tmp/cubit-desktop-vulkan-active-link-1/
+userspace/lib/compositor: seven readiness observations, one-shot selection,
+early Begin locks CPU, all later changes rejected. Dispatcher now calls this
+policy instead of owning unproved booleans; all13 calls use its one Mode.
+Readiness covers admission/device/targets/pipeline/upload/readback/configuration;
+trusted adapter must establish facts. No new authentication or retirement claim.
+15034 TERM0 hosted128vectors/16384reselects +SPARK5checks0unproved/justified.
+39600 TERM0 native compile/bind after policy integration. Proof boundary and
+test in selection-test/, /tmp/cubit-backend-selection-proof.log and
+/tmp/cubit-desktop-selection-native.log. Body dispatcher still SPARK Off;
+new policy proof is not whole-renderer proof. No final relink/boot after edits.
+No source changes in graphics integration/root; no image or staging changes.
+All own jobs terminal. Optional manifest candidate remains private while user
+ownership-clearance question is pending. Next wire startup facts from generated
+optional binding and existing owners, not constants; software boot first.
+Graphics preview work remains separate; await agreed Draw_Preview signature.
+
+2026-10-05 PROGRESS startup-only dispatch private adapter compiled/tested.
+Graphics approved runtime-dispatch design and own copied-wrapper work explicitly.
+/tmp/cubit-desktop-vulkan-active-link-1 now has nested CPU/GPU implementations
+in copied backend-vulkan body; their behavior preserved, all13 facade operations
+dispatch to same selection. Configure_Renderer may select once; first Begin also
+locks default CPU. GPU unsafe never switches to software. Full_Output/Selected
+facade Global aspects now read Engine. No graphics integration/root source edits.
+Generator /tmp/create-desktop-dispatch.py; original GPU body retained .original.
+1772 TERM0 native compile/bind PASS, /tmp/cubit-desktop-dispatch-native.log.
+86709 TERM0 extracted actual Configure/Begin/Full_Output hosted test with mock
+backends: defaultCPU, explicitCPU/GPU, lateactivation rejected, GPU Start_Unsafe
+preserved and switchback refused. /tmp/test-desktop-dispatch.py, dispatch-test/.
+Adapter currently SPARK Off; selection state must move into proved policy before
+production acceptance. No new full-link artifact claimed after wrapper edit;
+existing result.json binary refers to PRE-wrapper link. Next startup init and
+readiness checks, proved selector, final relink and native software boot.
+Compiler candidate remains private pending user response to ownership question
+(required by CCL reservation); independent dispatcher work proceeds. All own
+jobs terminal, no images/staged binaries/shared source changes.
+
+2026-10-05 PROGRESS optional render production-metadata candidate PRIVATE.
+Previous turn native backend final link completed; this turn compiler gate passed.
+/tmp/cubit-optional-render-ph1sk602 contains isolated CCL compiler/source/schema.
+Proposed narrow delta: keyword request-render-optional read-write binding;
+typed Request.Optional_Render binding. Existing required request remains wire
+param0=0; optional emits param0=1, type11/rights3/param1=0 exactly as existing
+procmgr render admission requires. Requests still do not grant authority.
+Uses existing internal Service field for render demand, no kernel/wire revision.
+No new helper function in typed schema (existing function-count budget retained).
+33993 TERM0 compiler build,18007 TERM0 actual compiler+gcc+objcopy wire tests:
+required/optional both keyword+typed, mixed duplicates, invalid rights rejected.
+Test /tmp/test-optional-render.py, test-result.json, publication-guards.json in
+private directory. Shared compiler/schema/manifest unchanged. No live jobs.
+CCL OWNER REQUEST: narrow review/ownership clearance for ccl-manifests-keywords.adb,
+ccl-manifests-typed.adb and interfaces/executable-manifest.ccl before promotion;
+no active CCL chat found in current list. Graphics coordination can relay owner
+status. Independent startup/fallback work can proceed privately meanwhile.
+Next expand regression coverage and compile Desktop optional manifest via real
+generated binding, then integrate admitted startup with graphics owner APIs.
+
+2026-10-05 PROGRESS native actual Vulkan-backend final link PASS50839 terminal0.
+Private experiment /tmp/cubit-vulkan-active-backend-link.py selects vulkan,
+uses build-vulkan binder objects and correct copied manifest/wallpaper assets.
+Copied/hash-guarded graphics integration + verified matching-runtime Mesa bundle;
+artifact /tmp/cubit-desktop-vulkan-active-link-1/desktop-vulkan-link.svc with
+result.json/inputs.json and /tmp/cubit-desktop-vulkan-active-link-1.log. Native
+compile/bind/final link succeeds, no undefined symbols; Vulkan1.0 shaders validate.
+Important: helper result gpu_enabled/drawing flags still describe old fixture;
+this selects actual backend-vulkan but does NOT initialize/admit it or boot it.
+Thus native linkage only, not live GPU composition. No shared source/staging or
+image changes; all own jobs terminal. Graphics acknowledged split, no concurrent
+Main/startup/facade edits; retains pending preview scene wiring.
+Next production optional-render compiler/admission integration, coordinated with
+CCL owner before edits; parser currently only required request-render and test
+helper patches optional wire metadata. Need native software/absent authority
+startup before admitted hardware path. Goal remains active.
+
+2026-10-05 USER explicitly approved tasks requested by Graphics. ACTIVE ownership:
+native Desktop startup/render admission, final linking, and safe whole-frame
+software fallback integration. Graphics retains scene capture, shader/preview
+pixel validation, source/backdrop/readback lifetime policies. Coordinate shared
+Main/output-pass and facade signatures before edits. Current task list:
+1 Link the actual private backend-vulkan (not legacy startup fixture).
+2 Production optional-render metadata + trusted launch approval + startup.
+3 Wire approved lifecycle/fallback contract and test absent authority/faults.
+4 Exact native boot/admitted hardware handoff; promote only reviewed deltas.
+No source sync or image staging yet. Existing NUC v60 stays unchanged.
+
+2026-10-05 goal RESUMED by active user continuation; previous turn was progress
+(read-only ownership handoff). Starting independent native Vulkan-backend final
+link against graphics integration snapshot, with copied/hash-guarded inputs.
+No edits to graphics private sources/Main/backend/lifetime APIs. Own new native
+link experiment script/output under /tmp, then reusable link tooling after gate.
+Production optional render CCL currently lacks optional syntax; existing helper
+patches test-only metadata. Will coordinate compiler/manifest interface before
+production admission; no synthetic approval. Native link alone is not boot/GPU.
+
+2026-10-05 proposed graphics/compositor work split ACKNOWLEDGED, REVIEW ONLY.
+The user's broad compositor goal remains PAUSED. Direct coordination permits
+this review and durable handoff, not implementation resumption. No active source
+claim/build/staging/lock; proposed ownership below becomes active only after
+user authorizes the bounded integration work. Read newest filesystem.md and
+private /tmp/cubit-readback-1iQDrc/{integration,baseline}; no snapshot sync.
+
+Agree with split, with an explicit overlap boundary:
+COMPOSITOR proposed ownership: userspace/services/desktop/manifest.ccl and
+native generated-binding integration; desktop.gpr Vulkan/native linker selection;
+tools/build_desktop_vulkan_link.py production final-link work (existing startup
+probe modes stay evidence, not production admission); new focused native startup/
+software-fallback fixtures under tests/compositor. Desktop main.adb STARTUP and
+output-pass fallback/lifecycle call sites only, reviewed against graphics' private
+Main delta. Production manifest must use normal CCL generation and approved
+startup launch policy; tests/render-startup/desktop_optional_manifest.py currently
+patches test metadata/slot62 and is explicitly NOT the production solution.
+Any kernel/Makefile, boot-plan, procmgr/devmgr approval or manifest-compiler change
+requires their owner's coordination; no global claim on those files.
+
+GRAPHICS retains backend-vulkan/desktop_compositor.adb, Desktop_Readback_Output,
+Desktop_Vulkan_Startup and source/backdrop/readback owners, Vulkan_Scene/capture,
+preview geometry/shader/binding/submission, pixel validation and associated tests.
+Main drawing/capture and Settings preview call sites remain graphics-owned.
+Desktop compositor facade signatures, startup owner API and Main output-pass
+fallback are SHARED INTERFACES: agree a patch/handoff before either agent edits
+those overlapping hunks. I will not independently replace graphics' backend or
+lifetime policies. Safe fallback integration means consuming their explicit
+Complete/Repaint/Unsafe and retirement results, not weakening them. If API
+changes are needed, request a coordinated graphics patch first.
+
+Current review observations: private desktop.gpr includes Vulkan choice and Mesa
+source dirs; default is still legacy. backend-vulkan already consumes readback
+owner/capture results. Link helper remains described as link/startup checkpoint,
+not enabled production GPU rendering. Reported compile/bind and hosted Vulkan
+results are not final native linkage/boot. Settings wallpaper preview needs real
+new-mode pixel validation and scene wiring before the complete UI path can be
+accepted; retain explicit safe CPU fallback until then. v60 NUC teapots are
+hardware application-rendering evidence only, not this private compositor.
+
+User resumption needed: authorize the bounded native Desktop startup/admission,
+final linking, whole-frame CPU fallback integration and native verification task.
+This may be resumed separately while leaving the broader performance/zero-copy
+compositor goal paused. After authorization, recheck peer ownership and baseline
+hashes, build in isolated outputs with required Nix/shared lock, then verify
+no-authority/software and admitted-render paths before any promotion. No image
+staging or snapshot-wide publication follows merely from this acknowledgment.
+
+2026-10-05 focused LIVE integration handoff, READ-ONLY; goal remains PAUSED.
+Graphics promotion and captured Display incarnations supersede the older
+constant-identity gap recorded below. Captured identities still do not mint
+cross-service image admission. No implementation, build, staging, or source
+ownership claim by this review (only this note edited).
+
+SMALLEST DEPENDENCY-COMPLETE LIVE STEP: opt-in, one-output/fixed-geometry Desktop
+GPU scene composition with PRIVATE GPU images and EXPLICIT CPU readback/copy into
+an existing Desktop output-pool writer. Keep normal Display presentation and
+CPU fallback. This uses the render application's self-bound endpoint exactly
+as designed: Desktop is the admitted render client. It does not require Display
+as an Intel recipient, DRIVER_GPU rebinding, Image_Lease cross-service import,
+external-memory extensions, or native scanout. It also does not eliminate copies
+or establish a latency improvement. Unsupported output/resize configuration
+must select software under safe lifetime rules, not reuse a mismatched target.
+
+Dependency order and concrete source boundaries:
+1. Desktop optional render manifest + trusted startup-plan approval, through
+existing procmgr/devmgr admission. userspace/services/desktop/manifest.ccl currently
+has no render request. Coordinate manifest/catalog generated bindings and the
+trusted boot launch plan with their owners; manifest request alone is not
+approval. Use userspace/runtime/gnat/cubit-render_startup.ads policy including
+fresh-child software retry for failed/uncertain admission. Never choose a slot
+by PID or repurpose Display's virtio endpoint. Startup must verify admitted slot
+before Desktop_Vulkan_Startup.Initialize; zero is software-only.
+2. Native link of existing musl Mesa service plus compositor C/SPARK bridge:
+userspace/mesa/service-device.h; userspace/services/desktop/desktop_vulkan_startup.*;
+userspace/lib/compositor/vulkan_device_{owner,storage}.*, Vulkan_Scene,
+Vulkan_Submission and upload/source owners. tests/compositor/
+build-desktop-gpu-scene-native.py and desktop_gpu_scene_native.gpr are native
+archive evidence/templates, NOT a live linked Desktop. Desktop desktop.gpr has
+only legacy/mesa choices; backend-mesa/desktop_compositor.adb is the existing
+CPU Mesa cache path, not Vulkan. Desktop owner must explicitly integrate backend
+selection/native linking and metrics variants; kernel build/staging rules and
+runtime/Mesa artifact provenance need coordination under build lock.
+3. Capture the COMPLETE selected output scene from Desktop main.adb renderOutput/
+drawCurrentScene into immutable Vulkan_Scene (wallpaper, chrome, title glyphs,
+client surfaces, clip, cursor). Upload authorized immutable CPU source snapshots
+through Configure_Upload/owned sources; retain source readers until GPU/upload
+completion. Do not just accelerate client rectangles and omit composition, or
+claim passing fixture commands is live scene integration. Admission, allocation
+and scene-capacity failure before submission selects a whole software frame.
+4. Add a bounded owned READBACK/COPY adapter: transfer the completed GPU image
+into a layout-validated linear staging buffer, wait/poll its exact transfer
+completion, perform required host-memory visibility/invalidation, and copy into
+an acquired writable presentations(Output).Pool slot. Charge readback storage
+against the budget; exclude submitted Display slots. Publish that CPU slot using
+existing Compositor_Presentation/Display session and retain it until exact source
+release. Readback buffer and GPU source reuse require their own completed reads.
+Native-gallery-present.h illustrates synchronous completed readback consumption,
+not a ready asynchronous Desktop adapter or generic output extent implementation.
+
+CRITICAL existing bridge mismatch: Desktop_Vulkan_Startup.Take_Presentation
+exports a ticket only. Confirm_Presentation explicitly attests NEW LATCH AND
+EXACT OLD-FRONT retirement. A successful CPU copy or Display source-release
+reply cannot honestly satisfy that contract for a GPU target. Add an explicit
+completed-target readback-consumer acquisition/retirement operation (SPARK policy
+plus narrow FFI), allowing reuse after transfer/CPU consumer drain without
+claiming GPU scanout latch. Keep CPU output-pool presentation as an independent
+lifetime. Do not call Confirm_Presentation(True) to make a copied-output test pass.
+After uncertain GPU execution, quarantine GPU resources; software recovery must
+use independent safe CPU targets and explicitly invalidate/repaint scene state,
+never overwrite uncertain GPU backing or fall back per draw within the same frame.
+
+Verification gates: software startup with absent render endpoint; admitted live
+Desktop rendering of actual apps/chrome at output DPI; exact pixel comparison
+against CPU scene (focus/move/occlusion/cursor); stale/duplicate completions,
+readback failure, shutdown/device loss, budget/scene overflow and resize fallback;
+unchanged CPU source release and bounded input processing. Native QEMU can verify
+protocol/software branches; Intel-render claim needs actual NUC execution of the
+exact Desktop artifact. Record upload/readback/copy bytes and stage timings.
+
+ZERO-COPY IS A LATER STEP: real cross-service image recipient binding/lease
+admission, imported output compatibility, native display ownership takeover and
+accepted/latch/retire evidence remain necessary. Image_Consumers/Images provider
+is useful groundwork, not authorization to map app memory into Display or grant
+Gen12 GPU-read-only access. Driver owner can progress that boundary independently;
+Desktop/Display owners must agree usage, recipient capability/incarnation, output
+identity, and retirement receipts before connecting it. Kernel physical mapping
+handoff requires kernel owner. No broadened rights or constant authorization.
+
+2026-10-05 READ-ONLY review of private Buffer_Requests.Images integration.
+Goal remains PAUSED. No implementation/build/staging; only this note updated.
+Reviewed private Images/Image_Lease/Image_Layout and current Desktop/Display.
+
+AUTHORIZE: use Display's authenticated output/session owner boundary, not a
+Desktop assertion. userspace/services/display/main.adb Output_State already
+holds displayOwner, activeSession, currentOutput/leasedOutput/sessionOutput,
+backend selection and captured per-output continuations. outputUsable checks
+registry liveness/presentability. userspace/lib/display/cubit-output_registry.ads
+provides Output_Reference (registry instance, slot, revision) plus Backend_Output
+(driver incarnation, driver-local output number). These are the right conceptual
+identities, BUT current Display instantiates outputRegistry(1) and registers
+Driver=>1. They are local metadata, NOT a production authenticated adapter or
+cross-service restart epoch. Do not copy these constants into Key.Adapter or
+Key.Output_Epoch as authorization. A capability-bound driver incarnation and
+Display-instance/output-generation binding still need a trusted coordinator.
+
+Private Image_Lease.Identity has Adapter, Session, Allocation, Output_Epoch,
+Serial but NO intended consumer or output number. Keep a trusted bounded entry
+keyed by the COMPLETE Key, recording the authenticated driver session, Display
+instance + exact Output_Reference/backend number, intended recipient capability
+and process incarnation, validated layout/usage, and current admission/retirement
+state. Alternatively expand an eventual identity contract explicitly; do not
+assume Output_Epoch distinguishes two outputs with equal local generations.
+Authorize(Key,Image) must resolve an already admitted entry and compare the
+EXACT descriptor and binding, actual session/BO authority, current output,
+recipient and approved usage. Fresh serial must be minted/nonreused by owner.
+Caller-supplied PID, local output index, CPU grant, or VkImage is insufficient.
+The two Authorize checks around Producer_Drained need serialization with binding
+invalidation; the admitted record must remain pinned for the entire lease.
+Output changes stop new admission but must not erase old retirement records.
+Image_Layout currently supports linear BGRA8 only: arbitrary ANV tiled/compressed
+images are out of contract, regardless of CPU span validity.
+
+CONSUMERS_DRAINED: no existing single production predicate establishes this.
+Desktop main.adb Output_Presentation.Targets/Pool/Transfer and outputRetirement
+track current CPU buffers; compositor_presentation.ads validates exact session/
+frame/kernel-token release, compositor_output_retirement.ads separates renderer,
+Display lease, grants and storage. These are integration points, not GPU proofs.
+Display Output_State.frameState/backendID/backendToken/backendFrame/backendTarget
+and finish-frame logic preserve captured submissions. Current DSP.Released is
+release of the submitted CPU source after the backend path, NOT native Intel
+old-front retirement. CuBit.Backend_Targets describes existing backend target
+ownership, not an imported Intel image's all-consumer drain.
+
+Minimal next contract: establish a trusted compositor-to-Display-to-driver
+binding before Images.Prepare; freeze one admitted Key/descriptor/recipient in
+an entry, reserve every GPU/CPU/display consumer obligation BEFORE handing off
+access (including uncertain replies), and close further consumer admission when
+retiring. Record each exact authenticated completion against its obligation.
+Consumers_Drained(Key) becomes true ONLY for a known matching retiring entry
+whose GPU submission readers, CPU acquisitions/derived grant readers, and Display
+consumer obligations all have confirmed retirement. An absent/stale entry,
+device loss, or lost reply is false, never an empty-consumer success. For a
+never-dispatched rollback, prove no exposure occurred before discharging that
+obligation. Registry metadata retirement, acceptance, and new-front latch do
+not discharge an old image's remaining readers. Retain entry/pins after session
+closure so cleanup can complete without authorizing any new access.
+
+Driver can implement coordinator bookkeeping and authenticated binding admission
+behind closed production admission; no constant-true callbacks. Production IPC /
+capability delivery and real GPU/display retirement receipts are still missing.
+Keep CPU fallback/copy presentation. Existing grant writer exclusion is valuable
+but cannot authorize Gen12 GPU read-only PPGTT or establish native scanout.
+No active Desktop source claim or concurrent build by this session.
+
+2026-10-05 READ-ONLY graphics/compositor handoff review; broad goal PAUSED.
+Read current rendering-to-presentation checkpoint, Gen12 access restriction,
+service-device.h, vulkan_device_storage.h, vulkan_targets.h, Vulkan_Scene,
+Intel_GPU_Buffer_Views and Display GPU operations. No build/test/hardware claims.
+NUC teapot rendering evidence belongs to graphics; its completed readback ->
+Client_Frame_Pair copy is not evidence of hardware Desktop composition.
+
+(1) Exact missing integration is an AUTHORIZED IMAGE-LEASE PROVIDER plus a
+Desktop adapter joining its lifetimes to the existing Vulkan owners/scene and
+Display output generation. service-device.h supplies borrowed in-process device/
+queue handles after launch admission; device_storage supplies local requests;
+Vulkan_Scene supplies immutable commands. None supplies cross-service image
+ownership, output acquisition, or presentation retirement. Desktop manifest
+currently has display authority but no render request. Future Desktop startup
+must use existing render admission, retaining software startup on rejection.
+
+Required provider contract (conceptual operations, NOT assigned wire labels):
+- Acquire/import a target lease authenticated to adapter + session incarnation,
+  backing/allocation generation and output generation; return validated extent,
+  format/modifier/layout, pitch/plane offsets and usage compatibility. Bind that
+  lease to the compositor's local VkImage/view/framebuffer; never send numeric
+  Vulkan handles as IPC authority. Target writes require exclusive admitted
+  ownership, including producer quiescence and all prior consumer retirement.
+- Submit completed target with matching render dependency and unique frame /
+  lease identity to Display. Explicit accepted, latched, retired events must
+  distinguish queue admission, observed presentation of new front, and release
+  of each old consumer. Acceptance does not establish latch; latch alone is
+  insufficient to free backing with other outstanding readers. GPU fence alone
+  says nothing about later Display consumption. Correlate all completions with
+  incarnation/output epoch; duplicates/stale messages never advance ownership.
+- Close/reset/resize stops admission, drains or quarantines leases; partial
+  import or uncertain reply retains pins and grants until confirmed retirement.
+  GPU device/child teardown waits for external consumers as service-device says.
+
+Client-source import is a SEPARATE lease, not automatically granted by output
+render authority. CPU grant acquisition and source ownership checks must remain.
+Gen12 cannot be promised GPU-read-only mappings from a CPU read-only grant.
+A trusted, explicitly authorized RW ownership handoff with all other writers
+excluded is a different protocol. Until available, upload immutable CPU source
+pixels into compositor-private GPU images and report the copy. Native offscreen
+composition can likewise use completed readback into the existing Display path
+as an explicit interim copied-output adapter; it need not await native scanout,
+but cannot be advertised as zero-copy. New-output/consumer leases are required
+for eliminating that final copy, not for claiming the offscreen arithmetic ran
+on Intel. Desktop must capture complete scenes and retire all source reads
+before releasing application frames; per-draw CPU fallback after uncertain GPU
+execution is unsafe. Whole-frame software fallback requires quiescent ownership.
+
+(2) No active source edit/build/staging ownership or lock in this session.
+Only coordination/compositor.md edited for this requested handoff. Historical
+compositor policies/FFI and Desktop focus fix remain review context, not an
+exclusive active claim blocking driver development. Latest local titlebar fix
+was source+native-link tested, not a NUC visual validation or new image staging.
+No authorization to resume broad Desktop/Vulkan integration is inferred.
+
+(3) Driver-owned work can proceed independently: authenticated allocation/export
+lease metadata and pins; retained CPU-reader lifecycle; producer completion and
+writer exclusion; bounded dependency/retirement bookkeeping; same-adapter layout
+validation; stale incarnation/reset/resize/partial-failure tests. Preserve
+Share_Retained's independent pin and uncertain-creation/revocation retention;
+it remains CPU-only, not an implicit GPU importer. Prepare and test provider
+operations behind closed admission without editing Desktop's attachment ABI.
+Native scanout needs exclusive firmware-writer handoff FIRST: close every
+physical mapping admission path, drain kernel/userspace writers and aliases,
+confirm CPU TLB retirement, validate current plane inventory/physical aliasing,
+then observe actual hardware latch and old-front retirement. Existing linear
+flip planners are not that handoff. Kernel changes require coordination with
+kernel owner; this review grants no wider ownership. Do not enable plane writes
+based solely on GPU_IS_PRIMARY, metadata planning, or a successful CPU grant.
+
 2026-10-03 titlebar focus artifact SOURCE FIX COMPLETE; broad goal still paused.
 New damagePreviousFocus in Desktop Main adds previous title/frame and taskbutton
 before focusAndRaiseSurface, restoreSurface and toggleMaximizeSurface mutate focus.

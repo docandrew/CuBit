@@ -61,8 +61,9 @@ package CCL_Console_View is
       with function Now_Ms return Interfaces.Unsigned_64;
    procedure Refresh (State : in out View_State; Redraw : out Boolean);
    --  Run Source (CCL source) as an entry of its own, as if typed, and make
-   --  it live, re-running whenever stream elements arrive (no period): the
-   --  card a front end adds for each outlet of a program an entry started
+   --  it live, re-running whenever stream elements arrive or a task
+   --  completes (no period): the card a front end adds for each outlet and
+   --  the outcome of a program an entry started
    --  (docs/ccl-launch-parameters.md, "Every outlet gets a card").
    generic
       with procedure Execute
@@ -71,6 +72,13 @@ package CCL_Console_View is
          Outcome : out CCL.Language.Interpretation_Result);
       with function Now_Ms return Interfaces.Unsigned_64;
    procedure Follow (State : in out View_State; Source : String);
+
+   --  Let the front end act on the session directly (resuming an entry
+   --  that waited for a task, CCL.Sessions.Resume_With_Values); the
+   --  transcript is drawn again when Act changed it.
+   generic
+      with procedure Act (Item : in out CCL.Sessions.Session; Changed : out Boolean);
+   procedure Update_Session (State : in out View_State; Redraw : out Boolean);
 
    --  The newest entry's source (for a front end that follows what it
    --  started).

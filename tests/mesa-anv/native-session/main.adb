@@ -20,47 +20,31 @@ procedure Main is
    Failed : Boolean := False;
    Writer : CuBit.Logging.Publisher
      (CapabilitySlot (CCL_Manifest_Bindings.Slot_Logstore));
-   Token : Unsigned_64 := 16#5253_0000#;
    Logging_Enabled : Boolean := True;
    function Discovery_Check (Endpoint : Unsigned_64) return Unsigned_32
      with Import, Convention => C, External_Name => "cubit_test_native_discovery";
 
    procedure Report (Text : String) is
       Value : constant CuBit.Log_Records.Decoded := CuBit.Log_Records.Make (Text);
-      Receipt : CompletionEntry;
-      Submitted, Handled : Boolean;
-      Ignore : Unsigned_64;
+      Ignore_Submitted : Boolean;
    begin
       debugPrint (Text & ASCII.LF);
-      if not Logging_Enabled or else not Value.Success then return; end if;
-      Token := Token + 1;
-      CuBit.Logging.Emit (Writer, Value.Value, Token, Submitted);
-      if not Submitted then Logging_Enabled := False; return; end if;
-      -- This test has no other asynchronous requests. GPU FFI uses capCall.
-      -- Bound observation, never replay a lost log or recycle a pending page.
-      for Attempt in 1 .. 200 loop
-         if Poll_Completion (Receipt'Address) = 1 then
-            CuBit.Logging.Complete (Writer, Receipt, Handled);
-         end if;
-         exit when not CuBit.Logging.Pending (Writer);
-         Ignore := syscall (SYSCALL_SLEEP, 1);
-      end loop;
-      if CuBit.Logging.Pending (Writer) then Logging_Enabled := False; end if;
+      if Logging_Enabled and then Value.Success then
+         --  A copy into the ring: no IPC, no completion to wait for.
+         CuBit.Logging.Emit (Writer, Value.Value, Ignore_Submitted);
+      end if;
    end Report;
 
    procedure Drain_Logger is
-      Done, Handled : Boolean;
-      Receipt : CompletionEntry;
+      Done, Drained : Boolean;
       Ignore : Unsigned_64;
    begin
+      CuBit.Logging.Flush (Writer, Drained);
       CuBit.Logging.Disconnect (Writer, Done);
       if not Done then
          debugPrint ("RENDER-SESSION logger retiring; storage retained" & ASCII.LF);
       end if;
       while not Done loop
-         if Poll_Completion (Receipt'Address) = 1 then
-            CuBit.Logging.Complete (Writer, Receipt, Handled);
-         end if;
          CuBit.Logging.Disconnect (Writer, Done);
          if not Done then Ignore := syscall (SYSCALL_SLEEP, 100); end if;
       end loop;

@@ -116,7 +116,7 @@ Discovered type foundation (2026-09-25): a trusted host can publish a root data
 type into `CCL.Catalog` with `Publish_Type`. Shared `CCL.Types.Import_Definition`
 imports only reachable dependencies, translates IDs, reuses identical names and
 rejects conflicting definitions/capacity exhaustion atomically. The compiler and
-interpreter take one catalog type snapshot before parsing; source need not repeat
+analyser take one catalog type snapshot before parsing; source need not repeat
 the advertised declaration. This is description visibility, not call authority,
 publisher authentication, schema-key generation or a new Config-only type model.
 No per-node registry copy or live registry mutation while executing. See
@@ -141,8 +141,10 @@ The native object protocol and CCL source host-call ABI are different layers.
 `CCL.Host_Values` now carries owned native objects as well as integer, Boolean,
 bounded text and handler arguments. The compiler/CCLB v6/optional native VM
 store support schema-pinned object imports, locals, field projection and general
-matches. Interpreter aggregate construction and native returns are implemented;
-aggregate construction and string operations in bytecode are still pending.
+matches. Interpreter aggregate construction and native returns were implemented;
+aggregate construction and string operations in bytecode were pending when
+this was written. (The interpreter was removed 2026-10-05; every program now
+runs on the VM.)
 `CCL_Config_Bindings` still exposes the old
 read-only text inspection operations; it is **not** the typed persistence API.
 Desktop default byte settings are still volatile and do not enable the worker.
@@ -177,7 +179,7 @@ See [object bridge tests](../tests/ccl-objects/README.md).
    now implemented; see the Config integration checklist for current validation.
 2. Resolve the expected schema during analysis/linking through an authorized
    interface binding. A received schema or digest is not proof of identity or
-   authority. Preserve exact type/grant matching in both interpreter and CCLB.
+   authority. Preserve exact type/grant matching in the analyser and CCLB.
 3. Map returned Config handles to private host-owned bindings, not ordinary
    integers a script can forge. Preserve read-only rights, revision conflicts,
    missing/mismatch/unavailable outcomes and handle retirement.
@@ -339,8 +341,8 @@ resource arguments/results using canonical nominal names, separate from stored
 object schema identities. Source analysis requires the visible resource type
 and its approved ownership policy, and rejects incompatible resource types.
 Host-value persistence conversion proves that resources cannot be accepted as
-stored objects. Interpreter admission rejects resource-bearing calls before any
-effects; source compilation still rejects them pending ownership-tag lowering
+stored objects. Interpreter admission rejected resource-bearing calls before any
+effects (the interpreter was removed 2026-10-05); source compilation still rejects them pending ownership-tag lowering
 and portable linkage. This is not yet factory execution or generic type-argument
 specialization. The [resource signature tests](../tests/ccl-resource-signatures/README.md)
 exercise those boundaries without Config-specific compiler logic.
@@ -390,7 +392,7 @@ Do not embed an entire registry or 16 KiB native image into every AST host-call
 node, import argument, or VM stack slot. The current compiler copies import
 descriptors into multiple structures; blindly widening them would multiply
 memory use before any script executes. An owned aggregate store must have an
-explicit lifetime and checked references shared by interpreter/VM, not a
+explicit lifetime and checked references in the VM, not a
 Config-only pointer escape. The client adapter above retains one owned native
 completion and can reconstruct currently representable VM values without an
 extra native-image copy on result consumption.

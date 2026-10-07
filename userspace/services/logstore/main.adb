@@ -1,8 +1,6 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
-with System;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Memory_Grants;
 with CuBit.Log_Protocol; use CuBit.Log_Protocol;
 with CuBit.Log_Records;
 with CuBit.Config_Inspection;
@@ -10,9 +8,13 @@ with CuBit.Config_Reader;
 with Log_Fanout;
 with Log_Budgets;
 with Stream_Writers;
+with Publisher_Rings;
+with CuBit.Channel_Protocol;
+with CuBit.Channels;
+with CuBit.Control_Events;
+with CuBit.Process_Events;
 
 procedure Main is
-   package Grants renames CuBit.Memory_Grants;
    package Logs renames CuBit.Log_Records;
    package Settings renames CuBit.Config_Inspection;
    use type Logs.Severity;
@@ -26,27 +28,27 @@ procedure Main is
    Minimum_Settled : Boolean := False;
    Store : Log_Fanout.Broker;
    Writers : Stream_Writers.Table;
+   --  Publishers' channels: drained every pass.
+   Publishers : Publisher_Rings.Table;
+   --  A publisher ring still held records after a pass, or records arrived
+   --  while arming: do not sleep.
+   Waiting_Records : Boolean := False;
+   Send_Reply : Boolean;
    --  A reader's ring was full: drain again soon rather than in a second.
    Backlog : Boolean := False;
    IDLE_WAKE_MS : constant := 1_000;
    BACKLOG_WAKE_MS : constant := 20;
    Budgets : Log_Budgets.Limiter;
-   Admitted : Boolean;
    From : ProcessID;
    Request, Response : Message;
-   Received, Known, Acquired, Returned : Boolean;
+   Received, Known, Acquired : Boolean;
    Now_Ms, Handle, Ignore : Unsigned_64;
    Result : Status;
-   Op : Operation := Publish;
-   Ref : Grants.Grant_Reference;
-   Address : System.Address;
-   Bytes : Logs.Wire_Buffer;
-   Used : Logs.Wire_Count;
+   Op : Operation := Get_Minimum;
+   Ended_Event : CuBit.Control_Events.Event;
+   Have_Event : Boolean;
    Decoded : Logs.Decoded;
 
-   function Valid_Grant (Slot, Generation : Unsigned_64) return Boolean is
-     (Slot <= Grants.MAXIMUM_GLOBAL_SLOT and Generation /= 0 and
-      Generation <= Grants.MAXIMUM_GENERATION);
 
    --  logstore's own record about what it keeps, published straight into
    --  the store and never itself subject to the minimum.
@@ -96,16 +98,58 @@ begin
    Read_Minimum_Setting;
    loop
       --  Deadline is for idle subscription reclamation, not input polling.
+      --  Ask publishers for a Kick while asleep; records that arrived
+      --  while arming mean there is no sleeping this time.
+      if not Waiting_Records then
+         Publisher_Rings.Arm (Publishers, Waiting_Records);
+      end if;
       receiveUntil
-        (Now_Ms + Unsigned_64'Min ((if Backlog then BACKLOG_WAKE_MS else IDLE_WAKE_MS), Unsigned_64'Last - Now_Ms),
+        ((if Waiting_Records then Now_Ms
+          else Now_Ms + Unsigned_64'Min ((if Backlog then BACKLOG_WAKE_MS else IDLE_WAKE_MS),
+                                         Unsigned_64'Last - Now_Ms)),
          From, Request, Received);
+      Publisher_Rings.Disarm (Publishers);
       Now_Ms := syscall (SYSCALL_GETTIME);
       if not Minimum_Settled then
          Read_Minimum_Setting;
       end if;
       Log_Fanout.Advance_Time (Store, Now_Ms);
       Log_Budgets.Advance_Time (Budgets, Now_Ms);
-      if Received then
+      --  Publishers that closed or died: their last records first.
+      loop
+         CuBit.Process_Events.Next (Ended_Event, Have_Event);
+         exit when not Have_Event;
+         Publisher_Rings.Ended (Publishers, Store, Budgets, Ended_Event, Minimum, Now_Ms);
+         Stream_Writers.Ended (Writers, Ended_Event);
+      end loop;
+      if Received and then Request.tag.label = CuBit.Channel_Protocol.OP_OPEN_PRODUCING then
+         --  A publisher opening its channel.
+         if From /= NO_PROCESS and then May_Publish (Request.authorityTag) then
+            Publisher_Rings.Open (Publishers, Store, Budgets, From, Request.authorityTag, Request,
+                                  Minimum, Now_Ms, Response);
+         else
+            Response := CuBit.Channels.Refusal_Reply (CuBit.Channel_Protocol.Unsupported);
+         end if;
+         Ignore := reply (From, Response);
+      elsif Received and then Request.tag.label = CuBit.Channel_Protocol.OP_OPEN_CONSUMING then
+         --  A reader opening its stream (Subscribe binds it).
+         if From /= NO_PROCESS and then May_Invoke (Request.authorityTag, Subscribe) then
+            Stream_Writers.Open (Writers, From, Request.authorityTag, Request, Response);
+         else
+            Response := CuBit.Channels.Refusal_Reply (CuBit.Channel_Protocol.Unsupported);
+         end if;
+         Ignore := reply (From, Response);
+      elsif Received and then Request.tag.label = CuBit.Channel_Protocol.OP_CLOSE then
+         if CuBit.Channels.Number_Of (Request) > Stream_Writers.First_Number then
+            Stream_Writers.Close (Writers, From, CuBit.Channels.Number_Of (Request));
+         else
+            Publisher_Rings.Close (Publishers, Store, Budgets, From, CuBit.Channels.Number_Of (Request),
+                                   Minimum, Now_Ms);
+         end if;
+      elsif Received and then Request.tag.label = CuBit.Channel_Protocol.OP_KICK then
+         --  Records are waiting: drained below, every pass.
+         null;
+      elsif Received then
          Response := NULL_MESSAGE;
          Response.tag := (label => Status'Enum_Rep (Denied), length => 4,
                           flags => 0, reserved => 0);
@@ -117,6 +161,7 @@ begin
             end if;
          end loop;
          Result := Denied;
+         Send_Reply := True;
          if From /= NO_PROCESS and then Known and then
            May_Invoke (Request.authorityTag, Op)
          then
@@ -125,65 +170,19 @@ begin
               and then Request.tag.reserved = 0
             then
                case Op is
-                  when Publish =>
-                     if Request.words (3) = 0 and then
-                       Request.words (2) in
-                         Unsigned_64 (Logs.Header_Bytes) ..
-                         Unsigned_64 (Logs.Wire_Count'Last) and then
-                       Valid_Grant (Request.words (0), Request.words (1))
-                     then
-                        Log_Budgets.Admit
-                          (Budgets, Publication_Budget (Request.authorityTag),
-                           Admitted);
-                        if not Admitted then
-                           Result := Rate_Limited;
-                        else
-                           Ref := (Request.words (0), Request.words (1));
-                           Used := Logs.Wire_Count (Request.words (2));
-                           Grants.Acquire (Ref, From, 0, Request.words (2),
-                             Grants.Read_Access, Address, Acquired);
-                           if Acquired then
-                              Bytes := [others => 0];
-                              declare
-                                 Shared : Logs.Wire_Buffer
-                                   with Import, Address => Address;
-                              begin
-                                 --  Decode only a private snapshot.
-                                 Bytes (1 .. Used) := Shared (1 .. Used);
-                              end;
-                              Grants.Return_Acquisition (Ref, Returned);
-                              Decoded := Logs.Decode (Bytes, Used);
-                              if Returned and then Decoded.Success then
-                                 if Logs.Level (Decoded.Value) >= Minimum then
-                                    Log_Fanout.Publish (Store,
-                                      (Source => From,
-                                       Node => This_Node,
-                                       Publication_Tag => Request.authorityTag,
-                                       Monotonic_Ms => Now_Ms,
-                                       Data => Decoded.Value));
-                                    Result := OK;
-                                 else
-                                    Result := Below_Minimum;
-                                 end if;
-                                 --  Publishers learn the minimum and can skip what it drops.
-                                 Response.words (0) := Logs.Severity'Pos (Minimum);
-                              end if;
-                           end if;
-                        end if;
-                     end if;
                   when Subscribe =>
+                     --  Words: minimum, source, the reader's stream channel.
                      if Request.words (0) <= Logs.Severity'Pos (Logs.Severity'Last) and then
-                       Valid_Grant (Request.words (2), Request.words (3))
+                       Request.words (3) = 0
                      then
                         Log_Fanout.Subscribe
                           (Store, From, Request.authorityTag, Handle, Result,
                            Logs.Severity'Val (Request.words (0)), Request.words (1));
                         if Result = OK then
-                           --  The reader's stream region: mapped for the
-                           --  subscription's life, filled by Drain.
-                           Stream_Writers.Attach
-                             (Writers, Handle, Unsigned_64 (From), Request.authorityTag,
-                              (Request.words (2), Request.words (3)), Acquired);
+                           --  The reader's stream channel, filled by Drain.
+                           Stream_Writers.Bind
+                             (Writers, Request.words (2), Handle, From, Request.authorityTag,
+                              Acquired);
                            if Acquired then
                               --  The handle, and the source filter it applies.
                               Response.words (0) := Handle;
@@ -219,17 +218,21 @@ begin
                         Log_Fanout.Close (Store, From, Request.authorityTag,
                           Request.words (0), Result);
                         if Result = OK then
-                           --  The region goes back before the reply.
-                           Stream_Writers.Detach (Writers, Request.words (0));
+                           Stream_Writers.Unbind (Writers, Request.words (0));
                         end if;
                      end if;
                end case;
             end if;
          end if;
-         Response.tag.label := Status'Enum_Rep (Result);
-         Ignore := reply (From, Response);
+         if Send_Reply then
+            Response.tag.label := Status'Enum_Rep (Result);
+            Ignore := reply (From, Response);
+         end if;
       end if;
-      --  New events, freed ring space, ended subscriptions: every pass.
+      --  Published records, new events, freed ring space, ended
+      --  subscriptions: every pass.
+      Publisher_Rings.Drain (Publishers, Store, Budgets, Minimum, Now_Ms, Waiting_Records);
       Stream_Writers.Drain (Writers, Store, Backlog);
+      Publisher_Rings.Release (Publishers);
    end loop;
 end Main;

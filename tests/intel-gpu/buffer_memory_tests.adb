@@ -55,7 +55,7 @@ procedure Buffer_Memory_Tests is
    function Munmap (Address : System.Address; Length : Interfaces.C.size_t)
      return Interfaces.C.int with Import, Convention => C, External_Name => "munmap";
    use type Interfaces.C.int;
-   Span : constant := 8 * 4096;
+   Span : constant := 40 * 4096;
    Sentinel : constant Unsigned_64 := 16#A5A5_A5A5_A5A5_A5A5#;
    type Words is array (Natural range 0 .. Span / 8 - 1) of Unsigned_64;
    RAM : Words with Import, Volatile,
@@ -145,6 +145,89 @@ begin
    if Mapping /= To_Address (Integer_Address (Layout.CPU_Base)) then
       raise Program_Error with "cannot reserve buffer fixture without replacement";
    end if;
+   Reset;
+   -- Large allocations yield without exposing partially initialized RAM.
+   -- A duplicate final extent reply must not run another initialization step.
+   for Scenario in 0 .. 11 loop
+      Reset;
+      declare
+         Stop_Kind : constant Natural := Scenario mod 4;
+         Object : Buffers.Pool;
+         Started, Consumed : Boolean;
+         Receipt : CompletionEntry;
+         Page_Count : constant Layout.Page_Count :=
+           (if Scenario < 4 then 17 elsif Scenario < 8 then 32 else 33);
+         Initialized_Words : Natural := 8192;
+      begin
+         Response.words (1) := Unsigned_64 (Page_Count) * 4096;
+         Buffers.Start (Object, 1, Page_Count, Started);
+         pragma Assert (Started);
+         -- Pending transport is not runnable CPU initialization. The driver
+         -- may sleep until an event; marking all Pending work local spins.
+         pragma Assert (Buffers.Pending (Object));
+         pragma Assert (not Buffers.Local_Work_Pending (Object));
+         Receipt := (Last_Token, COMPLETION_OK, Response);
+         Buffers.Complete (Object, Receipt, Consumed);
+         pragma Assert (Consumed);
+         pragma Assert (not Buffers.Local_Work_Pending (Object));
+         Receipt := (Last_Token, COMPLETION_OK,
+           ((16#F003#, 4, 0, 0), [0, 16#0200_0000#, Layout.CPU_Base, 7]));
+         Buffers.Complete (Object, Receipt, Consumed);
+         pragma Assert (Consumed and Buffers.Pending (Object));
+         pragma Assert (Buffers.Local_Work_Pending (Object));
+         pragma Assert (not Buffers.Result (Object).Ready);
+         for I in 512 .. 512 + 8192 - 1 loop
+            pragma Assert (RAM (I) = 0);
+         end loop;
+         for I in 512 + 8192 .. RAM'Last loop
+            pragma Assert (RAM (I) = Sentinel);
+         end loop;
+         Buffers.Complete (Object, Receipt, Consumed);
+         pragma Assert (not Consumed and Buffers.Pending (Object));
+         Buffers.Start (Object, 2, 1, Started);
+         pragma Assert (not Started);
+         if Page_Count = 33 then
+            -- A third quantum is needed: the second tick must neither
+            -- publish the buffer nor touch the final page. Inject failures
+            -- below only after this additional successful local-work step.
+            Buffers.Tick (Object);
+            Initialized_Words := 16384;
+            pragma Assert (Buffers.Pending (Object));
+            pragma Assert (Buffers.Local_Work_Pending (Object));
+            pragma Assert (not Buffers.Result (Object).Ready);
+            for I in 512 .. 512 + Initialized_Words - 1 loop
+               pragma Assert (RAM (I) = 0);
+            end loop;
+            for I in 512 + Initialized_Words .. RAM'Last loop
+               pragma Assert (RAM (I) = Sentinel);
+            end loop;
+            Buffers.Complete (Object, Receipt, Consumed);
+            pragma Assert (not Consumed and Buffers.Pending (Object));
+            -- Duplicate receipt processing must not zero the last page.
+            for I in 512 + Initialized_Words .. RAM'Last loop
+               pragma Assert (RAM (I) = Sentinel);
+            end loop;
+         end if;
+         case Stop_Kind is
+            when 1 => Buffers.Cancel (Object);
+            when 2 => Now := 30_000;
+            when 3 => Fail_Owner := Owner_Calls + 1;
+            when others => null;
+         end case;
+         Buffers.Tick (Object);
+         pragma Assert (not Buffers.Pending (Object));
+         pragma Assert (not Buffers.Local_Work_Pending (Object));
+         pragma Assert (Buffers.Result (Object).Ready = (Stop_Kind = 0));
+         for I in 512 + Initialized_Words .. 512 + Natural (Page_Count) * 512 - 1 loop
+            pragma Assert (RAM (I) = (if Stop_Kind /= 0 then Sentinel else 0));
+         end loop;
+         for I in 0 .. 511 loop pragma Assert (RAM (I) = Sentinel); end loop;
+         for I in 512 + Natural (Page_Count) * 512 .. RAM'Last loop
+            pragma Assert (RAM (I) = Sentinel);
+         end loop;
+      end;
+   end loop;
+   Ada.Text_IO.Put_Line ("Buffer initialization quantum PASS: yield, duplicate, cancellation, publication, guards");
    Reset;
    -- Every submission has a fresh identity, even supervisor retry responses.
    -- An old completion must not cancel or advance the current transaction.
@@ -272,8 +355,9 @@ begin
          end;
       end loop;
    end loop;
-   for Cancel_Kind in 1 .. 2 loop
+   for Cancel_Kind in 1 .. 5 loop
       Reset;
+      if Cancel_Kind = 3 then Now := 100; end if;
       declare
          Object : Buffers.Pool;
          Started, Consumed : Boolean;
@@ -285,8 +369,21 @@ begin
          if Cancel_Kind = 1 then
             Now := 30_000;
             Buffers.Tick (Object);
-         else
+         elsif Cancel_Kind = 2 then
             Buffers.Cancel (Object);
+         elsif Cancel_Kind = 3 then
+            Now := 99;
+            Buffers.Tick (Object);
+         elsif Cancel_Kind = 4 then
+            Now := Unsigned_64'Last;
+            Buffers.Tick (Object);
+         else
+            Now := 29_999;
+            Buffers.Tick (Object);
+            pragma Assert (Buffers.Pending (Object));
+            pragma Assert (not Buffers.Result (Object).Ready);
+            Now := 30_000;
+            Buffers.Tick (Object);
          end if;
          pragma Assert (not Buffers.Pending (Object));
          Buffers.Complete (Object, Receipt, Consumed);
@@ -296,6 +393,8 @@ begin
          pragma Assert (not Started and Submissions = 1);
       end;
    end loop;
+   Ada.Text_IO.Put_Line
+     ("Allocation clock gate PASS: deadline boundary, backward/unavailable clock, late reply quarantine");
    Reset;
    declare Object : Buffers.Pool; begin
       Result := Buffers.Acquire (Object, 1, 1);
@@ -370,6 +469,36 @@ begin
       Result := Buffers.Acquire (Object, 2, 1);
       pragma Assert (Result.Ready and Submissions = 2);
    end;
+   -- Diagnostic denials carry no authority and cannot turn malformed replies
+   -- into a recoverable allocation failure for the wrong request.
+   for Fault in 0 .. 6 loop
+      Reset;
+      declare Object : Buffers.Pool; begin
+         Response := ((16#F001#, 4, 0, 0),
+           [Layout.Denial_Version, Layout.Allocation_Key (1, 1), 4096,
+            Unsigned_64 (Layout.Allocation_Reason'Pos (Layout.Physical_Result_Check))]);
+         case Fault is
+            when 1 => Response.words (0) := Layout.Denial_Version + 1;
+            when 2 => Response.words (1) := Layout.Allocation_Key (2, 1);
+            when 3 => Response.words (2) := 8192;
+            when 4 => Response.words (3) := Unsigned_64'Last;
+            when 5 => Response.words (3) := Unsigned_64 (Layout.Allocation_Reason'Pos (Layout.Ready));
+            when 6 => Response.tag.flags := 1;
+            when others => null;
+         end case;
+         Result := Buffers.Acquire (Object, 1, 1);
+         pragma Assert (not Result.Ready);
+         pragma Assert ((Buffers.Last_Stage (Object) = Buffers.Denied) = (Fault = 0));
+         for Word of RAM loop pragma Assert (Word = Sentinel); end loop;
+         Response := ((16#F004#, 4, 0, 0),
+           [Layout.CPU_Base + 4096, 4096, 7, Layout.Allocation_Key (2, 1)]);
+         Result := Buffers.Acquire (Object, 2, 1);
+         pragma Assert (Result.Ready = (Fault = 0));
+         pragma Assert (Submissions = (if Fault = 0 then 2 else 1));
+      end;
+   end loop;
+   Ada.Text_IO.Put_Line
+     ("Diagnostic denial PASS: exact request accepted; bad version/key/size/code/flags quarantined, no RAM write");
    for Failure in 2 .. 8 loop
       Reset;
       declare Object : Buffers.Pool; Count : Natural; begin
@@ -529,6 +658,74 @@ begin
       pragma Assert (not Accepted);
    end;
    Ada.Text_IO.Put_Line ("Backing record growth PASS: old result preserved; active, quarantined and revoked growth rejected");
+   for Fault in 0 .. 6 loop
+      Reset;
+      declare
+         Object : Buffers.Pool;
+         Metadata : Words := [others => Sentinel] with Alignment => 4096;
+         Base : constant Unsigned_64 := Unsigned_64 (To_Integer (Metadata'Address));
+         Accepted, Consumed : Boolean;
+         Receipt : CompletionEntry;
+      begin
+         Buffers.Extend_Records (Object, Base, 16_384, Accepted);
+         pragma Assert (Accepted and Buffers.Record_Capacity (Object) > 70);
+         Response.words (3) := Layout.Allocation_Key (70, 1);
+         Result := Buffers.Acquire (Object, 70, 1);
+         pragma Assert (Result.Ready);
+         RAM := [others => Sentinel];
+         Response.words (3) := Layout.Allocation_Key (1, 1);
+         -- Fault1 aliases a record outside the first validation quantum.
+         if Fault /= 1 then Response.words (0) := Layout.CPU_Base + 8192; end if;
+         Buffers.Start (Object, 1, 1, Accepted);
+         pragma Assert (Accepted);
+         Receipt := (Last_Token, COMPLETION_OK, Response);
+         Buffers.Complete (Object, Receipt, Consumed);
+         pragma Assert (Consumed and Buffers.Local_Work_Pending (Object));
+         pragma Assert (Buffers.Last_Stage (Object) = Buffers.Validate_Backing);
+         pragma Assert (not Buffers.Result (Object).Ready);
+         for Word of RAM loop pragma Assert (Word = Sentinel); end loop;
+         Buffers.Complete (Object, Receipt, Consumed);
+         pragma Assert (not Consumed);
+         Buffers.Extend_Records (Object, Base, 32_768, Accepted);
+         pragma Assert (not Accepted);
+         case Fault is
+            when 2 => Buffers.Cancel (Object);
+            when 3 => Fail_Owner := Owner_Calls + 1;
+            when 4 => Now := 30_000;
+            when 5 =>
+               Now := 1;
+               Buffers.Tick (Object);
+               pragma Assert (Buffers.Pending (Object));
+               Now := 0;
+            when 6 => Now := Unsigned_64'Last;
+            when others => null;
+         end case;
+         for Turn in 1 .. Buffers.Record_Capacity (Object) loop
+            exit when not Buffers.Pending (Object);
+            Buffers.Tick (Object);
+         end loop;
+         pragma Assert (not Buffers.Pending (Object));
+         pragma Assert (Buffers.Result (Object).Ready = (Fault = 0));
+         pragma Assert (not Buffers.Local_Work_Pending (Object));
+         if Fault /= 0 then
+            -- Neither a late completion nor a new allocation may revive a
+            -- quarantined transaction after its clock/owner becomes usable.
+            Now := 0;
+            Fail_Owner := 0;
+            Buffers.Complete (Object, Receipt, Consumed);
+            pragma Assert (not Consumed);
+            Buffers.Tick (Object);
+            Buffers.Start (Object, 1, 1, Accepted);
+            pragma Assert (not Accepted);
+            pragma Assert (not Buffers.Result (Object).Ready);
+         end if;
+         for I in RAM'Range loop
+            pragma Assert (RAM (I) =
+              (if Fault = 0 and I in 1024 .. 1535 then 0 else Sentinel));
+         end loop;
+      end;
+   end loop;
+   Ada.Text_IO.Put_Line ("Backing validation quantum PASS: overlap, owner/clock cancellation, no revival or early RAM writes");
    declare
       Target : constant Unsigned_64 := Layout.CPU_Base + 16 * 2 * 1024 * 1024;
       Extra : constant System.Address := Mmap

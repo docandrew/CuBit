@@ -398,7 +398,7 @@ class Manifests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         INLET, OUTLET = 1, 2
         TEXT, BYTES, INTEGERS, LOGS = 1, 2, 3, 4
-        STREAM, ONE_SHOT, LEVEL, EDGE = 1, 2, 3, 4
+        STREAM, LEVEL, EDGE = 1, 2, 3
         # Outlets first, then inlets.
         connectors = [(OUTLET, TEXT, STREAM, 4, 'unix.stderr'),
                       (OUTLET, INTEGERS, LEVEL, 1, 'com.example.tool.progress'),
@@ -417,9 +417,10 @@ class Manifests(unittest.TestCase):
                 ('(Outlet "unix.stderr"', '(Outlet "unix.stdin"', 'unix.stdin is an inlet'),
                 ('(Outlet "com.cubit.stdlog" Element.Log_Records)', '(Outlet "com.cubit.stdlog" Element.Text)',
                  'com.cubit.stdlog is a CuBit contract'),
-                ('"com.cubit.stdlog"', '"com.cubit.exit"', 'com.cubit.exit is supplied by the system'),
                 ('"com.cubit.stdlog"', '"unix.stderr"', '"unix.stderr" is declared twice'),
                 ('pages => 4', 'pages => 256', 'not 1 to 255'),
+                # A single value is a Task, not a connector: no one-shot signal.
+                ('signal => Signal.Level', 'signal => Signal.One_Shot', 'One_Shot'),
                 ('(Descriptor 2 "unix.stderr")', '(Descriptor 2 "unix.stdout")', 'no outlet or inlet "unix.stdout"'),
                 ('(Descriptor 2 "unix.stderr")', '(Descriptor 2 "unix.stdin")',
                  'descriptor 2 writes, so it must name an outlet'),

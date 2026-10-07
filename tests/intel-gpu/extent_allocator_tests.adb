@@ -25,9 +25,31 @@ procedure Extent_Allocator_Tests is
       return 2 ** 32 - Unsigned_64 (2 * Calls) * E.Block_Bytes;
    end Allocate;
    package Allocator is new Intel_GPU_Extent_Allocator (Owner_Ready, Allocate);
+   package L renames Intel_GPU_Buffer_Reply.Layout;
+   use type Allocator.Allocation_Reason;
    Backing : D.Borrowed_View;
    OK : Boolean;
 begin
+   -- Native policy uses immutable inventory, not a free-memory promise.
+   pragma Assert (L.Native_System_Heap (0).Byte_Quota = 0);
+   pragma Assert (L.Native_System_Heap (Unsigned_64'Last).Byte_Quota = 0);
+   for MiB in 0 .. 16384 loop
+      declare
+         RAM_Bytes : constant Unsigned_64 := Unsigned_64 (MiB) * 1024 ** 2;
+         Policy : constant L.Heap_Policy := L.Native_System_Heap (RAM_Bytes);
+      begin
+         pragma Assert (Policy.Byte_Quota <= RAM_Bytes / 4);
+         pragma Assert (Policy.Byte_Quota <= Policy.DMA_Limit / 2);
+         pragma Assert (Policy.Byte_Quota mod E.Block_Bytes = 0);
+         pragma Assert (Policy.DMA_Limit = 2 ** 32);
+         pragma Assert (Policy.Metadata_Bytes = 65536);
+         if Policy.Byte_Quota > 0 then
+            pragma Assert (L.Heap_Geometry_Valid (Policy.Byte_Quota, Policy.DMA_Limit, Base));
+         end if;
+      end;
+   end loop;
+   pragma Assert (L.Native_System_Heap (1024 ** 4).Byte_Quota = 2 ** 31);
+   Ada.Text_IO.Put_Line ("Native heap policy PASS:16385 RAM sizes, unknown inventory, terabyte DMA clamp");
    declare
       Object : Allocator.Pool;
       View : Intel_GPU_Buffer_Reply.Extent_View;
@@ -43,7 +65,108 @@ begin
       end loop;
       Allocator.Step_Buffer (Object, 7, 1, 4096, 1, View, OK, More);
       pragma Assert (OK and not More and Calls = 8);
+      pragma Assert (Allocator.Last_Allocation_Reason (Object) = L.Ready);
    end;
+   Calls := 0;
+   -- Nominal Desktop target footprint, NOT Mesa's padded Vulkan requirements.
+   -- Three BGRA8 1920x1080 targets plus one 2MiB setup allocation must fit
+   -- independently of physical contiguity between the mocked order9 blocks.
+   declare
+      Object : Allocator.Pool;
+      View : Intel_GPU_Buffer_Reply.Extent_View;
+      More : Boolean;
+      Before_Calls : Natural;
+      Total : Unsigned_64 := 0;
+      Usage : Allocator.Budget;
+   begin
+      for Index in 1 .. 4 loop
+         declare
+            Pages : constant L.Page_Count := (if Index = 1 then 512 else 2025);
+            Granted : Boolean := False;
+         begin
+            Allocator.Reset_Allocation_Diagnostic (Object);
+            pragma Assert (Allocator.Last_Allocation_Reason (Object) = L.Not_Attempted);
+            for Step in 1 .. 8 loop
+               Before_Calls := Calls;
+               Allocator.Step_Buffer (Object, 7, Index, Pages, 1, View, OK, More);
+               pragma Assert (Calls <= Before_Calls + 1);
+               exit when not More;
+            end loop;
+            Granted := OK and not More;
+            pragma Assert (Granted and Intel_GPU_Buffer_Reply.Valid (View));
+            Total := Total + Unsigned_64 (Pages) * 4096;
+            Usage := Allocator.Memory_Budget (Object);
+            pragma Assert (Usage.Known and Usage.Retained = Total);
+            pragma Assert (Usage.Committed =
+              ((Total + E.Block_Bytes - 1) / E.Block_Bytes) * E.Block_Bytes);
+         end;
+      end loop;
+      Before_Calls := Calls;
+      Allocator.Step_Buffer (Object, 7, 5, 4096, 1, View, OK, More);
+      pragma Assert (not OK and not More and Calls = Before_Calls);
+      pragma Assert (Allocator.Last_Allocation_Reason (Object) = L.Quota_Check);
+      pragma Assert (Allocator.Memory_Budget (Object).Retained = Total);
+      pragma Assert (D.Valid (Allocator.Snapshot (Object)));
+   end;
+   Ada.Text_IO.Put_Line
+     ("Nominal Desktop backing PASS: three1080p targets plus2MiB setup; extra16MiB rejected by quota without growth");
+   -- NUC observed 16MiB committed before the full-output 8MiB requests.
+   -- Model that aggregate setup charge, without claiming its BO composition.
+   -- A larger TEST policy isolates real lazy growth from the shipping default;
+   -- it is not a proposal to replace the production quota with another constant.
+   for Expanded in Boolean loop
+      declare
+         Object : Allocator.Pool;
+         View, First : Intel_GPU_Buffer_Reply.Extent_View;
+         type RAM is array (Natural range <>) of Unsigned_64;
+         Metadata : RAM (0 .. 511) := [others => 0] with Alignment => 4096;
+         More : Boolean;
+         Before_Calls : Natural;
+      begin
+         Calls := 0; Fail_At := Natural'Last; Lose_At := Natural'Last;
+         if Expanded then
+            Allocator.Configure_Heap
+              (Object, L.Native_System_Heap (256 * 1024 ** 2).Byte_Quota,
+               L.Native_System_Heap (256 * 1024 ** 2).DMA_Limit, OK);
+            pragma Assert (OK and Calls = 0);
+         end if;
+         for Index in 1 .. 4 loop
+            for Step in 1 .. 10 loop
+               Before_Calls := Calls;
+               Allocator.Step_Buffer
+                 (Object, 7, Index, (if Index = 1 then 4096 else 2048),
+                  1, View, OK, More);
+               pragma Assert (Calls <= Before_Calls + 1);
+               if More and then Allocator.Required_Extent_Metadata (Object) > 0 then
+                  Allocator.Extend_Extents
+                    (Object, Unsigned_64 (To_Integer (Metadata'Address)), 4096, OK);
+                  pragma Assert (OK);
+               end if;
+               exit when not More;
+            end loop;
+            if Index = 4 and not Expanded then
+               pragma Assert (not OK and not More and Calls = 16);
+               pragma Assert (Allocator.Last_Allocation_Reason (Object) = L.Quota_Check);
+               pragma Assert (Allocator.Memory_Budget (Object).Retained = 32 * 1024 ** 2);
+            else
+               pragma Assert (OK and not More);
+               pragma Assert (Calls = 8 + (Index - 1) * 4);
+               pragma Assert (Allocator.Memory_Budget (Object).Committed =
+                 Unsigned_64 (Calls) * E.Block_Bytes);
+               if Index = 1 then First := View; end if;
+            end if;
+            pragma Assert (Intel_GPU_Buffer_Reply.Valid (First));
+            pragma Assert (Intel_GPU_Buffer_Reply.CPU_Address (First) = Base);
+         end loop;
+         if Expanded then
+            pragma Assert (Allocator.Memory_Budget (Object).Retained = 40 * 1024 ** 2);
+            pragma Assert (Calls = 20); -- Not 32 blocks for the 64MiB ceiling.
+         end if;
+      end;
+   end loop;
+   Fail_At := 17; Lose_At := 17;
+   Ada.Text_IO.Put_Line
+     ("NUC footprint PASS: default quota denies fourth allocation; configured policy grows lazily to40MiB with stable views");
    Calls := 0;
    declare
       package V renames Intel_GPU_Buffer_Reply;
@@ -72,10 +195,13 @@ begin
       pragma Assert (OK and V.CPU_Address (Again) = V.CPU_Address (First));
       Allocator.Acquire_Buffer (Object, 7, 1, 1, 1, Again, OK);
       pragma Assert (not OK and not V.Valid (Again));
+      pragma Assert (Allocator.Last_Allocation_Reason (Object) = L.Generation_Check);
       Allocator.Acquire_Buffer (Object, 8, 1, 4096, 1, Again, OK);
       pragma Assert (not OK and not V.Valid (Again));
+      pragma Assert (Allocator.Last_Allocation_Reason (Object) = L.Request_Check);
       Allocator.Acquire_Buffer (Object, 7, 3, 1, 1, Again, OK);
       pragma Assert (not OK and not V.Valid (Again) and Calls = 16);
+      pragma Assert (Allocator.Last_Allocation_Reason (Object) = L.Quota_Check);
       pragma Assert (Allocator.Memory_Budget (Object).Available = 0);
       Ready := False;
       pragma Assert (not Allocator.Memory_Budget (Object).Known);
@@ -247,6 +373,8 @@ begin
             Lose_At := (if Lost then Boundary else 17);
             Allocator.Acquire (Object, Base, Failed_Map, OK, Prefix_Bytes + 1);
             pragma Assert (not OK and Calls = Boundary and not D.Valid (Failed_Map));
+            pragma Assert (Allocator.Last_Allocation_Reason (Object) =
+              (if Lost then L.Owner_Check else L.Physical_Result_Check));
             pragma Assert (not Allocator.Memory_Budget (Object).Known);
             pragma Assert (not D.Valid (Allocator.Snapshot (Object)));
             pragma Assert (not D.Resolve (Prior, Prefix_Bytes - 4096, 4096).Valid);

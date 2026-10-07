@@ -135,6 +135,19 @@ package CuBit.Launch_Grants with Pure, SPARK_Mode is
    function Grant_Bytes_Valid (Length : Unsigned_64) return Boolean is
      (Length = 0 or else Length in Header_Bytes .. Maximum_Bytes);
 
+   ---------------------------------------------------------------------------
+   --  OP_DELEGATED_PLACES: the places delegated to the requester when it was
+   --  launched (not its own manifest's scopes), as a region, so that it can
+   --  pass exactly those on to the programs it starts (the libc's
+   --  posix_spawn; docs/self-hosting.md, decision D2). Seeing one's own
+   --  grants needs no authority. The requester lends procmgr a writable
+   --  grant of Maximum_Bytes:
+   --    words (0) grant reference (CuBit.Grant_References wire form)
+   --  Reply OK: words (0) = the region's length written there (0: none).
+   ---------------------------------------------------------------------------
+   Places_Operation     : constant := 16#010B#;
+   Places_Request_Words : constant := 1;
+
    --  Building a region.
    type Builder is private;
 

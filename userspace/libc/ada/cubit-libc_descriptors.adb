@@ -6,6 +6,7 @@ pragma Ada_2022;
 with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
+with CuBit.Child_Exits;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Libc_ABI; use CuBit.Libc_ABI;
@@ -18,6 +19,8 @@ with CuBit.Path_Names_C;
 with CuBit.Program_Descriptions;
 with CuBit.Outlet_Rings;
 with CuBit.Grant_References;
+with CuBit.Stream_Regions;
+with CuBit.Stream_Rings;
 
 package body CuBit.Libc_Descriptors is
 
@@ -137,8 +140,8 @@ package body CuBit.Libc_Descriptors is
                   Socket_Pair, Tcp);
 
    --  CuBit.Streams' entry types.
-   Type_Raw_Bytes  : constant := 0;
-   Type_Text_Line  : constant := 1;
+   Type_Raw_Bytes  : constant := CuBit.Stream_Rings.ELEMENT_RAW_BYTES;
+   Type_Text_Line  : constant := CuBit.Stream_Rings.ELEMENT_TEXT_LINE;
 
    --  The descriptor map (Adopt_Ports): for each descriptor number, the
    --  ring of the outlet it writes (0: none), its pages and entry
@@ -270,7 +273,8 @@ package body CuBit.Libc_Descriptors is
                     (if CuBit.Grant_References.Valid_Wire (E.Grant)
                      then CuBit.Kernel_Calls.Call
                        (K.Acquire_Shared_Memory_Grant, Reference.slot, Reference.generation,
-                        Rings.Owner, 0, Pages * K.Page_Bytes, Grant_Write)
+                        Rings.Owner, 0, CuBit.Stream_Regions.Region_Bytes (Natural (Pages)),
+                        Grant_Write)
                      else K.Failed);
                begin
                   if Mapped /= K.Failed then
@@ -401,6 +405,9 @@ package body CuBit.Libc_Descriptors is
    --  The mailbox dispatcher: every message the process receives; stream
    --  subscriptions are served, anything else is not this libc's yet.
    ---------------------------------------------------------------------------
+   procedure Note_Event (Item : System.Address)
+   with Import, Convention => C, External_Name => "__cubit_note_event";
+
    function Dispatcher (Unused : System.Address) return System.Address
    with Convention => C;
    function Dispatcher (Unused : System.Address) return System.Address is
@@ -411,15 +418,23 @@ package body CuBit.Libc_Descriptors is
       loop
          M := (others => <>);
          From := CuBit.Kernel_Calls.Call (K.Receive, Value_Of (M'Address));
-         Lock (Stream_Lock'Access);
-         Ignore := Stream_Handle_Message (To_Long (From), M'Address);
-         Unlock (Stream_Lock'Access);
+         --  Receive takes events too: a child's exit goes to waitpid's
+         --  bookkeeping (it would otherwise be lost to the stream handler).
+         if M.Label = CuBit.Child_Exits.Event_Label then
+            Note_Event (M'Address);
+         else
+            Lock (Stream_Lock'Access);
+            Ignore := Stream_Handle_Message (To_Long (From), M'Address);
+            Unlock (Stream_Lock'Access);
+         end if;
          exit when False;                --  the thread serves until exit
       end loop;
       return System.Null_Address;
    end Dispatcher;
 
    Dispatcher_Started : aliased int := 0 with Volatile;
+   function Dispatcher_Running return int is (Dispatcher_Started)
+   with Export, Convention => C, External_Name => "__cubit_dispatcher_running";
    procedure Start_Dispatcher;
    procedure Start_Dispatcher is
       Attributes : Storage_Array (1 .. Pthread_Attribute_Bytes);

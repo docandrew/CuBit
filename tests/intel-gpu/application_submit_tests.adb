@@ -1,6 +1,8 @@
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Intel_GPU_Application_Submit;
+with Intel_GPU_Image_Consumers;
+with Intel_GPU_Image_Lease;
 procedure Application_Submit_Tests is
    type Unsigned_64_Array is array (Positive range <>) of Unsigned_64;
    Owned, Mapped : Boolean := True;
@@ -76,6 +78,7 @@ procedure Application_Submit_Tests is
    begin
       if not Nested_Enabled or Nested_Active then return; end if;
       Nested_Active := True;
+      pragma Assert (not S.Completion_Confirmed (Nested_Object, 2));
       Nested_Attempts := Nested_Attempts + 1;
       S.Execute (Nested_Object, 1, 16#20000#, 0, 4096, Result, Value);
       pragma Assert (Result = S.Rejected and Value = 0);
@@ -92,7 +95,9 @@ begin
             Lose_At := (if Mode = 2 then Point else 0);
             S.Execute (Object, 1, 16#20000#, 0, 4096, Status, Completion);
             pragma Assert (Status = S.Rejected and Step = 0 and Completion = 0);
+            pragma Assert (not S.Completion_Confirmed (Object, 2));
             S.Initialize (Object, True);
+            pragma Assert (not S.Completion_Confirmed (Object, 1));
             S.Execute (Object, 1, 16#20000#, 0, 4096, Status, Completion);
             if Mode = 0 then
                pragma Assert (Status = S.Complete and Completion = 2 and Step = 6);
@@ -100,10 +105,14 @@ begin
                   Step := 0; Previous := Unsigned_32 (Iteration - 1);
                   S.Execute (Object, 1, 16#20000#, 0, 4096, Status, Completion);
                   pragma Assert (Status = S.Complete and Completion = Unsigned_32 (Iteration));
+                  pragma Assert (S.Completion_Confirmed (Object, 2));
+                  pragma Assert (S.Completion_Confirmed (Object, Completion));
+                  pragma Assert (not S.Completion_Confirmed (Object, Completion + 1));
                end loop;
             else
                pragma Assert (Status = S.Faulted and Completion = 0 and Step = Point);
                pragma Assert (S.Current (Object) = S.Failed and S.Last_Completed (Object) = 1);
+               pragma Assert (not S.Completion_Confirmed (Object, 2));
                pragma Assert (Quarantines = 1);
                Owned := True;
                S.Initialize (Object, True);
@@ -198,5 +207,48 @@ begin
    S.Execute (Nested_Object, 1, 16#20000#, 0, 4096, Status, Completion);
    pragma Assert (Status = S.Complete and Completion = 2 and Nested_Attempts = 15);
    pragma Assert (Step = 6 and Quarantines = 0 and S.Current (Nested_Object) = S.Idle);
+   pragma Assert (S.Completion_Confirmed (Nested_Object, 2));
+   pragma Assert (not S.Completion_Confirmed (Nested_Object, 0));
+   pragma Assert (not S.Completion_Confirmed (Nested_Object, 1));
+   pragma Assert (not S.Completion_Confirmed (Nested_Object, 3));
    Ada.Text_IO.Put_Line ("Application submission ordering PASS: failures quarantine; no premature completion or nested admission");
+   Nested_Enabled := False;
+   declare
+      A, B, Faulted : S.State;
+      Receipt, Other, Failed_Receipt : S.Completion_Receipt;
+      package C renames Intel_GPU_Image_Consumers;
+      Consumers : C.Ledger;
+      Read_Obligation : C.Obligation;
+      Key : constant Intel_GPU_Image_Lease.Identity := (1, 2, 3, 4, 5, 6, 0, 7);
+      Accepted : Boolean;
+   begin
+      Previous := 1; Step := 0; Failure := 0; Lose_At := 0;
+      S.Initialize (A, True);
+      S.Initialize (B, True);
+      S.Initialize (Faulted, True);
+      pragma Assert (not S.Receipt_Confirmed (A, Receipt));
+      C.Open (Consumers, Key, Accepted); pragma Assert (Accepted);
+      C.Reserve (Consumers, Key, C.GPU, Read_Obligation, Accepted); pragma Assert (Accepted);
+      S.Execute_With_Receipt (A, 1, 16#20000#, 0, 4096, Receipt, Status);
+      pragma Assert (Status = S.Complete and S.Receipt_Confirmed (A, Receipt));
+      pragma Assert (S.Receipt_Sequence (A, Receipt) = 2);
+      Step := 0;
+      S.Execute_With_Receipt (B, 1, 16#20000#, 0, 4096, Other, Status);
+      pragma Assert (Status = S.Complete and S.Receipt_Confirmed (B, Other));
+      pragma Assert (not S.Receipt_Confirmed (B, Receipt));
+      pragma Assert (S.Receipt_Sequence (B, Receipt) = 0);
+      pragma Assert (not S.Receipt_Confirmed (A, Other));
+      C.Stop (Consumers, Key, Accepted); pragma Assert (Accepted);
+      C.Complete (Consumers, Key, Read_Obligation, S.Receipt_Confirmed (A, Other), Accepted);
+      pragma Assert (not Accepted and not C.Drained (Consumers, Key));
+      C.Complete (Consumers, Key, Read_Obligation, S.Receipt_Confirmed (A, Receipt), Accepted);
+      pragma Assert (Accepted and C.Drained (Consumers, Key));
+      Step := 0;
+      S.Execute_With_Receipt (A, 1, 16#20000#, 0, 4096, Receipt, Status);
+      pragma Assert (Status = S.Rejected and Step = 0);
+      Failure := 6; Step := 0;
+      S.Execute_With_Receipt (Faulted, 1, 16#20000#, 0, 4096, Failed_Receipt, Status);
+      pragma Assert (Status = S.Faulted and not S.Receipt_Confirmed (Faulted, Failed_Receipt));
+   end;
+   Ada.Text_IO.Put_Line ("Submission receipt PASS: exact root, equal-sequence foreign rejection, single attempt, disable failure retains uncertainty");
 end Application_Submit_Tests;

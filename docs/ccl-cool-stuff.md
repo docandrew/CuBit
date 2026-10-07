@@ -95,8 +95,8 @@ functions and put the collection last.
 - Lambda captures become the shipped arguments, and the function-type rules
   check them on both sides.
 
-*Status: the builtins are implemented in the interpreter; bytecode parity and
-remote execution are planned.*
+*Status: the builtins were implemented in the interpreter, which was removed
+2026-10-05; bytecode support and remote execution are planned.*
 
 ## 6. Serializable machine state: pause, move, resume
 
@@ -185,7 +185,7 @@ What would be new in CCL is the combination:
 
 Verification once can replace checks at run time. See "Future: a verified JIT"
 in [the bytecode format](ccl-bytecode-format.md#future-a-verified-jit-not-planned-soon).
-It is a long way off; the interpreter and VM cover current needs.
+It is a long way off; the VM covers current needs.
 
 ## 8. One encoding for code and data
 

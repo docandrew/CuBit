@@ -368,7 +368,8 @@ elements. Results longer than 64 elements show the first 64 and `... N more`.
     operators lower to these plus `Not_Boolean` and forward jumps. A
     differential test runs 19 expressions both ways and compares results.
     From here on, each language feature lands in the interpreter and CCLB
-    together.
+    together. (Superseded 2026-10-05: the interpreter was removed; features
+    land in the analyser, compiler, verifier and VM.)
   - Named functions in CCLB (2026-09-29): `Call_Function`/`Return_Function`,
     one region per function, no recursion, and a verifier-checked
     whole-program stack bound. A defined function now shadows a builtin of
@@ -387,7 +388,8 @@ elements. Results longer than 64 elements show the first 64 and `... N more`.
     carries type code 5 plus typed elements, and the Observatory decodes and
     shows them as a table.
   - Tests: native suite, 48 view round trips, remote CBOR, and web decoder.
-  - Proof of the interpreter with lists: in progress.
+  - Proof of the interpreter with lists: in progress (moot since the
+    interpreter's removal on 2026-10-05).
 - **Functions, slices 1–3 (2026-09-29):**
   - Function types `(Function (Integer) Integer)` / `FUNCTION(Integer) AS
     Integer`; named functions are values; `(f 3)` calls through a value.
@@ -515,7 +517,7 @@ elements. Results longer than 64 elements show the first 64 and `... N more`.
   Boolean functions to any declared function, typed by its profile. Lambdas
   `{ |x| ... }` / `(fn (x Integer) ...)` are lambda-lifted into generated
   `define`s. Captured `let` values become extra parameters, so the
-  interpreter still has no closures on the heap, and "no recursion" still
+  evaluator still has no closures on the heap, and "no recursion" still
   holds.
 - **Proof targets:**
   - list operations never index outside capacity;
@@ -639,7 +641,9 @@ content, in the interpreter and in CCLB.
 (from `at`), in both engines. There is still no character literal syntax:
 write `(= (at s 1) (at "x" 1))`.
 
-**Bytecode parity is next (decided 2026-09-30).** Everything above runs
+**Bytecode parity is next (decided 2026-09-30).** (Since 2026-10-05 the
+interpreter is removed and every program runs on the VM, CCLB format
+version 9; the rest of this paragraph is the 2026-09-30 plan.) Everything above runs
 only in the interpreter today. The CCLB compiler still rejects records and
 variants with payloads, lists of records, recursive and range types, and
 CCLB is still format v7. Before any new language feature:
@@ -655,7 +659,8 @@ in the interpreter and the VM together.
 ## Open questions
 
 - Does the VM gain strings and closures, or does the REPL stay on the
-  interpreter?
+  interpreter? (Resolved 2026-10-05: the REPL runs on the VM; the
+  interpreter was removed.)
 - How is a live `Stream<T>` represented in the language, and how is it
   buffered?
 - How are preview budgets set (fuel, time, memory), and how is a preview

@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with CCL_Log_IO;
 with Interfaces; use Interfaces;
 with System;
@@ -265,7 +266,7 @@ package body CCL_Workbench is
    --  these semantic regions.  Keeping this state independent of raw pointer
    --  coordinates prevents an editor-sized repaint for every mouse report.
    type Hover_Target is
-     (Hover_None, Hover_Open, Hover_Save, Hover_Compile, Hover_Interpret, Hover_Watch, Hover_Handler,
+     (Hover_None, Hover_Open, Hover_Save, Hover_Compile, Hover_Run, Hover_Watch, Hover_Handler,
       Hover_VM_Run, Hover_Pause, Hover_Stop, Hover_Step_Into,
       Hover_Step_Over, Hover_Inspector_Splitter,
       Hover_Disassembly_Splitter, Hover_First_Column,
@@ -302,7 +303,7 @@ package body CCL_Workbench is
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Run_Button_Bounds)
       then
-         return Hover_Interpret;
+         return Hover_Run;
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, VM_Run_Button_Bounds)
       then
@@ -393,7 +394,7 @@ package body CCL_Workbench is
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, Run_Button_Bounds)
       then
-         return "Interpret source directly (F5 or Ctrl+Enter)";
+         return "Run source (F5 or Ctrl+Enter)";
       elsif CuBit.UI.Point_In_Rect
         (Pointer_X, Pointer_Y, VM_Run_Button_Bounds)
       then
@@ -537,7 +538,7 @@ package body CCL_Workbench is
       end loop;
       CCL.UI_Outputs.Painted (Live_Host.Output);
    end Render_Output;
-   procedure Interpret_Live is new CCL.Language.Interpret_With_Values
+   procedure Run_Live is new CCL.Evaluation.Evaluate_With_Values
      (Live_Context, Invoke_Live);
    procedure Submit_Live is new CCL.Sessions.Submit_With_Values (Live_Context, Invoke_Live);
    procedure Submit_Granted
@@ -881,7 +882,7 @@ package body CCL_Workbench is
       VM_Continuous := False;
       VM_Has_Run := False;
       REPL_Visible := False;
-      Interpret_Live
+      Run_Live
         (View.Canonical.Data (1 .. View.Canonical.Length),
          CCL.Sessions.Default_Fuel, Visible_Interfaces,
          Granted_Interfaces, Live_Host, Outcome);
@@ -2920,7 +2921,7 @@ package body CCL_Workbench is
                (x => Bytecode_Content.x, y => Bytecode_Content.y + 54,
                 w => Bytecode_Content.w, h => 44)),
             Bytecode_Content.x + 7, Bytecode_Content.y + 54,
-            "Interpret mode does not emit bytecode",
+            "Compile to show the bytecode a run uses",
             Colors.muted, Colors.field);
       end if;
 
@@ -3015,8 +3016,6 @@ begin
       CuBit.UI.Editor.Documents.Initialize
          (Source,
          "# Strings are immutable and indexes start at one." & ASCII.LF &
-         "# Run with Interpret; string bytecode is not implemented yet." &
-           ASCII.LF &
          "# Watch takes a snapshot; stop and restart to apply edits." & ASCII.LF &
          "(let ((elapsed-ms (clock.monotonic-ms)))" & ASCII.LF &
          "  (let ((label ""uptime""))" & ASCII.LF &

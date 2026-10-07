@@ -1,9 +1,13 @@
 # CuBit libc checks (userspace/libc). Reads the development disk's tls/
 # directory (files, directory listing) and writes under libc-check/;
-# everything else must be denied.
-(executable-manifest v1
-  (identity "com.cubit.libc-check")
-  (version "0.1.0")
-  (request-service filesystem read-write filesystem)
-  (filesystem-scope (rights read) "@nvme:0/tls")
-  (filesystem-scope (rights read write create) "@nvme:0/libc-check"))
+# everything else must be denied. stdout is a declared outlet (descriptor
+# 1): no program has one unless it says so.
+(Executable_Manifest
+  identity => "com.cubit.libc-check"
+  version => "0.1.0"
+  requests => [(service "filesystem" "filesystem")]
+  scopes => [
+    (filesystem [File_Right.Read] "@nvme:0/tls")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/libc-check")]
+  outlets => [(Outlet "unix.stdout" Element.Text pages => 4)]
+  descriptors => [(Descriptor 1 "unix.stdout")])

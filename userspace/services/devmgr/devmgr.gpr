@@ -73,6 +73,12 @@ project Devmgr is
        "ccl-objects-values.ads", "ccl-objects-values.adb",
        "ccl-objects-views.ads", "ccl-objects-views.adb",
        "ccl-declarations.ads", "ccl-declarations.adb",
+       --  Declarations are evaluated compiled, on the VM (CCL.Evaluation).
+       "ccl-evaluation.ads", "ccl-evaluation.adb",
+       "ccl-compiler.ads", "ccl-compiler.adb",
+       "ccl-debug_maps.ads", "ccl-debug_maps.adb",
+       "ccl-vm-native_objects.ads", "ccl-vm-native_objects.adb",
+       "ccl-vm-resource_values.ads", "ccl-vm-resource_values.adb",
        "ccl-scheduling_limits.ads",
        "ccl-configurations.ads", "ccl-configurations.adb");
 

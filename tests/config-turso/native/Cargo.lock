@@ -355,9 +355,6 @@ version = "0.1.0"
 [[package]]
 name = "cubit-allocator"
 version = "0.1.0"
-dependencies = [
- "cubit",
-]
 
 [[package]]
 name = "cubit-config-turso-spike"

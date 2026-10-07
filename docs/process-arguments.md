@@ -128,8 +128,8 @@ unchanged for its current callers (desktop, shell); they can move to
 
 ## libc: posix_spawn and waitpid
 
-`userspace/libc/overlay/src/cubit/process.c` (musl's `posix_spawn.c`,
-`waitpid.c` and `wait4.c` replaced by thin overlays):
+`userspace/libc/ada/cubit-libc_process.adb` (`CuBit.Libc_Process`; musl's
+`posix_spawn.c`, `waitpid.c` and `wait4.c` are replaced):
 
 - `posix_spawn`/`posix_spawnp` encode `argv`/`envp`, check the block with
   the proved validator, and call `OP_LAUNCH` through the fixed
@@ -139,9 +139,22 @@ unchanged for its current callers (desktop, shell); they can move to
   table, or the child would hold more than the caller), `E2BIG` (over the
   limits), `ENAMETOOLONG` (name over 255 bytes), `ENOENT` (procmgr could
   not start it), `ENOTSUP` (file actions).
-- Names are launch-table names, compared exactly (a leading `/` is
-  dropped). There is no `PATH` search: `posix_spawnp` behaves as
-  `posix_spawn`.
+- Names are launch-table names, compared exactly. A name without `/` is
+  used as it stands. One with `/` is a path, resolved like `open`'s
+  (`CuBit.Path_Names`, from the working directory, `.` and `..` taken out)
+  and named relative to the system volume when it is on it: the gcc driver's
+  `/toolchain/bin/../lib/gcc/.../../../../x86_64-linux-musl/bin/as` is
+  `toolchain/x86_64-linux-musl/bin/as`. There is no `PATH` search:
+  `posix_spawnp` behaves as `posix_spawn`.
+- **Delegated places** (docs/self-hosting.md, decision D2): the first spawn
+  asks procmgr for the places this program's launcher delegated to it
+  (`OP_DELEGATED_PLACES`, `16#010B#`, `CuBit.Launch_Grants`: procmgr records
+  which held places were delegated, apart from its manifest's scopes), and
+  every spawn passes them on whole. procmgr checks them against what the
+  caller holds, as for any delegation. The child gets nothing from the
+  caller's own manifest scopes. Per-file delegation from a manifest's argv
+  grammar is backlog CCL-004. Ada launchers get the same answer from
+  `CuBit.Launching.Delegated_Places`.
 - `waitpid`, `wait`, `wait4`: `pid > 0`, `-1`, `0` and `< -1` (no process
   groups: any child), `WNOHANG`. Exited children report
   `WIFEXITED`/`WEXITSTATUS`; stopped ones `WIFSIGNALED` with `SIGKILL`.

@@ -1,3 +1,5 @@
+with GNAT.Source_Info;
+with CCL.Evaluation;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Types; use CCL.Types;
@@ -43,10 +45,12 @@ procedure Read_Source_Tests is
    Resolved : Resolved_Operation;
    Installed : Grant_Result;
    Checks : Natural := 0;
-   procedure Check (OK : Boolean) is
+   procedure Check (OK : Boolean; Line : Natural := GNAT.Source_Info.Line) is
    begin
       Checks := Checks + 1;
-      if not OK then raise Program_Error with "CCL structured read check" & Checks'Image; end if;
+      if not OK then
+         raise Program_Error with "CCL structured read check" & Checks'Image & " at line" & Line'Image;
+      end if;
    end Check;
    type Context is record
       Code : W.Status := W.Success;
@@ -75,8 +79,8 @@ procedure Read_Source_Tests is
       if State.Corrupt then Image.Reserved := 1; end if;
       Reply := (Value => CCL.Host_Values.Object_Constant (Image), Success => Accepted, Why => <>);
    end Invoke;
-   procedure Evaluate is new L.Interpret_With_Values (Context, Invoke);
-   procedure Evaluate_Object is new L.Interpret_Object_With_Values (Context, Invoke);
+   procedure Evaluate is new CCL.Evaluation.Evaluate_With_Values (Context, Invoke);
+   procedure Evaluate_Object is new CCL.Evaluation.Evaluate_Object_With_Values (Context, Invoke);
    function Source (Body_Text : String) return String is
      ("(match (config-test.read) ((ConfigRead.Found snapshot) " & Body_Text & ") " &
       "((ConfigRead.Stale snapshot) (field snapshot revision)) " &
@@ -92,7 +96,7 @@ procedure Read_Source_Tests is
    Wrong : Binding;
    procedure Pure (Program : String; Expected : Integer_64) is
    begin
-      L.Interpret (Program, 1024, Result);
+      CCL.Evaluation.Evaluate (Program, 1024, Result);
       if Result.Status /= L.Succeeded then
          Ada.Text_IO.Put_Line (Program & " => " & Result.Status'Image & " / " & Result.Diagnostic'Image);
       end if;
@@ -101,7 +105,7 @@ procedure Read_Source_Tests is
       Check (Basic.Status = L.Views.Converted);
       L.Views.Convert (Basic.Rendered.Data (1 .. Basic.Rendered.Length), L.Views.Basic, L.Views.Lisp, Empty_Catalog, Lisp);
       Check (Lisp.Status = L.Views.Converted);
-      L.Interpret (Lisp.Rendered.Data (1 .. Lisp.Rendered.Length), 1024, Result);
+      CCL.Evaluation.Evaluate (Lisp.Rendered.Data (1 .. Lisp.Rendered.Length), 1024, Result);
       Check (Result.Status = L.Succeeded and Result.Result_Value = CCL.VM.Integer_Constant (Expected));
       --  Compiled code that accepts the program agrees with the interpreter
       --  (some forms, such as anonymous functions, compile from step 6 on).
@@ -125,7 +129,7 @@ procedure Read_Source_Tests is
    end Pure;
    procedure Reject (Program : String) is
    begin
-      L.Interpret (Program, 1024, Result);
+      CCL.Evaluation.Evaluate (Program, 1024, Result);
       Check (Result.Status in L.Parse_Failed | L.Type_Check_Failed and not Result.Has_Value);
    end Reject;
    procedure Compiled_Read
@@ -233,10 +237,10 @@ begin
       procedure Literal (Program, Expected : String) is
          Again : L.Interpretation_Result;
       begin
-         L.Interpret (Program, 4096, Result);
+         CCL.Evaluation.Evaluate (Program, 4096, Result);
          Check (Result.Status = L.Succeeded and Result.Has_Literal and
                 Result.Literal.Data (1 .. Result.Literal.Length) = Expected);
-         L.Interpret (Program (Program'First .. Program'Last - Expected'Length) & Expected, 4096, Again);
+         CCL.Evaluation.Evaluate (Program (Program'First .. Program'Last - Expected'Length) & Expected, 4096, Again);
          Check (Again.Status = L.Succeeded and Again.Has_Literal and
                 Again.Literal.Data (1 .. Again.Literal.Length) = Expected);
       end Literal;
@@ -251,7 +255,7 @@ begin
       Literal (Types_Source & "(L (C 0 false) (Note.Count 7) ""x"")", "(L (C 0 false) (Note.Count 7) ""x"")");
       Literal (Types_Source & "(Note.Text ""hi"")", "(Note.Text ""hi"")");
       -- No literal spelling exists for characters yet: refused, not guessed.
-      L.Interpret ("(type K (record (c Character))) (K (at ""ab"" 1))", 4096, Result);
+      CCL.Evaluation.Evaluate ("(type K (record (c Character))) (K (at ""ab"" 1))", 4096, Result);
       Check (Result.Status = L.Host_Contract_Unsupported and not Result.Has_Literal);
    end;
    declare
@@ -261,9 +265,9 @@ begin
         ("(type Box (record (x Integer))) " &
          "(length (each (fn ((n Integer)) (field (Box n) x)) (range 1" & N'Image & ")))");
    begin
-      L.Interpret (Boxes (L.MAX_VALUE_NODES + 1), 1_000_000, Result);
+      CCL.Evaluation.Evaluate (Boxes (L.MAX_VALUE_NODES + 1), 1_000_000, Result);
       Check (Result.Status = L.Evaluation_Object_Storage_Exhausted and not Result.Has_Value);
-      L.Interpret (Boxes (L.MAX_VALUE_NODES), 1_000_000, Result);
+      CCL.Evaluation.Evaluate (Boxes (L.MAX_VALUE_NODES), 1_000_000, Result);
       Check (Result.Status = L.Succeeded and
              Result.Result_Value = CCL.VM.Integer_Constant (Integer_64 (L.MAX_VALUE_NODES)));
    end;
@@ -301,7 +305,7 @@ begin
    Install (Grants, Resolved, 78, Installed); Check (Installed = Grant_Added);
    -- The separate typed result owns its image after the evaluator clears its
    -- snapshot pool. Pure local definitions need no discovery or call grants.
-   L.Interpret_Object
+   CCL.Evaluation.Evaluate_Object
      ("(type Reading (variant (Text String) (Absent))) " &
       "(type Settings (record (title String) (reading Reading) (enabled Boolean))) " &
       "(Settings ""hello"" (Reading.Text ""world"") true)", 128, Contract, Object_Result);
@@ -340,7 +344,7 @@ begin
    State := (others => <>);
    Evaluate_Object ("(config-test.read)", 0, Catalog, Grants, State, R.Schema (Definition), Object_Result);
    Check (Object_Result.Status = L.Evaluation_Fuel_Exhausted and not Object_Result.Has_Value and State.Calls = 0);
-   L.Interpret_Object ("(unfinished", 128, Contract, Object_Result);
+   CCL.Evaluation.Evaluate_Object ("(unfinished", 128, Contract, Object_Result);
    Check (Object_Result.Status = L.Parse_Failed and not Object_Result.Has_Value and Object_Result.Value = Empty (Contract));
    State := (others => <>);
    Evaluate ("(config-test.write (Settings ""hello"" (Reading.Text ""world"") true))", 128, Catalog, Grants, State, Result);
@@ -408,7 +412,9 @@ begin
    State := (others => <>);
    Evaluate (Lisp.Rendered.Data (1 .. Lisp.Rendered.Length), 128, Catalog, Grants, State, Result);
    Check (Result.Status = L.Succeeded and Result.Result_Value = CCL.VM.Integer_Constant (42));
-   -- A bounded pool admits the request before the host runs. This recursive
+   -- Each read's snapshot lives in the run's value arena, which admits a
+   -- result before the host runs (CCL.VM.Native_Objects); more reads than
+   -- the old interpreter's object pool held all succeed. This recursive
    -- source generator just builds finite source; CCL itself does not recurse.
    declare
       function Calls (Count : Positive) return String is
@@ -418,7 +424,8 @@ begin
    begin
       State := (others => <>);
       Evaluate (Program, 1024, Catalog, Grants, State, Result);
-      Check (Result.Status = L.Evaluation_Object_Storage_Exhausted and State.Calls = L.MAX_OBJECT_VALUES);
+      Check (Result.Status = L.Succeeded and State.Calls = L.MAX_OBJECT_VALUES + 1 and
+        Result.Result_Value = CCL.VM.Integer_Constant (42 * Integer_64 (L.MAX_OBJECT_VALUES + 1)));
    end;
    -- Native strings have the object's full text bound. The scalar UI and
    -- ordinary Text_Value endpoints retain their separately declared limits.
@@ -445,8 +452,8 @@ begin
             Reply := (Value => CCL.Host_Values.Integer_Constant (23), Success => True, Why => <>);
          end if;
       end Text_Invoke;
-      procedure Text_Evaluate is new L.Interpret_With_Values (Context, Text_Invoke);
-      procedure Text_Object is new L.Interpret_Object_With_Values (Context, Text_Invoke);
+      procedure Text_Evaluate is new CCL.Evaluation.Evaluate_With_Values (Context, Text_Invoke);
+      procedure Text_Object is new CCL.Evaluation.Evaluate_Object_With_Values (Context, Text_Invoke);
       -- Eight doublings exercise both storage paths without a large literal.
       Seed : constant String := String'(1 .. 32 => 'x');
       Prefix : constant String :=
@@ -499,11 +506,11 @@ begin
       Check (Result.Status = L.Evaluation_Text_Storage_Exhausted and not Result.Has_Value);
       Text_Object ("(concat (strings.get) ""x"")", 128, Text_Catalog, Text_Grants, Text_State, Text_Contract, Object_Result);
       Check (Object_Result.Status = L.Evaluation_Text_Storage_Exhausted and not Object_Result.Has_Value);
-      L.Interpret_Object (Prefix & "i" & Suffix, 512, Text_Contract, Object_Result);
+      CCL.Evaluation.Evaluate_Object (Prefix & "i" & Suffix, 512, Text_Contract, Object_Result);
       Check (Object_Result.Status = L.Succeeded and Object_Result.Has_Value and Object_Result.Value = Text_Image);
-      L.Interpret (Prefix & "(length i)" & Suffix, 512, Result);
+      CCL.Evaluation.Evaluate (Prefix & "(length i)" & Suffix, 512, Result);
       Check (Result.Status = L.Succeeded and Result.Result_Value = CCL.VM.Integer_Constant (Maximum_Text_Bytes));
-      L.Interpret_Object (Prefix & "(concat i ""x"")" & Suffix, 512, Text_Contract, Object_Result);
+      CCL.Evaluation.Evaluate_Object (Prefix & "(concat i ""x"")" & Suffix, 512, Text_Contract, Object_Result);
       Check (Object_Result.Status = L.Evaluation_Text_Storage_Exhausted and not Object_Result.Has_Value);
    end;
    Ada.Text_IO.Put_Line ("CCL structured Config read source: PASS" & Checks'Image & " checks");

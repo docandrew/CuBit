@@ -254,7 +254,8 @@ package Process.IPC is
                            id        : out Natural;
                            success   : out Boolean;
                            expectedGeneration : Capabilities.Generation := 0;
-                           forwardable : Boolean := False);
+                           forwardable : Boolean := False;
+                           notify : Boolean := False);
 
     -- Derive a terminal mapping from an acquired, owner-forwardable parent.
     -- The caller must be the parent's receiver. Recipient identity comes from

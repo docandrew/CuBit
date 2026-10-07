@@ -154,6 +154,56 @@ begin
    end loop;
    CuBit.Capability_Grants.Endpoint_Ready := True;
    Ada.Text_IO.Put_Line ("Retained reader handoff PASS: closed producer, independent pin, read-only nonforwardable, rejection and uncertainty retention");
+   -- Three independent consumers may drain in any order. A completion for
+   -- one grant must not release another reader or permit backing reuse.
+   for First in 1 .. 3 loop
+      for Second in 1 .. 3 loop
+         if First /= Second then
+            declare
+               Pool : H.Registry;
+               Source : H.Retained_Reference;
+               Readers : array (1 .. 3) of V.View;
+               Wires : array (1 .. 3) of Unsigned_64;
+               Order : constant array (1 .. 3) of Positive :=
+                 [First, Second, 6 - First - Second];
+               ID : H.Handle;
+            begin
+               G.Create_OK := True; G.Revoke_OK := True;
+               G.Gone := False; G.Completed_Wire := 0;
+               H.Register (Pool, 42, Backing, ID);
+               H.Retain_Backing (Pool, 42, ID, Source, OK);
+               pragma Assert (OK);
+               H.Close_Session (Pool, 42);
+               for I in Readers'Range loop
+                  V.Share_Retained (Readers (I), Pool, Source, 7, 42, 0, 4096);
+                  Wires (I) := V.Wire_Reference (Readers (I));
+                  pragma Assert (Wires (I) /= 0);
+               end loop;
+               pragma Assert (Wires (1) /= Wires (2) and Wires (1) /= Wires (3)
+                              and Wires (2) /= Wires (3));
+               H.Return_Reference (Pool, Source, True, OK);
+               pragma Assert (OK);
+               for I in Readers'Range loop
+                  V.Retire (Readers (I), Pool);
+                  pragma Assert (V.State (Readers (I)) = V.Retiring);
+               end loop;
+               for Step in Order'Range loop
+                  G.Completed_Wire := Wires (Order (Step));
+                  for I in Readers'Range loop
+                     V.Poll_Retirement (Readers (I), Pool);
+                     pragma Assert
+                       ((V.State (Readers (I)) = V.Retired) =
+                         (for some J in 1 .. Step => Order (J) = I));
+                  end loop;
+                  H.Release_Retired_Backing (Pool, 42, ID, True, OK);
+                  pragma Assert (OK = (Step = 3));
+               end loop;
+            end;
+         end if;
+      end loop;
+   end loop;
+   G.Completed_Wire := 0;
+   Ada.Text_IO.Put_Line ("Retained fanout PASS: all six drain orders, exact grant completion, no early backing release");
    declare Probe : V.View; begin
       G.Create_OK := True; G.Revoke_OK := True; G.Gone := True;
       Probe_Share (Probe, 7, 42);

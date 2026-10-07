@@ -6,6 +6,7 @@ with CuBit.Launching;
 with CuBit.Memory_Grants;
 with CuBit.Messages;
 with CuBit.Outlet_Rings;
+with CuBit.Stream_Regions;
 with CuBit.Streams;
 
 --  Programs on CuBit: the console's own launch table and each program's
@@ -42,7 +43,7 @@ package body CCL_Launcher is
       References : Reference_Array := [others => (others => <>)];
       Lines : Partial_Array;
       Exited : Boolean := False;
-      Code : Integer_64 := 0;
+      How : Ending;
    end record;
    Runs : array (Run_Index) of Run_State;
 
@@ -185,7 +186,7 @@ package body CCL_Launcher is
                Lent : Boolean;
             begin
                CuBit.Launching.Lend_Ring
-                 (P, Description.Connectors (P).Pages,
+                 (Description.Connectors (P).Pages,
                   (if Description.Connectors (P).Element = PD.Text_Lines
                    then CuBit.Streams.TYPE_TEXT_LINE else CuBit.Streams.TYPE_RAW_BYTES),
                   Base, Grant, Reference, Lent);
@@ -224,21 +225,21 @@ package body CCL_Launcher is
       Result := Started;
    end Start;
 
-   procedure Poll (Item : Run; Ended : out Boolean; Code : out Integer_64) is
+   procedure Poll (Item : Run; Ended : out Boolean; How : out Ending) is
       State : Run_State renames Runs (Item.Index);
       Buffer : array (1 .. 4096) of Unsigned_8;
       Has_Ended : Boolean := False;
       Report : CuBit.Child_Exits.Report;
 
       procedure Drain (P : PD.Connector_Index) is
-         Entry_Type : CuBit.Streams.TypeTag;
-         Read : Unsigned_32;
+         Read : Natural;
          L : Partial renames State.Lines (P);
       begin
          loop
-            Read := CuBit.Streams.Read_Owned (State.Bases (P), Buffer'Address, Buffer'Length, Entry_Type);
+            Read := CuBit.Stream_Regions.Read_Owned
+              (State.Bases (P), State.Pages (P), Buffer'Address, Buffer'Length);
             exit when Read = 0;
-            for K in 1 .. Natural (Read) loop
+            for K in 1 .. Read loop
                if Buffer (K) = NEWLINE then
                   Deliver (P, L.Text (1 .. L.Length));
                   L.Length := 0;
@@ -251,7 +252,7 @@ package body CCL_Launcher is
       end Drain;
    begin
       Ended := False;
-      Code := 0;
+      How := (others => <>);
       if not State.Active or else State.Child.Process /= Item.Process
         or else State.Child.Generation /= Item.Generation
       then
@@ -262,8 +263,9 @@ package body CCL_Launcher is
          CuBit.Launching.Poll_Exit (State.Child, Has_Ended, Report);
          if Has_Ended then
             State.Exited := True;
-            State.Code := (if Report.Kind = CuBit.Child_Exits.Exited
-                           then Integer_64 (Report.Code) else -1);
+            State.How := (if Report.Kind = CuBit.Child_Exits.Exited
+                          then (Kind => Exited, Code => Exit_Code (Report.Code))
+                          else (Kind => Stopped, Code => 0));
          end if;
       end if;
       --  The rings outlive the child: drain them once more after its exit.
@@ -280,7 +282,7 @@ package body CCL_Launcher is
             end if;
          end loop;
          Ended := True;
-         Code := State.Code;
+         How := State.How;
       end if;
    end Poll;
 

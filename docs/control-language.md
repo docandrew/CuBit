@@ -139,7 +139,7 @@ The corresponding structured syntax may resemble:
          (lambda ((service ServiceSummary))
            (= service.state ServiceState.Failed)))))
   (for service in failed
-    (await (service.restart restart-authority service))))
+    (wait (service.restart restart-authority service))))
 
 (on (config.changed "network/routes")
   (lambda ((route Route))
@@ -850,7 +850,7 @@ must-handle value cannot be consumed in only one branch:
 
 Tuples, variants, closures, tasks, and results preserve ownership. Destructuring
 moves must-handle fields; closures become must-handle when they capture one;
-and a task holding authority remains must-handle until awaited or cancelled
+and a task holding authority remains must-handle until waited on or cancelled
 through an operation that accounts for that authority.
 
 The bytecode verifier must mirror these rules. Stack and local states at every
@@ -1034,10 +1034,57 @@ runtime; the type system prevents accidental misuse in checked programs.
 
 ## Asynchronous execution and streams
 
-This section describes the target language semantics, not a claim that general
-`Task<T>`, `Stream<T>` or suspending `await` are implemented today. The current
-callback dispatcher is synchronous; its bounded queue/lifetime model is a
-foundation for the later async runtime.
+This section describes the target language semantics. What exists today
+(2026-10-04, hosted tests in `tests/ccl-streams`; no live host operation
+returns a task yet):
+
+- `Stream<T>` over session streams ([ccl-streams.md](ccl-streams.md)).
+- `Task<T>`, written `(Task T)` in types. A task is a session handle like a
+  stream, but it completes once, with a single result. A host operation
+  declares `Result_Task` to return one, and `(task T n)` names one in
+  source.
+- **Semantics follow Erlang, not JavaScript or Tokio** (user decision,
+  2026-10-05). There are no `async` functions, no function colouring and no
+  executor:
+  - A run is like a Pid, and its outcome task is like a monitor reference.
+  - `(wait t)` is like `receive` for that one message: it blocks only the
+    evaluation that contains it, never the console, another entry or a
+    thread.
+- **Looking at a task never waits.** A task value shows its state when the
+  entry ran: `Task<Run_Outcome>: Running`, or `Task<Run_Outcome>: Done
+  (Run_Outcome.Finished (Unix_Exit 0))`. A live card over a task re-runs
+  when it completes. A run that has already ended shows `Done` at once.
+- **One engine** (user decision, 2026-10-05). Every entry is analysed,
+  compiled to CCLB, linked against the host's grants, verified and run on
+  the VM (`CCL.Evaluation`); the tree-walking interpreter is gone. Compiling
+  and verifying an entry costs about 25–30 µs on the host.
+- **`(wait t) : T`:**
+  - The VM suspends on the task until the host answers its `Wait_View`.
+  - A REPL entry does not keep its machine between entries yet. On a pending
+    task it stops with `Waiting_On_Task`. Once the task completes, the
+    session runs the entry again (`CCL.Sessions.Resume_With_Values`) and
+    answers the host calls of the first run from a log (`CCL.Host_Replay`),
+    so no call is made twice. A definition that waits is bound when it
+    resumes. Keeping the suspended machine instead is the next step.
+  - The console keeps up to 4 waiting entries. An entry that made more than
+    8 service calls before waiting fails rather than waiting for ever.
+- **Soundness:**
+  - `wait` is checked: the checker and the VM verifier both require a
+    `Task<T>` operand and give `T`.
+  - A result crosses as an image without its producer's schema key, and the
+    reader checks its structure against `T`. A mismatch is an error
+    (`Stream_Element_Mismatch`), never a wrongly typed value.
+  - A handle names a stream or a task, never both. A `(task T n)` written
+    over a stream's handle, or a `(stream T n)` over a task's, names
+    nothing (`Stream_Unavailable`); it is neither another kind's elements
+    nor a wait that cannot end.
+  - Tasks are not data: a task cannot be a record field, has no stream
+    views, and a stream cannot be waited on. A handle is local to its
+    session, so it must not be persisted or sent.
+
+Cancellation, must-handle tasks and `Task` results of non-host code are not
+built yet. The callback dispatcher is still synchronous; its bounded
+queue/lifetime model is a foundation for the later async runtime.
 
 Asynchronous operations are part of the language rather than an external I/O
 convention:
@@ -1047,7 +1094,7 @@ Task<T>
 Stream<T>
 ```
 
-`await` suspends a task without blocking an OS thread or service event loop.
+`wait` blocks only the evaluation that contains it, never an OS thread or a service event loop.
 Streams contain typed values rather than lines of text:
 
 ```text

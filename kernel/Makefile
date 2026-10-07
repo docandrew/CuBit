@@ -1088,11 +1088,11 @@ mesa-cube: libc ccl-manifest
 libc:
 	bash ../userspace/libc/build.sh
 libc-check: libc ccl-manifest libc-protection-check
-	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl ../userspace/libc/tests/manifest.ccl > ../userspace/libc/build/libc-check-manifest.S
+	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl ../userspace/libc/tests/manifest.ccl --schema ../userspace/ccl/interfaces/executable-manifest.ccl > ../userspace/libc/build/libc-check-manifest.S
 	as --64 ../userspace/libc/build/libc-check-manifest.S -o ../userspace/libc/build/libc-check-manifest.o
 	../userspace/libc/cubit-cc -O2 -g -pthread -o isodir/boot/libc-check.app ../userspace/libc/tests/libc-check.c --manifest ../userspace/libc/build/libc-check-manifest.o
 cxx-check: libc ccl-manifest
-	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl ../userspace/libc/tests/cxx-manifest.ccl > ../userspace/libc/build/cxx-check-manifest.S
+	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl ../userspace/libc/tests/cxx-manifest.ccl --schema ../userspace/ccl/interfaces/executable-manifest.ccl > ../userspace/libc/build/cxx-check-manifest.S
 	as --64 ../userspace/libc/build/cxx-check-manifest.S -o ../userspace/libc/build/cxx-check-manifest.o
 	../userspace/libc/cubit-c++ -O2 -g -pthread -o isodir/boot/cxx-check.app ../userspace/libc/tests/cxx-check.cpp --manifest ../userspace/libc/build/cxx-check-manifest.o
 
@@ -1179,6 +1179,10 @@ user_runtime:
 	mkdir -p ../userspace/runtime/build
 	mkdir -p ../userspace/runtime/adalib
 	$(ALR) gprbuild -P ../userspace/runtime/user_runtime.gpr
+	# CuAlloc, the process heap System.Memory allocates from: the same
+	# objects as in libc.a and libcubit_allocator.a.
+	$(ALR) gprbuild -p -P ../userspace/allocator/allocator_native.gpr
+	ar rcs ../userspace/runtime/adalib/libgnat-user.a ../userspace/allocator/build/native-objects/*.o
 
 # RAM storage uses the same block-device protocol as hardware drivers.
 .PHONY : ramdisk
@@ -1463,6 +1467,9 @@ desktop: user_runtime ccl-manifest ui-fonts-native ../userspace/services/desktop
 	@if [ "$(CUBIT_COMPOSITOR)" = mesa ]; then \
 	  test -n "$(CUBIT_MESA_BUILD)" || { echo 'Set CUBIT_MESA_BUILD to the existing native Mesa build' >&2; exit 2; }; \
 	  python3 ../tools/build_mesa_desktop.py "$(abspath $(CUBIT_MESA_BUILD))" --metrics off --scenario-output; \
+	elif [ "$(CUBIT_COMPOSITOR)" = vulkan ]; then \
+	  test -n "$(CUBIT_MESA_BUNDLE)" -a -n "$(CUBIT_MESA_SOURCE)" || { echo 'Set CUBIT_MESA_BUNDLE and CUBIT_MESA_SOURCE for Vulkan Desktop' >&2; exit 2; }; \
+	  python3 ../tools/build_vulkan_desktop.py "$(abspath $(CUBIT_MESA_BUNDLE))" "$(abspath $(CUBIT_MESA_SOURCE))" --metrics off; \
 	else \
 	  $(ALR) gprbuild -p -P ../userspace/services/desktop/desktop.gpr -XCUBIT_COMPOSITOR_METRICS=off -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE); \
 	fi
@@ -1484,7 +1491,7 @@ CUBIT_COMPOSITOR ?= legacy
 CUBIT_COMPOSITOR_TIMING ?= off
 CUBIT_COMPOSITOR_STORAGE ?= production
 CUBIT_DISPLAY_TEST_MODE ?= production
-export CUBIT_MESA_BUILD
+export CUBIT_MESA_BUILD CUBIT_MESA_BUNDLE CUBIT_MESA_SOURCE
 export CUBIT_COMPOSITOR CUBIT_COMPOSITOR_TIMING CUBIT_COMPOSITOR_STORAGE CUBIT_DISPLAY_TEST_MODE
 PRESENTATION_BUILD_DIR = $(if $(filter output-rebind,$(CUBIT_DISPLAY_TEST_MODE)),build-output-rebind,$(if $(filter delayed,$(CUBIT_DISPLAY_TEST_MODE)),build-delayed,build))
 display: user_runtime ccl-manifest

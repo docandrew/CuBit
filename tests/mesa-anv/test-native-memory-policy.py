@@ -97,7 +97,7 @@ def main():
         subprocess.run(['cc', '-Wl,--gc-sections', *wrappers, *objects, '-o', str(binary)], check=True)
         if name == 'service-device':
             # Static production owner is deliberately never reset/reused.
-            for scenario in range(19):
+            for scenario in range(23):
                 subprocess.run([str(binary), str(scenario)], check=True, timeout=60)
         else:
             subprocess.run([str(binary)], check=True, timeout=60)

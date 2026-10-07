@@ -29,7 +29,11 @@ package Compositor_Affine with SPARK_Mode, Pure is
    function Plan (Screen : G.Output; Surface : G.Logical_Rectangle;
                   Over : Boolean := False; Straight_Alpha : Boolean := False) return Result
      with Post => (if Plan'Result.Visible then
-       Valid (Plan'Result.Value, Screen.Width, Screen.Height));
+       Valid (Plan'Result.Value, Screen.Width, Screen.Height) and then
+       Signed (Plan'Result.Value.Logical_W) =
+         Signed (Surface.Right) - Signed (Surface.Left) and then
+       Signed (Plan'Result.Value.Logical_H) =
+         Signed (Surface.Bottom) - Signed (Surface.Top));
    function Same_Transform (L, R : Draw) return Boolean is
      (L.Origin_X = R.Origin_X and L.Origin_Y = R.Origin_Y and
       L.Logical_W = R.Logical_W and L.Logical_H = R.Logical_H and

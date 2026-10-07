@@ -14,6 +14,5 @@ if [[ ${1:-} == --prove ]]; then
         -u cubit-libc_directory_entries.adb -u cubit-libc_descriptor_rules.adb \
         -u cubit-libc_file_cache.adb -u cubit-libc_dirty_map.adb -u cubit-libc_park_table.adb \
         -u cubit-libc_net_addresses.adb -u cubit-libc_net_targets.adb -u cubit-libc_net_names.adb \
-        -u cubit-libc_stream_rings.adb \
         --level=2 -j4 --checks-as-errors=on
 fi

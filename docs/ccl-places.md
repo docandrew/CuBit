@@ -107,7 +107,7 @@ Every direct manipulation is a CCL expression. It shows in the transcript before
 
 1. **Service:** `Directory.Page.V2` with metadata, and `OP_INSPECT_CHILD`, with hosted ext2 tests and proofs of the page encoder.
 2. **`CuBit.Places`:** the client package, with the CCL workspace moved onto it.
-3. **CCL:** `fs.schema`, `Place` handles, `fs.place`, `fs.enter`, `fs.list` and `fs.inspect`, in both engines; the console's `here` and `:cd`; table presentation.
+3. **CCL:** `fs.schema`, `Place` handles, `fs.place`, `fs.enter`, `fs.list` and `fs.inspect`, in the compiler and VM; the console's `here` and `:cd`; table presentation.
 4. **Service:** `OP_WATCH_DIRECTORY` and its event ring, then `fs.watch` as a stream source fed from that ring.
 5. **Console:** in-process copy and paste of typed values.
 6. **With desktop coordination:** the desktop clipboard, drag and drop, and open-with.

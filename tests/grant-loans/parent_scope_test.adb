@@ -10,9 +10,9 @@ procedure Parent_Scope_Test is
    OK : Boolean;
    Released : Hold_Release_Result;
 begin
-   for Flags in Interfaces.Unsigned_64 range 0 .. 7 loop
-      pragma Assert (Valid_Creation_Request (1, Flags) = (Flags <= 3));
-      pragma Assert (Valid_Creation_Request (4096, Flags) = (Flags <= 3));
+   for Flags in Interfaces.Unsigned_64 range 0 .. 15 loop
+      pragma Assert (Valid_Creation_Request (1, Flags) = (Flags <= 7));
+      pragma Assert (Valid_Creation_Request (4096, Flags) = (Flags <= 7));
       pragma Assert (not Valid_Creation_Request (0, Flags));
       pragma Assert (not Valid_Creation_Request (4097, Flags));
    end loop;

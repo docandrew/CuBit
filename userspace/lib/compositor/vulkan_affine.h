@@ -60,4 +60,11 @@ uint32_t cubit_vulkan_record_affine_region(void *borrowed,
     const struct cubit_mesa_affine *draw,const struct cubit_vulkan_coefficients *coefficients,
     uint32_t width,uint32_t height,uint32_t mask,uint32_t argb,
     const struct cubit_vulkan_source_region *region);
+/* Logical preview placement, derived by the SPARK geometry planner.
+ * left/top are relative to the logical preview, not the output. The bound
+ * source is opaque BGRA and remains owned through completion. */
+struct cubit_vulkan_preview { int32_t left,top; uint32_t width,height; };
+uint32_t cubit_vulkan_record_preview(void *borrowed,
+    const struct cubit_mesa_affine *draw,const struct cubit_vulkan_coefficients *coefficients,
+    uint32_t width,uint32_t height,const struct cubit_vulkan_preview *placement);
 #endif

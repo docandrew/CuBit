@@ -1,7 +1,9 @@
+with CCL.Evaluation;
 with Ada.Text_IO;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Interfaces;
 with CCL.Language; use CCL.Language;
+   use CCL.Evaluation;
 with CCL.Language.Handlers;
 with CCL.Catalog;
 with CCL.Host_Values;
@@ -26,7 +28,7 @@ procedure Function_Tests is
    procedure Expect_Value (Source : String; Value : Interfaces.Integer_64) is
       Result : Interpretation_Result;
    begin
-      Interpret (Source, 4096, Result);
+      Evaluate (Source, 4096, Result);
       if Result.Status /= Succeeded then
          Ada.Text_IO.Put_Line (Source);
          Ada.Text_IO.Put_Line (Result.Status'Image & " " & Result.Diagnostic'Image);
@@ -42,7 +44,7 @@ procedure Function_Tests is
       Analyze (Source, Result);
       Check (Analysis_Status_Of (Result) /= Analysis_Succeeded);
       Check (Analysis_Diagnostic (Result) = Code);
-      Interpret (Source, 4096, Executed);
+      Evaluate (Source, 4096, Executed);
       Check (Executed.Status in Parse_Failed | Type_Check_Failed and then
              not Executed.Has_Value);
    end Expect_Error;
@@ -58,7 +60,7 @@ procedure Function_Tests is
       -- declarations), not a nested handler node or an absent-node sentinel.
       -- Leading spaces are retained.
       Check (Analysis_Diagnostic_Position (Analyzed) = Source'Length - Expression'Length + 1);
-      Interpret (Source, 4096, Executed);
+      Evaluate (Source, 4096, Executed);
       Check (Executed.Status = Type_Check_Failed and then not Executed.Has_Value);
       Check (Executed.Diagnostic = Handler_Result_Not_Exportable);
       Check (Executed.Diagnostic_Position = Source'Length - Expression'Length + 1);

@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Config;
@@ -39,7 +40,7 @@ procedure Main is
    begin
       CCL_Config_Bindings.Invoke (Binding, Argument, Reply);
    end Invoke;
-   procedure Evaluate is new CCL.Language.Interpret_With_Values (Context, Invoke);
+   procedure Evaluate is new CCL.Evaluation.Evaluate_With_Values (Context, Invoke);
    procedure Check (Condition : Boolean; Name : String) is
    begin
       if not Condition then

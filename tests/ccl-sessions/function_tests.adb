@@ -1,3 +1,4 @@
+with CCL.Evaluation;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CCL.Catalog; use CCL.Catalog;
@@ -6,6 +7,7 @@ with CCL.Host_Values;
 with CCL.Interfaces.Clock;
 with CCL.Interfaces.Workbench_UI;
 with CCL.Language; use CCL.Language;
+   use CCL.Evaluation;
 with CCL.Language.Views;
 with CCL.UI_Labels;
 
@@ -33,7 +35,7 @@ procedure Function_Tests is
          Reply.Success := False;
       end if;
    end Invoke;
-   procedure Run_Host is new Interpret_With_Values (Host_State, Invoke);
+   procedure Run_Host is new Evaluate_With_Values (Host_State, Invoke);
    Catalog : Interface_Catalog;
    Grants : Granted_Bindings;
    Error : Catalog_Error;
@@ -49,7 +51,7 @@ procedure Function_Tests is
      "(ui.label-text (label (seconds (clock.monotonic-ms))))";
    procedure Check (Source : String; Expected : Integer_64) is
    begin
-      Interpret (Source, 4096, Outcome);
+      Evaluate (Source, 4096, Outcome);
       if Outcome.Status /= Succeeded then
          Put_Line (Source & " -> " & Outcome.Status'Image & " " & Outcome.Diagnostic'Image);
       end if;
@@ -86,18 +88,18 @@ begin
    Check ("(define (unused) Integer (/ 1 0)) 42", 42);
    Check ("(define (f (a Integer) (b Integer) (c Integer) (d Integer) (e Integer) " &
           "(f Integer) (g Integer) (h Integer)) Integer (+ a h)) (f 20 0 0 0 0 0 0 22)", 42);
-   Interpret ("(define (hello (s String)) String (concat ""Hi "" s)) " &
+   Evaluate ("(define (hello (s String)) String (concat ""Hi "" s)) " &
               "(hello ""Cubie"")", 4096, Outcome);
    pragma Assert (Outcome.Status = Succeeded and Outcome.Has_Text);
    pragma Assert (Outcome.Result_Text.Data (1 .. Outcome.Result_Text.Length) = "Hi Cubie");
-   Interpret ("(define (id (c Character)) Character c) (id (at ""Cubie"" 1))", 4096, Outcome);
+   Evaluate ("(define (id (c Character)) Character c) (id (at ""Cubie"" 1))", 4096, Outcome);
    pragma Assert (Outcome.Status = Succeeded and Outcome.Has_Character and Outcome.Result_Character = 'C');
-   Interpret ("(define (flip (b Boolean)) Boolean (not b)) (flip false)", 4096, Outcome);
+   Evaluate ("(define (flip (b Boolean)) Boolean (not b)) (flip false)", 4096, Outcome);
    pragma Assert (Outcome.Status = Succeeded and Outcome.Result_Value.Boolean);
    declare
       Half : constant String (1 .. MAX_TEXT_BYTES / 2) := [others => 'x'];
    begin
-      Interpret ("(define (double (s String)) String (concat s s)) (double """ & Half & """)", 4096, Outcome);
+      Evaluate ("(define (double (s String)) String (concat s s)) (double """ & Half & """)", 4096, Outcome);
       pragma Assert (Outcome.Status = Succeeded and Outcome.Has_Text and Outcome.Result_Text.Length = MAX_TEXT_BYTES);
    end;
    Reject ("(define (f (x Integer)) Integer x) (f true)", Function_Argument_Mismatch);
@@ -131,9 +133,9 @@ begin
       Check (Source (1 .. Length) & "(gp)", 42);
       Reject (Source (1 .. Length) & "(define (extra) Integer 1) 42", Too_Many_Functions);
    end;
-   Interpret ("(define (twice (x Integer)) Integer (+ x x)) (twice 21)", 0, Outcome);
+   Evaluate ("(define (twice (x Integer)) Integer (+ x x)) (twice 21)", 0, Outcome);
    pragma Assert (Outcome.Status = Evaluation_Fuel_Exhausted and Outcome.Fuel_Remaining = 0);
-   Interpret ("(define (bad (x Integer)) Integer (/ x 0)) (bad 1)", 4096, Outcome);
+   Evaluate ("(define (bad (x Integer)) Integer (/ x 0)) (bad 1)", 4096, Outcome);
    pragma Assert (Outcome.Status = Evaluation_Division_By_Zero);
    declare
       Source : String (1 .. MAX_SOURCE_LENGTH) := [others => ' '];
@@ -149,9 +151,9 @@ begin
       end loop;
       --  Declarations are siblings, not nesting: sixteen chained calls stay
       --  within the evaluation depth bound.
-      Interpret (Source (1 .. Length) & "(gp)", 4096, Outcome);
+      Evaluate (Source (1 .. Length) & "(gp)", 4096, Outcome);
       pragma Assert (Outcome.Status = Succeeded and then Outcome.Result_Value.Integer = 1);
-      Interpret (Source (1 .. Length) & "(gp)", 20, Outcome);
+      Evaluate (Source (1 .. Length) & "(gp)", 20, Outcome);
       pragma Assert (Outcome.Status = Evaluation_Fuel_Exhausted);
    end;
    --  Even an unused definition is admitted before effects in the main expression.
@@ -183,7 +185,8 @@ begin
       pragma Assert (Outcome.Status = Succeeded and Host.Calls = 5);
       Analyze (Clock_Label, Catalog, Analysis);
       CCL.Compiler.Compile (Analysis, Compiled);
-      pragma Assert (Compiled.Status = CCL.Compiler.Unsupported_Form);
+      --  Text crosses host imports in bytecode too (2026-10-05).
+      pragma Assert (Compiled.Status = CCL.Compiler.Compilation_Succeeded);
       --  Hostile editing fixtures: every truncation and delimiter replacement
       --  must return a bounded analysis result, never raise a host exception.
       for Last in 0 .. Clock_Label'Length loop

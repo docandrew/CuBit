@@ -98,21 +98,14 @@ terminal outcome.
 
 ## Typed stream subscription
 
-`OP_STREAM_SUBSCRIBE_TYPED` uses the existing four message words and therefore
-requires no kernel ABI change:
-
-| Word | Meaning |
-|---:|---|
-| 0 | stream identity |
-| 1 | 64-bit schema identity |
-| 2 | schema version |
-| 3 | low 32 bits: size/bound; bit 32: bounded rather than fixed |
-
-All remaining bits must be zero. The producer compares the request with its
-creation contract before calling `createGrant`; any mismatch returns an error
-without mapping memory. The successful reply retains the existing grant ID,
-cursor slot, capacity, and initial cursor fields. `OP_STREAM_SUBSCRIBE` is the
-legacy untyped operation and must not be selected implicitly by typed callers.
+Since 2026-10-06 (docs/data-plane.md) reading an outlet is a channel: the
+reader sends `OP_OPEN_CONSUMING` on the outlet's connector with a contract
+(`CuBit.Channel_Contracts`) whose element is a `Schema_Contract`. The
+producer compares it with the outlet's (`CuBit.Protocols.Compatible`) before
+granting anything; a mismatch is refused (`Unknown_Type`) without mapping
+memory. Untyped outlets carry `RAW_BYTES_CONTRACT`, text outlets
+`TEXT_LINE_CONTRACT`. The former `OP_STREAM_SUBSCRIBE_TYPED` and untyped
+`OP_STREAM_SUBSCRIBE` messages are removed.
 
 ## Calls and streams share one interface model
 
@@ -307,7 +300,7 @@ with a report; neither choice implies cancellation of in-flight work.
 The hosted matrix/boundary tests and 14 focused SPARK checks pass; see
 [stream policy tests](../tests/stream-policies/README.md). The unit compiles
 against CuBit's native runtime. It does **not** extend the current
-`OP_STREAM_SUBSCRIBE_TYPED` wire message, enforce these policies on existing
+channel contract (docs/data-plane.md), enforce these policies on existing
 rings, or encode them in CCL descriptors yet. Ownership/transport, cancellation,
 timing profiles and whole-resource quotas remain additional contract components.
 Before migration, serialize a versioned complete profile, reject incompatible
@@ -317,8 +310,8 @@ subscriptions before mapping memory, and exercise enforcement with real streams.
 
 1. Define shared protocol contracts for the CCL test host and one small service.
 2. Add protocol identity and schema checks to generated/user-space call stubs.
-3. Migrate remaining stream producers and subscribers to the typed handshake;
-   retain raw-byte streams only as an explicitly untyped compatibility class.
+3. Done for outlets (channels, 2026-10-06); raw-byte outlets carry the
+   explicit `RAW_BYTES_CONTRACT`.
 4. Serialize the same import contract in `.cclb` and have CCL ownership
    verification model accepted submission and every completion branch.
 5. Add manifest protocol requirements and make the process/session broker bind

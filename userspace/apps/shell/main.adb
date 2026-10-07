@@ -129,8 +129,6 @@ procedure main is
    childStream : CuBit.Streams.SubInfo;
    streamSubPending : Boolean := False;  -- async subscribe in flight
    streamDrainPolls : Natural := 0;      -- polls since child exit
-   GRANT_REGION_BASE : constant Unsigned_64 := 16#4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096;
    STREAM_SUB_TOKEN  : constant Unsigned_64 := 42;
    STREAM_LIST_TOKEN : constant Unsigned_64 := 43;
 
@@ -842,34 +840,22 @@ procedure main is
          printDec (Unsigned_32 (foregroundPID));
          debugPrint ("" & LF);
 
-         --  Submit async subscription to the child's first output port
+         --  Open a channel on the child's first outlet, without waiting.
          declare
-            subMsg : constant Message := (
-               tag => (label  => CuBit.Streams.OP_STREAM_SUBSCRIBE_TYPED,
-                       length => 4,
-                       flags  => 0,
-                       reserved  => 0),
-               authorityTag => 0,
-               words    =>
-                 (0 => FIRST_PORT_RING,
-                  1 => Unsigned_64
-                    (CuBit.Protocols.TEXT_LINE_CONTRACT.Identity),
-                  2 => Unsigned_64
-                    (CuBit.Protocols.TEXT_LINE_CONTRACT.Version),
-                  3 => CuBit.Protocols.Wire_Descriptor
-                    (CuBit.Protocols.TEXT_LINE_CONTRACT)));
-            ok : Boolean;
+            ok : Boolean := False;
             endpointSlot : CapabilitySlot;
             hasEndpoint : Boolean;
          begin
             Find_Endpoint_Capability
               (foregroundPID, endpointSlot, hasEndpoint);
-            ok := hasEndpoint and then
-              capSubmit (endpointSlot, subMsg, STREAM_SUB_TOKEN);
+            if hasEndpoint then
+               CuBit.Streams.Subscribe_Begin
+                 (endpointSlot, FIRST_PORT_RING, CuBit.Protocols.TEXT_LINE_CONTRACT,
+                  STREAM_SUB_TOKEN, childStream, ok);
+            end if;
             if ok then
                streamSubPending := True;
                streamDrainPolls := 0;
-               childStream.active := False;
                debugPrint ("shell: stream subscribe sent" & LF);
             else
                debugPrint ("shell: stream subscribe failed" & LF);
@@ -3492,8 +3478,7 @@ procedure main is
       --  Ctrl+C: kill foreground process
       if ctrlDown and code = 16#2E# then
          if foregroundPID /= 0 then
-            --  Kill revokes grants, so deactivate stream first
-            childStream.active := False;
+            CuBit.Streams.Unsubscribe (childStream);
             streamSubPending := False;
             declare
                ret : Unsigned_64;
@@ -3792,9 +3777,8 @@ begin
             then
                debugPrint ("shell: child exited, reclaiming input" & LF);
                foregroundPID := 0;
-               --  Grant auto-revoked by kernel on child exit, so don't
-               --  try to drain the ring — the mapped pages are gone.
-               childStream.active := False;
+               --  Its pages stay until this side lets go of them.
+               CuBit.Streams.Unsubscribe (childStream);
                --  Note: streamSubPending is NOT cleared here.  If the
                --  subscription completion hasn't arrived yet, it will
                --  be drained by the poll loop below (or after the
@@ -3839,9 +3823,7 @@ begin
                      ctrlDown := not isRel;
                   elsif not isRel and ctrlDown and sc = 16#2E# then
                      if foregroundPID /= 0 then
-                        --  Kill revokes grants, so deactivate stream
-                        --  before kill to prevent reading revoked memory.
-                        childStream.active := False;
+                        CuBit.Streams.Unsubscribe (childStream);
                         streamSubPending := False;
                         declare
                            ret : Unsigned_64;
@@ -3859,27 +3841,23 @@ begin
             end if;
 
             --  Check for stream subscription completion
-            if streamSubPending and not childStream.active then
+            if streamSubPending and not childStream.Link.Active then
                declare
                   comp : CompletionEntry;
                   ret  : Unsigned_64;
                begin
                   ret := Poll_Completion (comp'Address);
-                  if ret = 1 and then comp.token = STREAM_SUB_TOKEN
-                     and then comp.msg.tag.label = REPLY_OK
-                  then
-                     if foregroundPID /= 0 then
-                        --  Child still alive: activate the stream.
-                        childStream := (
-                           active    => True,
-                           grantBase => GRANT_REGION_BASE +
-                              comp.msg.words (0) * GRANT_SLOT_SIZE,
-                           cursor    => CuBit.Streams.CursorSlot (
-                              comp.msg.words (1)),
-                           cursorIdx => Unsigned_32 (comp.msg.words (3)),
-                           capacity  => Unsigned_32 (comp.msg.words (2)));
-                        debugPrint ("shell: stream subscribed" & LF);
-                     end if;
+                  if ret = 1 and then comp.token = STREAM_SUB_TOKEN then
+                     declare
+                        subscribed : Boolean;
+                     begin
+                        CuBit.Streams.Subscribe_Finish (childStream, comp.msg, subscribed);
+                        if subscribed and then foregroundPID = 0 then
+                           CuBit.Streams.Unsubscribe (childStream);
+                        elsif subscribed then
+                           debugPrint ("shell: stream subscribed" & LF);
+                        end if;
+                     end;
                      --  Either way, the completion is consumed.
                      streamSubPending := False;
                   end if;
@@ -3887,7 +3865,7 @@ begin
             end if;
 
             --  Poll child's stdout ring buffer
-            if childStream.active then
+            if childStream.Link.Active then
                declare
                   tt      : CuBit.Streams.TypeTag;
                   n       : Unsigned_32;
@@ -3914,7 +3892,7 @@ begin
                end;
             end if;
 
-            if not found and not childStream.active then
+            if not found and not childStream.Link.Active then
                declare
                   ignore : Unsigned_64;
                begin
@@ -3966,6 +3944,8 @@ begin
          begin
             ret := Poll_Completion (comp'Address);
             if ret = 1 then
+               --  The child answered before it ended: let go of it.
+               CuBit.Streams.Unsubscribe (childStream);
                streamSubPending := False;
                streamDrainPolls := 0;
             else

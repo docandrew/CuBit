@@ -22,7 +22,7 @@ sections it writes stay byte for byte the same. The first new field is
   - `=>` is free in both notations (lambdas are `fn`/`FUNCTION`), and it is recognized only after a field name in a record construction.
   - A field left out takes its default. Leaving out a field that has none is `Missing_Field_Argument`. An unknown name is `Unknown_Field_Argument`, and a field given twice is `Repeated_Field_Argument`.
 - **Parity:** the parser rewrites a named construction into the positional one, filling in defaults as literals. The compiler, verifier and VM therefore see only what they already handle. The node records which fields were named and which were defaulted, so both views print the source's spelling.
-- **Tested:** `tests/ccl-types/record_default_tests.adb` runs the interpreter, BASIC round trip, compiler, verifier, VM and CCLB round trip.
+- **Tested:** `tests/ccl-types/record_default_tests.adb` runs the BASIC round trip, compiler, verifier, VM and CCLB round trip.
 
 ## The manifest type (proposed)
 

@@ -47,6 +47,30 @@ docs/stream-wiring.md (approvals), and the capability graph plan.
 
 ## Builds
 
+### BLD-002 — Kernel assembly to GNU as, Intel syntax (user, 2026-10-05)
+
+Status: open, after the self-hosting tools (binutils, jj, gcc, GNAT): until
+jj runs on CuBit there is no way to clone the tree there anyway.
+
+The kernel and runtime use yasm for about 1,200 lines in eight files:
+- `kernel/src/`: `boot.asm`, `boot_ap.asm`, `interrupt_handlers.asm`,
+  `syscall_entry.asm`, `context_switch.asm`, and `init.asm`, which is a
+  flat binary;
+- `userspace/runtime/gnat/art0.asm`;
+- `userspace/apps/capability-test/syscall_registers.asm`.
+
+Move them to GNU `as` with `.intel_syntax noprefix`. This keeps Intel
+syntax, needs no yasm port (yasm is unmaintained), and means `as`, already
+ported, can build CuBit on CuBit.
+- Translate the few NASM features: `%include`, three `%macro`, one `%rep`,
+  `%assign`, `section`/`bits`, `times`/`equ`. Write explicit `qword ptr`
+  and `offset`.
+- Build `init.asm` with `as` and `objcopy -O binary`.
+- Verify each file mechanically: assemble it both ways and compare the code
+  bytes and relocations, which must be byte-identical.
+- The SameBoy boot ROMs (Game Boy assembly) are a separate toolchain and out
+  of scope.
+
 ### BLD-001 — Content-addressable CCL builds, like Nix (user-requested, 2026-10-04)
 
 The CCL build tool that replaces make (docs/self-hosting.md, item 6) should
@@ -57,7 +81,7 @@ timestamp-driven rule runner:
   rendered arguments are hashed (SHA-256 through the verified SPARK crypto
   stack, SPARKTLSCrypto over SPARKNaCl). A build step's identity is the
   hash of all of it.
-- **Outputs are stored by that identity** in a store of immutable,
+- **Outputs are stored by that identity** in the Storehouse (FS-020), of immutable,
   read-only entries. A step whose identity is already present is not run
   again, and the same inputs give the same output on any CuBit machine.
 - **Typed steps.** A step is a typed tool call (`(ld.run (Ld_Parameters
@@ -65,14 +89,19 @@ timestamp-driven rule runner:
   are exactly its file parameters and declared ports. The delegated places
   give the sandbox: a step can read only its inputs and write only its
   outputs, so undeclared dependencies cannot creep in.
-- **Visible.** Every step and store entry appears in the capability and
+- **Visible.** Every step and Storehouse entry appears in the capability and
   stream graphs: why it ran, what it read and wrote, and its ports' output
   as cards.
-- **Open questions:** the store's place and its garbage collection;
+- **The store's place and views** are decided in FS-020 (Storehouse and
+  views, 2026-10-05): build outputs live in the Storehouse,
+  `@system/Storehouse/<hash>/`, written only by the software manager, browsed
+  through generated `Applications/` views, with garbage collection by
+  generation.
+- **Open questions:** garbage collection details;
   sharing and substitution between machines (signed, through tls.svc);
-  pinning the bootstrap toolchain; how the store relates to the filesystem
+  pinning the bootstrap toolchain; how the Storehouse relates to the filesystem
   journal and to Git and jj history; and whether CCL definitions
-  themselves (packages, docs/ccl-packages.md) are store entries.
+  themselves (packages, docs/ccl-packages.md) are Storehouse entries.
 
 ## Code organization
 
@@ -159,8 +188,38 @@ timestamp-driven rule runner:
   do not merely null a callback concurrently with an executing writer.
   GTK rewrites both display hints and its synthesized EDID; persist desired CCL
   mode policy separately from transient host observations.
-- Enumerate EDID/DisplayID modes with bounded parsing, intersect with hardware
-  limits, and report advertised versus active versus measured refresh explicitly.
+
+### Native Intel modesetting and monitor discovery
+
+These remain open hardware milestones, separate from working Mesa rendering
+and composition into the firmware-selected display mode.
+
+- [ ] **EDID discovery:** read monitor data over the connector's supported
+  DDC/AUX path; validate checksums and lengths, bound extension parsing, and
+  enumerate EDID/DisplayID timings. Handle missing/malformed data and explicit
+  user overrides. Monitor identity is descriptive metadata, not authority.
+- [ ] **Mode admission:** intersect advertised timings with the exact GPU,
+  connector/link, clock and scanout-format limits. Distinguish advertised,
+  selected, active and measured refresh rates; do not promise 144/240 Hz from
+  EDID alone.
+- [ ] **Native modesetting:** implement documented platform-specific power,
+  clock/PLL, pipe/plane and link programming behind display.svc's authenticated
+  output ownership. Use representation clauses for register subfields and
+  validate those fields against upstream hardware documentation/Linux behavior.
+- [ ] **Safe transitions:** quiesce old writers and presentations, retire the
+  firmware/kernel-console ownership, and implement bounded transactional mode
+  changes with Settings Apply/Revert. Preserve buffer/fence lifetimes; never
+  revive a stale firmware framebuffer on failure.
+- [ ] **Hotplug and multiple outputs:** re-probe capabilities on connection
+  changes, invalidate stale output generations, and support independent modes
+  on multiple connectors/adapters without conflating render and display owners.
+- [ ] **Hardware acceptance:** on the NUC, verify mode changes, actual active
+  timing, timeout/revert, unplug/replug and multiple outputs where available.
+  Exercise malformed monitor data in hosted tests; QEMU coverage does not
+  validate physical Intel link training or modesetting.
+
+See [Intel bring-up milestones](intel-gpu-bringup.md#milestones-with-visible-acceptance-criteria)
+and [display outputs and scaling](display-outputs-and-scaling.md).
 
 Session presentation now uses asynchronous broker submissions and IRQ-driven,
 fenced per-head GPU commands. The native delayed-head test checks independent
@@ -184,16 +243,236 @@ and [measurements](../tests/performance/graphics-results.md#nonblocking-brokergp
 
 ## Userspace allocation
 
-The portable SPARK allocator has a proved bounded, single-owner hosted pilot
-and repeatable comparisons against glibc, mimalloc, jemalloc and gperftools
-TCMalloc. It is **not** wired into native Rust or GNAT yet. Follow
-[the allocator roadmap](userspace-allocator.md): dynamic slab assignment with
-empty-only recycling is implemented/proved; next are finer classes and search
-costs, backing extent lifecycle, complete runtime allocation semantics, then
-explicit remote-free/lifetime handling. Track throughput, tail samples, rounding
-waste and retained pages separately; do not promote a microbenchmark win into a
-general performance or memory-safety claim. See the
-[dated measurements](userspace-allocator-results.md).
+### LOG-001 — Logging stalls render loops; publish through a shared ring (user, 2026-10-05)
+
+Status: publisher rings done (2026-10-05). Guest test `log-authority`
+passes on CuBit (TCG):
+- 3,000 records written in 14 ms (about 4.7 µs each, encoding included);
+  978 were shed when the 64 KiB ring outran logstore's drain, all counted,
+  none blocking;
+- delivery in order with identity, Detach and grant retirement, and a
+  collector dying in Attach all pass.
+
+Still open:
+- the graphics agent removing its adapter's pacing (see my coordination
+  note);
+- removing the no-op `Pump`, `Collect`, `Set_Delivery` and `Complete` once
+  their callers drop them;
+- logstore learning about publisher exits from procmgr;
+- a budget in bytes;
+- the serial echo.
+
+Original report: logging causes visible stutter in the graphics agent's
+benchmark rendering. The likely causes are in the client path
+(`userspace/runtime/gnat/cubit-logging.adb`):
+- **Every record is an IPC.** `Announce` and `Publish_Now` call logstore
+  synchronously, one round trip per record, so the caller waits for the
+  reply. `Emit` is asynchronous but allows only one record in flight, and a
+  second record is dropped.
+- **Shared rings only on the read side.** logstore writes each subscriber's
+  ring (`CuBit.Log_Streams`); publishers have none.
+- **`debugPrint` is synchronous serial I/O** (see "Console output is
+  synchronous serial I/O" below). A program that logs this way per frame
+  stalls on the UART.
+
+**Fix:** each publisher gets a single-producer ring (`CuBit.Datagram_Rings`),
+lent to logstore once.
+- Logging becomes a copy into the ring: no IPC, no wait.
+- logstore drains publisher rings in batches, woken only when a ring goes
+  from empty to non-empty, or on its own timer.
+- When a ring is full, records are shed and counted, with the count
+  reported in the stream (the log persistence design's shed-by-default
+  back pressure).
+- Severity filtering stays on the client (`Wanted`), from a published
+  minimum.
+- The synchronous `Announce` stays only for startup records, where waiting
+  is harmless.
+
+**First, measure on CuBit, before and after:**
+- which path the benchmark uses (`Announce`, `Emit` or `debugPrint`);
+- time per record on each path;
+- frame-time jitter with logging on and off.
+
+Coordinate with the graphics agent on the benchmark and its log rate. I
+own logsvc, logstore and the log protocol.
+
+This is step 1 of the roadmap in docs/logstore-architecture.md ("Publisher
+rings", planned 2026-10-03 when the reader rings landed). It was never done
+because the roadmap was not mirrored here.
+
+### EXC-001 — Full Ada exceptions in the user runtime (user decision, 2026-10-05)
+
+Status: next, before the growable secondary stack, which then takes upstream
+GNAT's `System.Secondary_Stack` (heap-allocated chunks) with its
+`Storage_Error` handler intact.
+
+**Policy (user):**
+- Fully proven SPARK code compiled with `-gnatp` never raises, so exceptions
+  cost it nothing.
+- Ada code without `SPARK_Mode => On` may use exceptions, and is handled
+  gracefully like Ada on any other platform.
+- An unhandled exception is a way to stop an app cleanly, or (a goal) to
+  restart a service.
+
+**Steps:**
+1. **Zero-cost exceptions:**
+   - the full exception units (`a-except`, `a-exexpr`, `s-except`,
+     `s-exctab`, `s-traceb` and the rest);
+   - GNAT's personality routine (`raise-gcc.c`);
+   - libgcc's DWARF unwinder. It already runs in CuBit processes: the
+     `cxx-check` guest test passes with C++ exceptions.
+
+   The unwinder finds tables through `dl_iterate_phdr`, which the CuBit libc
+   provides, so native Ada programs link `libc.a` too. The libc is mostly Ada
+   and shares the heap already.
+2. **Restrictions:** drop `No_Exception_Propagation`, `No_Exception_Handlers`
+   and `No_Exception_Registration` from the user runtime's `system.ads`. Proven
+   units keep `-gnatp`.
+3. **Last-chance handler:**
+   - the exception's name, message and traceback, sent to logstore;
+   - a typed run outcome the console shows (`Run_Outcome` gains a variant
+     such as `Failed (Unhandled_Exception ...)`).
+4. **Supervision (follow-on design):** a supervisor (procmgr, or startup
+   declarations in CCL) restarts a service that ended with an unhandled
+   exception, with limits.
+5. **Then the upstream secondary stack:** heap exhaustion becomes a
+   catchable `Storage_Error`.
+6. **Guest tests:**
+   - raise and handle across subprograms;
+   - `Constraint_Error` from a check;
+   - secondary-stack exhaustion caught;
+   - an unhandled exception arriving as a run's outcome in the console.
+
+**Phase 2: more of the upstream GNAT runtime, selectively (user,
+2026-10-05).** Import units from upstream (`adainclude` of the pinned GNAT),
+changed only where CuBit differs, each with a guest test:
+- **Now:** exceptions and the secondary stack (above); `Ada.Strings.*`
+  (fixed, bounded, unbounded); `Interfaces.C.Strings`; numerics;
+  `Ada.Characters.*`; `Ada.Containers` once `No_Finalization` is lifted
+  (controlled types).
+- **Over CuBit services:** `Ada.Text_IO` and streams over the libc (CuBit
+  names, no stdin/stdout/stderr assumptions); `Ada.Calendar` and
+  `Ada.Real_Time` over the clock service.
+- **Not now:** tasking (TASK-001); `Ada.Directories` and `GNAT.OS_Lib`
+  (Unix paths and processes); anything that forks or uses signals.
+
+**Costs:** unwind tables (`.eh_frame`) in binaries, the libc in native Ada
+links, and exception paths in unproven services. The kernel's own ZFP
+runtime (`kernel/runtime/`) is unaffected.
+
+### TASK-001 — Ada tasking in services (user, 2026-10-05)
+
+Status: open, after ALLOC-001's thread caches and ALLOC-002's growable
+secondary stack. Services are single-threaded today. The kernel has threads
+(syscalls 90/91) and futexes, and C programs get POSIX threads over them
+(musl), but the Ada user runtime is built `No_Tasking`.
+
+Prerequisites:
+- **A heap that scales across threads.** CuAlloc is already safe (one
+  spinlock), but serialized; per-thread caches with batched remote frees
+  (ALLOC-001, step 4) keep services from contending on it.
+- **Per-thread secondary stacks**, growable (ALLOC-002, first step).
+- **A tasking runtime profile over kernel threads and futexes:** Jorvik (the
+  Ravenscar successor) first. Tasks and protected objects are declared at
+  library level, with no dynamic task creation or abort. SPARK analyses
+  Jorvik programs for data races and protected-object priority (ceiling)
+  errors, which keeps the "prove instead of check" rule for services.
+- **Scheduler fit:** task priorities and deadlines map onto the Kolivas
+  virtual-deadline scheduler. Driver and service boosts stay grants, never
+  self-assigned.
+
+Candidates, measured before and after on the existing benchmarks:
+- **Networking** (`tests/net-bench`): receive and transmit pipelines on
+  separate cores; per-queue workers for multi-queue virtio-net; TCP timers
+  apart from the data path. Batching to cut IPC (the netstack's rule) still
+  applies within each task.
+- **Filesystem** (`tests/fs-bench`): client queues served in parallel;
+  block I/O kept in flight while metadata work goes on; the JBD2 commit and
+  write-back as their own tasks (FS-005).
+- Later: logstore ingestion versus persistence, and the compositor's
+  per-output work.
+
+### ALLOC-002 — Heap-backed sizes instead of fixed limits (user, 2026-10-05)
+
+Status: open, after ALLOC-001's proof step. Native programs now have a heap
+(CuAlloc), so many limits that exist only because there was none can go.
+First, a census of fixed limits, each classified:
+- **Workspace (grow on the heap, bounded by the process's memory quota):**
+  CCL source text (8 KiB, which the manifest schema shares with each
+  manifest), catalogs and name tables, VM text (1 to 8 KiB), decoded
+  descriptions, console buffers.
+- **Wire and protocol formats (stay bounded, as part of the format):** IPC
+  messages, launch blocks (64 KiB), grant regions (16 places), ring
+  layouts. A receiver parsing untrusted input must know its maximum; they
+  grow where they pinch, as format versions.
+- **Policy (become typed configuration, not constants):** for example
+  console runs (8), forwarded stderr rings (4), path length.
+
+**Where workspace goes, in order of preference (user, 2026-10-05):**
+1. **The stack or the secondary stack** for anything scoped: parsing,
+   building and returning a result, rendering. Scope lifetime, no free, no
+   fragmentation, and no ownership pointers for SPARK.
+2. **The heap (CuAlloc)** only for objects that outlive their scope:
+   session-held values, catalogs kept across evaluations, history, caches.
+3. **Fixed bounds** only for wire formats and policy.
+
+**First step: a growable secondary stack.** Today it is 32 KiB, fixed
+(`Runtime_Default_Sec_Stack_Size`, `s-parame.ads`), and overflow ends the
+process (`Storage_Error`, no propagation). Instead, reserve a large range
+per thread (owned-memory call 123) and commit it in steps as it grows
+(124), as CuAlloc's arenas do. It then stays a bump pointer, bounded only by
+the process's quota, with one explicit failure point (commit refused). The
+CCL per-call mark/release plan is the same discipline for the VM's arenas.
+
+Converting a workspace limit is restructuring, not search-and-replace:
+- **Proof:** heap objects need SPARK's ownership rules (level 2).
+- **Allocation failure:** services run without exceptions (`-gnatp`), so
+  every allocation needs an explicit failure path, on CuAlloc's proved
+  layer.
+
+First conversions, where limits hurt now: CCL source and manifest text, the
+console's buffers, VM text.
+
+### ALLOC-001 — Prove and tune CuAlloc (user, 2026-10-05)
+
+Status: open, after the self-hosting push. CuAlloc
+([design](userspace-allocator.md), "CuAlloc: one allocator for everything")
+is the one heap of every native program: Ada `System.Memory`, the libc malloc
+family and Rust `GlobalAlloc` (Penny through libc). The SPARK cores
+(`Heap_Slabs`, `Heap_Extents`, `Heap_Bitmap`, `Heap_Classes`) are proved. The
+layer around them (`process/cualloc.adb`, about 440 lines: arena directory,
+routing, commit growth, huge blocks) is regression-tested only
+(`tests/cualloc`, the hosted Rust test, guest tests), yet runs on CuBit with
+`-gnatp`. The earlier jemalloc comparisons measured the old single-arena core
+in a single-threaded hot loop, not CuAlloc.
+
+In order:
+1. **Prove the CuAlloc layer** (level 1–2): no overflow in size, offset and
+   commit arithmetic; the directory stays sorted and disjoint; every address
+   routes to the arena that holds it. Also prove the adapters' arithmetic
+   (calloc's multiplication, alignment checks). Keep the checked test builds.
+2. **First periodic benchmark of CuAlloc as it is** (single- and
+   multithreaded; `tests/userspace-allocator/benchmark.sh`,
+   `thread-benchmark.sh`; results in `userspace-allocator-results.md`).
+   Measure the lock, the binary-search free and the all-arena scan on a miss.
+3. **Aligned arenas with mask routing** in place of the binary search, and
+   per-class availability in place of scanning every arena.
+4. **Thread caches**, remote frees batched to their owner, cleanup at thread
+   exit; the single spinlock goes.
+5. **Give backing back**: decommit idle slabs and page runs on a decay
+   schedule (needs a kernel decommit call); release empty arenas.
+6. **Smaller items:** in-place growth for medium and huge realloc; skip
+   zeroing fresh memory in calloc; sized free; measure rounding waste and
+   finer classes; heap statistics through the observability service
+   (capability-gated).
+7. **Kernel policy** (stage C): the 2 GiB per-reservation cap becomes a quota
+   policy, for single blocks above 2 GiB.
+
+Measure real traces (Penny, cc1, the CCL console, fonts) as well as the
+synthetic ones, reporting throughput, tail latency, retained memory and
+waste separately. Do not promote a microbenchmark win into a general
+performance or memory-safety claim. Benchmark periodically, not every change.
+See the [dated measurements](userspace-allocator-results.md).
 
 ## Package metadata
 
@@ -488,6 +767,67 @@ role, require an explicit confirmation surface where appropriate, and record
 WHAT, WHO, WHEN, WHERE, and WHY through the security event path.
 
 ## Kernel / userspace boundary
+
+### IPC-001 — One control plane and data plane for every transfer (user, 2026-10-06)
+
+Design: docs/data-plane.md. Capability IPC sets up channels (type, capacity,
+policy, queue or arena) and learns when they end; shared-memory rings and
+arenas carry the data. It replaces five separate handshakes (filesystem
+queues, log publishers, outlets, netstack channels, and none at all for
+block devices).
+
+Decided:
+- The kernel knows grants, not channels. The rings already treat the peer as
+  hostile, so the kernel need not enforce the protocol.
+- The producer owns the data and grants it read-only to consumers; a
+  lossless consumer grants its index back. Bidirectional means two channels.
+- Arenas are a channel type, paired with a queue that hands buffers over.
+- Policies: lossless, drop oldest, shed newest.
+- Brokering is parent only, by introduction: the broker never maps the
+  data. Delegated ends are derived and narrowed; a lossless consumer end
+  moves rather than copies.
+- In-place reads follow four rules (copy then validate, in place for data
+  without invariants, transfer for large parsed buffers, proved single-fetch
+  parsers). No per-message page-lock system call.
+
+Steps, in order:
+1. Kernel: grant lifecycle events ("revoke requested" to the grantee,
+   "returned" to the owner), then grant derivation with cascading
+   revocation.
+2. The control-plane protocol and a proved codec.
+3. The block path (filesystem to nvme/ata/ramdisk) as a queue pair plus an
+   arena: the first new user.
+4. Migrate logging (dead-publisher detection), filesystem client queues,
+   outlets (console brokering; delegation replaces gcc's stderr
+   forwarding, D3), then netstack channels.
+5. Borrow and release on lossless queues; single-fetch parsers where a copy
+   shows up in profiles.
+
+### PERF-001 — How it feels under load: a standing latency benchmark (user, 2026-10-06)
+
+The user: traction needs CuBit at least somewhat competitive with Linux;
+feeling faster and being more secure are where it can win, and how it feels
+under load is the hard part. Throughput benchmarks (fs-bench, net-bench)
+exist; so do the pieces of a latency one: `bench-latency`
+(tests/sched-latency: interbench-style wake, interactive, frame and audio
+deadlines, the same C program on Linux) and `bench-input` (`--load-workers`
+busy peers). Their loads are CPU hogs. What makes a desktop feel slow is
+real work beside it.
+
+Build one suite that answers "what does a keypress cost while the machine
+is busy?", on CuBit and on Linux in the same QEMU configuration:
+- **Probes:** keypress to photon (the desktop's presented frame; target 1
+  ms, docs/input-latency.md and the render-performance target), service
+  wake (a channel kick to the consumer running), and the existing frame and
+  audio deadlines.
+- **Loads, alone and combined:** a compile (the gcc test's cc1 runs), file
+  I/O (fs-bench's sequential write and create), network (net-bench), log
+  bursts (the log-authority burst), and CPU hogs.
+- **Report:** p50, p99, p99.9 and the maximum per probe and load, misses
+  against the 1 ms target, and how much work the load got done, so a
+  scheduler that simply starves the load does not look good.
+- **Standing:** run before and after scheduler, IPC and driver changes
+  (A/B), like fs-bench and net-bench.
 
 ### Console output is synchronous serial I/O
 
@@ -949,6 +1289,125 @@ plan (docs/self-hosting.md, item 5):
 Depends on: posix_spawn file actions / descriptor inheritance (self-hosting
 item 4) and the CCL launch built-in (item 5).
 
+### CCL-004 — Per-file delegation from a manifest's argv grammar (user, 2026-10-05)
+
+Status: open, after the gcc driver runs end to end with decision D2
+(docs/self-hosting.md): the libc's `posix_spawn` passes on, whole, the places
+the caller was delegated.
+
+The narrower step is generic, with no per-tool code. A program's manifest
+already declares how its typed parameters render into argv; `posix_spawn`
+runs that mapping in reverse:
+1. It asks procmgr for the child's description (`OP_PROGRAM_DESCRIPTION`).
+2. It parses the argv the C program built with the child's own declared
+   grammar.
+3. It delegates exactly the files and directories that parsing names.
+
+Only arguments that carry authority are declared (inputs, outputs, `-I`
+directories); other options pass through as opaque text. The grammar covers
+joined and `=` forms, `--` and response files once, generically.
+
+- **Safety:** it only narrows D2. procmgr still checks every place against
+  what the launcher holds, so a misparse can make a tool fail but never
+  widen what it may touch.
+- **Unknown flags:** refuse the launch. A manifest without a grammar gets
+  nothing narrower than D2.
+- **Files not named in argv** (cc1's system headers, the driver's temporary
+  files): declared places, such as a toolchain parameter with a default and
+  a temp place.
+- **Scope:** only the handful of ported tools need this (binutils,
+  gcc/GNAT). If it makes legacy Unix tools harder to bring over, that is
+  intended (user, 2026-10-05): CuBit is an alternative, not a bridge to Unix.
+- **Visibility:** the console can show which exact files a C launcher's
+  child may touch.
+
+### CCL-003 — Runs as affine resources (user decision, 2026-10-05)
+
+Status: in progress (step 1).
+
+A `Run` is plain data today, which causes three problems:
+- **Accessors aren't tied to the right program.** `(as.outcome r)` with an
+  `ld` run type-checks and only fails at run time.
+- **A run can be forged:**
+  - Any code in the session can write `(Run program => … pid => …)` and
+    read the outlets of a run it was never given, a confused deputy.
+  - Once runs take messages (CCL-002), it could also act on such a run.
+- **Its lifetime is a guess:** the program bindings keep the 8 newest runs.
+
+The fix uses only existing machinery (docs/ccl-type-system.md §6–7). No new
+modes, contract forms or method system:
+- Each program's run is its own **affine** resource type (`Ld_Run`,
+  `As_Run`), from its approved policy. A run cannot be copied or written as
+  a literal; it may be dropped.
+- Operations on a run take it as a **borrowed receiver**, so `r` stays
+  usable: `ld.outcome`, `ld.outlets`, and each outlet accessor. Their
+  results (streams, tasks) stay plain handles.
+- **Dropping a run releases it:** its rings, and the pins on its streams
+  and outcome. This replaces the 8-run heuristic.
+
+Steps:
+1. **Session-held affine resources.**
+   - `(define bad (as.run …))` makes the session the owner of the run, and
+     rebinding the name drops it.
+   - `:env` shows what the session holds.
+   - The table is bounded, with exactly one owner at a time and exactly one
+     drop. This is proved, as the owned locals are (tests/ccl-owned-locals),
+     with tests.
+2. **Runs as per-program resource types**, as above.
+   - The console binds an unnamed run to a generated name instead of
+     writing a run value.
+3. **Discovery by receiver type:** completion and the Observatory list the
+   operations that take the value in hand.
+4. **CCL-002 messages** become operations on the same run type.
+
+### CCL-002 — Program messages as typed IPC (user decision, 2026-10-05)
+
+Status: open.
+
+A program's manifest declares a `messages` list: single commands such as
+"shutdown" or "reload", each with a qualified name and a typed payload. The
+launcher sends one as an ordinary typed IPC call, and it answers with a
+`Task` of a typed result, e.g. `(mixer.com.example.mixer.reload r) :
+Task<Reload_Result>`. Messages are for infrequent commands where throughput
+does not matter. Data flow stays on inlets and outlets (lent rings), and a
+current state such as a volume is a `Level` inlet, not a message. Stopping a
+run is a procmgr operation on any run, not a per-program message.
+
+Why IPC rather than rings: a request/reply call completes the `Task`
+directly. The capability model also checks authority per operation, so the
+console can be granted `reload` without `shutdown`.
+
+Most of the parts already exist:
+- typed calls and the `Interface_Catalog`/`Granted_Bindings` split
+  (docs/typed-ipc.md);
+- the CCL host-import IPC adapter (`ccl-test-host`);
+- `Task<T>`, `await`, and the console resuming an entry when its task
+  completes;
+- program interfaces generated from a description
+  (`CCL.Interfaces.Programs`).
+
+To build:
+- **Discovery.**
+  - The `messages` declaration goes in the executable manifest and the
+    program description, so the launcher learns each message's name,
+    payload and result types.
+  - The launcher gets the program's endpoint from procmgr at launch, as
+    authority it is given. Matching a protocol must never mint or find an
+    endpoint (docs/typed-ipc.md, "Authority boundary"; the unfinished
+    live-discovery boundary in docs/typed-commands-and-events.md).
+- **Reflection.**
+  - Generate each message's CCL operation and types from the declaration,
+    as `ld.run` and `ld.outcome` are generated today. Check them with the
+    type checker and publish them in the catalog. Grant each operation
+    separately.
+  - The reply completes the operation's `Task`: submit, then completion,
+    never a blocking call from the console.
+- **Tests:**
+  - a hosted program with two messages, one of them not granted;
+  - each message is typed in both engines;
+  - the reply completes the task;
+  - a guest run with a native program.
+
 ## Storage and files
 
 ### FS-020 — A deliberate directory layout (user-requested, 2026-10-04)
@@ -971,6 +1430,127 @@ self-hosting, compilers, a sysroot, build outputs and a build store
   limit, 256-byte scopes).
 - **Images:** images/artifacts.ccl and the disk tools place files by the
   same layout. The repository tree may want the same review.
+
+**Direction (user, 2026-10-05):** no Linux FHS. On the system volume:
+`Applications/<name>/<version>/`, with siblings `Services/` and `Drivers/` of
+the same shape. For example, `Applications/gcc/15.3.0/` holds the driver,
+cc1, gcc's support files, specs, and the libc's headers and start files it
+compiles against. Installing is unpacking a folder, and removing is deleting
+it. Points to settle when this is implemented:
+- **Self-contained and read-only:** a program gets its own version folder
+  read-only (that is its grant), and needs nothing outside it.
+  - GCC finds everything relative to its own name; `--prefix` only sets
+    defaults.
+  - Static linking means no shared library directory.
+- **Mutable state outside the bundle:** in the user's or session's places
+  (CTX-001), so removing a version never loses data and leaves nothing
+  behind in the bundle. Deleting app data is a separate, visible choice.
+- **Which version a name means:** a CCL catalog, not symlinks (CuBit has
+  none). Launch tables keep naming exact paths.
+- **Unpacking installs but grants nothing:** a manifest's requests are
+  reviewed and granted visibly. Discovery can scan
+  `Applications/*/*/` for manifests.
+- **Config goes with its app (user, 2026-10-05).** State is tied to the
+  app's identity, so removing the app removes its config. The bundle's
+  manifest declares the collections it owns (namespaces owned by its
+  identity, docs/config-contexts-and-inspection.md), each with a lifecycle:
+  - *config:* removed with the app;
+  - *cache:* removed with the app, and may be dropped any time;
+  - *documents:* the user's, never removed with the app.
+
+  How removal works:
+  - Collections belong to the app, not a version: they survive upgrades and
+    go with the last version. A collection declared per major version
+    (`...v8`) goes with that version.
+  - **Normal removal** is a CCL operation (`(apps.remove gcc)`): one visible
+    step that removes the bundle and everything it owns.
+  - **A plain delete** of the folder still works: the next scan finds
+    collections whose owning identity has no installed bundle and collects
+    them as orphans, shown in the transcript.
+  - The config service enforces that only the owning identity (or the user,
+    through an inspector) writes a collection, so ownership can be trusted.
+    This and registration at install are still planned there.
+- **Open:** whether the system's own core (kernel, procmgr, filesystem)
+  gets a `System/` sibling, so `Applications/` stays safely removable.
+
+**Storehouse and views, the Guix/Nix model (user, 2026-10-05).** CuBit takes the
+Nix model, with clean names:
+- **The system declaration** (CCL) lists applications, services and drivers
+  with pinned versions and inputs, and each one's declared config.
+  Activating it makes a **generation**. Launch tables and the catalog that
+  maps a name to its exact program are generated per generation.
+- **The Storehouse** (`@system/Storehouse/<hash>/`) holds immutable, read-only entries
+  keyed by content hash (BLD-001). Two builds of one version can coexist
+  there. Hashes appear only in the Storehouse.
+- **`Applications/`, `Services/`, `Drivers/`** are views the filesystem
+  service generates from the active generation: `Applications/gcc/15.3.0`
+  names the Storehouse entry that generation selected.
+  - Switching generations swaps the view at once, so upgrades are atomic.
+  - Rolling back restores the previous view.
+  - No symbolic links: the filesystem service resolves the names.
+- **Identity is metadata:** the content hash is recorded on the Storehouse entry
+  (an extended attribute, which ext2 keeps). It is pinned by the
+  declaration, verified at activation, and shown by the CCL inspector.
+- **Grants attach to the Storehouse entry**, not the view name: re-pointing the
+  view cannot redirect a program's own read-only grant.
+- **Install and remove are CCL operations.** Importing a folder hashes it,
+  seals it read-only and records it. Removing drops it from the declaration;
+  garbage collection deletes Storehouse entries no kept generation references.
+  The Storehouse is read-only to everyone but the software manager.
+- **Owned state outlives the edit, for rollback:** declared config is in the
+  declaration and rolls back with it. Owned application state is deleted when
+  the last generation referencing the app is collected.
+- **The software manager (`softman.svc`) is the only writer (user,
+  2026-10-05).** It is separate from `config.svc`, which serves config
+  values. It seals entries into the Storehouse, activates generations and
+  collects garbage, and nothing else.
+  - **Small and proved:** it aims for full SPARK proof. Fetching substitutes
+    over the network is a separate, unprivileged service that hands over
+    archives, which this one verifies (hash and signature) before sealing.
+  - **Enforced by capability, not by name:** the startup declaration grants
+    it the Storehouse-write capability. The filesystem service honors only that
+    capability, and nothing can obtain it later.
+  - **Authorized requests only:** activations and imports come from the user
+    through CCL, with the change shown first (added, removed, granted,
+    config changes). Who approved what is recorded in the generation record.
+  - **Signatures:** it verifies signatures on imported and substituted
+    entries and signs the generation records it writes, so activation (and
+    later the boot path) can check that the active generation is its own.
+- **Read-only, without exception.** A Storehouse entry is immutable once
+  sealed: only the software manager writes it, while building or importing it
+  in a private staging area, and nobody (the app, the user, an
+  administrator) modifies it afterwards. A change is a new entry with a new
+  hash. The views are read-only and change only through activation.
+  - **The filesystem service** refuses every other write to the Storehouse and
+    the views.
+  - **Grants:** a program holds its own entry read-only, and nothing ever
+    holds write access to an installed program.
+  - **Activation** re-verifies entries against their pinned hashes, which
+    catches offline tampering. Per-launch checks belong with signed
+    executable admission.
+
+  Mutable state lives elsewhere: declared config in the declaration, app
+  state in the config service, documents in the user's places, caches and
+  temporary files in their own places. Ported programs that write into
+  their install directory get a declared place instead.
+- **Config is generational too (user, 2026-10-05).** A generation records
+  both the program views and the config revision
+  (docs/config-declarative-state.md). Activation switches both at once and
+  rollback restores both. Realized config revisions are content-addressed
+  like Storehouse entries: shared when identical, pinned by hash, and collected
+  when no kept generation references them. Mutable application state uses
+  versioned migrations at activation, with the old revision kept until its
+  generation is collected; copy-on-write snapshots may follow once the
+  filesystem journal exists.
+- **Exports** are archives that carry their hash (copying a folder off CuBit
+  drops the metadata); importing recomputes it.
+- **Costs:** generated directories in the filesystem service (a mapping
+  layer over ordinary ext2 directories), and the view persisted with each
+  generation record.
+
+The gcc port moves from its interim `@nvme:0/toolchain` place to
+`Applications/gcc/<version>/` first, as an ordinary directory until the
+Storehouse and views exist.
 
 
 ### FS-001 — Replace hardware-specific filesystem backends

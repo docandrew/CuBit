@@ -67,14 +67,16 @@ begin
       pragma Assert (Log_Budgets.Rejected (Limits, Bootstrap_Budget) = 1);
       Log_Budgets.Admit (Limits, 2, Accepted);
       pragma Assert (Accepted);
-      Log_Budgets.Advance_Time (Limits, 1099);
+      --  One credit per Refill_Ms: none just before it, one at it.
+      Log_Budgets.Advance_Time (Limits, 1000 + Log_Budgets.Refill_Ms - 1);
       pragma Assert (Log_Budgets.Remaining (Limits, Bootstrap_Budget) = 0);
-      Log_Budgets.Advance_Time (Limits, 1100);
+      Log_Budgets.Advance_Time (Limits, 1000 + Log_Budgets.Refill_Ms);
       pragma Assert (Log_Budgets.Remaining (Limits, Bootstrap_Budget) = 1);
       Log_Budgets.Admit (Limits, Bootstrap_Budget, Accepted);
       pragma Assert (Accepted);
-      Log_Budgets.Advance_Time (Limits, 1050);
-      Log_Budgets.Advance_Time (Limits, 1199);
+      --  Time going backwards adds nothing.
+      Log_Budgets.Advance_Time (Limits, 1000);
+      Log_Budgets.Advance_Time (Limits, 1000 + 2 * Log_Budgets.Refill_Ms - 1);
       pragma Assert (Log_Budgets.Remaining (Limits, Bootstrap_Budget) = 0);
       Log_Budgets.Advance_Time (Limits, Unsigned_64'Last);
       pragma Assert
@@ -89,14 +91,18 @@ begin
       pragma Assert (not Accepted);
       --  Dense arrivals cannot replenish on each request or save credit past
       --  the burst cap. Each admitted attempt costs one, regardless of payload.
+      --  Arrivals (three per millisecond) outrun the refill, so the bucket
+      --  empties and the sustained rate shows.
       for Tick in 0 .. 10_000 loop
          Log_Budgets.Advance_Time (Sustained, Unsigned_64 (Tick));
-         Log_Budgets.Admit (Sustained, Bootstrap_Budget, Accepted);
-         if Accepted then Total := Total + 1; end if;
+         for Arrival in 1 .. 3 loop
+            Log_Budgets.Admit (Sustained, Bootstrap_Budget, Accepted);
+            if Accepted then Total := Total + 1; end if;
+         end loop;
          pragma Assert
            (Total <= Log_Budgets.Burst + Tick / Natural (Log_Budgets.Refill_Ms));
       end loop;
-      pragma Assert (Total = Log_Budgets.Burst + 100);
+      pragma Assert (Total = Log_Budgets.Burst + Natural (10_000 / Log_Budgets.Refill_Ms));
       Put_Line ("PASS: shared producer budgets, copies, isolated pools, refill, backward/max time and sustained-rate bound");
    end;
    for Requested in Boolean loop
@@ -110,7 +116,7 @@ begin
          end loop;
       end loop;
    end loop;
-   pragma Assert (May_Invoke (Publisher_Authority_Tag, Publish));
+   pragma Assert (May_Publish (Publisher_Authority_Tag));
    pragma Assert (not Is_Observer (Observer_Tag_Base));
    pragma Assert (not Is_Observer (Unsigned_64'Last));
    pragma Assert (Is_Observer (Observer_Tag_Base + Unsigned_64 (Unsigned_32'Last)));
@@ -118,7 +124,7 @@ begin
       pragma Assert (not May_Invoke (Publisher_Authority_Tag, Op));
       pragma Assert (May_Invoke (Observer_Authority_Tag, Op));
    end loop;
-   pragma Assert (not May_Invoke (Observer_Authority_Tag, Publish));
+   pragma Assert (not May_Publish (Observer_Authority_Tag));
    Log_Fanout.Publish (Store, Expected);
    Log_Fanout.Subscribe (Store, 30, Publisher_Authority_Tag, Other, Result);
    pragma Assert (Result = Denied and Other = 0);

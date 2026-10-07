@@ -12,8 +12,9 @@ with CuBit.Kernel_Calls;
 with CuBit.Launch_Arguments;
 with CuBit.Libc_ABI; use CuBit.Libc_ABI;
 with CuBit.Libc_Imports; use CuBit.Libc_Imports;
-with CuBit.Libc_Stream_Rings; use CuBit.Libc_Stream_Rings;
 with CuBit.Program_Descriptions;
+with CuBit.Stream_Regions;
+with CuBit.Stream_Rings;
 
 package body CuBit.Libc_Child_Outlets is
 
@@ -25,62 +26,32 @@ package body CuBit.Libc_Child_Outlets is
    package PD renames CuBit.Program_Descriptions;
    use type PD.Connector_Direction;
    package GR renames CuBit.Grant_References;
+   package Regions renames CuBit.Stream_Regions;
+   package SR renames CuBit.Stream_Rings;
 
    Stderr_Outlet : constant String := "unix.stderr";
    Stderr_Descriptor : constant := 2;
-   --  A lent ring's size: what the program declares, at most this.
+   --  The largest ring lent, in declared pages; a program declaring more
+   --  gets none (and keeps its own).
    Maximum_Ring_Pages : constant := 16;
-   --  One entry copied at a time.
-   Copy_Bytes : constant := 512;
+   --  A slot's pages: the region for the largest ring.
+   Slot_Pages : constant := 1 + Maximum_Ring_Pages;
+   --  One record copied at a time: the largest a lent ring holds (half of
+   --  it; Stream_Rings.Fits).
+   Copy_Bytes : constant := Maximum_Ring_Pages * Page_Bytes / 2;
+   Copy : array (1 .. Copy_Bytes) of Unsigned_8;
 
    function Write (Descriptor : int; Data : System.Address; Length : Interfaces.C.size_t)
      return Interfaces.C.long
    with Import, Convention => C, External_Name => "write";
 
-   function To_Address (Value : Unsigned_64) return System.Address is
-     (System.Storage_Elements.To_Address (Integer_Address (Value)));
-   pragma Inline (To_Address);
 
-   function Read_16 (At_Byte : Unsigned_64) return Unsigned_16;
-   function Read_16 (At_Byte : Unsigned_64) return Unsigned_16 is
-      W : constant Unsigned_16 with Import, Volatile, Address => To_Address (At_Byte);
-   begin
-      return W;
-   end Read_16;
-
-   function Read_32 (At_Byte : Unsigned_64) return Unsigned_32;
-   function Read_32 (At_Byte : Unsigned_64) return Unsigned_32 is
-      W : constant Unsigned_32 with Import, Volatile, Address => To_Address (At_Byte);
-   begin
-      return W;
-   end Read_32;
-
-   procedure Write_8 (At_Byte : Unsigned_64; Value : Unsigned_8);
-   procedure Write_8 (At_Byte : Unsigned_64; Value : Unsigned_8) is
-      W : Unsigned_8 with Import, Volatile, Address => To_Address (At_Byte);
-   begin
-      W := Value;
-   end Write_8;
-
-   procedure Write_16 (At_Byte : Unsigned_64; Value : Unsigned_16);
-   procedure Write_16 (At_Byte : Unsigned_64; Value : Unsigned_16) is
-      W : Unsigned_16 with Import, Volatile, Address => To_Address (At_Byte);
-   begin
-      W := Value;
-   end Write_16;
-
-   procedure Write_32 (At_Byte : Unsigned_64; Value : Unsigned_32);
-   procedure Write_32 (At_Byte : Unsigned_64; Value : Unsigned_32) is
-      W : Unsigned_32 with Import, Volatile, Address => To_Address (At_Byte);
-   begin
-      W := Value;
-   end Write_32;
-
-   --  A slot: its pages (kept for the next child), the grant they were last
-   --  lent under, and the child watching them.
+   --  A slot: its pages (Slot_Pages, kept for the next child), the ring's
+   --  declared pages, the grant they were last lent under, and the child
+   --  watching them.
    type Slot_State is record
       Base       : Unsigned_64 := 0;            --  0: no pages yet
-      Pages      : Natural := 0;
+      Pages      : Natural := 0;                --  declared, of the ring lent
       Grant      : GR.Reference := (slot => 0, generation => 1);
       Lent       : Boolean := False;            --  grant not yet seen retired
       Watched    : Boolean := False;
@@ -171,9 +142,9 @@ package body CuBit.Libc_Child_Outlets is
       end;
    end Describe;
 
-   --  A slot that can take a Pages-page ring: free, its last grant retired.
-   function Free_Slot (Pages : Positive) return Slot_Choice;
-   function Free_Slot (Pages : Positive) return Slot_Choice is
+   --  A slot free for a ring: none watching it, its last grant retired.
+   function Free_Slot return Slot_Choice;
+   function Free_Slot return Slot_Choice is
    begin
       for K in Slots'Range loop
          declare
@@ -186,7 +157,7 @@ package body CuBit.Libc_Child_Outlets is
                then
                   S.Lent := False;
                end if;
-               if not S.Lent and then (S.Base = 0 or else S.Pages >= Pages) then
+               if not S.Lent then
                   return K;
                end if;
             end if;
@@ -194,27 +165,6 @@ package body CuBit.Libc_Child_Outlets is
       end loop;
       return No_Slot;
    end Free_Slot;
-
-   --  CuBit.Streams.Initialize_Ring: an empty text ring with this process
-   --  as its one subscriber, cursor 0.
-   procedure Initialize (Base : Unsigned_64; Pages : Positive; Id : Unsigned_16);
-   procedure Initialize (Base : Unsigned_64; Pages : Positive; Id : Unsigned_16) is
-      Me : constant Unsigned_64 := CuBit.Kernel_Calls.Call (Get_Process_Id);
-   begin
-      for K in 0 .. Header_Size - 1 loop
-         Write_8 (Base + Unsigned_64 (K), 0);
-      end loop;
-      Write_32 (Base + HDR_MAGIC, Stream_Magic);
-      Write_16 (Base + HDR_VERSION, Stream_Version);
-      Write_32 (Base + HDR_PRODUCER_IDX, 0);
-      Write_32 (Base + HDR_CAPACITY, Unsigned_32 (Pages * Page_Bytes - Header_Size));
-      Write_16 (Base + HDR_DEFAULT_TYPE_TAG, Text_Line_Tag);
-      Write_8 (Base + HDR_OVERFLOW_POLICY, Drop_Oldest);
-      Write_16 (Base + HDR_STREAM_ID, Id);
-      Write_32 (Base + SUBSCRIBER_TABLE_OFF + SUB_OFF_PID, Unsigned_32 (Me));
-      Write_32 (Base + SUBSCRIBER_TABLE_OFF + SUB_OFF_CURSOR, 0);
-      Write_8 (Base + HDR_SUBSCRIBER_COUNT, 1);
-   end Initialize;
 
    procedure Prepare (Program : String; Rings : out CuBit.Outlet_Rings.Table;
                       Slot : out Slot_Choice)
@@ -234,9 +184,9 @@ package body CuBit.Libc_Child_Outlets is
          return;
       end if;
       declare
-         Pages : constant Positive :=
-           Positive'Min (S.Connectors (Index).Pages, Maximum_Ring_Pages);
-         Chosen : constant Slot_Choice := Free_Slot (Pages);
+         Pages : constant Natural := S.Connectors (Index).Pages;
+         Chosen : constant Slot_Choice :=
+           (if Pages in 1 .. Maximum_Ring_Pages then Free_Slot else No_Slot);
          Wire : Unsigned_64;
          Area : System.Address;
       begin
@@ -250,19 +200,20 @@ package body CuBit.Libc_Child_Outlets is
             if T.Base = 0 then
                --  The slot's pages, for this child and the ones after it.
                Area := mmap (System.Null_Address,
-                             Interfaces.C.size_t (Maximum_Ring_Pages * Page_Bytes),
+                             Interfaces.C.size_t (Slot_Pages * Page_Bytes),
                              int (PROT_READ + PROT_WRITE),
                              int (MAP_PRIVATE + MAP_ANONYMOUS), -1, 0);
                if Area = MAP_FAILED then
                   return;
                end if;
                T.Base := Unsigned_64 (To_Integer (Area));
-               T.Pages := Maximum_Ring_Pages;
             end if;
-            Initialize (T.Base, Pages, PD.Ring_Id (Index));
+            T.Pages := Pages;
+            Regions.Initialize (T.Base, SR.ELEMENT_TEXT_LINE);
             Slot_Number := CuBit.Kernel_Calls.Call
               (Create_Shared_Memory_Grant_Via_Capability, Process_Manager_Slot,
-               T.Base, Unsigned_64 (Pages), Grant_Forwardable_Read_Write);
+               T.Base, Unsigned_64 (SR.Region_Pages (Regions.Declared (Pages))),
+               Grant_Forwardable_Read_Write);
             if Slot_Number = Failed then
                return;
             end if;
@@ -308,59 +259,19 @@ package body CuBit.Libc_Child_Outlets is
       Give_Back (Slot);
    end Abandon;
 
-   --  Copy the entries in Slot's ring to descriptor 2 (CuBit.Streams'
-   --  owned read, as the subscriber in slot 0).
+   --  Copy the records in Slot's ring to descriptor 2 (the owner's read in
+   --  place).
    procedure Forward (Slot : Slot_Choice);
    procedure Forward (Slot : Slot_Choice) is
-      Base : constant Unsigned_64 := Slots (Slot).Base;
-      Data : constant Unsigned_64 := Base + Data_Offset;
-      Cursor_At : constant Unsigned_64 := Base + SUBSCRIBER_TABLE_OFF + SUB_OFF_CURSOR;
-      Size : constant Unsigned_32 := Read_32 (Base + HDR_CAPACITY);
-      Cursor : Unsigned_32 := Read_32 (Cursor_At);
-      Producer : Unsigned_32;
+      Length : Natural;
       Ignore : Interfaces.C.long;
    begin
-      if Size = 0 then
-         return;
-      end if;
       loop
-         Producer := Read_32 (Base + HDR_PRODUCER_IDX);
-         exit when Producer = Cursor;
-         if Producer - Cursor > Size then
-            --  Lapped: the oldest output is gone; go on from the newest.
-            Cursor := Producer;
-            exit;
-         end if;
-         declare
-            Offset : constant Unsigned_32 := Cursor mod Size;
-            Length : constant Unsigned_16 := Read_16 (Data + Unsigned_64 (Offset));
-         begin
-            if Length = Sentinel_Length then
-               Cursor := Cursor + (Size - Offset);
-            elsif Unsigned_32 (Length) > Size - Offset - Entry_Header_Bytes then
-               Cursor := Producer;                --  torn by the producer
-               exit;
-            else
-               declare
-                  Remaining : Natural := Natural (Length);
-                  At_Byte : Unsigned_64 := Data + Unsigned_64 (Offset) + Entry_Header_Bytes;
-               begin
-                  while Remaining > 0 loop
-                     declare
-                        Chunk : constant Natural := Natural'Min (Remaining, Copy_Bytes);
-                     begin
-                        Ignore := Write (Stderr_Descriptor, To_Address (At_Byte),
-                                         Interfaces.C.size_t (Chunk));
-                        At_Byte := At_Byte + Unsigned_64 (Chunk);
-                        Remaining := Remaining - Chunk;
-                     end;
-                  end loop;
-               end;
-               Cursor := Cursor + Entry_Bytes (Unsigned_32 (Length));
-            end if;
-         end;
+         Length := Regions.Read_Owned (Slots (Slot).Base, Slots (Slot).Pages, Copy'Address,
+                                       Copy'Length);
+         exit when Length = 0;
+         Ignore := Write (Stderr_Descriptor, Copy'Address, Interfaces.C.size_t (Length));
       end loop;
-      Write_32 (Cursor_At, Cursor);
    end Forward;
 
    procedure Forward_All is

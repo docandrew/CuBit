@@ -1,5 +1,9 @@
+--  CuAlloc on Linux (CuAlloc_Host over Linux memory): the static library
+--  hosted Rust tests and benchmarks link as cubit_allocator.
 library project Allocator_Runtime_Host is
-   for Source_Dirs use ("src", "runtime");
+   for Source_Dirs use ("src", "process", "host");
+   for Excluded_Source_Files use ("heap_bridge.ads", "heap_bridge.adb",
+                                     "cualloc_native.ads", "cualloc_native.adb");
    for Object_Dir use "build/runtime-host-objects";
    for Library_Dir use "build/runtime-host-lib";
    for Library_Name use "cubit_allocator";

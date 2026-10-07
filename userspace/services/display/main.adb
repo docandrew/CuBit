@@ -14,6 +14,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Display_Protocol;
 with CuBit.Desktop_Messages;
 with CuBit.Memory_Grants;
+with CuBit.Capability_Grants;
 with CuBit.Presentation_State;
 with CuBit.Display_Pool_Protocol;
 with CuBit.Display_Pool_Registry;
@@ -159,7 +160,13 @@ procedure main is
    gpuDetected : Boolean := False;
    outputCatalog : OD.Catalog;
    catalogReady : Boolean := False;
-   outputRegistry : Outputs.State (1);
+   -- Bind registry lifetime to this process incarnation, not a reusable PID
+   -- or a constant shared by successive Display instances. The fallback is
+   -- only an inert discriminant: registration rejects a failed capture.
+   displayIdentity : constant Unsigned_64 := CuBit.Capability_Grants.Incarnation
+     (CuBit.Capability_Grants.Capture (CapabilitySlot (CAP_SLOT_SELF_PROC)));
+   outputRegistry : Outputs.State
+     (Outputs.Registry_Incarnation (if displayIdentity /= 0 then displayIdentity else 1));
 
    function outputUsable (item : Outputs.Output_Reference) return Boolean is
      (Outputs.Live (outputRegistry, item) and then
@@ -170,7 +177,18 @@ procedure main is
 
    function registerOutput return Boolean is
       result : Outputs.Mutation_Result;
+      driverIdentity : Unsigned_64 := displayIdentity;
    begin
+      if displayIdentity = 0 then return False; end if;
+      if outputStates (selectedOutput).backend.Kind = Native_GPU then
+         driverIdentity := CuBit.Capability_Grants.Incarnation
+           (CuBit.Capability_Grants.Capture (CAP_SLOT_GPU));
+         if driverIdentity = 0 or else not CuBit.Capability_Grants.Endpoint_Matches
+           (CAP_SLOT_GPU, driverIdentity)
+         then return False; end if;
+      elsif outputStates (selectedOutput).backend.Kind /= Firmware_Framebuffer then
+         return False;
+      end if;
       if outputStates (selectedOutput).fbWidth not in 1 .. Natural (Outputs.W.Extent'Last) or else
         outputStates (selectedOutput).fbHeight not in 1 .. Natural (Outputs.W.Extent'Last)
       then
@@ -180,7 +198,8 @@ procedure main is
       --  Ready describes the selected mapped backend, not panel visibility.
       Outputs.Register
         (outputRegistry,
-         (Backend => (Driver => 1, Number => Outputs.Output_Number (selectedOutput)),
+         (Backend => (Driver => Outputs.Driver_Incarnation (driverIdentity),
+                      Number => Outputs.Output_Number (selectedOutput)),
           Area => (Display => Outputs.L.Named_Display_ID
                      (Natural (selectedOutput) + 1),
                    X => 0, Y => 0,

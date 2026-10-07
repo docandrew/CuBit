@@ -252,7 +252,7 @@ procedure VM_Update_Pipeline_Tests is
       for I in Table_Index loop RAM (0) (I) := VM.Entry_Value (Images (0), 1, I); end loop;
       for Generation in 1 .. 2 loop
          Step := Generation;
-         Buffers.Reserve_Private (Buffers_State, 99, Table_Tickets (Generation), Reclaimable => True);
+         Buffers.Reserve_Private (Buffers_State, 99, Table_Tickets (Generation), Reclaimable => True, Pages => VM.Page_Number'Last);
          pragma Assert (Table_Tickets (Generation) /= 0);
          for P in VM.Page_Number loop
             DMA (P) := Unsigned_64 (Generation) * 16#100000# + Unsigned_64 (P) * 4096;
@@ -357,7 +357,7 @@ procedure VM_Update_Pipeline_Tests is
          Buffers.Acknowledge_Private_Retirement
            (Buffers_State, 99, Table_Tickets (1), True, OK);
          pragma Assert (OK);
-         Buffers.Reserve_Private (Buffers_State, 99, Ticket, Reclaimable => True);
+         Buffers.Reserve_Private (Buffers_State, 99, Ticket, Reclaimable => True, Pages => VM.Page_Number'Last);
          pragma Assert (Ticket = Table_Tickets (1) + Buffers.Ticket_Stride);
          VM.Prepare_Update (Images (1), Current_Image, DMA, OK); pragma Assert (OK);
          VM.Seal_Update (Images (1), OK); pragma Assert (OK);
@@ -369,7 +369,7 @@ procedure VM_Update_Pipeline_Tests is
          -- No retirement acknowledgement after uncertainty or while runnable.
          -- Both descriptions remain retained, and reservations cannot recycle.
          pragma Assert (VM.Sealed (Images (1)) and VM.Sealed (Images (2)));
-         Buffers.Reserve_Private (Buffers_State, 99, Ticket, Reclaimable => True);
+         Buffers.Reserve_Private (Buffers_State, 99, Ticket, Reclaimable => True, Pages => VM.Page_Number'Last);
          pragma Assert (Ticket /= Table_Tickets (1) + Buffers.Ticket_Stride and
                         Ticket /= Table_Tickets (2) + Buffers.Ticket_Stride);
          if Ticket /= 0 then Buffers.Finish_Private (Buffers_State, Ticket, Consumed); end if;

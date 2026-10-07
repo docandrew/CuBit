@@ -10,14 +10,14 @@ export const MAXIMUM_DEPTH = 255;
 // CCL.Highlighting.Special_Form_Name and Core_Operator_Name, and the
 // built-ins of CCL.Language.Builtin_Name.
 const SPECIAL_FORMS = new Set(['define', 'type', 'let', 'if', 'match', 'fn', 'handler', 'field',
-  'list', 'list-of', 'stream', '->>', 'and', 'or', 'not']);
+  'list', 'list-of', 'stream', 'task', '->>', 'and', 'or', 'not']);
 const OPERATORS = new Set(['+', '-', '*', '/', '%', '=', '/=', '<', '<=', '>', '>=', 'add',
   'subtract', 'multiply', 'divide', 'mod', 'modulo', 'equal', 'not-equal', 'less', 'less-equal',
   'greater', 'greater-equal', 'at', 'concat', 'length', 'to-string',
   'each', 'where', 'fold', 'any', 'all', 'first', 'sum', 'range', 'last', 'skip', 'reverse',
   'sort', 'sort-by', 'count', 'min', 'max', 'contains', 'upper', 'lower', 'trim', 'starts-with',
   'ends-with', 'index-of', 'replace', 'split', 'join', 'parse-int',
-  'latest', 'window', 'arrived', 'lost']);
+  'latest', 'window', 'arrived', 'lost', 'wait']);
 export const COMPLETION_WORDS = [...SPECIAL_FORMS, ...OPERATORS];
 
 const space = c => c === ' ' || c === '\t' || c === '\r' || c === '\n';

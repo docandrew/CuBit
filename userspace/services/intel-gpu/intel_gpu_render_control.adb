@@ -6,6 +6,15 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
    function Issued_Tag (Object : Controller; Index : Sessions.Slot_Index)
                         return Unsigned_64 is
      (Sessions.Issued_Tag (Object.Sessions, Index));
+   function Stored_Recipient_Slot
+     (Object : Controller; Tag : Unsigned_64) return Unsigned_64 is
+      Index : constant Sessions.Slot_Index := Storage_Index (Object, Tag);
+   begin
+      if Index = 0 or else Object.Recipient_Slots (Index) not in 40 .. 55 then
+         return 0;
+      end if;
+      return Object.Recipient_Slots (Index);
+   end Stored_Recipient_Slot;
    function Is_Broker
      (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Boolean is
      (Object.Broker /= 0 and then Sender = Object.Broker and then
@@ -58,12 +67,14 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
       if Request (3) = Reserve then
          if Tag /= 0 then return; end if;
          Response (0) := Unavailable;
-         if not Ready then return; end if;
+         if not Ready or else Object.Next_Recipient_Slot = 56 then return; end if;
          Sessions.Reserve (Object.Sessions, PID, Tag);
          if Tag = 0 then return; end if;
          Index := Sessions.Storage_Index (Object.Sessions, Tag);
          if Index = 0 then return; end if;
          Object.Recipients (Index) := Recipient;
+         Object.Recipient_Slots (Index) := Object.Next_Recipient_Slot;
+         Object.Next_Recipient_Slot := Object.Next_Recipient_Slot + 1;
       else
          if Tag <= Sessions.Tag_Base or Tag > Sessions.Tag_Last
          then return; end if;
@@ -82,7 +93,7 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
          end if;
       end if;
       Response := [OK, Version, Tag,
-        (if Request (3) = Reserve then 39 + Unsigned_64 (Index) else 0)];
+        (if Request (3) = Reserve then Stored_Recipient_Slot (Object, Tag) else 0)];
    end Handle;
    function Activation_Identity
      (Object : Controller; Sender, Stamped_Tag : Unsigned_64;
