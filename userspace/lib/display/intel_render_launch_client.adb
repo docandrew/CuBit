@@ -1,3 +1,4 @@
+with CuBit.Process_IDs;
 package body Intel_Render_Launch_Client is
    package G renames CuBit.Capability_Grants;
    package M renames CuBit.Messages;
@@ -24,7 +25,7 @@ package body Intel_Render_Launch_Client is
         not G.Endpoint_Matches (Application_Source, G.Incarnation (Child))
       then return; end if;
       for I in 1 .. Object.Used loop
-         if Object.Entries (I).Child = G.Incarnation (Child) and then
+         if Object.Entries (I).Child = CuBit.Process_IDs.To_Word (G.Incarnation (Child)) and then
            Object.Entries (I).Destination = Destination
          then return; end if;
       end loop;
@@ -36,7 +37,8 @@ package body Intel_Render_Launch_Client is
       Object.Used := Object.Used + 1;
       ID := Object.Used;
       Object.Entries (ID) :=
-        (Rejected, G.Incarnation (Child), G.Incarnation (Broker), Token, Destination);
+        (Rejected, CuBit.Process_IDs.To_Word (G.Incarnation (Child)),
+         CuBit.Process_IDs.To_Word (G.Incarnation (Broker)), Token, Destination);
       -- Slot consumption is irreversible even if submission later fails.
       -- READ|GRANT lets devmgr derive READ-only recipient identity into GPU;
       -- it does not give devmgr arbitrary access to application memory.
@@ -64,7 +66,7 @@ package body Intel_Render_Launch_Client is
             Consumed := True;
             Object.Entries (I).Current := Uncertain;
             if Receipt.status = M.COMPLETION_OK and then
-              Receipt.from = Object.Entries (I).Broker mod 2 ** 32 and then
+              Receipt.from = Object.Entries (I).Broker and then
               Receipt.msg.tag = (R.Label, 4, 0, 0) and then
               Receipt.msg.words (0) = R.Version and then
               Receipt.msg.words (2) = Object.Entries (I).Token and then

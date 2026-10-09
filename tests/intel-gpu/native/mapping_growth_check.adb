@@ -23,9 +23,10 @@ procedure Mapping_Growth_Check is
    use type V.View_State;
    PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
    Identity, Ignore : Unsigned_64 := 0;
+   Active : Boolean := True;
    function Owner return Boolean is (True);
    function Session_Of (Sender, Stamp : Unsigned_64) return Unsigned_64 is
-     (if Sender = PID and Stamp = 16#4947# then Identity else 0);
+     (if Active and Sender = PID and Stamp = 16#4947# then Identity else 0);
    procedure Recipient_Of
      (Sender, Stamp : Unsigned_64; Slot : out CapabilitySlot;
       Target : out Unsigned_64) is
@@ -52,11 +53,14 @@ procedure Mapping_Growth_Check is
    Controller : Growth.Controller;
    Response : B.Words;
    Ticket : B.Ticket;
+   Buffer_Ticket : B.Ticket;
+   Buffer_Retirement : B.Session_Retirement;
+   Map_Retirement : S.Mapping_Retirement;
    First, Expanded, Current : S.Mapping_ID;
    First_Ref, Expanded_Ref : G.Grant_Reference;
    Wire, ID : Unsigned_64;
    Address : System.Address;
-   OK : Boolean;
+   OK, Complete : Boolean;
    State : V.View_State;
    procedure Check (Condition : Boolean; Detail : String) is
    begin
@@ -98,6 +102,7 @@ begin
    B.Handle (Object, PID, 16#4947#, B.Label, 4, 0, 0,
      [1, B.Create, 4096, 0], Response, Ticket);
    Check (Ticket /= 0, "allocation ticket");
+   Buffer_Ticket := Ticket;
    B.Complete (Object, Ticket, R.From_View (Buffer), Response, OK);
    Check (OK and Response (0) = B.OK, "allocation completion");
    ID := Response (2);
@@ -128,10 +133,96 @@ begin
    S.Retire (Object, Table, PID, 16#4947#, Expanded, OK, State);
    Check (OK and State = V.Retiring, "pending expanded grant survived growth");
    debugPrint ("TEST: PASS native mapping growth preserves pending retirement" & ASCII.LF);
-   B.Handle (Object, PID, 16#4947#, B.Label, 4, 0, 0,
-     [1, B.Close, ID, 0], Response, Ticket);
-   Check (Response (0) = B.OK and Ticket = 0, "close name");
-   S.Retire_Session (Object, Table, Identity);
+   declare
+      Scratch : R.Extent_View;
+      Previous_Ticket, Replacement_Ticket : B.Ticket := 0;
+      Previous_Name, Replacement_Name : Unsigned_64 := 0;
+      Replacement_Map : S.Mapping_ID;
+      Ref : G.Grant_Reference;
+   begin
+      A.Acquire_Buffer (Pool, PID, 2, 1, 1, Scratch, OK);
+      Check (OK, "neighbor backing slice");
+      declare Word : Unsigned_64 with Import, Volatile,
+        Address => To_Address (Integer_Address (R.CPU_Address (Scratch))); begin
+         Word := 16#CAFE_0065#;
+      end;
+      for Cycle in 1 .. 128 loop
+         B.Handle (Object, PID, 16#4947#, B.Label, 4, 0, 0,
+           [1, B.Create, 4096, 0], Response, Replacement_Ticket);
+         Check (Replacement_Ticket /= 0, "replacement ticket");
+         if Previous_Ticket /= 0 then
+            Check (Replacement_Ticket = Previous_Ticket + B.Ticket_Stride,
+              "same slot with fresh generation");
+         end if;
+         B.Complete (Object, Replacement_Ticket, R.From_View (Scratch), Response, OK);
+         Check (OK and Response (0) = B.OK, "replacement completion");
+         Replacement_Name := Response (2);
+         Check (Replacement_Name > Previous_Name, "fresh monotonic name");
+         if Previous_Name /= 0 then
+            S.Map (Object, Table, PID, 16#4947#, Previous_Name,
+              0, 4096, False, Current, Wire);
+            Check (Current = 0 and Wire = 0, "replaced name cannot map");
+            B.Handle (Object, PID, 16#4947#, B.Label, 4, 0, 0,
+              [1, B.Close, Previous_Name, 0], Response, Ticket);
+            Check (Response (0) = B.Denied, "replaced name cannot close");
+         end if;
+         S.Map (Object, Table, PID, 16#4947#, Replacement_Name,
+           0, 4096, False, Replacement_Map, Wire);
+         Check (Replacement_Map /= 0, "replacement mapping");
+         Ref := CuBit.Grant_References.Decode (Wire);
+         Acquire (Ref);
+         B.Handle (Object, PID, 16#4947#, B.Label, 4, 0, 0,
+           [1, B.Close, Replacement_Name, 0], Response, Ticket);
+         Check (Response (0) = B.OK, "close replacement name");
+         Check (not B.Can_Retire (Object, Identity, Replacement_Ticket),
+           "held reader prevents replacement retirement");
+         S.Retire (Object, Table, PID, 16#4947#, Replacement_Map, OK, State);
+         Check (OK and State = V.Retiring, "replacement reader retained");
+         G.Return_Acquisition (Ref, OK); Check (OK, "return replacement reader");
+         S.Retire (Object, Table, PID, 16#4947#, Replacement_Map, OK, State);
+         Check (OK and State = V.Retired, "replacement CPU drain");
+         -- This fixture never submits GPU work. Trusted acknowledgement here
+         -- certifies only this CPU-only test; it is not GPU completion evidence.
+         B.Acknowledge_Retirement (Object, Identity, Replacement_Ticket, True, OK);
+         Check (OK, "acknowledged CPU-only replacement");
+         G.Acquire_Via_Capability (15, Ref, 0, 4096, G.Read_Access, Address, OK);
+         Check (not OK and Address = System.Null_Address, "old grant stays denied");
+         Acquire (First_Ref);
+         G.Return_Acquisition (First_Ref, OK); Check (OK, "neighbor extra reader");
+         Check (S.Observe_Retirement (Table, Identity) = S.Outstanding,
+           "neighbor retirement still outstanding");
+         Previous_Ticket := Replacement_Ticket;
+         Previous_Name := Replacement_Name;
+      end loop;
+   end;
+   debugPrint ("TEST: PASS native 128 handle replacements preserve pinned neighbor" & ASCII.LF);
+   -- Trusted admission closes before either snapshot. No API can append a
+   -- mapping for this session beyond the captured prefix after this point.
+   Active := False;
+   B.Begin_Retire_Session (Object, Identity, Buffer_Retirement, OK);
+   Check (OK, "begin buffer sweep");
+   S.Begin_Retire_Session (Object, Table, Identity, Map_Retirement, OK);
+   Check (OK, "begin map sweep");
+   B.Retire_Session_Step (Object, Buffer_Retirement, Complete);
+   Check (not Complete, "name phase is separate from allocation records");
+   B.Retire_Session_Step (Object, Buffer_Retirement, Complete);
+   Check (Complete, "buffer metadata sweep completed");
+   Check (not B.Can_Retire (Object, Identity, Buffer_Ticket),
+     "closed name still pinned before grant sweep");
+   -- Captured used prefix is193 even though allocated capacity is256.
+   -- Thirteen bounded calls initiate retirement; none means reader release.
+   for Turn in 1 .. 13 loop
+      S.Retire_Session_Step (Object, Table, Map_Retirement, Complete);
+      Check (Complete = (Turn = 13), "map sweep twelve chunks of16 then1");
+      Check (S.Observe_Retirement (Table, Identity) = S.Outstanding,
+        "step completion cannot dismiss held readers");
+      Check (not B.Can_Retire (Object, Identity, Buffer_Ticket),
+        "real grant pins survive metadata sweep");
+      Ignore := syscall (SYSCALL_SLEEP, 1);
+   end loop;
+   S.Retire_Session_Step (Object, Table, Map_Retirement, Complete);
+   Check (Complete, "completed map step idempotent");
+   debugPrint ("TEST: PASS native stepped session sweep retains real grant readers" & ASCII.LF);
    S.Poll (Object, Table);
    Check (S.Observe_Retirement (Table, Identity) = S.Outstanding,
      "readers retain both storage tiers");
@@ -147,11 +238,13 @@ begin
       exit when S.Observe_Retirement (Table, Identity) = S.Clear;
    end loop;
    Check (S.Observe_Retirement (Table, Identity) = S.Clear, "confirmed drain");
+   Check (B.Can_Retire (Object, Identity, Buffer_Ticket),
+     "buffer name and CPU pins drained, no GPU or backing release implied");
    debugPrint ("TEST: PASS native bounded mapping poll retained readers drained" & ASCII.LF);
    G.Acquire_Via_Capability (15, Expanded_Ref, 0, 4096, G.Read_Access, Address, OK);
    Check (not OK and Address = System.Null_Address, "stale grant denied");
    S.Map (Object, Table, PID, 16#4947#, ID, 0, 4096, False, Current, Wire);
-   Check (Current = 0 and Wire = 0, "closed name denied");
+   Check (Current = 0 and Wire = 0, "closed admission denied");
    debugPrint ("TEST: PASS native mapping growth 64-128-256 record65 retained readers drained (NO GPU/ISOLATION)" & ASCII.LF);
    loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
 end Mapping_Growth_Check;

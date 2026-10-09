@@ -11,6 +11,8 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with acpi;
 with BuddyAllocator;
+with Memory_Accounting;
+with Process_Memory_Budget;
 with Boot_Framebuffer;
 with Multiboot;
 with Capabilities;
@@ -27,6 +29,8 @@ with Owned_Memory_Layout;
 with PerCpuData;
 with PerCPUData;
 with Process;
+with Process_Identities;
+with Process.DMA;
 with Process.IPC;
 with Process.Owned_Memory;
 with Process.Loader;
@@ -52,10 +56,6 @@ package body Syscall.IPC is
     Grant_Flag_Forwardable : constant Unsigned_64 := 2;
     -- Post grant lifecycle events for it (docs/data-plane.md).
     Grant_Flag_Notify      : constant Unsigned_64 := 4;
-    -- Bring-up only: successful mode-1 allocations are charged until reboot,
-    -- including owner death. No timeout/reset message refunds this budget.
-    Retained_DMA_Lock : Spinlocks.Spinlock;
-    Retained_DMA_Pages : Natural range 0 .. 16_384 := 0;
 
     --  Bound one privileged mapping operation so a malformed request cannot
     --  monopolize the kernel.  Larger regions are mapped by a sequence of
@@ -79,7 +79,6 @@ package body Syscall.IPC is
                            arg2      : Unsigned_64;
                            arg3      : Unsigned_64;
                            arg4      : Unsigned_64;
-                           arg5      : Unsigned_64;
                            retval    : out Unsigned_64) with
         SPARK_Mode => Off   -- Raw syscall/process integration; pure helpers proved separately
     is
@@ -95,7 +94,7 @@ package body Syscall.IPC is
         name : aliased Process.ProcessName := [others => ASCII.NUL];
         copied : Boolean;
         newPID   : Process.ProcessID;
-        reqPID   : Process.ProcessID := Process.NO_PROCESS;
+        parent   : Process.ProcessID := callerPID;
     begin
         retval := reterr;
 
@@ -140,8 +139,14 @@ package body Syscall.IPC is
             priority := Process.ProcessPriority (arg2);
         end if;
 
-        if arg4 > 0 and arg4 <= Unsigned_64 (Process.ProcessID'Last) then
-            reqPID := Process.ProcessID (arg4);
+        -- The parent by identity; a stale one refuses the spawn rather than
+        -- naming whoever holds the slot now.
+        if arg4 /= 0 then
+            parent := Process.processOfIdentity (Process_Identities.From_Word (arg4));
+            if parent = Process.NO_PROCESS then
+                println ("SPAWN: parent identity is stale");
+                return;
+            end if;
         end if;
 
         -- arg3 = name pointer (0 = default "spawned")
@@ -160,11 +165,9 @@ package body Syscall.IPC is
             objStart     => elfAddr,
             size         => elfSize,
             strAddr      => name'Address,
-            requestedPID => reqPID,
+            requestedPID => Process.NO_PROCESS,
             priority     => priority,
-            ppid         => (if arg5 <= Unsigned_64 (Process.ProcessID'Last)
-                              then Process.ProcessID (arg5)
-                              else callerPID),
+            ppid         => parent,
             sourcePID    => callerPID);
 
         if newPID = Process.NO_PROCESS then
@@ -175,7 +178,7 @@ package body Syscall.IPC is
         -- Always spawn suspended; caller resumes after granting caps
         print ("SPAWN: created suspended PID ");
         println (Integer (newPID));
-        retval := Unsigned_64 (newPID);
+        retval := Process_Identities.To_Word (Process.identityOf (newPID));
     end handleSpawn;
 
     ---------------------------------------------------------------------------
@@ -298,7 +301,25 @@ package body Syscall.IPC is
         ok        : Boolean;
         claimedPages : Natural := 0;
         mappedPages  : Natural := 0;
-        tracked      : Boolean := False;
+        tracking     : Process.DMA.Ticket;
+        metadataOK   : Boolean;
+        charge : Memory_Accounting.Identity := 0;
+        chargedPages : Unsigned_64 := 0;
+        boundPages : Unsigned_64 := 0;
+        chargeOK : Boolean;
+
+        procedure Cancel_Unbound_Charge is
+            cancelled : Boolean;
+        begin
+            if chargedPages > boundPages then
+                Memory_Accounting.Cancel_Unbound
+                  (charge, chargedPages - boundPages, cancelled);
+                if not cancelled then
+                    println ("FATAL: DMA unbound charge rollback failed");
+                    x86.panic;
+                end if;
+            end if;
+        end Cancel_Unbound_Charge;
 
         procedure mapPage is new Virtmem.mapPage
             (BuddyAllocator.allocFrame);
@@ -361,6 +382,23 @@ package body Syscall.IPC is
             return;
         end if;
 
+        -- The ordered mailbox locks keep this account's incarnation alive.
+        -- Both retained and ordinary DMA use the same quota as ordinary pages.
+        chargedPages := 2 ** Natural (order);
+        Memory_Accounting.Reserve (Process.proctab(targetPID).memoryAccount,
+          (if retain then Process_Memory_Budget.Retained_DMA_Backing
+           else Process_Memory_Budget.DMA_Backing),
+          chargedPages, charge, chargeOK);
+        if not chargeOK then
+            println ("ALLOC_DMA: owner memory quota denied");
+            return;
+        end if;
+        Process.DMA.Reserve (targetPID, Natural (order), retain, tracking, metadataOK);
+        if not metadataOK then
+            Cancel_Unbound_Charge;
+            println ("ALLOC_DMA: tracking metadata unavailable");
+            return;
+        end if;
         if ceiling = 0 then
             BuddyAllocator.alloc (order, dmaAddr);
         else
@@ -368,6 +406,8 @@ package body Syscall.IPC is
         end if;
 
         if System."=" (dmaAddr, BuddyAllocator.NO_BLOCK_AVAILABLE) then
+            Cancel_Unbound_Charge;
+            Process.DMA.Cancel (tracking);
             println ("ALLOC_DMA: alloc failed");
             return;
         end if;
@@ -384,21 +424,44 @@ package body Syscall.IPC is
             for i in 0 .. numPages - 1 loop
                 BuddyAllocator.claimUserFrame
                   (dmaPhys + Virtmem.PhysAddress (i * Virtmem.PAGE_SIZE),
-                   Unsigned_8 (targetPID), ok);
+                   BuddyAllocator.Frame_Owner (targetPID), ok);
                 if not ok then
                     if claimedPages > 0 then
                         for page in 0 .. claimedPages - 1 loop
                             BuddyAllocator.releaseUserFrame
                               (dmaPhys + Virtmem.PhysAddress
                                  (page * Virtmem.PAGE_SIZE),
-                               Unsigned_8 (targetPID));
+                               BuddyAllocator.Frame_Owner (targetPID));
                         end loop;
                     end if;
                     BuddyAllocator.free (order, dmaAddr);
+                    Cancel_Unbound_Charge;
+                    Process.DMA.Cancel (tracking);
                     println ("ALLOC_DMA: ownership tagging failed");
                     return;
                 end if;
                 claimedPages := claimedPages + 1;
+            end loop;
+
+            -- Bind before any user mapping is published. A partial bind is
+            -- refunded by actual block free; cancel only the unbound suffix.
+            for i in 0 .. numPages - 1 loop
+                BuddyAllocator.bindFrameCharge
+                  (dmaPhys + Virtmem.PhysAddress (i * Virtmem.PAGE_SIZE),
+                   charge, chargeOK);
+                if not chargeOK then
+                    for page in 0 .. numPages - 1 loop
+                        BuddyAllocator.releaseUserFrame
+                          (dmaPhys + Virtmem.PhysAddress (page * Virtmem.PAGE_SIZE),
+                           BuddyAllocator.Frame_Owner (targetPID));
+                    end loop;
+                    BuddyAllocator.free (order, dmaAddr);
+                    Cancel_Unbound_Charge;
+                    Process.DMA.Cancel (tracking);
+                    println ("ALLOC_DMA: charge binding failed");
+                    return;
+                end if;
+                boundPages := boundPages + 1;
             end loop;
 
             Process.lockAddressSpace (targetPID);
@@ -448,64 +511,29 @@ package body Syscall.IPC is
                         BuddyAllocator.releaseUserFrame
                           (dmaPhys + Virtmem.PhysAddress
                              (page * Virtmem.PAGE_SIZE),
-                           Unsigned_8 (targetPID));
+                           BuddyAllocator.Frame_Owner (targetPID));
                     end loop;
                     BuddyAllocator.free (order, dmaAddr);
                     Process.unlockAddressSpace (targetPID);
+                    Process.DMA.Cancel (tracking);
                     return;
                 end if;
                 mappedPages := mappedPages + 1;
             end loop;
 
-            --  Track DMA allocation for cleanup on kill()
-            trackDMA : for d in Process.DMAAllocArray'Range loop
-                if not Process.proctab(targetPID).dmaAllocs(d).active then
-                    Process.proctab(targetPID).dmaAllocs(d) :=
-                        (active   => True,
-                         physAddr => dmaPhys,
-                         order    => order,
-                         retainUntilReboot => retain);
-                    tracked := True;
-                    exit trackDMA;
-                end if;
-            end loop trackDMA;
-
-            if not tracked then
-                for page in 0 .. numMappings - 1 loop
-                    Virtmem.unmapPage
-                      (virt => virtBase + Virtmem.VirtAddress
-                         (page * mappingStep * Virtmem.PAGE_SIZE),
-                       myP4 => Process.addrtab (targetPID),
-                       success => ok);
-                    if not ok then
-                        println ("FATAL: DMA tracking rollback unmap failed; backing retained");
-                        x86.panic;
-                    end if;
-                end loop;
-                TLB_Shootdown.Invalidate_All;
-                for page in 0 .. numPages - 1 loop
-                    BuddyAllocator.releaseUserFrame
-                      (dmaPhys + Virtmem.PhysAddress
-                         (page * Virtmem.PAGE_SIZE),
-                       Unsigned_8 (targetPID));
-                end loop;
-                BuddyAllocator.free (order, dmaAddr);
-                Process.unlockAddressSpace (targetPID);
-                println ("ALLOC_DMA: allocation table full");
-                return;
-            end if;
+            -- Publication cannot allocate metadata: reservation preceded DMA.
+            Process.DMA.Commit (tracking, Unsigned_64 (dmaPhys));
             Process.unlockAddressSpace (targetPID);
 
             retval := Unsigned_64 (dmaPhys);
         end;
     end allocateDma;
 
-    procedure handleAllocDma
+    procedure allocateDmaRequest
       (callerPID : Process.ProcessID;
        arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
        retval : out Unsigned_64) with SPARK_Mode => Off
     is
-        Pages : Natural;
     begin
         retval := reterr;
         if arg3 = 0 then
@@ -516,21 +544,54 @@ package body Syscall.IPC is
         then
             return;
         end if;
-        Pages := 2 ** Natural (arg1);
-        Spinlocks.enterCriticalSection (Retained_DMA_Lock);
-        if Pages > 16_384 - Retained_DMA_Pages then
-            Spinlocks.exitCriticalSection (Retained_DMA_Lock);
-            return;
-        end if;
-        Retained_DMA_Pages := Retained_DMA_Pages + Pages;
-        Spinlocks.exitCriticalSection (Retained_DMA_Lock);
-        -- Existing CAP_PROCESS/RIGHT_GRANT authorization remains mandatory.
+        -- The common ledger reserves global and owner budgets together after
+        -- authorization. Bound charges refund only at actual physical free.
         allocateDma (callerPID, arg0, arg1, arg2, True, arg3 = 3, arg4, retval);
-        if retval = reterr then
-            Spinlocks.enterCriticalSection (Retained_DMA_Lock);
-            Retained_DMA_Pages := Retained_DMA_Pages - Pages;
-            Spinlocks.exitCriticalSection (Retained_DMA_Lock);
-        end if;
+    end allocateDmaRequest;
+
+    procedure handleAllocDma
+      (callerPID : Process.ProcessID;
+       arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
+       retval : out Unsigned_64) with SPARK_Mode => Off
+    is
+        use type Process.ProcessID;
+        use type Capabilities.Generation;
+        resolvedTarget : Process.ProcessID;
+        resolvedGeneration : Capabilities.Generation;
+    begin
+        retval := reterr;
+        if callerPID = Process.NO_PROCESS then return; end if;
+        Process.resolveIdentity (Process_Identities.From_Word (arg0), resolvedTarget, resolvedGeneration);
+        if resolvedTarget = Process.NO_PROCESS then return; end if;
+        declare
+            Target : constant Process.ProcessID := resolvedTarget;
+            First : constant Process.ProcessID := Process.ProcessID'Min (callerPID, Target);
+            Last : constant Process.ProcessID := Process.ProcessID'Max (callerPID, Target);
+        begin
+            -- Same ordered mailbox locks used by cross-process publication.
+            -- Pin both the authority table and destination incarnation until
+            -- physical allocation, mapping and tracking publication complete.
+            Spinlocks.enterCriticalSection (Process.mailtab(First).lock);
+            if Last /= First then
+                Spinlocks.enterCriticalSection (Process.mailtab(Last).lock);
+            end if;
+            if Process.proctab(callerPID).admitted and then
+              Process.proctab(Target).admitted and then
+              Process.generationOf (Target) = resolvedGeneration and then
+              not Process_Lifetime.Closing (Process.threadOf (callerPID).lifetime) and then
+              not Process_Lifetime.Closing (Process.threadOf (Target).lifetime)
+            then
+                -- Below this point the target is the resolved slot.
+                allocateDmaRequest
+                  (callerPID, Unsigned_64 (Target), arg1, arg2, arg3, arg4, retval);
+            else
+                println ("ALLOC_DMA: process closing or unavailable");
+            end if;
+            if Last /= First then
+                Spinlocks.exitCriticalSection (Process.mailtab(Last).lock);
+            end if;
+            Spinlocks.exitCriticalSection (Process.mailtab(First).lock);
+        end;
     end handleAllocDma;
 
     ---------------------------------------------------------------------------
@@ -551,7 +612,9 @@ package body Syscall.IPC is
         use type Process.ProcessState;
 
 
+        use type Capabilities.Generation;
         targetPID : Process.ProcessID;
+        targetGeneration : Capabilities.Generation;
         hasCap    : Boolean := False;
         ok        : Boolean;
         pgFlags   : Unsigned_64;
@@ -561,7 +624,8 @@ package body Syscall.IPC is
     begin
         retval := reterr;
 
-        if arg0 > Unsigned_64 (Process.ProcessID'Last) or arg0 = 0 then
+        Process.resolveIdentity (Process_Identities.From_Word (arg0), targetPID, targetGeneration);
+        if targetPID = Process.NO_PROCESS then
             return;
         elsif arg3 = 0 or else arg3 > MAX_MAP_INTO_PAGES_PER_CALL then
             println ("MAP_INTO: invalid page count");
@@ -575,11 +639,11 @@ package body Syscall.IPC is
             return;
         end if;
 
-        targetPID := Process.ProcessID (arg0);
         declare
             procedure performLocked is
             begin
                 if not Process.proctab(targetPID).admitted or else
+                   Process.generationOf (targetPID) /= targetGeneration or else
                    Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime) then
                     retval := reterr;
                     return;
@@ -823,43 +887,46 @@ package body Syscall.IPC is
                              retval : out Unsigned_64) with
         SPARK_Mode => Off
     is
+        caller  : constant Process.ProcessID := PerCPUData.getCurrentPID;
         from    : Process.ProcessID;
         recvMsg : Process.Message;
-        userMsg : Process.Message with
-            Import, Address => Util.numToAddr(arg0);
+        ok      : Boolean;
     begin
+        -- arg0 is a user pointer: checked, never dereferenced (a message
+        -- is taken only when it can be delivered).
+        if not Process.User_Memory.Message_Writable (caller, arg0) then
+            retval := reterr;
+            return;
+        end if;
         Process.IPC.receive (from, recvMsg);
-        x86.stac;
-        userMsg := recvMsg;
-        x86.clac;
-        retval := Unsigned_64(from);
+        Process.User_Memory.Write_Message (caller, arg0, recvMsg, ok);
+        retval := (if ok then Process_Identities.To_Word (Process.identityOf (from)) else reterr);
     end handleReceive;
 
     ---------------------------------------------------------------------------
     -- handleReceiveUntil
     -- arg0 points to the userspace Message, arg1 is an absolute monotonic-ms
-    -- deadline. Unsigned_64'Last is returned on timeout; PID zero remains the
-    -- valid sender marker for an unsolicited event.
+    -- deadline. Unsigned_64'Last is returned on timeout; otherwise the
+    -- sender's identity, zero for an unsolicited event.
     ---------------------------------------------------------------------------
     procedure handleReceiveUntil (arg0, arg1 : Unsigned_64;
                                   retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
+        caller   : constant Process.ProcessID := PerCPUData.getCurrentPID;
         from     : Process.ProcessID;
         recvMsg  : Process.Message;
         received : Boolean;
-        userMsg  : Process.Message with
-            Import, Address => Util.numToAddr(arg0);
+        ok       : Boolean;
     begin
-        Process.IPC.receiveUntil (arg1, from, recvMsg, received);
-        x86.stac;
-        userMsg := recvMsg;
-        x86.clac;
-        if received then
-            retval := Unsigned_64(from);
-        else
-            retval := Unsigned_64'Last;
+        if not Process.User_Memory.Message_Writable (caller, arg0) then
+            retval := reterr;
+            return;
         end if;
+        Process.IPC.receiveUntil (arg1, from, recvMsg, received);
+        Process.User_Memory.Write_Message (caller, arg0, recvMsg, ok);
+        retval := (if not received or else not ok then Unsigned_64'Last
+                   else Process_Identities.To_Word (Process.identityOf (from)));
     end handleReceiveUntil;
 
     ---------------------------------------------------------------------------
@@ -878,13 +945,10 @@ package body Syscall.IPC is
             authorityTag => 0,
             words    => (arg2, arg3, arg4, arg5));
     begin
-        if arg0 > Unsigned_64(Process.ProcessID'Last) then
-            retval := reterr;
-        else
-            retval := Process.IPC.reply (
-                replyTo => Process.ProcessID(arg0),
-                msg     => replyMsg);
-        end if;
+        -- A stale identity names no one: NO_PROCESS, which reply refuses.
+        retval := Process.IPC.reply (
+            replyTo => Process.processOfIdentity (Process_Identities.From_Word (arg0)),
+            msg     => replyMsg);
     end handleReply;
 
     ---------------------------------------------------------------------------
@@ -916,17 +980,19 @@ package body Syscall.IPC is
                                     retval : out Unsigned_64) with
         SPARK_Mode => Off
     is
+        caller   : constant Process.ProcessID := PerCPUData.getCurrentPID;
         eventMsg : Process.Message;
         found    : Boolean;
-        userMsg  : Process.Message with
-            Import, Address => Util.numToAddr(arg0);
+        ok       : Boolean;
     begin
+        if not Process.User_Memory.Message_Writable (caller, arg0) then
+            retval := 0;
+            return;
+        end if;
         Process.IPC.receiveEventNB (eventMsg, found);
         if found then
-            x86.stac;
-            userMsg := eventMsg;
-            x86.clac;
-            retval := 1;
+            Process.User_Memory.Write_Message (caller, arg0, eventMsg, ok);
+            retval := (if ok then 1 else 0);
         else
             retval := 0;
         end if;
@@ -958,17 +1024,22 @@ package body Syscall.IPC is
           (Capabilities.RIGHT_WRITE => True, others => False);
         eventMsg : Process.Message;
     begin
-        if arg0 = 0 or else arg0 > Unsigned_64(Process.ProcessID'Last) then
+        Process.resolveIdentity (Process_Identities.From_Word (arg0), destPID, generation);
+        if destPID = Process.NO_PROCESS then
             retval := reterr;
             return;
         end if;
-
-        destPID := Process.ProcessID (arg0);
-        generation := Process.generationOf (destPID);
         eventMsg := (
             tag      => u64ToTag (arg1),
             authorityTag => 0,
             words    => (arg2, arg3, arg4, arg5));
+
+        -- The kernel's own events (child exits, faults, grant lifecycle,
+        -- control messages) cannot be forged: receivers act on them.
+        if IPC_Labels.Is_Kernel_Event (eventMsg.tag.label) then
+            retval := reterr;
+            return;
+        end if;
 
         -- Kernel-mode threads are exempt
         if Process.threadOf (callerPID).mode = Process.KERNEL then
@@ -1043,6 +1114,7 @@ package body Syscall.IPC is
             Process.IPC.trySendEvent (
                 dest => destPID,
                 msg  => eventMsg,
+                publisher => callerPID,
                 accepted => accepted,
                 expectedGeneration => generation);
             retval := (if accepted then 1 else 0);
@@ -1058,21 +1130,23 @@ package body Syscall.IPC is
     -- mailbox ring.
     ---------------------------------------------------------------------------
     procedure handlePollServiceRequest (arg0   : Unsigned_64;
-                                        retval : out Unsigned_64) with
+                                retval : out Unsigned_64) with
         SPARK_Mode => Off
     is
+        caller  : constant Process.ProcessID := PerCPUData.getCurrentPID;
         from    : Process.ProcessID;
         recvMsg : Process.Message;
         found   : Boolean;
-        userMsg : Process.Message with
-            Import, Address => Util.numToAddr(arg0);
+        ok      : Boolean;
     begin
+        if not Process.User_Memory.Message_Writable (caller, arg0) then
+            retval := 0;
+            return;
+        end if;
         Process.IPC.receiveServiceRequestNB (from, recvMsg, found);
         if found then
-            x86.stac;
-            userMsg := recvMsg;
-            x86.clac;
-            retval := Unsigned_64(from);
+            Process.User_Memory.Write_Message (caller, arg0, recvMsg, ok);
+            retval := (if ok then Process_Identities.To_Word (Process.identityOf (from)) else 0);
         else
             retval := 0;
         end if;
@@ -1088,18 +1162,20 @@ package body Syscall.IPC is
                                 retval : out Unsigned_64) with
         SPARK_Mode => Off
     is
+        caller  : constant Process.ProcessID := PerCPUData.getCurrentPID;
         from    : Process.ProcessID;
         recvMsg : Process.Message;
         found   : Boolean;
-        userMsg : Process.Message with
-            Import, Address => Util.numToAddr(arg0);
+        ok      : Boolean;
     begin
+        if not Process.User_Memory.Message_Writable (caller, arg0) then
+            retval := 0;
+            return;
+        end if;
         Process.IPC.receiveAnyIpcNB (from, recvMsg, found);
         if found then
-            x86.stac;
-            userMsg := recvMsg;
-            x86.clac;
-            retval := Unsigned_64(from);
+            Process.User_Memory.Write_Message (caller, arg0, recvMsg, ok);
+            retval := (if ok then Process_Identities.To_Word (Process.identityOf (from)) else 0);
         else
             retval := 0;
         end if;
@@ -1113,31 +1189,19 @@ package body Syscall.IPC is
         SPARK_Mode => Off
     is
         numReturned : Natural;
-        userBuf : Process.CompletionRing with
-            Import, Address => Util.numToAddr(arg0);
         effectiveMax : Natural;
         effectiveMin : Natural;
+        ok : Boolean;
     begin
-        if arg1 > Unsigned_64(Process.COMPLETION_QUEUE_SIZE) then
-            effectiveMax := Process.COMPLETION_QUEUE_SIZE;
-        else
-            effectiveMax := Natural(arg1);
-        end if;
-
-        if arg2 > Unsigned_64(effectiveMax) then
-            effectiveMin := effectiveMax;
-        else
-            effectiveMin := Natural(arg2);
-        end if;
-
-        -- waitCompletion handles STAC/CLAC internally since it may block
-        Process.IPC.waitCompletion (
-            entries     => userBuf,
-            maxEntries  => effectiveMax,
-            minWait     => effectiveMin,
-            numReturned => numReturned);
-
-        retval := Unsigned_64(numReturned);
+        effectiveMax := (if arg1 > Unsigned_64 (Process.COMPLETION_QUEUE_SIZE)
+                         then Process.COMPLETION_QUEUE_SIZE else Natural (arg1));
+        effectiveMin := (if arg2 > Unsigned_64 (effectiveMax) then effectiveMax
+                         else Natural (arg2));
+        -- arg0 is a user pointer: written through Process.User_Memory.
+        Process.IPC.waitCompletion
+          (destination => arg0, maxEntries => effectiveMax, minWait => effectiveMin,
+           numReturned => numReturned, ok => ok);
+        retval := (if ok then Unsigned_64 (numReturned) else reterr);
     end handleWaitCompletion;
 
     ---------------------------------------------------------------------------
@@ -1147,17 +1211,21 @@ package body Syscall.IPC is
                                     retval : out Unsigned_64) with
         SPARK_Mode => Off
     is
+        caller     : constant Process.ProcessID := PerCPUData.getCurrentPID;
         found      : Boolean;
         localEntry : Process.CompletionEntry;
-        userEntry  : Process.CompletionEntry with
-            Import, Address => Util.numToAddr(arg0);
+        ok         : Boolean;
     begin
+        if not Process.User_Memory.Writable_Range
+          (caller, arg0, Process.CompletionEntry'Max_Size_In_Storage_Elements)
+        then
+            retval := 0;
+            return;
+        end if;
         Process.IPC.pollCompletion (localEntry, found);
         if found then
-            x86.stac;
-            userEntry := localEntry;
-            x86.clac;
-            retval := 1;
+            Process.User_Memory.Write_Completion (caller, arg0, localEntry, ok);
+            retval := (if ok then 1 else 0);
         else
             retval := 0;
         end if;
@@ -1183,14 +1251,12 @@ package body Syscall.IPC is
         perm : Process.GrantPermission;
         ok : Boolean;
     begin
-        if arg0 = 0 or else arg0 > Unsigned_64(Process.ProcessID'Last) or else
+        Process.resolveIdentity (Process_Identities.From_Word (arg0), granteePID, generation);
+        if granteePID = Process.NO_PROCESS or else
            not Memory_Grants.Valid_Creation_Request (arg2, arg3) then
             retval := reterr;
             return;
         end if;
-
-        granteePID := Process.ProcessID (arg0);
-        generation := Process.generationOf (granteePID);
 
         -- Kernel-mode threads exempt
         if Process.threadOf (callerPID).mode = Process.KERNEL then
@@ -1290,27 +1356,19 @@ package body Syscall.IPC is
                             retval    : out Unsigned_64) with
         SPARK_Mode => Off
     is
-        --  arg0 is the global grant ID = granterPID * MAX_GRANTS + slot.
-        --  Extract the granter slot and verify the PID matches.
-        expectedPID : constant Unsigned_64 :=
-            arg0 / Unsigned_64 (Process.MAX_GRANTS_PER_PROCESS);
-        slot : constant Unsigned_64 :=
-            arg0 mod Unsigned_64 (Process.MAX_GRANTS_PER_PROCESS);
+        --  arg0 is the grant's global slot; revokeGrant checks the caller
+        --  owns it (KERN-003 step 2: the slot no longer encodes the owner).
         success : Boolean;
     begin
-        if expectedPID /= Unsigned_64 (callerPID) then
-            retval := 0;
-            return;
-        end if;
-
-        if slot > Unsigned_64 (Process.GrantID'Last) then
+        pragma Unreferenced (callerPID);
+        if arg0 = 0 or else arg0 > Unsigned_64 (Memory_Grants.Global_Slot'Last) then
             retval := 0;
             return;
         end if;
 
         -- Admission and revocation share grantLock. Do not inspect grant
         -- storage outside IPC, especially as records become lazily allocated.
-        Process.IPC.revokeGrant (id => Process.GrantID (slot), success => success);
+        Process.IPC.revokeGrant (id => Memory_Grants.Global_Slot (arg0), success => success);
         retval := (if success then 1 else 0);
     end handleRevoke;
 
@@ -1319,18 +1377,19 @@ package body Syscall.IPC is
        retval : out Unsigned_64)
     is
         generation : Memory_Grants.Grant_Generation;
-        success : Boolean;
     begin
-        if arg0 > Unsigned_64 (Memory_Grants.Global_Slot'Last) then
+        -- Slot 0 names no grant: refused, never reported as retired.
+        if arg0 < Unsigned_64 (Memory_Grants.Grant_Slot'First) or else
+           arg0 > Unsigned_64 (Memory_Grants.Grant_Slot'Last)
+        then
             retval := reterr;
             return;
         end if;
 
         Process.IPC.getOwnedGrantGeneration
-          (slot       => Memory_Grants.Global_Slot (arg0),
-           generation => generation,
-           success    => success);
-        retval := (if success then Unsigned_64 (generation) else reterr);
+          (slot       => Memory_Grants.Grant_Slot (arg0),
+           generation => generation);
+        retval := Unsigned_64 (generation);
     end handleGetOwnedGrantGeneration;
 
     procedure handleAcquireGrant
@@ -1339,10 +1398,13 @@ package body Syscall.IPC is
     is
         mappedAddress : System.Address;
         success : Boolean;
+        -- The owner the grantee expects, by identity: a stale one names no
+        -- one, so the acquire fails.
+        expectedOwner : constant Process.ProcessID := Process.processOfIdentity (Process_Identities.From_Word (arg2));
     begin
         if arg0 > Unsigned_64 (Memory_Grants.Global_Slot'Last) or else
            not Memory_Grants.Is_Valid_Generation_Field (arg1) or else
-           arg2 = 0 or else arg2 > Unsigned_64 (Process.ProcessID'Last) or else
+           expectedOwner = Process.NO_PROCESS or else
            arg5 > 1
         then
             retval := reterr;
@@ -1353,7 +1415,7 @@ package body Syscall.IPC is
           (reference =>
              (slot       => Memory_Grants.Global_Slot (arg0),
               generation => Memory_Grants.To_Live_Generation (arg1)),
-           expectedOwner => Process.ProcessID (arg2),
+           expectedOwner => expectedOwner,
            byteOffset    => arg3,
            byteLength    => arg4,
            requiredWrite => arg5 = 1,
@@ -1468,6 +1530,20 @@ package body Syscall.IPC is
         isPublic     : Boolean := False;
         isDeviceInfo : Boolean := False;
         hasCap       : Boolean := False;
+
+        -- The answer as userspace sees it: a registered driver is named by
+        -- its identity (KERN-003). Teardown clears a dying process's
+        -- registrations, so the slot read here is its current life.
+        function userInfo return Unsigned_64 is
+            answer : constant Unsigned_64 := Sysinfo.getInfo (arg0, arg1);
+        begin
+            if arg0 = Sysinfo.REGISTERED_DRIVER and then
+               answer <= Unsigned_64 (Process.ProcessID'Last)
+            then
+                return Process_Identities.To_Word (Process.identityOf (Process.ProcessID (answer)));
+            end if;
+            return answer;
+        end userInfo;
     begin
         if arg0 = Sysinfo.MEM_OWNED_SELF then
             -- callerPID is derived from the running thread by syscall dispatch;
@@ -1503,7 +1579,7 @@ package body Syscall.IPC is
         end case;
 
         if isPublic then
-            retval := Sysinfo.getInfo (arg0, arg1);
+            retval := userInfo;
             return;
         end if;
 
@@ -1544,7 +1620,7 @@ package body Syscall.IPC is
             return;
         end if;
 
-        retval := Sysinfo.getInfo (arg0, arg1);
+        retval := userInfo;
     end handleInfo;
 
     ---------------------------------------------------------------------------

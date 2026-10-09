@@ -46,7 +46,10 @@ VkResult _vk_device_set_lost(struct vk_device *d, const char *file,
 int main(void)
 {
    static struct anv_device device;
-   struct anv_bo bo = { .gem_handle = 17, .actual_size = 4096 };
+   /* Device-address-visible BOs use the same checked binding route. This
+    * fixture checks native routing, not common ANV's VA allocator. */
+   struct anv_bo bo = { .gem_handle = 17, .actual_size = 4096,
+      .alloc_flags = ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS };
    const uint64_t addresses[] = {4096, UINT64_C(1) << 47,
                                 (UINT64_C(1) << 48) - 4096};
    assert(anv_cubit_memory_init(&device, 63) == VK_SUCCESS);

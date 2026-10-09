@@ -13,7 +13,7 @@ with CuBit.Memory_Grants;
 procedure Main is
    package G renames CuBit.Memory_Grants;
    package CP renames CuBit.Channel_Protocol;
-   From : ProcessID;
+   From : Process_ID;
    Request : Message;
    Ref : G.Grant_Reference;
    Address : System.Address;

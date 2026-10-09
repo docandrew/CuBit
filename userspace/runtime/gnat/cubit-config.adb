@@ -125,7 +125,7 @@ package body CuBit.Config is
                         2 => Unsigned_64 (key'Length),
                         others => 0));
 
-      msg.tag := capCall (CAP_SLOT_CONFIG, msg);
+      msg.tag := capCall (CAP_SLOT_CONFIG, msg, CuBit.Messages.Wait_Forever);
 
       status := mapStatus (msg.tag.label);
       if status = OK and then
@@ -193,7 +193,7 @@ package body CuBit.Config is
                         2 => Unsigned_64 (keyLen),
                         3 => Unsigned_64 (valueLen)));
 
-      msg.tag := capCall (CAP_SLOT_CONFIG, msg);
+      msg.tag := capCall (CAP_SLOT_CONFIG, msg, CuBit.Messages.Wait_Forever);
 
       status := mapStatus (msg.tag.label);
    end set;
@@ -236,7 +236,7 @@ package body CuBit.Config is
                         2 => Unsigned_64 (key'Length),
                         others => 0));
 
-      msg.tag := capCall (CAP_SLOT_CONFIG, msg);
+      msg.tag := capCall (CAP_SLOT_CONFIG, msg, CuBit.Messages.Wait_Forever);
 
       status := mapStatus (msg.tag.label);
    end delete;
@@ -286,7 +286,7 @@ package body CuBit.Config is
                         2 => Unsigned_64 (prefix'Length),
                         others => 0));
 
-      msg.tag := capCall (CAP_SLOT_CONFIG, msg);
+      msg.tag := capCall (CAP_SLOT_CONFIG, msg, CuBit.Messages.Wait_Forever);
 
       status := mapStatus (msg.tag.label);
       if status = OK and then
@@ -341,7 +341,7 @@ package body CuBit.Config is
       st     : ConfigStatus;
 
       info   : SchemeInfo := (driverID => 0, capSlot => 0,
-                               pid => 0, found => False);
+                               pid => No_Process, found => False);
       prefix : constant String := "scheme.";
       drvSuffix  : constant String := ".driver";
       slotSuffix : constant String := ".slot";
@@ -394,12 +394,8 @@ package body CuBit.Config is
       info.capSlot := parseDecimal (val, valLen);
 
       --  Resolve driver PID via sysinfo
-      info.pid := getInfo (SYSINFO_REGISTERED_DRIVER, info.driverID);
-      if info.pid = 0 or info.pid = Unsigned_64'Last then
-         info.pid := 0;
-      else
-         info.found := True;
-      end if;
+      info.pid := Registered_Driver (info.driverID);
+      info.found := info.pid /= No_Process;
 
       return info;
    end resolveScheme;

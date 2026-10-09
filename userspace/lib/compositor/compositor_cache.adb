@@ -80,6 +80,7 @@ package body Compositor_Cache with SPARK_Mode is
    begin
       Index := Source_Slot'First;
       Success := False;
+      if S.Status /= Ready then return; end if;
       for I in Source_Slot loop
          if S.Views (I).View /= No_Handle and then
            S.Views (I).Description.Pixels = Description.Pixels
@@ -92,7 +93,14 @@ package body Compositor_Cache with SPARK_Mode is
             Index := I; Ensure (S, I, Description, Capacity, Success); return;
          end if;
       end loop;
-      S.Status := Disabled;
+      -- Color draws complete synchronously before another source is ensured.
+      -- Replace one retired import, never its caller-owned pixel allocation.
+      -- Ensure refuses reimport if foreign release cannot establish retirement.
+      Index := S.Next_Source;
+      Ensure (S, Index, Description, Capacity, Success);
+      if Success then
+         S.Next_Source := (if Index = Source_Slot'Last then Source_Slot'First else Index + 1);
+      end if;
    end Ensure_Source;
    procedure Forget_Source (S : in out State; Pixels : System.Address) is
    begin

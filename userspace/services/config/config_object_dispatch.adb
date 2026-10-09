@@ -14,7 +14,7 @@ package body Config_Object_Dispatch with SPARK_Mode is
 
    procedure Handle
      (Object : in out State; Store : in out Typed.State;
-      Authority : Config_Authority.Authority_State; Sender : CuBit.Messages.ProcessID;
+      Authority : Config_Authority.Authority_State; Sender : CuBit.Messages.Process_ID;
       Action : Wire.Operation; Request : CuBit.Messages.Message;
       Input : Wire.Frame; Storage_Token : Interfaces.Unsigned_64;
       Reply_Reserved : Boolean; Reply : out CuBit.Messages.Message;

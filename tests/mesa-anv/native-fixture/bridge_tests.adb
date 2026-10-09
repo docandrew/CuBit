@@ -9,7 +9,7 @@ begin
    pragma Assert (Execute (64, 0, Output'Access) = 1 and Calls = 0);
    pragma Assert (Output = [0, 0, 0, 0]);
    pragma Assert (Execute (Unsigned_64'Last, 0, Output'Access) = 1 and Calls = 0);
-   pragma Assert (Execute (63, 3, Output'Access) = 1 and Calls = 0);
+   pragma Assert (Execute (63, 5, Output'Access) = 1 and Calls = 0);
    for Mode in 0 .. 2 loop
       Fault := Mode;
       Output := [others => Unsigned_64'Last];
@@ -49,4 +49,11 @@ begin
       end loop;
    end loop;
    pragma Assert (Calls = 262);
+   Budget_Mode := False;
+   Fault := 0;
+   for Selector in 3 .. 4 loop
+      pragma Assert (Execute (63, Unsigned_64 (Selector), Output'Access) = 0);
+      pragma Assert (Output = [2, 1, 0, 0]);
+   end loop;
+   pragma Assert (Calls = 264);
 end Bridge_Tests;

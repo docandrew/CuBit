@@ -62,7 +62,7 @@ package CuBit.Channels is
       Opener    : Boolean := False;
       --  The opener's way to the peer, or the acceptor's peer.
       Endpoint  : CuBit.Messages.CapabilitySlot := 0;
-      Peer      : CuBit.Messages.ProcessID := 0;
+      Peer      : CuBit.Messages.Process_ID := CuBit.Messages.No_Process;
       --  The channel's number at the peer (an opener's OP_KICK and
       --  OP_CLOSE carry it).
       Peer_Number : Unsigned_64 := 0;
@@ -120,7 +120,7 @@ package CuBit.Channels is
    --  REPLY_ERR with a refusal when the opener's grant cannot be used or
    --  memory runs out (C is then inactive).
    procedure Accept_Open
-     (From : CuBit.Messages.ProcessID; Request : CuBit.Messages.Message;
+     (From : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message;
       Number : Unsigned_64; C : out Channel; Reply : out CuBit.Messages.Message);
 
    --  Answer a consuming open (Drop_Oldest) by granting a region this
@@ -128,7 +128,7 @@ package CuBit.Channels is
    --  ring of Pages, at Base. Every reader gets its own grant of the same
    --  pages; closing C revokes that grant only.
    procedure Accept_Shared
-     (From : CuBit.Messages.ProcessID; Request : CuBit.Messages.Message;
+     (From : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message;
       Number : Unsigned_64; Base : Unsigned_64; Pages : CC.Ring_Pages;
       C : out Channel; Reply : out CuBit.Messages.Message);
 
@@ -185,6 +185,12 @@ package CuBit.Channels is
    --  (word 0); the acceptor dispatches on it.
    function Number_Of (Request : CuBit.Messages.Message) return Unsigned_64;
 
+   --  Whether Request, From's OP_CLOSE, names C: its peer, and one of its
+   --  grants (not an earlier channel's with the same number).
+   function Closed_By
+     (C : Channel; From : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message)
+     return Boolean;
+
    --  Records the producer shed so far (Shed_Newest), as it published.
    function Shed_Count (C : Channel) return Unsigned_64;
 
@@ -193,11 +199,13 @@ package CuBit.Channels is
    function Consumer_Word (C : Channel; Index : Consumer_Word_Index) return Unsigned_64;
 
    --  Whether Event (from CuBit.Process_Events) ends C: the peer revoked
-   --  its grant or died, or took back what this side granted.
+   --  its grant or died, or took back what this side granted. The kernel
+   --  tells both sides, always (docs/ipc-delivery.md).
    function Ended (C : Channel; Event : CuBit.Control_Events.Event) return Boolean;
 
    --  End C from this side: the peer's mapping is returned, this side's
-   --  grant revoked, and an opener tells the peer (OP_CLOSE). Its memory is
+   --  grant revoked (the kernel tells the peer), and an opener tells the
+   --  peer too (OP_CLOSE). Its memory is
    --  released when the kernel confirms the grant retired (the next Close
    --  of the same channel record, or Release_Retired).
    procedure Close (C : in out Channel);

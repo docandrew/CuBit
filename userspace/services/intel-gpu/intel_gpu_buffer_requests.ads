@@ -4,6 +4,7 @@ with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Buffer_Handles;
 with Intel_GPU_Record_Store;
 with Intel_GPU_Client_Budgets;
+with System;
 generic
    -- Resolve from the kernel's sender/tag envelope, never request words.
    with function Session_Of (Sender, Stamp : Unsigned_64) return Unsigned_64;
@@ -20,6 +21,17 @@ package Intel_GPU_Buffer_Requests is
    Unavailable : constant Unsigned_64 := 3;
    type Words is array (Natural range 0 .. 3) of Unsigned_64;
    type Service is limited private;
+   Accounting_Label : constant Unsigned_32 := 16#0A30#;
+   procedure Query_Accounting
+     (Object : Service; Sender, Stamp : Unsigned_64;
+      Request_Label : Unsigned_32; Length, Flags : Unsigned_8;
+      Reserved : Unsigned_16; Request : Words; Response : out Words);
+   -- Read-only own-account query [1,0,0,0], authenticated from kernel envelope.
+   -- Reply [status,1,limit bytes,charged bytes]; failures have zero trailing
+   -- words. Unknown accounts return Unavailable, not a fabricated zero charge.
+   -- Charges include retained/pending/private allocations, not just open BOs.
+   -- This is NOT physical residency, GPU VA, free bytes or retirement evidence.
+   -- No caller-selected session, quota mutation or allocation side effects.
    -- Trusted startup only, before any ticket is reserved. Disabled by default
    -- for independently embedded users; native driver must explicitly enable.
    procedure Configure_Client_Budgets
@@ -146,6 +158,19 @@ package Intel_GPU_Buffer_Requests is
    -- another authenticated session. Closing a session does not revoke an
    -- already confirmed backing retirement or reopen an old handle.
    procedure Retire_Session (Object : in out Service; Session : Unsigned_64);
+   -- Trusted coordinator, AFTER external session admission has closed. Begin
+   -- closes the budget and cancels any pending application allocation at once.
+   -- Steps visit at most32 handles OR allocation records, preserving backing
+   -- and exact retirement obligations. No same-session admission during sweep.
+   -- State is pinned to this Service root and cannot be restarted while active.
+   -- Complete means names/metadata marked closed, NOT GPU/CPU/grant retirement.
+   type Session_Retirement is limited private;
+   procedure Begin_Retire_Session
+     (Object : in out Service; Session : Unsigned_64;
+      State : in out Session_Retirement; Accepted : out Boolean);
+   procedure Retire_Session_Step
+     (Object : in out Service; State : in out Session_Retirement;
+      Complete : out Boolean);
    -- Trusted dispatcher only: retire a newly created handle if its saved
    -- reply cannot be delivered. Ticket is the original internal ticket, not
    -- an application handle. Idempotent; backing remains retained.
@@ -181,6 +206,13 @@ package Intel_GPU_Buffer_Requests is
      return Closed_Allocation;
    procedure Quarantine (Object : in out Service);
 private
+   type Retirement_Phase is (Idle, Closing_Names, Closing_Records, Finished);
+   type Session_Retirement is limited record
+      Origin : System.Address := System.Null_Address;
+      Session : Unsigned_64 := 0;
+      Phase : Retirement_Phase := Idle;
+      Handle_Last, Record_Last, Cursor : Natural := 0;
+   end record;
    type Issued_Result is record
       Session : Unsigned_64 := 0;
       Handle : Intel_GPU_Buffer_Handles.Handle := Intel_GPU_Buffer_Handles.No_Handle;
@@ -190,6 +222,9 @@ private
       Owner : Unsigned_64 := 0;
       Identity : Ticket := 0;
       Charge_Bytes : Unsigned_64 := 0;
+      -- Linked only after confirmed backing retirement, on its role's list. Metadata
+      -- growth preserves indices; choosing a reusable slot never scans capacity.
+      Next_Reusable : Natural := 0;
       Reusable, Private_Reclaimable, Private_Reusable : Boolean := False;
       Private_Closed : Boolean := False;
       Context_Parent, Context_Closed, Context_Reusable : Boolean := False;
@@ -204,6 +239,9 @@ private
       Handles : Intel_GPU_Buffer_Handles.Registry;
       Items : Records.Store;
       Admitted : Positive := Intel_GPU_Buffer_Backing.Bootstrap_Slots;
+      Reusable_Head : Natural := 0;
+      Private_Reusable_Head : Natural := 0;
+      Context_Reusable_Head : Natural := 0;
       Pending_Previous : Intel_GPU_Buffer_Handles.Handle := 0;
       Pending_Previous_Session : Unsigned_64 := 0;
       Pending : Ticket := 0;

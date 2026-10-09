@@ -26,6 +26,8 @@ with Virtio;
 with Virtio.Modern;
 with Descriptor_Pool;
 with CuBit.Frame_Rings;
+with CuBit.Grant_References;
+with CuBit.Memory_Grants;
 with Virtqueue_Index;
 with CuBit.Virtio_Net_Control;
 with CuBit.Busy_Poll;
@@ -72,8 +74,6 @@ procedure main is
    mac : array (0 .. 5) of Unsigned_8;
 
    --  Grant region constants (must match kernel process.ads)
-   GRANT_REGION_BASE : constant Integer_Address := 16#0000_4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Integer_Address := 4096 * 4096;
 
    --  Cap slot for netstack endpoint (granted by kernel modules.adb)
    CAP_SLOT_NETSTACK : constant CapabilitySlot := 7;
@@ -85,7 +85,7 @@ procedure main is
    REPLY_OK      : constant Unsigned_32 := 16#F000#;
 
    --  Netstack connection state
-   grantId        : Unsigned_64 := 0;
+   packetGrant    : CuBit.Grant_References.Reference;
    grantBufSize   : Unsigned_64 := 0;
    grantBase      : System.Address := System.Null_Address;
 
@@ -667,25 +667,27 @@ procedure main is
                          others => 0));
          replyTag : MessageTag;
       begin
-         replyTag := capCall (CAP_SLOT_NETSTACK, attachMsg);
+         replyTag := capCall (CAP_SLOT_NETSTACK, attachMsg, CuBit.Messages.Wait_Forever);
 
          if replyTag.label = REPLY_OK then
-            grantId      := attachMsg.words (0);
             grantBufSize := attachMsg.words (1);
-
-            --  Grant region is mapped at GRANT_REGION_BASE + grantId * slot
-            grantBase := To_Address (
-               GRANT_REGION_BASE +
-               Integer_Address (grantId) * GRANT_SLOT_SIZE);
-            --  Only a grant laid out as CuBit.Frame_Rings says is used.
+            --  Only a grant laid out as CuBit.Frame_Rings says is used, and
+            --  only once the kernel confirms netstack owns it; the kernel
+            --  says where it is mapped.
             attached := grantBufSize = Frames.Grant_Bytes and then
-                        Frames.Grant_Bytes <= GRANT_SLOT_SIZE;
+                        CuBit.Grant_References.Valid_Wire (attachMsg.words (0));
+            if attached then
+               packetGrant := CuBit.Grant_References.Decode (attachMsg.words (0));
+               CuBit.Memory_Grants.Acquire_Via_Capability
+                 (CAP_SLOT_NETSTACK, packetGrant, 0, grantBufSize,
+                  CuBit.Memory_Grants.Write_Access, grantBase, attached);
+            end if;
             if not attached then
-               debugPrint ("virtio-net: packet grant has the wrong size" & LF);
+               debugPrint ("virtio-net: packet grant refused" & LF);
             end if;
 
             debugPrint ("virtio-net: attached to netstack, grant=");
-            printDec (Unsigned_32 (grantId));
+            printDec (Unsigned_32 (packetGrant.slot));
             debugPrint (" size=");
             printDec (Unsigned_32 (grantBufSize));
             debugPrint ("" & LF);
@@ -696,7 +698,7 @@ procedure main is
    end attachToNetstack;
 
    --  Main variables
-   ipcSender  : ProcessID;
+   ipcSender  : Process_ID;
    ipcMsg     : Message;
    ipcFound   : Boolean;
    evtMsg     : Message;
@@ -705,7 +707,7 @@ procedure main is
    devQSz     : Unsigned_16;
    rxPFN      : Unsigned_32;
    txPFN      : Unsigned_32;
-   configSender : ProcessID;
+   configSender : Process_ID;
    configMessage : Message;
    ignore : Unsigned_64;
 
@@ -731,8 +733,8 @@ begin
    declare
       use CuBit.Virtio_Net_Control;
       tableOffset : Unsigned_64 := 0;
-      valid : Boolean := configSender /= NO_PROCESS and then
-        configSender = getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DEVMGR);
+      valid : Boolean := configSender /= No_Process and then
+        configSender = Registered_Driver (DRIVER_DEVMGR);
    begin
       if valid and then configMessage.tag.label = Operation'Enum_Rep (Configure_MSIX) then
          valid := configMessage.tag.length = 3 and then
@@ -931,7 +933,7 @@ begin
          (tag      => (label => OP_READY, length => 0,
                        flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => (others => 0)));
+          words    => (others => 0)), CuBit.Messages.Wait_Forever);
    end;
 
    --  9. Drain work, then atomically wait on requests OR latched device IRQs.

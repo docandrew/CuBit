@@ -1,6 +1,6 @@
 with CuBit.Memory_Grants;
 package body CuBit.Messages is
-   procedure Poll_Any_Ipc (From : out ProcessID; Msg : out Message; Found : out Boolean) is
+   procedure Poll_Any_Ipc (From : out Process_ID; Msg : out Message; Found : out Boolean) is
    begin
       Polls := Polls + 1;
       Found := Next < Used;
@@ -27,7 +27,7 @@ package body CuBit.Messages is
       if Call /= SYSCALL_GETTIME then raise Program_Error; end if;
       return Now;
    end syscall;
-   function reply (Target : ProcessID; Msg : Message) return Unsigned_64 is
+   function reply (Target : Process_ID; Msg : Message) return Unsigned_64 is
    begin
       if Target /= 77 then raise Program_Error; end if;
       Sent := Sent + 1; Replies (Sent) := Msg;

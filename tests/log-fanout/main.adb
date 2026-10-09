@@ -2,6 +2,7 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Log_Protocol; use CuBit.Log_Protocol;
 with Log_Fanout;
+with CuBit.Process_IDs; use CuBit.Process_IDs;
 with Log_Budgets;
 with CuBit.Grant_References;
 with CuBit.Authority_Policy; use CuBit.Authority_Policy;
@@ -18,7 +19,7 @@ procedure Main is
      (Source => 30, Node => This_Node, Publication_Tag => Publisher_Authority_Tag,
       Monotonic_Ms => 123, Data => CuBit.Log_Records.Empty_Record);
    Empty_Value : constant Event := (others => <>);
-   procedure Read (Caller, Handle : Unsigned_64) is
+   procedure Read (Caller : Process_ID; Handle : Unsigned_64) is
    begin
       Log_Fanout.Read_Next
         (Store, Caller, Observer_Authority_Tag, Handle, Value, Lost, Result);
@@ -126,77 +127,77 @@ begin
    end loop;
    pragma Assert (not May_Publish (Observer_Authority_Tag));
    Log_Fanout.Publish (Store, Expected);
-   Log_Fanout.Subscribe (Store, 30, Publisher_Authority_Tag, Other, Result);
+   Log_Fanout.Subscribe (Store, From_Word (30), Publisher_Authority_Tag, Other, Result);
    pragma Assert (Result = Denied and Other = 0);
-   Log_Fanout.Subscribe (Store, 0, Observer_Authority_Tag, Other, Result);
+   Log_Fanout.Subscribe (Store, From_Word (0), Observer_Authority_Tag, Other, Result);
    pragma Assert (Result = Denied and Other = 0);
-   Log_Fanout.Subscribe (Store, 10, Observer_Authority_Tag, First, Result);
+   Log_Fanout.Subscribe (Store, From_Word (10), Observer_Authority_Tag, First, Result);
    pragma Assert (Result = OK and First /= 0);
-   Log_Fanout.Subscribe (Store, 20, Observer_Authority_Tag, Second, Result);
+   Log_Fanout.Subscribe (Store, From_Word (20), Observer_Authority_Tag, Second, Result);
    pragma Assert (Result = OK and Second /= First);
-   Log_Fanout.Subscribe (Store, 10, Observer_Authority_Tag, Other, Result);
+   Log_Fanout.Subscribe (Store, From_Word (10), Observer_Authority_Tag, Other, Result);
    pragma Assert (Result = OK and Other = First);
    --  Recycled PID with a different launch-issued observer tag cannot inherit
    --  the previous instance's subscription, even knowing its handle.
    Log_Fanout.Read_Next
-     (Store, 10, Observer_Authority_Tag + 1, First, Value, Lost, Result);
+     (Store, From_Word (10), Observer_Authority_Tag + 1, First, Value, Lost, Result);
    pragma Assert (Result = Denied and Value = Empty_Value and Lost = 0);
-   Log_Fanout.Close (Store, 10, Observer_Authority_Tag + 1, First, Result);
+   Log_Fanout.Close (Store, From_Word (10), Observer_Authority_Tag + 1, First, Result);
    pragma Assert (Result = Denied);
    --  Knowledge of another subscriber's ID does not authorize use or close.
-   Read (20, First);
+   Read (From_Word (20), First);
    pragma Assert (Result = Denied and Value = Empty_Value and Lost = 0);
-   Log_Fanout.Close (Store, 20, Observer_Authority_Tag, First, Result);
+   Log_Fanout.Close (Store, From_Word (20), Observer_Authority_Tag, First, Result);
    pragma Assert (Result = Denied);
    --  Even the owner must invoke the observer authority, not its publisher one.
    Log_Fanout.Read_Next
-     (Store, 10, Publisher_Authority_Tag, First, Value, Lost, Result);
+     (Store, From_Word (10), Publisher_Authority_Tag, First, Value, Lost, Result);
    pragma Assert (Result = Denied and Value = Empty_Value and Lost = 0);
-   Read (10, First); pragma Assert (Result = OK and Value = Expected);
-   Read (20, Second); pragma Assert (Result = OK and Value = Expected);
-   Read (10, First); pragma Assert (Result = Empty and Value = Empty_Value);
+   Read (From_Word (10), First); pragma Assert (Result = OK and Value = Expected);
+   Read (From_Word (20), Second); pragma Assert (Result = OK and Value = Expected);
+   Read (From_Word (10), First); pragma Assert (Result = Empty and Value = Empty_Value);
    --  One slow recipient does not advance another recipient's cursor.
    for I in 1 .. Log_Fanout.Capacity + 3 loop
       Expected.Monotonic_Ms := Unsigned_64 (I);
       Log_Fanout.Publish (Store, Expected);
-      Read (10, First); pragma Assert (Result = OK and Value = Expected);
+      Read (From_Word (10), First); pragma Assert (Result = OK and Value = Expected);
    end loop;
-   Read (20, Second); pragma Assert (Result = Gap and Lost = 3 and Value = Empty_Value);
+   Read (From_Word (20), Second); pragma Assert (Result = Gap and Lost = 3 and Value = Empty_Value);
    for I in 4 .. Log_Fanout.Capacity + 3 loop
-      Read (20, Second); pragma Assert (Result = OK and Value.Monotonic_Ms = Unsigned_64 (I));
+      Read (From_Word (20), Second); pragma Assert (Result = OK and Value.Monotonic_Ms = Unsigned_64 (I));
    end loop;
-   Read (20, Second); pragma Assert (Result = Empty);
-   Log_Fanout.Close (Store, 10, Observer_Authority_Tag, First, Result);
+   Read (From_Word (20), Second); pragma Assert (Result = Empty);
+   Log_Fanout.Close (Store, From_Word (10), Observer_Authority_Tag, First, Result);
    pragma Assert (Result = OK);
-   Log_Fanout.Subscribe (Store, 10, Observer_Authority_Tag, Other, Result);
+   Log_Fanout.Subscribe (Store, From_Word (10), Observer_Authority_Tag, Other, Result);
    pragma Assert (Result = OK and Other /= First and Other /= Second);
-   Read (10, First); pragma Assert (Result = Denied);
-   Log_Fanout.Close (Store, 10, Publisher_Authority_Tag, Other, Result);
+   Read (From_Word (10), First); pragma Assert (Result = Denied);
+   Log_Fanout.Close (Store, From_Word (10), Publisher_Authority_Tag, Other, Result);
    pragma Assert (Result = Denied);
    -- The initial publication plus Capacity+3 later records discarded four
    -- entries from boot history, even though the active reader kept up.
-   Read (10, Other); pragma Assert (Result = Gap and Lost = 4 and Value = Empty_Value);
-   Read (10, Other); pragma Assert (Result = OK and Value.Monotonic_Ms = 4);
+   Read (From_Word (10), Other); pragma Assert (Result = Gap and Lost = 4 and Value = Empty_Value);
+   Read (From_Word (10), Other); pragma Assert (Result = OK and Value.Monotonic_Ms = 4);
    Replacement := Other;
    --  Capacity rejection never returns a token or permits an unprivileged
    --  caller to distinguish capacity exhaustion from any other denial.
    for I in 3 .. Log_Fanout.Maximum_Subscribers loop
-      Log_Fanout.Subscribe (Store, Unsigned_64 (I + 100), Observer_Authority_Tag, Other, Result);
+      Log_Fanout.Subscribe (Store, From_Word (Unsigned_64 (I + 100)), Observer_Authority_Tag, Other, Result);
       pragma Assert (Result = OK);
    end loop;
-   Log_Fanout.Subscribe (Store, 99, Publisher_Authority_Tag, Other, Result);
+   Log_Fanout.Subscribe (Store, From_Word (99), Publisher_Authority_Tag, Other, Result);
    pragma Assert (Result = Denied and Other = 0);
-   Log_Fanout.Subscribe (Store, 99, Observer_Authority_Tag, Other, Result);
+   Log_Fanout.Subscribe (Store, From_Word (99), Observer_Authority_Tag, Other, Result);
    pragma Assert (Result = Exhausted and Other = 0);
    Log_Fanout.Advance_Time (Store, Log_Fanout.Subscription_Lease_Ms - 1);
-   Read (20, Second); pragma Assert (Result = Empty);
+   Read (From_Word (20), Second); pragma Assert (Result = Empty);
    Log_Fanout.Advance_Time (Store, Log_Fanout.Subscription_Lease_Ms);
-   Read (10, Replacement); pragma Assert (Result = Denied);
-   Read (20, Second); pragma Assert (Result = Empty);
-   Log_Fanout.Subscribe (Store, 99, Observer_Authority_Tag, Other, Result);
+   Read (From_Word (10), Replacement); pragma Assert (Result = Denied);
+   Read (From_Word (20), Second); pragma Assert (Result = Empty);
+   Log_Fanout.Subscribe (Store, From_Word (99), Observer_Authority_Tag, Other, Result);
    pragma Assert (Result = OK and Other /= First);
    Log_Fanout.Advance_Time (Store, Unsigned_64'Last);
-   Read (99, Other); pragma Assert (Result = Denied);
+   Read (From_Word (99), Other); pragma Assert (Result = Denied);
    --  A reader's stream: events and gaps through a Datagram_Rings ring and
    --  back, across wrap-around; malformed entries are refused.
    declare
@@ -275,25 +276,25 @@ begin
       Log_Fanout.Publish (Filtered, At_Level (L.Debug, 1));
       Log_Fanout.Publish (Filtered, At_Level (L.Error, 2));
       --  Replay of retained history honours the filter.
-      Log_Fanout.Subscribe (Filtered, 50, Observer_Authority_Tag, High,
+      Log_Fanout.Subscribe (Filtered, From_Word (50), Observer_Authority_Tag, High,
                             Result, L.Warning);
       pragma Assert (Result = OK);
-      Log_Fanout.Subscribe (Filtered, 51, Observer_Authority_Tag, Low,
+      Log_Fanout.Subscribe (Filtered, From_Word (51), Observer_Authority_Tag, Low,
                             Result);
       pragma Assert (Result = OK);
       Log_Fanout.Publish (Filtered, At_Level (L.Trace, 3));
       Log_Fanout.Publish (Filtered, At_Level (L.Critical, 4));
-      Log_Fanout.Read_Next (Filtered, 50, Observer_Authority_Tag, High,
+      Log_Fanout.Read_Next (Filtered, From_Word (50), Observer_Authority_Tag, High,
                             Value, Lost, Result);
       pragma Assert (Result = OK and Value.Monotonic_Ms = 2);
-      Log_Fanout.Read_Next (Filtered, 50, Observer_Authority_Tag, High,
+      Log_Fanout.Read_Next (Filtered, From_Word (50), Observer_Authority_Tag, High,
                             Value, Lost, Result);
       pragma Assert (Result = OK and Value.Monotonic_Ms = 4);
-      Log_Fanout.Read_Next (Filtered, 50, Observer_Authority_Tag, High,
+      Log_Fanout.Read_Next (Filtered, From_Word (50), Observer_Authority_Tag, High,
                             Value, Lost, Result);
       pragma Assert (Result = Empty);
       for Ms in Unsigned_64'(1) .. 4 loop
-         Log_Fanout.Read_Next (Filtered, 51, Observer_Authority_Tag, Low,
+         Log_Fanout.Read_Next (Filtered, From_Word (51), Observer_Authority_Tag, Low,
                                Value, Lost, Result);
          pragma Assert (Result = OK and Value.Monotonic_Ms = Ms);
       end loop;
@@ -302,23 +303,23 @@ begin
       for I in 1 .. 2 * Log_Fanout.Capacity loop
          Log_Fanout.Publish (Filtered, At_Level (L.Debug, 5));
       end loop;
-      Log_Fanout.Read_Next (Filtered, 50, Observer_Authority_Tag, High,
+      Log_Fanout.Read_Next (Filtered, From_Word (50), Observer_Authority_Tag, High,
                             Value, Lost, Result);
       pragma Assert (Result = Empty);
-      Log_Fanout.Read_Next (Filtered, 51, Observer_Authority_Tag, Low,
+      Log_Fanout.Read_Next (Filtered, From_Word (51), Observer_Authority_Tag, Low,
                             Value, Lost, Result);
       pragma Assert (Result = Gap and Lost = Unsigned_64 (Log_Fanout.Capacity));
       --  A retry keeps the queue and narrows later publications.
-      Log_Fanout.Subscribe (Filtered, 51, Observer_Authority_Tag, Other,
+      Log_Fanout.Subscribe (Filtered, From_Word (51), Observer_Authority_Tag, Other,
                             Result, L.Critical);
       pragma Assert (Result = OK and Other = Low);
       Log_Fanout.Publish (Filtered, At_Level (L.Error, 6));
       for I in 1 .. Log_Fanout.Capacity loop
-         Log_Fanout.Read_Next (Filtered, 51, Observer_Authority_Tag, Low,
+         Log_Fanout.Read_Next (Filtered, From_Word (51), Observer_Authority_Tag, Low,
                                Value, Lost, Result);
          pragma Assert (Result = OK and Value.Monotonic_Ms = 5);
       end loop;
-      Log_Fanout.Read_Next (Filtered, 51, Observer_Authority_Tag, Low,
+      Log_Fanout.Read_Next (Filtered, From_Word (51), Observer_Authority_Tag, Low,
                             Value, Lost, Result);
       pragma Assert (Result = Empty);
       Put_Line ("PASS: severity-filtered subscriptions, filtered replay, filtering is not loss");
@@ -339,23 +340,23 @@ begin
       Log_Fanout.Publish (Sourced, From (70, 1));
       Log_Fanout.Publish (Sourced, From (80, 2));
       Log_Fanout.Publish (Sourced, From (70, 3));
-      Log_Fanout.Subscribe (Sourced, 60, Observer_Authority_Tag, Mine, Result, Source => 70);
+      Log_Fanout.Subscribe (Sourced, From_Word (60), Observer_Authority_Tag, Mine, Result, Source => 70);
       pragma Assert (Result = OK);
       Log_Fanout.Publish (Sourced, From (80, 4));
       Log_Fanout.Publish (Sourced, From (70, 5));
       for Ms of From_70 loop
-         Log_Fanout.Read_Next (Sourced, 60, Observer_Authority_Tag, Mine, Value, Lost, Result);
+         Log_Fanout.Read_Next (Sourced, From_Word (60), Observer_Authority_Tag, Mine, Value, Lost, Result);
          pragma Assert (Result = OK and Value.Source = 70 and Value.Monotonic_Ms = Ms);
       end loop;
-      Log_Fanout.Read_Next (Sourced, 60, Observer_Authority_Tag, Mine, Value, Lost, Result);
+      Log_Fanout.Read_Next (Sourced, From_Word (60), Observer_Authority_Tag, Mine, Value, Lost, Result);
       pragma Assert (Result = Empty);
       --  Closing and subscribing again replays afresh (a new query).
-      Log_Fanout.Close (Sourced, 60, Observer_Authority_Tag, Mine, Result);
+      Log_Fanout.Close (Sourced, From_Word (60), Observer_Authority_Tag, Mine, Result);
       pragma Assert (Result = OK);
-      Log_Fanout.Subscribe (Sourced, 60, Observer_Authority_Tag, Mine, Result, Source => 80);
+      Log_Fanout.Subscribe (Sourced, From_Word (60), Observer_Authority_Tag, Mine, Result, Source => 80);
       pragma Assert (Result = OK);
       for Ms of From_80 loop
-         Log_Fanout.Read_Next (Sourced, 60, Observer_Authority_Tag, Mine, Value, Lost, Result);
+         Log_Fanout.Read_Next (Sourced, From_Word (60), Observer_Authority_Tag, Mine, Value, Lost, Result);
          pragma Assert (Result = OK and Value.Source = 80 and Value.Monotonic_Ms = Ms);
       end loop;
       Put_Line ("PASS: source-filtered subscriptions and fresh replay per query");

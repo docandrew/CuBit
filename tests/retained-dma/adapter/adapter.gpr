@@ -1,0 +1,27 @@
+project Adapter is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../../kernel/src");
+   for Source_Files use ("adapter_test.adb", "host_spinlocks.ads", "host_spinlocks.adb",
+     "host_buddyallocator.ads", "host_buddyallocator.adb",
+     "host_virtmem.ads", "charged_metadata_pages.ads", "charged_metadata_pages.adb",
+     "memory_accounting.ads", "memory_accounting.adb",
+     "retained_dma_budget.ads", "retained_dma_budget.adb",
+     "memory_account_store.ads", "memory_account_store.adb",
+     "memory_identity_map.ads", "memory_identity_map.adb",
+     "dma_record_blocks.ads", "dma_record_blocks.adb",
+     "process_memory_accounts.ads", "process_memory_accounts.adb",
+     "process_memory_budget.ads", "process_memory_budget.adb");
+   for Object_Dir use external ("ADAPTER_OBJECTS");
+   for Exec_Dir use external ("ADAPTER_OBJECTS");
+   for Main use ("adapter_test.adb");
+   package Naming is
+      for Specification ("Virtmem") use "host_virtmem.ads";
+      for Specification ("Spinlocks") use "host_spinlocks.ads";
+      for Body ("Spinlocks") use "host_spinlocks.adb";
+      for Specification ("BuddyAllocator") use "host_buddyallocator.ads";
+      for Body ("BuddyAllocator") use "host_buddyallocator.adb";
+   end Naming;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-g", "-O1");
+   end Compiler;
+end Adapter;

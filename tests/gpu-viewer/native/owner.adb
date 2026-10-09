@@ -15,7 +15,7 @@ procedure Owner is
    package R renames CuBit.Grant_References;
    type Pixels is array (Natural range 0 .. 4095) of Unsigned_32;
    Image : Pixels := [others => 16#FF00_0000#] with Alignment => 4096;
-   From, Viewer : ProcessID := 0;
+   From, Viewer : Process_ID := 0;
    Msg, Answer : Message;
    Root : G.Grant_Reference;
    Reference : Unsigned_64 := 0;

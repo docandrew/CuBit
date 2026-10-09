@@ -18,7 +18,7 @@ procedure main is
    REPLY_OK      : constant Unsigned_32 := 16#F000#;
    XOR_MAGIC     : constant Unsigned_64 := 16#C0B1_7000_BE11#;
 
-   from : ProcessID;
+   from : Process_ID;
    msg  : Message;
    ret  : Unsigned_64;
 
@@ -31,7 +31,7 @@ procedure main is
                        reserved  => 0);
       replyMsg.words (0) := value;
       replyMsg.words (1) := value xor XOR_MAGIC;
-      replyMsg.words (2) := Unsigned_64 (from);
+      replyMsg.words (2) := To_Word (from);
       return replyMsg;
    end makeReply;
 

@@ -23,7 +23,10 @@
 --      queue's pages as the peer accepted them (a broadcast outlet answers
 --      with its ring's).
 --      REPLY_ERR: word 0 an Open_Refusal.
---  OP_CLOSE (one-way): word 0 the channel's number at the receiver.
+--  OP_CLOSE (one-way): word 0 the channel's number at the receiver, 1 a
+--    grant of the channel (either side's, encoded): a number is reused once
+--    its channel ends, so the receiver closes only the channel holding
+--    both. A hint as well: the kernel's grant events end a channel too.
 --  OP_KICK (one-way): word 0 the channel's number at the receiver; sent
 --    only while the receiver's waiting word is set.
 --
@@ -45,6 +48,7 @@ package CuBit.Channel_Protocol with Pure, SPARK_Mode is
    OP_KICK           : constant := 16#0E03#;
    Open_Words  : constant := Contract_Words + 1;
    Reply_Words : constant := 3;
+   Close_Words : constant := 2;
 
    type Open_Refusal is
      (Unknown_Type,      --  the peer has no such channel to offer
@@ -85,9 +89,11 @@ package CuBit.Channel_Protocol with Pure, SPARK_Mode is
         when Queue  => 1 + Item.Pages,
         when Arena  => 1 + Item.Pages * Item.Buffers,
         when Duplex => Item.Pages)
-   with Pre => Valid (Item);
+   with Pre  => Valid (Item),
+        Post => Region_Pages'Result <= Maximum_Region_Pages;
    function Acceptor_Region_Pages (Item : Contract) return Positive is
      (if Item.Kind = Duplex then Item.Buffers else Region_Pages (Item))
-   with Pre => Valid (Item);
+   with Pre  => Valid (Item),
+        Post => Acceptor_Region_Pages'Result <= Maximum_Region_Pages;
 
 end CuBit.Channel_Protocol;

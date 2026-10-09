@@ -110,7 +110,7 @@ package body CuBit.Net_Channels is
         [A.Grant.slot, A.Grant.generation,
          Unsigned_64 (Tx_Size) or Shift_Left (Unsigned_64 (Rx_Size), 32),
          Unsigned_64 (Count)];
-      if capCall (Slot, Msg).label /= REPLY_OK then
+      if capCall (Slot, Msg, CuBit.Messages.Wait_Forever).label /= REPLY_OK then
          CuBit.Memory_Grants.Revoke (A.Grant, Revoked);
          OK := False;
          return;
@@ -127,7 +127,7 @@ package body CuBit.Net_Channels is
       Msg.tag := (label => Layout.OP_NET_ARENA_RELEASE, length => 1,
                   flags => 0, reserved => 0);
       Msg.words (0) := A.Handle;
-      OK := capCall (Slot, Msg).label = REPLY_OK;
+      OK := capCall (Slot, Msg, CuBit.Messages.Wait_Forever).label = REPLY_OK;
       if OK then
          CuBit.Memory_Grants.Revoke (A.Grant, OK);
          A.Handle := 0;
@@ -464,7 +464,7 @@ package body CuBit.Net_Channels is
          Msg.tag := (label => OP_NET_SHUT, length => 1, flags => 0,
                      reserved => 0);
          Msg.words (0) := S.Handle;
-         Ignore := capCall (Slot, Msg);
+         Ignore := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
          S.Handle := 0;
       end if;
    end Close;

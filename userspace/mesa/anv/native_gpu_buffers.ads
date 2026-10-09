@@ -1,5 +1,13 @@
 with Interfaces; use Interfaces;
 package Native_GPU_Buffers is
+   -- Own-account snapshot through the same pinned, serialized session endpoint.
+   -- 0 success,1 denied,2 bad request,3 unavailable,4 invalid transport/reply.
+   -- Distinct nonnull outputs clear on failure; unknown is NOT zero usage.
+   -- Charged includes retained backing; NOT residency or retirement authority.
+   function Query_Accounting
+     (Slot : Unsigned_64; Limit, Charged : access Unsigned_64)
+      return Unsigned_32
+     with Export, Convention => C, External_Name => "cubit_intel_query_accounting";
    -- Owned WB RAM contract:0 unavailable/invalid,1 explicit maintenance,
    -- 2 coherent. Discovery only; same stable endpoint as allocation.
    function Memory_Contract (Slot : Unsigned_64) return Unsigned_32

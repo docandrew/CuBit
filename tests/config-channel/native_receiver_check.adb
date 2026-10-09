@@ -9,12 +9,12 @@ with Config_Worker_Receiver;
 
 procedure Native_Receiver_Check
   (Database : System.Address; Owner_Endpoint : CuBit.Messages.CapabilitySlot;
-   Expected_Source, Sender : CuBit.Messages.ProcessID;
+   Expected_Source, Sender : CuBit.Messages.Process_ID;
    Request : CuBit.Messages.Message;
    Reply : out CuBit.Messages.Message)
 is
    use type Interfaces.Unsigned_64;
-   function Authorized (Source : CuBit.Messages.ProcessID; Tag : Interfaces.Unsigned_64)
+   function Authorized (Source : CuBit.Messages.Process_ID; Tag : Interfaces.Unsigned_64)
       return Boolean is (Source = Expected_Source and Tag = 77);
    procedure Invoke
      (Action : Config_Worker_Protocol.Operation; Name, Context : String;

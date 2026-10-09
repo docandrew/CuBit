@@ -18,6 +18,23 @@ package body Vulkan_Owned_Targets with SPARK_Mode is
       end if;
       if not Accepted then V.Reject_Frame (Submission); end if;
    end Record_Readback;
+   procedure Record_Readback_Regions (S : State; Submission : in out V.State;
+      Pool : P.State; Staging : System.Address; Repair : Compositor_Target_Damage.D.State; Accepted : out Boolean) is
+      Result : I.U32;
+   begin
+      V.Admit_Draw (Submission, Accepted);
+      if not Accepted then return; end if;
+      if not Ready (S) or else not Same_Submission (S, Submission) or else
+         P.Faulted (Pool) or else P.Readback (Pool) = P.None or else
+         P.Epoch (Pool) /= Output_Epoch (S) or else Staging = System.Null_Address
+      then Accepted := False;
+      else
+         Vulkan_Owned_Target_FFI.Record_Readback_Regions (S.Description,
+           V.Owner_Context (Submission), Staging, I.U32 (P.Readback (Pool).Buffer), Repair, Result);
+         Accepted := Result = 0;
+      end if;
+      if not Accepted then V.Reject_Frame (Submission); end if;
+   end Record_Readback_Regions;
    procedure Initialize
      (S : in out State; Context : in out C.State;
       Requests : Vulkan_Frame.Targets; Description : System.Address;

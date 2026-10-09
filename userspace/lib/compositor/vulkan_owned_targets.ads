@@ -27,6 +27,16 @@ package Vulkan_Owned_Targets with SPARK_Mode is
        Post => V.Current (Submission) = V.Recording and
        not V.Pass_Started (Submission) and Accepted = V.Complete_Frame (Submission) and
        (if Accepted then V.Draws (Submission) > 0);
+   procedure Record_Readback_Regions (S : State; Submission : in out V.State;
+      Pool : P.State; Staging : System.Address; Repair : Compositor_Target_Damage.D.State; Accepted : out Boolean)
+     with Pre => Compositor_Target_Damage.D.Valid (Repair) and
+       Compositor_Target_Damage.D.Count (Repair) > 0 and
+       Compositor_Target_Damage.D.Bounds (Repair).Right <= 65535 and
+       Compositor_Target_Damage.D.Bounds (Repair).Bottom <= 65535 and P.Valid (Pool) and V.Current (Submission) = V.Recording and
+       V.Complete_Frame (Submission) and not V.Pass_Started (Submission),
+       Post => V.Current (Submission) = V.Recording and
+       not V.Pass_Started (Submission) and Accepted = V.Complete_Frame (Submission) and
+       (if Accepted then V.Draws (Submission) > 0);
    function Current (S : State) return Phase;
    function Output_Epoch (S : State) return P.ID;
    function Untouched (S : State) return Boolean;

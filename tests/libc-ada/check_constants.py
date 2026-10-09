@@ -66,6 +66,14 @@ b = re.search(r"for Control_Kind use \(([^)]*)\)", labels_text)
 norm = lambda t: re.sub(r"Control_|\s", "", t)
 if not a or not b or norm(a.group(1)) != norm(b.group(1)):
     bad.append("Control_Kind differs from the kernel's")
+# A channel region fits one grant (CuBit.Channel_Contracts), as the kernel
+# sizes them (Memory_Grants.Maximum_Page_Count).
+contracts = (repo / "userspace/runtime/gnat/cubit-channel_contracts.ads").read_text()
+grants = (repo / "kernel/src/memory_grants.ads").read_text()
+a = re.search(r"Maximum_Region_Pages\s*:\s*constant\s*:=\s*([\w#]+)\s*;", contracts)
+b = re.search(r"Maximum_Page_Count\s*:\s*constant[^:]*:=\s*([\w#]+)\s*;", grants)
+if not a or not b or value(a.group(1)) != value(b.group(1)):
+    bad.append("Channel_Contracts.Maximum_Region_Pages differs from Memory_Grants.Maximum_Page_Count")
 # The futex results and owned-memory limit, against the kernel's.
 futex = (repo / "kernel/src/process-futex.ads").read_text()
 for ours_name, theirs in (("Futex_Woken", "FUTEX_WOKEN"), ("Futex_Retry", "FUTEX_RETRY"),

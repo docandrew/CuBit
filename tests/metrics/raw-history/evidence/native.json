@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "scope": "Native CuBit raw metrics service and observer over real IPC/grants; explicit prebuilt kernel/initrd/allocator seeds; no compositor trace or hardware latency claim",
+  "rows": 256,
+  "overwritten_gap": 749,
+  "binary_hashes": {
+    "metrics-check.app": "4972314b5aed224083d6d2f47e252111f09599d71421eee14bc5e852664c7e5c",
+    "metrics.svc": "1f4858ddf68ffe55197fc1be47cb3149c1dabb57b58f3ac28935b45ed3433788"
+  },
+  "serial_sha256": "c7e6ff63f764617890cd28abf66be1ed6badd581914d384974018e3570b66dc0"
+}

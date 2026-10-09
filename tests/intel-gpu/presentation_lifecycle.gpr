@@ -7,6 +7,7 @@ project Presentation_Lifecycle is
      "fixture_capability_grants.ads", "fixture_memory_grants.ads",
      "fixture_memory_grants.adb", "intel_gpu_buffer_views.ads",
      "intel_gpu_buffer_views.adb", "intel_gpu_buffer_handles.ads",
+     "intel_gpu_name_index.ads", "intel_gpu_name_index.adb",
      "intel_gpu_buffer_handles.adb", "intel_gpu_buffer_reply.ads",
      "intel_gpu_buffer_reply.adb", "intel_gpu_buffer_backing.ads",
      "intel_gpu_physical_extents.ads", "intel_gpu_physical_extents.adb",

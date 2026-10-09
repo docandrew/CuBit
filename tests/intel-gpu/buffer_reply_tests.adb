@@ -1,4 +1,5 @@
 with Ada.Text_IO;
+with System.Storage_Elements; use System.Storage_Elements;
 with Intel_GPU_Extent_Directory;
 with Extent_Directory_Fixture;
 with Interfaces; use Interfaces;
@@ -79,6 +80,74 @@ begin
    pragma Assert (Extent_View'Object_Size <= 64 * 8);
    pragma Assert (Backing'Object_Size <= 96 * 8);
    declare
+      package D renames Intel_GPU_Extent_Directory;
+      Block : constant Unsigned_64 := Intel_GPU_Physical_Extents.Block_Bytes;
+      DMA : constant Unsigned_64 := 2 ** 40;
+      Frame_4K : constant Unsigned_64 := 3840 * 2160 * 4;
+      Owner : aliased D.Directory;
+      type Metadata is array (1 .. 16384) of Unsigned_8 with Alignment => 4096;
+      Storage : Metadata := [others => 0];
+      Early : Extent_View;
+      Whole, Frame, Tail : Backing;
+      OK : Boolean;
+   begin
+      -- Model discontiguous physical pages; only metadata is real host RAM.
+      D.Initialize (Owner, 2 ** 40, 2 ** 48, OK);
+      pragma Assert (OK);
+      for I in 0 .. 15 loop
+         D.Append (Owner, DMA + Unsigned_64 (I) * 2 * Block, OK);
+         pragma Assert (OK);
+      end loop;
+      Early := From_Extents (D.Borrow (Owner), 77, 0, 16 * Block);
+      Whole := From_View (Early);
+      pragma Assert (Valid (Whole) and then Whole.Bytes = 32 * 1024 ** 2);
+      Frame := Slice (Whole, 0, Frame_4K);
+      pragma Assert (Valid (Frame) and then Frame.Bytes = Frame_4K);
+      pragma Assert (Page_Address (Frame, Frame_4K - 4096) =
+        DMA + ((Frame_4K - 4096) / Block) * 2 * Block +
+        (Frame_4K - 4096) mod Block);
+      pragma Assert (not From_Linear (16#2000000#, Layout.CPU_Base,
+        Frame_4K, 16#2000000#).Ready);
+      D.Extend_Metadata (Owner, Unsigned_64 (To_Integer (Storage'Address)),
+        16384, OK);
+      pragma Assert (OK);
+      for I in 16 .. 511 loop
+         D.Append (Owner, DMA + Unsigned_64 (I) * 2 * Block, OK);
+         pragma Assert (OK);
+      end loop;
+      pragma Assert (Valid (Frame) and Byte_Count (Early) = 16 * Block);
+      pragma Assert (not Slice (Whole, 0, 2 ** 30).Ready);
+      Whole := From_View (From_Extents (D.Borrow (Owner), 77, 0, 2 ** 30));
+      pragma Assert (Valid (Whole) and then Same_Arena (Whole, Frame));
+      for I in 0 .. 511 loop
+         pragma Assert (Overlaps_DMA (Whole, DMA + Unsigned_64 (I) * 2 * Block, 4096));
+         pragma Assert (not Overlaps_DMA (Whole,
+           DMA + Unsigned_64 (I) * 2 * Block + Block, 4096));
+         pragma Assert (Page_Address (Whole, Unsigned_64 (I) * Block) =
+           DMA + Unsigned_64 (I) * 2 * Block);
+         pragma Assert (Page_Address (Whole, Unsigned_64 (I + 1) * Block - 4096) =
+           DMA + Unsigned_64 (I) * 2 * Block + Block - 4096);
+      end loop;
+      Tail := Slice (Whole, 2 ** 30 - 8192, 8192);
+      pragma Assert (Valid (Tail) and then Tail.CPU_Address =
+        Layout.CPU_Base + 2 ** 30 - 8192);
+      pragma Assert (not Overlaps_DMA (Tail, DMA + 1022 * Block, Block - 8192));
+      pragma Assert (Overlaps_DMA (Tail, DMA + 1022 * Block, Block - 8191));
+      pragma Assert (Overlaps_DMA (Whole, DMA - 1, 2));
+      pragma Assert (not Overlaps_DMA (Whole, DMA - 1, 1));
+      pragma Assert (Page_Address (Whole, 2 ** 30) = 0);
+      pragma Assert (not Slice (Whole, 2 ** 30 - 4096, 8192).Ready);
+      pragma Assert (not Slice (Whole, 4096, Unsigned_64'Last - 4095).Ready);
+      pragma Assert (not Valid (From_Extents (D.Borrow (Owner), 77,
+        2 ** 47 - Layout.CPU_Base, 4096)));
+      pragma Assert (not Valid (From_Extents (D.Borrow (Owner), 77,
+        Unsigned_64'Last - 4095, 4096)));
+      D.Quarantine (Owner);
+      pragma Assert (not Valid (Whole) and not Valid (Frame) and not Valid (Tail));
+      pragma Assert (Page_Address (Whole, 0) = 0);
+      pragma Assert (not Slice (Whole, 0, 4096).Ready);
+   end;
+   declare
       package E renames Intel_GPU_Physical_Extents;
       Bases : E.Addresses;
       Map : Intel_GPU_Extent_Directory.Borrowed_View;
@@ -106,6 +175,33 @@ begin
       pragma Assert (not Overlaps_DMA (Part, Bases (0), 4096));
       pragma Assert (not Overlaps_DMA (View, Bases (1) + E.Block_Bytes, E.Block_Bytes));
       pragma Assert (Overlaps_DMA (View, Unsigned_64'Last, 2));
+      -- Independent interval oracle straddles physical block and logical slice
+      -- edges, including the boundary between indexed and general queries.
+      for I in E.Block_Index loop
+         for Address of Values'[Bases (I) - 1, Bases (I), Bases (I) + 4095,
+           Bases (I) + E.Block_Bytes - 1, Bases (I) + E.Block_Bytes,
+           Bases (I) + E.Block_Bytes + 1]
+         loop
+            for Length of Values'[1, 2, 4096, E.Block_Bytes - 1,
+              E.Block_Bytes, E.Block_Bytes + 1]
+            loop
+               declare
+                  Whole_Hit : Boolean := False;
+                  function Hit (Start, Count : Unsigned_64) return Boolean is
+                    (Address < Start + Count and Start < Address + Length);
+                  Part_Hit : constant Boolean :=
+                    Hit (Bases (0) + E.Block_Bytes - 4096, 4096) or
+                    Hit (Bases (1), 4096);
+               begin
+                  for J in E.Block_Index loop
+                     Whole_Hit := Whole_Hit or Hit (Bases (J), E.Block_Bytes);
+                  end loop;
+                  pragma Assert (Overlaps_DMA (View, Address, Length) = Whole_Hit);
+                  pragma Assert (Overlaps_DMA (Part, Address, Length) = Part_Hit);
+               end;
+            end loop;
+         end loop;
+      end loop;
       declare
          Buffer : constant Backing := From_View (Part);
       begin
@@ -212,5 +308,5 @@ begin
          pragma Assert (Classify (1, 1, 16#F001#, 0, 0, 0, W) = Invalid);
       end;
    end loop;
-   Ada.Text_IO.Put_Line ("Buffer reply PASS: 65536 slot/size boundaries, envelopes, arena bounds and failure payloads (scalar codec only)");
+   Ada.Text_IO.Put_Line ("Buffer reply PASS: 65536 scalar boundaries; extent-backed 4K/1GiB geometry, stable growth, slices and quarantine (modeled DMA)");
 end Buffer_Reply_Tests;

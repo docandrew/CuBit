@@ -20,6 +20,7 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 
 with CuBit.Child_Exits;
+with CuBit.Process_IDs;
 with CuBit.Control_Events;
 with CuBit.Launch_Arguments;
 with CuBit.Launch_Authority;
@@ -36,9 +37,10 @@ package CuBit.Launching is
       No_Process_Manager,   --  the request buffer could not be lent
       Refused);             --  procmgr refused: see Failure
 
+   --  The child's identity (KERN-003): one life, matched exactly by its
+   --  exit event.
    type Child is record
-      Process    : Unsigned_64 := 0;
-      Generation : Unsigned_64 := 0;   --  matches its exit event exactly
+      Process : CuBit.Process_IDs.Process_ID := CuBit.Process_IDs.No_Process;
    end record;
 
    --  Start Program with the given launch block (Arguments: a finished
@@ -84,11 +86,15 @@ package CuBit.Launching is
    procedure Poll_Exit
      (Started : Child; Has_Ended : out Boolean; Ended : out CuBit.Child_Exits.Report);
 
-   --  Send Started a control message (docs/data-plane.md, "Control
-   --  messages"): the kernel accepts it from the process that launched it.
-   --  Sent is False when Started has ended or its event lane is full.
+   --  Send Started a control message (docs/ipc-delivery.md, "Control is
+   --  per capability"): the kernel accepts it from the process that
+   --  launched it and keeps it until Started reads it. Busy: Started has
+   --  not read other senders' messages yet; try again later. Refused:
+   --  Started has ended, or this process may not send it one.
+   type Control_Result is (Sent, Busy, Refused);
    procedure Send_Control
-     (Started : Child; Kind : CuBit.Control_Events.Control_Kind; Sent : out Boolean);
+     (Started : Child; Kind : CuBit.Control_Events.Control_Kind;
+      Result : out Control_Result);
 
    --  This process's own launch table (CuBit.Launch_Authority, procmgr's
    --  OP_LAUNCH_TABLE): Table (1 .. Length), Length 0 when it may start

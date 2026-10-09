@@ -42,7 +42,7 @@ begin
       M := ((CuBit.Block_Devices.OP_READ_BLOCKS, 4, 0, 0), 0,
             [Unsigned_64 (Root.directBlocks (I)) * Unsigned_64 (Fs.blkSize / 512),
              1, Unsigned_64 (Fs.blkSize / 512), 1]);
-      M.tag := capCall (1, M);
+      M.tag := capCall (1, M, Wait_Forever);
       pragma Assert (M.tag.label = CuBit.Block_Devices.REPLY_OK);
       Original := [others => 0];
       for J in 1 .. Natural (Fs.blkSize) loop Original (J) := Grant_Buffer (J - 1); end loop;

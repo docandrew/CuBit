@@ -1,0 +1,22 @@
+{
+  "hosted": "PASS",
+  "checks": 54012,
+  "proof_checks": 42,
+  "unproved": 0,
+  "negative": "compiled writer epoch corruption rejected by round-trip postcondition",
+  "scope": "hosted codec only; no Desktop/metrics/CCL integration or native/hardware result",
+  "inputs": {
+    "compositor_frame_trace.adb": "a4be822336f47210ae63fc9501237ddf2af9c77af866b10f879c86676c7fe764",
+    "compositor_trace_wire.ads": "1a5c6bbc14caa5fac49c93dc108c64fadc37f40c611f8ede6c8766c7dcec9ab2",
+    "compositor_render_trace.adb": "d377c0e8a0afd2ceb05a55254a7a442439b838da32d73f415eb1387351a75f57",
+    "compositor_render_trace.ads": "c7f58cf04f8b1f7b889ff1aeca38ad6ce792348f94f6976a521203f3f2106390",
+    "compositor_elapsed.ads": "efafc6160ecbaab0b6551e9c30f43759f8717f0f1d9265ebbd8a4bcbda83c3ee",
+    "compositor_trace_wire.adb": "eb283ef68ba862168975c4bfc3be3b118702db56ae7a287ef26cb2edf3acf10c",
+    "compositor_frame_trace.ads": "cfad79076106d49103bd24510260f7e04d6410393f8e0fe61dee84acb9e98250",
+    "compositor_source_trace.ads": "7dd42b1745a111fae85dff3c796cc1853cdde91019d91b3139da21924792a68b",
+    "compositor_input_trace.ads": "eb94b3cfdb63b922af59a0acd770e11298f2682f6eff14273ceb34698c4b9f7f",
+    "compositor_input_trace.adb": "bd6057c7799a39a6b9c90bd0fede93c319030f606461d95b52b4119301a680c5",
+    "compositor_source_trace.adb": "f013bf515ea6dfec7b4d613366b4e4a8a476e518ca4a8e347c6225460b0c2237",
+    "trace_wire_check.adb": "53023140f3e1fe7570a4f6101f71d49e1aefdfdd2437fbd774534a0863c434e0"
+  }
+}

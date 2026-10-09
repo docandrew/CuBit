@@ -1,0 +1,13 @@
+--  Proof of the Logs view's scroll, selection and search policy:
+--  gnatprove -P log_viewport_proof.gpr (level 1, every check).
+project Log_Viewport_Proof is
+   for Source_Dirs use ("../../userspace/apps/logs");
+   for Source_Files use ("log_viewport.ads", "log_viewport.adb");
+   for Object_Dir use "build/proof";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=1");
+   end Prove;
+end Log_Viewport_Proof;

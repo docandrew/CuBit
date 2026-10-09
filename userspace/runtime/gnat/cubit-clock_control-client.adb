@@ -14,7 +14,7 @@ package body CuBit.Clock_Control.Client is
       for I in Encoded'Range loop
          Msg.words (I) := Encoded (I);
       end loop;
-      Msg.tag := capCall (Endpoint_Slot, Msg);
+      Msg.tag := capCall (Endpoint_Slot, Msg, CuBit.Messages.Wait_Forever);
       Success := Msg.tag.label = 16#F000# and then Msg.tag.length = 2
         and then Msg.tag.flags = 0 and then Msg.tag.reserved = 0
         and then Msg.words (0) <= Outcome'Enum_Rep (Outcome'Last)

@@ -199,7 +199,7 @@ procedure main is
    xhciDev   : PCIDeviceInfo;
    gpuDev    : PCIDeviceInfo;
    intelDev : PCIDeviceInfo;
-   Intel_Inspection_PID : Unsigned_64 := 0;
+   Intel_Inspection_PID : Process_ID := No_Process;
    package GP renames Native_GPU_Probe_Protocol;
    package CG renames CuBit.Capability_Grants;
    -- These slots remain reserved for the broker's retained lifetime. Slot27
@@ -215,7 +215,7 @@ procedure main is
    Request_Found, Receipt_Consumed : Boolean;
    Launch_Now : Unsigned_64;
    Launch_Activity : Activity_Result;
-   GPU_Viewer_PID : Unsigned_64 := 0;
+   GPU_Viewer_PID : Process_ID := No_Process;
    GPU_Viewer_Target : CG.Recipient;
    GPU_Viewer_Ready, GPU_Viewer_Desktop_Bound : Boolean := False;
    --  Static bring-up ownership: no general PCI changes after handoff. The
@@ -239,7 +239,7 @@ procedure main is
    Intel_ADS_Attempted : Boolean := False;
    Intel_ADS_Physical : Unsigned_64 := 0;
    function Context_Allocation_Ready return Boolean is
-     (Intel_Inspection_PID /= 0 and then Intel_Reset_Authorized and then
+     (Intel_Inspection_PID /= No_Process and then Intel_Reset_Authorized and then
       Intel_Config_Frozen and then Intel_GGTT_Granted);
    function Allocate_Buffer_Block (CPU : Unsigned_64) return Unsigned_64;
    package Buffer_Allocations is new Intel_GPU_Extent_Allocator
@@ -248,7 +248,7 @@ procedure main is
    Intel_Heap_Configured : Boolean := False;
    Intel_Requested_Bytes : Unsigned_64 := 0;
    function Allocate_Buffer_Block (CPU : Unsigned_64) return Unsigned_64 is
-     (syscall (SYSCALL_ALLOC_DMA, Intel_Inspection_PID,
+     (syscall (SYSCALL_ALLOC_DMA, To_Word (Intel_Inspection_PID),
        Intel_GPU_Physical_Extents.Allocation_Order, CPU, 3,
        Buffer_Allocations.DMA_Ceiling (Intel_Buffer_Pool)));
    package Intel_Extent_Growth is new Intel_GPU_Extent_Growth
@@ -294,7 +294,7 @@ procedure main is
          end if;
       end if;
       Intel_Extent_Growth.Step
-        (Intel_Inspection_PID, Index, Pages, Generation, Buffer, Success, Pending);
+        (To_Word (Intel_Inspection_PID), Index, Pages, Generation, Buffer, Success, Pending);
    end Acquire_Intel_Buffer;
    procedure Reply_Intel_Allocation
      (Index : Positive; Generation : Unsigned_32;
@@ -309,7 +309,7 @@ procedure main is
          Response :=
            (tag => (16#F004#, 4, 0, 0), authorityTag => 0,
             words => [Intel_GPU_Buffer_Reply.CPU_Address (Buffer),
-              Intel_GPU_Buffer_Reply.Byte_Count (Buffer), Intel_Inspection_PID,
+              Intel_GPU_Buffer_Reply.Byte_Count (Buffer), To_Word (Intel_Inspection_PID),
               Intel_GPU_Buffer_Backing.Allocation_Key (Index, Generation)]);
       else
          Response :=
@@ -331,12 +331,12 @@ procedure main is
    gpuIsPrimary : Boolean := False;
 
    --  Service PIDs
-   filesystemPID : Unsigned_64 := 0;
-   ataPID        : Unsigned_64 := 0;
-   ramdiskPID    : Unsigned_64 := 0;
-   nvmePID       : Unsigned_64 := 0;
-   netstackPID   : Unsigned_64 := 0;
-   virtioNetPID  : Unsigned_64 := 0;
+   filesystemPID : Process_ID := No_Process;
+   ataPID        : Process_ID := No_Process;
+   ramdiskPID    : Process_ID := No_Process;
+   nvmePID       : Process_ID := No_Process;
+   netstackPID   : Process_ID := No_Process;
+   virtioNetPID  : Process_ID := No_Process;
    netMSIXCap : Unsigned_8 := 0;
    netTableOffset : Unsigned_64 := 0;
    netIOBase : Unsigned_64 := 0;
@@ -354,15 +354,15 @@ procedure main is
    nvmeMSIX : Boolean := False;
    --  Minted just before the configuration call, as DEVMGR_NET_SLOT is.
    DEVMGR_NVME_SLOT : constant Unsigned_64 := 3;
-   procmgrPID    : Unsigned_64 := 0;
-   shellPID      : Unsigned_64 := 0;
-   hdaPID        : Unsigned_64 := 0;
-   mixerPID      : Unsigned_64 := 0;
-   ps2PID        : Unsigned_64 := 0;
-   xhciPID       : Unsigned_64 := 0;
-   configPID     : Unsigned_64 := 0;
-   netmgrPID     : Unsigned_64 := 0;
-   virtioGpuPID  : Unsigned_64 := 0;
+   procmgrPID    : Process_ID := No_Process;
+   shellPID      : Process_ID := No_Process;
+   hdaPID        : Process_ID := No_Process;
+   mixerPID      : Process_ID := No_Process;
+   ps2PID        : Process_ID := No_Process;
+   xhciPID       : Process_ID := No_Process;
+   configPID     : Process_ID := No_Process;
+   netmgrPID     : Process_ID := No_Process;
+   virtioGpuPID  : Process_ID := No_Process;
 
    --  CPIO archive
    cpioArchive : Cpio.Archive;
@@ -821,10 +821,10 @@ procedure main is
            (tag => (label => CuBit.Filesystems.OP_SET_ACL,
                     length => 4, flags => 0, reserved => 0),
             authorityTag => 0,
-            words => [getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DEVMGR), 1,
+            words => [To_Word (Registered_Driver (DRIVER_DEVMGR)), 1,
                       Unsigned_64 (Boot_Grant.slot),
                       Unsigned_64 (Boot_Grant.generation)]);
-         Tag := capCall (1, Request);
+         Tag := capCall (1, Request, CuBit.Messages.Wait_Forever);
          if Tag.label /= REPLY_OK then return 0; end if;
          Boot_Read_Policy := True;
       end if;
@@ -835,30 +835,30 @@ procedure main is
       end;
       Request := CuBit.Filesystems.Open_Request
         (Boot_Grant, CuBit.Filesystems.Nonempty_Path_Byte_Count (Name'Length));
-      Tag := capCall (1, Request);
+      Tag := capCall (1, Request, CuBit.Messages.Wait_Forever);
       if Tag.label /= REPLY_OK or else Tag.length /= 2 then return 0; end if;
       Handle := CuBit.Filesystems.File_Handle (Request.words (0));
       Size := Request.words (1);
       Read_Bytes := 0;
       if Size in 1 .. Boot_Buffer_Bytes then
          Request := CuBit.Filesystems.Read_Request (Handle, Boot_Grant, Size);
-         Tag := capCall (1, Request);
+         Tag := capCall (1, Request, CuBit.Messages.Wait_Forever);
          if Tag.label = REPLY_OK and then Tag.length >= 1 and then
            Request.words (0) = Size
          then Read_Bytes := Size; end if;
       end if;
       Request := CuBit.Filesystems.Close_Request (Handle);
-      Tag := capCall (1, Request);
+      Tag := capCall (1, Request, CuBit.Messages.Wait_Forever);
       if Tag.label /= REPLY_OK then return 0; end if;
       return Read_Bytes;
    end Read_Boot_Image;
 
    function spawnFromBootStorage (name     : String;
-                           priority : Unsigned_64;
-                           reqPID   : Unsigned_64 := 0) return Unsigned_64
+                           priority : Unsigned_64) return Process_ID
    is
       idx  : Natural;
       addr : Unsigned_64;
+      Spawned : Unsigned_64;
       size : Unsigned_64;
       --  NUL-terminated copy of name for kernel to read
       nameBuf : String (1 .. 17) := (others => Character'Val (0));
@@ -869,7 +869,7 @@ procedure main is
          size := Read_Boot_Image (name);
          if size = 0 then
             debugPrint ("devmgr: boot image unavailable: " & name & LF);
-            return 0;
+            return No_Process;
          end if;
          addr := Unsigned_64 (To_Integer (Boot_Buffer));
          debugPrint ("devmgr: loaded from filesystem: " & name & LF);
@@ -887,14 +887,16 @@ procedure main is
          nameBuf (i + 1) := name (name'First + i);
       end loop;
 
-      return syscall (SYSCALL_SPAWN, addr, size, priority,
-                      Unsigned_64 (To_Integer (nameBuf'Address)), reqPID);
+      Spawned := syscall (SYSCALL_SPAWN, addr, size, priority,
+                      Unsigned_64 (To_Integer (nameBuf'Address)));
+      --  The new process's identity, or all ones.
+      return (if Spawned = Unsigned_64'Last then No_Process else From_Word (Spawned));
    end spawnFromBootStorage;
 
    ---------------------------------------------------------------------------
    -- Mint a capability into a target process
    ---------------------------------------------------------------------------
-   procedure mintCap (target   : Unsigned_64;
+   procedure mintCap (target   : Process_ID;
                       capType  : Unsigned_64;
                       objRef   : Unsigned_64;
                       objParam : Unsigned_64;
@@ -904,7 +906,7 @@ procedure main is
       ret : Unsigned_64;
    begin
       ret := syscall (SYSCALL_POLICY_MINT_CAPABILITY,
-                      target, capType, objRef, objParam, rights, capSlot);
+                      To_Word (target), capType, objRef, objParam, rights, capSlot);
       if ret = reterr then
          debugPrint ("devmgr: mint_cap failed" & LF);
       end if;
@@ -929,15 +931,15 @@ procedure main is
    ---------------------------------------------------------------------------
    -- Grant an IPC endpoint between two processes
    ---------------------------------------------------------------------------
-   procedure grantEndpoint (target    : Unsigned_64;
-                            destPID   : Unsigned_64;
+   procedure grantEndpoint (target    : Process_ID;
+                            destPID   : Process_ID;
                             capSlot   : Unsigned_64;
-                            authorityTagPID : Unsigned_64)
+                            authorityTagPID : Process_ID)
    is
    begin
       mintCap (target   => target,
                capType  => CAP_ENDPOINT,
-               objRef   => destPID,
+               objRef   => To_Word (destPID),
                objParam => 0,
                rights   => RIGHT_READ or RIGHT_WRITE,
                capSlot  => capSlot);
@@ -946,7 +948,7 @@ procedure main is
    ---------------------------------------------------------------------------
    -- Assign CPU affinity based on service type
    ---------------------------------------------------------------------------
-   procedure assignCPU (pid  : Unsigned_64;
+   procedure assignCPU (pid  : Process_ID;
                         name : String)
    is
       ignore : Unsigned_64;
@@ -997,10 +999,10 @@ procedure main is
    ---------------------------------------------------------------------------
    -- Resume a suspended process
    ---------------------------------------------------------------------------
-   procedure resumeProc (pid : Unsigned_64) is
+   procedure resumeProc (pid : Process_ID) is
       ret : Unsigned_64;
    begin
-      ret := syscall (SYSCALL_RESUME, pid);
+      ret := syscall (SYSCALL_RESUME, To_Word (pid));
       if ret = reterr then
          debugPrint ("devmgr: resume failed" & LF);
       end if;
@@ -1017,14 +1019,14 @@ procedure main is
    MIXER_REALTIME_PERIOD_US : constant Unsigned_64 := 5_000;
 
    --  Our PID (discovered via registerDriver)
-   myPID : Unsigned_64 := 0;
+   myPID : Process_ID := No_Process;
 
    ---------------------------------------------------------------------------
    -- Wait for a driver to signal readiness via IPC.
    -- Returns True if driver sent OP_READY, False if OP_NOT_PRESENT.
    ---------------------------------------------------------------------------
-   function waitReady (driverPID : Unsigned_64) return Boolean is
-      sender : ProcessID;
+   function waitReady (driverPID : Process_ID) return Boolean is
+      sender : Process_ID;
       rdyMsg : Message;
       ignore : Unsigned_64;
    begin
@@ -1039,14 +1041,14 @@ procedure main is
                  rdyMsg.words (0) <= Unsigned_64 (Intel_GPU_Display_Pages.Page_Index'Last)) or else
                 (rdyMsg.tag = (Intel_GPU_PHY_Pages.Request_Label, 1, 0, 0) and then
                  rdyMsg.words (0) <= Unsigned_64 (Intel_GPU_PHY_Pages.Page_Index'Last))) and then
-           sender = Intel_Inspection_PID and then sender /= 0 and then
+           sender = Intel_Inspection_PID and then sender /= No_Process and then
            rdyMsg.authorityTag = 16#4947# and then
            rdyMsg.words (1 .. 3) = [0, 0, 0]
          then
             ignore := reply (sender,
               (tag => (16#F002#, 0, 0, 0), authorityTag => 0, words => [others => 0]));
          elsif rdyMsg.tag = (Intel_GPU_Buffer_Backing.Budget_Request_Label, 4, 0, 0) and then
-           sender = Intel_Inspection_PID and then sender /= 0 and then
+           sender = Intel_Inspection_PID and then sender /= No_Process and then
            rdyMsg.authorityTag = 16#4947# and then rdyMsg.words = [Intel_GPU_Buffer_Backing.Budget_Version, 0, 0, 0]
          then
             ignore := reply (sender,
@@ -1054,7 +1056,7 @@ procedure main is
          elsif Intel_GPU_Buffer_Backing.Valid_Allocation_Request
            (rdyMsg.tag.label, rdyMsg.tag.length, rdyMsg.tag.flags, rdyMsg.tag.reserved,
             rdyMsg.words (0), rdyMsg.words (1), rdyMsg.words (2), rdyMsg.words (3)) and then
-           sender = Intel_Inspection_PID and then sender /= 0 and then
+           sender = Intel_Inspection_PID and then sender /= No_Process and then
            rdyMsg.authorityTag = 16#4947#
          then
             ignore := reply (sender,
@@ -1067,7 +1069,7 @@ procedure main is
                 rdyMsg.tag = (Intel_GPU_PCI_Interrupts.Disable_Request_Label, 0, 0, 0) or else
                 rdyMsg.tag = (Intel_GPU_ADS_Backing.Request_Label, 0, 0, 0) or else
                 rdyMsg.tag = (16#022F#, 0, 0, 0)) and then
-           sender = Intel_Inspection_PID and then sender /= 0 and then
+           sender = Intel_Inspection_PID and then sender /= No_Process and then
            rdyMsg.authorityTag = 16#4947# and then rdyMsg.words = [0, 0, 0, 0]
          then
             ignore := reply (sender,
@@ -1083,12 +1085,12 @@ procedure main is
    ---------------------------------------------------------------------------
    OP_SET_ACL : constant Unsigned_32 := 16#0080#;
 
-   procedure Grant_Intel_Firmware (Child : Unsigned_64) is
+   procedure Grant_Intel_Firmware (Child : Process_ID) is
       Path : constant String := "firmware/intel/tgl_guc_70.bin";
       Request : Message := NULL_MESSAGE;
       Tag : MessageTag;
    begin
-      if filesystemPID = 0 or else not Boot_Granted or else
+      if filesystemPID = No_Process or else not Boot_Granted or else
         Boot_Buffer = System.Null_Address
       then return; end if;
       declare
@@ -1103,9 +1105,9 @@ procedure main is
          end loop;
       end;
       Request.tag := (CuBit.Filesystems.OP_SET_ACL, 4, 0, 0);
-      Request.words := [Child, 1, Unsigned_64 (Boot_Grant.slot),
+      Request.words := [To_Word (Child), 1, Unsigned_64 (Boot_Grant.slot),
                         Unsigned_64 (Boot_Grant.generation)];
-      Tag := capCall (1, Request);
+      Tag := capCall (1, Request, CuBit.Messages.Wait_Forever);
       if Tag = (CuBit.Filesystems.REPLY_OK, 1, 0, 0) and then
         Request.words = [0, 0, 0, 0]
       then
@@ -1116,11 +1118,11 @@ procedure main is
       end if;
    end Grant_Intel_Firmware;
 
-   procedure sendWildcardACL (targetPID : Unsigned_64) is
+   procedure sendWildcardACL (targetPID : Process_ID) is
       aclMsg : Message;
       ignore : MessageTag;
    begin
-      if filesystemPID = 0 then
+      if filesystemPID = No_Process then
          return;
       end if;
       aclMsg.tag := (label  => OP_SET_ACL,
@@ -1128,18 +1130,18 @@ procedure main is
                       flags  => 0,
                       reserved  => 0);
       aclMsg.authorityTag := 0;
-      aclMsg.words := [0 => targetPID, 1 => 0, 2 => 0, 3 => 0];
-      ignore := capCall (1, aclMsg);
+      aclMsg.words := [0 => To_Word (targetPID), 1 => 0, 2 => 0, 3 => 0];
+      ignore := capCall (1, aclMsg, CuBit.Messages.Wait_Forever);
    end sendWildcardACL;
 
    ---------------------------------------------------------------------------
    -- Send a wildcard ACL to the config store for a target process
    ---------------------------------------------------------------------------
-   procedure sendWildcardACLConfig (targetPID : Unsigned_64) is
+   procedure sendWildcardACLConfig (targetPID : Process_ID) is
       aclMsg : Message;
       ignore : MessageTag;
    begin
-      if configPID = 0 then
+      if configPID = No_Process then
          return;
       end if;
       aclMsg.tag := (label  => OP_SET_ACL,
@@ -1147,8 +1149,8 @@ procedure main is
                       flags  => 0,
                       reserved  => 0);
       aclMsg.authorityTag := 0;
-      aclMsg.words := [0 => targetPID, 1 => 0, 2 => 0, 3 => 0];
-      ignore := capCall (2, aclMsg);
+      aclMsg.words := [0 => To_Word (targetPID), 1 => 0, 2 => 0, 3 => 0];
+      ignore := capCall (2, aclMsg, CuBit.Messages.Wait_Forever);
    end sendWildcardACLConfig;
 
    ---------------------------------------------------------------------------
@@ -1168,7 +1170,7 @@ procedure main is
       DMA_PAGES : constant Unsigned_64 := 256;
       DMA_SIZE  : constant Unsigned_64 := DMA_PAGES * 4096;
    begin
-      if not nvmeDev.found or nvmePID = 0 then
+      if not nvmeDev.found or nvmePID = No_Process then
          return;
       end if;
 
@@ -1271,7 +1273,7 @@ procedure main is
       IDE1_VECTOR : constant Unsigned_64 := 46;
       ret : Unsigned_64;
    begin
-      if ataPID = 0 then
+      if ataPID = No_Process then
          return;
       end if;
 
@@ -1377,7 +1379,7 @@ procedure main is
       DMA_PAGES : constant Unsigned_64 := 2 ** Natural (DMA_ORDER);
       DMA_SIZE  : constant Unsigned_64 := DMA_PAGES * 4096;
    begin
-      if not netDev.found or virtioNetPID = 0 then
+      if not netDev.found or virtioNetPID = No_Process then
          return;
       end if;
 
@@ -1534,7 +1536,7 @@ procedure main is
       DMA_SIZE  : constant Unsigned_64 := DMA_PAGES * 4096;
       HDA_MSI_VECTOR : constant Unsigned_64 := 45;
    begin
-      if not hdaDev.found or hdaPID = 0 then
+      if not hdaDev.found or hdaPID = No_Process then
          return;
       end if;
 
@@ -1677,6 +1679,10 @@ procedure main is
       deviceBar : Unsigned_8 := 16#FF#;
       barRaw : Unsigned_32;
       barPhys : Unsigned_64;
+      barBytes : Unsigned_64;
+      commonBytes, notifyBytes, isrBytes, deviceBytes : Unsigned_32 := 0;
+      capBytes : Unsigned_8;
+      capCount : Natural := 0;
       irqLine : Unsigned_8;
       irqVector : Unsigned_64;
       pciCmd : Unsigned_16;
@@ -1689,7 +1695,8 @@ procedure main is
       DMA_ORDER : constant Unsigned_64 := 11;
       DMA_PAGES : constant Unsigned_64 := 2 ** Natural (DMA_ORDER);
       DMA_SIZE  : constant Unsigned_64 := DMA_PAGES * 4096;
-      BAR_MAP_SIZE : constant Unsigned_64 := 65536;
+      function Fits (Offset, Bytes, Limit : Unsigned_64) return Boolean is
+        (Bytes /= 0 and then Offset <= Limit and then Bytes <= Limit - Offset);
 
       function readCap32 (offset : Unsigned_8) return Unsigned_32 is
       begin
@@ -1697,19 +1704,28 @@ procedure main is
                                  capPtr + offset);
       end readCap32;
    begin
-      if not gpuDev.found or virtioGpuPID = 0 then
+      if not gpuDev.found or virtioGpuPID = No_Process then
          return;
       end if;
 
       capPtr := pciReadConfig8 (gpuDev.bus, gpuDev.slot, gpuDev.func,
                                 PCI_CAP_PTR) and 16#FC#;
       while capPtr /= 0 loop
+         -- Conventional PCI capability space is finite. Reject cycles and
+         -- vendor headers whose fields would wrap the 8-bit config offset.
+         if capPtr < 64 or else capCount = 48 then return; end if;
+         capCount := capCount + 1;
          capId := pciReadConfig8 (gpuDev.bus, gpuDev.slot, gpuDev.func,
                                   capPtr);
          next := pciReadConfig8 (gpuDev.bus, gpuDev.slot, gpuDev.func,
                                  capPtr + 1) and 16#FC#;
 
          if capId = PCI_CAP_ID_VENDOR_SPECIFIC then
+            if capPtr > 240 then return; end if;
+            capBytes := pciReadConfig8
+              (gpuDev.bus, gpuDev.slot, gpuDev.func, capPtr + 2);
+            if capBytes < 16 or else Natural (capPtr) + Natural (capBytes) > 256
+            then return; end if;
             cfgType := pciReadConfig8 (gpuDev.bus, gpuDev.slot, gpuDev.func,
                                        capPtr + 3);
             barIndex := pciReadConfig8 (gpuDev.bus, gpuDev.slot, gpuDev.func,
@@ -1718,18 +1734,26 @@ procedure main is
 
             case cfgType is
                when VIRTIO_PCI_CAP_COMMON_CFG =>
+                  if commonBar /= 16#FF# then return; end if;
                   commonBar := barIndex;
                   commonOff := capOff;
+                  commonBytes := readCap32 (12);
                when VIRTIO_PCI_CAP_NOTIFY_CFG =>
+                  if notifyBar /= 16#FF# or else capBytes < 20 then return; end if;
                   notifyBar := barIndex;
                   notifyOff := capOff;
+                  notifyBytes := readCap32 (12);
                   notifyMult := readCap32 (16);
                when VIRTIO_PCI_CAP_ISR_CFG =>
+                  if isrBar /= 16#FF# then return; end if;
                   isrBar := barIndex;
                   isrOff := capOff;
+                  isrBytes := readCap32 (12);
                when VIRTIO_PCI_CAP_DEVICE_CFG =>
+                  if deviceBar /= 16#FF# then return; end if;
                   deviceBar := barIndex;
                   deviceOff := capOff;
+                  deviceBytes := readCap32 (12);
                when others =>
                   null;
             end case;
@@ -1739,7 +1763,7 @@ procedure main is
       end loop;
 
       if commonBar = 16#FF# or else notifyBar = 16#FF# or else
-         isrBar = 16#FF# or else notifyMult = 0
+         isrBar = 16#FF#
       then
          debugPrint ("devmgr: virtio-gpu missing modern caps" & LF);
          return;
@@ -1752,14 +1776,49 @@ procedure main is
          return;
       end if;
 
+      -- BEGIN VIRTIO GPU BAR DECODE (exact-source hosted regression).
+      if commonBar > 5 then
+         debugPrint ("devmgr: virtio-gpu invalid common BAR index" & LF);
+         return;
+      end if;
       barRaw := pciReadConfig32
         (gpuDev.bus, gpuDev.slot, gpuDev.func,
          PCI_BASEADDR_0 + commonBar * 4);
-      if (barRaw and 1) /= 0 then
-         debugPrint ("devmgr: virtio-gpu common BAR is I/O, unsupported" & LF);
+      if (barRaw and 1) /= 0 or else
+        ((barRaw and 6) /= 0 and then (barRaw and 6) /= 4) or else
+        (commonBar = 5 and then (barRaw and 6) = 4)
+      then
+         debugPrint ("devmgr: virtio-gpu unsupported common BAR encoding" & LF);
          return;
       end if;
       barPhys := Unsigned_64 (barRaw and 16#FFFF_FFF0#);
+      if (barRaw and 6) = 4 then
+         barPhys := barPhys or Shift_Left
+           (Unsigned_64 (pciReadConfig32
+              (gpuDev.bus, gpuDev.slot, gpuDev.func,
+               PCI_BASEADDR_0 + commonBar * 4 + 4)), 32);
+      end if;
+      if barPhys = 0 then
+         debugPrint ("devmgr: virtio-gpu unassigned common BAR" & LF);
+         return;
+      end if;
+      -- END VIRTIO GPU BAR DECODE.
+
+      barBytes := probeMemoryBARSize
+        (gpuDev, PCI_BASEADDR_0 + commonBar * 4);
+      if barBytes = 0 or else barPhys mod 4096 /= 0 or else
+        barPhys > Unsigned_64'Last - barBytes or else
+        commonBytes < 56 or else notifyBytes < 2 or else isrBytes < 1 or else
+        commonOff mod 4 /= 0 or else notifyOff mod 2 /= 0 or else
+        not Fits (Unsigned_64 (commonOff), Unsigned_64 (commonBytes), barBytes) or else
+        not Fits (Unsigned_64 (notifyOff), Unsigned_64 (notifyBytes), barBytes) or else
+        not Fits (Unsigned_64 (isrOff), Unsigned_64 (isrBytes), barBytes) or else
+        (deviceBar /= 16#FF# and then
+         not Fits (Unsigned_64 (deviceOff), Unsigned_64 (deviceBytes), barBytes))
+      then
+         debugPrint ("devmgr: virtio-gpu invalid MMIO extent" & LF);
+         return;
+      end if;
 
       irqLine := pciReadConfig8 (gpuDev.bus, gpuDev.slot, gpuDev.func,
                                  PCI_INTERRUPT_LINE);
@@ -1786,8 +1845,13 @@ procedure main is
       ret := setSysinfo (SYSINFO_GPU_SECOND_DMA_PHYS, secondDmaPhys);
 
       --  Slot 4: virtio modern MMIO BAR.
-      mintCap (virtioGpuPID, CAP_DEVICE_MEM, barPhys, BAR_MAP_SIZE,
+      mintCap (virtioGpuPID, CAP_DEVICE_MEM, barPhys, barBytes,
                RIGHT_READ or RIGHT_WRITE, 4);
+      -- Inspection supplies the exact notification subregion without adding
+      -- a syscall/sysinfo ABI. This slot does not widen the BAR authority.
+      mintCap (virtioGpuPID, CAP_DEVICE_MEM,
+               barPhys + Unsigned_64 (notifyOff), Unsigned_64 (notifyBytes),
+               RIGHT_WRITE, 7);
       --  Slot 5: IRQ.
       mintCap (virtioGpuPID, CAP_IRQ, irqVector, 0, RIGHT_READ, 5);
       --  Slot 6: mapped DMA banks; actual frame ownership is tracked per bank.
@@ -1817,7 +1881,7 @@ procedure main is
    procedure setupPS2 is
       ret : Unsigned_64;
    begin
-      if ps2PID = 0 then
+      if ps2PID = No_Process then
          return;
       end if;
 
@@ -1955,7 +2019,7 @@ procedure main is
       OP_XHCI_CONFIGURE : constant Unsigned_32 := 16#0220#;
       XHCI_MSI_VECTOR : constant Unsigned_64 := 48;
    begin
-      if not xhciDev.found or else xhciPID = 0 then
+      if not xhciDev.found or else xhciPID = No_Process then
          return;
       end if;
 
@@ -2192,7 +2256,7 @@ procedure main is
               Unsigned_64 (XHCI_Interrupt_Mode'Enum_Rep (interruptMode)) or
               Shift_Left (XHCI_MSI_VECTOR, 8) or
               Shift_Left (msixTableOffset, 16)]);
-      replyTag := capCall (DEVMGR_XHCI_SLOT, cfgMsg);
+      replyTag := capCall (DEVMGR_XHCI_SLOT, cfgMsg, CuBit.Messages.Wait_Forever);
       if replyTag.label = REPLY_OK then
          if interruptMode = XHCI_INTERRUPT_MSIX then
             --  The driver has installed and unmasked table entry zero. Drop
@@ -2209,13 +2273,13 @@ procedure main is
          end if;
          debugPrint ("devmgr: xHCI controller started" & LF);
          --  Read-only optical block endpoint; no raw controller authority.
-         if filesystemPID /= 0 then
+         if filesystemPID /= No_Process then
             grantEndpoint (filesystemPID, xhciPID, 12, filesystemPID);
             Optical_Storage_Ready := True;
          end if;
       else
          debugPrint ("devmgr: xHCI controller rejected setup" & LF);
-         xhciPID := 0;
+         xhciPID := No_Process;
       end if;
    end setupXHCI;
 
@@ -2229,7 +2293,7 @@ procedure main is
    initrdPages  : Unsigned_64;
    ret          : Unsigned_64;
    msg          : Message;
-   from         : ProcessID;
+   from         : Process_ID;
 
 begin
    debugPrint ("devmgr: starting" & LF);
@@ -2270,13 +2334,13 @@ begin
 
    --  Bootstrap endpoint authority is established before any child runs.
    ret := registerDriver (DRIVER_DEVMGR);
-   myPID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DEVMGR);
+   myPID := Registered_Driver (DRIVER_DEVMGR);
 
    --  A writable live image is served by a separate Block.Device.V1 driver.
    --  It starts before FS, so FS never calls a not-yet-running provider.
    if Cpio.findFile (cpioArchive, "live-rw.ext2") < cpioArchive.count then
       ramdiskPID := spawnFromBootStorage ("ramdisk.drv", 5);
-      if ramdiskPID /= 0 and then ramdiskPID /= reterr then
+      if ramdiskPID /= No_Process then
          initrdPhys := virtToPhys (To_Address (Integer_Address (INITRD_BASE)));
          initrdPages := (initrdSize + 4095) / 4096;
          declare
@@ -2299,7 +2363,7 @@ begin
             end if;
          end;
          assignCPU (ramdiskPID, "ramdisk.drv");
-         mintCap (ramdiskPID, CAP_ENDPOINT, myPID, 0,
+         mintCap (ramdiskPID, CAP_ENDPOINT, To_Word (myPID), 0,
                   RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
          resumeProc (ramdiskPID);
          if not waitReady (ramdiskPID) then
@@ -2319,18 +2383,18 @@ begin
    -----------------------------------------------------------------------
    -- Phase 1: Spawn filesystem server (auto-assign PID)
    -----------------------------------------------------------------------
-   filesystemPID := spawnFromBootStorage ("filesystem.svc", 5, 0);
-   if filesystemPID = reterr then
-      filesystemPID := 0;
+   filesystemPID := spawnFromBootStorage ("filesystem.svc", 5);
+   if filesystemPID = No_Process then
+      filesystemPID := No_Process;
       debugPrint ("devmgr: filesystem.svc spawn failed" & LF);
    end if;
 
    --  Register FS PID in kernel well-known service registry
-   if filesystemPID /= 0 then
+   if filesystemPID /= No_Process then
       ret := setWellKnown (ROLE_FILESYSTEM, filesystemPID);
    end if;
 
-   if filesystemPID /= 0 then
+   if filesystemPID /= No_Process then
       --  Map initrd into FS server for serving ramdisk files
       --  Get the physical address: kernel mapped initrd at INITRD_BASE in
       --  our space, but the physical address was stored for us.
@@ -2371,12 +2435,12 @@ begin
                RIGHT_WRITE, 7);
 
 
-      if ramdiskPID /= 0 then
+      if ramdiskPID /= No_Process then
          grantEndpoint
            (filesystemPID, ramdiskPID, CAP_SLOT_RAMDISK, filesystemPID);
       end if;
       assignCPU (filesystemPID, "filesystem.svc");
-      mintCap (filesystemPID, CAP_ENDPOINT, myPID, 0,
+      mintCap (filesystemPID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (filesystemPID);
       debugPrint ("devmgr: filesystem server started" & LF);
@@ -2384,11 +2448,11 @@ begin
       --  Wait for FS to signal ready, then grant ourselves a FS endpoint
       --  at slot 1 so we can send ACL management messages.
       if not waitReady (filesystemPID) then
-         filesystemPID := 0;
+         filesystemPID := No_Process;
       end if;
 
-      if myPID /= 0 and myPID /= Unsigned_64'Last and
-         filesystemPID /= 0
+      if myPID /= No_Process and
+         filesystemPID /= No_Process
       then
          grantEndpoint (myPID, filesystemPID, 1, myPID);
          debugPrint ("devmgr: minted FS endpoint at slot 1" & LF);
@@ -2401,42 +2465,42 @@ begin
 
    --  ATA driver
    ataPID := spawnFromBootStorage ("ata.drv", 5);
-   if ataPID = reterr then
-      ataPID := 0;
+   if ataPID = No_Process then
+      ataPID := No_Process;
    end if;
-   if ataPID /= 0 then
+   if ataPID /= No_Process then
       setupAta;
       --  CAP_NOTIFICATION for DRIVER_ATA registration (slot 7)
       mintCap (ataPID, CAP_NOTIFICATION, DRIVER_ATA, 0,
                RIGHT_WRITE, 7);
       assignCPU (ataPID, "ata.drv");
-      mintCap (ataPID, CAP_ENDPOINT, myPID, 0,
+      mintCap (ataPID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (ataPID);
       debugPrint ("devmgr: ATA driver started" & LF);
 
       if not waitReady (ataPID) then
-         ataPID := 0;
+         ataPID := No_Process;
       end if;
 
       --  Grant ATA endpoint to FS server (slot 10)
-      if filesystemPID /= 0 and ataPID /= 0 then
+      if filesystemPID /= No_Process and ataPID /= No_Process then
          grantEndpoint (filesystemPID, ataPID, 10, filesystemPID);
       end if;
    end if;
 
    --  NVMe driver
    nvmePID := spawnFromBootStorage ("nvme.drv", 5);
-   if nvmePID = reterr then
-      nvmePID := 0;
+   if nvmePID = No_Process then
+      nvmePID := No_Process;
    end if;
-   if nvmePID /= 0 then
+   if nvmePID /= No_Process then
       setupNvme;
       --  CAP_NOTIFICATION for DRIVER_NVME registration (slot 7)
       mintCap (nvmePID, CAP_NOTIFICATION, DRIVER_NVME, 0,
                RIGHT_WRITE, 7);
       assignCPU (nvmePID, "nvme.drv");
-      mintCap (nvmePID, CAP_ENDPOINT, myPID, 0,
+      mintCap (nvmePID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       grantEndpoint (myPID, nvmePID, DEVMGR_NVME_SLOT, myPID);
       resumeProc (nvmePID);
@@ -2456,7 +2520,7 @@ begin
          response : MessageTag;
          control : Unsigned_16;
       begin
-         response := capCall (DEVMGR_NVME_SLOT, cfg);
+         response := capCall (DEVMGR_NVME_SLOT, cfg, CuBit.Messages.Wait_Forever);
          if nvmeMSIX then
             control := pciReadConfig16
               (nvmeDev.bus, nvmeDev.slot, nvmeDev.func, nvmeMSIXCap + 2);
@@ -2475,11 +2539,11 @@ begin
       debugPrint ("devmgr: NVMe driver started" & LF);
 
       if not waitReady (nvmePID) then
-         nvmePID := 0;
+         nvmePID := No_Process;
       end if;
 
       --  Grant NVMe endpoint to FS server (slot 11)
-      if filesystemPID /= 0 and nvmePID /= 0 then
+      if filesystemPID /= No_Process and nvmePID /= No_Process then
          grantEndpoint (filesystemPID, nvmePID, 11, filesystemPID);
       end if;
    end if;
@@ -2488,19 +2552,19 @@ begin
    -- Phase 2b: Spawn PS/2 keyboard + mouse driver
    -----------------------------------------------------------------------
    ps2PID := spawnFromBootStorage ("ps2.drv", 5);
-   if ps2PID = reterr then
-      ps2PID := 0;
+   if ps2PID = No_Process then
+      ps2PID := No_Process;
    end if;
-   if ps2PID /= 0 then
+   if ps2PID /= No_Process then
       setupPS2;
       assignCPU (ps2PID, "ps2.drv");
-      mintCap (ps2PID, CAP_ENDPOINT, myPID, 0,
+      mintCap (ps2PID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (ps2PID);
       debugPrint ("devmgr: PS/2 driver started" & LF);
 
       if not waitReady (ps2PID) then
-         ps2PID := 0;
+         ps2PID := No_Process;
       end if;
    end if;
 
@@ -2509,10 +2573,10 @@ begin
    -----------------------------------------------------------------------
    if xhciDev.found then
       xhciPID := spawnFromBootStorage ("xhci.drv", 5);
-      if xhciPID = reterr then
-         xhciPID := 0;
+      if xhciPID = No_Process then
+         xhciPID := No_Process;
       end if;
-      if xhciPID /= 0 then
+      if xhciPID /= No_Process then
          setupXHCI;
       end if;
    end if;
@@ -2521,34 +2585,34 @@ begin
    -- Phase 2d: Spawn config store service
    -----------------------------------------------------------------------
    configPID := spawnFromBootStorage ("config.svc", 5);
-   if configPID = reterr then
-      configPID := 0;
+   if configPID = No_Process then
+      configPID := No_Process;
    end if;
-   if configPID /= 0 then
+   if configPID /= No_Process then
       mintCap (configPID, CAP_NOTIFICATION, DRIVER_CONFIG, 0,
                RIGHT_WRITE, 7);
       assignCPU (configPID, "config.svc");
-      mintCap (configPID, CAP_ENDPOINT, myPID, 0,
+      mintCap (configPID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (configPID);
       debugPrint ("devmgr: config server started" & LF);
 
       if not waitReady (configPID) then
-         configPID := 0;
+         configPID := No_Process;
       end if;
 
       --  Grant ourselves config endpoint at slot 2
-      if configPID /= 0 then
+      if configPID /= No_Process then
          grantEndpoint (myPID, configPID, 2, myPID);
       end if;
 
       --  Grant config ACL for devmgr itself (wildcard, so we can SET)
-      if configPID /= 0 then
+      if configPID /= No_Process then
          sendWildcardACLConfig (myPID);
       end if;
 
       --  Seed config from system.ccl in CPIO initrd
-      if configPID /= 0 then
+      if configPID /= No_Process then
          declare
             OP_CONFIG_SET  : constant Unsigned_32 := 16#0601#;
             CONFIG_REPLY_OK : constant Unsigned_32 := 16#F000#;
@@ -2623,7 +2687,7 @@ begin
                                         1 => Config_Grant.generation,
                                         2 => Unsigned_64 (Key_Length),
                                         3 => Unsigned_64 (Value_Length)]);
-                           cfgMsg.tag := capCall (2, cfgMsg);
+                           cfgMsg.tag := capCall (2, cfgMsg, CuBit.Messages.Wait_Forever);
                            if cfgMsg.tag.label /= CONFIG_REPLY_OK then
                               debugPrint ("devmgr: config seed failed; boot denied" & LF);
                               ret := syscall (SYSCALL_EXIT);
@@ -2656,7 +2720,7 @@ begin
                            cfgMsg :=
                              (tag => (OP_CONFIG_SET, 4, 0, 0), authorityTag => 0,
                               words => [Config_Grant.slot, Config_Grant.generation, Key'Length, Value'Length]);
-                           cfgMsg.tag := capCall (2, cfgMsg);
+                           cfgMsg.tag := capCall (2, cfgMsg, CuBit.Messages.Wait_Forever);
                            if cfgMsg.tag.label /= CONFIG_REPLY_OK then
                               debugPrint ("devmgr: clock seed rejected; boot denied" & LF);
                               ret := syscall (SYSCALL_EXIT);
@@ -2690,22 +2754,22 @@ begin
    -- Phase 2d: Spawn VirtIO-GPU driver when QEMU/hardware exposes it
    -----------------------------------------------------------------------
    virtioGpuPID := spawnFromBootStorage ("virtio-gpu.drv", 5);
-   if virtioGpuPID = reterr then
-      virtioGpuPID := 0;
+   if virtioGpuPID = No_Process then
+      virtioGpuPID := No_Process;
    end if;
-   if virtioGpuPID /= 0 then
+   if virtioGpuPID /= No_Process then
       setupVirtioGpu;
       --  CAP_NOTIFICATION for DRIVER_GPU registration (slot 8)
       mintCap (virtioGpuPID, CAP_NOTIFICATION, DRIVER_GPU, 0,
                RIGHT_WRITE, 8);
       assignCPU (virtioGpuPID, "virtio-gpu.drv");
-      mintCap (virtioGpuPID, CAP_ENDPOINT, myPID, 0,
+      mintCap (virtioGpuPID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (virtioGpuPID);
       debugPrint ("devmgr: virtio-gpu driver started" & LF);
 
       if not waitReady (virtioGpuPID) then
-         virtioGpuPID := 0;
+         virtioGpuPID := No_Process;
       end if;
    end if;
 
@@ -2715,25 +2779,25 @@ begin
 
    --  Netstack service
    netstackPID := spawnFromBootStorage ("netstack.svc", 5);
-   if netstackPID = reterr then
-      netstackPID := 0;
+   if netstackPID = No_Process then
+      netstackPID := No_Process;
    end if;
 
    --  Virtio-net driver
    virtioNetPID := spawnFromBootStorage ("virtio-net.drv", 5);
-   if virtioNetPID = reterr then
-      virtioNetPID := 0;
+   if virtioNetPID = No_Process then
+      virtioNetPID := No_Process;
    end if;
 
    --  Grant cross-endpoints between netstack and virtio-net
-   if netstackPID /= 0 and virtioNetPID /= 0 then
+   if netstackPID /= No_Process and virtioNetPID /= No_Process then
       setupVirtioNet;
 
       --  Netstack slot 10 -> virtio-net driver
       grantEndpoint (netstackPID, virtioNetPID, 10, netstackPID);
 
       --  Virtio-net slot 7 -> netstack service
-      mintCap (virtioNetPID, CAP_ENDPOINT, netstackPID,
+      mintCap (virtioNetPID, CAP_ENDPOINT, To_Word (netstackPID),
                CuBit.Network_Authority.Driver_Authority_Tag,
                RIGHT_READ or RIGHT_WRITE, 7);
 
@@ -2742,18 +2806,18 @@ begin
                RIGHT_WRITE, 8);
 
       assignCPU (netstackPID, "netstack.svc");
-      mintCap (netstackPID, CAP_ENDPOINT, myPID, 0,
+      mintCap (netstackPID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (netstackPID);
       debugPrint ("devmgr: netstack started" & LF);
 
       if not waitReady (netstackPID) then
-         netstackPID := 0;
+         netstackPID := No_Process;
       end if;
 
       if netTransportReady then
          assignCPU (virtioNetPID, "virtio-net.drv");
-         mintCap (virtioNetPID, CAP_ENDPOINT, myPID, 0,
+         mintCap (virtioNetPID, CAP_ENDPOINT, To_Word (myPID), 0,
                   RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
          grantEndpoint (myPID, virtioNetPID, DEVMGR_NET_SLOT, myPID);
          resumeProc (virtioNetPID);
@@ -2777,7 +2841,7 @@ begin
             response : MessageTag;
             control : Unsigned_16;
          begin
-            response := capCall (DEVMGR_NET_SLOT, cfg);
+            response := capCall (DEVMGR_NET_SLOT, cfg, CuBit.Messages.Wait_Forever);
             netTransportReady := response.label = REPLY_OK;
             if netTransportReady then
                control := pciReadConfig16
@@ -2790,24 +2854,24 @@ begin
          debugPrint ("devmgr: virtio-net driver started" & LF);
 
          if not netTransportReady or else not waitReady (virtioNetPID) then
-            virtioNetPID := 0;
+            virtioNetPID := No_Process;
          end if;
       else
          debugPrint ("devmgr: virtio-net interrupt setup unavailable" & LF);
-         virtioNetPID := 0;
+         virtioNetPID := No_Process;
       end if;
-   elsif netstackPID /= 0 then
+   elsif netstackPID /= No_Process then
       --  Netstack without virtio-net (no network device found)
       --  CAP_NOTIFICATION for DRIVER_NETSTACK registration (slot 8)
       mintCap (netstackPID, CAP_NOTIFICATION, DRIVER_NETSTACK, 0,
                RIGHT_WRITE, 8);
       assignCPU (netstackPID, "netstack.svc");
-      mintCap (netstackPID, CAP_ENDPOINT, myPID, 0,
+      mintCap (netstackPID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (netstackPID);
 
       if not waitReady (netstackPID) then
-         netstackPID := 0;
+         netstackPID := No_Process;
       end if;
    end if;
 
@@ -2815,17 +2879,17 @@ begin
    -- Phase 3b: Spawn network manager service
    -----------------------------------------------------------------------
    netmgrPID := spawnFromBootStorage ("netmgr.svc", 5);
-   if netmgrPID = reterr then
-      netmgrPID := 0;
+   if netmgrPID = No_Process then
+      netmgrPID := No_Process;
    end if;
-   if netmgrPID /= 0 and netstackPID /= 0 then
+   if netmgrPID /= No_Process and netstackPID /= No_Process then
       --  Slot 4: endpoint to netstack (config + raw UDP IPC)
-      mintCap (netmgrPID, CAP_ENDPOINT, netstackPID,
+      mintCap (netmgrPID, CAP_ENDPOINT, To_Word (netstackPID),
                CuBit.Network_Authority.Manager_Authority_Tag,
                RIGHT_READ or RIGHT_WRITE, 4);
 
       --  Slot 20: endpoint to config.svc (CAP_SLOT_CONFIG)
-      if configPID /= 0 then
+      if configPID /= No_Process then
          grantEndpoint (netmgrPID, configPID, 20, netmgrPID);
       end if;
 
@@ -2837,28 +2901,28 @@ begin
       sendWildcardACLConfig (netmgrPID);
 
       assignCPU (netmgrPID, "netmgr.svc");
-      mintCap (netmgrPID, CAP_ENDPOINT, myPID, 0,
+      mintCap (netmgrPID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (netmgrPID);
       debugPrint ("devmgr: netmgr started" & LF);
 
       if not waitReady (netmgrPID) then
-         netmgrPID := 0;
+         netmgrPID := No_Process;
       end if;
-   elsif netmgrPID /= 0 then
+   elsif netmgrPID /= No_Process then
       --  netmgr without netstack - still spawn so it can read config
-      if configPID /= 0 then
+      if configPID /= No_Process then
          grantEndpoint (netmgrPID, configPID, 20, netmgrPID);
       end if;
       mintCap (netmgrPID, CAP_NOTIFICATION, DRIVER_NETMGR, 0,
                RIGHT_WRITE, 8);
       sendWildcardACLConfig (netmgrPID);
       assignCPU (netmgrPID, "netmgr.svc");
-      mintCap (netmgrPID, CAP_ENDPOINT, myPID, 0,
+      mintCap (netmgrPID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (netmgrPID);
       if not waitReady (netmgrPID) then
-         netmgrPID := 0;
+         netmgrPID := No_Process;
       end if;
    end if;
 
@@ -2877,7 +2941,7 @@ begin
          Plan : constant Intel_GPU_Resources.Mapping_Plan :=
            Intel_GPU_Resources.Plan_ADLN_Registers
              (Intel_GPU_Probe.Alder_Lake_N, Command, Low, High, 0, 16#20_0000#);
-         Child : Unsigned_64;
+         Child : Process_ID;
          Request : Message := NULL_MESSAGE;
          Submitted : Boolean;
          use type Intel_GPU_Resources.Admission_Status;
@@ -2907,23 +2971,23 @@ begin
            Power = Intel_GPU_PCI_Power.D0
          then
             Child := spawnFromBootStorage ("intel-gpu.drv", 4);
-            if Child /= 0 and then Child /= reterr then
+            if Child /= No_Process then
                Intel_Inspection_PID := Child;
                Grant_Intel_Firmware (Child);
-               mintCap (Child, CAP_ENDPOINT, myPID, 16#4947#, RIGHT_READ or RIGHT_WRITE, 15);
+               mintCap (Child, CAP_ENDPOINT, To_Word (myPID), 16#4947#, RIGHT_READ or RIGHT_WRITE, 15);
                mintCap (Child, CAP_DEVICE_MEM, Plan.Physical_Base, Plan.Bytes, RIGHT_READ, 4);
-               mintCap (myPID, CAP_ENDPOINT, Child, Intel_GPU_Boot.Broker_Tag,
+               mintCap (myPID, CAP_ENDPOINT, To_Word (Child), Intel_GPU_Boot.Broker_Tag,
                  RIGHT_READ or RIGHT_WRITE or RIGHT_GRANT, 31);
                -- Optional boot diagnostic, created suspended. Capture its
                -- incarnation before installing any authority; never look up
                -- the PID again to grant Desktop access after startup.
                GPU_Viewer_PID := spawnFromBootStorage ("gpu-viewer.app", 5);
-               if GPU_Viewer_PID /= 0 and then GPU_Viewer_PID /= reterr then
+               if GPU_Viewer_PID /= No_Process then
                   declare
                      Issued : Unsigned_64;
                   begin
                      Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY,
-                       myPID, CAP_ENDPOINT, GPU_Viewer_PID, 0, RIGHT_READ,
+                       To_Word (myPID), CAP_ENDPOINT, To_Word (GPU_Viewer_PID), 0, RIGHT_READ,
                        GP.Supervisor_Recipient_Slot);
                      if Issued /= reterr then
                         GPU_Viewer_Target := CG.Capture (GP.Supervisor_Recipient_Slot);
@@ -2931,16 +2995,16 @@ begin
                           CG.Process_ID (GPU_Viewer_Target) = GPU_Viewer_PID
                         then
                            Issued := CG.Install (GPU_Viewer_Target, CAP_ENDPOINT,
-                             Child, GP.Viewer_Tag, RIGHT_READ or RIGHT_WRITE,
+                             To_Word (Child), GP.Viewer_Tag, RIGHT_READ or RIGHT_WRITE,
                              GP.Viewer_Driver_Slot);
                            if Issued = 0 then
                               Issued := CG.Install (GPU_Viewer_Target, CAP_ENDPOINT,
-                                myPID, GP.Viewer_Tag, RIGHT_READ or RIGHT_WRITE,
+                                To_Word (myPID), GP.Viewer_Tag, RIGHT_READ or RIGHT_WRITE,
                                 GP.Viewer_Supervisor_Slot);
                            end if;
                            if Issued = 0 then
                               Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY,
-                                Child, CAP_ENDPOINT, GPU_Viewer_PID, 0, RIGHT_READ,
+                                To_Word (Child), CAP_ENDPOINT, To_Word (GPU_Viewer_PID), 0, RIGHT_READ,
                                 GP.Driver_Recipient_Slot);
                               GPU_Viewer_Ready := Issued /= reterr;
                            end if;
@@ -2975,17 +3039,17 @@ begin
 
    --  HDA driver
    hdaPID := spawnFromBootStorage ("hda.drv", 5);
-   if hdaPID = reterr then
-      hdaPID := 0;
+   if hdaPID = No_Process then
+      hdaPID := No_Process;
    end if;
 
    --  Mixer service
    mixerPID := spawnFromBootStorage ("mixer.svc", 5);
-   if mixerPID = reterr then
-      mixerPID := 0;
+   if mixerPID = No_Process then
+      mixerPID := No_Process;
    end if;
 
-   if hdaPID /= 0 and mixerPID /= 0 then
+   if hdaPID /= No_Process and mixerPID /= No_Process then
       setupHDA;
 
       --  HDA slot 7: endpoint to mixer
@@ -3003,27 +3067,27 @@ begin
                RIGHT_WRITE, 8);
 
       assignCPU (hdaPID, "hda.drv");
-      mintCap (hdaPID, CAP_ENDPOINT, myPID, 0,
+      mintCap (hdaPID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (hdaPID);
       debugPrint ("devmgr: HDA driver started" & LF);
 
       if not waitReady (hdaPID) then
-         hdaPID := 0;
+         hdaPID := No_Process;
       end if;
 
       assignCPU (mixerPID, "mixer.svc");
       mintCap (mixerPID, CAP_SCHEDULING, MIXER_REALTIME_BUDGET_US,
                MIXER_REALTIME_PERIOD_US, RIGHT_READ, CAP_SLOT_SCHEDULING);
-      mintCap (mixerPID, CAP_ENDPOINT, myPID, 0,
+      mintCap (mixerPID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (mixerPID);
       debugPrint ("devmgr: mixer started" & LF);
 
       if not waitReady (mixerPID) then
-         mixerPID := 0;
+         mixerPID := No_Process;
       end if;
-   elsif mixerPID /= 0 then
+   elsif mixerPID /= No_Process then
       --  Mixer without HDA (no audio hardware found)
       --  CAP_NOTIFICATION for DRIVER_MIXER registration (slot 8)
       mintCap (mixerPID, CAP_NOTIFICATION, DRIVER_MIXER, 0,
@@ -3031,12 +3095,12 @@ begin
       assignCPU (mixerPID, "mixer.svc");
       mintCap (mixerPID, CAP_SCHEDULING, MIXER_REALTIME_BUDGET_US,
                MIXER_REALTIME_PERIOD_US, RIGHT_READ, CAP_SLOT_SCHEDULING);
-      mintCap (mixerPID, CAP_ENDPOINT, myPID, 0,
+      mintCap (mixerPID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (mixerPID);
 
       if not waitReady (mixerPID) then
-         mixerPID := 0;
+         mixerPID := No_Process;
       end if;
    end if;
 
@@ -3045,10 +3109,10 @@ begin
    -- Disk drivers already waited in Phase 2, no duplicate wait needed.
    -----------------------------------------------------------------------
    procmgrPID := spawnFromBootStorage ("procmgr.svc", 5);
-   if procmgrPID = reterr then
-      procmgrPID := 0;
+   if procmgrPID = No_Process then
+      procmgrPID := No_Process;
    end if;
-   if procmgrPID /= 0 then
+   if procmgrPID /= No_Process then
       --  Process management and capability-space administration are separate
       --  authorities. The latter is the explicit policy root used to install
       --  manifest-admitted capabilities into newly spawned processes.
@@ -3057,18 +3121,18 @@ begin
       mintCap (procmgrPID, CAP_CSPACE, 0, 0, RIGHT_GRANT, 10);
 
       --  Grant FS endpoint at slot 1
-      if filesystemPID /= 0 then
+      if filesystemPID /= No_Process then
          grantEndpoint (procmgrPID, filesystemPID, 1, procmgrPID);
       end if;
 
       --  Grant config endpoint at slot 2
-      if configPID /= 0 then
+      if configPID /= No_Process then
          grantEndpoint (procmgrPID, configPID, 2, procmgrPID);
       end if;
 
       --  Only this explicitly held endpoint may install network scopes.
-      if netstackPID /= 0 then
-         mintCap (procmgrPID, CAP_ENDPOINT, netstackPID,
+      if netstackPID /= No_Process then
+         mintCap (procmgrPID, CAP_ENDPOINT, To_Word (netstackPID),
                   CuBit.Network_Authority.Policy_Authority_Tag,
                   RIGHT_READ or RIGHT_WRITE,
                   CuBit.Network_Authority.Policy_Capability_Slot);
@@ -3089,19 +3153,19 @@ begin
 
       assignCPU (procmgrPID, "procmgr.svc");
       -- Trusted launcher policy endpoint, not inherited by applications.
-      mintCap (procmgrPID, CAP_ENDPOINT, myPID,
+      mintCap (procmgrPID, CAP_ENDPOINT, To_Word (myPID),
                Intel_GPU_Broker_Request.Authority_Tag,
                RIGHT_READ or RIGHT_WRITE,
                Intel_GPU_Broker_Request.Launcher_Endpoint_Slot);
       sendWildcardACL (procmgrPID);
       sendWildcardACLConfig (procmgrPID);
-      mintCap (procmgrPID, CAP_ENDPOINT, myPID, 0,
+      mintCap (procmgrPID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (procmgrPID);
       debugPrint ("devmgr: procmgr started" & LF);
 
       if not waitReady (procmgrPID) then
-         procmgrPID := 0;
+         procmgrPID := No_Process;
       end if;
    end if;
    -- Do not expose the viewer's request to waitReady's startup-only handler.
@@ -3143,7 +3207,7 @@ begin
          begin
             Launch_Now := syscall (SYSCALL_GETTIME);
             GPU_Launch.Begin_Request
-              (GPU_Launches, procmgrPID, from, msg.authorityTag, msg,
+              (GPU_Launches, To_Word (procmgrPID), To_Word (from), msg.authorityTag, msg,
                Launch_Now,
                (if Launch_Now > Unsigned_64'Last - 5_000 then Launch_Now
                 else Launch_Now + 5_000), ID);
@@ -3158,8 +3222,8 @@ begin
       elsif msg.tag.label = GP.Desktop_Binding_Label then
          declare
             Code : Unsigned_64 := 1;
-            Desktop_PID : constant Unsigned_64 :=
-              getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP);
+            Desktop_PID : constant Process_ID :=
+              Registered_Driver (DRIVER_DESKTOP);
          begin
             if GPU_Viewer_Ready and then from = GPU_Viewer_PID and then
               msg.authorityTag = GP.Viewer_Tag and then
@@ -3167,8 +3231,8 @@ begin
               msg.words = [1, 0, 0, 0]
             then
                if GPU_Viewer_Desktop_Bound then Code := 0;
-               elsif Desktop_PID = 0 or else Desktop_PID = reterr then Code := 2;
-               elsif CG.Install (GPU_Viewer_Target, CAP_ENDPOINT, Desktop_PID, 0,
+               elsif Desktop_PID = No_Process or else Desktop_PID = No_Process then Code := 2;
+               elsif CG.Install (GPU_Viewer_Target, CAP_ENDPOINT, To_Word (Desktop_PID), 0,
                  RIGHT_READ or RIGHT_WRITE, CAP_SLOT_DESKTOP) = 0
                then
                   GPU_Viewer_Desktop_Bound := True;
@@ -3179,16 +3243,16 @@ begin
               authorityTag => 0, words => [Code, 1, 0, 0]));
          end;
       elsif msg.tag = (16#0228#, 0, 0, 0) and then
-        from = xhciPID and then xhciPID /= 0 and then
-        msg.authorityTag = xhciPID and then msg.words = [0, 0, 0, 0]
+        from = xhciPID and then xhciPID /= No_Process and then
+        msg.authorityTag = To_Word (xhciPID) and then msg.words = [0, 0, 0, 0]
       then
          declare
-            Collector : constant Unsigned_64 := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_LOGSTORE);
+            Collector : constant Process_ID := Registered_Driver (DRIVER_LOGSTORE);
             Issued : Unsigned_64 := reterr;
          begin
-            if Collector /= 0 then
-               Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, xhciPID, CAP_ENDPOINT,
-                 Collector, CuBit.Log_Protocol.Publisher_Tag (15, 1),
+            if Collector /= No_Process then
+               Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, To_Word (xhciPID), CAP_ENDPOINT,
+                 To_Word (Collector), CuBit.Log_Protocol.Publisher_Tag (15, 1),
                  RIGHT_READ or RIGHT_WRITE, CuBit.Log_Protocol.Publisher_Slot);
             end if;
             ret := Unsigned_64 (reply (from,
@@ -3196,16 +3260,16 @@ begin
                 length => 0, flags => 0, reserved => 0), authorityTag => 0, words => [others => 0])));
          end;
       elsif msg.tag = (16#0229#, 0, 0, 0) and then
-        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
       then
          declare
-            Collector : constant Unsigned_64 := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_LOGSTORE);
+            Collector : constant Process_ID := Registered_Driver (DRIVER_LOGSTORE);
             Issued : Unsigned_64 := reterr;
          begin
-            if Collector /= 0 then
-               Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, from, CAP_ENDPOINT,
-                 Collector, CuBit.Log_Protocol.Publisher_Tag (15, 2),
+            if Collector /= No_Process then
+               Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, To_Word (from), CAP_ENDPOINT,
+                 To_Word (Collector), CuBit.Log_Protocol.Publisher_Tag (15, 2),
                  RIGHT_READ or RIGHT_WRITE, CuBit.Log_Protocol.Publisher_Slot);
             end if;
             ret := Unsigned_64 (reply (from,
@@ -3213,7 +3277,7 @@ begin
                 length => 0, flags => 0, reserved => 0), authorityTag => 0, words => [others => 0])));
          end;
       elsif msg.tag = (16#022A#, 0, 0, 0) and then
-        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
       then
          --  One-page write authority for the GT forcewake request register.
@@ -3245,7 +3309,7 @@ begin
                  Plan.Physical_Base >= Intel_Claim_Base and then
                  Plan.Physical_Base - Intel_Claim_Base = 16#A000#
                then
-                  Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, from,
+                  Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, To_Word (from),
                     CAP_DEVICE_MEM, Plan.Physical_Base, 4096,
                     RIGHT_READ or RIGHT_WRITE, 5);
                   if Issued /= reterr then
@@ -3260,7 +3324,7 @@ begin
                 words => [others => 0])));
          end;
       elsif msg.tag = (16#022F#, 0, 0, 0) and then
-        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
       then
          declare
@@ -3290,7 +3354,7 @@ begin
                  Plan.Physical_Base = Intel_Claim_Base;
             end if;
             Intel_GPU_Display_Claim.Take
-              (Intel_Display_Ownership, Intel_Inspection_PID, from,
+              (Intel_Display_Ownership, To_Word (Intel_Inspection_PID), To_Word (from),
                Badge_Valid => True, Device_Valid => Valid, Allowed => Allowed);
             -- Consume before replying, including lost replies. This designates
             -- the sole power-request manager; it grants NO writable MMIO and
@@ -3302,7 +3366,7 @@ begin
                 words => [others => 0])));
          end;
       elsif msg.tag = (Intel_GPU_PCI_Interrupts.Disable_Request_Label, 0, 0, 0) and then
-        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
       then
          declare
@@ -3311,7 +3375,7 @@ begin
          begin
             Intel_IRQ_Active := Intel_Config_Frozen and then intelDev.found and then
               Intel_Reset_Authorized and then Intel_Forcewake_Granted and then
-              Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = from;
+              Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = To_Word (from);
             Intel_IRQ_Disable.Execute (Intel_IRQ_Active, Status);
             Intel_IRQ_Active := False;
             Intel_IRQ_Plan_Ready := False;
@@ -3323,7 +3387,7 @@ begin
                 words => [others => 0])));
          end;
       elsif msg.tag = (16#022E#, 0, 0, 0) and then
-        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
       then
          declare
@@ -3366,7 +3430,7 @@ begin
               msg.words (0) <= Unsigned_64 (Intel_GPU_Display_Pages.Page_Index'Last)) or else
              (msg.tag = (Intel_GPU_PHY_Pages.Request_Label, 1, 0, 0) and then
               msg.words (0) <= Unsigned_64 (Intel_GPU_PHY_Pages.Page_Index'Last))) and then
-        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = 16#4947# and then
         msg.words (1 .. 3) = [0, 0, 0]
       then
@@ -3393,10 +3457,10 @@ begin
             if Intel_Config_Frozen and then intelDev.found and then
               Intel_Forcewake_Granted and then Intel_Claim_Base /= 0 and then
               (if Display_Page then
-                 Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = from and then
+                 Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = To_Word (from) and then
                  not Intel_Display_Granted (Index)
                elsif PHY_Page then
-                 Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = from and then
+                 Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = To_Word (from) and then
                  not Intel_PHY_Granted (Index)
                else not Intel_Reset_Granted (Index))
             then
@@ -3417,7 +3481,7 @@ begin
                  Plan.Physical_Base >= Intel_Claim_Base and then
                  Plan.Physical_Base - Intel_Claim_Base = Offset
                then
-                  Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, from,
+                  Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, To_Word (from),
                     CAP_DEVICE_MEM, Plan.Physical_Base, 4096,
                     RIGHT_READ or RIGHT_WRITE, Target_Slot);
                   if Issued /= reterr then
@@ -3434,7 +3498,7 @@ begin
                 words => [others => 0])));
          end;
       elsif msg.tag = (Intel_GPU_GGTT_Access.Write_Request_Label, 0, 0, 0) and then
-        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
       then
          declare
@@ -3450,7 +3514,7 @@ begin
                if Intel_Config_Frozen and then intelDev.found and then
                  Intel_Claim_Identity = 16#46D2_8086# and then
                  Intel_Reset_Authorized and then Intel_GGTT_Granted and then
-                 Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = from and then
+                 Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = To_Word (from) and then
                  Intel_IRQ_Disable.State = Intel_IRQ_Disable.PCI_Disabled
                then
                   -- A single fresh snapshot supplies identity, BAR, table size,
@@ -3470,7 +3534,7 @@ begin
                      Plan := Intel_GPU_GGTT_Access.Plan_Write
                        (Config, Intel_GGTT_BAR, Intel_GGTT_Bytes, True, True);
                      if Plan.Valid then
-                        Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, from,
+                        Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, To_Word (from),
                           CAP_DEVICE_MEM, Plan.Physical, Plan.Bytes,
                           RIGHT_READ or RIGHT_WRITE, Intel_GPU_GGTT_Access.Write_Slot);
                      end if;
@@ -3488,7 +3552,7 @@ begin
             end if;
          end;
       elsif msg.tag = (16#022B#, 0, 0, 0) and then
-        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
       then
          declare
@@ -3527,7 +3591,7 @@ begin
                   end if;
                end if;
                if Physical /= 0 then
-                  Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, from,
+                  Issued := syscall (SYSCALL_POLICY_MINT_CAPABILITY, To_Word (from),
                     CAP_DEVICE_MEM, Physical, Table_Bytes, RIGHT_READ, 7);
                   Intel_GGTT_Granted := Issued /= reterr;
                   if Intel_GGTT_Granted then
@@ -3548,7 +3612,7 @@ begin
             end if;
          end;
       elsif msg.tag = (16#022C#, 0, 0, 0) and then
-        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
       then
          -- Fixed supervisor-owned allocation policy, not caller-controlled
@@ -3557,7 +3621,7 @@ begin
             Intel_Buffer_Attempted := True;
             if Intel_GGTT_Granted then
                Intel_Buffer_Physical := syscall
-                 (SYSCALL_ALLOC_DMA, from, 8, 16#6100_0000#, 1, 2 ** 32);
+                 (SYSCALL_ALLOC_DMA, To_Word (from), 8, 16#6100_0000#, 1, 2 ** 32);
                debugPrint ("devmgr: Intel retained buffer physical" &
                  Unsigned_64'Image (Intel_Buffer_Physical) & LF);
                if Intel_Buffer_Physical = reterr or else
@@ -3578,7 +3642,7 @@ begin
       elsif Intel_GPU_Buffer_Backing.Valid_Allocation_Request
         (msg.tag.label, msg.tag.length, msg.tag.flags, msg.tag.reserved,
          msg.words (0), msg.words (1), msg.words (2), msg.words (3)) and then
-        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = 16#4947#
       then
          declare
@@ -3604,13 +3668,13 @@ begin
          begin
             if Intel_GPU_Buffer_Backing.Retirement_Authorized
               (msg.tag.label, msg.tag.length, msg.tag.flags, msg.tag.reserved,
-               Intel_GPU_Buffer_Backing.Budget_Words (msg.words), Unsigned_64 (from),
-               msg.authorityTag, Intel_Inspection_PID, Intel_Buffer_Arena_Granted)
+               Intel_GPU_Buffer_Backing.Budget_Words (msg.words), To_Word (from),
+               msg.authorityTag, To_Word (Intel_Inspection_PID), Intel_Buffer_Arena_Granted)
             then
                -- Only the trusted driver can certify hardware/CPU retirement.
                -- This releases an exact-generation arena slice, never DMA RAM.
                Buffer_Allocations.Retire_Buffer
-                 (Intel_Buffer_Pool, Intel_Inspection_PID,
+                 (Intel_Buffer_Pool, To_Word (Intel_Inspection_PID),
                   Intel_GPU_Buffer_Backing.Slot (msg.words (0)),
                   Unsigned_32 (msg.words (1)), True, Granted);
             end if;
@@ -3620,14 +3684,14 @@ begin
                   authorityTag => 0, words => [0,
                     Intel_GPU_Buffer_Backing.Allocation_Key
                       (Intel_GPU_Buffer_Backing.Slot (msg.words (0)), Unsigned_32 (msg.words (1))),
-                    Intel_Inspection_PID, 0])));
+                    To_Word (Intel_Inspection_PID), 0])));
             else
                ret := Unsigned_64 (reply (from,
                  (tag => (16#F001#, 0, 0, 0), authorityTag => 0, words => [others => 0])));
             end if;
          end;
       elsif msg.tag = (Intel_GPU_Buffer_Backing.Budget_Request_Label, 4, 0, 0) and then
-        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = 16#4947# and then msg.words = [Intel_GPU_Buffer_Backing.Budget_Version, 0, 0, 0]
       then
          declare
@@ -3651,8 +3715,8 @@ begin
          end;
       elsif Intel_GPU_Buffer_Backing.Extent_Request_Authorized
         (msg.tag.label, msg.tag.length, msg.tag.flags, msg.tag.reserved,
-         Intel_GPU_Buffer_Backing.Budget_Words (msg.words), Unsigned_64 (from),
-         msg.authorityTag, Intel_Inspection_PID,
+         Intel_GPU_Buffer_Backing.Budget_Words (msg.words), To_Word (from),
+         msg.authorityTag, To_Word (Intel_Inspection_PID),
          Intel_GPU_Extent_Directory.Byte_Count (Buffer_Allocations.Snapshot (Intel_Buffer_Pool)),
          Intel_Buffer_Arena_Granted)
       then
@@ -3670,14 +3734,14 @@ begin
                ret := Unsigned_64 (reply (from,
                  (tag => (16#F003#, 4, 0, 0), authorityTag => 0,
                   words => [msg.words (0), Part.Address,
-                    Intel_GPU_Buffer_Backing.CPU_Base + Offset, Intel_Inspection_PID])));
+                    Intel_GPU_Buffer_Backing.CPU_Base + Offset, To_Word (Intel_Inspection_PID)])));
             else
                ret := Unsigned_64 (reply (from,
                  (tag => (16#F001#, 0, 0, 0), authorityTag => 0, words => [others => 0])));
             end if;
          end;
       elsif msg.tag = (Intel_GPU_ADS_Backing.Request_Label, 0, 0, 0) and then
-        Intel_Inspection_PID /= 0 and then from = Intel_Inspection_PID and then
+        Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = 16#4947# and then msg.words = [0, 0, 0, 0]
       then
          if not Intel_ADS_Attempted then
@@ -3686,7 +3750,7 @@ begin
               Intel_GGTT_Granted
             then
                Intel_ADS_Physical := syscall
-                 (SYSCALL_ALLOC_DMA, from, Intel_GPU_ADS_Backing.Allocation_Order,
+                 (SYSCALL_ALLOC_DMA, To_Word (from), Intel_GPU_ADS_Backing.Allocation_Order,
                   Intel_GPU_ADS_Backing.CPU_Address, 1, 2 ** 32);
                if not Intel_GPU_ADS_Backing.Valid_Physical (Intel_ADS_Physical) then
                   Intel_ADS_Physical := 0;
@@ -3720,7 +3784,7 @@ begin
          declare
             item : Inventory_Device renames
               inventory (Natural (msg.words (0)));
-            driverPID : Unsigned_64 := 0;
+            driverPID : Process_ID := No_Process;
             state : CuBit.Devices.Driver_State := CuBit.Devices.Unclaimed;
             locationWord : Unsigned_64;
             identityWord : Unsigned_64;
@@ -3751,7 +3815,7 @@ begin
                when CuBit.Devices.Other_Device =>
                   null;
             end case;
-            if driverPID /= 0 then
+            if driverPID /= No_Process then
                state := CuBit.Devices.Driver_Active;
             end if;
             locationWord := Unsigned_64 (item.location.bus) or
@@ -3775,7 +3839,7 @@ begin
                    authorityTag => 0,
                    words =>
                      [0 => locationWord, 1 => identityWord,
-                      2 => driverPID, 3 => 1])));
+                      2 => To_Word (driverPID), 3 => 1])));
          end;
       elsif msg.tag.label = CuBit.Devices.OP_PUBLISH_XHCI_STATS and then
             from = xhciPID and then msg.tag.length >= 3

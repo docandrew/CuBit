@@ -2,10 +2,12 @@ project View_Retention is
    for Source_Dirs use (".", "view-retention-fixture",
      "../../userspace/services/intel-gpu", "../../userspace/runtime/gnat");
    for Source_Files use ("view_retention_tests.adb", "cubit.ads",
+     "cubit-process_ids.ads", "cubit-process_ids.adb",
      "cubit-grant_references.ads", "fixture_messages.ads",
      "fixture_capability_grants.ads", "fixture_memory_grants.ads",
      "fixture_memory_grants.adb", "intel_gpu_buffer_views.ads",
      "intel_gpu_buffer_views.adb", "intel_gpu_buffer_handles.ads",
+     "intel_gpu_name_index.ads", "intel_gpu_name_index.adb",
      "intel_gpu_buffer_handles.adb", "intel_gpu_buffer_reply.ads",
      "intel_gpu_buffer_reply.adb", "intel_gpu_buffer_backing.ads",
      "intel_gpu_physical_extents.ads", "intel_gpu_physical_extents.adb",

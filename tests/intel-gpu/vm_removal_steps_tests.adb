@@ -8,7 +8,7 @@ procedure VM_Removal_Steps_Tests is
    package VM is new Intel_GPU_VM_Image (8);
 begin
    for With_Scratch in Boolean loop
-   for Fault in 0 .. 9 loop
+   for Fault in 0 .. 11 loop
       declare
          Source, Other : VM.Image;
          DMA : VM.Backing_Pages;
@@ -32,7 +32,7 @@ begin
               (16#200000# + Unsigned_64 (Writes - 1) * 4096, Write_Back, Read_Write));
             pragma Assert (Replacement = Intel_GPU_PPGTT_Scratch.Fallback (Scratch, 0));
             pragma Assert (VM.Lookup (Source, 8192) /= 0 and VM.Revision (Source) = Epoch);
-            if Writes = 1 and Fault in 5 | 6 then Reenter; end if;
+            if Writes = 1 and Fault in 5 | 6 | 10 | 11 then Reenter; end if;
             if Writes = 3 and Fault = 8 then Held := False; end if;
             Success := not (Fault = 7 and Writes = 2);
          end Write_Leaf;
@@ -40,10 +40,19 @@ begin
          begin Success := True; end;
          package Remove is new VM.Removal (Exclusive, Write_Leaf, Invalidate);
          State : Remove.Controller;
+         function Expected_Page (Ordinal : Positive) return Unsigned_64 is
+           (16#200000# + Unsigned_64 (Ordinal - 1) * 4096);
+         procedure Capture is new Remove.Capture_Step (Expected_Page);
          procedure Reenter is
             Accepted : Boolean;
          begin
             if Fault = 5 then Remove.Step (State, Source);
+            elsif Fault = 10 then
+               Remove.Begin_Prepare (State, Source, Epoch, 8192, 3, Accepted);
+               pragma Assert (not Accepted);
+            elsif Fault = 11 then
+               Capture (State, Source, Accepted);
+               pragma Assert (not Accepted);
             else Remove.Commit (State, Source, True, Accepted); pragma Assert (not Accepted);
             end if;
          end Reenter;
@@ -84,7 +93,7 @@ begin
          else
             pragma Assert (Remove.Failed (State) and VM.Revision (Source) = Epoch);
             pragma Assert (Writes = (case Fault is
-              when 1 | 4 => 0, when 2 | 3 | 5 | 6 => 1, when 7 => 2, when others => 3));
+              when 1 | 4 => 0, when 2 | 3 | 5 | 6 | 10 | 11 => 1, when 7 => 2, when others => 3));
             Held := True; Before := Writes;
             Remove.Step (State, Source); pragma Assert (Writes = Before);
             Remove.Start (State, Source, Epoch, 8192, Data, OK);
@@ -94,5 +103,5 @@ begin
       end;
    end loop;
    end loop;
-   Ada.Text_IO.Put_Line ("Stepped removal PASS20: one write/turn, fault/scratch fallbacks, retained source, no early metadata commit, owner/source loss, reentry and no replay (mock GPU)");
+   Ada.Text_IO.Put_Line ("Stepped removal PASS24: one write/turn, fault/scratch fallbacks, retained source, no early metadata commit, owner/source loss, reentry and no replay (mock GPU)");
 end VM_Removal_Steps_Tests;

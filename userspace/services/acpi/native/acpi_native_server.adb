@@ -9,7 +9,7 @@ package body ACPI_Native_Server is
       Provider_Slot : out CuBit.Messages.CapabilitySlot;
       Accepted : out Boolean) is
       Request, Response : Message;
-      From : ProcessID;
+      From : Process_ID;
       Completion : CompletionEntry;
       Found : Boolean;
       Ignore : Unsigned_64;
@@ -50,7 +50,7 @@ package body ACPI_Native_Server is
       Provider_Slot : CuBit.Messages.CapabilitySlot;
       Reason : out Stop_Reason) is
       Request, Response : Message;
-      From : ProcessID;
+      From : Process_ID;
       Completion : CompletionEntry;
       Found : Boolean;
       Now, Retry_At : Unsigned_64 := 0;

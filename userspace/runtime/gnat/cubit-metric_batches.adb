@@ -16,6 +16,35 @@ package body CuBit.Metric_Batches with SPARK_Mode is
       end if;
    end Append;
 
+   procedure Append_Group
+     (Item : in out Builder; Pages : in out Page_Pair;
+      Values : Records.Trace_Group; Accepted : out Boolean) is
+      Fill : constant Page_Id := Item.Fill;
+      Initial : constant Records.Record_Count := Item.Counts (Fill);
+   begin
+      Accepted := Has_Group_Room (Item);
+      if not Accepted then
+         Item.Loss := Drop_Group (Item.Loss);
+         return;
+      end if;
+      for I in Records.Trace_Part loop
+         Records.Put_Slot
+           (Pages (Fill), Initial + I + 1, Records.Encode (Values (I)));
+         pragma Loop_Invariant
+           (for all J in Records.Trace_Part'First .. I =>
+              Records.Slot (Pages (Fill), Initial + J + 1) =
+                Records.Encode (Values (J)));
+         pragma Loop_Invariant
+           (for all W in Records.Page_Word_Index =>
+              (if W / Records.Words_Per_Slot <= Initial or else
+                  W / Records.Words_Per_Slot > Initial + I + 1
+               then Pages (Fill) (W) = Pages'Loop_Entry (Fill) (W)));
+         pragma Loop_Invariant
+           (Pages (Other (Fill)) = Pages'Loop_Entry (Other (Fill)));
+      end loop;
+      Item.Counts (Fill) := Initial + 4;
+   end Append_Group;
+
    procedure Seal
      (Item : in out Builder; Pages : in out Page_Pair; Sealed : out Boolean;
       Page : out Page_Id; Bytes : out Unsigned_64) is

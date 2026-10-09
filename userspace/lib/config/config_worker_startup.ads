@@ -10,9 +10,10 @@ package Config_Worker_Startup with SPARK_Mode is
    Worker_Endpoint : constant CuBit.Messages.CapabilitySlot := 61;
    function Valid_Attachment (Request : CuBit.Messages.Message) return Boolean;
    -- The private endpoint is minted with object.param = 0. The kernel then
-   -- stamps its holder's PID as authority tag, NOT zero. Inputs must come
-   -- from RECEIVE and the trusted registry; this predicate grants nothing.
+   -- stamps its holder's identity as authority tag, NOT zero. Inputs must
+   -- come from RECEIVE and the trusted registry; this predicate grants
+   -- nothing.
    function Authorized_Config_Request
-     (Sender : CuBit.Messages.ProcessID; Tag, Registered_Config : Interfaces.Unsigned_64)
-      return Boolean;
+     (Sender : CuBit.Messages.Process_ID; Tag : Interfaces.Unsigned_64;
+      Registered_Config : CuBit.Messages.Process_ID) return Boolean;
 end Config_Worker_Startup;

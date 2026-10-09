@@ -1,3 +1,5 @@
+#define CUBIT_PIPELINE_DIAGNOSTIC_STORAGE
+#include "vulkan_pipeline_diagnostic.h"
 #include "vulkan_sources.h"
 #include "vulkan_checker.h"
 #include "vulkan_device_storage.h"
@@ -74,13 +76,13 @@ static struct cubit_vulkan_sources sources;
 static unsigned pipeline_attempted, pipeline_live;
 uint32_t cubit_vulkan_device_pipeline_create(void)
 {
-    if(pipeline_attempted)return 2;
+    if(pipeline_attempted){pipeline_failure(1,0,VK_ERROR_INITIALIZATION_FAILED);return 2;}
     pipeline_attempted=1;
     if(!prepared||!context.live||!context.pass||context.device!=device.device||
-       !device.instance_proc)return 1;
+       !device.instance_proc){pipeline_failure(2,0,VK_ERROR_INITIALIZATION_FAILED);return 1;}
     PFN_vkGetDeviceProcAddr proc=(PFN_vkGetDeviceProcAddr)
         device.instance_proc(device.instance,"vkGetDeviceProcAddr");
-    if(!proc)return 1;
+    if(!proc){pipeline_failure(3,0,VK_ERROR_INITIALIZATION_FAILED);return 1;}
     if(cubit_vulkan_affine_create(&pipeline,device.device,proc,context.pass)!=VK_SUCCESS)return 1;
     if(cubit_vulkan_checker_create(&checker,device.device,proc,context.pass)!=VK_SUCCESS){
         cubit_vulkan_affine_destroy(&pipeline);return 1;

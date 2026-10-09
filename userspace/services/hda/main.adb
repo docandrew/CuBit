@@ -37,7 +37,7 @@ procedure main is
    CAP_SLOT_MIXER : constant Unsigned_64 := 7;
 
    msg  : Message;
-   from : ProcessID;
+   from : Process_ID;
    ret  : Unsigned_64;
    buffersGranted : Boolean := False;
    buffersGrant : Grant_Reference := (slot => 0, generation => 1);
@@ -84,7 +84,7 @@ begin
             (tag      => (label => OP_NOT_PRESENT, length => 0,
                           flags => 0, reserved => 0),
              authorityTag => 0,
-             words    => (others => 0)));
+             words    => (others => 0)), CuBit.Messages.Wait_Forever);
       end;
       ret := syscall (SYSCALL_EXIT);
       return;
@@ -103,7 +103,7 @@ begin
          (tag      => (label => OP_READY, length => 0,
                        flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => (others => 0)));
+          words    => (others => 0)), CuBit.Messages.Wait_Forever);
    end;
 
    debugPrint ("hda: registered, entering service loop" & ASCII.LF);
@@ -112,7 +112,7 @@ begin
    loop
       receive (from, msg);
 
-      if from = 0 then
+      if from = No_Process then
          --  Hardware IRQs arrive as one-way kernel events.  Acknowledge the
          --  device before notifying the mixer so the line cannot remain
          --  asserted while userspace is scheduled.

@@ -3018,6 +3018,20 @@ netstack: IPv4 echo reply from
 netstack: released the scopes of exited process
 capability-test: retired PID submit rejected PASS
 capability-test: authorityless capability submit rejected PASS
+capability-test: authorityless capability call rejected PASS
+capability-test: receive into a kernel address refused PASS
+capability-test: the refused message was kept (kernel) PASS
+capability-test: call from a kernel address refused PASS
+capability-test: completions into a kernel address refused PASS
+capability-test: receive into a read-only address refused PASS
+capability-test: the refused message was kept (read-only) PASS
+capability-test: call from a read-only address refused PASS
+capability-test: completions into a read-only address refused PASS
+capability-test: receive into a unmapped address refused PASS
+capability-test: the refused message was kept (unmapped) PASS
+capability-test: call from a unmapped address refused PASS
+capability-test: completions into a unmapped address refused PASS
+capability-test: write from a kernel address prints nothing PASS
 capability-test: all tests passed
 "
         if ! grep -qF 'TEST: PASS network-authority' "$SERIAL_LOG"; then
@@ -3247,16 +3261,30 @@ BINUTILS-CHECK: PASS
         required_markers="
 control-producer: ready
 control-check: the child starts with a lent ring PASS
+control-child: a flooded producer still freed every reader slot
+control-child: forged grant-returned event refused
+control-child: forged grant-revoked event refused
+control-child: forged Stop control message refused
+control-child: forged child exit refused
+control-child: malformed contract refused
+control-child: unknown connector refused
+control-child: lossless open of a broadcast outlet refused
+control-child: producing into someone's outlet refused
+control-child: every attack on the producer was refused
 control-child: read the producer's outlet through a channel
 control-child: closed and reopened the channel past the reader limit
 control-check: the child writes into it PASS
 control-check: a control message to a process it did not launch is refused PASS
 control-check: the launcher revokes the ring PASS
+control-check: an Interrupt to its own child is accepted PASS
+control-check: a Reload to its own child is accepted PASS
 control-check: a Stop to its own child is accepted PASS
 control-child: the ring was revoked and returned
+control-child: Interrupt, Reload and Stop all received
 control-child: Stop received
 control-check: the child saw the revoke (its runtime returned the ring), then the Stop PASS
 control-check: the launcher is told its ring came back PASS
+control-check: the launcher flooded the producer throughout, and the child still got through PASS
 CONTROL-CHECK: PASS
 "
         ;;
@@ -3482,6 +3510,7 @@ ipctest-server: registered
 ipctest-client: starting
 ipctest-departing: exiting with saved reply
 ipctest-server: dead caller reply retired and slot reused
+ipctest-client: call deadlines PASS
 ipctest-client: four receive fairness paths PASS
 ipctest-client: activity request wake PASS
 ipctest-client: activity wait PASS
@@ -3642,12 +3671,28 @@ capability-test: endpoint scan completes PASS
 capability-test: getpid PASS
 capability-test: no ambient filesystem PASS
 capability-test: self process rights attenuated PASS
+capability-test: self endpoint names this identity PASS
+capability-test: another life of this slot names no process PASS
 capability-test: no ambient keyboard PASS
 capability-test: no ambient mouse PASS
 capability-test: no ambient process management PASS
 capability-test: ambient event publication denied PASS
 capability-test: retired PID submit rejected PASS
 capability-test: authorityless capability submit rejected PASS
+capability-test: authorityless capability call rejected PASS
+capability-test: receive into a kernel address refused PASS
+capability-test: the refused message was kept (kernel) PASS
+capability-test: call from a kernel address refused PASS
+capability-test: completions into a kernel address refused PASS
+capability-test: receive into a read-only address refused PASS
+capability-test: the refused message was kept (read-only) PASS
+capability-test: call from a read-only address refused PASS
+capability-test: completions into a read-only address refused PASS
+capability-test: receive into a unmapped address refused PASS
+capability-test: the refused message was kept (unmapped) PASS
+capability-test: call from a unmapped address refused PASS
+capability-test: completions into a unmapped address refused PASS
+capability-test: write from a kernel address prints nothing PASS
 capability-test: self mint denied PASS
 capability-test: mint denial leaves slot empty PASS
 capability-test: ambient spawn denied PASS

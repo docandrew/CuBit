@@ -125,6 +125,80 @@ int main(void)
    physical.memory.need_flush=true;
    assert(!anv_cubit_gem_create(&d[0],regions,1,4096,0,&bytes));
    assert(!bytes && creates==3);
+   /* Common ANV selects these GPU VA heaps before native bind. Neither
+    * intent authorizes a new backing region or bypasses coherence admission. */
+   const enum anv_bo_alloc_flags pool_flags[] = {
+      ANV_BO_ALLOC_DESCRIPTOR_POOL_FLAGS,
+      ANV_BO_ALLOC_DYNAMIC_VISIBLE_POOL_FLAGS,
+   };
+   for (unsigned i=0; i<2; i++) {
+      for (unsigned slab=0; slab<2; slab++) {
+         enum anv_bo_alloc_flags flags=pool_flags[i] |
+            (slab ? ANV_BO_ALLOC_SLAB_PARENT : 0);
+         unsigned before=creates;
+         assert(anv_cubit_gem_create(&d[8],regions,1,4096,flags,&bytes)==17);
+         assert(bytes==4096 && creates==before+1);
+         before=creates;
+         assert(!anv_cubit_gem_create(&d[0],regions,1,4096,flags,&bytes));
+         assert(!bytes && creates==before);
+         assert(!anv_cubit_gem_create(&d[8],regions,1,4096,
+            flags | ANV_BO_ALLOC_COMPRESSED,&bytes));
+         assert(!bytes && creates==before);
+      }
+   }
+   /* Device-address visibility selects common ANV's VA reservation policy,
+    * not external sharing. Test both ordinary and slab-parent allocation. */
+   for (unsigned slab=0; slab<2; slab++) {
+      enum anv_bo_alloc_flags flags=ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS |
+         ANV_BO_ALLOC_NO_LOCAL_MEM | ANV_BO_ALLOC_HOST_CACHED_COHERENT |
+         (slab ? ANV_BO_ALLOC_SLAB_PARENT : 0);
+      unsigned before=creates;
+      assert(anv_cubit_gem_create(&d[8],regions,1,4096,flags,&bytes)==17);
+      assert(bytes==4096 && creates==before+1);
+      before=creates;
+      assert(!anv_cubit_gem_create(&d[0],regions,1,4096,flags,&bytes));
+      assert(!bytes && creates==before);
+      assert(!anv_cubit_gem_create(&d[8],regions,1,4096,
+         flags | ANV_BO_ALLOC_EXTERNAL,&bytes));
+      assert(!bytes && creates==before);
+      assert(!anv_cubit_gem_create(&d[8],regions,1,4096,
+         flags | ANV_BO_ALLOC_IMPORTED,&bytes));
+      assert(!bytes && creates==before);
+   }
+   /* Pre-12.5 scratch buffers select the low VA heap in common ANV. The
+    * address-width intent must not be confused with physical placement. */
+   for (unsigned slab=0; slab<2; slab++) {
+      enum anv_bo_alloc_flags flags=ANV_BO_ALLOC_32BIT_ADDRESS |
+         ANV_BO_ALLOC_INTERNAL | (slab ? ANV_BO_ALLOC_SLAB_PARENT : 0);
+      unsigned before=creates;
+      assert(anv_cubit_gem_create(&d[8],regions,1,4096,flags,&bytes)==17);
+      assert(bytes==4096 && creates==before+1);
+      before=creates;
+      assert(!anv_cubit_gem_create(&d[8],regions,1,4096,
+         flags | ANV_BO_ALLOC_PROTECTED,&bytes));
+      assert(!bytes && creates==before);
+   }
+   /* Exhaust the flag word for a coherent system-memory session without
+    * AUX/null-heap capabilities. New or unsupported intents must not silently
+    * acquire backing. Pool flags are covered above in actual Mesa composites. */
+   const unsigned ordinary_flags = ANV_BO_ALLOC_MAPPED |
+      ANV_BO_ALLOC_HOST_COHERENT | ANV_BO_ALLOC_CAPTURE |
+      ANV_BO_ALLOC_FIXED_ADDRESS | ANV_BO_ALLOC_NO_LOCAL_MEM |
+      ANV_BO_ALLOC_DESCRIPTOR_POOL | ANV_BO_ALLOC_HOST_CACHED |
+      ANV_BO_ALLOC_DYNAMIC_VISIBLE_POOL | ANV_BO_ALLOC_INTERNAL |
+      ANV_BO_ALLOC_SLAB_PARENT | ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS |
+      ANV_BO_ALLOC_32BIT_ADDRESS;
+   for (unsigned bit=0; bit<32; bit++) {
+      unsigned intent=UINT32_C(1)<<bit;
+      unsigned before=creates;
+      uint32_t handle=anv_cubit_gem_create(&d[8],regions,1,4096,
+         (enum anv_bo_alloc_flags)(ANV_BO_ALLOC_HOST_CACHED | intent),&bytes);
+      if (ordinary_flags & intent) {
+         assert(handle==17 && bytes==4096 && creates==before+1);
+      } else {
+         assert(!handle && !bytes && creates==before);
+      }
+   }
    /* Provider pins transfer with tracker attachment, not with VK_SUCCESS.
     * Callback context is process-owned, not stored in the Vulkan wrapper. */
    unsigned notifications=0;

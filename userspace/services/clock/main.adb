@@ -16,7 +16,7 @@ procedure Main is
    MAX_CCL_MILLISECONDS : constant Unsigned_64 :=
      Unsigned_64 (Integer_64'Last);
 
-   From     : ProcessID;
+   From     : Process_ID;
    Request  : Message;
    Response : Message;
    Ignore   : Unsigned_64;

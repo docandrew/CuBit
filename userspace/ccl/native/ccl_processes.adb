@@ -48,7 +48,7 @@ package body CCL_Processes is
       end if;
       Request.tag := (label => PO.List_Label, length => 1, flags => 0, reserved => 0);
       Request.words (0) := CuBit.Grant_References.Encode (Loan);
-      Reply_Tag := CuBit.Messages.capCall (CuBit.Messages.CapabilitySlot (PO.Observer_Slot), Request);
+      Reply_Tag := CuBit.Messages.capCall (CuBit.Messages.CapabilitySlot (PO.Observer_Slot), Request, CuBit.Messages.Wait_Forever);
       CuBit.Memory_Grants.Revoke (Loan, Revoked);
       if Reply_Tag.label = Unsigned_32 (PO.Status'Enum_Rep (PO.Denied)) then
          Result := Not_Granted;

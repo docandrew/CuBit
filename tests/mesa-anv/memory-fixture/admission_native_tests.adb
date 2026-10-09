@@ -12,41 +12,46 @@ procedure Admission_Native_Tests is
    Receipt : CompletionEntry;
    Used : Boolean;
    Session : constant Unsigned_64 := 16#A123_0000_0000_0087#;
+   -- Opaque ABI words: each pair differs only above the kernel slot bits.
+   Client_ID : constant Unsigned_64 := 16#1234_5678_0700_002A#;
+   Other_Client_ID : constant Unsigned_64 := 16#1234_5678_0800_002A#;
+   Driver_ID : constant Unsigned_64 := 16#2345_6789_0900_004D#;
+   Other_Driver_ID : constant Unsigned_64 := 16#2345_6789_0A00_004D#;
 begin
-   Inspection := [1, 1, 0, 42, 0, 7];
+   Inspection := [1, 1, 0, Client_ID, 0, 0];
    Target := Capture (7);
-   Inspection := [1, 11, 0, 77, 0, 9];
+   Inspection := [1, 11, 0, Driver_ID, 0, 0];
    Start (Item, Target, 31, 30, 4);
    Advance (Item, 100);
    pragma Assert (State (Item) = Core.Reserve_Pending);
    pragma Assert (Last_Submit.tag = (16#0A21#, 4, 0, 0));
-   pragma Assert (Last_Submit.words = [1, 7 * 2 ** 32 + 42, 0, 0]);
+   pragma Assert (Last_Submit.words = [1, Client_ID, 0, 0]);
    pragma Assert (Last_Slot = 31 and Last_Token = 100);
-   Receipt := (token => 99, from => 77, status => 0,
+   Receipt := (token => 99, from => Driver_ID, status => 0,
                msg => ((16#0A21#, 4, 0, 0), [0, 1, Session, 40]), valid => True);
    Complete (Item, Receipt, Used); pragma Assert (not Used);
    Receipt.token := 100;
    Complete (Item, Receipt, Used);
    pragma Assert (Used and State (Item) = Core.Delegate_Ready);
-   Inspection := [1, 9, 0, 42, 0, 7];
+   Inspection := [1, 9, 0, Client_ID, 0, 0];
    Grant_Result := 0;
    Advance (Item, 101);
-   pragma Assert (Last_Arguments = [9 * 2 ** 32 + 77, 30, 40, 1, Session, 0]);
+   pragma Assert (Last_Arguments = [Driver_ID, 30, 40, 1, Session, 0]);
    pragma Assert (State (Item) = Core.Delegate_Ready);
    -- Later inspection changes do not replace either captured recipient.
-   Inspection := [1, 1, 0, 42, 0, 8];
+   Inspection := [1, 1, 0, Other_Client_ID, 0, 0];
    Advance (Item, 101);
-   pragma Assert (Last_Arguments = [7 * 2 ** 32 + 42, 31, 4, 3, Session, 0]);
+   pragma Assert (Last_Arguments = [Client_ID, 31, 4, 3, Session, 0]);
    pragma Assert (State (Item) = Core.Activate_Ready);
    Advance (Item, 101);
-   pragma Assert (Last_Submit.words = [1, 7 * 2 ** 32 + 42, Session, 1]);
+   pragma Assert (Last_Submit.words = [1, Client_ID, Session, 1]);
    Cancel (Item);
    Receipt.token := 101;
    Receipt.msg.words (3) := 0;
    Complete (Item, Receipt, Used);
    pragma Assert (Used and State (Item) = Core.Abort_Ready);
    Advance (Item, 102);
-   pragma Assert (Last_Submit.words = [1, 7 * 2 ** 32 + 42, Session, 2]);
+   pragma Assert (Last_Submit.words = [1, Client_ID, Session, 2]);
    Receipt.token := 102;
    Complete (Item, Receipt, Used);
    pragma Assert (Used and State (Item) = Core.Failed);
@@ -54,14 +59,14 @@ begin
       declare
          Broken : Broker_Request;
          Bad : CompletionEntry :=
-           (token => 200, from => 77, status => 0,
+           (token => 200, from => Driver_ID, status => 0,
             msg => ((16#0A21#, 4, 0, 0), [0, 1, 123, 40]), valid => True);
       begin
-         Inspection := [1, 11, 0, 77, 0, 9];
+         Inspection := [1, 11, 0, Driver_ID, 0, 0];
          Start (Broken, Target, 31, 30, 4);
          Advance (Broken, 200);
          case Fault is
-            when 0 => Bad.from := 78;
+            when 0 => Bad.from := Other_Driver_ID;
             when 1 => Bad.status := 1;
             when 2 => Bad.msg.tag.label := 0;
             when 3 => Bad.msg.tag.length := 3;
@@ -87,7 +92,7 @@ begin
    declare
       Rejected : Broker_Request;
    begin
-      Inspection := [1, 11, 0, 77, 0, 9];
+      Inspection := [1, 11, 0, Driver_ID, 0, 0];
       Start (Rejected, Target, 31, 30, 4);
       Submit_Result := False;
       Advance (Rejected, 300);
@@ -101,21 +106,21 @@ begin
          Mapped : Broker_Request;
          Tag : constant Unsigned_64 := Session - 1 + Unsigned_64 (Index);
          R : constant CompletionEntry :=
-           (token => 350, from => 77, status => 0,
+           (token => 350, from => Driver_ID, status => 0,
             msg => ((16#0A21#, 4, 0, 0), [0, 1, Tag, 56 - Unsigned_64 (Index)]), valid => True);
       begin
-         Inspection := [1, 11, 0, 77, 0, 9];
+         Inspection := [1, 11, 0, Driver_ID, 0, 0];
          Start (Mapped, Target, 31, 30, 4);
          Advance (Mapped, 350);
          Complete (Mapped, R, Used);
-         Inspection := [1, 9, 0, 42, 0, 7];
+         Inspection := [1, 9, 0, Client_ID, 0, 0];
          Grant_Result := 0;
          Advance (Mapped, 351);
          pragma Assert (Last_Arguments =
-           [9 * 2 ** 32 + 77, 30, 56 - Unsigned_64 (Index), 1, Tag, 0]);
+           [Driver_ID, 30, 56 - Unsigned_64 (Index), 1, Tag, 0]);
          pragma Assert (State (Mapped) = Core.Delegate_Ready and Last_Token = 350);
          Advance (Mapped, 351);
-         pragma Assert (Last_Arguments = [7 * 2 ** 32 + 42, 31, 4, 3, Tag, 0]);
+         pragma Assert (Last_Arguments = [Client_ID, 31, 4, 3, Tag, 0]);
          pragma Assert (State (Mapped) = Core.Activate_Ready and Last_Token = 350);
       end;
    end loop;
@@ -125,18 +130,18 @@ begin
       declare
          Partial : Broker_Request;
          R : CompletionEntry :=
-           (token => 400, from => 77, status => 0,
+           (token => 400, from => Driver_ID, status => 0,
             msg => ((16#0A21#, 4, 0, 0), [0, 1, Session, 40]), valid => True);
       begin
-         Inspection := [1, 11, 0, 77, 0, 9];
+         Inspection := [1, 11, 0, Driver_ID, 0, 0];
          Start (Partial, Target, 31, 30, 4);
          Advance (Partial, 400);
          if Fault = 6 then R.msg.words (3) := 39;
          elsif Fault = 7 then R.msg.words (3) := 56;
          end if;
          Complete (Partial, R, Used);
-         Inspection := [1, 9, 0, 42, 0, 7];
-         if Fault = 0 then Inspection (5) := 8; end if;
+         Inspection := [1, 9, 0, Client_ID, 0, 0];
+         if Fault = 0 then Inspection (3) := Other_Client_ID; end if;
          if Fault = 1 then Inspection (0) := 6; end if;
          if Fault = 8 then Inspection (1) := 8; end if;
          Grant_Result := (if Fault = 2 then Unsigned_64'Last else 0);

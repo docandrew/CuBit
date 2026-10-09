@@ -206,6 +206,9 @@ enable_paging:
     ; enable paging in CR0 register
     mov eax, cr0
     or eax, 1 << 31        ; PG - enable paging
+    or eax, 1 << 16        ; WP - the kernel honours read-only pages too:
+                           ; a write through a read-only user mapping
+                           ; (a read-only grant) faults even in ring 0
     or eax, 1 << 1         ; MP - monitor coprocessor
     and eax, ~(1 << 2)     ; clear EM - allow SSE (not emulated FPU)
     mov cr0, eax

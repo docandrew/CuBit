@@ -1,6 +1,7 @@
 with Interfaces; use Interfaces;
 with CuBit.Failures;
 with CuBit.Messages;
+with CuBit.Process_IDs;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
 with CuBit.Logging;
@@ -30,29 +31,28 @@ package body CCL_Log_IO is
          when P.Unavailable => "unavailable", when P.Rate_Limited => "rate limited",
          when P.Below_Minimum => "below the minimum logstore keeps");
 
-   function Logstore return Unsigned_64 is (CuBit.Service_Names.Process_Of ("logstore"));
+   function Logstore return CuBit.Messages.Process_ID is (CuBit.Service_Names.Process_Of ("logstore"));
 
    function Available return Boolean is
       Slot : CuBit.Messages.CapabilitySlot;
       Found : Boolean;
    begin
-      if Logstore = 0 then return False; end if;
-      CuBit.Messages.Find_Endpoint_Capability (CuBit.Messages.ProcessID (Logstore), Slot, Found);
+      if CuBit.Messages."=" (Logstore, CuBit.Messages.No_Process) then return False; end if;
+      CuBit.Messages.Find_Endpoint_Capability (Logstore, Slot, Found);
       return Found;
    end Available;
 
-   --  A service name, or a process number written in decimal.
+   --  A service name, or a process written in decimal (its Image): the log
+   --  source word the log protocol carries.
    function Source_Of (Service : String) return Unsigned_64 is
-      Number : Unsigned_64 := 0;
+      Process : CuBit.Messages.Process_ID;
+      Valid : Boolean;
    begin
-      if Service'Length = 0 then return 0; end if;
-      for C of Service loop
-         if C not in '0' .. '9' or else Number > (Unsigned_64'Last - 9) / 10 then
-            return CuBit.Service_Names.Process_Of (Service);
-         end if;
-         Number := Number * 10 + Character'Pos (C) - Character'Pos ('0');
-      end loop;
-      return Number;
+      CuBit.Process_IDs.Parse (Service, Process, Valid);
+      if not Valid then
+         Process := CuBit.Service_Names.Process_Of (Service);
+      end if;
+      return CuBit.Messages.To_Word (Process);
    end Source_Of;
 
    function Level_Of (Level : L.Severity) return Logs.Severity is

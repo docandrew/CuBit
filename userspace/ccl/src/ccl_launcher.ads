@@ -30,7 +30,8 @@ package CCL_Launcher is
    subtype Run_Index is Positive range 1 .. MAXIMUM_RUNS;
    type Run is record
       Index : Run_Index := 1;
-      Process, Generation : Interfaces.Unsigned_64 := 0;
+      --  The process identity (KERN-003): one life.
+      Process : Interfaces.Unsigned_64 := 0;
    end record;
 
    type Start_Result is (Started, Not_Available, Refused, Too_Many_Runs);

@@ -1,0 +1,1610 @@
+[
+  {
+    "name": "compositor.h",
+    "source": "userspace/lib/compositor/compositor.h"
+  },
+  {
+    "name": "compositor_affine.adb",
+    "source": "userspace/lib/compositor/compositor_affine.adb"
+  },
+  {
+    "name": "compositor_affine.ads",
+    "source": "userspace/lib/compositor/compositor_affine.ads"
+  },
+  {
+    "name": "compositor_backdrop.adb",
+    "source": "userspace/lib/compositor/compositor_backdrop.adb"
+  },
+  {
+    "name": "compositor_backdrop.ads",
+    "source": "userspace/lib/compositor/compositor_backdrop.ads"
+  },
+  {
+    "name": "compositor_backdrop_strips.adb",
+    "source": "userspace/lib/compositor/compositor_backdrop_strips.adb"
+  },
+  {
+    "name": "compositor_backdrop_strips.ads",
+    "source": "userspace/lib/compositor/compositor_backdrop_strips.ads"
+  },
+  {
+    "name": "compositor_backend_selection.adb",
+    "source": "userspace/lib/compositor/compositor_backend_selection.adb"
+  },
+  {
+    "name": "compositor_backend_selection.ads",
+    "source": "userspace/lib/compositor/compositor_backend_selection.ads"
+  },
+  {
+    "name": "compositor_cache.adb",
+    "source": "userspace/lib/compositor/compositor_cache.adb"
+  },
+  {
+    "name": "compositor_cache.ads",
+    "source": "userspace/lib/compositor/compositor_cache.ads"
+  },
+  {
+    "name": "compositor_capture_reservation.adb",
+    "source": "userspace/lib/compositor/compositor_capture_reservation.adb"
+  },
+  {
+    "name": "compositor_capture_reservation.ads",
+    "source": "userspace/lib/compositor/compositor_capture_reservation.ads"
+  },
+  {
+    "name": "compositor_client_output.adb",
+    "source": "userspace/lib/compositor/compositor_client_output.adb"
+  },
+  {
+    "name": "compositor_client_output.ads",
+    "source": "userspace/lib/compositor/compositor_client_output.ads"
+  },
+  {
+    "name": "compositor_close_request.adb",
+    "source": "userspace/lib/compositor/compositor_close_request.adb"
+  },
+  {
+    "name": "compositor_close_request.ads",
+    "source": "userspace/lib/compositor/compositor_close_request.ads"
+  },
+  {
+    "name": "compositor_cursor.adb",
+    "source": "userspace/lib/compositor/compositor_cursor.adb"
+  },
+  {
+    "name": "compositor_cursor.ads",
+    "source": "userspace/lib/compositor/compositor_cursor.ads"
+  },
+  {
+    "name": "compositor_damage.adb",
+    "source": "userspace/lib/compositor/compositor_damage.adb"
+  },
+  {
+    "name": "compositor_damage.ads",
+    "source": "userspace/lib/compositor/compositor_damage.ads"
+  },
+  {
+    "name": "compositor_density.adb",
+    "source": "userspace/lib/compositor/compositor_density.adb"
+  },
+  {
+    "name": "compositor_density.ads",
+    "source": "userspace/lib/compositor/compositor_density.ads"
+  },
+  {
+    "name": "compositor_density_selection.adb",
+    "source": "userspace/lib/compositor/compositor_density_selection.adb"
+  },
+  {
+    "name": "compositor_density_selection.ads",
+    "source": "userspace/lib/compositor/compositor_density_selection.ads"
+  },
+  {
+    "name": "compositor_dispatch_budget.adb",
+    "source": "userspace/lib/compositor/compositor_dispatch_budget.adb"
+  },
+  {
+    "name": "compositor_dispatch_budget.ads",
+    "source": "userspace/lib/compositor/compositor_dispatch_budget.ads"
+  },
+  {
+    "name": "compositor_elapsed.ads",
+    "source": "userspace/lib/compositor/compositor_elapsed.ads"
+  },
+  {
+    "name": "compositor_focus.adb",
+    "source": "userspace/lib/compositor/compositor_focus.adb"
+  },
+  {
+    "name": "compositor_focus.ads",
+    "source": "userspace/lib/compositor/compositor_focus.ads"
+  },
+  {
+    "name": "compositor_formats.ads",
+    "source": "userspace/lib/compositor/compositor_formats.ads"
+  },
+  {
+    "name": "compositor_frame_replacement.adb",
+    "source": "userspace/lib/compositor/compositor_frame_replacement.adb"
+  },
+  {
+    "name": "compositor_frame_replacement.ads",
+    "source": "userspace/lib/compositor/compositor_frame_replacement.ads"
+  },
+  {
+    "name": "compositor_frame_trace.adb",
+    "source": "userspace/lib/compositor/compositor_frame_trace.adb"
+  },
+  {
+    "name": "compositor_frame_trace.ads",
+    "source": "userspace/lib/compositor/compositor_frame_trace.ads"
+  },
+  {
+    "name": "compositor_glyph_arena.adb",
+    "source": "userspace/lib/compositor/compositor_glyph_arena.adb"
+  },
+  {
+    "name": "compositor_glyph_arena.ads",
+    "source": "userspace/lib/compositor/compositor_glyph_arena.ads"
+  },
+  {
+    "name": "compositor_glyph_cache.adb",
+    "source": "userspace/lib/compositor/compositor_glyph_cache.adb"
+  },
+  {
+    "name": "compositor_glyph_cache.ads",
+    "source": "userspace/lib/compositor/compositor_glyph_cache.ads"
+  },
+  {
+    "name": "compositor_glyph_ffi.adb",
+    "source": "userspace/lib/compositor/compositor_glyph_ffi.adb"
+  },
+  {
+    "name": "compositor_glyph_ffi.ads",
+    "source": "userspace/lib/compositor/compositor_glyph_ffi.ads"
+  },
+  {
+    "name": "compositor_glyph_layout.adb",
+    "source": "userspace/lib/compositor/compositor_glyph_layout.adb"
+  },
+  {
+    "name": "compositor_glyph_layout.ads",
+    "source": "userspace/lib/compositor/compositor_glyph_layout.ads"
+  },
+  {
+    "name": "compositor_glyph_memory.adb",
+    "source": "userspace/lib/compositor/compositor_glyph_memory.adb"
+  },
+  {
+    "name": "compositor_glyph_memory.ads",
+    "source": "userspace/lib/compositor/compositor_glyph_memory.ads"
+  },
+  {
+    "name": "compositor_glyph_placement.adb",
+    "source": "userspace/lib/compositor/compositor_glyph_placement.adb"
+  },
+  {
+    "name": "compositor_glyph_placement.ads",
+    "source": "userspace/lib/compositor/compositor_glyph_placement.ads"
+  },
+  {
+    "name": "compositor_glyph_renderer.adb",
+    "source": "userspace/lib/compositor/compositor_glyph_renderer.adb"
+  },
+  {
+    "name": "compositor_glyph_renderer.ads",
+    "source": "userspace/lib/compositor/compositor_glyph_renderer.ads"
+  },
+  {
+    "name": "compositor_glyph_software.adb",
+    "source": "userspace/lib/compositor/compositor_glyph_software.adb"
+  },
+  {
+    "name": "compositor_glyph_software.ads",
+    "source": "userspace/lib/compositor/compositor_glyph_software.ads"
+  },
+  {
+    "name": "compositor_glyph_storage.adb",
+    "source": "userspace/lib/compositor/compositor_glyph_storage.adb"
+  },
+  {
+    "name": "compositor_glyph_storage.ads",
+    "source": "userspace/lib/compositor/compositor_glyph_storage.ads"
+  },
+  {
+    "name": "compositor_glyph_target.adb",
+    "source": "userspace/lib/compositor/compositor_glyph_target.adb"
+  },
+  {
+    "name": "compositor_glyph_target.ads",
+    "source": "userspace/lib/compositor/compositor_glyph_target.ads"
+  },
+  {
+    "name": "compositor_gradient.adb",
+    "source": "userspace/lib/compositor/compositor_gradient.adb"
+  },
+  {
+    "name": "compositor_gradient.ads",
+    "source": "userspace/lib/compositor/compositor_gradient.ads"
+  },
+  {
+    "name": "compositor_identity.ads",
+    "source": "userspace/lib/compositor/compositor_identity.ads"
+  },
+  {
+    "name": "compositor_image_sampling.adb",
+    "source": "userspace/lib/compositor/compositor_image_sampling.adb"
+  },
+  {
+    "name": "compositor_image_sampling.ads",
+    "source": "userspace/lib/compositor/compositor_image_sampling.ads"
+  },
+  {
+    "name": "compositor_input_acknowledgment.adb",
+    "source": "userspace/lib/compositor/compositor_input_acknowledgment.adb"
+  },
+  {
+    "name": "compositor_input_acknowledgment.ads",
+    "source": "userspace/lib/compositor/compositor_input_acknowledgment.ads"
+  },
+  {
+    "name": "compositor_input_batch_wire.adb",
+    "source": "userspace/lib/compositor/compositor_input_batch_wire.adb"
+  },
+  {
+    "name": "compositor_input_batch_wire.ads",
+    "source": "userspace/lib/compositor/compositor_input_batch_wire.ads"
+  },
+  {
+    "name": "compositor_input_batches.adb",
+    "source": "userspace/lib/compositor/compositor_input_batches.adb"
+  },
+  {
+    "name": "compositor_input_batches.ads",
+    "source": "userspace/lib/compositor/compositor_input_batches.ads"
+  },
+  {
+    "name": "compositor_input_delivery.adb",
+    "source": "userspace/lib/compositor/compositor_input_delivery.adb"
+  },
+  {
+    "name": "compositor_input_delivery.ads",
+    "source": "userspace/lib/compositor/compositor_input_delivery.ads"
+  },
+  {
+    "name": "compositor_input_delivery_pool.adb",
+    "source": "userspace/lib/compositor/compositor_input_delivery_pool.adb"
+  },
+  {
+    "name": "compositor_input_delivery_pool.ads",
+    "source": "userspace/lib/compositor/compositor_input_delivery_pool.ads"
+  },
+  {
+    "name": "compositor_input_protocol.adb",
+    "source": "userspace/lib/compositor/compositor_input_protocol.adb"
+  },
+  {
+    "name": "compositor_input_protocol.ads",
+    "source": "userspace/lib/compositor/compositor_input_protocol.ads"
+  },
+  {
+    "name": "compositor_input_queue.adb",
+    "source": "userspace/lib/compositor/compositor_input_queue.adb"
+  },
+  {
+    "name": "compositor_input_queue.ads",
+    "source": "userspace/lib/compositor/compositor_input_queue.ads"
+  },
+  {
+    "name": "compositor_input_trace.adb",
+    "source": "userspace/lib/compositor/compositor_input_trace.adb"
+  },
+  {
+    "name": "compositor_input_trace.ads",
+    "source": "userspace/lib/compositor/compositor_input_trace.ads"
+  },
+  {
+    "name": "compositor_layout_restore.adb",
+    "source": "userspace/lib/compositor/compositor_layout_restore.adb"
+  },
+  {
+    "name": "compositor_layout_restore.ads",
+    "source": "userspace/lib/compositor/compositor_layout_restore.ads"
+  },
+  {
+    "name": "compositor_lease_request.adb",
+    "source": "userspace/lib/compositor/compositor_lease_request.adb"
+  },
+  {
+    "name": "compositor_lease_request.ads",
+    "source": "userspace/lib/compositor/compositor_lease_request.ads"
+  },
+  {
+    "name": "compositor_mask_batch.adb",
+    "source": "userspace/lib/compositor/compositor_mask_batch.adb"
+  },
+  {
+    "name": "compositor_mask_batch.ads",
+    "source": "userspace/lib/compositor/compositor_mask_batch.ads"
+  },
+  {
+    "name": "compositor_metric_batch_policy.adb",
+    "source": "userspace/lib/compositor/compositor_metric_batch_policy.adb"
+  },
+  {
+    "name": "compositor_metric_batch_policy.ads",
+    "source": "userspace/lib/compositor/compositor_metric_batch_policy.ads"
+  },
+  {
+    "name": "compositor_metric_completion.ads",
+    "source": "userspace/lib/compositor/compositor_metric_completion.ads"
+  },
+  {
+    "name": "compositor_output_retirement.adb",
+    "source": "userspace/lib/compositor/compositor_output_retirement.adb"
+  },
+  {
+    "name": "compositor_output_retirement.ads",
+    "source": "userspace/lib/compositor/compositor_output_retirement.ads"
+  },
+  {
+    "name": "compositor_policy.adb",
+    "source": "userspace/lib/compositor/compositor_policy.adb"
+  },
+  {
+    "name": "compositor_policy.ads",
+    "source": "userspace/lib/compositor/compositor_policy.ads"
+  },
+  {
+    "name": "compositor_pool.adb",
+    "source": "userspace/lib/compositor/compositor_pool.adb"
+  },
+  {
+    "name": "compositor_pool.ads",
+    "source": "userspace/lib/compositor/compositor_pool.ads"
+  },
+  {
+    "name": "compositor_presentation.adb",
+    "source": "userspace/lib/compositor/compositor_presentation.adb"
+  },
+  {
+    "name": "compositor_presentation.ads",
+    "source": "userspace/lib/compositor/compositor_presentation.ads"
+  },
+  {
+    "name": "compositor_preview_geometry.adb",
+    "source": "userspace/lib/compositor/compositor_preview_geometry.adb"
+  },
+  {
+    "name": "compositor_preview_geometry.ads",
+    "source": "userspace/lib/compositor/compositor_preview_geometry.ads"
+  },
+  {
+    "name": "compositor_readback_copy.adb",
+    "source": "userspace/lib/compositor/compositor_readback_copy.adb"
+  },
+  {
+    "name": "compositor_readback_copy.ads",
+    "source": "userspace/lib/compositor/compositor_readback_copy.ads"
+  },
+  {
+    "name": "compositor_readers.adb",
+    "source": "userspace/lib/compositor/compositor_readers.adb"
+  },
+  {
+    "name": "compositor_readers.ads",
+    "source": "userspace/lib/compositor/compositor_readers.ads"
+  },
+  {
+    "name": "compositor_refresh.adb",
+    "source": "userspace/lib/compositor/compositor_refresh.adb"
+  },
+  {
+    "name": "compositor_refresh.ads",
+    "source": "userspace/lib/compositor/compositor_refresh.ads"
+  },
+  {
+    "name": "compositor_release_metrics.adb",
+    "source": "userspace/lib/compositor/compositor_release_metrics.adb"
+  },
+  {
+    "name": "compositor_release_metrics.ads",
+    "source": "userspace/lib/compositor/compositor_release_metrics.ads"
+  },
+  {
+    "name": "compositor_render_trace.adb",
+    "source": "userspace/lib/compositor/compositor_render_trace.adb"
+  },
+  {
+    "name": "compositor_render_trace.ads",
+    "source": "userspace/lib/compositor/compositor_render_trace.ads"
+  },
+  {
+    "name": "compositor_repaint.adb",
+    "source": "userspace/lib/compositor/compositor_repaint.adb"
+  },
+  {
+    "name": "compositor_repaint.ads",
+    "source": "userspace/lib/compositor/compositor_repaint.ads"
+  },
+  {
+    "name": "compositor_requests.adb",
+    "source": "userspace/lib/compositor/compositor_requests.adb"
+  },
+  {
+    "name": "compositor_requests.ads",
+    "source": "userspace/lib/compositor/compositor_requests.ads"
+  },
+  {
+    "name": "compositor_row_copy.adb",
+    "source": "userspace/lib/compositor/compositor_row_copy.adb"
+  },
+  {
+    "name": "compositor_row_copy.ads",
+    "source": "userspace/lib/compositor/compositor_row_copy.ads"
+  },
+  {
+    "name": "compositor_sampling.adb",
+    "source": "userspace/lib/compositor/compositor_sampling.adb"
+  },
+  {
+    "name": "compositor_sampling.ads",
+    "source": "userspace/lib/compositor/compositor_sampling.ads"
+  },
+  {
+    "name": "compositor_shadow.adb",
+    "source": "userspace/lib/compositor/compositor_shadow.adb"
+  },
+  {
+    "name": "compositor_shadow.ads",
+    "source": "userspace/lib/compositor/compositor_shadow.ads"
+  },
+  {
+    "name": "compositor_software_text.adb",
+    "source": "userspace/lib/compositor/compositor_software_text.adb"
+  },
+  {
+    "name": "compositor_software_text.ads",
+    "source": "userspace/lib/compositor/compositor_software_text.ads"
+  },
+  {
+    "name": "compositor_software_text_target.adb",
+    "source": "userspace/lib/compositor/compositor_software_text_target.adb"
+  },
+  {
+    "name": "compositor_software_text_target.ads",
+    "source": "userspace/lib/compositor/compositor_software_text_target.ads"
+  },
+  {
+    "name": "compositor_source_damage.adb",
+    "source": "userspace/lib/compositor/compositor_source_damage.adb"
+  },
+  {
+    "name": "compositor_source_damage.ads",
+    "source": "userspace/lib/compositor/compositor_source_damage.ads"
+  },
+  {
+    "name": "compositor_source_loans.adb",
+    "source": "userspace/lib/compositor/compositor_source_loans.adb"
+  },
+  {
+    "name": "compositor_source_loans.ads",
+    "source": "userspace/lib/compositor/compositor_source_loans.ads"
+  },
+  {
+    "name": "compositor_source_region.ads",
+    "source": "userspace/lib/compositor/compositor_source_region.ads"
+  },
+  {
+    "name": "compositor_source_trace.adb",
+    "source": "userspace/lib/compositor/compositor_source_trace.adb"
+  },
+  {
+    "name": "compositor_source_trace.ads",
+    "source": "userspace/lib/compositor/compositor_source_trace.ads"
+  },
+  {
+    "name": "compositor_stage_metrics.adb",
+    "source": "userspace/lib/compositor/compositor_stage_metrics.adb"
+  },
+  {
+    "name": "compositor_stage_metrics.ads",
+    "source": "userspace/lib/compositor/compositor_stage_metrics.ads"
+  },
+  {
+    "name": "compositor_storage.adb",
+    "source": "userspace/lib/compositor/compositor_storage.adb"
+  },
+  {
+    "name": "compositor_storage.ads",
+    "source": "userspace/lib/compositor/compositor_storage.ads"
+  },
+  {
+    "name": "compositor_surface_state.adb",
+    "source": "userspace/lib/compositor/compositor_surface_state.adb"
+  },
+  {
+    "name": "compositor_surface_state.ads",
+    "source": "userspace/lib/compositor/compositor_surface_state.ads"
+  },
+  {
+    "name": "compositor_target_damage.adb",
+    "source": "userspace/lib/compositor/compositor_target_damage.adb"
+  },
+  {
+    "name": "compositor_target_damage.ads",
+    "source": "userspace/lib/compositor/compositor_target_damage.ads"
+  },
+  {
+    "name": "compositor_text.adb",
+    "source": "userspace/lib/compositor/compositor_text.adb"
+  },
+  {
+    "name": "compositor_text.ads",
+    "source": "userspace/lib/compositor/compositor_text.ads"
+  },
+  {
+    "name": "compositor_transform.adb",
+    "source": "userspace/lib/compositor/compositor_transform.adb"
+  },
+  {
+    "name": "compositor_transform.ads",
+    "source": "userspace/lib/compositor/compositor_transform.ads"
+  },
+  {
+    "name": "compositor_transition.ads",
+    "source": "userspace/lib/compositor/compositor_transition.ads"
+  },
+  {
+    "name": "compositor_upload.adb",
+    "source": "userspace/lib/compositor/compositor_upload.adb"
+  },
+  {
+    "name": "compositor_upload.ads",
+    "source": "userspace/lib/compositor/compositor_upload.ads"
+  },
+  {
+    "name": "compositor_upload_copy.adb",
+    "source": "userspace/lib/compositor/compositor_upload_copy.adb"
+  },
+  {
+    "name": "compositor_upload_copy.ads",
+    "source": "userspace/lib/compositor/compositor_upload_copy.ads"
+  },
+  {
+    "name": "compositor_upload_progress.adb",
+    "source": "userspace/lib/compositor/compositor_upload_progress.adb"
+  },
+  {
+    "name": "compositor_upload_progress.ads",
+    "source": "userspace/lib/compositor/compositor_upload_progress.ads"
+  },
+  {
+    "name": "compositor_work_metrics.adb",
+    "source": "userspace/lib/compositor/compositor_work_metrics.adb"
+  },
+  {
+    "name": "compositor_work_metrics.ads",
+    "source": "userspace/lib/compositor/compositor_work_metrics.ads"
+  },
+  {
+    "name": "compositor_workspace.ads",
+    "source": "userspace/lib/compositor/compositor_workspace.ads"
+  },
+  {
+    "name": "cubit-appearance.adb",
+    "source": "userspace/lib/theme/cubit-appearance.adb"
+  },
+  {
+    "name": "cubit-appearance.ads",
+    "source": "userspace/lib/theme/cubit-appearance.ads"
+  },
+  {
+    "name": "cubit-backend_targets.adb",
+    "source": "userspace/lib/display/cubit-backend_targets.adb"
+  },
+  {
+    "name": "cubit-backend_targets.ads",
+    "source": "userspace/lib/display/cubit-backend_targets.ads"
+  },
+  {
+    "name": "cubit-display_arrangement.adb",
+    "source": "userspace/lib/display/cubit-display_arrangement.adb"
+  },
+  {
+    "name": "cubit-display_arrangement.ads",
+    "source": "userspace/lib/display/cubit-display_arrangement.ads"
+  },
+  {
+    "name": "cubit-display_geometry.adb",
+    "source": "userspace/lib/display/cubit-display_geometry.adb"
+  },
+  {
+    "name": "cubit-display_geometry.ads",
+    "source": "userspace/lib/display/cubit-display_geometry.ads"
+  },
+  {
+    "name": "cubit-display_layouts.adb",
+    "source": "userspace/lib/display/cubit-display_layouts.adb"
+  },
+  {
+    "name": "cubit-display_layouts.ads",
+    "source": "userspace/lib/display/cubit-display_layouts.ads"
+  },
+  {
+    "name": "cubit-display_outputs.ads",
+    "source": "userspace/lib/display/cubit-display_outputs.ads"
+  },
+  {
+    "name": "cubit-display_pool_protocol.adb",
+    "source": "userspace/lib/display/cubit-display_pool_protocol.adb"
+  },
+  {
+    "name": "cubit-display_pool_protocol.ads",
+    "source": "userspace/lib/display/cubit-display_pool_protocol.ads"
+  },
+  {
+    "name": "cubit-display_pool_registry.adb",
+    "source": "userspace/lib/display/cubit-display_pool_registry.adb"
+  },
+  {
+    "name": "cubit-display_pool_registry.ads",
+    "source": "userspace/lib/display/cubit-display_pool_registry.ads"
+  },
+  {
+    "name": "cubit-monitor_edid.adb",
+    "source": "userspace/lib/display/cubit-monitor_edid.adb"
+  },
+  {
+    "name": "cubit-monitor_edid.ads",
+    "source": "userspace/lib/display/cubit-monitor_edid.ads"
+  },
+  {
+    "name": "cubit-output_discovery.adb",
+    "source": "userspace/lib/display/cubit-output_discovery.adb"
+  },
+  {
+    "name": "cubit-output_discovery.ads",
+    "source": "userspace/lib/display/cubit-output_discovery.ads"
+  },
+  {
+    "name": "cubit-output_registry.adb",
+    "source": "userspace/lib/display/cubit-output_registry.adb"
+  },
+  {
+    "name": "cubit-output_registry.ads",
+    "source": "userspace/lib/display/cubit-output_registry.ads"
+  },
+  {
+    "name": "cubit-placement_tickets.adb",
+    "source": "userspace/lib/display/cubit-placement_tickets.adb"
+  },
+  {
+    "name": "cubit-placement_tickets.ads",
+    "source": "userspace/lib/display/cubit-placement_tickets.ads"
+  },
+  {
+    "name": "cubit-theme.ads",
+    "source": "userspace/lib/theme/cubit-theme.ads"
+  },
+  {
+    "name": "cubit-window_placement.adb",
+    "source": "userspace/lib/display/cubit-window_placement.adb"
+  },
+  {
+    "name": "cubit-window_placement.ads",
+    "source": "userspace/lib/display/cubit-window_placement.ads"
+  },
+  {
+    "name": "cubit.ads",
+    "source": "userspace/runtime/gnat/cubit.ads"
+  },
+  {
+    "name": "desktop_backdrop_owner.adb",
+    "source": "userspace/services/desktop/desktop_backdrop_owner.adb"
+  },
+  {
+    "name": "desktop_backdrop_owner.ads",
+    "source": "userspace/services/desktop/desktop_backdrop_owner.ads"
+  },
+  {
+    "name": "desktop_backdrop_pixels.adb",
+    "source": "userspace/services/desktop/desktop_backdrop_pixels.adb"
+  },
+  {
+    "name": "desktop_backdrop_pixels.ads",
+    "source": "userspace/services/desktop/desktop_backdrop_pixels.ads"
+  },
+  {
+    "name": "desktop_backdrop_style.ads",
+    "source": "userspace/services/desktop/desktop_backdrop_style.ads"
+  },
+  {
+    "name": "desktop_backdrop_upload.adb",
+    "source": "userspace/services/desktop/desktop_backdrop_upload.adb"
+  },
+  {
+    "name": "desktop_backdrop_upload.ads",
+    "source": "userspace/services/desktop/desktop_backdrop_upload.ads"
+  },
+  {
+    "name": "desktop_breadcrumbs.adb",
+    "source": "userspace/services/desktop/desktop_breadcrumbs.adb"
+  },
+  {
+    "name": "desktop_breadcrumbs.ads",
+    "source": "userspace/services/desktop/desktop_breadcrumbs.ads"
+  },
+  {
+    "name": "desktop_capability_io.adb",
+    "source": "userspace/services/desktop/desktop_capability_io.adb"
+  },
+  {
+    "name": "desktop_capability_io.ads",
+    "source": "userspace/services/desktop/desktop_capability_io.ads"
+  },
+  {
+    "name": "desktop_composition.adb",
+    "source": "userspace/lib/compositor/desktop_composition.adb"
+  },
+  {
+    "name": "desktop_composition.ads",
+    "source": "userspace/lib/compositor/desktop_composition.ads"
+  },
+  {
+    "name": "desktop_compositor.adb",
+    "source": "userspace/services/desktop/backend-vulkan/desktop_compositor.adb"
+  },
+  {
+    "name": "desktop_compositor.ads",
+    "source": "userspace/services/desktop/backend-vulkan/desktop_compositor.ads"
+  },
+  {
+    "name": "desktop_cursors.ads",
+    "source": "userspace/services/desktop/desktop_cursors.ads"
+  },
+  {
+    "name": "desktop_glyph_residency.adb",
+    "source": "userspace/services/desktop/desktop_glyph_residency.adb"
+  },
+  {
+    "name": "desktop_glyph_residency.ads",
+    "source": "userspace/services/desktop/desktop_glyph_residency.ads"
+  },
+  {
+    "name": "desktop_glyph_upload.adb",
+    "source": "userspace/services/desktop/desktop_glyph_upload.adb"
+  },
+  {
+    "name": "desktop_glyph_upload.ads",
+    "source": "userspace/services/desktop/desktop_glyph_upload.ads"
+  },
+  {
+    "name": "desktop_gpu_scene-backdrop.adb",
+    "source": "userspace/services/desktop/desktop_gpu_scene-backdrop.adb"
+  },
+  {
+    "name": "desktop_gpu_scene-backdrop.ads",
+    "source": "userspace/services/desktop/desktop_gpu_scene-backdrop.ads"
+  },
+  {
+    "name": "desktop_gpu_scene-drawing.adb",
+    "source": "userspace/services/desktop/desktop_gpu_scene-drawing.adb"
+  },
+  {
+    "name": "desktop_gpu_scene-drawing.ads",
+    "source": "userspace/services/desktop/desktop_gpu_scene-drawing.ads"
+  },
+  {
+    "name": "desktop_gpu_scene-images.adb",
+    "source": "userspace/services/desktop/desktop_gpu_scene-images.adb"
+  },
+  {
+    "name": "desktop_gpu_scene-images.ads",
+    "source": "userspace/services/desktop/desktop_gpu_scene-images.ads"
+  },
+  {
+    "name": "desktop_gpu_scene-output.adb",
+    "source": "userspace/services/desktop/desktop_gpu_scene-output.adb"
+  },
+  {
+    "name": "desktop_gpu_scene-output.ads",
+    "source": "userspace/services/desktop/desktop_gpu_scene-output.ads"
+  },
+  {
+    "name": "desktop_gpu_scene.adb",
+    "source": "userspace/services/desktop/desktop_gpu_scene.adb"
+  },
+  {
+    "name": "desktop_gpu_scene.ads",
+    "source": "userspace/services/desktop/desktop_gpu_scene.ads"
+  },
+  {
+    "name": "desktop_gpu_scene_real_bridge.adb",
+    "fixture": "desktop_gpu_scene_real_bridge.adb"
+  },
+  {
+    "name": "desktop_gpu_scene_real_bridge.ads",
+    "fixture": "desktop_gpu_scene_real_bridge.ads"
+  },
+  {
+    "name": "desktop_gpu_scene_real_host.c",
+    "fixture": "desktop_gpu_scene_real_host.c"
+  },
+  {
+    "name": "desktop_gpu_scene_real_tests.adb",
+    "support": "tests/compositor/desktop_gpu_scene_real_tests.adb"
+  },
+  {
+    "name": "desktop_icon_atlas_owner.adb",
+    "source": "userspace/services/desktop/desktop_icon_atlas_owner.adb"
+  },
+  {
+    "name": "desktop_icon_atlas_owner.ads",
+    "source": "userspace/services/desktop/desktop_icon_atlas_owner.ads"
+  },
+  {
+    "name": "desktop_icon_mapping.adb",
+    "source": "userspace/services/desktop/desktop_icon_mapping.adb"
+  },
+  {
+    "name": "desktop_icon_mapping.ads",
+    "source": "userspace/services/desktop/desktop_icon_mapping.ads"
+  },
+  {
+    "name": "desktop_icon_pixels-atlases.adb",
+    "source": "userspace/services/desktop/desktop_icon_pixels-atlases.adb"
+  },
+  {
+    "name": "desktop_icon_pixels-atlases.ads",
+    "source": "userspace/services/desktop/desktop_icon_pixels-atlases.ads"
+  },
+  {
+    "name": "desktop_icon_pixels.adb",
+    "source": "userspace/services/desktop/desktop_icon_pixels.adb"
+  },
+  {
+    "name": "desktop_icon_pixels.ads",
+    "source": "userspace/services/desktop/desktop_icon_pixels.ads"
+  },
+  {
+    "name": "desktop_icon_upload.adb",
+    "source": "userspace/services/desktop/desktop_icon_upload.adb"
+  },
+  {
+    "name": "desktop_icon_upload.ads",
+    "source": "userspace/services/desktop/desktop_icon_upload.ads"
+  },
+  {
+    "name": "desktop_icons.ads",
+    "source": "userspace/services/desktop/desktop_icons.ads"
+  },
+  {
+    "name": "desktop_image_registry.adb",
+    "source": "userspace/services/desktop/desktop_image_registry.adb"
+  },
+  {
+    "name": "desktop_image_registry.ads",
+    "source": "userspace/services/desktop/desktop_image_registry.ads"
+  },
+  {
+    "name": "desktop_image_source.adb",
+    "source": "userspace/services/desktop/desktop_image_source.adb"
+  },
+  {
+    "name": "desktop_image_source.ads",
+    "source": "userspace/services/desktop/desktop_image_source.ads"
+  },
+  {
+    "name": "desktop_input_diagnostic.adb",
+    "source": "userspace/services/desktop/desktop_input_diagnostic.adb"
+  },
+  {
+    "name": "desktop_input_diagnostic.ads",
+    "source": "userspace/services/desktop/desktop_input_diagnostic.ads"
+  },
+  {
+    "name": "desktop_input_transfer.adb",
+    "source": "userspace/services/desktop/desktop_input_transfer.adb"
+  },
+  {
+    "name": "desktop_input_transfer.ads",
+    "source": "userspace/services/desktop/desktop_input_transfer.ads"
+  },
+  {
+    "name": "desktop_launch.adb",
+    "source": "userspace/services/desktop/desktop_launch.adb"
+  },
+  {
+    "name": "desktop_launch.ads",
+    "source": "userspace/services/desktop/desktop_launch.ads"
+  },
+  {
+    "name": "desktop_launch_refresh.adb",
+    "source": "userspace/services/desktop/desktop_launch_refresh.adb"
+  },
+  {
+    "name": "desktop_launch_refresh.ads",
+    "source": "userspace/services/desktop/desktop_launch_refresh.ads"
+  },
+  {
+    "name": "desktop_log_io.adb",
+    "source": "userspace/services/desktop/desktop_log_io.adb"
+  },
+  {
+    "name": "desktop_log_io.ads",
+    "source": "userspace/services/desktop/desktop_log_io.ads"
+  },
+  {
+    "name": "desktop_logs.adb",
+    "source": "userspace/services/desktop/desktop_logs.adb"
+  },
+  {
+    "name": "desktop_logs.ads",
+    "source": "userspace/services/desktop/desktop_logs.ads"
+  },
+  {
+    "name": "desktop_metric_publisher.adb",
+    "source": "userspace/services/desktop/desktop_metric_publisher.adb"
+  },
+  {
+    "name": "desktop_metric_publisher.ads",
+    "source": "userspace/services/desktop/desktop_metric_publisher.ads"
+  },
+  {
+    "name": "desktop_readback_output.adb",
+    "source": "userspace/services/desktop/desktop_readback_output.adb"
+  },
+  {
+    "name": "desktop_readback_output.ads",
+    "source": "userspace/services/desktop/desktop_readback_output.ads"
+  },
+  {
+    "name": "desktop_settings.adb",
+    "source": "userspace/services/desktop/desktop_settings.adb"
+  },
+  {
+    "name": "desktop_settings.ads",
+    "source": "userspace/services/desktop/desktop_settings.ads"
+  },
+  {
+    "name": "desktop_startup_layout.adb",
+    "source": "userspace/services/desktop/desktop_startup_layout.adb"
+  },
+  {
+    "name": "desktop_startup_layout.ads",
+    "source": "userspace/services/desktop/desktop_startup_layout.ads"
+  },
+  {
+    "name": "desktop_vulkan_startup.adb",
+    "source": "userspace/services/desktop/desktop_vulkan_startup.adb"
+  },
+  {
+    "name": "desktop_vulkan_startup.ads",
+    "source": "userspace/services/desktop/desktop_vulkan_startup.ads"
+  },
+  {
+    "name": "desktop_wallpaper.adb",
+    "source": "userspace/services/desktop/desktop_wallpaper.adb"
+  },
+  {
+    "name": "desktop_wallpaper.ads",
+    "source": "userspace/services/desktop/desktop_wallpaper.ads"
+  },
+  {
+    "name": "desktop_window_icons.ads",
+    "source": "userspace/services/desktop/desktop_window_icons.ads"
+  },
+  {
+    "name": "font8x16.ads",
+    "source": "userspace/services/desktop/font8x16.ads"
+  },
+  {
+    "name": "heap_bitmap.adb",
+    "source": "userspace/allocator/src/heap_bitmap.adb"
+  },
+  {
+    "name": "heap_bitmap.ads",
+    "source": "userspace/allocator/src/heap_bitmap.ads"
+  },
+  {
+    "name": "heap_classes.adb",
+    "source": "userspace/allocator/src/heap_classes.adb"
+  },
+  {
+    "name": "heap_classes.ads",
+    "source": "userspace/allocator/src/heap_classes.ads"
+  },
+  {
+    "name": "heap_extents.adb",
+    "source": "userspace/allocator/src/heap_extents.adb"
+  },
+  {
+    "name": "heap_extents.ads",
+    "source": "userspace/allocator/src/heap_extents.ads"
+  },
+  {
+    "name": "heap_slab_instance.ads",
+    "source": "userspace/allocator/src/heap_slab_instance.ads"
+  },
+  {
+    "name": "heap_slabs.adb",
+    "source": "userspace/allocator/src/heap_slabs.adb"
+  },
+  {
+    "name": "heap_slabs.ads",
+    "source": "userspace/allocator/src/heap_slabs.ads"
+  },
+  {
+    "name": "intel_render_admission.adb",
+    "source": "userspace/lib/display/intel_render_admission.adb"
+  },
+  {
+    "name": "intel_render_admission.ads",
+    "source": "userspace/lib/display/intel_render_admission.ads"
+  },
+  {
+    "name": "intel_render_admission_dispatch.adb",
+    "source": "userspace/lib/display/intel_render_admission_dispatch.adb"
+  },
+  {
+    "name": "intel_render_admission_dispatch.ads",
+    "source": "userspace/lib/display/intel_render_admission_dispatch.ads"
+  },
+  {
+    "name": "intel_render_admission_native.adb",
+    "source": "userspace/lib/display/intel_render_admission_native.adb"
+  },
+  {
+    "name": "intel_render_admission_native.ads",
+    "source": "userspace/lib/display/intel_render_admission_native.ads"
+  },
+  {
+    "name": "intel_render_broker.adb",
+    "source": "userspace/lib/display/intel_render_broker.adb"
+  },
+  {
+    "name": "intel_render_broker.ads",
+    "source": "userspace/lib/display/intel_render_broker.ads"
+  },
+  {
+    "name": "intel_render_launch_client.adb",
+    "source": "userspace/lib/display/intel_render_launch_client.adb"
+  },
+  {
+    "name": "intel_render_launch_client.ads",
+    "source": "userspace/lib/display/intel_render_launch_client.ads"
+  },
+  {
+    "name": "mesa_affine_ffi.adb",
+    "source": "userspace/lib/compositor/mesa_affine_ffi.adb"
+  },
+  {
+    "name": "mesa_affine_ffi.ads",
+    "source": "userspace/lib/compositor/mesa_affine_ffi.ads"
+  },
+  {
+    "name": "mesa_binding-affine.adb",
+    "source": "userspace/lib/compositor/mesa_binding-affine.adb"
+  },
+  {
+    "name": "mesa_binding-affine.ads",
+    "source": "userspace/lib/compositor/mesa_binding-affine.ads"
+  },
+  {
+    "name": "mesa_binding-masks.adb",
+    "source": "userspace/lib/compositor/mesa_binding-masks.adb"
+  },
+  {
+    "name": "mesa_binding-masks.ads",
+    "source": "userspace/lib/compositor/mesa_binding-masks.ads"
+  },
+  {
+    "name": "mesa_binding.adb",
+    "source": "userspace/lib/compositor/mesa_binding.adb"
+  },
+  {
+    "name": "mesa_binding.ads",
+    "source": "userspace/lib/compositor/mesa_binding.ads"
+  },
+  {
+    "name": "mesa_cache.ads",
+    "source": "userspace/lib/compositor/mesa_cache.ads"
+  },
+  {
+    "name": "mesa_ffi.ads",
+    "source": "userspace/lib/compositor/mesa_ffi.ads"
+  },
+  {
+    "name": "mesa_mask_ffi.adb",
+    "source": "userspace/lib/compositor/mesa_mask_ffi.adb"
+  },
+  {
+    "name": "mesa_mask_ffi.ads",
+    "source": "userspace/lib/compositor/mesa_mask_ffi.ads"
+  },
+  {
+    "name": "mesa_masks.adb",
+    "source": "userspace/lib/compositor/mesa_masks.adb"
+  },
+  {
+    "name": "mesa_masks.ads",
+    "source": "userspace/lib/compositor/mesa_masks.ads"
+  },
+  {
+    "name": "mesa_service.adb",
+    "source": "userspace/mesa/mesa_service.adb"
+  },
+  {
+    "name": "mesa_service.ads",
+    "source": "userspace/mesa/mesa_service.ads"
+  },
+  {
+    "name": "service-device.h",
+    "source": "userspace/mesa/service-device.h"
+  },
+  {
+    "name": "vulkan_affine.c",
+    "source": "userspace/lib/compositor/vulkan_affine.c"
+  },
+  {
+    "name": "vulkan_affine.h",
+    "source": "userspace/lib/compositor/vulkan_affine.h"
+  },
+  {
+    "name": "vulkan_affine_binding-regions.adb",
+    "source": "userspace/lib/compositor/vulkan_affine_binding-regions.adb"
+  },
+  {
+    "name": "vulkan_affine_binding-regions.ads",
+    "source": "userspace/lib/compositor/vulkan_affine_binding-regions.ads"
+  },
+  {
+    "name": "vulkan_affine_binding.adb",
+    "source": "userspace/lib/compositor/vulkan_affine_binding.adb"
+  },
+  {
+    "name": "vulkan_affine_binding.ads",
+    "source": "userspace/lib/compositor/vulkan_affine_binding.ads"
+  },
+  {
+    "name": "vulkan_affine_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_affine_ffi.adb"
+  },
+  {
+    "name": "vulkan_affine_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_affine_ffi.ads"
+  },
+  {
+    "name": "vulkan_affine_host.c",
+    "support": "tests/compositor/vulkan_affine_host.c"
+  },
+  {
+    "name": "vulkan_affine_test_bridge.adb",
+    "support": "tests/compositor/vulkan_affine_test_bridge.adb"
+  },
+  {
+    "name": "vulkan_affine_test_bridge.ads",
+    "support": "tests/compositor/vulkan_affine_test_bridge.ads"
+  },
+  {
+    "name": "vulkan_backdrop.c",
+    "source": "userspace/lib/compositor/vulkan_backdrop.c"
+  },
+  {
+    "name": "vulkan_backdrop.h",
+    "source": "userspace/lib/compositor/vulkan_backdrop.h"
+  },
+  {
+    "name": "vulkan_backdrop_binding.adb",
+    "source": "userspace/lib/compositor/vulkan_backdrop_binding.adb"
+  },
+  {
+    "name": "vulkan_backdrop_binding.ads",
+    "source": "userspace/lib/compositor/vulkan_backdrop_binding.ads"
+  },
+  {
+    "name": "vulkan_backdrop_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_backdrop_ffi.adb"
+  },
+  {
+    "name": "vulkan_backdrop_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_backdrop_ffi.ads"
+  },
+  {
+    "name": "vulkan_checker.c",
+    "source": "userspace/lib/compositor/vulkan_checker.c"
+  },
+  {
+    "name": "vulkan_checker.h",
+    "source": "userspace/lib/compositor/vulkan_checker.h"
+  },
+  {
+    "name": "vulkan_checker_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_checker_ffi.adb"
+  },
+  {
+    "name": "vulkan_checker_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_checker_ffi.ads"
+  },
+  {
+    "name": "vulkan_checker_request.h",
+    "source": "userspace/lib/compositor/vulkan_checker_request.h"
+  },
+  {
+    "name": "vulkan_context.c",
+    "source": "userspace/lib/compositor/vulkan_context.c"
+  },
+  {
+    "name": "vulkan_context.h",
+    "source": "userspace/lib/compositor/vulkan_context.h"
+  },
+  {
+    "name": "vulkan_context_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_context_ffi.adb"
+  },
+  {
+    "name": "vulkan_context_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_context_ffi.ads"
+  },
+  {
+    "name": "vulkan_context_owner.adb",
+    "source": "userspace/lib/compositor/vulkan_context_owner.adb"
+  },
+  {
+    "name": "vulkan_context_owner.ads",
+    "source": "userspace/lib/compositor/vulkan_context_owner.ads"
+  },
+  {
+    "name": "vulkan_copy.h",
+    "source": "userspace/lib/compositor/vulkan_copy.h"
+  },
+  {
+    "name": "vulkan_copy_binding.adb",
+    "source": "userspace/lib/compositor/vulkan_copy_binding.adb"
+  },
+  {
+    "name": "vulkan_copy_binding.ads",
+    "source": "userspace/lib/compositor/vulkan_copy_binding.ads"
+  },
+  {
+    "name": "vulkan_copy_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_copy_ffi.adb"
+  },
+  {
+    "name": "vulkan_copy_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_copy_ffi.ads"
+  },
+  {
+    "name": "vulkan_device_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_device_ffi.adb"
+  },
+  {
+    "name": "vulkan_device_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_device_ffi.ads"
+  },
+  {
+    "name": "vulkan_device_owner.adb",
+    "source": "userspace/lib/compositor/vulkan_device_owner.adb"
+  },
+  {
+    "name": "vulkan_device_owner.ads",
+    "source": "userspace/lib/compositor/vulkan_device_owner.ads"
+  },
+  {
+    "name": "vulkan_device_pipeline_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_device_pipeline_ffi.adb"
+  },
+  {
+    "name": "vulkan_device_pipeline_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_device_pipeline_ffi.ads"
+  },
+  {
+    "name": "vulkan_device_source_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_device_source_ffi.adb"
+  },
+  {
+    "name": "vulkan_device_source_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_device_source_ffi.ads"
+  },
+  {
+    "name": "vulkan_device_storage.c",
+    "source": "userspace/lib/compositor/vulkan_device_storage.c"
+  },
+  {
+    "name": "vulkan_device_storage.h",
+    "source": "userspace/lib/compositor/vulkan_device_storage.h"
+  },
+  {
+    "name": "vulkan_device_targets_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_device_targets_ffi.adb"
+  },
+  {
+    "name": "vulkan_device_targets_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_device_targets_ffi.ads"
+  },
+  {
+    "name": "vulkan_device_upload_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_device_upload_ffi.adb"
+  },
+  {
+    "name": "vulkan_device_upload_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_device_upload_ffi.ads"
+  },
+  {
+    "name": "vulkan_frame.adb",
+    "source": "userspace/lib/compositor/vulkan_frame.adb"
+  },
+  {
+    "name": "vulkan_frame.ads",
+    "source": "userspace/lib/compositor/vulkan_frame.ads"
+  },
+  {
+    "name": "vulkan_glyph_sources.adb",
+    "source": "userspace/lib/compositor/vulkan_glyph_sources.adb"
+  },
+  {
+    "name": "vulkan_glyph_sources.ads",
+    "source": "userspace/lib/compositor/vulkan_glyph_sources.ads"
+  },
+  {
+    "name": "vulkan_image_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_image_ffi.adb"
+  },
+  {
+    "name": "vulkan_image_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_image_ffi.ads"
+  },
+  {
+    "name": "vulkan_image_owner.adb",
+    "source": "userspace/lib/compositor/vulkan_image_owner.adb"
+  },
+  {
+    "name": "vulkan_image_owner.ads",
+    "source": "userspace/lib/compositor/vulkan_image_owner.ads"
+  },
+  {
+    "name": "vulkan_owned_image.c",
+    "source": "userspace/lib/compositor/vulkan_owned_image.c"
+  },
+  {
+    "name": "vulkan_owned_image.h",
+    "source": "userspace/lib/compositor/vulkan_owned_image.h"
+  },
+  {
+    "name": "vulkan_owned_source.adb",
+    "source": "userspace/lib/compositor/vulkan_owned_source.adb"
+  },
+  {
+    "name": "vulkan_owned_source.ads",
+    "source": "userspace/lib/compositor/vulkan_owned_source.ads"
+  },
+  {
+    "name": "vulkan_owned_target_binding.c",
+    "source": "userspace/lib/compositor/vulkan_owned_target_binding.c"
+  },
+  {
+    "name": "vulkan_owned_target_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_owned_target_ffi.adb"
+  },
+  {
+    "name": "vulkan_owned_target_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_owned_target_ffi.ads"
+  },
+  {
+    "name": "vulkan_owned_targets.adb",
+    "source": "userspace/lib/compositor/vulkan_owned_targets.adb"
+  },
+  {
+    "name": "vulkan_owned_targets.ads",
+    "source": "userspace/lib/compositor/vulkan_owned_targets.ads"
+  },
+  {
+    "name": "vulkan_owned_targets.h",
+    "source": "userspace/lib/compositor/vulkan_owned_targets.h"
+  },
+  {
+    "name": "vulkan_pipeline_diagnostic.h",
+    "source": "userspace/lib/compositor/vulkan_pipeline_diagnostic.h"
+  },
+  {
+    "name": "vulkan_preview_binding.adb",
+    "source": "userspace/lib/compositor/vulkan_preview_binding.adb"
+  },
+  {
+    "name": "vulkan_preview_binding.ads",
+    "source": "userspace/lib/compositor/vulkan_preview_binding.ads"
+  },
+  {
+    "name": "vulkan_preview_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_preview_ffi.adb"
+  },
+  {
+    "name": "vulkan_preview_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_preview_ffi.ads"
+  },
+  {
+    "name": "vulkan_region_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_region_ffi.adb"
+  },
+  {
+    "name": "vulkan_region_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_region_ffi.ads"
+  },
+  {
+    "name": "vulkan_scene.adb",
+    "source": "userspace/lib/compositor/vulkan_scene.adb"
+  },
+  {
+    "name": "vulkan_scene.ads",
+    "source": "userspace/lib/compositor/vulkan_scene.ads"
+  },
+  {
+    "name": "vulkan_scene_recording.adb",
+    "source": "userspace/lib/compositor/vulkan_scene_recording.adb"
+  },
+  {
+    "name": "vulkan_scene_recording.ads",
+    "source": "userspace/lib/compositor/vulkan_scene_recording.ads"
+  },
+  {
+    "name": "vulkan_sources.c",
+    "source": "userspace/lib/compositor/vulkan_sources.c"
+  },
+  {
+    "name": "vulkan_sources.h",
+    "source": "userspace/lib/compositor/vulkan_sources.h"
+  },
+  {
+    "name": "vulkan_submission-backdrops.adb",
+    "source": "userspace/lib/compositor/vulkan_submission-backdrops.adb"
+  },
+  {
+    "name": "vulkan_submission-backdrops.ads",
+    "source": "userspace/lib/compositor/vulkan_submission-backdrops.ads"
+  },
+  {
+    "name": "vulkan_submission-checkers.adb",
+    "source": "userspace/lib/compositor/vulkan_submission-checkers.adb"
+  },
+  {
+    "name": "vulkan_submission-checkers.ads",
+    "source": "userspace/lib/compositor/vulkan_submission-checkers.ads"
+  },
+  {
+    "name": "vulkan_submission-previews.adb",
+    "source": "userspace/lib/compositor/vulkan_submission-previews.adb"
+  },
+  {
+    "name": "vulkan_submission-previews.ads",
+    "source": "userspace/lib/compositor/vulkan_submission-previews.ads"
+  },
+  {
+    "name": "vulkan_submission-regions.adb",
+    "source": "userspace/lib/compositor/vulkan_submission-regions.adb"
+  },
+  {
+    "name": "vulkan_submission-regions.ads",
+    "source": "userspace/lib/compositor/vulkan_submission-regions.ads"
+  },
+  {
+    "name": "vulkan_submission.adb",
+    "source": "userspace/lib/compositor/vulkan_submission.adb"
+  },
+  {
+    "name": "vulkan_submission.ads",
+    "source": "userspace/lib/compositor/vulkan_submission.ads"
+  },
+  {
+    "name": "vulkan_submission.h",
+    "source": "userspace/lib/compositor/vulkan_submission.h"
+  },
+  {
+    "name": "vulkan_submission_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_submission_ffi.adb"
+  },
+  {
+    "name": "vulkan_submission_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_submission_ffi.ads"
+  },
+  {
+    "name": "vulkan_submission_native.c",
+    "source": "userspace/lib/compositor/vulkan_submission_native.c"
+  },
+  {
+    "name": "vulkan_submission_test_bridge.adb",
+    "support": "tests/compositor/vulkan_submission_test_bridge.adb"
+  },
+  {
+    "name": "vulkan_submission_test_bridge.ads",
+    "support": "tests/compositor/vulkan_submission_test_bridge.ads"
+  },
+  {
+    "name": "vulkan_submission_tests.adb",
+    "support": "tests/compositor/vulkan_submission_tests.adb"
+  },
+  {
+    "name": "vulkan_target_bundle_bridge.adb",
+    "support": "tests/compositor/vulkan_target_bundle_bridge.adb"
+  },
+  {
+    "name": "vulkan_target_bundle_bridge.ads",
+    "support": "tests/compositor/vulkan_target_bundle_bridge.ads"
+  },
+  {
+    "name": "vulkan_target_bundle_tests.adb",
+    "support": "tests/compositor/vulkan_target_bundle_tests.adb"
+  },
+  {
+    "name": "vulkan_target_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_target_ffi.adb"
+  },
+  {
+    "name": "vulkan_target_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_target_ffi.ads"
+  },
+  {
+    "name": "vulkan_target_owner.adb",
+    "source": "userspace/lib/compositor/vulkan_target_owner.adb"
+  },
+  {
+    "name": "vulkan_target_owner.ads",
+    "source": "userspace/lib/compositor/vulkan_target_owner.ads"
+  },
+  {
+    "name": "vulkan_targets.c",
+    "source": "userspace/lib/compositor/vulkan_targets.c"
+  },
+  {
+    "name": "vulkan_targets.h",
+    "source": "userspace/lib/compositor/vulkan_targets.h"
+  },
+  {
+    "name": "vulkan_upload_buffer.c",
+    "source": "userspace/lib/compositor/vulkan_upload_buffer.c"
+  },
+  {
+    "name": "vulkan_upload_buffer.h",
+    "source": "userspace/lib/compositor/vulkan_upload_buffer.h"
+  },
+  {
+    "name": "vulkan_upload_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_upload_ffi.adb"
+  },
+  {
+    "name": "vulkan_upload_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_upload_ffi.ads"
+  },
+  {
+    "name": "vulkan_upload_owner.adb",
+    "source": "userspace/lib/compositor/vulkan_upload_owner.adb"
+  },
+  {
+    "name": "vulkan_upload_owner.ads",
+    "source": "userspace/lib/compositor/vulkan_upload_owner.ads"
+  },
+  {
+    "name": "vulkan_upload_record.c",
+    "source": "userspace/lib/compositor/vulkan_upload_record.c"
+  },
+  {
+    "name": "vulkan_upload_record.h",
+    "source": "userspace/lib/compositor/vulkan_upload_record.h"
+  },
+  {
+    "name": "vulkan_upload_record_ffi.adb",
+    "source": "userspace/lib/compositor/vulkan_upload_record_ffi.adb"
+  },
+  {
+    "name": "vulkan_upload_record_ffi.ads",
+    "source": "userspace/lib/compositor/vulkan_upload_record_ffi.ads"
+  },
+  {
+    "name": "vulkan_upload_recording.adb",
+    "source": "userspace/lib/compositor/vulkan_upload_recording.adb"
+  },
+  {
+    "name": "vulkan_upload_recording.ads",
+    "source": "userspace/lib/compositor/vulkan_upload_recording.ads"
+  }
+]

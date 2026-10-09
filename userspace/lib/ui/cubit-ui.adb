@@ -122,9 +122,32 @@ package body CuBit.UI is
       return (x => minX, y => minY, w => maxX - minX, h => maxY - minY);
    end Clamp_Rect;
 
+   function Input_Rect (c : Canvas; r : Rect) return Rect is
+      layout : Canvas := c;
+   begin
+      if c.inputClipEnabled then
+         layout.clipEnabled := True;
+         layout.clip := c.inputClip;
+      end if;
+      return Clamp_Rect (layout, r);
+   end Input_Rect;
+
+   function With_Repair_Clip (c : Canvas; repair : Rect) return Canvas is
+      ret : Canvas := c;
+   begin
+      ret.inputClip := Input_Rect (c, (0, 0, c.width, c.height));
+      ret.inputClipEnabled := True;
+      ret.clip := Clamp_Rect (c, repair);
+      ret.clipEnabled := True;
+      return ret;
+   end With_Repair_Clip;
+
    function With_Clip (c : Canvas; clip : Rect) return Canvas is
       ret : Canvas := c;
    begin
+      if c.inputClipEnabled then
+         ret.inputClip := Input_Rect (c, clip);
+      end if;
       ret.clip := Clamp_Rect (c, clip);
       ret.clipEnabled := True;
       return ret;

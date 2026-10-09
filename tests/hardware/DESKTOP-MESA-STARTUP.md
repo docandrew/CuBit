@@ -1,5 +1,22 @@
 # Opt-in Desktop Mesa startup checkpoint
 
+## Drawing-enabled compositor packaging (2026-10-08)
+
+The legacy `--desktop-mesa-startup` option below intentionally accepts only an
+initialization-only artifact. For a drawing-enabled runtime-dispatch artifact,
+use `CUBIT_DESKTOP_VULKAN_DIR=/absolute/path/to/verified/artifact` with
+`--uefi --desktop-vulkan-compositor` instead. Its verifier is
+`tools/verify_desktop_vulkan_compositor.py`; it requires drawing-enabled flags
+and matching binary/source hashes. The default output is separately named
+`cubit_live_desktop_vulkan_compositor.img`.
+
+Both options use the explicit render-approval startup profile and start the
+separate triangle-window demo. The default USB profile remains unchanged and
+does not approve Desktop rendering. Hosted wrapper tests check the three routes
+and reject drawing-disabled artifacts before any build. This is not a native
+image or hardware acceptance result. Verify the matched runtime/Mesa/driver
+stack, embedded startup and binaries, and exact-image boot before a handoff.
+
 ## v38 sustained-service failure capture (2026-10-02)
 
 Ready-to-test image:

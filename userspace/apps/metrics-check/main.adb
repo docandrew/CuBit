@@ -4,7 +4,11 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Metric_Records;
 with CuBit.Metric_Protocol;
 with CuBit.Metrics;
+with CuBit.Metric_Raw_Observer;
 with CCL_Manifest_Bindings;
+with Compositor_Trace_Metrics;
+with Compositor_Trace_Wire;
+with Compositor_Trace_Stream;
 
 --  Native acceptance check for metrics.svc: publish typed latency, counter
 --  and span metrics through the batched asynchronous client, query the
@@ -14,6 +18,7 @@ procedure Main is
    package R renames CuBit.Metric_Records;
    package P renames CuBit.Metric_Protocol;
    use type P.Status;
+   use type R.Slot_Words;
 
    Publisher_Slot : constant CapabilitySlot :=
      CapabilitySlot (CCL_Manifest_Bindings.Slot_metrics);
@@ -167,7 +172,7 @@ begin
    Msg.tag := (P.Operation'Enum_Rep (P.Query_Summaries), P.Message_Words,
                0, 0);
    Msg.authorityTag := P.Observer_Tag (1);
-   Tag := capCall (Publisher_Slot, Msg);
+   Tag := capCall (Publisher_Slot, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label /= 0 and then
           Msg.tag.label = P.Status'Enum_Rep (P.Denied),
           "publisher cannot query");
@@ -176,7 +181,7 @@ begin
    Msg.tag := (P.Operation'Enum_Rep (P.Publish_Batch), P.Message_Words,
                0, 0);
    Msg.words := [0, 1, R.Slot_Bytes + 1, 0];
-   Tag := capCall (Publisher_Slot, Msg);
+   Tag := capCall (Publisher_Slot, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label /= 0 and then
           Msg.tag.label = P.Status'Enum_Rep (P.Invalid_Request),
           "malformed batch refused");
@@ -184,10 +189,204 @@ begin
    Msg.tag := (P.Operation'Enum_Rep (P.Publish_Batch), P.Message_Words,
                0, 0);
    Msg.words := [0, 1, 2 * R.Slot_Bytes, 0];
-   Tag := capCall (Observer_Slot, Msg);
+   Tag := capCall (Observer_Slot, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label /= 0 and then
           Msg.tag.label = P.Status'Enum_Rep (P.Denied),
           "observer cannot publish");
+
+   declare
+      Raw : CuBit.Metric_Raw_Observer.Observer (Observer_Slot);
+      Page : P.Raw_Page;
+      N : P.Raw_Row_Count;
+      Cursor : Unsigned_64 := 1;
+      Resume, Gap, Lost, Total : Unsigned_64 := 0;
+      Encoded, Expected : R.Slot_Words;
+      Sequence, V : Unsigned_64;
+      Done : Boolean;
+      Deadline : Unsigned_64;
+   begin
+      loop
+         CuBit.Metric_Raw_Observer.Query (Raw, Cursor, Page, N, Resume, Gap, Lost, Result);
+         Check (Result = P.OK and N = 32, "raw page");
+         Check (Gap = (if Cursor = 1 then 749 else 0), "raw overwrite gap");
+         Check (Lost = 0, "raw sequence not exhausted");
+         for I in 0 .. N - 1 loop
+            Sequence := Page (I) (0);
+            Check (Page (I) (1) = syscall (SYSCALL_GETPID) and
+              P.Is_Publisher (Page (I) (2)), "authenticated raw identity");
+            Check (Page (I) (4) = 0 and Page (I) (5) = 0, "raw producer loss");
+            for W in R.Slot_Word_Index loop Encoded (W) := Page (I) (8 + W); end loop;
+            if Sequence <= 1003 then
+               V := Sequence - 3;
+               Expected := R.Encode ((R.Latency, Latency_Key, V, V, V));
+            elsif Sequence = 1004 then
+               Expected := R.Encode ((R.Counter, Frames_Key, 1, Frame_Increment, 0));
+            else
+               Check (Sequence = 1005, "last raw sequence");
+               Expected := R.Encode ((R.Span, Span_Key, Span_Start_Us,
+                 Span_Start_Us + Span_Length_Us, 7));
+            end if;
+            Check (Encoded = Expected, "exact raw payload");
+         end loop;
+         Total := Total + Unsigned_64 (N); Cursor := Resume;
+         exit when Total = 256;
+         Check (Total < 256, "bounded raw capture");
+      end loop;
+      Check (Cursor = 1006 and Is_Process (CuBit.Metric_Raw_Observer.Incarnation (Raw)),
+        "raw cursor and incarnation");
+      CuBit.Metric_Raw_Observer.Query (Raw, Cursor, Page, N, Resume, Gap, Lost, Result);
+      Check (Result = P.OK and N = 0 and Gap = 0 and Resume = Cursor, "empty raw tail");
+      Deadline := syscall (SYSCALL_GETTIME) + Wait_Ms;
+      loop
+         CuBit.Metric_Raw_Observer.Disconnect (Raw, Done);
+         exit when Done;
+         Check (syscall (SYSCALL_GETTIME) < Deadline, "raw grant retired");
+         Ignore := syscall (SYSCALL_SLEEP, 1);
+      end loop;
+      Msg := NULL_MESSAGE;
+      Msg.tag := (P.Operation'Enum_Rep (P.Query_Raw), P.Message_Words, 0, 0);
+      Msg.authorityTag := P.Observer_Tag (1);
+      Tag := capCall (Publisher_Slot, Msg, CuBit.Messages.Wait_Forever);
+      Check (Tag.label = P.Status'Enum_Rep (P.Denied), "publisher cannot query raw");
+      debugPrint ("TEST: PASS raw-metrics 256 exact records gap749 retirement" & ASCII.LF);
+   end;
+
+   declare
+      package TM renames Compositor_Trace_Metrics;
+      package TW renames Compositor_Trace_Wire;
+      use type TW.Event;
+      use type R.Record_Kind;
+      Raw : CuBit.Metric_Raw_Observer.Observer (Observer_Slot);
+      Raw_Page : P.Raw_Page;
+      N : P.Raw_Row_Count;
+      Cursor : Unsigned_64 := 1006;
+      Resume, Gap, Lost, Total : Unsigned_64 := 0;
+      package TS renames Compositor_Trace_Stream;
+      Collector : TS.State;
+      Captured : TS.Capture;
+      Started : Boolean := False;
+      Seen : Natural := 0;
+      Done, Submitted, Handled, Accepted : Boolean;
+      Deadline : Unsigned_64;
+      Completion : CompletionEntry;
+      Activity : Activity_Result;
+      Number : Natural;
+      function Expected_Event (Index : Natural) return TW.Event is
+         V : constant Unsigned_64 := Unsigned_64 (Index);
+         ID : constant Unsigned_64 := Unsigned_64'Last - V;
+      begin
+         case Index mod 5 is
+            when 0 => return (TW.Input_Event, ID, (Unsigned_64'Last, V, 1, V));
+            when 1 => return (TW.Source_Event, ID,
+              (Unsigned_64'Last, Unsigned_64'Last - 1, V, V, V));
+            when 2 => return (TW.Render_Event, ID,
+              (TW.RT.Draw, 1, 3, Unsigned_64'Last, V,
+               Unsigned_64'Last - 2, Unsigned_64'Last - 3, V, 0, 0, V));
+            when 3 => return (TW.Render_Event, ID,
+              (TW.RT.Submit, 1, 3, Unsigned_64'Last, V, 0, 0, 0, 77, V, V));
+            when others => return (TW.Frame_Event, ID, (1, 77, V, V, V + 1));
+         end case;
+      end Expected_Event;
+      procedure Put_Event (Index : Natural) is
+      begin
+         if not CuBit.Metrics.Has_Group_Room (Writer) then Flush_And_Wait; end if;
+         CuBit.Metrics.Put_Group (Writer, TM.Fragment (Expected_Event (Index)), Accepted);
+         Check (Accepted, "complete trace event accepted");
+      end Put_Event;
+   begin
+      for I in 1 .. 100 loop Put_Event (I); end loop;
+      Flush_And_Wait;
+      --  Do not dispatch either completion yet: both SDK pages stay busy.
+      for Page_Index in 0 .. 1 loop
+         for I in 1 .. 15 loop
+            CuBit.Metrics.Put_Group
+              (Writer, TM.Fragment (Expected_Event (101 + Page_Index * 15 + I - 1)), Accepted);
+            Check (Accepted, "fill retained trace page");
+         end loop;
+         CuBit.Metrics.Flush (Writer, Token, Submitted);
+         Check (Submitted, "two trace pages submitted");
+         Token := Token + 1;
+      end loop;
+      Check (not CuBit.Metrics.Has_Group_Room (Writer), "both trace pages held");
+      for I in 1 .. 100 loop
+         CuBit.Metrics.Put_Group (Writer, TM.Fragment (Expected_Event (999)), Accepted);
+         Check (not Accepted, "overload refuses complete event");
+      end loop;
+      Check (CuBit.Metrics.Dropped (Writer) = 400, "four fragments counted per drop");
+      Deadline := syscall (SYSCALL_GETTIME) + Wait_Ms;
+      for I in 1 .. 2 loop
+         loop
+            if Poll_Completion (Completion'Address) = 1 then
+               CuBit.Metrics.Complete (Writer, Completion, Handled);
+               Check (Handled and Completion.status = COMPLETION_OK and
+                 Completion.msg.tag.label = P.Status'Enum_Rep (P.OK) and
+                 Completion.msg.words (0) = 60 and Completion.msg.words (1) = 0,
+                 "held trace page accepted intact");
+               Accepted_Records := Accepted_Records + Completion.msg.words (0);
+               exit;
+            end if;
+            Check (syscall (SYSCALL_GETTIME) < Deadline, "held trace completion timeout");
+            Activity := Wait_For_Activity_Until (Deadline);
+            Check (Activity /= Unavailable, "held trace wait available");
+         end loop;
+      end loop;
+      Put_Event (131); Flush_And_Wait;
+      --  One ordinary metric shifts retained history to trace fragment 1.
+      Put ((R.Counter, Frames_Key, 1, 0, 0)); Flush_And_Wait;
+      Check (Accepted_Records = 1530 and CuBit.Metrics.Rejected (Writer) = 0,
+        "all admitted fragments accepted");
+      loop
+         CuBit.Metric_Raw_Observer.Query
+           (Raw, Cursor, Raw_Page, N, Resume, Gap, Lost, Result);
+         Check (Result = P.OK and N = 32 and Lost = 0, "trace raw page");
+         Check (Gap = (if Cursor = 1006 then 269 else 0), "trace overwrite gap");
+         if not Started then
+            TS.Start (Collector, To_Word (CuBit.Metric_Raw_Observer.Incarnation (Raw)), Cursor);
+            Started := True;
+         end if;
+         for I in 0 .. N - 1 loop
+            TS.Feed (Collector, To_Word (CuBit.Metric_Raw_Observer.Incarnation (Raw)),
+                     Raw_Page (I), Captured);
+            if Captured.Success then
+               Number := 69 + Seen;
+               Check (Captured.Value = Expected_Event (Number), "exact streaming native event");
+               Check (Captured.Pid = syscall (SYSCALL_GETPID) and
+                 P.Is_Publisher (Captured.Publisher), "stream publisher identity");
+               Check (Captured.Producer_Dropped = (if Number = 131 then 400 else 0) and
+                 Captured.Batch_Gaps = 0, "stream producer loss metadata");
+               Seen := Seen + 1;
+            end if;
+         end loop;
+         Total := Total + Unsigned_64 (N); Cursor := Resume;
+         exit when Total = 256;
+         Check (Total < 256, "bounded native trace capture");
+      end loop;
+      Check (Cursor = 1531 and TS.Cursor (Collector) = Cursor, "stream final cursor");
+      Check (Seen = 63 and TS.Pending (Collector) = 0 and
+        TS.Counts (Collector).Skipped_Rows = 269 and
+        TS.Counts (Collector).Rejected_Rows = 3 and
+        TS.Counts (Collector).Emitted_Events = 63 and
+        TS.Counts (Collector).Abandoned_Events = 0, "partial history and page recovery");
+      CuBit.Metrics.Query (Watcher, 0, Rows, Written, Next, Result);
+      Row := Row_For (Rows, Written, Latency_Key);
+      Check (Result = P.OK and then Written = 3 and then Row >= 0 and then
+        Rows (Row) (P.Row_Count_Word) = Samples, "trace leaves metric summaries unchanged");
+      Deadline := syscall (SYSCALL_GETTIME) + Wait_Ms;
+      loop
+         CuBit.Metric_Raw_Observer.Disconnect (Raw, Done);
+         exit when Done;
+         Check (syscall (SYSCALL_GETTIME) < Deadline, "trace reader grant retirement");
+         Ignore := syscall (SYSCALL_SLEEP, 1);
+      end loop;
+      Deadline := syscall (SYSCALL_GETTIME) + Wait_Ms;
+      loop
+         CuBit.Metrics.Disconnect (Writer, Done);
+         exit when Done;
+         Check (syscall (SYSCALL_GETTIME) < Deadline, "trace publisher grant retirement");
+         Ignore := syscall (SYSCALL_SLEEP, 1);
+      end loop;
+      debugPrint ("TEST: PASS trace-stream 63 exact events gap269 orphans3 drops400 retirement" & ASCII.LF);
+   end;
 
    debugPrint ("TEST: PASS metrics" & ASCII.LF);
    Ignore := syscall (SYSCALL_EXIT, 0);

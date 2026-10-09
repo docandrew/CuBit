@@ -61,5 +61,7 @@ is
         code : Exit_Code := 0;
     end record;
 
-    Child_Exit_Words : constant := 4;
+    -- EVENT_CHILD_EXIT: the child's identity (KERN-003), the termination
+    -- kind, the exit code.
+    Child_Exit_Words : constant := 3;
 end Process_Launch;

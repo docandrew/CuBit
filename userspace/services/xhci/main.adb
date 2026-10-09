@@ -15,6 +15,7 @@ with XHCI_Capabilities;
 with Optical_Service;
 with USB_Keyboards;
 with Input_Pending;
+with Keyboard_Pending;
 
 procedure main is
    use ASCII;
@@ -24,11 +25,11 @@ procedure main is
    REPLY_OK           : constant Unsigned_32 := 16#F000#;
    REPLY_ERR          : constant Unsigned_32 := 16#F001#;
 
-   sender : ProcessID;
+   sender : Process_ID;
    msg    : Message;
    initResult : XHCI.Init_Result;
    ignore : Unsigned_64;
-   mouseConsumer : Unsigned_64 := 0;
+   mouseConsumer : Process_ID := No_Process;
    buttons : Unsigned_8;
    deltaX  : Integer;
    deltaY  : Integer;
@@ -57,14 +58,15 @@ procedure main is
    keyboardChanges : USB_Keyboards.Changes;
    keyboardResult : USB_Keyboards.Decode_Result;
    keyboardReady, keyboardProgress : Boolean;
-   keyboardSequence : Source_Sequence := 0;
-   keyboardResync : Boolean := False;
+   keyboardPending : Keyboard_Pending.State;
+   keyboardConsumer : Process_ID := No_Process;
+   keyboardOverflowReported : Boolean := False;
    use type USB_Keyboards.Decode_Result;
 
    procedure Refresh_Pointer_Consumer is
-      previous : constant Unsigned_64 := mouseConsumer;
+      previous : constant Process_ID := mouseConsumer;
    begin
-      mouseConsumer := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_MOUSE);
+      mouseConsumer := Registered_Driver (DRIVER_MOUSE);
       if previous /= mouseConsumer then
          Input_Pending.Reset (pointerPending);
          pointerNeedsSnapshot := True;
@@ -76,7 +78,7 @@ procedure main is
       report : Source_Report;
    begin
       for Attempt in 1 .. Input_Pending.Capacity loop
-         exit when mouseConsumer = 0 or else
+         exit when mouseConsumer = No_Process or else
            Input_Pending.Count (pointerPending) = 0;
          pending := Input_Pending.Element (pointerPending, 0);
          report :=
@@ -90,6 +92,29 @@ procedure main is
          Input_Pending.Acknowledge (pointerPending);
       end loop;
    end Flush_Pointer;
+
+   procedure Refresh_Keyboard_Consumer is
+      Previous : constant Process_ID := keyboardConsumer;
+   begin
+      keyboardConsumer := Registered_Driver (DRIVER_KEYBOARD);
+      if Previous /= keyboardConsumer then
+         Keyboard_Pending.Reset_Consumer (keyboardPending);
+      end if;
+   end Refresh_Keyboard_Consumer;
+
+   procedure Flush_Keyboard is
+      Pending : Input_Pending.Item;
+   begin
+      for Attempt in 1 .. Input_Pending.Capacity loop
+         exit when keyboardConsumer = No_Process or else Keyboard_Pending.Count (keyboardPending) = 0;
+         Pending := Keyboard_Pending.Element (keyboardPending, 0);
+         exit when not trySendEvent (keyboardConsumer, Encode
+           (Source_Report'(sourceAuthorityTag => 0, sequence => Pending.Sequence,
+             generation => 1, device => KEYBOARD, delivery => ORDERED_TRANSITION,
+             flags => [RESYNCHRONIZE => Pending.Recover], payload => Pending.Payload, snapshot => 0)));
+         Keyboard_Pending.Acknowledge (keyboardPending);
+      end loop;
+   end Flush_Keyboard;
 
    procedure Send_Key (Usage : Unsigned_8; Released : Boolean) is
       -- HID usage to existing desktop set-1 boundary; bit 8 means E0 prefix.
@@ -110,22 +135,22 @@ procedure main is
          224 => 29, 225 => 42, 226 => 56, 227 => 16#15B#,
          228 => 16#11D#, 229 => 54, 230 => 16#138#, 231 => 16#15C#, others => 0];
       Code : constant Unsigned_16 := Codes (Usage);
-      Consumer : constant Unsigned_64 := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_KEYBOARD);
       procedure Send_Byte (Byte : Unsigned_8) is
-         OK : Boolean;
+         Added : Keyboard_Pending.Frame_Length;
+         Lost : Boolean;
       begin
-         keyboardSequence := Next_Sequence (keyboardSequence);
-         OK := trySendEvent (Consumer, Encode
-           (Source_Report'(sourceAuthorityTag => 0, sequence => keyboardSequence,
-             generation => 1, device => KEYBOARD, delivery => ORDERED_TRANSITION,
-             flags => [RESYNCHRONIZE => keyboardResync],
-             payload => Unsigned_64 (Byte), snapshot => 0)));
-         keyboardResync := not OK;
+         Keyboard_Pending.Append_Byte (keyboardPending, Byte, Added, Lost);
+         if Lost and then not keyboardOverflowReported then
+            Boot_Log.Write ("xhci: keyboard retention overflow; resynchronizing" & LF);
+            keyboardOverflowReported := True;
+         end if;
       end Send_Byte;
    begin
-      if Code = 0 or else Consumer = 0 then return; end if;
+      if Code = 0 then return; end if;
       if Code > 255 then Send_Byte (16#E0#); end if;
       Send_Byte (Unsigned_8 (Code and 255) or (if Released then 16#80# else 0));
+      if keyboardConsumer = No_Process then Keyboard_Pending.Reset_Consumer (keyboardPending);
+      else Flush_Keyboard; end if;
    end Send_Key;
 
    procedure Print_Decimal (value : Unsigned_64) is
@@ -245,8 +270,8 @@ begin
    Boot_Log.Write ("xhci: awaiting bounded controller authority" & LF);
    receive (sender, msg);
 
-   if sender = 0 or else
-      sender /= getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DEVMGR) or else
+   if sender = No_Process or else
+      sender /= Registered_Driver (DRIVER_DEVMGR) or else
       msg.tag.label /= OP_XHCI_CONFIGURE or else msg.tag.length /= 4 or else
       Shift_Right (msg.words (1), 32) >
         Unsigned_64 (XHCI_Capabilities.Scratchpad_Buffer_Count'Last) then
@@ -370,6 +395,10 @@ begin
       Boot_Log.Poll;
       Optical_Service.Poll (storageProgress);
       XHCI.Poll_Boot_Keyboard (keyboardData, keyboardReady, keyboardProgress);
+      if keyboardReady or else Keyboard_Pending.Count (keyboardPending) > 0 then
+         Refresh_Keyboard_Consumer;
+         Flush_Keyboard;
+      end if;
       if keyboardReady then
          USB_Keyboards.Update (keyboardState, keyboardData, keyboardChanges, keyboardResult);
          if keyboardResult = USB_Keyboards.Decoded then
@@ -391,7 +420,7 @@ begin
          Flush_Pointer;
       end if;
       if reportReady then
-         if mouseConsumer /= 0 and then
+         if mouseConsumer /= No_Process and then
             (deltaX /= 0 or else deltaY /= 0 or else deltaZ /= 0 or else
              buttons /= lastButtons or else pointerNeedsSnapshot)
          then
@@ -432,9 +461,13 @@ begin
                   D := Input_Pending.Wake_Deadline
                     (pointerPending, syscall (SYSCALL_GETTIME), D);
                end if;
+               if Keyboard_Pending.Count (keyboardPending) > 0 then
+                  D := Keyboard_Pending.Wake_Deadline (keyboardPending, syscall (SYSCALL_GETTIME), D);
+               end if;
                activity := Wait_For_Activity_Until (D);
                if activity = Unavailable and then
-                  Input_Pending.Count (pointerPending) > 0
+                  (Input_Pending.Count (pointerPending) > 0 or else
+                   Keyboard_Pending.Count (keyboardPending) > 0)
                then
                   ignore := syscall (SYSCALL_SLEEP, 1);
                end if;

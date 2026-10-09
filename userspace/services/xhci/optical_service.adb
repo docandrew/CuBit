@@ -28,13 +28,13 @@ package body Optical_Service is
    end Respond;
 
    procedure Poll (Progressed : out Boolean) is
-      Sender : ProcessID;
+      Sender : Process_ID;
       Request : Message;
       Found, Done, Accepted, Returned : Boolean;
       Result : USB_Optical.Status_Result;
       Ignored : Unsigned_64;
       Copied : System.Address;
-      Owner : Unsigned_64;
+      Owner : Process_ID;
    begin
       Progressed := False;
       if Pending then
@@ -62,8 +62,8 @@ package body Optical_Service is
          return;
       end if;
       Progressed := True;
-      Owner := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_FS);
-      if Owner = 0 or else Owner = Unsigned_64'Last or else
+      Owner := Registered_Driver (DRIVER_FS);
+      if Owner = No_Process or else
         Sender /= Owner or else XHCI.Optical_Block_Count = 0
       then
          Respond (CapabilitySlot'Last, False);

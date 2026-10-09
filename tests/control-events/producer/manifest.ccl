@@ -1,0 +1,7 @@
+# The control-events outlet producer (tests/control-events): registers as
+# the ipc-test service and produces on its outlet 1, which the test's child
+# reads through a channel.
+(Executable_Manifest
+  identity => "com.cubit.control-producer"
+  version => "0.1.0"
+  requests => [(notification "ipc-test-registration" Notify_Access.Manage "registration")])

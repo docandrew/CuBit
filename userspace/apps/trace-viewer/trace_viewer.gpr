@@ -1,0 +1,27 @@
+with "../../lib/ui/fonts_native.gpr";
+with "../../lib/ui/toolkit_flags.gpr";
+project Trace_Viewer is
+   for Languages use ("Ada");
+   for Object_Dir use "build";
+   for Source_Dirs use (".", "build/generated", "../../lib/observatory", "../../lib/compositor", "../../ccl/src", "../../lib/ui", "../../lib/theme", "../../lib/config", "../../lib/display", "../../allocator/src");
+   for Main use ("main.adb");
+   for Runtime ("Ada") use "../../runtime";
+   package Builder is
+      for Executable ("main.adb") use "trace-viewer.app";
+      for Default_Switches ("Ada") use ("-nostdlib");
+   end Builder;
+   package Compiler extends Toolkit_Flags.Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatwa", "-fstack-usage",
+         "-fomit-frame-pointer", "-mno-red-zone", "-fno-pic");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-d_C");
+   end Binder;
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("-nostdlib", "-static", "-no-pie", "-Wl,-z,stack-size=16777216",
+         "-lgnat-user", "-T", "../../c/link.ld", "../../c/build/crt0.o",
+         "build/manifest.o");
+   end Linker;
+end Trace_Viewer;

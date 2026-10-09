@@ -52,7 +52,7 @@ package body CuBit.Launching is
       Next : Natural := 0;
       Success : Boolean;
    begin
-      Started := (others => 0);
+      Started := (others => <>);
       Failure := LA.Malformed_Request;
       if not Lent then
          CuBit.Memory_Grants.Create_Via_Capability
@@ -87,9 +87,9 @@ package body CuBit.Launching is
         [CuBit.Grant_References.Encode (Lent_Reference),
          Unsigned_64 (Program'Length), Unsigned_64 (Arguments'Length),
          LG.Request_Word (0, Grants'Length, Ring_Bytes)];
-      Reply := capCall (CAP_SLOT_PROCMGR, Msg);
+      Reply := capCall (CAP_SLOT_PROCMGR, Msg, CuBit.Messages.Wait_Forever);
       if Reply.label = CuBit.Kernel_ABI.Reply_OK then
-         Started := (Process => Msg.words (0), Generation => Msg.words (1));
+         Started := (Process => CuBit.Process_IDs.From_Word (Msg.words (0)));
          Result := Launched;
          return;
       end if;
@@ -136,17 +136,22 @@ package body CuBit.Launching is
 
    --  Exit reports drained from the event queue, until asked for.
    procedure Send_Control
-     (Started : Child; Kind : CuBit.Control_Events.Control_Kind; Sent : out Boolean) is
+     (Started : Child; Kind : CuBit.Control_Events.Control_Kind;
+      Result : out Control_Result)
+   is
+      Answer : constant Unsigned_64 := CuBit.Kernel_Calls.Call
+        (CuBit.Kernel_ABI.Send_Control, CuBit.Process_IDs.To_Word (Started.Process),
+         CuBit.Control_Events.Control_Kind'Enum_Rep (Kind));
    begin
-      Sent := CuBit.Kernel_Calls.Call
-        (CuBit.Kernel_ABI.Send_Control, Started.Process,
-         CuBit.Control_Events.Control_Kind'Enum_Rep (Kind), Started.Generation) = 0;
+      Result := (if Answer = 0 then Sent
+                 elsif Answer = CuBit.Kernel_ABI.Busy then Busy
+                 else Refused);
    end Send_Control;
 
    procedure Poll_Exit
      (Started : Child; Has_Ended : out Boolean; Ended : out CuBit.Child_Exits.Report) is
    begin
-      CuBit.Process_Events.Take_Exit (Started.Process, Started.Generation, Has_Ended, Ended);
+      CuBit.Process_Events.Take_Exit (Started.Process, Has_Ended, Ended);
    end Poll_Exit;
 
    procedure Wait (Started : Child; Ended : out CuBit.Child_Exits.Report) is
@@ -200,7 +205,7 @@ package body CuBit.Launching is
       Msg.tag := (label => CuBit.Launch_Authority.Table_Operation,
                   length => CuBit.Launch_Authority.Table_Request_Words, flags => 0, reserved => 0);
       Msg.words (0) := CuBit.Grant_References.Encode (Table_Reference);
-      Reply := capCall (CAP_SLOT_PROCMGR, Msg);
+      Reply := capCall (CAP_SLOT_PROCMGR, Msg, CuBit.Messages.Wait_Forever);
       if Reply.label = CuBit.Kernel_ABI.Reply_OK
         and then Msg.words (0) <= CuBit.Launch_Authority.Maximum_Table_Bytes
       then
@@ -245,7 +250,7 @@ package body CuBit.Launching is
       Msg.tag := (label => CuBit.Launch_Grants.Places_Operation,
                   length => CuBit.Launch_Grants.Places_Request_Words, flags => 0, reserved => 0);
       Msg.words (0) := CuBit.Grant_References.Encode (Places_Reference);
-      Reply := capCall (CAP_SLOT_PROCMGR, Msg);
+      Reply := capCall (CAP_SLOT_PROCMGR, Msg, CuBit.Messages.Wait_Forever);
       if Reply.label = CuBit.Kernel_ABI.Reply_OK
         and then Msg.words (0) <= CuBit.Launch_Grants.Maximum_Bytes
       then
@@ -290,7 +295,7 @@ package body CuBit.Launching is
                   flags => 0, reserved => 0);
       Msg.words (0) := CuBit.Grant_References.Encode (Answer_Reference);
       Msg.words (1) := Unsigned_64 (Program'Length);
-      Reply := capCall (CAP_SLOT_PROCMGR, Msg);
+      Reply := capCall (CAP_SLOT_PROCMGR, Msg, CuBit.Messages.Wait_Forever);
       if Reply.label = CuBit.Kernel_ABI.Reply_OK
         and then Msg.words (0) <= PP.Maximum_Descriptor_Bytes
       then

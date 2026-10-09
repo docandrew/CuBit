@@ -26,7 +26,7 @@ package CCL_Program_Bindings is
    --  outlet gets a card"): each outlet (its qualified name, whether its
    --  elements are Integers, else text, and the session stream that carries
    --  it), and each run's outcome (the session task). Program is the
-   --  interface name; Launched, Pid and Generation make the Run value.
+   --  interface name; Launched and Pid (the identity) make the Run value.
    MAXIMUM_NAME : constant := 48;
    type Started_Kind is (Outlet_Started, Outcome_Started);
    type Started_Outlet is record
@@ -35,7 +35,7 @@ package CCL_Program_Bindings is
       Program_Length : Natural range 0 .. MAXIMUM_NAME := 0;
       Launched : String (1 .. MAXIMUM_NAME) := [others => ' '];
       Launched_Length : Natural range 0 .. MAXIMUM_NAME := 0;
-      Pid, Generation : Interfaces.Integer_64 := 0;
+      Pid : Interfaces.Integer_64 := 0;
       Outlet : String (1 .. MAXIMUM_NAME) := [others => ' '];
       Outlet_Length : Natural range 0 .. MAXIMUM_NAME := 0;
       Integers : Boolean := False;

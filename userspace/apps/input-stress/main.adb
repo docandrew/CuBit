@@ -9,9 +9,9 @@ with CuBit.Messages; use CuBit.Messages;
 procedure Main is
    use ASCII;
 
-   pointerConsumer  : ProcessID := NO_PROCESS;
-   keyboardConsumer : ProcessID := NO_PROCESS;
-   desktopConsumer  : ProcessID := NO_PROCESS;
+   pointerConsumer  : Process_ID := No_Process;
+   keyboardConsumer : Process_ID := No_Process;
+   desktopConsumer  : Process_ID := No_Process;
    pointerSequence  : Source_Sequence := 0;
    keyboardSequence : Source_Sequence := 0;
    ignored          : Unsigned_64;
@@ -22,7 +22,7 @@ procedure Main is
      (Unsigned_64 (value mod 4096) and 16#FFF#);
 
    procedure Publish
-     (destination : ProcessID;
+     (destination : Process_ID;
       report      : Source_Report)
    is
       pending : Source_Report := report;
@@ -82,18 +82,18 @@ begin
    debugPrint ("input-stress: waiting for input consumers" & LF);
    for attempt in 1 .. 200 loop
       pointerConsumer :=
-        getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_MOUSE);
+        Registered_Driver (DRIVER_MOUSE);
       keyboardConsumer :=
-        getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_KEYBOARD);
+        Registered_Driver (DRIVER_KEYBOARD);
       desktopConsumer :=
-        getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP);
-      exit when desktopConsumer /= NO_PROCESS and then
+        Registered_Driver (DRIVER_DESKTOP);
+      exit when desktopConsumer /= No_Process and then
         pointerConsumer = desktopConsumer and then
         keyboardConsumer = desktopConsumer;
       ignored := syscall (SYSCALL_SLEEP, 10);
    end loop;
 
-   if desktopConsumer = NO_PROCESS or else
+   if desktopConsumer = No_Process or else
       pointerConsumer /= desktopConsumer or else
       keyboardConsumer /= desktopConsumer
    then

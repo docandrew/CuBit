@@ -15,7 +15,7 @@ procedure Main is
    package Clock renames CuBit.Benchmark_Clock;
    package Timing renames CuBit.Timing_Histograms;
    package Input renames CuBit.Input;
-   Consumer : ProcessID := NO_PROCESS;
+   Consumer : Process_ID := No_Process;
    Surface : Live_Surface_Name := 1;
    Serial, Sequence, Rate, Ignored : Unsigned_64 := 0;
    Passed : Boolean := True;
@@ -42,7 +42,7 @@ procedure Main is
    function Send (Wire : Wire_Message) return Wire_Message is
       Msg : Message := From_Wire (Wire);
    begin
-      Msg.tag := capCall (CAP_SLOT_DESKTOP, Msg);
+      Msg.tag := capCall (CAP_SLOT_DESKTOP, Msg, CuBit.Messages.Wait_Forever);
       return To_Wire (Msg);
    end Send;
 
@@ -141,13 +141,13 @@ procedure Main is
       Event : Input_Result;
    begin
       for Attempt in 1 .. 200 loop
-         Consumer := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_KEYBOARD);
-         exit when Consumer /= NO_PROCESS and then Consumer =
-           getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP);
+         Consumer := Registered_Driver (DRIVER_KEYBOARD);
+         exit when Consumer /= No_Process and then Consumer =
+           Registered_Driver (DRIVER_DESKTOP);
          Ignored := syscall (SYSCALL_SLEEP, 10);
       end loop;
-      if Consumer = NO_PROCESS or else Consumer /=
-        getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP)
+      if Consumer = No_Process or else Consumer /=
+        Registered_Driver (DRIVER_DESKTOP)
       then Fail ("desktop unavailable"); return; end if;
       Created := Decode_Creation_Result
         (Send (Encode_Create ((320, 200, Window_Surface))));

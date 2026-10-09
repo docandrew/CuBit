@@ -83,6 +83,11 @@ package body Metric_Store with SPARK_Mode is
       Stamp : Unsigned_64;
    begin
       Accepted := False;
+      if Value.Kind = Records.Trace then
+         --  Raw trace data never creates or modifies histogram series.
+         Accepted := True;
+         return;
+      end if;
       if Value.Kind = Records.Describe then
          if not Entry_Item.Keys (Key).Declared then
             Entry_Item.Keys (Key) :=
@@ -110,7 +115,7 @@ package body Metric_Store with SPARK_Mode is
          return;
       end if;
       case Value.Kind is
-         when Records.Describe =>
+         when Records.Describe | Records.Trace =>
             return;
          when Records.Counter .. Records.Latency =>
             Measurement := Value.Value;
@@ -127,19 +132,25 @@ package body Metric_Store with SPARK_Mode is
 
    --  Adds one validated batch to its publisher's own source.
    procedure Absorb
-     (Target : in out Source; Header : Records.Batch_Header;
+     (Target : in out Source; History : in out Raw.State;
+      History_Lost : in out Unsigned_64; Header : Records.Batch_Header;
       Page : Records.Page_Words; Now_Ms : Unsigned_64;
       Outcome : in out Ingest_Outcome)
-     with Pre => Target.Active and then
+     with Pre => Raw.Valid (History) and then Target.Pid /= 0 and then
+                 Protocol.Is_Publisher (Target.Tag) and then Target.Active and then
                  Outcome.Accepted = 0 and then Outcome.Rejected = 0 and then
                  (Target.Next_Sequence = 0 or else
                   Header.Sequence >= Target.Next_Sequence),
-          Post => Target.Active = Target'Old.Active and then
+          Post => Raw.Valid (History) and then
+                  Raw.Following (History) = Raw.Following (History'Old) +
+                    Unsigned_64'Min (Unsigned_64 (Outcome.Accepted),
+                      Unsigned_64'Last - Raw.Following (History'Old)) and then Target.Active = Target'Old.Active and then
                   Target.Pid = Target'Old.Pid and then
                   Target.Tag = Target'Old.Tag
    is
       Sequence : constant Records.Batch_Sequence := Header.Sequence;
-      Applied : Boolean;
+      Applied, Retained : Boolean;
+      Initial : constant Unsigned_64 := Raw.Following (History);
    begin
       if Target.Next_Sequence /= 0 then
          Target.Batch_Gaps := Saturating_Add
@@ -150,6 +161,10 @@ package body Metric_Store with SPARK_Mode is
       Target.Producer_Dropped := Header.Producer_Dropped;
       Target.Last_Use_Ms := Now_Ms;
       for I in 1 .. Header.Records loop
+         pragma Loop_Invariant (Raw.Valid (History));
+         pragma Loop_Invariant
+           (Raw.Following (History) = Initial +
+              Unsigned_64'Min (Unsigned_64 (Outcome.Accepted), Unsigned_64'Last - Initial));
          pragma Loop_Invariant
            (Target.Active = Target'Loop_Entry.Active and
             Target.Pid = Target'Loop_Entry.Pid and
@@ -167,6 +182,12 @@ package body Metric_Store with SPARK_Mode is
                Target.Rejected := Saturating_Add (Target.Rejected, 1);
             end if;
             if Applied then
+               pragma Assert (Decoded.Success);
+               Raw.Append (History, Target.Pid, Target.Tag, Sequence,
+                 Header.Producer_Dropped, Target.Batch_Gaps, Decoded.Value, Retained);
+               if not Retained then
+                  History_Lost := Saturating_Add (History_Lost, 1);
+               end if;
                Outcome.Accepted := Outcome.Accepted + 1;
             else
                Outcome.Rejected := Outcome.Rejected + 1;
@@ -207,10 +228,17 @@ package body Metric_Store with SPARK_Mode is
            (Active => True, Pid => Pid, Tag => Tag, others => <>);
       end if;
       pragma Assert (Owned_By (Item, Chosen, Pid, Tag));
-      Absorb (Item.Sources (Chosen), Header.Value, Page, Item.Now_Ms,
+      Absorb (Item.Sources (Chosen), Item.History, Item.History_Lost, Header.Value, Page, Item.Now_Ms,
               Outcome);
       Outcome.Result := Protocol.OK;
    end Ingest;
+
+   procedure Read_History (Item : Store; Cursor : Unsigned_64;
+      Value : out Raw.Event; Next, Gap : out Unsigned_64;
+      Available, Valid_Cursor : out Boolean) is
+   begin
+      Raw.Read (Item.History, Cursor, Value, Next, Gap, Available, Valid_Cursor);
+   end Read_History;
 
    function Summary
      (From : Source; Key : Records.Metric_Key) return Protocol.Summary_Row

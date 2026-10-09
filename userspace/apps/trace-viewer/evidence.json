@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "scope": "Native QEMU menu launch plus seeded native Makefile target; not a full current world or hardware build",
+  "binary_sha256": "65c96ef869b97578d89a81ac5be800d20aefb2b2e30b51cf5084ef8ba23c22d9",
+  "artifacts": {
+    "/home/doc/git/compositor-test-artifacts/trace-viewer-native-248/result.json": "6876546cf9ab7d7498bc358810eb8ff2832474cfff938c81d845a1c5d1969b6b",
+    "/home/doc/git/compositor-test-artifacts/trace-viewer-native-242/result.json": "bf3a5a709edf5350917defd5d48c3cf440dda82af9304a6274a75db35bee362d",
+    "/home/doc/git/compositor-test-artifacts/trace-viewer-native-243/result.json": "65876a41571cf29e9e2098d0c7dadcd6989f5cc7b69f90d6ccdbde8941854b27",
+    "/home/doc/git/compositor-test-artifacts/trace-viewer-build-249/build.log": "448b1563f63bc37dcdcba71513e52c0a641c1c5d1de0cff49469e2a2a756d1f8",
+    "/home/doc/git/compositor-test-artifacts/trace-viewer-build-249/staging-check.log": "4c5444258e3f85491026fb71ab5f7958e4e9c326593905b9aeab0d8c060b6d0b",
+    "/home/doc/git/compositor-test-artifacts/trace-viewer-native-251/result.json": "6876546cf9ab7d7498bc358810eb8ff2832474cfff938c81d845a1c5d1969b6b",
+    "/home/doc/git/compositor-test-artifacts/trace-viewer-oracle-251/negative-control.json": "c8464054350fab1f5304cba1045bed1a6d409d28a60504b74703ce0a37512f5f"
+  }
+}

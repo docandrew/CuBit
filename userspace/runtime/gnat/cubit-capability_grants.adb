@@ -16,29 +16,27 @@ package body CuBit.Capability_Grants is
       return (if Result = 1 then Data else (others => 0));
    end Inspect;
    function Valid (Target : Recipient) return Boolean is (Target.Wire /= 0);
-   function Process_ID (Target : Recipient) return Unsigned_64 is
-     (Target.Wire mod 2 ** 32);
-   function Incarnation (Target : Recipient) return Unsigned_64 is
-     (Target.Wire);
+   function Process_ID (Target : Recipient) return CuBit.Process_IDs.Process_ID is
+     (From_Word (Target.Wire));
+   function Incarnation (Target : Recipient) return CuBit.Process_IDs.Process_ID is
+     (From_Word (Target.Wire));
    function Capture (Slot : CapabilitySlot) return Recipient is
       Data : constant Inspection := Inspect (Slot);
    begin
-      if Data (0) not in 1 | 6 | 10 or else
-         Data (3) = 0 or else Data (3) > Unsigned_64 (Unsigned_32'Last) or else
-         Data (5) = 0 or else Data (5) > Unsigned_64 (Unsigned_32'Last)
-      then
+      --  Word 3 of a process-referencing capability is its process's
+      --  identity, generation included.
+      if Data (0) not in 1 | 6 | 10 or else Data (3) = 0 then
          return (Wire => 0);
       end if;
-      return (Wire => Data (5) * 2 ** 32 + Data (3));
+      return (Wire => Data (3));
    end Capture;
    function Endpoint_Matches
-     (Slot : CapabilitySlot; Identity : Unsigned_64) return Boolean is
+     (Slot : CapabilitySlot; Identity : CuBit.Process_IDs.Process_ID) return Boolean is
       Data : constant Inspection := Inspect (Slot);
    begin
-      return Identity mod 2 ** 32 /= 0 and then Identity / 2 ** 32 /= 0
+      return Is_Process (Identity)
         and then Data (0) = 1 and then (Data (1) and 1) /= 0
-        and then Data (3) = Identity mod 2 ** 32
-        and then Data (5) = Identity / 2 ** 32;
+        and then Data (3) = To_Word (Identity);
    end Endpoint_Matches;
    function Install
      (Target : Recipient; Kind, Object, Parameter, Rights : Unsigned_64;

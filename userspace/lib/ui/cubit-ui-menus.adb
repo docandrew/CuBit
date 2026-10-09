@@ -208,8 +208,8 @@ package body CuBit.UI.Menus is
       Definition : Model; Base : ID_Base; Bounds : Rect; Colors : Theme;
       Popup_Width : Positive := 260; Row_Height : Positive := 28)
    is
-      Available : constant Rect := Clamp_Rect (C, (0, 0, C.width, C.height));
-      Bar : constant Rect := Clamp_Rect (C, Bounds);
+      Available : constant Rect := Input_Rect (C, (0, 0, C.width, C.height));
+      Bar : constant Rect := Input_Rect (C, Bounds);
       X, Anchor : Natural := Bar.x;
       R, Popup : Rect;
       Total, Rank, Selected_Rank, First, Rows : Natural := 0;
@@ -236,7 +236,7 @@ package body CuBit.UI.Menus is
             Definition.Menus (I).Mnemonic,
             (if State.Opened = I then Colors.selectionText else Colors.text));
          Controls.Add_Button (Map, Title_ID (Base, I),
-                              Clamp_Rect (PC, R), Rect'(0, 0, C.width, C.height));
+                              Input_Rect (PC, R), Rect'(0, 0, C.width, C.height));
          X := X + W;
       end loop;
       -- Titles repaint their backgrounds; restore the single outer strip rim.
@@ -268,7 +268,7 @@ package body CuBit.UI.Menus is
       PC := With_Clip (C, Popup);
       Fill_Rect (PC, Popup, Colors.panel);
       Controls.Add_Button (Map, Base + Max_Menus + Max_Items,
-                           Clamp_Rect (PC, Popup), Rect'(0, 0, C.width, C.height));
+                           Input_Rect (PC, Popup), Rect'(0, 0, C.width, C.height));
       Rank := 0; Offset := Padding;
       for I in 1 .. Definition.Item_Count loop
          if Definition.Items (I).Parent = State.Opened then
@@ -325,7 +325,7 @@ package body CuBit.UI.Menus is
                      end;
                      if It.Enabled then
                         Controls.Add_Button (Map, Item_ID (Base, I),
-                          Clamp_Rect (RC, R), Rect'(0, 0, C.width, C.height));
+                          Input_Rect (RC, R), Rect'(0, 0, C.width, C.height));
                      end if;
                   end if;
                end;

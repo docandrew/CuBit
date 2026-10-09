@@ -1,0 +1,116 @@
+{
+  "status": "PASS",
+  "gpu_enabled": false,
+  "scope": "native CuBit runtime-dispatch software fallback with explicit boot seeds",
+  "binary_sha256": "df4596fc0cc3e00edcf0f7d2ccf188d20a176178e2b53096014aa5fd17005030",
+  "memory": "1G",
+  "render_approved": false,
+  "render_attempts": [
+    [
+      "4294967329",
+      "TRUE"
+    ]
+  ],
+  "software_fallback": "PASS",
+  "hardware_validated": false,
+  "mesa_execution": {
+    "status": "PASS",
+    "renderer": "mesa-softpipe",
+    "text_draw": true,
+    "imported_surface_draw": true,
+    "client_retired_buffer_frames": 9,
+    "hardware_validated": false,
+    "scope": "Successful native Mesa draw and client self-check markers; pixel checks required separately"
+  },
+  "client_pixels": {
+    "status": "PASS",
+    "client_rectangle": [
+      102,
+      112,
+      512,
+      384
+    ],
+    "cursor_exclusion": [
+      78,
+      158,
+      97,
+      186
+    ],
+    "scale": [
+      1,
+      1
+    ]
+  },
+  "input_overlay": "off",
+  "cursor_moves": 32,
+  "cursor_roundtrips": 8,
+  "cursor_damage": "PASS exact restoration and no changes outside old/new footprints",
+  "overlay_click_pixels": "unchanged without HUD",
+  "scaled_cursor_moves": 16,
+  "scaled_cursor_roundtrips": 4,
+  "native_scales": [
+    [
+      5,
+      4
+    ]
+  ],
+  "output_pixels": [
+    1024,
+    768
+  ],
+  "metrics": {
+    "status": "PASS",
+    "frames": 13,
+    "batches": 34,
+    "producer_dropped_at_observer_exit": 0,
+    "schema_rejections": 0,
+    "batch_gaps": 0,
+    "scope": "Authenticated progress and schema; loss snapshot at observer exit, not full-run sampling completeness"
+  },
+  "log_channel": "PASS authenticated ordered startup/backend records and reader close",
+  "observer_sha256": "b04ccc9c30841f197e5d5c3623664ffce0652098848460e72232989d437a398e",
+  "timing": {
+    "status": "PASS",
+    "records": 33,
+    "totals": {
+      "key": 32,
+      "mouse": 81,
+      "button": 8,
+      "frames": 30,
+      "submit": 80
+    },
+    "scope": "Native diagnostic variant and input/frame progress; serial timing is not hardware latency or performance evidence"
+  },
+  "profiling": "PASS authenticated keys11/12 names/units and nonzero sample counts",
+  "menu_changed_pixels": [
+    104238,
+    104238,
+    104238
+  ],
+  "restored_cycles": 3,
+  "false_gpu_markers": 0,
+  "validation_limits": "Frozen native runtime/platform/Mesa seeds, not current-world or hardware performance. New schema/batch SPARK45 checks; main hooks/SDK/FFI not proved.",
+  "hosted_and_proof": {
+    "status": "PRIVATE_HOSTED_AND_SCOPED_PROOF_PASS",
+    "source": "/home/doc/git/compositor-test-artifacts/completion-metrics-source-96",
+    "scope": "Keys11/12 completion dispatch and opt-in diagnostic output; existing1..10 preserved; two SDK pages unchanged",
+    "clock_codec_cases": 61260,
+    "batch_policy_iterations": 1000,
+    "publisher_fault_cases": 18,
+    "proof_summary": "Total                            45    11 (24%)                     34 (76%)           .          .",
+    "proof_sha256": "d240992971c0798a2d64961f67151925b5b4d5812095c11d7734f8b730133269",
+    "candidate_sha256": {
+      "userspace/lib/compositor/compositor_stage_metrics.ads": "1567164fc7229d3c8f8bb4b23d5a17a13ce537b07df2151783d664d8f917e36d",
+      "userspace/lib/compositor/compositor_stage_metrics.adb": "46eb1b65afb4926469465edca5424268fa3dfe1d207b56838b9428ca1c2b95fb",
+      "userspace/lib/compositor/compositor_metric_batch_policy.ads": "dd94c31812304a73cf17d1891a493afb619ee11ec16a05a1f2f5ac82263959d9",
+      "userspace/services/desktop/desktop_metric_publisher.adb": "c755803dba639af3a68c955538a6dad8b8c69a28f8c2b7df65785ec55aefa21d",
+      "userspace/services/desktop/main.adb": "19e2b8a34ba7c076794686c36d886b4ed3525d8a076507135e4c1d7b67442656",
+      "tests/compositor/stage_metrics_tests.adb": "cd82b5953f07489417fbbf7f222bc3f98f1dcb7e34a8ec0e43a397103f9c966f",
+      "tests/compositor/metric_batch_stream_tests.adb": "bb9009ba74901bdde063092d15ee05de3e1ff23734955cfe1f5be73bf7e6eb29",
+      "tests/compositor/test-desktop-metric-publisher.py": "5f8acaa8e5208aad835051ce8a0ba9a1d5caf70bfa28ee03367e3b2d1db985be"
+    },
+    "native": "PENDING",
+    "shared_publication": "NOT APPLIED",
+    "limitations": "Main-loop hooks and FFI are not SPARK proved; no hardware latency claim. Completion metrics exclude metrics-only drains; diagnostic timing begins at first output call."
+  }
+}

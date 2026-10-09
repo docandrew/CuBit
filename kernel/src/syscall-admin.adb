@@ -17,13 +17,16 @@ with Config;
 with Capabilities.Operations;
 with InterruptNumbers;
 with IPC_Labels;
+with Kernel_Controls;
 with Interrupts;
 with PerCpuData;
 with PerCPUData;
 with Process;
+with Memory_Accounting;
 with Process.IPC;
 with Process.User_Memory;
 with Process_Launch;
+with Process_Identities;
 with User_Buffer_Copy;
 with Spinlocks;
 with Process_Lifetime;
@@ -43,6 +46,8 @@ package body Syscall.Admin is
     function toErr is
         new Ada.Unchecked_Conversion (Long_Integer, Unsigned_64);
     reterr : constant Unsigned_64 := toErr (-1);
+    -- Not accepted now, but may be later (the caller keeps its request).
+    retbusy : constant Unsigned_64 := toErr (-2);
 
     function tagToU64 is new Ada.Unchecked_Conversion
         (Process.MessageTag, Unsigned_64);
@@ -189,6 +194,10 @@ package body Syscall.Admin is
         retval := Sysinfo.registerDriver (
             pid    => callerPID,
             driver => Sysinfo.DriverID(arg0));
+        -- The registrant's identity, not its slot (KERN-003).
+        if retval = Unsigned_64 (callerPID) then
+            retval := Process_Identities.To_Word (Process.identityOf (callerPID));
+        end if;
     end handleRegisterDriver;
 
     ---------------------------------------------------------------------------
@@ -365,7 +374,7 @@ package body Syscall.Admin is
     ---------------------------------------------------------------------------
     procedure handleCapSend (callerPID : Process.ProcessID;
                              arg0, arg1, arg2, arg3,
-                             arg4, arg5 : Unsigned_64;
+                             arg4, arg5, arg6 : Unsigned_64;
                              retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
@@ -382,9 +391,12 @@ package body Syscall.Admin is
         if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
             retval := reterr;
         else
+            -- arg6: the deadline (absolute monotonic ms; Unsigned_64'Last is
+            -- for ever, as the caller chose: docs/ipc-fastpath.md).
             replyTag := Process.IPC.capSend (
                 capSlot => Capabilities.CapabilitySlot(arg0),
-                msg     => sendMsg);
+                msg     => sendMsg,
+                deadlineMs => arg6);
             Process.threadtab (PerCPUData.getCurrentThread).replyMsg :=
                 Process.NULL_MESSAGE;
             retval := tagToU64 (replyTag);
@@ -395,40 +407,37 @@ package body Syscall.Admin is
     -- handleCapCall
     ---------------------------------------------------------------------------
     procedure handleCapCall (callerPID  : Process.ProcessID;
-                             arg0, arg1 : Unsigned_64;
+                             arg0, arg1, arg2 : Unsigned_64;
                              retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
-        use type Process.MessageTag;
-
-        userMsg  : Process.Message
-            with Import, Address => Util.numToAddr(arg1);
+        localMsg : Process.Message;
         replyTag : Process.MessageTag;
+        ok       : Boolean;
     begin
-        if arg0 > Unsigned_64(Capabilities.CapabilitySlot'Last) then
+        -- arg1 is a user pointer: read and written through
+        -- Process.User_Memory, never dereferenced; the reply's destination
+        -- is checked before the call is made.
+        if arg0 > Unsigned_64 (Capabilities.CapabilitySlot'Last) or else
+           not Process.User_Memory.Message_Writable (callerPID, arg1)
+        then
             retval := reterr;
-        else
-            -- Copy from user memory before blocking IPC call.
-            -- Context switch during capCall clears EFLAGS.AC (SMAP).
-            declare
-                localMsg : Process.Message;
-            begin
-                x86.stac;
-                localMsg := userMsg;
-                x86.clac;
-
-                replyTag := Process.IPC.capCall (
-                    capSlot => Capabilities.CapabilitySlot(arg0),
-                    msg     => localMsg);
-            end;
-
-            x86.stac;
-            userMsg := Process.threadtab (PerCPUData.getCurrentThread).replyMsg;
-            x86.clac;
-            Process.threadtab (PerCPUData.getCurrentThread).replyMsg :=
-                Process.NULL_MESSAGE;
-            retval := tagToU64 (replyTag);
+            return;
         end if;
+        Process.User_Memory.Read_Message (callerPID, arg1, localMsg, ok);
+        if not ok then
+            retval := reterr;
+            return;
+        end if;
+        -- arg2: the deadline (absolute monotonic ms; Unsigned_64'Last is
+        -- for ever, as the caller chose: docs/ipc-fastpath.md).
+        replyTag := Process.IPC.capCall
+          (capSlot => Capabilities.CapabilitySlot (arg0), msg => localMsg,
+           deadlineMs => arg2);
+        Process.User_Memory.Write_Message
+          (callerPID, arg1, Process.threadtab (PerCPUData.getCurrentThread).replyMsg, ok);
+        Process.threadtab (PerCPUData.getCurrentThread).replyMsg := Process.NULL_MESSAGE;
+        retval := (if ok then tagToU64 (replyTag) else reterr);
     end handleCapCall;
 
     ---------------------------------------------------------------------------
@@ -469,38 +478,28 @@ package body Syscall.Admin is
                                retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
-        -- GNAT bug: Import overlay + regular Process.Message in the same
-        -- declarative region causes compiler stack overflow. Use a nested
-        -- declare block for localMsg/recvMsg to work around this.
-        userMsg : Process.Message
-            with Import, Address => Util.numToAddr(arg1);
-        from    : Process.ProcessID;
+        caller   : constant Process.ProcessID := PerCPUData.getCurrentPID;
+        from     : Process.ProcessID;
+        localMsg : Process.Message;
+        recvMsg  : Process.Message;
+        ok       : Boolean;
     begin
-        if arg0 > Unsigned_64(Process.ProcessID'Last) then
+        -- arg1 is a user pointer (the reply, then the next request):
+        -- checked, never dereferenced.
+        if not Process.User_Memory.Message_Writable (caller, arg1) then
             retval := reterr;
-        else
-            -- Copy from user memory before blocking IPC call.
-            -- Context switch during replyWait clears EFLAGS.AC (SMAP).
-            declare
-                localMsg : Process.Message;
-                recvMsg  : Process.Message;
-            begin
-                x86.stac;
-                localMsg := userMsg;
-                x86.clac;
-
-                Process.IPC.replyWait (
-                    replyTo  => Process.ProcessID(arg0),
-                    replyMsg => localMsg,
-                    from     => from,
-                    msg      => recvMsg);
-
-                x86.stac;
-                userMsg := recvMsg;
-                x86.clac;
-            end;
-            retval := Unsigned_64(from);
+            return;
         end if;
+        Process.User_Memory.Read_Message (caller, arg1, localMsg, ok);
+        if not ok then
+            retval := reterr;
+            return;
+        end if;
+        Process.IPC.replyWait
+          (replyTo => Process.processOfIdentity (Process_Identities.From_Word (arg0)), replyMsg => localMsg,
+           from => from, msg => recvMsg);
+        Process.User_Memory.Write_Message (caller, arg1, recvMsg, ok);
+        retval := (if ok then Process_Identities.To_Word (Process.identityOf (from)) else reterr);
     end handleReplyWait;
 
     ---------------------------------------------------------------------------
@@ -516,7 +515,6 @@ package body Syscall.Admin is
 
 
         hasCap     : Boolean := False;
-        bufAddr    : constant System.Address := Util.numToAddr (arg0);
         bufSize    : constant Unsigned_64 := arg1;
         ENTRY_SIZE : constant := 32;
         maxEntries : Unsigned_64;
@@ -551,53 +549,50 @@ package body Syscall.Admin is
 
         maxEntries := bufSize / ENTRY_SIZE;
 
-        x86.stac;
+        -- Each entry is built here and copied to the caller's buffer
+        -- (arg0, a user pointer) through Process.User_Memory.
         for i in Process.ProctabRange loop
             exit when count >= maxEntries;
 
             if Process.threadOf (i).state /= Process.INVALID then
                 declare
-                    offset : constant Storage_Offset :=
-                        Storage_Offset (count * ENTRY_SIZE);
-                    entryAddr : constant System.Address :=
-                        bufAddr + offset;
-
-                    pidVal : Unsigned_16 with
-                        Import, Address => entryAddr;
-                    stateVal : Unsigned_8 with
-                        Import, Address => entryAddr + 2;
-                    cpuVal : Unsigned_8 with
-                        Import, Address => entryAddr + 3;
-                    priVal : Unsigned_16 with
-                        Import, Address => entryAddr + 4;
-                    padVal : Unsigned_16 with
-                        Import, Address => entryAddr + 6;
-                    nameField : String (1 .. 16) with
-                        Import, Address => entryAddr + 8;
-                    framesVal : Unsigned_32 with
-                        Import, Address => entryAddr + 24;
-                    reservedVal : Unsigned_32 with
-                        Import, Address => entryAddr + 28;
+                    -- The process by identity (KERN-003), then its state.
+                    type Proc_Entry is record
+                        identity : Unsigned_64;
+                        state    : Unsigned_8;
+                        cpu      : Unsigned_8;
+                        priority : Unsigned_16;
+                        frames   : Unsigned_32;
+                        name     : String (1 .. 16);
+                    end record;
+                    for Proc_Entry use record
+                        identity at 0 range 0 .. 63;
+                        state    at 8 range 0 .. 7;
+                        cpu      at 9 range 0 .. 7;
+                        priority at 10 range 0 .. 15;
+                        frames   at 12 range 0 .. 31;
+                        name     at 16 range 0 .. 127;
+                    end record;
+                    for Proc_Entry'Size use ENTRY_SIZE * 8;
+                    item : aliased constant Proc_Entry :=
+                      (identity => Process_Identities.To_Word (Process.identityOf (i)),
+                       state    => Process.ProcessState'Pos (Process.threadOf (i).state),
+                       cpu      => Unsigned_8 (Process.threadOf (i).cpu),
+                       priority => priToU16 (Integer_16 (Process.threadOf (i).priority)),
+                       frames   => Unsigned_32 (Process.proctab(i).frames.length),
+                       name     => Process.proctab(i).name);
+                    copied : Boolean;
                 begin
-                    pidVal := Unsigned_16 (
-                        Process.proctab(i).pid);
-                    stateVal := Process.ProcessState'Pos (
-                        Process.threadOf (i).state);
-                    cpuVal := Unsigned_8 (
-                        Process.threadOf (i).cpu);
-                    priVal := priToU16 (Integer_16 (
-                        Process.threadOf (i).priority));
-                    padVal := 0;
-                    nameField :=
-                        Process.proctab(i).name;
-                    framesVal := Unsigned_32 (
-                        Process.proctab(i).frames.length);
-                    reservedVal := 0;
+                    Process.User_Memory.Copy_To_User
+                      (callerPID, arg0 + count * ENTRY_SIZE, item'Address, ENTRY_SIZE, copied);
+                    if not copied then
+                        retval := reterr;
+                        return;
+                    end if;
                     count := count + 1;
                 end;
             end if;
         end loop;
-        x86.clac;
 
         retval := count;
     end handleProclist;
@@ -616,17 +611,16 @@ package body Syscall.Admin is
         targetPID : Process.ProcessID;
         slot      : Capabilities.CapabilitySlot;
         cap       : Capabilities.Capability;
-        outAddr   : constant System.Address := Util.numToAddr (arg2);
-        typeVal   : Unsigned_64 with Import, Address => outAddr;
-        rightsVal : Unsigned_64 with Import, Address => outAddr + 8;
-        authorityTagVal  : Unsigned_64 with Import, Address => outAddr + 16;
-        refVal    : Unsigned_64 with Import, Address => outAddr + 24;
-        paramVal  : Unsigned_64 with Import, Address => outAddr + 32;
-        genVal    : Unsigned_64 with Import, Address => outAddr + 40;
+        -- arg2 is a user pointer: six words, built here and copied out
+        -- through Process.User_Memory.
+        Inspection_Words : constant := 6;
+        type Inspection is array (1 .. Inspection_Words) of Unsigned_64;
+        result    : aliased Inspection := (others => 0);
+        copied    : Boolean;
         rights    : Unsigned_64 := 0;
     begin
-        if arg0 > Unsigned_64 (Process.ProcessID'Last) or else
-           arg0 = 0 or else
+        targetPID := Process.processOfIdentity (Process_Identities.From_Word (arg0));
+        if targetPID = Process.NO_PROCESS or else
            arg1 > Unsigned_64 (Capabilities.CapabilitySlot'Last) or else
            arg2 = 0
         then
@@ -634,7 +628,6 @@ package body Syscall.Admin is
             return;
         end if;
 
-        targetPID := Process.ProcessID (arg0);
         slot := Capabilities.CapabilitySlot (arg1);
 
         Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
@@ -676,14 +669,26 @@ package body Syscall.Admin is
             rights := rights or 16;
         end if;
 
-        x86.stac;
-        typeVal := Unsigned_64 (Capabilities.CapabilityType'Pos (cap.capType));
-        rightsVal := rights;
-        authorityTagVal := cap.authorityTag;
-        refVal := cap.object.ref;
-        paramVal := cap.object.param;
-        genVal := Unsigned_64 (cap.gen);
-        x86.clac;
+        result := (Unsigned_64 (Capabilities.CapabilityType'Pos (cap.capType)),
+                   rights, cap.authorityTag,
+                   -- Its process by identity (the slot and generation it
+                   -- was made for), not the bare slot.
+                   (if cap.capType in Capabilities.CAP_ENDPOINT |
+                                      Capabilities.CAP_PROCESS |
+                                      Capabilities.CAP_CSPACE
+                       and then cap.object.ref /= 0
+                       and then cap.object.ref <= Unsigned_64 (Process.ProcessID'Last)
+                    then Process_Identities.To_Word (Process_Identities.Encode
+                           (Process_Identities.Slot (cap.object.ref),
+                            Process_Identities.Generation (cap.gen)))
+                    else cap.object.ref),
+                   cap.object.param, Unsigned_64 (cap.gen));
+        Process.User_Memory.Copy_To_User
+          (callerPID, arg2, result'Address, result'Size / 8, copied);
+        if not copied then
+            retval := reterr;
+            return;
+        end if;
 
         retval := 1;
     end handleInspectCap;
@@ -707,29 +712,25 @@ package body Syscall.Admin is
         newCap     : Capabilities.Capability;
         newRights  : Capabilities.CapabilityRights;
         targetSlot : Capabilities.CapabilitySlot;
-        targetWord : constant Unsigned_64 :=
-          (if boundRecipient then arg0 mod 2 ** 32 else arg0);
-        expectedGeneration : constant Unsigned_64 := arg0 / 2 ** 32;
+        expectedGeneration : Capabilities.Generation;
     begin
-        -- Validate target PID range
-        if targetWord > Unsigned_64 (Process.ProcessID'Last) or else
-           targetWord = 0 or else
-           (boundRecipient and then (expectedGeneration = 0 or else arg4 > 31))
+        -- The recipient by identity (KERN-003): its generation is part of it.
+        Process.resolveIdentity (Process_Identities.From_Word (arg0), targetPID, expectedGeneration);
+        if targetPID = Process.NO_PROCESS or else
+           (boundRecipient and then arg4 > 31)
         then
-            println ("POLICY_MINT_CAPABILITY: invalid target PID");
+            println ("POLICY_MINT_CAPABILITY: invalid target identity");
             retval := reterr;
             return;
         end if;
 
-        targetPID := Process.ProcessID (targetWord);
         declare
             procedure performLocked is
             begin
                 -- Recipient generation is checked under the same mailbox
                 -- lock as installation. Root CSPACE authority cannot bypass
-                -- a stale explicitly supplied recipient incarnation.
-                if boundRecipient and then expectedGeneration /=
-                  Unsigned_64 (Process.generationOf (targetPID))
+                -- a stale recipient identity.
+                if expectedGeneration /= Process.generationOf (targetPID)
                 then
                     retval := reterr;
                     return;
@@ -795,11 +796,29 @@ package body Syscall.Admin is
                     capGen : Capabilities.Generation;
                     ct     : constant Capabilities.CapabilityType :=
                         Capabilities.CapabilityType'Val (capTypePos);
-                    objectPID : Process.ProcessID;
+                    objectPID : Process.ProcessID := Process.NO_PROCESS;
+                    -- The object as stored: a process-referencing
+                    -- capability keeps its slot (and generation in gen).
+                    objectRef : Unsigned_64 := arg2;
                 begin
+                    -- arg2 names a process by identity for these types. Zero
+                    -- is the wildcard; a stale identity must not become it.
+                    if ct in Capabilities.CAP_ENDPOINT | Capabilities.CAP_PROCESS |
+                             Capabilities.CAP_CSPACE and then arg2 /= 0
+                    then
+                        objectPID := Process.processOfIdentity (Process_Identities.From_Word (arg2));
+                        if objectPID = Process.NO_PROCESS then
+                            println
+                              ("POLICY_MINT_CAPABILITY: referenced process not valid");
+                            retval := reterr;
+                            return;
+                        end if;
+                        objectRef := Unsigned_64 (objectPID);
+                    end if;
+
                     if ct = Capabilities.CAP_CSPACE and then
                        not canDelegateCspace
-                         (callerPID, targetPID, arg2, newRights)
+                         (callerPID, targetPID, objectRef, newRights)
                     then
                         println
                           ("POLICY_MINT_CAPABILITY: CSPACE delegation would " &
@@ -812,23 +831,17 @@ package body Syscall.Admin is
                        ((ct = Capabilities.CAP_PROCESS or else
                          ct = Capabilities.CAP_CSPACE) and then arg2 /= 0)
                     then
-                        if arg2 > Unsigned_64 (Process.ProcessID'Last) or else
-                           arg2 = 0
+                        -- The referenced process by identity; a stale one
+                        -- names no one.
+                        Process.resolveIdentity (Process_Identities.From_Word (arg2), objectPID, capGen);
+                        if objectPID = Process.NO_PROCESS or else
+                           Process.threadOf (objectPID).state = Process.INVALID
                         then
-                            println
-                              ("POLICY_MINT_CAPABILITY: invalid referenced PID");
-                            retval := reterr;
-                            return;
-                        end if;
-
-                        objectPID := Process.ProcessID (arg2);
-                        if Process.threadOf (objectPID).state = Process.INVALID then
                             println
                               ("POLICY_MINT_CAPABILITY: referenced process not valid");
                             retval := reterr;
                             return;
                         end if;
-                        capGen := Process.generationOf (objectPID);
                     else
                         capGen := Capabilities.INITIAL_GENERATION;
                     end if;
@@ -841,8 +854,8 @@ package body Syscall.Admin is
                         --  policy holder. Zero retains the sender-ID tag.
                         authorityTag =>
                           (if ct = Capabilities.CAP_ENDPOINT and arg3 /= 0
-                           then arg3 else Unsigned_64 (targetPID)),
-                        object   => (ref   => arg2,
+                           then arg3 else Process_Identities.To_Word (Process.identityOf (targetPID))),
+                        object   => (ref   => objectRef,
                                      param => arg3),
                         gen      => capGen);
                 end;
@@ -870,8 +883,8 @@ package body Syscall.Admin is
        retval : out Unsigned_64) with SPARK_Mode => Off
     is
         use type Capabilities.CapabilityType;
-        targetWord : constant Unsigned_64 := recipient mod 2 ** 32;
-        generation : constant Unsigned_64 := recipient / 2 ** 32;
+        -- The recipient by identity (KERN-003): slot and generation.
+        generation : Capabilities.Generation;
         targetPID, firstPID, secondPID : Process.ProcessID;
         procedure performLocked is
             parent : constant Capabilities.Capability :=
@@ -885,7 +898,7 @@ package body Syscall.Admin is
         begin
             if not Process.proctab(targetPID).admitted or else
                Process_Lifetime.Closing (Process.threadOf(targetPID).lifetime) or else
-               generation /= Unsigned_64(Process.generationOf(targetPID)) or else
+               generation /= Process.generationOf(targetPID) or else
                not hasCspaceGrantFor(callerPID, targetPID) or else
                parent.capType /= Capabilities.CAP_ENDPOINT or else
                not parent.rights(Capabilities.RIGHT_GRANT) or else
@@ -907,15 +920,14 @@ package body Syscall.Admin is
         end performLocked;
     begin
         retval := reterr;
-        if targetWord = 0 or else
-           targetWord > Unsigned_64(Process.ProcessID'Last) or else
-           generation = 0 or else reserved /= 0 or else rights > 31 or else
+        Process.resolveIdentity (Process_Identities.From_Word (recipient), targetPID, generation);
+        if targetPID = Process.NO_PROCESS or else
+           reserved /= 0 or else rights > 31 or else
            sourceSlot > Unsigned_64(Capabilities.CapabilitySlot'Last) or else
            destinationSlot > Unsigned_64(Capabilities.CapabilitySlot'Last)
         then
             return;
         end if;
-        targetPID := Process.ProcessID(targetWord);
         firstPID := Process.ProcessID'Min(callerPID, targetPID);
         secondPID := Process.ProcessID'Max(callerPID, targetPID);
         -- Follow the IPC two-mailbox ascending-PID order. Source snapshot,
@@ -942,17 +954,17 @@ package body Syscall.Admin is
 
         targetPID : Process.ProcessID;
     begin
-        if arg0 > Unsigned_64 (Process.ProcessID'Last) or
-           arg0 = 0
-        then
-            println ("RESUME: invalid target PID");
+        targetPID := Process.processOfIdentity (Process_Identities.From_Word (arg0));
+        if targetPID = Process.NO_PROCESS then
+            println ("RESUME: invalid target identity");
             retval := reterr;
             return;
         end if;
 
-        targetPID := Process.ProcessID (arg0);
         declare
             procedure performLocked is
+                candidateQuota : Process.ResourceQuota := Process.proctab(targetPID).quota;
+                quotaAccepted : Boolean;
             begin
                 if not Process.proctab(targetPID).admitted or else
                    Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime) then
@@ -978,10 +990,9 @@ package body Syscall.Admin is
                                 cap : Capabilities.Capability renames
                                     Process.proctab(targetPID).caps(slot);
                                 q   : Process.ResourceQuota renames
-                                    Process.proctab(targetPID).quota;
+                                    candidateQuota;
                             begin
-                                q.maxFrames :=
-                                    Natural (cap.object.ref);
+                                q.maxFrames := cap.object.ref;
                                 q.cpuQuotaUs :=
                                     Unsigned_32 (cap.object.param and 16#FFFF_FFFF#);
                                 q.cpuPeriodUs :=
@@ -994,6 +1005,14 @@ package body Syscall.Admin is
                     end loop;
 
                     -- Launch arguments can no longer be installed.
+                    Memory_Accounting.Adopt (Process.proctab(targetPID).memoryAccount,
+                      candidateQuota.maxFrames, quotaAccepted);
+                    if not quotaAccepted then
+                        println ("RESUME: memory quota below existing charge");
+                        retval := reterr;
+                        return;
+                    end if;
+                    Process.proctab(targetPID).quota := candidateQuota;
                     Process.proctab(targetPID).launch := Process_Launch.Started;
                     Process.resume (targetPID);
                     print ("RESUME: resumed PID ");
@@ -1023,8 +1042,9 @@ package body Syscall.Admin is
         targetPID : Process.ProcessID;
     begin
         retval := reterr;
-        if arg0 = 0 or else arg0 > Unsigned_64 (Process.ProcessID'Last) then
-            println ("LAUNCH-ARGS: invalid target PID");
+        targetPID := Process.processOfIdentity (Process_Identities.From_Word (arg0));
+        if targetPID = Process.NO_PROCESS then
+            println ("LAUNCH-ARGS: invalid target identity");
             return;
         elsif arg2 not in Process_Launch.Argument_Bytes or else
               not User_Buffer_Copy.Valid_Range (arg1, arg2)
@@ -1032,7 +1052,6 @@ package body Syscall.Admin is
             println ("LAUNCH-ARGS: invalid source range");
             return;
         end if;
-        targetPID := Process.ProcessID (arg0);
 
         declare
             procedure performLocked is
@@ -1125,17 +1144,12 @@ package body Syscall.Admin is
         targetPID : Process.ProcessID;
         generation : Capabilities.Generation;
     begin
-        if arg0 > Unsigned_64 (Process.ProcessID'Last) or
-           arg0 = 0
-        then
-            println ("KILL: invalid target PID");
+        Process.resolveIdentity (Process_Identities.From_Word (arg0), targetPID, generation);
+        if targetPID = Process.NO_PROCESS then
+            println ("KILL: invalid target identity");
             retval := reterr;
             return;
         end if;
-
-        targetPID := Process.ProcessID (arg0);
-
-        generation := Process.generationOf (targetPID);
 
         if Process.threadOf (targetPID).state = Process.INVALID then
             println ("KILL: target not active");
@@ -1169,27 +1183,30 @@ package body Syscall.Admin is
     end handleKill;
 
     procedure handleSendControl (callerPID : Process.ProcessID;
-                                 arg0, arg1, arg2 : Unsigned_64;
+                                 arg0, arg1 : Unsigned_64;
                                  retval     : out Unsigned_64) with
         SPARK_Mode => Off
     is
         use type Process.ProcessState;
-        Control_Words : constant := 2;
+        use type Kernel_Controls.Send_Result;
         targetPID : Process.ProcessID;
+        kind : IPC_Labels.Control_Kind := IPC_Labels.Control_Kind'First;
         known : Boolean := False;
-        msg : Process.Message := Process.NULL_MESSAGE;
-        accepted : Boolean;
+        result : Kernel_Controls.Send_Result;
     begin
         retval := reterr;
-        for kind in IPC_Labels.Control_Kind loop
-            known := known or else arg1 = IPC_Labels.Control_Kind'Enum_Rep (kind);
+        for candidate in IPC_Labels.Control_Kind loop
+            if arg1 = IPC_Labels.Control_Kind'Enum_Rep (candidate) then
+                kind := candidate;
+                known := True;
+            end if;
         end loop;
-        if not known or else arg0 = 0 or else arg0 > Unsigned_64 (Process.ProcessID'Last) then
+        if not known then
             return;
         end if;
-        targetPID := Process.ProcessID (arg0);
-        if Process.threadOf (targetPID).state = Process.INVALID
-          or else Unsigned_64 (Process.generationOf (targetPID)) /= arg2
+        targetPID := Process.processOfIdentity (Process_Identities.From_Word (arg0));
+        if targetPID = Process.NO_PROCESS
+          or else Process.threadOf (targetPID).state = Process.INVALID
         then
             return;
         end if;
@@ -1202,14 +1219,14 @@ package body Syscall.Admin is
         then
             return;
         end if;
-        msg.tag := (label => IPC_Labels.EVENT_CONTROL, length => Control_Words,
-                    flags => 0, reserved => 0);
-        msg.words (0) := arg1;
-        msg.words (1) := Unsigned_64 (callerPID);
-        Process.IPC.trySendEvent (targetPID, msg, accepted,
-                                  Process.generationOf (targetPID));
-        if accepted then
+        -- Kept until the target reads it (docs/ipc-delivery.md); busy when
+        -- its sender slots hold others' unread messages: try again later.
+        Process.IPC.sendControl
+          (targetPID, Process.generationOf (targetPID), callerPID, kind, result);
+        if result = Kernel_Controls.Accepted then
             retval := 0;
+        elsif result = Kernel_Controls.Busy then
+            retval := retbusy;
         end if;
     end handleSendControl;
 
@@ -1232,15 +1249,13 @@ package body Syscall.Admin is
             return;
         end if;
 
-        if arg1 > Unsigned_64 (Process.ProcessID'Last) or
-           arg1 = 0
-        then
-            println ("SET_WELL_KNOWN: invalid PID");
+        targetPID := Process.processOfIdentity (Process_Identities.From_Word (arg1));
+        if targetPID = Process.NO_PROCESS then
+            println ("SET_WELL_KNOWN: invalid identity");
             retval := reterr;
             return;
         end if;
 
-        targetPID := Process.ProcessID (arg1);
         declare
             procedure performLocked is
             begin
@@ -1299,15 +1314,14 @@ package body Syscall.Admin is
             println ("ENABLE_IRQ: unsupported device vector");
             retval := reterr;
             return;
-        elsif arg1 > Unsigned_64 (Process.ProcessID'Last) or
-              arg1 = 0
-        then
-            println ("ENABLE_IRQ: invalid owner PID");
+        end if;
+
+        targetPID := Process.processOfIdentity (Process_Identities.From_Word (arg1));
+        if targetPID = Process.NO_PROCESS then
+            println ("ENABLE_IRQ: invalid owner identity");
             retval := reterr;
             return;
         end if;
-
-        targetPID := Process.ProcessID (arg1);
         Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
         if not Process.proctab(targetPID).admitted or else
            Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime)
@@ -1315,15 +1329,16 @@ package body Syscall.Admin is
             retval := reterr;
         else
             if not hasCapProcessFor (callerPID,
-                                     Process.ProcessID (arg1),
+                                     targetPID,
                                      Capabilities.RIGHT_GRANT)
             then
                 println ("ENABLE_IRQ: denied, no RIGHT_GRANT");
                 retval := reterr;
             else
+                --  The resolved slot: delivery finds owners by slot.
                 Capabilities.IRQ.registerIRQ (
                     vector => Natural (arg0),
-                    pid    => arg1,
+                    pid    => Unsigned_64 (targetPID),
                     status => irqOk);
 
                 if irqOk then
@@ -1393,11 +1408,9 @@ package body Syscall.Admin is
         use type Process.ProcessState;
 
 
-        targetPID : Process.ProcessID;
+        targetPID : constant Process.ProcessID := Process.processOfIdentity (Process_Identities.From_Word (arg0));
     begin
-        if arg0 > Unsigned_64 (Process.ProcessID'Last) or
-           arg0 = 0
-        then
+        if targetPID = Process.NO_PROCESS then
             retval := reterr;
             return;
         elsif arg1 >= Unsigned_64 (acpi.numCPUs) then
@@ -1406,7 +1419,6 @@ package body Syscall.Admin is
             return;
         end if;
 
-        targetPID := Process.ProcessID (arg0);
         declare
             procedure performLocked is
             begin

@@ -95,8 +95,14 @@ typedef long                ssize_t;
 #define SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY 52
 
 /* Capability-aware IPC */
-#define SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY   40
-#define SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY   41
+#define SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY   129
+#define SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY   128
+/* Synchronous calls take an absolute monotonic-ms deadline, or this, spelled
+ * out: there is no default (docs/ipc-fastpath.md, "Call deadlines"). */
+#define CUBIT_WAIT_FOREVER UINT64_MAX
+/* Call outcomes only the kernel gives; a server's reply may not use them. */
+#define CUBIT_KERNEL_REPLY_FIRST 0xFFFF0000u
+#define CUBIT_REPLY_TIMEOUT      0xFFFF0001u
 #define SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY 42
 #define SYSCALL_INSPECT_CAPABILITY             84
 

@@ -12,7 +12,7 @@ package CuBit.Service_Names is
    function Driver_Of (Name : String) return Unsigned_64;
 
    --  The process registered as Name now, or 0 when none is.
-   function Process_Of (Name : String) return Unsigned_64;
+   function Process_Of (Name : String) return CuBit.Messages.Process_ID;
 private
    use CuBit.Messages;
    MAX_NAME : constant := 16;

@@ -28,15 +28,15 @@ package Publisher_Rings is
    --  publisher had. Reply is the reply to send.
    procedure Open
      (Item : in out Table; Store : in out Log_Fanout.Broker; Budgets : in out Log_Budgets.Limiter;
-      From : CuBit.Messages.ProcessID; Authority : Unsigned_64;
+      From : CuBit.Messages.Process_ID; Authority : Unsigned_64;
       Request : CuBit.Messages.Message; Minimum : CuBit.Log_Records.Severity;
       Now_Ms : Unsigned_64; Reply : out CuBit.Messages.Message);
 
-   --  Drain and end the channel numbered Number, if From opened it (its
-   --  OP_CLOSE).
+   --  Drain and end the channel Request (From's OP_CLOSE) names, if From
+   --  opened it.
    procedure Close
      (Item : in out Table; Store : in out Log_Fanout.Broker; Budgets : in out Log_Budgets.Limiter;
-      From : CuBit.Messages.ProcessID; Number : Unsigned_64;
+      From : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message;
       Minimum : CuBit.Log_Records.Severity; Now_Ms : Unsigned_64);
 
    --  A grant event: drain and end the channel it belongs to, if any.
@@ -65,7 +65,8 @@ package Publisher_Rings is
    procedure Disarm (Item : in out Table);
 private
    type Ring is record
-      Owner, Authority : Unsigned_64 := 0;
+      Owner : CuBit.Messages.Process_ID := CuBit.Messages.No_Process;
+      Authority : Unsigned_64 := 0;
       Link : CuBit.Channels.Channel;
       Shed_Seen : Unsigned_64 := 0;
       Active_Ms : Unsigned_64 := 0;

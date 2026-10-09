@@ -39,7 +39,7 @@ package body Intel_GPU_VM_Update is
          when Draining => Drain (OK); Status := Drain_Failed;
          when Publishing => Advance_Publication (Stage_Finished, OK); Status := Publication_Failed;
          when Invalidating => Invalidate (OK); Status := Invalidation_Failed;
-         when Resuming => Resume (OK); Status := Resume_Failed;
+         when Resuming => Advance_Resume (Stage_Finished, OK); Status := Resume_Failed;
          when others => null; -- rejected before callback admission
       end case;
       -- A callback may pump retirement or try to advance this transaction.
@@ -56,6 +56,10 @@ package body Intel_GPU_VM_Update is
          Object.Value := Phase'Succ (Stage); Finished := False; Status := Rejected;
       end if;
    end Advance;
+   procedure Resume_Once (Finished, Success : out Boolean) is
+   begin
+      Resume (Success); Finished := True;
+   end Resume_Once;
    procedure Publish_Once (Finished, Success : out Boolean) is
    begin
       Publish (Success); Finished := True;

@@ -1,0 +1,65 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+------------------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total        Flow                               Provers   Justified   Unproved
+------------------------------------------------------------------------------------------------------------
+Data Dependencies                 .           .                                     .           .          .
+Flow Dependencies                 .           .                                     .           .          .
+Initialization                    2           2                                     .           .          .
+Non-Aliasing                      .           .                                     .           .          .
+Run-time Checks                  15           .    15 (CVC5 10%, Trivial 28%, Z3 62%)           .          .
+Assertions                        .           .                                     .           .          .
+Functional Contracts             11           .     11 (CVC5 19%, Trivial 3%, Z3 78%)           .          .
+LSP Verification                  .           .                                     .           .          .
+Termination                      20          20                                     .           .          .
+Concurrency                       .           .                                     .           .          .
+------------------------------------------------------------------------------------------------------------
+Total                            48    22 (46%)                              26 (54%)           .          .
+
+
+max steps used for successful proof: 8858
+
+============================
+Most difficult proved checks
+============================
+
+compositor_trace_archive.ads:29:16: postcondition proved in max 4 seconds
+compositor_trace_framing.ads:20:14: postcondition proved in max 1 seconds
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 2 units
+in unit compositor_trace_archive, 10 subprograms and packages out of 10 analyzed
+  Compositor_Trace_Archive at compositor_trace_archive.ads:2 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Archive.Checksum at compositor_trace_archive.ads:24 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Archive.Decode at compositor_trace_archive.ads:25 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Archive.Decode_Packet at compositor_trace_archive.ads:44 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Compositor_Trace_Archive.Encode at compositor_trace_archive.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Compositor_Trace_Archive.Lemma_Valid at compositor_trace_archive.ads:32 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Trace_Archive.Packet at compositor_trace_archive.ads:36 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Archive.Prefix at compositor_trace_archive.ads:11 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Archive.Reconstruct at compositor_trace_archive.ads:40 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Archive.Valid at compositor_trace_archive.ads:14 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+in unit compositor_trace_framing, 18 subprograms and packages out of 18 analyzed
+  Compositor_Trace_Framing at compositor_trace_framing.ads:2 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Framing.Can_Append at compositor_trace_framing.ads:32 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Framing.Digest at compositor_trace_framing.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Framing.End_Of_File at compositor_trace_framing.ads:58 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Compositor_Trace_Framing.Event_Chunk at compositor_trace_framing.ads:35 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Compositor_Trace_Framing.Events at compositor_trace_framing.ads:26 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Framing.Feed at compositor_trace_framing.ads:50 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (7 checks)
+  Compositor_Trace_Framing.Footer at compositor_trace_framing.ads:41 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Trace_Framing.Footer_Matches at compositor_trace_framing.ads:40 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Framing.Header at compositor_trace_framing.ads:19 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Trace_Framing.Header_Valid at compositor_trace_framing.ads:18 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Framing.Info at compositor_trace_framing.ads:25 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Framing.Seal at compositor_trace_framing.adb:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Trace_Framing.Start at compositor_trace_framing.ads:28 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Compositor_Trace_Framing.State at compositor_trace_framing.ads:64 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Trace_Framing.Statepredicate at compositor_trace_framing.ads:64 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Framing.Status at compositor_trace_framing.ads:24 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Framing.Valid at compositor_trace_framing.ads:14 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)

@@ -23,6 +23,11 @@ package body Compositor_Pool with SPARK_Mode is
       S.W := (B, S.Generation, S.Sequence);
       T := S.W;
    end Acquire;
+   procedure Abandon_Writer (S : in out State; T : Ticket; Accepted : out Boolean) is
+   begin
+      Accepted := Writable (S, T);
+      if Accepted then S.W := None; end if;
+   end Abandon_Writer;
    procedure Start_Render (S : in out State; T : Ticket) is
    begin
       if Writable (S, T) then S.GPU_Busy := True;

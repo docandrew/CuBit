@@ -1,10 +1,10 @@
-package body Desktop_GPU_Scene.Output with SPARK_Mode => Off is
+package body Desktop_GPU_Scene.Output with SPARK_Mode is
    use type R.Phase, Compositor_Formats.Word, Compositor_Formats.Byte_Count;
    procedure Pump
      (Scene : in out State; Copy : in out R.State;
       Target : Compositor_Formats.Image; Bytes : Compositor_Formats.Byte_Count;
       Writer : R.P.Ticket; Poll_Only, Capture_Accepted : Boolean;
-      Byte_Budget : Natural; Result : out Output_Completion)
+      Byte_Budget : Natural; Result : out Output_Completion; Repair : Compositor_Damage.State)
    is
       Finished : Output_Completion;
       OK : Boolean;
@@ -20,9 +20,9 @@ package body Desktop_GPU_Scene.Output with SPARK_Mode => Off is
          when R.Idle =>
             Complete_Output (Scene, Poll_Only, Capture_Accepted, Finished);
             if Finished /= Output_Complete then Result := Finished; return; end if;
-            R.Begin_Transfer (Copy, Writer, Target.Pixels,
+            R.Begin_Region_Transfer (Copy, Writer, Target.Pixels,
               R.G.Pixel_Edge (Target.Width), R.G.Pixel_Edge (Target.Height),
-              Natural (Bytes), Natural (Target.Pitch), OK);
+              Natural (Bytes), Natural (Target.Pitch), Repair, OK);
             if not OK then
                if R.Current (Copy) = R.Idle and then Software_Ready (Scene) then
                   Result := Output_Repaint;

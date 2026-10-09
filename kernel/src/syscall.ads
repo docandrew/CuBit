@@ -42,8 +42,6 @@ is
         SYSCALL_OUTP16,
         SYSCALL_INP32,
         SYSCALL_OUTP32,
-        SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY,
-        SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY,
         SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY,
         SYSCALL_REPLY_WAIT,
         SYSCALL_VIRT_TO_PHYS,
@@ -92,6 +90,8 @@ is
         SYSCALL_RELEASE_OWNED_RESERVATION,
         SYSCALL_INSTALL_LAUNCH_ARGUMENTS,
         SYSCALL_SEND_CONTROL,
+        SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY,
+        SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY,
         SYSCALL_REGISTER_DRIVER)
     with Size => Unsigned_64'Size;
 
@@ -135,8 +135,11 @@ is
         SYSCALL_OUTP16               => 33,
         SYSCALL_INP32                => 36,
         SYSCALL_OUTP32               => 37,
-        SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY   => 40,
-        SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY   => 41,
+        -- Synchronous calls take a deadline (docs/ipc-fastpath.md, "Call
+        -- deadlines"); renumbered from 40 and 41 when it was added, so an
+        -- old binary gets an unknown call, not a garbage deadline.
+        SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY   => 129,
+        SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY   => 128,
         SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY => 42,
         SYSCALL_REPLY_WAIT           => 48,
         SYSCALL_VIRT_TO_PHYS         => 50,

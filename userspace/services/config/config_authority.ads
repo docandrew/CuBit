@@ -1,11 +1,13 @@
 pragma Ada_2022;
 with Interfaces;
+with CuBit.Process_IDs; use CuBit.Process_IDs;
 
 --  Owned authorization state. Only the trusted IPC administration path may
 --  call Install/Revoke; this package does not authenticate message senders.
 package Config_Authority with SPARK_Mode, Pure is
-   subtype Subject_ID is Interfaces.Unsigned_64;
-   No_Subject : constant Subject_ID := 0;
+   --  The process an authority is for.
+   subtype Subject_ID is Process_ID;
+   No_Subject : Subject_ID renames No_Process;
    Maximum_Rules : constant := 16;
    Maximum_Subjects : constant := 32;
    Maximum_Scope : constant := 64;

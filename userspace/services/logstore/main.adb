@@ -1,6 +1,7 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_IDs.Text;
 with CuBit.Log_Protocol; use CuBit.Log_Protocol;
 with CuBit.Log_Records;
 with CuBit.Config_Inspection;
@@ -15,6 +16,8 @@ with CuBit.Control_Events;
 with CuBit.Process_Events;
 
 procedure Main is
+   function Image (Process : Process_ID) return String
+     renames CuBit.Process_IDs.Text.Image;
    package Logs renames CuBit.Log_Records;
    package Settings renames CuBit.Config_Inspection;
    use type Logs.Severity;
@@ -39,7 +42,7 @@ procedure Main is
    IDLE_WAKE_MS : constant := 1_000;
    BACKLOG_WAKE_MS : constant := 20;
    Budgets : Log_Budgets.Limiter;
-   From : ProcessID;
+   From : Process_ID;
    Request, Response : Message;
    Received, Known, Acquired : Boolean;
    Now_Ms, Handle, Ignore : Unsigned_64;
@@ -124,7 +127,7 @@ begin
       end loop;
       if Received and then Request.tag.label = CuBit.Channel_Protocol.OP_OPEN_PRODUCING then
          --  A publisher opening its channel.
-         if From /= NO_PROCESS and then May_Publish (Request.authorityTag) then
+         if From /= No_Process and then May_Publish (Request.authorityTag) then
             Publisher_Rings.Open (Publishers, Store, Budgets, From, Request.authorityTag, Request,
                                   Minimum, Now_Ms, Response);
          else
@@ -133,7 +136,7 @@ begin
          Ignore := reply (From, Response);
       elsif Received and then Request.tag.label = CuBit.Channel_Protocol.OP_OPEN_CONSUMING then
          --  A reader opening its stream (Subscribe binds it).
-         if From /= NO_PROCESS and then May_Invoke (Request.authorityTag, Subscribe) then
+         if From /= No_Process and then May_Invoke (Request.authorityTag, Subscribe) then
             Stream_Writers.Open (Writers, From, Request.authorityTag, Request, Response);
          else
             Response := CuBit.Channels.Refusal_Reply (CuBit.Channel_Protocol.Unsupported);
@@ -141,10 +144,9 @@ begin
          Ignore := reply (From, Response);
       elsif Received and then Request.tag.label = CuBit.Channel_Protocol.OP_CLOSE then
          if CuBit.Channels.Number_Of (Request) > Stream_Writers.First_Number then
-            Stream_Writers.Close (Writers, From, CuBit.Channels.Number_Of (Request));
+            Stream_Writers.Close (Writers, From, Request);
          else
-            Publisher_Rings.Close (Publishers, Store, Budgets, From, CuBit.Channels.Number_Of (Request),
-                                   Minimum, Now_Ms);
+            Publisher_Rings.Close (Publishers, Store, Budgets, From, Request, Minimum, Now_Ms);
          end if;
       elsif Received and then Request.tag.label = CuBit.Channel_Protocol.OP_KICK then
          --  Records are waiting: drained below, every pass.
@@ -162,7 +164,7 @@ begin
          end loop;
          Result := Denied;
          Send_Reply := True;
-         if From /= NO_PROCESS and then Known and then
+         if From /= No_Process and then Known and then
            May_Invoke (Request.authorityTag, Op)
          then
             Result := Invalid_Request;
@@ -205,7 +207,7 @@ begin
                         Result := OK;
                         --  Who changed it, kept whatever the new minimum.
                         Note ("logstore: keeping " & Logs.Severity_Literal (Minimum) &
-                              " and above (set by pid" & Unsigned_64'Image (Unsigned_64 (From)) & ")",
+                              " and above (set by pid" & Image (From) & ")",
                               Logs.Warning);
                      end if;
                   when Get_Minimum =>

@@ -1,0 +1,48 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+-----------------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total        Flow                              Provers   Justified   Unproved
+-----------------------------------------------------------------------------------------------------------
+Data Dependencies                 .           .                                    .           .          .
+Flow Dependencies                 .           .                                    .           .          .
+Initialization                    2           2                                    .           .          .
+Non-Aliasing                      .           .                                    .           .          .
+Run-time Checks                  57           .     57 (CVC5 9%, Trivial 1%, Z3 90%)           .          .
+Assertions                        4           .    4 (CVC5 38%, Trivial 13%, Z3 50%)           .          .
+Functional Contracts              6           .      6 (CVC5 7%, Trivial 5%, Z3 88%)           .          .
+LSP Verification                  .           .                                    .           .          .
+Termination                       8           8                                    .           .          .
+Concurrency                       .           .                                    .           .          .
+-----------------------------------------------------------------------------------------------------------
+Total                            77    10 (13%)                             67 (87%)           .          .
+
+
+max steps used for successful proof: 6823
+
+============================
+Most difficult proved checks
+============================
+
+compositor_trace_metrics.adb:15:13: loop invariant after first iteration proved in max 1 seconds
+compositor_trace_metrics.ads:41:19: postcondition proved in max 1 seconds
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 2 units
+in unit compositor_trace_metrics, 5 subprograms and packages out of 5 analyzed
+  Compositor_Trace_Metrics at compositor_trace_metrics.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Metrics.Assemble at compositor_trace_metrics.ads:40 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (8 checks)
+  Compositor_Trace_Metrics.Coherent at compositor_trace_metrics.ads:18 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Compositor_Trace_Metrics.Fragment at compositor_trace_metrics.ads:33 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (17 checks)
+  Compositor_Trace_Metrics.Part_Data at compositor_trace_metrics.ads:31 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+in unit compositor_trace_wire, 6 subprograms and packages out of 6 analyzed
+  Compositor_Trace_Wire at compositor_trace_wire.ads:10 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Wire.Checked at compositor_trace_wire.ads:52 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Wire.Decode at compositor_trace_wire.ads:42 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (5 checks)
+  Compositor_Trace_Wire.Encode at compositor_trace_wire.ads:47 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (27 checks)
+  Compositor_Trace_Wire.Lemma_Decoded_Valid at compositor_trace_wire.ads:44 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Compositor_Trace_Wire.Valid at compositor_trace_wire.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)

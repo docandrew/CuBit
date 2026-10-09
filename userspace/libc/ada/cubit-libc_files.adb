@@ -222,7 +222,7 @@ package body CuBit.Libc_Files is
       M : aliased K.Message :=
         (Label => Label, Length => Length, Words => [W0, W1, W2, W3], others => <>);
       Tag : constant Unsigned_64 := Kernel
-        (K.Call_Via_Endpoint_Capability, Filesystem_Slot, Value_Of (M'Address));
+        (K.Call_Via_Endpoint_Capability, Filesystem_Slot, Value_Of (M'Address), CuBit.Kernel_ABI.Forever);
    begin
       Reply := M.Words (0);
       return Unsigned_32 (Tag and 16#FFFF_FFFF#);
@@ -372,7 +372,7 @@ package body CuBit.Libc_Files is
       M := (Label => CuBit.Channel_Protocol.OP_OPEN_PRODUCING,
             Length => CuBit.Channel_Protocol.Open_Words, Reserved => Connector,
             Words => [Words (0), Words (1), Words (2), Own_Grant], others => <>);
-      Tag := Kernel (K.Call_Via_Endpoint_Capability, Filesystem_Slot, Value_Of (M'Address));
+      Tag := Kernel (K.Call_Via_Endpoint_Capability, Filesystem_Slot, Value_Of (M'Address), CuBit.Kernel_ABI.Forever);
       if Unsigned_32 (Tag and 16#FFFF_FFFF#) /= K.Reply_OK then
          Revoke (Own_Grant);
          Own_Grant := 0;

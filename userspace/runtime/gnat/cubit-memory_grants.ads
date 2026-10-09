@@ -25,7 +25,7 @@ package CuBit.Memory_Grants is
    for Required_Access use (Read_Access => 0, Write_Access => 1);
 
    procedure Create_For_Process
-     (grantee   : CuBit.Messages.ProcessID;
+     (grantee   : CuBit.Messages.Process_ID;
       localAddr : System.Address;
       numPages  : Natural;
       readWrite : Boolean;
@@ -44,7 +44,7 @@ package CuBit.Memory_Grants is
 
    procedure Acquire
      (reference     : Grant_Reference;
-      expectedOwner : CuBit.Messages.ProcessID;
+      expectedOwner : CuBit.Messages.Process_ID;
       byteOffset    : Unsigned_64;
       byteLength    : Unsigned_64;
       requiredAccess : Required_Access;

@@ -1,0 +1,11 @@
+--  Hosted tests for CuAlloc's process heap over Linux memory.
+project CuAlloc_Tests is
+   for Source_Dirs use (".", "../../userspace/allocator/src", "../../userspace/allocator/process", "../../userspace/allocator/host");
+   for Excluded_Source_Files use ("heap_bridge.ads", "heap_bridge.adb", "cualloc_host.ads", "cualloc_host.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnato", "-gnatwa");
+   end Compiler;
+end CuAlloc_Tests;

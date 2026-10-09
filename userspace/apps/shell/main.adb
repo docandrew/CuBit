@@ -20,8 +20,12 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Config;
 with CuBit.Filesystems;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_IDs.Text;
+with CuBit.Process_IDs;
+with CuBit.Process_List;
 with CuBit.Display_Protocol;
 with CuBit.Desktop_Messages;
+with CuBit.Grant_References;
 with CuBit.Memory_Grants;
 with CuBit.Logging;
 with CuBit.Log_Protocol;
@@ -31,6 +35,8 @@ with CuBit.Protocols;
 with Font8x16;
 
 procedure main is
+   function Image (Process : Process_ID) return String
+     renames CuBit.Process_IDs.Text.Image;
    package DSP renames CuBit.Display_Protocol;
    package MG renames CuBit.Memory_Grants;
    use ASCII;
@@ -119,7 +125,7 @@ procedure main is
    ctrlDown  : Boolean := False;
 
    --  Foreground child process tracking
-   foregroundPID : Unsigned_64 := 0;
+   foregroundPID : Process_ID := No_Process;
    EVENT_CHILD_EXIT : constant Unsigned_32 := 16#0103#;
    EVENT_CAP_FAULT  : constant Unsigned_32 := 16#0104#;
 
@@ -136,9 +142,9 @@ procedure main is
    streamRdBuf : array (0 .. 511) of Unsigned_8;
 
    --  procmgr communication
-   procmgrPID : ProcessID := NO_PROCESS;
+   procmgrPID : Process_ID := No_Process;
    grantBuf   : System.Address := System.Null_Address;
-   grantId    : Unsigned_64 := 0;
+   spawnGrant : CuBit.Memory_Grants.Grant_Reference;
    GRANT_BUF_PAGES : constant := 1;
 
    --  Filesystem communication
@@ -254,10 +260,10 @@ procedure main is
    ---------------------------------------------------------------------------
    --  printDec - print a small unsigned number in decimal
    ---------------------------------------------------------------------------
-   procedure printDec (val : Unsigned_32) is
-      buf : String (1 .. 10);
+   procedure printDec (val : Unsigned_64) is
+      buf : String (1 .. 20);
       pos : Natural := buf'Last;
-      v   : Unsigned_32 := val;
+      v   : Unsigned_64 := val;
    begin
       if v = 0 then
          debugPrint ("0");
@@ -270,6 +276,11 @@ procedure main is
          pos := pos - 1;
       end loop;
       debugPrint (buf (pos + 1 .. buf'Last));
+   end printDec;
+
+   procedure printDec (val : Unsigned_32) is
+   begin
+      printDec (Unsigned_64 (val));
    end printDec;
 
    procedure printDec64 (val : Unsigned_64) is
@@ -333,7 +344,7 @@ procedure main is
    begin
       msg := CuBit.Desktop_Messages.From_Wire
         (DSP.Encode_Lease_Request (DSP.Release_Display));
-      tag := capCall (CAP_SLOT_DISPLAY, msg);
+      tag := capCall (CAP_SLOT_DISPLAY, msg, CuBit.Messages.Wait_Forever);
       msg.tag := tag;
       displayAttached := False;
       if displayGranted then
@@ -368,13 +379,13 @@ procedure main is
          msg.words (2) := Unsigned_64 (w);
          msg.words (3) := Unsigned_64 (h);
 
-         tag := capCall (CAP_SLOT_DISPLAY, msg);
+         tag := capCall (CAP_SLOT_DISPLAY, msg, CuBit.Messages.Wait_Forever);
          msg.tag := tag;
          exit when tag.length >= 1 and then msg.words (0) = DISPLAY_OK;
 
          displayAttached := False;
          exit when retry;
-         exit when foregroundPID /= 0;
+         exit when foregroundPID /= No_Process;
 
          --  Another display client, such as desktop.svc, may have temporarily
          --  attached its own buffer. Reattach the CLI buffer once so returning
@@ -399,7 +410,7 @@ procedure main is
       tag    : MessageTag;
       pages  : Unsigned_64;
       ok     : Boolean;
-      pid    : Unsigned_64;
+      pid    : Process_ID;
       acquire : Message := NULL_MESSAGE;
       layout : DSP.Buffer_Layout;
       rawBuffer : Unsigned_64;
@@ -418,20 +429,20 @@ procedure main is
       if displayGranted then
          releaseDisplayPresent;
       end if;
-      pid := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DISPLAY);
-      if pid = 0 or else pid = Unsigned_64'Last then
+      pid := Registered_Driver (DRIVER_DISPLAY);
+      if pid = No_Process then
          debugPrint ("shell: display service unavailable" & LF);
          return;
       end if;
       debugPrint ("shell: display service pid=");
-      printDec (Unsigned_32 (pid));
+      debugPrint (Image (pid));
       debugPrint ("" & LF);
 
       status.tag := (label  => OP_DISPLAY_GET_STATUS,
                      length => 0,
                      flags  => 0,
                      reserved  => 0);
-      tag := capCall (CAP_SLOT_DISPLAY, status);
+      tag := capCall (CAP_SLOT_DISPLAY, status, CuBit.Messages.Wait_Forever);
       status.tag := tag;
 
       if tag.length < 2 or else
@@ -449,7 +460,7 @@ procedure main is
 
       acquire := CuBit.Desktop_Messages.From_Wire
         (DSP.Encode_Lease_Request (DSP.Acquire_Display));
-      tag := capCall (CAP_SLOT_DISPLAY, acquire);
+      tag := capCall (CAP_SLOT_DISPLAY, acquire, CuBit.Messages.Wait_Forever);
       acquire.tag := tag;
       if tag.length < 1 or else acquire.words (0) /= DISPLAY_OK then
          debugPrint ("shell: display acquire denied" & LF);
@@ -491,7 +502,7 @@ procedure main is
       attach := CuBit.Desktop_Messages.From_Wire
         (DSP.Encode_Attachment ((displayGrant, layout)));
 
-      tag := capCall (CAP_SLOT_DISPLAY, attach);
+      tag := capCall (CAP_SLOT_DISPLAY, attach, CuBit.Messages.Wait_Forever);
       attach.tag := tag;
       if tag.label = OP_DISPLAY_ATTACH_BUFFER and then tag.length = 1 and then
         attach.words (0) = DISPLAY_OK
@@ -641,10 +652,10 @@ procedure main is
    end putStr;
 
    --  Print a decimal number to the console
-   procedure putDec (val : Unsigned_32) is
-      buf : String (1 .. 10);
+   procedure putDec (val : Unsigned_64) is
+      buf : String (1 .. 20);
       pos : Natural := buf'Last;
-      v   : Unsigned_32 := val;
+      v   : Unsigned_64 := val;
    begin
       if v = 0 then
          putChar ('0');
@@ -657,6 +668,11 @@ procedure main is
          pos := pos - 1;
       end loop;
       putStr (buf (pos + 1 .. buf'Last));
+   end putDec;
+
+   procedure putDec (val : Unsigned_32) is
+   begin
+      putDec (Unsigned_64 (val));
    end putDec;
 
    function hasSuffix (s, suffix : String) return Boolean is
@@ -770,7 +786,7 @@ procedure main is
       msg : Message;
       tag : MessageTag;
    begin
-      if procmgrPID = NO_PROCESS then
+      if procmgrPID = No_Process then
          putStr ("error: procmgr not found" & LF);
          return;
       end if;
@@ -813,16 +829,16 @@ procedure main is
                      length => Unsigned_8 (totalLen),
                      flags  => 0,
                      reserved  => 0);
-         msg.words (0) := grantId;
+         msg.words (0) := CuBit.Grant_References.Encode (spawnGrant);
          msg.words (1) := 5;  -- default priority
          msg.words (2) := 0;  -- no sandbox override from shell
          msg.words (3) := Unsigned_64 (cwdLen);
-         tag := capCall (CAP_SLOT_PROCMGR, msg);
+         tag := capCall (CAP_SLOT_PROCMGR, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label = REPLY_OK then
          putStr ("spawned PID ");
-         putDec (Unsigned_32 (msg.words (0)));
+         putDec (msg.words (0));
          putChar (LF);
          if shouldRunInBackground (filename) then
             renderDirty;
@@ -835,9 +851,9 @@ procedure main is
             renderDirty;
          end if;
 
-         foregroundPID := msg.words (0);
+         foregroundPID := From_Word (msg.words (0));
          debugPrint ("shell: foregroundPID set to ");
-         printDec (Unsigned_32 (foregroundPID));
+         debugPrint (Image (foregroundPID));
          debugPrint ("" & LF);
 
          --  Open a channel on the child's first outlet, without waiting.
@@ -873,7 +889,7 @@ procedure main is
       msg : Message;
       tag : MessageTag;
    begin
-      if procmgrPID = NO_PROCESS then
+      if procmgrPID = No_Process then
          putStr ("error: procmgr not found" & LF);
          return;
       end if;
@@ -914,16 +930,16 @@ procedure main is
                      length => Unsigned_8 (totalLen),
                      flags  => 0,
                      reserved  => 0);
-         msg.words (0) := grantId;
+         msg.words (0) := CuBit.Grant_References.Encode (spawnGrant);
          msg.words (1) := 5;
          msg.words (2) := 0;  -- no sandbox override from shell
          msg.words (3) := Unsigned_64 (cwdLen);
-         tag := capCall (CAP_SLOT_PROCMGR, msg);
+         tag := capCall (CAP_SLOT_PROCMGR, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label = REPLY_OK then
          putStr ("[bg] PID ");
-         putDec (Unsigned_32 (msg.words (0)));
+         putDec (msg.words (0));
          putChar (LF);
       else
          putStr ("bg: spawn failed" & LF);
@@ -934,8 +950,8 @@ procedure main is
    --  cmdKill - kill a process by PID
    ---------------------------------------------------------------------------
    procedure cmdKill (args : String) is
-      pid : Unsigned_64 := 0;
-      ch  : Character;
+      pid : Process_ID;
+      valid : Boolean;
       ret : Unsigned_64;
    begin
       if args'Length = 0 then
@@ -943,27 +959,20 @@ procedure main is
          return;
       end if;
 
-      --  Parse decimal PID from args
-      for i in args'Range loop
-         ch := args (i);
-         if ch >= '0' and ch <= '9' then
-            pid := pid * 10 +
-               Unsigned_64 (Character'Pos (ch) - Character'Pos ('0'));
-         else
-            putStr ("kill: invalid PID" & LF);
-            return;
-         end if;
-      end loop;
-
-      if pid = 0 or pid > 255 then
-         putStr ("kill: PID out of range" & LF);
+      --  The process, as ps prints it (its identity in decimal).
+      CuBit.Process_IDs.Parse (args, pid, valid);
+      if not valid then
+         putStr ("kill: invalid PID" & LF);
+         return;
+      elsif pid = No_Process then
+         putStr ("kill: no such process" & LF);
          return;
       end if;
 
       ret := killProcess (pid);
       if ret = 0 then
          putStr ("killed PID ");
-         putDec (Unsigned_32 (pid));
+         putStr (Image (pid));
          putChar (LF);
       else
          putStr ("kill: failed (no permission or invalid PID)" & LF);
@@ -1043,7 +1052,7 @@ procedure main is
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg);
+         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label /= REPLY_OK then
@@ -1064,7 +1073,7 @@ procedure main is
          msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg);
+         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
 
          if tag.label /= REPLY_OK then
             exit;
@@ -1101,7 +1110,7 @@ procedure main is
                   flags  => 0,
                   reserved  => 0);
       msg.words (0) := handle;
-      tag := capCall (CAP_SLOT_FS, msg);
+      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
 
       putChar (LF);
       renderDirty;
@@ -1123,7 +1132,7 @@ procedure main is
 
       msg := CuBit.Filesystems.Open_Directory_Request
         (fsGrant, CuBit.Filesystems.Path_Byte_Count (resolvedLen));
-      tag := capCall (CAP_SLOT_FS, msg);
+      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
 
       if tag.label /= CuBit.Filesystems.REPLY_OK then
          putStr ("ls: cannot list directory" & LF);
@@ -1134,7 +1143,7 @@ procedure main is
       loop
          msg := CuBit.Filesystems.Read_Directory_Page_Request
            (directory, fsGrant);
-         tag := capCall (CAP_SLOT_FS, msg);
+         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
          if tag.label /= CuBit.Filesystems.REPLY_OK then
             putStr ("ls: directory read failed" & LF);
             exit;
@@ -1177,7 +1186,7 @@ procedure main is
       end loop;
 
       msg := CuBit.Filesystems.Close_Directory_Request (directory);
-      tag := capCall (CAP_SLOT_FS, msg);
+      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
       if tag.label /= CuBit.Filesystems.REPLY_OK then
          putStr ("ls: directory close failed" & LF);
       end if;
@@ -1246,7 +1255,7 @@ procedure main is
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := O_CREAT or O_TRUNC or O_WRONLY;
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg);
+         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
 
          if tag.label /= REPLY_OK then
             putStr ("write: cannot open file" & LF);
@@ -1275,7 +1284,7 @@ procedure main is
          msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (text'Length);
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg);
+         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
 
          if tag.label /= REPLY_OK then
             putStr ("write: write failed" & LF);
@@ -1292,7 +1301,7 @@ procedure main is
                      flags  => 0,
                      reserved  => 0);
          msg.words (0) := handle;
-         tag := capCall (CAP_SLOT_FS, msg);
+         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
       end;
    end cmdWrite;
 
@@ -1346,10 +1355,10 @@ procedure main is
    ---------------------------------------------------------------------------
    --  putDecRight - print a decimal number right-justified in a field
    ---------------------------------------------------------------------------
-   procedure putDecRight (val : Unsigned_32; width : Natural) is
-      buf : String (1 .. 10);
+   procedure putDecRight (val : Unsigned_64; width : Natural) is
+      buf : String (1 .. 20);
       pos : Natural := buf'Last;
-      v   : Unsigned_32 := val;
+      v   : Unsigned_64 := val;
       len : Natural;
    begin
       if v = 0 then
@@ -1542,15 +1551,15 @@ procedure main is
             (3, "netstack    ", 8),
             (4, "procmgr     ", 7),
             (5, "nvme        ", 4));
-         pid : Unsigned_64;
+         pid : Process_ID;
       begin
          for d of drivers loop
-            pid := getInfo (SYSINFO_REGISTERED_DRIVER, d.id);
-            if pid /= 0 and pid /= Unsigned_64'Last then
+            pid := Registered_Driver (d.id);
+            if pid /= No_Process then
                putStr ("  ");
                putStr (d.name (1 .. d.nlen));
                putStr (" pid=");
-               putDec (Unsigned_32 (pid));
+               putStr (Image (pid));
                putChar (LF);
             end if;
          end loop;
@@ -1561,35 +1570,35 @@ procedure main is
    --  cmdVolumes - show available storage volumes
    ---------------------------------------------------------------------------
    procedure cmdVolumes is
-      pid : Unsigned_64;
+      pid : Process_ID;
    begin
       putStr ("SCHEME      DRIVER  PID" & LF);
 
       --  Ramdisk is always available if FS is up
       if fsReady then
          declare
-            fsPid : constant Unsigned_64 :=
-               getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_FS);
+            fsPid : constant Process_ID :=
+               Registered_Driver (DRIVER_FS);
          begin
             putStr ("(ramdisk)   cpio     ");
-            putDec (Unsigned_32 (fsPid));
+            putStr (Image (fsPid));
             putChar (LF);
          end;
       end if;
 
       --  ATA
-      pid := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_ATA);
-      if pid /= 0 and pid /= Unsigned_64'Last then
+      pid := Registered_Driver (DRIVER_ATA);
+      if pid /= No_Process then
          putStr ("@ata:0/     ext2     ");
-         putDec (Unsigned_32 (pid));
+         putStr (Image (pid));
          putChar (LF);
       end if;
 
       --  NVMe
-      pid := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_NVME);
-      if pid /= 0 and pid /= Unsigned_64'Last then
+      pid := Registered_Driver (DRIVER_NVME);
+      if pid /= No_Process then
          putStr ("@nvme:0/    ext2     ");
-         putDec (Unsigned_32 (pid));
+         putStr (Image (pid));
          putChar (LF);
       end if;
    end cmdVolumes;
@@ -1601,6 +1610,8 @@ procedure main is
    PS_BUF_SIZE : constant := 8192;  -- 256 entries x 32 bytes
 
    procedure cmdPs is
+      --  Identities are up to 20 digits; most print far shorter.
+      PID_COLUMN : constant := 12;
       psBuf   : System.Address;
       ret     : Unsigned_64;
       count   : Unsigned_64;
@@ -1634,8 +1645,8 @@ procedure main is
                         PS_BUF_SIZE);
 
       --  Print header
-      putStr ("PID  NAME              STATE      CPU  PRI   MEM" & LF);
-      putStr ("---  ----              -----      ---  ---   ---" & LF);
+      putStr ((1 .. PID_COLUMN - 3 => ' ') & "PID  NAME              STATE      CPU  PRI   MEM" & LF);
+      putStr ((1 .. PID_COLUMN - 3 => ' ') & "---  ----              -----      ---  ---   ---" & LF);
 
       --  Parse entries, skip unnamed SUSPENDED processes
       for i in 0 .. count - 1 loop
@@ -1643,12 +1654,13 @@ procedure main is
             offset : constant Storage_Offset := Storage_Offset (i * 32);
             entryAddr : constant System.Address := psBuf + offset;
 
-            pidVal : Unsigned_16 with Import, Address => entryAddr;
-            stateVal : Unsigned_8 with Import, Address => entryAddr + 2;
-            cpuVal : Unsigned_8 with Import, Address => entryAddr + 3;
-            priVal : Unsigned_16 with Import, Address => entryAddr + 4;
-            nameField : String (1 .. 16) with Import, Address => entryAddr + 8;
-            framesVal : Unsigned_32 with Import, Address => entryAddr + 24;
+            Item : constant CuBit.Process_List.Process_Entry :=
+              CuBit.Process_List.Get (psBuf, Natural (i));
+            pidVal : constant Process_ID := Item.Identity;
+            stateVal : constant Unsigned_8 := Item.State;
+            cpuVal : constant Unsigned_8 := Item.CPU;
+            nameField : String renames Item.Name;
+            framesVal : constant Unsigned_32 := Item.Frames;
 
             stateIdx : Natural;
             nameEnd  : Natural := 0;
@@ -1670,8 +1682,8 @@ procedure main is
                goto Next_Entry;
             end if;
 
-            --  PID right-justified in 3 chars
-            putDecRight (Unsigned_32 (pidVal), 3);
+            --  The identity (KERN-003), right-justified
+            putStr ((1 .. Natural'Max (0, PID_COLUMN - Image (pidVal)'Length) => ' ') & Image (pidVal));
             putStr ("  ");
 
             if nameEnd > 0 then
@@ -1690,17 +1702,17 @@ procedure main is
             putStr ("  ");
 
             --  CPU
-            putDecRight (Unsigned_32 (cpuVal), 2);
+            putDecRight (Unsigned_64 (cpuVal), 2);
             putStr ("  ");
 
             --  Priority (signed)
-            pri := Integer (Integer_16 (priVal));
+            pri := Integer (Item.Priority);
             putDecSigned (pri);
 
             --  Memory (frames * 4 = KB)
             memKB := framesVal * 4;
             putStr ("  ");
-            putDecRight (memKB, 5);
+            putDecRight (Unsigned_64 (memKB), 5);
             putChar ('K');
 
             putChar (LF);
@@ -1740,7 +1752,7 @@ procedure main is
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg);
+         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label /= REPLY_OK then
@@ -1759,7 +1771,7 @@ procedure main is
          msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg);
+         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
 
          exit when tag.label /= REPLY_OK;
 
@@ -1827,7 +1839,7 @@ procedure main is
       msg.tag := (label  => OP_CLOSE,
                   length => 1, flags => 0, reserved => 0);
       msg.words (0) := handle;
-      tag := capCall (CAP_SLOT_FS, msg);
+      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
 
       renderDirty;
    end cmdHexdump;
@@ -1914,7 +1926,7 @@ procedure main is
             msg.words (1) := Unsigned_64 (resolvedLen);
             msg.words (2) := 0;
             msg.words (3) := fsGrant.generation;
-            tag := capCall (CAP_SLOT_FS, msg);
+            tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
          end;
 
          if tag.label /= REPLY_OK then
@@ -1933,7 +1945,7 @@ procedure main is
             msg.words (1) := fsGrant.slot;
             msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
             msg.words (3) := fsGrant.generation;
-            tag := capCall (CAP_SLOT_FS, msg);
+            tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
 
             exit when tag.label /= REPLY_OK;
 
@@ -1964,7 +1976,7 @@ procedure main is
          msg.tag := (label  => OP_CLOSE,
                      length => 1, flags => 0, reserved => 0);
          msg.words (0) := handle;
-         tag := capCall (CAP_SLOT_FS, msg);
+         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
 
          renderDirty;
       end;
@@ -2004,7 +2016,7 @@ procedure main is
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg);
+         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label /= REPLY_OK then
@@ -2023,7 +2035,7 @@ procedure main is
          msg.words (1) := fsGrant.slot;
          msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg);
+         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
 
          exit when tag.label /= REPLY_OK;
 
@@ -2063,15 +2075,15 @@ procedure main is
       msg.tag := (label  => OP_CLOSE,
                   length => 1, flags => 0, reserved => 0);
       msg.words (0) := handle;
-      tag := capCall (CAP_SLOT_FS, msg);
+      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
 
       --  Print results
       putStr ("  ");
-      putDecRight (lines, 6);
+      putDecRight (Unsigned_64 (lines), 6);
       putStr ("  ");
-      putDecRight (words, 6);
+      putDecRight (Unsigned_64 (words), 6);
       putStr ("  ");
-      putDecRight (bytes, 6);
+      putDecRight (Unsigned_64 (bytes), 6);
       putStr ("  ");
       putStr (path);
       putChar (LF);
@@ -2122,7 +2134,7 @@ procedure main is
       msg.words (0) := handle;
       msg.words (1) := offset;
       msg.words (2) := 0;  -- SEEK_SET
-      tag := capCall (CAP_SLOT_FS, msg);
+      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
    end seekTo;
 
    --  Read up to count bytes into fsBuf; returns actual bytes read
@@ -2139,7 +2151,7 @@ procedure main is
       msg.words (1) := fsGrant.slot;
       msg.words (2) := count;
       msg.words (3) := fsGrant.generation;
-      tag := capCall (CAP_SLOT_FS, msg);
+      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
       if tag.label /= REPLY_OK then
          return 0;
       end if;
@@ -2187,7 +2199,7 @@ procedure main is
          msg.words (1) := Unsigned_64 (resolvedLen);
          msg.words (2) := 0;
          msg.words (3) := fsGrant.generation;
-         tag := capCall (CAP_SLOT_FS, msg);
+         tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label /= REPLY_OK then
@@ -2709,7 +2721,7 @@ procedure main is
       msg.tag := (label  => OP_CLOSE,
                   length => 1, flags => 0, reserved => 0);
       msg.words (0) := handle;
-      tag := capCall (CAP_SLOT_FS, msg);
+      tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
 
       renderDirty;
    end cmdInspect;
@@ -2887,7 +2899,7 @@ procedure main is
                putDec (Unsigned_32 (info.capSlot));
                putChar (LF);
                putStr ("  pid=");
-               putDec (Unsigned_32 (info.pid));
+               putStr (Image (info.pid));
                putChar (LF);
             else
                putStr ("scheme not found: " & schemeName & LF);
@@ -2964,7 +2976,7 @@ procedure main is
       msg.tag := (label  => OP_NET_IF_DETAIL,
                   length => 1, flags => 0, reserved => 0);
       msg.words (0) := 0;  -- interface 0
-      tag := capCall (CAP_SLOT_NET, msg);
+      tag := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
 
       if tag.label /= REPLY_OK then
          putStr ("error: no interfaces" & LF);
@@ -3046,7 +3058,7 @@ procedure main is
          msg.tag := (label  => OP_NET_ROUTE_LIST,
                      length => 1, flags => 0, reserved => 0);
          msg.words (0) := startIdx;
-         tag := capCall (CAP_SLOT_NET, msg);
+         tag := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
 
          if tag.label /= REPLY_OK then
             exit;
@@ -3140,7 +3152,7 @@ procedure main is
             msg.words (0) := dstPacked;
             msg.words (1) := Unsigned_64 (seq);
             msg.words (2) := sendTs;
-            tag := capCall (CAP_SLOT_NET, msg);
+            tag := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
 
             if tag.label = REPLY_OK then
                putStr ("reply from ");
@@ -3202,7 +3214,7 @@ procedure main is
          end loop;
       end;
 
-      tag := capCall (CAP_SLOT_NET, msg);
+      tag := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
 
       if tag.label = REPLY_OK then
          putStr ("Address: ");
@@ -3218,8 +3230,8 @@ procedure main is
    ---------------------------------------------------------------------------
    procedure cmdStreams (args : String) is
       OP_STREAM_LIST : constant Unsigned_32 := 16#0705#;
-      pid     : Unsigned_64 := 0;
-      ch      : Character;
+      pid     : Process_ID;
+      valid   : Boolean;
       msg     : Message;
       comp    : CompletionEntry;
       ok      : Boolean;
@@ -3232,20 +3244,13 @@ procedure main is
          return;
       end if;
 
-      --  Parse decimal PID
-      for i in args'Range loop
-         ch := args (i);
-         if ch >= '0' and ch <= '9' then
-            pid := pid * 10 +
-               Unsigned_64 (Character'Pos (ch) - Character'Pos ('0'));
-         else
-            putStr ("streams: invalid PID" & LF);
-            return;
-         end if;
-      end loop;
-
-      if pid = 0 or pid > 255 then
-         putStr ("streams: PID out of range" & LF);
+      --  The process, as ps prints it (its identity in decimal).
+      CuBit.Process_IDs.Parse (args, pid, valid);
+      if not valid then
+         putStr ("streams: invalid PID" & LF);
+         return;
+      elsif pid = No_Process then
+         putStr ("streams: no such process" & LF);
          return;
       end if;
 
@@ -3258,7 +3263,7 @@ procedure main is
          endpointSlot : CapabilitySlot;
          hasEndpoint : Boolean;
       begin
-         Find_Endpoint_Capability (ProcessID (pid), endpointSlot, hasEndpoint);
+         Find_Endpoint_Capability (pid, endpointSlot, hasEndpoint);
          ok := hasEndpoint and then
            capSubmit (endpointSlot, msg, STREAM_LIST_TOKEN);
       end;
@@ -3276,7 +3281,7 @@ procedure main is
                count   := Unsigned_32 (comp.msg.words (1));
 
                putStr ("PID ");
-               putDec (Unsigned_32 (pid));
+               putStr (Image (pid));
                putStr (": ");
                putDec (count);
                putStr (" stream(s)" & LF);
@@ -3291,7 +3296,7 @@ procedure main is
                end loop;
             elsif comp.msg.tag.label = REPLY_ERR then
                putStr ("streams: error from PID ");
-               putDec (Unsigned_32 (pid));
+               putStr (Image (pid));
                putChar (LF);
             else
                putStr ("streams: unexpected reply" & LF);
@@ -3307,7 +3312,7 @@ procedure main is
       end loop;
 
       putStr ("streams: no response from PID ");
-      putDec (Unsigned_32 (pid));
+      putStr (Image (pid));
       putChar (LF);
    end cmdStreams;
 
@@ -3477,7 +3482,7 @@ procedure main is
 
       --  Ctrl+C: kill foreground process
       if ctrlDown and code = 16#2E# then
-         if foregroundPID /= 0 then
+         if foregroundPID /= No_Process then
             CuBit.Streams.Unsubscribe (childStream);
             streamSubPending := False;
             declare
@@ -3485,7 +3490,7 @@ procedure main is
             begin
                ret := killProcess (foregroundPID);
                debugPrint ("shell: Ctrl+C kill pid=");
-               printDec (Unsigned_32 (foregroundPID));
+               debugPrint (Image (foregroundPID));
                debugPrint (" ret=");
                printDec (Unsigned_32 (ret));
                debugPrint ("" & LF);
@@ -3522,7 +3527,7 @@ procedure main is
          renderDirty;
          dispatchCommand;
          lineLen := 0;
-         if foregroundPID = 0 then
+         if foregroundPID = No_Process then
             printPrompt;
          end if;
       elsif ch = 8 then
@@ -3547,14 +3552,14 @@ procedure main is
    --  claimLegacyInput - own raw input only without a desktop session
    ---------------------------------------------------------------------------
    procedure claimLegacyInput is
-      desktopPID : constant Unsigned_64 :=
-        getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP);
+      desktopPID : constant Process_ID :=
+        Registered_Driver (DRIVER_DESKTOP);
       ignore : Unsigned_64;
    begin
       --  DRIVER_KEYBOARD/DRIVER_MOUSE are still transitional single-owner
       --  routes.  A legacy framebuffer shell must not overwrite an active
       --  desktop session merely because it happened to start later.
-      if desktopPID /= 0 and then desktopPID /= Unsigned_64'Last then
+      if desktopPID /= No_Process then
          debugPrint
            ("shell: desktop owns input; raw registration skipped" & LF);
          return;
@@ -3631,9 +3636,8 @@ begin
       retries : Natural := 0;
    begin
       loop
-         procmgrPID := ProcessID (
-            getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_PROCMGR));
-         exit when procmgrPID /= 0 or retries > 50;
+         procmgrPID := Registered_Driver (DRIVER_PROCMGR);
+         exit when procmgrPID /= No_Process or retries > 50;
          retries := retries + 1;
          declare
             ignore : Unsigned_64;
@@ -3643,9 +3647,9 @@ begin
       end loop;
    end;
 
-   if procmgrPID /= NO_PROCESS then
+   if procmgrPID /= No_Process then
       debugPrint ("shell: found procmgr pid=");
-      printDec (Unsigned_32 (procmgrPID));
+      debugPrint (Image (procmgrPID));
       debugPrint ("" & LF);
 
       --  Allocate grant buffer for procmgr communication
@@ -3656,16 +3660,16 @@ begin
          ret := syscall (SYSCALL_SBRK, Unsigned_64 (GRANT_BUF_PAGES * 4096));
          if ret /= Unsigned_64'Last then
             grantBuf := To_Address (Integer_Address (ret));
-            createGrant (
+            CuBit.Memory_Grants.Create_For_Process (
                grantee   => procmgrPID,
                localAddr => grantBuf,
                numPages  => GRANT_BUF_PAGES,
                readWrite => True,
-               grantId   => grantId,
+               reference => spawnGrant,
                success   => ok);
             if not ok then
                debugPrint ("shell: grant to procmgr failed" & LF);
-               procmgrPID := NO_PROCESS;
+               procmgrPID := No_Process;
             end if;
          end if;
       end;
@@ -3701,29 +3705,29 @@ begin
 
    --  Check if netstack is available
    declare
-      pid : Unsigned_64;
+      pid : Process_ID;
    begin
-      pid := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_NETSTACK);
-      if pid /= 0 and pid /= Unsigned_64'Last then
+      pid := Registered_Driver (DRIVER_NETSTACK);
+      if pid /= No_Process then
          netstackReady := True;
          debugPrint ("shell: netstack available pid=");
-         printDec (Unsigned_32 (pid));
+         debugPrint (Image (pid));
          debugPrint ("" & LF);
       end if;
    end;
 
    --  Auto-detect cwd from registered disk driver
    declare
-      pid : Unsigned_64;
+      pid : Process_ID;
    begin
-      pid := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_NVME);
-      if pid /= 0 and pid /= Unsigned_64'Last then
+      pid := Registered_Driver (DRIVER_NVME);
+      if pid /= No_Process then
          cwdBuf (1 .. 8) := "@nvme:0/";
          cwdLen := 8;
          debugPrint ("shell: cwd=@nvme:0/" & LF);
       else
-         pid := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_ATA);
-         if pid /= 0 and pid /= Unsigned_64'Last then
+         pid := Registered_Driver (DRIVER_ATA);
+         if pid /= No_Process then
             cwdBuf (1 .. 7) := "@ata:0/";
             cwdLen := 7;
             debugPrint ("shell: cwd=@ata:0/" & LF);
@@ -3755,7 +3759,7 @@ begin
 
    --  Main loop: poll keyboard events, or wait for foreground child
    loop
-      if foregroundPID /= 0 then
+      if foregroundPID /= No_Process then
          --  Poll for child exit event. We use Poll_Event because the
          --  legacy blocking Wait_Event path only returns the tag.
          declare
@@ -3768,15 +3772,15 @@ begin
                debugPrint (" w0=");
                printDec64 (eventMsg.words (0));
                debugPrint (" want=");
-               printDec64 (foregroundPID);
+               debugPrint (Image (foregroundPID));
                debugPrint ("" & LF);
             end if;
             if found and then
                eventMsg.tag.label = EVENT_CHILD_EXIT and then
-               eventMsg.words (0) = foregroundPID
+               From_Word (eventMsg.words (0)) = foregroundPID
             then
                debugPrint ("shell: child exited, reclaiming input" & LF);
-               foregroundPID := 0;
+               foregroundPID := No_Process;
                --  Its pages stay until this side lets go of them.
                CuBit.Streams.Unsubscribe (childStream);
                --  Note: streamSubPending is NOT cleared here.  If the
@@ -3799,7 +3803,7 @@ begin
                eventMsg.tag.label = EVENT_CAP_FAULT
             then
                debugPrint ("shell: cap fault pid=");
-               printDec (Unsigned_32 (eventMsg.words (0)));
+               printDec (eventMsg.words (0));
                debugPrint (" syscall=");
                printDec (Unsigned_32 (eventMsg.words (1)));
                debugPrint ("" & LF);
@@ -3807,7 +3811,7 @@ begin
                eventMsg.tag.label = CuBit.Streams.OP_STREAM_AVAILABLE
             then
                debugPrint ("shell: stream available pid=");
-               printDec (Unsigned_32 (eventMsg.words (0)));
+               printDec (eventMsg.words (0));
                debugPrint (" mask=");
                printDec (Unsigned_32 (eventMsg.words (1)));
                debugPrint ("" & LF);
@@ -3822,7 +3826,7 @@ begin
                   if sc = 16#1D# then
                      ctrlDown := not isRel;
                   elsif not isRel and ctrlDown and sc = 16#2E# then
-                     if foregroundPID /= 0 then
+                     if foregroundPID /= No_Process then
                         CuBit.Streams.Unsubscribe (childStream);
                         streamSubPending := False;
                         declare
@@ -3830,7 +3834,7 @@ begin
                         begin
                            ret := killProcess (foregroundPID);
                            debugPrint ("shell: Ctrl+C kill pid=");
-                           printDec (Unsigned_32 (foregroundPID));
+                           debugPrint (Image (foregroundPID));
                            debugPrint (" ret=");
                            printDec (Unsigned_32 (ret));
                            debugPrint ("" & LF);
@@ -3852,7 +3856,7 @@ begin
                         subscribed : Boolean;
                      begin
                         CuBit.Streams.Subscribe_Finish (childStream, comp.msg, subscribed);
-                        if subscribed and then foregroundPID = 0 then
+                        if subscribed and then foregroundPID = No_Process then
                            CuBit.Streams.Unsubscribe (childStream);
                         elsif subscribed then
                            debugPrint ("shell: stream subscribed" & LF);
@@ -3917,7 +3921,7 @@ begin
                   end;
                elsif eventMsg.tag.label = EVENT_CAP_FAULT then
                   putStr ("cap fault: pid=");
-                  putDec (Unsigned_32 (eventMsg.words (0)));
+                  putDec (eventMsg.words (0));
                   putStr (" syscall=");
                   putDec (Unsigned_32 (eventMsg.words (1)));
                   putChar (LF);
@@ -3937,7 +3941,7 @@ begin
       --  The child may have replied before dying (completion pending) or
       --  died before processing the subscribe (no completion ever comes).
       --  Poll a few times, then give up.
-      if streamSubPending and foregroundPID = 0 then
+      if streamSubPending and foregroundPID = No_Process then
          declare
             comp : CompletionEntry;
             ret  : Unsigned_64;

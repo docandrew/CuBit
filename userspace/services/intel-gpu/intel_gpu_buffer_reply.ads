@@ -34,6 +34,8 @@ package Intel_GPU_Buffer_Reply with SPARK_Mode is
       end case;
    end record;
    function From_View (View : Extent_View) return Backing;
+   -- Logical size follows the committed extent view, not the per-request
+   -- Page_Count limit. This does not allocate memory or widen wire requests.
    -- Constructor for genuinely contiguous backing (including the existing
    -- supervisor reply during transport migration). Consumers see only View.
    function From_Linear (DMA, CPU, Bytes, Arena_DMA : Unsigned_64) return Backing;
@@ -54,6 +56,7 @@ package Intel_GPU_Buffer_Reply with SPARK_Mode is
    function Valid
      (Pages : Layout.Page_Count; DMA, CPU, Bytes : Unsigned_64) return Boolean is
      (Bytes = Unsigned_64 (Pages) * 4096 and then
+      Bytes <= Layout.Capacity and then
       CPU >= Layout.CPU_Base and then CPU mod 4096 = 0 and then
       CPU - Layout.CPU_Base <= Layout.Capacity - Bytes and then
       DMA >= CPU - Layout.CPU_Base and then

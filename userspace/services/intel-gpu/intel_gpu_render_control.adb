@@ -53,7 +53,8 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
       Request : Words; Response : out Words;
       Recipient_Ready : Boolean := False) is
       Recipient : constant Unsigned_64 := Request (1);
-      PID : constant Unsigned_64 := Recipient mod 2 ** 32;
+      --  The recipient's process identity (KERN-003).
+      PID : constant Unsigned_64 := Recipient;
       Tag : Unsigned_64 := Request (2);
       Index : Sessions.Slot_Index;
       Accepted : Boolean;
@@ -62,7 +63,7 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
       if not Is_Broker (Object, Sender, Stamped_Tag) then return; end if;
       Response (0) := Bad_Request;
       if Request_Label /= Label or Length /= 4 or Flags /= 0 or Reserved /= 0 or
-        Request (0) /= Version or PID = 0 or Recipient / 2 ** 32 = 0 or
+        Request (0) /= Version or PID = 0 or
         Request (3) > Abort_Session then return; end if;
       if Request (3) = Reserve then
          if Tag /= 0 then return; end if;
@@ -118,6 +119,13 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
    function Resolve_Retired
      (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Unsigned_64 is
      (Sessions.Resolve_Retired (Object.Sessions, Sender, Stamped_Tag));
+   function Retired_Admission (Object : Controller; Tag : Unsigned_64) return Boolean is
+      Index : constant Sessions.Slot_Index := Storage_Index (Object, Tag);
+   begin
+      return Index /= 0 and then
+        Sessions.Resolve_Retired
+          (Object.Sessions, Object.Recipients (Index), Tag) = Tag;
+   end Retired_Admission;
    procedure Close_Own
      (Object : in out Controller; Sender, Stamped_Tag : Unsigned_64;
       Request_Label : Unsigned_32; Length, Flags : Unsigned_8;
@@ -146,7 +154,7 @@ package body Intel_GPU_Render_Control with SPARK_Mode is
    begin
       if Index = 0 or else Identity = 0 then return; end if;
       if Object.Recipients (Index) = Identity then
-         Sessions.Close (Object.Sessions, Identity mod 2 ** 32, Tag);
+         Sessions.Close (Object.Sessions, Identity, Tag);
       end if;
    end Reject_Delivery;
    procedure Quarantine (Object : in out Controller) is

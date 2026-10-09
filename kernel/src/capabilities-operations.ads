@@ -12,6 +12,8 @@
 --
 -- All routines are SPARK-provable linear scans over the 64-element table.
 -------------------------------------------------------------------------------
+with Process_Identities;
+
 package Capabilities.Operations with
     SPARK_Mode => On
 is
@@ -381,11 +383,14 @@ is
     procedure grantInitialCaps (table :    out CapabilityTable;
                                 pid   : in     Unsigned_64;
                                 gen   : in     Generation) with
+        Pre  => pid <= Process_Identities.Slot'Last,
         Post =>
           table(0) =
             (capType  => CAP_ENDPOINT,
              rights   => READ_WRITE,
-             authorityTag => pid,
+             authorityTag => Process_Identities.To_Word (Process_Identities.Encode
+                               (Process_Identities.Slot (pid),
+                                Process_Identities.Generation (gen))),
              object   => (ref => pid, param => 0),
              gen      => gen)
           and then table(3) =

@@ -3,7 +3,7 @@ with Native_GPU_Query;
 package body GPU_Budget_Probe is
    use CuBit.Messages;
    Sequence : Natural := 0;
-   procedure Server (Sender : ProcessID; Request : Message) is
+   procedure Server (Sender : Process_ID; Request : Message) is
       Response : Message := NULL_MESSAGE;
       Delivered : Unsigned_64;
    begin

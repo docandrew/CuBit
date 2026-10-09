@@ -18,7 +18,7 @@ package Config_Object_Dispatch with SPARK_Mode is
    function Waiting (Object : State) return Boolean;
    procedure Handle
      (Object : in out State; Store : in out Config_Typed_Store.State;
-      Authority : Config_Authority.Authority_State; Sender : CuBit.Messages.ProcessID;
+      Authority : Config_Authority.Authority_State; Sender : CuBit.Messages.Process_ID;
       Action : Config_Object_Messages.Operation; Request : CuBit.Messages.Message;
       Input : Config_Object_Messages.Frame; Storage_Token : Interfaces.Unsigned_64;
       Reply_Reserved : Boolean; Reply : out CuBit.Messages.Message;

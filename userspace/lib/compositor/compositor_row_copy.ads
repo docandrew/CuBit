@@ -27,6 +27,34 @@ package Compositor_Row_Copy with SPARK_Mode, Pure is
             Wide (Readback_Plan'Result.Rows - 1) * Wide (Target_Pitch) +
             Wide (Readback_Plan'Result.Row_Bytes) <= Wide (Target_Bytes)
         else Readback_Plan'Result = (0, 0, 0, 0));
+   -- Same-coordinate rectangle from tight BGRA readback into a pitched output.
+   -- First_Row is relative to Repair.Top. Invalid geometry or insufficient
+   -- capacity/budget rejects without progress; the caller retains both owners.
+   function Readback_Region_Plan
+     (Width, Height, First_Row : G.Pixel_Edge;
+      Repair : G.Physical_Rectangle;
+      Source_Bytes, Target_Bytes, Target_Pitch, Byte_Budget : Natural)
+      return Readback_Batch
+     with Post =>
+       (if Readback_Region_Plan'Result.Rows > 0 then
+          Repair.Left < Repair.Right and Repair.Top < Repair.Bottom and
+          Repair.Right <= Width and Repair.Bottom <= Height and
+          Wide (First_Row) + Wide (Readback_Region_Plan'Result.Rows) <=
+            Wide (Repair.Bottom) - Wide (Repair.Top) and
+          Wide (Readback_Region_Plan'Result.Row_Bytes) =
+            (Wide (Repair.Right) - Wide (Repair.Left)) * 4 and
+          Wide (Readback_Region_Plan'Result.Source_Offset) =
+            (Wide (Repair.Top) + Wide (First_Row)) * Wide (Width) * 4 + Wide (Repair.Left) * 4 and
+          Wide (Readback_Region_Plan'Result.Target_Offset) =
+            (Wide (Repair.Top) + Wide (First_Row)) * Wide (Target_Pitch) + Wide (Repair.Left) * 4 and
+          Wide (Readback_Region_Plan'Result.Rows) * Wide (Readback_Region_Plan'Result.Row_Bytes) <= Wide (Byte_Budget) and
+          Wide (Readback_Region_Plan'Result.Source_Offset) +
+            Wide (Readback_Region_Plan'Result.Rows - 1) * Wide (Width) * 4 +
+            Wide (Readback_Region_Plan'Result.Row_Bytes) <= Wide (Source_Bytes) and
+          Wide (Readback_Region_Plan'Result.Target_Offset) +
+            Wide (Readback_Region_Plan'Result.Rows - 1) * Wide (Target_Pitch) +
+            Wide (Readback_Region_Plan'Result.Row_Bytes) <= Wide (Target_Bytes)
+        else Readback_Region_Plan'Result = (0, 0, 0, 0));
    -- Opaque, unrotated 1:1 pixels only. No resampling or blending is skipped.
    -- Mapping authority and physical alias exclusion remain caller obligations.
    function Plan

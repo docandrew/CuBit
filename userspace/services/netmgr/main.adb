@@ -175,7 +175,7 @@ procedure main is
                            1 => addr,
                            2 => mask,
                            3 => gw));
-      msg.tag := capCall (CAP_SLOT_NETSTACK, msg);
+      msg.tag := capCall (CAP_SLOT_NETSTACK, msg, CuBit.Messages.Wait_Forever);
 
       if msg.tag.label = REPLY_OK then
          debugPrint ("netmgr: configured interface ");
@@ -200,7 +200,7 @@ procedure main is
               words    => (0 => primary,
                            1 => secondary,
                            others => 0));
-      msg.tag := capCall (CAP_SLOT_NETSTACK, msg);
+      msg.tag := capCall (CAP_SLOT_NETSTACK, msg, CuBit.Messages.Wait_Forever);
    end sendSetDNS;
 
    ---------------------------------------------------------------------------
@@ -216,7 +216,7 @@ procedure main is
                            reserved  => 0),
               authorityTag => 0,
               words    => (others => 0));
-      ignore := capCall (CAP_SLOT_READY, msg);
+      ignore := capCall (CAP_SLOT_READY, msg, CuBit.Messages.Wait_Forever);
    end signalReady;
 
    ---------------------------------------------------------------------------
@@ -231,7 +231,7 @@ procedure main is
                            reserved  => 0),
               authorityTag => 0,
               words    => (others => 0));
-      msg.tag := capCall (CAP_SLOT_NETSTACK, msg);
+      msg.tag := capCall (CAP_SLOT_NETSTACK, msg, CuBit.Messages.Wait_Forever);
       if msg.tag.label = REPLY_OK then
          return Natural (msg.words (0));
       end if;
@@ -255,7 +255,7 @@ procedure main is
                            1 => Unsigned_64 (PROTO_UDP),
                            2 => Unsigned_64 (port),
                            others => 0));
-      msg.tag := capCall (CAP_SLOT_NETSTACK, msg);
+      msg.tag := capCall (CAP_SLOT_NETSTACK, msg, CuBit.Messages.Wait_Forever);
       return msg.tag.label = REPLY_OK;
    end openRawChannel;
 
@@ -265,7 +265,7 @@ procedure main is
    valLen : Natural;
    ok     : Boolean;
    ifCount : Natural;
-   sender : ProcessID;
+   sender : Process_ID;
    msg    : Message;
 
 begin

@@ -7,7 +7,7 @@ procedure Input_Native_Check is
    package I renames CuBit.Input;
    use type Activity_Result;
    use type P.Item;
-   PID : constant ProcessID := syscall (SYSCALL_GETPID);
+   PID : constant Process_ID := syscall (SYSCALL_GETPID);
    -- The inherited slot-0 self endpoint is selected before any later slot.
    Authority : constant Unsigned_64 := PID;
    Ignore : Unsigned_64;
@@ -102,7 +102,7 @@ procedure Input_Native_Check is
    end Run;
 begin
    debugPrint ("native input retention: real loopback IPC (NO HID/ISOLATION)" & ASCII.LF);
-   Check (PID /= NO_PROCESS, "self identity");
+   Check (PID /= No_Process, "self identity");
    Run (False);
    Run (True);
    debugPrint ("TEST: PASS native input retention mailbox/refusal/deadline/authority" & ASCII.LF);

@@ -52,6 +52,9 @@ package body CuBit.UI.Surfaces is
       p : constant Placement :=
         Place (parent.width, parent.height, parent.clipEnabled, parent.clip,
                area);
+      input : constant Placement :=
+        Place (parent.width, parent.height, parent.inputClipEnabled,
+               parent.inputClip, area);
       result : Canvas;
    begin
       if p.width = 0 or else p.height = 0 or else
@@ -69,6 +72,8 @@ package body CuBit.UI.Surfaces is
          pitch => parent.pitch,
          clipEnabled => p.clipEnabled,
          clip => p.clip,
+         inputClipEnabled => input.clipEnabled,
+         inputClip => input.clip,
          densityNumerator => parent.densityNumerator,
          densityDenominator => parent.densityDenominator,
          originX => parent.originX + p.x, originY => parent.originY + p.y);

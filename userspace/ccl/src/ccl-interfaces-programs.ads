@@ -36,14 +36,14 @@ package CCL.Interfaces.Programs is
      "(type Output_File (record (name String))) " &
      "(type Input_Directory (record (name String))) " &
      "(type Output_Directory (record (name String))) " &
-     "(type Run (record (program String) (pid Integer) (generation Integer))) " &
+     "(type Run (record (program String) (pid Integer))) " &
      "(type Outlet_Signal (enum Stream Level Edge)) " &
      "(type Unix_Exit (record (code Integer))) " &
      "(type Run_Outcome (variant (Finished Unix_Exit) (Stopped))) " &
      "(type Outlet_State (record (name String) (stream String) (signal Outlet_Signal) (arrived Integer) " &
      "(lost Integer) (ended Boolean)))";
    --  Run's fields, in order.
-   RUN_FIELDS : constant := 3;
+   RUN_FIELDS : constant := 2;
    OUTLET_STATE_FIELDS : constant := 6;
    --  ld.outlets: a run's outlets and how far each got (discovery and the
    --  stream graph), at the last binding number of the program.

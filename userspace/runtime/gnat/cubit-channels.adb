@@ -13,6 +13,7 @@ with CuBit.Protocols;
 with CuBit.Stream_Regions;
 
 package body CuBit.Channels is
+   use type CuBit.Messages.Process_ID;
 
    package Rings renames CuBit.Channel_Rings;
    package DR renames CuBit.Datagram_Rings;
@@ -341,7 +342,7 @@ package body CuBit.Channels is
          Result := Failed;
          return;
       end if;
-      Ignore_Tag := CuBit.Messages.capCall (Endpoint, M);
+      Ignore_Tag := CuBit.Messages.capCall (Endpoint, M, CuBit.Messages.Wait_Forever);
       Finish_Open (C, M, Result, Refusal);
    end Open;
 
@@ -388,7 +389,7 @@ package body CuBit.Channels is
    end Refusal_Reply;
 
    procedure Accept_Open
-     (From : CuBit.Messages.ProcessID; Request : CuBit.Messages.Message;
+     (From : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message;
       Number : Unsigned_64; C : out Channel; Reply : out CuBit.Messages.Message)
    is
       procedure Grant_To
@@ -452,7 +453,7 @@ package body CuBit.Channels is
    end Accept_Open;
 
    procedure Accept_Shared
-     (From : CuBit.Messages.ProcessID; Request : CuBit.Messages.Message;
+     (From : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message;
       Number : Unsigned_64; Base : Unsigned_64; Pages : CC.Ring_Pages;
       C : out Channel; Reply : out CuBit.Messages.Message)
    is
@@ -692,6 +693,13 @@ package body CuBit.Channels is
    function Number_Of (Request : CuBit.Messages.Message) return Unsigned_64 is
      (Request.words (0));
 
+   function Closed_By
+     (C : Channel; From : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message)
+     return Boolean is
+     (C.Active and then C.Peer = From and then Request.tag.length = CP.Close_Words
+      and then ((C.Has_Own and then Request.words (1) = GR.Encode (C.Own_Grant))
+                or else (C.Has_Peer and then Request.words (1) = GR.Encode (C.Peer_Grant))));
+
    function Shed_Count (C : Channel) return Unsigned_64 is
      (if not C.Active then 0
       elsif C.This_Side = Producing then Word (C.Own_Base, CP.SHED_OFFSET)
@@ -724,8 +732,11 @@ package body CuBit.Channels is
       M : CuBit.Messages.Message := CuBit.Messages.NULL_MESSAGE;
    begin
       if C.Opener and then C.Active then
-         M.tag := (label => CP.OP_CLOSE, length => 1, flags => 0, reserved => 0);
+         M.tag := (label => CP.OP_CLOSE, length => CP.Close_Words, flags => 0, reserved => 0);
          M.words (0) := C.Peer_Number;
+         M.words (1) := (if C.Has_Peer then GR.Encode (C.Peer_Grant)
+                         elsif C.Has_Own then GR.Encode (C.Own_Grant)
+                         else 0);
          Done := CuBit.Messages.capSubmit (C.Endpoint, M, CuBit.Messages.NO_COMPLETION_TOKEN);
       end if;
       if C.Has_Peer then

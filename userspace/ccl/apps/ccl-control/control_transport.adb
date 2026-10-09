@@ -24,7 +24,7 @@ package body Control_Transport is
       Token : constant Unsigned_64 := Next_Wait;
    begin
       Success := False;
-      Network_Process := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_NETSTACK);
+      Network_Process := To_Word (Registered_Driver (DRIVER_NETSTACK));
       if Network_Process = 0 or Network_Process = Unsigned_64'Last then return; end if;
       Raw := syscall (SYSCALL_SBRK, 2 * Buffer_Bytes);
       if Raw = Unsigned_64'Last then return; end if;

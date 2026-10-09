@@ -11,6 +11,7 @@
 ------------------------------------------------------------------------------
 with System.Storage_Elements; use System.Storage_Elements;
 
+with CuBit.Grant_References;
 with CuBit.Messages; use CuBit.Messages;
 
 package body DHCP is
@@ -125,8 +126,8 @@ package body DHCP is
    procedure ensureBuf (state : in out DHCPState) is
       rawAddr   : Unsigned_64;
       aligned   : Unsigned_64;
-      netstackPID : Unsigned_64;
-      gid       : Unsigned_64;
+      netstackPID : Process_ID;
+      gid       : CuBit.Memory_Grants.Grant_Reference;
       ok        : Boolean;
    begin
       if state.bufReady then
@@ -152,24 +153,24 @@ package body DHCP is
       end;
 
       --  Discover netstack PID and create grant
-      netstackPID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_NETSTACK);
-      if netstackPID = 0 then
+      netstackPID := Registered_Driver (DRIVER_NETSTACK);
+      if netstackPID = No_Process then
          return;
       end if;
 
-      createGrant
+      CuBit.Memory_Grants.Create_For_Process
         (grantee   => netstackPID,
          localAddr => state.grantBuf,
          numPages  => 1,
          readWrite => True,
-         grantId   => gid,
+         reference => gid,
          success   => ok);
 
       if not ok then
          return;
       end if;
 
-      state.grantId := gid;
+      state.grant := gid;
       state.bufReady := True;
    end ensureBuf;
 
@@ -260,11 +261,11 @@ package body DHCP is
                            flags  => 0,
                            reserved  => 0),
               authorityTag => 0,
-              words    => (0 => state.grantId,
+              words    => (0 => CuBit.Grant_References.Encode (state.grant),
                            1 => 0,                      -- offset in grant
                            2 => Unsigned_64 (pktLen),
                            others => 0));
-      msg.tag := capCall (netSlot, msg);
+      msg.tag := capCall (netSlot, msg, CuBit.Messages.Wait_Forever);
    end sendViaRaw;
 
    ---------------------------------------------------------------------------
@@ -283,7 +284,7 @@ package body DHCP is
                 dns       => 0,
                 leaseTime => 0,
                 grantBuf  => System.Null_Address,
-                grantId   => 0,
+                grant     => <>,
                 bufReady  => False);
    end init;
 

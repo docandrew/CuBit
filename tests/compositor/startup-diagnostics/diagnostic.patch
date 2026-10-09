@@ -1,0 +1,309 @@
+--- a/userspace/services/desktop/main.adb
++++ b/userspace/services/desktop/main.adb
+@@ -1,3 +1,4 @@
++with Desktop_Breadcrumbs;
+ with Desktop_Vulkan_Startup;
+ with Vulkan_Device_Owner;
+ with Compositor_Backend_Selection;
+@@ -262,6 +263,7 @@
+    physicalClientAnnounced : Boolean := False;
+    procedure exitCompositor (Status : Integer)
+      with Import, Convention => C, External_Name => "_exit", No_Return;
++   Bootstrap_CPU : Boolean := False;
+    backBufferReady : Boolean := False;
+    outputDrainRequested, outputReopenPending, shutdownRequested : Boolean := False;
+    drawingBackBuffer : Boolean := False;
+@@ -2061,7 +2063,9 @@
+             return;
+          end if;
+          DB.Charge_Completion (Batch);
+-         if Desktop_Logs.Matches (completion.token) then
++         if Desktop_Breadcrumbs.Matches (completion.token) then
++            Desktop_Breadcrumbs.Collect (completion);
++         elsif Desktop_Logs.Matches (completion.token) then
+             Desktop_Logs.Collect (completion);
+          elsif DM.Enabled and then DM.Matches (completion.token) then
+             DM.Collect (completion);
+@@ -2126,7 +2130,8 @@
+                           GPU_Frame = gpuProgress (P.Trace_Output).Submitted
+                         then
+                            gpuProgress (P.Trace_Output).Published := True;
+-                           debugPrint ("DESKTOP-VULKAN: frame=PUBLISHED output=" & P.Trace_Output'Image &
++                           if not Bootstrap_CPU then Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Released, requestSequence); end if;
++                        debugPrint ("DESKTOP-VULKAN: frame=PUBLISHED output=" & P.Trace_Output'Image &
+                              " epoch=" & GPU_Frame.Epoch'Image &
+                              " frame=" & GPU_Frame.Serial'Image &
+                              " buffer=" & GPU_Frame.Buffer'Image &
+@@ -2254,17 +2259,21 @@
+       else
+          if Compositor_Damage.Count (P.Damage) = 0 then return; end if;
+          if not BP.Writable (P.Pool, BP.Writer (P.Pool)) then exitCompositor (1); end if;
+-         if nativeScene then
++         if nativeScene and then not Bootstrap_CPU then
+             declare
+                Started : Desktop_Compositor.Output_Start;
+             begin
++               Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Begin_Before, requestSequence);
+                Desktop_Compositor.Begin_Output
+                  ((P.Buffer, Unsigned_32 (P.Geometry.Width), Unsigned_32 (P.Geometry.Height),
+                    Unsigned_32 (P.Pitch), 1), Unsigned_64 (P.Pitch) * Unsigned_64 (P.Geometry.Height),
+                   BP.Writer (P.Pool), P.Geometry, Output = 1, Started);
++               Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Begin_After, requestSequence);
+                case Started is
+-                  when Desktop_Compositor.Deferred => return;
++                  when Desktop_Compositor.Deferred =>
++                     Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Deferred, requestSequence); return;
+                   when Desktop_Compositor.Start_Unsafe =>
++                     Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Unsafe, requestSequence);
+                      debugPrint ("desktop: renderer begin uncertain; writer retained" & LF);
+                      exitCompositor (1);
+                   when Desktop_Compositor.Started => null;
+@@ -2277,7 +2286,9 @@
+          end if;
+          Compositor_Damage.Capture (P.Damage, P.Frame_Damage, Captured);
+          if not Captured then exitCompositor (1); end if;
+-         if not directOutput then
++         if Bootstrap_CPU then
++            renderOutput (Output, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
++         elsif not directOutput then
+             RP.Take (P.Repaint, BP.Writer (P.Pool).Buffer, Repair);
+             for I in 1 .. Compositor_Damage.Count (Repair) loop
+                if nativeScene then
+@@ -2288,13 +2299,19 @@
+             end loop;
+          end if;
+          BP.Start_Render (P.Pool, BP.Writer (P.Pool));
+-         Desktop_Compositor.Complete_Output (P.Buffer, BP.Writer (P.Pool), Output = 1, False, Completion);
++         if Bootstrap_CPU then
++            Completion := Desktop_Compositor.Complete;
++         else
++            Desktop_Compositor.Complete_Output (P.Buffer, BP.Writer (P.Pool), Output = 1, False, Completion);
++         end if;
+       end if;
+       case Completion is
+          when Desktop_Compositor.Pending =>
++            Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Pending, requestSequence);
+             if not nativeScene then exitCompositor (1); end if;
+             return;
+          when Desktop_Compositor.Unsafe =>
++            Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Unsafe, requestSequence);
+             debugPrint ("desktop: renderer completion uncertain; writer retained" & LF);
+             exitCompositor (1);
+          when Desktop_Compositor.Retry | Desktop_Compositor.Software_Required =>
+@@ -2321,7 +2338,8 @@
+                Compositor_Damage.Add (P.Damage, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
+             end if;
+             return;
+-         when Desktop_Compositor.Complete => null;
++         when Desktop_Compositor.Complete =>
++            if not Bootstrap_CPU then Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Complete, requestSequence); end if;
+       end case;
+       if Desktop_Compositor.Full_Output and then not gpuProgress (Output).Completed then
+          gpuProgress (Output).Completed := True;
+@@ -2361,6 +2379,7 @@
+               DP.Pixel_Extent (r.w), DP.Pixel_Extent (r.h))))), Output));
+       P.Started := nowMs;
+       P.Started_Us := presentationNow;
++      if not Bootstrap_CPU then Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Submit, requestSequence); end if;
+       if capSubmit (CAP_SLOT_DISPLAY, request, CP.Token (P.Transfer)) then
+          if Desktop_Compositor.Full_Output and then not gpuProgress (Output).Published then
+             gpuProgress (Output).Submitted := Held;
+@@ -4076,8 +4095,15 @@
+       nativeOutputPass := True;
+       clipEnabled := False;
+       compositionExcludedSurface := 0;
+-      drawCurrentScene;
+-      drawCursorOverlay;
++      if Bootstrap_CPU then
++         fillRect (0, 0, fbWidth, fbHeight, 16#00203648#, False);
++         drawUIText (24, 32, "CuBit Desktop reached", 16#00FFFFFF#, 16#00203648#);
++         drawUIText (24, 68, "Preparing renderer startup", 16#00FFFFFF#, 16#00203648#);
++         drawUIText (24, 104, "If this remains visible, photograph this screen.", 16#00FFFFFF#, 16#00203648#);
++      else
++         drawCurrentScene;
++         drawCursorOverlay;
++      end if;
+       nativeOutputPass := False;
+       clipRect := Saved_Clip; clipEnabled := Saved_Enabled;
+       compositionExcludedSurface := Saved_Excluded;
+@@ -8525,6 +8551,45 @@
+       ok := True;
+    end activateInternalSession;
+ 
++   procedure Present_Bootstrap (Ready : out Boolean) is
++      P : Output_Presentation renames presentations (primaryOutput);
++      Started : constant Unsigned_64 := nowMs;
++      Ignore : Unsigned_64;
++   begin
++      Ready := False;
++      if not backBufferReady or else not P.Enabled or else
++        not CP.Writable (P.Transfer) or else not BP.Writable (P.Pool, BP.Writer (P.Pool)) or else
++        Started = Unsigned_64'Last
++      then return; end if;
++      -- This CPU frame has no renderer/GPU owner. Do not call Begin_Output:
++      -- early renderer admission would irreversibly select software.
++      Bootstrap_CPU := True;
++      Compositor_Damage.Add (P.Damage, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
++      pumpOutput (primaryOutput);
++      if CP.Current (P.Transfer) /= CP.In_Flight then return; end if;
++      for Attempt in 1 .. 2000 loop
++         -- Bound attempts even if the clock freezes. Exhaustion never
++         -- authorizes renderer startup or release of uncertain storage.
++         -- Sole existing CQ dispatcher authenticates exact token/session/frame,
++         -- retires Display ownership and routes unrelated completions normally.
++         collectPresentations;
++         if CP.Writable (P.Transfer) and then BP.Displayed (P.Pool) = BP.None and then
++           not BP.Faulted (P.Pool) and then not BP.Rendering (P.Pool)
++         then
++            Bootstrap_CPU := False;
++            RP.Invalidate (P.Repaint, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
++            Compositor_Damage.Add (P.Damage, (0, 0, Natural (P.Geometry.Width), Natural (P.Geometry.Height)));
++            Ready := True;
++            debugPrint ("DESKTOP-BOOTSTRAP: released; renderer may start" & LF);
++            return;
++         end if;
++         declare Now : constant Unsigned_64 := nowMs; begin
++            if Now = Unsigned_64'Last or else Now < Started or else Now - Started >= 2000 then return; end if;
++         end;
++         Ignore := syscall (SYSCALL_SLEEP, 1);
++      end loop;
++   end Present_Bootstrap;
++
+    procedure Start_Renderer is
+       package GPU renames Desktop_Vulkan_Startup;
+       package Selection renames Compositor_Backend_Selection;
+@@ -8547,9 +8612,13 @@
+       else
+          debugPrint ("desktop: render slot invalid; software selected" & LF);
+       end if;
++      Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Init_Before, requestSequence);
+       GPU.Initialize (Slot);
++      Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Init_After, requestSequence);
+       Evidence.Device := GPU.Current = Vulkan_Device_Owner.Ready;
+-      if Evidence.Device then GPU.Check_Health (Evidence.Device); end if;
++      if Evidence.Device then Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Health_Before, requestSequence);
++      GPU.Check_Health (Evidence.Device);
++      Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Health_After, requestSequence); end if;
+       Evidence.Configuration := backBufferReady and then desktopLayout.Count = 1 and then
+         primaryOutput = 0 and then presentations (0).Enabled;
+       Width := Unsigned_64 (presentations (0).Geometry.Width);
+@@ -8557,12 +8626,20 @@
+       Bytes := Width * Height * 4;
+       Evidence.Configuration := Evidence.Configuration and then Bytes in 1 .. 16 * 1024 * 1024;
+       if Evidence.Device and then Evidence.Configuration then
+-         GPU.Configure_Targets (Unsigned_32 (Width), Unsigned_32 (Height),
++         Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Targets_Before, requestSequence);
++      GPU.Configure_Targets (Unsigned_32 (Width), Unsigned_32 (Height),
+            BP.Writer (presentations (0).Pool).Epoch, 128 * 1024 * 1024, Evidence.Targets);
+-         if Evidence.Targets then GPU.Prepare_Pipeline (Evidence.Pipeline); end if;
++      Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Targets_After, requestSequence);
++         if Evidence.Targets then Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Pipeline_Before, requestSequence);
++      GPU.Prepare_Pipeline (Evidence.Pipeline);
++      Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Pipeline_After, requestSequence); end if;
+          if Evidence.Pipeline then
+-            GPU.Configure_Upload (2 * 1024 * 1024, Evidence.Upload);
+-            GPU.Configure_Readback (Natural (Bytes), Evidence.Readback);
++            Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Upload_Before, requestSequence);
++      GPU.Configure_Upload (2 * 1024 * 1024, Evidence.Upload);
++      Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Upload_After, requestSequence);
++            Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Readback_Before, requestSequence);
++      GPU.Configure_Readback (Natural (Bytes), Evidence.Readback);
++      Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Readback_After, requestSequence);
+          end if;
+       end if;
+       Desktop_Compositor.Configure_Renderer (Evidence, Accepted);
+@@ -8625,7 +8702,21 @@
+       end if;
+    end;
+ 
++   Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Entered, requestSequence);
++   declare Bootstrap_Ready : Boolean; Ignore : Unsigned_64; begin
++      Present_Bootstrap (Bootstrap_Ready);
++      if not Bootstrap_Ready then
++         debugPrint ("DESKTOP-BOOTSTRAP: unconfirmed; renderer not started" & LF);
++         -- Keep process-lived storage while ownership is unresolved. Do not
++         -- turn elapsed time into permission to reuse or initialize the GPU.
++         loop
++            collectPresentations;
++            Ignore := syscall (SYSCALL_SLEEP, 100);
++         end loop;
++      end if;
++   end;
+    Start_Renderer;
++   Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Selected, requestSequence);
+ 
+    while running or else not shutdownRequested or else outputDrainRequested or else sourceRetirementPending loop
+       declare
+--- /dev/null
++++ b/userspace/services/desktop/desktop_breadcrumbs.ads
+@@ -0,0 +1,7 @@
++with Interfaces; with CuBit.Messages;
++package Desktop_Breadcrumbs is
++ type Stage is (Entered, Init_Before, Init_After, Health_Before, Health_After, Targets_Before, Targets_After, Pipeline_Before, Pipeline_After, Upload_Before, Upload_After, Readback_Before, Readback_After, Selected, Begin_Before, Begin_After, Deferred, Pending, Unsafe, Complete, Submit, Released);
++ procedure Mark (Point : Stage; Sequence : in out Interfaces.Unsigned_64);
++ function Matches (Token : Interfaces.Unsigned_64) return Boolean;
++ procedure Collect (Completion : CuBit.Messages.CompletionEntry);
++end Desktop_Breadcrumbs;
+--- /dev/null
++++ b/userspace/services/desktop/desktop_breadcrumbs.adb
+@@ -0,0 +1,60 @@
++with CuBit.Logging; with CuBit.Log_Records; with Compositor_Requests;
++package body Desktop_Breadcrumbs is
++ use type Interfaces.Unsigned_64;
++ -- Process-lived one-shot pages. Never recycle, even after a failed receipt.
++ Publishers : array (Stage) of CuBit.Logging.Publisher;
++ Seen : array (Stage) of Boolean := [others => False];
++ Tokens : array (Stage) of Interfaces.Unsigned_64 := [others => 0];
++ function Name (Point : Stage) return String is
++   (case Point is
++      when Entered => "ENTERED",
++      when Init_Before => "INIT_BEFORE",
++      when Init_After => "INIT_AFTER",
++      when Health_Before => "HEALTH_BEFORE",
++      when Health_After => "HEALTH_AFTER",
++      when Targets_Before => "TARGETS_BEFORE",
++      when Targets_After => "TARGETS_AFTER",
++      when Pipeline_Before => "PIPELINE_BEFORE",
++      when Pipeline_After => "PIPELINE_AFTER",
++      when Upload_Before => "UPLOAD_BEFORE",
++      when Upload_After => "UPLOAD_AFTER",
++      when Readback_Before => "READBACK_BEFORE",
++      when Readback_After => "READBACK_AFTER",
++      when Selected => "SELECTED",
++      when Begin_Before => "BEGIN_BEFORE",
++      when Begin_After => "BEGIN_AFTER",
++      when Deferred => "DEFERRED",
++      when Pending => "PENDING",
++      when Unsafe => "UNSAFE",
++      when Complete => "COMPLETE",
++      when Submit => "SUBMIT",
++      when Released => "RELEASED");
++ procedure Mark (Point : Stage; Sequence : in out Interfaces.Unsigned_64) is
++   Token : Interfaces.Unsigned_64;
++   Accepted : Boolean;
++   Value : constant CuBit.Log_Records.Decoded :=
++     CuBit.Log_Records.Make ("DESKTOP-CHECKPOINT: " & Name (Point), CuBit.Log_Records.Information);
++ begin
++   if Seen (Point) then return; end if;
++   Seen (Point) := True;
++   CuBit.Messages.debugPrint ("DESKTOP-CHECKPOINT: " & Name (Point) & ASCII.LF);
++   if not Value.Success then return; end if;
++   Compositor_Requests.Allocate (Sequence, Token);
++   if Token = 0 then return; end if;
++   CuBit.Logging.Emit (Publishers (Point), Value.Value, Token, Accepted);
++   if Accepted then Tokens (Point) := Token; end if;
++ end Mark;
++ function Matches (Token : Interfaces.Unsigned_64) return Boolean is
++   (Token /= 0 and then (for some Point in Stage => Tokens (Point) = Token));
++ procedure Collect (Completion : CuBit.Messages.CompletionEntry) is
++   Handled : Boolean;
++ begin
++   for Point in Stage loop
++     if Tokens (Point) /= 0 and then Tokens (Point) = Completion.Token then
++       CuBit.Logging.Complete (Publishers (Point), Completion, Handled);
++       if Handled then Tokens (Point) := 0; end if;
++       return;
++     end if;
++   end loop;
++ end Collect;
++end Desktop_Breadcrumbs;

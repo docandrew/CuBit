@@ -143,7 +143,7 @@ procedure main is
       msg : Message := Close_Directory_Request (handle);
       tag : MessageTag;
    begin
-      tag := capCall (CAP_SLOT_FILESYSTEM, msg);
+      tag := capCall (CAP_SLOT_FILESYSTEM, msg, CuBit.Messages.Wait_Forever);
    end Close_Handle;
 
    procedure Load_Handle
@@ -158,13 +158,13 @@ procedure main is
       candidateTruncated : Boolean := False;
    begin
       success := False;
-      tag := capCall (CAP_SLOT_FILESYSTEM, msg);
+      tag := capCall (CAP_SLOT_FILESYSTEM, msg, CuBit.Messages.Wait_Forever);
       if tag.label /= REPLY_OK then
          return;
       end if;
       loop
          msg := Read_Directory_Page_Request (directory, pageGrant);
-         tag := capCall (CAP_SLOT_FILESYSTEM, msg);
+         tag := capCall (CAP_SLOT_FILESYSTEM, msg, CuBit.Messages.Wait_Forever);
          if tag.label /= REPLY_OK then
             exit;
          end if;
@@ -259,7 +259,7 @@ procedure main is
          pathView := path;
       end;
       msg := Open_Directory_Request (pageGrant, path'Length);
-      tag := capCall (CAP_SLOT_FILESYSTEM, msg);
+      tag := capCall (CAP_SLOT_FILESYSTEM, msg, CuBit.Messages.Wait_Forever);
       success := tag.label = REPLY_OK;
       if not success then
          return;
@@ -337,7 +337,7 @@ procedure main is
          msg := Open_Child_Directory_Request
            (navigation (depth).handle, pageGrant, name'Length);
       end;
-      tag := capCall (CAP_SLOT_FILESYSTEM, msg);
+      tag := capCall (CAP_SLOT_FILESYSTEM, msg, CuBit.Messages.Wait_Forever);
       if tag.label /= REPLY_OK then
          browserStatus := Open_Failed;
          return;
@@ -723,7 +723,8 @@ begin
         CuBit.UI.App.WINDOW_FLAG_CLOSEABLE;
    begin
       CuBit.UI.App.Open
-        (win, INITIAL_WIDTH, INITIAL_HEIGHT, flags, ok, title => "Files", protected_frames => True);
+        (win, INITIAL_WIDTH, INITIAL_HEIGHT, flags, ok, title => "Files", protected_frames => True,
+         minimum_width => 480, minimum_height => 280);
       if not ok then
          ignore := syscall (SYSCALL_EXIT, 1);
          return;

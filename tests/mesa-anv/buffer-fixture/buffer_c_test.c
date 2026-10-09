@@ -1,6 +1,16 @@
 #include "../../../userspace/mesa/anv/native_gpu_buffers.h"
 uint32_t test_buffer_c_bridge(void)
 {
+   uint64_t limit = UINT64_MAX, charged = UINT64_MAX;
+   if (cubit_intel_query_accounting(63, &limit, &charged) != 0 ||
+       limit != 12288 || charged != 8192)
+      return 30;
+   if (cubit_intel_query_accounting(64, &limit, &charged) != 4 ||
+       limit != 0 || charged != 0)
+      return 31;
+   if (cubit_intel_query_accounting(63, 0, &charged) != 4 || charged != 0 ||
+       cubit_intel_query_accounting(63, &limit, &limit) != 4 || limit != 0)
+      return 32;
    uint64_t retired = UINT64_MAX;
    if (cubit_intel_poll_session_retirement(63) != 0 ||
        cubit_intel_poll_session_retirement(64) != 5)

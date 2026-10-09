@@ -37,7 +37,7 @@ procedure Main is
       Msg : Message := CuBit.Desktop_Messages.From_Wire (Request);
       Returned : MessageTag;
    begin
-      Returned := capCall (CAP_SLOT_DESKTOP, Msg);
+      Returned := capCall (CAP_SLOT_DESKTOP, Msg, CuBit.Messages.Wait_Forever);
       if Returned /= Msg.tag then return (others => <>); end if;
       return CuBit.Desktop_Messages.To_Wire (Msg);
    end Send;
@@ -50,7 +50,7 @@ procedure Main is
    begin
       Msg.tag := (Label, 4, 0, 0);
       Msg.words := MessageWords (Q.Request (Action, (if Retire then Root else 0)));
-      Returned := capCall (Driver, Msg);
+      Returned := capCall (Driver, Msg, CuBit.Messages.Wait_Forever);
       if Returned /= (Label, 4, 0, 0) or else Msg.tag /= Returned or else
         not Q.Valid_Reply (Action, Q.Words (Msg.words))
       then return [5, 1, 0, 0]; end if;
@@ -108,7 +108,7 @@ procedure Main is
             Msg := NULL_MESSAGE;
             Msg.tag := (Q.Desktop_Binding_Label, 4, 0, 0);
             Msg.words := [1, 0, 0, 0];
-            Returned := capCall (Q.Viewer_Supervisor_Slot, Msg);
+            Returned := capCall (Q.Viewer_Supervisor_Slot, Msg, CuBit.Messages.Wait_Forever);
             exit when Returned /= (Q.Desktop_Binding_Label, 4, 0, 0) or else
               Msg.tag /= Returned or else not Q.Valid_Desktop_Reply (Q.Words (Msg.words));
             if Msg.words (0) = 0 then Bound := True; exit; end if;

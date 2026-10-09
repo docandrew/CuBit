@@ -493,7 +493,7 @@ package body CCL_Desktop_Platform is
         (label => CuBit.Protocols.CLOCK_OP_MONOTONIC_MS,
          length => 1, flags => 0, reserved => 0);
       Request.words (0) := 0;
-      Tag := capCall (CAP_SLOT_CLOCK, Request);
+      Tag := capCall (CAP_SLOT_CLOCK, Request, CuBit.Messages.Wait_Forever);
       if Tag.label = REPLY_OK and then Tag.length = 1 and then
         Request.words (0) <= Unsigned_64 (Integer_64'Last)
       then

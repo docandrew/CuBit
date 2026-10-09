@@ -14,6 +14,71 @@ procedure Buffer_Bridge_Tests is
      with Import, Convention => C, External_Name => "test_buffer_c_bridge";
 begin
    declare
+      Limit, Charged : aliased Unsigned_64 := 999;
+      Before : constant Natural := M.Calls;
+      procedure Check (Code : Unsigned_32) is
+      begin
+         Limit := 999;
+         Charged := 999;
+         pragma Assert (Native_GPU_Buffers.Query_Accounting
+           (63, Limit'Access, Charged'Access) = Code);
+         if Code = 0 then
+            pragma Assert (Limit = M.Accounting_Response (2) and
+                           Charged = M.Accounting_Response (3));
+         else
+            pragma Assert (Limit = 0 and Charged = 0);
+         end if;
+      end Check;
+   begin
+      pragma Assert (Native_GPU_Buffers.Query_Accounting
+        (64, Limit'Access, Charged'Access) = 4);
+      pragma Assert (Limit = 0 and Charged = 0);
+      pragma Assert (Native_GPU_Buffers.Query_Accounting
+        (Unsigned_64'Last, Limit'Access, Charged'Access) = 4);
+      pragma Assert (Native_GPU_Buffers.Query_Accounting
+        (63, null, Charged'Access) = 4);
+      pragma Assert (Native_GPU_Buffers.Query_Accounting
+        (63, Limit'Access, null) = 4);
+      pragma Assert (Native_GPU_Buffers.Query_Accounting
+        (63, Limit'Access, Limit'Access) = 4);
+      pragma Assert (M.Calls = Before);
+      for Code in Unsigned_64 range 1 .. 3 loop
+         M.Accounting_Response := [Code, 1, 0, 0];
+         Check (Unsigned_32 (Code));
+         for Field in 2 .. 3 loop
+            M.Accounting_Response (Field) := 4096;
+            Check (4);
+            M.Accounting_Response (Field) := 0;
+         end loop;
+      end loop;
+      for Case_No in 0 .. 8 loop
+         M.Accounting_Response := (case Case_No is
+           when 0 => [0, 1, 12288, 0],
+           when 1 => [0, 1, 12288, 12288],
+           when 2 => [0, 1, 2 ** 44, 2 ** 43],
+           when 3 => [0, 1, 0, 0],
+           when 4 => [0, 1, 4097, 0],
+           when 5 => [0, 1, 4096, 1],
+           when 6 => [0, 1, 4096, 8192],
+           when 7 => [4, 1, 0, 0],
+           when others => [0, 2, 12288, 8192]);
+         Check (if Case_No <= 2 then 0 else 4);
+      end loop;
+      M.Accounting_Response := [0, 1, 12288, 8192];
+      for Fault in 1 .. 10 loop
+         if Fault /= 4 and Fault /= 5 then
+            M.Fault := Fault;
+            Check (4);
+         end if;
+      end loop;
+      M.Fault := 0;
+      pragma Assert (Native_GPU_Buffers.Query_Accounting
+        (62, Limit'Access, Charged'Access) = 1);
+      pragma Assert (Limit = 0 and Charged = 0);
+      Check (0);
+      Ada.Text_IO.Put_Line ("PASS own-account adapter boundaries (mock transport)");
+   end;
+   declare
       Before : constant Natural := M.Calls;
    begin
       pragma Assert (Native_GPU_Buffers.Memory_Contract (64) = 0);

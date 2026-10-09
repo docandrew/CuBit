@@ -5,6 +5,7 @@ package body Log_View is
    package LR renames CuBit.Log_Records;
    package Ed renames CuBit.UI.Editor;
    package Tables renames CuBit.UI.Tables;
+   package VP renames Log_Viewport;
    use type LR.Severity;
    use type LR.Field_Kind;
    use type Controls.Pointer_Action;
@@ -28,8 +29,12 @@ package body Log_View is
    LEVEL_WIDTH : constant := 150;
    FOLLOW_WIDTH : constant := 72;
    CLEAR_WIDTH : constant := 60;
-   --  Rows moved by one wheel step.
+   ONLY_WIDTH : constant := 56;
+   --  The bar marking a search match at a row's left edge.
+   MATCH_MARK_WIDTH : constant := 3;
+   --  Rows moved by one wheel step, and the most steps one event counts.
    WHEEL_ROWS : constant := 3;
+   WHEEL_STEPS_MAXIMUM : constant := MAXIMUM_RECORDS / WHEEL_ROWS;
 
    --  Captions with program lifetime, borrowed by the combo box models.
    ALL_SERVICES : aliased constant String := "All services";
@@ -75,6 +80,9 @@ package body Log_View is
             when LR.Trace => 16#6A7280#, when LR.Debug => 16#4E5866#,
             when LR.Information => 16#0B6BB8#, when LR.Warning => 16#9A6200#,
             when LR.Error => 16#C0392B#, when LR.Critical => 16#B00000#));
+   --  Behind the matched text of a search match.
+   function Match_Color (On : Color) return Color is
+     (if Dark (On) then 16#6B5A1E# else 16#FFE58A#);
    function Source_Color (On : Color) return Color is
      (if Dark (On) then 16#FFCC66# else 16#7A3E9D#);
    function Time_Color (On : Color) return Color is
@@ -106,20 +114,20 @@ package body Log_View is
 
    function Lower (C : Character) return Character is
      (if C in 'A' .. 'Z' then Character'Val (Character'Pos (C) + 32) else C);
-   --  Whether Needle occurs in Hay, ignoring case.
-   function Contains (Hay, Needle : String) return Boolean is
+   --  Where Needle first occurs in Hay, ignoring case: its first index in
+   --  Hay, or 0. An empty Needle occurs nowhere.
+   function Find (Hay, Needle : String) return Natural is
    begin
-      if Needle'Length = 0 then return True; end if;
-      if Needle'Length > Hay'Length then return False; end if;
+      if Needle'Length = 0 or else Needle'Length > Hay'Length then return 0; end if;
       for Start in Hay'First .. Hay'Last - Needle'Length + 1 loop
          if (for all I in Needle'Range =>
                Lower (Hay (Start + I - Needle'First)) = Lower (Needle (I)))
          then
-            return True;
+            return Start;
          end if;
       end loop;
-      return False;
-   end Contains;
+      return 0;
+   end Find;
    --  -1, 0 or 1 as Left sorts before, with or after Right, ignoring case.
    function Compare_Text (Left, Right : String) return Integer is
    begin
@@ -183,22 +191,33 @@ package body Log_View is
    function Filtered (State : View_State) return Boolean is
      (Query (State)'Length > 0 or else State.Service_Name_Length > 0 or else
       Window (State) /= All_Time or else Floor (State) /= LR.Trace);
+   --  Whether only the search's matches are shown: Only, with a search.
+   function Only_Matching (State : View_State) return Boolean is (State.Only and then Query (State)'Length > 0);
 
+   --  Whether the search matches a record: in its message, its source's
+   --  name or its node. Gaps never match.
+   function Search_Hit (State : View_State; Item : Log_Entry) return Boolean is
+     (Item.Kind = Record_Entry and then Query (State)'Length > 0
+      and then (Find (LR.Text (Item.Item), Query (State)) > 0
+                or else Find (Name_Of (State, Item.Source, Item.Time_Ms), Query (State)) > 0
+                or else Find (Node_Text (Item.Node, Short => False), Query (State)) > 0));
+
+   --  Whether an entry is shown: it passes the level, time and service
+   --  filters, and matches the search when only matches are shown. Gaps
+   --  show under every filter.
    function Matches (State : View_State; Item : Log_Entry) return Boolean is
    begin
       if Item.Kind = Gap_Entry then
          return True;
       end if;
       declare
-         Name : constant String := Name_Of (State, Item.Source, Item.Time_Ms);
          Span : constant Unsigned_64 := WINDOW_MS (Window (State));
       begin
          return LR.Level (Item.Item) >= Floor (State)
            and then (Span = 0 or else Item.Time_Ms >= State.Now_Ms or else State.Now_Ms - Item.Time_Ms <= Span)
            and then (State.Service_Name_Length = 0 or else
-                     Name = State.Service_Name (1 .. State.Service_Name_Length))
-           and then (Contains (LR.Text (Item.Item), Query (State)) or else Contains (Name, Query (State))
-                     or else Contains (Node_Text (Item.Node, Short => False), Query (State)));
+                     Name_Of (State, Item.Source, Item.Time_Ms) = State.Service_Name (1 .. State.Service_Name_Length))
+           and then (not Only_Matching (State) or else Item.Hit);
       end;
    end Matches;
 
@@ -234,7 +253,7 @@ package body Log_View is
 
    --  Heap sort of the shown rows into table order.
    procedure Sort (State : in out View_State) is
-      Count : constant Natural := State.Visible_Count;
+      Count : constant Natural := State.Position.Count;
       procedure Sift (Start, Last : Positive) is
          Root : Positive := Start;
          Child : Positive;
@@ -273,12 +292,12 @@ package body Log_View is
       By_Time : constant Boolean := State.Columns.Sort_Column = Column_Of (Time_Column);
    begin
       --  Arrival order is time order, ties broken by arrival: no search.
-      if State.Visible_Count = 0 or else (By_Time and then State.Columns.Order = Tables.Ascending) then
-         return State.Visible_Count;
+      if State.Position.Count = 0 or else (By_Time and then State.Columns.Order = Tables.Ascending) then
+         return State.Position.Count;
       elsif By_Time then
          return 1;
       end if;
-      for I in 1 .. State.Visible_Count loop
+      for I in 1 .. State.Position.Count loop
          if State.Visible (I) > Newest then
             Newest := State.Visible (I);
             Row := I;
@@ -287,45 +306,57 @@ package body Log_View is
       return Row;
    end Newest_Row;
 
-   --  Keep the selection in view; following selects the newest record.
+   --  Following keeps the newest record selected and in view; otherwise
+   --  the view stays where it is.
    procedure Settle (State : in out View_State) is
-      Rows : constant Positive := State.Rows;
-      Last_Top : constant Natural := (if State.Visible_Count > Rows then State.Visible_Count - Rows else 0);
    begin
-      if State.Follow then
-         State.Selected := Newest_Row (State);
+      if State.Position.Follow then
+         VP.Follow_Newest (State.Position, Newest_Row (State));
          State.New_Since_Pause := 0;
       end if;
-      State.Selected := Natural'Min (State.Selected, State.Visible_Count);
-      if State.Selected > 0 then
-         if State.Selected <= State.Top then
-            State.Top := State.Selected - 1;
-         elsif State.Selected > State.Top + Rows then
-            State.Top := State.Selected - Rows;
-         end if;
-      end if;
-      State.Top := Natural'Min (State.Top, Last_Top);
    end Settle;
 
-   procedure Rebuild (State : in out View_State) is
-      Selected_Sequence : constant Unsigned_64 :=
-        (if State.Selected in 1 .. State.Visible_Count then State.Visible (State.Selected) else 0);
+   --  The search changed, or what names a source: which records it matches.
+   procedure Mark_Hits (State : in out View_State) is
    begin
       State.Revision := State.Revision + 1;
-      State.Visible_Count := 0;
+      for Sequence in Oldest (State) .. State.Next_Sequence - 1 loop
+         State.Entries (Slot (Sequence)).Hit := Search_Hit (State, State.Entries (Slot (Sequence)));
+      end loop;
+   end Mark_Hits;
+
+   --  The shown rows again, after a filter or the order changed. The
+   --  selection stays on its record, and Reveal (the person's own change)
+   --  brings it into view; otherwise the first drawn record stays first.
+   procedure Rebuild (State : in out View_State; Reveal : Boolean) is
+      Selected_Sequence : constant Unsigned_64 :=
+        (if State.Position.Selected in 1 .. State.Position.Count then State.Visible (State.Position.Selected) else 0);
+      First_Sequence : constant Unsigned_64 :=
+        (if State.Position.Top < State.Position.Count then State.Visible (State.Position.Top + 1) else 0);
+      Count, Selected : Entry_Count := 0;
+      Top : Entry_Count := State.Position.Top;
+   begin
+      Mark_Hits (State);
       for Sequence in Oldest (State) .. State.Next_Sequence - 1 loop
          if Matches (State, State.Entries (Slot (Sequence))) then
-            State.Visible_Count := State.Visible_Count + 1;
-            State.Visible (State.Visible_Count) := Sequence;
+            Count := Count + 1;
+            State.Visible (Count) := Sequence;
          end if;
       end loop;
+      State.Position.Count := Count;
       Sort (State);
-      State.Selected := 0;
-      for I in 1 .. State.Visible_Count loop
+      for I in 1 .. Count loop
          if State.Visible (I) = Selected_Sequence then
-            State.Selected := I;
+            Selected := I;
+         end if;
+         if State.Visible (I) = First_Sequence then
+            Top := I - 1;
          end if;
       end loop;
+      VP.Place (State.Position, Count, Selected, Top);
+      if Reveal then
+         VP.Reveal (State.Position);
+      end if;
       Settle (State);
    end Rebuild;
 
@@ -365,7 +396,6 @@ package body Log_View is
       --  Field by field: the records themselves are only read once stored.
       State.Count := 0;
       State.Next_Sequence := 1;
-      State.Visible_Count := 0;
       State.Name_Count := 0;
       State.Publisher_Count := 0;
       State.Service_Count := 0;
@@ -374,6 +404,8 @@ package body Log_View is
       State.Lost := 0;
       State.Now_Ms := 0;
       Ed.Initialize (State.Search, "", Accepted);
+      State.Only := False;
+      State.Search_Forward := True;
       State.Service_Name := [others => ' '];
       State.Service_Name_Length := 0;
       State.Service := Closed;
@@ -404,51 +436,48 @@ package body Log_View is
          Sortable => True, Sort_Column => Column_Of (Time_Column), Order => Tables.Ascending,
          Cell_Padding => 5);
       State.Focus := List_Focus;
-      State.Selected := 0;
-      State.Top := 0;
-      State.Follow := True;
+      State.Position := (others => <>);
       State.New_Since_Pause := 0;
       State.Link := Connecting;
-      State.Rows := 20;
    end Initialize;
 
    procedure Recompute_Services (State : in out View_State);
 
+   --  A new entry: shown in table order if it passes the filters. Paused,
+   --  the view stays on the records it showed.
    procedure Store (State : in out View_State; Item : Log_Entry) is
       Kept : Log_Entry := Item;
       Position : Positive;
+      Count : Entry_Count renames State.Position.Count;
    begin
       State.Revision := State.Revision + 1;
       --  A full ring lets its oldest entry go, and with it any row showing it.
       if State.Count = MAXIMUM_RECORDS then
-         for I in 1 .. State.Visible_Count loop
+         for I in 1 .. Count loop
             if State.Visible (I) = Oldest (State) then
-               State.Visible (I .. State.Visible_Count - 1) := State.Visible (I + 1 .. State.Visible_Count);
-               State.Visible_Count := State.Visible_Count - 1;
-               if State.Selected >= I and then State.Selected > 0 then State.Selected := State.Selected - 1; end if;
-               if State.Top >= I and then State.Top > 0 then State.Top := State.Top - 1; end if;
+               State.Visible (I .. Count - 1) := State.Visible (I + 1 .. Count);
+               VP.Remove (State.Position, I);
                exit;
             end if;
          end loop;
          State.Count := State.Count - 1;
       end if;
       Kept.Sequence := State.Next_Sequence;
+      Kept.Hit := Search_Hit (State, Kept);
       State.Entries (Slot (State.Next_Sequence)) := Kept;
       State.Next_Sequence := State.Next_Sequence + 1;
       State.Count := State.Count + 1;
       if Matches (State, Kept) then
          --  Into table order: after every row it does not sort before.
-         Position := State.Visible_Count + 1;
+         Position := Count + 1;
          while Position > 1 and then Before (State, Kept.Sequence, State.Visible (Position - 1)) loop
             Position := Position - 1;
          end loop;
-         State.Visible (Position + 1 .. State.Visible_Count + 1) := State.Visible (Position .. State.Visible_Count);
+         State.Visible (Position + 1 .. Count + 1) := State.Visible (Position .. Count);
          State.Visible (Position) := Kept.Sequence;
-         State.Visible_Count := State.Visible_Count + 1;
-         if State.Selected >= Position then State.Selected := State.Selected + 1; end if;
-         if not State.Follow then
+         VP.Insert (State.Position, Position);
+         if not State.Position.Follow then
             State.New_Since_Pause := State.New_Since_Pause + 1;
-            if State.Top >= Position then State.Top := State.Top + 1; end if;
          end if;
       end if;
       Settle (State);
@@ -549,12 +578,15 @@ package body Log_View is
       State.Names (Index).Name (1 .. Length) := Text;
       State.Revision := State.Revision + 1;
       Recompute_Services (State);
-      --  A name changes which rows match only through a name filter, the
-      --  search, or the order when sorted by source.
-      if State.Service_Name_Length > 0 or else Query (State)'Length > 0 or else
+      --  A name changes which rows show only through a name filter or
+      --  only the search's matches, the order only when sorted by source,
+      --  and the search's matches.
+      if State.Service_Name_Length > 0 or else Only_Matching (State) or else
         State.Columns.Sort_Column = Column_Of (Source_Column)
       then
-         Rebuild (State);
+         Rebuild (State, Reveal => False);
+      elsif Query (State)'Length > 0 then
+         Mark_Hits (State);
       end if;
    end Name_Source;
 
@@ -603,7 +635,7 @@ package body Log_View is
    begin
       State.Now_Ms := Unsigned_64'Max (State.Now_Ms, Now_Ms);
       if Span > 0 then
-         for I in 1 .. State.Visible_Count loop
+         for I in 1 .. State.Position.Count loop
             declare
                Item : Log_Entry renames State.Entries (Slot (State.Visible (I)));
             begin
@@ -613,30 +645,94 @@ package body Log_View is
             end;
          end loop;
          if Expired then
-            Rebuild (State);
+            Rebuild (State, Reveal => False);
          end if;
       end if;
    end Set_Time;
 
    --  Moving by hand pauses following; End resumes it.
-   procedure Move (State : in out View_State; Rows : Integer) is
-      Target : constant Integer := Integer (State.Selected) + Rows;
+   procedure Move (State : in out View_State; Rows : VP.Row_Delta) is
    begin
-      if State.Visible_Count = 0 then return; end if;
-      State.Follow := False;
-      State.Selected := Natural (Integer'Max (1, Integer'Min (Target, Integer (State.Visible_Count))));
-      Settle (State);
+      if State.Position.Count > 0 then
+         VP.Move (State.Position, Rows);
+      end if;
    end Move;
+   --  Following again: the newest record selected and in view.
+   procedure Resume (State : in out View_State) is
+   begin
+      State.Position.Follow := True;
+      Settle (State);
+   end Resume;
+   procedure Toggle_Follow (State : in out View_State) is
+   begin
+      if State.Position.Follow then
+         State.Position.Follow := False;
+      else
+         Resume (State);
+      end if;
+   end Toggle_Follow;
+
+   --  The search's matches among the shown rows, by row.
+   function Row_Hits (State : View_State) return VP.Hit_Flags is
+   begin
+      return Hits : VP.Hit_Flags := [others => False] do
+         for Row in 1 .. State.Position.Count loop
+            Hits (Row) := Shown_Entry (State, Row).Hit;
+         end loop;
+      end return;
+   end Row_Hits;
+   --  To the next match after the selection (Forward) or before it,
+   --  wrapping; Here also takes the selected row itself.
+   procedure Go_To_Match (State : in out View_State; Forward : Boolean; Here : Boolean := False) is
+      Selected : constant Entry_Count := State.Position.Selected;
+      From : constant Entry_Count :=
+        (if not Here or else Selected = 0 then Selected
+         elsif Forward then Selected - 1
+         elsif Selected < State.Position.Count then Selected + 1 else 0);
+      Found : constant Entry_Count := VP.Next_Match (Row_Hits (State), State.Position.Count, From, Forward);
+   begin
+      if Found > 0 then
+         VP.Show_Match (State.Position, Found);
+      end if;
+   end Go_To_Match;
+   --  The search text changed: its matches marked, and the selection on
+   --  the nearest one at or after it; while following, the newest match.
+   procedure Search_Changed (State : in out View_State) is
+   begin
+      if State.Only then
+         Rebuild (State, Reveal => True);
+      else
+         Mark_Hits (State);
+      end if;
+      if Query (State)'Length = 0 then
+         State.Search_Forward := True;
+      else
+         if State.Position.Follow then
+            --  The newest record leads the table only when sorted newest first.
+            State.Search_Forward := Newest_Row (State) <= 1;
+         end if;
+         Go_To_Match (State, Forward => State.Search_Forward, Here => True);
+      end if;
+   end Search_Changed;
+   procedure Toggle_Only (State : in out View_State) is
+   begin
+      State.Only := not State.Only;
+      if Query (State)'Length > 0 then
+         Rebuild (State, Reveal => True);
+      end if;
+   end Toggle_Only;
 
    procedure Clear_Filters (State : in out View_State) is
       Accepted : Boolean;
    begin
       Ed.Initialize (State.Search, "", Accepted);
+      State.Only := False;
+      State.Search_Forward := True;
       State.Service_Name_Length := 0;
       Rebuild_Services (State);
       CB.Set_Selection (State.Time, State.Time_Model, 1);
       CB.Set_Selection (State.Level, State.Level_Model, 1);
-      Rebuild (State);
+      Rebuild (State, Reveal => True);
    end Clear_Filters;
 
    --  A combo box's new selection takes effect.
@@ -649,7 +745,7 @@ package body Log_View is
          State.Service_Name := State.Captions (Choice - 1);
          State.Service_Name_Length := State.Caption_Length (Choice - 1);
       end if;
-      Rebuild (State);
+      Rebuild (State, Reveal => True);
    end Apply_Service;
 
    procedure Dismiss_Popups (State : in out View_State) is
@@ -664,7 +760,7 @@ package body Log_View is
      (State : in out View_State; Item : Event; Map : in out Controls.Control_Map; Redraw : out Boolean)
    is
       Changed, Handled : Boolean := False;
-      Rows : constant Positive := State.Rows;
+      Rows : constant VP.Page_Rows := State.Position.Rows;
 
       --  The keep box's choice goes to the platform, which asks logstore.
       procedure Request_Keep is
@@ -685,10 +781,10 @@ package body Log_View is
                if Changed then Apply_Service (State); end if;
             when Time_Focus =>
                Combo_Key (State.Time, State.Time_Model, Key, Letter);
-               if Changed then Rebuild (State); end if;
+               if Changed then Rebuild (State, Reveal => True); end if;
             when Level_Focus =>
                Combo_Key (State.Level, State.Level_Model, Key, Letter);
-               if Changed then Rebuild (State); end if;
+               if Changed then Rebuild (State, Reveal => True); end if;
             when Keep_Focus =>
                Combo_Key (State.Keep, State.Level_Model, Key, Letter);
                if Changed then Request_Keep; end if;
@@ -714,7 +810,9 @@ package body Log_View is
             when End_Key => Ed.Move (State.Search, Ed.Move_End, Item.Shift);
             when Backspace => Ed.Backspace (State.Search, Edited);
             when Delete => Ed.Delete_Forward (State.Search, Edited);
-            when Enter | Down => State.Focus := List_Focus;
+            --  Enter: the next match (Shift: the previous); the field keeps focus.
+            when Enter => Go_To_Match (State, Forward => not Item.Shift);
+            when Down => State.Focus := List_Focus;
             when Escape =>
                if Query (State)'Length > 0 then
                   Ed.Select_All (State.Search);
@@ -724,7 +822,7 @@ package body Log_View is
                end if;
             when others => Redraw := False;
          end case;
-         if Edited then Rebuild (State); end if;
+         if Edited then Search_Changed (State); end if;
       end Edit_Search;
 
       --  Which combo box a control belongs to, if any.
@@ -744,11 +842,11 @@ package body Log_View is
                if Changed then Apply_Service (State); end if;
             when Time_Combo =>
                CB.Handle_Pointer (State.Time, State.Time_Model, Map, TIME_BASE, Target, Item.Action, Changed, Handled);
-               if Changed then Rebuild (State); end if;
+               if Changed then Rebuild (State, Reveal => True); end if;
             when Level_Combo =>
                CB.Handle_Pointer (State.Level, State.Level_Model, Map, LEVEL_BASE, Target, Item.Action,
                                   Changed, Handled);
-               if Changed then Rebuild (State); end if;
+               if Changed then Rebuild (State, Reveal => True); end if;
             when Keep_Combo =>
                CB.Handle_Pointer (State.Keep, State.Level_Model, Map, KEEP_BASE, Target, Item.Action,
                                   Changed, Handled, Enabled => State.Keep_Known);
@@ -776,7 +874,7 @@ package body Log_View is
                when Search_Focus =>
                   if Item.Character_Value in ' ' .. '~' then
                      Ed.Insert (State.Search, [1 => Item.Character_Value], Changed);
-                     if Changed then Rebuild (State); end if;
+                     if Changed then Search_Changed (State); end if;
                   end if;
                when Service_Focus | Time_Focus | Level_Focus | Keep_Focus =>
                   Focused_Combo_Key (CB.Type_Character, Item.Character_Value);
@@ -786,27 +884,32 @@ package body Log_View is
                         CB.Set_Selection
                           (State.Level, State.Level_Model,
                            Character'Pos (Item.Character_Value) - Character'Pos ('1') + 1);
-                        Rebuild (State);
+                        Rebuild (State, Reveal => True);
                      when 's' =>
                         --  Only the selected record's service, or every service again.
                         if State.Service_Name_Length > 0 then
                            Choose_Service (State, "");
-                        elsif State.Selected in 1 .. State.Visible_Count and then
-                          Shown_Entry (State, State.Selected).Kind = Record_Entry
+                        elsif State.Position.Selected in 1 .. State.Position.Count and then
+                          Shown_Entry (State, State.Position.Selected).Kind = Record_Entry
                         then
                            Choose_Service
-                             (State, Name_Of (State, Shown_Entry (State, State.Selected).Source,
-                                              Shown_Entry (State, State.Selected).Time_Ms));
+                             (State, Name_Of (State, Shown_Entry (State, State.Position.Selected).Source,
+                                              Shown_Entry (State, State.Position.Selected).Time_Ms));
                         end if;
-                        Rebuild (State);
-                     when 'f' =>
-                        State.Follow := not State.Follow;
-                        Settle (State);
+                        Rebuild (State, Reveal => True);
+                     when 'f' => Toggle_Follow (State);
+                     --  As in less and vi: the next and previous match.
+                     when 'n' => Go_To_Match (State, Forward => True);
+                     when 'N' => Go_To_Match (State, Forward => False);
+                     when 'o' => Toggle_Only (State);
                      when others => Redraw := False;
                   end case;
             end case;
          when Key_Event =>
-            if Item.Key = Tab then
+            if Item.Key = F3 then
+               --  The next match (Shift: the previous), from anywhere.
+               Go_To_Match (State, Forward => not Item.Shift);
+            elsif Item.Key = Tab then
                Dismiss_Popups (State);
                State.Focus :=
                  (if Item.Shift then
@@ -834,10 +937,14 @@ package body Log_View is
                         when Down => Move (State, 1);
                         when Page_Up => Move (State, -Rows);
                         when Page_Down => Move (State, Rows);
-                        when Home => Move (State, -Integer (State.Visible_Count));
-                        when End_Key =>
-                           State.Follow := True;
-                           Settle (State);
+                        when Home => Move (State, -State.Position.Count);
+                        when End_Key => Resume (State);
+                        when Enter =>
+                           if Query (State)'Length > 0 then
+                              Go_To_Match (State, Forward => not Item.Shift);
+                           else
+                              Redraw := False;
+                           end if;
                         when Escape => Clear_Filters (State);
                         when others => Redraw := False;
                      end case;
@@ -852,10 +959,10 @@ package body Log_View is
                   when Keep_Combo => CB.Handle_Wheel (State.Keep, State.Level_Model, Item.Steps, Handled);
                   when No_Combo => null;
                end case;
-            elsif State.Visible_Count > Rows then
-               State.Follow := False;
-               State.Top := Natural (Integer'Max (0, Integer'Min
-                 (Integer (State.Top) - WHEEL_ROWS * Item.Steps, Integer (State.Visible_Count - Rows))));
+            else
+               --  The view alone moves; moving it pauses following.
+               VP.Scroll (State.Position,
+                          -WHEEL_ROWS * Integer'Max (-WHEEL_STEPS_MAXIMUM, Integer'Min (WHEEL_STEPS_MAXIMUM, Item.Steps)));
             end if;
          when Pointer_Event =>
             declare
@@ -890,18 +997,17 @@ package body Log_View is
                elsif Item.Action = Controls.Pointer_Release then
                   Tables.Handle_Header_Release (State.Columns, Map, COLUMNS_BASE, Target, Changed);
                   if Changed then
-                     Rebuild (State);
+                     Rebuild (State, Reveal => True);
                   elsif Target = FOLLOW_ID and then Controls.Take_Activated (Map, Target) then
-                     State.Follow := not State.Follow;
-                     Settle (State);
+                     Toggle_Follow (State);
+                  elsif Target = ONLY_ID and then Controls.Take_Activated (Map, Target) then
+                     Toggle_Only (State);
                   elsif Target = CLEAR_ID and then Controls.Take_Activated (Map, Target) then
                      Clear_Filters (State);
                   elsif Target >= ROW_FIRST and then Controls.Take_Activated (Map, Target) then
-                     if State.Top + (Target - ROW_FIRST) + 1 <= State.Visible_Count then
-                        State.Follow := False;
+                     if State.Position.Top + (Target - ROW_FIRST) + 1 <= State.Position.Count then
                         State.Focus := List_Focus;
-                        State.Selected := State.Top + (Target - ROW_FIRST) + 1;
-                        Settle (State);
+                        VP.Select_Row (State.Position, State.Position.Top + (Target - ROW_FIRST) + 1);
                      end if;
                   else
                      Redraw := Item.Action /= Controls.Pointer_Move;
@@ -918,6 +1024,22 @@ package body Log_View is
          when Time_Column => "Time", when Node_Column => "Node", when Level_Column => "Level",
          when Source_Column => "Source", when Message_Column => "Message");
    procedure Header is new Tables.Columns_Header (Column_Title);
+
+   --  The search's matches, for the status bar.
+   function Match_Note (State : View_State) return String is
+      Total : constant Natural := Match_Count (State);
+      Index : constant Natural := Match_Index (State);
+   begin
+      if Query (State)'Length = 0 then
+         return "";
+      elsif Total = 0 then
+         return "  |  no matches";
+      elsif Index > 0 then
+         return "  |  match " & Image (Index) & " of " & Image (Total) & (if Only_Matching (State) then " (only)" else "");
+      else
+         return "  |  " & Image (Total) & (if Total = 1 then " match" else " matches");
+      end if;
+   end Match_Note;
 
    procedure Render
      (State : in out View_State; C : CuBit.UI.Canvas; Bounds : CuBit.UI.Rect;
@@ -945,21 +1067,21 @@ package body Log_View is
       Right_Edge : constant Natural := Toolbar.x + Toolbar.w - 7;
       Follow_Box : constant Rect := (Right_Edge - FOLLOW_WIDTH, Control_Y, FOLLOW_WIDTH, CONTROL_HEIGHT);
       Clear_Box : constant Rect := (Follow_Box.x - GAP - CLEAR_WIDTH, Control_Y, CLEAR_WIDTH, CONTROL_HEIGHT);
+      Only_Box : constant Rect := (Clear_Box.x - GAP - ONLY_WIDTH, Control_Y, ONLY_WIDTH, CONTROL_HEIGHT);
       Combos_Width : constant Natural := SERVICE_WIDTH + TIME_WIDTH + LEVEL_WIDTH + 3 * GAP;
       Search_Width : constant Natural :=
-        (if Clear_Box.x > Toolbar.x + 7 + Combos_Width + GAP + SEARCH_MINIMUM
-         then Clear_Box.x - Toolbar.x - 7 - Combos_Width - GAP else SEARCH_MINIMUM);
+        (if Only_Box.x > Toolbar.x + 7 + Combos_Width + GAP + SEARCH_MINIMUM
+         then Only_Box.x - Toolbar.x - 7 - Combos_Width - GAP else SEARCH_MINIMUM);
       Search_Box : constant Rect := (Toolbar.x + 7, Control_Y, Search_Width, CONTROL_HEIGHT);
       Service_Box : constant Rect := (Search_Box.x + Search_Width + GAP, Control_Y, SERVICE_WIDTH, CONTROL_HEIGHT);
       Time_Box : constant Rect := (Service_Box.x + SERVICE_WIDTH + GAP, Control_Y, TIME_WIDTH, CONTROL_HEIGHT);
       Level_Box : constant Rect := (Time_Box.x + TIME_WIDTH + GAP, Control_Y, LEVEL_WIDTH, CONTROL_HEIGHT);
-      Rows : constant Positive := Positive'Max (1, Regions.Rows.h / ROW_HEIGHT);
-      Scrolls : constant Boolean := State.Visible_Count > Rows;
+      Rows : constant VP.Page_Rows := Natural'Min (VP.MAXIMUM_ROWS, Positive'Max (1, Regions.Rows.h / ROW_HEIGHT));
+      Scrolls : constant Boolean := State.Position.Count > Rows;
       Row_Width : constant Natural :=
         (if Scrolls and then Regions.Rows.w > SCROLLBAR_WIDTH + 1 then Regions.Rows.w - SCROLLBAR_WIDTH - 1
          else Regions.Rows.w);
       Widget : Widget_Result;
-      Previous_Top : Natural;
       function Pointer_In (Area : Rect) return Boolean is
         (UI.pointer.enabled and then Point_In_Rect (UI.pointer.x, UI.pointer.y, Area));
    begin
@@ -983,8 +1105,12 @@ package body Log_View is
       Fill_Rect (C, (Bounds.x, Status.y + STATUS_HEIGHT, Bounds.w,
                      (if Bounds.y + Bounds.h > Status.y + STATUS_HEIGHT
                       then Bounds.y + Bounds.h - Status.y - STATUS_HEIGHT else 0)), Colors.face);
-      State.Rows := Rows;
-      Settle (State);
+      --  A new height keeps the view where it was; following keeps the
+      --  newest record in view.
+      if Rows /= State.Position.Rows then
+         VP.Fit (State.Position, State.Position.Count, Rows);
+         Settle (State);
+      end if;
 
       --  Toolbar: the search field, the combo boxes (drawn last, so their
       --  popups cover the table), Clear and Follow.
@@ -1006,8 +1132,15 @@ package body Log_View is
       else
          CuBit.UI.Widgets.Disabled_Button (C, Clear_Box, Colors, "Clear");
       end if;
+      --  Only the search's matches, or every row again.
+      if Query (State)'Length > 0 then
+         CuBit.UI.Widgets.Button (C, UI, Map, ONLY_ID, Only_Box, Toolbar, Colors,
+                                  (if State.Only then "All" else "Only"), Widget, retainedInput => True);
+      else
+         CuBit.UI.Widgets.Disabled_Button (C, Only_Box, Colors, "Only");
+      end if;
       CuBit.UI.Widgets.Button (C, UI, Map, FOLLOW_ID, Follow_Box, Toolbar, Colors,
-                               (if State.Follow then "Pause" else "Follow"), Widget, retainedInput => True);
+                               (if State.Position.Follow then "Pause" else "Follow"), Widget, retainedInput => True);
 
       --  The table: header, scrollbar, rows.
       --  The frame now; the interior is the header, the rows and whatever
@@ -1015,24 +1148,25 @@ package body Log_View is
       Draw_Table_Viewport_Frame (C, Table, Colors);
       Header (C, UI, Map, COLUMNS_BASE, Regions.Header, Table, Colors, State.Columns);
       if Scrolls then
-         Previous_Top := State.Top;
-         CuBit.UI.Widgets.Vertical_Scrollbar
-           (C, UI, Map, SCROLL_ID,
-            (Regions.Rows.x + Regions.Rows.w - SCROLLBAR_WIDTH, Regions.Rows.y, SCROLLBAR_WIDTH, Regions.Rows.h),
-            Table, Colors, 0, State.Visible_Count - 1, State.Top, Widget,
-            pageSize => Rows, retainedInput => True);
-         State.Top := Natural'Min (State.Top, State.Visible_Count - Rows);
-         if State.Top /= Previous_Top then
-            State.Follow := False;
-         end if;
+         declare
+            Value : Natural := State.Position.Top;
+         begin
+            CuBit.UI.Widgets.Vertical_Scrollbar
+              (C, UI, Map, SCROLL_ID,
+               (Regions.Rows.x + Regions.Rows.w - SCROLLBAR_WIDTH, Regions.Rows.y, SCROLLBAR_WIDTH, Regions.Rows.h),
+               Table, Colors, 0, State.Position.Count - 1, Value, Widget,
+               pageSize => Rows, retainedInput => True);
+            --  The view alone moves; moving it pauses following.
+            VP.Scroll_To (State.Position, Natural'Min (Value, VP.MAXIMUM_ROWS));
+         end;
       end if;
       for Row in 0 .. Rows - 1 loop
-         exit when State.Top + Row + 1 > State.Visible_Count;
+         exit when State.Position.Top + Row + 1 > State.Position.Count;
          declare
-            Index : constant Positive := State.Top + Row + 1;
+            Index : constant Positive := State.Position.Top + Row + 1;
             E : constant Log_Entry := Shown_Entry (State, Index);
             Row_Box : constant Rect := (Regions.Rows.x, Regions.Rows.y + Row * ROW_HEIGHT, Row_Width, ROW_HEIGHT);
-            Selected : constant Boolean := Index = State.Selected;
+            Selected : constant Boolean := Index = State.Position.Selected;
             function Cell (Column : Tables.Column_Index) return String is
               (if E.Kind = Gap_Entry then
                  (case Name_Of_Column (Column) is
@@ -1058,11 +1192,45 @@ package body Log_View is
          begin
             Controls.Add_Button (Map, ROW_FIRST + Row, Row_Box, Regions.Rows);
             Draw_Row (C, Row_Box, Colors, State.Columns, Selected, Pointer_In (Row_Box), Table_Code_Text);
+            --  A search match: a bar at its left edge, and the matched text
+            --  marked in each cell that shows it.
+            if E.Hit then
+               Fill_Rect (C, (Row_Box.x, Row_Box.y, MATCH_MARK_WIDTH, ROW_HEIGHT - 1), Colors.accent);
+               for Column in 1 .. State.Columns.Count loop
+                  declare
+                     Text : constant String := Cell (Column);
+                     Found : constant Natural := Find (Text, Query (State));
+                     Left : constant Natural := Tables.Column_Left (State.Columns, Column, Row_Box.w);
+                     Cell_Area : constant Rect :=
+                       (Row_Box.x + Left, Row_Box.y, Tables.Column_Width (State.Columns, Column, Row_Box.w), ROW_HEIGHT);
+                     --  Inside the cell's padding, as the table draws its text.
+                     Pad : constant Natural := Natural'Min (State.Columns.Cell_Padding, Cell_Area.w / 2);
+                     Clipped : constant Canvas :=
+                       With_Clip (C, (Cell_Area.x + Pad, Cell_Area.y + 1, Cell_Area.w - 2 * Pad, ROW_HEIGHT - 2));
+                     Back : constant Color := Match_Color (Colors.field);
+                  begin
+                     if Found > 0 then
+                        declare
+                           Matched : constant String := Text (Found .. Found + Query (State)'Length - 1);
+                           X : constant Natural :=
+                             Cell_Area.x + State.Columns.Cell_Padding + Code_Text_Width (Text (Text'First .. Found - 1));
+                        begin
+                           Fill_Rect (Clipped, (X, Row_Box.y + 1, Code_Text_Width (Matched), ROW_HEIGHT - 2), Back);
+                           Draw_Code_Text
+                             (Clipped, X,
+                              (if ROW_HEIGHT > Code_Text_Height then Row_Box.y + (ROW_HEIGHT - Code_Text_Height) / 2
+                               else Row_Box.y),
+                              Matched, Colors.text, Back);
+                        end;
+                     end if;
+                  end;
+               end loop;
+            end if;
          end;
       end loop;
       declare
          Drawn_Rows : constant Natural :=
-           Natural'Min (Rows, (if State.Visible_Count > State.Top then State.Visible_Count - State.Top else 0));
+           Natural'Min (Rows, (if State.Position.Count > State.Position.Top then State.Position.Count - State.Position.Top else 0));
          Below : constant Natural := Regions.Rows.y + Drawn_Rows * ROW_HEIGHT;
       begin
          if Below < Regions.Rows.y + Regions.Rows.h then
@@ -1073,7 +1241,7 @@ package body Log_View is
          Draw_UI_Text (With_Clip (C, Regions.Rows), Regions.Rows.x + MARGIN, Regions.Rows.y + MARGIN,
            "Reading logs is not granted to this program. To allow it, its manifest must request " &
            "(request-service log-observer read-write log-observer).", Colors.danger, Colors.field);
-      elsif State.Visible_Count = 0 then
+      elsif State.Position.Count = 0 then
          Draw_UI_Text (With_Clip (C, Regions.Rows), Regions.Rows.x + MARGIN, Regions.Rows.y + MARGIN,
            (if State.Count = 0 then "Waiting for records from logstore..."
             else "No records match the filters. Clear shows everything."), Colors.muted, Colors.field);
@@ -1093,9 +1261,9 @@ package body Log_View is
          Text_C : constant Canvas := With_Clip (C, Inner);
          Line : Natural := 0;
       begin
-         if State.Selected in 1 .. State.Visible_Count then
+         if State.Position.Selected in 1 .. State.Position.Count then
             declare
-               E : constant Log_Entry := Shown_Entry (State, State.Selected);
+               E : constant Log_Entry := Shown_Entry (State, State.Position.Selected);
             begin
                if E.Kind = Gap_Entry then
                   Draw_UI_Text (Text_C, Inner.x, Inner.y,
@@ -1164,15 +1332,17 @@ package body Log_View is
         (C, Status, Colors,
          (case State.Link is
              when Connecting => "Connecting to logstore",
-             when Connected => (if State.Follow then "Live" else "Paused"),
+             when Connected => (if State.Position.Follow then "Live" else "Paused"),
              when Denied => "Not granted",
              when Unavailable => "Logstore unavailable") &
-         "  |  " & Image (State.Visible_Count) & " shown of " & Image (State.Count) &
+         "  |  " & Image (State.Position.Count) & " shown of " & Image (State.Count) & Match_Note (State) &
          (if State.Lost > 0 then "  |  " & Image64 (State.Lost) & " lost" else "") &
-         (if not State.Follow and then State.New_Since_Pause > 0
+         (if not State.Position.Follow and then State.New_Since_Pause > 0
           then "  |  " & Image (State.New_Since_Pause) & " new" else "") &
          (if State.Keep_Note_Length > 0 then "  |  " & State.Keep_Note (1 .. State.Keep_Note_Length) else ""),
-         (if State.Keep_Note_Length > 0 then "" else "/ search  Tab next"));
+         (if State.Keep_Note_Length > 0 then ""
+          elsif Query (State)'Length > 0 then "Enter/F3 next, with Shift back"
+          else "/ search  Tab next"));
       Draw_UI_Text
         (C, Keep_Box.x - GAP - UI_Text_Width (KEEP_LABEL),
          Keep_Box.y + (if CONTROL_HEIGHT > UI_Text_Height then (CONTROL_HEIGHT - UI_Text_Height) / 2 else 0),
@@ -1215,8 +1385,8 @@ package body Log_View is
    end Render;
 
    function Total (State : View_State) return Natural is (State.Count);
-   function Shown (State : View_State) return Natural is (State.Visible_Count);
-   function Following (State : View_State) return Boolean is (State.Follow);
+   function Shown (State : View_State) return Natural is (State.Position.Count);
+   function Following (State : View_State) return Boolean is (State.Position.Follow);
    function Minimum (State : View_State) return CuBit.Log_Records.Severity is (Floor (State));
    function Search_Text (State : View_State) return String is (Query (State));
    function Service_Filter (State : View_State) return String is
@@ -1225,12 +1395,22 @@ package body Log_View is
      (Name_Of_Column (Tables.Column_Index'Max (1, State.Columns.Sort_Column)));
    function Descending (State : View_State) return Boolean is (State.Columns.Order = Tables.Descending);
    function Row_Text (State : View_State; Row : Positive) return String is
-     (if Row <= State.Visible_Count then Message_Of (Shown_Entry (State, Row)) else "");
+     (if Row <= State.Position.Count then Message_Of (Shown_Entry (State, Row)) else "");
    function Selected_Text (State : View_State) return String is
-     (if State.Selected in 1 .. State.Visible_Count
-         and then Shown_Entry (State, State.Selected).Kind = Record_Entry
-      then LR.Text (Shown_Entry (State, State.Selected).Item) else "");
+     (if State.Position.Selected in 1 .. State.Position.Count
+         and then Shown_Entry (State, State.Position.Selected).Kind = Record_Entry
+      then LR.Text (Shown_Entry (State, State.Position.Selected).Item) else "");
    function Unseen (State : View_State) return Natural is (State.New_Since_Pause);
+   function Top_Row (State : View_State) return Positive is (State.Position.Top + 1);
+   function Selected_Row (State : View_State) return Natural is (State.Position.Selected);
+   function Row_Matches (State : View_State; Row : Positive) return Boolean is
+     (Row <= State.Position.Count and then Shown_Entry (State, Row).Hit);
+   function Match_Count (State : View_State) return Natural is
+     (if Query (State)'Length = 0 then 0 else VP.Match_Total (Row_Hits (State), State.Position.Count));
+   function Match_Index (State : View_State) return Natural is
+     (if State.Position.Selected = 0 or else not Row_Matches (State, State.Position.Selected) then 0
+      else VP.Match_Rank (Row_Hits (State), State.Position.Selected));
+   function Only_Matches (State : View_State) return Boolean is (State.Only);
    function Revision (State : View_State) return Unsigned_64 is (State.Revision);
    function Content_Area (Bounds : CuBit.UI.Rect) return CuBit.UI.Rect is
      (if Bounds.h > MARGIN + TOOLBAR_HEIGHT

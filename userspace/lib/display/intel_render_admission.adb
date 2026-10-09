@@ -4,8 +4,8 @@ package body Intel_Render_Admission with SPARK_Mode is
    procedure Start (Item : in out Transaction; Captured : Unsigned_64) is
    begin
       if Item.Current /= Idle then return; end if;
-      if Item.Stopped or Captured mod 2 ** 32 = 0 or
-        Captured / 2 ** 32 = 0 then
+      --  Captured is a process identity (KERN-003): zero names no one.
+      if Item.Stopped or Captured = 0 then
          Item.Current := Failed;
       else
          Item.Target := Captured;

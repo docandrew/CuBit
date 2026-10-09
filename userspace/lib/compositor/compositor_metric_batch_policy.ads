@@ -9,11 +9,11 @@ package Compositor_Metric_Batch_Policy with SPARK_Mode, Pure is
    subtype Count is CuBit.Metric_Records.Record_Count;
    Capacity : constant := CuBit.Metric_Records.Maximum_Records;
    Flush_Interval_Us : constant Tick := 100_000;
-   Declaration_Count : constant := 8;
+   Declaration_Count : constant := 12;
    type Append_Kind is (Describe_Output_0, Describe_Output_1,
                        Describe_Input, Describe_Request, Describe_Draw, Describe_Submit,
-                       Describe_Scene_Pixels, Describe_Repair_Pixels, Measurement, Full);
-   subtype Description is Append_Kind range Describe_Output_0 .. Describe_Repair_Pixels;
+                       Describe_Scene_Pixels, Describe_Repair_Pixels, Describe_GPU_Readback_Bytes, Describe_CPU_Copy_Bytes, Describe_Completion, Describe_Diagnostic, Measurement, Full);
+   subtype Description is Append_Kind range Describe_Output_0 .. Describe_Diagnostic;
    type State is private;
    function Used (S : State) return Count;
    function First (S : State) return Tick;
@@ -33,6 +33,16 @@ package Compositor_Metric_Batch_Policy with SPARK_Mode, Pure is
      with Pre => Next (S) /= Full and Now /= Compositor_Elapsed.Unavailable,
        Post => Used (S) = Used (S'Old) + 1 and
          First (S) = (if Used (S'Old) = 0 then Now else First (S'Old));
+   function Group_Room (S : State) return Boolean is
+     (Used (S) >= Declaration_Count and Used (S) <= Capacity - 4);
+   procedure Accepted_Group (S : in out State)
+     with Pre => Group_Room (S),
+       Post => Used (S) = Used (S'Old) + 4 and First (S) = First (S'Old);
+   --  The next normal event-loop Pump can submit a page whose remaining
+   --  tail cannot hold an entire event. No synchronous flush or retry.
+   procedure Request_Flush (S : in out State)
+     with Post => Used (S) = Used (S'Old) and First (S) = First (S'Old) and
+       (if Samples (S) > 0 then Due (S, First (S)));
    -- Call only after a successful SDK seal/submission has moved to its next
    -- filling page. A failed/uncertain submission must not reopen this page.
    procedure Submitted (S : out State)
@@ -41,6 +51,7 @@ private
    type State is record
       Records : Count := 0;
       Started : Tick := Compositor_Elapsed.Unavailable;
+      Urgent : Boolean := False;
    end record with Dynamic_Predicate =>
      ((State.Records = 0) = (State.Started = Compositor_Elapsed.Unavailable));
    function Used (S : State) return Count is (S.Records);
@@ -55,11 +66,15 @@ private
          when 5 => Describe_Submit,
          when 6 => Describe_Scene_Pixels,
          when 7 => Describe_Repair_Pixels,
+         when 8 => Describe_GPU_Readback_Bytes,
+         when 9 => Describe_CPU_Copy_Bytes,
+         when 10 => Describe_Completion,
+         when 11 => Describe_Diagnostic,
          when Declaration_Count .. Capacity - 1 => Measurement,
          when Capacity => Full);
    function Due (S : State; Now : Tick) return Boolean is
      (Samples (S) > 0 and then
-       (Used (S) = Capacity or else
+       (S.Urgent or else Used (S) = Capacity or else
         not Compositor_Elapsed.Measure (First (S), Now).Valid or else
         Compositor_Elapsed.Measure (First (S), Now).Microseconds >= Flush_Interval_Us));
    function Delay_Us (S : State; Now : Tick) return Tick is

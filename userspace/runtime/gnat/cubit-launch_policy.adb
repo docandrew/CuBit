@@ -1,12 +1,11 @@
 package body CuBit.Launch_Policy with SPARK_Mode => On is
-   use type Interfaces.Unsigned_64;
 
    function Desktop_Approval
-     (Name : String; Sender, Desktop_PID : Interfaces.Unsigned_64)
+     (Name : String; Sender, Desktop_PID : CuBit.Process_IDs.Process_ID)
       return Network_Approval
    is
-     (if Sender /= 0 and then Desktop_PID /= Interfaces.Unsigned_64'Last
-        and then Sender = Desktop_PID
+     (if CuBit.Process_IDs.Is_Process (Sender)
+        and then CuBit.Process_IDs."=" (Sender, Desktop_PID)
         and then Name = "cubitshell.app"
       then Browser_Outbound else No_Network);
 

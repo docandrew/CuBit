@@ -109,10 +109,24 @@ begin
          end loop;
          for I in 0 .. 4095 loop
             pragma Assert (Resolve (Borrow (Indexed), Unsigned_64 (I) * Block, 1).Address = Key (I));
+            declare
+               Located : constant DMA_Location := Locate_DMA (Borrow (Indexed), Key (I) + Block - 1);
+               Old : constant DMA_Location := Locate_DMA (Prefix, Key (I));
+            begin
+               pragma Assert (Located.State = Present and
+                 Located.Offset = Unsigned_64 (I + 1) * Block - 1 and
+                 Located.Probes in 1 .. Max_Admission_Probes);
+               pragma Assert ((Old.State = Present) = (I = 0));
+               pragma Assert (Old.State /= Unavailable);
+            end;
          end loop;
+         pragma Assert (Locate_DMA (Borrow (Indexed), 0).State = Absent);
+         pragma Assert (Locate_DMA (Borrow (Indexed), Unsigned_64'Last).State = Absent);
          pragma Assert (Byte_Count (Prefix) = Block);
          pragma Assert (Resolve (Prefix, 0, 1).Address = Key (0));
          pragma Assert (not Resolve (Prefix, Block, 1).Valid);
+         Quarantine (Indexed);
+         pragma Assert (Locate_DMA (Prefix, Key (0)).State = Unavailable);
       end;
    end loop;
    Ada.Text_IO.Put_Line ("Extent directory PASS: 600-extents growth; four 4096-key orders, duplicates, <=44 probes, stable prefixes, high-bit DMA");

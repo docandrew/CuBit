@@ -10,17 +10,23 @@
 -- See process-ipc.ads for lock ordering documentation.
 -------------------------------------------------------------------------------
 with BuddyAllocator;
+with Call_Sequences;
+with Process_Identities;
 with Capabilities.Operations;
 with Config;
 with Grant_Page_Installation;
 with IPC_Labels;
 with IPI;
+with Kernel_Reports;
 with Memory_Grants;
 with Memory_Grants.Loans;
 with Retained_Record_Blocks;
 with System.Storage_Elements;
+with System.Address_To_Access_Conversions;
 with PerCPUData;
 with Process.Queues;
+with Process.User_Memory;
+with Process.DMA;
 with Process_Lifetime;
 with Time;
 with TLB_Shootdown;
@@ -60,6 +66,40 @@ package body Process.IPC is
     -- Async I/O Helpers
     ---------------------------------------------------------------------------
 
+    -- Empty every entry in place (a whole-ring aggregate would be a 5.8 KiB
+    -- temporary on the kernel stack).
+    procedure clearCompletionSlots (slots : in out CompletionSlots) is
+    begin
+        for i in slots.ring'Range loop
+            slots.ring (i) := NULL_COMPLETION;
+            slots.owners (i) := NO_THREAD;
+        end loop;
+    end clearCompletionSlots;
+
+    -- pid's completion entries exist (allocating them on its first async
+    -- submit). Caller holds mailtab(pid).lock. False: out of memory, and
+    -- the submit is refused.
+    package Completion_Conversion is
+      new System.Address_To_Access_Conversions (CompletionSlots);
+
+    function ensureCompletionSlots (pid : ProcessID) return Boolean is
+        cq : CompletionQueue renames completionTab(pid);
+        bytes : constant Storage_Count :=
+          CompletionSlots'Object_Size / System.Storage_Unit;
+        block : System.Address;
+    begin
+        if cq.slots /= null then
+            return True;
+        end if;
+        BuddyAllocator.alloc (BuddyAllocator.getOrder (bytes), block);
+        if block = System.Null_Address then
+            return False;
+        end if;
+        cq.slots := CompletionSlotsAccess (Completion_Conversion.To_Pointer (block));
+        clearCompletionSlots (cq.slots.all);
+        return True;
+    end ensureCompletionSlots;
+
     ---------------------------------------------------------------------------
     -- enqueueCompletion
     -- Add a completion entry to a process' completion queue.
@@ -79,8 +119,8 @@ package body Process.IPC is
             return;
         end if;
 
-        cq.ring(cq.tail) := item;
-        cq.owners(cq.tail) := thread;
+        cq.slots.ring(cq.tail) := item;
+        cq.slots.owners(cq.tail) := thread;
         cq.tail  := (cq.tail + 1) mod COMPLETION_QUEUE_SIZE;
         cq.count := cq.count + 1;
         success  := True;
@@ -107,19 +147,19 @@ package body Process.IPC is
         success := False;
         for i in 0 .. cq.count - 1 loop
             idx := (cq.head + i) mod COMPLETION_QUEUE_SIZE;
-            if cq.owners(idx) = thread or else
-               (not strict and then cq.owners(idx) = NO_THREAD)
+            if cq.slots.owners(idx) = thread or else
+               (not strict and then cq.slots.owners(idx) = NO_THREAD)
             then
-                item := cq.ring(idx);
+                item := cq.slots.ring(idx);
                 for j in i .. cq.count - 2 loop
                     idx := (cq.head + j) mod COMPLETION_QUEUE_SIZE;
                     following := (idx + 1) mod COMPLETION_QUEUE_SIZE;
-                    cq.ring(idx) := cq.ring(following);
-                    cq.owners(idx) := cq.owners(following);
+                    cq.slots.ring(idx) := cq.slots.ring(following);
+                    cq.slots.owners(idx) := cq.slots.owners(following);
                 end loop;
                 cq.tail := (cq.tail + COMPLETION_QUEUE_SIZE - 1) mod COMPLETION_QUEUE_SIZE;
-                cq.ring(cq.tail) := NULL_COMPLETION;
-                cq.owners(cq.tail) := NO_THREAD;
+                cq.slots.ring(cq.tail) := NULL_COMPLETION;
+                cq.slots.owners(cq.tail) := NO_THREAD;
                 cq.count := cq.count - 1;
                 success := True;
                 return;
@@ -135,7 +175,7 @@ package body Process.IPC is
     begin
         for i in 0 .. cq.count - 1 loop
             idx := (cq.head + i) mod COMPLETION_QUEUE_SIZE;
-            if cq.owners(idx) = thread or else cq.owners(idx) = NO_THREAD then
+            if cq.slots.owners(idx) = thread or else cq.slots.owners(idx) = NO_THREAD then
                 n := n + 1;
             end if;
         end loop;
@@ -238,6 +278,7 @@ package body Process.IPC is
          replyTo      : in  ProcessID;
          replyThread  : out ThreadID;
          requestId    : out Unsigned_64;
+         callSeq      : out Unsigned_64;
          ok           : out Boolean)
 
     is
@@ -249,10 +290,12 @@ package body Process.IPC is
     begin
         requestId   := NO_REQUEST_ID;
         replyThread := NO_THREAD;
+        callSeq     := 0;
         ok          := False;
 
         if threadtab (callerThread).mode = KERNEL then
             replyThread := mainThreadOf (replyTo);
+            callSeq := threadtab (replyThread).callSequence;
             ok := True;
             return;
         end if;
@@ -266,6 +309,7 @@ package body Process.IPC is
                taken  => ok);
             if ok then
                 requestId := cap.object.param;
+                callSeq := cap.authorityTag;
                 replyThread := targetTID;
             end if;
             return;
@@ -300,6 +344,7 @@ package body Process.IPC is
         if ok then
             replyTargetOf (cap, targetPID, replyThread);
             requestId := cap.object.param;
+            callSeq := cap.authorityTag;
         end if;
     end consumeReplyAuthority;
 
@@ -334,173 +379,262 @@ package body Process.IPC is
            sender    => NO_PROCESS,
            kind      => RING_EVENT,
            requestId => NO_REQUEST_ID,
-           senderThread => NO_THREAD);
+           senderThread => NO_THREAD, publisher => NO_PROCESS, callSequence => 0);
         success := True;
     end takeIRQDoorbell;
 
     ---------------------------------------------------------------------------
+    -- A receiver's queue (IPC-002 step 3, docs/ipc-delivery.md): two
+    -- classes (requests; published events), each a ring of QUEUE_CREDIT
+    -- entries per sending process (Kernel_Credits), allocated when first
+    -- needed. A flooding sender fills only its own ring and is told so; it
+    -- never takes another sender's room. Callers hold mailtab(owner).lock.
+    ---------------------------------------------------------------------------
+
+    use type System.Address;
+    use type BuddyAllocator.Order;
+    package Credit_States is new System.Address_To_Access_Conversions
+      (Kernel_Credits.Receiver_State);
+    subtype Credit_State is Credit_States.Object_Pointer;
+    use type Credit_State;
+
+    type Entry_Chunk is array (0 .. SENDERS_PER_CHUNK * QUEUE_CREDIT - 1) of RingEntry;
+    package Entry_Chunks is new System.Address_To_Access_Conversions (Entry_Chunk);
+
+    Page_Bytes : constant := 4096;
+
+    -- The smallest buddy order holding bytes.
+    function orderFor (bytes : Natural) return BuddyAllocator.Order is
+        ord : BuddyAllocator.Order := 0;
+    begin
+        while Page_Bytes * 2 ** Natural (ord) < bytes loop
+            ord := ord + 1;
+        end loop;
+        return ord;
+    end orderFor;
+
+    State_Order : constant BuddyAllocator.Order :=
+      orderFor (Kernel_Credits.Receiver_State'Max_Size_In_Storage_Elements);
+    Chunk_Order : constant BuddyAllocator.Order :=
+      orderFor (Entry_Chunk'Max_Size_In_Storage_Elements);
+
+    function classOf (kind : RingEntryKind) return Queue_Class is
+      (if kind = RING_EVENT then Event_Class else Request_Class);
+
+    function stateOf (owner : ProcessID; class : Queue_Class) return Credit_State is
+      (if mailtab(owner).queues (class).state = System.Null_Address then null
+       else Credit_States.To_Pointer (mailtab(owner).queues (class).state));
+
+    -- The entry for sender's ring at position.
+    function entryAt
+      (owner : ProcessID; class : Queue_Class; sender : Kernel_Credits.Sender;
+       position : Kernel_Credits.Position) return Entry_Chunks.Object_Pointer
+    is
+      (Entry_Chunks.To_Pointer
+         (mailtab(owner).queues (class).chunks ((sender - 1) / SENDERS_PER_CHUNK)));
+
+    function entryIndex
+      (sender : Kernel_Credits.Sender; position : Kernel_Credits.Position) return Natural is
+      (((sender - 1) mod SENDERS_PER_CHUNK) * QUEUE_CREDIT + position);
+
+    -- The class's state and sender's chunk, allocated if absent.
+    procedure ensureStorage
+      (owner : ProcessID; class : Queue_Class; sender : Kernel_Credits.Sender;
+       ok : out Boolean)
+    is
+        q : Class_Queue renames mailtab(owner).queues (class);
+        chunk : constant Natural := (sender - 1) / SENDERS_PER_CHUNK;
+        block : System.Address;
+    begin
+        ok := False;
+        if q.state = System.Null_Address then
+            BuddyAllocator.alloc (State_Order, block);
+            if block = BuddyAllocator.NO_BLOCK_AVAILABLE then
+                return;
+            end if;
+            Kernel_Credits.Initialize (Credit_States.To_Pointer (block).all, QUEUE_CREDIT);
+            q.state := block;
+        end if;
+        if q.chunks (chunk) = System.Null_Address then
+            BuddyAllocator.alloc (Chunk_Order, block);
+            if block = BuddyAllocator.NO_BLOCK_AVAILABLE then
+                return;
+            end if;
+            q.chunks (chunk) := block;
+        end if;
+        ok := True;
+    end ensureStorage;
+
+    -- Anything queued for owner, in either class.
+    function queued (owner : ProcessID) return Boolean is
+      ((for some c in Queue_Class =>
+          stateOf (owner, c) /= null and then not Kernel_Credits.Empty (stateOf (owner, c).all)));
+
+    -- Nothing pending for owner's receive but what a sender brings: no
+    -- queued messages, kernel notices, IRQ doorbell or blocked senders.
+    -- Then its receive would take a new message first, so a call may be
+    -- handed to a waiting receiver directly (IPC-003, docs/ipc-fastpath.md).
+    -- Caller holds mailtab(owner).lock.
+    function mailboxIdle (owner : ProcessID) return Boolean is
+      (not queued (owner) and then
+       not proctab(owner).kernelNoticePending and then
+       not proctab(owner).irqNotificationPending and then
+       Queues.isEmpty (mailtab(owner).sendQueue));
+
+    -- Free owner's queue storage (its mailbox is closed and drained).
+    procedure freeQueues (owner : ProcessID) is
+    begin
+        for c in Queue_Class loop
+            declare
+                q : Class_Queue renames mailtab(owner).queues (c);
+            begin
+                for chunk of q.chunks loop
+                    if chunk /= System.Null_Address then
+                        BuddyAllocator.free (Chunk_Order, chunk);
+                        chunk := System.Null_Address;
+                    end if;
+                end loop;
+                if q.state /= System.Null_Address then
+                    BuddyAllocator.free (State_Order, q.state);
+                    q.state := System.Null_Address;
+                end if;
+            end;
+        end loop;
+        mailtab(owner).nextClass := Request_Class;
+    end freeQueues;
+
+    -- sender ended: its rings at owner go.
+    procedure forgetSender (owner : ProcessID; sender : ProcessID) is
+    begin
+        if sender = NO_PROCESS then
+            return;
+        end if;
+        for c in Queue_Class loop
+            if stateOf (owner, c) /= null then
+                Kernel_Credits.Forget (stateOf (owner, c).all, Kernel_Credits.Sender (sender));
+            end if;
+        end loop;
+    end forgetSender;
+
+    ---------------------------------------------------------------------------
     -- enqueueRing
-    -- Push an entry into a mailbox's unified ring buffer.
-    -- Caller must hold mailtab(owner).lock.
-    -- @return True if enqueued, False if queue is full (entry dropped).
+    -- Admit an entry into owner's queue, in its sender's ring.
+    -- @return True if kept, False if refused: the mailbox is closed, the
+    -- sender's ring is full, or no memory (the sender keeps its message).
     ---------------------------------------------------------------------------
     procedure enqueueRing (owner   : in  ProcessID;
                            item    : in  RingEntry;
                            success : out Boolean)
-
     is
-        r : MessageRing renames mailtab(owner).ring;
+        use type Kernel_Credits.Admit_Result;
+        class : constant Queue_Class := classOf (item.kind);
+        account : constant ProcessID :=
+          (if item.kind = RING_EVENT then item.publisher else item.sender);
+        position : Kernel_Credits.Position;
+        result : Kernel_Credits.Admit_Result;
+        ok : Boolean;
     begin
-        if mailtab(owner).closed or else r.count >= RING_SIZE then
-            success := False;
+        success := False;
+        -- Kernel events never use the queue (kernel notices).
+        if mailtab(owner).closed or else account = NO_PROCESS then
             return;
         end if;
-
-        r.entries(r.head) := item;
-        r.head  := (r.head + 1) mod RING_SIZE;
-        r.count := r.count + 1;
+        ensureStorage (owner, class, Kernel_Credits.Sender (account), ok);
+        if not ok then
+            return;
+        end if;
+        Kernel_Credits.Admit
+          (stateOf (owner, class).all, Kernel_Credits.Sender (account),
+           Unsigned_64 (generationOf (account)), position, result);
+        if result /= Kernel_Credits.Admitted then
+            return;
+        end if;
+        entryAt (owner, class, Kernel_Credits.Sender (account), position).all
+          (entryIndex (Kernel_Credits.Sender (account), position)) := item;
         success := True;
     end enqueueRing;
 
+    -- The next entry of one class, round-robin across its senders.
+    procedure takeClass (owner   : in  ProcessID;
+                         class   : in  Queue_Class;
+                         item    : out RingEntry;
+                         success : out Boolean)
+    is
+        state : constant Credit_State := stateOf (owner, class);
+        sender : Kernel_Credits.Sender;
+        position : Kernel_Credits.Position;
+    begin
+        item := NULL_RING_ENTRY;
+        success := False;
+        if state = null then
+            return;
+        end if;
+        Kernel_Credits.Take (state.all, sender, position, success);
+        if success then
+            declare
+                chunk : constant Entry_Chunks.Object_Pointer :=
+                  entryAt (owner, class, sender, position);
+                index : constant Natural := entryIndex (sender, position);
+            begin
+                item := chunk (index);
+                chunk (index) := NULL_RING_ENTRY;
+            end;
+        end if;
+    end takeClass;
+
     ---------------------------------------------------------------------------
     -- dequeueRing
-    -- Pop an entry from a mailbox's unified ring buffer.
-    -- Caller must hold mailtab(owner).lock.
+    -- The next entry of either class; mixed receive alternates classes.
     ---------------------------------------------------------------------------
     procedure dequeueRing (owner   : in  ProcessID;
                            item    : out RingEntry;
                            success : out Boolean)
-
     is
-        r : MessageRing renames mailtab(owner).ring;
+        first : constant Queue_Class := mailtab(owner).nextClass;
+        other : constant Queue_Class :=
+          (if first = Request_Class then Event_Class else Request_Class);
     begin
-        if r.count = 0 then
-            item    := NULL_RING_ENTRY;
-            success := False;
-            return;
+        takeClass (owner, first, item, success);
+        if not success then
+            takeClass (owner, other, item, success);
         end if;
-
-        item     := r.entries(r.tail);
-        r.entries(r.tail) := NULL_RING_ENTRY;
-        r.tail  := (r.tail + 1) mod RING_SIZE;
-        r.count := r.count - 1;
-        success := True;
+        if success then
+            mailtab(owner).nextClass := other;
+        end if;
     end dequeueRing;
 
     ---------------------------------------------------------------------------
     -- dequeueRingKind
-    -- Remove the first ring entry matching a specific kind without disturbing
-    -- older entries of other kinds. Caller must hold mailtab(owner).lock.
+    -- The next entry of kind's class (only published events are taken this
+    -- way; a request kind takes the request class).
     ---------------------------------------------------------------------------
     procedure dequeueRingKind (owner   : in  ProcessID;
                                kind    : in  RingEntryKind;
                                item    : out RingEntry;
                                success : out Boolean)
-
     is
-        r     : MessageRing renames mailtab(owner).ring;
-        idx   : RingIndex;
-        next  : RingIndex;
-        cur   : RingIndex;
     begin
-        if r.count = 0 then
-            item    := NULL_RING_ENTRY;
-            success := False;
-            return;
-        end if;
-
-        idx := r.tail;
-        for n in 0 .. r.count - 1 loop
-            if r.entries(idx).kind = kind then
-                item := r.entries(idx);
-
-                cur := idx;
-                if n < r.count - 1 then
-                    for m in n .. r.count - 2 loop
-                        next := (cur + 1) mod RING_SIZE;
-                        r.entries(cur) := r.entries(next);
-                        cur := next;
-                    end loop;
-                end if;
-
-                r.head := (r.head + RING_SIZE - 1) mod RING_SIZE;
-                r.entries(r.head) := NULL_RING_ENTRY;
-                r.count := r.count - 1;
-                success := True;
-                return;
-            end if;
-
-            idx := (idx + 1) mod RING_SIZE;
-        end loop;
-
-        item    := NULL_RING_ENTRY;
-        success := False;
+        takeClass (owner, classOf (kind), item, success);
     end dequeueRingKind;
 
     ---------------------------------------------------------------------------
     -- dequeueRingServiceRequest
-    -- Remove the oldest service-request entry from the unified ring.
-    --
-    -- The ring is shared by several semantic lanes for cache locality and a
-    -- compact mailbox representation. Service code, however, must not consume
-    -- unsolicited events while it is polling for client work. This helper keeps
-    -- the internal ring unified while making the public receive path typed.
-    --
-    -- Request-like entries are:
-    --   RING_SYNC          : a synchronous send/call that expects reply().
-    --   RING_ASYNC_REQUEST : submit() with a completion token; reply()
-    --                        completes the caller's async request.
-    --   RING_ONEWAY        : fire-and-forget service traffic; no reply cap.
+    -- The next request (RING_SYNC, RING_ASYNC_REQUEST, RING_ONEWAY): service
+    -- code does not consume published events while polling for client work.
     ---------------------------------------------------------------------------
     procedure dequeueRingServiceRequest (owner   : in  ProcessID;
                                          item    : out RingEntry;
                                          success : out Boolean)
-
     is
-        r     : MessageRing renames mailtab(owner).ring;
-        idx   : RingIndex;
-        next  : RingIndex;
-        cur   : RingIndex;
-        isRequest : Boolean;
     begin
-        if r.count = 0 then
-            item    := NULL_RING_ENTRY;
-            success := False;
-            return;
-        end if;
-
-        idx := r.tail;
-        for n in 0 .. r.count - 1 loop
-            isRequest :=
-                r.entries(idx).kind = RING_SYNC or else
-                r.entries(idx).kind = RING_ASYNC_REQUEST or else
-                r.entries(idx).kind = RING_ONEWAY;
-
-            if isRequest then
-                item := r.entries(idx);
-
-                cur := idx;
-                if n < r.count - 1 then
-                    for m in n .. r.count - 2 loop
-                        next := (cur + 1) mod RING_SIZE;
-                        r.entries(cur) := r.entries(next);
-                        cur := next;
-                    end loop;
-                end if;
-
-                r.head := (r.head + RING_SIZE - 1) mod RING_SIZE;
-                r.entries(r.head) := NULL_RING_ENTRY;
-                r.count := r.count - 1;
-                success := True;
-                return;
-            end if;
-
-            idx := (idx + 1) mod RING_SIZE;
-        end loop;
-
-        item    := NULL_RING_ENTRY;
-        success := False;
+        takeClass (owner, Request_Class, item, success);
     end dequeueRingServiceRequest;
+
+    -- One of receiver's kernel notices, if its doorbell rang (grant ends,
+    -- exit and fault reports). Called with the receiver mailbox locked
+    -- (mailbox, then grant and report locks: docs/kernel-locking.md).
+    procedure takeKernelNotice
+      (receiver : ProcessID; item : out RingEntry; found : out Boolean);
 
     -- Called with the receiver mailbox locked. Each successful take advances
     -- a persistent lane cursor. A continuously available eligible lane waits
@@ -530,13 +664,18 @@ package body Process.IPC is
                                  sender => processOf (sender),
                                  kind => RING_SYNC,
                                  requestId => NO_REQUEST_ID,
-                                 senderThread => sender);
+                                 senderThread => sender, publisher => NO_PROCESS,
+                                 callSequence => threadtab (sender).callSequence);
                         threadtab (sender).state := WAITINGFORREPLY;
                         found := True;
                     end if;
                 when IRQ_Doorbell =>
                     if not serviceOnly then
                         takeIRQDoorbell (receiver, item, found);
+                    end if;
+                when Kernel_Notices =>
+                    if not serviceOnly then
+                        takeKernelNotice (receiver, item, found);
                     end if;
             end case;
             lane := (if lane = Receive_Lane'Last then Receive_Lane'First
@@ -562,10 +701,12 @@ package body Process.IPC is
         if found and then from /= NO_PROCESS and then
            item.kind = RING_SYNC and then item.senderThread /= NO_THREAD
         then
+            -- A synchronous reply capability names the call it answers in
+            -- authorityTag (unused for replies): its sender's call sequence.
             threadtab (me).replyCap :=
                 (capType => Capabilities.CAP_REPLY,
                  rights => Capabilities.ALL_RIGHTS,
-                 authorityTag => Capabilities.NO_AUTHORITY_TAG,
+                 authorityTag => item.callSequence,
                  object => (ref => Unsigned_64 (item.senderThread),
                             param => NO_REQUEST_ID),
                  gen => threadGenerationOf (item.senderThread));
@@ -675,9 +816,10 @@ package body Process.IPC is
                 Spinlocks.exitCriticalSection (mailtab(receiver).lock);
                 return Unsigned_64'Last;
             end if;
-            if mailtab(receiver).ring.count /= 0 or else
+            if queued (receiver) or else
                not Queues.isEmpty (mailtab(receiver).sendQueue) or else
                proctab(receiver).irqNotificationPending or else
+               proctab(receiver).kernelNoticePending or else
                completionsFor (receiver, me) /= 0
             then
                 Spinlocks.exitCriticalSection (mailtab(receiver).lock);
@@ -707,6 +849,22 @@ package body Process.IPC is
             -- the lock before sleeping again; no dequeue or reply-cap mint.
         end loop;
     end waitForActivityUntil;
+
+    -- After a wake: a call handed over directly comes first (it was the
+    -- only thing pending when it arrived), then the general selection.
+    -- Caller holds mailtab(receiver).lock.
+    procedure takeHandoffOrWork
+      (me : ThreadID; receiver : ProcessID; item : out RingEntry; found : out Boolean) is
+    begin
+        if threadtab (me).handoffValid then
+            item := threadtab (me).handoffItem;
+            threadtab (me).handoffValid := False;
+            threadtab (me).handoffItem := NULL_RING_ENTRY;
+            found := True;
+        else
+            takeMailboxWork (receiver, False, item, found);
+        end if;
+    end takeHandoffOrWork;
 
     procedure receiveInternal
         (hasDeadline : in  Boolean;
@@ -756,7 +914,7 @@ package body Process.IPC is
         threadtab (me).receiveDeadlineActive := False;
         threadtab (me).receiveDeadlineMs := 0;
         threadtab (me).receiveDeadlineReceiver := NO_PROCESS;
-        takeMailboxWork (receiver, False, re, received);
+        takeHandoffOrWork (me, receiver, re, received);
         installReceivedWork (me, re, received, from, msg);
         Spinlocks.exitCriticalSection (mailtab(receiver).lock);
     end receiveInternal;
@@ -796,6 +954,60 @@ package body Process.IPC is
     -- decisions are repeated while holding the mailbox and process locks that
     -- serialize receive, publication, and teardown.
     ---------------------------------------------------------------------------
+    -- A synchronous call whose deadline passed (docs/ipc-fastpath.md, "Call
+    -- deadlines"): its caller wakes with REPLY_TIMEOUT. Taken under the lock
+    -- its other outcome uses, so a reply and a timeout cannot both win:
+    -- still queued as a sender, the server's mailbox (the server never sees
+    -- the request); waiting for the reply, the caller's own (as reply
+    -- delivery locks it).
+    procedure expireCall (tid : ThreadID; nowMs : Unsigned_64) is
+        caller  : constant ProcessID := processOf (tid);
+        server  : ProcessID;
+        removed : ThreadID;
+
+        function due return Boolean is
+          (threadtab (tid).callDeadlineActive and then
+           threadtab (tid).callDeadlineMs <= nowMs);
+
+        procedure timeOut is
+        begin
+            threadtab (tid).replyMsg :=
+              (tag => (label => IPC_Labels.REPLY_TIMEOUT, length => 0, flags => 0, reserved => 0),
+               authorityTag => 0, words => (others => 0));
+            threadtab (tid).callDeadlineActive := False;
+            ready (tid);
+        end timeOut;
+    begin
+        if threadtab (tid).state = SENDING then
+            -- queueKey names the server while SENDING (other states use it
+            -- for scheduler keys): check its range before using it.
+            if threadtab (tid).queueKey not in 1 .. Integer (ProcessID'Last) then
+                return;
+            end if;
+            server := ProcessID (threadtab (tid).queueKey);
+            Spinlocks.enterCriticalSection (mailtab(server).lock);
+            Spinlocks.enterCriticalSection (lock);
+            if threadtab (tid).state = SENDING and then due and then
+               ProcessID (threadtab (tid).queueKey) = server
+            then
+                Queues.popItem (mailtab(server).sendQueue, tid, removed);
+                if removed = tid then
+                    timeOut;
+                end if;
+            end if;
+            Spinlocks.exitCriticalSection (lock);
+            Spinlocks.exitCriticalSection (mailtab(server).lock);
+        elsif threadtab (tid).state = WAITINGFORREPLY and then caller /= NO_PROCESS then
+            Spinlocks.enterCriticalSection (mailtab(caller).lock);
+            Spinlocks.enterCriticalSection (lock);
+            if threadtab (tid).state = WAITINGFORREPLY and then due then
+                timeOut;
+            end if;
+            Spinlocks.exitCriticalSection (lock);
+            Spinlocks.exitCriticalSection (mailtab(caller).lock);
+        end if;
+    end expireCall;
+
     procedure expireReceiveDeadlines (nowMs : Unsigned_64)
     is
         receiver : ProcessID;
@@ -825,6 +1037,11 @@ package body Process.IPC is
                     Spinlocks.exitCriticalSection (mailtab(receiver).lock);
                 end if;
             end if;
+            if threadtab (tid).callDeadlineActive and then
+               threadtab (tid).callDeadlineMs <= nowMs
+            then
+                expireCall (tid, nowMs);
+            end if;
         end loop;
     end expireReceiveDeadlines;
 
@@ -843,7 +1060,10 @@ package body Process.IPC is
         loop
             Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
-            takeIRQDoorbell (receiver, re, ok);
+            takeKernelNotice (receiver, re, ok);
+            if not ok then
+                takeIRQDoorbell (receiver, re, ok);
+            end if;
             if not ok then
                 dequeueRingKind (receiver, RING_EVENT, re, ok);
             end if;
@@ -881,7 +1101,10 @@ package body Process.IPC is
 
         Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
-        takeIRQDoorbell (receiver, re, found);
+        takeKernelNotice (receiver, re, found);
+        if not found then
+            takeIRQDoorbell (receiver, re, found);
+        end if;
         if not found then
             dequeueRingKind (receiver, RING_EVENT, re, found);
         end if;
@@ -899,16 +1122,95 @@ package body Process.IPC is
     -- (next client already waiting in sendQueue), this handles the full
     -- round-trip with zero context switches.
     ---------------------------------------------------------------------------
+    -- Defined with reply, below.
+    function completeReplyLocked
+      (replyTo : ProcessID; replyThread : ThreadID;
+       requestId : Unsigned_64; callSeq : Unsigned_64; msg : Message)
+      return Unsigned_64;
+
     procedure replyWait (replyTo : in ProcessID; replyMsg : in Message;
                          from : out ProcessID; msg : out Message) is
+        mypid    : constant ProcessID := PerCPUData.getCurrentPID;
+        me       : constant ThreadID := PerCPUData.getCurrentThread;
+        receiver : constant ProcessID := getReceiver (mypid);
+        requestId : Unsigned_64;
+        callSeq : Unsigned_64;
+        replyThread : ThreadID;
+        ok : Boolean;
         ignored : Unsigned_64;
+        ignoreT : ThreadID;
+        re : RingEntry;
+        received : Boolean;
     begin
-        -- Use the same generation-checked, mailbox-locked reply handoff as
-        -- standalone replies. Do not retain an unlocked reply target across
-        -- the subsequent receive operation.
-        if replyTo /= NO_PROCESS then
-            ignored := reply (replyTo, replyMsg);
+        -- Labels only the kernel gives are refused before anything is
+        -- consumed: the server keeps its authority and can reply properly.
+        if IPC_Labels.Is_Kernel_Reply (replyMsg.tag.label) then
+            receive (from, msg);
+            return;
         end if;
+        if replyTo = NO_PROCESS or else mypid = NO_PROCESS or else
+           receiver /= mypid or else replyTo = mypid
+        then
+            if replyTo /= NO_PROCESS then
+                ignored := reply (replyTo, replyMsg);
+            end if;
+            receive (from, msg);
+            return;
+        end if;
+
+        -- The same generation-checked, mailbox-locked reply as reply().
+        lockMailboxes (mypid, replyTo);
+        if mailtab(replyTo).closed then
+            unlockMailboxes (mypid, replyTo);
+            receive (from, msg);
+            return;
+        end if;
+        consumeReplyAuthority (mypid, me, replyTo, replyThread, requestId, callSeq, ok);
+        if not ok then
+            unlockMailboxes (mypid, replyTo);
+            receive (from, msg);
+            return;
+        end if;
+
+        -- Fast path (IPC-003, docs/ipc-fastpath.md): a synchronous reply to
+        -- a caller waiting on this CPU, and nothing pending for this server,
+        -- so its receive would block. Wait in receive and switch to the
+        -- caller in one step, instead of making this thread runnable only
+        -- for it to block again.
+        if requestId = NO_REQUEST_ID and then replyThread /= NO_THREAD and then
+           processOf (replyThread) = replyTo and then
+           Call_Sequences.Accepts
+             (threadtab (replyThread).state = WAITINGFORREPLY,
+              threadtab (replyThread).callSequence, callSeq) and then
+           threadtab (replyThread).cpu = PerCPUData.getCPUNumber and then
+           not mailtab(mypid).closed and then mailboxIdle (mypid)
+        then
+            -- Register the wait, as receiveInternal does before blocking.
+            threadtab (me).queueKey := receiver;
+            threadtab (me).receiveDeadlineMs := 0;
+            threadtab (me).receiveDeadlineReceiver := receiver;
+            threadtab (me).receiveDeadlineActive := False;
+            Queues.enqueue (mailtab(receiver).recvQueue, me, ignoreT);
+            threadtab (me).state := RECEIVING;
+
+            Spinlocks.enterCriticalSection (lock);
+            threadtab (replyThread).replyMsg := replyMsg;
+            unlockMailboxes (mypid, replyTo);
+            directSwitch (me, replyThread);
+            Spinlocks.exitCriticalSection (lock);
+
+            -- Woken with work, as receiveInternal after its yield.
+            Spinlocks.enterCriticalSection (mailtab(receiver).lock);
+            threadtab (me).receiveDeadlineReceiver := NO_PROCESS;
+            takeHandoffOrWork (me, receiver, re, received);
+            installReceivedWork (me, re, received, from, msg);
+            Spinlocks.exitCriticalSection (mailtab(receiver).lock);
+            return;
+        end if;
+
+        -- General path: complete the reply, then receive.
+        Spinlocks.exitCriticalSection (mailtab(mypid).lock);
+        ignored := completeReplyLocked (replyTo, replyThread, requestId, callSeq, replyMsg);
         receive (from, msg);
     end replyWait;
 
@@ -964,7 +1266,8 @@ package body Process.IPC is
     --   us to the ready list. We resume with reply already delivered.
     ---------------------------------------------------------------------------
     function send (dest : ProcessID; msg : Message;
-                   expectedGeneration : Capabilities.Generation := 0) return MessageTag
+                   expectedGeneration : Capabilities.Generation;
+                   deadlineMs : Unsigned_64) return MessageTag
 
     is
         pid      : constant ProcessID := PerCPUData.getCurrentPID;
@@ -991,60 +1294,76 @@ package body Process.IPC is
             return NULL_TAG;
         end if;
 
-        -- Capability enforcement for legacy PID-based send.
-        -- Kernel threads are exempt (they have no cap table).
-        if Config.ENFORCE_IPC_CAPS
-           and then threadtab (me).mode = USER
-        then
-            enforceCheck : declare
-                found : Boolean := False;
-            begin
-                for i in Capabilities.CapabilitySlot loop
-                    if proctab(pid).caps(i).capType = Capabilities.CAP_ENDPOINT
-                       and then proctab(pid).caps(i).object.ref = Unsigned_64(dest)
-                       and then proctab(pid).caps(i).rights(Capabilities.RIGHT_WRITE)
-                       and then proctab(pid).caps(i).gen =
-                                generationOf (dest)
-                    then
-                        found := True;
-                        exit;
-                    end if;
-                end loop;
-
-                if not found then
-                    Spinlocks.exitCriticalSection (mailtab(dest).lock);
-                    return NULL_TAG;
-                end if;
-            end enforceCheck;
-        end if;
+        -- Authority was checked by capSend, the only caller: the slot's
+        -- read-write rights and current generation, which is re-checked
+        -- above under this mailbox lock.
 
         -- Store our message in per-sender storage so it cannot be
         -- overwritten by another sender racing to the same destination.
+        -- A new call: only an answer to this one is delivered
+        -- (Call_Sequences). At the last sequence the thread makes no more
+        -- calls: retired, never wrapped.
+        if not Call_Sequences.Can_Begin (threadtab (me).callSequence) then
+            Spinlocks.exitCriticalSection (mailtab(dest).lock);
+            return NULL_TAG;
+        end if;
         threadtab (me).sendMsg := msg;
+        threadtab (me).callSequence := Call_Sequences.Next (threadtab (me).callSequence);
+        -- How long the caller waits (docs/ipc-fastpath.md, "Call
+        -- deadlines"); armed under this lock, before the caller blocks.
+        if deadlineMs /= Unsigned_64'Last then
+            threadtab (me).callDeadlineMs := deadlineMs;
+            threadtab (me).callDeadlineActive := True;
+        end if;
 
         if not Queues.isEmpty (mailtab(dest).recvQueue) then
-            -- Path 1: receiver already waiting. Enqueue message in
-            -- unified ring so receiver can dequeue it after waking.
+            -- Path 1: receiver already waiting.
             enqueueP1 : declare
+                item : constant RingEntry :=
+                  (msg       => msg,
+                   sender    => pid,
+                   kind      => RING_SYNC,
+                   requestId => NO_REQUEST_ID,
+                   senderThread => me, publisher => NO_PROCESS,
+                   callSequence => threadtab (me).callSequence);
+                -- Fast path (IPC-003): nothing else is pending for dest, so
+                -- its receive would take this message first anyway; hand it
+                -- to the receiver directly instead of queueing it.
+                idle : constant Boolean := mailboxIdle (dest);
                 ok : Boolean;
             begin
-                enqueueRing (dest,
-                             (msg       => msg,
-                              sender    => pid,
-                              kind      => RING_SYNC,
-                              requestId => NO_REQUEST_ID,
-                              senderThread => me),
-                             ok);
-                if not ok then
-                    Spinlocks.exitCriticalSection (mailtab(dest).lock);
-                    return NULL_TAG;
+                if not idle then
+                    enqueueRing (dest, item, ok);
+                    if not ok then
+                        threadtab (me).callDeadlineActive := False;
+                        Spinlocks.exitCriticalSection (mailtab(dest).lock);
+                        return NULL_TAG;
+                    end if;
+                end if;
+
+                -- A receiving thread on this CPU, if the destination has
+                -- one, so the call can be a direct switch (else the longest
+                -- waiter).
+                Queues.dequeuePreferring
+                  (mailtab(dest).recvQueue, PerCPUData.getCPUNumber, receiver);
+
+                if idle then
+                    if threadtab (receiver).waitsForIPCActivity then
+                        -- An activity waiter takes nothing itself: queue the
+                        -- message for the receive that follows its wake.
+                        enqueueRing (dest, item, ok);
+                        if not ok then
+                            Queues.enqueue (mailtab(dest).recvQueue, receiver, ignore);
+                            threadtab (me).callDeadlineActive := False;
+                            Spinlocks.exitCriticalSection (mailtab(dest).lock);
+                            return NULL_TAG;
+                        end if;
+                    else
+                        threadtab (receiver).handoffItem := item;
+                        threadtab (receiver).handoffValid := True;
+                    end if;
                 end if;
             end enqueueP1;
-
-            -- A receiving thread on this CPU, if the destination has one,
-            -- so the call can be a direct handoff (else the longest waiter).
-            Queues.dequeuePreferring
-              (mailtab(dest).recvQueue, PerCPUData.getCPUNumber, receiver);
 
             -- Sender goes to WAITINGFORREPLY
             threadtab (me).state := WAITINGFORREPLY;
@@ -1058,7 +1377,8 @@ package body Process.IPC is
                 directSwitch (me, receiver);
                 Spinlocks.exitCriticalSection (lock);
 
-                -- Resumed: reply delivered via directSwitch from reply()
+                -- Resumed: a reply delivered by reply(), or the deadline.
+                threadtab (me).callDeadlineActive := False;
                 replyTag := threadtab (me).replyMsg.tag;
                 return replyTag;
             else
@@ -1081,20 +1401,23 @@ package body Process.IPC is
         -- Path 2: yield and wait for receiver to dequeue us
         yield;
 
-        -- Reply delivered — replyMsg populated by reply()
+        -- A reply delivered by reply(), or the deadline (REPLY_TIMEOUT).
+        threadtab (me).callDeadlineActive := False;
         replyTag := threadtab (me).replyMsg.tag;
 
         return replyTag;
     end send;
 
     ---------------------------------------------------------------------------
-    -- sendEvent
-    -- Non-blocking send for interrupt context. Does not block the caller.
-    -- Pushes to the event ring buffer; drops if full.
+    -- trySendEvent
+    -- Publish an event for dest without blocking. Kept in publisher's
+    -- event ring at dest, or refused (accepted False) when that ring is
+    -- full: the publisher is told and keeps it.
     ---------------------------------------------------------------------------
-    procedure trySendEvent (dest     : ProcessID;
-                            msg      : Message;
-                            accepted : out Boolean;
+    procedure trySendEvent (dest      : ProcessID;
+                            msg       : Message;
+                            publisher : ProcessID;
+                            accepted  : out Boolean;
                             expectedGeneration : Capabilities.Generation := 0)
          is
     begin
@@ -1124,7 +1447,8 @@ package body Process.IPC is
                       sender    => NO_PROCESS,
                       kind      => RING_EVENT,
                       requestId => NO_REQUEST_ID,
-                      senderThread => NO_THREAD),
+                      senderThread => NO_THREAD,
+                      publisher => publisher, callSequence => 0),
                      accepted);
 
         if not accepted then
@@ -1138,14 +1462,6 @@ package body Process.IPC is
 
         Spinlocks.exitCriticalSection (mailtab(dest).lock);
     end trySendEvent;
-
-    procedure sendEvent (dest : ProcessID; msg : Message)
-
-    is
-        accepted : Boolean;
-    begin
-        trySendEvent (dest, msg, accepted);
-    end sendEvent;
 
     ---------------------------------------------------------------------------
     -- notifyIRQ
@@ -1173,6 +1489,11 @@ package body Process.IPC is
         Spinlocks.exitCriticalSection (mailtab(dest).lock);
     end notifyIRQ;
 
+    function putReport
+      (subject : ProcessID; kind : Kernel_Reports.Report_Kind;
+       recipient : ProcessID; generation : Capabilities.Generation;
+       msg : Message) return Boolean;
+
     ---------------------------------------------------------------------------
     -- notifySupervisor
     -- Send a non-blocking fault event to the supervisor of the given process.
@@ -1195,12 +1516,16 @@ package body Process.IPC is
                          length => 4,
                          flags  => 0,
                          reserved  => 0);
-        faultMsg.words (0) := Unsigned_64 (pid);
+        faultMsg.words (0) := Process_Identities.To_Word (identityOf (pid));
         faultMsg.words (1) := detail0;
         faultMsg.words (2) := detail1;
         faultMsg.words (3) := detail2;
 
-        sendEvent (svpid, faultMsg);
+        if putReport (pid, Kernel_Reports.Fault_To_Supervisor, svpid,
+                      generationOf (svpid), faultMsg)
+        then
+            ringReport (svpid);
+        end if;
     end notifySupervisor;
 
     ---------------------------------------------------------------------------
@@ -1216,7 +1541,7 @@ package body Process.IPC is
     -- publication. Synchronous handoff transfers only Process.lock.
     function completeReplyLocked
       (replyTo : ProcessID; replyThread : ThreadID;
-       requestId : Unsigned_64; msg : Message)
+       requestId : Unsigned_64; callSeq : Unsigned_64; msg : Message)
       return Unsigned_64
     is
         me : constant ThreadID := PerCPUData.getCurrentThread;
@@ -1226,9 +1551,13 @@ package body Process.IPC is
         ok : Boolean;
     begin
         if requestId = NO_REQUEST_ID then
+            -- Delivered only to the call it answers: a caller that timed
+            -- out (or moved on to another call) refuses it.
             if replyThread = NO_THREAD or else
                processOf (replyThread) /= replyTo or else
-               threadtab (replyThread).state /= WAITINGFORREPLY
+               not Call_Sequences.Accepts
+                     (threadtab (replyThread).state = WAITINGFORREPLY,
+                      threadtab (replyThread).callSequence, callSeq)
             then
                 Spinlocks.exitCriticalSection (mailtab(replyTo).lock);
                 return 0;
@@ -1254,7 +1583,7 @@ package body Process.IPC is
             enqueueCompletion
               (owner => replyTo,
                item => (requestId => requestId, token => token, msg => msg,
-                        from => Unsigned_64 (mypid),
+                        from => Process_Identities.To_Word (identityOf (mypid)),
                         status => COMPLETION_OK, valid => True,
                         reserved => (others => 0)),
                thread => submitter,
@@ -1273,16 +1602,19 @@ package body Process.IPC is
         mypid : constant ProcessID := PerCPUData.getCurrentPID;
         me    : constant ThreadID := PerCPUData.getCurrentThread;
         requestId : Unsigned_64;
+        callSeq : Unsigned_64;
         replyThread : ThreadID;
         ok : Boolean;
     begin
-        if replyTo = NO_PROCESS then return 0; end if;
+        if replyTo = NO_PROCESS or else IPC_Labels.Is_Kernel_Reply (msg.tag.label) then
+            return 0;
+        end if;
         lockMailboxes (mypid, replyTo);
         if mailtab(replyTo).closed then
             unlockMailboxes (mypid, replyTo);
             return 0;
         end if;
-        consumeReplyAuthority (mypid, me, replyTo, replyThread, requestId, ok);
+        consumeReplyAuthority (mypid, me, replyTo, replyThread, requestId, callSeq, ok);
         if not ok then
             unlockMailboxes (mypid, replyTo);
             return 0;
@@ -1290,7 +1622,7 @@ package body Process.IPC is
         if mypid /= replyTo then
             Spinlocks.exitCriticalSection (mailtab(mypid).lock);
         end if;
-        return completeReplyLocked (replyTo, replyThread, requestId, msg);
+        return completeReplyLocked (replyTo, replyThread, requestId, callSeq, msg);
     end reply;
 
     function replyCap
@@ -1304,9 +1636,12 @@ package body Process.IPC is
         replyThread : ThreadID;
         ok : Boolean;
     begin
-        if mypid = NO_PROCESS then return 0; end if;
-        -- Consume the explicitly selected one-use reply even when delivery
-        -- will fail. Otherwise a departed caller strands the server's slot.
+        if mypid = NO_PROCESS or else IPC_Labels.Is_Kernel_Reply (msg.tag.label) then
+            return 0;
+        end if;
+        -- A label only the kernel gives is refused above, before the reply
+        -- is consumed. Otherwise consume the one-use reply even when delivery
+        -- will fail, or a departed caller would strand the server's slot.
         -- Non-reply authority is preserved. Serialize with policy-authorized
         -- edits of this cspace, not just other executions of this process.
         -- REPLY_CAP_SLOT names the calling thread's current reply authority.
@@ -1331,7 +1666,8 @@ package body Process.IPC is
             Spinlocks.exitCriticalSection (mailtab(lockedPID).lock);
             return 0;
         end if;
-        return completeReplyLocked (replyTo, replyThread, cap.object.param, msg);
+        return completeReplyLocked
+          (replyTo, replyThread, cap.object.param, cap.authorityTag, msg);
     end replyCap;
 
     ---------------------------------------------------------------------------
@@ -1402,7 +1738,8 @@ package body Process.IPC is
         if wantCompletion and then
            (proctab(pid).numPending >= MAX_PENDING_ASYNC or else
             proctab(pid).numPending + completionTab(pid).count >=
-              COMPLETION_QUEUE_SIZE)
+              COMPLETION_QUEUE_SIZE or else
+            not ensureCompletionSlots (pid))
         then
             unlockMailboxes (pid, dest);
             return False;
@@ -1432,7 +1769,7 @@ package body Process.IPC is
                       sender    => pid,
                       kind      => entryKind,
                       requestId => requestId,
-                      senderThread => NO_THREAD),
+                      senderThread => NO_THREAD, publisher => NO_PROCESS, callSequence => 0),
                      ok);
 
         if not ok then
@@ -1475,73 +1812,60 @@ package body Process.IPC is
     -- Block until at least minWait completions are available, then drain
     -- up to maxEntries.
     ---------------------------------------------------------------------------
-    procedure waitCompletion (entries     : out CompletionRing;
+    procedure waitCompletion (destination : in  Unsigned_64;
                               maxEntries  : in  Natural;
                               minWait     : in  Natural;
-                              numReturned : out Natural)
-        -- SPARK_Mode Off: uses x86.stac/clac for SMAP user memory access
-
+                              numReturned : out Natural;
+                              ok          : out Boolean)
     is
         mypid    : constant ProcessID := PerCPUData.getCurrentPID;
         me       : constant ThreadID := PerCPUData.getCurrentThread;
         receiver : constant ProcessID := getReceiver (mypid);
+        Entry_Bytes : constant Storage_Count :=
+          CompletionEntry'Max_Size_In_Storage_Elements;
         drained  : Natural := 0;
-        item     : CompletionEntry;
-        ok       : Boolean;
+        item     : aliased CompletionEntry;
+        taken    : Boolean;
+        copied   : Boolean;
         effectiveMax : Natural;
         effectiveMin : Natural;
         ignore       : ThreadID;
     begin
-        -- Clamp parameters
-        if maxEntries > COMPLETION_QUEUE_SIZE then
-            effectiveMax := COMPLETION_QUEUE_SIZE;
-        else
-            effectiveMax := maxEntries;
-        end if;
-
-        if minWait > effectiveMax then
-            effectiveMin := effectiveMax;
-        else
-            effectiveMin := minWait;
-        end if;
-
-        -- Initialize only the caller-requested extent. Assigning the complete
-        -- imported ring here used to overwrite 64 entries even when the
-        -- caller supplied maxEntries = 1.
-        x86.stac;
-        for i in CompletionIndex loop
-            exit when i >= effectiveMax;
-            entries (i) := NULL_COMPLETION;
-        end loop;
-        x86.clac;
         numReturned := 0;
-
-        if mypid = NO_PROCESS then
+        ok := False;
+        effectiveMax := Natural'Min (maxEntries, COMPLETION_QUEUE_SIZE);
+        effectiveMin := Natural'Min (minWait, effectiveMax);
+        if mypid = NO_PROCESS or else effectiveMax = 0 or else
+           not User_Memory.Writable_Range
+             (mypid, destination, Entry_Bytes * Storage_Count (effectiveMax))
+        then
             return;
         end if;
+        ok := True;
 
         loop
             Spinlocks.enterCriticalSection (mailtab(receiver).lock);
 
             if completionsFor (receiver, me) >= effectiveMin then
-                -- Drain up to effectiveMax entries into user buffer
-                x86.stac;
+                -- Each entry through the checked copier; the range was
+                -- writable when checked (a thread unmapping its own buffer
+                -- meanwhile loses what it asked for).
                 while drained < effectiveMax loop
-                    dequeueCompletion (receiver, me, item, ok);
-                    exit when not ok;
-                    entries(drained) := item;
+                    dequeueCompletion (receiver, me, item, taken);
+                    exit when not taken;
+                    User_Memory.Copy_To_User
+                      (mypid, destination + Unsigned_64 (Entry_Bytes) * Unsigned_64 (drained),
+                       item'Address, Entry_Bytes, copied);
+                    exit when not copied;
                     drained := drained + 1;
                 end loop;
-                x86.clac;
 
                 Spinlocks.exitCriticalSection (mailtab(receiver).lock);
                 numReturned := drained;
                 return;
             end if;
 
-            -- Not enough completions yet — block.
-            -- EFLAGS.AC (SMAP) is cleared by context switch; re-set
-            -- STAC when we loop back to drain.
+            -- Not enough completions yet: block.
             threadtab (me).state := WAITINGFORCOMPLETION;
             Queues.enqueue (mailtab(receiver).notifyQueue, me, ignore);
             Spinlocks.exitCriticalSection (mailtab(receiver).lock);
@@ -1583,71 +1907,85 @@ package body Process.IPC is
 
     package Grant_Loans is new Memory_Grants.Loans;
 
-    -- Grant lifecycle events (docs/data-plane.md): queued under grantLock
-    -- where a grant is revoked or retires, and posted by postGrantEvents
-    -- once the lock is released, so delivery never runs inside it. The
-    -- queue is bounded; an event that does not fit is dropped and counted
-    -- (events are hints, the grant generation is authoritative).
-    Max_Pending_Grant_Events : constant := 64;
-    type Pending_Grant_Event is record
-        dest       : ProcessID := NO_PROCESS;
-        label      : Unsigned_32 := 0;
-        slot       : Memory_Grants.Global_Slot := 0;
-        generation : Unsigned_64 := 0;
-        peer       : ProcessID := NO_PROCESS;
-    end record;
-    subtype Pending_Grant_Count is Natural range 0 .. Max_Pending_Grant_Events;
-    pendingGrantEvents : array (1 .. Max_Pending_Grant_Events) of Pending_Grant_Event;
-    pendingGrantEventCount : Pending_Grant_Count := 0;
-    droppedGrantEvents : Unsigned_64 := 0;
+    -- Kernel notices (docs/ipc-delivery.md, "Events are state on kernel
+    -- objects"). A grant's end is kept on its record for each party until
+    -- that party reads it; exit and fault reports are kept in
+    -- Kernel_Reports. Nothing is queued, so nothing is dropped: the
+    -- process is only told to look (kernelNoticePending).
     Grant_Event_Words : constant := 3;
 
-    -- Caller holds grantLock.
-    procedure queueGrantEventLocked
-      (dest : ProcessID; label : Unsigned_32; slot : Memory_Grants.Global_Slot;
-       generation : Unsigned_64; peer : ProcessID) is
+    -- Per-process grant state is Process.Grant_State (grantsOf).
+    -- Processes to ring once grantLock is free, linked through
+    -- Grant_State.wakeNext (each at most once: wakeQueued). Under grantLock.
+    noticeWakeHead      : ProcessID := NO_PROCESS;
+    -- Whether that list has any member: most grant operations leave no
+    -- notice, so ringGrantNotices skips grantLock when this is False.
+    noticeWakesPending  : Boolean := False with Volatile;
+
+    -- Exit and fault reports. reportLock is a leaf.
+    reportLock : Spinlocks.spinlock;
+    reports    : Kernel_Reports.Table;
+
+    -- Every process's control messages (proctab(pid).controls). A leaf.
+    controlLock : Spinlocks.spinlock;
+    -- EVENT_CONTROL: the kind, the sender's identity.
+    Control_Words : constant := 2;
+
+    -- Tell dest to look for notices. Caller holds no grant or report lock
+    -- (the mailbox lock is taken here) and not Process.lock.
+    procedure ringNoticeDoorbell (dest : ProcessID) is
     begin
         if dest = NO_PROCESS then
             return;
         end if;
-        if pendingGrantEventCount = Max_Pending_Grant_Events then
-            droppedGrantEvents := droppedGrantEvents + 1;
+        Spinlocks.enterCriticalSection (mailtab(dest).lock);
+        if not mailtab(dest).closed then
+            proctab(dest).kernelNoticePending := True;
+            wakeForUnsolicitedWork (dest);
+        end if;
+        Spinlocks.exitCriticalSection (mailtab(dest).lock);
+    end ringNoticeDoorbell;
+
+    -- Put pid on the list to ring once grantLock is free. Caller holds
+    -- grantLock. open/closeNotices leave a queued entry in place: a doorbell
+    -- on a closed mailbox does nothing, and one on a new life makes it look
+    -- and find nothing (takeKernelNotice).
+    procedure queueNoticeWake (pid : ProcessID) is
+    begin
+        if not grantsOf (pid).wakeQueued then
+            grantsOf (pid).wakeQueued := True;
+            grantsOf (pid).wakeNext := noticeWakeHead;
+            noticeWakeHead := pid;
+        end if;
+        noticeWakesPending := True;
+    end queueNoticeWake;
+
+    -- Ring every process grant work left a notice for. Caller does not
+    -- hold grantLock.
+    procedure ringGrantNotices is
+        dest : ProcessID := NO_PROCESS;
+    begin
+        -- Set under grantLock before it is released; this thread released
+        -- it after its own grant work, so its notices are visible here.
+        if not noticeWakesPending then
             return;
         end if;
-        pendingGrantEventCount := pendingGrantEventCount + 1;
-        pendingGrantEvents (pendingGrantEventCount) :=
-          (dest => dest, label => label, slot => slot, generation => generation, peer => peer);
-    end queueGrantEventLocked;
-
-    -- Caller does not hold grantLock. Posts every queued event, one at a
-    -- time, each taken under the lock and sent outside it.
-    procedure postGrantEvents is
-        item : Pending_Grant_Event;
-        msg : Message;
-        accepted : Boolean;
-    begin
         loop
             Spinlocks.enterCriticalSection (grantLock);
-            if pendingGrantEventCount = 0 then
-                Spinlocks.exitCriticalSection (grantLock);
-                return;
+            dest := noticeWakeHead;
+            if dest /= NO_PROCESS then
+                noticeWakeHead := grantsOf (dest).wakeNext;
+                grantsOf (dest).wakeNext := NO_PROCESS;
+                grantsOf (dest).wakeQueued := False;
             end if;
-            item := pendingGrantEvents (1);
-            for index in 1 .. pendingGrantEventCount - 1 loop
-                pendingGrantEvents (index) := pendingGrantEvents (index + 1);
-            end loop;
-            pendingGrantEventCount := pendingGrantEventCount - 1;
+            if noticeWakeHead = NO_PROCESS then
+                noticeWakesPending := False;
+            end if;
             Spinlocks.exitCriticalSection (grantLock);
-            msg := NULL_MESSAGE;
-            msg.tag := (label => item.label, length => Grant_Event_Words,
-                        flags => 0, reserved => 0);
-            msg.words (0) := Unsigned_64 (item.slot);
-            msg.words (1) := item.generation;
-            msg.words (2) := Unsigned_64 (item.peer);
-            -- A dead or full destination drops it.
-            trySendEvent (item.dest, msg, accepted);
+            exit when dest = NO_PROCESS;
+            ringNoticeDoorbell (dest);
         end loop;
-    end postGrantEvents;
+    end ringGrantNotices;
 
     use type Grant_Loans.Parent_Phase;
     use type Grant_Loans.Loan_Phase;
@@ -1673,101 +2011,551 @@ package body Process.IPC is
         return address;
     end allocateGrantMetadataBlock;
 
+    -- As many records as fit the one page a block gets.
+    Grants_Per_Block : constant Positive :=
+      4096 / (Grant'Object_Size / System.Storage_Unit);
     package Grant_Storage is new Retained_Record_Blocks
-      (Grant, GrantID'Last, 64, allocateGrantMetadataBlock);
+      (Grant, Memory_Grants.Global_Slot'Last, Grants_Per_Block, allocateGrantMetadataBlock);
     subtype Grant_Pointer is Grant_Storage.Element_Access;
     use type Grant_Pointer;
-    use type Memory_Grants.Process_Generation;
-    Grant_Stores : array (ProcessID) of Grant_Storage.Store;
-    Grant_Lives : array (ProcessID) of Memory_Grants.Process_Generation := (others => 0);
-    Grant_Life_Ready : array (ProcessID) of Boolean := (others => False);
+    use type Memory_Grants.Global_Slot;
 
-    -- These stores outlive process-table pages. In particular, endpoint
-    -- invalidation must not hide grants still awaiting their final reader.
-    function grantFor (owner : ProcessID; slot : GrantID) return Grant_Pointer is
-      (Grant_Storage.Find (Grant_Stores (owner), slot));
+    -- One table of grants for the whole system (KERN-003 step 2,
+    -- docs/process-objects.md), indexed by global slot; slot 0 names none.
+    -- Records outlive process-table pages: a grant awaiting its final
+    -- reader survives its owner's record. All under grantLock.
+    Grants : Grant_Storage.Store;
+    -- Free slots (retired, reusable), linked through ownerNext; slots
+    -- never used yet start at Next_Fresh (No_Slot once all were used).
+    Free_Head  : Memory_Grants.Global_Slot := Memory_Grants.No_Slot;
+    Next_Fresh : Memory_Grants.Global_Slot := Memory_Grants.Grant_Slot'First;
+    -- Each process's owned grants (live, or retired with an unread notice)
+    -- and received grants (live), and how many.
+    -- Take a window of grantee's for a grant about to be mapped there.
+    procedure takeWindow (grantee : ProcessID; g : in out Grant; taken : out Boolean) is
+        window : Grant_Windows.Window;
+    begin
+        Grant_Windows.Allocate (grantsOf (grantee).windows, window, taken);
+        if taken then
+            g.granteeWindow := window;
+            g.windowHeld := True;
+            g.granteeAddr := To_Address (Integer_Address
+              (Memory_Grants.Window_Address (window)));
+        end if;
+    end takeWindow;
+
+    -- Give back g's window. Only once its pages are unmapped and every CPU
+    -- has flushed them (unmapGrantPages): the next grant mapped there must
+    -- not be reachable through a stale translation.
+    procedure releaseWindow (g : in out Grant) is
+    begin
+        if g.windowHeld then
+            if not Grant_Windows.Contains (grantsOf (g.granteePID).windows, g.granteeWindow) then
+                raise ProcessException with "Grant window lost";
+            end if;
+            Grant_Windows.Release (grantsOf (g.granteePID).windows, g.granteeWindow);
+            g.windowHeld := False;
+        end if;
+    end releaseWindow;
 
     function grantFor (slot : Memory_Grants.Global_Slot) return Grant_Pointer is
-      (grantFor (ProcessID (Memory_Grants.Owner_Of (slot)),
-        GrantID (Memory_Grants.Local_Slot_Of (slot))));
+      (if slot = Memory_Grants.No_Slot then null else Grant_Storage.Find (Grants, slot));
 
-    function initializeGrantLife
-      (pid : ProcessID; life : Memory_Grants.Process_Generation) return Boolean
-    is
-        slot : GrantID := GrantID'First;
-        present : Boolean;
-        value : Grant_Pointer;
-    begin
-        if pid = NO_PROCESS then return False; end if;
-        Spinlocks.enterCriticalSection (grantLock);
-        if Grant_Life_Ready (pid) and then life <= Grant_Lives (pid) then
-            Spinlocks.exitCriticalSection (grantLock);
-            return False;
-        end if;
-        -- Two passes: rejection must leave all existing records unchanged.
-        loop
-            Grant_Storage.Next_Present (Grant_Stores (pid), slot, slot, present);
-            exit when not present;
-            value := grantFor (pid, slot);
-            if Memory_Grants.Is_Active (value.lifecycle) then
-                Spinlocks.exitCriticalSection (grantLock);
-                return False;
-            end if;
-            exit when slot = GrantID'Last;
-            slot := slot + 1;
-        end loop;
-        slot := GrantID'First;
-        loop
-            Grant_Storage.Next_Present (Grant_Stores (pid), slot, slot, present);
-            exit when not present;
-            value := grantFor (pid, slot);
-            value.all := (generation => Memory_Grants.Life_Base (life), others => <>);
-            exit when slot = GrantID'Last;
-            slot := slot + 1;
-        end loop;
-        Grant_Lives (pid) := life;
-        Grant_Life_Ready (pid) := True;
-        Spinlocks.exitCriticalSection (grantLock);
-        return True;
-    end initializeGrantLife;
-
+    -- A free slot owner may fill, without taking it yet (a failed create
+    -- leaves the table unchanged): null at the owner's quota or when the
+    -- table is full.
     procedure reserveGrantRecord
-      (owner : ProcessID; slot : out GrantID; value : out Grant_Pointer)
+      (owner : ProcessID; slot : out Memory_Grants.Global_Slot; value : out Grant_Pointer)
     is
         result : Grant_Storage.Allocation_Result;
     begin
-        slot := GrantID'First;
+        slot := Memory_Grants.No_Slot;
         value := null;
-        if not Grant_Life_Ready (owner) then return; end if;
-        for candidate in GrantID loop
-            value := grantFor (owner, candidate);
-            if value = null then
-                Grant_Storage.Ensure
-                  (Grant_Stores (owner), candidate,
-                   (generation => Memory_Grants.Life_Base (Grant_Lives (owner)), others => <>),
-                   Grant_Storage.Maximum_Blocks, value, result);
-                if value = null then return; end if;
-            end if;
-            if not Memory_Grants.Is_Active (value.lifecycle) and then value.reusable then
-                slot := candidate;
-                return;
-            end if;
-        end loop;
-        value := null;
+        if owner = NO_PROCESS or else grantsOf (owner).ownedCount >= OWNER_GRANT_QUOTA then
+            return;
+        end if;
+        if Free_Head /= Memory_Grants.No_Slot then
+            slot := Free_Head;
+            value := grantFor (slot);
+            return;
+        end if;
+        if Next_Fresh = Memory_Grants.No_Slot then
+            return;
+        end if;
+        Grant_Storage.Ensure
+          (Grants, Next_Fresh, (generation => Memory_Grants.Initial_Generation, others => <>),
+           Grant_Storage.Maximum_Blocks, value, result);
+        if value /= null then
+            slot := Next_Fresh;
+        end if;
     end reserveGrantRecord;
 
-    function hasActiveGrants (owner : ProcessID) return Boolean is
-        slot : GrantID := GrantID'First;
-        present : Boolean;
+    -- Take the slot reserveGrantRecord gave, before its record is written.
+    procedure takeReservedSlot (slot : Memory_Grants.Global_Slot) is
     begin
+        if slot = Free_Head then
+            Free_Head := grantFor (slot).ownerNext;
+        elsif slot = Next_Fresh then
+            Next_Fresh := (if Next_Fresh = Memory_Grants.Global_Slot'Last
+                           then Memory_Grants.No_Slot else Next_Fresh + 1);
+        else
+            raise ProcessException with "Grant slot taken without a reservation";
+        end if;
+    end takeReservedSlot;
+
+    -- Link a just-written live grant into its owner's and grantee's lists.
+    procedure linkGrant (slot : Memory_Grants.Global_Slot) is
+        value : constant Grant_Pointer := grantFor (slot);
+        owner : constant ProcessID := value.granterPID;
+        grantee : constant ProcessID := value.granteePID;
+    begin
+        value.ownerPrev := Memory_Grants.No_Slot;
+        value.ownerNext := grantsOf (owner).ownedHead;
+        if grantsOf (owner).ownedHead /= Memory_Grants.No_Slot then
+            grantFor (grantsOf (owner).ownedHead).ownerPrev := slot;
+        end if;
+        grantsOf (owner).ownedHead := slot;
+        grantsOf (owner).ownedCount := grantsOf (owner).ownedCount + 1;
+        value.granteePrev := Memory_Grants.No_Slot;
+        value.granteeNext := grantsOf (grantee).receivedHead;
+        if grantsOf (grantee).receivedHead /= Memory_Grants.No_Slot then
+            grantFor (grantsOf (grantee).receivedHead).granteePrev := slot;
+        end if;
+        grantsOf (grantee).receivedHead := slot;
+        grantsOf (grantee).receivedCount := grantsOf (grantee).receivedCount + 1;
+    end linkGrant;
+
+    -- Nothing to do for a grant already off the list (its grantee died
+    -- while its revocation was pending).
+    procedure unlinkReceived (grantee : ProcessID; slot : Memory_Grants.Global_Slot) is
+        value : constant Grant_Pointer := grantFor (slot);
+    begin
+        if grantee = NO_PROCESS or else
+           (value.granteePrev = Memory_Grants.No_Slot and then grantsOf (grantee).receivedHead /= slot)
+        then
+            return;
+        end if;
+        if value.granteePrev /= Memory_Grants.No_Slot then
+            grantFor (value.granteePrev).granteeNext := value.granteeNext;
+        else
+            grantsOf (grantee).receivedHead := value.granteeNext;
+        end if;
+        if value.granteeNext /= Memory_Grants.No_Slot then
+            grantFor (value.granteeNext).granteePrev := value.granteePrev;
+        end if;
+        value.granteePrev := Memory_Grants.No_Slot;
+        value.granteeNext := Memory_Grants.No_Slot;
+        grantsOf (grantee).receivedCount := grantsOf (grantee).receivedCount - 1;
+    end unlinkReceived;
+
+    -- A retired grant leaves its owner's list: its slot is free again, or
+    -- retired for good at its last generation.
+    procedure releaseOwnedSlot (owner : ProcessID; slot : Memory_Grants.Global_Slot) is
+        value : constant Grant_Pointer := grantFor (slot);
+    begin
+        if value.ownerPrev /= Memory_Grants.No_Slot then
+            grantFor (value.ownerPrev).ownerNext := value.ownerNext;
+        else
+            grantsOf (owner).ownedHead := value.ownerNext;
+        end if;
+        if value.ownerNext /= Memory_Grants.No_Slot then
+            grantFor (value.ownerNext).ownerPrev := value.ownerPrev;
+        end if;
+        grantsOf (owner).ownedCount := grantsOf (owner).ownedCount - 1;
+        value.ownerPrev := Memory_Grants.No_Slot;
+        value.ownerNext := Memory_Grants.No_Slot;
+        if value.reusable then
+            value.ownerNext := Free_Head;
+            Free_Head := slot;
+        end if;
+    end releaseOwnedSlot;
+
+    -- Visit every grant on one of pid's lists. Visit may retire grants,
+    -- including others on the same list, so the walk is over a snapshot
+    -- taken first; Visit checks each slot is still what it expects.
+    generic
+        with procedure Visit (slot : Memory_Grants.Global_Slot);
+    procedure Sweep_Grants (pid : ProcessID; owned : Boolean);
+
+    procedure Sweep_Grants (pid : ProcessID; owned : Boolean) is
+        count : constant Natural :=
+          (if owned then grantsOf (pid).ownedCount else grantsOf (pid).receivedCount);
+        Slot_Bytes : constant := 4;
+        order : BuddyAllocator.Order := 0;
+        buffer : System.Address;
+        slot : Memory_Grants.Global_Slot;
+    begin
+        if count = 0 then
+            return;
+        end if;
+        while Natural (2 ** Natural (order)) * Natural (Virtmem.PAGE_SIZE) < count * Slot_Bytes loop
+            order := order + 1;
+        end loop;
+        BuddyAllocator.alloc (order, buffer);
+        if buffer = System.Null_Address then
+            raise ProcessException with "No memory to walk a grant list";
+        end if;
+        declare
+            type Slots is array (1 .. count) of Unsigned_32;
+            snapshot : Slots with Import, Address => buffer;
+            taken : Natural := 0;
+        begin
+            slot := (if owned then grantsOf (pid).ownedHead else grantsOf (pid).receivedHead);
+            while slot /= Memory_Grants.No_Slot and then taken < count loop
+                taken := taken + 1;
+                snapshot (taken) := Unsigned_32 (slot);
+                slot := (if owned then grantFor (slot).ownerNext else grantFor (slot).granteeNext);
+            end loop;
+            for k in 1 .. taken loop
+                Visit (Memory_Grants.Global_Slot (snapshot (k)));
+            end loop;
+        end;
+        BuddyAllocator.free (order, buffer);
+    end Sweep_Grants;
+
+    ---------------------------------------------------------------------------
+    -- Grant notices (docs/ipc-delivery.md). Callers hold grantLock.
+    ---------------------------------------------------------------------------
+
+    -- The grant on value just retired (its record was reset): keep the
+    -- owner's notice on it, and its slot, until the owner reads it.
+    procedure setOwnerNoticeLocked
+      (owner : ProcessID; value : Grant_Pointer;
+       ended : Memory_Grants.Grant_Generation; peer : Process_Identities.Identity) is
+    begin
+        if owner = NO_PROCESS or else not grantsOf (owner).noticesOpen or else
+           value.ownerNotice
+        then
+            return;
+        end if;
+        value.ownerNotice := True;
+        value.noticeGeneration := ended;
+        value.noticePeer := peer;
+        grantsOf (owner).ownerNotices := grantsOf (owner).ownerNotices + 1;
+        queueNoticeWake (owner);
+    end setOwnerNoticeLocked;
+
+    -- The owner revoked value's grant: its grantee, if it holds the grant,
+    -- is told. A grantee holding nothing has nothing to give back; its
+    -- acquire will fail.
+    procedure setGranteeNoticeLocked (value : Grant_Pointer) is
+        grantee : constant ProcessID := value.granteePID;
+    begin
+        if grantee = NO_PROCESS or else value.granteeNotice or else
+           not grantsOf (grantee).noticesOpen or else
+           Memory_Grants.Acquisition_Total (value.lifecycle) = 0
+        then
+            return;
+        end if;
+        value.granteeNotice := True;
+        grantsOf (grantee).granteeNotices := grantsOf (grantee).granteeNotices + 1;
+        queueNoticeWake (grantee);
+    end setGranteeNoticeLocked;
+
+    -- The grantee read the notice, or gave the grant back (the notice is
+    -- answered), or the grant retired.
+    procedure clearGranteeNoticeLocked (value : Grant_Pointer) is
+    begin
+        if value.granteeNotice then
+            value.granteeNotice := False;
+            if grantsOf (value.granteePID).granteeNotices > 0 then
+                grantsOf (value.granteePID).granteeNotices :=
+                  grantsOf (value.granteePID).granteeNotices - 1;
+            end if;
+        end if;
+    end clearGranteeNoticeLocked;
+
+    -- One of receiver's grant notices, as the event message it was before
+    -- (CuBit.Control_Events decodes it): words are the global slot, the
+    -- generation, the peer's identity. Owner notices are on its owned list
+    -- (retired grants it has not read about), grantee notices on its
+    -- received list.
+    procedure takeGrantNoticeLocked
+      (receiver : ProcessID; msg : out Message; found : out Boolean)
+    is
+        slot : Memory_Grants.Global_Slot;
+        value : Grant_Pointer;
+    begin
+        msg := NULL_MESSAGE;
+        found := False;
+        if grantsOf (receiver).ownerNotices > 0 then
+            slot := grantsOf (receiver).ownedHead;
+            while slot /= Memory_Grants.No_Slot loop
+                value := grantFor (slot);
+                if value.ownerNotice then
+                    msg.tag := (label => IPC_Labels.EVENT_GRANT_RETURNED,
+                                length => Grant_Event_Words, flags => 0, reserved => 0);
+                    msg.words (0) := Unsigned_64 (slot);
+                    msg.words (1) := Unsigned_64 (value.noticeGeneration);
+                    msg.words (2) := Process_Identities.To_Word (value.noticePeer);
+                    value.ownerNotice := False;
+                    grantsOf (receiver).ownerNotices := grantsOf (receiver).ownerNotices - 1;
+                    -- Read: the retired grant leaves the owner's list.
+                    releaseOwnedSlot (receiver, slot);
+                    found := True;
+                    return;
+                end if;
+                slot := value.ownerNext;
+            end loop;
+            raise ProcessException with "Owner notice count without a notice";
+        end if;
+        if grantsOf (receiver).granteeNotices > 0 then
+            slot := grantsOf (receiver).receivedHead;
+            while slot /= Memory_Grants.No_Slot loop
+                value := grantFor (slot);
+                if value.granteeNotice then
+                    msg.tag := (label => IPC_Labels.EVENT_GRANT_REVOKED,
+                                length => Grant_Event_Words, flags => 0, reserved => 0);
+                    msg.words (0) := Unsigned_64 (slot);
+                    msg.words (1) := Unsigned_64 (value.generation);
+                    msg.words (2) := Process_Identities.To_Word (value.granterIdentity);
+                    clearGranteeNoticeLocked (value);
+                    found := True;
+                    return;
+                end if;
+                slot := value.granteeNext;
+            end loop;
+            raise ProcessException with "Grantee notice count without a notice";
+        end if;
+    end takeGrantNoticeLocked;
+
+    ---------------------------------------------------------------------------
+    -- Exit and fault reports, and taking notices (docs/ipc-delivery.md)
+    ---------------------------------------------------------------------------
+
+    function toReport (msg : Message) return Kernel_Reports.Report is
+      (Label   => msg.tag.label,
+       Length  => Kernel_Reports.Word_Count'Min
+                    (Natural (msg.tag.length), Kernel_Reports.Report_Words),
+       Words   => (msg.words (0), msg.words (1), msg.words (2), msg.words (3)),
+       Further => 0);
+
+    function toMessage (value : Kernel_Reports.Report) return Message is
+      (tag => (label => value.Label, length => Unsigned_8 (value.Length),
+               flags => 0, reserved => value.Further),
+       authorityTag => 0,
+       words => (value.Words (0), value.Words (1), value.Words (2), value.Words (3)));
+
+    -- A retired process whose last report was just read or dropped.
+    procedure freeReleasedPID (pid : Kernel_Reports.Process) is
+    begin
+        if pid /= Kernel_Reports.No_Process then
+            PIDTracker.freePID (ProcessID (pid), invalidated => True);
+        end if;
+    end freeReleasedPID;
+
+    procedure releaseRetiredPID (pid : ProcessID) is
+        freeNow : Boolean;
+    begin
+        Spinlocks.enterCriticalSection (reportLock);
+        Kernel_Reports.Request_Free (reports, Kernel_Reports.Process (pid), freeNow);
+        Spinlocks.exitCriticalSection (reportLock);
+        if freeNow then
+            PIDTracker.freePID (pid, invalidated => True);
+        end if;
+    end releaseRetiredPID;
+
+    -- Keep a report about subject for recipient (this life); True when
+    -- kept, so the caller rings the recipient once its locks are released.
+    function putReport
+      (subject : ProcessID; kind : Kernel_Reports.Report_Kind;
+       recipient : ProcessID; generation : Capabilities.Generation;
+       msg : Message) return Boolean
+    is
+        kept : Boolean := False;
+    begin
+        if subject = NO_PROCESS or else recipient = NO_PROCESS then
+            return False;
+        end if;
+        Spinlocks.enterCriticalSection (reportLock);
+        -- An exit is reported once per life: its PID is not reused while
+        -- the report is unread, so the slot is free.
+        if kind not in Kernel_Reports.Exit_Kind or else
+           not reports.Subjects (Kernel_Reports.Process (subject)).Reports (kind).Unread
+        then
+            Kernel_Reports.Put
+              (reports, Kernel_Reports.Process (subject), kind,
+               (Id => Kernel_Reports.Process (recipient),
+                Generation => Unsigned_64 (generation)),
+               toReport (msg), kept);
+        end if;
+        Spinlocks.exitCriticalSection (reportLock);
+        return kept;
+    end putReport;
+
+    procedure reportExit
+      (pid : ProcessID; msg : Message;
+       parent : ProcessID; parentGeneration : Capabilities.Generation;
+       manager : ProcessID; managerGeneration : Capabilities.Generation;
+       ringParent, ringManager : out Boolean) is
+    begin
+        ringParent := parentGeneration /= 0 and then
+          putReport (pid, Kernel_Reports.Exit_To_Parent, parent, parentGeneration, msg);
+        ringManager := manager /= parent and then manager /= pid and then
+          putReport (pid, Kernel_Reports.Exit_To_Manager, manager, managerGeneration, msg);
+    end reportExit;
+
+    procedure ringReport (recipient : ProcessID) is
+    begin
+        ringNoticeDoorbell (recipient);
+    end ringReport;
+
+    procedure sendControl
+      (target : ProcessID; targetGeneration : Capabilities.Generation;
+       sender : ProcessID; kind : IPC_Labels.Control_Kind;
+       result : out Kernel_Controls.Send_Result)
+    is
+        use type Kernel_Controls.Send_Result;
+    begin
+        result := Kernel_Controls.Not_Open;
+        if target = NO_PROCESS or else sender = NO_PROCESS then
+            return;
+        end if;
+        Spinlocks.enterCriticalSection (controlLock);
+        Kernel_Controls.Send
+          (proctab(target).controls, Unsigned_64 (targetGeneration),
+           Kernel_Controls.Sender_Id (sender), Unsigned_64 (generationOf (sender)),
+           kind, result);
+        Spinlocks.exitCriticalSection (controlLock);
+        if result = Kernel_Controls.Accepted then
+            ringNoticeDoorbell (target);
+        end if;
+    end sendControl;
+
+    procedure takeKernelNotice
+      (receiver : ProcessID; item : out RingEntry; found : out Boolean)
+    is
+        msg : Message := NULL_MESSAGE;
+        value : Kernel_Reports.Report;
+        released : Kernel_Reports.Process;
+    begin
+        item := NULL_RING_ENTRY;
+        found := False;
+        if not proctab(receiver).kernelNoticePending then
+            return;
+        end if;
+        Spinlocks.enterCriticalSection (grantLock);
+        takeGrantNoticeLocked (receiver, msg, found);
+        Spinlocks.exitCriticalSection (grantLock);
+        if not found then
+            Spinlocks.enterCriticalSection (reportLock);
+            Kernel_Reports.Take
+              (reports, Kernel_Reports.Process (receiver), value, found, released);
+            Spinlocks.exitCriticalSection (reportLock);
+            freeReleasedPID (released);
+            if found then
+                msg := toMessage (value);
+            end if;
+        end if;
+        if not found then
+            declare
+                sender : Kernel_Controls.Sender_Id;
+                senderGeneration : Unsigned_64;
+                kind : IPC_Labels.Control_Kind;
+            begin
+                Spinlocks.enterCriticalSection (controlLock);
+                Kernel_Controls.Take
+                  (proctab(receiver).controls, sender, senderGeneration, kind, found);
+                Spinlocks.exitCriticalSection (controlLock);
+                if found then
+                    -- Words: the kind, the sender's identity (its life when
+                    -- it sent, kept with the message).
+                    msg.tag := (label => IPC_Labels.EVENT_CONTROL,
+                                length => Control_Words, flags => 0, reserved => 0);
+                    msg.words (0) := IPC_Labels.Control_Kind'Enum_Rep (kind);
+                    msg.words (1) := Process_Identities.To_Word (Process_Identities.Encode
+                      (Process_Identities.Slot (sender),
+                       Process_Identities.Generation (senderGeneration)));
+                end if;
+            end;
+        end if;
+        if found then
+            item := (msg => msg, sender => NO_PROCESS, kind => RING_EVENT,
+                     requestId => NO_REQUEST_ID, senderThread => NO_THREAD, publisher => NO_PROCESS, callSequence => 0);
+        else
+            -- The doorbell outlived its notices; a new one rings it again.
+            proctab(receiver).kernelNoticePending := False;
+        end if;
+    end takeKernelNotice;
+
+    procedure openNotices (pid : ProcessID) is
+    begin
+        Spinlocks.enterCriticalSection (grantLock);
+        grantsOf (pid).noticesOpen := True;
+        grantsOf (pid).ownerNotices := 0;
+        grantsOf (pid).granteeNotices := 0;
+        Spinlocks.exitCriticalSection (grantLock);
+        Spinlocks.enterCriticalSection (reportLock);
+        Kernel_Reports.Open
+          (reports, Kernel_Reports.Process (pid), Unsigned_64 (generationOf (pid)));
+        Spinlocks.exitCriticalSection (reportLock);
+        Spinlocks.enterCriticalSection (controlLock);
+        Kernel_Controls.Open (proctab(pid).controls, Unsigned_64 (generationOf (pid)));
+        Spinlocks.exitCriticalSection (controlLock);
+    end openNotices;
+
+    procedure closeNotices (pid : ProcessID) is
+        slot, next : Memory_Grants.Global_Slot;
+        value : Grant_Pointer;
+        released : Kernel_Reports.Process;
+    begin
+        Spinlocks.enterCriticalSection (grantLock);
+        grantsOf (pid).noticesOpen := False;
+        -- Its own retired grants' notices: no one will read them, so those
+        -- grants leave its list now.
+        slot := grantsOf (pid).ownedHead;
+        while slot /= Memory_Grants.No_Slot loop
+            value := grantFor (slot);
+            next := value.ownerNext;
+            if value.ownerNotice then
+                value.ownerNotice := False;
+                releaseOwnedSlot (pid, slot);
+            end if;
+            slot := next;
+        end loop;
+        slot := grantsOf (pid).receivedHead;
+        while slot /= Memory_Grants.No_Slot loop
+            value := grantFor (slot);
+            value.granteeNotice := False;
+            slot := value.granteeNext;
+        end loop;
+        grantsOf (pid).ownerNotices := 0;
+        grantsOf (pid).granteeNotices := 0;
+        Spinlocks.exitCriticalSection (grantLock);
+        Spinlocks.enterCriticalSection (controlLock);
+        Kernel_Controls.Close (proctab(pid).controls);
+        Spinlocks.exitCriticalSection (controlLock);
         loop
-            Grant_Storage.Next_Present (Grant_Stores (owner), slot, slot, present);
-            exit when not present;
-            if Memory_Grants.Is_Active (grantFor (owner, slot).lifecycle) then
+            Spinlocks.enterCriticalSection (reportLock);
+            Kernel_Reports.Close (reports, Kernel_Reports.Process (pid), released);
+            Spinlocks.exitCriticalSection (reportLock);
+            exit when released = Kernel_Reports.No_Process;
+            freeReleasedPID (released);
+        end loop;
+    end closeNotices;
+
+    -- A new life of pid owns and receives nothing yet: every grant of an
+    -- earlier life left both lists before its slot could be reused.
+    function grantListsEmpty (pid : ProcessID) return Boolean is
+        empty : Boolean;
+    begin
+        if pid = NO_PROCESS then return False; end if;
+        Spinlocks.enterCriticalSection (grantLock);
+        empty := grantsOf (pid).ownedHead = Memory_Grants.No_Slot and then
+                 grantsOf (pid).receivedHead = Memory_Grants.No_Slot and then
+                 Grant_Windows.Is_Empty (grantsOf (pid).windows);
+        Spinlocks.exitCriticalSection (grantLock);
+        return empty;
+    end grantListsEmpty;
+
+    function hasActiveGrants (owner : ProcessID) return Boolean is
+        slot : Memory_Grants.Global_Slot := grantsOf (owner).ownedHead;
+    begin
+        while slot /= Memory_Grants.No_Slot loop
+            if Memory_Grants.Is_Active (grantFor (slot).lifecycle) then
                 return True;
             end if;
-            exit when slot = GrantID'Last;
-            slot := slot + 1;
+            slot := grantFor (slot).ownerNext;
         end loop;
         return False;
     end hasActiveGrants;
@@ -1850,11 +2638,8 @@ package body Process.IPC is
             raise ProcessException with "Grant invalidated before child retirement";
         end if;
         if scope /= null then scope.all := Empty_Forwarding_Scope; end if;
-        -- Stay within this life's generation range (its high half); at the
-        -- ceiling the slot retires for this life instead of stepping into the
-        -- next process's range.
-        Memory_Grants.Advance_Generation_Within
-          (nextGeneration, Memory_Grants.Ceiling_Of (value.generation), mayReuse);
+        -- The slot's next generation; at the last one the slot retires.
+        Memory_Grants.Advance_Generation (nextGeneration, mayReuse);
         value :=
           (globalSlot  => 0,
            lifecycle   => Memory_Grants.Inactive_Lifecycle,
@@ -1867,7 +2652,8 @@ package body Process.IPC is
            numPages    => 0,
            permission  => GRANT_READ,
            forwardable => False,
-           notify      => False);
+           notify      => False,
+           others      => <>);
     end invalidateGrant;
 
     function overlapsGrantRegion (localAddr : System.Address;
@@ -1911,9 +2697,8 @@ package body Process.IPC is
         receiver : ProcessID;
         flags : Unsigned_64;
         ok : Boolean;
-        slot : GrantID := 0;
+        slot : Memory_Grants.Global_Slot := Memory_Grants.No_Slot;
         target : Grant_Pointer;
-        globalId : Natural;
         staging : Grant;
         procedure mapPageInst is new Virtmem.mapPage (BuddyAllocator.allocFrame);
 
@@ -1934,7 +2719,7 @@ package body Process.IPC is
             success := False;
             if physical /= 0 then
                 BuddyAllocator.pinOwnedFrame
-                  (physical, Unsigned_8 (owner), success);
+                  (physical, BuddyAllocator.Frame_Owner (owner), success);
             end if;
             unlockAddressSpace (owner);
         end resolveAndPin;
@@ -2001,19 +2786,25 @@ package body Process.IPC is
             Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
-        globalId := Natural (owner) * MAX_GRANTS_PER_PROCESS + slot;
         flags := (if perm = GRANT_READWRITE then Virtmem.PG_USERDATA
                   else Virtmem.PG_USERDATARO);
-        staging := (globalSlot => globalId,
+        staging := (globalSlot => slot,
                     granterPID => owner, granteePID => receiver,
+                    granterIdentity => identityOf (owner),
+                    granteeIdentity => identityOf (receiver),
                     granterAddr => localAddr,
-                    granteeAddr => To_Address (GRANT_REGION_BASE +
-                        Integer_Address (globalId) * GRANT_SLOT_SIZE),
                     permission => perm, forwardable => forwardable, notify => notify,
                     others => <>);
+        takeWindow (receiver, staging, ok);
+        if not ok then
+            Spinlocks.exitCriticalSection (grantLock);
+            return;
+        end if;
 
         installPages (numPages, installed, ok);
         if not ok then
+            -- Partial mappings are already removed and flushed.
+            releaseWindow (staging);
             Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
@@ -2021,8 +2812,10 @@ package body Process.IPC is
 
         staging.lifecycle := Memory_Grants.Available_Lifecycle;
         staging.generation := target.generation;
+        takeReservedSlot (slot);
         target.all := staging;
-        id := globalId;
+        linkGrant (slot);
+        id := slot;
         success := True;
         Spinlocks.exitCriticalSection (grantLock);
     end createGrant;
@@ -2035,7 +2828,8 @@ package body Process.IPC is
        derived : out Memory_Grants.Reference; success : out Boolean)
     is
         caller : constant ProcessID := PerCPUData.getCurrentPID;
-        rootOwner : constant ProcessID := ProcessID (Memory_Grants.Owner_Of (parent.slot));
+        -- The parent's owner (from its record, once found).
+        rootOwner : ProcessID := NO_PROCESS;
         source : Grant_Pointer;
         scope : Scope_Pointer;
         requested : constant Grant_Loans.Terms :=
@@ -2045,11 +2839,11 @@ package body Process.IPC is
         reservation : Grant_Loans.Reservation_Result;
         applied, mapped : Boolean;
         target : Grant_Pointer;
-        childLocal : GrantID := 0;
         childSlot : Memory_Grants.Global_Slot;
         staging : Grant;
         childLink : Link_Storage.Element_Access;
         installed : Natural;
+        window : Grant_Windows.Window;
         flags : constant Unsigned_64 := (if perm = GRANT_READWRITE then
           Virtmem.PG_USERDATA else Virtmem.PG_USERDATARO);
         procedure mapPageInst is new Virtmem.mapPage (BuddyAllocator.allocFrame);
@@ -2068,7 +2862,7 @@ package body Process.IPC is
                 -- New mapping owns a NEW pin, checked against the actual
                 -- root owner, never re-labeling borrowed pages as caller-owned.
                 BuddyAllocator.pinOwnedFrame
-                  (physical, Unsigned_8 (rootOwner), success);
+                  (physical, BuddyAllocator.Frame_Owner (rootOwner), success);
             end if;
             unlockAddressSpace (caller);
         end resolveAndPin;
@@ -2106,14 +2900,15 @@ package body Process.IPC is
     begin
         derived := (0, Memory_Grants.Initial_Generation);
         success := False;
-        if rootOwner = NO_PROCESS or else grantee = NO_PROCESS or else
-           expectedGeneration = 0
-        then
+        if grantee = NO_PROCESS or else expectedGeneration = 0 then
             return;
         end if;
         Spinlocks.enterCriticalSection (grantLock);
         source := grantFor (parent.slot);
-        if source = null or else not proctab(caller).admitted or else not proctab(rootOwner).admitted or else
+        if source /= null then
+            rootOwner := source.granterPID;
+        end if;
+        if source = null or else rootOwner = NO_PROCESS or else not proctab(caller).admitted or else not proctab(rootOwner).admitted or else
            not proctab(grantee).admitted or else
            Process_Lifetime.Closing (threadOf (caller).lifetime) or else
            Process_Lifetime.Closing (threadOf (rootOwner).lifetime) or else
@@ -2132,13 +2927,11 @@ package body Process.IPC is
             Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
-        reserveGrantRecord (caller, childLocal, target);
+        reserveGrantRecord (caller, childSlot, target);
         if target = null then
             Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
-        childSlot := Memory_Grants.Make_Global_Slot
-          (Memory_Grants.Process_Index (caller), childLocal);
         childLink := ensureLink (childSlot);
         if childLink = null then
             Spinlocks.exitCriticalSection (grantLock);
@@ -2159,22 +2952,34 @@ package body Process.IPC is
                 return;
             end if;
         end if;
+        staging := (granteePID => grantee, others => <>);
+        takeWindow (grantee, staging, mapped);
+        if not mapped then
+            Spinlocks.exitCriticalSection (grantLock);
+            return;
+        end if;
+        window := staging.granteeWindow;
         Grant_Loans.Reserve (scope.all, requested, loan, reservation);
         if reservation /= Grant_Loans.Reserved then
+            releaseWindow (staging);
             Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
         staging := (globalSlot => childSlot, granterPID => caller,
-          granteePID => grantee, permission => perm, forwardable => False,
+          granteePID => grantee,
+          granterIdentity => identityOf (caller), granteeIdentity => identityOf (grantee),
+          permission => perm, forwardable => False,
           notify => source.notify,
           granterAddr => To_Address (To_Integer (source.granteeAddr) +
             Integer_Address (pageOffset) * Virtmem.PAGE_SIZE),
-          granteeAddr => To_Address (GRANT_REGION_BASE +
-            Integer_Address (childSlot) * GRANT_SLOT_SIZE), others => <>);
+          granteeAddr => To_Address (Integer_Address (Memory_Grants.Window_Address (window))),
+          granteeWindow => window, windowHeld => True, others => <>);
         installPages (numPages, installed, mapped);
         if not mapped then
             -- Transaction has already removed its partial mappings and waited
-            -- for shootdown. Only now can the reserved loan retire.
+            -- for shootdown. Only now can the reserved loan and the window
+            -- retire.
+            releaseWindow (staging);
             Grant_Loans.Revoke (scope.all, loan, applied);
             if not applied then
                 raise ProcessException with "Child rollback lost reservation";
@@ -2194,7 +2999,9 @@ package body Process.IPC is
             raise ProcessException with "Child publication lost reservation";
         end if;
         childLink.all := (True, parent, loan);
+        takeReservedSlot (childSlot);
         target.all := staging;
+        linkGrant (childSlot);
         derived := grantReference (staging);
         success := True;
         Spinlocks.exitCriticalSection (grantLock);
@@ -2245,18 +3052,26 @@ package body Process.IPC is
     procedure releaseForwardingIfReady (reference : Memory_Grants.Reference);
 
     procedure retireGrantLocked (slot : Memory_Grants.Global_Slot) is
-        owner : constant ProcessID := ProcessID (Memory_Grants.Owner_Of (slot));
         value : constant Grant_Pointer := grantFor (slot);
         link : constant Parent_Link := linkFor(slot);
         applied : Boolean;
+        notified : Boolean;
+        owner : ProcessID;
+        grantee : Process_Identities.Identity;
+        ended : Memory_Grants.Grant_Generation;
+        ownerPrev, ownerNext : Memory_Grants.Global_Slot;
     begin
-        if value = null then return; end if;
-        if value.notify then
-            queueGrantEventLocked
-              (value.granterPID, IPC_Labels.EVENT_GRANT_RETURNED, slot,
-               Unsigned_64 (value.generation), value.granteePID);
-        end if;
+        if value = null or else value.granterPID = NO_PROCESS then return; end if;
+        notified := value.notify;
+        owner := value.granterPID;
+        grantee := value.granteeIdentity;
+        ended := value.generation;
+        clearGranteeNoticeLocked (value);
+        unlinkReceived (value.granteePID, slot);
+        ownerPrev := value.ownerPrev;
+        ownerNext := value.ownerNext;
         unmapGrantPages (value.all);
+        releaseWindow (value.all);
         if link.active then
             Grant_Loans.Finish_Retirement
               (scopeFor (link.parent.slot).all, link.loan, applied);
@@ -2266,6 +3081,15 @@ package body Process.IPC is
             Link_Storage.Find (Links, slot).all := Empty_Parent_Link;
         end if;
         invalidateGrant (value.all);
+        -- Still on its owner's list until any notice is read.
+        value.ownerPrev := ownerPrev;
+        value.ownerNext := ownerNext;
+        if notified then
+            setOwnerNoticeLocked (owner, value, ended, grantee);
+        end if;
+        if not value.ownerNotice then
+            releaseOwnedSlot (owner, slot);
+        end if;
         if link.active then
             releaseForwardingIfReady (link.parent);
         end if;
@@ -2301,10 +3125,18 @@ package body Process.IPC is
         reference : Memory_Grants.Reference;
         receiver : ProcessID;
         applied : Boolean;
-        childSlot : Memory_Grants.Global_Slot;
         scope : constant Scope_Pointer := scopeFor (slot);
-        local : GrantID := GrantID'First;
-        present : Boolean;
+
+        -- A child of this grant: revoke it.
+        procedure revokeChild (childSlot : Memory_Grants.Global_Slot) is
+        begin
+            if linkFor (childSlot).active and then
+               linkFor (childSlot).parent = reference
+            then
+                revokeGrantLocked (childSlot);
+            end if;
+        end revokeChild;
+        procedure revokeChildren is new Sweep_Grants (revokeChild);
     begin
         if value = null or else scope = null or else Grant_Loans.Phase (scope.all) /= Grant_Loans.Accepting then
             return;
@@ -2317,19 +3149,7 @@ package body Process.IPC is
         end if;
         -- Children are terminal and owned by the original receiver. Its PID
         -- cannot recycle while any owned grant still retains its backing.
-        loop
-            Grant_Storage.Next_Present (Grant_Stores (receiver), local, local, present);
-            exit when not present;
-            childSlot := Memory_Grants.Make_Global_Slot
-              (Memory_Grants.Process_Index (receiver), local);
-            if linkFor(childSlot).active and then
-               linkFor(childSlot).parent = reference
-            then
-                revokeGrantLocked (childSlot);
-            end if;
-            exit when local = GrantID'Last;
-            local := local + 1;
-        end loop;
+        revokeChildren (receiver, owned => True);
         -- Last child retirement may already have released/inactivated parent.
         releaseForwardingIfReady (reference);
     end closeForwardingLocked;
@@ -2346,9 +3166,7 @@ package body Process.IPC is
             return;
         end if;
         if g.notify then
-            queueGrantEventLocked
-              (g.granteePID, IPC_Labels.EVENT_GRANT_REVOKED, slot,
-               Unsigned_64 (g.generation), g.granterPID);
+            setGranteeNoticeLocked (g);
         end if;
 
         if link.active and then Grant_Loans.Phase_Of
@@ -2372,26 +3190,26 @@ package body Process.IPC is
     ---------------------------------------------------------------------------
     -- revokeGrant
     ---------------------------------------------------------------------------
-    procedure revokeGrant (id : GrantID; success : out Boolean)
+    procedure revokeGrant (id : Memory_Grants.Global_Slot; success : out Boolean)
 
     is
-        pid   : constant ProcessID := PerCPUData.getCurrentPID;
-        owner : constant ProcessID :=
-            pid;
+        owner : constant ProcessID := PerCPUData.getCurrentPID;
+        value : Grant_Pointer;
     begin
         success := False;
         Spinlocks.enterCriticalSection (grantLock);
-        if owner = NO_PROCESS or else grantFor (owner, id) = null or else
-          not Memory_Grants.Is_Active (grantFor (owner, id).lifecycle)
+        value := grantFor (id);
+        if owner = NO_PROCESS or else value = null or else value.granterPID /= owner or else
+          not Memory_Grants.Is_Active (value.lifecycle)
         then
             Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
-        revokeGrantLocked (Memory_Grants.Make_Global_Slot
-          (Memory_Grants.Process_Index (owner), id));
+        revokeGrantLocked (id);
         success := True;
         Spinlocks.exitCriticalSection (grantLock);
-        postGrantEvents;
+        ringGrantNotices;
+        notifyDMAWork;
     end revokeGrant;
 
     ---------------------------------------------------------------------------
@@ -2402,20 +3220,19 @@ package body Process.IPC is
     procedure revokeAllGrants (pid : ProcessID)
 
     is
-        slot : GrantID := GrantID'First;
-        present : Boolean;
+        procedure revokeOwned (slot : Memory_Grants.Global_Slot) is
+        begin
+            if grantFor (slot).granterPID = pid then
+                revokeGrantLocked (slot);
+            end if;
+        end revokeOwned;
+        procedure revokeEach is new Sweep_Grants (revokeOwned);
     begin
         Spinlocks.enterCriticalSection (grantLock);
-        loop
-            Grant_Storage.Next_Present (Grant_Stores (pid), slot, slot, present);
-            exit when not present;
-            revokeGrantLocked (Memory_Grants.Make_Global_Slot
-              (Memory_Grants.Process_Index (pid), slot));
-            exit when slot = GrantID'Last;
-            slot := slot + 1;
-        end loop;
+        revokeEach (pid, owned => True);
         Spinlocks.exitCriticalSection (grantLock);
-        postGrantEvents;
+        ringGrantNotices;
+        notifyDMAWork;
     end revokeAllGrants;
 
     ---------------------------------------------------------------------------
@@ -2430,109 +3247,99 @@ package body Process.IPC is
     procedure revokeAllGrantsTo (pid : ProcessID)
 
     is
-        slot : GrantID;
-        present : Boolean;
+        -- One grant pid received, if still live: close it for the dead
+        -- receiver, and retire it (or leave its revocation pending).
+        procedure closeReceived (slot : Memory_Grants.Global_Slot) is
+            owner : constant ProcessID := grantFor (slot).granterPID;
+        begin
+            if grantFor (slot).granteePID /= pid or else
+               not Memory_Grants.Is_Active (grantFor (slot).lifecycle)
+            then
+                return;
+            end if;
+            declare
+                hadAcquisitions : Boolean;
+                value : constant Grant_Pointer := grantFor (slot);
+                reference : constant Memory_Grants.Reference :=
+                  grantReference (value.all);
+                link : constant Parent_Link := linkFor(reference.slot);
+                applied : Boolean;
+            begin
+                if link.active then
+                    if Grant_Loans.Phase_Of
+                      (scopeFor (link.parent.slot).all, link.loan) =
+                        Grant_Loans.Available
+                    then
+                        Grant_Loans.Revoke
+                          (scopeFor (link.parent.slot).all, link.loan, applied);
+                        if not applied then
+                            raise ProcessException with "Dead child revocation failed";
+                        end if;
+                    end if;
+                    -- Kernel-confirmed receiver death ends its CPU
+                    -- readers; this is never exposed as a user request.
+                    for reader in 1 .. Grant_Loans.Readers
+                      (scopeFor (link.parent.slot).all, link.loan)
+                    loop
+                        Grant_Loans.Return_Reader
+                          (scopeFor (link.parent.slot).all, link.loan, applied);
+                        if not applied then
+                            raise ProcessException with "Dead child reader lost";
+                        end if;
+                    end loop;
+                end if;
+                Memory_Grants.Close_Receiver
+                  (value.lifecycle, hadAcquisitions);
+                closeForwardingLocked (reference.slot);
+                -- Child closure may already have retired this parent.
+                if value.generation = reference.generation and then
+                   value.granterPID = owner and then
+                   value.globalSlot = reference.slot
+                then
+                    if Memory_Grants.Is_Active (value.lifecycle) then
+                        unmapGrantPages (value.all);
+                        releaseWindow (value.all);
+                        value.numPages := 0;
+                        -- Its receiver is gone: off its list now, so the
+                        -- slot's next life starts with an empty list.
+                        unlinkReceived (pid, reference.slot);
+                    else
+                        retireGrantLocked (reference.slot);
+                    end if;
+                end if;
+            end;
+            completeOwnerPIDIfReady (owner);
+        end closeReceived;
+        procedure closeEach is new Sweep_Grants (closeReceived);
     begin
         Spinlocks.enterCriticalSection (grantLock);
-        for owner in ProcessID range ProcessID'First + 1 .. ProcessID'Last loop
-            slot := GrantID'First;
-            loop
-                Grant_Storage.Next_Present (Grant_Stores (owner), slot, slot, present);
-                exit when not present;
-                if grantFor (owner, slot) /= null and then Memory_Grants.Is_Active
-                  (grantFor (owner, slot).lifecycle) and then
-                   grantFor (owner, slot).granteePID = pid
-                then
-                    declare
-                        hadAcquisitions : Boolean;
-                        value : constant Grant_Pointer := grantFor (owner, slot);
-                        reference : constant Memory_Grants.Reference :=
-                          grantReference (value.all);
-                        link : constant Parent_Link := linkFor(reference.slot);
-                        applied : Boolean;
-                    begin
-                        if link.active then
-                            if Grant_Loans.Phase_Of
-                              (scopeFor (link.parent.slot).all, link.loan) =
-                                Grant_Loans.Available
-                            then
-                                Grant_Loans.Revoke
-                                  (scopeFor (link.parent.slot).all, link.loan, applied);
-                                if not applied then
-                                    raise ProcessException with "Dead child revocation failed";
-                                end if;
-                            end if;
-                            -- Kernel-confirmed receiver death ends its CPU
-                            -- readers; this is never exposed as a user request.
-                            for reader in 1 .. Grant_Loans.Readers
-                              (scopeFor (link.parent.slot).all, link.loan)
-                            loop
-                                Grant_Loans.Return_Reader
-                                  (scopeFor (link.parent.slot).all, link.loan, applied);
-                                if not applied then
-                                    raise ProcessException with "Dead child reader lost";
-                                end if;
-                            end loop;
-                        end if;
-                        Memory_Grants.Close_Receiver
-                          (value.lifecycle, hadAcquisitions);
-                        closeForwardingLocked (reference.slot);
-                        -- Child closure may already have retired this parent.
-                        if value.generation = reference.generation and then
-                           value.granterPID = owner and then
-                           value.globalSlot = reference.slot
-                        then
-                            if Memory_Grants.Is_Active (value.lifecycle) then
-                                unmapGrantPages (value.all);
-                                value.numPages := 0;
-                            else
-                                retireGrantLocked (reference.slot);
-                            end if;
-                        end if;
-                    end;
-                end if;
-                exit when slot = GrantID'Last;
-                slot := slot + 1;
-            end loop;
-            completeOwnerPIDIfReady (owner);
-        end loop;
+        closeEach (pid, owned => False);
         Spinlocks.exitCriticalSection (grantLock);
-        postGrantEvents;
+        ringGrantNotices;
+        notifyDMAWork;
     end revokeAllGrantsTo;
 
     procedure getOwnedGrantGeneration
-      (slot       : Memory_Grants.Global_Slot;
-       generation : out Memory_Grants.Grant_Generation;
-       success    : out Boolean)
+      (slot       : Memory_Grants.Grant_Slot;
+       generation : out Memory_Grants.Grant_Generation)
 
     is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
         owner : constant ProcessID :=
           pid;
-        slotOwner : constant ProcessID := ProcessID
-          (Memory_Grants.Owner_Of (slot));
-        localSlot : constant GrantID := GrantID
-          (Memory_Grants.Local_Slot_Of (slot));
         value : Grant_Pointer;
     begin
         generation := 0;
-        success := False;
 
         Spinlocks.enterCriticalSection (grantLock);
 
-        if slotOwner /= owner then
-            Spinlocks.exitCriticalSection (grantLock);
-            return;
-        end if;
-
-        value := grantFor (slotOwner, localSlot);
-        if value = null or else not Memory_Grants.Is_Active (value.lifecycle) then
-            --  Zero is an owned, retired slot, not a lookup failure. All
-            --  invalidation paths retire mappings/TLBs before marking inactive.
-            success := True;
-        elsif value.granterPID = owner then
+        value := grantFor (slot);
+        --  Zero unless the caller owns an active grant here. All
+        --  invalidation paths retire mappings/TLBs before marking inactive.
+        if value /= null and then Memory_Grants.Is_Active (value.lifecycle)
+           and then value.granterPID = owner
+        then
             generation := value.generation;
-            success := True;
         end if;
         Spinlocks.exitCriticalSection (grantLock);
     end getOwnedGrantGeneration;
@@ -2550,10 +3357,6 @@ package body Process.IPC is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID :=
           pid;
-        slotOwner : constant ProcessID := ProcessID
-          (Memory_Grants.Owner_Of (reference.slot));
-        localSlot : constant GrantID := GrantID
-          (Memory_Grants.Local_Slot_Of (reference.slot));
         value : Grant_Pointer;
         mappedBytes : Unsigned_64;
         applied : Boolean;
@@ -2564,9 +3367,9 @@ package body Process.IPC is
 
         Spinlocks.enterCriticalSection (grantLock);
         link := linkFor (reference.slot);
-        value := grantFor (slotOwner, localSlot);
+        value := grantFor (reference.slot);
 
-        if value = null or else expectedOwner = NO_PROCESS or else slotOwner /= expectedOwner or else
+        if value = null or else expectedOwner = NO_PROCESS or else
            not Memory_Grants.Can_Acquire (value.lifecycle) or else
            not value.reusable or else
            value.granterPID /= expectedOwner or else
@@ -2605,61 +3408,45 @@ package body Process.IPC is
         Spinlocks.exitCriticalSection (grantLock);
     end acquireGrant;
 
-    procedure releaseDMAAllocations (pid : ProcessID)
-
-    is
+    procedure releaseDMAAllocations (pid : ProcessID) is
+        complete : Boolean;
+        reusable : Boolean;
     begin
-        for d in DMAAllocArray'Range loop
-            if proctab(pid).dmaAllocs(d).active then
-                declare
-                    allocation : DMAAlloc renames proctab(pid).dmaAllocs(d);
-                    pages : constant Natural := 2 ** Natural (allocation.order);
-                begin
-                    for page in 0 .. pages - 1 loop
-                        BuddyAllocator.releaseUserFrame
-                          (allocation.physAddr +
-                             Virtmem.PhysAddress (page * Virtmem.PAGE_SIZE),
-                           Unsigned_8 (pid));
-                    end loop;
-                    if not allocation.retainUntilReboot then
-                        BuddyAllocator.free
-                          (allocation.order, Virtmem.P2Va (allocation.physAddr));
-                    end if;
-                    -- Retained blocks remain allocated in the buddy map.
-                    -- Clear process ownership above before PID reuse, but do
-                    -- not recycle backing possibly still reachable by DMA.
-                    allocation.active := False;
-                end;
-            end if;
-        end loop;
-    end releaseDMAAllocations;
-
-    procedure completeOwnerPIDIfReady (owner : ProcessID)
-
-    is
-    begin
-        if not proctab(owner).grantTeardownPending or else
-           not proctab(owner).grantTeardownReady
+        -- Only the retirement worker calls this, after Take_Ready. No grant
+        -- lock is held across the bounded ownership-tag cleanup.
+        Spinlocks.enterCriticalSection (grantLock);
+        if not proctab(pid).grantTeardownPending or else
+           not proctab(pid).grantTeardownReady or else hasActiveGrants (pid)
         then
+            DMA.Finish_Step (pid, True);
+            Spinlocks.exitCriticalSection (grantLock);
             return;
         end if;
+        Spinlocks.exitCriticalSection (grantLock);
+        DMA.Retire_Step (pid, True, complete);
+        Spinlocks.enterCriticalSection (grantLock);
+        DMA.Finish_Step (pid, complete);
+        if complete then
+            reusable := proctab(pid).pidReusableAfterGrants;
+            proctab(pid).grantTeardownPending := False;
+            proctab(pid).grantTeardownReady := False;
+            proctab(pid).pidReusableAfterGrants := False;
+            if reusable then
+                releaseRetiredPID (pid);
+            end if;
+        end if;
+        Spinlocks.exitCriticalSection (grantLock);
+    end releaseDMAAllocations;
 
-        if not hasActiveGrants (owner) then
-            -- DMA blocks were deliberately retained while any acquisition
-            -- could still pin a page within them.  The final return has now
-            -- unpinned every such page, so whole buddy blocks are safe to
-            -- release at their original order.
-            releaseDMAAllocations (owner);
-            declare
-                reusable : constant Boolean := proctab(owner).pidReusableAfterGrants;
-            begin
-                proctab(owner).grantTeardownPending := False;
-                proctab(owner).grantTeardownReady := False;
-                proctab(owner).pidReusableAfterGrants := False;
-                if reusable then
-                    PIDTracker.freePID (owner, invalidated => True);
-                end if;
-            end;
+    procedure completeOwnerPIDIfReady (owner : ProcessID) is
+    begin
+        if proctab(owner).grantTeardownPending and then
+           proctab(owner).grantTeardownReady and then
+           not hasActiveGrants (owner)
+        then
+            -- Enqueue only: never walk allocation pages while holding
+            -- grantLock. Repeated notifications cannot duplicate a worker job.
+            DMA.Enqueue (owner);
         end if;
     end completeOwnerPIDIfReady;
 
@@ -2671,12 +3458,9 @@ package body Process.IPC is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
         receiver : constant ProcessID :=
           pid;
-        slotOwner : constant ProcessID := ProcessID
-          (Memory_Grants.Owner_Of (reference.slot));
-        localSlot : constant GrantID := GrantID
-          (Memory_Grants.Local_Slot_Of (reference.slot));
         value : Grant_Pointer;
         result : Memory_Grants.Return_Result;
+        revoked : Memory_Grants.Revocation_Result;
         applied : Boolean;
         link : Parent_Link;
     begin
@@ -2684,7 +3468,7 @@ package body Process.IPC is
         Spinlocks.enterCriticalSection (grantLock);
 
         link := linkFor (reference.slot);
-        value := grantFor (slotOwner, localSlot);
+        value := grantFor (reference.slot);
         if value = null or else not Memory_Grants.Is_Active (value.lifecycle) or else
            value.granteePID /= receiver or else
            not Memory_Grants.Is_Current (reference, value.generation) or else
@@ -2703,14 +3487,29 @@ package body Process.IPC is
         end if;
         Memory_Grants.Record_Return (value.lifecycle, result);
         if Memory_Grants.Acquisition_Total (value.lifecycle) = 0 then
+            -- Giving the grant back answers a revoke notice.
+            clearGranteeNoticeLocked (value);
             if result = Memory_Grants.Revocation_Completed_On_Return then
                 retireGrantLocked (reference.slot);
+            elsif value.notify and then not link.active and then
+                  not Memory_Grants.Has_Forwarding_Hold (value.lifecycle)
+            then
+                -- A notified grant is one channel's: its grantee letting go
+                -- ends it, and the owner hears so from the kernel. A close
+                -- request a flooded mailbox refused cannot leave the owner
+                -- holding a reader that is gone (docs/data-plane.md,
+                -- "Security review").
+                Memory_Grants.Request_Revocation (value.lifecycle, revoked);
+                if revoked = Memory_Grants.Revocation_Completed then
+                    retireGrantLocked (reference.slot);
+                end if;
             end if;
         end if;
 
         success := True;
         Spinlocks.exitCriticalSection (grantLock);
-        postGrantEvents;
+        ringGrantNotices;
+        notifyDMAWork;
     end returnGrant;
 
     procedure revokeGrantReference
@@ -2721,16 +3520,12 @@ package body Process.IPC is
         pid : constant ProcessID := PerCPUData.getCurrentPID;
         owner : constant ProcessID :=
           pid;
-        slotOwner : constant ProcessID := ProcessID
-          (Memory_Grants.Owner_Of (reference.slot));
-        localSlot : constant GrantID := GrantID
-          (Memory_Grants.Local_Slot_Of (reference.slot));
         value : Grant_Pointer;
     begin
         success := False;
         Spinlocks.enterCriticalSection (grantLock);
-        value := grantFor (slotOwner, localSlot);
-        if value = null or else slotOwner /= owner or else
+        value := grantFor (reference.slot);
+        if value = null or else
            not Memory_Grants.Is_Active (value.lifecycle) or else
            value.granterPID /= owner or else
            not Memory_Grants.Is_Current (reference, value.generation)
@@ -2742,7 +3537,8 @@ package body Process.IPC is
         revokeGrantLocked (reference.slot);
         success := True;
         Spinlocks.exitCriticalSection (grantLock);
-        postGrantEvents;
+        ringGrantNotices;
+        notifyDMAWork;
     end revokeGrantReference;
 
     procedure prepareGrantProtectedTeardown
@@ -2754,7 +3550,7 @@ package body Process.IPC is
     begin
         deferred := False;
         Spinlocks.enterCriticalSection (grantLock);
-        deferred := hasActiveGrants (pid);
+        deferred := hasActiveGrants (pid) or else DMA.Has_Records (pid);
 
         if deferred then
             proctab(pid).grantTeardownPending := True;
@@ -2768,13 +3564,17 @@ package body Process.IPC is
 
     is
     begin
+        -- CPU execution and address-space destruction are complete before
+        -- this call. Require synchronous all-CPU translation retirement too.
+        TLB_Shootdown.Invalidate_All;
         Spinlocks.enterCriticalSection (grantLock);
         if proctab(pid).grantTeardownPending then
             proctab(pid).grantTeardownReady := True;
             completeOwnerPIDIfReady (pid);
         end if;
         Spinlocks.exitCriticalSection (grantLock);
-        postGrantEvents;
+        ringGrantNotices;
+        notifyDMAWork;
     end finishGrantProtectedTeardown;
 
     ---------------------------------------------------------------------------
@@ -2826,7 +3626,8 @@ package body Process.IPC is
     end resolveEndpointSlot;
 
     function capSend (capSlot : Capabilities.CapabilitySlot;
-                      msg     : Message) return MessageTag
+                      msg     : Message;
+                      deadlineMs : Unsigned_64) return MessageTag
     is
         candidatePID : ProcessID;
         authorityTag : Capabilities.Authority_Tag;
@@ -2841,17 +3642,18 @@ package body Process.IPC is
         end if;
         stamped.authorityTag := authorityTag;
         return send (dest => candidatePID, msg => stamped,
-                     expectedGeneration => generation);
+                     expectedGeneration => generation, deadlineMs => deadlineMs);
     end capSend;
 
     ---------------------------------------------------------------------------
     -- capCall
     ---------------------------------------------------------------------------
     function capCall (capSlot : Capabilities.CapabilitySlot;
-                      msg     : Message) return MessageTag
+                      msg     : Message;
+                      deadlineMs : Unsigned_64) return MessageTag
     is
     begin
-        return capSend (capSlot, msg);
+        return capSend (capSlot, msg, deadlineMs);
     end capCall;
 
     ---------------------------------------------------------------------------
@@ -2880,6 +3682,28 @@ package body Process.IPC is
     end capSubmit;
 
 
+    -- Caller holds Process.lock. A thread that ends with a call handed to
+    -- it (IPC-003) and never taken fails that caller's wait, as a queued
+    -- synchronous send does when its receiver dies.
+    procedure failHandoff (tid : ThreadID) is
+        s : ThreadID;
+    begin
+        if threadtab (tid).handoffValid then
+            s := threadtab (tid).handoffItem.senderThread;
+            if threadtab (tid).handoffItem.kind = RING_SYNC and then s /= NO_THREAD
+               and then Call_Sequences.Accepts
+                          (threadtab (s).state = WAITINGFORREPLY,
+                           threadtab (s).callSequence,
+                           threadtab (tid).handoffItem.callSequence)
+            then
+                threadtab (s).replyMsg := NULL_MESSAGE;
+                ready (s);
+            end if;
+            threadtab (tid).handoffValid := False;
+            threadtab (tid).handoffItem := NULL_RING_ENTRY;
+        end if;
+    end failHandoff;
+
     -- Caller holds Process.lock. Wake the thread a synchronous reply
     -- capability answers, if it is still waiting: its server is dying.
     procedure failReplyWaiter (cap : Capabilities.Capability) is
@@ -2890,8 +3714,12 @@ package body Process.IPC is
            cap.object.param = NO_REQUEST_ID
         then
             replyTargetOf (cap, waiterPID, waiter);
+            -- Only the call this capability answers (the caller may have
+            -- timed out and be waiting on another).
             if waiter /= NO_THREAD and then
-               threadtab (waiter).state = WAITINGFORREPLY
+               Call_Sequences.Accepts
+                 (threadtab (waiter).state = WAITINGFORREPLY,
+                  threadtab (waiter).callSequence, cap.authorityTag)
             then
                 threadtab (waiter).replyMsg := NULL_MESSAGE;
                 ready (waiter);
@@ -2906,6 +3734,7 @@ package body Process.IPC is
         Spinlocks.enterCriticalSection (lock);
         failReplyWaiter (threadtab (tid).replyCap);
         threadtab (tid).replyCap := Capabilities.NULL_CAPABILITY;
+        failHandoff (tid);
         Spinlocks.exitCriticalSection (lock);
         -- Its outstanding requests are cancelled, never handed to a
         -- sibling: a later reply finds no pending request and fails.
@@ -2947,23 +3776,9 @@ package body Process.IPC is
                 end loop;
                 if p /= pid then
                     -- Remove old sender identities before the PID can be
-                    -- reused and before a receiver can mint a reply cap.
-                    declare
-                        item : RingEntry;
-                        ok : Boolean;
-                        count : constant Natural := mailtab(p).ring.count;
-                    begin
-                        for n in 1 .. count loop
-                            dequeueRing (p, item, ok);
-                            if item.sender /= pid then
-                                -- Structural compaction, not new admission:
-                                -- preserve other senders even if p is closing.
-                                mailtab(p).ring.entries(mailtab(p).ring.head) := item;
-                                mailtab(p).ring.head := (mailtab(p).ring.head + 1) mod RING_SIZE;
-                                mailtab(p).ring.count := mailtab(p).ring.count + 1;
-                            end if;
-                        end loop;
-                    end;
+                    -- reused and before a receiver can mint a reply cap:
+                    -- the dead sender's rings at p go.
+                    forgetSender (p, pid);
                 end if;
             end if;
             if p = pid then
@@ -2996,21 +3811,38 @@ package body Process.IPC is
                     --  Wake senders in the ring that are WAITINGFORREPLY
                     --  (from send() Path 1, never dequeued by receive())
                     drainRingSenders : declare
-                        r   : MessageRing renames mailtab(pid).ring;
-                        idx : RingIndex;
-                        s   : ThreadID;
+                        state : constant Credit_State := stateOf (pid, Request_Class);
+                        s     : ThreadID;
+                        e     : RingEntry;
                     begin
-                        for i in 0 .. r.count - 1 loop
-                            idx := (r.tail + i) mod RING_SIZE;
-                            s   := r.entries(idx).senderThread;
-                            if r.entries(idx).kind = RING_SYNC and then s /= NO_THREAD
-                               and then threadtab (s).state = WAITINGFORREPLY
-                            then
-                                threadtab (s).replyMsg := NULL_MESSAGE;
-                                ready (s);
-                            end if;
-                        end loop;
+                        if state /= null then
+                            for sender in Kernel_Credits.Sender loop
+                                for k in 0 .. state.Rings (sender).Count - 1 loop
+                                    e := entryAt (pid, Request_Class, sender, 0).all
+                                      (entryIndex (sender, (state.Rings (sender).Head + k) mod QUEUE_CREDIT));
+                                    s := e.senderThread;
+                                    if e.kind = RING_SYNC and then s /= NO_THREAD
+                                       and then Call_Sequences.Accepts
+                                                  (threadtab (s).state = WAITINGFORREPLY,
+                                                   threadtab (s).callSequence, e.callSequence)
+                                    then
+                                        threadtab (s).replyMsg := NULL_MESSAGE;
+                                        ready (s);
+                                    end if;
+                                end loop;
+                            end loop;
+                        end if;
                     end drainRingSenders;
+
+                    --  Calls handed to its threads and never taken.
+                    drainHandoffs : declare
+                        t : ThreadID := mainThreadOf (pid);
+                    begin
+                        while t /= NO_THREAD loop
+                            failHandoff (t);
+                            t := threadtab (t).nextSibling;
+                        end loop;
+                    end drainHandoffs;
                 end drainMailQueues;
 
                 --  Wake threads waiting for a reply from the dying process:
@@ -3029,18 +3861,27 @@ package body Process.IPC is
                 end wakeWaiters;
 
                 --  Clear stale mailbox state
-                mailtab(pid).ring := (others => <>);
+                freeQueues (pid);
                 mailtab(pid).nextReceiveLane := Queued_Messages;
 
                 --  Clear completion queue and pending requests
-                completionTab(pid) := (ring => (others => NULL_COMPLETION),
-                                       head => 0, tail => 0, count => 0,
-                                       owners => (others => NO_THREAD));
+                --  In place: a whole-queue aggregate is a 5.8 KiB temporary.
+                declare
+                    queue : CompletionQueue renames completionTab(pid).C.all;
+                begin
+                    if queue.slots /= null then
+                        clearCompletionSlots (queue.slots.all);
+                    end if;
+                    queue.head := 0;
+                    queue.tail := 0;
+                    queue.count := 0;
+                end;
                 proctab(pid).pendingRequests :=
                     (others => NO_PENDING);
                 proctab(pid).numPending := 0;
                 proctab(pid).requestSequence := IPC_Request_Ids.Initial_Sequence;
                 proctab(pid).irqNotificationPending := False;
+                proctab(pid).kernelNoticePending := False;
                 t := mainThreadOf (pid);
                 while t /= NO_THREAD loop
                     threadtab (t).receiveDeadlineActive := False;
@@ -3067,7 +3908,7 @@ package body Process.IPC is
                                 if cq.count >= COMPLETION_QUEUE_SIZE then
                                     raise ProcessException with "Missing reserved completion slot";
                                 end if;
-                                cq.ring(cq.tail) :=
+                                cq.slots.ring(cq.tail) :=
                                     (requestId =>
                                         proctab(p).pendingRequests(r)
                                             .requestId,
@@ -3075,11 +3916,11 @@ package body Process.IPC is
                                         proctab(p).pendingRequests(r)
                                             .token,
                                      msg       => NULL_MESSAGE,
-                                     from      => Unsigned_64 (pid),
+                                     from      => Process_Identities.To_Word (identityOf (pid)),
                                      status    => COMPLETION_TARGET_DIED,
                                      valid     => True,
                                      reserved  => (others => 0));
-                                cq.owners(cq.tail) :=
+                                cq.slots.owners(cq.tail) :=
                                     proctab(p).pendingRequests(r).thread;
                                 cq.tail := (cq.tail + 1) mod
                                     COMPLETION_QUEUE_SIZE;
@@ -3101,22 +3942,5 @@ package body Process.IPC is
         end loop;
     end retireMailboxes;
 
-    procedure sendRetirementEvent
-      (dest : ProcessID; generation : Capabilities.Generation; msg : Message) is
-        ok : Boolean;
-    begin
-        Spinlocks.enterCriticalSection (mailtab(dest).lock);
-        if not mailtab(dest).closed and then
-           generationOf (dest) = generation
-        then
-            enqueueRing (dest, (msg => msg, sender => PerCPUData.getCurrentPID,
-                         kind => RING_EVENT, requestId => NO_REQUEST_ID,
-                         senderThread => NO_THREAD), ok);
-            if ok then
-                wakeForUnsolicitedWork (dest);
-            end if;
-        end if;
-        Spinlocks.exitCriticalSection (mailtab(dest).lock);
-    end sendRetirementEvent;
 
 end Process.IPC;

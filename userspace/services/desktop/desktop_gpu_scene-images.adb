@@ -1,5 +1,5 @@
 with Desktop_GPU_Scene.Drawing;
-package body Desktop_GPU_Scene.Images with SPARK_Mode => Off is
+package body Desktop_GPU_Scene.Images with SPARK_Mode is
    use type Registry.I.Outcome;
    procedure Capture (Scene : in out State; Sources : in out Registry.State;
       Image : Compositor_Formats.Image; Bytes : Natural;
@@ -25,7 +25,7 @@ package body Desktop_GPU_Scene.Images with SPARK_Mode => Off is
       Copy : in out Output.R.State; Target : Compositor_Formats.Image;
       Bytes : Compositor_Formats.Byte_Count; Writer : Output.R.P.Ticket;
       Poll_Only, Capture_Accepted : Boolean; Byte_Budget : Natural;
-      Result : out Output_Completion)
+      Result : out Output_Completion; Repair : Compositor_Damage.State)
    is
       Progress : Registry.I.Outcome;
    begin
@@ -41,10 +41,10 @@ package body Desktop_GPU_Scene.Images with SPARK_Mode => Off is
       -- A failed cold capture has never submitted a frame. Once its external
       -- uploads drain it must be discarded even on an observation-only turn.
       if Scene.Status = Capturing and then (Scene.Cold or Scene.Invalid) then
-         Output.Pump (Scene, Copy, Target, Bytes, Writer, False, False, Byte_Budget, Result);
+         Output.Pump (Scene, Copy, Target, Bytes, Writer, False, False, Byte_Budget, Result, Repair);
       else
          Output.Pump (Scene, Copy, Target, Bytes, Writer, Poll_Only,
-           Capture_Accepted, Byte_Budget, Result);
+           Capture_Accepted, Byte_Budget, Result, Repair);
       end if;
    end Complete;
 end Desktop_GPU_Scene.Images;

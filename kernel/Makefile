@@ -1315,6 +1315,17 @@ logs: user_runtime ccl-manifest ui-fonts-native
 	$(ALR) gprbuild -P ../userspace/apps/logs/logs.gpr
 	cp ../userspace/apps/logs/build/logs.app isodir/boot/logs.app
 
+.PHONY : trace-viewer
+# Read-only checked desktop trace archive viewer.
+trace-viewer: user_runtime ccl-manifest ui-fonts-native
+	mkdir -p ../userspace/apps/trace-viewer/build
+	$(call compile_ccl_manifest,../userspace/apps/trace-viewer)
+	$(ALR) gprbuild -P ../userspace/apps/trace-viewer/trace_viewer.gpr
+	cp ../userspace/apps/trace-viewer/build/trace-viewer.app isodir/boot/trace-viewer.app
+
+isodir/boot/trace-viewer.app: trace-viewer
+	@test -s $@
+
 .PHONY : boot-logs
 boot-logs: user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/apps/boot-logs/build
@@ -1468,8 +1479,7 @@ desktop: user_runtime ccl-manifest ui-fonts-native ../userspace/services/desktop
 	  test -n "$(CUBIT_MESA_BUILD)" || { echo 'Set CUBIT_MESA_BUILD to the existing native Mesa build' >&2; exit 2; }; \
 	  python3 ../tools/build_mesa_desktop.py "$(abspath $(CUBIT_MESA_BUILD))" --metrics off --scenario-output; \
 	elif [ "$(CUBIT_COMPOSITOR)" = vulkan ]; then \
-	  test -n "$(CUBIT_MESA_BUNDLE)" -a -n "$(CUBIT_MESA_SOURCE)" || { echo 'Set CUBIT_MESA_BUNDLE and CUBIT_MESA_SOURCE for Vulkan Desktop' >&2; exit 2; }; \
-	  python3 ../tools/build_vulkan_desktop.py "$(abspath $(CUBIT_MESA_BUNDLE))" "$(abspath $(CUBIT_MESA_SOURCE))" --metrics off; \
+	  python3 ../tools/build_vulkan_desktop.py --metrics off; \
 	else \
 	  $(ALR) gprbuild -p -P ../userspace/services/desktop/desktop.gpr -XCUBIT_COMPOSITOR_METRICS=off -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE); \
 	fi
@@ -1487,11 +1497,15 @@ desktop: user_runtime ccl-manifest ui-fonts-native ../userspace/services/desktop
 
 # Build the userspace display scanout service prototype
 .PHONY : display
-CUBIT_COMPOSITOR ?= legacy
+CUBIT_COMPOSITOR ?= vulkan
 CUBIT_COMPOSITOR_TIMING ?= off
 CUBIT_COMPOSITOR_STORAGE ?= production
 CUBIT_DISPLAY_TEST_MODE ?= production
-export CUBIT_MESA_BUILD CUBIT_MESA_BUNDLE CUBIT_MESA_SOURCE
+export CUBIT_MESA_BUILD CUBIT_MESA_BUNDLE CUBIT_MESA_SOURCE CUBIT_MESA_CACHE
+# Both libraries must be complete before the combined Mesa bundle is selected.
+ifeq ($(CUBIT_COMPOSITOR),vulkan)
+desktop: libc
+endif
 export CUBIT_COMPOSITOR CUBIT_COMPOSITOR_TIMING CUBIT_COMPOSITOR_STORAGE CUBIT_DISPLAY_TEST_MODE
 PRESENTATION_BUILD_DIR = $(if $(filter output-rebind,$(CUBIT_DISPLAY_TEST_MODE)),build-output-rebind,$(if $(filter delayed,$(CUBIT_DISPLAY_TEST_MODE)),build-delayed,build))
 display: user_runtime ccl-manifest
@@ -1544,7 +1558,7 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.ap
 	isodir/boot/sameboy.app ../userspace/ports/sameboy/build/test.gb \
 	isodir/boot/capability-test.app \
 	isodir/boot/wget.app isodir/boot/devices.app isodir/boot/files.app isodir/boot/config-inspector.app \
-	isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app \
+	isodir/boot/ccl-vm.app isodir/boot/ccl-workbench.app isodir/boot/trace-viewer.app \
 	isodir/boot/ccl-test-host.svc \
 	isodir/boot/clock.svc isodir/boot/timesync.svc isodir/boot/tls.svc isodir/boot/config-storage.svc \
 	isodir/boot/desktop-shell.app \
@@ -1577,7 +1591,7 @@ DESKTOP_OVERLAY := isodir/boot/desktop.svc isodir/boot/display.svc isodir/boot/m
 	isodir/boot/netstack.svc isodir/boot/tls.svc isodir/boot/desktop-shell.app \
 	isodir/boot/devices.app isodir/boot/config-inspector.app isodir/boot/files.app \
 	isodir/boot/doom.elf isodir/boot/ccl-workbench.app \
-	isodir/boot/ccl-console.app isodir/boot/logs.app isodir/boot/config-storage.svc \
+	isodir/boot/ccl-console.app isodir/boot/logs.app isodir/boot/trace-viewer.app isodir/boot/config-storage.svc \
 	$(SERVO_DISK_CONTENTS)
 DESKTOP_SAMPLE_ARGS = $(foreach sample,$(DESKTOP_CONFIG_SAMPLES),--file "work/$(notdir $(sample))=$(sample)")
 
@@ -1603,7 +1617,7 @@ INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hd
 # rebuild the ext2 disk image from those freshly staged files.
 .PHONY : desktop-session-content
 desktop-session-content: $(INITRD_SERVICES) desktop-metrics display logstore \
-	desktop-shell devices files config-inspector ccl-workbench ccl-console logs config-storage clock timesync tls doom sameboy
+	desktop-shell devices files config-inspector ccl-workbench ccl-console logs trace-viewer config-storage clock timesync tls doom sameboy
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.ccl, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
@@ -1683,6 +1697,13 @@ run-usb-live: usb-live-iso
 .PHONY: usb-live-uefi-iso
 usb-live-uefi-iso: usb-live-iso
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi
+
+# The UEFI live image with GPU rendering approved for Desktop
+# (images/laptop-usb-gpu.ccl): a hardware boot tries Vulkan startup and
+# reports each stage's time and where it stops.
+.PHONY: usb-live-uefi-gpu-iso
+usb-live-uefi-gpu-iso: usb-live-iso
+	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi --gpu
 
 # Match the working desktop frontend: SDL's native Wayland display can leave
 # a running guest without a visible window on the development workstation.
@@ -1811,7 +1832,19 @@ iso: cubit_kernel initrd
 
 # Build everything including DOOM, then create ISO and disk images
 .PHONY : world
-world: cubit_kernel doom sameboy sleep thread-check futex-check avx-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+# Test programs the headless images pack. world builds them too, so no test
+# runs a binary left over from an older ABI (a stale one passes or fails for
+# the wrong reason).
+TEST_PROGRAMS := logs boot-logs timesync-test ccl-console log-check \
+	log-fields-check libc-check cxx-check network-check timesync-check \
+	tls-probe tls-check config-check desktop-check display-check \
+	metrics-check grant-forward ccl-control input-stress bench-storage \
+	bench-input
+
+.PHONY : test-programs
+test-programs: $(TEST_PROGRAMS)
+
+world: trace-viewer test-programs cubit_kernel doom sameboy sleep thread-check futex-check avx-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

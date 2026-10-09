@@ -19,11 +19,27 @@ procedure Client_Quota_Requests_Tests is
    Reply : P.Words;
    Handle : Unsigned_64;
    use type P.Allocation_Outcome;
+   use type P.Words;
 begin
    P.Configure_Client_Budgets (Pool, 16384, OK); pragma Assert (OK);
    P.Configure_Client_Budgets (Pool, 32768, OK); pragma Assert (not OK);
    C.Reserve (Pool, 100, Parent, Pages => 2); pragma Assert (Parent /= 0);
    pragma Assert (P.Client_Usage (Pool, 100).Charged = 8192);
+   P.Query_Accounting (Pool, 42, 100, P.Accounting_Label, 4, 0, 0, [1,0,0,0], Reply);
+   pragma Assert (Reply = [P.OK, 1, 16384, 8192]); -- pending private charge visible
+   for Fault in 1 .. 7 loop
+      P.Query_Accounting (Pool, (if Fault = 1 then 43 else 42),
+        (if Fault = 2 then 0 else 100),
+        (if Fault = 3 then 0 else P.Accounting_Label),
+        (if Fault = 4 then 3 else 4), (if Fault = 5 then 1 else 0),
+        (if Fault = 6 then 1 else 0),
+        (if Fault = 7 then [1,101,0,0] else [1,0,0,0]), Reply);
+      pragma Assert (Reply = [(if Fault <= 2 then P.Denied else P.Bad_Request),1,0,0]);
+      pragma Assert (P.Client_Usage (Pool, 100).Charged = 8192);
+   end loop;
+   Ready := False;
+   P.Query_Accounting (Pool, 42, 100, P.Accounting_Label, 4, 0, 0, [1,0,0,0], Reply);
+   pragma Assert (Reply = [P.Unavailable,1,0,0]); Ready := True;
    P.Finish_Private (Pool, Parent, Consumed); pragma Assert (Consumed);
    P.Reserve_Private (Pool, 100, Tables, True, Pages => 2);
    pragma Assert (Tables /= 0 and P.Client_Usage (Pool, 100).Charged = 16384);
@@ -66,6 +82,8 @@ begin
    P.Handle (Pool, 42, 103, P.Label, 4, 0, 0, [1, P.Create, 4096, 0], Reply, Other);
    pragma Assert (Other = 0 and P.Client_Usage (Pool, 103).Charged = 16384);
    P.Quarantine (Pool);
+   P.Query_Accounting (Pool, 42, 103, P.Accounting_Label, 4, 0, 0, [1,0,0,0], Reply);
+   pragma Assert (Reply = [P.Unavailable,1,0,0]);
    pragma Assert (P.Client_Usage (Pool, 103).Charged = 16384);
    declare
       Growing : P.Service;

@@ -15,7 +15,7 @@ library project Allocator_Native is
    end Builder;
    package Compiler is
       for Default_Switches ("Ada") use
-        ("-gnat2022", "-gnatp", "-gnatn2", "-O2", "-g", "-mno-red-zone",
+        ("-gnat2022", "-gnatp", "-gnatn2", "-O2", "-g", "-gno-record-gcc-switches", "-mno-red-zone",
          "-fno-pic", "-ffunction-sections", "-I-");
    end Compiler;
 end Allocator_Native;

@@ -105,7 +105,7 @@ procedure Main is
       Reply.tag.label := Label;
       Reply.tag.length := Length;
       Reply.words := [W0, W1, W2, W3];
-      Reply.tag := capCall (Network_Slot, Reply);
+      Reply.tag := capCall (Network_Slot, Reply, CuBit.Messages.Wait_Forever);
    end Channel_Call;
 
    procedure Query

@@ -35,7 +35,7 @@ package body Intel_GPU_Diagnostics is
       end if;
       Due := (if Now <= Unsigned_64'Last - 100 then Now + 100 else Unsigned_64'Last);
       if Phase = Need_Grant then
-         if getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_LOGSTORE) = 0 then return; end if;
+         if CuBit.Messages."=" (Registered_Driver (DRIVER_LOGSTORE), No_Process) then return; end if;
          Msg.tag := (16#0229#, 0, 0, 0);
          Phase := (if capSubmit (15, Msg, Grant_Token) then Grant_Pending else Stopped);
          return;

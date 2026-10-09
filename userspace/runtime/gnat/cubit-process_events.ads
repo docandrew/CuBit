@@ -13,12 +13,14 @@
 --  waits with it). A grant revoke for a ring CuBit.Streams adopted is
 --  answered here, the runtime's default: the mapping is returned and the
 --  outlet closed. Every other grant event and control message is kept for
---  Next. At most Kept_Events of each wait; beyond that the oldest is
---  dropped (events are hints).
+--  Next. At most Kept_Events of each wait here; beyond that they stay with
+--  the kernel until there is room (none is dropped: docs/ipc-delivery.md).
+--  A child's exit report keeps its PID from reuse until it is read, so a
+--  launcher should take its children's exits (Take_Exit).
 ------------------------------------------------------------------------------
 pragma Ada_2022;
-with Interfaces; use Interfaces;
 with CuBit.Child_Exits;
+with CuBit.Process_IDs;
 with CuBit.Control_Events;
 
 package CuBit.Process_Events is
@@ -27,9 +29,9 @@ package CuBit.Process_Events is
 
    procedure Poll;
 
-   --  The exit of Process (this incarnation), if it has arrived: polls.
+   --  The exit of Process (an identity: one life), if it has arrived: polls.
    procedure Take_Exit
-     (Process, Generation : Unsigned_64; Found : out Boolean;
+     (Process : CuBit.Process_IDs.Process_ID; Found : out Boolean;
       Report : out CuBit.Child_Exits.Report);
 
    --  The oldest kept grant event or control message: polls.

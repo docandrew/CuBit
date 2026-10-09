@@ -122,7 +122,7 @@ procedure main is
       srcWidth  : Natural := 0;
       srcHeight : Natural := 0;
       srcPitch  : Natural := 0;
-      srcOwner  : ProcessID := NO_PROCESS;
+      srcOwner  : Process_ID := No_Process;
       srcGrant : MG.Grant_Reference;
       srcAcquired : Boolean := False;
       Pool : Pool_Registry.State;
@@ -133,7 +133,7 @@ procedure main is
       presentationFault : Boolean := False;
       gpuScanoutAddr : Gpu_Address_Array := [others => System.Null_Address];
       Targets : BT.State;
-      displayOwner : ProcessID := NO_PROCESS;
+      displayOwner : Process_ID := No_Process;
       currentOutput : Outputs.Output_Reference := Outputs.No_Output;
       leasedOutput : Outputs.Output_Reference := Outputs.No_Output;
       sourceOutput : Outputs.Output_Reference := Outputs.No_Output;
@@ -163,10 +163,10 @@ procedure main is
    -- Bind registry lifetime to this process incarnation, not a reusable PID
    -- or a constant shared by successive Display instances. The fallback is
    -- only an inert discriminant: registration rejects a failed capture.
-   displayIdentity : constant Unsigned_64 := CuBit.Capability_Grants.Incarnation
+   displayIdentity : constant Process_ID := CuBit.Capability_Grants.Incarnation
      (CuBit.Capability_Grants.Capture (CapabilitySlot (CAP_SLOT_SELF_PROC)));
    outputRegistry : Outputs.State
-     (Outputs.Registry_Incarnation (if displayIdentity /= 0 then displayIdentity else 1));
+     (Outputs.Registry_Incarnation (if Is_Process (displayIdentity) then To_Word (displayIdentity) else 1));
 
    function outputUsable (item : Outputs.Output_Reference) return Boolean is
      (Outputs.Live (outputRegistry, item) and then
@@ -177,13 +177,13 @@ procedure main is
 
    function registerOutput return Boolean is
       result : Outputs.Mutation_Result;
-      driverIdentity : Unsigned_64 := displayIdentity;
+      driverIdentity : Process_ID := displayIdentity;
    begin
-      if displayIdentity = 0 then return False; end if;
+      if not Is_Process (displayIdentity) then return False; end if;
       if outputStates (selectedOutput).backend.Kind = Native_GPU then
          driverIdentity := CuBit.Capability_Grants.Incarnation
            (CuBit.Capability_Grants.Capture (CAP_SLOT_GPU));
-         if driverIdentity = 0 or else not CuBit.Capability_Grants.Endpoint_Matches
+         if not Is_Process (driverIdentity) or else not CuBit.Capability_Grants.Endpoint_Matches
            (CAP_SLOT_GPU, driverIdentity)
          then return False; end if;
       elsif outputStates (selectedOutput).backend.Kind /= Firmware_Framebuffer then
@@ -198,7 +198,7 @@ procedure main is
       --  Ready describes the selected mapped backend, not panel visibility.
       Outputs.Register
         (outputRegistry,
-         (Backend => (Driver => Outputs.Driver_Incarnation (driverIdentity),
+         (Backend => (Driver => Outputs.Driver_Incarnation (To_Word (driverIdentity)),
                       Number => Outputs.Output_Number (selectedOutput)),
           Area => (Display => Outputs.L.Named_Display_ID
                      (Natural (selectedOutput) + 1),
@@ -269,7 +269,7 @@ procedure main is
          words    => [w0, w1, w2, w3]);
       tag : MessageTag;
    begin
-      tag := capCall (CAP_SLOT_GPU, msg);
+      tag := capCall (CAP_SLOT_GPU, msg, CuBit.Messages.Wait_Forever);
       msg.tag := tag;
       return msg;
    end callGpu;
@@ -462,9 +462,9 @@ procedure main is
       statsPixels := 0;
    end maybePrintStats;
 
-   function ownsDisplay (pid : ProcessID) return Boolean is
+   function ownsDisplay (pid : Process_ID) return Boolean is
    begin
-      return pid /= NO_PROCESS and then outputStates (selectedOutput).displayOwner = pid and then
+      return pid /= No_Process and then outputStates (selectedOutput).displayOwner = pid and then
         outputStates (selectedOutput).leasedOutput = outputStates (selectedOutput).currentOutput and then outputUsable (outputStates (selectedOutput).leasedOutput);
    end ownsDisplay;
 
@@ -484,7 +484,7 @@ procedure main is
       outputStates (selectedOutput).srcWidth := 0;
       outputStates (selectedOutput).srcHeight := 0;
       outputStates (selectedOutput).srcPitch := 0;
-      outputStates (selectedOutput).srcOwner := NO_PROCESS;
+      outputStates (selectedOutput).srcOwner := No_Process;
       outputStates (selectedOutput).pendingPresent := False;
       outputStates (selectedOutput).pendingRect := (others => 0);
       outputStates (selectedOutput).gpuPreviousDamage := (others => 0);
@@ -850,7 +850,7 @@ procedure main is
          State.presentationFault := True;
          return False;
       end if;
-      tag := capCall (CAP_SLOT_GPU, request);
+      tag := capCall (CAP_SLOT_GPU, request, CuBit.Messages.Wait_Forever);
       request.tag := tag;
       BT.Complete (State.Targets, token,
                    request.tag = (OP_GPU_PRESENT_BUFFER, 1, 0, 0) and then request.words (0) = 0);
@@ -1137,7 +1137,7 @@ procedure main is
       end loop;
    end collectFrames;
 
-   procedure submitFrame (from : ProcessID; request : Message;
+   procedure submitFrame (from : Process_ID; request : Message;
                           replyMsg : out Message) is
       decoded : DSP.Frame_Decoding;
       Pool_Decoded : Pool_Wire.Frame_Decoding;
@@ -1264,7 +1264,7 @@ procedure main is
    end submitFrame;
 
    procedure handleRequest
-      (from     : ProcessID;
+      (from     : Process_ID;
        incoming : Message;
        replyMsg : out Message)
    is
@@ -1441,7 +1441,7 @@ procedure main is
                              reserved  => 0);
             replyMsg.words (0) := backendId;
             replyMsg.words (1) := backendCaps;
-            replyMsg.words (2) := Unsigned_64 (outputStates (selectedOutput).displayOwner);
+            replyMsg.words (2) := To_Word (outputStates (selectedOutput).displayOwner);
             replyMsg.words (3) := 0; -- reserved for backend-specific status
 
          when OP_DISPLAY_ACQUIRE =>
@@ -1455,7 +1455,7 @@ procedure main is
               not outputUsable (outputStates (selectedOutput).currentOutput)
             then
                replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
-            elsif outputStates (selectedOutput).displayOwner = NO_PROCESS or else outputStates (selectedOutput).displayOwner = from then
+            elsif outputStates (selectedOutput).displayOwner = No_Process or else outputStates (selectedOutput).displayOwner = from then
                outputStates (selectedOutput).displayOwner := from;
                outputStates (selectedOutput).leasedOutput := outputStates (selectedOutput).currentOutput;
                replyMsg.words (0) := DISPLAY_OK;
@@ -1475,11 +1475,11 @@ procedure main is
                if outputStates (selectedOutput).presentationFault then
                   replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
                else
-                  outputStates (selectedOutput).displayOwner := NO_PROCESS;
+                  outputStates (selectedOutput).displayOwner := No_Process;
                   outputStates (selectedOutput).leasedOutput := Outputs.No_Output;
                   replyMsg.words (0) := DISPLAY_OK;
                end if;
-            elsif outputStates (selectedOutput).displayOwner = NO_PROCESS then
+            elsif outputStates (selectedOutput).displayOwner = No_Process then
                replyMsg.words (0) := DISPLAY_OK;
             else
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
@@ -1645,7 +1645,7 @@ procedure main is
    end handleRequest;
 
    ret     : Unsigned_64;
-   from    : ProcessID;
+   from    : Process_ID;
    msg     : Message;
    replyMsg : Message := NULL_MESSAGE;
    found : Boolean;
@@ -1661,8 +1661,7 @@ begin
       debugPrint ("display: latency contract rejected" & LF);
    end if;
 
-   ret := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DISPLAY);
-   if ret /= 0 and then ret /= Unsigned_64'Last then
+   if Registered_Driver (DRIVER_DISPLAY) /= No_Process then
       --  display.svc owns the visible scanout. A second copy would clear the
       --  screen and steal the well-known display role, so treat manual
       --  duplicate launches as harmless no-ops.

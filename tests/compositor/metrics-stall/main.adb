@@ -9,7 +9,7 @@ procedure Main is
    package P renames CuBit.Metric_Protocol;
    package R renames CuBit.Metric_Records;
    package G renames CuBit.Memory_Grants;
-   From : ProcessID;
+   From : Process_ID;
    Request, Response : Message;
    Ignore, Batches : Unsigned_64 := 0;
    Ref : G.Grant_Reference;
@@ -29,7 +29,7 @@ begin
       receive (From, Request);
       if Request.tag.label /= P.Operation'Enum_Rep (P.Publish_Batch) or else
         not P.Is_Publisher (Request.authorityTag) or else
-        From /= ProcessID (getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP)) or else
+        From /= Process_ID (getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DESKTOP)) or else
         Request.words (2) not in 128 .. R.Page_Bytes or else
         Request.words (2) mod R.Slot_Bytes /= 0
       then Fail ("unexpected request"); return; end if;

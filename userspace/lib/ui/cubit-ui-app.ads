@@ -71,6 +71,10 @@ package CuBit.UI.App is
    -- is adapted. Run manages acquisition, repair and publication automatically.
    -- batched_input opts synchronous Poll/Wait into bounded batch delivery.
    -- Asynchronous Submit_Input_Wait is unavailable in this mode.
+   -- Initial client dimensions and optional smaller resize minima are separate.
+   -- A zero minimum preserves the initial-size minimum of existing callers.
+   -- Explicit minima must not exceed initial dimensions; fixed-size windows
+   -- retain initial dimensions regardless of smaller requested minima.
    procedure Open
       (win : in out Window;
        width, height : Natural;
@@ -80,7 +84,9 @@ package CuBit.UI.App is
        maximum_height : Natural := 0;
        title : String := "Application";
        protected_frames : Boolean := False;
-       batched_input : Boolean := False);
+       batched_input : Boolean := False;
+       minimum_width : Natural := 0;
+       minimum_height : Natural := 0);
 
    procedure Set_Title (win : Window; title : String);
 

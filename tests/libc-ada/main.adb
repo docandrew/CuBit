@@ -6,6 +6,7 @@ with Interfaces; use Interfaces;
 with Interfaces.C; use type Interfaces.C.int;
 with CuBit.Child_Exits; use CuBit.Child_Exits;
 with CuBit.Child_Table; use CuBit.Child_Table;
+with CuBit.Process_IDs; use CuBit.Process_IDs;
 with CuBit.Libc_ABI;
 with CuBit.Libc_Time;
 with CuBit.Libc_Select;
@@ -34,58 +35,62 @@ procedure Main is
    T : Table;
    Found : Interfaces.C.int;
    Status : Wait_Status;
+   --  A process identity (KERN-003): slot and generation.
+   function Id (Slot, Generation : Unsigned_64) return Process_ID is
+     (From_Word (Generation * 2 ** 24 + Slot));
+   --  Its pid_t.
+   function PID (Slot, Generation : Unsigned_64) return Interfaces.C.int is
+     (POSIX_Of (Id (Slot, Generation)));
 begin
-   Check (not Has_Child (T, -1) and then not Has_Child (T, 5), "empty table");
+   Check (not Has_Child (T, -1) and then not Has_Child (T, PID (5, 1)), "empty table");
    Take (T, -1, Found, Status);
    Check (Found = 0, "nothing ended yet");
 
-   Started (T, 5, 100);
-   Started (T, 6, 101);
-   Started (T, 7, 102);
-   Check (Has_Child (T, -1) and then Has_Child (T, 0) and then Has_Child (T, 6)
-          and then not Has_Child (T, 8), "live children");
+   Started (T, Id (5, 100));
+   Started (T, Id (6, 101));
+   Started (T, Id (7, 102));
+   Check (Has_Child (T, -1) and then Has_Child (T, 0) and then Has_Child (T, PID (6, 101))
+          and then not Has_Child (T, PID (8, 1)), "live children");
 
-   --  A stale generation (a retired PID's earlier process) changes nothing.
-   Exited (T, (Process => 6, Kind => CuBit.Child_Exits.Exited, Code => 3,
-               Generation => 99));
-   Check (T.Ended_Count = 0 and then Has_Child (T, 6), "stale generation ignored");
+   --  An earlier life of the same slot (a retired identity) changes nothing.
+   Exited (T, (Process => Id (6, 99), Kind => CuBit.Child_Exits.Exited, Code => 3));
+   Check (T.Ended_Count = 0 and then Has_Child (T, PID (6, 101)), "stale identity ignored");
    --  Nor does a process we never started.
-   Exited (T, (Process => 9, Kind => CuBit.Child_Exits.Exited, Code => 3,
-               Generation => 101));
+   Exited (T, (Process => Id (9, 101), Kind => CuBit.Child_Exits.Exited, Code => 3));
    Check (T.Ended_Count = 0, "unknown process ignored");
 
-   Exited (T, (Process => 6, Kind => CuBit.Child_Exits.Exited, Code => 255,
-               Generation => 101));
-   Exited (T, (Process => 5, Kind => Stopped, Code => 0, Generation => 100));
+   Exited (T, (Process => Id (6, 101), Kind => CuBit.Child_Exits.Exited, Code => 255));
+   Exited (T, (Process => Id (5, 100), Kind => Stopped, Code => 0));
    Check (T.Ended_Count = 2 and then T.Live_Count = 1
-          and then not Has_Child (T, 6) and then Has_Child (T, 7),
+          and then not Has_Child (T, PID (6, 101)) and then Has_Child (T, PID (7, 102)),
           "two ended, one live");
 
-   Take (T, 7, Found, Status);
+   Take (T, PID (7, 102), Found, Status);
    Check (Found = 0, "a live child is not taken");
    Take (T, -1, Found, Status);
-   Check (Found = 6 and then Status = 255 * 256, "oldest first: exit code 255");
-   Take (T, 5, Found, Status);
-   Check (Found = 5 and then Status = 9, "stopped: SIGKILL status");
+   Check (Found = PID (6, 101) and then Status = 255 * 256, "oldest first: exit code 255");
+   Take (T, PID (5, 100), Found, Status);
+   Check (Found = PID (5, 100) and then Status = 9, "stopped: SIGKILL status");
    Take (T, -1, Found, Status);
    Check (Found = 0, "all ended children taken");
 
-   --  The same PID again, a later generation.
-   Started (T, 6, 200);
-   Exited (T, (Process => 6, Kind => CuBit.Child_Exits.Exited, Code => 1,
-               Generation => 200));
-   Take (T, 6, Found, Status);
-   Check (Found = 6 and then Status = 256, "PID reuse with a new generation");
+   --  The same slot again, a later generation: a different pid_t.
+   Check (PID (6, 200) /= PID (6, 101), "a reused slot is a new pid_t");
+   Started (T, Id (6, 200));
+   Exited (T, (Process => Id (6, 200), Kind => CuBit.Child_Exits.Exited, Code => 1));
+   Take (T, PID (6, 200), Found, Status);
+   Check (Found = PID (6, 200) and then Status = 256, "slot reuse with a new generation");
 
-   --  Full: every PID at once fits; one more is dropped.
+   --  pid_t is positive whatever the generation (its top bit is never set).
+   Check (PID (16#FF_FFFF#, 16#FF_FFFF_FFFF#) > 0, "pid_t stays positive");
+
+   --  Full: Capacity children at once; one more is dropped.
    T := (others => <>);
-   for P in Process_Number loop
-      Started (T, P, 1);
+   for K in 1 .. Unsigned_64 (Capacity) loop
+      Started (T, Id (K, 1));
    end loop;
-   Check (T.Live_Count = Natural (Process_Number'Last), "every PID fits");
-   Started (T, 1, 2);
-   Check (T.Live_Count = Natural (Process_Number'Last) + 1, "one more fits (capacity 256)");
-   Started (T, 2, 3);
+   Check (T.Live_Count = Capacity, "capacity children fit");
+   Started (T, Id (1, 2));
    Check (T.Live_Count = Capacity, "past capacity: dropped");
 
    ----------------------------------------------------------------- time

@@ -1,0 +1,21 @@
+-- Proof-only production configuration. No linking or production object writes.
+project Desktop_Policy_Proof is
+   type Backend_Type is ("legacy", "mesa", "vulkan");
+   Backend : Backend_Type := external ("CUBIT_COMPOSITOR", "vulkan");
+   Startup := "startup-software";
+   case Backend is
+      when "vulkan" => Startup := "startup-vulkan";
+      when others => null;
+   end case;
+   for Languages use ("Ada");
+   for Runtime ("Ada") use "../../runtime";
+   for Object_Dir use external ("CUBIT_DESKTOP_PROOF_DIR", "proof-policy-" & Backend);
+   for Source_Dirs use
+     (".", "backend-" & Backend, Startup, "input-overlay-off", "timing-off",
+      "metrics-off", "storage-production", "build/generated", "../../mesa",
+      "../../lib/display", "../../lib/compositor", "../../allocator/src",
+      "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/production");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Desktop_Policy_Proof;

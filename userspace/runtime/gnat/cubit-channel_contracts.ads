@@ -54,6 +54,10 @@ package CuBit.Channel_Contracts with Pure, SPARK_Mode is
    subtype Ring_Pages is Positive range 1 .. 128;
    subtype Buffer_Count is Positive range 1 .. 4_096;
    Page_Bytes : constant := 4_096;
+   --  The most pages one grant covers (the kernel's Memory_Grants
+   --  Maximum_Page_Count): a valid contract's regions always fit one, so a
+   --  contract that could never be granted is refused when decoded.
+   Maximum_Region_Pages : constant := 4_096;
    Largest_Element : constant := 65_535;
 
    type Contract is record
@@ -82,7 +86,9 @@ package CuBit.Channel_Contracts with Pure, SPARK_Mode is
                                 <= Item.Pages * Page_Bytes / 2,
                   when Arena =>
                      Item.Policy = Lossless
-                     and then Natural (Item.Element.Wire_Size) <= Item.Pages * Page_Bytes,
+                     and then Natural (Item.Element.Wire_Size) <= Item.Pages * Page_Bytes
+                     --  The control page and the buffers.
+                     and then Item.Buffers <= (Maximum_Region_Pages - 1) / Item.Pages,
                   when Duplex =>
                      Item.Policy = Lossless and then Item.Buffers <= Ring_Pages'Last
                      and then Natural (Item.Element.Wire_Size) <= Item.Pages * Page_Bytes));

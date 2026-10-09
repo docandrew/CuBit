@@ -1,3 +1,4 @@
+with Ada.Unchecked_Conversion;
 with CCL.Interfaces.Programs;
 with CCL.Objects;
 with CCL.Objects.Views;
@@ -8,6 +9,9 @@ with CuBit.Program_Descriptions;
 
 package body CCL_Program_Bindings is
    use Interfaces;
+   --  A process identity as a CCL Integer: the same 64 bits (it is
+   --  opaque; only compared, never computed with).
+   function Pid_Value is new Ada.Unchecked_Conversion (Unsigned_64, Integer_64);
    use type CCL.Catalog.Catalog_Error;
    use type CCL.Host_Values.Value_Kind;
    use type CCL.Objects.Build_Result;
@@ -83,7 +87,7 @@ package body CCL_Program_Bindings is
          Started_Count := Started_Count + 1;
          Started (Started_Count) :=
            (Kind => Kind, Program_Length => Program'Length, Launched_Length => Launched'Length,
-            Pid => Integer_64 (Run.Process), Generation => Integer_64 (Run.Generation),
+            Pid => Pid_Value (Run.Process),
             Outlet_Length => Outlet'Length, Integers => Integers, Stream => Integer_64 (Stream),
             others => <>);
          Started (Started_Count).Program (1 .. Program'Length) := Program;
@@ -258,10 +262,7 @@ package body CCL_Program_Bindings is
       CCL.Objects.Append (Image, CCL.Objects.Product_Cell (Programs.RUN_FIELDS), Step);
       if Step = CCL.Objects.Added then CCL.Objects.Append_Text (Image, Name, Step); end if;
       if Step = CCL.Objects.Added then
-         CCL.Objects.Append (Image, CCL.Objects.Integer_Cell (Integer_64 (Started.Process)), Step);
-      end if;
-      if Step = CCL.Objects.Added then
-         CCL.Objects.Append (Image, CCL.Objects.Integer_Cell (Integer_64 (Started.Generation)), Step);
+         CCL.Objects.Append (Image, CCL.Objects.Integer_Cell (Pid_Value (Started.Process)), Step);
       end if;
       if Step = CCL.Objects.Added and then CCL.Objects.Validate (Image, Bound (Index).Run) then
          Reply := (Value => CCL.Host_Values.Object_Constant (Image), Success => True, Why => <>);
@@ -289,13 +290,10 @@ package body CCL_Program_Bindings is
       declare
          Pid : constant Integer_64 :=
            CCL.Objects.Integer_Of (Views.Scalar (Object, Views.Field (Object, Views.Root (Object), 2)));
-         Generation : constant Integer_64 :=
-           CCL.Objects.Integer_Of (Views.Scalar (Object, Views.Field (Object, Views.Root (Object), 3)));
       begin
          for F of Runs loop
             if F.Active and then F.Program = Index
-              and then Integer_64 (F.Started.Process) = Pid
-              and then Integer_64 (F.Started.Generation) = Generation
+              and then Pid_Value (F.Started.Process) = Pid
             then
                declare
                   Handle : constant CCL.Streams.Handle :=
@@ -349,13 +347,10 @@ package body CCL_Program_Bindings is
       declare
          Pid : constant Integer_64 :=
            CCL.Objects.Integer_Of (Views.Scalar (Object, Views.Field (Object, Views.Root (Object), 2)));
-         Generation : constant Integer_64 :=
-           CCL.Objects.Integer_Of (Views.Scalar (Object, Views.Field (Object, Views.Root (Object), 3)));
       begin
          for F of Runs loop
             if F.Active and then F.Program = Index
-              and then Integer_64 (F.Started.Process) = Pid
-              and then Integer_64 (F.Started.Generation) = Generation
+              and then Pid_Value (F.Started.Process) = Pid
             then
                declare
                   Count : Natural := 0;

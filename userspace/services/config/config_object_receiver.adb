@@ -46,7 +46,7 @@ package body Config_Object_Receiver is
    procedure Begin_Definition
      (Object : in out State; Store : in out Config_Typed_Store.State;
       Action : Definition_Operation;
-      Authority : Config_Authority.Authority_State; Sender : CuBit.Messages.ProcessID;
+      Authority : Config_Authority.Authority_State; Sender : CuBit.Messages.Process_ID;
       Request : CuBit.Messages.Message; Storage_Available : Boolean; Staged : out Boolean)
    is
       package A renames Config_Authority;
@@ -201,7 +201,7 @@ package body Config_Object_Receiver is
    procedure Handle
      (Object : in out State; Store : in out Config_Typed_Store.State;
       Authority : Config_Authority.Authority_State;
-      Sender : CuBit.Messages.ProcessID; Request : CuBit.Messages.Message;
+      Sender : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message;
       Storage_Token : Interfaces.Unsigned_64; Staged : out Boolean)
    is
       Action : Wire.Operation := Wire.Open_Collection;

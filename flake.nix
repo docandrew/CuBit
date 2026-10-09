@@ -117,6 +117,9 @@
               expat
               freedoom
               gperf
+              # Host tools required by the default Vulkan Desktop build.
+              glslang
+              spirv-tools
               gnat15
               gnatprove
               gnumake

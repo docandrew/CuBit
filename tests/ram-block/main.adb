@@ -20,7 +20,7 @@ procedure Main is
                   words => [LBA, 1, Count, 7]);
    end Transfer;
 
-   procedure Reject (Owner : ProcessID := 42) is
+   procedure Reject (Owner : Process_ID := 42) is
       Prior_Buffer : constant String := Buffer;
    begin
       Before := Disk;

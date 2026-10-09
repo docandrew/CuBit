@@ -1,4 +1,4 @@
-package body Desktop_Image_Registry is
+package body Desktop_Image_Registry with SPARK_Mode is
    use type System.Address, Interfaces.Unsigned_64, I.Phase, I.V.Source_Slot,
      Compositor_Formats.Word, Compositor_Formats.Image;
    function Last_Pressure (S : State) return Capacity_Pressure is (S.Pressure);
@@ -12,6 +12,7 @@ package body Desktop_Image_Registry is
       Safe := False;
       if not Capture_Retired then return; end if;
       for N in I.V.Client_Slot loop
+         pragma Loop_Invariant (Valid (S) and D.Valid);
          if S.Items (N).Generation /= 0 then
             Forget (S, S.Items (N).Image.Pixels, True, Safe);
             if not Safe then return; end if;
@@ -55,6 +56,7 @@ package body Desktop_Image_Registry is
    begin
       Result := I.Deferred;
       for Attempt in I.V.Client_Slot loop
+         pragma Loop_Invariant (Valid (S) and D.Valid);
          N := S.Cursor;
          S.Cursor := (if N = I.V.Client_Slot'Last then I.V.Client_Slot'First else N + 1);
          if I.Current (S.Items (N).Owner) in I.Uploading | I.Ready_To_Upload then

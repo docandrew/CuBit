@@ -1,0 +1,30 @@
+{
+  "status": "NATIVE_RAW_METRICS_PASS",
+  "build_session": 11935,
+  "native_session": 45710,
+  "build": "/home/doc/git/compositor-test-artifacts/raw-metric-native-build-144",
+  "native": "/home/doc/git/compositor-test-artifacts/raw-metric-native-145",
+  "rows_exact": 256,
+  "explicit_overwrite_gap": 749,
+  "checks": [
+    "Existing native metric summary and publication acceptance",
+    "Exact raw latency/counter/span payloads including correlation",
+    "Authenticated publisher PID/tag",
+    "Bounded32-record pages and empty tail",
+    "Publisher authority cannot invoke raw query",
+    "Observer grant retirement confirmed before disconnect"
+  ],
+  "limits": [
+    "Explicit frozen kernel/initrd/allocator seeds; runtime/service/app rebuilt privately",
+    "No native endpoint-restart or held raw-reader scenario yet",
+    "Current service adapter raw native branch not SPARK proved; policy proved separately",
+    "Formatted observer includes revoke rejection early return; hosted boundary tests need re-run on exact final bytes before publication",
+    "No Desktop raw trace adapter, CCL capture/archive or viewer yet",
+    "No hardware/240Hz/input-to-photon evidence"
+  ],
+  "failures_preserved": [
+    "141 runtime comment style",
+    "142 statement style and missing Ada2022 pragma",
+    "143 statement layout"
+  ]
+}

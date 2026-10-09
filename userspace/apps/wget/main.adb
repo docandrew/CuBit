@@ -167,7 +167,7 @@ begin
          (tag      => (label => OP_READY, length => 0,
                        flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => (others => 0)));
+          words    => (others => 0)), CuBit.Messages.Wait_Forever);
    end;
 
    --  4. Write scheme string into grant buffer, then OP_NET_OPEN
@@ -193,7 +193,7 @@ begin
    msg.words (0) := transfer.slot;
    msg.words (1) := Unsigned_64 (DATA_BUF_SIZE);
    msg.words (3) := transfer.generation;
-   tag := capCall (CAP_SLOT_NET, msg);
+   tag := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
 
    if tag.label /= REPLY_OK then
       declare
@@ -242,7 +242,7 @@ begin
    msg.words (0) := chanHandle;
    msg.words (1) := 0;   -- offset
    msg.words (2) := Unsigned_64 (HTTP_REQ'Length);
-   tag := capCall (CAP_SLOT_NET, msg);
+   tag := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
 
    if tag.label /= REPLY_OK then
       debugPrint ("wget: write failed" & LF);
@@ -275,7 +275,7 @@ begin
       msg.words (0) := chanHandle;
       msg.words (1) := 0;      -- offset in grant buffer
       msg.words (2) := Unsigned_64 (DATA_BUF_SIZE);
-      tag := capCall (CAP_SLOT_NET, msg);
+      tag := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
 
       if tag.label = REPLY_EOF then
          debugPrint ("wget: EOF, closing" & LF);
@@ -344,7 +344,7 @@ begin
    declare
       ignore : MessageTag;
    begin
-      ignore := capCall (CAP_SLOT_NET, msg);
+      ignore := capCall (CAP_SLOT_NET, msg, CuBit.Messages.Wait_Forever);
    end;
 
    --  Drain any pending stream IPC before exit

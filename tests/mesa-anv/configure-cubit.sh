@@ -5,6 +5,12 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 source_tree=${1:?CuBit-patched Mesa source required}
 build_tree=${2:?fresh isolated build directory required}
 host_tree=${3:-$root/tests/mesa-anv/build-host}
+software_driver=${4:-none}
+case "$software_driver" in
+  none) gallium_drivers='[]' ;;
+  softpipe) gallium_drivers=softpipe ;;
+  *) echo 'Expected software driver none or softpipe' >&2; exit 2 ;;
+esac
 host_tree=$(cd "$host_tree" && pwd)
 test "$(<"$source_tree/VERSION")" = 26.2.3
 test -f "$source_tree/src/intel/vulkan/anv_kmd_backend.h"
@@ -20,8 +26,8 @@ export PATH="$host_tree/src/compiler/clc:$host_tree/src/compiler/spirv:$PATH"
 meson setup "$build_tree" "$source_tree" \
   --cross-file "$root/tests/mesa-anv/cubit-cross.ini" \
   --buildtype=release --wrap-mode=nofallback \
-  -Dplatforms=[] -Dgallium-drivers=[] -Dvulkan-drivers=intel \
+  -Dplatforms=[] -Dgallium-drivers="$gallium_drivers" -Dvulkan-drivers=intel \
   -Dglx=disabled -Degl=disabled -Dgbm=disabled \
-  -Dllvm=disabled -Dmesa-clc=system \
+  -Dllvm=disabled -Ddraw-use-llvm=false -Dmesa-clc=system \
   -Dvalgrind=disabled -Dlibunwind=disabled -Dlmsensors=disabled \
   -Dzstd=disabled -Dzlib=disabled -Dexpat=disabled -Dshader-cache=disabled

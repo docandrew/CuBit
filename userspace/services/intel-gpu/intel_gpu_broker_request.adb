@@ -6,7 +6,6 @@ package body Intel_GPU_Broker_Request with SPARK_Mode is
    is
    begin
       if Expected_Launcher = 0 or else
-        Expected_Launcher > Unsigned_64 (Unsigned_32'Last) or else
         Sender /= Expected_Launcher or else Stamped_Tag /= Authority_Tag or else
         Request_Label /= Label or else Length /= 4 or else Flags /= 0 or else
         Reserved /= 0 or else Request (0) /= Version or else

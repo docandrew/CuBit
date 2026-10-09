@@ -562,12 +562,13 @@ begin
       pragma Assert (Root_DMA (Third) = Newer (1));
       Prepare_Update (Target, Source, Fresh, OK); pragma Assert (not OK);
    end;
-   for Fault in 0 .. 4 loop
+   for Fault in 0 .. 5 loop
       declare
          T : Image;
          Hardware : Saved_Image;
          Writes, Invalidations : Natural := 0;
          Held : Boolean := True;
+         procedure Reenter;
          function Exclusive return Boolean is (Held);
          procedure Write_Leaf
            (Table_DMA : Unsigned_64; Index : Table_Index;
@@ -590,12 +591,20 @@ begin
             Invalidations := Invalidations + 1;
             -- Metadata must not claim removal before completed invalidation.
             pragma Assert (Lookup (T, 4096) /= 0 and Lookup (T, 8192) /= 0);
+            if Fault = 5 then Reenter; end if;
             Success := Fault /= 3;
             if Fault = 4 then Held := False; end if;
          end Invalidate;
          package Removal is new VM.Removal (Exclusive, Write_Leaf, Invalidate);
          State : Removal.Controller;
          Epoch, Root : Unsigned_64;
+         procedure Reenter is
+            Nested : Boolean;
+         begin
+            Removal.Commit (State, T, True, Nested);
+            pragma Assert (not Nested and Revision (T) = Epoch);
+            pragma Assert (Lookup (T, 4096) /= 0 and Lookup (T, 8192) /= 0);
+         end Reenter;
       begin
          Initialize (T, Backing, OK); pragma Assert (OK);
          Map_Pages (T, 4096, Data_Pages'[16#900000#, 16#A00000#],
@@ -688,6 +697,98 @@ begin
          end loop;
       end loop;
    end;
+   -- Reusing a successfully committed controller must discard the old route,
+   -- even for a new image with identical root/revision but different topology.
+   declare
+      Expected_Table : Unsigned_64;
+      Writes : Natural := 0;
+      function Exclusive return Boolean is (True);
+      procedure Write_Leaf
+        (Table_DMA : Unsigned_64; Index : Table_Index;
+         Expected, Replacement : Unsigned_64; Success : out Boolean) is
+      begin
+         pragma Assert (Table_DMA = Expected_Table and Index = 1);
+         pragma Assert (Expected = Encode_Leaf (16#900000#, Write_Back, Read_Write));
+         pragma Assert (Replacement = 0);
+         Writes := Writes + 1; Success := True;
+      end Write_Leaf;
+      procedure Invalidate (Success : out Boolean) is
+      begin Success := True; end Invalidate;
+      package Removal is new VM.Removal (Exclusive, Write_Leaf, Invalidate);
+      State : Removal.Controller;
+   begin
+      for Layout in 1 .. 2 loop
+         declare
+            T : Image;
+         begin
+            Initialize (T, Backing, OK); pragma Assert (OK);
+            if Layout = 2 then
+               Map_Pages (T, 16#200000#, Data_Pages'[16#A00000#],
+                 Write_Back, Read_Write, OK); pragma Assert (OK);
+            end if;
+            Map_Pages (T, 4096, Data_Pages'[16#900000#],
+              Write_Back, Read_Write, OK); pragma Assert (OK);
+            Seal (T, OK); pragma Assert (OK);
+            Expected_Table := Backing (if Layout = 1 then 4 else 5);
+            Removal.Execute (State, T, Revision (T), 4096, Data_Pages'[16#900000#], OK);
+            pragma Assert (OK and Writes = Layout and Lookup (T, 4096) = 0);
+            if Layout = 2 then pragma Assert (Lookup (T, 16#200000#) = 16#A00003#); end if;
+         end;
+      end loop;
+   end;
+   -- A late PT descriptor requires more than the32-comparison turn budget.
+   for Route_Fault in 0 .. 2 loop
+      declare
+         T : Image;
+         Held : Boolean := True;
+         Calls, Writes : Natural := 0;
+         GPU : constant Unsigned_64 := 29 * 2 ** 21;
+         function Exclusive return Boolean is (Held);
+         procedure Write_Leaf
+           (Table_DMA : Unsigned_64; Index : Table_Index;
+            Expected, Replacement : Unsigned_64; Success : out Boolean) is
+         begin
+            pragma Assert (Table_DMA = Backing (32) and Index = 0);
+            pragma Assert (Expected = Encode_Leaf (16#900000#, Write_Back, Read_Write));
+            pragma Assert (Replacement = 0);
+            Writes := Writes + 1; Success := True;
+         end Write_Leaf;
+         procedure Invalidate (Success : out Boolean) is
+         begin Success := True; end Invalidate;
+         package Removal is new VM.Removal (Exclusive, Write_Leaf, Invalidate);
+         State : Removal.Controller;
+         function Expected_Page (Ordinal : Positive) return Unsigned_64 is
+         begin
+            pragma Assert (Ordinal = 1); Calls := Calls + 1; return 16#900000#;
+         end Expected_Page;
+         procedure Capture is new Removal.Capture_Step (Expected_Page);
+      begin
+         Initialize (T, Backing, OK); pragma Assert (OK);
+         for Region in 1 .. 29 loop
+            Map_Pages (T, Unsigned_64 (Region) * 2 ** 21, Data_Pages'[16#900000#],
+              Write_Back, Read_Write, OK); pragma Assert (OK);
+         end loop;
+         Seal (T, OK); pragma Assert (OK and Used (T) = 32);
+         Removal.Begin_Prepare (State, T, Revision (T), GPU, 1, OK); pragma Assert (OK);
+         Capture (State, T, OK);
+         pragma Assert (OK and Removal.Preparing (State) and Calls = 0 and Writes = 0);
+         if Route_Fault = 1 then Held := False;
+         elsif Route_Fault = 2 then Removal.Cancel_Prepare (State); end if;
+         Capture (State, T, OK);
+         pragma Assert (OK = (Route_Fault = 0));
+         if Route_Fault = 0 then
+            pragma Assert (Calls = 1 and Removal.Publishing (State));
+            Removal.Step (State, T);
+            pragma Assert (Writes = 1 and Removal.Published (State));
+            Removal.Commit (State, T, True, OK);
+            pragma Assert (OK and Lookup (T, GPU) = 0);
+            pragma Assert (Lookup (T, 28 * 2 ** 21) = 16#900003#);
+         else
+            pragma Assert (Calls = 0 and Writes = 0 and not Removal.Publishing (State));
+            pragma Assert (Lookup (T, GPU) = 16#900003#);
+         end if;
+      end;
+   end loop;
    for Fail_Invalidate in Boolean loop
       declare
          T : Image;

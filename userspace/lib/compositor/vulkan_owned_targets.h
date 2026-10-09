@@ -9,4 +9,9 @@ uint32_t cubit_vulkan_owned_targets_prepare_frame(void *,void *,uint32_t,uint32_
  * Tight BGRA rows, offset zero. Restores target layout for subsequent rendering.
  * CPU reads require this transfer's completion even on coherent memory. */
 uint32_t cubit_vulkan_owned_targets_record_readback(void *,void *,void *,uint32_t);
+/* Bounded same-coordinate repair regions. Offsets retain the full-image row
+ * layout, but only these pixels become CPU-readable after transfer completion. */
+struct cubit_vulkan_readback_region { uint32_t left,top,right,bottom; };
+uint32_t cubit_vulkan_owned_targets_record_readback_regions(void *,void *,void *,uint32_t,
+    uint32_t,const struct cubit_vulkan_readback_region *);
 #endif

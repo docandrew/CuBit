@@ -14,7 +14,7 @@ package body Intel_GPU_Broker_Launches with SPARK_Mode is
      (Object : Ledger; Request : Intel_GPU_Broker_Request.Decoded;
       Captured : Unsigned_64) return Boolean is
      (Request.Valid and then Request.Nonce /= 0 and then
-      Captured mod 2 ** 32 /= 0 and then Captured / 2 ** 32 /= 0 and then
+      Captured /= 0 and then
       Object.Used < Capacity and then
       (for all I in 1 .. Object.Used =>
         Object.Items (I).Request_Nonce /= Request.Nonce and

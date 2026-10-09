@@ -1,5 +1,8 @@
 package body CuBit.Messages is
-   function capCall (Slot : CapabilitySlot; Msg : in out Message) return MessageTag is
+   function capCall (Slot : CapabilitySlot; Msg : in out Message;
+                     Deadline : Unsigned_64) return MessageTag is
+      -- This synchronous transport fixture does not model kernel deadlines.
+      pragma Unreferenced (Deadline);
       Expected : constant MessageTag :=
         ((if Budget_Mode then 16#0A2E# else 16#0A20#), 4, 0, 0);
       Returned : MessageTag := Expected;
@@ -20,7 +23,8 @@ package body CuBit.Messages is
       Calls := Calls + 1;
       pragma Assert (Slot = 63);
       pragma Assert (Msg.tag = Expected and Msg.authorityTag = 0);
-      pragma Assert (Msg.words (0) = 1 and Msg.words (1) <= (if Budget_Mode then 0 else 2) and
+      pragma Assert (Msg.words (0) = (if Budget_Mode then 2 else 1) and
+                     Msg.words (1) <= (if Budget_Mode then 0 else 4) and
                      Msg.words (2) = 0 and Msg.words (3) = 0);
       Msg.words := (if Budget_Mode then [0, 33554432, 4096, 15] else [2, 1, 0, 0]);
       if Fault = 1 then return (0, 0, 0, 0); end if;

@@ -2,6 +2,7 @@ project Launch_Client is
    for Source_Dirs use (".", "../../../userspace/lib/display",
      "../../../userspace/runtime/gnat", "../../../userspace/services/intel-gpu");
    for Source_Files use ("launch_client_tests.adb", "cubit.ads",
+     "cubit-process_ids.ads", "cubit-process_ids.adb",
      "messages_mock.ads", "messages_mock.adb",
      "cubit-capability_grants.ads", "cubit-capability_grants.adb",
      "intel_gpu_broker_request.ads", "intel_gpu_broker_request.adb",

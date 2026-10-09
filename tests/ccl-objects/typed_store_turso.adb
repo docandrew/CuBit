@@ -46,7 +46,7 @@ procedure Typed_Store_Turso is
    App_Metadata : CCL.Objects.Schemas.Image;
    App_Reply : IPC.Message;
    App_Current, App_Saved, App_Borrowed, Staged : Boolean := False;
-   App_Sender : IPC.ProcessID := 0;
+   App_Sender : IPC.Process_ID := 0;
    App_Replies : Natural := 0;
    Allow_Delivery : Boolean := True;
    Authority : A.Authority_State;
@@ -77,7 +77,7 @@ procedure Typed_Store_Turso is
       if not OK then raise Program_Error with "typed Turso check" & Checks'Image & " at " & Site; end if;
    end Check;
    procedure App_Acquire
-     (Reference : Grants.Grant_Reference; Expected_Owner : IPC.ProcessID;
+     (Reference : Grants.Grant_Reference; Expected_Owner : IPC.Process_ID;
       Byte_Offset, Byte_Length : Unsigned_64; Required_Access : Grants.Required_Access;
       Mapped_Address : out System.Address; Success : out Boolean) is
       use type Grants.Required_Access;
@@ -125,7 +125,7 @@ procedure Typed_Store_Turso is
    Recovered_Service : constant Service_Access := new Service.State;
    Object : Service_Access := First_Service;
    procedure App_Call
-     (Sender : IPC.ProcessID; Action : W.Operation; Revision : Unsigned_64 := 0) is
+     (Sender : IPC.Process_ID; Action : W.Operation; Revision : Unsigned_64 := 0) is
       use type W.Operation;
    begin
       Check (not App_Current); App_Current := True; App_Sender := Sender;
@@ -153,7 +153,7 @@ procedure Typed_Store_Turso is
       Check (App_Reply.tag.label = W.Status'Enum_Rep (Code) and App_Reply.words (0) = Rev);
       Check (App_Input.Value = (if Expected in V.Found | V.Stale then Value else (others => <>)));
    end Read_Check;
-   procedure Write_Request (Sender : IPC.ProcessID; Value : CCL.Objects.Image; Revision : Unsigned_64) is
+   procedure Write_Request (Sender : IPC.Process_ID; Value : CCL.Objects.Image; Revision : Unsigned_64) is
    begin
       App_Input.Value := Value;
       App_Call (Sender, W.Set_Object, Revision);
@@ -181,7 +181,7 @@ procedure Typed_Store_Turso is
       Calls := Calls + 1;
       Config_Database.Invoke (Database, Action, Name, Context, Expected_Revision, Schema, Input, Output);
    end Invoke;
-   function Trusted (Sender : IPC.ProcessID; Tag : Unsigned_64) return Boolean is
+   function Trusted (Sender : IPC.Process_ID; Tag : Unsigned_64) return Boolean is
      (Sender = 42 and Tag = 77);
    procedure Invoke_Type
      (Action : Config_Schema_Protocol.Operation; Name, Context : String;

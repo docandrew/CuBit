@@ -1,9 +1,8 @@
 pragma Ada_2022;
-with Interfaces;
+with CuBit.Process_IDs;
 --  Startup decisions only. Caller supplies authenticated admission/inspection
 --  results, owns child creation/stop, and retains uncertain broker resources.
 package CuBit.Render_Startup with Pure, SPARK_Mode is
-   use type Interfaces.Unsigned_64;
    type Requirement is (Required, Optional);
    type Attempt is (With_Render, Software_Only);
    type Admission is (Not_Requested, Pending, Rejected, Admitted, Uncertain);
@@ -35,13 +34,12 @@ package CuBit.Render_Startup with Pure, SPARK_Mode is
        (if Result in Pending | Rejected | Uncertain then
           Decide'Result not in Resume_Render | Resume_Software) and
        (if Mode = Software_Only then Decide'Result /= Discard_Then_Software);
+   --  Two processes, and different ones (identities are never reused).
    function Fresh_Retry
-     (Prior, Current : Interfaces.Unsigned_64) return Boolean is
-     (Prior mod 2 ** 32 /= 0 and Prior / 2 ** 32 /= 0 and
-      Current mod 2 ** 32 /= 0 and Current / 2 ** 32 /= 0 and
-      Prior /= Current)
-     with Post => (if Fresh_Retry'Result then
-       Prior /= 0 and Current /= 0 and Prior /= Current);
+     (Prior, Current : CuBit.Process_IDs.Process_ID) return Boolean is
+     (CuBit.Process_IDs.Is_Process (Prior) and then
+      CuBit.Process_IDs.Is_Process (Current) and then
+      CuBit.Process_IDs."/=" (Prior, Current));
    --  Stop acceptance is not GPU retirement. A retry creates a fresh child;
    --  never recycle the failed attempt's identity, source slots or tokens.
    --  The sole retry is Software_Only; Decide cannot request a third launch.

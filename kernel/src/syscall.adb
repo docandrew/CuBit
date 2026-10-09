@@ -7,9 +7,11 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with PerCpuData;
 with Process;
+with Process_Identities;
 with Process.Futex;
 with Process.Owned_Memory;
 with Process.IPC;
+with Process.User_Memory;
 with Process_Launch;
 with Syscall.IPC;
 with Syscall.Admin;
@@ -48,25 +50,22 @@ package body Syscall is
         bytesWritten : Unsigned_64 := 0;
         chunk : String (1 .. Chunk_Size);
         length : Natural;
+        copied : Boolean;
     begin
         -- for testing
         if fd = Descriptors.STDOUT then
             -- Copy each chunk from user memory first, so a fault on the user
             -- buffer never happens under TextIO's output lock, then print the
             -- chunk as one string: other CPUs' output cannot interleave in it.
+            -- buf is a user pointer: read through Process.User_Memory, so
+            -- only the caller's own memory can be printed.
             while bytesWritten < count loop
                 length := Natural (Unsigned_64'Min (count - bytesWritten, Chunk_Size));
-                x86.stac;
-                for i in 1 .. length loop
-                    nextByte: declare
-                        c : Character with Import,
-                          Address => buf + Storage_Offset (bytesWritten) +
-                                     Storage_Offset (i - 1);
-                    begin
-                        chunk (i) := c;
-                    end nextByte;
-                end loop;
-                x86.clac;
+                Process.User_Memory.Copy
+                  (PerCPUData.getCurrentPID,
+                   Unsigned_64 (To_Integer (buf)) + bytesWritten,
+                   chunk'Address, Storage_Count (length), copied);
+                exit when not copied;
                 print (chunk (1 .. length));
                 bytesWritten := bytesWritten + Unsigned_64 (length);
             end loop;
@@ -127,8 +126,8 @@ package body Syscall is
             when 33   => number := SYSCALL_OUTP16;
             when 36   => number := SYSCALL_INP32;
             when 37   => number := SYSCALL_OUTP32;
-            when 40   => number := SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY;
-            when 41   => number := SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY;
+            when 129  => number := SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY;
+            when 128  => number := SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY;
             when 42   => number := SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY;
             when 48   => number := SYSCALL_REPLY_WAIT;
             when 50   => number := SYSCALL_VIRT_TO_PHYS;
@@ -241,7 +240,7 @@ package body Syscall is
                     Process.processOf (percpu.currentThread), arg0, retval);
 
             when SYSCALL_GETPID =>
-                retval := Unsigned_64 (Process.processOf (percpu.currentThread));
+                retval := Process_Identities.To_Word (Process.identityOf (Process.processOf (percpu.currentThread)));
 
             when SYSCALL_WRITE =>
                 retval := write (
@@ -481,11 +480,11 @@ package body Syscall is
             when SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY =>
                 Admin.handleCapSend (
                     Process.processOf (percpu.currentThread),
-                    arg0, arg1, arg2, arg3, arg4, arg5, retval);
+                    arg0, arg1, arg2, arg3, arg4, arg5, arg6, retval);
 
             when SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY =>
                 Admin.handleCapCall (
-                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
+                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
 
             when SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY =>
                 Admin.handleCapSubmit (
@@ -497,7 +496,7 @@ package body Syscall is
             when SYSCALL_SPAWN =>
                 IPC.handleSpawn (
                     Process.processOf (percpu.currentThread),
-                    arg0, arg1, arg2, arg3, arg4, arg5, retval);
+                    arg0, arg1, arg2, arg3, arg4, retval);
 
             when SYSCALL_MAP_DEVICE =>
                 IPC.handleMapDevice (
@@ -534,7 +533,7 @@ package body Syscall is
             when SYSCALL_SEND_CONTROL =>
                 Admin.handleSendControl (
                     Process.processOf (percpu.currentThread),
-                    arg0, arg1, arg2, retval);
+                    arg0, arg1, retval);
 
             when SYSCALL_INSTALL_LAUNCH_ARGUMENTS =>
                 Admin.handleInstallLaunchArguments (

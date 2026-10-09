@@ -6,7 +6,7 @@ package body CuBit.Clocks is
    begin
       Value := (others => <>);
       Msg.tag.label := Snapshot_Operation;
-      Msg.tag := capCall (Endpoint_Slot, Msg);
+      Msg.tag := capCall (Endpoint_Slot, Msg, CuBit.Messages.Wait_Forever);
       Y := Shift_Right (Msg.words (1), 40);
       M := Shift_Right (Msg.words (1), 32) and 255;
       D := Shift_Right (Msg.words (1), 24) and 255;

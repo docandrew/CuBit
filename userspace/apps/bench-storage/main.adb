@@ -33,7 +33,7 @@ procedure Main is
       function Call (Request : Message) return Boolean is
       begin
          Msg := Request;
-         Msg.tag := capCall (CAP_SLOT_FS, Msg);
+         Msg.tag := capCall (CAP_SLOT_FS, Msg, CuBit.Messages.Wait_Forever);
          return Msg.tag.label = REPLY_OK;
       end Call;
 
@@ -66,7 +66,7 @@ procedure Main is
          -- Message setup and checks are outside the interval.
          Msg := Request;
          Before := Clock.Read_Counter;
-         Msg.tag := capCall (CAP_SLOT_FS, Msg);
+         Msg.tag := capCall (CAP_SLOT_FS, Msg, CuBit.Messages.Wait_Forever);
          After := Clock.Read_Counter;
          Success := Msg.tag.label = REPLY_OK and After >= Before;
          if Success then Timing.Add (H, After - Before); end if;

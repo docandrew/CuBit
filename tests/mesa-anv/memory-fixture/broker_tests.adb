@@ -16,24 +16,29 @@ procedure Broker_Tests is
    Request : Message := ((R.Label, 4, 0, 0), [1, 40, 4, 123]);
    Used : Boolean;
    Base : constant Unsigned_64 := 16#4750_0000_0000_0000#;
+   Launcher_ID : constant Unsigned_64 := 16#3456_789A_0100_000C#;
+   Other_Launcher_ID : constant Unsigned_64 := 16#3456_789A_0200_000C#;
+   Child_ID : constant Unsigned_64 := 16#1234_5678_0700_002A#;
+   Driver_ID : constant Unsigned_64 := 16#2345_6789_0900_004D#;
    procedure Receipt (Token : Unsigned_64) is
    begin
       B.Complete (Object,
-        (Token, 77, 0, ((16#0A21#, 4, 0, 0), [0, 1, Base + 1, (if Token = 1000 then 40 else 0)]), True),
+        (Token, Driver_ID, 0, ((16#0A21#, 4, 0, 0), [0, 1, Base + 1, (if Token = 1000 then 40 else 0)]), True),
         1, Used);
       pragma Assert (Used);
    end Receipt;
 begin
-   Inspection := [1, 11, 0, 77, 0, 9];
-   B.Begin_Request (Object, 12, 13, R.Authority_Tag, Request, 0, 100, Bad);
+   Inspection := [1, 11, 0, Driver_ID, 0, 0];
+   Application_Inspection := [1, 9, 0, Child_ID, 0, 0];
+   B.Begin_Request (Object, Launcher_ID, Other_Launcher_ID, R.Authority_Tag, Request, 0, 100, Bad);
    pragma Assert (Bad = 0 and Save_Count = 0);
    Save_Result := 0;
-   B.Begin_Request (Object, 12, 12, R.Authority_Tag, Request, 0, 100, Bad);
+   B.Begin_Request (Object, Launcher_ID, Launcher_ID, R.Authority_Tag, Request, 0, 100, Bad);
    pragma Assert (Bad = 0 and not B.Runnable (Object));
    Save_Result := 1;
-   B.Begin_Request (Object, 12, 12, R.Authority_Tag, Request, 0, 100, ID);
+   B.Begin_Request (Object, Launcher_ID, Launcher_ID, R.Authority_Tag, Request, 0, 100, ID);
    pragma Assert (ID = 1 and Saved_Slot = 15);
-   B.Begin_Request (Object, 12, 12, R.Authority_Tag, Request, 0, 100, Bad);
+   B.Begin_Request (Object, Launcher_ID, Launcher_ID, R.Authority_Tag, Request, 0, 100, Bad);
    pragma Assert (Bad = 0 and Save_Count = 2);
    B.Step (Object, 1);
    pragma Assert (Last_Token = 1000 and not B.Runnable (Object));
@@ -48,7 +53,7 @@ begin
    B.Step (Object, 1);
    pragma Assert (B.State (Object, ID) = L.Retained and Reply_Count = 1);
    pragma Assert (Replied_Slot = 15 and Last_Reply.words (1) = 0 and
-     Last_Reply.words (2) = 123 and Last_Reply.words (3) = 16#7_0000002A#);
+     Last_Reply.words (2) = 123 and Last_Reply.words (3) = Child_ID);
    pragma Assert (B.Runnable (Object)); -- failed delivery schedules abort
    B.Step (Object, 1);
    pragma Assert (Last_Token = 1002 and Last_Submit.words (3) = 2);
@@ -57,7 +62,7 @@ begin
    pragma Assert (Reply_Count = 1 and not B.Runnable (Object));
    Request.words := [1, 40, 5, 124];
    Reply_Result := 1;
-   B.Begin_Request (Object, 12, 12, R.Authority_Tag, Request, 1, 1, ID);
+   B.Begin_Request (Object, Launcher_ID, Launcher_ID, R.Authority_Tag, Request, 1, 1, ID);
    pragma Assert (ID = 2 and B.Runnable (Object));
    B.Step (Object, 1);
    pragma Assert (Reply_Count = 2 and Last_Reply.words (1) = 1 and
@@ -69,12 +74,12 @@ begin
       procedure Fresh_Receipt (Token : Unsigned_64) is
       begin
          B.Complete (Fresh,
-           (Token, 77, 0, ((16#0A21#, 4, 0, 0), [0, 1, Base + 1, (if Token = 1000 then 40 else 0)]), True),
+           (Token, Driver_ID, 0, ((16#0A21#, 4, 0, 0), [0, 1, Base + 1, (if Token = 1000 then 40 else 0)]), True),
            2, Used);
          pragma Assert (Used);
       end Fresh_Receipt;
    begin
-      B.Begin_Request (Fresh, 12, 12, R.Authority_Tag, Request, 1, 100, First);
+      B.Begin_Request (Fresh, Launcher_ID, Launcher_ID, R.Authority_Tag, Request, 1, 100, First);
       B.Step (Fresh, 2);
       Fresh_Receipt (1000);
       B.Step (Fresh, 2);
@@ -96,19 +101,19 @@ begin
       First : B.Ticket;
       Before : constant Natural := Reply_Count;
    begin
-      B.Begin_Request (Fresh, 12, 12, R.Authority_Tag, Request, 1, 10, First);
+      B.Begin_Request (Fresh, Launcher_ID, Launcher_ID, R.Authority_Tag, Request, 1, 10, First);
       B.Step (Fresh, 2);
       B.Step (Fresh, 10);
       pragma Assert (not B.Runnable (Fresh) and
         B.Next_Deadline (Fresh) = Unsigned_64'Last);
       -- Late reserve success must abort, never send launch success.
       B.Complete (Fresh,
-        (1000, 77, 0, ((16#0A21#, 4, 0, 0), [0, 1, Base + 1, 40]), True),
+        (1000, Driver_ID, 0, ((16#0A21#, 4, 0, 0), [0, 1, Base + 1, 40]), True),
         11, Used);
       B.Step (Fresh, 11);
       pragma Assert (Used and Last_Token = 1002 and Reply_Count = Before);
       B.Complete (Fresh,
-        (1002, 77, 0, ((16#0A21#, 4, 0, 0), [0, 1, Base + 1, 0]), True),
+        (1002, Driver_ID, 0, ((16#0A21#, 4, 0, 0), [0, 1, Base + 1, 0]), True),
         12, Used);
       B.Step (Fresh, 12);
       pragma Assert (Used and Reply_Count = Before + 1 and
@@ -121,7 +126,7 @@ begin
       First : Unsafe.Ticket;
       Before : constant Natural := Save_Count;
    begin
-      Unsafe.Begin_Request (Fresh, 12, 12, R.Authority_Tag, Request, 1, 100, First);
+      Unsafe.Begin_Request (Fresh, Launcher_ID, Launcher_ID, R.Authority_Tag, Request, 1, 100, First);
       pragma Assert (First = 0 and Save_Count = Before);
    end;
    Put_Line ("saved-reply broker PASS");

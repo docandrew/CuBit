@@ -53,6 +53,21 @@ package body CuBit.Metrics is
       Batches.Append (Item.State, Item.Pages, Value, Accepted);
    end Put;
 
+   function Has_Group_Room (Item : Publisher) return Boolean is
+     (not Item.Off and then Batches.Has_Group_Room (Item.State));
+
+   procedure Put_Group
+     (Item : in out Publisher; Values : Records.Trace_Group;
+      Accepted : out Boolean) is
+   begin
+      if Item.Off then
+         Item.Refused := Add (Item.Refused, 4);
+         Accepted := False;
+         return;
+      end if;
+      Batches.Append_Group (Item.State, Item.Pages, Values, Accepted);
+   end Put_Group;
+
    procedure Flush
      (Item : in out Publisher; Token : Unsigned_64; Submitted : out Boolean)
    is
@@ -171,7 +186,7 @@ package body CuBit.Metrics is
       end if;
       Msg.words := [Cursor, Item.Grant.slot, Item.Grant.generation,
                     Records.Page_Bytes];
-      Tag := capCall (Item.Slot, Msg);
+      Tag := capCall (Item.Slot, Msg, CuBit.Messages.Wait_Forever);
       Result := (if Tag.label = 0 then Protocol.Unavailable
                  else Reply_Status (Msg));
       if Result /= Protocol.OK then

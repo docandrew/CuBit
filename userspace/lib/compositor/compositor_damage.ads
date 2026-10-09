@@ -1,5 +1,6 @@
---  Bounded sparse damage. Overlap or exhaustion collapses to the conservative
---  bounding box; separate regions never overlap and never lose dirty pixels.
+--  Bounded sparse damage. Merge isolated overlaps locally; conflicting merges
+--  or exhaustion collapse to the conservative bounding box. Separate regions
+--  never overlap and never lose dirty pixels.
 package Compositor_Damage with SPARK_Mode, Pure is
    Capacity : constant := 8;
    subtype Length is Natural range 0 .. Capacity;

@@ -51,7 +51,7 @@ package body Client_Input_Channel with SPARK_Mode => Off is
          if Identity = 0 then return; end if;
          Reply := CuBit.Desktop_Messages.From_Wire
            (Cache.P.Encode (Cache.P.Request'(Surface, After, Grant, Identity)));
-         Reply.tag := capCall (CAP_SLOT_DESKTOP, Reply);
+         Reply.tag := capCall (CAP_SLOT_DESKTOP, Reply, CuBit.Messages.Wait_Forever);
          if Cache.P.Decode (CuBit.Desktop_Messages.To_Wire (Reply), Identity).Status /= Cache.DP.Success then
             -- A failed reply may conceal a retained writer. Never reuse or
             -- release this page; its bounded storage lives until process exit.

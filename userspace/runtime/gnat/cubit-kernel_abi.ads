@@ -29,7 +29,8 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Wait_Completion              : constant System_Call := 24;
    Receive_Event_Nonblocking    : constant System_Call := 26;
    Get_Time                     : constant System_Call := 27;
-   Call_Via_Endpoint_Capability : constant System_Call := 41;
+   --  With a deadline (arg 2; Forever, spelled out, for none).
+   Call_Via_Endpoint_Capability : constant System_Call := 128;
    Submit_Via_Endpoint_Capability : constant System_Call := 42;
    Create_Shared_Memory_Grant_For_Process_Id : constant System_Call := 102;
    Revoke_Shared_Memory_Grant   : constant System_Call := 103;
@@ -66,6 +67,9 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
 
    --  What a call returns when it fails or has nothing to give.
    Failed : constant Unsigned_64 := Unsigned_64'Last;
+   --  Not accepted now, but may be later; the caller keeps its request
+   --  (SEND_CONTROL when the target's sender slots are full).
+   Busy : constant Unsigned_64 := Unsigned_64'Last - 1;
    --  SYSCALL_RECEIVE_EVENT_NB: an event was copied out.
    Event_Received : constant Unsigned_64 := 1;
    --  The deadline that never comes.

@@ -3,7 +3,7 @@ with Interfaces; use Interfaces;
 with Intel_GPU_VM_Update;
 procedure VM_Update_Async_Tests is
 begin
-   for Fault in 0 .. 6 loop
+   for Fault in 0 .. 9 loop
       declare
          Live : Boolean := True;
          Calls, Publications, Invalidations, Resumes : Natural := 0;
@@ -46,6 +46,13 @@ begin
             VM.Begin_Update (Object, 0, Accepted, Result);
             pragma Assert (not Accepted and Result = VM.Rejected);
             VM.Execute (Object, 0, Result); pragma Assert (Result = VM.Rejected);
+            if (Fault = 7 and VM.Current_Phase (Object) = VM.Invalidating) or else
+              (Fault = 9 and VM.Current_Phase (Object) = VM.Resuming)
+            then
+               VM.Fail (Object);
+            elsif Fault = 8 and VM.Current_Phase (Object) = VM.Invalidating then
+               Live := False;
+            end if;
          end Probe;
          Accepted, Finished : Boolean;
          Status : VM.Result;
@@ -69,6 +76,13 @@ begin
          else
             pragma Assert (VM.Current_Phase (Object) = VM.Quarantined);
             pragma Assert (not VM.Can_Submit (Object) and VM.Generation (Object) = 0);
+            -- Failed invalidation must never invoke resume/metadata commit,
+            -- even when the callback itself returned success after retirement.
+            if Fault in 2 | 7 | 8 then
+               pragma Assert (Invalidations = 1 and Resumes = 0);
+            elsif Fault = 9 then
+               pragma Assert (Invalidations = 1 and Resumes = 1);
+            end if;
             Before := Calls;
             Live := True;
             Advance (Object, Finished, Status);
@@ -77,5 +91,5 @@ begin
          end if;
       end;
    end loop;
-   Ada.Text_IO.Put_Line ("async VM updates PASS7: bounded publication yields, closed admission, one epoch, reentry rejection, terminal failures");
+   Ada.Text_IO.Put_Line ("async VM updates PASS10: bounded publication yields, closed admission, one epoch, reentry rejection, invalidation/resume retirement and terminal failures");
 end VM_Update_Async_Tests;

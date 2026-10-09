@@ -26,6 +26,7 @@
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System;
+with CuBit.Grant_References;
 
 package CuBit.Audio is
 
@@ -197,6 +198,7 @@ private
       active     : Boolean := False;
       streamId   : Unsigned_64 := 0;
       ringAddr   : Unsigned_64 := 0;  --  Grant base in our address space
+      ring       : CuBit.Grant_References.Reference;  --  Acquired from mixer
       bufferSize : Unsigned_32 := 0;  --  Ring data area size
       hdrSize    : Unsigned_32 := 0;  --  Header size (offset to data)
       channels   : Unsigned_16 := 2;

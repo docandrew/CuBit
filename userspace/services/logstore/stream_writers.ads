@@ -19,21 +19,22 @@ package Stream_Writers is
    --  Answer an observer's request to open a stream channel (From, with
    --  Authority). Reply is the reply to send.
    procedure Open
-     (Item : in out Table; From : CuBit.Messages.ProcessID; Authority : Unsigned_64;
+     (Item : in out Table; From : CuBit.Messages.Process_ID; Authority : Unsigned_64;
       Request : CuBit.Messages.Message; Reply : out CuBit.Messages.Message);
 
    --  Bind subscription Handle to From's stream channel Number (Subscribe).
    --  Bound False: From has no such channel. Binding again (a renewal)
    --  keeps the stream as it is.
    procedure Bind
-     (Item : in out Table; Number, Handle : Unsigned_64; From : CuBit.Messages.ProcessID;
+     (Item : in out Table; Number, Handle : Unsigned_64; From : CuBit.Messages.Process_ID;
       Authority : Unsigned_64; Bound : out Boolean);
 
    --  The subscription ended (Close): stop writing for it.
    procedure Unbind (Item : in out Table; Handle : Unsigned_64);
 
-   --  From closed its channel Number (OP_CLOSE).
-   procedure Close (Item : in out Table; From : CuBit.Messages.ProcessID; Number : Unsigned_64);
+   --  From closed one of its channels (Request, its OP_CLOSE).
+   procedure Close (Item : in out Table; From : CuBit.Messages.Process_ID;
+                    Request : CuBit.Messages.Message);
 
    --  A grant event: the channel it ends is let go.
    procedure Ended (Item : in out Table; Event : CuBit.Control_Events.Event);
@@ -43,7 +44,8 @@ package Stream_Writers is
    procedure Drain (Item : in out Table; Store : in out Log_Fanout.Broker; Backlog : out Boolean);
 private
    type Stream is record
-      Handle, Owner, Authority : Unsigned_64 := 0;   --  Handle 0: unbound
+      Handle, Authority : Unsigned_64 := 0;   --  Handle 0: unbound
+      Owner : CuBit.Messages.Process_ID := CuBit.Messages.No_Process;
       Link : CuBit.Channels.Channel;
    end record;
    type Table is array (1 .. Log_Fanout.Maximum_Subscribers) of Stream;

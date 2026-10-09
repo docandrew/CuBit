@@ -18,6 +18,19 @@ static uint32_t map_result, acquire_result, return_result, retire_result;
 static unsigned maps, acquires, returns, retires;
 static unsigned waits, finish_after;
 static uint32_t finish_status;
+static bool drain_sweep(struct cubit_cpu_mapping_tracker *t)
+{
+   const uint32_t steps = (t->used + CUBIT_CPU_DRAIN_QUANTUM - 1) /
+      CUBIT_CPU_DRAIN_QUANTUM;
+   for (uint32_t step = 0; step < (steps ? steps : 1); step++) {
+      const unsigned before_returns = returns, before_retires = retires;
+      const bool done = cubit_cpu_tracker_drain(t);
+      assert(returns - before_returns <= CUBIT_CPU_DRAIN_QUANTUM);
+      assert(retires - before_retires <= CUBIT_CPU_DRAIN_QUANTUM);
+      if (done) return true;
+   }
+   return false;
+}
 static void wait_retirement(void)
 {
    waits++;
@@ -57,6 +70,36 @@ uint32_t cubit_intel_retire_mapping(uint64_t slot, uint32_t mapping)
 }
 int main(void)
 {
+   for (unsigned pending_first = 0; pending_first < 2; pending_first++) {
+      struct cubit_cpu_mapping_tracker t = {.slot = 63};
+      uint64_t address;
+      maps = acquires = returns = retires = 0;
+      map_result = acquire_result = return_result = retire_result = 0;
+      const unsigned count = 2 * CUBIT_CPU_DRAIN_QUANTUM + 1;
+      for (unsigned i = 0; i < count; i++)
+         assert(cubit_cpu_tracker_map(&t, 1, 4096, 8192, 1, &address) == 0);
+      retire_result = pending_first ? 4 : 0;
+      assert(!cubit_cpu_tracker_drain(&t));
+      assert(t.lost && t.grown && t.used == count);
+      assert(t.drain_cursor == CUBIT_CPU_DRAIN_QUANTUM);
+      assert(returns == CUBIT_CPU_DRAIN_QUANTUM && retires == returns);
+      assert(cubit_cpu_tracker_map(&t, 1, 4096, 8192, 1, &address) == 5);
+      assert(!address && maps == count);
+      retire_result = 0;
+      assert(!cubit_cpu_tracker_drain(&t));
+      assert(t.grown && t.drain_cursor == 2 * CUBIT_CPU_DRAIN_QUANTUM);
+      assert(cubit_cpu_tracker_drain(&t) == !pending_first);
+      assert(returns == count && retires == count);
+      if (pending_first) {
+         assert(t.grown && t.drain_cursor == 0);
+         assert(drain_sweep(&t));
+         assert(returns == count && retires == count + CUBIT_CPU_DRAIN_QUANTUM);
+      }
+      assert(!t.grown && !t.used && !t.drain_cursor && t.lost);
+      assert(cubit_cpu_tracker_drain(&t));
+      assert(returns == count);
+   }
+   puts("Bounded drain PASS:64-record steps, pending sweep, no early free, borrow once");
    /* Boundaries: immediate, first/last permitted poll, exhaustion, error,
     * failed borrow return, and a previously lost tracker never revived. */
    for (unsigned scenario = 0; scenario < 7; scenario++) {
@@ -240,10 +283,10 @@ int main(void)
       for (unsigned i = 0; i < t.used; i++)
          assert(cubit_cpu_tracker_records(&t)[i].bo_offset == i);
       retire_result = 4;
-      assert(!cubit_cpu_tracker_drain(&t));
+      assert(!drain_sweep(&t));
       assert(t.grown && t.used == 4096 && returns == 4096);
       retire_result = 0;
-      assert(cubit_cpu_tracker_drain(&t));
+      assert(drain_sweep(&t));
       assert(!t.grown && t.used == 0 && t.capacity == 0);
       assert(returns == 4096 && retires == 8192);
       /* Even a full array of retired records cannot revive a lost tracker. */
@@ -271,7 +314,7 @@ int main(void)
          assert(cubit_cpu_tracker_map(&t, 1, 4096, 8192, 1, &address) == 0);
          assert(t.capacity == capacity * 2 && t.used == capacity + 1);
       }
-      assert(cubit_cpu_tracker_drain(&t));
+      assert(drain_sweep(&t));
       assert(!t.grown && maps == returns && returns == retires);
    }
    puts("Mapping growth OOM PASS: five boundaries, no IPC on failure, existing borrows retained");

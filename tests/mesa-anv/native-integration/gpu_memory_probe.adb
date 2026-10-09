@@ -12,7 +12,7 @@ package body GPU_Memory_Probe is
    Label : constant Unsigned_32 := 16#0A30#;
    Magic : constant Unsigned_64 := 16#C0B1_1234_9876_5678#;
 
-   procedure Server (Sender : ProcessID; Request : Message) is
+   procedure Server (Sender : Process_ID; Request : Message) is
       Answer : Message := NULL_MESSAGE;
       Address, Ignore : Unsigned_64;
       OK : Boolean;
@@ -63,7 +63,7 @@ package body GPU_Memory_Probe is
          Msg := NULL_MESSAGE;
          Msg.tag := (Label, 4, 0, 0);
          Msg.words (0) := Operation;
-         Tag := capCall (Slot, Msg);
+         Tag := capCall (Slot, Msg, Wait_Forever);
          Check (Tag = (Label, 4, 0, 0) and Msg.tag = Tag);
       end Call;
    begin

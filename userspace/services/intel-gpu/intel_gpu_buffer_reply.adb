@@ -9,6 +9,8 @@ package body Intel_GPU_Buffer_Reply with SPARK_Mode is
    begin
       if not Intel_GPU_Extent_Directory.Valid (Map) or else Arena_ID = 0 or else
         Bytes = 0 or else (Offset or Bytes) mod 4096 /= 0 or else
+        Offset >= 2 ** 47 - Layout.CPU_Base or else
+        Bytes > 2 ** 47 - Layout.CPU_Base - Offset or else
         Offset >= Intel_GPU_Extent_Directory.Byte_Count (Map) or else
         Bytes > Intel_GPU_Extent_Directory.Byte_Count (Map) - Offset
       then return Empty; end if;
@@ -52,13 +54,11 @@ package body Intel_GPU_Buffer_Reply with SPARK_Mode is
 
    function Valid (Object : Backing) return Boolean is
      (Object.Ready and then Valid (Object.View) and then Object.Bytes > 0 and then Object.Bytes mod 4096 = 0
-      and then Object.Bytes <= Unsigned_64 (Layout.Page_Count'Last) * 4096
       and then Object.CPU_Address = CPU_Address (Object.View)
       and then Object.Bytes = Byte_Count (Object.View));
    function From_View (View : Extent_View) return Backing is
    begin
-      if not Valid (View) or else Byte_Count (View) >
-        Unsigned_64 (Layout.Page_Count'Last) * 4096
+      if not Valid (View)
       then return (Ready => False); end if;
       return (True, CPU_Address (View), Byte_Count (View), View);
    end From_View;
@@ -91,6 +91,34 @@ package body Intel_GPU_Buffer_Reply with SPARK_Mode is
          begin
             return (if First >= Address then First - Address < Object.Length
                     else Address - First < Bytes);
+         end;
+      end if;
+      -- Page/table alias checks touch at most two physical extents. Reverse
+      -- lookup avoids an arena-sized scan for each validated table page.
+      if Bytes <= Intel_GPU_Physical_Extents.Block_Bytes then
+         declare
+            package D renames Intel_GPU_Extent_Directory;
+            use type D.Lookup_State;
+            Block : constant Unsigned_64 := Intel_GPU_Physical_Extents.Block_Bytes;
+            Address : Unsigned_64 := First;
+            Remaining : Unsigned_64 := Bytes;
+            Count : Unsigned_64;
+            Location : D.DMA_Location;
+         begin
+            for Part_Index in 1 .. 2 loop
+               Count := Unsigned_64'Min (Remaining, Block - Address mod Block);
+               Location := D.Locate_DMA (Object.Map, Address);
+               if Location.State = D.Unavailable then return True; end if;
+               if Location.State = D.Present and then
+                 (if Location.Offset >= Object.First then
+                    Location.Offset - Object.First < Object.Length
+                  else Object.First - Location.Offset < Count)
+               then return True; end if;
+               Remaining := Remaining - Count;
+               if Remaining = 0 then return False; end if;
+               Address := Address + Count;
+            end loop;
+            return True;
          end;
       end if;
       while Offset < Object.Length loop

@@ -126,7 +126,7 @@ package body CuBit.Libc_Child_Outlets is
          Area (1 .. Program'Length) := Program;
          Label := Unsigned_32 (CuBit.Kernel_Calls.Call
            (Call_Via_Endpoint_Capability, Process_Manager_Slot,
-            Unsigned_64 (To_Integer (M'Address))) and 16#FFFF_FFFF#);
+            Unsigned_64 (To_Integer (M'Address)), CuBit.Kernel_ABI.Forever) and 16#FFFF_FFFF#);
          if Label /= Reply_OK or else M.Words (0) not in 1 .. PD.Maximum_Descriptor_Bytes then
             return;
          end if;

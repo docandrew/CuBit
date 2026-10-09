@@ -2,6 +2,7 @@ project Sharing_Native extends "views_native.gpr" is
    for Source_Dirs use ("../../../userspace/services/intel-gpu");
    for Source_Files use ("intel_gpu_buffer_views.ads", "intel_gpu_buffer_views.adb",
      "intel_gpu_buffer_handles.ads", "intel_gpu_buffer_handles.adb",
+     "intel_gpu_name_index.ads", "intel_gpu_name_index.adb",
      "intel_gpu_physical_extents.ads", "intel_gpu_physical_extents.adb",
      "intel_gpu_buffer_reply.ads", "intel_gpu_buffer_reply.adb",
      "intel_gpu_buffer_backing.ads", "intel_gpu_buffer_requests.ads",

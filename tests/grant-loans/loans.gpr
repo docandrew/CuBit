@@ -7,6 +7,7 @@ project Loans is
       "loan_proof.ads", "cubit.ads",
       "cubit-presentation_state.ads", "cubit-presentation_state.adb",
       "memory_grants.ads", "memory_grants.adb",
+      "grant_windows.ads", "grant_windows.adb",
       "memory_grants-loans.ads", "memory_grants-loans.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";

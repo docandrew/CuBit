@@ -1,3 +1,4 @@
+#include "vulkan_pipeline_diagnostic.h"
 #include "vulkan_checker.h"
 #include "vulkan-checker-shaders.h"
 #include <stddef.h>
@@ -18,29 +19,29 @@ void cubit_vulkan_checker_destroy(struct cubit_vulkan_checker *e)
 VkResult cubit_vulkan_checker_create(struct cubit_vulkan_checker *e,
     VkDevice device,PFN_vkGetDeviceProcAddr proc,VkRenderPass pass)
 {
-    if(!e)return VK_ERROR_INITIALIZATION_FAILED;
+    if(!e){pipeline_failure(200,0,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
     *e=(struct cubit_vulkan_checker){.device=device};
-    if(!device||!proc||!pass)return VK_ERROR_INITIALIZATION_FAILED;
-#define LOAD(field,name) e->field=(PFN_vk##name)proc(device,"vk" #name); if(!e->field)return VK_ERROR_INITIALIZATION_FAILED
-    LOAD(destroy_layout,DestroyPipelineLayout); LOAD(destroy_pipeline,DestroyPipeline);
-    LOAD(bind,CmdBindPipeline); LOAD(viewport,CmdSetViewport); LOAD(scissor,CmdSetScissor);
-    LOAD(constants,CmdPushConstants); LOAD(draw,CmdDraw);
+    if(!device||!proc||!pass){pipeline_failure(200,0,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
+#define LOAD(index,field,name) e->field=(PFN_vk##name)proc(device,"vk" #name); if(!e->field){pipeline_failure(210,index,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
+    LOAD(1,destroy_layout,DestroyPipelineLayout); LOAD(2,destroy_pipeline,DestroyPipeline);
+    LOAD(3,bind,CmdBindPipeline); LOAD(4,viewport,CmdSetViewport); LOAD(5,scissor,CmdSetScissor);
+    LOAD(6,constants,CmdPushConstants); LOAD(7,draw,CmdDraw);
 #undef LOAD
-#define LOAD(name) PFN_vk##name name=(PFN_vk##name)proc(device,"vk" #name); if(!name)return VK_ERROR_INITIALIZATION_FAILED
-    LOAD(CreatePipelineLayout); LOAD(CreateShaderModule); LOAD(DestroyShaderModule); LOAD(CreateGraphicsPipelines);
+#define LOAD(index,name) PFN_vk##name name=(PFN_vk##name)proc(device,"vk" #name); if(!name){pipeline_failure(210,index,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
+    LOAD(8,CreatePipelineLayout); LOAD(9,CreateShaderModule); LOAD(10,DestroyShaderModule); LOAD(11,CreateGraphicsPipelines);
 #undef LOAD
     VkResult result; VkShaderModule vertex=VK_NULL_HANDLE,fragment=VK_NULL_HANDLE;
-#define TRY(expr) do { result=(expr); if(result!=VK_SUCCESS)goto done; } while(0)
+#define TRY(stage,index,expr) do { result=(expr); if(result!=VK_SUCCESS){pipeline_failure(stage,index,result);goto done;} } while(0)
     const VkPushConstantRange range={VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(struct checker_push)};
     const VkPipelineLayoutCreateInfo layout={.sType=VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pushConstantRangeCount=1,.pPushConstantRanges=&range};
-    TRY(CreatePipelineLayout(device,&layout,NULL,&e->layout));
+    TRY(201,0,CreatePipelineLayout(device,&layout,NULL,&e->layout));
     const VkShaderModuleCreateInfo vi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize=sizeof(vulkan_checker_vertex),.pCode=vulkan_checker_vertex};
     const VkShaderModuleCreateInfo fi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize=sizeof(vulkan_checker_fragment),.pCode=vulkan_checker_fragment};
-    TRY(CreateShaderModule(device,&vi,NULL,&vertex));
-    TRY(CreateShaderModule(device,&fi,NULL,&fragment));
+    TRY(202,0,CreateShaderModule(device,&vi,NULL,&vertex));
+    TRY(203,0,CreateShaderModule(device,&fi,NULL,&fragment));
     const VkPipelineShaderStageCreateInfo stages[2]={
         {.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_VERTEX_BIT,.module=vertex,.pName="main"},
         {.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_FRAGMENT_BIT,.module=fragment,.pName="main"}};
@@ -56,7 +57,7 @@ VkResult cubit_vulkan_checker_create(struct cubit_vulkan_checker *e,
     const VkGraphicsPipelineCreateInfo graphics={.sType=VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,.stageCount=2,.pStages=stages,
         .pVertexInputState=&input,.pInputAssemblyState=&assembly,.pViewportState=&view,.pRasterizationState=&raster,.pMultisampleState=&samples,
         .pColorBlendState=&blend,.pDynamicState=&dynamic,.layout=e->layout,.renderPass=pass,.subpass=0};
-    TRY(CreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&graphics,NULL,&e->pipeline));
+    TRY(204,0,CreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&graphics,NULL,&e->pipeline));
 done:
     if(fragment)DestroyShaderModule(device,fragment,NULL);
     if(vertex)DestroyShaderModule(device,vertex,NULL);

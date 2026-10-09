@@ -1,0 +1,52 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+------------------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total        Flow                               Provers   Justified   Unproved
+------------------------------------------------------------------------------------------------------------
+Data Dependencies                 7           7                                     .           .          .
+Flow Dependencies                 .           .                                     .           .          .
+Initialization                   12          12                                     .           .          .
+Non-Aliasing                      3           3                                     .           .          .
+Run-time Checks                  15           .                  15 (CVC5 7%, Z3 93%)           .          .
+Assertions                        .           .                                     .           .          .
+Functional Contracts             22           .    22 (CVC5 41%, Trivial 19%, Z3 40%)           .          .
+LSP Verification                  .           .                                     .           .          .
+Termination                       7           7                                     .           .          .
+Concurrency                       .           .                                     .           .          .
+------------------------------------------------------------------------------------------------------------
+Total                            66    29 (44%)                              37 (56%)           .          .
+
+
+max steps used for successful proof: 7076
+
+============================
+Most difficult proved checks
+============================
+
+desktop_readback_output.ads:39:16: postcondition proved in max 1 seconds
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 1 unit
+in unit desktop_readback_output, 17 subprograms and packages out of 17 analyzed
+  Desktop_Readback_Output at desktop_readback_output.ads:11 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Readback_Output.Acknowledge at desktop_readback_output.ads:74 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Readback_Output.Add_Bytes at desktop_readback_output.adb:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Readback_Output.Advance at desktop_readback_output.ads:64 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (13 checks)
+  Desktop_Readback_Output.Begin_Copy at desktop_readback_output.ads:57 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Readback_Output.Begin_Region_Transfer at desktop_readback_output.ads:45 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (8 checks)
+  Desktop_Readback_Output.Begin_Transfer at desktop_readback_output.ads:34 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Desktop_Readback_Output.CPU_Bytes at desktop_readback_output.ads:25 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Readback_Output.Cancel at desktop_readback_output.ads:70 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Readback_Output.Counters_Saturated at desktop_readback_output.ads:26 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Readback_Output.Current at desktop_readback_output.ads:20 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Readback_Output.GPU_Bytes at desktop_readback_output.ads:24 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Readback_Output.Matches at desktop_readback_output.ads:29 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Readback_Output.Poll_Transfer at desktop_readback_output.ads:54 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Readback_Output.Rows_Copied at desktop_readback_output.ads:28 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Readback_Output.State at desktop_readback_output.ads:77 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Readback_Output.Valid at desktop_readback_output.ads:19 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)

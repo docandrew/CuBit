@@ -16,6 +16,8 @@ pragma Ada_2022;
 with Ada.Unchecked_Conversion;
 
 with BuddyAllocator;
+with Memory_Accounting;
+with Process_Memory_Budget;
 with Build;
 with Trace;
 with Capabilities.IRQ;
@@ -31,10 +33,12 @@ with Page_Admission;
 with User_Page_Walk;
 with PerCPUData;
 with Process.Futex;
+with Process.DMA;
 with Process.IPC;
 with Process.Owned_Memory;
 with Process.User_Memory;
 with Process.Queues;
+with Process_Identities;
 with Scheduler;
 with Scheduler_Timing;
 with Scheduler_Alarm;
@@ -369,12 +373,20 @@ package body Process is
         end if;
     end wakeReaper;
 
+    procedure notifyDMAWork is
+    begin
+        Spinlocks.enterCriticalSection (lock);
+        wakeReaper;
+        Spinlocks.exitCriticalSection (lock);
+    end notifyDMAWork;
+
     procedure publish (pid : ProcessID) is
     begin
         Spinlocks.enterCriticalSection (mailtab(pid).lock);
         Spinlocks.enterCriticalSection (lock);
         proctab(pid).admitted := True;
         mailtab(pid).closed := False;
+        IPC.openNotices (pid);
         Spinlocks.exitCriticalSection (lock);
         Spinlocks.exitCriticalSection (mailtab(pid).lock);
     end publish;
@@ -412,6 +424,15 @@ package body Process is
         Capabilities.Operations.clearTable (proctab(pid).caps);
         threadOf (pid).state := INVALID;
         -- No access to this slot after returning its PID to the allocator.
+        if proctab(pid).memoryAccount /= 0 then
+            declare
+                closed : Boolean;
+            begin
+                Memory_Accounting.Close (proctab(pid).memoryAccount, closed);
+                if not closed then raise ProcessException with "Account rollback failed"; end if;
+                proctab(pid).memoryAccount := 0;
+            end;
+        end if;
         PIDTracker.freePID (pid);
     end discardUnpublished;
 
@@ -511,7 +532,12 @@ package body Process is
     tableLock : Spinlocks.Spinlock;
 
     procedure setup is
+        accountingReady : Boolean;
     begin
+        Memory_Accounting.Initialize (accountingReady);
+        if not accountingReady then
+            raise ProcessException with "Memory accounting initialization failed";
+        end if;
         -- Before AP startup / publication; never reinitialize live locks.
         Spinlocks.Initialize (lock, lockname'Access);
         Spinlocks.Initialize (grantLock, grantLockName'Access);
@@ -649,6 +675,8 @@ package body Process is
         outcome : Page_Allocation.Result;
         frameOwner : constant ProcessID := proc.pid;
         frames : FrameLists.List renames proctab(frameOwner).frames;
+        charge : Unsigned_64;
+        reserved, handedOff, cancelled : Boolean := False;
 
         procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
 
@@ -662,7 +690,11 @@ package body Process is
         end Forget;
         procedure Claim (Frame : Virtmem.PhysAddress; Accepted : out Boolean) is
         begin
-            BuddyAllocator.claimUserFrame (Frame, Unsigned_8 (frameOwner), Accepted);
+            BuddyAllocator.claimUserFrame (Frame, BuddyAllocator.Frame_Owner (frameOwner), Accepted);
+            if Accepted then
+                BuddyAllocator.bindFrameCharge (Frame, charge, Accepted);
+                handedOff := Accepted;
+            end if;
         end Claim;
         procedure Map (Frame : Virtmem.PhysAddress; Accepted : out Boolean) is
         begin
@@ -676,17 +708,23 @@ package body Process is
         if frames.length >= frames.capacity then
             result := Frame_Tracking_Full;
             return;
-        elsif proctab(frameOwner).quota.maxFrames /= 0 and then
-          frames.length >= proctab(frameOwner).quota.maxFrames then
-            result := Frame_Quota_Full;
-            return;
         elsif Virtmem.tableWalk
           (To_Integer (mapTo), addrtab(proc.pgTable), Allow_Big => True) /= 0 then
             result := Mapping_Already_Present;
             return;
         end if;
+        Memory_Accounting.Reserve (proctab(frameOwner).memoryAccount,
+          Process_Memory_Budget.Ordinary, 1, charge, reserved);
+        if not reserved then
+            result := Frame_Quota_Full;
+            return;
+        end if;
         Acquire (newFrame, outcome);
         result := Page_Allocation_Result (outcome);
+        if result /= Page_Added and then not handedOff then
+            Memory_Accounting.Cancel_Unbound (charge, 1, cancelled);
+            if not cancelled then raise ProcessException with "Page charge rollback failed"; end if;
+        end if;
         if result = Page_Added then
             storage := Virtmem.P2Va (newFrame);
         end if;
@@ -817,9 +855,7 @@ package body Process is
             return NO_PROCESS;
         end if;
 
-        if not IPC.initializeGrantLife
-          (pid, Memory_Grants.Process_Generation (Process_Table.Generation_Of (pid)))
-        then
+        if not IPC.grantListsEmpty (pid) then
             -- Retain the reserved identity on an inconsistent lifetime instead
             -- of erasing records or recycling backing still held by readers.
             return NO_PROCESS;
@@ -850,12 +886,8 @@ package body Process is
             threadOf (pid).turnCounters := [others => 0];
             threadOf (pid).shadow := Scheduling_Shadow.Empty_Reservation;
             proctab(pid).admitted := False;
-            -- Grant generations are namespaced by this life (the PID's
-            -- ledger generation), so references to an earlier process
-            -- with this PID never match (docs/threads.md).
-            -- Grant records live outside this memset-reset process record.
-            -- initializeGrantLife captured the life before this reset; new
-            -- blocks receive its generation only when grants are admitted.
+            -- Grant records live outside this memset-reset process record,
+            -- in the global grant table, each with its own generation.
         end;
 
         proctab(pid).pid          := pid;
@@ -871,6 +903,11 @@ package body Process is
         proctab(pid).termination  := (kind => Process_Launch.Stopped, code => 0);
         threadOf (pid).mode         := USER;
         threadOf (pid).state        := SUSPENDED;
+        Memory_Accounting.Open (proctab(pid).memoryAccount, reserved);
+        if not reserved then
+            discardUnpublished (pid);
+            return NO_PROCESS;
+        end if;
         threadOf (pid).priority     := priority;
         threadOf (pid).latency      :=
             (class    => LATENCY_NORMAL,
@@ -928,7 +965,9 @@ package body Process is
 
         Spinlocks.enterCriticalSection (mailtab(pid).lock);
         mailtab(pid).closed := True;
-        mailtab(pid).ring := (others => <>);
+        -- The previous life's queue storage was freed when it retired.
+        mailtab(pid).queues := (others => <>);
+        mailtab(pid).nextClass := Request_Class;
         mailtab(pid).nextReceiveLane := Queued_Messages;
         Spinlocks.exitCriticalSection (mailtab(pid).lock);
 
@@ -1125,6 +1164,43 @@ package body Process is
        else Capabilities.Generation (Process_Table.Generation_Of (pid)) +
             Capabilities.INITIAL_GENERATION);
 
+    function identityOf (pid : ProcessID) return Process_Identities.Identity is
+      (if pid = NO_PROCESS then Process_Identities.No_Identity
+       else Process_Identities.Encode
+              (Process_Identities.Slot (pid),
+               Process_Identities.Generation (generationOf (pid))));
+
+    procedure resolveIdentity (id         : Process_Identities.Identity;
+                               pid        : out ProcessID;
+                               generation : out Capabilities.Generation)
+    is
+        use Process_Identities;
+        slot : constant Process_Identities.Slot := Slot_Of (id);
+        candidate : ProcessID;
+    begin
+        pid := NO_PROCESS;
+        generation := 0;
+        if slot = 0 or else slot > Unsigned_64 (ProcessID'Last) then
+            return;
+        end if;
+        candidate := ProcessID (slot);
+        if not Process_Table.Present (candidate) or else
+           Generation_Of (id) /= Unsigned_64 (generationOf (candidate))
+        then
+            return;
+        end if;
+        pid := candidate;
+        generation := generationOf (candidate);
+    end resolveIdentity;
+
+    function processOfIdentity (id : Process_Identities.Identity) return ProcessID is
+        pid : ProcessID;
+        ignore : Capabilities.Generation;
+    begin
+        resolveIdentity (id, pid, ignore);
+        return pid;
+    end processOfIdentity;
+
     function threadGenerationOf (tid : ThreadID) return Capabilities.Generation is
       (if tid = NO_THREAD then 0
        else Capabilities.Generation (Thread_Table.Generation_Of (Natural (tid))) +
@@ -1142,6 +1218,70 @@ package body Process is
     begin
         Spinlocks.exitCriticalSection (tableLock);
     end unlockProcessTable;
+
+    ---------------------------------------------------------------------------
+    -- Per-process state (process.ads). States : the retained records;
+    -- Fresh_State : their first value, never written; Unused_State : what a
+    -- slot never allocated reads (its mailbox is closed; only its lock is
+    -- ever written, so it must not be Fresh_State).
+    ---------------------------------------------------------------------------
+    States       : Process_States.Store;
+    Fresh_State  : aliased constant Process_State := (others => <>);
+    Unused_State : aliased Process_State;
+    stateLock    : Spinlocks.Spinlock;
+
+    function allocateStateBlock
+      (Bytes, Alignment : System.Storage_Elements.Storage_Count)
+       return System.Address
+    is
+        Addr : System.Address;
+    begin
+        -- Buddy blocks are aligned to their size, at least a page.
+        if Alignment > Storage_Count (Virtmem.PAGE_SIZE) then
+            return System.Null_Address;
+        end if;
+        BuddyAllocator.alloc (BuddyAllocator.getOrder (Bytes), Addr);
+        return Addr;
+    end allocateStateBlock;
+
+    procedure ensureState (pid : ProcessID; ok : out Boolean) is
+        value  : Process_States.Element_Access;
+        result : Process_States.Allocation_Result;
+        use type Process_States.Allocation_Result;
+    begin
+        Spinlocks.enterCriticalSection (stateLock);
+        Process_States.Ensure
+          (States, pid, Fresh_State, Process_States.Maximum_Blocks, value, result);
+        Spinlocks.exitCriticalSection (stateLock);
+        ok := result = Process_States.Existing or else result = Process_States.Added;
+    end ensureState;
+
+    function stateOf (pid : ProcessID) return not null access Process_State is
+        value : constant Process_States.Element_Access := Process_States.Find (States, pid);
+        use type Process_States.Element_Access;
+    begin
+        if value = null then
+            return Unused_State'Access;
+        end if;
+        return value;
+    end stateOf;
+
+    function addrtab (pid : ProcessID) return P4_Ref is
+      (P => stateOf (pid).rootTable'Access);
+    function mailtab (pid : ProcessID) return Mailbox_Ref is
+      (M => stateOf (pid).inbox'Access);
+    function completionTab (pid : ProcessID) return Completion_Ref is
+      (C => stateOf (pid).completions'Access);
+    function grantsOf (pid : ProcessID) return Grant_State_Ref is
+      (G => stateOf (pid).grants'Access);
+    function rootPhysical (pid : ProcessID) return Virtmem.PhysAddress is
+        root : constant System.Address := stateOf (pid).rootTable'Address;
+    begin
+        if To_Integer (root) >= Virtmem.KERNEL_BASE then
+            return Virtmem.K2P (root);
+        end if;
+        return Virtmem.V2P (root);
+    end rootPhysical;
 
     procedure allocTablePage (Page_Bytes : Natural; Addr : out System.Address) is
     begin
@@ -1554,11 +1694,8 @@ package body Process is
     ---------------------------------------------------------------------------
     procedure switchAddressSpace (pid : in ProcessID)
     is
-        p4addr : System.Address;
     begin
-        p4addr := addrtab(pid)'Address;
-
-        Virtmem.setActiveP4 (Virtmem.K2P (p4addr));
+        Virtmem.setActiveP4 (rootPhysical (pid));
     end switchAddressSpace;
 
     ---------------------------------------------------------------------------
@@ -1655,6 +1792,7 @@ package body Process is
     procedure retirementWorker is
         victim : ProcessID;
         victimThread : ThreadID;
+        dmaVictim : ProcessID;
     begin
         loop
             -- Free table pages emptied by earlier retirements whose grace
@@ -1707,7 +1845,18 @@ package body Process is
                     end if;
                 end loop;
             end if;
-            if victimThread /= NO_THREAD then
+            DMA.Take_Ready (dmaVictim);
+            if dmaVictim /= NO_PROCESS then
+                Spinlocks.exitCriticalSection (lock);
+                IPC.releaseDMAAllocations (dmaVictim);
+                -- A claimed process/thread must still be reclaimed below.
+                if victimThread /= NO_THREAD then
+                    reclaimThread (victimThread);
+                elsif victim /= NO_PROCESS then
+                    reclaimProcess (victim);
+                end if;
+                yield;
+            elsif victimThread /= NO_THREAD then
                 Spinlocks.exitCriticalSection (lock);
                 reclaimThread (victimThread);
                 yield;
@@ -1738,24 +1887,29 @@ package body Process is
         -- Captured before Invalidate bumps it for the next occupant.
         lifeGeneration : constant Capabilities.Generation := generationOf (pid);
         exitMsg : Message := NULL_MESSAGE;
+        manager : ProcessID := NO_PROCESS;
+        ringParent, ringManager : Boolean;
 
-        -- EVENT_CHILD_EXIT: PID, termination kind, exit code, generation.
+        -- EVENT_CHILD_EXIT: the identity of the life that ended (its
+        -- generation captured above), termination kind, exit code.
         procedure setExitReport is
         begin
             exitMsg.tag := (label => IPC_Labels.EVENT_CHILD_EXIT,
                             length => Process_Launch.Child_Exit_Words,
                             flags => 0, reserved => 0);
-            exitMsg.words(0) := Unsigned_64(pid);
+            exitMsg.words(0) := Process_Identities.To_Word (Process_Identities.Encode
+              (Process_Identities.Slot (pid),
+               Process_Identities.Generation (lifeGeneration)));
             exitMsg.words(1) :=
                 Process_Launch.Termination_Kind'Enum_Rep (termination.kind);
             exitMsg.words(2) := termination.code;
-            exitMsg.words(3) := Unsigned_64 (lifeGeneration);
         end setExitReport;
     begin
         println ("Process.reclaimProcess: stopped PID" & Integer'Image (Integer (pid)));
         -- Worker owns its own stack and runs on kernel page tables. The
         -- victim's execution presence is zero; cleanup holds no global lock.
         IPC.retireMailboxes (pid);
+        IPC.closeNotices (pid);
         IPC.revokeAllGrants (pid);
         IPC.revokeAllGrantsTo (pid);
         --  Unregister IRQ and sysinfo driver registrations
@@ -1782,15 +1936,20 @@ package body Process is
            pidReusable => pidReusable,
            deferred    => grantDeferred);
 
-        -- Whole DMA allocations must be freed at their original buddy order.
-        -- If a grant acquisition pins any constituent frame, retain all DMA
-        -- blocks until the final borrower returns it.
-        if not grantDeferred then
-            IPC.releaseDMAAllocations (pid);
-        end if;
+        -- DMA cleanup is deferred until CPU address-space teardown and all
+        -- acquired grants have retired, then serviced in bounded worker steps.
 
         -- Clear capability table
         Capabilities.Operations.clearTable (proctab(pid).caps);
+        if proctab(pid).memoryAccount /= 0 then
+            declare
+                closed : Boolean;
+            begin
+                Memory_Accounting.Close (proctab(pid).memoryAccount, closed);
+                if not closed then raise ProcessException with "Account close failed"; end if;
+                proctab(pid).memoryAccount := 0;
+            end;
+        end if;
 
         if threadOf (pid).mode = USER then
             -- Physical-mapping admission may inspect owned-region inventory.
@@ -1830,6 +1989,27 @@ package body Process is
             end loop;
         end;
 
+        -- Keep the exit report for the parent and the process manager before
+        -- the PID can be published: the PID is not reused until both have
+        -- read it (docs/ipc-delivery.md). The manager hears of every
+        -- retirement, whoever launched the process: it releases what
+        -- services hold for it (netstack's channels and scopes).
+        setExitReport;
+        declare
+            registered : constant Unsigned_64 := Sysinfo.getInfo
+              (Unsigned_64 (Sysinfo.REGISTERED_DRIVER),
+               Unsigned_64 (Sysinfo.DRIVER_PROCMGR));
+        begin
+            if registered /= Unsigned_64 (NO_PROCESS) and then
+               registered <= Unsigned_64 (ProcessID'Last)
+            then
+                manager := ProcessID (registered);
+            end if;
+        end;
+        IPC.reportExit
+          (pid, exitMsg, parent, (if parent = NO_PROCESS then 0 else parentGen),
+           manager, generationOf (manager), ringParent, ringManager);
+
         -- Retire before either immediate or grant-deferred PID publication.
         -- No access to proctab(pid) is allowed after publishing the PID free.
         -- Threads other than the main thread are released now; the main
@@ -1856,39 +2036,21 @@ package body Process is
             proctab(pid).threadCount := 0;
         end;
         proctab(pid).admitted := False;
-        if grantDeferred then
-            IPC.finishGrantProtectedTeardown (pid);
-        elsif pidReusable then
-            PIDTracker.freePID (pid, invalidated => True);
+        if not grantDeferred and then pidReusable then
+            IPC.releaseRetiredPID (pid);
         end if;
         Spinlocks.exitCriticalSection (lock);
 
-        -- Report completed retirement, not merely a requested stop. Bind the
-        -- notification to the original parent's generation, never a reused PID.
-        if parent /= NO_PROCESS and then parentGen /= 0 then
-            setExitReport;
-            IPC.sendRetirementEvent (parent, parentGen, exitMsg);
+        if grantDeferred then
+            IPC.finishGrantProtectedTeardown (pid);
         end if;
 
-        -- The process manager hears of every retirement, whoever launched
-        -- the process: it releases what services hold for it (netstack's
-        -- channels and scopes). It checks the claim against the process
-        -- list before acting, since events are not unforgeable.
-        tellManager : declare
-            manager : constant Unsigned_64 := Sysinfo.getInfo
-              (Unsigned_64 (Sysinfo.REGISTERED_DRIVER),
-               Unsigned_64 (Sysinfo.DRIVER_PROCMGR));
-        begin
-            if manager /= Unsigned_64 (NO_PROCESS) and then
-               manager <= Unsigned_64 (ProcessID'Last) and then
-               ProcessID (manager) /= parent and then
-               ProcessID (manager) /= pid
-            then
-                setExitReport;
-                IPC.sendRetirementEvent
-                  (ProcessID (manager), generationOf (ProcessID (manager)), exitMsg);
-            end if;
-        end tellManager;
+        if ringParent then
+            IPC.ringReport (parent);
+        end if;
+        if ringManager then
+            IPC.ringReport (manager);
+        end if;
     end reclaimProcess;
 
     ---------------------------------------------------------------------------
@@ -2084,7 +2246,7 @@ package body Process is
         function Readable is new User_Page_Walk.Readable_Frame (Read_Entry);
         function Writable is new User_Page_Walk.Writable_Frame (Read_Entry);
         Root : constant Unsigned_64 := Unsigned_64
-          (Virtmem.K2P (addrtab(proctab(pid).pgTable)'Address));
+          (rootPhysical (proctab(pid).pgTable));
     begin
         return (if Write then Writable
           (Root, Unsigned_64 (To_Integer (addr)), Unsigned_64 (Virtmem.MAX_PHYS_USABLE))
@@ -2120,7 +2282,11 @@ package body Process is
            Unsigned_64 (To_Integer (proctab(pid).heapStart)),
            Unsigned_64 (To_Integer (proctab(pid).heapEnd)),
            Unsigned_64 (To_Integer (addr)), proctab(pid).frames.length,
-           proctab(pid).frames.capacity, Natural (proctab(pid).quota.maxFrames))
+           proctab(pid).frames.capacity,
+           -- Only the legacy tracking comparison is Natural-bounded. The
+           -- authoritative quota stays U64; capacity wins at Natural'Last.
+           Natural (Unsigned_64'Min (proctab(pid).quota.maxFrames,
+                                    Unsigned_64 (Natural'Last))))
           = Page_Admission.Admitted
         then
             tryAddPage (proc => Proctab(pid), mapTo => To_Address (page),
@@ -2147,7 +2313,9 @@ package body Process is
            Unsigned_64 (To_Integer (proctab(pid).heapStart)),
            Unsigned_64 (To_Integer (proctab(pid).heapEnd)),
            Unsigned_64 (To_Integer (addr)), proctab(pid).frames.length,
-           proctab(pid).frames.capacity, Natural (proctab(pid).quota.maxFrames));
+           proctab(pid).frames.capacity,
+           Natural (Unsigned_64'Min (proctab(pid).quota.maxFrames,
+                                    Unsigned_64 (Natural'Last))));
         if admission = Page_Admission.Admitted and then
            Virtmem.tableWalk
              (page, addrtab(proctab(pid).pgTable), Allow_Big => True) /= 0
@@ -2370,7 +2538,10 @@ package body Process is
         begin
             Process_Table.Allocate (pid);
             if pid /= NO_PROCESS then
-                attachMainThread (pid, ok);
+                ensureState (pid, ok);
+                if ok then
+                    attachMainThread (pid, ok);
+                end if;
                 if not ok then
                     Process_Table.Release (pid);
                     pid := NO_PROCESS;
@@ -2386,7 +2557,10 @@ package body Process is
             end if;
             Process_Table.Allocate_Specific (pid, success);
             if success then
-                attachMainThread (pid, success);
+                ensureState (pid, success);
+                if success then
+                    attachMainThread (pid, success);
+                end if;
                 if not success then
                     Process_Table.Release (pid);
                 end if;

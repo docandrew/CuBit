@@ -1,6 +1,7 @@
 package body Intel_GPU_Extent_Allocator is
    use Intel_GPU_Buffer_Reply.Layout;
    package Directory renames Intel_GPU_Extent_Directory;
+   function Last_Gap_Probes (Object : Pool) return Natural is (Object.Scan_Probes);
    function Last_Allocation_Reason (Object : Pool) return Allocation_Reason is
      (Object.Allocation_Check);
    procedure Reset_Allocation_Diagnostic (Object : in out Pool) is
@@ -10,6 +11,7 @@ package body Intel_GPU_Extent_Allocator is
    procedure Quarantine (Object : in out Pool) is
    begin
       Object.Broken := True;
+      Object.Scan_Active := False;
       Directory.Quarantine (Object.Directory);
       -- Retain all physical and metadata storage. Invalidating lookup is not
       -- evidence of GPU/TLB/CPU retirement and must never trigger reclamation.
@@ -67,29 +69,54 @@ package body Intel_GPU_Extent_Allocator is
    -- Ordered live slices; empty generation tombstones are not linked. Walking
    -- gaps needs no capacity-sized stack snapshot. Serialized supervisor only.
    procedure Find_Gap
-     (Object : Pool; Bytes : Unsigned_64; Offset : out Unsigned_64;
-      Previous, Following : out Natural; Found : out Boolean) is
-      Cursor : Natural := Object.First_Extent;
-      Position : Unsigned_64 := 0;
+     (Object : in out Pool; Bytes : Unsigned_64; Offset : out Unsigned_64;
+      Previous, Following : out Natural; Found : out Boolean;
+      Pending : out Boolean; Bounded : Boolean := False) is
+      Limit : constant Positive :=
+        (if Bounded then Gap_Probe_Limit else Records.Capacity (Object.Items));
    begin
-      Offset := 0; Previous := 0; Following := 0; Found := False;
-      for Visit in 1 .. Records.Capacity (Object.Items) loop
-         exit when Cursor = 0;
-         if Cursor > Records.Capacity (Object.Items) then return; end if;
-         declare Item : constant Entry_Record := Records.Get (Object.Items, Cursor); begin
-            if Item.Bytes = 0 or else Item.Offset < Position or else
-              Item.Offset > Object.Limit or else Item.Bytes > Object.Limit - Item.Offset
-            then return; end if;
-            if Bytes <= Item.Offset - Position then
-               Offset := Position; Following := Cursor; Found := True; return;
-            end if;
-            Position := Item.Offset + Item.Bytes;
-            Previous := Cursor; Cursor := Item.Next;
-         end;
-      end loop;
-      if Cursor = 0 and then Bytes <= Object.Limit - Position then
-         Offset := Position; Found := True;
+      Offset := 0; Previous := 0; Following := 0; Found := False; Pending := False;
+      if not Object.Scan_Active or else Object.Scan_Bytes /= Bytes then
+         Object.Scan_Active := True; Object.Scan_Found := False;
+         Object.Scan_Bytes := Bytes; Object.Scan_Position := 0;
+         Object.Scan_Previous := 0; Object.Scan_Cursor := Object.First_Extent;
+         Object.Scan_Visits := 0;
       end if;
+      -- A completed search is also used by Acquire_Buffer after backing has
+      -- grown. Any list mutation invalidates it before a later request.
+      if not Object.Scan_Found then
+         Object.Scan_Probes := 0;
+         for Visit in 1 .. Limit loop
+            exit when Object.Scan_Cursor = 0;
+            if Object.Scan_Cursor > Records.Capacity (Object.Items) or else
+              Object.Scan_Visits >= Records.Capacity (Object.Items)
+            then Quarantine (Object); return; end if;
+            declare
+               Item : constant Entry_Record := Records.Get (Object.Items, Object.Scan_Cursor);
+            begin
+            Object.Scan_Probes := Object.Scan_Probes + 1;
+            Object.Scan_Visits := Object.Scan_Visits + 1;
+            if Item.Bytes = 0 or else Item.Previous /= Object.Scan_Previous or else
+              Item.Offset < Object.Scan_Position or else
+              Item.Offset > Object.Limit or else Item.Bytes > Object.Limit - Item.Offset
+            then Quarantine (Object); return; end if;
+            if Bytes <= Item.Offset - Object.Scan_Position then
+               Object.Scan_Found := True; exit;
+            end if;
+            Object.Scan_Position := Item.Offset + Item.Bytes;
+            Object.Scan_Previous := Object.Scan_Cursor;
+            Object.Scan_Cursor := Item.Next;
+            end;
+         end loop;
+         if Object.Scan_Cursor = 0 then
+            Object.Scan_Found := Bytes <= Object.Limit - Object.Scan_Position;
+            if not Object.Scan_Found then Object.Scan_Active := False; return; end if;
+         elsif not Object.Scan_Found then
+            Pending := True; return;
+         end if;
+      end if;
+      Offset := Object.Scan_Position; Previous := Object.Scan_Previous;
+      Following := Object.Scan_Cursor; Found := True;
    end Find_Gap;
    function Memory_Budget (Object : Pool) return Budget is
       Result : Budget;
@@ -118,7 +145,7 @@ package body Intel_GPU_Extent_Allocator is
       Requested : constant Unsigned_64 := Unsigned_64 (Pages) * 4096;
       Previous, Following : Natural;
       Offset : Unsigned_64;
-      Found : Boolean;
+      Found, Search_Pending : Boolean;
    begin
       Buffer := Empty;
       Success := False;
@@ -136,7 +163,7 @@ package body Intel_GPU_Extent_Allocator is
          Object.Allocation_Check := Quota_Check;
          if Requested > Object.Limit - Object.Used then return; end if;
          Object.Allocation_Check := Gap_Check;
-         Find_Gap (Object, Requested, Offset, Previous, Following, Found);
+         Find_Gap (Object, Requested, Offset, Previous, Following, Found, Search_Pending);
          if not Found then return; end if;
       else
          Offset := Records.Get (Object.Items, Index).Offset;
@@ -159,6 +186,7 @@ package body Intel_GPU_Extent_Allocator is
          end if;
          Object.Used := Object.Used + Requested;
          Object.Unassigned := Object.Unassigned - 1;
+         Object.Scan_Active := False;
       elsif Records.Get (Object.Items, Index).Bytes /= Requested or else
         Records.Get (Object.Items, Index).Generation /= Generation then
          return;
@@ -183,6 +211,7 @@ package body Intel_GPU_Extent_Allocator is
       Found : Boolean;
    begin
       Buffer := Empty; Success := False; Pending := False;
+      Object.Scan_Probes := 0;
       Object.Metadata_Required := 0;
       Object.Allocation_Check := Request_Check;
       if Object.Broken or else Index > Record_Capacity (Object) or else
@@ -198,7 +227,7 @@ package body Intel_GPU_Extent_Allocator is
       Object.Allocation_Check := Quota_Check;
       if Bytes > Object.Limit - Object.Used then return; end if;
       Object.Allocation_Check := Gap_Check;
-      Find_Gap (Object, Bytes, Offset, Previous, Following, Found);
+      Find_Gap (Object, Bytes, Offset, Previous, Following, Found, Pending, Bounded => True);
       if not Found then return; end if;
       Target := Offset + Bytes;
       Committed := Directory.Committed_Bytes (Object.Directory);
@@ -270,6 +299,7 @@ package body Intel_GPU_Extent_Allocator is
            (After with delta Previous => Previous));
       end if;
       Object.Used := Object.Used - Records.Get (Object.Items, Index).Bytes;
+      Object.Scan_Active := False;
       Object.Unassigned := Object.Unassigned + 1;
       Records.Put (Object.Items, Index,
         (Item with delta Bytes => 0, Offset => 0, Previous => 0, Next => 0));
@@ -330,7 +360,16 @@ package body Intel_GPU_Extent_Allocator is
                Quarantine (Object);
                return;
             end if;
-            Object.Allocation_Check := Physical_Result_Check;
+            -- Say which check refused the block: a hardware report must tell
+            -- a kernel refusal from a driver-side limit.
+            -- ALLOC_DMA reports refusal as all ones; zero is never a block.
+            if Value = 0 or else Value = Unsigned_64'Last then
+               Object.Allocation_Check := Physical_Refused;
+            elsif Value mod E.Block_Bytes /= 0 then
+               Object.Allocation_Check := Physical_Placement;
+            else
+               Object.Allocation_Check := Extent_Directory_Full;
+            end if;
             Directory.Append (Object.Directory, Value, Success);
             if not Success then
                Quarantine (Object);

@@ -15,7 +15,7 @@ package body CuBit.Audio_Control is
          Msg.words (0) := Unsigned_64 (Level);
          Msg.words (1) := Boolean'Pos (Muted);
       end if;
-      Msg.tag := capCall (Endpoint_Slot, Msg);
+      Msg.tag := capCall (Endpoint_Slot, Msg, CuBit.Messages.Wait_Forever);
       Success := Msg.tag.label = 16#F000# and then Msg.tag.length = 4
         and then Msg.tag.flags = 0 and then Msg.tag.reserved = 0
         and then Msg.words (0) <= 100 and then Msg.words (1) <= 1

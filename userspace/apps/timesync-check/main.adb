@@ -38,7 +38,7 @@ procedure Main is
       Request.tag.label := CuBit.Clock_Control.Submit_Sample;
       Request.tag.length := 4;
       Request.words := [Words (0), Words (1), Words (2), Words (3)];
-      Reply := capCall (Slot, Request);
+      Reply := capCall (Slot, Request, CuBit.Messages.Wait_Forever);
    end Forge;
 begin
    Forge (Clock_Slot);

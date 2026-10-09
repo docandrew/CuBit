@@ -1,5 +1,5 @@
-with Interfaces;
 with CuBit.Network_Authority;
+with CuBit.Process_IDs;
 
 --  Bootstrap policy for the shipped development image, not signer validation.
 --  The exact root executable name is trusted installation policy; replace
@@ -9,7 +9,7 @@ package CuBit.Launch_Policy with SPARK_Mode => On is
      (No_Network, Declared_Network, Browser_Outbound);
 
    function Desktop_Approval
-     (Name : String; Sender, Desktop_PID : Interfaces.Unsigned_64)
+     (Name : String; Sender, Desktop_PID : CuBit.Process_IDs.Process_ID)
       return Network_Approval;
 
    function Allows

@@ -1,4 +1,24 @@
 package body Intel_GPU_Buffer_Requests is
+   procedure Query_Accounting
+     (Object : Service; Sender, Stamp : Unsigned_64;
+      Request_Label : Unsigned_32; Length, Flags : Unsigned_8;
+      Reserved : Unsigned_16; Request : Words; Response : out Words) is
+      Session : constant Unsigned_64 := Session_Of (Sender, Stamp);
+      Usage : Intel_GPU_Client_Budgets.Usage;
+   begin
+      Response := [Denied, Version, 0, 0];
+      if Session = 0 then return; end if;
+      Response (0) := Bad_Request;
+      if Request_Label /= Accounting_Label or else Length /= 4 or else
+        Flags /= 0 or else Reserved /= 0 or else Request /= Words'(Version, 0, 0, 0)
+      then return; end if;
+      Response (0) := Unavailable;
+      if Object.Failed or else not Owner_Ready then return; end if;
+      Usage := Client_Usage (Object, Session);
+      if not Usage.Known or else Usage.Closed then return; end if;
+      Response := [OK, Version, Usage.Limit, Usage.Charged];
+   end Query_Accounting;
+
    procedure Configure_Client_Budgets
      (Object : in out Service; Limit : Unsigned_64; Accepted : out Boolean) is
    begin
@@ -140,25 +160,33 @@ package body Intel_GPU_Buffer_Requests is
         Object.Private_Pending /= 0 or else not Owner_Ready or else
         (Reclaimable and then Session = 0) or else
         (Kind = Incremental_Tables and then not Reclaimable) then return; end if;
-      if Reclaimable then
-         for Index in 1 .. Committed_Slots (Object) loop
-            if Records.Get (Object.Items, Index).Private_Reusable then
+      if Reclaimable and then Object.Private_Reusable_Head /= 0 then
+         declare Index : constant Natural := Object.Private_Reusable_Head; begin
+            if Index > Committed_Slots (Object) then Quarantine (Object); return; end if;
+            declare Item : constant Allocation_Record := Records.Get (Object.Items, Index); begin
+               if not Item.Private_Reusable or else Item.Reusable or else Item.Context_Parent or else
+                 Item.Issued.Handle /= 0 or else Item.Identity = 0 or else
+                 Ticket_Slot (Item.Identity) /= Index or else
+                 Item.Identity > Ticket'Last - Ticket_Stride or else Item.Charge_Bytes /= 0 or else
+                 Item.Next_Reusable = Index or else Item.Next_Reusable > Committed_Slots (Object)
+               then Quarantine (Object); return; end if;
+            end;
                if not Charge_Client (Object, Session, Unsigned_64 (Pages) * 4096) then return; end if;
+               Object.Private_Reusable_Head := Records.Get (Object.Items, Index).Next_Reusable;
                Object.Private_Pending := Records.Get (Object.Items, Index).Identity + Ticket_Stride;
                Records.Put (Object.Items, Index,
            (Records.Get (Object.Items, Index) with delta Identity => Object.Private_Pending));
                Records.Put (Object.Items, Index,
            (Records.Get (Object.Items, Index) with delta Owner => Session));
                Records.Put (Object.Items, Index,
-           (Records.Get (Object.Items, Index) with delta Private_Reusable => False));
+           (Records.Get (Object.Items, Index) with delta Private_Reusable => False, Next_Reusable => 0));
                Records.Put (Object.Items, Index,
                  (Records.Get (Object.Items, Index) with delta
                   Private_Closed => False, Private_Reclaimable => True, Table_Kind => Kind,
                   Charge_Bytes => Unsigned_64 (Pages) * 4096));
                ID := Object.Private_Pending;
                return;
-            end if;
-         end loop;
+         end;
       end if;
       if Object.Attempted >= Committed_Slots (Object) then return; end if;
       if not Charge_Client (Object, Session, Unsigned_64 (Pages) * 4096) then return; end if;
@@ -209,7 +237,8 @@ package body Intel_GPU_Buffer_Requests is
       if not Refund_Client (Object, Index) then return; end if;
       Records.Put (Object.Items, Index,
            (Records.Get (Object.Items, Index) with delta Private_Reusable => True,
-            Charge_Bytes => 0));
+            Charge_Bytes => 0, Next_Reusable => Object.Private_Reusable_Head));
+      Object.Private_Reusable_Head := Index;
       Accepted := True;
    end Acknowledge_Private_Retirement;
    procedure Finish_Private
@@ -252,11 +281,23 @@ package body Intel_GPU_Buffer_Requests is
       end if;
       Object.Pending_Previous := 0;
       Object.Pending_Previous_Session := 0;
-      for I in 1 .. Committed_Slots (Object) loop
-         if Records.Get (Object.Items, I).Reusable then
+      if Object.Reusable_Head /= 0 then
+         declare
+            I : constant Natural := Object.Reusable_Head;
+         begin
+            if I > Committed_Slots (Object) then Quarantine (Object); return; end if;
+            declare Item : constant Allocation_Record := Records.Get (Object.Items, I); begin
+               if not Item.Reusable or else Item.Private_Reusable or else
+                 Item.Identity = 0 or else Ticket_Slot (Item.Identity) /= I or else
+                 Item.Identity > Ticket'Last - Ticket_Stride or else
+                 Item.Charge_Bytes /= 0 or else Item.Next_Reusable = I or else
+                 Item.Next_Reusable > Committed_Slots (Object)
+               then Quarantine (Object); return; end if;
+            end;
             if not Charge_Client (Object, Session, Request (2)) then
                Object.Outcome := Client_Quota_Unavailable; return;
             end if;
+            Object.Reusable_Head := Records.Get (Object.Items, I).Next_Reusable;
             Object.Pending_Previous := Records.Get (Object.Items, I).Issued.Handle;
             Object.Pending_Previous_Session := Records.Get (Object.Items, I).Issued.Session;
             Object.Pending := Records.Get (Object.Items, I).Identity + Ticket_Stride;
@@ -265,12 +306,11 @@ package body Intel_GPU_Buffer_Requests is
             Records.Put (Object.Items, I,
            (Records.Get (Object.Items, I) with delta Owner => Session));
             Records.Put (Object.Items, I,
-           (Records.Get (Object.Items, I) with delta Reusable => False));
+           (Records.Get (Object.Items, I) with delta Reusable => False, Next_Reusable => 0));
             Records.Put (Object.Items, I,
            (Records.Get (Object.Items, I) with delta Issued => (others => <>)));
-            exit;
-         end if;
-      end loop;
+         end;
+      end if;
       if Object.Pending = 0 then
          if Object.Attempted >= Committed_Slots (Object) then
             Object.Outcome := Slots_Exhausted;
@@ -314,8 +354,14 @@ package body Intel_GPU_Buffer_Requests is
          Quarantine (Object);
          return;
       end if;
-      if Object.Cancelled or else
-        Session_Of (Object.Pending_Sender, Object.Pending_Stamp) /= Object.Pending_Session then
+      if Object.Cancelled then
+         -- Begin_Retire_Session already closed admission and captured the
+         -- name sweep. Completion must not drain that sweep synchronously
+         -- or bypass its cursor. No handle is published for this ticket.
+         Response (0) := Denied;
+         return;
+      end if;
+      if Session_Of (Object.Pending_Sender, Object.Pending_Stamp) /= Object.Pending_Session then
          Handles.Close_Session (Object.Handles, Object.Pending_Session);
          Response (0) := Denied;
          return;
@@ -382,10 +428,16 @@ package body Intel_GPU_Buffer_Requests is
       if Accepted and then not Refund_Client (Object, Index) then Accepted := False; end if;
       if Accepted then Records.Put (Object.Items, Index,
            (Records.Get (Object.Items, Index) with delta Reusable => True,
-            Charge_Bytes => 0)); end if;
+            Charge_Bytes => 0, Next_Reusable => Object.Reusable_Head));
+         Object.Reusable_Head := Index;
+      end if;
    end Acknowledge_Retirement;
-   procedure Retire_Session (Object : in out Service; Session : Unsigned_64) is
+   procedure Begin_Retire_Session
+     (Object : in out Service; Session : Unsigned_64;
+      State : in out Session_Retirement; Accepted : out Boolean) is
    begin
+      Accepted := False;
+      if State.Phase in Closing_Names | Closing_Records then return; end if;
       if Object.Client_Limit /= 0 and then Session /= 0 and then
         not Client_Usage (Object, Session).Known then
          declare Accepted : Boolean; begin
@@ -395,9 +447,37 @@ package body Intel_GPU_Buffer_Requests is
          end;
       end if;
       Intel_GPU_Client_Budgets.Close (Object.Client_Accounts, Session);
-      Handles.Close_Session (Object.Handles, Session);
-      for I in 1 .. Committed_Slots (Object) loop
-         if Records.Get (Object.Items, I).Owner = Session then
+      if Object.Pending /= 0 and then Object.Pending_Session = Session then
+         Object.Cancelled := True;
+      end if;
+      State.Origin := Object'Address;
+      State.Session := Session;
+      State.Handle_Last := Handles.Count (Object.Handles);
+      State.Record_Last := Object.Attempted;
+      State.Cursor := 0;
+      State.Phase := Closing_Names;
+      Accepted := True;
+   end Begin_Retire_Session;
+   procedure Retire_Session_Step
+     (Object : in out Service; State : in out Session_Retirement;
+      Complete : out Boolean) is
+      use type System.Address;
+      Finish : Natural;
+      Names_Done : Boolean;
+   begin
+      Complete := False;
+      if State.Phase = Idle or else State.Origin /= Object'Address then return; end if;
+      if State.Phase = Finished then Complete := True; return; end if;
+      if State.Phase = Closing_Names then
+         Handles.Close_Session_Step
+           (Object.Handles, State.Session, State.Handle_Last, State.Cursor, Names_Done);
+         if Names_Done then State.Cursor := 0; State.Phase := Closing_Records; end if;
+         return;
+      end if;
+      Finish := State.Cursor + Natural'Min (32, State.Record_Last - State.Cursor);
+      while State.Cursor < Finish loop
+         declare I : constant Positive := State.Cursor + 1; begin
+         if Records.Get (Object.Items, I).Owner = State.Session then
             if Records.Get (Object.Items, I).Context_Parent then
                Records.Put (Object.Items, I,
                  (Records.Get (Object.Items, I) with delta Context_Closed => True));
@@ -416,10 +496,21 @@ package body Intel_GPU_Buffer_Requests is
                   Private_Reclaimable => False));
             end if;
          end if;
+         State.Cursor := I;
+         end;
       end loop;
-      if Object.Pending /= 0 and then Object.Pending_Session = Session then
-         Object.Cancelled := True;
-      end if;
+      if State.Cursor = State.Record_Last then State.Phase := Finished; Complete := True; end if;
+   end Retire_Session_Step;
+   procedure Retire_Session (Object : in out Service; Session : Unsigned_64) is
+      State : Session_Retirement;
+      Accepted, Complete : Boolean;
+   begin
+      Begin_Retire_Session (Object, Session, State, Accepted);
+      if not Accepted then return; end if;
+      loop
+         Retire_Session_Step (Object, State, Complete);
+         exit when Complete;
+      end loop;
    end Retire_Session;
    procedure Quarantine (Object : in out Service) is
    begin

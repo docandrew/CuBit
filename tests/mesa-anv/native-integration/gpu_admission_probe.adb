@@ -21,7 +21,7 @@ package body GPU_Admission_Probe is
    Remote_Slot : constant CapabilitySlot := 59;
    Remote_Token : Unsigned_64 := 16#AD13_0000#;
    Remote_Pending : Boolean := False;
-   procedure Server (Sender : ProcessID; Request : Message) is
+   procedure Server (Sender : Process_ID; Request : Message) is
       Payload : GPU.Words;
       Response : Message := NULL_MESSAGE;
       Delivered : Unsigned_64;
@@ -210,19 +210,19 @@ package body GPU_Admission_Probe is
          if not Cross_Process then
             Msg.tag := (GPU.Status_Label, 4, 0, 0);
             Msg.words := [GPU.Version, 0, 0, 0];
-            Tag := capCall (Destination, Msg);
+            Tag := capCall (Destination, Msg, Wait_Forever);
             return Tag = (GPU.Status_Label, 4, 0, 0) and
               Msg.words (0) = Expected;
          end if;
          Msg.tag := (Remote_Label, 4, 0, 0);
          Msg.words := [1, 0, 0, 0];
-         Tag := capCall (Slot, Msg);
+         Tag := capCall (Slot, Msg, Wait_Forever);
          if Tag /= (Remote_Label, 4, 0, 0) or Msg.words (0) /= GPU.OK
          then return False; end if;
          for Poll in 1 .. 5_000 loop
             Msg.tag := (Remote_Label, 4, 0, 0);
             Msg.words := [2, 0, 0, 0];
-            Tag := capCall (Slot, Msg);
+            Tag := capCall (Slot, Msg, Wait_Forever);
             if Tag /= (Remote_Label, 4, 0, 0) then return False; end if;
             if Msg.words (0) /= GPU.Unavailable then
                return Msg.words (0) = GPU.OK and Msg.words (1) = Expected;
@@ -293,7 +293,7 @@ package body GPU_Admission_Probe is
       begin
          Msg.tag := (GPU.Status_Label, 4, 0, 0);
          Msg.words := [GPU.Version, 0, 0, 0];
-         Tag := capCall (Endpoint, Msg);
+         Tag := capCall (Endpoint, Msg, Wait_Forever);
          return Tag = (GPU.Status_Label, 4, 0, 0) and
            Msg.words (0) = Expected;
       end Status_Is;

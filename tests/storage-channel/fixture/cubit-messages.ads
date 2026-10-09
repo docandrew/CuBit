@@ -1,7 +1,7 @@
 with Interfaces; use Interfaces;
 with System;
 package CuBit.Messages is
-   subtype ProcessID is Unsigned_64;
+   subtype Process_ID is Unsigned_64;
    subtype CapabilitySlot is Unsigned_64 range 0 .. 63;
    type MessageTag is record
       label : Unsigned_32;

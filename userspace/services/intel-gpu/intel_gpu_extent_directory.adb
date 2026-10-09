@@ -108,6 +108,37 @@ package body Intel_GPU_Extent_Directory is
      (if Valid (Object) then Unsigned_64 (Object.Count) * Block_Bytes else 0);
    function Same_Owner (Left, Right : Borrowed_View) return Boolean is
      (Valid (Left) and then Valid (Right) and then Left.Owner = Right.Owner);
+   function Locate_DMA (Object : Borrowed_View; Address : Unsigned_64)
+     return DMA_Location is
+      Result : DMA_Location;
+      Key : constant Unsigned_64 := Address - Address mod Block_Bytes;
+      Cursor : Unsigned_32;
+      Item : Extent_Entry;
+   begin
+      if not Valid (Object) then return Result; end if;
+      Cursor := Object.Owner.Root;
+      for Depth in 0 .. Max_Admission_Probes - 1 loop
+         if Cursor > Unsigned_32 (Object.Owner.Count) then return Result; end if;
+         -- Appending never moves nodes. Descendants of a newer node are
+         -- newer too, and cannot belong to this captured prefix.
+         if Cursor = 0 or else Cursor > Unsigned_32 (Object.Count) then
+            Result.State := Absent;
+            return Result;
+         end if;
+         Result.Probes := Result.Probes + 1;
+         Item := Entries.Get (Object.Owner.Items, Positive (Cursor));
+         if Item.DMA = Key then
+            Result.State := Present;
+            Result.Offset := Unsigned_64 (Cursor - 1) * Block_Bytes +
+              Address mod Block_Bytes;
+            return Result;
+         end if;
+         if Depth = Max_Admission_Probes - 1 then return Result; end if;
+         Cursor := (if (Key and Shift_Left (Unsigned_64'(1), 63 - Depth)) /= 0
+                    then Item.Right else Item.Left);
+      end loop;
+      return Result;
+   end Locate_DMA;
    function Resolve
      (Object : Borrowed_View; Offset, Bytes : Unsigned_64)
       return Intel_GPU_Physical_Extents.Span is

@@ -9,7 +9,11 @@ package body Compositor_Stage_Metrics with SPARK_Mode is
          when Scene_Draw =>
            (Bytes => [100, 101, 115, 107, 116, 111, 112, 46, 115, 99, 101, 110, 101, 95, 100, 114, 97, 119, others => 0], Length => 18),
          when Submit_Call =>
-           (Bytes => [100, 101, 115, 107, 116, 111, 112, 46, 115, 117, 98, 109, 105, 116, 95, 99, 97, 108, 108, others => 0], Length => 19));
+           (Bytes => [100, 101, 115, 107, 116, 111, 112, 46, 115, 117, 98, 109, 105, 116, 95, 99, 97, 108, 108, others => 0], Length => 19),
+         when Completion_Dispatch =>
+           (Bytes => [100, 101, 115, 107, 116, 111, 112, 46, 99, 111, 109, 112, 108, 101, 116, 105, 111, 110, 95, 100, 105, 115, 112, 97, 116, 99, 104, others => 0], Length => 27),
+         when Diagnostic_Output =>
+           (Bytes => [100, 101, 115, 107, 116, 111, 112, 46, 100, 105, 97, 103, 110, 111, 115, 116, 105, 99, 95, 111, 117, 116, 112, 117, 116, others => 0], Length => 25));
    begin
       return (Records.Describe, Key (Item), Records.Latency, Records.Microseconds, Name);
    end Declaration;

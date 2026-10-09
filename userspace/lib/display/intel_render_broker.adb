@@ -1,6 +1,7 @@
 with CuBit.Capability_Grants;
 with Intel_GPU_Broker_Request;
 with Intel_Render_Admission;
+with CuBit.Process_IDs;
 package body Intel_Render_Broker is
    package M renames CuBit.Messages;
    package G renames CuBit.Capability_Grants;
@@ -32,7 +33,7 @@ package body Intel_Render_Broker is
       Target := G.Capture (M.CapabilitySlot (Decoded.Source));
       if not G.Endpoint_Matches (M.CapabilitySlot (Decoded.Source),
                                 G.Incarnation (Target)) or else
-        not L.Can_Reserve (Object.Launches, Decoded, G.Incarnation (Target))
+        not L.Can_Reserve (Object.Launches, Decoded, CuBit.Process_IDs.To_Word (G.Incarnation (Target)))
       then return; end if;
       Slot := Reply_Slot (L.Count (Object.Launches) + 1);
       -- Never overwrite a source, implicit reply, or another retained reply.
@@ -46,7 +47,7 @@ package body Intel_Render_Broker is
       end loop;
       if M.saveReplyCap (Unsigned_64 (Slot)) /= 1 then return; end if;
       -- Can_Reserve is stable within this single-owner, non-reentrant call.
-      L.Reserve (Object.Launches, Decoded, G.Incarnation (Target), Reserved);
+      L.Reserve (Object.Launches, Decoded, CuBit.Process_IDs.To_Word (G.Incarnation (Target)), Reserved);
       ID := Reserved;
       Object.Replies (ID) := Slot;
       D.Start (Object.Admissions, Target, Driver_Source,

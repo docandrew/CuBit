@@ -9,6 +9,7 @@ with System.Machine_Code; use System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
+with CuBit.Process_IDs;
 with CuBit.Libc_ABI; use CuBit.Libc_ABI;
 with CuBit.Libc_Time; use CuBit.Libc_Time;
 with CuBit.Libc_Select;
@@ -985,7 +986,16 @@ package body CuBit.Libc_System_Calls is
          when SYS_exit_group =>
             Exit_Process (Low (A));
          when SYS_getpid =>
-            return To_Long (Kernel (K.Get_Process_Id));
+            --  The identity (KERN-003) folded to a pid_t, as posix_spawn
+            --  reports children.
+            declare
+               Self : constant CuBit.Process_IDs.Process_ID :=
+                 CuBit.Process_IDs.From_Word (Kernel (K.Get_Process_Id));
+            begin
+               return (if CuBit.Process_IDs.Is_Process (Self)
+                       then long (CuBit.Process_IDs.POSIX_Of (Self))
+                       else -1);
+            end;
          when SYS_gettid =>
             return Thread_Id;
          when SYS_sched_yield =>

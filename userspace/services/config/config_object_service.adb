@@ -103,7 +103,7 @@ package body Config_Object_Service is
 
    procedure Handle
      (Object : in out State; Authority : Config_Authority.Authority_State;
-      Sender : CuBit.Messages.ProcessID; Request : CuBit.Messages.Message)
+      Sender : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message)
    is
       Request_Token : Interfaces.Unsigned_64 := 0;
       Staged, Submitted : Boolean;

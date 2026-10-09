@@ -46,6 +46,7 @@ uint32_t cubit_cpu_mapping_release(struct cubit_cpu_mapping *record, bool replac
  * remains; callers must never unmap a stale pointer after another map operation.
  */
 #define CUBIT_CPU_MAPPING_CAPACITY 64
+#define CUBIT_CPU_DRAIN_QUANTUM 64
 struct cubit_cpu_mapping_tracker {
    uint64_t slot;
    uint32_t used;
@@ -55,6 +56,8 @@ struct cubit_cpu_mapping_tracker {
     * records under the caller's lock, never the mappings they describe. */
    struct cubit_cpu_mapping *grown;
    uint32_t capacity;
+   uint32_t drain_cursor;
+   bool drain_incomplete;
 };
 static inline struct cubit_cpu_mapping *
 cubit_cpu_tracker_records(struct cubit_cpu_mapping_tracker *tracker)
@@ -75,7 +78,11 @@ uint32_t cubit_cpu_tracker_unmap_wait(struct cubit_cpu_mapping_tracker *tracker,
    uint32_t handle, uint64_t address, uint64_t grant_bytes, bool replace,
    uint32_t polls, void (*wait_pending)(void));
 void cubit_cpu_tracker_poll(struct cubit_cpu_mapping_tracker *tracker);
-/* Stops new work and drains known records. Confirmed drain releases dynamic
+/* Stops new work and advances at most CUBIT_CPU_DRAIN_QUANTUM records per call
+ * (at most one borrow return and one retirement query per record). Repeated
+ * calls continue the sweep, then retry pending records in another sweep.
+ * This bounds transport count, not the duration of synchronous transport.
+ * Confirmed drain releases dynamic
  * host bookkeeping only. False means retain the tracker and all its storage;
  * it does not authorize releasing BO backing or GPU VM bindings either way. */
 bool cubit_cpu_tracker_drain(struct cubit_cpu_mapping_tracker *tracker);

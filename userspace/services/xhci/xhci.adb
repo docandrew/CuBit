@@ -1229,7 +1229,7 @@ package body XHCI is
                   Control_Request (16#A0#, 6, 16#2900#, 0, 71,
                     dmaPhys + Device_Offset (activeSlot, DESCRIPTOR_OFFSET),
                     actualLength, requestOK);
-                  if not requestOK or else actualLength not in 9 .. 71 then
+                  if not requestOK or else actualLength not in 8 .. 71 then
                      result := INIT_DESCRIPTOR_FAILED; return;
                   end if;
                   declare

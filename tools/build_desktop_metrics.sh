@@ -26,16 +26,14 @@ cd kernel
 alr exec -- gcc -c ../userspace/services/desktop/build-metrics-manifest/manifest.S \
   -o ../userspace/services/desktop/build-metrics-manifest/manifest.o
 # Preserve explicitly selected backend, timing, storage and test scenarios.
-if [ "${CUBIT_COMPOSITOR:-legacy}" = mesa ]; then
+if [ "${CUBIT_COMPOSITOR:-vulkan}" = mesa ]; then
   : "${CUBIT_MESA_BUILD:?Set CUBIT_MESA_BUILD to the existing native Mesa build}"
   python3 ../tools/build_mesa_desktop.py "$CUBIT_MESA_BUILD" --metrics on --scenario-output
-elif [ "${CUBIT_COMPOSITOR:-legacy}" = vulkan ]; then
-  : "${CUBIT_MESA_BUNDLE:?Set CUBIT_MESA_BUNDLE to the verified Mesa service bundle}"
-  : "${CUBIT_MESA_SOURCE:?Set CUBIT_MESA_SOURCE to the matching Mesa source}"
-  python3 ../tools/build_vulkan_desktop.py "$CUBIT_MESA_BUNDLE" "$CUBIT_MESA_SOURCE" --metrics on
+elif [ "${CUBIT_COMPOSITOR:-vulkan}" = vulkan ]; then
+  python3 ../tools/build_vulkan_desktop.py --metrics on
 else
 alr exec -- gprbuild -p -P ../userspace/services/desktop/desktop.gpr \
-  -XCUBIT_COMPOSITOR="${CUBIT_COMPOSITOR:-legacy}" \
+  -XCUBIT_COMPOSITOR="${CUBIT_COMPOSITOR:-vulkan}" \
   -XCUBIT_COMPOSITOR_TIMING="${CUBIT_COMPOSITOR_TIMING:-off}" \
   -XCUBIT_COMPOSITOR_STORAGE="${CUBIT_COMPOSITOR_STORAGE:-production}" \
   -XCUBIT_DISPLAY_TEST_MODE="${CUBIT_DISPLAY_TEST_MODE:-production}" \

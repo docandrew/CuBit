@@ -90,6 +90,24 @@ package body Vulkan_Frame with SPARK_Mode is
       end loop;
       Accepted := True;
    end Replay_Physical_Fill;
+   procedure Begin_Reserved_Record
+     (Submission : in out V.State; Pool : in out P.State; Damage : in out D.State;
+      Ticket : P.Ticket; Result : out Admission) is
+      Accepted : Boolean;
+   begin
+      Result := Deferred;
+      if not P.Writable (Pool, Ticket) or else D.Faulted (Damage) or else
+        D.Active (Damage) /= Ticket.Buffer then return; end if;
+      P.Start_Render (Pool, Ticket);
+      V.Begin_Record (Submission, Accepted);
+      if Accepted then
+         Result := Started;
+      else
+         P.Finish_Render (Pool, Ticket, P.Unknown);
+         D.Finish (Damage, D.Unknown);
+         Result := Failed;
+      end if;
+   end Begin_Reserved_Record;
    procedure Begin_Record
      (Submission : in out V.State; Pool : in out P.State;
       Result : out Admission; Replace_Ready : Boolean := False) is

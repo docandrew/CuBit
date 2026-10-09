@@ -1,0 +1,88 @@
+{
+  "status": "PASS",
+  "scope": "Full desktop-display harness with current rebuilt Desktop/Display/runtime/libc/Mesa; runner rebuilds kernel/initrd; stage-one services are rebuilt by initrd; other stage-two payloads are explicit snapshot seeds; no hardware latency claim",
+  "artifact": "/home/doc/git/compositor-test-artifacts/native-grub-tmp-11/cubit-vulkan-desktop-f83vpkdz/artifact",
+  "rebuilt_stage1_changes": {
+    "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/kernel/isodir/boot/ata.drv": {
+      "before": "0e3fcd0120e21e96f99d655cf0de43010d02f9f2f960648126df2e5b874f3b3d",
+      "after": "11a27052701931f715c3f92c30fc4c53f14394c4c3c165d47b7ab7ca3a4c3f87"
+    },
+    "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/kernel/isodir/boot/config.svc": {
+      "before": "ab6334aeb5a7fcb4eec7982647eeca066f954615f8e886c7de6d01cf8291b38b",
+      "after": "237c74340c9f5ccc8d07d056da4f325bb6e34c8fb4e11f39ca11e58983b5bc30"
+    },
+    "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/kernel/isodir/boot/devmgr.svc": {
+      "before": "9b5b2e66e7b5706448264a82478af1931a6dc2468f0eabbde9467919abb4bb8d",
+      "after": "65a109d88122dde5cb00f3b527946a353abe6f8165b4839690c073c8df0067af"
+    },
+    "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/kernel/isodir/boot/filesystem.svc": {
+      "before": "0c70f6346a9d4d19e7820a7111534aabb9c8c248165e0fd7c2e4add521363c83",
+      "after": "bc7382e9d4262b113ae659f9247b0003908c96f4ed4e3bfee9e9b6fca3ae5a36"
+    },
+    "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/kernel/isodir/boot/hda.drv": {
+      "before": "69519f03df00913cae29e63fd9063a9ebe580106d1e6a8e41636226b733b9def",
+      "after": "01d8e818ecd78df56b1ea8dc1b61afca11c725e1914338520384a321be7ed1a0"
+    },
+    "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/kernel/isodir/boot/mixer.svc": {
+      "before": "dfa65eeb4f4856acdcbf91045ce4b76b968520723680dcf9753e293816e23d9e",
+      "after": "191c550c7599dde8f82045718878da6ab36c11815b0e0f4b06807f8df46cf878"
+    },
+    "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/kernel/isodir/boot/netmgr.svc": {
+      "before": "0531b1896a60c5127de52882feb6162fb39c19bc183ec6ba63290964a7e1d7e4",
+      "after": "3237ebfd3e68b987f37038aaefbfb95d3b9705368ab491b8f4f54184bcf942f6"
+    },
+    "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/kernel/isodir/boot/netstack.svc": {
+      "before": "fd5ba94c77f2501902fdce3ca1fd15227c41be4e1d4f8ae6b01d2266c60cce72",
+      "after": "c87096cdd7005dd3e690e474ebfbcc3b6ead83417a041d18325a490689b33ec7"
+    },
+    "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/kernel/isodir/boot/nvme.drv": {
+      "before": "9f812866568ac1c87640a49cc62d56f9214fe3f88feb10a8569f80ebd668522d",
+      "after": "fd0eaf1f01c83c048fea939cc1ff5488ef511b7c8a0f00f97608e178d56dca74"
+    },
+    "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/kernel/isodir/boot/procmgr.svc": {
+      "before": "6437e202dcc504e1663868cb4f36a8510f7d184aedaaef03b3376ae2b014d88c",
+      "after": "f0801c197298fbd88b059c07713effd83ee64ebbb1710cbc48f8bb82b1445ad8"
+    },
+    "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/kernel/isodir/boot/ps2.drv": {
+      "before": "960bebe4ee737ef11bfa846412acf86a808bf7a8eb33a21676012f0d48db3cf9",
+      "after": "70ad453f5b2dfffd259b0913fb82939fed3c00c36e3899366bce48f01b065c1e"
+    },
+    "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/kernel/isodir/boot/ramdisk.drv": {
+      "before": "75de4cc2d02b707098e9383f6c5c397dbd60497140f3adca72893ebc21678791",
+      "after": "da3b45d2cea087968c370d146558ae23041c11eb87994c068bf350e88043abdb"
+    },
+    "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/kernel/isodir/boot/virtio-gpu.drv": {
+      "before": "f5bf2e3952b59c06539da94b169c2213f08f2a3e519a3f285bf301904d589e86",
+      "after": "22ef56cf6f9676ff205b716ecb07a3638bbf2aac28bbeb5303e1078b1b696fb1"
+    },
+    "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/kernel/isodir/boot/virtio-net.drv": {
+      "before": "4b2c6b14664e9648e88e8930b370a662f21189d4e542a96edaff0c0c62026dfd",
+      "after": "700d362fa61ac77bbc7babb53488ac8d70e44b160f0a1c943112b4402d243f87"
+    },
+    "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/kernel/isodir/boot/xhci.drv": {
+      "before": "4f8fae61df9628d42d496e070b67de4b75ed71df1647b059584be32c0afba76d",
+      "after": "334adf86afa873f62f90c640014b74c65c9e9986087c1612052d574b6996d587"
+    }
+  },
+  "packed_stage1_verified": [
+    "ata.drv",
+    "config.svc",
+    "devmgr.svc",
+    "filesystem.svc",
+    "hda.drv",
+    "mixer.svc",
+    "netmgr.svc",
+    "netstack.svc",
+    "nvme.drv",
+    "procmgr.svc",
+    "ps2.drv",
+    "ramdisk.drv",
+    "virtio-gpu.drv",
+    "virtio-net.drv",
+    "xhci.drv"
+  ],
+  "desktop_sha256": "a36e8d7d3d784f2775b8c2ba370c8dcd1af231177f154c68e957daba68655e81",
+  "kernel_sha256": "2244172ee75f142775a7d8e489e74bf57fc5d654d54c1bd7fda54f0f857adc07",
+  "initrd_sha256": "e1952411f8287519d3d6a6fdef1edfd02ee1e417d32eb487fa6b0481bfe8c044",
+  "inputs_rechecked": 145
+}

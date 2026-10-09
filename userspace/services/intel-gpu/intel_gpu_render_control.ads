@@ -115,6 +115,10 @@ package Intel_GPU_Render_Control with SPARK_Mode is
    -- must pass the kernel envelope, not a tag returned in reply data.
    function Resolve_Retired
      (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Unsigned_64;
+   -- Trusted teardown precondition, not caller authority or GPU retirement.
+   -- Uses the controller's recorded recipient, never a supplied PID. Reserved,
+   -- active, unknown and quarantined sessions cannot satisfy this observation.
+   function Retired_Admission (Object : Controller; Tag : Unsigned_64) return Boolean;
    -- Application endpoint: [version,0,0,0], no caller-selected target.
    -- Authenticated ACTIVE sender/stamp only; closes admission before returning
    -- [OK,version,retired-tag,0]. Dispatcher must then retire its resources.

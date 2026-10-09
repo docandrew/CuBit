@@ -353,12 +353,13 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                Item.Kind := Framebuffer_Request;
                Item.Rights := Rights_Of (Alt (Named (Body_Cursor, "access")));
                Binding (Named (Body_Cursor, "binding"), Item);
-         elsif Kind = "Render" then
+         elsif Kind = "Render" or else Kind = "Optional_Render" then
                --  One admitted session per launch.
                for Existing of Decl.Requests (1 .. Decl.Count) loop
                   if Existing.Kind = Render_Request then Fail (Duplicate_Field); end if;
                end loop;
                Item.Kind := Render_Request;
+               if Kind = "Optional_Render" then Item.Service := 1; end if;
                Item.Rights := Read_Write;
                Binding (Body_Cursor, Item);
          elsif Kind = "Network" then

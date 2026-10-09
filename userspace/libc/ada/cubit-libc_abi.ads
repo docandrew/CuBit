@@ -271,7 +271,4 @@ package CuBit.Libc_ABI with Pure, SPARK_Mode is
    INSPECTED_OWNER  : constant := 16;
    INSPECTED_OBJECT : constant := 32;
 
-   --  Kernel PIDs are 1 .. 255 (kernel/src/process.ads).
-   PID_Limit : constant := 256;
-
 end CuBit.Libc_ABI;

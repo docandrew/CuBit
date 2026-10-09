@@ -1,13 +1,13 @@
 package body Observatory_Query_Lifetime with SPARK_Mode is
    package CR renames Compositor_Requests;
-   procedure Start (S : in out State; New_Token, Now : Unsigned_64; Accepted : out Boolean) is
+   procedure Start (S : in out State; New_Token, Now : Unsigned_64; Accepted : out Boolean; Budget_Us : Timeout_Budget := Timeout_Us) is
    begin
       Accepted := False;
       if S.Mode /= Idle then return; end if;
       CR.Begin_Request (S.Flight, New_Token, Accepted);
       if Accepted then
          S.Mode := Waiting;
-         S.Due := (if Now > Unsigned_64'Last - Timeout_Us then Unsigned_64'Last else Now + Timeout_Us);
+         S.Due := (if Now > Unsigned_64'Last - Budget_Us then Unsigned_64'Last else Now + Budget_Us);
       end if;
    end Start;
    procedure Fail (S : in out State) is

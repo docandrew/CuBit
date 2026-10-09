@@ -204,11 +204,25 @@ package Desktop_Vulkan_Startup with SPARK_Mode,
    function Admit_Capture (Screen : Vulkan_Scene.A.G.Output) return Capture_Admission
      with Global => (Input => Engine), Pre => Valid,
        Post => (if Admit_Capture'Result = Capture_Allowed then Can_Retire_Readers);
+   -- Reserve target history before capturing commands; uploads may still use
+   -- the idle submission while this CPU-only reservation is held.
+   procedure Reserve_Capture (Screen : Vulkan_Scene.A.G.Output;
+      Ticket : out Vulkan_Owned_Targets.P.Ticket)
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
+   procedure Capture_Repaint (Ticket : Vulkan_Owned_Targets.P.Ticket;
+      Plan : out Compositor_Damage.State; Accepted : out Boolean)
+     with Global => (Input => Engine), Pre => Valid,
+       Post => Compositor_Damage.Valid (Plan) and
+         (if not Accepted then Compositor_Damage.Count (Plan) = 0);
+   procedure Cancel_Capture (Ticket : Vulkan_Owned_Targets.P.Ticket;
+      Accepted : out Boolean)
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
    type Frame_Result is (Submitted, Deferred, Rejected, Failed);
    type Poll_Result is (Idle, Pending, Completed, GPU_Failed);
    -- Bounded calls: one scene replay/submission or one fence observation.
    -- A completed frame is an unpublished candidate, not a display latch.
-   procedure Render (Scene : Vulkan_Scene.State; Result : out Frame_Result)
+   procedure Render (Scene : Vulkan_Scene.State; Result : out Frame_Result;
+      Reservation : Vulkan_Owned_Targets.P.Ticket := Vulkan_Owned_Targets.P.None)
      with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
    procedure Poll_Frame (Result : out Poll_Result)
      with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
@@ -226,6 +240,51 @@ package Desktop_Vulkan_Startup with SPARK_Mode,
    function Presentation_Pending return Presentation_Ticket with Global => (Input => Engine);
    function Presentation_Front return Presentation_Ticket with Global => (Input => Engine);
    function Presentation_Faulted return Boolean with Global => (Input => Engine);
+   -- A copied presentation has a completed-target reader, not a scanout latch.
+   -- Identity only: this does not export an image pointer or admit a recipient.
+   function Readback_Pending return Presentation_Ticket with Global => (Input => Engine);
+   -- Private coherent staging, charged by actual Vulkan allocation size.
+   -- No pixels exposed here; transfer completion and CPU access are separate.
+   function Readback_Capacity return Natural with Global => (Input => Engine);
+   -- Staging is tightly packed BGRA for the configured target, not an arbitrary
+   -- byte array. Equal byte capacity alone cannot establish row geometry.
+   function Readback_Layout_Matches (Width, Height : Natural) return Boolean
+     with Global => (Input => Engine);
+   procedure Submit_Readback (Ticket : Presentation_Ticket; Accepted : out Boolean)
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
+   -- Only the selected output writer's repair pixels are transferred. The
+   -- mapping remains full-image layout; other bytes must not be consumed.
+   procedure Submit_Region_Readback (Ticket : Presentation_Ticket;
+      Repair : Compositor_Damage.State; Accepted : out Boolean)
+     with Global => (In_Out => Engine),
+       Pre => Valid and Compositor_Damage.Valid (Repair), Post => Valid;
+   procedure Poll_Readback (Result : out Poll_Result)
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
+   -- Trusted in-process READ-ONLY borrow; never publish to external clients.
+   -- Null before exact completion. Finish CPU reads before Retire_Readback.
+   function Readback_Mapping (Ticket : Presentation_Ticket) return System.Address
+     with Global => (Input => Engine);
+   procedure Configure_Readback (Size : Vulkan_Upload_Owner.Capacity_Range; Ready : out Boolean)
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid and
+       (if Ready then Readback_Capacity = Size);
+   procedure Release_Readback_Storage (Released : out Boolean)
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid and
+       Configured_Limit = Configured_Limit'Old and
+       (if Released then Readback_Capacity = 0);
+   procedure Take_Readback (Ticket : out Presentation_Ticket)
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid and
+       (if Ticket /= No_Presentation then Readback_Pending = Ticket) and
+       Presentation_Pending = Presentation_Pending'Old and
+       Presentation_Front = Presentation_Front'Old;
+   -- Trusted adapter evidence for this exact transfer and all CPU readers.
+   -- Cleanup remains available after Stop while targets are retained.
+   procedure Retire_Readback
+     (Ticket : Presentation_Ticket; Transfer_Complete, CPU_Drained : Boolean;
+      Accepted : out Boolean)
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid and
+       (if Accepted then Readback_Pending = No_Presentation) and
+       Presentation_Pending = Presentation_Pending'Old and
+       Presentation_Front = Presentation_Front'Old;
    -- Move the newest completed frame into the single display-pending slot.
    -- This exports identity only, not an image pointer or scanout authority.
    procedure Take_Presentation (Ticket : out Presentation_Ticket)

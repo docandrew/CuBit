@@ -31,8 +31,10 @@
    Begin_Probes : array (Output_Index) of Begin_Probe;
 
    procedure Probe_Begin
-     (Target : System.Address; Screen : DG.Output; Secondary : Boolean;
-      Result : out Desktop_Compositor.Output_Start) is
+     (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Writer : BP.Ticket; Screen : DG.Output; Secondary : Boolean;
+      Result : out Desktop_Compositor.Output_Start;
+      Capture_Repair : in out Compositor_Damage.State; Writer_Repair : Compositor_Damage.State) is
       Output : constant Output_Index := (if Secondary then 1 else 0);
       P : Output_Presentation renames presentations (Output);
       S : Begin_Probe renames Begin_Probes (Output);
@@ -45,12 +47,13 @@
       S.Frame := P.Frame_Damage;
       S.Repaint := P.Repaint;
       S.Pool := P.Pool;
-      S.Buffer := Target;
+      S.Buffer := Target.Pixels;
       if S.Attempts <= 3 then
          Result := Desktop_Compositor.Deferred;
          return;
       end if;
-      Desktop_Compositor.Begin_Output (Target, Screen, Secondary, Result);
+      Probe_Check (Writer = BP.Writer (P.Pool), "begin writer mismatch");
+      Desktop_Compositor.Begin_Output (Target, Target_Bytes, Writer, Screen, Secondary, Result, Capture_Repair, Writer_Repair);
       Probe_Check (Result = Desktop_Compositor.Started, "real begin failed");
       S.Opened := True;
    end Probe_Begin;
@@ -71,7 +74,7 @@
    end Probe_Deferred;
 
    procedure Probe_Completion
-     (Target : System.Address; Secondary, Poll : Boolean;
+     (Target : System.Address; Writer : BP.Ticket; Secondary, Poll : Boolean;
       Result : out Desktop_Compositor.Render_Completion) is
       Output : constant Output_Index := (if Secondary then 1 else 0);
       P : Output_Presentation renames presentations (Output);
@@ -79,7 +82,8 @@
       use type Compositor_Damage.State, Desktop_Compositor.Render_Completion;
    begin
       Probe_Check (Begin_Probes (Output).Opened, "completion without begin");
-      Desktop_Compositor.Complete_Output (Target, Secondary, Poll, Result);
+      Probe_Check (Writer = BP.Writer (P.Pool), "completion writer mismatch");
+      Desktop_Compositor.Complete_Output (Target, Writer, Secondary, Poll, Result);
       Probe_Check (Result = Desktop_Compositor.Complete, "real renderer unsafe");
       Probe_Check (BP.Rendering (P.Pool), "writer not rendering");
       if not Poll then

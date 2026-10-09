@@ -1,0 +1,8 @@
+# The control-events test child (tests/control-events): reports on the
+# outlet its launcher lends, then waits for the revoke and a Stop. It
+# also reads its launcher's own outlet through the ipc-test endpoint.
+(Executable_Manifest
+  identity => "com.cubit.control-child"
+  version => "0.1.0"
+  requests => [(service "ipc-test" "ipc-test")]
+  outlets => [(Outlet "unix.stdout" Element.Text pages => 1)])

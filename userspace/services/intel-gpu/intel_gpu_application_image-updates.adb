@@ -6,9 +6,9 @@ package body Intel_GPU_Application_Image.Updates is
      (Object : in out State; Source : VM.Image; Mapping : Tables.Page_Mapping;
       Table_DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;
       Expected, Replacement : Unsigned_64; Inserting : Boolean;
-      Success : out Boolean)
+      Success : out Boolean; Checked_Page : Natural := 0)
    is
-      Page : Natural := 0;
+      Page : Natural := Checked_Page;
       Encoded_Data : Boolean := False;
       Data_DMA : constant Unsigned_64 := Replacement / 4096 * 4096;
       function Gate return Boolean is
@@ -33,11 +33,13 @@ package body Intel_GPU_Application_Image.Updates is
          if not Encoded_Data or else Expected /= VM.Scratch_Entry (Source, 1) then
             Object.Update_Failed := True; return;
          end if;
-         for P in VM.Page_Number loop
-            if Data_DMA = VM.Table_Backing_DMA (Source, P) then
-               Object.Update_Failed := True; return;
-            end if;
-         end loop;
+         if Checked_Page = 0 then
+            for P in VM.Page_Number loop
+               if Data_DMA = VM.Table_Backing_DMA (Source, P) then
+                  Object.Update_Failed := True; return;
+               end if;
+            end loop;
+         end if;
          for Mapping of Object.Scratch loop
             if Data_DMA = Mapping.DMA then
                Object.Update_Failed := True; return;
@@ -46,10 +48,13 @@ package body Intel_GPU_Application_Image.Updates is
       elsif Expected = 0 or else Replacement /= VM.Scratch_Entry (Source, 1) then
          Object.Update_Failed := True; return;
       end if;
-      for P in 2 .. VM.Used (Source) loop
-         if VM.Page_DMA (Source, P) = Table_DMA then Page := P; exit; end if;
-      end loop;
-      if Page = 0 or else not VM.Leaf_Table (Source, Page) or else
+      if Checked_Page = 0 then
+         for P in 2 .. VM.Used (Source) loop
+            if VM.Page_DMA (Source, P) = Table_DMA then Page := P; exit; end if;
+         end loop;
+      end if;
+      if Page = 0 or else Page > VM.Used (Source) or else
+        VM.Page_DMA (Source, Page) /= Table_DMA or else not VM.Leaf_Table (Source, Page) or else
         Mapping.DMA /= Table_DMA or else
         Mapping.CPU = 0 or else Mapping.CPU mod 4096 /= 0 or else
         Mapping.CPU > 2 ** 47 - 4096 or else
@@ -70,6 +75,25 @@ package body Intel_GPU_Application_Image.Updates is
       Object.Updating := False;
       if not Success then Object.Update_Failed := True; end if;
    end Write_Mapped_Leaf;
+   procedure Insert_Validated_Leaf
+     (Object : in out State; Source : VM.Image;
+      Receipt : Checked_Insertion.Controller; Mapping : Tables.Page_Mapping;
+      Table_DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;
+      Expected, Replacement : Unsigned_64; Success : out Boolean) is
+      Page : Natural;
+   begin
+      Success := False;
+      if not Checked_Insertion.Publication_Matches
+        (Receipt, Source, Table_DMA, Index, Expected, Replacement)
+      then Object.Update_Failed := True; return; end if;
+      Page := Checked_Insertion.Publication_Table (Receipt, Source);
+      if Page = 0 then Object.Update_Failed := True; return; end if;
+      Write_Mapped_Leaf (Object, Source, Mapping, Table_DMA, Index,
+        Expected, Replacement, True, Success, Checked_Page => Page);
+      if not Checked_Insertion.Publication_Matches
+        (Receipt, Source, Table_DMA, Index, Expected, Replacement)
+      then Object.Update_Failed := True; Success := False; end if;
+   end Insert_Validated_Leaf;
    procedure Write_Leaf
      (Object : in out State; Source : VM.Image; Backing : Tables.Mapping_View;
       Table_DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;

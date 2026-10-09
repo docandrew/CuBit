@@ -54,12 +54,15 @@ package body Mixer is
    is
       slotIdx   : Integer := -1;
       grantAddr : Unsigned_64;
-      gid       : Unsigned_64;
+      grant     : CuBit.Memory_Grants.Grant_Reference;
       grantOK   : Boolean;
    begin
-      --  Find free slot
+      --  Find a free slot whose ring no earlier client can still reach.
       for i in streams'Range loop
-         if not streams (i).active then
+         if not streams (i).active and then
+           (not streams (i).granted or else
+            CuBit.Memory_Grants.Retirement_Confirmed (streams (i).grant))
+         then
             slotIdx := i;
             exit;
          end if;
@@ -76,12 +79,12 @@ package body Mixer is
       end if;
 
       --  Create grant to client (2 pages, read/write)
-      createGrant
-        (grantee   => ProcessID (clientPID),
+      CuBit.Memory_Grants.Create_For_Process
+        (grantee   => From_Word (clientPID),
          localAddr => To_Address (Integer_Address (grantAddr)),
          numPages  => Natural (RING_PAGES),
          readWrite => True,
-         grantId   => gid,
+         reference => grant,
          success   => grantOK);
 
       if not grantOK then
@@ -90,7 +93,8 @@ package body Mixer is
 
       streams (slotIdx) := (active    => True,
                              pid       => clientPID,
-                             grantId   => gid,
+                             grant     => grant,
+                             granted   => True,
                              ringAddr  => grantAddr,
                              vol       => 1.0,
                              panPos    => 0.5,
@@ -121,13 +125,18 @@ package body Mixer is
    --  closeStream
    ---------------------------------------------------------------------------
    procedure closeStream (streamIdx : Natural) is
+      revoked : Boolean;
    begin
       if streamIdx > streams'Last or else not streams (streamIdx).active then
          return;
       end if;
 
-      --  Revoke the grant
-      revokeGrant (streams (streamIdx).grantId);
+      --  Revoke the grant. While the client still holds it, revocation is
+      --  pending and openStream keeps this ring out of use.
+      CuBit.Memory_Grants.Revoke (streams (streamIdx).grant, revoked);
+      if not revoked then
+         debugPrint ("mixer: stream grant revoke refused" & ASCII.LF);
+      end if;
 
       for Slot in Period_Slot loop
          Pending (streamIdx, Slot) := 0;

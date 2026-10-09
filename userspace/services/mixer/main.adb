@@ -16,6 +16,7 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Grant_References;
 with CuBit.Memory_Grants; use CuBit.Memory_Grants;
 with Mixer;
 with Mixer_Control;
@@ -51,7 +52,7 @@ procedure main is
    CAP_SLOT_HDA     : constant Unsigned_64 := 4;
 
    msg         : Message;
-   from        : ProcessID;
+   from        : Process_ID;
    ret         : Unsigned_64;
    mixBuf      : Mixer.MixBuffer;
    mixFrames   : Natural;
@@ -68,7 +69,7 @@ procedure main is
    statsMissedPeriods : Unsigned_64 := 0;
    statsUnderrunsLast : Unsigned_64 := 0;
    periodIRQObserved : Boolean := False;
-   hdaPID : Unsigned_64 := 0;
+   hdaPID : Process_ID := No_Process;
 
    function clientRequestAllowed return Boolean is
       Owners : Mixer_Control.Owner_Table (Mixer.streams'Range);
@@ -229,7 +230,7 @@ procedure main is
                  flags => 0, reserved => 0),
          authorityTag => 0,
          words => [others => 0]);
-      ctlMsg.tag := capCall (CAP_SLOT_HDA, ctlMsg);
+      ctlMsg.tag := capCall (CAP_SLOT_HDA, ctlMsg, CuBit.Messages.Wait_Forever);
       if ctlMsg.tag.label = REPLY_OK then
          hdaRunning := True;
          --  HDA returns its pre-start completion baseline. Old queued events
@@ -252,7 +253,7 @@ procedure main is
                  flags => 0, reserved => 0),
          authorityTag => 0,
          words => [others => 0]);
-      ctlMsg.tag := capCall (CAP_SLOT_HDA, ctlMsg);
+      ctlMsg.tag := capCall (CAP_SLOT_HDA, ctlMsg, CuBit.Messages.Wait_Forever);
       if ctlMsg.tag.label = REPLY_OK then
          hdaRunning := False;
          -- The measured stream has stopped; no per-sample serial output.
@@ -313,7 +314,7 @@ begin
                  flags => 0, reserved => 0),
          authorityTag => 0,
          words => [others => 0]);
-      initMsg.tag := capCall (CAP_SLOT_HDA, initMsg);
+      initMsg.tag := capCall (CAP_SLOT_HDA, initMsg, CuBit.Messages.Wait_Forever);
 
       gid := initMsg.words (0);
       bytes := initMsg.words (1);
@@ -352,7 +353,7 @@ begin
    end;
 
    --  Register as mixer driver
-   hdaPID := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_HDA);
+   hdaPID := Registered_Driver (DRIVER_HDA);
    ret := registerDriver (DRIVER_MIXER);
 
    --  Signal devmgr that we are ready
@@ -365,7 +366,7 @@ begin
          (tag      => (label => OP_READY, length => 0,
                        flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => [others => 0]));
+          words    => [others => 0]), CuBit.Messages.Wait_Forever);
    end;
 
    debugPrint ("mixer: registered, entering service loop" & ASCII.LF);
@@ -377,9 +378,9 @@ begin
       Received_At := Clock.Read_Counter;
 
       if msg.tag.label = OP_AUDIO_HW_PERIOD then
-         if hdaReady and then hdaRunning and then hdaPID /= 0 and then
-           hdaPID /= Unsigned_64'Last and then from = hdaPID and then
-           msg.authorityTag = hdaPID and then msg.tag.length = 4 and then
+         if hdaReady and then hdaRunning and then hdaPID /= No_Process and then
+           hdaPID /= No_Process and then from = hdaPID and then
+           msg.authorityTag = To_Word (hdaPID) and then msg.tag.length = 4 and then
            msg.tag.flags = 0 and then msg.tag.reserved = 0 and then
            msg.words (0) < Unsigned_64 (periodCount)
          then
@@ -438,7 +439,7 @@ begin
       elsif not clientRequestAllowed then
          sendReply (REPLY_ERR);
       else
-         from := ProcessID (msg.authorityTag);
+         from := From_Word (msg.authorityTag);
          case msg.tag.label is
             when OP_AUDIO_OPEN =>
                --  words(0) = sampleRate
@@ -454,13 +455,15 @@ begin
                      Shift_Right (msg.words (1), 32);
                   idx : Integer;
                begin
-                  idx := Mixer.openStream (from, sampleRate,
+                  idx := Mixer.openStream (To_Word (from), sampleRate,
                                            channels, format, direction);
                   if idx >= 0 then
-                     --  Reply: w0=streamIdx, w1=grantId, w2=hdrSz, w3=dataSz
+                     --  Reply: w0=streamIdx, w1=ring grant reference
+                     --  (the client acquires it), w2=hdrSz, w3=dataSz
                      sendReply (REPLY_OK,
                                 w0 => Unsigned_64 (idx),
-                                w1 => Mixer.streams (idx).grantId,
+                                w1 => CuBit.Grant_References.Encode
+                                        (Mixer.streams (idx).grant),
                                 w2 => Unsigned_64 (Mixer.RING_HDR_SIZE),
                                 w3 => Unsigned_64 (Mixer.RING_DATA_SIZE));
                   else

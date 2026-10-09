@@ -17,6 +17,42 @@ procedure Buffer_Handles_Tests is
      (Intel_GPU_Buffer_Reply.From_Linear (16#2000000# + Offset, Layout.CPU_Base + Offset, 4096, 16#2000000#));
 begin
    declare
+      type Storage is array (Natural range 0 .. 8191) of Unsigned_64;
+      Memory : Storage := [others => 0] with Alignment => 4096;
+      Pool : Registry;
+      Names : array (1 .. 65) of Handle;
+      Pinned : Retained_Reference;
+      Cursor : Natural := 0;
+      Done : Boolean;
+   begin
+      Extend_Storage (Pool, Unsigned_64 (To_Integer (Memory'Address)), 65536, OK);
+      pragma Assert (OK and Record_Capacity (Pool) >= 65);
+      for I in Names'Range loop
+         Register (Pool, (if I mod 2 = 0 then 43 else 42),
+           Backing (Unsigned_64 (I - 1) * 4096), Names (I));
+         pragma Assert (Names (I) /= 0);
+      end loop;
+      Retain_Backing (Pool, 42, Names (65), Pinned, OK); pragma Assert (OK);
+      Close_Session_Step (Pool, 42, 66, Cursor, Done);
+      pragma Assert (not Done and Cursor = 0 and Is_Open (Pool, 42, Names (1)));
+      for Turn in 1 .. 3 loop
+         Close_Session_Step (Pool, 42, 65, Cursor, Done);
+         pragma Assert (Cursor = Natural'Min (32 * Turn, 65) and Done = (Turn = 3));
+         for I in Names'Range loop
+            pragma Assert (Is_Open (Pool, (if I mod 2 = 0 then 43 else 42), Names (I)) =
+              (I mod 2 = 0 or I > Cursor));
+         end loop;
+         pragma Assert (Referenced_Backing (Pool, Pinned).Ready);
+      end loop;
+      pragma Assert (Session_Closed (Pool, 42) and Count (Pool) = 65);
+      pragma Assert (not Can_Release_Backing (Pool, 42, Names (65)));
+      Return_Reference (Pool, Pinned, True, OK); pragma Assert (OK);
+      pragma Assert (Can_Release_Backing (Pool, 42, Names (65)));
+      Close_Session_Step (Pool, 42, 65, Cursor, Done);
+      pragma Assert (Done and Cursor = 65);
+   end;
+   Ada.Text_IO.Put_Line ("Bounded handle close PASS:65 records in32/32/1 visits, other owner and retained pin preserved");
+   declare
       Pool : Registry;
       Name, Next_Name : Handle;
    begin
@@ -370,4 +406,46 @@ begin
       for I in 4096 .. Memory'Last loop pragma Assert (Memory (I) = 16#ABCD#); end loop;
    end;
    Ada.Text_IO.Put_Line ("Dynamic handle storage PASS: eight arena growth boundaries, >128 live records, stable names, replacement/session retirement, untouched uncommitted tail");
+   declare
+      type Storage is array (0 .. 8191) of Unsigned_64;
+      Memory : Storage := [others => 0] with Alignment => 4096;
+      Pool : Registry;
+      Names : array (1 .. 129) of Handle;
+      Owners : array (1 .. 129) of Session_ID := [others => 42];
+      Pin : Retained_Reference;
+      New_Name, Old_Name : Handle;
+   begin
+      Extend_Storage (Pool, Unsigned_64 (To_Integer (Memory'Address)), 65536, OK);
+      pragma Assert (OK);
+      for I in Names'Range loop
+         Register (Pool, Owners (I), Backing (Unsigned_64 (I - 1) * 4096), Names (I));
+         pragma Assert (Names (I) /= No_Handle);
+      end loop;
+      Retain_Backing (Pool, 42, Names (129), Pin, OK); pragma Assert (OK);
+      for Cycle in 1 .. 1024 loop
+         declare
+            I : constant Positive := (Cycle * 37) mod 128 + 1;
+            Next_Owner : constant Session_ID := (if Owners (I) = 42 then 43 else 42);
+         begin
+            Old_Name := Names (I);
+            Close (Pool, Owners (I), Old_Name, OK); pragma Assert (OK);
+            Release_Retired_Backing (Pool, Owners (I), Old_Name, True, OK);
+            pragma Assert (OK);
+            Replace_Retired (Pool, Owners (I), Next_Owner, Old_Name,
+              Backing (Unsigned_64 (I - 1) * 4096), True, New_Name);
+            pragma Assert (New_Name > Old_Name);
+            pragma Assert (not Resolve (Pool, Owners (I), New_Name).Ready);
+            pragma Assert (not Resolve (Pool, Next_Owner, Old_Name).Ready);
+            Names (I) := New_Name; Owners (I) := Next_Owner;
+         end;
+         for I in Names'Range loop
+            pragma Assert (Resolve (Pool, Owners (I), Names (I)).Ready and then
+              Resolve (Pool, Owners (I), Names (I)).CPU_Address =
+                Layout.CPU_Base + Unsigned_64 (I - 1) * 4096);
+         end loop;
+         pragma Assert (Count (Pool) = 129 and Referenced_Backing (Pool, Pin).Ready);
+      end loop;
+      Return_Reference (Pool, Pin, True, OK); pragma Assert (OK);
+   end;
+   Ada.Text_IO.Put_Line ("Indexed handle relocation PASS:129 stable buffers,1024 cross-owner replacements, all neighbors and pinned record preserved");
 end Buffer_Handles_Tests;

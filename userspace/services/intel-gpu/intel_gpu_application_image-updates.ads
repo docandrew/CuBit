@@ -1,10 +1,22 @@
 with Intel_GPU_ADLN_PPGTT;
+with Intel_GPU_VM_Image.Insertion;
 generic
    with function Exclusive return Boolean;
    -- Owner holds submission exclusion, GPU flush completion, scheduling
    -- disable acknowledgments, reset serialization and required forcewake.
    -- This predicate checks those conditions; it does not establish them.
 package Intel_GPU_Application_Image.Updates is
+   generic
+      with package Checked_Insertion is new VM.Insertion (<>);
+   procedure Insert_Validated_Leaf
+     (Object : in out State; Source : VM.Image;
+      Receipt : Checked_Insertion.Controller; Mapping : Tables.Page_Mapping;
+      Table_DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;
+      Expected, Replacement : Unsigned_64; Success : out Boolean);
+   -- Only the currently executing exact write of a fully validated insertion
+   -- receipt can use its retained ordinal/alias evidence. Mapping ownership
+   -- remains the caller's obligation. Sticky writer failure, expected-word
+   -- comparison, CPU overlap, flush/readback and TLB obligations are unchanged.
    procedure Insert_Mapped_Leaf
      (Object : in out State; Source : VM.Image; Mapping : Tables.Page_Mapping;
       Table_DMA : Unsigned_64; Index : Intel_GPU_ADLN_PPGTT.Table_Index;

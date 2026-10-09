@@ -13,16 +13,29 @@ begin
    Decode (Data, Value, Result);
    pragma Assert (Result = Decoded and Value.Ports = 4);
    pragma Assert (Value.Power = Individual and Value.Power_Delay_MS = 100);
-   for Length in 0 .. 8 loop
+   for Length in 0 .. 7 loop
       Decode (Data (1 .. Length), Value, Result);
       pragma Assert (Result = Malformed);
    end loop;
    Data (3) := 0;
    Decode (Data, Value, Result);
    pragma Assert (Result = Malformed);
+   --  QEMU's eight-port hub: DeviceRemovable two bytes (eight ports plus
+   --  bit zero), the obsolete PortPwrCtrlMask only one.
    Decode (Short_Eight_Port, Value, Result);
-   pragma Assert (Result = Malformed); -- Both port bitmaps include bit zero.
-   Data (3) := 8; -- Eight ports plus the hub bit require two bitmap bytes.
+   pragma Assert (Result = Decoded and Value.Ports = 8);
+   --  The mask may be absent, but DeviceRemovable may not be short.
+   Decode ([9, 16#29#, 8, 16#0A#, 0, 1, 0, 0, 0], Value, Result);
+   pragma Assert (Result = Decoded and Value.Ports = 8);
+   Decode ([8, 16#29#, 8, 16#0A#, 0, 1, 0, 0], Value, Result);
+   pragma Assert (Result = Malformed);
+   --  Longer than both bitmaps at full width.
+   Decode ([12, 16#29#, 8, 16#0A#, 0, 1, 0, 0, 0, 255, 255, 255], Value, Result);
+   pragma Assert (Result = Malformed);
+   --  bLength must match the bytes received.
+   Decode ([11, 16#29#, 8, 16#0A#, 0, 1, 0, 0, 0, 255], Value, Result);
+   pragma Assert (Result = Malformed);
+   Data (3) := 16; -- Sixteen ports plus bit zero need three DeviceRemovable bytes.
    Decode (Data, Value, Result);
    pragma Assert (Result = Malformed);
    Data (3) := 4; Data (4) := 3;

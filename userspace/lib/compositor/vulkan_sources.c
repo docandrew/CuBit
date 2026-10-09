@@ -1,3 +1,4 @@
+#include "vulkan_pipeline_diagnostic.h"
 #include "vulkan_sources.h"
 #include <stddef.h>
 _Static_assert(offsetof(struct cubit_vulkan_source,draw)==0,"release key layout");
@@ -5,29 +6,30 @@ VkResult cubit_vulkan_sources_init(struct cubit_vulkan_sources *s,
     const struct cubit_vulkan_affine_engine *engine,VkCommandBuffer command,
     PFN_vkGetDeviceProcAddr proc)
 {
-    if(!s)return VK_ERROR_INITIALIZATION_FAILED;
+    if(!s){pipeline_failure(300,0,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
     *s=(struct cubit_vulkan_sources){.engine=engine,.command=command};
     if(!engine||!engine->device||!engine->descriptors||!engine->sampler||!command||!proc)
-        return VK_ERROR_INITIALIZATION_FAILED;
-#define LOAD(field,name) s->field=(PFN_vk##name)proc(engine->device,"vk" #name);if(!s->field)return VK_ERROR_INITIALIZATION_FAILED
-    LOAD(destroy_pool,DestroyDescriptorPool);LOAD(create_view,CreateImageView);
-    LOAD(destroy_view,DestroyImageView);LOAD(update,UpdateDescriptorSets);
+        {pipeline_failure(300,0,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
+#define LOAD(index,field,name) s->field=(PFN_vk##name)proc(engine->device,"vk" #name);if(!s->field){pipeline_failure(310,index,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
+    LOAD(1,destroy_pool,DestroyDescriptorPool);LOAD(2,create_view,CreateImageView);
+    LOAD(3,destroy_view,DestroyImageView);LOAD(4,update,UpdateDescriptorSets);
 #undef LOAD
     PFN_vkCreateDescriptorPool create=(PFN_vkCreateDescriptorPool)proc(engine->device,"vkCreateDescriptorPool");
     PFN_vkAllocateDescriptorSets allocate=(PFN_vkAllocateDescriptorSets)proc(engine->device,"vkAllocateDescriptorSets");
-    if(!create||!allocate)return VK_ERROR_INITIALIZATION_FAILED;
+    if(!create){pipeline_failure(310,5,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
+    if(!allocate){pipeline_failure(310,6,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
     const VkDescriptorPoolSize size={VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,CUBIT_VULKAN_SOURCE_CAPACITY};
     const VkDescriptorPoolCreateInfo info={.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .maxSets=CUBIT_VULKAN_SOURCE_CAPACITY,.poolSizeCount=1,.pPoolSizes=&size};
     VkResult result=create(engine->device,&info,NULL,&s->pool);
-    if(result!=VK_SUCCESS){s->pool=VK_NULL_HANDLE;return result;}
+    if(result!=VK_SUCCESS){pipeline_failure(301,0,result);s->pool=VK_NULL_HANDLE;return result;}
     VkDescriptorSetLayout layouts[CUBIT_VULKAN_SOURCE_CAPACITY];
     VkDescriptorSet sets[CUBIT_VULKAN_SOURCE_CAPACITY];
     for(unsigned i=0;i<CUBIT_VULKAN_SOURCE_CAPACITY;i++)layouts[i]=engine->descriptors;
     const VkDescriptorSetAllocateInfo allocation={.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool=s->pool,.descriptorSetCount=CUBIT_VULKAN_SOURCE_CAPACITY,.pSetLayouts=layouts};
     result=allocate(engine->device,&allocation,sets);
-    if(result!=VK_SUCCESS){s->destroy_pool(engine->device,s->pool,NULL);s->pool=VK_NULL_HANDLE;return result;}
+    if(result!=VK_SUCCESS){pipeline_failure(302,0,result);s->destroy_pool(engine->device,s->pool,NULL);s->pool=VK_NULL_HANDLE;return result;}
     for(unsigned i=0;i<CUBIT_VULKAN_SOURCE_CAPACITY;i++){
         s->entries[i].owner=s;s->entries[i].descriptor=sets[i];
     }

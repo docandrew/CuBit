@@ -1,4 +1,5 @@
 with Interfaces; use Interfaces;
+with CuBit.Process_IDs; use CuBit.Process_IDs;
 
 --  Service-local channel identity, separate from TCP state and mapped buffers.
 --  A handle is neither an array index nor authority on its own: resolution
@@ -15,18 +16,19 @@ package Network_Channel_Handles with SPARK_Mode is
    type Table is private;
 
    procedure Allocate
-     (Item : in out Table; Owner, Authority : Unsigned_64;
+     (Item : in out Table; Owner : Process_ID; Authority : Unsigned_64;
       Index : out Channel_Reference);
    function Value (Item : Table; Index : Channel_Index) return Handle;
    function Resolve
-     (Item : Table; Owner, Authority : Unsigned_64; Id : Handle)
+     (Item : Table; Owner : Process_ID; Authority : Unsigned_64; Id : Handle)
       return Channel_Reference;
    --  Internal teardown uses a validated slot, never a wire-supplied index.
    procedure Release (Item : in out Table; Index : Channel_Index);
 private
    type Channel_Identity is record
       Id : Handle := No_Handle;
-      Owner, Authority : Unsigned_64 := 0;
+      Owner : Process_ID := No_Process;
+      Authority : Unsigned_64 := 0;
    end record;
    type Entries is array (Channel_Index) of Channel_Identity;
    type Table is record

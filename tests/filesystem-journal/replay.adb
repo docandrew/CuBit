@@ -28,7 +28,7 @@ procedure Replay is
       Msg.tag := (label => Op, length => 4, flags => 0, reserved => 0);
       Msg.words := [0 => Block_Number * Unsigned_64 (Size / Sector_Bytes), 1 => 1,
                     2 => Unsigned_64 (Size / Sector_Bytes), 3 => 1];
-      Tag := capCall (1, Msg);
+      Tag := capCall (1, Msg, Wait_Forever);
       Ok := Tag.label = REPLY_OK;
    end Transfer;
 begin

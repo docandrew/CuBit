@@ -6,6 +6,7 @@ This tests Desktop control flow, not GPU fence truth or physical scanout.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -26,31 +27,41 @@ def replace_once(source, old, new):
 
 
 def instrument(source, declarations, unsafe, retry=False):
-    source = replace_once(source, "   procedure pumpOutput (Output : Output_Index) is",
-        declarations.replace("@UNSAFE@", "True" if unsafe else "False") +
-        "   procedure pumpOutput (Output : Output_Index) is")
+    if "with Compositor_Formats;" not in source:
+        source = "with Compositor_Formats;\n" + source
+    # Publication now lives in a helper before pumpOutput. Probes must be
+    # declared before that helper, while retaining the accepted-IPC boundary.
+    anchor = "   procedure submitPreparedOutput (Output : Output_Index) is"
+    source = replace_once(source, anchor,
+        declarations.replace("@UNSAFE@", "True" if unsafe else "False") + anchor)
     for poll in ("True", "False"):
-        old = f"Desktop_Compositor.Complete_Output (P.Buffer, Output = 1, {poll}, Completion);"
+        old = f"Desktop_Compositor.Complete_Output (P.Buffer, BP.Writer (P.Pool), Output = 1, {poll}, Completion);"
         source = replace_once(source, old, old.replace("Desktop_Compositor.Complete_Output", "Probe_Completion"))
+    source = replace_once(source, "               Desktop_Compositor.Begin_Output\n",
+                          "               Probe_Begin\n")
     source = replace_once(source,
-        "Desktop_Compositor.Begin_Output (P.Buffer, P.Geometry, Output = 1, Started);",
-        "Probe_Begin (P.Buffer, P.Geometry, Output = 1, Started);")
-    source = replace_once(source, "when Desktop_Compositor.Deferred => return;",
-        "when Desktop_Compositor.Deferred =>\n                     Probe_Deferred (Output);\n                     return;")
+        "Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Deferred); return;",
+        "Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Deferred); Probe_Deferred (Output); return;")
     source = replace_once(source,
         "               activity := Wait_For_Activity_Until (Unsigned_64'Last);",
         "               Probe_Idle;\n               activity := Wait_For_Activity_Until (Unsigned_64'Last);")
     if retry:
         source = replace_once(source,
-            "            P.Buffer := P.Targets (Next_Writer.Buffer).Address;\n            return;",
-            "            P.Buffer := P.Targets (Next_Writer.Buffer).Address;\n            Probe_Retry_Restored (Output);\n            return;")
+            "            P.Buffer := P.Targets (Next_Writer.Buffer).Address;\n            if Renderer_Recovery then",
+            "            P.Buffer := P.Targets (Next_Writer.Buffer).Address;\n            Probe_Retry_Restored (Output);\n            if Renderer_Recovery then")
     return replace_once(source, "         Compositor_Damage.Clear (P.Frame_Damage);",
-        "         Compositor_Damage.Clear (P.Frame_Damage);\n         Probe_Published (Output);")
+        "         Compositor_Damage.Clear (P.Frame_Damage);\n         if not Bootstrap_CPU then Probe_Published (Output); end if;")
 
 
 def main():
+    global DESKTOP
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mesa", type=Path)
+    parser.add_argument("--source-root", type=Path, default=ROOT)
+    parser.add_argument("--toolchain-root", type=Path, default=ROOT)
+    parser.add_argument("--bundle", type=Path,
+                        help="verified Mesa service bundle providing the native compiler prefix")
+    parser.add_argument("--output", type=Path, help="new private artifact directory")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--unsafe", action="store_true")
     mode.add_argument("--retry", action="store_true")
@@ -58,10 +69,21 @@ def main():
     mode.add_argument("--output-retirement", choices=("scaled", "shutdown", "partial"))
     mode.add_argument("--async-lease", choices=("scaled", "shutdown", "partial"))
     args = parser.parse_args()
+    if not os.environ.get("IN_NIX_SHELL"):
+        parser.error("Run in the pinned Nix environment")
     mesa = args.mesa.resolve()
+    source = args.source_root.resolve()
+    toolchain = args.toolchain_root.resolve()
+    DESKTOP = source / "userspace/services/desktop"
     out = ROOT / "tests/compositor/build"
     out.mkdir(exist_ok=True)
-    work = Path(tempfile.mkdtemp(prefix="desktop-completion-", dir=out))
+    if args.output:
+        work = args.output.resolve()
+        if work == source or source in work.parents:
+            parser.error("Explicit output must be outside the input source tree")
+        work.mkdir(parents=True, exist_ok=False)
+    else:
+        work = Path(tempfile.mkdtemp(prefix="desktop-completion-", dir=out))
     print(work, flush=True)
     inputs = {}
 
@@ -74,17 +96,17 @@ def main():
     for relative in ("userspace/services/desktop", "userspace/lib/compositor",
                      "userspace/lib/display", "userspace/lib/theme", "userspace/lib/ui",
                      "userspace/ccl/src", "userspace/allocator/src", "userspace/runtime/gnat"):
-        base = ROOT / relative
+        base = source / relative
         for path in base.rglob("*"):
             if path.is_file() and path.suffix in (".ads", ".adb", ".gpr") and not any(
-                    part.startswith("build") for part in path.relative_to(base).parts):
+                    part.startswith(("build", "proof")) for part in path.relative_to(base).parts):
                 remember(path)
-    for path in (ROOT / "userspace/runtime/adalib").iterdir():
+    for path in (source / "userspace/runtime/adalib").iterdir():
         if path.is_file():
             remember(path)
     seed_paths = [DESKTOP / "build" / name for name in
                   ("manifest.o", "wallpaper.o", "wallpaper_cubie.o")]
-    seed_paths += [ROOT / "userspace/rust/build/font-native/libcubit_fonts.a"]
+    seed_paths += [source / "userspace/rust/build/font-native/libcubit_fonts.a"]
     for path in seed_paths:
         remember(path)
     declarations = remember(ROOT / "tests/compositor" / ("desktop_retry_fixture.inc" if args.retry else "desktop_completion_fixture.inc")).decode()
@@ -99,14 +121,23 @@ def main():
                  else instrument(original, declarations, args.unsafe, args.retry))
     (work / "main.adb").write_text(generated)
     (work / "fixture.gpr").write_text(f'''project Fixture extends "{DESKTOP / 'desktop.gpr'}" is
-   for Runtime ("Ada") use "{ROOT / 'userspace/runtime'}";
+   for Runtime ("Ada") use "{source / 'userspace/runtime'}";
    for Source_Dirs use (".");
    for Object_Dir use "obj";
    for Exec_Dir use ".";
 end Fixture;
 ''')
+    prefix = [str(source / "userspace/libc/cubit-c++")]
+    if args.bundle:
+        verifier = toolchain / "tools/verify_mesa_service_bundle.py"
+        remember(verifier)
+        spec = importlib.util.spec_from_file_location("fixture_bundle", verifier)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        prefix, _ = module.verify(args.bundle.resolve())
+        remember(args.bundle.resolve() / "link-args.json")
     env = {**os.environ, "CUBIT_STACK_SIZE": "16777216", "CUBIT_COMPOSITOR": "mesa",
-           "CUBIT_COMPOSITOR_METRICS": "off", "CUBIT_COMPOSITOR_TIMING": "off",
+           "CUBIT_INPUT_OVERLAY": "off", "CUBIT_COMPOSITOR_METRICS": "off", "CUBIT_COMPOSITOR_TIMING": "off",
            "CUBIT_COMPOSITOR_STORAGE": "production", "CUBIT_DISPLAY_TEST_MODE": "production"}
 
     def run(command, cwd=ROOT):
@@ -117,8 +148,8 @@ end Fixture;
     try:
         softpipe = work / "softpipe.o"
         run(["python3", ROOT / "tests/mesa-software/compile-native-probe.py", mesa,
-             ROOT / "userspace/lib/compositor/softpipe.c", softpipe])
-        run(["alr", "exec", "--", "gprbuild", "-p", "-c", "-b", "-P", work / "fixture.gpr"], ROOT / "kernel")
+             source / "userspace/lib/compositor/softpipe.c", softpipe])
+        run(["alr", "exec", "--", "gprbuild", "-p", "-c", "-b", "-P", work / "fixture.gpr"], toolchain / "kernel")
         obj = work / "obj"
         bexch = (obj / "main.bexch").read_text()
         objects = bexch.split("[BOUND OBJECT FILES]\n")[1].split("\n[")[0].splitlines()
@@ -129,9 +160,9 @@ end Fixture;
                 "src/c11/impl/libmesa_util_c11.a"]
         for name in libs:
             remember(mesa / name)
-        run([ROOT / "userspace/libc/cubit-c++", obj / "b__main.o", *objects, softpipe,
+        run([*prefix, obj / "b__main.o", *objects, softpipe,
              *seed_paths[1:], "-Wl,--start-group", *(mesa / name for name in libs),
-             ROOT / "userspace/runtime/adalib/libgnat-user.a", "-Wl,--end-group",
+             source / "userspace/runtime/adalib/libgnat-user.a", "-Wl,--end-group",
              "--manifest", seed_paths[0], "-o", work / "desktop.svc"])
         for path, expected in inputs.items():
             if hashlib.sha256(Path(path).read_bytes()).hexdigest() != expected:

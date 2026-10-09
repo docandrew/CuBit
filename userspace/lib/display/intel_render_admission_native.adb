@@ -1,3 +1,4 @@
+with CuBit.Process_IDs;
 package body Intel_Render_Admission_Native is
    package Core renames Intel_Render_Admission;
    package Grants renames CuBit.Capability_Grants;
@@ -22,8 +23,8 @@ package body Intel_Render_Admission_Native is
       Item.Source := Source;
       Item.Application_Source := Application_Source;
       Item.Destination := Destination;
-      Item.Driver_PID := Grants.Process_ID (Driver);
-      Core.Start (Item.Transaction, Grants.Incarnation (Target));
+      Item.Driver_PID := CuBit.Process_IDs.To_Word (Grants.Process_ID (Driver));
+      Core.Start (Item.Transaction, CuBit.Process_IDs.To_Word (Grants.Incarnation (Target)));
    end Start;
    procedure Advance (Item : in out Broker_Request; Token : Unsigned_64) is
       Accepted : Boolean;

@@ -39,6 +39,11 @@ package Intel_GPU_Extent_Allocator is
    procedure Extend_Extents
      (Object : in out Pool; Base, Bytes : Unsigned_64; Accepted : out Boolean);
    function Record_Capacity (Object : Pool) return Positive;
+   Gap_Probe_Limit : constant Positive := 64;
+   -- Observational record reads in the latest gap search. Step_Buffer resets
+   -- this counter and performs at most Gap_Probe_Limit, including final publish.
+   -- Acquire_Buffer is the synchronous trusted helper and is not so bounded.
+   function Last_Gap_Probes (Object : Pool) return Natural;
    -- Trusted committed CPU metadata in the supervisor's address space, not
    -- the driver's GPU arena. Caller retains a disjoint stable mapping for the
    -- pool lifetime. Growth changes bookkeeping only, never physical authority.
@@ -82,7 +87,9 @@ package Intel_GPU_Extent_Allocator is
       Pages : Intel_GPU_Buffer_Reply.Layout.Page_Count; Generation : Unsigned_32;
       Buffer : out Intel_GPU_Buffer_Reply.Extent_View; Success, Pending : out Boolean);
    -- Serialized caller retains the same request until Pending=False. At most
-   -- one new physical block per call; no slice is published before fully backed.
+   -- one new physical block and64 gap probes per call; no slice is published
+   -- before fully backed. Successful retirement/insertion invalidates a saved
+   -- gap cursor; metadata growth preserves it because records never relocate.
    -- Trusted supervisor integration only. All_References_Retired must include
    -- GPU mappings/TLBs, contexts, CPU grants/borrows and pending publications.
    -- Not an app assertion or scheduling-disable flag. Exact generation prevents
@@ -109,6 +116,10 @@ private
       Metadata_Required : Natural := 0;
       Identity, Used : Unsigned_64 := 0;
       First_Extent : Natural := 0;
+      Scan_Active, Scan_Found : Boolean := False;
+      Scan_Bytes, Scan_Position : Unsigned_64 := 0;
+      Scan_Cursor, Scan_Previous, Scan_Visits : Natural := 0;
+      Scan_Probes : Natural := 0;
       -- Maintained only with successful record publication/allocation/retirement.
       -- Budget queries must not walk the potentially large metadata registry.
       Unassigned : Natural := Intel_GPU_Buffer_Reply.Layout.Bootstrap_Slots;

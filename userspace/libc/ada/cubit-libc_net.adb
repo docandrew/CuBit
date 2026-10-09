@@ -127,7 +127,7 @@ package body CuBit.Libc_Net is
       M : aliased K.Message :=
         (Label => Label, Length => Length, Words => [W0, W1, W2, W3], others => <>);
       Tag : constant Unsigned_64 :=
-        Kernel (K.Call_Via_Endpoint_Capability, Unsigned_64 (Slot), Value_Of (M'Address));
+        Kernel (K.Call_Via_Endpoint_Capability, Unsigned_64 (Slot), Value_Of (M'Address), CuBit.Kernel_ABI.Forever);
    begin
       Reply := Words (M.Words);
       return (if Tag = K.Failed then 0 else Unsigned_32 (Tag and 16#FFFF_FFFF#));
@@ -388,15 +388,28 @@ package body CuBit.Libc_Net is
       end loop;
    end Drop_Interest;
 
+   --  Ask the netstack to finish this process's outstanding WAIT now. Not
+   --  a wakeup but a fact no shared state records, so a refusal (the
+   --  netstack's mailbox momentarily full) is retried for a while
+   --  (docs/ipc-delivery.md, "Audit of refused sends"); IPC-002's credits
+   --  make the refusal a distinct, retryable Busy.
    procedure End_Wait;
    procedure End_Wait is
       Slot : constant Integer := Any_Slot;
-      Ignore : Boolean;
+      Retry_Microseconds : constant := 1_000;
+      Retries : constant := 1_000;
+      Ignore : Unsigned_64;
    begin
-      if Slot >= 0 then
-         Ignore := Submit (Slot, Layout.OP_NET_KICK, 2, 0, Layout.End_Wait, 0, 0,
-                           CuBit.Kernel_Calls.No_Completion_Token);
+      if Slot < 0 then
+         return;
       end if;
+      for Attempt in 1 .. Retries loop
+         exit when Submit (Slot, Layout.OP_NET_KICK, 2, 0, Layout.End_Wait, 0, 0,
+                           CuBit.Kernel_Calls.No_Completion_Token);
+         Ignore := CuBit.Kernel_Calls.Call
+           (K.Sleep_Until_Monotonic_Microsecond,
+            CuBit.Kernel_Calls.Call (K.Read_Monotonic_Microseconds) + Retry_Microseconds);
+      end loop;
    end End_Wait;
 
    procedure Kick (S : Socket_Object; Flags : Unsigned_64);

@@ -113,7 +113,7 @@ package body CuBit.Doom_Platform is
       Msg : Message := CuBit.Desktop_Messages.From_Wire (Request);
       Returned : MessageTag;
    begin
-      Returned := capCall (CAP_SLOT_DESKTOP, Msg);
+      Returned := capCall (CAP_SLOT_DESKTOP, Msg, Wait_Forever);
       if Returned /= Msg.tag then
          return (others => <>);
       end if;

@@ -6,6 +6,7 @@ with CuBit.Memory_Grants;
 with CuBit.Metric_Records;
 with CuBit.Metric_Protocol; use CuBit.Metric_Protocol;
 with Metric_Store;
+with Metric_Raw_Query;
 
 --  metrics.svc: typed metric collection. Native adapter around the proved
 --  Metric_Store core: authenticates the immediate peer (kernel-stamped PID
@@ -19,7 +20,7 @@ procedure Main is
    Idle_Wake_Ms : constant Unsigned_64 := 1_000;
 
    Store : Metric_Store.Store;
-   From : ProcessID;
+   From : Process_ID;
    Request, Response : Message;
    Received, Known, Acquired, Returned : Boolean;
    Now_Ms, Ignore : Unsigned_64;
@@ -32,6 +33,10 @@ procedure Main is
    Rows : Summary_Page;
    Written : Row_Count;
    Next : Metric_Store.Series_Cursor;
+   Raw_Rows : Raw_Page;
+   Raw_Written : Raw_Row_Count;
+   Raw_Next, Raw_Gap : Unsigned_64;
+   Raw_Valid : Boolean;
 
    function Valid_Grant (Slot, Generation : Unsigned_64) return Boolean is
      (Slot <= Grants.MAXIMUM_GLOBAL_SLOT and Generation /= 0 and
@@ -64,7 +69,7 @@ begin
             end if;
          end loop;
          Result := Denied;
-         if From /= NO_PROCESS and then Known and then
+         if From /= No_Process and then Known and then
            May_Invoke (Request.authorityTag, Op)
          then
             Result := Invalid_Request;
@@ -138,6 +143,35 @@ begin
                            else
                               Result := Unavailable;
                            end if;
+                        end if;
+                     end if;
+                  when Query_Raw =>
+                     if Request.words (0) /= 0 and then
+                       Request.words (0) <= Metric_Store.History_Next (Store) and then
+                       Request.words (3) = Records.Page_Bytes and then
+                       Valid_Grant (Request.words (1), Request.words (2))
+                     then
+                        Ref := (Request.words (1), Request.words (2));
+                        Grants.Acquire (Ref, From, 0, Records.Page_Bytes,
+                          Grants.Write_Access, Address, Acquired);
+                        if Acquired then
+                           Metric_Raw_Query.Fill (Store, Request.words (0),
+                             Raw_Rows, Raw_Written, Raw_Next, Raw_Gap, Raw_Valid);
+                           if Raw_Valid then
+                              declare
+                                 Shared : Raw_Page with Import, Address => Address;
+                              begin
+                                 Shared := Raw_Rows;
+                              end;
+                           end if;
+                           Grants.Return_Acquisition (Ref, Returned);
+                           if Returned and Raw_Valid then
+                              Result := OK;
+                              Response.words := [Unsigned_64 (Raw_Written),
+                                Raw_Next, Raw_Gap, Metric_Store.History_Dropped (Store)];
+                           else Result := Unavailable;
+                           end if;
+                        else Result := Unavailable;
                         end if;
                      end if;
                end case;

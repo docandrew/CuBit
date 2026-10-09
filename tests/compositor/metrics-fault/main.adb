@@ -5,7 +5,7 @@ with CuBit.Metric_Protocol;
 -- acquiring a producer grant. The real metrics service remains unchanged.
 procedure Main is
    package P renames CuBit.Metric_Protocol;
-   From : ProcessID;
+   From : Process_ID;
    Request, Response : Message;
    Ignore, Requests : Unsigned_64 := 0;
 begin

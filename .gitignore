@@ -1,88 +1,86 @@
+# Rules are general by kind, not per directory: a new test or service gets
+# the same treatment without editing this file. Before adding a general rule,
+# check `git ls-files | grep` for tracked paths it would shadow, and add an
+# exception (!) for those.
+
+# --- Build output: gprbuild object/exec directories, proofs, binder files ---
 build
+build-*/
+*-build/
+obj/
+gnatprove/
+# A tracked test directory, not output.
+!/tests/build-workspace/
+b~*
+*.ali
+*.o
+*.a
+*.elf
+*.bexch
+# GNAT compiler/binder output captures and stack-usage reports.
+*.stdout
+*.stderr
+*.cswi
+*.su
 __pycache__/
-/tests/performance/results/
-/userspace/services/display/build-delayed/
-/userspace/services/display/build-output-rebind/
-/userspace/apps/display-check/build-output-rebind/
-/userspace/services/desktop/build-delayed/
+# Nix shells started with TMPDIR inside a test directory.
+nix-tmp.*/
+
+# --- Kernel and image products ---
 cubit_kernel
 cubit_kernel.iso
 cubit_kernel.map
 runtime/adalib
 src/build.ads
-*.ali
-*.o
-*.a
-*.elf
-
-# Random stuff we don't want
-*.zip
-*.pcap
-*.log
-
-# userspace services/drivers
+/kernel/src/build.ads
+/kernel/*.iso.plan.json
+/kernel/*.img.plan.json
+/kernel/isodir/boot/*.img.plan.json
+/kernel/isodir/licenses/cbor_ada.txt
+# Local A/B backups of built images.
+/kernel/*.pre-*
+/kernel/desktop-logs/
+# Userspace binaries and images.
 *.svc
 *.drv
 *.app
 *.img
 *.iso
 
-# Kernel and live-image build artifacts
-/kernel/*.iso.plan.json
-/kernel/*.img.plan.json
-/kernel/isodir/boot/*.img.plan.json
-/kernel/src/build.ads
-/kernel/isodir/licenses/cbor_ada.txt
+# --- Logs, captures, archives ---
+*.log
+*.pcap
+*.zip
+/tests/performance/results/
 
-# Local third-party source/build trees used by port experiments
+# --- Third-party source and build trees for ports ---
 /userspace/c/doom_src/
 /userspace/c/netsurf/
 /userspace/c/netsurf_deps/
 /userspace/c/netsurf_src/
 /userspace/c/sameboy_src/
 /userspace/c/sameboy_build/
-# Private cartridges are build inputs, never source artifacts.
+/tests/mesa-software/target/
+/tests/mesa-anv/target/
+
+# --- Private inputs: never committed ---
+# Cartridges are build inputs, never source artifacts.
 /local-roms/
 *.[gG][bB]
 *.[gG][bB][cC]
-userspace/services/virtio-gpu/build-delayed/
-userspace/apps/display-check/build-gpu-delayed/
-userspace/services/virtio-gpu/build-clear-failure/
-userspace/apps/display-check/build-gpu-clear-failure/
 
-# Advisory cross-session build/test lock; never delete a live lock file.
-/coordination/*.lock
+# --- Coordination and isolated workspaces ---
+# Session coordination notes and the advisory build lock are local working
+# state, not repository content.
+/coordination/
 /.build-workspaces/
-# Local source backup; not an input to isolated source snapshots.
-/cubit_092826.zip
 
-# Networking scratch: proof/test build variants, runner temp files, logs.
-/tests/net-tcp/build-*/
-/tests/net-tcp/build*.log
-# Local A/B backups of built images (never committed).
-/kernel/*.pre-*
-/tests/intel-gpu/build-*/
-/tests/mesa-software/target/
-/tests/mesa-anv/target/
-/tests/region-transition/build-pte/
-/tests/region-transition/build-registry/
-/tests/region-transition/build-adapter/
-/tests/region-transition/build-install/
-/tests/region-transition/build-release/
-/tests/region-transition/build-layout/
-/userspace/mesa/build/
-# GNAT build products: binder/compiler output captures and stack-usage reports.
-*.stdout
-*.stderr
-*.cswi
-*.su
-/userspace/services/desktop/build-*/
-/tests/free-block-set/build-*/
-# Isolated Intel allocation regression/proof outputs (not source fixtures).
+# --- Scratch from isolated regression and proof runs ---
 /tests/intel-gpu/budget-accounting.*/
 /tests/intel-gpu/prefix-geometry.*/
 /tests/intel-gpu/prefix-proof.*/
 /tests/intel-gpu/prefix-transport.*/
 /tests/intel-gpu/transport-proof-tmp.*/
 /tests/intel-gpu/demand-backing.*/
-/kernel/desktop-logs/
+/.gpu-status-test.*/
+/.vm-intel-*/

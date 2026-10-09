@@ -1,12 +1,12 @@
 pragma Ada_2022;
 package body Network_Grants with SPARK_Mode is
    procedure Install
-     (State : in out Table; Owner : Unsigned_64; Item : Scope;
+     (State : in out Table; Owner : Process_ID; Item : Scope;
       Capacity : Reservation; Tag : out Unsigned_64; Success : out Boolean)
    is
    begin
       Tag := 0; Success := False;
-      if Owner = 0 or not Valid (Item) or State.Next_Tag > Last_Grant_Tag
+      if Owner = No_Process or not Valid (Item) or State.Next_Tag > Last_Grant_Tag
         or Item.Connections > Capacity - State.Reserved
       then
          return;
@@ -23,7 +23,7 @@ package body Network_Grants with SPARK_Mode is
       end loop;
    end Install;
 
-   procedure Release (State : in out Table; Owner, Tag : Unsigned_64) is
+   procedure Release (State : in out Table; Owner : Process_ID; Tag : Unsigned_64) is
       Before : constant Reservation := State.Reserved with Ghost;
    begin
       for I in State.Entries'Range loop
@@ -40,7 +40,7 @@ package body Network_Grants with SPARK_Mode is
    end Release;
 
    procedure Release_Owner
-     (State : in out Table; Owner : Unsigned_64; Tags : out Tag_List)
+     (State : in out Table; Owner : Process_ID; Tags : out Tag_List)
    is
       Before : constant Reservation := State.Reserved with Ghost;
    begin
@@ -48,7 +48,7 @@ package body Network_Grants with SPARK_Mode is
       for I in State.Entries'Range loop
          pragma Loop_Invariant (Within_Limits (State));
          pragma Loop_Invariant (State.Reserved <= Before);
-         if Owner /= 0 and State.Entries (I).Owner = Owner
+         if Owner /= No_Process and State.Entries (I).Owner = Owner
            and State.Entries (I).Tag /= 0
          then
             Tags (I) := State.Entries (I).Tag;
@@ -59,13 +59,13 @@ package body Network_Grants with SPARK_Mode is
       end loop;
    end Release_Owner;
 
-   function Owned (State : Table; Owner, Tag : Unsigned_64) return Boolean is
-     (Owner /= 0 and then Tag >= First_Grant_Tag and then
+   function Owned (State : Table; Owner : Process_ID; Tag : Unsigned_64) return Boolean is
+     (Owner /= No_Process and then Tag >= First_Grant_Tag and then
       (for some E of State.Entries => E.Owner = Owner and E.Tag = Tag));
 
-   function Scope_Of (State : Table; Owner, Tag : Unsigned_64) return Scope is
+   function Scope_Of (State : Table; Owner : Process_ID; Tag : Unsigned_64) return Scope is
    begin
-      if Owner /= 0 and then Tag /= 0 then
+      if Owner /= No_Process and then Tag /= 0 then
          for E of State.Entries loop
             if E.Owner = Owner and then E.Tag = Tag then
                return E.Item;
@@ -76,13 +76,13 @@ package body Network_Grants with SPARK_Mode is
    end Scope_Of;
 
    function May_Resolve
-     (State : Table; Owner, Tag : Unsigned_64) return Boolean is
+     (State : Table; Owner : Process_ID; Tag : Unsigned_64) return Boolean is
      (Owned (State, Owner, Tag) and then
       (for some E of State.Entries => E.Owner = Owner and E.Tag = Tag and
          E.Item.Action in Connect_TCP | Connect_UDP and E.Item.Resolve_Names));
 
    function Allows
-     (State : Table; Owner, Tag : Unsigned_64; Action : Operation;
+     (State : Table; Owner : Process_ID; Tag : Unsigned_64; Action : Operation;
       Address : Unsigned_32; Port : Unsigned_16) return Boolean is
      (Owned (State, Owner, Tag) and then
       (for some E of State.Entries => E.Owner = Owner and E.Tag = Tag and
@@ -111,12 +111,12 @@ package body Network_Grants with SPARK_Mode is
    end Limit;
 
    procedure Charge
-     (State : in out Table; Owner, Tag : Unsigned_64; Success : out Boolean)
+     (State : in out Table; Owner : Process_ID; Tag : Unsigned_64; Success : out Boolean)
    is
    begin
       Success := False;
       for E of State.Entries loop
-         if Owner /= 0 and then Tag /= 0 and then E.Owner = Owner
+         if Owner /= No_Process and then Tag /= 0 and then E.Owner = Owner
            and then E.Tag = Tag
          then
             if E.Open < E.Item.Connections then

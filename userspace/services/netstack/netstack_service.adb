@@ -20,6 +20,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_IDs;
 with CuBit.Busy_Poll;
 with Net;
 with SipHash;
@@ -67,6 +68,7 @@ with Network_Grants;
 with Network_Channel_Handles;
 with UDP_Channels;
 with CuBit.Network_Authority;
+with CuBit.Grant_References;
 with CuBit.Memory_Grants;
 with CuBit.Channel_Rings;
 with CuBit.Datagram_Rings;
@@ -121,14 +123,14 @@ package body Netstack_Service is
       ipv4      : Net.IPv4Address := [others => 0];
       netmask   : Net.IPv4Address := [others => 0];
       gateway   : Net.IPv4Address := [others => 0];
-      driverPID : ProcessID := NO_PROCESS;
+      driverPID : Process_ID := No_Process;
       --  Neighbours (proved: unsolicited replies never change it).
       arpCache  : ARP_Cache.Table;
       gwMAC     : Net.MACAddress := Net.ZERO_MAC;
       grantId   : Unsigned_64 := 0;
       txRing    : Frame_Ring.Producer;   --  our transmit ring's indices
       pktBuf    : System.Address := System.Null_Address;
-      pktGrant  : Unsigned_64 := 0;
+      pktGrant  : CuBit.Memory_Grants.Grant_Reference;
    end record;
 
    interfaces : array (0 .. MAX_INTERFACES - 1) of InterfaceRecord;
@@ -380,7 +382,7 @@ package body Netstack_Service is
    type NetChannel is record
       kind       : ChannelKind := CHANNEL_NONE;
       proto      : Unsigned_8 := 0;
-      pid        : ProcessID := NO_PROCESS;
+      pid        : Process_ID := No_Process;
       bufAddr    : System.Address := System.Null_Address;
       bufSize    : Natural := 0;
       connIdx    : Integer := -1;
@@ -468,7 +470,7 @@ package body Netstack_Service is
    --  Take buffer Buffer of the caller's arena Arena for channel Index.
    function claimBuffer
      (Index  : Network_Channel_Handles.Channel_Index;
-      Owner  : ProcessID;
+      Owner  : Process_ID;
       Arena  : Unsigned_64;
       Buffer : Unsigned_64) return Boolean
    is
@@ -478,7 +480,7 @@ package body Netstack_Service is
       OK : Boolean;
    begin
       Channel_Arenas.Claim
-        (arenas, Unsigned_64 (Owner), Channel_Arenas.Handle (Arena), Buffer,
+        (arenas, To_Word (Owner), Channel_Arenas.Handle (Arena), Buffer,
          A, S, Offset, OK);
       if OK then
          channels (Index).arena := A;
@@ -509,7 +511,7 @@ package body Netstack_Service is
    end record;
 
    type ControlQueue is record
-      owner  : ProcessID := NO_PROCESS;
+      owner  : Process_ID := No_Process;
       tag    : Unsigned_64 := 0;
       grant  : CuBit.Memory_Grants.Grant_Reference;
       base   : System.Address := System.Null_Address;
@@ -535,7 +537,7 @@ package body Netstack_Service is
 
    type PendingRequest is record
       kind       : PendingKind := PENDING_NONE;
-      sender     : ProcessID := NO_PROCESS;
+      sender     : Process_ID := No_Process;
       connIdx    : Integer := -1;
       channelIdx : Integer := -1;
       bufAddr    : System.Address := System.Null_Address;
@@ -609,7 +611,7 @@ package body Netstack_Service is
 
    --  Category admission precedes pointer/range decoding in every handler.
    --  A general service endpoint grants inspection, not networking or admin.
-   function admittedRequest (Owner : ProcessID; Request : Message)
+   function admittedRequest (Owner : Process_ID; Request : Message)
                              return Boolean is
    begin
       case Request.tag.label is
@@ -705,6 +707,15 @@ package body Netstack_Service is
    ---------------------------------------------------------------------------
    --  printDec - print a small unsigned number in decimal
    ---------------------------------------------------------------------------
+   --  A process as ps shows it, without the secondary stack.
+   procedure printProcess (Process : Process_ID) is
+      Text : CuBit.Process_IDs.Image_Text;
+      Last : Positive;
+   begin
+      CuBit.Process_IDs.Image (Process, Text, Last);
+      debugPrint (Text (1 .. Last));
+   end printProcess;
+
    procedure printDec (val : Unsigned_32) is
       buf : String (1 .. 10);
       pos : Natural := buf'Last;
@@ -945,7 +956,7 @@ package body Netstack_Service is
          words    => [others => 0]);
       ignore : Boolean;
    begin
-      if txDoorbell and then interfaces (0).driverPID /= NO_PROCESS and then
+      if txDoorbell and then interfaces (0).driverPID /= No_Process and then
         interfaces (0).pktBuf /= System.Null_Address
       then
          txDoorbell := False;
@@ -996,7 +1007,7 @@ package body Netstack_Service is
    procedure sendFrame (frameAddr : System.Address; frameLen : Natural) is
       ok : Boolean;
    begin
-      if interfaces (0).driverPID = NO_PROCESS or
+      if interfaces (0).driverPID = No_Process or
          interfaces (0).pktBuf = System.Null_Address
       then
          debugPrint ("netstack: sendFrame: not attached" & LF);
@@ -1315,7 +1326,7 @@ package body Netstack_Service is
                         dstMAC  : Net.MACAddress;
                         dstPort : Unsigned_16) return Integer;
    procedure replyError
-     (to   : ProcessID;
+     (to   : Process_ID;
       slot : CapabilitySlot := CapabilitySlot'Last);
 
    --  A query that will not be answered: its requester gets an error, and
@@ -1331,7 +1342,7 @@ package body Netstack_Service is
 
    procedure openDatagram
      (chIdx : Network_Channel_Handles.Channel_Index;
-      owner : ProcessID;
+      owner : Process_ID;
       dstIP : Net.IPv4Address;
       port  : Unsigned_16;
       slot  : CapabilitySlot);
@@ -2029,7 +2040,7 @@ package body Netstack_Service is
 
    --  Forward declaration for reply helper (defined later in file)
    procedure replyOKWord
-     (to   : ProcessID;
+     (to   : Process_ID;
       w0   : Unsigned_64;
       slot : CapabilitySlot := CapabilitySlot'Last);
 
@@ -2375,7 +2386,7 @@ package body Netstack_Service is
      (Shift_Left (Unsigned_64'(1), channels (chIdx).waitBit));
 
    --  The wait bits of owner's ready channels among interest.
-   function readyMask (owner : ProcessID; interest : Unsigned_64) return Unsigned_64 is
+   function readyMask (owner : Process_ID; interest : Unsigned_64) return Unsigned_64 is
       mask : Unsigned_64 := 0;
    begin
       for I in channels'Range loop
@@ -2403,7 +2414,7 @@ package body Netstack_Service is
    end acceptReaped;
 
    --  owner has answers it has not reaped.
-   function answersWaiting (owner : ProcessID) return Boolean is
+   function answersWaiting (owner : Process_ID) return Boolean is
    begin
       for q in queues'Range loop
          if queues (q).owner = owner then
@@ -2436,7 +2447,7 @@ package body Netstack_Service is
       q : constant Queue_Count := route.queue;
    begin
       --  The queue went with its owner, or owes nothing: nowhere to answer.
-      if q = No_Queue or else queues (q).owner = NO_PROCESS or else
+      if q = No_Queue or else queues (q).owner = No_Process or else
         queues (q).server.Owed = 0
       then
          return;
@@ -2466,7 +2477,7 @@ package body Netstack_Service is
    end answerQueue;
 
    --  Complete owner's waiting WAIT if any of its channels is ready.
-   procedure notifyWaiter (owner : ProcessID) is
+   procedure notifyWaiter (owner : Process_ID) is
       mask : Unsigned_64;
    begin
       for P of pendingReqs loop
@@ -2725,7 +2736,7 @@ package body Netstack_Service is
    end failChannels;
 
    --  Complete owner's waiting WAIT now, whatever is ready.
-   procedure endWait (owner : ProcessID) is
+   procedure endWait (owner : Process_ID) is
    begin
       for P of pendingReqs loop
          if P.kind = PENDING_WAIT and then P.sender = owner then
@@ -2735,9 +2746,48 @@ package body Netstack_Service is
       end loop;
    end endWait;
 
+   --  A kick is a wakeup, not a fact: a client's kick can be refused by a
+   --  full mailbox, and then nothing else names its channel. Before
+   --  sleeping, take up every channel whose client moved an index since its
+   --  kick was asked for (the proved Look_Again rule), or whose requested
+   --  shutdown is due (Close_Due; one not yet due waits for the peer's
+   --  segments, which service it). docs/ipc-delivery.md, "Audit of refused
+   --  sends". True when it serviced any; each rule is false once serviced,
+   --  so this never keeps the netstack from sleeping.
+   function serviceArmedChannels return Boolean is
+      Serviced : Boolean := False;
+   begin
+      for I in channels'Range loop
+         declare
+            C : NetChannel renames channels (I);
+         begin
+            if C.stream and then
+              (Channel_Service.Look_Again
+                 (Flags            => C.kickFlags,
+                  Tx_Produced_Seen => Unsigned_32 (Rings.Produced (C.tx)),
+                  Tx_Produced_Now  => headerWord (I, Layout.Tx_Produced_At),
+                  Rx_Consumed_Seen => Unsigned_32 (Rings.Consumed (C.rx)),
+                  Rx_Consumed_Now  => headerWord (I, Layout.Rx_Consumed_At))
+               or else
+               (C.connIdx in tcpConns'Range and then
+                Channel_Service.Close_Due
+                  (Already_Closed  => C.shutDone,
+                   Send_Unconsumed => C.tx.Available,
+                   Shutdown_Asked  => headerWord (I, Layout.Shut_Write_At) /= 0,
+                   In_Handshake    => tcpState (C.connIdx) in
+                                        TCP_Connection.Syn_Sent | TCP_Connection.Syn_Received)))
+            then
+               serviceChannel (I);
+               Serviced := True;
+            end if;
+         end;
+      end loop;
+      return Serviced;
+   end serviceArmedChannels;
+
    --  A client kicked (or waited with a kick mask): service its channels
    --  whose wait bits are in mask.
-   procedure kickChannels (owner : ProcessID; mask : Unsigned_64) is
+   procedure kickChannels (owner : Process_ID; mask : Unsigned_64) is
    begin
       if mask = 0 then
          return;
@@ -2753,7 +2803,7 @@ package body Netstack_Service is
 
    --  WAIT: complete now if a channel is ready, else when one becomes
    --  ready or at the deadline. One WAIT per process.
-   procedure handleNetWait (snd : ProcessID; m : Message) is
+   procedure handleNetWait (snd : Process_ID; m : Message) is
       mask : Unsigned_64;
    begin
       for P of pendingReqs loop
@@ -3593,7 +3643,7 @@ package body Netstack_Service is
    --  replyError - send REPLY_ERR to a sender
    ---------------------------------------------------------------------------
    procedure replyError
-     (to   : ProcessID;
+     (to   : Process_ID;
       slot : CapabilitySlot := CapabilitySlot'Last)
    is
       errMsg : constant Message :=
@@ -3617,7 +3667,7 @@ package body Netstack_Service is
    --  replyOK - send REPLY_OK with word0 to a sender
    ---------------------------------------------------------------------------
    procedure replyOKWord
-     (to   : ProcessID;
+     (to   : Process_ID;
       w0   : Unsigned_64;
       slot : CapabilitySlot := CapabilitySlot'Last)
    is
@@ -3785,7 +3835,7 @@ package body Netstack_Service is
    ---------------------------------------------------------------------------
    procedure openListener
      (chIdx  : Network_Channel_Handles.Channel_Index;
-      snd    : ProcessID;
+      snd    : Process_ID;
       tag    : Unsigned_64;
       scheme : ParsedScheme)
    is
@@ -3882,7 +3932,7 @@ package body Netstack_Service is
    --  Start resolving name for a RESOLVE or OPEN request: record it with
    --  a random ID and source port, and send the first attempt.
    procedure startQuery (kind    : PendingKind;
-                         snd     : ProcessID;
+                         snd     : Process_ID;
                          chIdx   : Integer;
                          bufAddr : System.Address;
                          dstPort : Unsigned_16;
@@ -3939,7 +3989,7 @@ package body Netstack_Service is
    --           tag.length = hostname length
    --  Reply: deferred until DNS response arrives
    ---------------------------------------------------------------------------
-   procedure handleAppResolve (snd : ProcessID; m : Message) is
+   procedure handleAppResolve (snd : Process_ID; m : Message) is
       nameLen : constant Natural := Natural (m.tag.length);
       hostname : String (1 .. 32);
       ok   : Boolean;
@@ -3994,7 +4044,7 @@ package body Netstack_Service is
    ---------------------------------------------------------------------------
    procedure openDatagram
      (chIdx : Network_Channel_Handles.Channel_Index;
-      owner : ProcessID;
+      owner : Process_ID;
       dstIP : Net.IPv4Address;
       port  : Unsigned_16;
       slot  : CapabilitySlot)
@@ -4036,7 +4086,7 @@ package body Netstack_Service is
    --  their reservations released. Nothing it held survives to be found
    --  through a reused PID.
    ---------------------------------------------------------------------------
-   procedure releaseOwner (owner : ProcessID) is
+   procedure releaseOwner (owner : Process_ID) is
       tags : Network_Grants.Tag_List;
       children : TCP_Listeners.Connection_List;
    begin
@@ -4059,7 +4109,7 @@ package body Netstack_Service is
          gone : Channel_Arenas.Arena_List;
          returned : Boolean;
       begin
-         Channel_Arenas.Release_Owner (arenas, Unsigned_64 (owner), gone);
+         Channel_Arenas.Release_Owner (arenas, To_Word (owner), gone);
          for A in gone'Range loop
             if gone (A) then
                CuBit.Memory_Grants.Return_Acquisition (arenaGrant (A), returned);
@@ -4077,10 +4127,11 @@ package body Netstack_Service is
             queues (q) := (others => <>);
          end if;
       end loop;
-      Network_Grants.Release_Owner (networkGrants, Unsigned_64 (owner), tags);
+      Network_Grants.Release_Owner (networkGrants, owner, tags);
       if (for some T of tags => T /= 0) then
-         debugPrint ("netstack: released the scopes of exited process" &
-                     Unsigned_64'Image (Unsigned_64 (owner)) & LF);
+         debugPrint ("netstack: released the scopes of exited process ");
+         printProcess (owner);
+         debugPrint ("" & LF);
       end if;
       for T of tags loop
          if T /= 0 then
@@ -4102,7 +4153,7 @@ package body Netstack_Service is
    --  handleArena: a process lends a grant cut into channel buffers
    --  (Layout.OP_NET_ARENA). Admission checked the ring sizes and count.
    ---------------------------------------------------------------------------
-   procedure handleArena (snd : ProcessID; m : Message) is
+   procedure handleArena (snd : Process_ID; m : Message) is
       --  Each ring size is 32 bits; their sum with the header is checked
       --  in 64 bits before it becomes a Natural.
       size64 : constant Unsigned_64 :=
@@ -4125,7 +4176,7 @@ package body Netstack_Service is
          CuBit.Memory_Grants.Write_Access, address, ok);
       if not ok then replyError (snd); return; end if;
       Channel_Arenas.Register
-        (arenas, Unsigned_64 (snd), size, count, handle, index, ok);
+        (arenas, To_Word (snd), size, count, handle, index, ok);
       if not ok then
          CuBit.Memory_Grants.Return_Acquisition (reference, returned);
          replyError (snd); return;
@@ -4140,7 +4191,7 @@ package body Netstack_Service is
    --  one per endpoint it holds. The queue acts with this request's
    --  authority tag.
    ---------------------------------------------------------------------------
-   procedure handleQueue (snd : ProcessID; m : Message) is
+   procedure handleQueue (snd : Process_ID; m : Message) is
       reference : constant CuBit.Memory_Grants.Grant_Reference :=
         (slot => m.words (0), generation => m.words (1));
       address : System.Address;
@@ -4151,7 +4202,7 @@ package body Netstack_Service is
          if queues (q).owner = snd and then queues (q).tag = m.authorityTag then
             replyError (snd); return;
          end if;
-         if free = No_Queue and then queues (q).owner = NO_PROCESS then
+         if free = No_Queue and then queues (q).owner = No_Process then
             free := q;
          end if;
       end loop;
@@ -4166,12 +4217,12 @@ package body Netstack_Service is
                         base   => address,
                         server => <>);
       debugPrint ("netstack: control queue for pid");
-      printDec (Unsigned_32 (snd));
+      printProcess (snd);
       debugPrint ("" & LF);
       replyOKWord (snd, 0);
    end handleQueue;
 
-   procedure handleNetOpen (snd : ProcessID; m : Message) is
+   procedure handleNetOpen (snd : Process_ID; m : Message) is
       schemeLen : constant Natural := Natural (m.tag.length);
       scheme    : ParsedScheme;
       chIdx     : Integer;
@@ -4321,7 +4372,7 @@ package body Netstack_Service is
    --  Request: words(0)=channel handle
    --  Reply: immediate REPLY_OK
    ---------------------------------------------------------------------------
-   procedure handleNetShut (snd : ProcessID; m : Message) is
+   procedure handleNetShut (snd : Process_ID; m : Message) is
       chHandle : constant Network_Channel_Handles.Channel_Reference :=
         Network_Channel_Handles.Resolve
           (channelHandles, snd, m.authorityTag, Network_Channel_Handles.Handle (m.words (0)));
@@ -4380,7 +4431,7 @@ package body Netstack_Service is
       item  : Control.Submission;
       ok    : Boolean;
       took  : Boolean := False;
-      owner : constant ProcessID := queues (q).owner;
+      owner : constant Process_ID := queues (q).owner;
       tag   : constant Unsigned_64 := queues (q).tag;
    begin
       --  Awake: the client need not kick until we arm the word again.
@@ -4439,7 +4490,7 @@ package body Netstack_Service is
    procedure serviceQueues is
    begin
       for q in queues'Range loop
-         if queues (q).owner /= NO_PROCESS then
+         if queues (q).owner /= No_Process then
             serviceQueue (q);
          end if;
       end loop;
@@ -4453,7 +4504,7 @@ package body Netstack_Service is
    begin
       queueEpoch := (if queueEpoch = Unsigned_32'Last then 1 else queueEpoch + 1);
       for q in queues'Range loop
-         if queues (q).owner /= NO_PROCESS then
+         if queues (q).owner /= No_Process then
             declare
                produced : Unsigned_32 with Volatile, Import,
                  Address => queueWord (q, Layout.Queue_Submissions_At + Layout.Queue_Produced_At);
@@ -4495,7 +4546,7 @@ package body Netstack_Service is
    --  The driver sends us its PID; we allocate a grant buffer and reply
    --  with the grant ID + our MAC address packed into a u64.
    ---------------------------------------------------------------------------
-   procedure handleAttach (sender : ProcessID) is
+   procedure handleAttach (sender : Process_ID) is
       ok    : Boolean;
       ifIdx : Natural;
    begin
@@ -4536,12 +4587,12 @@ package body Netstack_Service is
       end if;
 
       --  Create grant to the driver for our packet buffer
-      createGrant (
+      CuBit.Memory_Grants.Create_For_Process (
          grantee   => interfaces (ifIdx).driverPID,
          localAddr => interfaces (ifIdx).pktBuf,
          numPages  => PACKET_BUF_PAGES,
          readWrite => True,
-         grantId   => interfaces (ifIdx).pktGrant,
+         reference => interfaces (ifIdx).pktGrant,
          success   => ok);
 
       if not ok then
@@ -4552,10 +4603,10 @@ package body Netstack_Service is
       end if;
 
       debugPrint ("netstack: grant created, id=");
-      printDec (Unsigned_32 (interfaces (ifIdx).pktGrant));
+      printDec (Unsigned_32 (interfaces (ifIdx).pktGrant.slot));
       debugPrint ("" & LF);
 
-      --  Reply with grant ID and buffer size
+      --  Reply with the grant reference (the driver acquires it) and size
       declare
          replyMsg : constant Message :=
            (tag      => (label  => REPLY_OK,
@@ -4563,7 +4614,8 @@ package body Netstack_Service is
                          flags  => 0,
                          reserved  => 0),
             authorityTag => 0,
-            words    => [0 => interfaces (ifIdx).pktGrant,
+            words    => [0 => CuBit.Grant_References.Encode
+                                    (interfaces (ifIdx).pktGrant),
                          1 => Unsigned_64 (PACKET_BUF_SIZE),
                          others => 0]);
          ignore : Unsigned_64;
@@ -4572,7 +4624,7 @@ package body Netstack_Service is
       end;
 
       debugPrint ("netstack: attached to driver pid=");
-      printDec (Unsigned_32 (interfaces (ifIdx).driverPID));
+      printProcess (interfaces (ifIdx).driverPID);
       debugPrint ("" & LF);
    end handleAttach;
 
@@ -4780,7 +4832,7 @@ package body Netstack_Service is
 
    procedure Run is
       lastExpiry : Unsigned_64 := Unsigned_64'Last;
-      sender  : ProcessID;
+      sender  : Process_ID;
       msg     : Message;
       found   : Boolean;
    begin
@@ -4816,7 +4868,7 @@ package body Netstack_Service is
          (tag      => (label => OP_READY, length => 0,
                        flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => [others => 0]));
+          words    => [others => 0]), CuBit.Messages.Wait_Forever);
    end;
 
    debugPrint ("netstack: waiting for driver attach..." & LF);
@@ -4902,7 +4954,9 @@ package body Netstack_Service is
             drainRXRing;   --  arm the doorbell (and take anything that came)
             Poll_Service_Request (sender, msg, found);
             --  Queue requests that came meanwhile: the next pass takes them.
-            if not found and then not armQueues then
+            --  Channels whose kick never came: take them up, then look again
+            --  rather than sleep.
+            if not found and then not armQueues and then not serviceArmedChannels then
                receiveUntil (nextDeadline, sender, msg, found);
             end if;
          end if;
@@ -4928,7 +4982,7 @@ package body Netstack_Service is
                      replyError (sender);
                   else
                      Network_Grants.Install
-                       (networkGrants, msg.words (0), item,
+                       (networkGrants, From_Word (msg.words (0)), item,
                         Network_Channel_Handles.Maximum_Channels,
                         authorityTag, installed);
                      if installed then replyOKWord (sender, authorityTag);
@@ -4940,15 +4994,13 @@ package body Netstack_Service is
                --  Used to roll back a failed capability mint. Do not silently
                --  revoke live channels; general revocation needs full teardown.
                if msg.tag.length = 2 then
-                  Network_Grants.Release (networkGrants, msg.words (0), msg.words (1));
+                  Network_Grants.Release (networkGrants, From_Word (msg.words (0)), msg.words (1));
                   replyOKWord (sender, 0);
                else replyError (sender); end if;
 
             when Network_Authority.OP_RELEASE_OWNER =>
-               if msg.tag.length = 1 and then msg.words (0) /= 0 and then
-                 msg.words (0) <= Unsigned_64 (ProcessID'Last)
-               then
-                  releaseOwner (ProcessID (msg.words (0)));
+               if msg.tag.length = 1 and then Is_Process (From_Word (msg.words (0))) then
+                  releaseOwner (From_Word (msg.words (0)));
                   replyOKWord (sender, 0);
                else replyError (sender); end if;
 
@@ -5381,7 +5433,7 @@ package body Netstack_Service is
                   ok, returned : Boolean;
                begin
                   Channel_Arenas.Unregister
-                    (arenas, Unsigned_64 (sender), Channel_Arenas.Handle (msg.words (0)),
+                    (arenas, To_Word (sender), Channel_Arenas.Handle (msg.words (0)),
                      index, ok);
                   if ok then
                      CuBit.Memory_Grants.Return_Acquisition (arenaGrant (index), returned);

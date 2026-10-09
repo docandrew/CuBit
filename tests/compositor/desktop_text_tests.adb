@@ -3,6 +3,7 @@ with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Desktop_Compositor;
 with Compositor_Text;
+with Compositor_Pool;
 procedure Desktop_Text_Tests is
    package T renames Compositor_Text;
    procedure Reset with Import, Convention => C, External_Name => "glyph_mock_reset";
@@ -22,7 +23,7 @@ procedure Desktop_Text_Tests is
       Views : constant Unsigned_32 := Stat (4);
    begin
       for Poll in Boolean loop
-         Desktop_Compositor.Complete_Output (Target'Address, False, Poll, Result);
+         Desktop_Compositor.Complete_Output (Target'Address, Compositor_Pool.None, False, Poll, Result);
          pragma Assert (Result = (if Unsafe then Desktop_Compositor.Unsafe else Desktop_Compositor.Complete));
          pragma Assert (Stat (3) = Draws and Stat (4) = Views);
       end loop;

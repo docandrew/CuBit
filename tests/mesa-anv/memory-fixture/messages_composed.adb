@@ -38,7 +38,10 @@ package body CuBit.Messages is
          when others => raise Program_Error;
       end case;
    end Syscall;
-   function capCall (Slot : CapabilitySlot; Msg : in out Message) return MessageTag is
+   function capCall (Slot : CapabilitySlot; Msg : in out Message;
+                     Deadline : Unsigned_64) return MessageTag is
+      -- This synchronous transport fixture does not model kernel deadlines.
+      pragma Unreferenced (Deadline);
       Stamp : constant Unsigned_64 := (if Slot = 63 then 99 else 0);
       Result : Server.Words;
       Ticket : Server.Ticket;
@@ -62,7 +65,7 @@ package body CuBit.Messages is
       end if;
       Msg.words := MessageWords (Result);
       if Fail_Delivery then
-         Maps.Reject_Delivery (Table, Created);
+         Maps.Reject_Delivery (Object, Table, Created);
          return (0, 0, 0, 0);
       end if;
       return Msg.tag;

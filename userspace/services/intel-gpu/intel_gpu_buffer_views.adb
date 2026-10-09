@@ -1,6 +1,7 @@
 with System.Storage_Elements;
 with CuBit.Memory_Grants;
 with CuBit.Capability_Grants;
+with CuBit.Process_IDs;
 with Intel_GPU_Buffer_Reply;
 package body Intel_GPU_Buffer_Views is
    package Grants renames CuBit.Memory_Grants;
@@ -28,7 +29,9 @@ package body Intel_GPU_Buffer_Views is
       then
          return;
       end if;
-      if not CuBit.Capability_Grants.Endpoint_Matches (Recipient, Identity) then
+      if not CuBit.Capability_Grants.Endpoint_Matches
+        (Recipient, CuBit.Process_IDs.From_Word (Identity))
+      then
          return;
       end if;
       Attempted := True;

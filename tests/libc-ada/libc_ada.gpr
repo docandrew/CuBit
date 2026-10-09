@@ -3,6 +3,7 @@ project Libc_Ada is
    Runtime_Src := external ("LIBC_ADA_SRC", "../../userspace/runtime/gnat");
    for Source_Dirs use (".", Runtime_Src, "../../userspace/libc/ada");
    for Source_Files use ("cubit.ads", "cubit-kernel_abi.ads",
+      "cubit-process_ids.ads", "cubit-process_ids.adb",
                          "cubit-libc_abi.ads", "cubit-child_exits.ads",
                          "cubit-child_table.ads", "cubit-child_table.adb",
                          "cubit-libc_time.ads", "cubit-libc_time.adb",
@@ -17,6 +18,8 @@ project Libc_Ada is
                          "cubit-libc_dirty_map.ads", "cubit-libc_dirty_map.adb",
                          "cubit-libc_park_table.ads", "cubit-libc_park_table.adb",
                          "cubit-filesystem_queues.ads", "cubit-submission_queues.ads",
+                         "cubit-protocols.ads", "cubit-channel_contracts.ads",
+                         "cubit-channel_contracts.adb",
                          "cubit-submission_queues.adb", "cubit-slot_rings.ads", "cubit-slot_rings.adb",
                          "cubit-channel_rings.ads", "cubit-channel_rings.adb",
                          "cubit-path_names.ads", "cubit-path_names.adb",

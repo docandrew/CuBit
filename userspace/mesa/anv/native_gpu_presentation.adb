@@ -45,7 +45,7 @@ package body Native_GPU_Presentation is
       if not D.Valid_Layout (Layout) then return 7; end if;
       Msg := CuBit.Desktop_Messages.From_Wire
         (D.Encode_Attachment ((D.Live_Surface_Name (Surface), R.Decode (Child), Layout)));
-      Expected := M.capCall (M.CapabilitySlot (Desktop_Slot), Msg);
+      Expected := M.capCall (M.CapabilitySlot (Desktop_Slot), Msg, CuBit.Messages.Wait_Forever);
       if Expected /= Msg.tag then return 7; end if;
       Wire := CuBit.Desktop_Messages.To_Wire (Msg);
       -- Decode_Status's Invalid_Request fallback cannot distinguish malformed

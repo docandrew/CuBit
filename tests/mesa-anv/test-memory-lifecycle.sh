@@ -33,13 +33,21 @@ while i < len(args):
     i += 1
 out = pathlib.Path(tempfile.mkdtemp(prefix='memory-lifecycle.', dir=root / 'tests/mesa-anv/target'))
 objects = []
-for name, source in [('adapter', root / 'userspace/mesa/anv/anv_cubit_memory.c'),
-                     ('test', root / 'tests/mesa-anv' / sys.argv[3])]:
+sources = [('adapter', root / 'userspace/mesa/anv/anv_cubit_memory.c'),
+           ('test', root / 'tests/mesa-anv' / sys.argv[3])]
+if sys.argv[3] == 'mapping-drain-lifecycle-test.c':
+    sources.append(('mapping', root / 'userspace/mesa/anv/native_gpu_mapping.c'))
+for name, source in sources:
     obj = out / (name + '.o')
     subprocess.run(clean + ['-UNDEBUG', '-I' + str(root / 'userspace/mesa/anv'),
                             '-c', str(source), '-o', str(obj)], cwd=build, check=True)
     objects.append(str(obj))
-subprocess.run(['cc', '-Wl,--gc-sections', *objects, '-o', str(out / 'test')], check=True)
+link = ['cc', '-Wl,--gc-sections']
+if sys.argv[3] in ('memory-lifecycle-test.c', 'session-attach-test.c'):
+    # The allocation-failure fixture supplies __wrap_* hooks; without linker
+    # wrapping its OOM assertions exercise real allocations instead.
+    link += ['-Wl,--wrap=realloc', '-Wl,--wrap=calloc']
+subprocess.run(link + [*objects, '-o', str(out / 'test')], check=True)
 subprocess.run([str(out / 'test')], check=True)
 print('Hosted lifecycle evidence:', out)
 PY

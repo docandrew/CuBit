@@ -9,6 +9,7 @@ with CuBit.Audio_Playback;
 with Ada.Unchecked_Conversion;
 with System.Storage_Elements; use System.Storage_Elements;
 
+with CuBit.Memory_Grants;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.String;
 
@@ -32,13 +33,12 @@ package body CuBit.Audio is
    HDR_OVERRUNS     : constant := 16#18#;
 
    --  Grant region base (must match mixer)
-   GRANT_REGION_BASE : constant Unsigned_64 := 16#4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096;
 
    --  Local stream table. A static aggregate, so the table needs no
    --  elaboration code and the unit also links into libc (docs/c-removal.md).
    streamTable : array (StreamIndex) of StreamRecord :=
      (others => (active => False, streamId => 0, ringAddr => 0,
+                 ring => (slot => 0, generation => 1),
                  bufferSize => 0, hdrSize => 0, channels => 2));
 
    ---------------------------------------------------------------------------
@@ -106,24 +106,52 @@ package body CuBit.Audio is
                              Shift_Left (direction, 32),
                         others => 0));
 
-      msg.tag := capCall (CAP_SLOT_MIXER, msg);
+      msg.tag := capCall (CAP_SLOT_MIXER, msg, CuBit.Messages.Wait_Forever);
 
       if msg.tag.label /= REPLY_OK then
          return NULL_STREAM;
       end if;
 
       --  msg.words(0) = stream index (from mixer)
-      --  msg.words(1) = grant ID (for ring addr computation)
+      --  msg.words(1) = ring grant reference; the kernel checks the mixer
+      --                 owns it and says where it is mapped
       --  msg.words(2) = header size
       --  msg.words(3) = ring data size
-      streamTable (localIdx) :=
-        (active     => True,
-         streamId   => msg.words (0),
-         ringAddr   => GRANT_REGION_BASE +
-                       msg.words (1) * GRANT_SLOT_SIZE,
-         hdrSize    => Unsigned_32 (msg.words (2)),
-         bufferSize => Unsigned_32 (msg.words (3)),
-         channels   => channels);
+      if not CuBit.Grant_References.Valid_Wire (msg.words (1)) or else
+        msg.words (2) > Unsigned_64 (Unsigned_32'Last) or else
+        msg.words (3) > Unsigned_64 (Unsigned_32'Last)
+      then
+         return NULL_STREAM;
+      end if;
+      declare
+         ring   : constant CuBit.Grant_References.Reference :=
+           CuBit.Grant_References.Decode (msg.words (1));
+         mapped : System.Address;
+         ok     : Boolean;
+      begin
+         CuBit.Memory_Grants.Acquire_Via_Capability
+           (CAP_SLOT_MIXER, ring, 0, msg.words (2) + msg.words (3),
+            CuBit.Memory_Grants.Write_Access, mapped, ok);
+         if not ok then
+            --  Unusable: let the mixer close the stream it opened.
+            msg := (tag => (label  => OP_AUDIO_CLOSE,
+                            length => 1,
+                            flags  => 0,
+                            reserved  => 0),
+                    authorityTag => 0,
+                    words => (0 => msg.words (0), others => 0));
+            msg.tag := capCall (CAP_SLOT_MIXER, msg, CuBit.Messages.Wait_Forever);
+            return NULL_STREAM;
+         end if;
+         streamTable (localIdx) :=
+           (active     => True,
+            streamId   => msg.words (0),
+            ringAddr   => Unsigned_64 (To_Integer (mapped)),
+            ring       => ring,
+            hdrSize    => Unsigned_32 (msg.words (2)),
+            bufferSize => Unsigned_32 (msg.words (3)),
+            channels   => channels);
+      end;
 
       return (idx => localIdx, valid => True);
    end open;
@@ -434,7 +462,7 @@ package body CuBit.Audio is
                         1 => Unsigned_64 (volToU32 (vol)),
                         others => 0));
 
-      ignore := capCall (CAP_SLOT_MIXER, msg);
+      ignore := capCall (CAP_SLOT_MIXER, msg, CuBit.Messages.Wait_Forever);
    end setVolume;
 
    ---------------------------------------------------------------------------
@@ -445,6 +473,8 @@ package body CuBit.Audio is
       ignore : MessageTag;
       pragma Warnings (Off, ignore);
       s   : StreamRecord renames streamTable (stream.idx);
+      returned : Boolean;
+      pragma Warnings (Off, returned);
    begin
       if not stream.valid or not s.active then
          return;
@@ -457,7 +487,9 @@ package body CuBit.Audio is
               authorityTag => 0,
               words => (0 => s.streamId, others => 0));
 
-      ignore := capCall (CAP_SLOT_MIXER, msg);
+      --  Give the ring back first, so the mixer's revocation completes.
+      CuBit.Memory_Grants.Return_Acquisition (s.ring, returned);
+      ignore := capCall (CAP_SLOT_MIXER, msg, CuBit.Messages.Wait_Forever);
 
       s.active := False;
       stream.valid := False;
@@ -506,7 +538,7 @@ package body CuBit.Audio is
       Msg := (tag => (label => OP_AUDIO_PLAYBACK, length => 1, flags => 0, reserved => 0),
               authorityTag => 0,
               words => (0 => streamTable (Stream.idx).streamId, others => 0));
-      Msg.tag := capCall (CAP_SLOT_MIXER, Msg);
+      Msg.tag := capCall (CAP_SLOT_MIXER, Msg, CuBit.Messages.Wait_Forever);
       if Msg.tag.label /= REPLY_OK or else Msg.tag.length /= 4 or else
         Msg.tag.flags /= 0 or else Msg.tag.reserved /= 0 or else
         not CuBit.Audio_Playback.Valid

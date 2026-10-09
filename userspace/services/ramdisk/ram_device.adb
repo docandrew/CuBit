@@ -27,7 +27,7 @@ package body Ram_Device is
    end Initialize;
 
    procedure Handle
-     (Sender : ProcessID; Request : Message; Response : out Message)
+     (Sender : Process_ID; Request : Message; Response : out Message)
    is
       LBA : constant Unsigned_64 := Request.words (0);
       Count : constant Unsigned_64 := Request.words (2);

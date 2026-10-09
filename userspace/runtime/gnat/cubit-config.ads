@@ -18,6 +18,7 @@
 ------------------------------------------------------------------------------
 with Interfaces;
 with System;
+with CuBit.Process_IDs;
 
 package CuBit.Config is
 
@@ -73,7 +74,7 @@ package CuBit.Config is
    type SchemeInfo is record
       driverID : Interfaces.Unsigned_64;
       capSlot  : Interfaces.Unsigned_64;
-      pid      : Interfaces.Unsigned_64;
+      pid      : CuBit.Process_IDs.Process_ID;
       found    : Boolean;
    end record;
 

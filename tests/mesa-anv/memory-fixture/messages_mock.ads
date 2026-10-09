@@ -1,5 +1,12 @@
 with Interfaces; use Interfaces;
+with CuBit.Process_IDs;
 package CuBit.Messages is
+   function From_Word (Word : Unsigned_64) return CuBit.Process_IDs.Process_ID
+     renames CuBit.Process_IDs.From_Word;
+   function To_Word (ID : CuBit.Process_IDs.Process_ID) return Unsigned_64
+     renames CuBit.Process_IDs.To_Word;
+   function Is_Process (ID : CuBit.Process_IDs.Process_ID) return Boolean
+     renames CuBit.Process_IDs.Is_Process;
    subtype CapabilitySlot is Unsigned_64 range 0 .. 63;
    SYSCALL_GETPID : constant := 1;
    SYSCALL_INSPECT_CAPABILITY : constant := 2;

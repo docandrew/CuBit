@@ -1,0 +1,18 @@
+with Interfaces; use Interfaces;
+package CuBit.Messages is
+ subtype CapabilitySlot is Unsigned_64 range 0 .. 63;
+ type MessageTag is record
+  label : Unsigned_32 := 0;
+  length, flags : Unsigned_8 := 0;
+  reserved : Unsigned_16 := 0;
+ end record;
+ type MessageWords is array (0 .. 3) of Unsigned_64;
+ type Message is record
+  tag : MessageTag;
+  authorityTag : Unsigned_64 := 0;
+  words : MessageWords := (others => 0);
+ end record;
+ NULL_MESSAGE : constant Message := (others => <>);
+ Wait_Forever : constant Unsigned_64 := Unsigned_64'Last;
+ function capCall (Slot : CapabilitySlot; Msg : in out Message; Deadline : Unsigned_64) return MessageTag;
+end CuBit.Messages;

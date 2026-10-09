@@ -9,7 +9,7 @@ procedure Main is
    REPLY_OK     : constant Unsigned_32 := 16#F000#;
    REPLY_ERROR  : constant Unsigned_32 := 16#F001#;
 
-   From   : ProcessID;
+   From   : Process_ID;
    Request : Message;
    Response : Message;
    Ignore : Unsigned_64;
@@ -20,9 +20,9 @@ procedure Main is
    RUST_REPORT : constant Unsigned_32 := 16#0C11#;
    RUST_ALLOCATION_REPORT : constant Unsigned_32 := 16#0C12#;
    RUST_HEAP_REPORT : constant Unsigned_32 := 16#0C13#;
-   Rust_Peers : array (1 .. 2) of ProcessID := [others => NO_PROCESS];
+   Rust_Peers : array (1 .. 2) of Process_ID := [others => No_Process];
    Rust_Allocation_Passed : array (1 .. 2) of Boolean := [others => False];
-   Rust_Allowed, Rust_Denied : ProcessID := NO_PROCESS;
+   Rust_Allowed, Rust_Denied : Process_ID := No_Process;
    Rust_Reply_Slot : constant CapabilitySlot := 62;
    Defer_Reply : Boolean := False;
    Hello : constant MessageWords :=
@@ -49,10 +49,10 @@ begin
            (label => REPLY_OK, length => 1, flags => 0, reserved => 0);
          Response.words (0) := Request.words (0) + 1;
       elsif Request.tag = (RUST_ECHO, 4, 0, 0) and then
-        Request.words = Hello and then From /= NO_PROCESS
+        Request.words = Hello and then From /= No_Process
       then
          for Peer of Rust_Peers loop
-            if Peer = NO_PROCESS or else Peer = From then
+            if Peer = No_Process or else Peer = From then
                Peer := From;
                Response := Request;
                Response.tag.label := REPLY_OK;
@@ -61,7 +61,7 @@ begin
          end loop;
          debugPrint ("rust-probe: Hello from Rust! (IPC)" & LF);
       elsif Request.tag = (RUST_ALLOCATION_REPORT, 1, 0, 0) and then
-        Request.words = [1, 0, 0, 0] and then From /= NO_PROCESS
+        Request.words = [1, 0, 0, 0] and then From /= No_Process
       then
          Response.tag := (REPLY_ERROR, 0, 0, 0);
          for P in Rust_Peers'Range loop
@@ -73,26 +73,26 @@ begin
             end if;
          end loop;
       elsif Request.tag = (RUST_HEAP_REPORT, 1, 0, 0) and then
-        Request.words = [1, 0, 0, 0] and then From /= NO_PROCESS and then
-        From = Rust_Allowed and then Rust_Denied /= NO_PROCESS
+        Request.words = [1, 0, 0, 0] and then From /= No_Process and then
+        From = Rust_Allowed and then Rust_Denied /= No_Process
       then
          Response.tag := (REPLY_OK, 0, 0, 0);
          debugPrint ("TEST: PASS rust-heap-rollback" & LF);
       elsif Request.tag = (RUST_REPORT, 2, 0, 0) and then
         Request.words (2) = 0 and then Request.words (3) = 0 and then
-        From /= NO_PROCESS and then
+        From /= No_Process and then
         ((From = Rust_Peers (1) and then Rust_Allocation_Passed (1)) or else
          (From = Rust_Peers (2) and then Rust_Allocation_Passed (2)) or else
          (Request.words (0) = 0 and then
           (From = Rust_Peers (1) or else From = Rust_Peers (2))))
       then
-         if Request.words (0) = 1 and then Rust_Allowed = NO_PROCESS and then
+         if Request.words (0) = 1 and then Rust_Allowed = No_Process and then
            From /= Rust_Denied
          then
             Rust_Allowed := From;
             debugPrint ("TEST: PASS rust-clock-authorized" & LF);
          elsif Request.words (0) = 2 and then Request.words (1) = 0 and then
-           Rust_Denied = NO_PROCESS and then From /= Rust_Allowed
+           Rust_Denied = No_Process and then From /= Rust_Allowed
          then
             Rust_Denied := From;
             debugPrint ("TEST: PASS rust-clock-denied" & LF);
@@ -102,7 +102,7 @@ begin
                         Unsigned_64'Image (Request.words (1)) & LF);
          end if;
          Response.tag := (REPLY_OK, 0, 0, 0);
-         if Rust_Allowed /= NO_PROCESS and then Rust_Denied /= NO_PROCESS then
+         if Rust_Allowed /= No_Process and then Rust_Denied /= No_Process then
             Ignore := replyCap (Rust_Reply_Slot, Response);
             debugPrint ("TEST: PASS rust-native" & LF);
          elsif Request.words (0) in 1 | 2 then

@@ -50,7 +50,7 @@ compile_ada() {
 for unit in "$here"/cubit-sameboy_*.adb; do
     compile_ada -gnatwa -gnatys "$unit"
 done
-for unit in audio messages memory_grants desktop_protocol desktop_messages; do
+for unit in audio messages process_ids memory_grants desktop_protocol desktop_messages; do
     compile_ada "$runtime/cubit-$unit.adb"
 done
 

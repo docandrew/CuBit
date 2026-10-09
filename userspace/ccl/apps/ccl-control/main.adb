@@ -104,7 +104,7 @@ begin
    debugPrint ("ccl-control: DEVELOPMENT PLAINTEXT; own bindings only" & ASCII.LF);
    CuBit.Logging.Announce ("ccl-control: started (development plaintext listener)", Success);
    Host.Process_Id := syscall (SYSCALL_GETPID);
-   Host.Clock_Process := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_CLOCK);
+   Host.Clock_Process := To_Word (Registered_Driver (DRIVER_CLOCK));
    Control_Host.Initialize (Success);
    if not Success then
       debugPrint ("ccl-control: host binding initialization failed" & ASCII.LF); return;

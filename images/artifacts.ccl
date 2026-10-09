@@ -50,6 +50,7 @@
   (artifact "system-tls-test" repository "tests/tls/system-tls-test.ccl")
   (artifact "system-config-storage-test" repository "tests/config-turso/native/system-storage-test.ccl")
   (artifact "init-usb-live" repository "tests/hardware/init-usb-live.ccl")
+  (artifact "init-usb-live-gpu" repository "tests/hardware/init-usb-live-gpu.ccl")
   (artifact "init-render-session" repository "tests/hardware/init-render-session.ccl")
   (artifact "init-mesa-device" repository "tests/hardware/init-mesa-device.ccl")
   (artifact "init-mesa-triangle" repository "tests/hardware/init-mesa-triangle.ccl")

@@ -1,3 +1,4 @@
+#include "vulkan_pipeline_diagnostic.h"
 #include "vulkan_affine.h"
 #include "vulkan-affine-shaders.h"
 #include <stddef.h>
@@ -22,40 +23,40 @@ void cubit_vulkan_affine_destroy(struct cubit_vulkan_affine_engine *e)
 VkResult cubit_vulkan_affine_create(struct cubit_vulkan_affine_engine *e,
     VkDevice device,PFN_vkGetDeviceProcAddr proc,VkRenderPass pass)
 {
-    if(!e)return VK_ERROR_INITIALIZATION_FAILED;
+    if(!e){pipeline_failure(100,0,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
     *e=(struct cubit_vulkan_affine_engine){.device=device};
-    if(!device || !proc || !pass)return VK_ERROR_INITIALIZATION_FAILED;
-#define LOAD(field,name) e->field=(PFN_vk##name)proc(device,"vk" #name); if(!e->field)return VK_ERROR_INITIALIZATION_FAILED
-    LOAD(destroy_descriptors,DestroyDescriptorSetLayout); LOAD(destroy_layout,DestroyPipelineLayout);
-    LOAD(destroy_pipeline,DestroyPipeline); LOAD(destroy_sampler,DestroySampler);
-    LOAD(bind_pipeline,CmdBindPipeline); LOAD(bind_descriptors,CmdBindDescriptorSets);
-    LOAD(viewport,CmdSetViewport); LOAD(scissor,CmdSetScissor); LOAD(constants,CmdPushConstants); LOAD(draw,CmdDraw);
+    if(!device || !proc || !pass){pipeline_failure(100,0,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
+#define LOAD(index,field,name) e->field=(PFN_vk##name)proc(device,"vk" #name); if(!e->field){pipeline_failure(110,index,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
+    LOAD(1,destroy_descriptors,DestroyDescriptorSetLayout); LOAD(2,destroy_layout,DestroyPipelineLayout);
+    LOAD(3,destroy_pipeline,DestroyPipeline); LOAD(4,destroy_sampler,DestroySampler);
+    LOAD(5,bind_pipeline,CmdBindPipeline); LOAD(6,bind_descriptors,CmdBindDescriptorSets);
+    LOAD(7,viewport,CmdSetViewport); LOAD(8,scissor,CmdSetScissor); LOAD(9,constants,CmdPushConstants); LOAD(10,draw,CmdDraw);
 #undef LOAD
-#define LOAD(name) PFN_vk##name name=(PFN_vk##name)proc(device,"vk" #name); if(!name)return VK_ERROR_INITIALIZATION_FAILED
-    LOAD(CreateDescriptorSetLayout); LOAD(CreatePipelineLayout); LOAD(CreateSampler);
-    LOAD(CreateShaderModule); LOAD(DestroyShaderModule); LOAD(CreateGraphicsPipelines);
+#define LOAD(index,name) PFN_vk##name name=(PFN_vk##name)proc(device,"vk" #name); if(!name){pipeline_failure(110,index,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
+    LOAD(11,CreateDescriptorSetLayout); LOAD(12,CreatePipelineLayout); LOAD(13,CreateSampler);
+    LOAD(14,CreateShaderModule); LOAD(15,DestroyShaderModule); LOAD(16,CreateGraphicsPipelines);
 #undef LOAD
     VkResult result; VkShaderModule vertex=VK_NULL_HANDLE,fragment=VK_NULL_HANDLE;
-#define TRY(expr) do { result=(expr); if(result!=VK_SUCCESS)goto done; } while(0)
+#define TRY(stage,index,expr) do { result=(expr); if(result!=VK_SUCCESS){pipeline_failure(stage,index,result);goto done;} } while(0)
     const VkDescriptorSetLayoutBinding binding={.binding=0,.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
         .descriptorCount=1,.stageFlags=VK_SHADER_STAGE_FRAGMENT_BIT};
     const VkDescriptorSetLayoutCreateInfo descriptor_info={.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
         .bindingCount=1,.pBindings=&binding};
-    TRY(CreateDescriptorSetLayout(device,&descriptor_info,NULL,&e->descriptors));
+    TRY(101,0,CreateDescriptorSetLayout(device,&descriptor_info,NULL,&e->descriptors));
     const VkPushConstantRange range={VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(struct push_data)};
     const VkPipelineLayoutCreateInfo layout_info={.sType=VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount=1,.pSetLayouts=&e->descriptors,.pushConstantRangeCount=1,.pPushConstantRanges=&range};
-    TRY(CreatePipelineLayout(device,&layout_info,NULL,&e->layout));
+    TRY(102,0,CreatePipelineLayout(device,&layout_info,NULL,&e->layout));
     const VkSamplerCreateInfo sampler_info={.sType=VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .magFilter=VK_FILTER_NEAREST,.minFilter=VK_FILTER_NEAREST,.mipmapMode=VK_SAMPLER_MIPMAP_MODE_NEAREST,
         .addressModeU=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,.addressModeV=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
         .addressModeW=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,.minLod=0,.maxLod=0};
-    TRY(CreateSampler(device,&sampler_info,NULL,&e->sampler));
+    TRY(103,0,CreateSampler(device,&sampler_info,NULL,&e->sampler));
     const VkShaderModuleCreateInfo vi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize=sizeof(vulkan_affine_vertex),.pCode=vulkan_affine_vertex};
     const VkShaderModuleCreateInfo fi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize=sizeof(vulkan_affine_fragment),.pCode=vulkan_affine_fragment};
-    TRY(CreateShaderModule(device,&vi,NULL,&vertex)); TRY(CreateShaderModule(device,&fi,NULL,&fragment));
+    TRY(104,0,CreateShaderModule(device,&vi,NULL,&vertex)); TRY(105,0,CreateShaderModule(device,&fi,NULL,&fragment));
     const VkPipelineShaderStageCreateInfo stages[2]={
         {.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_VERTEX_BIT,.module=vertex,.pName="main"},
         {.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_FRAGMENT_BIT,.module=fragment,.pName="main"}};
@@ -77,7 +78,7 @@ VkResult cubit_vulkan_affine_create(struct cubit_vulkan_affine_engine *e,
         const VkGraphicsPipelineCreateInfo graphics={.sType=VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,.stageCount=2,.pStages=stages,
             .pVertexInputState=&input,.pInputAssemblyState=&assembly,.pViewportState=&view,.pRasterizationState=&raster,.pMultisampleState=&samples,
             .pColorBlendState=&blend,.pDynamicState=&dynamic,.layout=e->layout,.renderPass=pass,.subpass=0};
-        TRY(CreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&graphics,NULL,&e->pipeline[over]));
+        TRY(106,over,CreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&graphics,NULL,&e->pipeline[over]));
     }
     result=VK_SUCCESS;
 done:

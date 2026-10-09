@@ -1,5 +1,6 @@
 with Interfaces; use Interfaces;
 with Intel_GPU_Buffer_Reply;
+with Intel_GPU_Name_Index;
 with System;
 package Intel_GPU_Buffer_Handles with SPARK_Mode is
    -- Serialized, driver-internal registry for one device/endpoint lifetime.
@@ -97,6 +98,16 @@ package Intel_GPU_Buffer_Handles with SPARK_Mode is
    procedure Close_Session (Object : in out Registry; Session : Session_ID)
      with Post => Count (Object) = Count (Object)'Old and
        Session_Closed (Object, Session);
+   -- Trusted serialized teardown, AFTER admission is closed externally.
+   -- Capture Count as Last once, start Cursor=0, retain both through completion.
+   -- No new/replacement names for this session may be issued during the sweep.
+   -- Visits at most32 records per call; unvisited names still have Open set.
+   -- Other-session growth beyond Last is not part of this snapshot. Invalid
+   -- bounds return Complete=False without mutation. Completion closes names,
+   -- NOT GPU work, backing reservations, retained readers or grants.
+   procedure Close_Session_Step
+     (Object : in out Registry; Session : Session_ID; Last : Natural;
+      Cursor : in out Natural; Complete : out Boolean);
    procedure Quarantine (Object : in out Registry);
    -- Serialized preflight BEFORE asking the supervisor to recycle a slice.
    -- Only observes internal pins; caller still establishes GPU/TLB/grant
@@ -129,8 +140,8 @@ package Intel_GPU_Buffer_Handles with SPARK_Mode is
    -- Close only retires the name; it does NOT free/unmap/reuse storage or
    -- cancel GPU work. IDs never repeat; retained ranges are reusable only via
    -- the trusted Replace_Retired boundary. Growable metadata alone is not
-   -- production BO reclamation or session admission. Lookup/range validation
-   -- still scans live records and needs indexed/budgeted work before large use.
+   -- production BO reclamation or session admission. Name lookup is indexed;
+   -- backing-range admission still scans live records and needs bounded work.
 private
    subtype Slot is Positive;
    type Item is record
@@ -141,6 +152,8 @@ private
       Backing : Intel_GPU_Buffer_Reply.Backing;
       Retained : Natural := 0;
       Write_Holds : Natural := 0;
+      -- Independent radix-node payload, not necessarily this record's name.
+      Name_Node : Intel_GPU_Name_Index.Node := Intel_GPU_Name_Index.Empty;
    end record;
    type Retained_Reference is limited record
       Active : Boolean := False;
@@ -158,6 +171,7 @@ private
       Available : Natural := Initial_Capacity;
       Storage_Base, Storage_Bytes : Unsigned_64 := 0;
       Last_Issued : Handle := No_Handle;
+      Names : Intel_GPU_Name_Index.Index;
       -- Exact sum of per-record write holds. Zero avoids a whole-registry
       -- scan on ordinary submissions; nonzero still requires session lookup.
       Total_Write_Holds : Unsigned_64 := 0;

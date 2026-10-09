@@ -1,14 +1,13 @@
 with Interfaces;
-with CuBit.Messages;
-with CuBit.Logging;
+with Desktop_Log_IO;
 with CuBit.Log_Records;
 with CuBit.Text_To_Log;
-package body Desktop_Logs is
+package body Desktop_Logs with SPARK_Mode,
+  Refined_State => (State => (Framer, Lost, Reported)) is
    use Interfaces;
    package L renames CuBit.Log_Records;
    package T renames CuBit.Text_To_Log;
    use type T.Step_Kind;
-   Writer : CuBit.Logging.Publisher;
    Framer : T.Adapter;
    Lost, Reported : Unsigned_64 := 0;
    procedure Drop is
@@ -18,13 +17,13 @@ package body Desktop_Logs is
    procedure Publish (Value : L.Log_Record) is
       Accepted : Boolean;
    begin
-      CuBit.Logging.Emit (Writer, Value, Accepted);
+      Desktop_Log_IO.Emit (Value, Accepted);
       if not Accepted then Drop; end if;
    end Publish;
    procedure Write (Text : String) is
       Step : T.Step;
    begin
-      CuBit.Messages.debugPrint (Text);
+      Desktop_Log_IO.Echo (Text);
       for C of Text loop
          T.Feed (Framer, C, (Clock => L.Unspecified), Step);
          case T.Kind (Step) is

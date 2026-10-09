@@ -1,0 +1,11 @@
+# The USB live startup with GPU rendering approved for Desktop: the same
+# services, built from the tree, so a hardware boot tries Vulkan startup and
+# reports where it stops (DESKTOP-VULKAN lines in the boot viewer).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "config-storage.svc" (priority 5) (role config-storage))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4) (render approve-declared))
+  (start "boot-logs.app" (priority 4))
+)

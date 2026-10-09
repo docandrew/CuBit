@@ -27,8 +27,8 @@ package CuBit.Metric_Protocol with Pure, SPARK_Mode is
      ((Tag and Family_Mask) = Observer_Tag_Base and then
       (Tag and Issuance_Mask) /= 0);
 
-   type Operation is (Publish_Batch, Query_Summaries);
-   for Operation use (Publish_Batch => 16#0D00#, Query_Summaries => 16#0D01#);
+   type Operation is (Publish_Batch, Query_Summaries, Query_Raw);
+   for Operation use (Publish_Batch => 16#0D00#, Query_Summaries => 16#0D01#, Query_Raw => 16#0D02#);
 
    type Status is (OK, Denied, Invalid_Request, Exhausted, Unavailable);
    for Status use
@@ -48,7 +48,23 @@ package CuBit.Metric_Protocol with Pure, SPARK_Mode is
    function May_Invoke (Tag : Unsigned_64; Op : Operation) return Boolean is
      (case Op is
          when Publish_Batch => Is_Publisher (Tag),
-         when Query_Summaries => Is_Observer (Tag));
+         when Query_Summaries | Query_Raw => Is_Observer (Tag));
+
+   --  Raw query is observer-only. Same grant layout as Query_Summaries:
+   --  request [next desired sequence, slot, generation, 4096]. Cursor starts1.
+   --  reply [rows, next sequence, overwritten gap, terminal history drops].
+   --  Cursor lifetime is tied to the service endpoint incarnation; reacquiring
+   --  an endpoint requires a fresh cursor. Never merge histories across restart.
+   --  Rows carry kernel-authenticated publisher identity, not caller payload IDs.
+   Raw_Row_Words : constant := 16;
+   Raw_Rows_Per_Page : constant := 32;
+   subtype Raw_Word_Index is Natural range 0 .. Raw_Row_Words - 1;
+   type Raw_Row is array (Raw_Word_Index) of Unsigned_64;
+   subtype Raw_Row_Count is Natural range 0 .. Raw_Rows_Per_Page;
+   subtype Raw_Row_Index is Raw_Row_Count range 0 .. Raw_Rows_Per_Page - 1;
+   type Raw_Page is array (Raw_Row_Index) of Raw_Row;
+   --  words0..5: sequence, PID, publisher tag, batch, producer drops, batch gaps.
+   --  words6..7 reserved zero; words8..15 exact existing metric slot encoding.
 
    --  Summary rows: 32 words (256 bytes); 16 rows fill one 4 KiB page.
    Row_Words : constant := 32;

@@ -1,7 +1,7 @@
 with Compositor_Upload_Copy;
 with Compositor_Upload;
 with System;
-package body Desktop_Image_Source is
+package body Desktop_Image_Source with SPARK_Mode is
    use type D.Source_Result, D.Poll_Result, A.Ticket, V.Source_Ticket,
      V.Source_Slot, Interfaces.Unsigned_64, Compositor_Formats.Image,
      Compositor_Formats.Word, System.Address;
@@ -10,7 +10,10 @@ package body Desktop_Image_Source is
       Accepted := S.Status = Closed and then S.Lease = A.No_Ticket and then S.Source = V.No_Source;
       if Accepted then S.Status := Fresh; end if;
    end Rearm;
-   procedure Advance (S : in out State; Result : out Outcome) is
+   procedure Advance (S : in out State; Result : out Outcome)
+     with Pre => Valid (S) and D.Valid and S.Status = Ready_To_Upload,
+       Post => Valid (S) and D.Valid
+   is
       Reply : D.Source_Result;
       Write : D.Write_Ticket;
       Plan : Compositor_Upload.Plan;

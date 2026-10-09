@@ -40,6 +40,20 @@ is
     -- records a freeFrame deferred until the final pin is returned.
     pinStateBase    : System.Address := System.Null_Address;
     frameOwnerBase  : System.Address := System.Null_Address;
+    -- Frame pfn's entry in the owner table (Buddy_Metadata.Frame_Owners).
+    function ownerAddress (pfn : Unsigned_64) return System.Address is
+      (frameOwnerBase + Storage_Offset (pfn) * Buddy_Metadata.Owner_Bytes)
+      with Inline;
+    -- Five 9-bit levels cover 45 PFN bits (more than the physical address
+    -- geometry). Only the root is static; descendants are allocated on demand.
+    -- Nodes never move or disappear, so a prepared slot survives lock drops.
+    type Charge_Node is array (Natural range 0 .. 511) of Unsigned_64;
+    chargeRoot : aliased Charge_Node := (others => 0);
+    chargeRefund : Charge_Refund_Handler := null;
+    -- A dense leaf table costs about 1/512 of represented RAM; leave room for
+    -- directory levels while bounding adversarial sparse growth separately.
+    Charge_Metadata_Share_Divisor : constant Unsigned_64 := 256;
+    chargeMetadataPages : Unsigned_64 := 0;
     maxPinPFN       : Unsigned_64 := 0;
     blockStateBase : System.Address := System.Null_Address;
 
@@ -860,9 +874,203 @@ is
         addToFreeList (curOrd, To_Address(freeAddr));
     end freeLocked;
 
+    procedure installChargeRefundHandler
+      (Handler : not null Charge_Refund_Handler; Success : out Boolean)
+      with SPARK_Mode => Off
+    is
+    begin
+        Spinlocks.enterCriticalSection (lock);
+        Success := chargeRefund = null;
+        if Success then
+            chargeRefund := Handler;
+        end if;
+        Spinlocks.exitCriticalSection (lock);
+    end installChargeRefundHandler;
+
+    -- Read only under buddy lock. Missing nodes mean no charge.
+    function chargeSlot (pfn : Unsigned_64) return System.Address
+      with SPARK_Mode => Off
+    is
+        node : System.Address := chargeRoot'Address;
+    begin
+        for level in reverse 1 .. 4 loop
+            declare
+                entries : Charge_Node with Import, Address => node;
+                child : constant Unsigned_64 := entries
+                  (Natural (Shift_Right (pfn, level * 9) and 511));
+            begin
+                if child = 0 then
+                    return System.Null_Address;
+                end if;
+                node := To_Address (Integer_Address (child));
+            end;
+        end loop;
+        return node + Storage_Offset ((pfn and 511) * 8);
+    end chargeSlot;
+
+    function chargeMetadataLimit return Unsigned_64 with SPARK_Mode => Off is
+    begin
+        return Unsigned_64 (totalManagedBytes) /
+          Unsigned_64 (Virtmem.FRAME_SIZE) / Charge_Metadata_Share_Divisor;
+    end chargeMetadataLimit;
+
+    procedure chargeMetadataUsage (Pages, Limit : out Unsigned_64)
+      with SPARK_Mode => Off is
+    begin
+        Spinlocks.enterCriticalSection (lock);
+        Pages := chargeMetadataPages;
+        Limit := chargeMetadataLimit;
+        Spinlocks.exitCriticalSection (lock);
+    end chargeMetadataUsage;
+
+    -- Caller must keep the allocation alive and unpublished. Allocate at
+    -- most four pages, never while holding buddy lock. Concurrent publishers
+    -- converge on the same node; losing candidates are returned immediately.
+    function prepareChargeSlot (pfn : Unsigned_64) return System.Address
+      with SPARK_Mode => Off
+    is
+        node : System.Address := chargeRoot'Address;
+        candidate : System.Address;
+        ignore : System.Address;
+    begin
+        for level in reverse 1 .. 4 loop
+            declare
+                entries : Charge_Node with Import, Address => node;
+                index : constant Natural := Natural
+                  (Shift_Right (pfn, level * 9) and 511);
+                child : Unsigned_64;
+            begin
+                Spinlocks.enterCriticalSection (lock);
+                child := entries (index);
+                if child = 0 then
+                    if chargeMetadataPages >= chargeMetadataLimit then
+                        Spinlocks.exitCriticalSection (lock);
+                        return System.Null_Address;
+                    end if;
+                    chargeMetadataPages := chargeMetadataPages + 1;
+                end if;
+                Spinlocks.exitCriticalSection (lock);
+                if child = 0 then
+                    alloc (0, candidate);
+                    if candidate = NO_BLOCK_AVAILABLE then
+                        Spinlocks.enterCriticalSection (lock);
+                        chargeMetadataPages := chargeMetadataPages - 1;
+                        Spinlocks.exitCriticalSection (lock);
+                        return System.Null_Address;
+                    end if;
+                    ignore := Util.memset (candidate, 0, 4096);
+                    Spinlocks.enterCriticalSection (lock);
+                    if entries (index) = 0 then
+                        entries (index) := Unsigned_64 (To_Integer (candidate));
+                        candidate := System.Null_Address;
+                    end if;
+                    child := entries (index);
+                    Spinlocks.exitCriticalSection (lock);
+                    if candidate /= System.Null_Address then
+                        free (0, candidate);
+                        Spinlocks.enterCriticalSection (lock);
+                        chargeMetadataPages := chargeMetadataPages - 1;
+                        Spinlocks.exitCriticalSection (lock);
+                    end if;
+                end if;
+                node := To_Address (Integer_Address (child));
+            end;
+        end loop;
+        return node + Storage_Offset ((pfn and 511) * 8);
+    end prepareChargeSlot;
+
+    procedure bindCharge
+      (addr : Virtmem.PhysAddress; Identity : Unsigned_64;
+       User_Owned : Boolean; Success : out Boolean)
+      with SPARK_Mode => Off
+    is
+        pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
+        slot : System.Address;
+    begin
+        Success := False;
+        if Identity = 0 or else frameOwnerBase = System.Null_Address or else
+          pfn > maxPinPFN or else addr mod Virtmem.FRAME_SIZE /= 0
+        then
+            return;
+        end if;
+        Spinlocks.enterCriticalSection (lock);
+        declare
+            owner : Frame_Owner with Import,
+              Address => ownerAddress (pfn);
+            pins : Unsigned_8 with Import,
+              Address => pinStateBase + Storage_Offset (pfn);
+        begin
+            Success := chargeRefund /= null and then
+              ((owner /= 0) = User_Owned) and then
+              pins = 0 and then containsAllocatedFrame (addr);
+        end;
+        Spinlocks.exitCriticalSection (lock);
+        if not Success then
+            return;
+        end if;
+        Success := False;
+        slot := prepareChargeSlot (pfn);
+        if slot = System.Null_Address then
+            return;
+        end if;
+        Spinlocks.enterCriticalSection (lock);
+        declare
+            charge : Unsigned_64 with Import,
+              Address => slot;
+            owner : Frame_Owner with Import,
+              Address => ownerAddress (pfn);
+            pins : Unsigned_8 with Import,
+              Address => pinStateBase + Storage_Offset (pfn);
+        begin
+            if chargeRefund /= null and then charge = 0 and then
+              ((owner /= 0) = User_Owned) and then pins = 0 and then containsAllocatedFrame (addr)
+            then
+                charge := Identity;
+                Success := True;
+            end if;
+        end;
+        Spinlocks.exitCriticalSection (lock);
+    end bindCharge;
+
+    procedure bindFrameCharge
+      (addr : Virtmem.PhysAddress; Identity : Unsigned_64; Success : out Boolean)
+      with SPARK_Mode => Off is
+    begin
+        bindCharge (addr, Identity, True, Success);
+    end bindFrameCharge;
+
+    procedure bindKernelFrameCharge
+      (addr : Virtmem.PhysAddress; Identity : Unsigned_64; Success : out Boolean)
+      with SPARK_Mode => Off is
+    begin
+        bindCharge (addr, Identity, False, Success);
+    end bindKernelFrameCharge;
+
+    -- Caller holds the buddy lock and has admitted actual reclamation.
+    -- Detach before publishing the free block, so immediate reuse cannot
+    -- change the identity reported by the subsequent post-unlock callback.
+    function detachCharge (pfn : Unsigned_64) return Unsigned_64
+      with SPARK_Mode => Off
+    is
+        slot : constant System.Address := chargeSlot (pfn);
+    begin
+        if slot = System.Null_Address then
+            return 0;
+        end if;
+        declare
+            charge : Unsigned_64 with Import, Address => slot;
+            result : constant Unsigned_64 := charge;
+        begin
+            charge := 0;
+            return result;
+        end;
+    end detachCharge;
+
     procedure free (ord : in Order; addr : in System.Address) with
         SPARK_Mode => Off  -- lock calls change Global contract
     is
+        refundIdentity : Unsigned_64 := 0;
+        refundPages : Unsigned_64 := 0;
     begin
         if ord = 0 then
             -- Use the same pin-aware lifetime path for both public free APIs.
@@ -884,19 +1092,50 @@ is
             type Bytes is array (Natural range <>) of Unsigned_8;
             pins : Bytes (0 .. 2 ** Natural (ord) - 1) with Import,
               Address => pinStateBase + pfn;
-            owners : Bytes (pins'Range) with Import,
-              Address => frameOwnerBase + pfn;
+            type Owner_Array is array (Natural range <>) of Frame_Owner;
+            owners : Owner_Array (pins'Range) with Import,
+              Address => ownerAddress (Unsigned_64 (pfn));
         begin
             for i in pins'Range loop
                 if pins (i) /= 0 or else owners (i) /= 0 then
                     raise AllocatorException with "Free of owned or pinned buddy block";
                 end if;
+                declare
+                    slot : constant System.Address := chargeSlot (Unsigned_64 (pfn) + Unsigned_64 (i));
+                    charge : Unsigned_64 := 0;
+                begin
+                    if slot /= System.Null_Address then
+                        declare
+                            value : Unsigned_64 with Import, Address => slot;
+                        begin
+                            charge := value;
+                        end;
+                    end if;
+                    if charge /= 0 then
+                        if refundIdentity /= 0 and then refundIdentity /= charge then
+                            raise AllocatorException with "Mixed buddy block charge identities";
+                        end if;
+                        refundIdentity := charge;
+                        refundPages := refundPages + 1;
+                    end if;
+                end;
+            end loop;
+            moveBlock (ord, addr, Buddy_Blocks.Release_Block);
+            for i in pins'Range loop
+                declare
+                    ignored : constant Unsigned_64 := detachCharge (Unsigned_64 (pfn) + Unsigned_64 (i));
+                    pragma Unreferenced (ignored);
+                begin
+                    null;
+                end;
             end loop;
         end;
-        moveBlock (ord, addr, Buddy_Blocks.Release_Block);
         freeLocked (ord, addr);
 
         Spinlocks.exitCriticalSection (lock);
+        if refundIdentity /= 0 then
+            chargeRefund (refundIdentity, refundPages);
+        end if;
     end free;
 
     ---------------------------------------------------------------------------
@@ -907,6 +1146,7 @@ is
     is
         pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
         use type Frame_Pins.Release_Action;
+        refundIdentity : Unsigned_64 := 0;
     begin
         Spinlocks.enterCriticalSection (lock);
         -- Admission occurs before owner/pin mutations as well as list writes.
@@ -917,10 +1157,10 @@ is
                     Import,
                     Volatile,
                     Address => pinStateBase + Storage_Offset (pfn);
-                owner : Unsigned_8 with
+                owner : Frame_Owner with
                     Import,
                     Volatile,
-                    Address => frameOwnerBase + Storage_Offset (pfn);
+                    Address => ownerAddress (pfn);
                 lifetime : Frame_Pins.State;
                 action : Frame_Pins.Release_Action;
             begin
@@ -936,13 +1176,17 @@ is
         end if;
 
         moveBlock (0, Virtmem.P2Va (addr), Buddy_Blocks.Reclaim);
+        refundIdentity := detachCharge (pfn);
         freeLocked (0, Virtmem.P2Va (addr));
         Spinlocks.exitCriticalSection (lock);
+        if refundIdentity /= 0 then
+            chargeRefund (refundIdentity, 1);
+        end if;
     end freeFrame;
 
 
     procedure pinOwnedFrame
-      (addr : Virtmem.PhysAddress; owner : Unsigned_8; success : out Boolean)
+      (addr : Virtmem.PhysAddress; owner : Frame_Owner; success : out Boolean)
       with SPARK_Mode => Off
     is
         pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
@@ -956,8 +1200,8 @@ is
         end if;
         Spinlocks.enterCriticalSection (lock);
         declare
-            currentOwner : Unsigned_8 with Import, Volatile,
-                Address => frameOwnerBase + Storage_Offset (pfn);
+            currentOwner : Frame_Owner with Import, Volatile,
+                Address => ownerAddress (pfn);
             raw : Unsigned_8 with Import, Volatile,
                 Address => pinStateBase + Storage_Offset (pfn);
             lifetime : Frame_Pins.State := Frame_Pins.Decode (raw);
@@ -977,6 +1221,7 @@ is
     is
         pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
         use type Frame_Pins.Release_Action;
+        refundIdentity : Unsigned_64 := 0;
     begin
         success := False;
         if pinStateBase = System.Null_Address or else pfn > maxPinPFN or else
@@ -998,15 +1243,19 @@ is
             state := Frame_Pins.Encode (lifetime);
             if action = Frame_Pins.Reclaim_Frame then
                 moveBlock (0, Virtmem.P2Va (addr), Buddy_Blocks.Reclaim);
+                refundIdentity := detachCharge (pfn);
                 freeLocked (0, Virtmem.P2Va (addr));
             end if;
         end;
         Spinlocks.exitCriticalSection (lock);
+        if refundIdentity /= 0 then
+            chargeRefund (refundIdentity, 1);
+        end if;
     end unpinFrame;
 
     procedure claimUserFrame
       (addr    : in Virtmem.PhysAddress;
-       owner   : in Unsigned_8;
+       owner   : in Frame_Owner;
        success : out Boolean) with
         SPARK_Mode => Off
     is
@@ -1021,10 +1270,10 @@ is
 
         Spinlocks.enterCriticalSection (lock);
         declare
-            currentOwner : Unsigned_8 with
+            currentOwner : Frame_Owner with
                 Import,
                 Volatile,
-                Address => frameOwnerBase + Storage_Offset (pfn);
+                Address => ownerAddress (pfn);
         begin
             if currentOwner = 0 and then containsAllocatedFrame (addr) then
                 currentOwner := owner;
@@ -1036,7 +1285,7 @@ is
 
     procedure releaseUserFrame
       (addr  : in Virtmem.PhysAddress;
-       owner : in Unsigned_8) with
+       owner : in Frame_Owner) with
         SPARK_Mode => Off
     is
         pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
@@ -1049,10 +1298,10 @@ is
 
         Spinlocks.enterCriticalSection (lock);
         declare
-            currentOwner : Unsigned_8 with
+            currentOwner : Frame_Owner with
                 Import,
                 Volatile,
-                Address => frameOwnerBase + Storage_Offset (pfn);
+                Address => ownerAddress (pfn);
         begin
             if currentOwner = owner then
                 currentOwner := 0;
@@ -1063,7 +1312,7 @@ is
 
     function isUserFrameOwnedBy
       (addr  : Virtmem.PhysAddress;
-       owner : Unsigned_8) return Boolean with
+       owner : Frame_Owner) return Boolean with
         SPARK_Mode => Off
     is
         pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
@@ -1077,10 +1326,10 @@ is
 
         Spinlocks.enterCriticalSection (lock);
         declare
-            currentOwner : Unsigned_8 with
+            currentOwner : Frame_Owner with
                 Import,
                 Volatile,
-                Address => frameOwnerBase + Storage_Offset (pfn);
+                Address => ownerAddress (pfn);
         begin
             result := currentOwner = owner;
         end;

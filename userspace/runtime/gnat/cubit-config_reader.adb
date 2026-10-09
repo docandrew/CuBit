@@ -39,7 +39,7 @@ package body CuBit.Config_Reader is
          Msg.words (1) := Reference.generation;
          Msg.words (2) := Unsigned_64 (Key'Length);
       end if;
-      Msg.tag := capCall (CAP_SLOT_CONFIG, Msg);
+      Msg.tag := capCall (CAP_SLOT_CONFIG, Msg, CuBit.Messages.Wait_Forever);
       Result := Unavailable;
       for Candidate in Status loop
          if Msg.tag.label = Status'Enum_Rep (Candidate) then

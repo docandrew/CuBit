@@ -476,7 +476,7 @@ begin
       declare Object : Buffers.Pool; begin
          Response := ((16#F001#, 4, 0, 0),
            [Layout.Denial_Version, Layout.Allocation_Key (1, 1), 4096,
-            Unsigned_64 (Layout.Allocation_Reason'Pos (Layout.Physical_Result_Check))]);
+            Unsigned_64 (Layout.Allocation_Reason'Pos (Layout.Physical_Refused))]);
          case Fault is
             when 1 => Response.words (0) := Layout.Denial_Version + 1;
             when 2 => Response.words (1) := Layout.Allocation_Key (2, 1);

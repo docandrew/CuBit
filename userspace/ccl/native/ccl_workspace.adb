@@ -44,7 +44,7 @@ package body CCL_Workspace is
 
    function Call (Request : in out Message) return Storage_Result is
    begin
-      Request.tag := capCall (CAP_SLOT_FS, Request);
+      Request.tag := capCall (CAP_SLOT_FS, Request, CuBit.Messages.Wait_Forever);
       return Outcome (Request.tag.label);
    end Call;
 

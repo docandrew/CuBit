@@ -9,11 +9,11 @@ package body CuBit.Service_Names is
       return NO_DRIVER;
    end Driver_Of;
 
-   function Process_Of (Name : String) return Unsigned_64 is
+   function Process_Of (Name : String) return Process_ID is
       Driver : constant Unsigned_64 := Driver_Of (Name);
    begin
       return
-        (if Driver = NO_DRIVER then 0
-         else getInfo (SYSINFO_REGISTERED_DRIVER, Driver));
+        (if Driver = NO_DRIVER then No_Process
+         else Registered_Driver (Driver));
    end Process_Of;
 end CuBit.Service_Names;

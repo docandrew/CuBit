@@ -37,7 +37,7 @@ procedure Main is
    begin
       Put (Name);
       Msg := Open_Request (Loan, Name'Length, Options);
-      Tag := capCall (Slot, Msg);
+      Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
       return (if Tag.label = REPLY_OK then File_Handle (Msg.words (0))
               else INVALID_FILE_HANDLE);
    end Open_File;
@@ -45,7 +45,7 @@ procedure Main is
    procedure Close_File (Handle : File_Handle) is
    begin
       Msg := Close_Request (Handle);
-      Tag := capCall (Slot, Msg);
+      Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = REPLY_OK, "close file");
    end Close_File;
 
@@ -53,7 +53,7 @@ procedure Main is
    begin
       Put (Before & After);
       Msg := Rename_Request (Loan, Before'Length, After'Length);
-      Tag := capCall (Slot, Msg);
+      Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = REPLY_ACCESS_DENIED, "rename requires both scopes");
       File := Open_File (Before);
       Check (File /= INVALID_FILE_HANDLE, "denied rename preserves source");
@@ -79,17 +79,17 @@ begin
 
    Put ("@nvme:0/");
    Msg := Open_Directory_Request (Loan, 8);
-   Tag := capCall (Slot, Msg);
+   Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = REPLY_ACCESS_DENIED, "root denied");
 
    File := Open_File ("@nvme:0/scope-allowed/readme");
    Check (File /= INVALID_FILE_HANDLE, "read authorized despite ext2 mode 000");
    if File /= INVALID_FILE_HANDLE then
       Msg := Read_Request (File, Loan, 16);
-      Tag := capCall (Slot, Msg);
+      Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = REPLY_OK and then Msg.words (0) = 16, "read content");
       Msg := Write_Request (File, Loan, 1);
-      Tag := capCall (Slot, Msg);
+      Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = REPLY_ACCESS_DENIED, "read handle cannot write");
       Close_File (File);
    end if;
@@ -104,7 +104,7 @@ begin
    if File /= INVALID_FILE_HANDLE then
       Put ("CuBit");
       Msg := Write_Request (File, Loan, 5);
-      Tag := capCall (Slot, Msg);
+      Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = REPLY_OK and then Msg.words (0) = 5, "scoped write");
       Close_File (File);
    end if;
@@ -121,18 +121,18 @@ begin
 
    Put ("@nvme:0/scope-allowed");
    Msg := Open_Directory_Request (Loan, 21);
-   Tag := capCall (Slot, Msg);
+   Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = REPLY_OK, "scoped directory");
    if Tag.label = REPLY_OK then
       Directory := Directory_Handle (Msg.words (0));
       Put ("nested");
       Msg := Open_Child_Directory_Request (Directory, Loan, 6);
-      Tag := capCall (Slot, Msg);
+      Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = REPLY_OK, "derive child within scope");
       if Tag.label = REPLY_OK then
          Child := Directory_Handle (Msg.words (0));
          Msg := Close_Directory_Request (Child);
-         Tag := capCall (Slot, Msg);
+         Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
          Check (Tag.label = REPLY_OK, "close child");
       end if;
 
@@ -140,17 +140,17 @@ begin
       Msg := NULL_MESSAGE;
       Msg.tag := (label => OP_SET_ACL, length => 4, flags => 0, reserved => 0);
       Msg.words := [0 => syscall (SYSCALL_GETPID), others => 0];
-      Tag := capCall (Slot, Msg);
+      Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = REPLY_ACCESS_DENIED, "self-grant denied");
       Msg.tag := (label => OP_REVOKE_ACL, length => 1, flags => 0, reserved => 0);
       Msg.words := [0 => syscall (SYSCALL_GETPID), others => 0];
-      Tag := capCall (Slot, Msg);
+      Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = REPLY_ACCESS_DENIED, "untrusted policy edit denied");
       Msg := Rewind_Directory_Request (Directory);
-      Tag := capCall (Slot, Msg);
+      Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = REPLY_OK, "denied update preserved existing handle");
       Msg := Close_Directory_Request (Directory);
-      Tag := capCall (Slot, Msg);
+      Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = REPLY_OK, "close directory");
    end if;
    CuBit.Memory_Grants.Revoke (Loan, OK);

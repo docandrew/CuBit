@@ -1,0 +1,1 @@
+(executable-manifest v1 (identity "com.cubit.focus-visual") (version "0.1.0") (request-service desktop read-write desktop))

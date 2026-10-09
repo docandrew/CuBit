@@ -1,0 +1,58 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+-----------------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total        Flow                              Provers   Justified   Unproved
+-----------------------------------------------------------------------------------------------------------
+Data Dependencies                 .           .                                    .           .          .
+Flow Dependencies                 .           .                                    .           .          .
+Initialization                   10          10                                    .           .          .
+Non-Aliasing                      .           .                                    .           .          .
+Run-time Checks                 114           .    114 (CVC5 9%, Trivial 1%, Z3 90%)           .          .
+Assertions                        .           .                                    .           .          .
+Functional Contracts              6           .     6 (CVC5 63%, Trivial 5%, Z3 32%)           .          .
+LSP Verification                  .           .                                    .           .          .
+Termination                      11          11                                    .           .          .
+Concurrency                       .           .                                    .           .          .
+-----------------------------------------------------------------------------------------------------------
+Total                           141    21 (15%)                            120 (85%)           .          .
+
+
+max steps used for successful proof: 10047
+
+============================
+Most difficult proved checks
+============================
+
+observatory_trace_view.adb:21:17: predicate check proved in max 1 seconds
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 2 units
+in unit observatory_trace_ccl, 8 subprograms and packages out of 8 analyzed
+  Observatory_Trace_CCL at observatory_trace_ccl.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Trace_CCL.Binding at observatory_trace_ccl.ads:10 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Trace_CCL.Invoke at observatory_trace_ccl.ads:16 flow analyzed (0 errors, 0 checks, 1 warnings and 0 pragma Assume statements) and proved (96 checks)
+  Observatory_Trace_CCL.Invoke.Number at observatory_trace_ccl.adb:76 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Trace_CCL.Invoke.Text at observatory_trace_ccl.adb:70 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Observatory_Trace_CCL.Name at observatory_trace_ccl.ads:13 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Trace_CCL.Namespace at observatory_trace_ccl.ads:11 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Trace_CCL.Publish at observatory_trace_ccl.ads:14 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+in unit observatory_trace_view, 14 subprograms and packages out of 14 analyzed
+  Observatory_Trace_View at observatory_trace_view.ads:2 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Trace_View.Budget_Limited at observatory_trace_view.ads:17 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Trace_View.Feed at observatory_trace_view.ads:24 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (13 checks)
+  Observatory_Trace_View.Finish at observatory_trace_view.ads:26 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Observatory_Trace_View.Length at observatory_trace_view.ads:13 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Trace_View.Lossy at observatory_trace_view.ads:16 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Trace_View.Observer_Failed at observatory_trace_view.ads:18 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Trace_View.Page at observatory_trace_view.ads:15 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Trace_View.Ready at observatory_trace_view.ads:12 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Trace_View.Start at observatory_trace_view.ads:22 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  Observatory_Trace_View.State at observatory_trace_view.ads:32 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Observatory_Trace_View.Statepredicate at observatory_trace_view.ads:32 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Observatory_Trace_View.Total at observatory_trace_view.ads:14 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Trace_View.Value_At at observatory_trace_view.ads:19 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)

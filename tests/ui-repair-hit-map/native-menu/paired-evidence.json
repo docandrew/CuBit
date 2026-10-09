@@ -1,0 +1,48 @@
+{
+  "status": "PASS",
+  "gpu_enabled": false,
+  "scope": "Native CuBit menu fixture on software Mesa at100%DPI; actual protected-buffer partial repaint, pointer item selection and F10/twoDown/Enter keyboard selection",
+  "binary_sha256": "e1134d1ecb65b996960437149e969e16aba4259b7c27557f52c30b3fcf748b1d",
+  "memory": "1G",
+  "render_approved": false,
+  "render_attempts": [
+    [
+      "4294967329",
+      "TRUE"
+    ]
+  ],
+  "software_fallback": "PASS",
+  "hardware_validated": false,
+  "menu_pointer_command": 101,
+  "menu_keyboard_command": 202,
+  "partial_repair_preserved_hit": true,
+  "native_scale": [
+    1,
+    1
+  ],
+  "positive_fixture_sha256": "4e8b4bd7a83249228e5bcb30d39225254510e18d7d3dfe6929e0a8e485eb92c5",
+  "negative_fixture_sha256": "c761b30aa331fb5020a1fedb616e48b39349f98820630e307601644ff808f4ec",
+  "negative_result": "EXPECTED_FAIL lost item after repair",
+  "changed_negative_sources": [
+    "cubit-ui-app.adb",
+    "cubit-ui-combo_boxes.adb",
+    "cubit-ui-menus.adb",
+    "cubit-ui-surfaces.adb",
+    "cubit-ui-widgets.adb",
+    "cubit-ui.adb",
+    "cubit-ui.ads"
+  ],
+  "limits": "No underlying controls in fixture: outside-click capture isolation is covered only by existing hosted menu tests. No physical GPU, native scaled-menu or new SPARK proof claim.",
+  "retained_failures": {
+    "122": "OneDown after F10 selects first item, not second; oracle corrected, production binary unchanged",
+    "124": "Negative build mixed old App body with new size API spec; corrected125 preserves API, removes only repair"
+  },
+  "provenance": {
+    "/home/doc/git/compositor-test-artifacts/ui-menu-native-run-123/inputs.json": "debfc86f3c82a0f5db9073628dac49b6c90045cf48e1ad93702f5e2b7f6fcc93",
+    "/home/doc/git/compositor-test-artifacts/ui-menu-negative-run-126/inputs.json": "a6dc4c0dc8fda2db75677793283fd5ee68cfd915427b869ec45848476c1fd370",
+    "/home/doc/git/compositor-test-artifacts/ui-menu-native-121/commands.json": "b6486c52cce07988d676ae73b6340dcc8c5bf5ef943591c8c9a7e7612bceafb7",
+    "/home/doc/git/compositor-test-artifacts/ui-menu-native-125/commands.json": "7fe74b3027f2667193268f881e5b6634990631a4c019ac3b0a6a12da2e6057c2",
+    "/home/doc/git/compositor-test-artifacts/ui-menu-oracle-123/run.py": "908642555095af7047f74c24c0e32d4b4c95ec808c4a8f689fdb7bd47125922b",
+    "/home/doc/git/compositor-test-artifacts/ui-menu-oracle-126/run.py": "dd16a4e7fce7842a65a8daf8d3448bed627f2e24f7d99f292a4f7bb764b24c33"
+  }
+}

@@ -14,10 +14,12 @@ with CuBit.Launch_Grants;
 with CuBit.Path_Names;
 with CuBit.Child_Exits;
 with CuBit.Child_Table;
+with CuBit.Process_IDs;
 with CuBit.Libc_Child_Outlets;
 with CuBit.Outlet_Rings;
 
 package body CuBit.Libc_Process is
+   package PIDs renames CuBit.Process_IDs;
 
    use type Interfaces.C.int;
    use type Interfaces.C.size_t;
@@ -170,7 +172,7 @@ package body CuBit.Libc_Process is
             others => <>);
          Label : constant Unsigned_32 := Unsigned_32 (CuBit.Kernel_Calls.Call
            (Call_Via_Endpoint_Capability, Process_Manager_Slot,
-            Unsigned_64 (To_Integer (M'Address))) and 16#FFFF_FFFF#);
+            Unsigned_64 (To_Integer (M'Address)), CuBit.Kernel_ABI.Forever) and 16#FFFF_FFFF#);
          Answer : constant LG.Bytes (1 .. LG.Maximum_Bytes)
          with Import, Address => Area;
       begin
@@ -329,19 +331,25 @@ package body CuBit.Libc_Process is
          --  an early exit event cannot be missed.
          Label := Unsigned_32 (CuBit.Kernel_Calls.Call
            (Call_Via_Endpoint_Capability, Process_Manager_Slot,
-            Unsigned_64 (To_Integer (M'Address))) and 16#FFFF_FFFF#);
+            Unsigned_64 (To_Integer (M'Address)), CuBit.Kernel_ABI.Forever) and 16#FFFF_FFFF#);
+         --  The reply names the child by identity (KERN-003); POSIX sees
+         --  it folded to a pid_t.
          if Label = Reply_OK
-           and then M.Words (0) in CuBit.Child_Table.Process_Number
+           and then PIDs.Is_Process (PIDs.From_Word (M.Words (0)))
          then
-            CuBit.Child_Table.Started (Children, M.Words (0), M.Words (1));
-            CO.Started (Slot, int (M.Words (0)));
-            if Result /= System.Null_Address then
-               declare
-                  PID : int with Import, Address => Result;
-               begin
-                  PID := int (M.Words (0));
-               end;
-            end if;
+            declare
+               Child : constant PIDs.Process_ID := PIDs.From_Word (M.Words (0));
+            begin
+               CuBit.Child_Table.Started (Children, Child);
+               CO.Started (Slot, PIDs.POSIX_Of (Child));
+               if Result /= System.Null_Address then
+                  declare
+                     PID : int with Import, Address => Result;
+                  begin
+                     PID := PIDs.POSIX_Of (Child);
+                  end;
+               end if;
+            end;
             return 0;
          elsif Label = Reply_Error then
             CO.Abandon (Slot);
@@ -459,7 +467,7 @@ package body CuBit.Libc_Process is
          if Pending_Count < Pending_Capacity then
             Pending_Count := Pending_Count + 1;
             Pending (Pending_Count) := CuBit.Child_Exits.Decode
-              (M.Words (0), M.Words (1), M.Words (2), M.Words (3));
+              (M.Words (0), M.Words (1), M.Words (2));
          else
             Pending_Lost := Pending_Lost + 1;
          end if;
@@ -496,7 +504,7 @@ package body CuBit.Libc_Process is
          then
             CuBit.Child_Table.Exited
               (Children, CuBit.Child_Exits.Decode
-                 (M.Words (0), M.Words (1), M.Words (2), M.Words (3)));
+                 (M.Words (0), M.Words (1), M.Words (2)));
          end if;
       end loop;
    end Drain_Events;

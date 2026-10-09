@@ -25,7 +25,10 @@ package body CuBit.Messages is
    package Binding is new Server.Binding (VM);
    Image : VM.Image;
    VM_Ready : Boolean := False;
-   function capCall (Slot : CapabilitySlot; Msg : in out Message) return MessageTag is
+   function capCall (Slot : CapabilitySlot; Msg : in out Message;
+                     Deadline : Unsigned_64) return MessageTag is
+      -- This synchronous transport fixture does not model kernel deadlines.
+      pragma Unreferenced (Deadline);
       Response : Server.Words;
       Expected : constant MessageTag := (Msg.tag.label, 4, 0, 0);
       Deferred : Server.Ticket;
@@ -33,7 +36,11 @@ package body CuBit.Messages is
    begin
       Calls := Calls + 1;
       pragma Assert (Msg.authorityTag = 0);
-      if Msg.tag.label = 16#0A20# then
+      if Msg.tag.label = 16#0A30# then
+         pragma Assert (Msg.tag = Expected and Msg.words = [1, 0, 0, 0]);
+         Response := (if Slot = 63 then Server.Words (Accounting_Response)
+                      else [1, 1, 0, 0]);
+      elsif Msg.tag.label = 16#0A20# then
          pragma Assert (Msg.tag = Expected and Msg.words = [1, 3, 0, 0]);
          Response := Server.Words (Memory_Response);
       elsif Msg.tag.label = Binding.Bind_Label then

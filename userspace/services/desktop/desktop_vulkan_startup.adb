@@ -1,3 +1,4 @@
+with Compositor_Capture_Reservation;
 with Vulkan_Upload_Recording;
 with Vulkan_Device_Upload_FFI;
 with Vulkan_Owned_Source;
@@ -10,7 +11,7 @@ with System;
 with Vulkan_Context_Owner;
 with Vulkan_Submission;
 package body Desktop_Vulkan_Startup with SPARK_Mode,
-  Refined_State => (Engine => (Device, Context, Submission, Targets, Budget, Pool, Damage, Configured, Stopping, Pipeline, Pipeline_Ticket, Backings, Upload, Coverage, Extents, Writer, Active_Write, Write_Plan, Write_Discard, Glyph_Sources, Source_Readers, Reader_Sequence)) is
+  Refined_State => (Engine => (Device, Context, Submission, Targets, Budget, Pool, Damage, Configured, Stopping, Pipeline, Pipeline_Ticket, Backings, Upload, Readback_Storage, Readback_Operation, Coverage, Extents, Writer, Active_Write, Write_Plan, Write_Discard, Glyph_Sources, Source_Readers, Reader_Sequence)) is
    package CP renames Upload_Progress;
    package GS renames Vulkan_Glyph_Sources;
    Glyph_Sources : GS.State;
@@ -31,6 +32,9 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
    use type CP.Phase, CP.Ticket, G.Pixel_Format;
    package U renames Vulkan_Upload_Owner;
    Upload : U.State;
+   Readback_Storage : U.State;
+   type Readback_Operation_Phase is (RB_Idle, RB_Pending, RB_CPU_Ready, RB_Unsafe);
+   Readback_Operation : Readback_Operation_Phase := RB_Idle;
    use type U.Phase;
    package S renames Vulkan_Owned_Source;
    type Backing_Array is array (Backing_Slot) of S.State;
@@ -142,6 +146,31 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
    end Prepare_Pipeline;
    function Upload_Capacity return Natural is (U.Capacity (Upload));
    function Upload_Phase return U.Phase is (U.Current (Upload));
+   function Readback_Capacity return Natural is (U.Capacity (Readback_Storage));
+   function Readback_Layout_Matches (Width, Height : Natural) return Boolean is
+     (Configured and then O.Ready (Targets) and then not TD.Faulted (Damage) and then
+      Width > 0 and then Height > 0 and then
+      Width = TD.Bounds (Damage).Right and then Height = TD.Bounds (Damage).Bottom);
+   procedure Configure_Readback (Size : U.Capacity_Range; Ready : out Boolean) is
+      Request : System.Address;
+   begin
+      Ready := False;
+      if Stopping or else D.Current (Device) /= D.Ready or else Pipeline /= Live or else
+         not O.Ready (Targets) or else not Configured or else P.Faulted (Pool) or else
+         TD.Faulted (Damage) or else V.Current (Submission) /= V.Idle or else
+         Writer /= Available or else U.Current (Readback_Storage) not in U.Fresh | U.Closed
+      then return; end if;
+      Request := Vulkan_Device_Upload_FFI.Prepare_Readback;
+      if Request = System.Null_Address then return; end if;
+      U.Initialize (Readback_Storage, Context, Submission, Request, Size, Budget, Ready, U.Readback);
+   end Configure_Readback;
+   procedure Release_Readback_Storage (Released : out Boolean) is
+   begin
+      Released := False;
+      if D.Current (Device) /= D.Ready or else V.Current (Submission) /= V.Idle or else
+         P.Readback (Pool) /= P.None or else P.Faulted (Pool) then return; end if;
+      U.Close (Readback_Storage, Context, Budget, True, Released);
+   end Release_Readback_Storage;
    procedure Configure_Upload (Size : U.Capacity_Range; Ready : out Boolean) is
       Request : System.Address;
    begin
@@ -414,7 +443,8 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
       end if;
    end Import_Backing;
    function Upload_Pending return Boolean is (Writer = Transferring);
-   function Frame_Pending return Boolean is (V.Current (Submission) = V.Pending and Writer /= Transferring);
+   function Frame_Pending return Boolean is (V.Current (Submission) = V.Pending and
+     Writer /= Transferring and Readback_Operation /= RB_Pending);
    procedure Damage_Output (Region : Compositor_Damage.Box; Accepted : out Boolean) is
    begin
       Accepted := Configured and then not TD.Faulted (Damage) and then
@@ -439,7 +469,30 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
       then return Capture_Busy; end if;
       return Capture_Allowed;
    end Admit_Capture;
-   procedure Render (Scene : Vulkan_Scene.State; Result : out Frame_Result) is
+   procedure Reserve_Capture (Screen : Vulkan_Scene.A.G.Output;
+      Ticket : out Vulkan_Owned_Targets.P.Ticket) is
+   begin
+      Ticket := P.None;
+      if Admit_Capture (Screen) /= Capture_Allowed or else
+        TD.Faulted (Damage) or else TD.Active (Damage) /= 0 then return; end if;
+      Compositor_Capture_Reservation.Reserve (Pool, Damage, Ticket, Replace_Ready => True);
+   end Reserve_Capture;
+   procedure Capture_Repaint (Ticket : Vulkan_Owned_Targets.P.Ticket;
+      Plan : out Compositor_Damage.State; Accepted : out Boolean) is
+   begin
+      Compositor_Capture_Reservation.Repaint (Pool, Damage, Ticket, Plan, Accepted);
+   end Capture_Repaint;
+   procedure Cancel_Capture (Ticket : Vulkan_Owned_Targets.P.Ticket;
+      Accepted : out Boolean) is
+   begin
+      -- Record_Scene may already have cancelled a quiescent recording.
+      Accepted := P.Writer (Pool) = P.None and TD.Active (Damage) = 0 and
+        not P.Faulted (Pool) and not TD.Faulted (Damage);
+      if Accepted then return; end if;
+      Compositor_Capture_Reservation.Cancel (Pool, Damage, Ticket, Accepted);
+   end Cancel_Capture;
+   procedure Render (Scene : Vulkan_Scene.State; Result : out Frame_Result;
+      Reservation : Vulkan_Owned_Targets.P.Ticket := Vulkan_Owned_Targets.P.None) is
       Admission : F.Admission;
       Recorded : Vulkan_Scene_Recording.Outcome;
       OK : Boolean;
@@ -449,10 +502,15 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
          not Configured or else P.Faulted (Pool) or else TD.Faulted (Damage)
       then return; end if;
       if Writer /= Available or else Frame_Pending then Result := Deferred; return; end if;
-      if V.Current (Submission) /= V.Idle or else TD.Active (Damage) /= 0 or else
+      if V.Current (Submission) /= V.Idle or else
+         (Reservation = P.None and then TD.Active (Damage) /= 0) or else
          Vulkan_Scene.Current (Scene) /= Vulkan_Scene.Sealed
       then return; end if;
-      F.Begin_Record (Submission, Pool, Damage, Admission, Replace_Ready => True);
+      if Reservation = P.None then
+         F.Begin_Record (Submission, Pool, Damage, Admission, Replace_Ready => True);
+      else
+         F.Begin_Reserved_Record (Submission, Pool, Damage, Reservation, Admission);
+      end if;
       if Admission = F.Deferred then Result := Deferred; return;
       elsif Admission = F.Failed then Result := Failed; return;
       end if;
@@ -483,6 +541,111 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
    function Presentation_Pending return Presentation_Ticket is (P.Displayed (Pool));
    function Presentation_Front return Presentation_Ticket is (P.Front (Pool));
    function Presentation_Faulted return Boolean is (P.Faulted (Pool));
+   function Readback_Pending return Presentation_Ticket is (P.Readback (Pool));
+   function Readback_Mapping (Ticket : Presentation_Ticket) return System.Address is
+     (if Readback_Operation = RB_CPU_Ready and then Ticket /= No_Presentation and then
+         Ticket = P.Readback (Pool) and then not P.Faulted (Pool) and then
+         D.Current (Device) = D.Ready
+      then U.Mapping (Readback_Storage) else System.Null_Address);
+   procedure Submit_Readback (Ticket : Presentation_Ticket; Accepted : out Boolean) is
+      OK : Boolean;
+   begin
+      Accepted := False;
+      if Stopping or else D.Current (Device) /= D.Ready or else P.Faulted (Pool) or else
+         Ticket = No_Presentation or else Ticket /= P.Readback (Pool) or else
+         Readback_Operation /= RB_Idle or else V.Current (Submission) /= V.Idle or else
+         Writer /= Available or else U.Current (Readback_Storage) /= U.Live or else
+         not U.Parent_Held (Readback_Storage, Context) or else not O.Ready (Targets)
+      then return; end if;
+      V.Begin_Record (Submission, OK);
+      if OK then
+         O.Record_Readback (Targets, Submission, Pool, U.Description (Readback_Storage), OK);
+         if not OK then
+            V.Cancel (Submission, OK);
+            if OK then return; end if;
+         else
+            V.Seal_Transfer (Submission, OK);
+            if OK then V.Submit (Submission, OK); end if;
+            if OK then Readback_Operation := RB_Pending; Accepted := True; return; end if;
+         end if;
+      end if;
+      Readback_Operation := RB_Unsafe;
+      P.Retire_Readback (Pool, Ticket, False, False);
+   end Submit_Readback;
+   procedure Submit_Region_Readback (Ticket : Presentation_Ticket; Repair : Compositor_Damage.State; Accepted : out Boolean) is
+      OK : Boolean;
+   begin
+      Accepted := False;
+      if Compositor_Damage.Count (Repair) = 0 or else
+         Compositor_Damage.Bounds (Repair).Right > 65535 or else
+         Compositor_Damage.Bounds (Repair).Bottom > 65535 or else
+         Compositor_Damage.Bounds (Repair).Right > TD.Bounds (Damage).Right or else
+         Compositor_Damage.Bounds (Repair).Bottom > TD.Bounds (Damage).Bottom
+      then return; end if;
+      if Stopping or else D.Current (Device) /= D.Ready or else P.Faulted (Pool) or else
+         Ticket = No_Presentation or else Ticket /= P.Readback (Pool) or else
+         Readback_Operation /= RB_Idle or else V.Current (Submission) /= V.Idle or else
+         Writer /= Available or else U.Current (Readback_Storage) /= U.Live or else
+         not U.Parent_Held (Readback_Storage, Context) or else not O.Ready (Targets)
+      then return; end if;
+      V.Begin_Record (Submission, OK);
+      if OK then
+         O.Record_Readback_Regions (Targets, Submission, Pool, U.Description (Readback_Storage), Repair, OK);
+         if not OK then
+            V.Cancel (Submission, OK);
+            if OK then return; end if;
+         else
+            V.Seal_Transfer (Submission, OK);
+            if OK then V.Submit (Submission, OK); end if;
+            if OK then Readback_Operation := RB_Pending; Accepted := True; return; end if;
+         end if;
+      end if;
+      Readback_Operation := RB_Unsafe;
+      P.Retire_Readback (Pool, Ticket, False, False);
+   end Submit_Region_Readback;
+   procedure Poll_Readback (Result : out Poll_Result) is
+      Observed : V.Observation;
+   begin
+      Result := Idle;
+      if Readback_Operation = RB_Unsafe or else P.Faulted (Pool) then Result := GPU_Failed; return; end if;
+      if Readback_Operation /= RB_Pending then return; end if;
+      if D.Current (Device) /= D.Ready or else V.Current (Submission) /= V.Pending or else
+         Writer /= Available then
+         Readback_Operation := RB_Unsafe;
+         P.Retire_Readback (Pool, P.Readback (Pool), False, False);
+         Result := GPU_Failed; return;
+      end if;
+      V.Poll (Submission, Observed);
+      case Observed is
+         when V.Still_Pending => Result := Pending;
+         when V.Finished => Readback_Operation := RB_CPU_Ready; Result := Completed;
+         when V.Uncertain =>
+            Readback_Operation := RB_Unsafe;
+            P.Retire_Readback (Pool, P.Readback (Pool), False, False);
+            Result := GPU_Failed;
+      end case;
+   end Poll_Readback;
+   procedure Take_Readback (Ticket : out Presentation_Ticket) is
+   begin
+      Ticket := No_Presentation;
+      if Stopping or else D.Current (Device) /= D.Ready or else not O.Ready (Targets) then return; end if;
+      P.Take_Readback (Pool, Ticket);
+   end Take_Readback;
+   procedure Retire_Readback
+     (Ticket : Presentation_Ticket; Transfer_Complete, CPU_Drained : Boolean;
+      Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if D.Current (Device) /= D.Ready or else not O.Ready (Targets) then return; end if;
+      if Readback_Operation in RB_Pending | RB_Unsafe then
+         Readback_Operation := RB_Unsafe;
+         P.Retire_Readback (Pool, Ticket, False, False);
+         return;
+      end if;
+      P.Retire_Readback (Pool, Ticket, Transfer_Complete, CPU_Drained);
+      Accepted := not P.Faulted (Pool) and P.Readback (Pool) = P.None;
+      if Accepted then Readback_Operation := RB_Idle; end if;
+   end Retire_Readback;
    procedure Take_Presentation (Ticket : out Presentation_Ticket) is
    begin
       Ticket := No_Presentation;
@@ -532,6 +695,7 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
             Release_Backing (Index, Backing_Lease (Index), Released);
          end loop;
          Release_Upload (Released);
+         Release_Readback_Storage (Released);
          O.Close (Targets, Context, Submission, Pool, Budget, Released);
          if Pipeline = Live and then V.Can_Destroy (Submission) then
             Vulkan_Device_Pipeline_FFI.Close (Pipeline_Result);

@@ -2,6 +2,7 @@ project Broker is
    for Source_Dirs use (".", "../../../userspace/lib/display",
      "../../../userspace/runtime/gnat", "../../../userspace/services/intel-gpu");
    for Source_Files use ("broker_tests.adb", "cubit.ads",
+     "cubit-process_ids.ads", "cubit-process_ids.adb",
      "messages_mock.ads", "messages_mock.adb",
      "cubit-capability_grants.ads", "cubit-capability_grants.adb",
      "cubit-async_requests.ads", "cubit-async_requests.adb",

@@ -9,7 +9,7 @@ package body Log_Fanout with SPARK_Mode is
    begin
       Item.Now_Ms := Unsigned_64'Max (Item.Now_Ms, Now_Ms);
       for Client of Item.Clients loop
-         if Client.Owner /= 0 and then
+         if Client.Owner /= No_Process and then
            Item.Now_Ms >= Client.Last_Use and then
            Item.Now_Ms - Client.Last_Use >= Subscription_Lease_Ms
          then
@@ -32,21 +32,21 @@ package body Log_Fanout with SPARK_Mode is
    begin
       Append (Item.Recent, Value);
       for Client of Item.Clients loop
-         if Client.Owner /= 0 and then Wanted (Client, Value) then
+         if Client.Owner /= No_Process and then Wanted (Client, Value) then
             Append (Client.Pending, Value);
          end if;
       end loop;
    end Publish;
 
    procedure Subscribe
-     (Item : in out Broker; Caller, Authority_Tag : Unsigned_64;
+     (Item : in out Broker; Caller : Process_ID; Authority_Tag : Unsigned_64;
       Handle : out Unsigned_64; Result : out Status;
       Minimum : CuBit.Log_Records.Severity := CuBit.Log_Records.Trace;
       Source : Unsigned_64 := Every_Source) is
    begin
       Handle := 0;
       Result := Denied;
-      if Caller = 0 or else not May_Invoke (Authority_Tag, Subscribe) then return; end if;
+      if Caller = No_Process or else not May_Invoke (Authority_Tag, Subscribe) then return; end if;
       Result := Exhausted;
       --  One subscription per process/issued authority; retries do not reset
       --  its cursor or occupy more slots.
@@ -62,7 +62,7 @@ package body Log_Fanout with SPARK_Mode is
       end loop;
       if Item.Next_Handle = Unsigned_64'Last then return; end if;
       for Client of Item.Clients loop
-         if Client.Owner = 0 then
+         if Client.Owner = No_Process then
             Handle := Item.Next_Handle;
             Item.Next_Handle := Item.Next_Handle + 1;
             Client.Owner := Caller;
@@ -92,11 +92,11 @@ package body Log_Fanout with SPARK_Mode is
    end Subscribe;
 
    procedure Read_Next
-     (Item : in out Broker; Caller, Authority_Tag, Handle : Unsigned_64;
+     (Item : in out Broker; Caller : Process_ID; Authority_Tag, Handle : Unsigned_64;
       Value : out Event; Lost : out Unsigned_64; Result : out Status; Renew : Boolean := True) is
    begin
       Value := (others => <>); Lost := 0; Result := Denied;
-      if Caller = 0 or else not Is_Observer (Authority_Tag) then return; end if;
+      if Caller = No_Process or else not Is_Observer (Authority_Tag) then return; end if;
       for Client of Item.Clients loop
          if Client.Owner = Caller and then Client.Authority_Tag = Authority_Tag
            and then Client.Handle = Handle then
@@ -119,14 +119,14 @@ package body Log_Fanout with SPARK_Mode is
    end Read_Next;
 
    function Active (Item : Broker; Handle : Unsigned_64) return Boolean is
-     (Handle /= 0 and then (for some Client of Item.Clients => Client.Owner /= 0 and then Client.Handle = Handle));
+     (Handle /= 0 and then (for some Client of Item.Clients => Client.Owner /= No_Process and then Client.Handle = Handle));
 
    procedure Close
-     (Item : in out Broker; Caller, Authority_Tag, Handle : Unsigned_64;
+     (Item : in out Broker; Caller : Process_ID; Authority_Tag, Handle : Unsigned_64;
       Result : out Status) is
    begin
       Result := Denied;
-      if Caller = 0 or else not May_Invoke (Authority_Tag, Close) then return; end if;
+      if Caller = No_Process or else not May_Invoke (Authority_Tag, Close) then return; end if;
       for Client of Item.Clients loop
          if Client.Owner = Caller and then Client.Authority_Tag = Authority_Tag
            and then Client.Handle = Handle then

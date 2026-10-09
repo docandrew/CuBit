@@ -5,6 +5,7 @@ package body Config_Collections with SPARK_Mode is
    use type CCL.Objects.Schema_Key;
    use type Config_Authority.Rights;
    use type Config_Authority.Operation;
+   use type Config_Authority.Subject_ID;
 
    function Permits
      (Kind : Management_Kind; Operation : Config_Authority.Operation) return Boolean is

@@ -10,7 +10,7 @@ package Ram_Device is
    procedure Initialize
      (Base : System.Address; Bytes : Unsigned_64; Success : out Boolean);
    procedure Handle
-     (Sender : CuBit.Messages.ProcessID;
+     (Sender : CuBit.Messages.Process_ID;
       Request : CuBit.Messages.Message;
       Response : out CuBit.Messages.Message);
 end Ram_Device;

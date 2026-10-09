@@ -51,7 +51,7 @@ procedure Dispatch_Tests is
       if not OK then raise Program_Error with "Config dispatch check" & Checks'Image; end if;
    end Check;
    procedure Call
-     (Sender : ProcessID; Op : W.Operation; Handle : Unsigned_64 := 0;
+     (Sender : Process_ID; Op : W.Operation; Handle : Unsigned_64 := 0;
       Revision : Unsigned_64 := 0; Token : Unsigned_64 := 0; Reserved : Boolean := False) is
    begin
       Request := W.Request (Op, (7, 9), Handle, Revision);

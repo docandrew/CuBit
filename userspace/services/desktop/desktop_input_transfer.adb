@@ -1,6 +1,7 @@
 with Ada.Unchecked_Conversion;
 with System;
 with CuBit.Memory_Grants;
+with CuBit.Process_IDs;
 
 package body Desktop_Input_Transfer with SPARK_Mode => Off is
    package MG renames CuBit.Memory_Grants;
@@ -14,7 +15,8 @@ package body Desktop_Input_Transfer with SPARK_Mode => Off is
    is
       Address : System.Address;
    begin
-      MG.Acquire (Grant, Owner, 0, W.Byte_Count, MG.Write_Access, Address, Acquired);
+      MG.Acquire (Grant, CuBit.Process_IDs.From_Word (Owner), 0, W.Byte_Count, MG.Write_Access,
+                  Address, Acquired);
       Mapping := To_Word (Address);
    end Acquire;
 

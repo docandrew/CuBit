@@ -8,6 +8,7 @@ pragma Ada_2022;
 with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with System;
+with System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 
@@ -131,7 +132,7 @@ begin
 
    --  The all-ones sentinel cannot name a kernel process. Exhausting the
    --  table exercises the optimized syscall loop that froze procmgr at launch.
-   Find_Endpoint_Capability (ERROR_RESULT, Endpoint_Slot, Endpoint_Found);
+   Find_Endpoint_Capability (From_Word (ERROR_RESULT), Endpoint_Slot, Endpoint_Found);
    Check (not Endpoint_Found, "endpoint scan completes");
 
    Inspection := [others => 0];
@@ -150,14 +151,32 @@ begin
      (Result = 1 and then Inspection (1) = RIGHT_RW,
       "self process rights attenuated");
 
+   --  KERN-003: an identity names one life. The self endpoint names this
+   --  process by its identity, and another generation of this slot (a
+   --  stale or future identity) names no process.
+   Inspection := [others => 0];
+   Result := syscall
+     (SYSCALL_INSPECT_CAPABILITY, PID, CAP_SLOT_SELF,
+      Address_Number (Inspection'Address));
+   Check (Result = 1 and then Inspection (3) = PID, "self endpoint names this identity");
+   declare
+      --  One generation step (the slot is the low 24 bits).
+      Generation_Step : constant Unsigned_64 := 2 ** 24;
+   begin
+      Inspection := [others => 0];
+      Result := syscall
+        (SYSCALL_INSPECT_CAPABILITY, PID + Generation_Step, CAP_SLOT_SELF_PROC,
+         Address_Number (Inspection'Address));
+      Check (Result = ERROR_RESULT, "another life of this slot names no process");
+   end;
+
    Check_Empty_Slot (KBD_SLOT, "no ambient keyboard");
    Check_Empty_Slot (MOUSE_SLOT, "no ambient mouse");
    Check_Empty_Slot (PROCESS_SLOT, "no ambient process management");
 
    --  An endpoint/notification grant, not hardware IRQ ownership or a
    --  caller-spelled PID, is required to publish an unsolicited event.
-   Process_Manager_PID :=
-     getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_PROCMGR);
+   Process_Manager_PID := To_Word (Registered_Driver (DRIVER_PROCMGR));
    Result := syscall
      (SYSCALL_SEND_EVENT, Process_Manager_PID, 0, 0, 0, 0, 0);
    Check (Result = ERROR_RESULT, "ambient event publication denied");
@@ -169,6 +188,61 @@ begin
    Check (Result = 0, "retired PID submit rejected");
    Check (not capSubmit (TEST_SLOT, NULL_MESSAGE, NO_COMPLETION_TOKEN),
           "authorityless capability submit rejected");
+   --  A synchronous call through it is refused too (the IPC fast path,
+   --  docs/ipc-fastpath.md, checks authority once, in capSend).
+   declare
+      Call_Message : Message := NULL_MESSAGE;
+   begin
+      Check (capCall (TEST_SLOT, Call_Message, CuBit.Messages.Wait_Forever).label = NULL_TAG.label,
+             "authorityless capability call rejected");
+   end;
+
+   --  Hostile user pointers (docs/ipc-fastpath.md, "User memory"): every
+   --  IPC system call copies through the kernel's checked copier, so a
+   --  kernel address, a read-only user page and an unmapped user page are
+   --  refused (not written, not read, and no kernel fault).
+   declare
+      Kernel_Address   : constant Unsigned_64 := 16#FFFF_8000_0010_0000#;
+      Unmapped_Address : constant Unsigned_64 := 16#0000_7000_0000_0000#;
+      --  The program's own code: mapped, user, read-only.
+      Read_Only_Address : constant Unsigned_64 :=
+        Unsigned_64 (System.Storage_Elements.To_Integer (Main'Address));
+      Error : constant Unsigned_64 := ERROR_RESULT;
+      Pointers : constant array (1 .. 3) of Unsigned_64 :=
+        [Kernel_Address, Read_Only_Address, Unmapped_Address];
+      function Name (P : Positive) return String is
+        (case P is when 1 => "kernel", when 2 => "read-only", when others => "unmapped");
+   begin
+      for P in Pointers'Range loop
+         --  A message is waiting (sent to this process itself), so a
+         --  receive that wrote through the pointer would report its sender.
+         --  Refused, the message stays queued for a valid buffer.
+         declare
+            Pending : Message := NULL_MESSAGE;
+            Probe_Label : constant := 16#7E59#;
+            Ignore : Boolean;
+         begin
+            Pending.tag.label := Probe_Label;
+            Ignore := capSubmit (CAP_SLOT_SELF, Pending, NO_COMPLETION_TOKEN);
+         end;
+         Check (syscall (SYSCALL_POLL_ANY_IPC, Pointers (P)) = 0,
+                "receive into a " & Name (P) & " address refused");
+         declare
+            Kept : aliased Message := NULL_MESSAGE;
+         begin
+            Check (syscall (SYSCALL_POLL_ANY_IPC,
+                            Unsigned_64 (System.Storage_Elements.To_Integer (Kept'Address))) /= 0
+                   and then Kept.tag.label = 16#7E59#,
+                   "the refused message was kept (" & Name (P) & ")");
+         end;
+         Check (syscall (SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, 0, Pointers (P), Wait_Forever) = Error,
+                "call from a " & Name (P) & " address refused");
+         Check (syscall (SYSCALL_WAIT_COMPLETION, Pointers (P), 1, 0) = Error,
+                "completions into a " & Name (P) & " address refused");
+      end loop;
+      Check (syscall (SYSCALL_WRITE, 1, Kernel_Address, 64) = 0,
+             "write from a kernel address prints nothing");
+   end;
 
    Result := syscall
      (SYSCALL_POLICY_MINT_CAPABILITY, PID, CAP_ENDPOINT, PID, 0, RIGHT_RW,

@@ -1,5 +1,13 @@
 #pragma once
 #include <stdint.h>
+/* Own-account snapshot using the same pinned, serialized session endpoint.
+ * 0 success,1 denied,2 bad request,3 unavailable,4 invalid transport/reply.
+ * Distinct nonnull outputs required; writable outputs clear on failure.
+ * Only status0 makes the values valid; unavailable is NOT zero usage.
+ * Charged includes retained backing, not residency or permission to reuse.
+ * Synchronous service query, not an out-of-band health check or quota setter. */
+uint32_t cubit_intel_query_accounting(uint64_t slot, uint64_t *limit,
+                                    uint64_t *charged);
 /* Same pinned endpoint as allocation:0 unavailable/invalid,1 owned WB with
  * explicit maintenance,2 owned coherent WB. No aperture/import guarantee. */
 uint32_t cubit_intel_memory_contract(uint64_t slot);

@@ -28,11 +28,11 @@ is
 
     procedure handleCapSend (callerPID : Process.ProcessID;
                              arg0, arg1, arg2, arg3,
-                             arg4, arg5 : Unsigned_64;
+                             arg4, arg5, arg6 : Unsigned_64;
                              retval     : out Unsigned_64);
 
     procedure handleCapCall (callerPID  : Process.ProcessID;
-                             arg0, arg1 : Unsigned_64;
+                             arg0, arg1, arg2 : Unsigned_64;
                              retval     : out Unsigned_64);
 
     procedure handleCapSubmit (arg0, arg1, arg2, arg3,
@@ -98,16 +98,15 @@ is
                           arg0      : Unsigned_64;
                           retval    : out Unsigned_64);
 
-    -- A control message (docs/data-plane.md): arg0 = target PID, arg1 = its
-    -- kind (IPC_Labels.Control_Kind), arg2 = the target's generation (its
-    -- incarnation, as OP_LAUNCH and EVENT_CHILD_EXIT report it). The caller must be the target's
-    -- parent (the process that launched it, the same incarnation), or hold
-    -- the process capability kill needs (RIGHT_WRITE). The target gets EVENT_CONTROL
-    -- (kind, sender) in its event lane; retval 0, or an error when the kind
-    -- is unknown, the target absent, the caller unauthorized, or the
-    -- target's event lane full.
+    -- A control message (docs/data-plane.md): arg0 = the target's identity
+    -- (as OP_LAUNCH and EVENT_CHILD_EXIT report it), arg1 = its kind
+    -- (IPC_Labels.Control_Kind). The caller must be the target's parent (the
+    -- process that launched it, the same incarnation), or hold the process
+    -- capability kill needs (RIGHT_WRITE). The target gets EVENT_CONTROL
+    -- (kind, sender identity); retval 0, Busy, or an error when the kind is
+    -- unknown, the target absent or stale, or the caller unauthorized.
     procedure handleSendControl (callerPID : Process.ProcessID;
-                                 arg0, arg1, arg2 : Unsigned_64;
+                                 arg0, arg1 : Unsigned_64;
                                  retval     : out Unsigned_64);
 
     procedure handleSetWellKnown (callerPID : Process.ProcessID;

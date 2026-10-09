@@ -28,6 +28,7 @@ package body Desktop_GPU_Scene_Real_Bridge is
       Result : G.Outcome; OK : Boolean;
    begin
       Key := (V mod 2, Character'Pos (Codes (V + 1)), Scales (V / 2));
+      D.Damage_Output ((0, 0, 96, 64), OK); if not OK then return 1; end if;
       G.Begin_Frame (Scene, (96, 64, Vulkan_Scene.A.G.Unrotated, Key.Scale, 0, 0), 0, OK);
       if not OK then return 1; end if;
       Capture (OK);
@@ -46,7 +47,6 @@ package body Desktop_GPU_Scene_Real_Bridge is
    function Render return Interfaces.C.int is
       OK : Boolean; Result : G.Outcome;
    begin
-      D.Damage_Output ((0, 0, 96, 64), OK); if not OK then return 1; end if;
       G.Finish (Scene, Result); return (if Result = G.Pending and G.Current (Scene) = G.Submitted then 0 else 2);
    end Render;
    function Poll_Upload return Interfaces.C.int is

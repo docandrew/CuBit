@@ -48,7 +48,7 @@ package body Fixture is
    begin
       Msg.tag := (Op, 4, 0, 0);
       Msg.words (0) := Word;
-      Msg.tag := capCall (Slot, Msg);
+      Msg.tag := capCall (Slot, Msg, Wait_Forever);
       Check (Msg.tag.label = Reply_OK, "reply");
       return Msg.words (0);
    end Call;
@@ -57,7 +57,7 @@ package body Fixture is
       Parent, Child, Rejected : MG.Grant_Reference;
       Mapped, Denied_Address : System.Address;
       OK : Boolean;
-      From : ProcessID;
+      From : Process_ID;
       Msg : Message;
       Raw, Generation : Unsigned_64;
       Reply_Word : Unsigned_64;
@@ -97,7 +97,7 @@ package body Fixture is
          function Send (Request : D.Wire_Message) return D.Wire_Message is
             Message : CuBit.Messages.Message := CuBit.Desktop_Messages.From_Wire (Request);
          begin
-            Message.tag := capCall (CAP_SLOT_DESKTOP, Message);
+            Message.tag := capCall (CAP_SLOT_DESKTOP, Message, Wait_Forever);
             return CuBit.Desktop_Messages.To_Wire (Message);
          end Send;
       begin
@@ -167,7 +167,7 @@ package body Fixture is
                      if Msg.tag.length = 4 and Msg.tag.flags = 0 and Msg.tag.reserved = 0 then
                         if Msg.words = [1 + 3 * 2 ** 32, 1, 4096, 4096] then
                            Raw := syscall (SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID,
-                             From, Number (Buffer'Address) + 4096, 1, 2);
+                             To_Word (From), Number (Buffer'Address) + 4096, 1, 2);
                            Check (Raw /= Unsigned_64'Last, "C presenter create root");
                            Generation := syscall (SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION, Raw);
                            Check (Generation in 1 .. MG.MAXIMUM_GENERATION, "C root generation");
@@ -188,7 +188,7 @@ package body Fixture is
                      -- Current reply authority authenticates the recipient;
                      -- grant creation checks its incarnation again under lock.
                      Raw := syscall (SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID,
-                       From, Number (Buffer'Address), 2, Msg.words (0));
+                       To_Word (From), Number (Buffer'Address), 2, Msg.words (0));
                      Check (Raw /= Unsigned_64'Last, "create root");
                      Generation := syscall (SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION, Raw);
                      Check (Generation in 1 .. MG.MAXIMUM_GENERATION, "root generation");

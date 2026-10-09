@@ -1,0 +1,20 @@
+--  Hosted tests and proof of CuBit.Channel_Contracts (run.sh).
+project Contracts is
+   --  CONTRACT_SRC: a directory holding cubit-channel_contracts.ad[sb]
+   --  other than the runtime's (a draft, or a mutated copy).
+   Contract_Src := external ("CONTRACT_SRC", ".");
+   for Source_Dirs use (".", Contract_Src, "../../userspace/runtime/gnat");
+   for Source_Files use ("cubit.ads", "cubit-protocols.ads",
+                         "cubit-channel_contracts.ads", "cubit-channel_contracts.adb",
+                         "cubit-channel_protocol.ads", "cubit-stream_rings.ads",
+                         "cubit-stream_rings.adb", "cubit-channel_rings.ads",
+                         "cubit-channel_rings.adb", "cubit-datagram_rings.ads",
+                         "cubit-datagram_rings.adb",
+                         "main.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa", "-I-");
+   end Compiler;
+end Contracts;

@@ -1,5 +1,34 @@
 # Native DMA-retention fixture
 
+## Stepped session cleanup with real grants (2026-10-08)
+
+The `mappings` mode now closes trusted admission and uses the production
+allocation/name and mapping retirement steps with real CuBit self-grants.
+Before closing admission, it performs 128 close/drain/acknowledge/replacement
+cycles on a second backing slice while a neighboring grant remains acquired.
+It checks stable ticket-slot reuse with advancing generations, monotonically
+issued names, stale-name/map/close rejection, stale-grant rejection, and the
+neighbor's retained contents. Retirement acknowledgement is trusted fixture
+input for CPU-only work: nothing has been submitted to a GPU.
+
+Readers retained across metadata growth remain pinned through all thirteen calls
+over 193 mapping records (twelve chunks of 16 then 1). Sweep completion and repeated completion
+do not make CPU retirement eligible. Both readers must return, followed by
+bounded polling, before the grant observation becomes Clear. No physical
+backing is released by this fixture, and no GPU is involved.
+
+Run under Nix and the shared build lock:
+
+```sh
+flock --exclusive --nonblock coordination/build.lock nix develop -c \
+  bash tests/intel-gpu/native/run-demand.sh mappings
+```
+
+Pass evidence: `tests/intel-gpu/demand-backing.GrOPfF/serial.log` and
+`input.sha256` (existing kernel reused). This complements the hosted exact-source
+native-coordinator test; it does not boot the full Intel service or prove GPU,
+TLB, cross-process isolation, physical reuse, or hardware-rendering behavior.
+
 ## Demand-backing oracle (native QEMU pass, 2026-10-02)
 
 `demand_backing_check.adb` is a separate disposable-VM supervisor using the
@@ -193,3 +222,89 @@ exactly once, and 32 subsequent polls do not replay the callback. The second
 independent view still pins the backing. This passes across three cycles with
 real kernel grants, not GPU completion or cross-process isolation.
 The runner requires the stronger queued-retirement completion marker.
+# Native client-quota IPC regression
+
+Run `flock --exclusive --nonblock coordination/build.lock nix develop -c bash
+tests/intel-gpu/native/run-demand.sh quota` from the checkout root (one command).
+The disposable privileged service configures a 12KiB per-session budget, uses
+real endpoint-attributed loopback IPC and real DMA backing for the first create,
+then rejects an additional 8KiB request and accepts a smaller 4KiB request from
+the remaining budget without another physical extent allocation. Closing the name
+does not refund backing; a forced unsuccessful backing completion in a second
+endpoint-attributed account also retains its charge. Thirteen replies complete,
+saved reply authority is consumed exactly once, and no duplicate completion
+remains. The fixture never fabricates a retirement acknowledgement.
+
+Evidence: `../demand-backing.hjMRRN/serial.log` and `input.sha256` (2026-10-08).
+This version also checks the production own-account query over real IPC:
+unknown accounts return unavailable, the other endpoint cannot observe the
+first account, close/failed allocations remain charged, and a request that
+tries to name another account is rejected. The prior `../demand-backing.URMjoq/`
+run covered seven allocation/close replies without accounting queries.
+The earlier `../demand-backing.rmAEeQ/` run used an 8KiB budget without the
+smaller-request recovery case.
+This uses the existing hashed kernel, not a kernel source rebuild. It does not
+test GPU/TLB retirement, cross-process isolation, Desktop failure/fallback,
+global DMA exhaustion, or a public runtime fault-control interface. The forced
+policy/result live only in the fixture; production driver policy is unchanged.
+
+## Read-only own-account protocol (0A30)
+
+On an already authorized GPU endpoint, send tag `(0A30,4,0,0)` and words
+`[1,0,0,0]`. The driver derives the session from the kernel receive envelope;
+no caller-selected session is permitted. Response tag is identical and words
+are `[status,1,limit_bytes,charged_bytes]`. Status is 0 success, 1 denied
+(unresolved authority), 2 malformed request, or 3 unavailable (unknown/closed
+account, failed service or unavailable owner). Non-success replies zero both
+byte fields. Authenticate first: malformed foreign requests return denied.
+
+This query is read-only and does not create an account, reserve memory, or
+change a quota. Charges include retained, pending and private allocations;
+they are not resident bytes, free capacity, or proof of GPU/CPU retirement.
+The serialized driver loop does not serve requests mid-publication, so a query
+can wait behind an active update; this is not an out-of-band watchdog.
+Driver dispatch compiles natively; the disposable fixture tests the production
+handler with real IPC, not a live Desktop/Intel endpoint. Existing NUC image84b099
+predates this protocol.
+
+The Mesa C adapter `cubit_intel_query_accounting(slot, &limit, &charged)` now
+validates both reply tags, version, status, zero error payloads and page-aligned
+successful accounting with charged <= limit. It returns the service status or
+4 for local/transport/protocol failure; writable outputs clear on failure.
+Outputs must be distinct and nonnull. Only status0 makes the snapshot valid;
+an unavailable account must not be displayed as zero usage. The caller retains
+and serializes the same session capability: no reply nonce or additional
+session identity is carried by this protocol. This adapter does not establish
+freshness across capability replacement or authorize backing reuse.
+
+2026-10-08 Nix hosted buffer bridge passed the accounting boundary cases,
+including 16TiB limits, malformed envelopes, error payloads, output clearing,
+and the actual C/Ada ABI. Native compile-only against the CuBit runtime also
+passed (`--subdirs=accounting-20261008` in the buffer fixture projects).
+These hosted adapter tests use mock transport; Desktop consumption remains
+outstanding.
+
+### Native accounting adapter integration
+
+Run `nix develop -c bash tests/intel-gpu/native/run-demand.sh accounting`
+under the shared build lock. The disposable supervisor spawns a separate child
+from the same test ELF. The child calls the actual Mesa `Native_GPU_Buffers`
+adapter over kernel IPC; the supervisor resolves kernel sender/stamp and runs
+the production Buffer_Requests handler and real Extent_Allocator DMA backing.
+Two accepted endpoint stamps select independent accounts; a third is denied.
+No full Intel driver, GuC, GPU commands, or compositor is involved.
+
+The 13 calls cover unknown-account unavailability, an 8KiB allocation, a
+second 8KiB allocation denied by the 12KiB test policy, subsequent 4KiB recovery,
+retained charge after name close, and a second account's independent 4KiB
+allocation. Outputs are checked in the child, final charges in the supervisor;
+one physical extent backs the successful allocations. No retirement/reuse or
+general cross-process security claim follows from these specific checks.
+
+2026-10-08 session80240 passed compile/link and QEMU native boot. Evidence:
+`tests/intel-gpu/demand-backing.IcSwp7/serial.log` and `input.sha256`.
+The existing kernel was reused and hashed, not rebuilt. Initial58589 compiled
+but packaging failed due to an inherited output path;54089 rejected shared
+object directories. The final standalone project uses isolated output paths.
+Misplaced generated binder files and executable from58589 were moved into its
+`demand-backing.euVxIy/obj` evidence directory. No production image was replaced.

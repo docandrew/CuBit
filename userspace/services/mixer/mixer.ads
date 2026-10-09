@@ -25,6 +25,7 @@
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with CuBit.Audio_Control;
+with CuBit.Memory_Grants;
 with CuBit.Audio_Ring;
 
 package Mixer is
@@ -96,7 +97,10 @@ package Mixer is
    type StreamInfo is record
       active    : Boolean := False;
       pid       : Unsigned_64 := 0;
-      grantId   : Unsigned_64 := 0;
+      grant     : CuBit.Memory_Grants.Grant_Reference;
+      --  The ring has been granted at least once: its buffer is reused only
+      --  after that grant has retired (the old client unmapped it).
+      granted   : Boolean := False;
       ringAddr  : Unsigned_64 := 0;    --  Virtual address of grant in our space
       vol       : Volume := 1.0;
       panPos    : Pan := 0.5;
@@ -120,8 +124,6 @@ package Mixer is
    RING_HDR_SIZE  : constant Unsigned_32 := CuBit.Audio_Ring.Header_Bytes;
    RING_DATA_SIZE : constant Unsigned_32 := CuBit.Audio_Ring.Data_Bytes;
 
-   GRANT_REGION_BASE : constant Unsigned_64 := 16#4000_0000_0000#;
-   GRANT_SLOT_SIZE   : constant Unsigned_64 := 4096 * 4096;
 
    --  Pre-allocated ring buffer addresses (set at startup via sbrk)
    type RingBufAddrs is array (0 .. MAX_STREAMS - 1) of Unsigned_64;
@@ -142,7 +144,7 @@ package Mixer is
 
    --  Allocate a stream slot, create grant to client, initialize ring header.
    --  Returns stream index (0..MAX_STREAMS-1) or -1 on failure.
-   --  After success, streams(idx).grantId has the kernel grant ID.
+   --  After success, streams(idx).grant names the client's ring grant.
    function openStream (clientPID  : Unsigned_64;
                         sampleRate : Unsigned_32;
                         channels   : Unsigned_16;

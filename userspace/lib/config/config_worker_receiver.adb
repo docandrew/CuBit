@@ -14,7 +14,7 @@ package body Config_Worker_Receiver is
       Type_Executor.Needs_Recovery (Object.Types));
 
    procedure Handle
-     (Object : in out State; Sender : CuBit.Messages.ProcessID;
+     (Object : in out State; Sender : CuBit.Messages.Process_ID;
       Request : CuBit.Messages.Message;
       Reply : out CuBit.Messages.Message)
    is

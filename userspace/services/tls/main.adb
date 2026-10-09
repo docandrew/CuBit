@@ -65,7 +65,7 @@ procedure Main is
    type Channel is record
       Phase : Phase_Kind := Free;
       Id : Unsigned_64 := 0;
-      Owner : ProcessID := NO_PROCESS;
+      Owner : Process_ID := No_Process;
       --  The client's transfer buffer, acquired for the channel's lifetime.
       Client : CuBit.Memory_Grants.Grant_Reference;
       Client_Address : System.Address := System.Null_Address;
@@ -372,7 +372,7 @@ procedure Main is
    ---------------------------------------------------------------------------
    --  Client operations.
    ---------------------------------------------------------------------------
-   function Find (Owner : ProcessID; Id : Unsigned_64) return Integer is
+   function Find (Owner : Process_ID; Id : Unsigned_64) return Integer is
    begin
       for I in Channel_Index loop
          if Channels (I).Phase /= Free and then Channels (I).Id = Id and then
@@ -402,7 +402,7 @@ procedure Main is
       return False;
    end Lookup_Host;
 
-   procedure Handle_Open (From : ProcessID; Request : Message) is
+   procedure Handle_Open (From : Process_ID; Request : Message) is
       Length : constant Natural := Natural (Request.tag.length);
       Reference : constant CuBit.Memory_Grants.Grant_Reference :=
         (slot => Request.words (0), generation => Request.words (3));
@@ -459,7 +459,7 @@ procedure Main is
       end if;
       Port := Unsigned_16 (Port_Value);
       if not Client_Scopes.Allows
-        (Scopes, Unsigned_64 (From), Name (1 .. Name_Length), Port)
+        (Scopes, To_Word (From), Name (1 .. Name_Length), Port)
       then
          CuBit.Log.Warning ("tls: scope denied " & Name (1 .. Name_Length));
          CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
@@ -526,7 +526,7 @@ procedure Main is
       end;
    end Handle_Open;
 
-   procedure Handle_Write (From : ProcessID; Request : Message) is
+   procedure Handle_Write (From : Process_ID; Request : Message) is
       Index : constant Integer := Find (From, Request.words (0));
       Offset : constant Unsigned_64 := Request.words (1);
       Length : constant Unsigned_64 := Request.words (2);
@@ -563,7 +563,7 @@ procedure Main is
       end;
    end Handle_Write;
 
-   procedure Handle_Read (From : ProcessID; Request : Message) is
+   procedure Handle_Read (From : Process_ID; Request : Message) is
       Index : constant Integer := Find (From, Request.words (0));
       Offset : constant Unsigned_64 := Request.words (1);
       Max : constant Unsigned_64 := Request.words (2);
@@ -606,7 +606,7 @@ procedure Main is
       end;
    end Handle_Read;
 
-   procedure Handle_Shut (From : ProcessID; Request : Message) is
+   procedure Handle_Shut (From : Process_ID; Request : Message) is
       Index : constant Integer := Find (From, Request.words (0));
       Count : N32;
       Area : System.Address;
@@ -648,7 +648,7 @@ procedure Main is
       Send_Reply (Held_Reply_Slot, Reply_OK, 0);
    end Handle_Shut;
 
-   procedure Handle_Info (From : ProcessID; Request : Message) is
+   procedure Handle_Info (From : Process_ID; Request : Message) is
       Index : constant Integer := Find (From, Request.words (0));
    begin
       if Index < 0 or else Channels (Index).Phase /= Established then
@@ -664,7 +664,7 @@ procedure Main is
    ---------------------------------------------------------------------------
    --  Policy operations from procmgr.
    ---------------------------------------------------------------------------
-   procedure Handle_Set_Scopes (From : ProcessID; Request : Message) is
+   procedure Handle_Set_Scopes (From : Process_ID; Request : Message) is
       Client : constant Unsigned_64 := Request.words (0);
       Count : constant Unsigned_64 := Request.words (1);
       Reference : constant CuBit.Memory_Grants.Grant_Reference :=
@@ -734,7 +734,7 @@ procedure Main is
       Client_Scopes.Revoke (Scopes, Client);
       for I in Channel_Index loop
          if Channels (I).Phase /= Free and then
-           Unsigned_64 (Channels (I).Owner) = Client
+           To_Word (Channels (I).Owner) = Client
          then
             Retire (I, Scope_Denied);
             if Channels (I).Phase = Closed then
@@ -777,19 +777,19 @@ procedure Main is
          Path := Roots_Path;
       end;
       Msg := Open_Request (Reference, Roots_Path'Length, OPEN_READ_ONLY);
-      Msg.tag := capCall (FS_Slot, Msg);
+      Msg.tag := capCall (FS_Slot, Msg, CuBit.Messages.Wait_Forever);
       if Msg.tag.label /= CuBit.Filesystems.REPLY_OK then
          CuBit.Log.Warning ("tls: cannot open " & Roots_Path);
          return False;
       end if;
       Handle := File_Handle (Msg.words (0));
       Msg := Read_At_Request (Handle, Reference, Roots_Capacity, 0);
-      Msg.tag := capCall (FS_Slot, Msg);
+      Msg.tag := capCall (FS_Slot, Msg, CuBit.Messages.Wait_Forever);
       if Msg.tag.label = CuBit.Filesystems.REPLY_OK and then Msg.words (0) <= Roots_Capacity then
          Total := Natural (Msg.words (0));
       end if;
       Msg := Close_Request (Handle);
-      Msg.tag := capCall (FS_Slot, Msg);
+      Msg.tag := capCall (FS_Slot, Msg, CuBit.Messages.Wait_Forever);
       if Total = 0 or else Total = Roots_Capacity then
          CuBit.Log.Warning ("tls: root bundle empty or larger than" &
                      Roots_Capacity'Image & " bytes");
@@ -914,7 +914,7 @@ procedure Main is
    end Expire;
 
    Entropy_OK : Boolean;
-   From : ProcessID;
+   From : Process_ID;
    Request : Message;
    Found, Progress : Boolean;
    Completion : CompletionEntry;

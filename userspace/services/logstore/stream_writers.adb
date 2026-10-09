@@ -4,6 +4,7 @@ with CuBit.Log_Protocol;
 with CuBit.Log_Streams;
 
 package body Stream_Writers is
+   use type CuBit.Messages.Process_ID;
    package Channels renames CuBit.Channels;
    package Streams renames CuBit.Log_Streams;
    use type CuBit.Log_Protocol.Status;
@@ -15,10 +16,10 @@ package body Stream_Writers is
      (First_Number + Unsigned_64 (Index));
 
    --  The stream numbered Number that From opened, or 0.
-   function Find (Item : Table; Number : Unsigned_64; From : CuBit.Messages.ProcessID) return Natural is
+   function Find (Item : Table; Number : Unsigned_64; From : CuBit.Messages.Process_ID) return Natural is
      (if Number > First_Number and then Number - First_Number <= Unsigned_64 (Item'Last)
         and then Item (Natural (Number - First_Number)).Link.Active
-        and then Item (Natural (Number - First_Number)).Owner = Unsigned_64 (From)
+        and then Item (Natural (Number - First_Number)).Owner = From
       then Natural (Number - First_Number) else 0);
 
    procedure Let_Go (S : in out Stream);
@@ -29,7 +30,7 @@ package body Stream_Writers is
    end Let_Go;
 
    procedure Open
-     (Item : in out Table; From : CuBit.Messages.ProcessID; Authority : Unsigned_64;
+     (Item : in out Table; From : CuBit.Messages.Process_ID; Authority : Unsigned_64;
       Request : CuBit.Messages.Message; Reply : out CuBit.Messages.Message)
    is
       Is_Open, Valid : Boolean;
@@ -46,7 +47,7 @@ package body Stream_Writers is
          if not Item (I).Link.Active then
             Channels.Accept_Open (From, Request, Number_Of (I), Item (I).Link, Reply);
             if Item (I).Link.Active then
-               Item (I).Owner := Unsigned_64 (From);
+               Item (I).Owner := From;
                Item (I).Authority := Authority;
                Item (I).Handle := 0;
             end if;
@@ -57,7 +58,7 @@ package body Stream_Writers is
    end Open;
 
    procedure Bind
-     (Item : in out Table; Number, Handle : Unsigned_64; From : CuBit.Messages.ProcessID;
+     (Item : in out Table; Number, Handle : Unsigned_64; From : CuBit.Messages.Process_ID;
       Authority : Unsigned_64; Bound : out Boolean)
    is
       Index : constant Natural := Find (Item, Number, From);
@@ -78,10 +79,11 @@ package body Stream_Writers is
       end loop;
    end Unbind;
 
-   procedure Close (Item : in out Table; From : CuBit.Messages.ProcessID; Number : Unsigned_64) is
-      Index : constant Natural := Find (Item, Number, From);
+   procedure Close (Item : in out Table; From : CuBit.Messages.Process_ID;
+                    Request : CuBit.Messages.Message) is
+      Index : constant Natural := Find (Item, Channels.Number_Of (Request), From);
    begin
-      if Index /= 0 then
+      if Index /= 0 and then Channels.Closed_By (Item (Index).Link, From, Request) then
          Let_Go (Item (Index));
       end if;
    end Close;

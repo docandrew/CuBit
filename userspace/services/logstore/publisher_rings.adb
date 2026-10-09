@@ -4,7 +4,9 @@ with CuBit.Channel_Protocol;
 with CuBit.Log_Protocol;
 with CuBit.Log_Publish_Rings;
 
+with CuBit.Process_IDs.Text;
 package body Publisher_Rings is
+   use CuBit.Messages;
    package Channels renames CuBit.Channels;
    package Publish renames CuBit.Log_Publish_Rings;
    package Logs renames CuBit.Log_Records;
@@ -15,13 +17,13 @@ package body Publisher_Rings is
 
    --  logstore's own record about a publisher (what it shed).
    procedure Note_Shed
-     (Store : in out Log_Fanout.Broker; Owner, Count, Now_Ms : Unsigned_64);
+     (Store : in out Log_Fanout.Broker; Owner : Process_ID; Count, Now_Ms : Unsigned_64);
    procedure Note_Shed
-     (Store : in out Log_Fanout.Broker; Owner, Count, Now_Ms : Unsigned_64)
+     (Store : in out Log_Fanout.Broker; Owner : Process_ID; Count, Now_Ms : Unsigned_64)
    is
       Made : constant Logs.Decoded :=
         Logs.Make ("logstore: shed" & Unsigned_64'Image (Count) & " records from pid" &
-                   Unsigned_64'Image (Owner) & " (ring full or over budget)", Logs.Warning);
+                   " " & CuBit.Process_IDs.Text.Image (Owner) & " (ring full or over budget)", Logs.Warning);
    begin
       if Made.Success then
          Log_Fanout.Publish
@@ -59,7 +61,7 @@ package body Publisher_Rings is
                Log_Budgets.Admit (Budgets, CuBit.Log_Protocol.Publication_Budget (R.Authority), Admitted);
                if Admitted then
                   Log_Fanout.Publish
-                    (Store, (Source => R.Owner, Node => CuBit.Log_Protocol.This_Node,
+                    (Store, (Source => To_Word (R.Owner), Node => CuBit.Log_Protocol.This_Node,
                              Publication_Tag => R.Authority, Monotonic_Ms => Now_Ms,
                              Data => Decoded.Value));
                else
@@ -106,7 +108,7 @@ package body Publisher_Rings is
 
    procedure Open
      (Item : in out Table; Store : in out Log_Fanout.Broker; Budgets : in out Log_Budgets.Limiter;
-      From : CuBit.Messages.ProcessID; Authority : Unsigned_64;
+      From : CuBit.Messages.Process_ID; Authority : Unsigned_64;
       Request : CuBit.Messages.Message; Minimum : CuBit.Log_Records.Severity;
       Now_Ms : Unsigned_64; Reply : out CuBit.Messages.Message)
    is
@@ -126,7 +128,7 @@ package body Publisher_Rings is
       --  entry, then the longest idle (drained before it is let go).
       for I in Item'Range loop
          if Item (I).Link.Active
-           and then Item (I).Owner = Unsigned_64 (From) and then Item (I).Authority = Authority
+           and then Item (I).Owner = From and then Item (I).Authority = Authority
          then
             Chosen := I;
          end if;
@@ -152,7 +154,7 @@ package body Publisher_Rings is
       end if;
       Channels.Accept_Open (From, Request, Unsigned_64 (Chosen), Item (Chosen).Link, Reply);
       if Item (Chosen).Link.Active then
-         Item (Chosen).Owner := Unsigned_64 (From);
+         Item (Chosen).Owner := From;
          Item (Chosen).Authority := Authority;
          Item (Chosen).Shed_Seen := Channels.Shed_Count (Item (Chosen).Link);
          Item (Chosen).Active_Ms := Now_Ms;
@@ -162,12 +164,13 @@ package body Publisher_Rings is
 
    procedure Close
      (Item : in out Table; Store : in out Log_Fanout.Broker; Budgets : in out Log_Budgets.Limiter;
-      From : CuBit.Messages.ProcessID; Number : Unsigned_64;
+      From : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message;
       Minimum : CuBit.Log_Records.Severity; Now_Ms : Unsigned_64) is
+      Number : constant Unsigned_64 := Channels.Number_Of (Request);
    begin
       if Number in 1 .. Maximum_Publishers
-        and then Item (Natural (Number)).Link.Active
-        and then Item (Natural (Number)).Owner = Unsigned_64 (From)
+        and then Item (Natural (Number)).Owner = From
+        and then Channels.Closed_By (Item (Natural (Number)).Link, From, Request)
       then
          Finish (Item (Natural (Number)), Store, Budgets, Minimum, Now_Ms);
       end if;

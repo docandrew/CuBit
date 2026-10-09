@@ -95,7 +95,7 @@ procedure main is
    begin
       for i in 1 .. WARMUP_COUNT loop
          msg := echoMsg (Unsigned_64 (i));
-         msg.tag := capCall (CAP_SLOT_BENCH, msg);
+         msg.tag := capCall (CAP_SLOT_BENCH, msg, CuBit.Messages.Wait_Forever);
          verifyReply (msg, Unsigned_64 (i));
          exit when not ok;
       end loop;
@@ -108,7 +108,7 @@ procedure main is
       for i in 1 .. SYNC_COUNT loop
          msg := echoMsg (Unsigned_64 (i));
          Started := Clock.Read_Counter;
-         msg.tag := capCall (CAP_SLOT_BENCH, msg);
+         msg.tag := capCall (CAP_SLOT_BENCH, msg, CuBit.Messages.Wait_Forever);
          Finished := Clock.Read_Counter;
          if Finished < Started then
             fail ("counter-went-backwards");
@@ -274,7 +274,7 @@ procedure main is
       -- request. Both must complete; the death result occupies the last slot.
       msg := NULL_MESSAGE;
       msg.tag.label := OP_BENCH_DIE;
-      tag := capCall (CAP_SLOT_BENCH, msg);
+      tag := capCall (CAP_SLOT_BENCH, msg, CuBit.Messages.Wait_Forever);
       if tag.label /= 0 then fail ("sync-target-exit"); return; end if;
       deadline := nowMs + 2_000;
       for i in 1 .. 64 loop

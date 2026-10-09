@@ -156,7 +156,7 @@ package body Ext2 is
                           3 => fs.device.grant.generation];
 
             deviceCalls := deviceCalls + 1;
-            ignore := capCall (fs.device.endpointSlot, msg);
+            ignore := capCall (fs.device.endpointSlot, msg, CuBit.Messages.Wait_Forever);
 
             if msg.tag.label /= REPLY_OK or else
                msg.tag.length /= 1 or else
@@ -1734,7 +1734,7 @@ package body Ext2 is
                                 2 => 1,
                                 3 => fs.device.grant.generation];
             deviceCalls := deviceCalls + 1;
-            ignore := capCall (fs.device.endpointSlot, msg);
+            ignore := capCall (fs.device.endpointSlot, msg, CuBit.Messages.Wait_Forever);
 
                   if msg.tag.label /= REPLY_OK or else
                      msg.tag.length /= 1 or else
@@ -1771,7 +1771,7 @@ package body Ext2 is
                              2 => 1,
                              3 => fs.device.grant.generation];
             deviceCalls := deviceCalls + 1;
-            ignore := capCall (fs.device.endpointSlot, msg);
+            ignore := capCall (fs.device.endpointSlot, msg, CuBit.Messages.Wait_Forever);
 
                if msg.tag.label /= REPLY_OK or else
                   msg.tag.length /= 1 or else
@@ -1830,7 +1830,7 @@ package body Ext2 is
                                 2 => sectorsNeeded,
                                 3 => fs.device.grant.generation];
             deviceCalls := deviceCalls + 1;
-            ignore := capCall (fs.device.endpointSlot, msg);
+            ignore := capCall (fs.device.endpointSlot, msg, CuBit.Messages.Wait_Forever);
 
                   if msg.tag.label /= REPLY_OK or else
                      msg.tag.length /= 1 or else
@@ -1877,7 +1877,7 @@ package body Ext2 is
       msg.tag := (label => OP_FLUSH_DEVICE, length => 0, flags => 0, reserved => 0);
       deviceCalls := deviceCalls + 1;
       deviceFlushes := deviceFlushes + 1;
-      msg.tag := capCall (fs.device.endpointSlot, msg);
+      msg.tag := capCall (fs.device.endpointSlot, msg, CuBit.Messages.Wait_Forever);
       ok := msg.tag.label = CuBit.Block_Devices.REPLY_OK and then
         msg.tag.length = 1 and then msg.tag.flags = 0 and then
         msg.tag.reserved = 0 and then msg.words (0) = 0;
@@ -6882,7 +6882,7 @@ package body Ext2 is
                       flags => 0, reserved => 0),
          authorityTag => 0,
          words    => [others => 0]);
-      describeMsg.tag := capCall (capSlot, describeMsg);
+      describeMsg.tag := capCall (capSlot, describeMsg, CuBit.Messages.Wait_Forever);
       if describeMsg.tag.label = REPLY_NO_DEVICE then
          result :=
            (if describeMsg.tag.length = 1 and then

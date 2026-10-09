@@ -372,7 +372,7 @@ procedure main is
    --  sendReply - send a reply message
    ---------------------------------------------------------------------------
    procedure sendReply
-     (dest   : ProcessID;
+     (dest   : Process_ID;
       label  : Unsigned_32;
       word0  : Unsigned_64)
    is
@@ -394,7 +394,7 @@ procedure main is
    --  words(2) = sector_count (number of sectors to read)
    --  words(3) = grant generation
    ---------------------------------------------------------------------------
-   procedure handleReadBlock (sender : ProcessID; msg : Message) is
+   procedure handleReadBlock (sender : Process_ID; msg : Message) is
       lba       : Unsigned_32 := 0;
       sectorCt  : Unsigned_8 := 0;
       grantAddr : System.Address := System.Null_Address;
@@ -465,7 +465,7 @@ procedure main is
    --  words(2) = sector_count (number of sectors to write)
    --  words(3) = grant generation
    ---------------------------------------------------------------------------
-   procedure handleWriteBlock (sender : ProcessID; msg : Message) is
+   procedure handleWriteBlock (sender : Process_ID; msg : Message) is
       lba          : Unsigned_32 := 0;
       sectorCt     : Unsigned_8 := 0;
       grantAddr    : System.Address := System.Null_Address;
@@ -535,7 +535,7 @@ procedure main is
    --  handleDescribe
    --  Return Block.Device.V1 geometry and features.
    ---------------------------------------------------------------------------
-   procedure handleDescribe (sender : ProcessID) is
+   procedure handleDescribe (sender : Process_ID) is
       replyMsg : Message;
       ignore   : Unsigned_64;
    begin
@@ -560,7 +560,7 @@ procedure main is
    end handleDescribe;
 
    --  Main message loop variables
-   sender : ProcessID;
+   sender : Process_ID;
    msg    : Message;
 begin
    debugPrint ("ATA Driver: Starting..." & LF);
@@ -589,7 +589,7 @@ begin
          (tag      => (label => OP_READY, length => 0,
                        flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => (others => 0)));
+          words    => (others => 0)), CuBit.Messages.Wait_Forever);
    end;
 
    debugPrint ("ATA: registered, entering message loop" & LF);

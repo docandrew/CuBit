@@ -87,7 +87,7 @@ package body CuBit.Streams is
    --  own read-only grant of the outlet's region (Channels.Accept_Shared).
    ---------------------------------------------------------------------------
    function streamHandleSubscription return Boolean is
-      from  : ProcessID;
+      from  : Process_ID;
       msg   : Message;
       found : Boolean;
       Ignore : Unsigned_64;
@@ -140,9 +140,7 @@ package body CuBit.Streams is
                   idx : constant StreamIndex := StreamIndex ((Number - 1) / MAX_SUBSCRIBERS);
                   Slot : constant CursorSlot := CursorSlot ((Number - 1) mod MAX_SUBSCRIBERS);
                begin
-                  if streamTab (idx).subs (Slot).Active
-                    and then streamTab (idx).subs (Slot).Peer = from
-                  then
+                  if Channels.Closed_By (streamTab (idx).subs (Slot), from, msg) then
                      Channels.Close (streamTab (idx).subs (Slot));
                   end if;
                end;
@@ -170,8 +168,10 @@ package body CuBit.Streams is
          end;
          return True;
       end if;
-      --  Unknown message type: drop silently
-      return False;
+      --  Anything else (a producing open, an unknown request) is refused
+      --  with a reply: a caller is never left waiting for one.
+      Ignore := reply (from, Channels.Refusal_Reply (CuBit.Channel_Protocol.Unsupported));
+      return True;
    end streamHandleSubscription;
 
    --  A reader's grant came back (it closed, or died): its slot is free.
@@ -346,7 +346,7 @@ package body CuBit.Streams is
                   begin
                      CuBit.Memory_Grants.Acquire
                        (CuBit.Grant_References.Decode (Ring_Table.Entries (E).Grant),
-                        ProcessID (Ring_Table.Owner), 0,
+                        From_Word (Ring_Table.Owner), 0,
                         Regions.Region_Bytes (Pages),
                         CuBit.Memory_Grants.Write_Access, Mapped, Ok);
                      if Ok then

@@ -1,0 +1,6 @@
+(executable-manifest v1
+ (identity "com.cubit.trace-viewer")
+ (version "0.1.0")
+ (request-service desktop read-write desktop)
+ (request-service filesystem read-write filesystem)
+ (filesystem-scope (rights read) "@nvme:0/work/desktop-trace.cubittrace"))

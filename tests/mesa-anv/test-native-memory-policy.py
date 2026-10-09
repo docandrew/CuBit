@@ -60,6 +60,7 @@ def main():
         'session-status': [native / 'anv_cubit_memory.c', tests / 'session-status-test.c'],
         'memory-lifecycle': [native / 'anv_cubit_memory.c', tests / 'memory-lifecycle-test.c'],
         'submission-lifecycle': [native / 'anv_cubit_memory.c', tests / 'submission-lifecycle-test.c'],
+        'binding-route': [native / 'anv_cubit_memory.c', tests / 'binding-route-test.c'],
         'concurrent-submission': [native / 'anv_cubit_memory.c', tests / 'concurrent-submission-test.c'],
         'slab-submission': [native / 'anv_cubit_memory.c', tests / 'slab-submission-test.c'],
         'state-table-backing': [native / 'anv_cubit_state_table.c',

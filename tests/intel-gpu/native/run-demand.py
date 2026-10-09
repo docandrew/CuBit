@@ -11,6 +11,19 @@ required = (
     "native demand backing: 4112 page sentinels and metadata extension PASS",
     "TEST: PASS native demand backing 18MiB 17 objects (NO GPU/IPC)",
 )
+if len(sys.argv) > 2 and sys.argv[2] == "dma-retirement":
+    required = (
+        "native DMA retirement: disposable real owner cleanup (NO GPU)",
+        "native DMA quota: adoption runtime denial overlap rollback and child response PASS",
+        "native DMA retirement: live grant pins dead owner and readable backing PASS",
+        "native DMA metadata: 160 owner lifecycles reclaim slabs and preserve orphan backing PASS",
+        "TEST: PASS native DMA retirement 40 retained records orphan backing survives PID reuse ordinary cleanup (NO GPU)",
+    )
+if len(sys.argv) > 2 and sys.argv[2] == "dma-growth":
+    required = (
+        "native DMA growth: real kernel allocations (NO GPU)",
+        "TEST: PASS native DMA growth 96 records 192MiB 49152 sentinels rollback (NO GPU)",
+    )
 if len(sys.argv) > 2 and sys.argv[2] == "metadata":
     required = (
         "native update metadata: real owned-memory reservations (NO GPU/ISOLATION)",
@@ -26,8 +39,9 @@ if len(sys.argv) > 2 and sys.argv[2] == "images":
 if len(sys.argv) > 2 and sys.argv[2] == "ipc":
     required = (
         "native allocation IPC: real loopback transport (NO GPU/ISOLATION)",
+        "native allocation IPC: 64-probe gap search with interleaved completion PASS",
         "native allocation IPC: bounded local work and interleaved completion PASS",
-        "TEST: PASS native allocation IPC 17 saved replies 18 extents both directories grew 1 interleaved request (NO GPU/ISOLATION)",
+        "TEST: PASS native allocation IPC 201 saved replies 19 extents both directories grew 2 interleaved requests (NO GPU/ISOLATION)",
     )
 if len(sys.argv) > 2 and sys.argv[2] == "views":
     required = (
@@ -38,6 +52,17 @@ if len(sys.argv) > 2 and sys.argv[2] == "views":
         "native retained reader: closed producer read-only terminal grant drain PASS",
         "native forwarding blocks: 32 rounds eight retained roots and children PASS",
         "TEST: PASS native view retention 3 cycles two pins terminal child queued retirement (NO GPU/ISOLATION)",
+    )
+if len(sys.argv) > 2 and sys.argv[2] == "accounting":
+    required = (
+        "native accounting adapter: production client and handler, separate processes (NO GPU)",
+        "native accounting adapter: thirteen authenticated calls and one DMA extent PASS",
+        "TEST: PASS native accounting adapter child transport completed (NO GPU)",
+    )
+if len(sys.argv) > 2 and sys.argv[2] == "quota":
+    required = (
+        "native client quota: real IPC and backing, forced startup policy (NO GPU/ISOLATION)",
+        "TEST: PASS native client quota thirteen IPC replies own accounting denial recovery retained charges (NO GPU/ISOLATION)",
     )
 if len(sys.argv) > 2 and sys.argv[2] == "mappings":
     required = (

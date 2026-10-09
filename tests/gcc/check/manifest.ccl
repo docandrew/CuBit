@@ -1,0 +1,19 @@
+# The gcc test launcher (tests/gcc/check): runs cc1 on hello.c, then as.app
+# on its output, then the gcc driver end to end, and has binutils-compare
+# check each against the same GCC and binutils on Linux. cc1 and the driver
+# get the work and toolchain places from it (delegated); a launcher passes
+# on only what it holds.
+(Executable_Manifest
+  identity => "com.cubit.gcc-check"
+  version => "0.1.0"
+  requests => [(service "process-manager" "process-manager") (service "filesystem" "filesystem")]
+  scopes => [
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")
+    (filesystem [File_Right.Read] "@nvme:0/toolchain")]
+  may_launch => [
+    (Launch "toolchain/libexec/gcc/x86_64-linux-musl/15.3.0/cc1")
+    (Launch "toolchain/bin/gcc")
+    (Launch "work/hello")
+    (Launch "as.app")
+    (Launch "binutils-compare.app")
+    (Launch "archive-walk.app")])

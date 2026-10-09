@@ -60,6 +60,26 @@ package Vulkan_Frame with SPARK_Mode is
          V.Draws (Submission) >= V.Draws (Submission'Old) and
          V.Draws (Submission) <= V.Draws (Submission'Old) + 8 and
          Accepted = V.Complete_Frame (Submission);
+   -- Consume only the exact ticket whose repaint snapshot was captured.
+   -- Invalid reservations make no foreign call. A failed foreign start leaves
+   -- both the target and its damage quarantined, never reusable by cancellation.
+   procedure Begin_Reserved_Record
+     (Submission : in out V.State; Pool : in out P.State; Damage : in out D.State;
+      Ticket : P.Ticket; Result : out Admission)
+     with Pre => P.Valid (Pool) and D.Valid (Damage) and V.Current (Submission) = V.Idle,
+       Post => P.Valid (Pool) and D.Valid (Damage) and
+         P.Front (Pool) = P.Front (Pool'Old) and
+         P.Displayed (Pool) = P.Displayed (Pool'Old) and
+         P.Readback (Pool) = P.Readback (Pool'Old) and
+         V.Same_Sources (Submission, Submission'Old) and
+         (case Result is
+            when Started => V.Current (Submission) = V.Recording and
+              not V.Pass_Started (Submission) and V.Complete_Frame (Submission) and
+              P.Rendering (Pool) and not P.Faulted (Pool) and
+              P.Writer (Pool) = Ticket and Damage = Damage'Old and
+              not D.Faulted (Damage) and D.Active (Damage) = Ticket.Buffer,
+            when Deferred => Submission = Submission'Old and Pool = Pool'Old and Damage = Damage'Old,
+            when Failed => P.Faulted (Pool) and D.Faulted (Damage));
    procedure Begin_Record
      (Submission : in out V.State; Pool : in out P.State;
       Result : out Admission; Replace_Ready : Boolean := False)

@@ -33,6 +33,17 @@ package Intel_GPU_Extent_Directory is
      64 - (12 + Intel_GPU_Physical_Extents.Allocation_Order) + 1;
    function Last_Admission_Probes (Object : Directory) return Natural;
    -- Number of key nodes read by the last Append, not an allocation latency.
+   type Lookup_State is (Unavailable, Absent, Present);
+   type DMA_Location is record
+      State : Lookup_State := Unavailable;
+      Offset : Unsigned_64 := 0;
+      Probes : Natural range 0 .. Max_Admission_Probes := 0;
+   end record;
+   -- Reverse lookup of one DMA byte in the captured prefix, at most44 key
+   -- reads. Offset is arena-relative, not an authority or CPU pointer. An
+   -- invalid owner/index fails closed as Unavailable, never Absent.
+   function Locate_DMA (Object : Borrowed_View; Address : Unsigned_64)
+     return DMA_Location;
    procedure Extend_Metadata
      (Object : in out Directory; Base, Bytes : Unsigned_64;
       Accepted : out Boolean);

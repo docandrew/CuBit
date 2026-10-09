@@ -5,6 +5,7 @@
 --  Pure policy for shared-memory ownership and derived loans.
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
+with Grant_Windows;
 
 package Memory_Grants with
     Pure,
@@ -12,27 +13,37 @@ package Memory_Grants with
 is
     Page_Size              : constant Unsigned_64 := 4096;
     Maximum_Page_Count     : constant Positive := 4096;
-    Maximum_Process_Count  : constant Positive := 256;
-    -- Namespace capacity, not eagerly allocated records or physical memory.
-    -- 256 owners * 4096 slots * 16 MiB fills [64 TiB, 80 TiB), ending
-    -- exactly before the fixed bootstrap initrd aperture.
-    Grants_Per_Process     : constant Positive := 4096;
-    Grant_Slot_Bytes       : constant Unsigned_64 :=
+    -- One table of grants for the whole system (KERN-003 step 2,
+    -- docs/process-objects.md), indexed by a global slot. Namespace
+    -- capacity, not eagerly allocated records or physical memory. It does
+    -- not decide any address: a grant is mapped at a window of its
+    -- grantee's (Grant_Windows, step 2b), so the table can grow freely.
+    Maximum_Grants         : constant Positive := 2 ** 20;
+    -- What one process may own at once: a quota, not a namespace.
+    Owner_Grant_Quota      : constant Positive := 4096;
+    -- One window holds the largest grant.
+    Window_Bytes           : constant Unsigned_64 :=
         Unsigned_64 (Maximum_Page_Count) * Page_Size;
 
+    -- Every process's received region: [64 TiB, 80 TiB), ending exactly
+    -- before the fixed bootstrap initrd aperture. Owned pages here are
+    -- refused, so nothing a process owns can alias a received mapping.
     Received_Region_First  : constant Unsigned_64 := 16#0000_4000_0000_0000#;
-    Received_Region_Limit  : constant Unsigned_64 :=
-        Received_Region_First +
-        Unsigned_64 (Maximum_Process_Count) *
-        Unsigned_64 (Grants_Per_Process) * Grant_Slot_Bytes;
+    Received_Region_Limit  : constant Unsigned_64 := 16#0000_5000_0000_0000#;
+
+    -- Where window W lies in its grantee's received region.
+    function Window_Address (W : Grant_Windows.Window) return Unsigned_64 is
+      (Received_Region_First + Unsigned_64 (W) * Window_Bytes)
+      with Post => Window_Address'Result >= Received_Region_First and then
+                   Window_Address'Result <= Received_Region_Limit - Window_Bytes;
 
     subtype Page_Count is Positive range 1 .. Maximum_Page_Count;
     subtype Page_Offset is Natural range 0 .. Maximum_Page_Count - 1;
 
-    subtype Process_Index is Natural range 0 .. Maximum_Process_Count - 1;
-    subtype Local_Slot is Natural range 0 .. Grants_Per_Process - 1;
-    subtype Global_Slot is Natural range
-      0 .. Maximum_Process_Count * Grants_Per_Process - 1;
+    -- Slot 0 names no grant.
+    subtype Global_Slot is Natural range 0 .. Maximum_Grants - 1;
+    No_Slot : constant Global_Slot := 0;
+    subtype Grant_Slot is Global_Slot range 1 .. Global_Slot'Last;
 
     type Grant_Generation is mod 2 ** 32;
     Initial_Generation : constant Grant_Generation := 1;
@@ -43,19 +54,6 @@ is
         slot       : Global_Slot;
         generation : Live_Grant_Generation;
     end record;
-
-    function Owner_Of (slot : Global_Slot) return Process_Index is
-      (slot / Grants_Per_Process);
-    function Local_Slot_Of (slot : Global_Slot) return Local_Slot is
-      (slot mod Grants_Per_Process);
-
-    function Make_Global_Slot
-      (owner : Process_Index;
-       slot  : Local_Slot) return Global_Slot is
-      (owner * Grants_Per_Process + slot)
-      with Post =>
-        Owner_Of (Make_Global_Slot'Result) = owner and then
-        Local_Slot_Of (Make_Global_Slot'Result) = slot;
 
     --  Zero is never a live generation. Generation exhaustion retires the
     --  identity rather than wrapping and making an ancient reference current.
@@ -68,46 +66,9 @@ is
          else
              not reusable and then value = value'Old);
 
-    --  Generations are namespaced by the owning process's life
-    --  (docs/threads.md): the high 16 bits are the process generation, the
-    --  low 16 bits count grants within that life, starting at 1. Every reuse
-    --  of a process ID starts in a fresh range, so a reference made for an
-    --  earlier process never matches, without keeping per-ID state after the
-    --  process record is freed.
-    Process_Generation_Limit : constant := 2 ** 16 - 1;
-    subtype Process_Generation is Unsigned_32 range 0 .. Process_Generation_Limit;
-
-    function Life_Base (Life : Process_Generation) return Live_Grant_Generation is
-      (Grant_Generation (Life) * 2 ** 16 + 1);
-
-    function Life_Ceiling (Life : Process_Generation) return Live_Grant_Generation is
-      (Grant_Generation (Life) * 2 ** 16 + (2 ** 16 - 1));
-
-    --  The last generation of the life a generation belongs to (its high half).
-    function Ceiling_Of (G : Live_Grant_Generation) return Live_Grant_Generation is
-      ((G / 2 ** 16) * 2 ** 16 + (2 ** 16 - 1))
-      with Post => Ceiling_Of'Result >= G and then
-                   Ceiling_Of'Result / 2 ** 16 = G / 2 ** 16;
-
-    --  Advance within one life. At the ceiling the slot is retired for this
-    --  life (not reusable) instead of stepping into the next life's range.
-    procedure Advance_Generation_Within
-      (value    : in out Live_Grant_Generation;
-       ceiling  : Live_Grant_Generation;
-       reusable :    out Boolean)
-      with Pre  => value <= ceiling,
-           Post =>
-             value <= ceiling and then
-             (if value'Old < ceiling then
-                  reusable and then value = value'Old + 1
-              else
-                  not reusable and then value = value'Old);
-
-    --  Different lives never share a generation.
-    procedure Prove_Lives_Disjoint (Earlier, Later : Process_Generation)
-      with Ghost,
-           Pre  => Earlier < Later,
-           Post => Life_Ceiling (Earlier) < Life_Base (Later);
+    --  Each slot has its own generation, advanced when its grant retires
+    --  (Advance_Generation): a reference made for an earlier grant in the
+    --  slot never matches, and a slot at the last generation is retired.
 
     --  References use two explicit wire fields. Keeping slot and generation
     --  separate avoids a hidden packing ABI and makes validation mandatory at

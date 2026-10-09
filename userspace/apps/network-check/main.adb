@@ -13,6 +13,15 @@ procedure Main is
    Inspect_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Network;
    Resolve_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Resolve;
    Refused_Slot : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Test_Refused;
+   --  Page-aligned memory for an arena (a grant starts on a page; the
+   --  break need not be on one): a page more than asked, rounded up.
+   Page_Bytes : constant := 4096;
+   function Aligned_Allocation (Bytes : Unsigned_64) return Unsigned_64 is
+      Raw : constant Unsigned_64 := syscall (SYSCALL_SBRK, Bytes + Page_Bytes);
+   begin
+      return (if Raw = Unsigned_64'Last then Raw
+              else (Raw + Page_Bytes - 1) / Page_Bytes * Page_Bytes);
+   end Aligned_Allocation;
    Resolve_Label : constant Unsigned_32 := 16#0410#;
    OK_Label : constant Unsigned_32 := 16#F000#;
    Error_Label : constant Unsigned_32 := 16#F001#;
@@ -71,7 +80,7 @@ procedure Main is
       Request := NULL_MESSAGE; Request.tag.label := Open_Label;
       Request.tag.length := Unsigned_8 (Target'Length);
       Request.words (0) := Arena.Handle; Request.words (1) := Unsigned_64 (Buffer);
-      Reply_Tag := capCall (Slot, Request);
+      Reply_Tag := capCall (Slot, Request, CuBit.Messages.Wait_Forever);
       if Reply_Tag.label = OK_Label then
          Listener_Stream.Handle := Request.words (0);
       end if;
@@ -81,14 +90,14 @@ procedure Main is
    begin
       Request := NULL_MESSAGE; Request.tag.label := Shut_Label;
       Request.tag.length := 1; Request.words (0) := Handle;
-      Reply_Tag := capCall (Slot, Request);
+      Reply_Tag := capCall (Slot, Request, CuBit.Messages.Wait_Forever);
    end Close_Listener;
 begin
    Result := syscall (SYSCALL_INSPECT_CAPABILITY, syscall (SYSCALL_GETPID), Listen_Slot,
                       Unsigned_64 (To_Integer (Inspection'Address)));
    declare
       Allocation : constant Unsigned_64 :=
-        syscall (SYSCALL_SBRK, Arena_Buffers * Stream_Bytes);
+        Aligned_Allocation (Arena_Buffers * Stream_Bytes);
       Success : Boolean;
    begin
       Check (Allocation /= Unsigned_64'Last, "arena allocation");
@@ -143,10 +152,10 @@ begin
    Request.tag.length := 3; Request.authorityTag := Policy_Authority_Tag;
    Request.words (0) := syscall (SYSCALL_GETPID);
    Request.words (2) := Descriptor (Broad_Outbound_TCP);
-   Reply_Tag := capCall (Inspect_Slot, Request);
+   Reply_Tag := capCall (Inspect_Slot, Request, CuBit.Messages.Wait_Forever);
    Check (Reply_Tag.label = Error_Label, "forged policy tag rejected");
    Request := NULL_MESSAGE; Request.tag.label := 16#0432#;
-   Reply_Tag := capCall (Connect_Slot, Request);
+   Reply_Tag := capCall (Connect_Slot, Request, CuBit.Messages.Wait_Forever);
    Check (Reply_Tag.label = Error_Label, "outbound cannot configure network");
 
    declare
@@ -161,7 +170,7 @@ begin
          Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
          Ignored : Unsigned_64;
       begin
-         if not Async_Mode then return capCall (Slot, Request); end if;
+         if not Async_Mode then return capCall (Slot, Request, CuBit.Messages.Wait_Forever); end if;
          Token := Token + 1;
          if not capSubmit (Slot, Request, Token) then
             Check (False, "async request submitted");
@@ -230,18 +239,18 @@ begin
             Check (Channel > Previous_Channel, "channel handle is fresh");
             if Previous_Channel /= 0 then
                Prepare_Shut (Previous_Channel);
-               Reply_Tag := capCall (Connect_Slot, Request);
+               Reply_Tag := capCall (Connect_Slot, Request, CuBit.Messages.Wait_Forever);
                Check (Reply_Tag.label = Error_Label, "stale channel cannot close replacement");
             end if;
             Prepare_Shut (Unsigned_64'Last);
-            Reply_Tag := capCall (Connect_Slot, Request);
+            Reply_Tag := capCall (Connect_Slot, Request, CuBit.Messages.Wait_Forever);
             Check (Reply_Tag.label = Error_Label, "oversized opaque handle denied without truncation");
             Prepare_Shut (Channel);
-            Reply_Tag := capCall (Listen_Slot, Request);
+            Reply_Tag := capCall (Listen_Slot, Request, CuBit.Messages.Wait_Forever);
             Check (Reply_Tag.label = Error_Label, "wrong grant cannot close channel");
             Request := NULL_MESSAGE; Request.tag.label := Write_Label;
             Request.tag.length := 3; Request.words (0) := Channel; Request.words (2) := 4;
-            Reply_Tag := capCall (Connect_Slot, Request);
+            Reply_Tag := capCall (Connect_Slot, Request, CuBit.Messages.Wait_Forever);
             Check (Reply_Tag.label = Error_Label, "retired WRITE operation refused");
             Text := "PING";
             Channels.Write (Stream, Text'Address, 4, Got);
@@ -291,13 +300,13 @@ begin
          Request.tag.length := Unsigned_8 (Name'Length);
          Request.words (0) := Stream.Arena;
          Request.words (1) := Unsigned_64 (Stream.Buffer);
-         Reply_Tag := capCall (Slot, Request);
+         Reply_Tag := capCall (Slot, Request, CuBit.Messages.Wait_Forever);
       end Open;
       procedure Shut (Slot : CapabilitySlot; Handle : Unsigned_64) is
       begin
          Request := NULL_MESSAGE; Request.tag.label := Shut_Label;
          Request.tag.length := 1; Request.words (0) := Handle;
-         Reply_Tag := capCall (Slot, Request);
+         Reply_Tag := capCall (Slot, Request, CuBit.Messages.Wait_Forever);
       end Shut;
       procedure Send (Data : String) is
       begin
@@ -373,7 +382,7 @@ begin
                Request.tag.length := Unsigned_8 (Target'Length);
                Request.words (0) := Arena.Handle;
                Request.words (1) := Unsigned_64 (I);
-               Reply_Tag := capCall (Datagram_Slot, Request);
+               Reply_Tag := capCall (Datagram_Slot, Request, CuBit.Messages.Wait_Forever);
                Check (Reply_Tag.label = OK_Label, "declared udp channels open");
                Held (I) := Request.words (0);
             end;
@@ -382,7 +391,7 @@ begin
          Request := NULL_MESSAGE; Request.tag.label := Open_Label;
          Request.tag.length := Unsigned_8 (Target'Length);
          Request.words (0) := Arena.Handle; Request.words (1) := 1;
-         Reply_Tag := capCall (Datagram_Slot, Request);
+         Reply_Tag := capCall (Datagram_Slot, Request, CuBit.Messages.Wait_Forever);
          Check (Reply_Tag.label = Error_Label, "buffer in use cannot open a second channel");
          Channels.Release_Arena (Arena, Datagram_Slot, Success);
          Check (not Success, "arena with open channels is not released");
@@ -415,7 +424,7 @@ begin
       begin
          Request := NULL_MESSAGE; Request.tag.label := Shut_Label;
          Request.tag.length := 1; Request.words (0) := Handle;
-         Reply_Tag := capCall (Slot, Request);
+         Reply_Tag := capCall (Slot, Request, CuBit.Messages.Wait_Forever);
       end Shut;
    begin
       Bind (Listen_Slot, 16#0A00_020F#, 8080);
@@ -519,7 +528,7 @@ begin
          Request := NULL_MESSAGE; Request.tag.label := Resolve_Label;
          Request.tag.length := Unsigned_8 (Name'Length);
          Bytes := Name;
-         Reply_Tag := capCall (Resolve_Slot, Request);
+         Reply_Tag := capCall (Resolve_Slot, Request, CuBit.Messages.Wait_Forever);
       end Resolve;
    begin
       Resolve ("localhost");
@@ -546,7 +555,7 @@ begin
       Arena2 : Channels.Arena;
    begin
       declare
-         Allocation : constant Unsigned_64 := syscall (SYSCALL_SBRK, Stream_Bytes);
+         Allocation : constant Unsigned_64 := Aligned_Allocation (Stream_Bytes);
       begin
          Success := Allocation /= Unsigned_64'Last;
          if Success then
@@ -569,7 +578,7 @@ begin
          Request.tag.length := Unsigned_8 (Target'Length);
          Request.words (0) := Stream.Arena;
          Request.words (1) := Unsigned_64 (Stream.Buffer);
-         Reply_Tag := capCall (Refused_Slot, Request);
+         Reply_Tag := capCall (Refused_Slot, Request, CuBit.Messages.Wait_Forever);
          Check (Reply_Tag.label = OK_Label, "udp channel to a closed port opens");
          Stream.Handle := Request.words (0);
          for Attempt in 1 .. Tries loop
@@ -582,7 +591,7 @@ begin
                 "port unreachable reaches the udp channel");
          Request := NULL_MESSAGE; Request.tag.label := Shut_Label;
          Request.tag.length := 1; Request.words (0) := Stream.Handle;
-         Reply_Tag := capCall (Refused_Slot, Request);
+         Reply_Tag := capCall (Refused_Slot, Request, CuBit.Messages.Wait_Forever);
          Channels.Release_Arena (Arena2, Refused_Slot, Success);
       end if;
    end;

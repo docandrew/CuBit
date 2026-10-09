@@ -12,9 +12,12 @@ package Syscall.IPC with
     SPARK_Mode => Off
 is
 
+    -- arg0 image, arg1 size, arg2 priority, arg3 name (0: default), arg4
+    -- the parent's identity (0: the caller). Returns the new process's
+    -- identity (KERN-003), suspended, or all ones.
     procedure handleSpawn (callerPID : Process.ProcessID;
                            arg0, arg1, arg2, arg3,
-                           arg4, arg5 : Unsigned_64;
+                           arg4       : Unsigned_64;
                            retval     : out Unsigned_64);
 
     procedure handleMapDevice (callerPID : Process.ProcessID;

@@ -3,6 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Interfaces; use Interfaces;
 with System.Storage_Elements;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
@@ -24,24 +25,20 @@ package body CuBit.Process_Events is
    Events : array (Kept_Index) of CV.Event;
    Event_Count : Kept_Count := 0;
 
-   procedure Keep_Exit (Report : CE.Report);
+   --  Poll reads only while both stores have room, so these never drop:
+   --  what does not fit stays with the kernel until it does.
+   procedure Keep_Exit (Report : CE.Report)
+   with Pre => Exit_Count < Kept_Events;
    procedure Keep_Exit (Report : CE.Report) is
    begin
-      if Exit_Count = Kept_Events then
-         Exits (1 .. Kept_Events - 1) := Exits (2 .. Kept_Events);
-         Exit_Count := Exit_Count - 1;
-      end if;
       Exit_Count := Exit_Count + 1;
       Exits (Exit_Count) := Report;
    end Keep_Exit;
 
-   procedure Keep_Event (Item : CV.Event);
+   procedure Keep_Event (Item : CV.Event)
+   with Pre => Event_Count < Kept_Events;
    procedure Keep_Event (Item : CV.Event) is
    begin
-      if Event_Count = Kept_Events then
-         Events (1 .. Kept_Events - 1) := Events (2 .. Kept_Events);
-         Event_Count := Event_Count - 1;
-      end if;
       Event_Count := Event_Count + 1;
       Events (Event_Count) := Item;
    end Keep_Event;
@@ -49,14 +46,15 @@ package body CuBit.Process_Events is
    procedure Poll is
       M : aliased Message;
    begin
-      while CuBit.Kernel_Calls.Call
+      while Exit_Count < Kept_Events and then Event_Count < Kept_Events
+        and then CuBit.Kernel_Calls.Call
               (KA.Receive_Event_Nonblocking,
                Unsigned_64 (System.Storage_Elements.To_Integer (M'Address)))
             = KA.Event_Received
       loop
          if M.tag.label = CE.Event_Label then
             if CE.Valid (M.tag.length, M.words (0), M.words (1), M.words (2)) then
-               Keep_Exit (CE.Decode (M.words (0), M.words (1), M.words (2), M.words (3)));
+               Keep_Exit (CE.Decode (M.words (0), M.words (1), M.words (2)));
             end if;
          else
             declare
@@ -85,13 +83,13 @@ package body CuBit.Process_Events is
    end Poll;
 
    procedure Take_Exit
-     (Process, Generation : Unsigned_64; Found : out Boolean; Report : out CE.Report) is
+     (Process : CuBit.Process_IDs.Process_ID; Found : out Boolean; Report : out CE.Report) is
    begin
       Poll;
       Found := False;
       Report := (others => <>);
       for K in 1 .. Exit_Count loop
-         if Exits (K).Process = Process and then Exits (K).Generation = Generation then
+         if Exits (K).Process = Process then
             Report := Exits (K);
             Exits (K .. Exit_Count - 1) := Exits (K + 1 .. Exit_Count);
             Exit_Count := Exit_Count - 1;

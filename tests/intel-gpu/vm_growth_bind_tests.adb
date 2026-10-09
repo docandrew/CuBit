@@ -17,7 +17,7 @@ begin
    -- ownership between phases, or after a leaf write.
    for Sparse in Boolean loop
    for Async in Boolean loop
-   for Fault in 0 .. 4 loop
+   for Fault in 0 .. 5 loop
       declare
          Source : VM.Image;
          DMA : VM.Backing_Pages;
@@ -77,6 +77,12 @@ begin
          Target : Unsigned_64 := 2 ** 39;
          New_Tables : VM.Data_Pages (1 .. 3) := [10 * 4096, 11 * 4096, 12 * 4096];
          New_Count : Positive := 3;
+         Preparation : W.Preparation;
+         Adoption : W.Adoption;
+         Hidden_Turns : Natural := 0;
+         function New_Page (Ordinal : Positive) return Unsigned_64 is
+           (New_Tables (Ordinal));
+         procedure Prepare is new W.Prepare_Step (New_Page);
          procedure Drain (OK : out Boolean) is
          begin Check_Closed; OK := Held; end Drain;
          Publish_Phase : Natural := 0;
@@ -86,27 +92,43 @@ begin
             Finished := False; OK := True;
             case Publish_Phase is
                when 0 =>
-                  W.Start (Growth, Source, Target, 4096, 9 * 4096,
-                           New_Tables (1 .. New_Count), OK);
+                  W.Begin_Preparation (Preparation, Growth, Source, Target, 4096,
+                                       9 * 4096, New_Count, OK);
                   Publish_Phase := 1;
                when 1 =>
-                  W.Step (Growth, Source);
-                  if not W.Pending (Growth) then
-                     OK := W.Published (Growth); Publish_Phase := 2;
+                  Prepare (Preparation, Growth, Source);
+                  if not W.Preparing (Preparation) then
+                     OK := W.Prepared (Preparation, Growth, Source); Publish_Phase := 2;
                   end if;
                when 2 =>
+                  W.Step (Growth, Source);
+                  if not W.Pending (Growth) then
+                     OK := W.Published (Growth); Publish_Phase := 3;
+                  end if;
+               when 3 =>
                   Invalidations := Invalidations + 1;
                   Directory_TLB := Fault /= 1;
-                  OK := Directory_TLB; Publish_Phase := 3;
-               when 3 =>
-                  W.Commit (Growth, Source, OK);
-                  if Fault = 3 then Held := False; OK := False; end if;
+                  OK := Directory_TLB;
+                  if OK then W.Begin_Commit (Adoption, Growth, Source, OK); end if;
                   Publish_Phase := 4;
                when 4 =>
+                  W.Commit_Step (Adoption, Growth, Source);
+                  if VM.Root_DMA (Source) = 0 then
+                     Hidden_Turns := Hidden_Turns + 1;
+                     pragma Assert (VM.Lookup (Source, 4096) = 0 and VM.Entry_Value (Source, 1, 0) = 0);
+                     pragma Assert (not W.Committed (Growth) and Leaf_Writes = 0);
+                     if Fault = 5 then Held := False; end if;
+                  end if;
+                  if not W.Committing (Adoption) then
+                     OK := W.Committed (Growth);
+                     if Fault = 3 then Held := False; OK := False; end if;
+                     Publish_Phase := 5;
+                  end if;
+               when 5 =>
                   I.Start (Insertion, Source, VM.Revision (Source), Target,
                            Data, Write_Back, Read_Write, OK);
-                  Publish_Phase := 5;
-               when 5 =>
+                  Publish_Phase := 6;
+               when 6 =>
                   I.Step (Insertion, Source);
                   Finished := not I.Publishing (Insertion);
                   OK := not Finished or else I.Published (Insertion);
@@ -178,8 +200,10 @@ begin
          else C.Execute (State, 0, Result); end if;
          pragma Assert ((Result = C.Complete) = (Fault = 0));
          pragma Assert (RAM (1) (1) = Intel_GPU_PPGTT_Scratch.Fallback (Scratch, 3));
-         pragma Assert (VM.Lookup (Source, 4096) = Encode_Leaf (16#100000#, Write_Back, Read_Write));
+         pragma Assert (VM.Lookup (Source, 4096) =
+           (if Fault = 5 then 0 else Encode_Leaf (16#100000#, Write_Back, Read_Write)));
          if Fault = 0 then
+            pragma Assert (Hidden_Turns >= 49);
             pragma Assert (C.Generation (State) = 1 and C.Can_Submit (State));
             pragma Assert (VM.Revision (Source) = Before + 2);
             pragma Assert (VM.Lookup (Source, 2 ** 39) = Encode_Leaf (Data (1), Write_Back, Read_Write));
@@ -193,6 +217,7 @@ begin
             Data := [16#120000#]; New_Tables (1) := 13 * 4096; New_Count := 1;
             Publish_Phase := 0; Directory_TLB := False; Leaf_TLB := False;
             Invalidations := 0; Leaf_Writes := 0;
+            Hidden_Turns := 0;
             declare
                Needed : constant G.Requirements := G.Inspect (Source, Target, 4096);
                use type G.Plan_Status;
@@ -211,6 +236,7 @@ begin
                else C.Execute (State, 1, Result); end if;
             end;
             pragma Assert (Result = C.Complete and C.Generation (State) = 2 and C.Can_Submit (State));
+            pragma Assert (Hidden_Turns >= 17);
             pragma Assert (VM.Revision (Source) = Before + 4 and VM.Used (Source) = 8);
             pragma Assert (VM.Lookup (Source, 2 ** 39) = Encode_Leaf (16#110000#, Write_Back, Read_Write));
             pragma Assert (VM.Lookup (Source, Target) = Encode_Leaf (16#120000#, Write_Back, Read_Write));
@@ -221,8 +247,11 @@ begin
          else
             pragma Assert (C.Current_Phase (State) = C.Quarantined and not C.Can_Submit (State));
             pragma Assert (C.Generation (State) = 0 and VM.Lookup (Source, 2 ** 39) = 0);
-            pragma Assert (VM.Revision (Source) = Before + (if Fault = 1 then 0 else 1));
-            pragma Assert (Leaf_Writes = (if Fault in 1 | 3 then 0 else 1));
+            pragma Assert (VM.Revision (Source) = Before + (if Fault in 1 | 5 then 0 else 1));
+            pragma Assert (Leaf_Writes = (if Fault in 1 | 3 | 5 then 0 else 1));
+            if Fault = 5 then
+               pragma Assert (Hidden_Turns > 0 and VM.Root_DMA (Source) = 0);
+            end if;
             -- Poisoned/uncertain hardware state is retained, never rolled back.
             Held := True;
             C.Execute (State, 0, Result); pragma Assert (Result = C.Rejected);
@@ -263,6 +292,6 @@ begin
       VM.Seal_Update (Replacement, OK); pragma Assert (OK);
       pragma Assert (VM.Direct_Successor (Source, Replacement));
    end;
-   Ada.Text_IO.Put_Line ("Growth+bind PASS20: full/partial initial backing, synchronous/stepped writer, retained root, two visibility gates, one public generation, quarantine on partial failures (host model)");
+   Ada.Text_IO.Put_Line ("Growth+bind PASS24: full/partial backing, stepped preparation/adoption, sync/async coordinator, hidden-source exclusion and owner-loss quarantine (host model)");
    Ada.Text_IO.Put_Line ("Repeated growth+bind PASS4: same context/root/controllers, rearm after leaf commit, three-page then one-page growth, retained previous mappings, two public generations (host model)");
 end VM_Growth_Bind_Tests;

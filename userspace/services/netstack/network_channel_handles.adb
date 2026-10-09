@@ -1,10 +1,10 @@
 package body Network_Channel_Handles with SPARK_Mode is
    procedure Allocate
-     (Item : in out Table; Owner, Authority : Unsigned_64;
+     (Item : in out Table; Owner : Process_ID; Authority : Unsigned_64;
       Index : out Channel_Reference) is
    begin
       Index := No_Channel;
-      if Owner = 0 or Authority = 0 or Item.Next_Id = No_Handle then
+      if Owner = No_Process or Authority = 0 or Item.Next_Id = No_Handle then
          return;
       end if;
       for I in Item.Slots'Range loop
@@ -25,7 +25,7 @@ package body Network_Channel_Handles with SPARK_Mode is
      (Item.Slots (Index).Id);
 
    function Resolve
-     (Item : Table; Owner, Authority : Unsigned_64; Id : Handle)
+     (Item : Table; Owner : Process_ID; Authority : Unsigned_64; Id : Handle)
       return Channel_Reference is
    begin
       if Id /= No_Handle then

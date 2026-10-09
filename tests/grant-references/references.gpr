@@ -3,7 +3,8 @@ project References is
    for Source_Files use
      ("main.adb", "codec_proof.ads", "codec_proof.adb",
       "cubit.ads", "cubit-grant_references.ads",
-      "memory_grants.ads", "memory_grants.adb", "owned_memory_layout.ads");
+      "memory_grants.ads", "memory_grants.adb",
+      "grant_windows.ads", "grant_windows.adb", "owned_memory_layout.ads");
    for Object_Dir use "build";
    for Exec_Dir use "build";
    for Main use ("main.adb");

@@ -6,22 +6,33 @@ with System;
 -- memory quota or global BO limit. CPU acquisitions remain immutable until
 -- Forget succeeds. The caller must call Forget before returning/reusing a
 -- source mapping; an address is not authority or a content version.
-package Desktop_Image_Registry is
+package Desktop_Image_Registry with SPARK_Mode is
    package I renames Desktop_Image_Source;
-   type State is limited private;
+   package D renames I.D;
+   type State is limited private
+     with Default_Initial_Condition => Valid (State);
+   function Valid (S : State) return Boolean;
    type Capacity_Pressure is (None, Slots_Full, Generation_Exhausted);
    -- Describes the last Ensure only. This is NOT evidence of GPU quiescence
    -- and never authorizes source reuse or an in-place backend switch.
    function Last_Pressure (S : State) return Capacity_Pressure;
    function Upload_Work (S : State) return Boolean;
    function Faulted (S : State) return Boolean;
-   procedure Close (S : in out State; Capture_Retired : Boolean; Safe : out Boolean);
+   procedure Close (S : in out State; Capture_Retired : Boolean; Safe : out Boolean)
+     with Global => (In_Out => D.Engine),
+       Pre => Valid (S) and D.Valid, Post => Valid (S) and D.Valid;
    procedure Ensure (S : in out State; Image : Compositor_Formats.Image;
-      Bytes : Natural; Source : out I.V.Source_Ticket; Result : out I.Outcome);
+      Bytes : Natural; Source : out I.V.Source_Ticket; Result : out I.Outcome)
+     with Global => (In_Out => D.Engine),
+       Pre => Valid (S) and D.Valid, Post => Valid (S) and D.Valid;
    -- At most one upload owner's bounded progress per event-loop call.
-   procedure Poll (S : in out State; Result : out I.Outcome);
+   procedure Poll (S : in out State; Result : out I.Outcome)
+     with Global => (In_Out => D.Engine),
+       Pre => Valid (S) and D.Valid, Post => Valid (S) and D.Valid;
    procedure Forget (S : in out State; Pixels : System.Address;
-      Capture_Retired : Boolean; Safe : out Boolean);
+      Capture_Retired : Boolean; Safe : out Boolean)
+     with Global => (In_Out => D.Engine),
+       Pre => Valid (S) and D.Valid, Post => Valid (S) and D.Valid;
 private
    type Cache_Item is limited record
       Owner : I.State;
@@ -37,4 +48,6 @@ private
       Cursor : I.V.Client_Slot := I.V.Client_Slot'First;
       Pressure : Capacity_Pressure := None;
    end record;
+   function Valid (S : State) return Boolean is
+     (for all N in I.V.Client_Slot => I.Valid (S.Items (N).Owner));
 end Desktop_Image_Registry;

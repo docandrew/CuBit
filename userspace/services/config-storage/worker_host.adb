@@ -55,8 +55,8 @@ package body Worker_Host is
          return 16#F001#;
       end if;
       declare
-         function Authorized (Sender : ProcessID; Tag : Unsigned_64) return Boolean is
-            Owner : constant Unsigned_64 := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_CONFIG);
+         function Authorized (Sender : Process_ID; Tag : Unsigned_64) return Boolean is
+            Owner : constant Process_ID := Registered_Driver (DRIVER_CONFIG);
          begin
             --  Kernel-stamped sender only. The held endpoint additionally
             --  pins grant ownership/lifetime in Acquire_Via_Capability.
@@ -80,7 +80,7 @@ package body Worker_Host is
          end Invoke_Type;
          package Receiver is new Config_Worker_Receiver (CAP_SLOT_CONFIG, Authorized, Invoke, Invoke_Type);
          Worker : Receiver.State;
-         Sender : ProcessID;
+         Sender : Process_ID;
          Request, Response : Message;
          Ignore : Unsigned_64;
       begin

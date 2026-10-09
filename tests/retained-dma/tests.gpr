@@ -1,0 +1,17 @@
+project Tests is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../kernel/src");
+   for Object_Dir use external ("DMA_TEST_OBJECTS", "build");
+   for Exec_Dir use external ("DMA_TEST_OBJECTS", "build");
+   for Main use ("retained_dma_budget_test.adb", "dma_record_blocks_test.adb",
+                 "dma_retirement_steps_test.adb", "dma_lifecycle_integration_test.adb",
+                 "dma_record_guards_test.adb", "process_memory_budget_test.adb",
+                 "process_memory_contention_test.adb", "process_memory_accounts_test.adb",
+                 "quota_width_test.adb", "page_charge_handoff_test.adb",
+                 "memory_account_store_test.adb", "memory_identity_map_test.adb",
+                 "owner_record_slabs_test.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-g", "-O1");
+      for Switches ("dma_record_guards_test.adb") use ("-gnat2022", "-gnatp", "-g", "-O1");
+   end Compiler;
+end Tests;

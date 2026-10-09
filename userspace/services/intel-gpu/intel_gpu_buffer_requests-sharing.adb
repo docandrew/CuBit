@@ -218,13 +218,46 @@ package body Intel_GPU_Buffer_Requests.Sharing is
          Views.Retire (Element (Table, Index).View, Object.Handles);
       end if;
    end Reject_Delivery;
-   procedure Retire_Session (Object : in out Service; Table : in out Mapping_Table; Session : Unsigned_64) is
+   procedure Begin_Retire_Session
+     (Object : in out Service; Table : in out Mapping_Table; Session : Unsigned_64;
+      State : in out Mapping_Retirement; Accepted : out Boolean) is
    begin
-      if Session = 0 then return; end if;
-      for Index in 1 .. Table.Used loop
-         if Element (Table, Index).Session = Session then
+      Accepted := False;
+      if Session = 0 or else (State.Started and not State.Done) then return; end if;
+      State.Origin := Object'Address; State.Table_Origin := Table'Address;
+      State.Session := Session; State.Last := Table.Used; State.Cursor := 0;
+      State.Started := True; State.Done := False; Accepted := True;
+   end Begin_Retire_Session;
+   procedure Retire_Session_Step
+     (Object : in out Service; Table : in out Mapping_Table;
+      State : in out Mapping_Retirement; Complete : out Boolean) is
+      use type System.Address;
+      Finish : Natural;
+   begin
+      Complete := False;
+      if not State.Started or else State.Origin /= Object'Address or else
+        State.Table_Origin /= Table'Address then return; end if;
+      if State.Done then Complete := True; return; end if;
+      Finish := State.Cursor + Natural'Min (Poll_Budget, State.Last - State.Cursor);
+      while State.Cursor < Finish loop
+         declare Index : constant Positive := State.Cursor + 1; begin
+         if Element (Table, Index).Session = State.Session then
             Views.Retire (Element (Table, Index).View, Object.Handles);
          end if;
+         State.Cursor := Index;
+         end;
+      end loop;
+      State.Done := State.Cursor = State.Last; Complete := State.Done;
+   end Retire_Session_Step;
+   procedure Retire_Session (Object : in out Service; Table : in out Mapping_Table; Session : Unsigned_64) is
+      State : Mapping_Retirement;
+      Accepted, Complete : Boolean;
+   begin
+      Begin_Retire_Session (Object, Table, Session, State, Accepted);
+      if not Accepted then return; end if;
+      loop
+         Retire_Session_Step (Object, Table, State, Complete);
+         exit when Complete;
       end loop;
    end Retire_Session;
    function Observe_Retirement (Table : Mapping_Table; Session : Unsigned_64)

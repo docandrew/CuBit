@@ -1,0 +1,53 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+----------------------------------------------------------------------------------
+SPARK Analysis results        Total        Flow     Provers   Justified   Unproved
+----------------------------------------------------------------------------------
+Data Dependencies                17          17           .           .          .
+Flow Dependencies                 .           .           .           .          .
+Initialization                   23          23           .           .          .
+Non-Aliasing                      .           .           .           .          .
+Run-time Checks                   .           .           .           .          .
+Assertions                       13           .     13 (Z3)           .          .
+Functional Contracts              2           .      2 (Z3)           .          .
+LSP Verification                  .           .           .           .          .
+Termination                       4           4           .           .          .
+Concurrency                       .           .           .           .          .
+----------------------------------------------------------------------------------
+Total                            59    44 (75%)    15 (25%)           .          .
+
+
+max steps used for successful proof: 1
+
+============================
+Most difficult proved checks
+============================
+
+No check found with max time greater than 1 second
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 1 unit
+in unit desktop_compositor, 18 subprograms and packages out of 18 analyzed
+  Desktop_Compositor at desktop_compositor.ads:11 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Compositor.Begin_Output at desktop_compositor.ads:38 flow analyzed (0 errors, 0 checks, 3 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Compositor.Complete_Output at desktop_compositor.ads:110 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Compositor.Configure_Renderer at desktop_compositor.ads:18 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Compositor.Draw_Backdrop at desktop_compositor.ads:57 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Compositor.Draw_Client at desktop_compositor.ads:83 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Compositor.Draw_Fill at desktop_compositor.ads:51 flow analyzed (0 errors, 0 checks, 5 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Compositor.Draw_Output at desktop_compositor.ads:91 flow analyzed (0 errors, 0 checks, 10 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Compositor.Draw_Preview at desktop_compositor.ads:62 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Compositor.Draw_Shadow at desktop_compositor.ads:69 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Compositor.Draw_Text at desktop_compositor.ads:76 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (5 checks)
+  Desktop_Compositor.Forget_Source at desktop_compositor.ads:117 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Compositor.Forget_Targets at desktop_compositor.ads:122 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Compositor.Full_Output at desktop_compositor.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Compositor.Readback_Work at desktop_compositor.ads:17 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Compositor.Recover_Renderer at desktop_compositor.ads:21 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Compositor.Selected at desktop_compositor.ads:24 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Compositor.Software_Text at desktop_compositor.ads:28 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)

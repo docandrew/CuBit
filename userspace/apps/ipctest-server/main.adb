@@ -29,6 +29,21 @@ procedure main is
    OP_FAIR_POLL : constant Unsigned_32 := 16#090F#;
    OP_FAIR_QUEUED : constant Unsigned_32 := 16#0910#;
    OP_FAIR_END : constant Unsigned_32 := 16#0911#;
+   --  Call deadlines (docs/ipc-fastpath.md): a call never answered, a late
+   --  answer to it, a request held up behind a busy server, and the report.
+   OP_DEADLINE_SILENT : constant Unsigned_32 := 16#0912#;
+   OP_DEADLINE_LATE   : constant Unsigned_32 := 16#0913#;
+   OP_DEADLINE_BUSY   : constant Unsigned_32 := 16#0914#;
+   OP_DEADLINE_QUEUED : constant Unsigned_32 := 16#0915#;
+   OP_DEADLINE_STATUS : constant Unsigned_32 := 16#0916#;
+   SILENT_SLOT : constant CapabilitySlot := 13;
+   --  Long enough for the caller's 50 ms deadline to pass while queued.
+   BUSY_MS : constant Unsigned_64 := 300;
+   LATE_MARK : constant Unsigned_64 := 16#1A7E_0000#;
+   silentHeld : Boolean := False;
+   lateRefused : Boolean := False;
+   forgedRefused : Boolean := False;
+   queuedSeen : Boolean := False;
    type Receive_Mode is (Blocking, Service_Poll, Mixed_Poll, Timed, Activity);
    mode : Receive_Mode := Blocking;
    fairSeen : Boolean := False;
@@ -46,8 +61,8 @@ procedure main is
       (20, 21, 22);
    reverseValues : array (1 .. REVERSE_COUNT) of Unsigned_64 :=
       (others => 0);
-   reverseFrom   : array (1 .. REVERSE_COUNT) of ProcessID :=
-      (others => NO_PROCESS);
+   reverseFrom   : array (1 .. REVERSE_COUNT) of Process_ID :=
+      (others => No_Process);
    reversePending : Natural := 0;
 
    pressureSlots  : array (1 .. PRESSURE_COUNT) of CapabilitySlot :=
@@ -55,18 +70,18 @@ procedure main is
        38, 39, 40, 41, 42, 43, 44, 45);
    pressureValues : array (1 .. PRESSURE_COUNT) of Unsigned_64 :=
       (others => 0);
-   pressureFrom   : array (1 .. PRESSURE_COUNT) of ProcessID :=
-      (others => NO_PROCESS);
+   pressureFrom   : array (1 .. PRESSURE_COUNT) of Process_ID :=
+      (others => No_Process);
    pressurePending : Natural := 0;
 
    oneWaySaveRejected : Boolean := False;
    doubleUseRejected  : Boolean := False;
    occupiedValue      : Unsigned_64 := 0;
    DEPARTING_SLOT : constant CapabilitySlot := 12;
-   departingCaller : ProcessID := NO_PROCESS;
+   departingCaller : Process_ID := No_Process;
    departingReady : Boolean := False;
 
-   from : ProcessID;
+   from : Process_ID;
    msg  : Message;
    ret  : Unsigned_64;
 
@@ -81,8 +96,9 @@ procedure main is
 
    procedure loadFPUProbe is
    begin
-      --  The projects are compiled with -mno-sse/-mno-sse2, so XMM0 is
-      --  reserved exclusively for this context-isolation regression probe.
+      --  XMM0 carries this context-isolation probe. The program is built
+      --  with SSE, so set it just before the system call under test and
+      --  read it just after.
       Asm ("movq %0, %%xmm0",
            Inputs   => Unsigned_64'Asm_Input ("r", FPU_SENTINEL),
            Volatile => True);
@@ -98,7 +114,7 @@ procedure main is
    end readFPUProbe;
 
    procedure sendReply
-     (replyTo : ProcessID;
+     (replyTo : Process_ID;
       label   : Unsigned_32;
       word0   : Unsigned_64 := 0;
       word1   : Unsigned_64 := 0;
@@ -120,7 +136,7 @@ procedure main is
 
    function makeEchoReply
      (value    : Unsigned_64;
-      sender   : ProcessID) return Message
+      sender   : Process_ID) return Message
    is
       replyMsg : Message := NULL_MESSAGE;
    begin
@@ -130,7 +146,7 @@ procedure main is
                        reserved  => 0);
       replyMsg.words (0) := value;
       replyMsg.words (1) := value xor XOR_MAGIC;
-      replyMsg.words (2) := sender;
+      replyMsg.words (2) := To_Word (sender);
       return replyMsg;
    end makeEchoReply;
 begin
@@ -146,12 +162,14 @@ begin
 
    debugPrint ("ipctest-server: registered" & LF);
 
-   --  Leave a distinctive value live in XMM0. A newly started process must
-   --  never inherit it, and every return to this process must restore it.
-   loadFPUProbe;
-
    loop
       loop
+         --  Leave a distinctive value live in XMM0 across the receive: a
+         --  newly started process must never inherit it, and every return
+         --  to this process must restore it. Set before each receive, since
+         --  this program's own record copies may use XMM0 (it is built with
+         --  SSE).
+         loadFPUProbe;
          found := True;
          case mode is
             when Blocking => receive (from, msg);
@@ -173,7 +191,9 @@ begin
          exit when found;
       end loop;
 
-      if readFPUProbe /= FPU_SENTINEL then
+      --  Only the modes that are a bare system call: the runtime's poll
+      --  helpers use XMM0 themselves.
+      if mode in Blocking | Timed and then readFPUProbe /= FPU_SENTINEL then
          debugPrint ("TEST: FAIL async-ipc fpu-server-restore" & LF);
       end if;
 
@@ -382,6 +402,36 @@ begin
                end if;
             end if;
          end if;
+      elsif msg.tag.label = OP_DEADLINE_SILENT then
+         -- Hold the call and never answer it: the caller's deadline ends it.
+         silentHeld := saveReplyCap (SILENT_SLOT) = 1;
+      elsif msg.tag.label = OP_DEADLINE_LATE then
+         -- The silent call's caller timed out and is now in this call. The
+         -- late answer must be refused, not delivered to this call.
+         if silentHeld then
+            ret := replyCap (SILENT_SLOT, makeEchoReply (LATE_MARK, from));
+            lateRefused := ret = 0;
+         end if;
+         -- A server cannot answer with a label only the kernel gives, and
+         -- the refusal leaves its reply authority in place.
+         declare
+            forged : Message := NULL_MESSAGE;
+         begin
+            forged.tag := (label => REPLY_TIMEOUT, length => 0, flags => 0,
+                           reserved => 0);
+            forgedRefused := replyCap (CapabilitySlot'Last, forged) = 0;
+         end;
+         sendReply (from, REPLY_OK, msg.words (0), boolWord (lateRefused),
+                    boolWord (forgedRefused));
+      elsif msg.tag.label = OP_DEADLINE_BUSY then
+         -- One way: keep the server from receiving while a call waits.
+         ret := syscall (SYSCALL_SLEEP, BUSY_MS);
+      elsif msg.tag.label = OP_DEADLINE_QUEUED then
+         -- Its caller timed out while queued: this must never be seen.
+         queuedSeen := True;
+         sendReply (from, REPLY_OK);
+      elsif msg.tag.label = OP_DEADLINE_STATUS then
+         sendReply (from, REPLY_OK, boolWord (queuedSeen));
       elsif msg.tag.label = OP_DIE then
          -- Give the submitter time to enter its combined readiness wait.
          ret := syscall (SYSCALL_SLEEP, 25);

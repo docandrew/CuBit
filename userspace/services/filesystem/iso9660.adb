@@ -26,7 +26,7 @@ package body ISO9660 is
       if Failed or else not Granted or else Blocks not in 1 .. 16 or else
         First >= Volume_Blocks or else Blocks > Volume_Blocks - First
       then return False; end if;
-      Tag := capCall (Optical_Endpoint, Request);
+      Tag := capCall (Optical_Endpoint, Request, CuBit.Messages.Wait_Forever);
       if Tag.label /= REPLY_OK or else Tag.length /= 1 or else
         Request.words (0) /= Blocks * 2048
       then
@@ -88,7 +88,7 @@ package body ISO9660 is
    begin
       if Failed then return False; end if;
       if Mounted then return True; end if;
-      Tag := capCall (Optical_Endpoint, Request);
+      Tag := capCall (Optical_Endpoint, Request, CuBit.Messages.Wait_Forever);
       if Tag.label /= REPLY_OK or else Tag.length /= 4 or else
         not Decode_Description (Request.words (0), Request.words (1),
                                 Request.words (2), Request.words (3), Description)

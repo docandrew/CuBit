@@ -64,11 +64,11 @@ package body GPU_Launch_Probe is
       end if;
    end Client;
 
-   procedure Server (Sender : ProcessID; Request : Message) is
+   procedure Server (Sender : Process_ID; Request : Message) is
       ID : B.Ticket;
       Receipt : aliased CompletionEntry;
       Used, Found : Boolean;
-      From : ProcessID;
+      From : Process_ID;
       Msg, Response : Message := NULL_MESSAGE;
       Payload : GPU.Words;
       Identity, Ignore : Unsigned_64;

@@ -63,7 +63,7 @@ procedure Schema_Store_Turso is
       Check (Defined_As = Defined);
       CCL.Objects.Bind (Types, Root, [9, 10, 11, 12], Contract, Accepted); Check (Accepted);
    end Pair_Type;
-   function Trusted (Source : ProcessID; Tag : Unsigned_64) return Boolean is
+   function Trusted (Source : Process_ID; Tag : Unsigned_64) return Boolean is
      (Source = 42 and Tag = 77);
    procedure Invoke_Value
      (Action : Config_Worker_Protocol.Operation; Name, Context : String;

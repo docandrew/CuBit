@@ -38,7 +38,11 @@ parser.add_argument('--usb-flash', action='store_true',
                     help='boot the ISO image on a 512-byte USB disk, as with dd to a flash drive')
 parser.add_argument('--mouse-first', action='store_true')
 parser.add_argument('--usb-hub', action='store_true',
-                    help='exercise USB keyboard and mouse behind a four-port hub; may combine with --mesa')
+                    help='exercise USB keyboard and mouse behind a hub; may combine with --mesa')
+parser.add_argument('--usb-hub-ports', type=int, default=4, choices=range(2, 16),
+                    help='hub port count; the keyboard takes the last port. QEMU sizes the '
+                         'obsolete PortPwrCtrlMask ceil(ports/8) bytes, so 8 ports send a '
+                         '10-byte hub descriptor')
 parser.add_argument('--eject', action='store_true', help='test fail-closed media removal after app launch')
 parser.add_argument('--early-text', action='store_true', help='check the early text diagnostic boot entry')
 parser.add_argument('--without-audio', action='store_true',
@@ -68,7 +72,7 @@ parser.add_argument('--sameboy-second-local-rom', action='store_true',
 args = parser.parse_args()
 if args.boot_log_window_controls and not args.boot_log_delivery:
     parser.error('--boot-log-window-controls requires --boot-log-delivery')
-if args.quiet_xhci and (args.boot_logs or args.boot_logs_menu or args.eject or args.usb_hub):
+if args.quiet_xhci and (args.boot_logs or args.boot_logs_menu or args.eject):
     parser.error('quiet-xhci cannot use USB-log-dependent replay/ejection/hub assertions')
 if args.usb_flash and args.disk_first:
     parser.error('--usb-flash and --disk-first are separate fixtures')
@@ -112,9 +116,9 @@ if args.usb_flash:
 if args.usb_hub:
     index = command.index(f'usb-mouse,bus=xhci.0,port={mouse_port}')
     command[index:index + 1] = [
-        f'usb-hub,id=inputhub,bus=xhci.0,port={mouse_port},ports=4,port-power=on',
+        f'usb-hub,id=inputhub,bus=xhci.0,port={mouse_port},ports={args.usb_hub_ports},port-power=on',
         '-device', f'usb-mouse,bus=xhci.0,port={mouse_port}.1',
-        '-device', f'usb-kbd,bus=xhci.0,port={mouse_port}.4']
+        '-device', f'usb-kbd,bus=xhci.0,port={mouse_port}.{args.usb_hub_ports}']
 if args.pit_free_fixture or args.invalid_clock_fixture:
     # QEMU's ordinary CPU model does not expose leaf 15 on this host. Keep
     # the real virtual TSC coherent with the injected firmware/CPU metadata.
@@ -332,34 +336,34 @@ with (run / 'qemu.log').open('w') as log:
                          text, flags=re.IGNORECASE | re.MULTILINE):
                 raise RuntimeError('fault during viewer window controls; see serial.log')
             print('BOOT LOG WINDOW PASS: minimize, taskbar restore, maximize, restore, close.', flush=True)
-        if args.usb_hub:
-            wait_for('xhci: hub children enumerated')
-            wait_for('xhci: boot keyboard endpoint DCI=')
-            wait_for('xhci: boot mouse endpoint DCI=')
+        # Hub enumeration traces are optional production diagnostics. With
+        # i8042 disabled, the pointer pixel test and subsequent keyboard-driven
+        # app responses below must succeed through the configured USB hub.
         if args.without_ps2:
             wait_for('ps2: controller unavailable (status FF); skipping')
-            wait_for('desktop: asynchronous frame released')
-            # Exercise real USB mouse reports before optional USB keyboard
-            # application tests. Without a hub, this fixture remains mouse-only.
-            for _ in range(30):
-                hmp('mouse_move 2 1')
-                time.sleep(0.02)
-            hmp('mouse_button 1')
-            time.sleep(0.1)
-            hmp('mouse_button 0')
-            time.sleep(6)
-            # Desktop emits its accumulated counters on activity, not an
-            # independent periodic timer. Trigger the report after its interval.
-            hmp('mouse_move 1 0')
-            time.sleep(0.5)
-            hmp(f'screendump {run}/no-ps2-desktop.ppm')
-            text = serial.read_text(errors='replace')
-            events = re.findall(r'desktop: stats ev=\d+ key=\d+ mouse=(\d+) button=(\d+)', text)
-            if not any(int(motion) > 0 for motion, _ in events):
-                raise RuntimeError('USB mouse motion did not reach desktop')
-            if not any(int(buttons) > 0 for _, buttons in events):
-                raise RuntimeError('USB mouse button did not reach desktop')
-            print('NO PS2 PASS: absent i8042 did not block USB/desktop startup', flush=True)
+            # The first asynchronous frame can be the renderer-startup splash
+            # (the Vulkan build tries GPU startup before software); the
+            # baseline must be the drawn desktop.
+            wait_for('desktop: physical output client drawing active')
+            from PIL import Image
+            from input_pixels import check_usb_pointer
+
+            def input_snapshot(name):
+                path = run / f'{name}.ppm'
+                hmp(f'screendump {path}')
+                with Image.open(path) as frame:
+                    return frame.convert('RGB')
+
+            def input_healthy():
+                if process.poll() is not None:
+                    raise RuntimeError('VM exited during USB input check')
+                text = serial.read_text(errors='replace')
+                if re.search(r'panic|^EXCEPTION:|TEST: FAIL|general protection',
+                             text, flags=re.IGNORECASE | re.MULTILINE):
+                    raise RuntimeError('native fault during USB input check')
+
+            check_usb_pointer(hmp, input_snapshot, input_healthy)
+            print('NO PS2 PASS: USB pointer opened and closed Apps twice', flush=True)
             if not args.usb_hub:
                 sys.exit(0)
         if args.sparse_apic_ids:

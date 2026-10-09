@@ -213,13 +213,14 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
          end if;
       end Store_Request;
 
-      procedure Add_Request (Kind : Request_Kind) is
+      procedure Add_Request (Kind : Request_Kind; Optional_Render : Boolean := False) is
          Name : Metadata_Text;
          Item : Request;
          Offered : Rights_Kind := Read_Only;
          Found : Boolean := False;
       begin
          Item.Kind := Kind;
+         if Kind = Render_Request and then Optional_Render then Item.Service := 1; end if;
          if Kind = Render_Request then
             -- One admitted session per launch. Distinct binding names must
             -- not disguise duplicate requests that procmgr will reject.
@@ -773,6 +774,7 @@ package body CCL.Manifests.Keywords with SPARK_Mode => On is
          elsif Is_Text (Name, "request-framebuffer") then Add_Request (Framebuffer_Request);
          elsif Is_Text (Name, "request-network") then Add_Network;
          elsif Is_Text (Name, "request-render") then Add_Request (Render_Request);
+         elsif Is_Text (Name, "request-render-optional") then Add_Request (Render_Request, True);
          elsif Is_Text (Name, "filesystem-scope") then Add_Scope (Filesystem_Domain);
          elsif Is_Text (Name, "config-scope") then Add_Scope (Config_Domain);
          elsif Is_Text (Name, "tls-scope") then Add_TLS_Scope;

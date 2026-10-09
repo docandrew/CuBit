@@ -6,7 +6,7 @@ with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 procedure Main is
    reterr : constant Unsigned_64 := Unsigned_64'Last;
-   Source : ProcessID;
+   Source : Process_ID;
    Msg : Message;
    Result : Unsigned_64;
    Observed : Unsigned_64;
@@ -74,7 +74,7 @@ begin
                      debugPrint ("dma-retention: FAIL readonly self grant" & ASCII.LF); return;
                   end if;
                   CuBit.Memory_Grants.Acquire
-                    (Self_Ref, ProcessID (syscall (SYSCALL_GETPID)), 0, 8,
+                    (Self_Ref, Process_ID (syscall (SYSCALL_GETPID)), 0, 8,
                      CuBit.Memory_Grants.Read_Access, Mapped, OK);
                   if not OK then
                      debugPrint ("dma-retention: FAIL readonly self acquire" & ASCII.LF); return;

@@ -113,7 +113,7 @@ package body CCL_Places is
          if Look > ANSWER_SPINS then
             --  Block until an answer waits (OP_FS_WAIT completes then).
             Waiting.tag := (label => FQ.OP_FS_WAIT, length => 0, flags => 0, reserved => 0);
-            Tag := capCall (CAP_SLOT_FS, Waiting);
+            Tag := capCall (CAP_SLOT_FS, Waiting, CuBit.Messages.Wait_Forever);
          end if;
       end loop;
       Q.Reap (Client, Answers, Result, Accepted);

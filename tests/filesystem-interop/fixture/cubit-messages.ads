@@ -12,7 +12,10 @@ package CuBit.Messages is
       words : MessageWords;
    end record;
    NULL_MESSAGE : constant Message := ((0, 0, 0, 0), 0, [others => 0]);
-   function capCall (slot : Unsigned_64; msg : in out Message) return MessageTag;
+   --  As the runtime's: the caller gives a deadline (ignored here).
+   Wait_Forever : constant Unsigned_64 := Unsigned_64'Last;
+   function capCall (slot : Unsigned_64; msg : in out Message; Deadline : Unsigned_64)
+     return MessageTag;
    procedure debugPrint (value : String);
    type Bytes is array (Natural range <>) of Unsigned_8;
    Grant_Buffer : Bytes (0 .. 4095) := [others => 0];

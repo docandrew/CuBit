@@ -30,6 +30,71 @@ procedure Extent_Allocator_Tests is
    Backing : D.Borrowed_View;
    OK : Boolean;
 begin
+   declare
+      Object : Allocator.Pool;
+      type RAM is array (Natural range <>) of Unsigned_64;
+      Metadata : RAM (0 .. 4095) := [others => 0] with Alignment => 4096;
+      View : Intel_GPU_Buffer_Reply.Extent_View;
+      More : Boolean;
+      Turns : Natural;
+   begin
+      Allocator.Extend_Records
+        (Object, Unsigned_64 (To_Integer (Metadata'Address)), 16384, OK);
+      pragma Assert (OK and Allocator.Record_Capacity (Object) > 200);
+      for Index in 1 .. 200 loop
+         Turns := 0;
+         loop
+            Turns := Turns + 1;
+            Allocator.Step_Buffer (Object, 7, Index, 1, 1, View, OK, More);
+            pragma Assert (Allocator.Last_Gap_Probes (Object) <= Allocator.Gap_Probe_Limit,
+              "gap-probe-bound");
+            pragma Assert (Turns <= 4);
+            exit when not More;
+            pragma Assert (not OK and not Intel_GPU_Buffer_Reply.Valid (View));
+         end loop;
+         pragma Assert (OK and Intel_GPU_Buffer_Reply.CPU_Address (View) = Base + Unsigned_64 (Index - 1) * 4096,
+           "live-buffer-address");
+      end loop;
+      pragma Assert (Calls = 1);
+      Allocator.Step_Buffer (Object, 7, 201, 1, 1, View, OK, More);
+      pragma Assert (More and not OK and Allocator.Last_Gap_Probes (Object) = 64);
+      Allocator.Extend_Records
+        (Object, Unsigned_64 (To_Integer (Metadata'Address)), 32768, OK);
+      pragma Assert (OK);
+      for Turn in 1 .. 3 loop
+         Allocator.Step_Buffer (Object, 7, 201, 1, 1, View, OK, More);
+         pragma Assert (Allocator.Last_Gap_Probes (Object) <= 64);
+         pragma Assert (More = (Turn < 3) and OK = (Turn = 3));
+      end loop;
+      pragma Assert (Intel_GPU_Buffer_Reply.CPU_Address (View) = Base + 200 * 4096);
+      Allocator.Retire_Buffer (Object, 7, 201, 1, True, OK);
+      pragma Assert (OK);
+      Allocator.Step_Buffer (Object, 7, 201, 1, 2, View, OK, More);
+      pragma Assert (More and not OK);
+      -- Retirement invalidates a suspended cursor: the freed prefix must
+      -- become visible, rather than resuming past it or using stale links.
+      Allocator.Retire_Buffer (Object, 7, 1, 1, True, OK);
+      pragma Assert (OK);
+      Allocator.Step_Buffer (Object, 7, 201, 1, 2, View, OK, More);
+      pragma Assert (OK and not More and Intel_GPU_Buffer_Reply.CPU_Address (View) = Base,
+        "retirement-restarts-gap");
+      pragma Assert (Calls = 1);
+      -- A synchronous insertion must invalidate a pending search too.
+      Allocator.Step_Buffer (Object, 7, 202, 1, 1, View, OK, More);
+      pragma Assert (More and not OK);
+      Allocator.Acquire_Buffer (Object, 7, 203, 1, 1, View, OK);
+      pragma Assert (OK);
+      for Turn in 1 .. 4 loop
+         Allocator.Step_Buffer (Object, 7, 202, 1, 1, View, OK, More);
+         pragma Assert (Allocator.Last_Gap_Probes (Object) <= 64);
+         exit when not More;
+      end loop;
+      pragma Assert (OK and not More and Intel_GPU_Buffer_Reply.CPU_Address (View) = Base + 201 * 4096,
+        "insertion-restarts-gap");
+      pragma Assert (Allocator.Memory_Budget (Object).Retained = 202 * 4096);
+   end;
+   Calls := 0;
+   Ada.Text_IO.Put_Line ("Bounded gap search PASS:200 live buffers,64 probes/step, retirement/insertion invalidation, no extra backing");
    -- Native policy uses immutable inventory, not a free-memory promise.
    pragma Assert (L.Native_System_Heap (0).Byte_Quota = 0);
    pragma Assert (L.Native_System_Heap (Unsigned_64'Last).Byte_Quota = 0);
@@ -374,7 +439,7 @@ begin
             Allocator.Acquire (Object, Base, Failed_Map, OK, Prefix_Bytes + 1);
             pragma Assert (not OK and Calls = Boundary and not D.Valid (Failed_Map));
             pragma Assert (Allocator.Last_Allocation_Reason (Object) =
-              (if Lost then L.Owner_Check else L.Physical_Result_Check));
+              (if Lost then L.Owner_Check else L.Physical_Refused));
             pragma Assert (not Allocator.Memory_Budget (Object).Known);
             pragma Assert (not D.Valid (Allocator.Snapshot (Object)));
             pragma Assert (not D.Resolve (Prior, Prefix_Bytes - 4096, 4096).Valid);
@@ -601,4 +666,57 @@ begin
       pragma Assert (not OK and not D.Valid (Backing) and Calls = 2);
    end;
    Ada.Text_IO.Put_Line ("Extent allocator PASS:16 blocks, 128 generation reuse cycles, fragmented holes/coalescing, disjoint/idempotent views, exhaustion, all failure/ownership boundaries, no retry, alias rejection (mock allocation)");
+   -- Exercise wide geometry without allocating a terabyte or widening native
+   -- DMA policy. The callback returns synthetic physical addresses only.
+   declare
+      Wide_Calls : Natural := 0;
+      Physical : Unsigned_64 := 2 ** 40;
+      function Wide_Allocate (CPU : Unsigned_64) return Unsigned_64 is
+      begin
+         pragma Assert (CPU = Base);
+         Wide_Calls := Wide_Calls + 1;
+         return Physical;
+      end Wide_Allocate;
+      package Wide is new Intel_GPU_Extent_Allocator (Owner_Ready, Wide_Allocate);
+      View : Intel_GPU_Buffer_Reply.Extent_View;
+      More : Boolean;
+   begin
+      Ready := True;
+      for Case_Index in 1 .. 3 loop
+         declare
+            Object : Wide.Pool;
+            Budget : Wide.Budget;
+         begin
+            Wide_Calls := 0;
+            Physical := (case Case_Index is
+               when 1 => 2 ** 40,
+               when 2 => 2 ** 48 - E.Block_Bytes,
+               when others => 2 ** 48);
+            Wide.Configure_Heap (Object, 2 ** 40, 2 ** 48, OK);
+            pragma Assert (OK and Wide_Calls = 0);
+            pragma Assert (Wide.Record_Capacity (Object) = L.Bootstrap_Slots);
+            Wide.Step_Buffer (Object, 7, 1, 1, 1, View, OK, More);
+            pragma Assert (not More and Wide_Calls = 1);
+            if Case_Index < 3 then
+               pragma Assert (OK and Intel_GPU_Buffer_Reply.Valid (View));
+               pragma Assert (Intel_GPU_Buffer_Reply.Page_Address (View, 0) = Physical,
+                 "wide-physical-address-preserved");
+               Budget := Wide.Memory_Budget (Object);
+               pragma Assert (Budget.Known and Budget.Capacity = 2 ** 40 and
+                 Budget.Committed = E.Block_Bytes and Budget.Retained = 4096 and
+                 Budget.Available = 2 ** 40 - 4096);
+               -- A live arena cannot be silently reconfigured after publication.
+               Wide.Configure_Heap (Object, 2 ** 39, 2 ** 48, OK);
+               pragma Assert (not OK and Wide.Memory_Budget (Object).Capacity = 2 ** 40);
+            else
+               pragma Assert (not OK and not Intel_GPU_Buffer_Reply.Valid (View));
+               --  2**48 is aligned but past the configured range.
+               pragma Assert (Wide.Last_Allocation_Reason (Object) = L.Extent_Directory_Full);
+               Wide.Step_Buffer (Object, 7, 1, 1, 1, View, OK, More);
+               pragma Assert (not OK and not More and Wide_Calls = 1);
+            end if;
+         end;
+      end loop;
+   end;
+   Ada.Text_IO.Put_Line ("Wide backing PASS:1TiB quota, lazy2MiB commit, high physical addresses,48bit ceiling rejection without retry (mock only)");
 end Extent_Allocator_Tests;

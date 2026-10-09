@@ -17,7 +17,7 @@ procedure Lifetime is
    type Bytes is array (0 .. 4095) of Unsigned_8;
    Buffer : Bytes := (others => 16#A3#) with Alignment => 4096, Volatile;
    Msg : Message;
-   From : ProcessID;
+   From : Process_ID;
    OK : Boolean;
    Ref, Fresh : G.Grant_Reference;
    Mapped, Denied, ELF : System.Address;
@@ -37,7 +37,7 @@ procedure Lifetime is
       M : Message := NULL_MESSAGE;
    begin
       M.tag := (Op, 0, 0, 0);
-      M.tag := capCall (Slot, M);
+      M.tag := capCall (Slot, M, Wait_Forever);
       Check (M.tag.label = 16#F000#, "child reply");
       return M.words (0);
    end Call;

@@ -3,6 +3,7 @@ with CuBit.Launch_Arguments;
 with CuBit.Launch_Authority;
 with CuBit.Launch_Grants;
 with CuBit.Launching;
+with CuBit.Process_IDs;
 with CuBit.Memory_Grants;
 with CuBit.Messages;
 with CuBit.Outlet_Rings;
@@ -220,8 +221,7 @@ package body CCL_Launcher is
       end if;
       State.Active := True;
       Runs (Free) := State;
-      Started_As := (Index => Free, Process => State.Child.Process,
-                     Generation => State.Child.Generation);
+      Started_As := (Index => Free, Process => CuBit.Process_IDs.To_Word (State.Child.Process));
       Result := Started;
    end Start;
 
@@ -253,9 +253,7 @@ package body CCL_Launcher is
    begin
       Ended := False;
       How := (others => <>);
-      if not State.Active or else State.Child.Process /= Item.Process
-        or else State.Child.Generation /= Item.Generation
-      then
+      if not State.Active or else CuBit.Process_IDs.To_Word (State.Child.Process) /= Item.Process then
          Ended := True;
          return;
       end if;
@@ -290,7 +288,7 @@ package body CCL_Launcher is
       State : Run_State renames Runs (Item.Index);
       Revoked : Boolean;
    begin
-      if State.Child.Process /= Item.Process or else State.Child.Generation /= Item.Generation then
+      if CuBit.Process_IDs.To_Word (State.Child.Process) /= Item.Process then
          return;
       end if;
       --  Revoke each ring's grant and keep its pages for a later run. When

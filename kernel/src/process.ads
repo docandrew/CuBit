@@ -39,11 +39,16 @@ with Config;
 with Descriptors;
 with Execution_Accounting;
 with Process_Launch;
+with Process_Identities;
+with Kernel_Controls;
+with Kernel_Credits;
 with Futex_Keys;
 with IPC_Request_Ids;
 with LinkedLists;
 with Memory_Grants;
+with Grant_Windows;
 with Object_Table;
+with Retained_Record_Blocks;
 with Quiescent_Reclamation;
 with Page_Allocation;
 with Process_Lifetime;
@@ -268,6 +273,23 @@ package Process is
     -- backing can move out of the record (docs/threads.md).
     function generationOf (pid : ProcessID) return Capabilities.Generation;
 
+    -- identityOf
+    -- The identity of PID's current life (KERN-003, docs/process-objects.md):
+    -- the one word that names a process across the kernel boundary.
+    -- NO_PROCESS gives Process_Identities.No_Identity.
+    function identityOf (pid : ProcessID) return Process_Identities.Identity;
+
+    -- resolveIdentity
+    -- The process an identity names, and its generation, or NO_PROCESS: an
+    -- identity for an earlier life of the slot names nothing, so a stale
+    -- word can never reach the slot's next occupant. A lock-free snapshot;
+    -- operations that must not race a teardown pass the generation to
+    -- their own check under the target's lock.
+    procedure resolveIdentity (id         : Process_Identities.Identity;
+                               pid        : out ProcessID;
+                               generation : out Capabilities.Generation);
+    function processOfIdentity (id : Process_Identities.Identity) return ProcessID;
+
     -- threadGenerationOf
     -- The generation of thread TID, from the thread table's ledger. A
     -- synchronous reply capability names the waiting thread and carries it.
@@ -387,14 +409,22 @@ package Process is
 
     type CompletionOwners is array (CompletionIndex) of ThreadID;
 
+    -- The entries (5.8 KiB): allocated when the process first reserves a
+    -- completion (an async submit), kept with its slot from then on.
+    type CompletionSlots is record
+        ring   : CompletionRing;
+        -- Kernel-only: the thread each entry belongs to (the submitter).
+        -- A thread's wait or poll returns only its own completions.
+        owners : CompletionOwners;
+    end record;
+    type CompletionSlotsAccess is access all CompletionSlots;
+
     type CompletionQueue is record
-        ring  : CompletionRing := (others => NULL_COMPLETION);
+        -- null until the first async submit; count = 0 while null.
+        slots : CompletionSlotsAccess := null;
         head  : CompletionIndex := 0;   -- Consumer reads here
         tail  : CompletionIndex := 0;   -- Producer writes here
         count : Natural := 0;
-        -- Kernel-only: the thread each entry belongs to (the submitter).
-        -- A thread's wait or poll returns only its own completions.
-        owners : CompletionOwners := (others => NO_THREAD);
     end record;
 
     -- Tracks outstanding async requests so reply() can find the token
@@ -414,18 +444,8 @@ package Process is
     --
     -- Tracks DMA memory allocated via ALLOC_DMA so it can be freed on kill().
     ---------------------------------------------------------------------------
-    -- Sixteen 2MiB GPU backing blocks plus firmware/queue allocations.
-    -- Record capacity is separate from the retained-byte quota.
-    MAX_DMA_ALLOCS : constant := 32;
-
-    type DMAAlloc is record
-        active   : Boolean              := False;
-        physAddr : Virtmem.PhysAddress  := 0;
-        order    : BuddyAllocator.Order := 0;
-        retainUntilReboot : Boolean := False;
-    end record;
-
-    type DMAAllocArray is array (0 .. MAX_DMA_ALLOCS - 1) of DMAAlloc;
+    -- Stable dynamically backed records live in Process.DMA, independently
+    -- of this process-table slot, including retained orphan allocations.
 
     ---------------------------------------------------------------------------
     -- Resource Quota
@@ -435,7 +455,7 @@ package Process is
     -- Zero values mean unlimited.
     ---------------------------------------------------------------------------
     type ResourceQuota is record
-        maxFrames       : Natural      := 0;  -- 0 = unlimited
+        maxFrames       : Unsigned_64  := 0;  -- 0 = unlimited; capability width
         cpuQuotaUs      : Unsigned_32  := 0;  -- max us per period (0 = unlimited)
         cpuPeriodUs     : Unsigned_32  := 0;  -- period length in us
         cpuUsedTicks    : Natural      := 0;  -- ticks consumed this period
@@ -449,15 +469,14 @@ package Process is
     -- grantee's address space, enabling zero-copy I/O between client and
     -- server processes.
     ---------------------------------------------------------------------------
-    MAX_GRANTS_PER_PROCESS : constant := Memory_Grants.Grants_Per_Process;
+    --  Grants one process may own at once (KERN-003 step 2: a quota, not a
+    --  namespace; the table is global, Memory_Grants.Maximum_Grants).
+    OWNER_GRANT_QUOTA : constant := Memory_Grants.Owner_Grant_Quota;
     --  16 MiB per grant. Modern display buffers, media paths, and batched I/O
     --  need grants larger than the original 1 MiB filesystem-buffer ceiling.
-    --  With 256 PIDs * 4096 grants, this reserves a 16 TiB virtual grant
-    --  aperture, ending before the initrd at 0x0000_5000_0000_0000.
     --  Grant records and page tables are backed only as needed.
     MAX_GRANT_PAGES        : constant := Memory_Grants.Maximum_Page_Count;
 
-    subtype GrantID is Natural range 0 .. MAX_GRANTS_PER_PROCESS - 1;
     subtype StoredGrantPageCount is Natural range 0 .. MAX_GRANT_PAGES;
 
     type GrantPermission is (GRANT_READ, GRANT_READWRITE);
@@ -471,10 +490,25 @@ package Process is
           Memory_Grants.Initial_Generation;
         granterPID   : ProcessID       := NO_PROCESS;
         granteePID   : ProcessID       := NO_PROCESS;
+        -- Links in the owner's list of grants it owns (live, or retired
+        -- with an unread notice) and the grantee's list of grants it
+        -- receives (live): teardown and notices walk only these. A free
+        -- slot is on the free list through ownerNext.
+        ownerPrev, ownerNext     : Memory_Grants.Global_Slot := Memory_Grants.No_Slot;
+        granteePrev, granteeNext : Memory_Grants.Global_Slot := Memory_Grants.No_Slot;
+        -- Both parties' identities (KERN-003), taken when the grant is made,
+        -- so a notice read after either has ended names that life and not
+        -- a later occupant of its slot.
+        granterIdentity : Process_Identities.Identity := Process_Identities.No_Identity;
+        granteeIdentity : Process_Identities.Identity := Process_Identities.No_Identity;
         -- Granter's virtual address range
         granterAddr  : System.Address  := System.Null_Address;
-        -- Where it was mapped in grantee's space
+        -- Where it was mapped in grantee's space: the grantee's window
+        -- (Grant_Windows), held from creation until its pages are unmapped
+        -- and every CPU has flushed them.
         granteeAddr  : System.Address  := System.Null_Address;
+        granteeWindow : Grant_Windows.Window := Grant_Windows.Window'First;
+        windowHeld    : Boolean := False;
         -- Installed receiver pages. Zero after receiver death even if a
         -- kernel forwarding hold retains the grant identity/resources.
         numPages     : StoredGrantPageCount := 0;
@@ -483,29 +517,34 @@ package Process is
         -- A derived child must always clear this; ordinary acquisition does
         -- not grant delegation authority.
         forwardable  : Boolean := False;
-        -- Post grant lifecycle events (docs/data-plane.md) for this grant:
+        -- Tell both parties when this grant ends (docs/ipc-delivery.md):
         -- set by the owner at creation, inherited by derived children.
         notify       : Boolean := False;
+        -- The grantee has not yet read that the owner revoked this grant
+        -- (set only while it holds an acquisition; cleared when it reads
+        -- the notice or returns the grant).
+        granteeNotice : Boolean := False;
+        -- On a retired record: the owner has not yet read that it ended.
+        -- The record keeps its slot until then; noticeGeneration and
+        -- noticePeer are the ended grant's generation and grantee identity.
+        ownerNotice      : Boolean := False;
+        noticeGeneration : Memory_Grants.Grant_Generation := 0;
+        noticePeer       : Process_Identities.Identity := Process_Identities.No_Identity;
     end record;
 
 
     -- Grant virtual address region in lower-half user space
     GRANT_REGION_BASE : constant Integer_Address :=
         Integer_Address (Memory_Grants.Received_Region_First);
-    GRANT_SLOT_SIZE   : constant Integer_Address :=
-        Integer_Address (MAX_GRANT_PAGES) * Integer_Address (Virtmem.PAGE_SIZE);
     GRANT_REGION_END  : constant Integer_Address :=
         Integer_Address (Memory_Grants.Received_Region_Limit);
 
     ---------------------------------------------------------------------------
-    -- Unified IPC Ring Buffer
-    -- Single ring for async requests, one-way messages, events, and direct
-    -- sync handoff. Each entry carries an explicit kind so receive paths can
-    -- avoid consuming unrelated traffic classes.
+    -- A receiver's queue (IPC-002 step 3, docs/ipc-delivery.md): requests
+    -- and published events, each a ring per sending process (Kernel_Credits),
+    -- so a flooding sender fills only its own ring. Each entry carries its
+    -- kind so receive paths can avoid consuming unrelated traffic.
     ---------------------------------------------------------------------------
-    RING_SIZE : constant := 32;
-    subtype RingIndex is Natural range 0 .. RING_SIZE - 1;
-
     type RingEntryKind is (
         RING_EMPTY,
         RING_SYNC,
@@ -522,6 +561,13 @@ package Process is
         -- The sending thread of a RING_SYNC entry: the one blocked for the
         -- reply. Servers see only sender; the kernel routes the reply.
         senderThread : ThreadID := NO_THREAD;
+        -- Whose credit the entry uses: the sender, or a published event's
+        -- publisher (an event's visible sender is NO_PROCESS).
+        publisher : ProcessID := NO_PROCESS;
+        -- A RING_SYNC entry's call: the sender thread's call sequence when
+        -- it made it. Its reply is delivered only to that call (a caller
+        -- that timed out has moved on; docs/ipc-fastpath.md).
+        callSequence : Unsigned_64 := 0;
     end record;
 
     NULL_RING_ENTRY : constant RingEntry :=
@@ -529,16 +575,25 @@ package Process is
          sender    => NO_PROCESS,
          kind      => RING_EMPTY,
          requestId => NO_REQUEST_ID,
-         senderThread => NO_THREAD);
+         senderThread => NO_THREAD,
+         publisher => NO_PROCESS,
+         callSequence => 0);
 
-    type RingArray is array (RingIndex) of RingEntry;
-
-    type MessageRing is record
-        entries : RingArray := (others => NULL_RING_ENTRY);
-        head    : RingIndex := 0;   -- next write position
-        tail    : RingIndex := 0;   -- next read position
-        count   : Natural   := 0;
+    -- Each sender's credit per class, and how many senders' rings share one
+    -- allocated chunk of entries.
+    QUEUE_CREDIT      : constant := 16;
+    SENDERS_PER_CHUNK : constant := 8;
+    type Queue_Class is (Request_Class, Event_Class);
+    CHUNK_COUNT : constant :=
+        Kernel_Credits.Maximum_Senders / SENDERS_PER_CHUNK + 1;
+    type Chunk_Directory is array (0 .. CHUNK_COUNT - 1) of System.Address;
+    -- One class of a receiver's queue: its Kernel_Credits.Receiver_State
+    -- and its entry chunks, allocated when first needed (null until then).
+    type Class_Queue is record
+        state  : System.Address := System.Null_Address;
+        chunks : Chunk_Directory := (others => System.Null_Address);
     end record;
+    type Class_Queues is array (Queue_Class) of Class_Queue;
 
     ---------------------------------------------------------------------------
     -- Process mailboxes for low-level IPC
@@ -546,16 +601,18 @@ package Process is
     --                          this mailbox a message.
     -- @field recvQueue       - List of the blocked receivers waiting
     --                          to receive a message destined for this mailbox
-    -- @field ring            - Unified ring for submit() and sendEvent()
+    -- @field queues          - Requests and published events, a ring per sender
     ---------------------------------------------------------------------------
-    type Receive_Lane is (Queued_Messages, Waiting_Senders, IRQ_Doorbell);
+    type Receive_Lane is (Queued_Messages, Waiting_Senders, IRQ_Doorbell, Kernel_Notices);
 
     type Mailbox is record
         lock        : Spinlocks.spinlock;
         closed      : Boolean := True;
 
-        -- Unified ring buffer for async messages and events
-        ring        : MessageRing;
+        -- Requests and published events, a ring per sender (step 3)
+        queues      : Class_Queues;
+        -- Which class mixed receive takes from first.
+        nextClass   : Queue_Class := Request_Class;
         -- Protected by lock, shared by all receivers and receive variants.
         -- Persistent round-robin prevents a hot synchronous caller from
         -- starving queued async requests, one-way presents, or device work.
@@ -635,6 +692,17 @@ package Process is
         kernelStackTop      : System.Address;
         replyMsg            : Message := NULL_MESSAGE;
         sendMsg             : Message := NULL_MESSAGE;
+        -- IPC fast path (IPC-003, docs/ipc-fastpath.md): a call handed
+        -- straight to this thread while it waited in receive with nothing
+        -- else pending. Taken before anything queued when it wakes.
+        handoffValid        : Boolean := False;
+        handoffItem         : RingEntry := NULL_RING_ENTRY;
+        -- Synchronous calls (docs/ipc-fastpath.md, "Call deadlines"): the
+        -- sequence of this thread's current or last call, and when it gives
+        -- up waiting (callDeadlineActive; Unsigned_64'Last is never).
+        callSequence        : Unsigned_64 := 0;
+        callDeadlineMs      : Unsigned_64 := 0;
+        callDeadlineActive  : Boolean := False with Atomic;
         -- User FS base (thread-local storage), saved on switch-out because
         -- user code may change it with WRFSBASE.
         fsBase              : Unsigned_64 := 0;
@@ -768,7 +836,6 @@ package Process is
         grantTeardownPending : Boolean := False;
         grantTeardownReady : Boolean := False;
         pidReusableAfterGrants : Boolean := False;
-        dmaAllocs           : DMAAllocArray := (others => <>);
 
         caps                : Capabilities.CapabilityTable :=
                                   Capabilities.EMPTY_TABLE;
@@ -778,10 +845,11 @@ package Process is
         -- Bit N set means caps(N) holds a CAP_REPLY.
         deferredReplyCaps   : Unsigned_64 := 0;
 
-        -- Number of unsolicited events discarded because this process's
-        -- bounded mailbox ring was full. Event loss must be observable: a
-        -- latency-sensitive consumer cannot distinguish a quiet device from
-        -- an overloaded input path otherwise.
+        -- Number of events published to this process that were refused
+        -- because their publisher's ring here was full (the publisher is
+        -- told and keeps them). Backpressure must be observable: a
+        -- latency-sensitive consumer cannot otherwise tell a quiet device
+        -- from an overloaded input path.
         eventDrops          : Unsigned_64 := 0;
 
         -- Device IRQ delivery is a persistent doorbell, not a counted event.
@@ -790,8 +858,20 @@ package Process is
         -- authoritative device/controller state.
         irqNotificationPending : Boolean := False;
 
+        -- The kernel has notices for this process (grant ends, exit and
+        -- fault reports; docs/ipc-delivery.md). A doorbell under the
+        -- mailbox lock: the notices themselves are kept on their objects
+        -- until read, so this may be stale but never misses one.
+        kernelNoticePending : Boolean := False;
+
+        -- Control messages kept for this process until it reads them, a
+        -- slot per sender (Kernel_Controls; Process.IPC.controlLock). All
+        -- zero is closed and empty.
+        controls : Kernel_Controls.Target_State;
+
         -- Resource quota (populated from CAP_RESOURCE on resume)
         quota               : ResourceQuota;
+        memoryAccount       : Unsigned_64 := 0;
 
         -- The process's main thread (docs/threads.md). Scheduling, context
         -- and per-thread IPC state live in its thread record.
@@ -848,7 +928,9 @@ package Process is
        Max_Id           => ProcessID'Last,
        Entries_Per_Page => 5,
        Reserved_Last    => 15,
-       Generation_Limit => Memory_Grants.Process_Generation_Limit,
+       -- generationOf adds Capabilities.INITIAL_GENERATION: the ledger stops
+       -- one short so a capability generation never wraps to 0.
+       Generation_Limit => Unsigned_32'Last - Capabilities.INITIAL_GENERATION,
        Reset            => resetProcessRecord,
        Alloc_Page       => allocTablePage,
        Free_Page        => freeTablePage,
@@ -867,7 +949,9 @@ package Process is
        Max_Id           => Natural (ThreadID'Last),
        Entries_Per_Page => 8,
        Reserved_Last    => 15,
-       Generation_Limit => Memory_Grants.Process_Generation_Limit,
+       -- generationOf adds Capabilities.INITIAL_GENERATION: the ledger stops
+       -- one short so a capability generation never wraps to 0.
+       Generation_Limit => Unsigned_32'Last - Capabilities.INITIAL_GENERATION,
        Reset            => resetThreadRecord,
        Alloc_Page       => allocTablePage,
        Free_Page        => freeTablePage,
@@ -931,28 +1015,69 @@ package Process is
     procedure reclaimTablePages;
 
     ---------------------------------------------------------------------------
-    -- Addrtab. Array of Address spaces. Individual processes will have an index
-    -- into this object. Child threads of a parent process will all index to
-    -- the same entry here.
+    -- Per-process state (KERN-003 step 3, docs/process-objects.md): the root
+    -- page table, the mailbox and the completion queue, in one record per
+    -- slot. A slot's record is allocated when its PID is first allocated
+    -- and retained for the kernel's lifetime at a stable address, like the
+    -- grant table: a stale PID always reaches a real record, and a root
+    -- page another CPU may still hold in CR3 is never freed under it. Each
+    -- life resets what it uses, as the static arrays did.
+    --
+    -- addrtab, mailtab and completionTab keep the old array syntax. A slot
+    -- never allocated reads a shared record whose mailbox is closed; nothing
+    -- may write it except its lock.
     ---------------------------------------------------------------------------
-    type AddrtabType is array (1..ProcessID'Last) of Virtmem.P4;
-    addrtab : AddrtabType;
+    -- Grant bookkeeping for one process (Process.IPC, under grantLock):
+    -- its owned grants (live, or retired with an unread notice) and
+    -- received grants (live), linked through the grant records; its
+    -- received-grant windows; whether this life is told of grant ends and
+    -- its unread notice counts; and its link on the list of processes to
+    -- ring once grantLock is free.
+    type Grant_State is record
+        ownedHead, receivedHead   : Memory_Grants.Global_Slot := Memory_Grants.No_Slot;
+        ownedCount, receivedCount : Natural := 0;
+        windows                   : Grant_Windows.Window_Set := Grant_Windows.Empty;
+        noticesOpen               : Boolean := False;
+        ownerNotices              : Natural := 0;
+        granteeNotices            : Natural := 0;
+        wakeQueued                : Boolean := False;
+        wakeNext                  : ProcessID := NO_PROCESS;
+    end record;
 
-    ---------------------------------------------------------------------------
-    -- Mailtab. Array of mailboxes. Processes will have an index into this
-    -- object. Child threads of a parent process will all index to the same
-    -- entry here.
-    ---------------------------------------------------------------------------
-    type MailtabType is array (1..ProcessID'Last) of Mailbox;
-    mailtab : MailtabType;
+    type Process_State is record
+        rootTable   : aliased Virtmem.P4;
+        inbox       : aliased Mailbox;
+        completions : aliased CompletionQueue;
+        grants      : aliased Grant_State;
+    end record;
 
-    ---------------------------------------------------------------------------
-    -- CompletionTab. Array of completion queues, parallel to mailtab.
-    -- Indexed by ProcessID. Threads share their parent's completion queue.
-    -- Protected by mailtab(pid).lock (same lock, extends existing ordering).
-    ---------------------------------------------------------------------------
-    type CompletionTabType is array (1..ProcessID'Last) of CompletionQueue;
-    completionTab : CompletionTabType;
+    function allocateStateBlock
+      (Bytes, Alignment : System.Storage_Elements.Storage_Count)
+       return System.Address;
+
+    package Process_States is new Retained_Record_Blocks
+      (Process_State, ProcessID'Last, 1, allocateStateBlock);
+
+    -- Make pid's state exist. False when memory is exhausted.
+    procedure ensureState (pid : ProcessID; ok : out Boolean);
+
+    type P4_Ref (P : not null access Virtmem.P4) is null record
+      with Implicit_Dereference => P;
+    type Mailbox_Ref (M : not null access Mailbox) is null record
+      with Implicit_Dereference => M;
+    type Completion_Ref (C : not null access CompletionQueue) is null record
+      with Implicit_Dereference => C;
+
+    function addrtab (pid : ProcessID) return P4_Ref with Inline;
+    function mailtab (pid : ProcessID) return Mailbox_Ref with Inline;
+    function completionTab (pid : ProcessID) return Completion_Ref with Inline;
+    type Grant_State_Ref (G : not null access Grant_State) is null record
+      with Implicit_Dereference => G;
+    function grantsOf (pid : ProcessID) return Grant_State_Ref with Inline;
+    -- The physical address of pid's root page table, for CR3. Roots live
+    -- in the direct map (allocated state); the never-allocated sentinel is
+    -- in the kernel image.
+    function rootPhysical (pid : ProcessID) return Virtmem.PhysAddress;
 
     -- WIP: proctab replacement
     type ProcPtr is access all Process;
@@ -1050,6 +1175,9 @@ package Process is
     -- Called by the running process itself after an interrupt.
     ---------------------------------------------------------------------------
     procedure yield;
+    -- Call only without grantLock/Process.lock. Pairs with the worker's
+    -- pending-work check under Process.lock to prevent a lost wakeup.
+    procedure notifyDMAWork;
     -- Safe syscall/interrupt return, with no resource locks held. Revalidate
     -- current ready priority before honoring a possibly stale reschedule IPI.
     procedure serviceReschedule;

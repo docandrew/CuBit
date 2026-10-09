@@ -14,6 +14,7 @@ package CuBit.Messages is
    end record;
    NULL_MESSAGE : constant Message := ((0, 0, 0, 0), 0, [others => 0]);
    Calls : Natural := 0;
+   Accounting_Response : MessageWords := [0, 1, 12288, 8192];
    Fault : Natural := 0;
    Memory_Response : MessageWords := [0, 1, 1, 0];
    Map_Response : MessageWords := [0, 1, 1, 7 * 2 ** 32 + 8];
@@ -27,5 +28,7 @@ package CuBit.Messages is
    Update_Response : MessageWords := [0, 1, 1, 0];
    Update_Request : MessageWords := [others => 0];
    Bound_DMA, Last_Allocation_DMA : Unsigned_64 := 0;
-   function capCall (Slot : CapabilitySlot; Msg : in out Message) return MessageTag;
+   Wait_Forever : constant Unsigned_64 := Unsigned_64'Last;
+   function capCall (Slot : CapabilitySlot; Msg : in out Message;
+                     Deadline : Unsigned_64) return MessageTag;
 end CuBit.Messages;

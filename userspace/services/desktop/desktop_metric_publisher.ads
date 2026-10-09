@@ -3,6 +3,7 @@ with CuBit.Messages;
 with Compositor_Frame_Trace;
 with Compositor_Stage_Metrics;
 with Compositor_Work_Metrics;
+with Compositor_Trace_Wire;
 generic
    Capability : CuBit.Messages.CapabilitySlot;
 package Desktop_Metric_Publisher with SPARK_Mode => Off is
@@ -13,6 +14,11 @@ package Desktop_Metric_Publisher with SPARK_Mode => Off is
    procedure Record_Stage
      (Stage : Compositor_Stage_Metrics.Stage; First, Last : Interfaces.Unsigned_64);
    procedure Record_Completion (Frame : Compositor_Frame_Trace.Record_Value);
+   --  Event_ID supplied by the caller is ignored; this publisher assigns
+   --  identities once per valid attempt. Each event is appended atomically.
+   procedure Record_Trace (Value : Compositor_Trace_Wire.Event);
+   procedure Record_Unsupported_Trace;
+   procedure Record_Trace_Status (Now : Interfaces.Unsigned_64);
    -- At most one asynchronous submission; no waits, retries or extra clock.
    procedure Pump (Sequence : in out Interfaces.Unsigned_64; Now : Interfaces.Unsigned_64);
    function Matches (Token : Interfaces.Unsigned_64) return Boolean;

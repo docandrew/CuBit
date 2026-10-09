@@ -247,17 +247,43 @@ begin
          Fail_Handle := 0;
       end;
    end loop;
-   declare S : Cache.State; I : Image := Source; begin
-      Cache.Initialize (S, True);
-      for N in 1 .. 8 loop
-         I.Pixels := Addr (N * 4096);
-         Cache.Ensure_Source (S, I, 64, Index, OK); pragma Assert (OK);
-      end loop;
-      I.Pixels := Addr (9 * 4096);
-      Cache.Ensure_Source (S, I, 64, Index, OK);
-      pragma Assert (not OK and Cache.Mode (S) = Disabled);
-      Cache.Shutdown (S);
-   end;
+   for Release_Works in Boolean loop
+      declare S : Cache.State; I : Image := Source;
+         Before_Imports, Before_Releases : Natural;
+      begin
+         Cache.Initialize (S, True);
+         Cache.Ensure (S, 0, Target, 64, OK); pragma Assert (OK);
+         Ensure_Mask (S, Cache.Mask_Slot'First, Source, 64, OK); pragma Assert (OK);
+         for N in 1 .. 8 loop
+            I.Pixels := Addr ((N + 100) * 4096);
+            Cache.Ensure_Source (S, I, 64, Index, OK); pragma Assert (OK);
+         end loop;
+         Before_Imports := Imports; Before_Releases := Releases;
+         Release_OK := Release_Works;
+         for N in 9 .. 88 loop
+            I.Pixels := Addr ((N + 100) * 4096);
+            Cache.Ensure_Source (S, I, 64, Index, OK);
+            if Release_Works then
+               pragma Assert (OK and Cache.Mode (S) = Ready);
+               pragma Assert (Natural (Index) = 2 + (N - 9) mod 8);
+               pragma Assert (Imports = Before_Imports + N - 8);
+               pragma Assert (Releases = Before_Releases + N - 8);
+               pragma Assert (not Cache.Empty (S, 0) and not Cache.Empty (S, Cache.Mask_Slot'First));
+               Cache.Render (S, 0, Index, D, OK); pragma Assert (OK);
+               Cache.Ensure_Source (S, I, 64, Index, OK); pragma Assert (OK);
+               pragma Assert (Imports = Before_Imports + N - 8); -- cache hit
+            else
+               pragma Assert (not OK and Cache.Mode (S) = Restart_Required);
+               pragma Assert (Imports = Before_Imports and Releases = Before_Releases);
+               pragma Assert (not Cache.Empty (S, Index));
+               exit;
+            end if;
+         end loop;
+         Release_OK := True;
+         if Release_Works then Cache.Shutdown (S); end if;
+      end;
+   end loop;
+   Ada.Text_IO.Put_Line ("COMPOSITOR-CACHE: PASS 80 bounded round-robin evictions, cache hits, preserved target/mask and failed-release quarantine");
    Ada.Text_IO.Put_Line ("COMPOSITOR-CACHE: PASS init/failure/retirement/bounds and 100 reuse cycles");
    Ada.Text_IO.Put_Line ("COMPOSITOR-CACHE: PASS target-only retirement, idempotence, preserved sources and first/second-release faults");
    Ada.Text_IO.Put_Line ("COMPOSITOR-MASK-CACHE: PASS 128 retained masks, every shutdown failure position, duplicate imports and replacement faults");

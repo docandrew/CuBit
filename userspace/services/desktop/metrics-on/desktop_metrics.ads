@@ -3,6 +3,7 @@ with CuBit.Messages;
 with Compositor_Frame_Trace;
 with Compositor_Stage_Metrics;
 with Compositor_Work_Metrics;
+with Compositor_Trace_Wire;
 with Desktop_Metric_Publisher;
 with CCL_Manifest_Bindings;
 package Desktop_Metrics with SPARK_Mode => Off is
@@ -13,6 +14,9 @@ package Desktop_Metrics with SPARK_Mode => Off is
    procedure Record_Stage
      (Stage : Compositor_Stage_Metrics.Stage; First, Last : Interfaces.Unsigned_64) renames Publisher.Record_Stage;
    procedure Record_Completion (Frame : Compositor_Frame_Trace.Record_Value) renames Publisher.Record_Completion;
+   procedure Record_Trace (Value : Compositor_Trace_Wire.Event) renames Publisher.Record_Trace;
+   procedure Record_Unsupported_Trace renames Publisher.Record_Unsupported_Trace;
+   procedure Record_Trace_Status (Now : Interfaces.Unsigned_64) renames Publisher.Record_Trace_Status;
    procedure Pump (Sequence : in out Interfaces.Unsigned_64; Now : Interfaces.Unsigned_64) renames Publisher.Pump;
    procedure Collect (Completion : CuBit.Messages.CompletionEntry) renames Publisher.Collect;
    function Matches (Token : Interfaces.Unsigned_64) return Boolean renames Publisher.Matches;

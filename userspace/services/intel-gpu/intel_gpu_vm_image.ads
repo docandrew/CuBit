@@ -231,10 +231,28 @@ private
    end record;
    package Leaf_Storage is new Intel_GPU_Record_Store
      (Unsigned_64, 0, Bootstrap_Insertion_Words);
+   type Insertion_Check_Phase is (Check_DMA, Check_Tables, Check_Route,
+                                  Check_Leaf, Check_Cache);
    type Insertion_Receipt is limited record
       Poisoned : Boolean := False;
       Pending : Boolean := False;
       Active, Executing : Boolean := False;
+      Committing : Boolean := False;
+      Preparing : Boolean := False;
+      Check_Phase : Insertion_Check_Phase := Check_DMA;
+      Check_Data : Positive := 1;
+      Check_Table : Page_Number := 1;
+      Check_Word : Intel_GPU_ADLN_PPGTT.Table_Index := 0;
+      Check_Alias : Positive := 1;
+      Check_Depth : Natural range 0 .. 3 := 0;
+      Check_Route_Table : Page_Number := 1;
+      Check_Candidate : Natural range 2 .. Capacity + 1 := 2;
+      Capture_Policy : Intel_GPU_ADLN_PPGTT.Cache_Policy := Intel_GPU_ADLN_PPGTT.Write_Back;
+      Capture_Access : Intel_GPU_ADLN_PPGTT.Page_Access := Intel_GPU_ADLN_PPGTT.Read_Write;
+      Commit_Depth : Natural range 0 .. 3 := 0;
+      Commit_Table : Page_Number := 1;
+      Commit_Candidate : Natural range 2 .. Capacity + 1 := 2;
+      Commit_Region : Unsigned_64 := 0;
       Cursor : Natural range 0 .. Capacity * 512 := 0;
       Root, Epoch, First : Unsigned_64 := 0;
       Pages : Natural range 0 .. Capacity * 512 := 0;

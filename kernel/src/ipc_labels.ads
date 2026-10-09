@@ -43,6 +43,13 @@ is
     --  the kind (Control_Kind), the sender's PID.
     EVENT_CONTROL        : constant Unsigned_32 := 16#010E#;
     type Control_Kind is (Control_Stop, Control_Interrupt, Control_Reload);
+
+    --  Events only the kernel posts. A process's own SEND_EVENT may not use
+    --  these labels, so one in an event lane (sender NO_PROCESS) is the
+    --  kernel's (docs/data-plane.md, "Control messages").
+    function Is_Kernel_Event (Label : Unsigned_32) return Boolean is
+      (Label in EVENT_CHILD_EXIT | EVENT_CAP_FAULT | EVENT_PROCESS_FAULT
+              | EVENT_GRANT_REVOKED | EVENT_GRANT_RETURNED | EVENT_CONTROL);
     for Control_Kind use (Control_Stop => 1, Control_Interrupt => 2, Control_Reload => 3);
 
     -- Device operations
@@ -119,9 +126,19 @@ is
     REPLY_ERR      : constant Unsigned_32 := 16#F001#;
     REPLY_BUSY     : constant Unsigned_32 := 16#F002#;
     REPLY_CANCELED : constant Unsigned_32 := 16#F003#;
-    REPLY_TIMEOUT  : constant Unsigned_32 := 16#F004#;
     REPLY_FULL     : constant Unsigned_32 := 16#F005#;
     REPLY_EOF           : constant Unsigned_32 := 16#F006#;
     REPLY_ACCESS_DENIED : constant Unsigned_32 := 16#F007#;
+
+    --  Call outcomes only the kernel gives. A server's reply may not use
+    --  these labels (the kernel refuses it), so a caller can always tell
+    --  the kernel's answer from a protocol's own status labels, which
+    --  reuse 16#F000# .. 16#FFFF# freely.
+    KERNEL_REPLY_FIRST : constant Unsigned_32 := 16#FFFF_0000#;
+    --  The call's deadline passed before a reply (docs/ipc-fastpath.md,
+    --  "Call deadlines"). The outcome is unknown: the server may still act.
+    REPLY_TIMEOUT      : constant Unsigned_32 := 16#FFFF_0001#;
+    function Is_Kernel_Reply (Label : Unsigned_32) return Boolean is
+      (Label >= KERNEL_REPLY_FIRST);
 
 end IPC_Labels;

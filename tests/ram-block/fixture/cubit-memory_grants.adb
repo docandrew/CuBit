@@ -1,6 +1,6 @@
 package body CuBit.Memory_Grants is
    procedure Acquire
-     (reference : Grant_Reference; expectedOwner : CuBit.Messages.ProcessID;
+     (reference : Grant_Reference; expectedOwner : CuBit.Messages.Process_ID;
       byteOffset, byteLength : Unsigned_64; requiredAccess : Required_Access;
       mappedAddress : out System.Address; success : out Boolean)
    is

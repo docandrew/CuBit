@@ -17,6 +17,30 @@ package body Compositor_Row_Copy with SPARK_Mode is
               Natural (Wide (First_Row) * Wide (Target_Pitch)),
               Natural (Row), Natural (Rows));
    end Readback_Plan;
+   function Readback_Region_Plan
+     (Width, Height, First_Row : G.Pixel_Edge;
+      Repair : G.Physical_Rectangle;
+      Source_Bytes, Target_Bytes, Target_Pitch, Byte_Budget : Natural)
+      return Readback_Batch
+   is
+      Stride : constant Wide := Wide (Width) * 4;
+      Row : constant Wide := (Wide (Repair.Right) - Wide (Repair.Left)) * 4;
+      Remaining : constant Wide := Wide (Repair.Bottom) - Wide (Repair.Top) - Wide (First_Row);
+      Y : constant Wide := Wide (Repair.Top) + Wide (First_Row);
+      X : constant Wide := Wide (Repair.Left) * 4;
+      Rows : Wide;
+   begin
+      if Width = 0 or else Height = 0 or else
+         Repair.Left >= Repair.Right or else Repair.Top >= Repair.Bottom or else
+         Repair.Right > Width or else Repair.Bottom > Height or else Remaining <= 0 or else
+         Stride > Wide (Target_Pitch) or else Row > Wide (Byte_Budget) or else
+         Wide (Height) * Stride > Wide (Source_Bytes) or else
+         Wide (Height - 1) * Wide (Target_Pitch) + Stride > Wide (Target_Bytes)
+      then return (others => 0); end if;
+      Rows := Wide'Min (Remaining, Wide (Byte_Budget) / Row);
+      return (Natural (Y * Stride + X), Natural (Y * Wide (Target_Pitch) + X),
+              Natural (Row), Natural (Rows));
+   end Readback_Region_Plan;
    function Plan
      (Screen : G.Output; Surface : G.Logical_Rectangle;
       Source_Width, Source_Height : G.Physical_Extent;

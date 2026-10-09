@@ -187,11 +187,19 @@ cubit_cpu_tracker_drain(struct cubit_cpu_mapping_tracker *t)
    if (!t)
       return false;
    t->lost = true;
-   bool done = true;
-   for (uint32_t i = 0; i < t->used; i++) {
+   const uint32_t count = t->used - t->drain_cursor;
+   const uint32_t limit = t->drain_cursor +
+      (count < CUBIT_CPU_DRAIN_QUANTUM ? count : CUBIT_CPU_DRAIN_QUANTUM);
+   for (uint32_t i = t->drain_cursor; i < limit; i++) {
       if (cubit_cpu_mapping_release(&cubit_cpu_tracker_records(t)[i], false) != 0)
-         done = false;
+         t->drain_incomplete = true;
    }
+   t->drain_cursor = limit;
+   if (limit < t->used)
+      return false;
+   const bool done = !t->drain_incomplete;
+   t->drain_cursor = 0;
+   t->drain_incomplete = false;
    if (done && t->grown) {
       free(t->grown);
       t->grown = NULL;

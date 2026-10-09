@@ -13,7 +13,7 @@ package body GPU_Buffer_Probe is
    Mapping_Sequence : Unsigned_64 := 0;
    Reference : R.Reference;
    Magic : constant Unsigned_64 := 16#C0B1_3344_5566_7788#;
-   procedure Server (Sender : ProcessID; Request : Message) is
+   procedure Server (Sender : Process_ID; Request : Message) is
       Answer : Message := NULL_MESSAGE;
       Ignore : Unsigned_64;
       OK : Boolean;

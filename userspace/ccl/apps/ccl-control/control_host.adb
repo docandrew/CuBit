@@ -54,7 +54,7 @@ package body Control_Host is
    begin
       Request.tag := (label => CuBit.Protocols.CLOCK_OP_MONOTONIC_MS,
                       length => 1, flags => 0, reserved => 0);
-      Tag := capCall (CAP_SLOT_CLOCK, Request);
+      Tag := capCall (CAP_SLOT_CLOCK, Request, CuBit.Messages.Wait_Forever);
       Available := Tag.label = 16#F000# and Tag.length = 1;
       Value := (if Available then Request.words (0) else 0);
    end Read_Clock;

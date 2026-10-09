@@ -43,7 +43,7 @@ package body Intel_GPU_VM_Image is
    begin
       Accepted := False;
       if Object.Poisoned or else Object.Pending or else Object.Active or else
-        Object.Executing then return; end if;
+        Object.Executing or else Object.Preparing then return; end if;
       Leaf_Storage.Extend (Object.Words, Base, Bytes, Accepted);
    end Extend_Insertion_Metadata;
    function Mirror_Capacity (Object : Image) return Positive is
@@ -419,7 +419,7 @@ package body Intel_GPU_VM_Image is
    end Backing_Disjoint;
    function Entry_Value
      (Object : Image; Page : Page_Number; Index : Table_Index) return Unsigned_64 is
-     (if Page > Object.Count then 0
+     (if not Object.Valid or else Page > Object.Count then 0
       elsif Raw_Word (Object, Page, Index) /= 0 then Raw_Word (Object, Page, Index)
       else Intel_GPU_PPGTT_Scratch.Fallback (Object.Scratch, Descriptor (Object, Page).Level));
    function Scratch_DMA

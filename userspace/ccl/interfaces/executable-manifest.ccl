@@ -24,7 +24,7 @@
 (type Scheduling_Request (record (binding String) (budget_us Integer) (period_us Integer)))
 (type Request (variant
   (Service Service_Request) (Notification Notification_Request) (Network Network_Request)
-  (Framebuffer Framebuffer_Request) (Render String) (Device_Memory Device_Memory_Request)
+  (Framebuffer Framebuffer_Request) (Render String) (Optional_Render String) (Device_Memory Device_Memory_Request)
   (IO_Ports IO_Port_Request) (Interrupt Interrupt_Request) (DMA DMA_Request)
   (Scheduling Scheduling_Request)))
 (type File_Right (enum Read Write Execute Create))
@@ -93,3 +93,4 @@
 (define (config-all (rights (List File_Right))) Scope
   (Scope.Config (Access_Scope rights Scope_Place.Everything)))
 (define (tls (pattern String)) Scope (Scope.TLS pattern))
+

@@ -53,9 +53,11 @@
 with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
 
+with Buddy_Metadata;
 with BootAllocator;
 with Config;
 with Firmware_Frames;
+with Process_Identities;
 with Spinlocks;
 with Virtmem;
 with x86;
@@ -66,6 +68,30 @@ is
     AllocatorException  : exception;
 
     NO_BLOCK_AVAILABLE  : constant System.Address := System.Null_Address;
+
+    -- Kernel-only charge identities name retained accounting incarnations,
+    -- not current access-owner PIDs. Install once before binding any charges.
+    -- The handler must not raise; it runs only after actual reclamation and
+    -- AFTER dropping the buddy lock (possibly still under grantLock).
+    type Charge_Refund_Handler is access procedure
+      (Identity, Pages : Unsigned_64);
+    procedure installChargeRefundHandler
+      (Handler : not null Charge_Refund_Handler; Success : out Boolean)
+      with SPARK_Mode => Off;
+    -- Call on an allocated, unpublished page. Never changes access ownership.
+    procedure bindFrameCharge
+      (addr : Virtmem.PhysAddress; Identity : Unsigned_64; Success : out Boolean)
+      with SPARK_Mode => Off;
+    -- Kernel metadata: caller owns the unpublished allocation exclusively.
+    -- Requires no user owner/pins; does not grant userspace access. The same
+    -- actual-free callback retains the original account until reclamation.
+    procedure bindKernelFrameCharge
+      (addr : Virtmem.PhysAddress; Identity : Unsigned_64; Success : out Boolean)
+      with SPARK_Mode => Off;
+    -- Snapshot includes growth reservations as well as retained radix pages.
+    -- Separate from backing and per-owner quotas; does not reserve RAM.
+    procedure chargeMetadataUsage (Pages, Limit : out Unsigned_64)
+      with SPARK_Mode => Off;
     
     -- Track whether setup has been called on this package
     initialized         : Boolean := False with Ghost;
@@ -268,10 +294,19 @@ is
     -- mapping is removed and every online CPU acknowledges invalidation.
     -- Acquisitions may defer that revocation but do not own separate pins.
     ---------------------------------------------------------------------------
+    -- The process slot a user frame belongs to (No_Owner: none). Every
+    -- slot fits (Process_Identities.Slot), and its stored width is the
+    -- owner table's entry size.
+    type Frame_Owner is range 0 .. Process_Identities.Slot'Last with Size => 32;
+    No_Owner : constant Frame_Owner := 0;
+    pragma Compile_Time_Error
+      (Frame_Owner'Object_Size /= Buddy_Metadata.Owner_Bytes * System.Storage_Unit,
+       "Frame owner width must match the owner table entry");
+
     -- Ownership validation and pin acquisition share one allocator-lock
     -- interval, so a stale physical address cannot pass a separate check.
     procedure pinOwnedFrame
-      (addr : Virtmem.PhysAddress; owner : Unsigned_8; success : out Boolean)
+      (addr : Virtmem.PhysAddress; owner : Frame_Owner; success : out Boolean)
       with SPARK_Mode => Off;
 
     procedure unpinFrame
@@ -284,18 +319,18 @@ is
     -- driver; unowned MMIO can therefore never enter the generic grant path.
     procedure claimUserFrame
       (addr    : in Virtmem.PhysAddress;
-       owner   : in Unsigned_8;
+       owner   : in Frame_Owner;
        success : out Boolean) with
         SPARK_Mode => Off;
 
     procedure releaseUserFrame
       (addr  : in Virtmem.PhysAddress;
-       owner : in Unsigned_8) with
+       owner : in Frame_Owner) with
         SPARK_Mode => Off;
 
     function isUserFrameOwnedBy
       (addr  : Virtmem.PhysAddress;
-       owner : Unsigned_8) return Boolean with
+       owner : Frame_Owner) return Boolean with
         SPARK_Mode => Off;
 
     ---------------------------------------------------------------------------

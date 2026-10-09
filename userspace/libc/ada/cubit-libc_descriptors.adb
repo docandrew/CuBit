@@ -414,18 +414,26 @@ package body CuBit.Libc_Descriptors is
       M : aliased K.Message;
       From : Unsigned_64;
       Ignore : int;
+      Ignore_Refused : Unsigned_64;
    begin
       loop
          M := (others => <>);
          From := CuBit.Kernel_Calls.Call (K.Receive, Value_Of (M'Address));
          --  Receive takes events too: a child's exit goes to waitpid's
          --  bookkeeping (it would otherwise be lost to the stream handler).
-         if M.Label = CuBit.Child_Exits.Event_Label then
+         --  Only the kernel's (no sender): a client's call with that label is
+         --  not one.
+         if M.Label = CuBit.Child_Exits.Event_Label and then From = 0 then
             Note_Event (M'Address);
          else
             Lock (Stream_Lock'Access);
             Ignore := Stream_Handle_Message (To_Long (From), M'Address);
             Unlock (Stream_Lock'Access);
+            --  A request this libc does not serve is refused, never left
+            --  waiting for a reply that would not come.
+            if Ignore = 0 and then From /= 0 then
+               Ignore_Refused := CuBit.Kernel_Calls.Call (K.Reply, From, Unsigned_64 (K.Reply_Error));
+            end if;
          end if;
          exit when False;                --  the thread serves until exit
       end loop;

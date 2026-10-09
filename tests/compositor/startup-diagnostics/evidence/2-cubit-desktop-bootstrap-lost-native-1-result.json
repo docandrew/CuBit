@@ -1,0 +1,9 @@
+{
+  "status": "PASS",
+  "gpu_enabled": false,
+  "scope": "native withheld bootstrap completion; no renderer startup; stable retained screen",
+  "binary_sha256": "888f7c9c4a41f1e6f99230485e035d178958ba165ba4289ba0743a001c2ac9ad",
+  "memory": "1G",
+  "render_approved": true,
+  "hardware_validated": false
+}

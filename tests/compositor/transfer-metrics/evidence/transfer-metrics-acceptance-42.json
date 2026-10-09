@@ -1,0 +1,42 @@
+{
+  "status": "SELECTED_CHECKS_PASS",
+  "scope": "Linux-hosted byte oracle and selected SPARK units only; no native stream or hardware performance claim",
+  "hosted_result": "/home/doc/git/compositor-test-artifacts/transfer-metrics-hosted-41/result.json",
+  "hosted_inputs_rechecked": 406,
+  "cases": [
+    {
+      "mode": "positive",
+      "exit_code": 0,
+      "oracle": "PASS"
+    },
+    {
+      "mode": "forced-full",
+      "exit_code": 1,
+      "oracle": "expected sparse-area rejection"
+    },
+    {
+      "mode": "forced-copy",
+      "exit_code": 1,
+      "oracle": "expected excess copy-byte rejection"
+    },
+    {
+      "mode": "wrong-history",
+      "exit_code": 1,
+      "oracle": "expected wrong repair-history rejection"
+    },
+    {
+      "mode": "forced-transfer",
+      "exit_code": 1,
+      "oracle": "expected excess GPU transfer-byte rejection"
+    }
+  ],
+  "delta_tests": "2592 boundary cases + 5 sampling cases; session23384 terminal0",
+  "delta_proof": "2checks1flow1proof0unproved; session81373 terminal0",
+  "facade_proof": "215checks125flow90proof0unproved; session45686 terminal0",
+  "inputs": {
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-41/userspace/lib/compositor/compositor_transfer_delta.ads": "cfbdc2887d629702cd79dc5e47166c20611871df85c0c273faf2c33bdb1f2dcb",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-41/userspace/lib/compositor/compositor_transfer_delta.adb": "54550509ae5b16a5050bb659ccbdb23c6cd8ea4821e9f8d621ab87d3b57f0388",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-41/userspace/services/desktop/backend-vulkan/desktop_compositor.ads": "0421fa0a2dd5b4175d2aa4b7d3771f953bbab4d9270eb9f0423bd63e012d19c7",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-41/userspace/services/desktop/backend-vulkan/desktop_compositor.adb": "f5c3ee1a9f8d59331a9a21cb75a9ff63bd5a797578dc64f7ee4f479da974d50a"
+  }
+}

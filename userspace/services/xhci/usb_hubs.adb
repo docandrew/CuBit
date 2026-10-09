@@ -1,20 +1,32 @@
 package body USB_Hubs with SPARK_Mode is
+   --  USB 2.0 11.23.2.1: seven fixed bytes, then DeviceRemovable (one bit
+   --  per port plus reserved bit zero), then PortPwrCtrlMask. The mask is
+   --  obsolete (USB 1.0 compatibility) and unused here; devices size it
+   --  differently (QEMU's eight-port hub sends ceil (ports / 8) bytes, ten
+   --  in all), so it may be absent or up to DeviceRemovable's width.
+   Fixed_Bytes          : constant := 7;
+   Hub_Descriptor       : constant := 16#29#;
+   SuperSpeed_Hub       : constant := 16#2A#;
+   Shortest             : constant := Fixed_Bytes + 1;
+   Longest              : constant := Fixed_Bytes + 2 * 32;
+
    procedure Decode (Data : Bytes; Value : out Descriptor; Result : out Decode_Result) is
    begin
       Value := (others => <>);
       Result := Malformed;
-      if Data'Length not in 9 .. 71 then return; end if;
+      if Data'Length not in Shortest .. Longest then return; end if;
       declare
          Frame : constant Bytes (1 .. Data'Length) := Data;
          Ports : constant Natural := Natural (Frame (3));
-         Bitmap_Bytes : constant Natural := (Ports + 8) / 8;
+         Removable_Bytes : constant Natural := (Ports + 8) / 8;
          Characteristics : constant Unsigned_16 :=
            Unsigned_16 (Frame (4)) + 256 * Unsigned_16 (Frame (5));
       begin
-         if Frame (2) = 16#2A# then Result := Unsupported; return; end if;
-         if Frame (2) /= 16#29# or else Ports = 0 or else
-           Natural (Frame (1)) /= 7 + 2 * Bitmap_Bytes or else
-           Natural (Frame (1)) /= Frame'Length
+         if Frame (2) = SuperSpeed_Hub then Result := Unsupported; return; end if;
+         if Frame (2) /= Hub_Descriptor or else Ports = 0 or else
+           Natural (Frame (1)) /= Frame'Length or else
+           Natural (Frame (1)) not in
+             Fixed_Bytes + Removable_Bytes .. Fixed_Bytes + 2 * Removable_Bytes
          then return; end if;
          case Characteristics and 3 is
             when 0 => Value.Power := Ganged;

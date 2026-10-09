@@ -27,6 +27,13 @@ package CuBit.Metrics is
    --  True when Put would accept a record now; producers that prefer
    --  flushing to dropping check this first.
    function Has_Room (Item : Publisher) return Boolean;
+   --  Four raw trace fragments are accepted together or refused together.
+   --  No IPC or allocation; disabled publishers count them as rejected.
+   function Has_Group_Room (Item : Publisher) return Boolean;
+   procedure Put_Group
+     (Item : in out Publisher; Values : Records.Trace_Group;
+      Accepted : out Boolean)
+     with Pre => Records.Valid_Group (Values);
    --  Seals the filling page and submits it asynchronously. Returns without
    --  submitting when the page is empty or no page is free. Token must be
    --  unique among the application's live asynchronous requests; the

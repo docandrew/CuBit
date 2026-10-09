@@ -18,5 +18,7 @@ package CuBit.Messages is
    Fault : Natural := 0;
    Corrupt_Return : Boolean := False;
    Envelope_Bit : Natural range 0 .. 63 := 0;
-   function capCall (Slot : CapabilitySlot; Msg : in out Message) return MessageTag;
+   Wait_Forever : constant Unsigned_64 := Unsigned_64'Last;
+   function capCall (Slot : CapabilitySlot; Msg : in out Message;
+                     Deadline : Unsigned_64) return MessageTag;
 end CuBit.Messages;

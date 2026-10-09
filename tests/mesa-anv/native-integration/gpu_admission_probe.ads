@@ -8,6 +8,6 @@ package GPU_Admission_Probe is
                                 Cross_Process : Boolean := False);
    procedure Dispatch_Client (Slot : CuBit.Messages.CapabilitySlot);
    procedure Memory_Client (Slot : CuBit.Messages.CapabilitySlot);
-   procedure Server (Sender : CuBit.Messages.ProcessID;
+   procedure Server (Sender : CuBit.Messages.Process_ID;
                      Request : CuBit.Messages.Message);
 end GPU_Admission_Probe;

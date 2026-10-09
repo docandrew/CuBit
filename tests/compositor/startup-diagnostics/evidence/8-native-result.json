@@ -1,0 +1,9 @@
+{
+  "status": "PASS",
+  "gpu_enabled": false,
+  "scope": "native bootstrap frozen fault",
+  "binary_sha256": "71dcaaff742c593632f26b30b12ad351cb831f595867aa505e39e78184f08921",
+  "memory": "1G",
+  "render_approved": true,
+  "hardware_validated": false
+}

@@ -64,6 +64,11 @@ procedure Log_Viewer_Tests is
       Handle (State.all, (Kind => Key_Event, Key => Name, Shift => Shift, others => <>), Map.all, Redraw);
       Frame;
    end Key;
+   procedure Wheel (Steps : Integer) is
+   begin
+      Handle (State.all, (Kind => Log_View.Wheel, Steps => Steps, others => <>), Map.all, Redraw);
+      Frame;
+   end Wheel;
    procedure Type_Text (Text : String) is
    begin
       for C of Text loop
@@ -181,23 +186,85 @@ begin
    Click (CB.Choice_ID (LEVEL_BASE, 1));
    Check (Minimum (State.all) = LR.Trace, "All levels again");
 
-   --  Search: case-insensitive, in the message or the source's name.
+   --  Search: case-insensitive, in the message or the source's name. Every
+   --  row stays shown; the matches are marked, and the nearest is selected.
    Type_Text ("/TCP");
    Check (Search_Text (State.all) = "TCP", "search text: " & Search_Text (State.all));
-   Check (Shown (State.all) = 21, "records mentioning tcp, and the gap: " & Natural'Image (Shown (State.all)));
+   Check (Shown (State.all) = 63, "searching keeps every row: " & Natural'Image (Shown (State.all)));
+   Check (Match_Count (State.all) = 20, "records mentioning tcp: " & Natural'Image (Match_Count (State.all)));
+   Check (Row_Matches (State.all, 3) and then not Row_Matches (State.all, 2) and then not Row_Matches (State.all, 61),
+          "the matches are marked, neither the other records nor the gap");
+   Check (Selected_Row (State.all) = 60 and then Match_Index (State.all) = 20 and then not Following (State.all),
+          "while following, typing selects the newest match and pauses: " & Selected_Text (State.all));
+   --  Next and previous, wrapping: Enter and Shift+Enter in the field, F3
+   --  and Shift+F3 anywhere.
    Key (Enter);
+   Check (Selected_Row (State.all) = 3 and then Match_Index (State.all) = 1, "Enter wraps to the first match:" &
+          Natural'Image (Selected_Row (State.all)));
+   Check (Search_Text (State.all) = "TCP", "the field keeps focus and its text");
+   Key (Enter, Shift => True);
+   Check (Selected_Row (State.all) = 60, "Shift+Enter wraps back to the last match:" & Natural'Image (Selected_Row (State.all)));
+   Key (F3);
+   Key (F3);
+   Check (Selected_Row (State.all) = 6 and then Match_Index (State.all) = 2, "F3 goes on:" &
+          Natural'Image (Selected_Row (State.all)));
+   Key (F3, Shift => True);
+   Check (Selected_Row (State.all) = 3, "Shift+F3 goes back:" & Natural'Image (Selected_Row (State.all)));
+   --  A match out of view comes into view with rows around it.
+   for Press in 1 .. 9 loop
+      Key (F3);
+   end loop;
+   Check (Selected_Row (State.all) = 30, "the tenth match:" & Natural'Image (Selected_Row (State.all)));
+   Check (Selected_Row (State.all) - Top_Row (State.all) >= 3, "a match brought into view shows rows above it:" &
+          Natural'Image (Top_Row (State.all)));
+   declare
+      Box : constant CuBit.UI.Rect := Controls.Bounds (Map.all, ROW_FIRST + (30 - Top_Row (State.all)));
+      Plain : constant CuBit.UI.Rect := Controls.Bounds (Map.all, ROW_FIRST + (31 - Top_Row (State.all)));
+      ACCENT : constant Unsigned_32 := Unsigned_32 (CuBit.UI.Current_Theme.accent);
+      function Pixel (X, Y : Natural) return Unsigned_32 is (Image (Y * WIDTH + X) and 16#FF_FFFF#);
+   begin
+      Check (Pixel (Box.x + 1, Box.y + Box.h / 2) = ACCENT, "a match is drawn with its mark");
+      Check (Pixel (Plain.x + 1, Plain.y + Plain.h / 2) /= ACCENT, "a row that does not match is drawn without");
+   end;
    Save ("logs-search");
+   --  In the table: n and N, as in less.
+   Key (Down);
+   Type_Text ("n");
+   Check (Selected_Row (State.all) = 33, "n: the next match:" & Natural'Image (Selected_Row (State.all)));
+   Type_Text ("N");
+   Check (Selected_Row (State.all) = 30, "N: the previous match:" & Natural'Image (Selected_Row (State.all)));
+   Key (Enter);
+   Check (Selected_Row (State.all) = 33, "Enter in the table: the next match");
+   --  Only: the matches alone (and the gap), and every row again.
+   Type_Text ("o");
+   Check (Only_Matches (State.all) and then Shown (State.all) = 21,
+          "Only shows the matches and the gap: " & Natural'Image (Shown (State.all)));
+   Check (Selected_Text (State.all) = "record 33 tcp: connection accepted", "the selected match stays selected");
+   Save ("logs-search-only");
+   Click (ONLY_ID);
+   Check (not Only_Matches (State.all) and then Shown (State.all) = 63, "All shows every row again");
    Key (Backspace);
    Check (Search_Text (State.all) = "TCP", "Backspace outside the search field edits nothing");
+   --  No match: nothing selected changes, and navigation stays put.
+   Type_Text ("/");
+   Key (End_Key);
+   Type_Text (" none");
+   Check (Match_Count (State.all) = 0 and then Shown (State.all) = 63 and then Selected_Row (State.all) = 33,
+          "a search that matches nothing keeps the rows and the selection");
+   Key (F3);
+   Check (Selected_Row (State.all) = 33, "F3 with no match stays");
+   Save ("logs-search-none");
+   Key (Down);
    Key (Escape);
    Check (Shown (State.all) = 63 and then Search_Text (State.all) = "", "Esc clears every filter");
    --  Clicking the field focuses it.
    Click (SEARCH_ID);
    Type_Text ("dhcp");
-   Check (Shown (State.all) = 2, "typed into the clicked field: " & Natural'Image (Shown (State.all)));
+   Check (Match_Count (State.all) = 1 and then Selected_Text (State.all) = "dhcp: no lease after 5 attempts",
+          "typed into the clicked field: " & Natural'Image (Match_Count (State.all)));
    Key (Escape);
    Key (Escape);
-   Check (Search_Text (State.all) = "" and then Shown (State.all) = 63, "Esc in the field clears it");
+   Check (Search_Text (State.all) = "" and then Match_Count (State.all) = 0, "Esc in the field clears it");
 
    --  One service: from the combo box, or s for the selected record's.
    Click (SERVICE_BASE);
@@ -243,13 +310,13 @@ begin
    Name_Source (State.all, 41, "com.cubit.desktop", Started => 9_300);
    Log (9_400, 41, LR.Information, "desktop: ready");
    Type_Text ("/pid 41");
-   Check (Shown (State.all) = 2, "the old holder's record and the gap match its bare number: " &
-          Natural'Image (Shown (State.all)));
+   Check (Match_Count (State.all) = 1 and then Selected_Text (State.all) = "timesync: no network authority; exiting",
+          "the old holder's record matches its bare number: " & Natural'Image (Match_Count (State.all)));
    Key (Escape);
    Key (Escape);
    Type_Text ("/com.cubit.desktop");
-   Check (Shown (State.all) = 2, "only the new holder's record and the gap carry its name: " &
-          Natural'Image (Shown (State.all)));
+   Check (Match_Count (State.all) = 1 and then Selected_Text (State.all) = "desktop: ready",
+          "only the new holder's record carries its name: " & Natural'Image (Match_Count (State.all)));
    Key (Escape);
    Key (Escape);
    --  An unnamed publisher, and the old holder of a reused number, can be
@@ -271,8 +338,8 @@ begin
    Add (State.all, 9_600, 60, Made ("replicated from node b", LR.Information),
         (High => 16#00B0_0B00_DEAD_BEEF#, Low => 16#0000_0000_0000_0001#));
    Type_Text ("/00b00b00");
-   Check (Shown (State.all) = 2 and then Row_Text (State.all, 2) = "replicated from node b",
-          "a remote node's record found by node: " & Natural'Image (Shown (State.all)));
+   Check (Match_Count (State.all) = 1 and then Selected_Text (State.all) = "replicated from node b",
+          "a remote node's record found by node: " & Natural'Image (Match_Count (State.all)));
    Key (Escape);
    Key (Escape);
    Click (Header_ID (Node_Column));
@@ -311,6 +378,58 @@ begin
    Key (Home);
    Check (Selected_Text (State.all) = "flood 1", "the oldest kept record is the first flood record: " &
           Selected_Text (State.all));
+
+   --  The view scrolls freely of the selection; only moving the selection
+   --  brings it back.
+   Key (End_Key);
+   declare
+      Bottom : constant Positive := Top_Row (State.all);
+      Page : constant Positive := Shown (State.all) - Bottom + 1;
+      Newest : constant String := Selected_Text (State.all);
+      First_Drawn : constant String := Row_Text (State.all, Bottom - 15);
+   begin
+      Check (Following (State.all) and then Selected_Row (State.all) = Shown (State.all), "End follows the newest");
+      Wheel (-2);
+      Check (Following (State.all) and then Top_Row (State.all) = Bottom,
+             "scrolling toward newer rows at the bottom keeps following");
+      Wheel (5);
+      Check (not Following (State.all), "scrolling up pauses following");
+      Frame;
+      Frame;
+      Check (Top_Row (State.all) = Bottom - 15 and then Selected_Text (State.all) = Newest,
+             "the view stays scrolled past the selection:" & Natural'Image (Top_Row (State.all)));
+      --  A record arriving while paused moves neither the view nor the selection.
+      Log (30_000, DESKTOP, LR.Information, "arrived while scrolled up");
+      Frame;
+      Check (Row_Text (State.all, Top_Row (State.all)) = First_Drawn and then Selected_Text (State.all) = Newest
+             and then Unseen (State.all) = 1, "a new record leaves a paused view on the same records");
+      --  Moving the selection brings it into view again, as little as needed.
+      Key (Up);
+      Check (Selected_Text (State.all) /= Newest and then Top_Row (State.all) = Shown (State.all) - Page - 1,
+             "Up brings the selection into view:" & Natural'Image (Top_Row (State.all)));
+      Wheel (100);
+      Check (Top_Row (State.all) = Shown (State.all) - Page - 301, "the wheel scrolls away from it again");
+      Key (Down);
+      Check (Top_Row (State.all) = Shown (State.all) - Page and then Selected_Row (State.all) = Shown (State.all) - 1,
+             "Down brings it into view at the bottom:" & Natural'Image (Top_Row (State.all)));
+      Wheel (100);
+      Key (Page_Up);
+      Check (Selected_Row (State.all) = Shown (State.all) - 1 - Page and then
+             Top_Row (State.all) = Selected_Row (State.all) - Page + 1, "PgUp: into view");
+      Wheel (-100);
+      Key (Home);
+      Check (Selected_Row (State.all) = 1 and then Top_Row (State.all) = 1, "Home: the first row, in view");
+      --  A click selects a drawn row and leaves the view where it is.
+      Wheel (-10);
+      Click (ROW_FIRST + 4);
+      Check (Selected_Row (State.all) = 35 and then Top_Row (State.all) = 31, "a clicked row is selected in place:" &
+             Natural'Image (Selected_Row (State.all)));
+      Key (End_Key);
+      Check (Following (State.all) and then Selected_Text (State.all) = "arrived while scrolled up"
+             and then Top_Row (State.all) = Shown (State.all) - Page + 1, "End follows again, the newest in view");
+   end;
+   --  The cost runs below start from the oldest record, paused.
+   Key (Home);
 
    --  Cost, hosted (not a CuBit measurement): a full ring, then the native
    --  main's work each tick (64 records, a name refresh for 60 processes,

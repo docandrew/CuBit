@@ -37,6 +37,13 @@ procedure Sharing_Tests is
    Base : constant Unsigned_64 := Intel_GPU_Buffer_Backing.CPU_Base;
    use type V.View_State;
    use type B.Words;
+   procedure Poll_Full_Pass (Table : in out Sharing.Mapping_Table) is
+   begin
+      for Pass in 1 .. (Sharing.Record_Capacity (Table) + Sharing.Poll_Budget - 1) /
+        Sharing.Poll_Budget loop
+         Sharing.Poll (Object, Table);
+      end loop;
+   end Poll_Full_Pass;
 begin
    B.Handle (Object, 42, 99, B.Label, 4, 0, 0,
      [1, B.Create, 8192, 0], Response, Ticket);
@@ -50,6 +57,42 @@ begin
    G.Expected_Bytes := 4096;
    G.Expected_Access := G.Write_Access;
    G.Expected_Reference := (slot => 8, generation => 9);
+   declare
+      Table, Foreign_Table : Sharing.Mapping_Table;
+      Foreign_Object : B.Service;
+      State : Sharing.Mapping_Retirement;
+      Mapping : Sharing.Mapping_ID;
+      Reference : Unsigned_64;
+      Done, OK : Boolean;
+      Before : constant Natural := G.Revokes;
+   begin
+      G.Gone := False;
+      for I in 1 .. 49 loop
+         Sharing.Map (Object, Table, 42, 99, ID, 4096, 4096, True, Mapping, Reference);
+         pragma Assert (Mapping /= 0);
+      end loop;
+      -- External admission is closed before starting either teardown phase.
+      Active := False;
+      Sharing.Begin_Retire_Session (Object, Table, 99, State, OK); pragma Assert (OK);
+      Sharing.Begin_Retire_Session (Object, Table, 100, State, OK); pragma Assert (not OK);
+      Sharing.Retire_Session_Step (Foreign_Object, Table, State, Done);
+      pragma Assert (not Done and G.Revokes = Before);
+      Sharing.Retire_Session_Step (Object, Foreign_Table, State, Done);
+      pragma Assert (not Done and G.Revokes = Before);
+      for Turn in 1 .. 4 loop
+         Sharing.Retire_Session_Step (Object, Table, State, Done);
+         pragma Assert (G.Revokes - Before = Natural'Min (16 * Turn, 49));
+         pragma Assert (Done = (Turn = 4));
+         pragma Assert (Sharing.Observe_Retirement (Table, 99) = Sharing.Outstanding);
+      end loop;
+      Sharing.Retire_Session_Step (Object, Table, State, Done);
+      pragma Assert (Done and G.Revokes - Before = 49);
+      G.Gone := True;
+      for Turn in 1 .. 4 loop Sharing.Poll (Object, Table); end loop;
+      pragma Assert (Sharing.Observe_Retirement (Table, 99) = Sharing.Clear);
+      Active := True; G.Gone := False;
+   end;
+   Ada.Text_IO.Put_Line ("Bounded mapping retirement PASS:49 views in16/16/16/1 visits, roots pinned, completion not grant retirement");
    for Case_ID in 0 .. 8 loop
       declare
          Table : Sharing.Mapping_Table;
@@ -363,7 +406,8 @@ begin
          pragma Assert (Accepted and State = V.Retiring and G.Revokes = Before + 1);
          pragma Assert (Sharing.Presentation_Held (Table, 99) = (Cycle mod 2 = 0));
          G.Gone := True;
-         Sharing.Poll (Object, Table);
+         -- Poll is round-robin and bounded, not a full-table sweep.
+         Poll_Full_Pass (Table);
          pragma Assert (not Sharing.Presentation_Held (Table, 99));
          Previous := Mapping;
       end loop;
@@ -412,6 +456,8 @@ begin
       G.Gone := True;
       Sharing.Poll (Object, Table);
       pragma Assert (not Sharing.Needs_Growth (Table));
+      pragma Assert (Sharing.Observe_Retirement (Table, 99) = Sharing.Outstanding);
+      Poll_Full_Pass (Table);
       pragma Assert (Sharing.Observe_Retirement (Table, 99) = Sharing.Clear);
       Sharing.Map (Object, Table, 42, 99, ID, 4096, 4096, True, Mapping, Reference);
       pragma Assert (Mapping = Unsigned_32 (Total + 1));
@@ -484,7 +530,7 @@ begin
          pragma Assert (Mapping = Sharing.Initial_Capacity + 1 and G.Creates = Before + 1);
          Sharing.Retire_Session (Object, Table, 99);
          G.Gone := True;
-         Sharing.Poll (Object, Table);
+         Poll_Full_Pass (Table);
          pragma Assert (Sharing.Observe_Retirement (Table, 99) = Sharing.Clear);
       end;
    end loop;

@@ -1,0 +1,41 @@
+{
+  "110": [
+    "DestroyDescriptorSetLayout",
+    "DestroyPipelineLayout",
+    "DestroyPipeline",
+    "DestroySampler",
+    "CmdBindPipeline",
+    "CmdBindDescriptorSets",
+    "CmdSetViewport",
+    "CmdSetScissor",
+    "CmdPushConstants",
+    "CmdDraw",
+    "CreateDescriptorSetLayout",
+    "CreatePipelineLayout",
+    "CreateSampler",
+    "CreateShaderModule",
+    "DestroyShaderModule",
+    "CreateGraphicsPipelines"
+  ],
+  "210": [
+    "DestroyPipelineLayout",
+    "DestroyPipeline",
+    "CmdBindPipeline",
+    "CmdSetViewport",
+    "CmdSetScissor",
+    "CmdPushConstants",
+    "CmdDraw",
+    "CreatePipelineLayout",
+    "CreateShaderModule",
+    "DestroyShaderModule",
+    "CreateGraphicsPipelines"
+  ],
+  "310": [
+    "DestroyDescriptorPool",
+    "CreateImageView",
+    "DestroyImageView",
+    "UpdateDescriptorSets",
+    "CreateDescriptorPool",
+    "AllocateDescriptorSets"
+  ]
+}

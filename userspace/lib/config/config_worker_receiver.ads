@@ -15,7 +15,7 @@ with Config_Schema_Worker;
 generic
    Owner_Endpoint : CuBit.Messages.CapabilitySlot;
    with function Authorized_Source
-     (Sender : CuBit.Messages.ProcessID; Authority_Tag : Interfaces.Unsigned_64) return Boolean;
+     (Sender : CuBit.Messages.Process_ID; Authority_Tag : Interfaces.Unsigned_64) return Boolean;
    with procedure Invoke
      (Action : Config_Worker_Protocol.Operation;
       Name, Context : String; Expected_Revision : Config_Worker_Protocol.Number;
@@ -33,7 +33,7 @@ package Config_Worker_Receiver is
    --  in Config's dispatcher. No borrowed mapping is retained across Invoke.
    --  A lost response after a commit is uncertain, NOT permission to retry.
    procedure Handle
-     (Object : in out State; Sender : CuBit.Messages.ProcessID;
+     (Object : in out State; Sender : CuBit.Messages.Process_ID;
       Request : CuBit.Messages.Message;
       Reply : out CuBit.Messages.Message);
 private

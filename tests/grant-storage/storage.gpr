@@ -3,6 +3,7 @@ project Storage is
    for Source_Files use
      ("main.adb", "forwarding.adb", "retained_record_blocks.ads",
       "retained_record_blocks.adb", "memory_grants.ads", "memory_grants.adb",
+      "grant_windows.ads", "grant_windows.adb",
       "memory_grants-loans.ads", "memory_grants-loans.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";

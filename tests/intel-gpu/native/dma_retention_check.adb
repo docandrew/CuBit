@@ -20,7 +20,7 @@ procedure DMA_Retention_Check is
    procedure Reap (Target : Unsigned_64; Done : out Boolean) is
    begin
       Done := False;
-      if killProcess (ProcessID (Target)) /= 0 then return; end if;
+      if killProcess (Process_ID (Target)) /= 0 then return; end if;
       for Attempt in 1 .. 1000 loop
          Count := syscall (SYSCALL_PROCLIST,
            Unsigned_64 (To_Integer (Rows'Address)), Rows'Size / 8);

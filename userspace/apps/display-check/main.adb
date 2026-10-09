@@ -14,6 +14,7 @@ with GPU_Test_Policy;
 --  is an endpoint to display.svc (including grants addressed to that service).
 procedure Main is
    package MG renames CuBit.Memory_Grants;
+   use type MG.Grant_Reference;
    package OD renames CuBit.Output_Discovery;
    use type OD.Output_Role, OD.Query;
    use type DP.Wire_Message;
@@ -35,7 +36,7 @@ procedure Main is
    function Send (Request : Wire_Message) return Wire_Message is
       Msg : Message := From_Wire (Request);
    begin
-      Msg.tag := capCall (CAP_SLOT_DISPLAY, Msg);
+      Msg.tag := capCall (CAP_SLOT_DISPLAY, Msg, CuBit.Messages.Wait_Forever);
       return To_Wire (Msg);
    end Send;
    procedure Expect (Request : Wire_Message; Status : DP.Status_Code;
@@ -307,8 +308,9 @@ procedure Main is
            (CAP_SLOT_DISPLAY, To_Address (Address), 1, False, Reused, Ok);
          Check (Ok, "create reused slot");
          if Ok then
-            Check (Reused.slot = First.slot and then Reused.generation /= First.generation,
-                   "slot reused with new generation");
+            --  One global grant table: the slot may go to another process
+            --  first, but a reused slot always carries a new generation.
+            Check (Reused /= First, "replacement is a new reference");
             Expect (Encode_Attachment ((First, (4, 2, 16))), DP.Bad_Object,
                     "stale generation rejected");
             MG.Revoke (Reused, Ok);

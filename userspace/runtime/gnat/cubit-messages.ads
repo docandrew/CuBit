@@ -9,6 +9,7 @@
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with System;
+with CuBit.Process_IDs;
 
 pragma Warnings (Off, "internal GNAT unit");
 with System.Secondary_Stack;
@@ -108,8 +109,10 @@ package CuBit.Messages is
    SYSCALL_REGISTER_DRIVER : constant Unsigned_64 := 2000;
 
    --  Capability-aware IPC syscalls
-   SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY        : constant Unsigned_64 := 40;
-   SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY        : constant Unsigned_64 := 41;
+   --  Synchronous calls take a deadline (docs/ipc-fastpath.md, "Call
+   --  deadlines").
+   SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY        : constant Unsigned_64 := 129;
+   SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY        : constant Unsigned_64 := 128;
    SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY      : constant Unsigned_64 := 42;
 
    --  Atomic reply+receive
@@ -273,8 +276,18 @@ package CuBit.Messages is
    NULL_MESSAGE : constant Message :=
      (tag => NULL_TAG, authorityTag => 0, words => (others => 0));
 
-   subtype ProcessID is Unsigned_64;
-   NO_PROCESS : constant ProcessID := 0;
+   --  A process (CuBit.Process_IDs, KERN-003), with what clients of this
+   --  package use with it.
+   subtype Process_ID is CuBit.Process_IDs.Process_ID;
+   No_Process : Process_ID renames CuBit.Process_IDs.No_Process;
+   function "=" (Left, Right : Process_ID) return Boolean
+     renames CuBit.Process_IDs."=";
+   function To_Word (Process : Process_ID) return Unsigned_64
+     renames CuBit.Process_IDs.To_Word;
+   function From_Word (Word : Unsigned_64) return Process_ID
+     renames CuBit.Process_IDs.From_Word;
+   function Is_Process (Process : Process_ID) return Boolean
+     renames CuBit.Process_IDs.Is_Process;
 
    --  Async completion queue types (matching kernel process.ads)
 
@@ -328,20 +341,20 @@ package CuBit.Messages is
    --  Multi-word IPC Wrappers
 
    --  Blocking receive: returns sender PID in from, message in msg.
-   procedure receive (from : out ProcessID; msg : out Message);
+   procedure receive (from : out Process_ID; msg : out Message);
 
    --  Wait for any IPC until an absolute monotonic-millisecond deadline.
    --  received is False on deadline expiry; input publication wakes this
    --  immediately and does not wait for a polling interval.
    procedure receiveUntil
      (deadlineMs : Unsigned_64;
-      from       : out ProcessID;
+      from       : out Process_ID;
       msg        : out Message;
       received   : out Boolean);
 
    --  Reply to a sender (unblocks them).
    function reply
-     (replyTo : ProcessID; msg : Message) return Unsigned_64;
+     (replyTo : Process_ID; msg : Message) return Unsigned_64;
 
    --  Reply using a specific saved CAP_REPLY slot.
    --  Consumes a selected reply even if delivery fails (including caller
@@ -352,9 +365,9 @@ package CuBit.Messages is
    --  Atomic reply+receive (seL4 ReplyRecv pattern).
    --  Replies to replyTo with replyMsg, then blocks receiving next message.
    procedure replyWait
-     (replyTo  : ProcessID;
+     (replyTo  : Process_ID;
       replyMsg : Message;
-      from     : out ProcessID;
+      from     : out Process_ID;
       msg      : in out Message);
 
    --  Poll_Service_Request
@@ -369,9 +382,9 @@ package CuBit.Messages is
    --
    --  It never consumes keyboard/mouse input, device events, or lifecycle
    --  events. Those belong to Poll_Event/Wait_Event. If found is False, from
-   --  is NO_PROCESS and msg is NULL_MESSAGE.
+   --  is No_Process and msg is NULL_MESSAGE.
    procedure Poll_Service_Request
-     (from  : out ProcessID;
+     (from  : out Process_ID;
       msg   : out Message;
       found : out Boolean);
 
@@ -385,14 +398,14 @@ package CuBit.Messages is
    --  handles all IPC classes itself. Most services should call
    --  Poll_Service_Request, Poll_Event, and Poll_Completion separately.
    procedure Poll_Any_Ipc
-     (from  : out ProcessID;
+     (from  : out Process_ID;
       msg   : out Message;
       found : out Boolean);
 
    --  Resolve an already-held endpoint, never acquire authority from a PID.
    --  capSubmit revalidates the selected capability's rights and generation.
    procedure Find_Endpoint_Capability
-     (Target : ProcessID; Slot : out CapabilitySlot; Found : out Boolean);
+     (Target : Process_ID; Slot : out CapabilitySlot; Found : out Boolean);
 
    --  Async completion queue wrappers
 
@@ -416,13 +429,25 @@ package CuBit.Messages is
 
    --  Capability-aware IPC wrappers
 
+   --  Synchronous calls wait until Deadline at most: an absolute monotonic
+   --  millisecond (Deadline_After), or Wait_Forever, spelled out. There is
+   --  no default: the caller says how long it will wait for the server
+   --  (docs/ipc-fastpath.md, "Call deadlines"). On expiry the reply tag is
+   --  REPLY_TIMEOUT, and the outcome is unknown (the server may still act).
+   Wait_Forever : constant Unsigned_64 := Unsigned_64'Last;
+   --  Only the kernel gives labels from Kernel_Reply_First on (a server's
+   --  reply with one is refused), so they never mean a protocol's status.
+   Kernel_Reply_First : constant Unsigned_32 := 16#FFFF_0000#;
+   REPLY_TIMEOUT      : constant Unsigned_32 := 16#FFFF_0001#;
+   function Deadline_After (Milliseconds : Unsigned_64) return Unsigned_64;
+
    --  Synchronous send: resolve endpoint cap, stamp authority tag, send.
    function capSend
-     (slot : CapabilitySlot; msg : Message) return MessageTag;
+     (slot : CapabilitySlot; msg : Message; Deadline : Unsigned_64) return MessageTag;
 
    --  Cap-aware call: resolve cap, send, return full reply via msg pointer.
    function capCall
-     (slot : CapabilitySlot; msg : in out Message) return MessageTag;
+     (slot : CapabilitySlot; msg : in out Message; Deadline : Unsigned_64) return MessageTag;
 
    --  Cap-aware async submit: resolve cap, stamp authority tag, submit.
    function capSubmit
@@ -431,12 +456,12 @@ package CuBit.Messages is
       token : Unsigned_64) return Boolean;
 
    --  Send async event (non-blocking, intended for interrupt contexts).
-   procedure sendEvent (dest : ProcessID; msg : Message);
+   procedure sendEvent (dest : Process_ID; msg : Message);
 
    --  Send an async event and report bounded-queue backpressure. The kernel
    --  replaces msg.authorityTag with the tag of the authorizing capability;
    --  publication; caller-supplied authority tags are never trusted.
-   function trySendEvent (dest : ProcessID; msg : Message) return Boolean;
+   function trySendEvent (dest : Process_ID; msg : Message) return Boolean;
 
    --  Blocking receive for unsolicited events. The current ABI returns only
    --  the event tag; migrate this to the unified wait primitive.
@@ -449,32 +474,13 @@ package CuBit.Messages is
    --  completions.
    function Poll_Event (msg : out Message) return Boolean;
 
-   --  Create a shared memory grant.
-   procedure createGrant
-     (grantee   : ProcessID;
-      localAddr : System.Address;
-      numPages  : Natural;
-      readWrite : Boolean;
-      grantId   : out Unsigned_64;
-      success   : out Boolean);
-
    --  Kill a process by PID. Returns 0 on success, -1 on error.
-   function killProcess (pid : ProcessID) return Unsigned_64;
-
-   --  Create a shared memory grant via capability slot (no raw PID needed).
-   --  slot = CAP_ENDPOINT slot identifying grantee.
-   procedure createGrantViaCap
-     (slot      : CapabilitySlot;
-      localAddr : System.Address;
-      numPages  : Natural;
-      readWrite : Boolean;
-      grantId   : out Unsigned_64;
-      success   : out Boolean);
+   function killProcess (pid : Process_ID) return Unsigned_64;
 
    --  Register a well-known service role in the kernel registry.
    function setWellKnown
      (role : Unsigned_64;
-      pid  : Unsigned_64) return Unsigned_64;
+      pid  : Process_ID) return Unsigned_64;
 
    --  Revoke a shared memory grant.
    procedure revokeGrant (id : Unsigned_64);
@@ -502,7 +508,7 @@ package CuBit.Messages is
    --  Allocate DMA: contiguous physical pages mapped into target process.
    --  Returns physical address, or -1 on error.
    function allocDma
-     (targetPID : Unsigned_64;
+     (targetPID : Process_ID;
       order     : Unsigned_64;
       virtBase  : Unsigned_64) return Unsigned_64;
 
@@ -511,7 +517,7 @@ package CuBit.Messages is
    --  the edge-triggered, active-high defaults.
    function enableIrq
      (vector    : Unsigned_64;
-      ownerPID  : Unsigned_64;
+      ownerPID  : Process_ID;
       targetCPU : Unsigned_64;
       levelTriggered : Boolean := False;
       activeLow      : Boolean := False;
@@ -520,7 +526,7 @@ package CuBit.Messages is
    --  Map physical pages into a target process's address space.
    --  flags: 0=RW, 1=RO, 2=IO (uncacheable)
    function mapInto
-     (targetPID : Unsigned_64;
+     (targetPID : Process_ID;
       physAddr  : Unsigned_64;
       virtAddr  : Unsigned_64;
       numPages  : Unsigned_64;
@@ -533,7 +539,7 @@ package CuBit.Messages is
 
    --  Set CPU affinity for a process.
    function setCpu
-     (targetPID : Unsigned_64;
+     (targetPID : Process_ID;
       cpu       : Unsigned_64) return Unsigned_64;
 
    --  Declare this process' scheduler latency contract. The kernel records
@@ -551,6 +557,13 @@ package CuBit.Messages is
 
    function getInfo
      (query : Unsigned_64; detail : Unsigned_64 := 0) return Unsigned_64;
+
+   --  The process registered for a driver or service role (DRIVER_*), or
+   --  No_Process (none registered, or the query refused).
+   function Registered_Driver (Driver : Unsigned_64) return Process_ID;
+
+   --  This process.
+   function Own_Process return Process_ID;
 
    function registerDriver (driver : Unsigned_64) return Unsigned_64;
 

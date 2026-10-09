@@ -75,6 +75,48 @@ package CuBit.Metric_Batches with Pure, SPARK_Mode is
             Pages (Other (Filling (Item))) =
               Pages'Old (Other (Filling (Item)));
 
+   function Has_Group_Room (Item : Builder) return Boolean is
+     (not In_Flight (Item, Filling (Item)) and then
+      Used (Item, Filling (Item)) <= Records.Maximum_Records - 4 and then
+      not Exhausted (Item));
+   function Drop_Group (Value : Unsigned_64) return Unsigned_64 is
+     (if Value > Unsigned_64'Last - 4 then Unsigned_64'Last else Value + 4);
+
+   --  One event is accepted in full, never split across pages or batches.
+   --  On refusal neither page changes; four lost records are counted.
+   procedure Append_Group
+     (Item : in out Builder; Pages : in out Page_Pair;
+      Values : Records.Trace_Group; Accepted : out Boolean)
+     with Pre => Consistent (Item) and then Records.Valid_Group (Values),
+          Post => Consistent (Item) and then
+            Accepted = Has_Group_Room (Item'Old) and then
+            Filling (Item) = Filling (Item'Old) and then
+            (for all P in Page_Id =>
+               In_Flight (Item, P) = In_Flight (Item'Old, P)) and then
+            Used (Item, Other (Filling (Item))) =
+              Used (Item'Old, Other (Filling (Item))) and then
+            Exhausted (Item) = Exhausted (Item'Old) and then
+            (if Accepted then
+               Used (Item, Filling (Item)) =
+                 Used (Item'Old, Filling (Item)) + 4 and then
+               Dropped (Item) = Dropped (Item'Old) and then
+               (for all I in Records.Trace_Part =>
+                  Records.Slot (Pages (Filling (Item)),
+                    Used (Item'Old, Filling (Item)) + I + 1) =
+                    Records.Encode (Values (I))) and then
+               (for all W in Records.Page_Word_Index =>
+                  (if W / Records.Words_Per_Slot <=
+                        Used (Item'Old, Filling (Item)) or else
+                      W / Records.Words_Per_Slot > Used (Item, Filling (Item))
+                   then Pages (Filling (Item)) (W) =
+                        Pages'Old (Filling (Item)) (W))) and then
+               Pages (Other (Filling (Item))) =
+                 Pages'Old (Other (Filling (Item)))
+             else Used (Item, Filling (Item)) =
+                    Used (Item'Old, Filling (Item)) and then
+                  Dropped (Item) = Drop_Group (Dropped (Item'Old)) and then
+                  Pages = Pages'Old);
+
    --  Seals the filling page when it holds records and is not in flight.
    --  Page then stays untouched until Complete (Page).
    procedure Seal

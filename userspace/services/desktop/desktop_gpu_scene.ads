@@ -1,3 +1,5 @@
+with Compositor_Damage;
+with Compositor_Pool;
 with Vulkan_Submission;
 with Desktop_Glyph_Residency;
 with Desktop_Vulkan_Startup;
@@ -22,10 +24,15 @@ package Desktop_GPU_Scene with SPARK_Mode is
    function Reader_Count (S : State) return Natural;
    function Image_Reader_Count (S : State) return Natural;
    function Layer_Count (S : State) return V.Length;
+   procedure Capture_Repaint (S : State; Plan : out Compositor_Damage.State;
+      Accepted : out Boolean)
+     with Global => (Input => D.Engine), Pre => Valid (S) and D.Valid,
+       Post => Compositor_Damage.Valid (Plan) and
+         (if not Accepted then Compositor_Damage.Count (Plan) = 0);
    procedure Begin_Frame (S : in out State; Screen : V.A.G.Output;
       Background : V.A.Word; Accepted : out Boolean)
-     with Global => (Input => D.Engine), Pre => Valid (S) and D.Valid,
-       Post => Valid (S) and (if Accepted then Current (S) = Capturing);
+     with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid,
+       Post => Valid (S) and D.Valid and (if Accepted then Current (S) = Capturing);
    -- Solid, clip, texture and backdrop layers reuse the production scene
    -- representation. Glyphs must use Add_Glyph so their readers are retained.
    procedure Append (S : in out State; Item : V.Layer; Accepted : out Boolean)
@@ -96,6 +103,7 @@ private
       Used : Count := 0;
       Images : Image_Pins;
       Images_Used : Image_Count := 0;
+      Reservation : Compositor_Pool.Ticket := Compositor_Pool.None;
       Status : Phase := Idle;
       Cold, Invalid : Boolean := False;
    end record;

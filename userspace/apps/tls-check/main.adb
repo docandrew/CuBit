@@ -35,7 +35,7 @@ procedure Main is
       Reply.tag.label := Label;
       Reply.tag.length := Length;
       Reply.words := [W0, W1, W2, W3];
-      Reply.tag := capCall (Slot, Reply);
+      Reply.tag := capCall (Slot, Reply, CuBit.Messages.Wait_Forever);
    end Call;
 
    procedure Open (Target : String) is

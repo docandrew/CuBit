@@ -1,0 +1,31 @@
+{
+  "status": "EXACT_NATIVE_ADAPTER_FAULT_TESTS_PASS",
+  "native_reference": "/home/doc/git/compositor-test-artifacts/raw-metric-native-145/result.json",
+  "observer_checks": 54,
+  "packet_checks": 520,
+  "session": 82626,
+  "negative_session": 97946,
+  "negative_expected": "Forged publisher tag accepted after deleting validation; validator test rejects mutant",
+  "covered": [
+    "Bad reply length/flags/reserved/status and mismatched reply tags",
+    "Oversized row count, backward next cursor, overflow-sized gap",
+    "Wrong publisher family, zero PID/batch and nonzero row reserved words",
+    "Invalid encoded records and all496 unused words individually corrupted",
+    "Unsigned64 sequence exhaustion/near-overflow boundary",
+    "Changed or invalid endpoint incarnation disables observer without further calls",
+    "Grant creation rejection is retryable; revoke rejection/pending retirement cannot report disconnect complete"
+  ],
+  "limits": [
+    "Hosted mocks for syscall/grant failures, not native fault injection",
+    "Native145 covers normal IPC/authority/overwrite/retirement",
+    "Packet validator proof only establishes generated safety/termination obligations; semantic rejection backed by tests",
+    "No shared publication or Desktop trace/CCL collector yet"
+  ],
+  "hashes": {
+    "cubit-metric_protocol.ads": "8e898f6fc95629dc25a77c786f399f962551a8722c2ab127575e1d86f6ffeb1a",
+    "cubit-metric_raw_observer.ads": "f286a9d56ec7b65a62c7ac26727b4bafc2cc69f7bc1b5a38a58501b1ff8d9213",
+    "cubit-metric_raw_observer.adb": "da01ab39e886e206be6e35befdb5e15492db47421c2c9ca64d9652e3bf6d15dd",
+    "cubit-metric_raw_validation.ads": "9aaa9c4b2959875eee6ee54e268175a6f224176dc5371e2e91a52373d0423b3f",
+    "cubit-metric_raw_validation.adb": "2891f326ccb25318af5670b41eae6b72fcc50cb24c8253d25755f19366d7469a"
+  }
+}

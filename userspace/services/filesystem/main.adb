@@ -23,6 +23,7 @@ with CuBit.Channel_Contracts;
 with CuBit.Protocols;
 with CuBit.Channel_Protocol;
 with CuBit.Channels;
+with CuBit.Control_Events;
 with CuBit.Busy_Poll;
 with CuBit.Grant_References;
 with CuBit.Directory_Paths;
@@ -87,7 +88,7 @@ procedure main is
       inodeNum    : Unsigned_32  := 0;      --  ext2 only
       cpioFileIdx : Natural      := 0;      --  cpio only
       offset      : Unsigned_64  := 0;
-      ownerPID    : ProcessID    := NO_PROCESS;
+      ownerPID    : Process_ID    := No_Process;
       openRights  : Unsigned_8   := 0;
       objectKind  : Open_Object_Kind := FILE_OBJECT;
    end record;
@@ -131,7 +132,7 @@ procedure main is
    MAX_ACL_PROFILES : constant := 32;
 
    type ACLProfile is record
-      pid    : ProcessID := NO_PROCESS;
+      pid    : Process_ID := No_Process;
       active : Boolean   := False;
       policy : CuBit.File_Access.Policy;
    end record;
@@ -141,16 +142,16 @@ procedure main is
    --  Administrative identity comes only from the kernel's authenticated
    --  service registry. Query it for each rare policy operation so a cached
    --  raw PID cannot become authority after process death and PID reuse.
-   function isAdmin (sender : ProcessID) return Boolean is
-      devmgrAdmin : constant Unsigned_64 :=
-        getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DEVMGR);
-      procmgrAdmin : constant Unsigned_64 :=
-        getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_PROCMGR);
+   function isAdmin (sender : Process_ID) return Boolean is
+      devmgrAdmin : constant Process_ID :=
+        Registered_Driver (DRIVER_DEVMGR);
+      procmgrAdmin : constant Process_ID :=
+        Registered_Driver (DRIVER_PROCMGR);
    begin
       return
-        (devmgrAdmin /= 0 and then devmgrAdmin /= Unsigned_64'Last and then
+        (devmgrAdmin /= No_Process and then
          sender = devmgrAdmin) or else
-        (procmgrAdmin /= 0 and then procmgrAdmin /= Unsigned_64'Last and then
+        (procmgrAdmin /= No_Process and then
          sender = procmgrAdmin);
    end isAdmin;
 
@@ -158,7 +159,7 @@ procedure main is
    --  must end at a path-component boundary: authority for "apps/foo" must
    --  not also authorize "apps/foobar".
    function checkAccess
-     (sender : ProcessID;
+     (sender : Process_ID;
       path : String;
       rights : Unsigned_8) return Boolean
    is
@@ -225,7 +226,7 @@ procedure main is
 
    function resolveHandle
      (handle : Unsigned_64;
-      sender : ProcessID;
+      sender : Process_ID;
       expectedKind : Open_Object_Kind) return Integer
    is
       slotCode : constant Unsigned_64 := handle and 16#FFFF_FFFF#;
@@ -304,7 +305,7 @@ procedure main is
       keepWriteError (slot);
       Open_Inodes.Detach (inodeObjects, Open_Inodes.Owner_Index (slot));
       files (slot).active := False;
-      files (slot).ownerPID := NO_PROCESS;
+      files (slot).ownerPID := No_Process;
       files (slot).openRights := 0;
       files (slot).offset := 0;
       files (slot).objectKind := FILE_OBJECT;
@@ -321,7 +322,7 @@ procedure main is
       end if;
    end releaseHandle;
 
-   procedure releaseHandlesForOwner (owner : ProcessID) is
+   procedure releaseHandlesForOwner (owner : Process_ID) is
    begin
       for slot in files'Range loop
          if files (slot).active and then files (slot).ownerPID = owner then
@@ -354,7 +355,7 @@ procedure main is
    --  A client's queue: three channels it opened (FQ: the queue pair, the
    --  transfer arena, the dirty arena), docs/data-plane.md.
    type Client_Queue is record
-      owner      : ProcessID := NO_PROCESS;   --  set once the queue pair is open
+      owner      : Process_ID := No_Process;   --  set once the queue pair is open
       queueLink  : CuBit.Channels.Channel;
       transferLink : CuBit.Channels.Channel;
       dirtyLink  : CuBit.Channels.Channel;
@@ -370,7 +371,7 @@ procedure main is
    clientQueues : array (Client_Queue_Index) of Client_Queue;
    --  Arenas a client lent before its queue pair: taken in when it opens.
    type Pending_Arenas is record
-      owner : ProcessID := NO_PROCESS;
+      owner : Process_ID := No_Process;
       transferLink, dirtyLink : CuBit.Channels.Channel;
    end record;
    --  A transfer arena of the queue's layout, of any size up to the
@@ -423,14 +424,14 @@ procedure main is
    end publishNamespace;
 
    --  owner: only that client's access changes (its policy), so only its
-   --  queue needs the new value; NO_PROCESS: every client's.
-   procedure bumpNamespace (owner : ProcessID := NO_PROCESS) is
+   --  queue needs the new value; No_Process: every client's.
+   procedure bumpNamespace (owner : Process_ID := No_Process) is
    begin
       namespaceGeneration :=
         (if namespaceGeneration = Unsigned_32'Last then 1 else namespaceGeneration + 1);
       for q in clientQueues'Range loop
          if clientQueues (q).serverBase /= System.Null_Address and then
-           (owner = NO_PROCESS or else clientQueues (q).owner = owner)
+           (owner = No_Process or else clientQueues (q).owner = owner)
          then
             publishNamespace (q);
          end if;
@@ -519,7 +520,7 @@ procedure main is
       inodeVersions (i).version := versionClock;
    end bumpVersion;
 
-   function queueOf (owner : ProcessID) return Client_Queue_Count is
+   function queueOf (owner : Process_ID) return Client_Queue_Count is
    begin
       for q in clientQueues'Range loop
          if clientQueues (q).owner = owner then
@@ -543,14 +544,14 @@ procedure main is
    --  full table falls back to the owner's next flush or close of any file.
    type Write_Error is record
       used  : Boolean := False;
-      owner : ProcessID := NO_PROCESS;
+      owner : Process_ID := No_Process;
       key   : Inode_Identity := (Volume_Index'First, 0);
    end record;
    MAX_WRITE_ERRORS : constant := 64;
    writeErrors : array (0 .. MAX_WRITE_ERRORS - 1) of Write_Error;
    MAX_ERROR_OWNERS : constant := 16;
-   overflowOwners : array (0 .. MAX_ERROR_OWNERS - 1) of ProcessID :=
-     [others => NO_PROCESS];
+   overflowOwners : array (0 .. MAX_ERROR_OWNERS - 1) of Process_ID :=
+     [others => No_Process];
 
    procedure keepWriteError (slot : Natural) is
       kept : Boolean := False;
@@ -567,7 +568,7 @@ procedure main is
          end if;
       end loop;
       for o of overflowOwners loop
-         if not kept and then (o = NO_PROCESS or else o = files (slot).ownerPID) then
+         if not kept and then (o = No_Process or else o = files (slot).ownerPID) then
             o := files (slot).ownerPID;
             kept := True;
          end if;
@@ -579,7 +580,7 @@ procedure main is
    end keepWriteError;
 
    --  Take (and clear) a kept failure of owner for key.
-   procedure takeWriteError (owner : ProcessID; key : Inode_Identity; found : out Boolean) is
+   procedure takeWriteError (owner : Process_ID; key : Inode_Identity; found : out Boolean) is
    begin
       found := False;
       for e of writeErrors loop
@@ -590,14 +591,14 @@ procedure main is
       end loop;
       for o of overflowOwners loop
          if o = owner then
-            o := NO_PROCESS;
+            o := No_Process;
             found := True;
          end if;
       end loop;
    end takeWriteError;
 
    --  An exited owner's kept failures have no one left to report to.
-   procedure forgetWriteErrors (owner : ProcessID) is
+   procedure forgetWriteErrors (owner : Process_ID) is
    begin
       for e of writeErrors loop
          if e.used and then e.owner = owner then
@@ -606,7 +607,7 @@ procedure main is
       end loop;
       for o of overflowOwners loop
          if o = owner then
-            o := NO_PROCESS;
+            o := No_Process;
          end if;
       end loop;
    end forgetWriteErrors;
@@ -717,7 +718,7 @@ procedure main is
 
    --  The live handle of owner that tag names, or -1: an entry with any
    --  other tag is stale (its handle released) or forged.
-   function taggedHandle (tag : Unsigned_32; owner : ProcessID) return Integer is
+   function taggedHandle (tag : Unsigned_32; owner : Process_ID) return Integer is
       slot : constant Handle_Slot := Handle_Slot (tag and TAG_SLOT_MASK);
    begin
       if files (slot).active and then files (slot).ownerPID = owner and then
@@ -729,7 +730,7 @@ procedure main is
    end taggedHandle;
 
    procedure harvestEntries (q : Client_Queue_Index; single : Integer) is
-      owner : constant ProcessID := clientQueues (q).owner;
+      owner : constant Process_ID := clientQueues (q).owner;
       base : constant System.Address := clientQueues (q).dirty;
       slotCount : Natural := 0;
       waitBudget : Natural := HARVEST_WAIT_BUDGET;
@@ -1039,7 +1040,7 @@ procedure main is
    end answerEntry;
 
    procedure acquireClientMemory
-     (sender        : ProcessID;
+     (sender        : Process_ID;
       rawSlot       : Unsigned_64;
       rawGeneration : Unsigned_64;
       byteLength    : Unsigned_64;
@@ -1097,7 +1098,7 @@ procedure main is
 
    --  Send a reply with the given label and word0 value
    procedure sendReply
-     (dest   : ProcessID;
+     (dest   : Process_ID;
       label  : Unsigned_32;
       word0  : Unsigned_64)
    is
@@ -1126,8 +1127,8 @@ procedure main is
    --  words(1) = entry count (0 = wildcard full access)
    --  words(2) = grant slot (when count > 0)
    --  words(3) = grant generation (when count > 0)
-   procedure handleSetACL (sender : ProcessID; msg : Message) is
-      targetPID     : constant ProcessID := msg.words (0);
+   procedure handleSetACL (sender : Process_ID; msg : Message) is
+      targetPID     : constant Process_ID := From_Word (msg.words (0));
       entryCountRaw : constant Unsigned_64 := msg.words (1);
       entryCount    : Natural := 0;
       slotIdx       : Integer := -1;
@@ -1154,7 +1155,7 @@ procedure main is
          end if;
       end loop;
 
-      if msg.tag.length /= 4 or else targetPID = NO_PROCESS or else
+      if msg.tag.length /= 4 or else targetPID = No_Process or else
         entryCountRaw > Unsigned_64 (MAX_ACL_ENTRIES)
       then
          sendReply (sender, REPLY_ERR, 0);
@@ -1229,8 +1230,8 @@ procedure main is
 
    --  Handle OP_REVOKE_ACL
    --  words(0) = target PID
-   procedure handleRevokeACL (sender : ProcessID; msg : Message) is
-      targetPID : constant ProcessID := msg.words (0);
+   procedure handleRevokeACL (sender : Process_ID; msg : Message) is
+      targetPID : constant Process_ID := From_Word (msg.words (0));
    begin
       if not isAdmin (sender) then
          sendReply (sender, REPLY_ACCESS_DENIED, 0);
@@ -1243,7 +1244,7 @@ procedure main is
             aclProfiles (i).pid = targetPID
          then
             aclProfiles (i).active := False;
-            aclProfiles (i).pid    := NO_PROCESS;
+            aclProfiles (i).pid    := No_Process;
             CuBit.File_Access.Clear (aclProfiles (i).policy);
          end if;
       end loop;
@@ -1254,20 +1255,20 @@ procedure main is
    end handleRevokeACL;
 
    --  Return a client queue's grants and free its entry.
-   procedure releaseClientQueue (owner : ProcessID);
+   procedure releaseClientQueue (owner : Process_ID);
 
    --  OP_RELEASE_OWNER (procmgr, once a process has exited): nothing it
    --  held survives to be found through a reused PID. Its handles are
    --  released (a write delegation's dirty pages are harvested first: the
    --  service's acquisition keeps the arena's frames), then its queue and
    --  its access profile go.
-   procedure handleReleaseOwner (sender : ProcessID; msg : Message) is
-      targetPID : constant ProcessID := msg.words (0);
+   procedure handleReleaseOwner (sender : Process_ID; msg : Message) is
+      targetPID : constant Process_ID := From_Word (msg.words (0));
    begin
       if not isAdmin (sender) then
          sendReply (sender, REPLY_ACCESS_DENIED, 0);
          return;
-      elsif msg.tag.length /= 1 or else targetPID = NO_PROCESS then
+      elsif msg.tag.length /= 1 or else targetPID = No_Process then
          sendReply (sender, REPLY_ERR, 0);
          return;
       end if;
@@ -1292,7 +1293,7 @@ procedure main is
       for i in aclProfiles'Range loop
          if aclProfiles (i).active and then aclProfiles (i).pid = targetPID then
             aclProfiles (i).active := False;
-            aclProfiles (i).pid    := NO_PROCESS;
+            aclProfiles (i).pid    := No_Process;
             CuBit.File_Access.Clear (aclProfiles (i).policy);
          end if;
       end loop;
@@ -1307,7 +1308,7 @@ procedure main is
       Device : constant Device_Binding := Binding (Volumes, Volume);
       Context : Volume_Context renames Contexts (Volume);
       Grant_OK, Revoked : Boolean;
-      Provider : Unsigned_64;
+      Provider : Process_ID;
       Raw : Unsigned_64;
    begin
       Result := Context.Status;
@@ -1315,8 +1316,8 @@ procedure main is
          return;
       end if;
       if Device.Ready_Role /= 0 then
-         Provider := getInfo (SYSINFO_REGISTERED_DRIVER, Device.Ready_Role);
-         if Provider = 0 or else Provider = Unsigned_64'Last then
+         Provider := Registered_Driver (Device.Ready_Role);
+         if Provider = No_Process then
             return; -- not supplied yet; no session or identity was replaced
          end if;
       end if;
@@ -1421,7 +1422,7 @@ procedure main is
    end replyForWrite;
 
    --  Handle OP_OPEN: path grant, path length, open options, grant generation.
-   procedure handleOpen (sender : ProcessID; msg : Message) is
+   procedure handleOpen (sender : Process_ID; msg : Message) is
       pathLen   : constant Unsigned_64 := msg.words (1);
       openFlags : constant Open_Options := Open_Options (msg.words (2));
       grantAddr : System.Address := System.Null_Address;
@@ -1507,7 +1508,7 @@ procedure main is
             if checkAccess (sender, pathStr, requiredRights or ACL_READ) then
                mayRead := True;
             elsif not checkAccess (sender, pathStr, requiredRights) then
-               debugPrint ("FS: access denied for PID" & ProcessID'Image (sender)
+               debugPrint ("FS: access denied for PID" & Process_ID'Image (sender)
                            & ": " & pathStr & LF);
                sendReply (sender, REPLY_ACCESS_DENIED, Unsigned_64'Last);
                return;
@@ -1889,7 +1890,7 @@ procedure main is
    --  words(2) = count (bytes to read)
    --  words(3) = grant generation
    procedure handleRead
-     (sender : ProcessID; msg : Message;
+     (sender : Process_ID; msg : Message;
       mode : File_Position_Mode := Advance_Cursor;
       explicitOffset : Unsigned_64 := 0)
    is
@@ -2009,7 +2010,7 @@ procedure main is
    --  words(2) = count (bytes to write)
    --  words(3) = grant generation
    procedure handleWrite
-     (sender : ProcessID; msg : Message;
+     (sender : Process_ID; msg : Message;
       mode : File_Position_Mode := Advance_Cursor;
       explicitOffset : Unsigned_64 := 0)
    is
@@ -2142,7 +2143,7 @@ procedure main is
 
    --  Decode transport metadata once, then use the identical authorization,
    --  grant acquisition, filesystemKind I/O and return path as cursor-based requests.
-   procedure handlePositioned (sender : ProcessID; msg : Message) is
+   procedure handlePositioned (sender : Process_ID; msg : Message) is
       request : Message := msg;
       loan : CuBit.Grant_References.Reference;
    begin
@@ -2170,7 +2171,7 @@ procedure main is
    --  words(0) = file_handle
    --  words(1) = offset
    --  words(2) = whence (0=SET, 1=CUR, 2=END)
-   procedure handleSeek (sender : ProcessID; msg : Message) is
+   procedure handleSeek (sender : Process_ID; msg : Message) is
       handle  : constant Integer :=
         resolveHandle (msg.words (0), sender, FILE_OBJECT);
       seekOff : constant Unsigned_64 := msg.words (1);
@@ -2211,7 +2212,7 @@ procedure main is
 
    --  Handle OP_CLOSE
    --  words(0) = file_handle
-   procedure handleClose (sender : ProcessID; msg : Message) is
+   procedure handleClose (sender : Process_ID; msg : Message) is
       handle : constant Integer :=
         resolveHandle (msg.words (0), sender, FILE_OBJECT);
    begin
@@ -2241,7 +2242,7 @@ procedure main is
    --  later read-only open of the same name. Its rights drop to reading; it
    --  keeps its delegation (or is delegated as a new reader would be). A
    --  handle that cannot read, or is not an ext2 file, is closed instead.
-   procedure handlePark (sender : ProcessID; handleWord : Unsigned_64) is
+   procedure handlePark (sender : Process_ID; handleWord : Unsigned_64) is
       handle : constant Integer := resolveHandle (handleWord, sender, FILE_OBJECT);
    begin
       if handle < 0 then
@@ -2263,7 +2264,7 @@ procedure main is
       end if;
    end handlePark;
 
-   procedure handleFlush (sender : ProcessID; msg : Message) is
+   procedure handleFlush (sender : Process_ID; msg : Message) is
       handle : constant Integer :=
         resolveHandle (msg.words (0), sender, FILE_OBJECT);
       status : Ext2.Flush_Status;
@@ -2307,7 +2308,7 @@ procedure main is
       end case;
    end handleFlush;
 
-   procedure handleResize (sender : ProcessID; msg : Message) is
+   procedure handleResize (sender : Process_ID; msg : Message) is
       handle : constant Integer :=
         resolveHandle (msg.words (0), sender, FILE_OBJECT);
       updated : Ext2.Inode;
@@ -2368,7 +2369,7 @@ procedure main is
 
    --  Open a directory by bootstrap path.  The returned object is a distinct
    --  PID-bound directory handle; subsequent enumeration carries no path.
-   procedure handleOpenDirectory (sender : ProcessID; msg : Message) is
+   procedure handleOpenDirectory (sender : Process_ID; msg : Message) is
       pathLen : constant Unsigned_64 := msg.words (1);
       grantAddr : System.Address := System.Null_Address;
       grantOk : Boolean := False;
@@ -2554,7 +2555,7 @@ procedure main is
       end case;
    end Read_Reply_Label;
 
-   procedure handleOpenChildDirectory (sender : ProcessID; msg : Message) is
+   procedure handleOpenChildDirectory (sender : Process_ID; msg : Message) is
       parent : constant Integer :=
         resolveHandle (msg.words (0), sender, DIRECTORY_OBJECT);
       nameLength : constant Unsigned_64 := msg.words (1);
@@ -2679,7 +2680,7 @@ procedure main is
       sendReply (sender, REPLY_OK, identity);
    end handleOpenChildDirectory;
 
-   procedure handleRewindDirectory (sender : ProcessID; msg : Message) is
+   procedure handleRewindDirectory (sender : Process_ID; msg : Message) is
       handle : constant Integer :=
         resolveHandle (msg.words (0), sender, DIRECTORY_OBJECT);
       candidate : Ext2.Inode;
@@ -2740,7 +2741,7 @@ procedure main is
    --  Inspected: OP_READ_DIRECTORY_INSPECTED, whose grant carries a second
    --  page of Entry_Inspection records after the listing.
    procedure handleReadDirectoryPage
-     (sender : ProcessID; msg : Message; inspected : Boolean := False)
+     (sender : Process_ID; msg : Message; inspected : Boolean := False)
    is
       grantBytes : constant Natural :=
         (if inspected then DIRECTORY_INSPECTED_BYTES else DIRECTORY_PAGE_BYTES);
@@ -2907,7 +2908,7 @@ procedure main is
       sendReply (sender, replyLabel, Unsigned_64 (entryCount));
    end handleReadDirectoryPage;
 
-   procedure handleCloseDirectory (sender : ProcessID; msg : Message) is
+   procedure handleCloseDirectory (sender : Process_ID; msg : Message) is
       handle : constant Integer :=
         resolveHandle (msg.words (0), sender, DIRECTORY_OBJECT);
    begin
@@ -2922,7 +2923,7 @@ procedure main is
    --  Deferred reply table for async I/O (Phase 3 foundation)
    MAX_PENDING_CLIENTS : constant := 8;
    type PendingClient is record
-      clientPID : ProcessID    := NO_PROCESS;
+      clientPID : Process_ID    := No_Process;
       handle    : Integer      := -1;
       destAddr  : System.Address := System.Null_Address;
       remaining : Unsigned_64  := 0;
@@ -2969,7 +2970,7 @@ procedure main is
       return -1;
    end holderOf;
 
-   procedure handleRename (sender : ProcessID; msg : Message) is
+   procedure handleRename (sender : Process_ID; msg : Message) is
       oldPathLen : constant Unsigned_64 := msg.words (1);
       newPathLen : constant Unsigned_64 := msg.words (2);
       grantAddr  : System.Address := System.Null_Address;
@@ -3158,7 +3159,7 @@ procedure main is
    --  Copy the path, check authority, select and admit its writable volume.
    --  On failure a reply has been sent and ok is False.
    procedure namespaceRequest
-     (sender : ProcessID; msg : Message; pathBuffer : out String;
+     (sender : Process_ID; msg : Message; pathBuffer : out String;
       pathLen : out Natural; volume : out Volume_Index;
       relStart : out Natural; ok : out Boolean)
    is
@@ -3253,7 +3254,7 @@ procedure main is
    --  buffered pages may be dropped unwritten, but only once the unlink
    --  has succeeded (handleUnlink); otherwise they are written.
    procedure checkParked
-     (sender : ProcessID; handleWord : Unsigned_64; key : Inode_Identity;
+     (sender : Process_ID; handleWord : Unsigned_64; key : Inode_Identity;
       handle : out Integer; dropping : out Boolean)
    is
       object : Open_Inodes.Link;
@@ -3276,7 +3277,7 @@ procedure main is
 
    --  Unlink a regular file. While handles hold it, the name and link go
    --  now and the inode at the last close (releaseHandle).
-   procedure handleUnlink (sender : ProcessID; msg : Message) is
+   procedure handleUnlink (sender : Process_ID; msg : Message) is
       pathBuffer : String (1 .. Natural (MAXIMUM_PATH_BYTES));
       pathLen, relStart : Natural;
       volume : Volume_Index;
@@ -3357,7 +3358,7 @@ procedure main is
       sendReply (sender, replyForRemove (status), 0);
    end handleUnlink;
 
-   procedure handleMkdir (sender : ProcessID; msg : Message) is
+   procedure handleMkdir (sender : Process_ID; msg : Message) is
       pathBuffer : String (1 .. Natural (MAXIMUM_PATH_BYTES));
       pathLen, relStart : Natural;
       volume : Volume_Index;
@@ -3381,7 +3382,7 @@ procedure main is
 
    --  Remove an empty directory. Refused while a directory handle has it
    --  open: its blocks would be freed under the enumeration.
-   procedure handleRmdir (sender : ProcessID; msg : Message) is
+   procedure handleRmdir (sender : Process_ID; msg : Message) is
       pathBuffer : String (1 .. Natural (MAXIMUM_PATH_BYTES));
       pathLen, relStart : Natural;
       volume : Volume_Index;
@@ -3417,7 +3418,7 @@ procedure main is
    end handleRmdir;
 
    --  Main message loop variables
-   sender : ProcessID;
+   sender : Process_ID;
    msg    : Message;
    rdAddr : Unsigned_64;
    rdSize : Unsigned_64;
@@ -3431,7 +3432,7 @@ procedure main is
    function channelNumber (index : Client_Queue_Index; connector : Unsigned_16) return Unsigned_64 is
      (Unsigned_64 (index) * 4 + Unsigned_64 (connector));
 
-   procedure handleChannelOpen (sender : ProcessID; msg : Message) is
+   procedure handleChannelOpen (sender : Process_ID; msg : Message) is
       use type CuBit.Channel_Contracts.Contract;
       isOpen, valid : Boolean;
       offered : CuBit.Channel_Contracts.Contract;
@@ -3457,7 +3458,7 @@ procedure main is
       for q in pendingArenas'Range loop
          if pendingArenas (q).owner = sender then
             pending := q;
-         elsif free = No_Client_Queue and then pendingArenas (q).owner = NO_PROCESS then
+         elsif free = No_Client_Queue and then pendingArenas (q).owner = No_Process then
             free := q;
          end if;
       end loop;
@@ -3491,7 +3492,7 @@ procedure main is
             end if;
             ignore := reply (sender, answer);
          elsif connector = FQ.Queue_Connector and then offered = FQ.QUEUE_CONTRACT
-           and then p.transferLink.Active and then clientQueues (pending).owner = NO_PROCESS
+           and then p.transferLink.Active and then clientQueues (pending).owner = No_Process
          then
             declare
                c : Client_Queue renames clientQueues (pending);
@@ -3524,7 +3525,7 @@ procedure main is
       end;
    end handleChannelOpen;
 
-   procedure releaseClientQueue (owner : ProcessID) is
+   procedure releaseClientQueue (owner : Process_ID) is
       ignore : Unsigned_64;
    begin
       for q in clientQueues'Range loop
@@ -3552,6 +3553,28 @@ procedure main is
       end loop;
    end releaseClientQueue;
 
+   --  A grant event: a client that let go of any of its channels (or died)
+   --  is done with all of them, as on its OP_CLOSE, which a full mailbox
+   --  may have refused. The kernel's notice always arrives
+   --  (docs/ipc-delivery.md).
+   procedure clientChannelEnded (event : CuBit.Control_Events.Event) is
+      function Ends (link : CuBit.Channels.Channel) return Boolean is
+        (CuBit.Channels.Ended (link, event));
+   begin
+      for c of clientQueues loop
+         if c.owner /= No_Process and then
+           (Ends (c.queueLink) or else Ends (c.transferLink) or else Ends (c.dirtyLink))
+         then
+            releaseClientQueue (c.owner);
+         end if;
+      end loop;
+      for p of pendingArenas loop
+         if p.owner /= No_Process and then (Ends (p.transferLink) or else Ends (p.dirtyLink)) then
+            releaseClientQueue (p.owner);
+         end if;
+      end loop;
+   end clientChannelEnded;
+
    --  Take the client's reaped index: its answers' slots are free again.
    procedure acceptReaped (q : Client_Queue_Index) is
       consumed : Unsigned_32 with Volatile, Import,
@@ -3564,7 +3587,7 @@ procedure main is
 
    --  WAIT (FQ.OP_FS_WAIT): complete now if answers wait, else when one is
    --  posted.
-   procedure handleWait (sender : ProcessID) is
+   procedure handleWait (sender : Process_ID) is
    begin
       for q in clientQueues'Range loop
          if clientQueues (q).owner = sender then
@@ -3587,7 +3610,7 @@ procedure main is
    --  Queue_Describe: the open handle's object as one Directory.Inspection.V1
    --  record at the request's arena range. A write-delegated handle's
    --  buffered pages are written first, so size and times include them.
-   procedure handleDescribe (owner : ProcessID; handleWord : Unsigned_64) is
+   procedure handleDescribe (owner : Process_ID; handleWord : Unsigned_64) is
       fileHandle : constant Integer := resolveHandle (handleWord, owner, FILE_OBJECT);
       handle : constant Integer :=
         (if fileHandle >= 0 then fileHandle
@@ -3659,7 +3682,7 @@ procedure main is
 
    --  Handle one request entry of queue q as its message twin would be.
    procedure dispatchEntry (q : Client_Queue_Index; item : FQueues.Submission) is
-      owner : constant ProcessID := clientQueues (q).owner;
+      owner : constant Process_ID := clientQueues (q).owner;
       r : FQ.Request renames item.Item;
       m : Message :=
         (tag => (label => 0, length => 0, flags => 0, reserved => 0),
@@ -3866,7 +3889,7 @@ procedure main is
    function queuesPending return Boolean is
    begin
       for q in clientQueues'Range loop
-         if clientQueues (q).owner /= NO_PROCESS then
+         if clientQueues (q).owner /= No_Process then
             declare
                produced : Unsigned_32 with Volatile, Import,
                  Address => clientWord (q, FQ.Client_Submitted_At);
@@ -3887,7 +3910,7 @@ procedure main is
    begin
       while polling loop
          for q in clientQueues'Range loop
-            if clientQueues (q).owner /= NO_PROCESS then
+            if clientQueues (q).owner /= No_Process then
                serviceQueue (q);
             end if;
          end loop;
@@ -3916,7 +3939,7 @@ procedure main is
       clientQueueEpoch :=
         (if clientQueueEpoch = Unsigned_32'Last then 1 else clientQueueEpoch + 1);
       for q in clientQueues'Range loop
-         if clientQueues (q).owner /= NO_PROCESS then
+         if clientQueues (q).owner /= No_Process then
             declare
                produced : Unsigned_32 with Volatile, Import,
                  Address => clientWord (q, FQ.Client_Submitted_At);
@@ -3946,7 +3969,7 @@ procedure main is
       status : Ext2.Flush_Status;
    begin
       for q in clientQueues'Range loop
-         if clientQueues (q).owner /= NO_PROCESS then
+         if clientQueues (q).owner /= No_Process then
             harvestOwner (q);
          end if;
       end loop;
@@ -4034,7 +4057,7 @@ begin
          (tag      => (label => OP_READY, length => 0,
                        flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => (others => 0)));
+          words    => (others => 0)), CuBit.Messages.Wait_Forever);
    end;
 
    CuBit.Busy_Poll.Calibrate;   --  queue polling windows are timed by the TSC
@@ -4060,6 +4083,14 @@ begin
          when CuBit.Channel_Protocol.OP_CLOSE =>
             --  One-way: a client let go of its queue.
             releaseClientQueue (sender);
+         when CuBit.Control_Events.Grant_Revoked_Label
+            | CuBit.Control_Events.Grant_Returned_Label =>
+            --  Only the kernel posts these (it refuses them from a process).
+            if sender = No_Process then
+               clientChannelEnded
+                 (CuBit.Control_Events.Decode
+                    (msg.tag.label, msg.tag.length, msg.words (0), msg.words (1), msg.words (2)));
+            end if;
          when FQ.OP_FS_WAIT =>
             handleWait (sender);
          when OP_OPEN =>

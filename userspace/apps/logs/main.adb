@@ -37,6 +37,7 @@ procedure Main is
    KEY_DOWN : constant Unsigned_64 := 16#50#;
    KEY_PAGE_DOWN : constant Unsigned_64 := 16#51#;
    KEY_DELETE : constant Unsigned_64 := 16#53#;
+   KEY_F3 : constant Unsigned_64 := 16#3D#;
    --  How often the stream ring is read, and the most records taken each
    --  time (local memory: no IPC per record).
    POLL_MS : constant := 100;
@@ -75,7 +76,7 @@ procedure Main is
       if not Lent then return; end if;
       Request.tag := (label => PO.List_Label, length => 1, flags => 0, reserved => 0);
       Request.words (0) := CuBit.Grant_References.Encode (Loan);
-      Reply_Tag := capCall (CapabilitySlot (PO.Observer_Slot), Request);
+      Reply_Tag := capCall (CapabilitySlot (PO.Observer_Slot), Request, CuBit.Messages.Wait_Forever);
       CuBit.Memory_Grants.Revoke (Loan, Revoked);
       if Reply_Tag.label /= Unsigned_32 (PO.Status'Enum_Rep (PO.OK)) then return; end if;
       for Index in 0 .. Natural (Unsigned_64'Min (Request.words (1), PO.Page_Records)) - 1 loop
@@ -175,6 +176,7 @@ procedure Main is
          elsif Code = KEY_PAGE_DOWN then Log_View.Page_Down
          elsif Code = KEY_HOME then Log_View.Home
          elsif Code = KEY_END then Log_View.End_Key
+         elsif Code = KEY_F3 then Log_View.F3
          else Log_View.No_Key);
    begin
       if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then

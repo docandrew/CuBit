@@ -12,7 +12,7 @@ package body Mesa_Triangle_Surface is
    function Send (Request : D.Wire_Message) return D.Wire_Message is
       Message : M.Message := CuBit.Desktop_Messages.From_Wire (Request);
    begin
-      Message.tag := M.capCall (M.CapabilitySlot (Desktop_Slot), Message);
+      Message.tag := M.capCall (M.CapabilitySlot (Desktop_Slot), Message, M.Wait_Forever);
       return CuBit.Desktop_Messages.To_Wire (Message);
    end Send;
    function Create (Width, Height : Unsigned_32) return Unsigned_64 is

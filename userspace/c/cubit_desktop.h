@@ -55,8 +55,8 @@ static inline int cubit_desktop_attach_buffer(uint64_t surface, uint64_t slot,
     message.words[2] = (uint64_t)generation;
     message.words[3] = (uint64_t)width | ((uint64_t)height << 16) |
                        ((uint64_t)pitch << 32);
-    if (syscall2(SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, CAP_SLOT_DESKTOP,
-                 &message) == -1 || message.tag.label != 0x0814 ||
+    if (syscall3(SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, CAP_SLOT_DESKTOP,
+                 &message, CUBIT_WAIT_FOREVER) == -1 || message.tag.label != 0x0814 ||
         message.tag.length != 1 || message.words[0] != 0)
         return -1;
     return 0;

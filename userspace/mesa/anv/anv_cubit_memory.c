@@ -887,7 +887,23 @@ gem_create_locked(struct anv_device *device,
    unsigned supported = ANV_BO_ALLOC_MAPPED | ANV_BO_ALLOC_NO_LOCAL_MEM |
                               ANV_BO_ALLOC_INTERNAL | ANV_BO_ALLOC_SLAB_PARENT |
                               ANV_BO_ALLOC_HOST_CACHED | ANV_BO_ALLOC_FIXED_ADDRESS |
-                              ANV_BO_ALLOC_CAPTURE | ANV_BO_ALLOC_NULL_INITIALIZED_HEAP;
+                              ANV_BO_ALLOC_CAPTURE | ANV_BO_ALLOC_NULL_INITIALIZED_HEAP |
+                              ANV_BO_ALLOC_DESCRIPTOR_POOL | ANV_BO_ALLOC_DYNAMIC_VISIBLE_POOL |
+                              ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS | ANV_BO_ALLOC_32BIT_ADDRESS;
+   /* 32BIT_ADDRESS selects common ANV's vma_lo heap (e.g. older-generation
+    * scratch). It constrains GPU virtual placement, not backing DMA address.
+    * Preserve the intent in common ANV; do not manufacture a physical or
+    * virtual address here or weaken the subsequent native bind checks. */
+   /* CLIENT_VISIBLE_ADDRESS is Vulkan buffer-device-address VA policy, not
+    * external sharing. Common anv_vma_alloc reserves the requested address
+    * or chooses an address in the selected heap, retaining bo.alloc_flags.
+    * Native bind still authenticates the session/handle and validates the
+    * mapping. Creation does not publish a VA or grant CPU/client authority. */
+   /* Descriptor/sampler pool flags select common ANV's vma_desc and
+    * vma_dynamic_visible GPU VA heaps, including slab-parent allocations.
+    * They do not select backing memory or authorize an import. Common ANV
+    * still assigns the VA and native bind still validates the mapping;
+    * keep the region, size, ownership and coherence checks below unchanged. */
    /* FIXED_ADDRESS is a GPU VA policy, not physical placement or CPU mmap.
     * Mesa's anv_bo_vma_alloc_or_close assigns explicit_address after creation;
     * the later native bind validates/publishes that range. Never infer an

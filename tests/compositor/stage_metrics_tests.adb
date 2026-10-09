@@ -5,6 +5,10 @@ procedure Stage_Metrics_Tests is
    package M renames Compositor_Stage_Metrics;
    package R renames M.Records;
    use type M.Tick, R.Record_Kind, R.Metric_Key, R.Unit;
+   function Expected_Key (Stage : M.Stage) return R.Metric_Key is
+     (case Stage is when M.Input_Dispatch => 3, when M.Request_Dispatch => 4,
+       when M.Scene_Draw => 5, when M.Submit_Call => 6,
+       when M.Completion_Dispatch => 11, when M.Diagnostic_Output => 12);
    Checks : Natural := 0;
    procedure Check (Stage : M.Stage; First, Last : M.Tick) is
       S : constant M.Sample := M.Prepare (Stage, First, Last);
@@ -15,7 +19,7 @@ procedure Stage_Metrics_Tests is
          declare D : constant R.Decoded_Record := R.Decode (R.Encode (S.Value));
          begin
             pragma Assert (D.Success and then D.Value.Kind = R.Latency and then
-              D.Value.Key = 3 + M.Stage'Pos (Stage) and then
+              D.Value.Key = Expected_Key (Stage) and then
               D.Value.Time_Us = Last and then D.Value.Value = Last - First and then
               D.Value.Correlation = 0);
          end;
@@ -29,10 +33,12 @@ begin
            when M.Input_Dispatch => "desktop.input_dispatch",
            when M.Request_Dispatch => "desktop.request_dispatch",
            when M.Scene_Draw => "desktop.scene_draw",
-           when M.Submit_Call => "desktop.submit_call");
+           when M.Submit_Call => "desktop.submit_call",
+           when M.Completion_Dispatch => "desktop.completion_dispatch",
+           when M.Diagnostic_Output => "desktop.diagnostic_output");
       begin
          pragma Assert (D.Success and then D.Value.Kind = R.Describe and then
-           D.Value.Key = 3 + M.Stage'Pos (Stage) and then D.Value.Declared = R.Latency and then
+           D.Value.Key = Expected_Key (Stage) and then D.Value.Declared = R.Latency and then
            D.Value.Measure = R.Microseconds and then R.Same_Name (D.Value.Name, R.To_Name (Name)));
       end;
       for First in M.Tick range 0 .. 100 loop
@@ -42,5 +48,5 @@ begin
          Check (Stage, 0, Edge); Check (Stage, Edge, 0); Check (Stage, Edge, Edge);
       end loop;
    end loop;
-   Ada.Text_IO.Put_Line ("STAGE-METRICS: PASS" & Checks'Image & " clock/codec cases and four distinct declarations");
+   Ada.Text_IO.Put_Line ("STAGE-METRICS: PASS" & Checks'Image & " clock/codec cases and six distinct declarations");
 end Stage_Metrics_Tests;

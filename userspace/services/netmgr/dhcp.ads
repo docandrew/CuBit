@@ -11,6 +11,7 @@
 with Interfaces; use Interfaces;
 with System;
 
+with CuBit.Memory_Grants;
 with CuBit.Messages;
 
 package DHCP is
@@ -51,7 +52,7 @@ package DHCP is
       leaseTime : Unsigned_32 := 0;
       --  Grant buffer for building DHCP packets
       grantBuf  : System.Address := System.Null_Address;
-      grantId   : Unsigned_64 := 0;
+      grant     : CuBit.Memory_Grants.Grant_Reference;
       bufReady  : Boolean := False;
    end record;
 

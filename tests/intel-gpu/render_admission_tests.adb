@@ -4,7 +4,7 @@ with Intel_Render_Admission; use Intel_Render_Admission;
 with Intel_GPU_Render_Control;
 procedure Render_Admission_Tests is
    package GPU renames Intel_GPU_Render_Control;
-   Target : constant Unsigned_64 := 7 * 2 ** 32 + 42;
+   Target : constant Unsigned_64 := 16#1234_0000_002A#;
 begin
    -- Tags are opaque, not CSPACE indices. Only the explicit, authenticated
    -- reserve slot selects the dedicated driver recipient range.
@@ -71,13 +71,14 @@ begin
          end if;
          if Cancel_At = 0 then
             pragma Assert (State (Item) = Active);
-            pragma Assert (GPU.Resolve (Driver, 42, Session (Item)) /= 0);
+            pragma Assert (GPU.Resolve (Driver, Target, Session (Item)) /= 0);
+            pragma Assert (GPU.Resolve (Driver, 42, Session (Item)) = 0);
             Cancel (Item);
          end if;
          pragma Assert (State (Item) = Abort_Ready);
          Exchange;
          pragma Assert (State (Item) = Failed);
-         pragma Assert (GPU.Resolve (Driver, 42, Session (Item)) = 0);
+         pragma Assert (GPU.Resolve (Driver, Target, Session (Item)) = 0);
          Start (Item, Target + 2 ** 32);
          pragma Assert (Identity (Item) = Target and State (Item) = Failed);
       end;

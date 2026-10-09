@@ -59,7 +59,7 @@ package body Config_Authority with SPARK_Mode is
    is
       Slot : Natural range 0 .. Maximum_Subjects := 0;
    begin
-      if Subject = No_Subject or Subject = Subject_ID'Last then
+      if Subject = No_Subject then
          Result := Invalid_Subject; return;
       end if;
       if State.Last_Revision = Interfaces.Unsigned_64'Last then

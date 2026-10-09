@@ -54,22 +54,22 @@ procedure main is
    --  Resolve administrative roles on each check. These operations are
    --  control-plane traffic, and a live registry lookup avoids turning a
    --  cached raw PID into authority if its original process dies.
-   function isAdmin (sender : ProcessID) return Boolean is
-      devmgrAdmin : constant Unsigned_64 :=
-        getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_DEVMGR);
-      procmgrAdmin : constant Unsigned_64 :=
-        getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_PROCMGR);
+   function isAdmin (sender : Process_ID) return Boolean is
+      devmgrAdmin : constant Process_ID :=
+        Registered_Driver (DRIVER_DEVMGR);
+      procmgrAdmin : constant Process_ID :=
+        Registered_Driver (DRIVER_PROCMGR);
    begin
       return
-        (devmgrAdmin /= 0 and then devmgrAdmin /= Unsigned_64'Last and then
+        (devmgrAdmin /= No_Process and then
          sender = devmgrAdmin) or else
-        (procmgrAdmin /= 0 and then procmgrAdmin /= Unsigned_64'Last and then
+        (procmgrAdmin /= No_Process and then
          sender = procmgrAdmin);
    end isAdmin;
 
    --  Check if sender has access rights for the given key
    function checkAccess
-     (sender : ProcessID;
+     (sender : Process_ID;
       key    : String;
       rights : Config_Authority.Operation) return Boolean
    is
@@ -90,7 +90,7 @@ procedure main is
 
    --  Send a reply with the given label and word0 value
    procedure sendReply
-     (dest   : ProcessID;
+     (dest   : Process_ID;
       label  : Unsigned_32;
       word0  : Unsigned_64)
    is
@@ -111,7 +111,7 @@ procedure main is
    --  words(1) = entry count (0 = wildcard full access)
    --  words(2..3) = grant slot and generation (zero when count = 0)
    ---------------------------------------------------------------------------
-   procedure handleSetACL (sender : ProcessID; msg : Message) is
+   procedure handleSetACL (sender : Process_ID; msg : Message) is
       use type Config_Authority.Install_Result;
       Candidate : Config_Authority.Rule_Set;
       Result : Config_Authority.Install_Result;
@@ -123,7 +123,7 @@ procedure main is
       if not isAdmin (sender) then
          sendReply (sender, REPLY_ACCESS_DENIED, 0); return;
       end if;
-      if msg.tag.length /= 4 or else msg.words (0) = NO_PROCESS or else
+      if msg.tag.length /= 4 or else From_Word (msg.words (0)) = No_Process or else
         msg.words (0) = Unsigned_64'Last or else
         msg.words (1) > Config_Authority.Maximum_Rules
       then sendReply (sender, REPLY_ERR, 0); return; end if;
@@ -154,7 +154,7 @@ procedure main is
             if not Accepted then sendReply (sender, REPLY_ERR, 0); return; end if;
          end;
       end if;
-      Config_Authority.Install (Authorities, msg.words (0), Candidate, Result);
+      Config_Authority.Install (Authorities, From_Word (msg.words (0)), Candidate, Result);
       if Result = Config_Authority.Installed then
          debugPrint ("Config: ACL set for PID" & LF);
          sendReply (sender, REPLY_OK, 0);
@@ -164,8 +164,8 @@ procedure main is
 
    --  Handle OP_REVOKE_ACL
    --  words(0) = target PID
-   procedure handleRevokeACL (sender : ProcessID; msg : Message) is
-      targetPID : constant ProcessID := msg.words (0);
+   procedure handleRevokeACL (sender : Process_ID; msg : Message) is
+      targetPID : constant Process_ID := From_Word (msg.words (0));
    begin
       if not isAdmin (sender) then
          sendReply (sender, REPLY_ACCESS_DENIED, 0);
@@ -200,7 +200,7 @@ procedure main is
 
    --  Inspector protocol: bounded owned text, no raw slot-to-address math.
    --  words = (slot, generation, key length, context).
-   procedure handleInspection (sender : ProcessID; msg : Message) is
+   procedure handleInspection (sender : Process_ID; msg : Message) is
       use CuBit.Config_Inspection;
       Reference : CuBit.Memory_Grants.Grant_Reference;
       Address : System.Address;
@@ -279,7 +279,7 @@ procedure main is
 
    -- All data messages carry an owned, generation-bearing grant reference.
    procedure Handle_Data
-     (Sender : ProcessID; Msg : Message; Op : CuBit.Config_Protocol.Operation)
+     (Sender : Process_ID; Msg : Message; Op : CuBit.Config_Protocol.Operation)
    is
       use CuBit.Config_Protocol;
       use type Config_Store.Update_Result;
@@ -373,7 +373,7 @@ procedure main is
    ---------------------------------------------------------------------------
    --  Main message loop variables
    ---------------------------------------------------------------------------
-   sender : ProcessID;
+   sender : Process_ID;
    msg    : Message;
 begin
    debugPrint ("Config: starting..." & LF);
@@ -395,7 +395,7 @@ begin
          (tag      => (label => OP_READY, length => 0,
                        flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => [others => 0]));
+          words    => [others => 0]), CuBit.Messages.Wait_Forever);
    end;
 
    debugPrint ("Config: entering message loop" & LF);
@@ -424,10 +424,10 @@ begin
             case msg.tag.label is
                when Config_Worker_Startup.Operation'Enum_Rep (Config_Worker_Startup.Attach_Worker) =>
                   declare
-                     Manager : constant Unsigned_64 := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_PROCMGR);
+                     Manager : constant Process_ID := Registered_Driver (DRIVER_PROCMGR);
                      Attached : Boolean := False;
                   begin
-                     if Manager = 0 or Manager = Unsigned_64'Last or sender /= Manager then
+                     if Manager = No_Process or sender /= Manager then
                         sendReply (sender, REPLY_ACCESS_DENIED, 0);
                      elsif not Config_Worker_Startup.Valid_Attachment (msg) then
                         sendReply (sender, REPLY_ERR, 0);

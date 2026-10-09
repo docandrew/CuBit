@@ -1,0 +1,298 @@
+--- /dev/null
++++ b/userspace/lib/compositor/vulkan_pipeline_diagnostic.h
+@@ -0,0 +1,29 @@
++#ifndef CUBIT_VULKAN_PIPELINE_DIAGNOSTIC_H
++#define CUBIT_VULKAN_PIPELINE_DIAGNOSTIC_H
++#include <stdint.h>
++/* Startup-thread-only scalar evidence. Never logs, allocates, or calls Mesa.
++ * First failure survives cleanup and later wrapper failures. No pointers. */
++extern void cubit_vulkan_pipeline_failure(uint32_t, uint32_t, int32_t)
++    __attribute__((weak));
++static inline void pipeline_failure(uint32_t stage,uint32_t index,int32_t result)
++{
++    if(cubit_vulkan_pipeline_failure)
++        cubit_vulkan_pipeline_failure(stage,index,result);
++}
++#ifdef CUBIT_PIPELINE_DIAGNOSTIC_STORAGE
++static struct { uint32_t valid,stage,index; int32_t result; } pipeline_diagnostic;
++void cubit_vulkan_pipeline_failure(uint32_t stage,uint32_t index,int32_t result)
++{
++    if(!pipeline_diagnostic.valid && result!=0){
++        pipeline_diagnostic.stage=stage;pipeline_diagnostic.index=index;
++        pipeline_diagnostic.result=result;pipeline_diagnostic.valid=1;
++    }
++}
++uint32_t cubit_vulkan_pipeline_last_failure(uint32_t *stage,uint32_t *index,int32_t *result)
++{
++    if(!stage||!index||!result)return 0;
++    *stage=pipeline_diagnostic.stage;*index=pipeline_diagnostic.index;
++    *result=pipeline_diagnostic.result;return pipeline_diagnostic.valid;
++}
++#endif
++#endif
+--- a/userspace/lib/compositor/vulkan_device_storage.c
++++ b/userspace/lib/compositor/vulkan_device_storage.c
+@@ -1,3 +1,5 @@
++#define CUBIT_PIPELINE_DIAGNOSTIC_STORAGE
++#include "vulkan_pipeline_diagnostic.h"
+ #include "vulkan_sources.h"
+ #include "vulkan_checker.h"
+ #include "vulkan_device_storage.h"
+@@ -74,13 +76,13 @@
+ static unsigned pipeline_attempted, pipeline_live;
+ uint32_t cubit_vulkan_device_pipeline_create(void)
+ {
+-    if(pipeline_attempted)return 2;
++    if(pipeline_attempted){pipeline_failure(1,0,VK_ERROR_INITIALIZATION_FAILED);return 2;}
+     pipeline_attempted=1;
+     if(!prepared||!context.live||!context.pass||context.device!=device.device||
+-       !device.instance_proc)return 1;
++       !device.instance_proc){pipeline_failure(2,0,VK_ERROR_INITIALIZATION_FAILED);return 1;}
+     PFN_vkGetDeviceProcAddr proc=(PFN_vkGetDeviceProcAddr)
+         device.instance_proc(device.instance,"vkGetDeviceProcAddr");
+-    if(!proc)return 1;
++    if(!proc){pipeline_failure(3,0,VK_ERROR_INITIALIZATION_FAILED);return 1;}
+     if(cubit_vulkan_affine_create(&pipeline,device.device,proc,context.pass)!=VK_SUCCESS)return 1;
+     if(cubit_vulkan_checker_create(&checker,device.device,proc,context.pass)!=VK_SUCCESS){
+         cubit_vulkan_affine_destroy(&pipeline);return 1;
+--- a/userspace/lib/compositor/vulkan_affine.c
++++ b/userspace/lib/compositor/vulkan_affine.c
+@@ -1,3 +1,4 @@
++#include "vulkan_pipeline_diagnostic.h"
+ #include "vulkan_affine.h"
+ #include "vulkan-affine-shaders.h"
+ #include <stddef.h>
+@@ -22,40 +23,40 @@
+ VkResult cubit_vulkan_affine_create(struct cubit_vulkan_affine_engine *e,
+     VkDevice device,PFN_vkGetDeviceProcAddr proc,VkRenderPass pass)
+ {
+-    if(!e)return VK_ERROR_INITIALIZATION_FAILED;
++    if(!e){pipeline_failure(100,0,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
+     *e=(struct cubit_vulkan_affine_engine){.device=device};
+-    if(!device || !proc || !pass)return VK_ERROR_INITIALIZATION_FAILED;
+-#define LOAD(field,name) e->field=(PFN_vk##name)proc(device,"vk" #name); if(!e->field)return VK_ERROR_INITIALIZATION_FAILED
+-    LOAD(destroy_descriptors,DestroyDescriptorSetLayout); LOAD(destroy_layout,DestroyPipelineLayout);
+-    LOAD(destroy_pipeline,DestroyPipeline); LOAD(destroy_sampler,DestroySampler);
+-    LOAD(bind_pipeline,CmdBindPipeline); LOAD(bind_descriptors,CmdBindDescriptorSets);
+-    LOAD(viewport,CmdSetViewport); LOAD(scissor,CmdSetScissor); LOAD(constants,CmdPushConstants); LOAD(draw,CmdDraw);
++    if(!device || !proc || !pass){pipeline_failure(100,0,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
++#define LOAD(index,field,name) e->field=(PFN_vk##name)proc(device,"vk" #name); if(!e->field){pipeline_failure(110,index,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
++    LOAD(1,destroy_descriptors,DestroyDescriptorSetLayout); LOAD(2,destroy_layout,DestroyPipelineLayout);
++    LOAD(3,destroy_pipeline,DestroyPipeline); LOAD(4,destroy_sampler,DestroySampler);
++    LOAD(5,bind_pipeline,CmdBindPipeline); LOAD(6,bind_descriptors,CmdBindDescriptorSets);
++    LOAD(7,viewport,CmdSetViewport); LOAD(8,scissor,CmdSetScissor); LOAD(9,constants,CmdPushConstants); LOAD(10,draw,CmdDraw);
+ #undef LOAD
+-#define LOAD(name) PFN_vk##name name=(PFN_vk##name)proc(device,"vk" #name); if(!name)return VK_ERROR_INITIALIZATION_FAILED
+-    LOAD(CreateDescriptorSetLayout); LOAD(CreatePipelineLayout); LOAD(CreateSampler);
+-    LOAD(CreateShaderModule); LOAD(DestroyShaderModule); LOAD(CreateGraphicsPipelines);
++#define LOAD(index,name) PFN_vk##name name=(PFN_vk##name)proc(device,"vk" #name); if(!name){pipeline_failure(110,index,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
++    LOAD(11,CreateDescriptorSetLayout); LOAD(12,CreatePipelineLayout); LOAD(13,CreateSampler);
++    LOAD(14,CreateShaderModule); LOAD(15,DestroyShaderModule); LOAD(16,CreateGraphicsPipelines);
+ #undef LOAD
+     VkResult result; VkShaderModule vertex=VK_NULL_HANDLE,fragment=VK_NULL_HANDLE;
+-#define TRY(expr) do { result=(expr); if(result!=VK_SUCCESS)goto done; } while(0)
++#define TRY(stage,index,expr) do { result=(expr); if(result!=VK_SUCCESS){pipeline_failure(stage,index,result);goto done;} } while(0)
+     const VkDescriptorSetLayoutBinding binding={.binding=0,.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+         .descriptorCount=1,.stageFlags=VK_SHADER_STAGE_FRAGMENT_BIT};
+     const VkDescriptorSetLayoutCreateInfo descriptor_info={.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+         .bindingCount=1,.pBindings=&binding};
+-    TRY(CreateDescriptorSetLayout(device,&descriptor_info,NULL,&e->descriptors));
++    TRY(101,0,CreateDescriptorSetLayout(device,&descriptor_info,NULL,&e->descriptors));
+     const VkPushConstantRange range={VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(struct push_data)};
+     const VkPipelineLayoutCreateInfo layout_info={.sType=VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+         .setLayoutCount=1,.pSetLayouts=&e->descriptors,.pushConstantRangeCount=1,.pPushConstantRanges=&range};
+-    TRY(CreatePipelineLayout(device,&layout_info,NULL,&e->layout));
++    TRY(102,0,CreatePipelineLayout(device,&layout_info,NULL,&e->layout));
+     const VkSamplerCreateInfo sampler_info={.sType=VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+         .magFilter=VK_FILTER_NEAREST,.minFilter=VK_FILTER_NEAREST,.mipmapMode=VK_SAMPLER_MIPMAP_MODE_NEAREST,
+         .addressModeU=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,.addressModeV=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+         .addressModeW=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,.minLod=0,.maxLod=0};
+-    TRY(CreateSampler(device,&sampler_info,NULL,&e->sampler));
++    TRY(103,0,CreateSampler(device,&sampler_info,NULL,&e->sampler));
+     const VkShaderModuleCreateInfo vi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+         .codeSize=sizeof(vulkan_affine_vertex),.pCode=vulkan_affine_vertex};
+     const VkShaderModuleCreateInfo fi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+         .codeSize=sizeof(vulkan_affine_fragment),.pCode=vulkan_affine_fragment};
+-    TRY(CreateShaderModule(device,&vi,NULL,&vertex)); TRY(CreateShaderModule(device,&fi,NULL,&fragment));
++    TRY(104,0,CreateShaderModule(device,&vi,NULL,&vertex)); TRY(105,0,CreateShaderModule(device,&fi,NULL,&fragment));
+     const VkPipelineShaderStageCreateInfo stages[2]={
+         {.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_VERTEX_BIT,.module=vertex,.pName="main"},
+         {.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_FRAGMENT_BIT,.module=fragment,.pName="main"}};
+@@ -77,7 +78,7 @@
+         const VkGraphicsPipelineCreateInfo graphics={.sType=VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,.stageCount=2,.pStages=stages,
+             .pVertexInputState=&input,.pInputAssemblyState=&assembly,.pViewportState=&view,.pRasterizationState=&raster,.pMultisampleState=&samples,
+             .pColorBlendState=&blend,.pDynamicState=&dynamic,.layout=e->layout,.renderPass=pass,.subpass=0};
+-        TRY(CreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&graphics,NULL,&e->pipeline[over]));
++        TRY(106,over,CreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&graphics,NULL,&e->pipeline[over]));
+     }
+     result=VK_SUCCESS;
+ done:
+--- a/userspace/lib/compositor/vulkan_checker.c
++++ b/userspace/lib/compositor/vulkan_checker.c
+@@ -1,3 +1,4 @@
++#include "vulkan_pipeline_diagnostic.h"
+ #include "vulkan_checker.h"
+ #include "vulkan-checker-shaders.h"
+ #include <stddef.h>
+@@ -18,29 +19,29 @@
+ VkResult cubit_vulkan_checker_create(struct cubit_vulkan_checker *e,
+     VkDevice device,PFN_vkGetDeviceProcAddr proc,VkRenderPass pass)
+ {
+-    if(!e)return VK_ERROR_INITIALIZATION_FAILED;
++    if(!e){pipeline_failure(200,0,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
+     *e=(struct cubit_vulkan_checker){.device=device};
+-    if(!device||!proc||!pass)return VK_ERROR_INITIALIZATION_FAILED;
+-#define LOAD(field,name) e->field=(PFN_vk##name)proc(device,"vk" #name); if(!e->field)return VK_ERROR_INITIALIZATION_FAILED
+-    LOAD(destroy_layout,DestroyPipelineLayout); LOAD(destroy_pipeline,DestroyPipeline);
+-    LOAD(bind,CmdBindPipeline); LOAD(viewport,CmdSetViewport); LOAD(scissor,CmdSetScissor);
+-    LOAD(constants,CmdPushConstants); LOAD(draw,CmdDraw);
++    if(!device||!proc||!pass){pipeline_failure(200,0,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
++#define LOAD(index,field,name) e->field=(PFN_vk##name)proc(device,"vk" #name); if(!e->field){pipeline_failure(210,index,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
++    LOAD(1,destroy_layout,DestroyPipelineLayout); LOAD(2,destroy_pipeline,DestroyPipeline);
++    LOAD(3,bind,CmdBindPipeline); LOAD(4,viewport,CmdSetViewport); LOAD(5,scissor,CmdSetScissor);
++    LOAD(6,constants,CmdPushConstants); LOAD(7,draw,CmdDraw);
+ #undef LOAD
+-#define LOAD(name) PFN_vk##name name=(PFN_vk##name)proc(device,"vk" #name); if(!name)return VK_ERROR_INITIALIZATION_FAILED
+-    LOAD(CreatePipelineLayout); LOAD(CreateShaderModule); LOAD(DestroyShaderModule); LOAD(CreateGraphicsPipelines);
++#define LOAD(index,name) PFN_vk##name name=(PFN_vk##name)proc(device,"vk" #name); if(!name){pipeline_failure(210,index,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
++    LOAD(8,CreatePipelineLayout); LOAD(9,CreateShaderModule); LOAD(10,DestroyShaderModule); LOAD(11,CreateGraphicsPipelines);
+ #undef LOAD
+     VkResult result; VkShaderModule vertex=VK_NULL_HANDLE,fragment=VK_NULL_HANDLE;
+-#define TRY(expr) do { result=(expr); if(result!=VK_SUCCESS)goto done; } while(0)
++#define TRY(stage,index,expr) do { result=(expr); if(result!=VK_SUCCESS){pipeline_failure(stage,index,result);goto done;} } while(0)
+     const VkPushConstantRange range={VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(struct checker_push)};
+     const VkPipelineLayoutCreateInfo layout={.sType=VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+         .pushConstantRangeCount=1,.pPushConstantRanges=&range};
+-    TRY(CreatePipelineLayout(device,&layout,NULL,&e->layout));
++    TRY(201,0,CreatePipelineLayout(device,&layout,NULL,&e->layout));
+     const VkShaderModuleCreateInfo vi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+         .codeSize=sizeof(vulkan_checker_vertex),.pCode=vulkan_checker_vertex};
+     const VkShaderModuleCreateInfo fi={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+         .codeSize=sizeof(vulkan_checker_fragment),.pCode=vulkan_checker_fragment};
+-    TRY(CreateShaderModule(device,&vi,NULL,&vertex));
+-    TRY(CreateShaderModule(device,&fi,NULL,&fragment));
++    TRY(202,0,CreateShaderModule(device,&vi,NULL,&vertex));
++    TRY(203,0,CreateShaderModule(device,&fi,NULL,&fragment));
+     const VkPipelineShaderStageCreateInfo stages[2]={
+         {.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_VERTEX_BIT,.module=vertex,.pName="main"},
+         {.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_FRAGMENT_BIT,.module=fragment,.pName="main"}};
+@@ -56,7 +57,7 @@
+     const VkGraphicsPipelineCreateInfo graphics={.sType=VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,.stageCount=2,.pStages=stages,
+         .pVertexInputState=&input,.pInputAssemblyState=&assembly,.pViewportState=&view,.pRasterizationState=&raster,.pMultisampleState=&samples,
+         .pColorBlendState=&blend,.pDynamicState=&dynamic,.layout=e->layout,.renderPass=pass,.subpass=0};
+-    TRY(CreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&graphics,NULL,&e->pipeline));
++    TRY(204,0,CreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&graphics,NULL,&e->pipeline));
+ done:
+     if(fragment)DestroyShaderModule(device,fragment,NULL);
+     if(vertex)DestroyShaderModule(device,vertex,NULL);
+--- a/userspace/lib/compositor/vulkan_device_pipeline_ffi.ads
++++ b/userspace/lib/compositor/vulkan_device_pipeline_ffi.ads
+@@ -3,6 +3,11 @@
+ -- Trusted singleton object boundary. The SPARK owner registers a context child
+ -- before Create and requires GPU/source quiescence before Close.
+ package Vulkan_Device_Pipeline_FFI with SPARK_Mode is
++   -- Diagnostic evidence only; not an input to proved lifetime policy.
++   procedure Last_Failure
++     (Stage, Index : out Interfaces.Unsigned_32;
++      Result : out Interfaces.Integer_32; Valid : out Boolean)
++     with SPARK_Mode => Off;
+    procedure Create (Result : out Interfaces.Unsigned_32) with Global => null;
+    procedure Close (Result : out Interfaces.Unsigned_32) with Global => null;
+    function Source_Request (Index : Interfaces.Unsigned_32; Image : System.Address)
+--- a/userspace/lib/compositor/vulkan_device_pipeline_ffi.adb
++++ b/userspace/lib/compositor/vulkan_device_pipeline_ffi.adb
+@@ -1,4 +1,19 @@
+ package body Vulkan_Device_Pipeline_FFI with SPARK_Mode => Off is
++   function Native_Last_Failure
++     (Stage, Index : access Interfaces.Unsigned_32;
++      Result : access Interfaces.Integer_32) return Interfaces.Unsigned_32
++     with Import, Convention => C, External_Name => "cubit_vulkan_pipeline_last_failure";
++   procedure Last_Failure
++     (Stage, Index : out Interfaces.Unsigned_32;
++      Result : out Interfaces.Integer_32; Valid : out Boolean) is
++      S, I : aliased Interfaces.Unsigned_32 := 0;
++      R : aliased Interfaces.Integer_32 := 0;
++      V : Interfaces.Unsigned_32;
++      use type Interfaces.Unsigned_32;
++   begin
++      V := Native_Last_Failure (S'Access, I'Access, R'Access);
++      Stage := S; Index := I; Result := R; Valid := V = 1;
++   end Last_Failure;
+    function Native_Create return Interfaces.Unsigned_32
+      with Import, Convention => C, External_Name => "cubit_vulkan_device_pipeline_create";
+    function Native_Close return Interfaces.Unsigned_32
+--- a/userspace/lib/compositor/vulkan_sources.c
++++ b/userspace/lib/compositor/vulkan_sources.c
+@@ -1,3 +1,4 @@
++#include "vulkan_pipeline_diagnostic.h"
+ #include "vulkan_sources.h"
+ #include <stddef.h>
+ _Static_assert(offsetof(struct cubit_vulkan_source,draw)==0,"release key layout");
+@@ -5,29 +6,30 @@
+     const struct cubit_vulkan_affine_engine *engine,VkCommandBuffer command,
+     PFN_vkGetDeviceProcAddr proc)
+ {
+-    if(!s)return VK_ERROR_INITIALIZATION_FAILED;
++    if(!s){pipeline_failure(300,0,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
+     *s=(struct cubit_vulkan_sources){.engine=engine,.command=command};
+     if(!engine||!engine->device||!engine->descriptors||!engine->sampler||!command||!proc)
+-        return VK_ERROR_INITIALIZATION_FAILED;
+-#define LOAD(field,name) s->field=(PFN_vk##name)proc(engine->device,"vk" #name);if(!s->field)return VK_ERROR_INITIALIZATION_FAILED
+-    LOAD(destroy_pool,DestroyDescriptorPool);LOAD(create_view,CreateImageView);
+-    LOAD(destroy_view,DestroyImageView);LOAD(update,UpdateDescriptorSets);
++        {pipeline_failure(300,0,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
++#define LOAD(index,field,name) s->field=(PFN_vk##name)proc(engine->device,"vk" #name);if(!s->field){pipeline_failure(310,index,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
++    LOAD(1,destroy_pool,DestroyDescriptorPool);LOAD(2,create_view,CreateImageView);
++    LOAD(3,destroy_view,DestroyImageView);LOAD(4,update,UpdateDescriptorSets);
+ #undef LOAD
+     PFN_vkCreateDescriptorPool create=(PFN_vkCreateDescriptorPool)proc(engine->device,"vkCreateDescriptorPool");
+     PFN_vkAllocateDescriptorSets allocate=(PFN_vkAllocateDescriptorSets)proc(engine->device,"vkAllocateDescriptorSets");
+-    if(!create||!allocate)return VK_ERROR_INITIALIZATION_FAILED;
++    if(!create){pipeline_failure(310,5,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
++    if(!allocate){pipeline_failure(310,6,VK_ERROR_INITIALIZATION_FAILED);return VK_ERROR_INITIALIZATION_FAILED;}
+     const VkDescriptorPoolSize size={VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,CUBIT_VULKAN_SOURCE_CAPACITY};
+     const VkDescriptorPoolCreateInfo info={.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+         .maxSets=CUBIT_VULKAN_SOURCE_CAPACITY,.poolSizeCount=1,.pPoolSizes=&size};
+     VkResult result=create(engine->device,&info,NULL,&s->pool);
+-    if(result!=VK_SUCCESS){s->pool=VK_NULL_HANDLE;return result;}
++    if(result!=VK_SUCCESS){pipeline_failure(301,0,result);s->pool=VK_NULL_HANDLE;return result;}
+     VkDescriptorSetLayout layouts[CUBIT_VULKAN_SOURCE_CAPACITY];
+     VkDescriptorSet sets[CUBIT_VULKAN_SOURCE_CAPACITY];
+     for(unsigned i=0;i<CUBIT_VULKAN_SOURCE_CAPACITY;i++)layouts[i]=engine->descriptors;
+     const VkDescriptorSetAllocateInfo allocation={.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+         .descriptorPool=s->pool,.descriptorSetCount=CUBIT_VULKAN_SOURCE_CAPACITY,.pSetLayouts=layouts};
+     result=allocate(engine->device,&allocation,sets);
+-    if(result!=VK_SUCCESS){s->destroy_pool(engine->device,s->pool,NULL);s->pool=VK_NULL_HANDLE;return result;}
++    if(result!=VK_SUCCESS){pipeline_failure(302,0,result);s->destroy_pool(engine->device,s->pool,NULL);s->pool=VK_NULL_HANDLE;return result;}
+     for(unsigned i=0;i<CUBIT_VULKAN_SOURCE_CAPACITY;i++){
+         s->entries[i].owner=s;s->entries[i].descriptor=sets[i];
+     }
+--- a/userspace/services/desktop/main.adb
++++ b/userspace/services/desktop/main.adb
+@@ -1,3 +1,4 @@
++with Vulkan_Device_Pipeline_FFI;
+ with Desktop_Breadcrumbs;
+ with Desktop_Vulkan_Startup;
+ with Vulkan_Device_Owner;
+@@ -8693,6 +8694,21 @@
+       Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Targets_After, requestSequence);
+          if Evidence.Targets then Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Pipeline_Before, requestSequence);
+       GPU.Prepare_Pipeline (Evidence.Pipeline);
++      if not Evidence.Pipeline then
++         declare
++            Stage, Index : Unsigned_32;
++            Result : Integer_32;
++            Valid : Boolean;
++         begin
++            Vulkan_Device_Pipeline_FFI.Last_Failure (Stage, Index, Result, Valid);
++            if Valid then
++               debugPrint ("DESKTOP-VULKAN: pipeline failure stage=" &
++                 Stage'Image & " index=" & Index'Image & " vk=" & Result'Image & LF);
++            else
++               debugPrint ("DESKTOP-VULKAN: pipeline failure diagnostic unavailable" & LF);
++            end if;
++         end;
++      end if;
+       Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Pipeline_After, requestSequence); end if;
+          if Evidence.Pipeline then
+             Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Upload_Before, requestSequence);

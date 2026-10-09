@@ -204,23 +204,30 @@ package body CuBit.Libc_Streams is
       M : constant K.Message with Import, Address => Message;
       Number : constant Unsigned_64 := M.Words (0) - 1;
    begin
-      if M.Label = CP.OP_OPEN_CONSUMING then
+      if M.Label = CP.OP_OPEN_CONSUMING and then From /= 0 then
          Open_Reader (From, M);
          return 1;
-      elsif M.Label = CP.OP_CLOSE then
+      elsif M.Label = CP.OP_CLOSE and then From /= 0 then
          --  One-way: a reader let go of its channel.
          if M.Words (0) in 1 .. Maximum_Streams * Maximum_Subscribers then
             declare
                Item : Subscriber renames Streams (Natural (Number / Maximum_Subscribers))
                                           .Subscribers (Natural (Number mod Maximum_Subscribers));
             begin
-               if Item.Process /= 0 and then Item.Process = Unsigned_64'Mod (From) then
+               --  Word 1 names the reader's grant: a slot reused since
+               --  (the kernel's event freed it first) is another channel.
+               if Item.Process /= 0 and then Item.Process = Unsigned_64'Mod (From)
+                 and then M.Length = CP.Close_Words
+                 and then M.Words (1) = (Shift_Left (Item.Generation, K.Generation_Shift) or Item.Grant)
+               then
                   Let_Go (Item);
                end if;
             end;
          end if;
          return 1;
-      elsif M.Label = CuBit.Control_Events.Grant_Returned_Label then
+      elsif M.Label = CuBit.Control_Events.Grant_Returned_Label and then From = 0 then
+         --  The kernel's event (no sender): a client's call with this label
+         --  is not one.
          --  A reader's grant came back (it closed, or died): its slot is free.
          for S of Streams loop
             for Item of S.Subscribers loop
@@ -241,19 +248,22 @@ package body CuBit.Libc_Streams is
    procedure Note_Event (Item : System.Address)
    with Import, Convention => C, External_Name => "__cubit_note_event";
 
+   --  POLL_ANY_IPC answers the sender, and an event's sender is 0, the
+   --  same as "nothing waiting": the message (zeroed first) tells them
+   --  apart, since every message has a label.
    procedure Poll_Subscription is
-      M : aliased K.Message;
+      M : aliased K.Message := (others => <>);
       From : constant Unsigned_64 := CuBit.Kernel_Calls.Call
         (K.Poll_Any_IPC, Unsigned_64 (To_Integer (M'Address)));
       Ignore : Interfaces.C.int;
    begin
-      if From /= 0 and then From /= K.Failed then
+      if From = K.Failed or else (From = 0 and then M.Label = 0) then
+         return;
+      elsif From = 0 and then M.Label = CuBit.Child_Exits.Event_Label then
          --  A child's exit belongs to waitpid's bookkeeping, not here.
-         if M.Label = CuBit.Child_Exits.Event_Label then
-            Note_Event (M'Address);
-         else
-            Ignore := Handle_Message (Interfaces.C.long (From), M'Address);
-         end if;
+         Note_Event (M'Address);
+      else
+         Ignore := Handle_Message (Interfaces.C.long (From), M'Address);
       end if;
    end Poll_Subscription;
 

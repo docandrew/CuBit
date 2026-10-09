@@ -87,14 +87,14 @@ package body CuBit.Messages is
    --  RECEIVE: RDI=pointer to Message struct
    --  Returns: RAX=sender PID
 
-   procedure receive (from : out ProcessID; msg : out Message) is
+   procedure receive (from : out Process_ID; msg : out Message) is
    begin
-      from := syscall (SYSCALL_RECEIVE, toNum (msg'Address));
+      from := From_Word (syscall (SYSCALL_RECEIVE, toNum (msg'Address)));
    end receive;
 
    procedure receiveUntil
      (deadlineMs : Unsigned_64;
-      from       : out ProcessID;
+      from       : out Process_ID;
       msg        : out Message;
       received   : out Boolean)
    is
@@ -104,10 +104,10 @@ package body CuBit.Messages is
            toNum (msg'Address), deadlineMs);
    begin
       if result = Unsigned_64'Last then
-         from := 0;
+         from := No_Process;
          received := False;
       else
-         from := result;
+         from := From_Word (result);
          received := True;
       end if;
    end receiveUntil;
@@ -116,11 +116,11 @@ package body CuBit.Messages is
    --  REPLY: RDI=dest, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=w3
 
    function reply
-     (replyTo : ProcessID; msg : Message) return Unsigned_64
+     (replyTo : Process_ID; msg : Message) return Unsigned_64
    is
    begin
       return syscall (SYSCALL_REPLY,
-                       replyTo,
+                       To_Word (replyTo),
                        tagToU64 (msg.tag),
                        msg.words (0),
                        msg.words (1),
@@ -149,14 +149,14 @@ package body CuBit.Messages is
    --  Returns: RAX=sender PID of next received message
 
    procedure replyWait
-     (replyTo  : ProcessID;
+     (replyTo  : Process_ID;
       replyMsg : Message;
-      from     : out ProcessID;
+      from     : out Process_ID;
       msg      : in out Message)
    is
    begin
       msg := replyMsg;
-      from := syscall (SYSCALL_REPLY_WAIT, replyTo, toNum (msg'Address));
+      from := From_Word (syscall (SYSCALL_REPLY_WAIT, To_Word (replyTo), toNum (msg'Address)));
    end replyWait;
 
    --  Poll_Service_Request
@@ -167,7 +167,7 @@ package body CuBit.Messages is
    --  kernel still stores several IPC classes in one mailbox ring, but this
    --  syscall asks for only request-like work destined for a service.
    procedure Poll_Service_Request
-     (from  : out ProcessID;
+     (from  : out Process_ID;
       msg   : out Message;
       found : out Boolean)
    is
@@ -175,7 +175,7 @@ package body CuBit.Messages is
    begin
       msg := NULL_MESSAGE;
       ret := syscall (SYSCALL_POLL_SERVICE_REQUEST, toNum (msg'Address));
-      from := ret;
+      from := From_Word (ret);
       found := (ret /= 0);
    end Poll_Service_Request;
 
@@ -186,7 +186,7 @@ package body CuBit.Messages is
    --  This preserves the old mixed-receive behavior. It can consume events,
    --  so call sites should look unusual on purpose.
    procedure Poll_Any_Ipc
-     (from  : out ProcessID;
+     (from  : out Process_ID;
       msg   : out Message;
       found : out Boolean)
    is
@@ -194,12 +194,12 @@ package body CuBit.Messages is
    begin
       msg := NULL_MESSAGE;
       ret := syscall (SYSCALL_POLL_ANY_IPC, toNum (msg'Address));
-      from := ret;
+      from := From_Word (ret);
       found := (ret /= 0);
    end Poll_Any_Ipc;
 
    procedure Find_Endpoint_Capability
-     (Target : ProcessID; Slot : out CapabilitySlot; Found : out Boolean)
+     (Target : Process_ID; Slot : out CapabilitySlot; Found : out Boolean)
    is
       --  INSPECT_CAPABILITY's fixed six-word result; only inspect our table.
       Info : array (0 .. 5) of Unsigned_64 := [others => 0];
@@ -210,7 +210,7 @@ package body CuBit.Messages is
    begin
       Slot := CapabilitySlot'First;
       Found := False;
-      if Target = NO_PROCESS then
+      if Target = No_Process then
          return;
       end if;
       for Candidate in CapabilitySlot loop
@@ -219,7 +219,7 @@ package body CuBit.Messages is
             Unsigned_64 (System.Storage_Elements.To_Integer (Info'Address)));
          if Result = 1 and then Info (0) = Endpoint_Kind and then
            (Info (1) and Read_Write_Rights) = Read_Write_Rights and then
-           Info (3) = Target
+           Info (3) = To_Word (Target)
          then
             Slot := Candidate;
             Found := True;
@@ -256,18 +256,36 @@ package body CuBit.Messages is
    --  CAP_SEND: RDI=cap_slot, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=w3
    --  Returns: reply tag in RAX
 
+   function Deadline_After (Milliseconds : Unsigned_64) return Unsigned_64 is
+      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+   begin
+      return (if Milliseconds >= Wait_Forever - Now then Wait_Forever else Now + Milliseconds);
+   end Deadline_After;
+
    function capSend
-     (slot : CapabilitySlot; msg : Message) return MessageTag
+     (slot : CapabilitySlot; msg : Message; Deadline : Unsigned_64) return MessageTag
    is
       retTag : Unsigned_64;
    begin
-      retTag := syscall (SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY,
-                          slot,
-                          tagToU64 (msg.tag),
-                          msg.words (0),
-                          msg.words (1),
-                          msg.words (2),
-                          msg.words (3));
+      --  Seven arguments: the deadline goes in R12, as capSubmit's token.
+      Asm
+        ("mov %5, %%r10" & ASCII.LF &
+         "mov %6, %%r8" & ASCII.LF &
+         "mov %7, %%r9" & ASCII.LF &
+         "mov %8, %%r12" & ASCII.LF & "syscall",
+         Outputs => Unsigned_64'Asm_Output ("=a", retTag),
+         Inputs =>
+           (Unsigned_64'Asm_Input
+              ("a", SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY),
+            Unsigned_64'Asm_Input ("D", slot),
+            Unsigned_64'Asm_Input ("S", tagToU64 (msg.tag)),
+            Unsigned_64'Asm_Input ("d", msg.words (0)),
+            Unsigned_64'Asm_Input ("rm", msg.words (1)),
+            Unsigned_64'Asm_Input ("rm", msg.words (2)),
+            Unsigned_64'Asm_Input ("rm", msg.words (3)),
+            Unsigned_64'Asm_Input ("rm", Deadline)),
+         Clobber => "r10, r8, r9, r12, rcx, r11, memory",
+         Volatile => True);
       return u64ToTag (retTag);
    end capSend;
 
@@ -276,12 +294,12 @@ package body CuBit.Messages is
    --  Returns: reply tag in RAX
 
    function capCall
-     (slot : CapabilitySlot; msg : in out Message) return MessageTag
+     (slot : CapabilitySlot; msg : in out Message; Deadline : Unsigned_64) return MessageTag
    is
       retTag : Unsigned_64;
    begin
       retTag := syscall
-        (SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, slot, toNum (msg'Address));
+        (SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, slot, toNum (msg'Address), Deadline);
       return u64ToTag (retTag);
    end capCall;
 
@@ -320,11 +338,11 @@ package body CuBit.Messages is
    --  sendEvent
    --  SEND_EVENT: RDI=dest, RSI=tag, RDX=w0, R10=w1, R8=w2, R9=w3
 
-   procedure sendEvent (dest : ProcessID; msg : Message) is
+   procedure sendEvent (dest : Process_ID; msg : Message) is
       ignore : Unsigned_64;
    begin
       ignore := syscall (SYSCALL_SEND_EVENT,
-                          dest,
+                          To_Word (dest),
                           tagToU64 (msg.tag),
                           msg.words (0),
                           msg.words (1),
@@ -332,10 +350,10 @@ package body CuBit.Messages is
                           msg.words (3));
    end sendEvent;
 
-   function trySendEvent (dest : ProcessID; msg : Message) return Boolean is
+   function trySendEvent (dest : Process_ID; msg : Message) return Boolean is
    begin
       return syscall (SYSCALL_SEND_EVENT,
-                      dest,
+                      To_Word (dest),
                       tagToU64 (msg.tag),
                       msg.words (0),
                       msg.words (1),
@@ -367,39 +385,6 @@ package body CuBit.Messages is
       return (ret = 1);
    end Poll_Event;
 
-   --  createGrant
-   --  GRANT: RDI=grantee, RSI=localAddr, RDX=numPages, R10=permission
-   --  Returns: grant_id (or -1 on error)
-
-   procedure createGrant
-     (grantee   : ProcessID;
-      localAddr : System.Address;
-      numPages  : Natural;
-      readWrite : Boolean;
-      grantId   : out Unsigned_64;
-      success   : out Boolean)
-   is
-      perm : Unsigned_64 := 0;
-      ret  : Unsigned_64;
-   begin
-      if readWrite then
-         perm := 1;
-      end if;
-
-      ret := syscall (SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID,
-                       grantee,
-                       toNum (localAddr),
-                       Unsigned_64 (numPages),
-                       perm);
-      if ret = Unsigned_64'Last then
-         grantId := 0;
-         success := False;
-      else
-         grantId := ret;
-         success := True;
-      end if;
-   end createGrant;
-
    --  revokeGrant
    --  REVOKE: RDI=grant_id
 
@@ -409,47 +394,26 @@ package body CuBit.Messages is
       ignore := syscall (SYSCALL_REVOKE_SHARED_MEMORY_GRANT, id);
    end revokeGrant;
 
-   function killProcess (pid : ProcessID) return Unsigned_64 is
+   function Registered_Driver (Driver : Unsigned_64) return Process_ID is
+      Word : constant Unsigned_64 := getInfo (SYSINFO_REGISTERED_DRIVER, Driver);
    begin
-      return syscall (SYSCALL_KILL, pid);
-   end killProcess;
+      return (if Word = Unsigned_64'Last then No_Process else From_Word (Word));
+   end Registered_Driver;
 
-   procedure createGrantViaCap
-     (slot      : CapabilitySlot;
-      localAddr : System.Address;
-      numPages  : Natural;
-      readWrite : Boolean;
-      grantId   : out Unsigned_64;
-      success   : out Boolean)
-   is
-      function toNum is new Ada.Unchecked_Conversion
-         (System.Address, Unsigned_64);
-      rwFlag : Unsigned_64 := 0;
-      ret    : Unsigned_64;
+   function Own_Process return Process_ID is
+     (From_Word (syscall (SYSCALL_GETPID)));
+
+   function killProcess (pid : Process_ID) return Unsigned_64 is
    begin
-      if readWrite then
-         rwFlag := 1;
-      end if;
-      ret := syscall (SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
-                       slot,
-                       toNum (localAddr),
-                       Unsigned_64 (numPages),
-                       rwFlag);
-      if ret = Unsigned_64'Last then
-         grantId := 0;
-         success := False;
-      else
-         grantId := ret;
-         success := True;
-      end if;
-   end createGrantViaCap;
+      return syscall (SYSCALL_KILL, To_Word (pid));
+   end killProcess;
 
    function setWellKnown
      (role : Unsigned_64;
-      pid  : Unsigned_64) return Unsigned_64
+      pid  : Process_ID) return Unsigned_64
    is
    begin
-      return syscall (SYSCALL_SET_WELL_KNOWN, role, pid);
+      return syscall (SYSCALL_SET_WELL_KNOWN, role, To_Word (pid));
    end setWellKnown;
 
    --  Legacy wrappers
@@ -545,17 +509,17 @@ package body CuBit.Messages is
    --  Device manager wrappers
 
    function allocDma
-     (targetPID : Unsigned_64;
+     (targetPID : Process_ID;
       order     : Unsigned_64;
       virtBase  : Unsigned_64) return Unsigned_64
    is
    begin
-      return syscall (SYSCALL_ALLOC_DMA, targetPID, order, virtBase);
+      return syscall (SYSCALL_ALLOC_DMA, To_Word (targetPID), order, virtBase);
    end allocDma;
 
    function enableIrq
      (vector    : Unsigned_64;
-      ownerPID  : Unsigned_64;
+      ownerPID  : Process_ID;
       targetCPU : Unsigned_64;
       levelTriggered : Boolean := False;
       activeLow      : Boolean := False;
@@ -572,11 +536,11 @@ package body CuBit.Messages is
       if messageSignaled then
          route := route or 16#400#;
       end if;
-      return syscall (SYSCALL_ENABLE_IRQ, vector, ownerPID, route);
+      return syscall (SYSCALL_ENABLE_IRQ, vector, To_Word (ownerPID), route);
    end enableIrq;
 
    function mapInto
-     (targetPID : Unsigned_64;
+     (targetPID : Process_ID;
       physAddr  : Unsigned_64;
       virtAddr  : Unsigned_64;
       numPages  : Unsigned_64;
@@ -584,7 +548,7 @@ package body CuBit.Messages is
    is
    begin
       return syscall (SYSCALL_MAP_INTO,
-                      targetPID, physAddr, virtAddr, numPages, flags);
+                      To_Word (targetPID), physAddr, virtAddr, numPages, flags);
    end mapInto;
 
    function setSysinfo
@@ -596,11 +560,11 @@ package body CuBit.Messages is
    end setSysinfo;
 
    function setCpu
-     (targetPID : Unsigned_64;
+     (targetPID : Process_ID;
       cpu       : Unsigned_64) return Unsigned_64
    is
    begin
-      return syscall (SYSCALL_SET_CPU, targetPID, cpu);
+      return syscall (SYSCALL_SET_CPU, To_Word (targetPID), cpu);
    end setCpu;
 
    function setLatencyContract

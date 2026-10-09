@@ -81,7 +81,7 @@ procedure main is
       --  All shell protocol traffic goes through the desktop endpoint cap.
       --  The app never maps the framebuffer and never registers for raw
       --  keyboard/mouse input; desktop.svc remains the display/input boundary.
-      tag := capCall (CAP_SLOT_DESKTOP, msg);
+      tag := capCall (CAP_SLOT_DESKTOP, msg, CuBit.Messages.Wait_Forever);
       msg.tag := tag;
       return msg;
    end callDesktop;
@@ -159,7 +159,7 @@ procedure main is
              bufferGrant,
              (CuBit.Desktop_Protocol.Positive_Extent (bufferW),
               CuBit.Desktop_Protocol.Positive_Extent (bufferH), bufferPitch))));
-      reply.tag := capCall (CAP_SLOT_DESKTOP, reply);
+      reply.tag := capCall (CAP_SLOT_DESKTOP, reply, CuBit.Messages.Wait_Forever);
       if reply.words (0) /= 0 then
          debugPrint ("desktop-shell: pixel attach failed" & LF);
       else
@@ -209,7 +209,7 @@ procedure main is
       reply := CuBit.Desktop_Messages.From_Wire
         (DP.Encode_Resize ((DP.Live_Surface_Name (windowId),
                             DP.Pixel_Extent (nextW), DP.Pixel_Extent (nextH))));
-      reply.tag := capCall (CAP_SLOT_DESKTOP, reply);
+      reply.tag := capCall (CAP_SLOT_DESKTOP, reply, CuBit.Messages.Wait_Forever);
       resized := DP.Decode_Resize_Result (CuBit.Desktop_Messages.To_Wire (reply));
       if resized.Status = DP.Success then
          windowW := Unsigned_64 (resized.Width);
@@ -230,7 +230,7 @@ procedure main is
       --  foreground-child logic can reclaim keyboard/mouse focus and redraw.
       reply := CuBit.Desktop_Messages.From_Wire
         (DP.Encode_Empty_Request (DP.Goodbye));
-      reply.tag := capCall (CAP_SLOT_DESKTOP, reply);
+      reply.tag := capCall (CAP_SLOT_DESKTOP, reply, CuBit.Messages.Wait_Forever);
       if DP.Decode_Status (CuBit.Desktop_Messages.To_Wire (reply), DP.Goodbye) /= DP.Success then
          debugPrint ("desktop-shell: goodbye failed" & LF);
          return;
@@ -245,7 +245,7 @@ begin
       hello : Message := CuBit.Desktop_Messages.From_Wire
         (DP.Encode_Hello (DP.Current_Revision));
    begin
-      hello.tag := capCall (CAP_SLOT_DESKTOP, hello);
+      hello.tag := capCall (CAP_SLOT_DESKTOP, hello, CuBit.Messages.Wait_Forever);
       if DP.Decode_Hello_Result (CuBit.Desktop_Messages.To_Wire (hello)).Status /= DP.Success then
          debugPrint ("desktop-shell: hello failed" & LF);
          ignore := syscall (SYSCALL_EXIT, 1);
@@ -258,7 +258,7 @@ begin
         (DP.Encode_Empty_Request (DP.Get_Information));
       decoded : DP.Information_Result;
    begin
-      info.tag := capCall (CAP_SLOT_DESKTOP, info);
+      info.tag := capCall (CAP_SLOT_DESKTOP, info, CuBit.Messages.Wait_Forever);
       decoded := DP.Decode_Information_Result (CuBit.Desktop_Messages.To_Wire (info));
       if decoded.Status /= DP.Success then
          debugPrint ("desktop-shell: display information failed" & LF);
@@ -316,7 +316,7 @@ begin
            (DP.Encode_Input_Request ((DP.Poll_Input, DP.Live_Surface_Name (windowId), lastEvent)));
          decoded : DP.Input_Result;
       begin
-         ev.tag := capCall (CAP_SLOT_DESKTOP, ev);
+         ev.tag := capCall (CAP_SLOT_DESKTOP, ev, CuBit.Messages.Wait_Forever);
          decoded := DP.Decode_Input_Result (CuBit.Desktop_Messages.To_Wire (ev), DP.Poll_Input);
          if decoded.Status /= DP.Success then
             debugPrint ("desktop-shell: input rejected" & LF);

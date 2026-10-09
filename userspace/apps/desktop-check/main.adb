@@ -18,6 +18,7 @@ procedure Main is
    Count : Natural := 0;
    Exhausted : Boolean := False;
    package MG renames CuBit.Memory_Grants;
+   use type MG.Grant_Reference;
    Held : MG.Grant_Reference;
    Has_Held : Boolean := False;
    procedure Check (Condition : Boolean; Name : String) is
@@ -30,7 +31,7 @@ procedure Main is
    function Send (Wire : Wire_Message) return Wire_Message is
       Msg : Message := From_Wire (Wire);
    begin
-      Msg.tag := capCall (CAP_SLOT_DESKTOP, Msg);
+      Msg.tag := capCall (CAP_SLOT_DESKTOP, Msg, CuBit.Messages.Wait_Forever);
       return To_Wire (Msg);
    end Send;
    procedure Check_Publication_Protocol is
@@ -1042,8 +1043,9 @@ begin
                                   First.slot) = 0, "replacement completes old revoke");
                   MG.Create_Via_Capability
                     (CAP_SLOT_DESKTOP, To_Address (Address), 1, False, Reused, Ok);
-                  Check (Ok and then Reused.slot = First.slot and then
-                         Reused.generation /= First.generation, "generation advances on reuse");
+                  --  One global grant table: the slot may go to another
+                  --  process first; a reused slot carries a new generation.
+                  Check (Ok and then Reused /= First, "replacement is a new reference");
                   Response := Send (Encode_Attachment ((Surface, First, (4, 2, 16))));
                   Check (Response.Words (0) = Status_Code'Enum_Rep (Denied), "stale attachment denied");
                   if Ok then MG.Revoke (Reused, Ok); end if;

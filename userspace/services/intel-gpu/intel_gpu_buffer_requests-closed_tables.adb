@@ -23,7 +23,8 @@ package body Intel_GPU_Buffer_Requests.Closed_Tables is
       if not Refund_Client (Object, Ticket_Slot (ID)) then return; end if;
       Records.Put (Object.Items, Ticket_Slot (ID),
         (Records.Get (Object.Items, Ticket_Slot (ID)) with delta Private_Reusable => True,
-         Charge_Bytes => 0));
+         Charge_Bytes => 0, Next_Reusable => Object.Private_Reusable_Head));
+      Object.Private_Reusable_Head := Ticket_Slot (ID);
       Accepted := True;
    end Acknowledge;
 end Intel_GPU_Buffer_Requests.Closed_Tables;

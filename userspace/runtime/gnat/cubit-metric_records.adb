@@ -67,6 +67,12 @@ package body CuBit.Metric_Records with SPARK_Mode is
             Words (Time_Word) := Item.Time_Us;
             Words (Value_Word) := Item.Value;
             Words (Correlation_Word) := Item.Correlation;
+         when Trace =>
+            Words (2) := Item.Trace_ID;
+            Words (3) := Unsigned_64 (Item.Part);
+            for I in Trace_Part loop
+               Words (4 + I) := Item.Data (I);
+            end loop;
          when Span =>
             Words (Time_Word) := Item.Start_Us;
             Words (Value_Word) := Item.End_Us;
@@ -136,13 +142,21 @@ package body CuBit.Metric_Records with SPARK_Mode is
                               Declared => Declared, Measure => Measure,
                               Name => Name));
          end if;
+         if Kind = Trace then
+            if Words (2) = 0 or Words (3) > Unsigned_64 (Trace_Part'Last) then
+               return (Success => False, Reason => Invalid_Trace);
+            end if;
+            return (Success => True,
+                    Value => (Trace, Key, Words (2), Trace_Part (Words (3)),
+                              [for I in Trace_Part => Words (4 + I)]));
+         end if;
          for W in First_Reserved_Value_Word .. Slot_Word_Index'Last loop
             if Words (W) /= 0 then
                return (Success => False, Reason => Nonzero_Reserved);
             end if;
          end loop;
          case Kind is
-            when Describe =>
+            when Describe | Trace =>
                return (Success => False, Reason => Unknown_Kind);
             when Counter =>
                return (Success => True,

@@ -1,0 +1,8 @@
+project Broker_Identity_Bits is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-broker-identity-bits";
+   for Main use ("broker_identity_bits_test.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Broker_Identity_Bits;

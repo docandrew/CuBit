@@ -7,11 +7,14 @@ with CuBit.UI.State;
 with CuBit.UI.Tables;
 with CuBit.Log_Records;
 with CuBit.Log_Protocol;
+with Log_Viewport;
 
 --  The Logs app's view (docs/logs-app.md): what logstore delivers, as a live
 --  table built from the toolkit's controls. A search field, service, time and
 --  level combo boxes, a Follow button and a sortable, resizable table above a
---  detail pane. Platform-free: the native main feeds it from a log-observer
+--  detail pane. The search marks matching rows among all of them (Only shows
+--  the matches alone); the table scrolls freely of its selection
+--  (Log_Viewport). Platform-free: the native main feeds it from a log-observer
 --  subscription; hosted tests feed it records and read frames back.
 package Log_View is
    use Interfaces;
@@ -22,7 +25,7 @@ package Log_View is
    --  same), so Handle sees only what the controls reported.
    type Key_Name is
      (No_Key, Up, Down, Left, Right, Page_Up, Page_Down, Home, End_Key, Enter, Escape, Backspace, Delete,
-      Tab, Space);
+      Tab, Space, F3);
    type Event_Kind is (Key_Event, Text_Event, Pointer_Event, Wheel, Resize);
    type Event is record
       Kind : Event_Kind := Key_Event;
@@ -42,7 +45,7 @@ package Log_View is
    type Column_Name is (Time_Column, Node_Column, Level_Column, Source_Column, Message_Column);
 
    --  Records kept for scrolling back; older ones leave first.
-   MAXIMUM_RECORDS : constant := 2_048;
+   MAXIMUM_RECORDS : constant := Log_Viewport.MAXIMUM_ROWS;
    --  Sources that published, each with a name; one service choice per
    --  distinct name, after "All services".
    MAXIMUM_SOURCES : constant := CuBit.UI.Combo_Boxes.Max_Choices - 1;
@@ -53,6 +56,7 @@ package Log_View is
    FOLLOW_ID : constant Controls.Control_ID := 2;
    CLEAR_ID : constant Controls.Control_ID := 3;
    SCROLL_ID : constant Controls.Control_ID := 4;
+   ONLY_ID : constant Controls.Control_ID := 5;
    COLUMNS_BASE : constant CuBit.UI.Tables.Column_ID_Base := 10;
    SERVICE_BASE : constant CuBit.UI.Combo_Boxes.ID_Base := 100;
    TIME_BASE : constant CuBit.UI.Combo_Boxes.ID_Base := 200;
@@ -124,6 +128,16 @@ package Log_View is
    function Selected_Text (State : View_State) return String;
    --  New records not yet looked at while paused.
    function Unseen (State : View_State) return Natural;
+   --  The first row drawn and the selected row (0: none), in shown rows.
+   function Top_Row (State : View_State) return Positive;
+   function Selected_Row (State : View_State) return Natural;
+   --  Search matches among the shown rows: whether Row is one, how many,
+   --  and which of them is selected (0: the selection is not a match).
+   function Row_Matches (State : View_State; Row : Positive) return Boolean;
+   function Match_Count (State : View_State) return Natural;
+   function Match_Index (State : View_State) return Natural;
+   --  Whether Only is on: with a search, only its matches are shown.
+   function Only_Matches (State : View_State) return Boolean;
 private
    package CB renames CuBit.UI.Combo_Boxes;
    type Entry_Kind is (Record_Entry, Gap_Entry);
@@ -135,8 +149,10 @@ private
       Node : CuBit.Log_Protocol.Node_Id := CuBit.Log_Protocol.This_Node;
       Item : CuBit.Log_Records.Log_Record := CuBit.Log_Records.Empty_Record;
       Lost : Unsigned_64 := 0;
+      --  Whether the search matches it.
+      Hit : Boolean := False;
    end record;
-   subtype Entry_Count is Natural range 0 .. MAXIMUM_RECORDS;
+   subtype Entry_Count is Log_Viewport.Row_Count;
    subtype Entry_Slot is Natural range 0 .. MAXIMUM_RECORDS - 1;
    type Entry_Ring is array (Entry_Slot) of Log_Entry;
    --  Shown entries, by sequence number, in table order.
@@ -170,7 +186,6 @@ private
       Count : Entry_Count := 0;
       Next_Sequence : Unsigned_64 := 1;
       Visible : Sequence_List := [others => 0];
-      Visible_Count : Entry_Count := 0;
       Names : Source_Table;
       Name_Count : Source_Count := 0;
       Publishers : Publisher_Table;
@@ -181,8 +196,13 @@ private
       Levels : Severity_Counts := [others => 0];
       Lost : Unsigned_64 := 0;
       Now_Ms : Unsigned_64 := 0;
-      --  Filters: the search field and the three combo boxes.
+      --  Filters: the search field (marking matches, or with Only showing
+      --  just them) and the three combo boxes.
       Search : CuBit.UI.Editor.Edit_State;
+      Only : Boolean := False;
+      --  Which way typing looks for the nearest match: away from the newest
+      --  record for a search begun while following, else forward.
+      Search_Forward : Boolean := True;
       Service : CB.Combo_State;
       Service_Model : CB.Model;
       --  The chosen service's name, kept across name updates; "" for all.
@@ -201,14 +221,11 @@ private
       Keep_Note_Length : Natural range 0 .. MAXIMUM_NOTE := 0;
       Columns : CuBit.UI.Tables.Column_Layout;
       Focus : Focus_Target := List_Focus;
-      --  Position: the selected shown row (0: none), the first row drawn.
-      Selected : Entry_Count := 0;
-      Top : Natural := 0;
-      Follow : Boolean := True;
+      --  The shown rows, the selected one, the first drawn, the rows that
+      --  fit (from the last Render) and following.
+      Position : Log_Viewport.Viewport;
       New_Since_Pause : Natural := 0;
       Link : Connection := Connecting;
-      --  Rows that fit, from the last Render.
-      Rows : Positive := 20;
       Revision : Unsigned_64 := 0;
    end record;
 end Log_View;

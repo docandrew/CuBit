@@ -31,6 +31,16 @@ procedure main is
    OP_FAIR_POLL : constant Unsigned_32 := 16#090F#;
    OP_FAIR_QUEUED : constant Unsigned_32 := 16#0910#;
    OP_FAIR_END : constant Unsigned_32 := 16#0911#;
+   OP_DEADLINE_SILENT : constant Unsigned_32 := 16#0912#;
+   OP_DEADLINE_LATE   : constant Unsigned_32 := 16#0913#;
+   OP_DEADLINE_BUSY   : constant Unsigned_32 := 16#0914#;
+   OP_DEADLINE_QUEUED : constant Unsigned_32 := 16#0915#;
+   OP_DEADLINE_STATUS : constant Unsigned_32 := 16#0916#;
+   DEADLINE_MS : constant Unsigned_64 := 50;
+   --  The server's busy time (300 ms) less a margin: a timeout must come
+   --  from the deadline, not from the server getting round to the call.
+   DEADLINE_LATEST_MS : constant Unsigned_64 := 250;
+   LATE_TOKEN : constant Unsigned_64 := 16#1A7E_0001#;
    RETIRE_TOKEN : constant Unsigned_64 := 16#D1ED_0003#;
    REPLY_OK          : constant Unsigned_32 := 16#F000#;
 
@@ -70,8 +80,9 @@ procedure main is
 
    procedure loadFPUProbe is
    begin
-      --  The projects are compiled with -mno-sse/-mno-sse2, so XMM0 is
-      --  reserved exclusively for this context-isolation regression probe.
+      --  XMM0 carries this context-isolation probe. The program is built
+      --  with SSE, so set it just before the system call under test and
+      --  read it just after.
       Asm ("movq %0, %%xmm0",
            Inputs   => Unsigned_64'Asm_Input ("r", FPU_SENTINEL),
            Volatile => True);
@@ -296,10 +307,17 @@ begin
                      length => 0,
                      flags  => 0,
                      reserved  => 0);
-         submitOk := capSubmit (
-            CAP_SLOT_IPCTEST,
-            msg,
-            NO_COMPLETION_TOKEN);
+         --  The held requests may still fill this client's credit at the
+         --  server (docs/ipc-delivery.md, step 3): then the release is
+         --  refused as busy, kept, and sent again once the server drains.
+         for attempt in 1 .. 500 loop
+            submitOk := capSubmit (
+               CAP_SLOT_IPCTEST,
+               msg,
+               NO_COMPLETION_TOKEN);
+            exit when submitOk;
+            ret := syscall (SYSCALL_SLEEP, 1);
+         end loop;
          if not submitOk then
             fail ("pressure-release-submit");
          end if;
@@ -482,7 +500,7 @@ begin
                      flags  => 0,
                      reserved  => 0);
          loadFPUProbe;
-         tag := capCall (CAP_SLOT_IPCTEST, msg);
+         tag := capCall (CAP_SLOT_IPCTEST, msg, CuBit.Messages.Wait_Forever);
          if readFPUProbe /= FPU_SENTINEL then
             fail ("fpu-direct-switch");
          elsif tag.label /= REPLY_OK then
@@ -529,6 +547,71 @@ begin
       end;
    end if;
 
+   -- Call deadlines (docs/ipc-fastpath.md, "Call deadlines").
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+         tag : MessageTag;
+         started, elapsed : Unsigned_64;
+      begin
+         -- A server that never answers: the call ends at its deadline.
+         msg.tag := (OP_DEADLINE_SILENT, 0, 0, 0);
+         started := syscall (SYSCALL_GETTIME);
+         tag := capCall (CAP_SLOT_IPCTEST, msg, Deadline_After (DEADLINE_MS));
+         elapsed := syscall (SYSCALL_GETTIME) - started;
+         if tag.label /= REPLY_TIMEOUT then
+            fail ("deadline-silent-not-timed-out");
+         elsif elapsed < DEADLINE_MS or else elapsed >= DEADLINE_LATEST_MS then
+            fail ("deadline-silent-timing");
+         end if;
+
+         -- The server now answers the timed-out call while this thread
+         -- waits in its next call: only this call's own reply arrives.
+         msg := NULL_MESSAGE;
+         msg.tag := (OP_DEADLINE_LATE, 1, 0, 0);
+         msg.words (0) := LATE_TOKEN;
+         tag := capCall (CAP_SLOT_IPCTEST, msg, Wait_Forever);
+         if tag.label /= REPLY_OK or else msg.words (0) /= LATE_TOKEN then
+            fail ("deadline-late-reply-delivered");
+         elsif msg.words (1) /= 1 then
+            fail ("deadline-late-reply-accepted");
+         elsif msg.words (2) /= 1 then
+            fail ("deadline-forged-kernel-label");
+         end if;
+
+         -- Timed out while queued (the server was busy, not receiving):
+         -- the server never sees the request.
+         msg := NULL_MESSAGE;
+         msg.tag := (OP_DEADLINE_BUSY, 0, 0, 0);
+         if not capSubmit (CAP_SLOT_IPCTEST, msg, NO_COMPLETION_TOKEN) then
+            fail ("deadline-busy-submit");
+         end if;
+         -- Let the server take the busy request first.
+         ret := syscall (SYSCALL_SLEEP, 10);
+         msg := NULL_MESSAGE;
+         msg.tag := (OP_DEADLINE_QUEUED, 0, 0, 0);
+         started := syscall (SYSCALL_GETTIME);
+         tag := capCall (CAP_SLOT_IPCTEST, msg, Deadline_After (DEADLINE_MS));
+         elapsed := syscall (SYSCALL_GETTIME) - started;
+         if tag.label /= REPLY_TIMEOUT then
+            fail ("deadline-queued-not-timed-out");
+         elsif elapsed < DEADLINE_MS or else elapsed >= DEADLINE_LATEST_MS then
+            fail ("deadline-queued-timing");
+         end if;
+         msg := NULL_MESSAGE;
+         msg.tag := (OP_DEADLINE_STATUS, 0, 0, 0);
+         tag := capCall (CAP_SLOT_IPCTEST, msg, Wait_Forever);
+         if tag.label /= REPLY_OK then
+            fail ("deadline-status");
+         elsif msg.words (0) /= 0 then
+            fail ("deadline-queued-request-seen");
+         end if;
+         if ok then
+            debugPrint ("ipctest-client: call deadlines PASS" & LF);
+         end if;
+      end;
+   end if;
+
    if ok then
       declare
          msg : Message := NULL_MESSAGE;
@@ -543,7 +626,7 @@ begin
                msg := NULL_MESSAGE;
                msg.tag := (OP_FAIR_BEGIN, 1, 0, 0);
                msg.words (0) := mode;
-               tag := capCall (CAP_SLOT_IPCTEST, msg);
+               tag := capCall (CAP_SLOT_IPCTEST, msg, CuBit.Messages.Wait_Forever);
                if tag.label /= REPLY_OK then fail ("fairness-begin"); end if;
                if mode = 4 then
                   -- Server has entered an infinite activity wait before the
@@ -559,7 +642,7 @@ begin
                for poll in 1 .. 2 loop
                   msg := NULL_MESSAGE;
                   msg.tag := (OP_FAIR_POLL, 0, 0, 0);
-                  tag := capCall (CAP_SLOT_IPCTEST, msg);
+                  tag := capCall (CAP_SLOT_IPCTEST, msg, CuBit.Messages.Wait_Forever);
                   if tag.label /= REPLY_OK then fail ("fairness-poll"); end if;
                   served := served or else msg.words (0) = 1;
                end loop;
@@ -571,7 +654,7 @@ begin
          begin
             msg := NULL_MESSAGE;
             msg.tag := (OP_FAIR_END, 0, 0, 0);
-            tag := capCall (CAP_SLOT_IPCTEST, msg);
+            tag := capCall (CAP_SLOT_IPCTEST, msg, CuBit.Messages.Wait_Forever);
             if tag.label /= REPLY_OK then fail ("fairness-end"); end if;
          end;
          if ok then

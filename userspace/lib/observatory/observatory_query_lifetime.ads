@@ -4,12 +4,15 @@ package Observatory_Query_Lifetime with SPARK_Mode is
    type Phase is (Idle, Waiting, Retiring, Ready, Failed);
    type State is private;
    Timeout_Us : constant Unsigned_64 := 250_000;
+   subtype Timeout_Budget is Unsigned_64 range 1 .. Unsigned_64'Last;
    function Status (S : State) return Phase;
    function Token (S : State) return Unsigned_64;
    function Deadline (S : State) return Unsigned_64;
-   procedure Start (S : in out State; New_Token, Now : Unsigned_64; Accepted : out Boolean)
+   procedure Start (S : in out State; New_Token, Now : Unsigned_64; Accepted : out Boolean;
+      Budget_Us : Timeout_Budget := Timeout_Us)
      with Post =>
-       (if Accepted then Status (S) = Waiting and Token (S) = New_Token
+       (if Accepted then Status (S) = Waiting and then Token (S) = New_Token and then
+          Deadline (S) = (if Now > Unsigned_64'Last - Budget_Us then Unsigned_64'Last else Now + Budget_Us)
         else S = S'Old);
    -- Wrong/stale tokens cannot modify the live query. Invalid matching replies
    -- disable it; a valid envelope still needs independent grant retirement.

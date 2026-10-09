@@ -32,13 +32,14 @@ package CuBit.Messages is
  Submit_OK:Boolean:=True;
  Submissions:Natural:=0;
  function capSubmit(Slot:CapabilitySlot; Msg:Message; Token:Unsigned_64) return Boolean;
- function capCall(Slot:CapabilitySlot; Msg:in out Message) return MessageTag;
+ Wait_Forever:constant Unsigned_64:=Unsigned_64'Last;
+ function capCall(Slot:CapabilitySlot; Msg:in out Message; Deadline:Unsigned_64) return MessageTag;
 end CuBit.Messages;
 '''
 message_body = '''package body CuBit.Messages is
  function capSubmit(Slot:CapabilitySlot; Msg:Message; Token:Unsigned_64) return Boolean is
  begin Submissions:=Submissions+1; return Submit_OK; end;
- function capCall(Slot:CapabilitySlot; Msg:in out Message) return MessageTag is
+ function capCall(Slot:CapabilitySlot; Msg:in out Message; Deadline:Unsigned_64) return MessageTag is
  begin return (0,0,0,0); end;
 end CuBit.Messages;
 '''

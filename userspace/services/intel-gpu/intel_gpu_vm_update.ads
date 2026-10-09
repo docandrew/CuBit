@@ -33,11 +33,14 @@ package Intel_GPU_VM_Update is
    -- Accepted closes submission before any owner callback; Status is only an
    -- outcome when Accepted=False. Serialized caller retains the same state,
    -- context hold and backing across all subsequent event-loop turns.
+   procedure Resume_Once (Finished, Success : out Boolean);
+   -- Synchronous adapter for transactions with no incremental finalization.
    generic
       with procedure Advance_Publication (Finished, Success : out Boolean);
+      with procedure Advance_Resume (Finished, Success : out Boolean) is Resume_Once;
    procedure Advance
      (Object : in out State; Finished : out Boolean; Status : out Result);
-   -- At most one stage callback. Publication may yield Finished=False with
+   -- At most one stage callback. Publication and resume may yield Finished=False with
    -- Success=True; failure is terminal even if not finished. Status is an
    -- outcome only when Finished=True. Nested Advance rejects without effects.
    -- Owner/retirement are rechecked on each turn and after every callback.

@@ -16,7 +16,8 @@ package Intel_GPU_Buffer_Backing with SPARK_Mode is
    type Allocation_Reason is
      (Not_Attempted, Request_Check, Generation_Check, Quota_Check, Gap_Check,
       Backing_Check, Owner_Check, Geometry_Check, Directory_Check,
-      Metadata_Check, Physical_Call, Physical_Result_Check, View_Check, Ready);
+      Metadata_Check, Physical_Call, Physical_Refused, Physical_Placement,
+      Extent_Directory_Full, View_Check, Ready);
    -- F001 length4 diagnostic denial: [version, allocation key, bytes, reason].
    -- No addresses or authority. Plain F001 length0 remains an admission denial.
    Denial_Version : constant Unsigned_64 := 1;
@@ -33,7 +34,13 @@ package Intel_GPU_Buffer_Backing with SPARK_Mode is
         when Directory_Check => "directory",
         when Metadata_Check => "extent-metadata",
         when Physical_Call => "physical-call",
-        when Physical_Result_Check => "physical-result",
+        -- The kernel returned no block (its DMA quota or ceiling refused it).
+        when Physical_Refused => "physical-refused",
+        -- A block came back misaligned.
+        when Physical_Placement => "physical-placement",
+        -- The driver's own extent directory refused an aligned block: full,
+        -- at quota, outside its range, or a repeat of one it holds.
+        when Extent_Directory_Full => "extent-directory-full",
         when View_Check => "view",
         when Ready => "ready");
    -- Shared by early readiness and normal supervisor dispatch. This checks

@@ -48,18 +48,27 @@ begin
    Add (S, (0, 0, 2, 2)); Add (S, (30, 30, 32, 32));
    pragma Assert (Count (S) = 2);
    pragma Assert (Bounds (S) = (0, 0, 32, 32));
-   --  Contained repeats do not create copies; overlap collapses conservatively.
+   --  Contained repeats do not create copies; isolated overlaps stay local.
    Add (S, (0, 0, 1, 1)); pragma Assert (Count (S) = 2);
-   Add (S, (1, 1, 3, 3)); pragma Assert (Count (S) = 1);
+   Add (S, (1, 1, 3, 3)); pragma Assert (Count (S) = 2);
+   pragma Assert (Covers (S, (0, 0, 3, 3)) and Covers (S, (30, 30, 32, 32)));
+   -- A local envelope intersecting another region must preserve nonoverlap.
+   Clear (S); Add (S, (0, 0, 2, 8)); Add (S, (4, 4, 6, 6));
+   Add (S, (0, 0, 8, 2));
+   pragma Assert (Count (S) = 1 and Covers (S, (0, 0, 8, 8)));
    Clear (S);
    for I in 0 .. Capacity - 1 loop Add (S, (I * 2, 0, I * 2 + 1, 1)); end loop;
    pragma Assert (Count (S) = Capacity);
+   Add (S, (0, 0, 1, 2));
+   pragma Assert (Count (S) = Capacity and Covers (S, (0, 0, 1, 2)));
    Add (S, (20, 20, 21, 21)); pragma Assert (Count (S) = 1);
    --  Extreme edges need no overflowing coordinate addition in the planner.
    Clear (S);
    Add (S, (0, 0, 1, 1));
    Add (S, (Natural'Last - 1, Natural'Last - 1, Natural'Last, Natural'Last));
    pragma Assert (Bounds (S).Right = Natural'Last);
+   Add (S, (Natural'Last - 2, Natural'Last - 2, Natural'Last, Natural'Last));
+   pragma Assert (Count (S) = 2 and Bounds (S).Right = Natural'Last);
    for Cycle in 1 .. 100 loop
       Clear (S); Dirty := (others => (others => False));
       for Step in 1 .. 32 loop

@@ -60,6 +60,18 @@ package Compositor_Pool with SPARK_Mode, Pure is
           Epoch (S'Old) /= 0 and Last_Serial (S'Old) < ID'Last and not Has_Free (S'Old) and
           not (Replace_Ready and Ready (S'Old) /= None)
         then S = S'Old);
+   -- Release a reservation before any asynchronous renderer consumes it.
+   -- Caller must have stopped all synchronous use and preserve/reinvalidate
+   -- target damage separately. This is not GPU/display completion evidence.
+   -- Stale, foreign, missing or already-rendering tickets leave the pool intact.
+   procedure Abandon_Writer (S : in out State; T : Ticket; Accepted : out Boolean)
+     with Pre => Valid (S), Post => Valid (S) and
+       Accepted = Writable (S'Old, T) and
+       (if Accepted then Writer (S) = None else S = S'Old) and
+       Faulted (S) = Faulted (S'Old) and Rendering (S) = Rendering (S'Old) and
+       Epoch (S) = Epoch (S'Old) and Last_Serial (S) = Last_Serial (S'Old) and
+       Ready (S) = Ready (S'Old) and Displayed (S) = Displayed (S'Old) and
+       Front (S) = Front (S'Old) and Readback (S) = Readback (S'Old);
    procedure Start_Render (S : in out State; T : Ticket)
      with Pre => Valid (S), Post => Valid (S) and
        Readback (S) = Readback (S'Old) and
@@ -103,7 +115,7 @@ package Compositor_Pool with SPARK_Mode, Pure is
         else T = None and Displayed (S) = Displayed (S'Old) and Ready (S) = Ready (S'Old));
    procedure Retire_Display (S : in out State; T : Ticket; Released : Boolean)
      with Pre => Valid (S), Post => Valid (S) and
-       Readback (S) = Readback (S'Old) and
+       Readback (S) = Readback (S'Old) and Rendering (S) = Rendering (S'Old) and
        Front (S) = Front (S'Old) and Epoch (S) = Epoch (S'Old) and Last_Serial (S) = Last_Serial (S'Old) and
        Writer (S) = Writer (S'Old) and Ready (S) = Ready (S'Old) and
        (if not Faulted (S'Old) and T /= None and T = Displayed (S'Old) and Released

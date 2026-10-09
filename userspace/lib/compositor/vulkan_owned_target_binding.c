@@ -50,8 +50,8 @@ uint32_t cubit_vulkan_owned_targets_prepare_frame(void *description,void *submis
     return 0;
 }
 
-uint32_t cubit_vulkan_owned_targets_record_readback(void *description,void *submission,
-    void *staging,uint32_t slot)
+uint32_t cubit_vulkan_owned_targets_record_readback_regions(void *description,void *submission,
+    void *staging,uint32_t slot,uint32_t count,const struct cubit_vulkan_readback_region *repairs)
 {
     const struct cubit_vulkan_target_request *r=description;
     const struct cubit_vulkan_submission *s=submission;
@@ -64,6 +64,22 @@ uint32_t cubit_vulkan_owned_targets_record_readback(void *description,void *subm
        b->usage!=VK_BUFFER_USAGE_TRANSFER_DST_BIT||
        !b->capacity||b->capacity>CUBIT_VULKAN_UPLOAD_MAX_BYTES||
        (uint64_t)r->width*r->height*4>b->capacity)return 2;
+    if(!repairs||!count||count>8)return 2;
+    VkBufferImageCopy regions[8];
+    for(uint32_t i=0;i<count;i++){
+        const struct cubit_vulkan_readback_region *q=&repairs[i];
+        if(q->left>=q->right||q->top>=q->bottom||q->right>r->width||q->bottom>r->height)return 2;
+        for(uint32_t j=0;j<i;j++){
+            const struct cubit_vulkan_readback_region *p=&repairs[j];
+            if(q->left<p->right&&p->left<q->right&&q->top<p->bottom&&p->top<q->bottom)return 2;
+        }
+        regions[i]=(VkBufferImageCopy){
+            .bufferOffset=((uint64_t)q->top*r->width+q->left)*4,
+            .bufferRowLength=r->width,.bufferImageHeight=r->height,
+            .imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1},
+            .imageOffset={(int32_t)q->left,(int32_t)q->top,0},
+            .imageExtent={q->right-q->left,q->bottom-q->top,1}};
+    }
     PFN_vkCmdPipelineBarrier barrier=(PFN_vkCmdPipelineBarrier)r->proc(r->device,"vkCmdPipelineBarrier");
     PFN_vkCmdCopyImageToBuffer copy=(PFN_vkCmdCopyImageToBuffer)r->proc(r->device,"vkCmdCopyImageToBuffer");
     if(!barrier||!copy)return 2;
@@ -74,9 +90,7 @@ uint32_t cubit_vulkan_owned_targets_record_readback(void *description,void *subm
         .image=r->images[slot-1],.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1}};
     barrier(s->command,VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,
         0,0,NULL,0,NULL,1,&layout);
-    const VkBufferImageCopy region={.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1},
-        .imageExtent={r->width,r->height,1}};
-    copy(s->command,r->images[slot-1],VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,b->buffer,1,&region);
+    copy(s->command,r->images[slot-1],VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,b->buffer,count,regions);
     layout.srcAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
     layout.dstAccessMask=VK_ACCESS_COLOR_ATTACHMENT_READ_BIT|VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     layout.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;layout.newLayout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -86,4 +100,13 @@ uint32_t cubit_vulkan_owned_targets_record_readback(void *description,void *subm
         .srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT,.dstAccessMask=VK_ACCESS_HOST_READ_BIT};
     barrier(s->command,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&host,0,NULL,0,NULL);
     return 0;
+}
+
+uint32_t cubit_vulkan_owned_targets_record_readback(void *description,void *submission,
+    void *staging,uint32_t slot)
+{
+    const struct cubit_vulkan_target_request *r=description;
+    if(!r)return 2;
+    const struct cubit_vulkan_readback_region full={0,0,r->width,r->height};
+    return cubit_vulkan_owned_targets_record_readback_regions(description,submission,staging,slot,1,&full);
 }

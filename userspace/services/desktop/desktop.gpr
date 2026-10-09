@@ -4,13 +4,25 @@ project Desktop is
 
     for Languages use ("Ada");
 
-    type Backend_Type is ("legacy", "mesa");
-    Backend : Backend_Type := external ("CUBIT_COMPOSITOR", "legacy");
+    type Backend_Type is ("legacy", "mesa", "vulkan");
+    Backend : Backend_Type := external ("CUBIT_COMPOSITOR", "vulkan");
     Backend_Directory := "backend-" & Backend;
     Backend_Suffix := "";
+    Startup_Directory := "startup-software";
     case Backend is
         when "legacy" => null;
         when "mesa" => Backend_Suffix := "-mesa";
+        when "vulkan" =>
+            Backend_Suffix := "-vulkan";
+            Startup_Directory := "startup-vulkan";
+    end case;
+
+    type Input_Overlay_Type is ("off", "on");
+    Input_Overlay : Input_Overlay_Type := external ("CUBIT_INPUT_OVERLAY", "off");
+    Input_Overlay_Directory := "input-overlay-" & Input_Overlay;
+    case Input_Overlay is
+        when "off" => null;
+        when "on" => Backend_Suffix := Backend_Suffix & "-input-overlay";
     end case;
 
     type Timing_Type is ("off", "on");
@@ -45,10 +57,10 @@ project Desktop is
     case Test_Mode is
         when "production" =>
             for Object_Dir use "build" & Backend_Suffix;
-            for Source_Dirs use ("../../lib/display", "../../lib/compositor", "../../allocator/src", Backend_Directory, Timing_Directory, Storage_Directory, Metrics_Directory, Manifest_Directory & "/generated", ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/production");
+            for Source_Dirs use ("../../mesa", "../../lib/display", "../../lib/compositor", "../../allocator/src", Backend_Directory, Startup_Directory, Input_Overlay_Directory, Timing_Directory, Storage_Directory, Metrics_Directory, Manifest_Directory & "/generated", ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/production");
         when "delayed" =>
             for Object_Dir use "build-delayed" & Backend_Suffix;
-            for Source_Dirs use ("../../lib/display", "../../lib/compositor", "../../allocator/src", Backend_Directory, Timing_Directory, Storage_Directory, Metrics_Directory, Manifest_Directory & "/generated", ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/test-delayed");
+            for Source_Dirs use ("../../mesa", "../../lib/display", "../../lib/compositor", "../../allocator/src", Backend_Directory, Startup_Directory, Input_Overlay_Directory, Timing_Directory, Storage_Directory, Metrics_Directory, Manifest_Directory & "/generated", ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/test-delayed");
     end case;
 
     for Main use ("main.adb");

@@ -34,6 +34,9 @@ package CuBit.UI is
       originX, originY : Client_Canvas_Geometry.Logical_Edge := 0;
       clipEnabled : Boolean := False;
       clip : Rect := (others => 0);
+      -- Optional hit geometry independent of the current repaint clip.
+      inputClipEnabled : Boolean := False;
+      inputClip : Rect := (others => 0);
    end record;
 
    subtype Theme_Color is Color range 0 .. 16#FFFFFF#;
@@ -200,6 +203,8 @@ package CuBit.UI is
    function Inflate_Rect (r : Rect; amount : Natural) return Rect;
    function Clamp_Rect (c : Canvas; r : Rect) return Rect;
    function With_Clip (c : Canvas; clip : Rect) return Canvas;
+   function Input_Rect (c : Canvas; r : Rect) return Rect;
+   function With_Repair_Clip (c : Canvas; repair : Rect) return Canvas;
 
    procedure Set_Pixel (c : Canvas; x, y : Natural; fill : Color);
 

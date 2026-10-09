@@ -207,7 +207,7 @@ procedure main is
       msg := NULL_MESSAGE;
       msg.tag := (label => CuBit.Devices.OP_INVENTORY_COUNT,
                   length => 0, flags => 0, reserved => 0);
-      tag := capCall (CAP_SLOT_DEVICE_INSPECTION, msg);
+      tag := capCall (CAP_SLOT_DEVICE_INSPECTION, msg, CuBit.Messages.Wait_Forever);
       if tag.label /= CuBit.Devices.REPLY_OK then
          return;
       end if;
@@ -225,7 +225,7 @@ procedure main is
          msg.tag := (label => CuBit.Devices.OP_INVENTORY_ITEM,
                      length => 1, flags => 0, reserved => 0);
          msg.words (0) := Unsigned_64 (index);
-         tag := capCall (CAP_SLOT_DEVICE_INSPECTION, msg);
+         tag := capCall (CAP_SLOT_DEVICE_INSPECTION, msg, CuBit.Messages.Wait_Forever);
          if tag.label = CuBit.Devices.REPLY_OK then
             locationWord := msg.words (0);
             identityWord := msg.words (1);
@@ -264,7 +264,7 @@ procedure main is
       msg := NULL_MESSAGE;
       msg.tag := (label => CuBit.Devices.OP_XHCI_DIAGNOSTICS,
                   length => 0, flags => 0, reserved => 0);
-      tag := capCall (CAP_SLOT_DEVICE_INSPECTION, msg);
+      tag := capCall (CAP_SLOT_DEVICE_INSPECTION, msg, CuBit.Messages.Wait_Forever);
       if tag.label = CuBit.Devices.REPLY_OK then
          modeRep := Shift_Right (msg.words (3), 48) and 16#FF#;
          diagnostic :=

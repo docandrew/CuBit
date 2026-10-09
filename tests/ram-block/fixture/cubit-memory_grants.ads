@@ -10,7 +10,7 @@ package CuBit.Memory_Grants is
    subtype Grant_Reference is CuBit.Grant_References.Reference;
    type Required_Access is (Read_Access, Write_Access);
    procedure Acquire
-     (reference : Grant_Reference; expectedOwner : CuBit.Messages.ProcessID;
+     (reference : Grant_Reference; expectedOwner : CuBit.Messages.Process_ID;
       byteOffset, byteLength : Unsigned_64; requiredAccess : Required_Access;
       mappedAddress : out System.Address; success : out Boolean);
    procedure Return_Acquisition (reference : Grant_Reference; success : out Boolean);

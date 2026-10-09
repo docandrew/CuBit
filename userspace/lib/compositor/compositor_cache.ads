@@ -108,6 +108,7 @@ private
       Started, Tried : Boolean := False;
       Status : Compositor_Policy.State := Compositor_Policy.Legacy;
       Views : Entries;
+      Next_Source : Source_Slot := Source_Slot'First;
    end record;
    function Mode (S : State) return Compositor_Policy.State is (S.Status);
    function Attempted (S : State) return Boolean is (S.Tried);

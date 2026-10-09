@@ -9,16 +9,18 @@
 --  tests/libc-ada checks the numbers).
 --
 --    EVENT_GRANT_REVOKED, to a grantee: words (0) = the grant's global slot,
---      (1) = its generation, (2) = the owner's PID. Return the mapping.
+--      (1) = its generation, (2) = the owner's identity. Return the mapping.
 --    EVENT_GRANT_RETURNED, to an owner: the same words, (2) = the grantee's
---      PID. The pages are the owner's again.
---    EVENT_CONTROL: words (0) = the kind, (1) = the sender's PID.
+--      identity. The pages are the owner's again.
+--    EVENT_CONTROL: words (0) = the kind, (1) = the sender's identity (which
+--      life sent it; KERN-003, docs/process-objects.md).
 --
---  Events are hints: a full event lane drops them. The grant's generation
---  (or a failed acquire) is authoritative.
+--  The kernel keeps each of these until it is read (docs/ipc-delivery.md):
+--  none is lost.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
+with CuBit.Process_IDs; use CuBit.Process_IDs;
 
 package CuBit.Control_Events with Pure, SPARK_Mode is
 
@@ -42,10 +44,10 @@ package CuBit.Control_Events with Pure, SPARK_Mode is
          when Grant_Revoked | Grant_Returned =>
             Slot       : Unsigned_64;
             Generation : Unsigned_64;
-            Peer       : Unsigned_64;
+            Peer       : Process_ID;
          when Control =>
-            Control    : Control_Kind;
-            Sender     : Unsigned_64;
+            Control : Control_Kind;
+            Sender  : Process_ID;
          when Not_Ours =>
             null;
       end case;
@@ -65,13 +67,13 @@ package CuBit.Control_Events with Pure, SPARK_Mode is
    function Decode (Label : Unsigned_32; Length : Unsigned_8; W0, W1, W2 : Unsigned_64)
      return Event is
      (if Label = Grant_Revoked_Label and then Length = Grant_Event_Words then
-         (Kind => Grant_Revoked, Slot => W0, Generation => W1, Peer => W2)
+         (Kind => Grant_Revoked, Slot => W0, Generation => W1, Peer => From_Word (W2))
       elsif Label = Grant_Returned_Label and then Length = Grant_Event_Words then
-         (Kind => Grant_Returned, Slot => W0, Generation => W1, Peer => W2)
+         (Kind => Grant_Returned, Slot => W0, Generation => W1, Peer => From_Word (W2))
       elsif Label = Control_Label and then Length = Control_Words
         and then Is_Control_Kind (W0)
       then
-         (Kind => Control, Control => To_Control_Kind (W0), Sender => W1)
+         (Kind => Control, Control => To_Control_Kind (W0), Sender => From_Word (W1))
       else (Kind => Not_Ours));
 
 end CuBit.Control_Events;

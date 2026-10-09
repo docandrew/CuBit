@@ -112,7 +112,7 @@ package body CuBit.Logging is
       Tag : MessageTag;
    begin
       Msg.words (0) := Logs.Severity'Pos (Level);
-      Tag := capCall (Slot, Msg);
+      Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
       Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
       Previous := Level;
       if Result = OK then
@@ -131,7 +131,7 @@ package body CuBit.Logging is
       Msg : Message := Request (CuBit.Log_Protocol.Get_Minimum);
       Tag : MessageTag;
    begin
-      Tag := capCall (Slot, Msg);
+      Tag := capCall (Slot, Msg, CuBit.Messages.Wait_Forever);
       Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
       Level := Logs.Trace;
       if Result = OK then
@@ -224,7 +224,7 @@ package body CuBit.Logging is
          end if;
       end if;
       Msg.words := [Logs.Severity'Pos (Minimum), Source, Item.Link.Peer_Number, 0];
-      Tag := capCall (Item.Slot, Msg);
+      Tag := capCall (Item.Slot, Msg, CuBit.Messages.Wait_Forever);
       Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
       --  The reply confirms the handle and the source filter applied.
       if Result = OK and then Msg.words (0) /= 0 and then
@@ -284,7 +284,7 @@ package body CuBit.Logging is
       Tag : MessageTag;
    begin
       Msg.words (0) := Item.Subscription;
-      Tag := capCall (Item.Slot, Msg);
+      Tag := capCall (Item.Slot, Msg, CuBit.Messages.Wait_Forever);
       Result := (if Tag.label = 0 then Unavailable else Reply_Status (Msg));
       if Result = OK or Result = Denied then
          --  The channel goes too; a later Subscribe opens a fresh one.

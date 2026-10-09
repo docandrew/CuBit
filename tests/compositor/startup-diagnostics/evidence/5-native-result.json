@@ -1,0 +1,9 @@
+{
+  "status": "PASS",
+  "gpu_enabled": false,
+  "scope": "native bootstrap rejected fault",
+  "binary_sha256": "eb4bba1bad1fef5cd871e538feda3ceff82392f4ee3907956ba0c39800b7bbbf",
+  "memory": "1G",
+  "render_approved": true,
+  "hardware_validated": false
+}

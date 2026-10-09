@@ -23,6 +23,8 @@
 -- process-lifetime / mailbox teardown protocol in kernel-process-retirement.md.
 -------------------------------------------------------------------------------
 with Capabilities;
+with IPC_Labels;
+with Kernel_Controls;
 with Memory_Grants;
 
 package Process.IPC is
@@ -46,8 +48,38 @@ package Process.IPC is
     procedure replyTargetOf (cap : Capabilities.Capability;
                              pid : out ProcessID;
                              tid : out ThreadID);
-    procedure sendRetirementEvent
-      (dest : ProcessID; generation : Capabilities.Generation; msg : Message);
+
+    ---------------------------------------------------------------------------
+    -- Kernel notices (docs/ipc-delivery.md): grant ends, exit and fault
+    -- reports, kept until read and delivered through the event receives.
+    ---------------------------------------------------------------------------
+
+    -- pid (its current life) is told of grant ends and sent reports from
+    -- now: at publication.
+    procedure openNotices (pid : ProcessID);
+    -- pid ended: nothing more for it, and what it was owed is dropped
+    -- (PIDs that waited only for its reading are freed). At reclamation,
+    -- before its grants are revoked. Caller holds no IPC lock.
+    procedure closeNotices (pid : ProcessID);
+    -- pid's exit report, kept for its parent and for the process manager
+    -- (their lives as given); ring* say whom to ring (ringReport) once the
+    -- caller's locks are released. Before releaseRetiredPID.
+    procedure reportExit
+      (pid : ProcessID; msg : Message;
+       parent : ProcessID; parentGeneration : Capabilities.Generation;
+       manager : ProcessID; managerGeneration : Capabilities.Generation;
+       ringParent, ringManager : out Boolean);
+    procedure ringReport (recipient : ProcessID);
+    -- A control message from sender to target (this life of each), kept
+    -- until target reads it; Busy when every sender slot of target holds
+    -- another sender's unread messages (the sender keeps its message).
+    procedure sendControl
+      (target : ProcessID; targetGeneration : Capabilities.Generation;
+       sender : ProcessID; kind : IPC_Labels.Control_Kind;
+       result : out Kernel_Controls.Send_Result);
+    -- A retired, invalidated pid goes back to the allocator once no report
+    -- about it is unread; until then its release waits for the last read.
+    procedure releaseRetiredPID (pid : ProcessID);
 
     ---------------------------------------------------------------------------
     -- send
@@ -59,27 +91,22 @@ package Process.IPC is
     -- @return the reply message tag.
     ---------------------------------------------------------------------------
     function send (dest : ProcessID; msg : Message;
-                   expectedGeneration : Capabilities.Generation := 0) return MessageTag;
+                   expectedGeneration : Capabilities.Generation;
+                   deadlineMs : Unsigned_64) return MessageTag;
 
-    ---------------------------------------------------------------------------
-    -- sendEvent
-    -- Non-blocking version of send, intended for interrupts. Sends a message
-    -- to the destination process but does not block whatever process was
-    -- active when the interrupt occurred.
-    ---------------------------------------------------------------------------
-    procedure sendEvent (dest : ProcessID; msg : Message);
 
     --  Non-blocking event publication with explicit backpressure. accepted is
     --  False when the destination is unavailable or its bounded event lane is
     --  full. Producers of stateful streams use this result to mark their next
     --  accepted report as a resynchronization snapshot.
-    procedure trySendEvent (dest     : ProcessID;
-                            msg      : Message;
-                            accepted : out Boolean;
+    procedure trySendEvent (dest      : ProcessID;
+                            msg       : Message;
+                            publisher : ProcessID;
+                            accepted  : out Boolean;
                             expectedGeneration : Capabilities.Generation := 0);
 
-    -- Publish a coalescible, persistent device-work doorbell. Unlike
-    -- sendEvent, this cannot be lost because a mailbox ring is full.
+    -- Publish a coalescible, persistent device-work doorbell. It cannot be
+    -- refused: it is a bit, not a queued message.
     procedure notifyIRQ (dest : ProcessID);
 
     ---------------------------------------------------------------------------
@@ -209,10 +236,15 @@ package Process.IPC is
     -- @param minWait     - minimum completions before returning (blocks if fewer)
     -- @param numReturned - actual number of completions returned
     ---------------------------------------------------------------------------
-    procedure waitCompletion (entries     : out CompletionRing;
+    -- Completions are written to the caller's user memory at destination
+    -- (CompletionEntry each) through Process.User_Memory: the whole range
+    -- must be the caller's own writable memory, checked before anything is
+    -- taken (ok False otherwise, and nothing is taken).
+    procedure waitCompletion (destination : in  Unsigned_64;
                               maxEntries  : in  Natural;
                               minWait     : in  Natural;
-                              numReturned : out Natural);
+                              numReturned : out Natural;
+                              ok          : out Boolean);
 
     ---------------------------------------------------------------------------
     -- pollCompletion
@@ -274,7 +306,7 @@ package Process.IPC is
     -- @param id - ID of the grant to revoke
     ---------------------------------------------------------------------------
     -- success reports whether an active owned grant was found under grantLock.
-    procedure revokeGrant (id : GrantID; success : out Boolean);
+    procedure revokeGrant (id : Memory_Grants.Global_Slot; success : out Boolean);
 
     ---------------------------------------------------------------------------
     -- revokeAllGrants
@@ -294,15 +326,16 @@ package Process.IPC is
 
     ---------------------------------------------------------------------------
     -- getOwnedGrantGeneration
-    -- Success with zero means the owned slot is inactive (fully retired).
-    -- A pending revocation still returns its nonzero generation. Foreign slots
-    -- fail; callers must never interpret query failure as proof of retirement.
-    -- Return the generation for an active grant slot owned by the caller.
+    -- The generation of the caller's active grant at this slot (a pending
+    -- revocation is still active), or zero when the caller has none there.
+    -- Zero proves the caller's reference retired: a slot's generation only
+    -- advances, so the caller's grant can't come back. The slot may already
+    -- hold another process's grant (one global table, KERN-003 step 2a);
+    -- that reads as zero too, so the query reveals nothing about it.
     ---------------------------------------------------------------------------
     procedure getOwnedGrantGeneration
-      (slot       : Memory_Grants.Global_Slot;
-       generation : out Memory_Grants.Grant_Generation;
-       success    : out Boolean);
+      (slot       : Memory_Grants.Grant_Slot;
+       generation : out Memory_Grants.Grant_Generation);
 
     ---------------------------------------------------------------------------
     -- acquireGrant
@@ -327,9 +360,9 @@ package Process.IPC is
        success   : out Boolean);
 
     -- Called once after reserving a PID, before resetting/publishing its
-    -- process record. Does not allocate. Refuses to discard any active grant.
-    function initializeGrantLife
-      (pid : ProcessID; life : Memory_Grants.Process_Generation) return Boolean;
+    -- process record: True when no grant of an earlier life of this slot is
+    -- still on its lists (they leave before the slot can be reused).
+    function grantListsEmpty (pid : ProcessID) return Boolean;
 
     -- Called by process teardown.  When acquired grants remain, retain the
     -- PID until teardown is complete and the final acquisition is returned.
@@ -340,8 +373,8 @@ package Process.IPC is
 
     procedure finishGrantProtectedTeardown (pid : ProcessID);
 
-    -- Release DMA blocks owned by a process.  Teardown calls this immediately
-    -- when no grant is acquired, or after the final acquisition is returned.
+    -- Retirement-worker-only bounded step, after DMA.Take_Ready; at most
+    -- 64 ownership-tag releases. PID stays reserved until all records retire.
     procedure releaseDMAAllocations (pid : ProcessID);
 
     ---------------------------------------------------------------------------
@@ -356,7 +389,8 @@ package Process.IPC is
     -- @return the reply message tag (NULL_TAG on capability error).
     ---------------------------------------------------------------------------
     function capSend (capSlot : Capabilities.CapabilitySlot;
-                      msg     : Message) return MessageTag;
+                      msg     : Message;
+                      deadlineMs : Unsigned_64) return MessageTag;
 
     ---------------------------------------------------------------------------
     -- capCall
@@ -366,7 +400,8 @@ package Process.IPC is
     -- @return the reply message tag (NULL_TAG on capability error).
     ---------------------------------------------------------------------------
     function capCall (capSlot : Capabilities.CapabilitySlot;
-                      msg     : Message) return MessageTag;
+                      msg     : Message;
+                      deadlineMs : Unsigned_64) return MessageTag;
 
     ---------------------------------------------------------------------------
     -- capSubmit

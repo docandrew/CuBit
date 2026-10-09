@@ -19,7 +19,9 @@ package CuBit.Messages is
    NULL_MESSAGE : constant Message := ((0, 0, 0, 0), 0, [others => 0]);
    Recipient_Generation : Unsigned_64 := 7;
    Fail_Delivery : Boolean := False;
-   function capCall (Slot : CapabilitySlot; Msg : in out Message) return MessageTag;
+   Wait_Forever : constant Unsigned_64 := Unsigned_64'Last;
+   function capCall (Slot : CapabilitySlot; Msg : in out Message;
+                     Deadline : Unsigned_64) return MessageTag;
    function Syscall (Number : Unsigned_64;
      A, B, C, D, E, F : Unsigned_64 := 0) return Unsigned_64;
 end CuBit.Messages;

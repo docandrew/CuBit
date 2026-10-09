@@ -11,6 +11,22 @@ generic
    -- Return success only after completed hardware translation invalidation.
 package Intel_GPU_VM_Image.Removal is
    type Controller is limited private;
+   procedure Begin_Prepare
+     (State : in out Controller; Object : Image;
+      Expected_Revision, GPU : Unsigned_64; Page_Count : Natural;
+      Accepted : out Boolean);
+   function Preparing (State : Controller) return Boolean;
+   generic
+      with function Expected_Page (Ordinal : Positive) return Unsigned_64;
+   procedure Capture_Step
+     (State : in out Controller; Object : Image; Accepted : out Boolean);
+   procedure Cancel_Prepare (State : in out Controller);
+   -- One retained-backing callback per capture step, with owner/root/revision
+   -- checks across yields and after callbacks. No writes until every page has
+   -- matched the sealed source. Leaf lookup yields after at most32 descriptor
+   -- comparisons per capture/publication step; callback cost is caller-owned.
+   -- A single leaf-table route is cached for adjacent pages within a 2MiB
+   -- interval, scoped to this controller's retained source root/revision.
    generic
       with function Expected_Page (Ordinal : Positive) return Unsigned_64;
    procedure Start_From_Pages
@@ -39,6 +55,16 @@ package Intel_GPU_VM_Image.Removal is
    procedure Commit
      (State : in out Controller; Object : in out Image;
       Invalidation_Completed : Boolean; Accepted : out Boolean);
+   procedure Begin_Commit
+     (State : in out Controller; Object : in out Image;
+      Invalidation_Completed : Boolean; Accepted : out Boolean);
+   procedure Commit_Step
+     (State : in out Controller; Object : in out Image; Complete : out Boolean);
+   function Committing (State : Controller) return Boolean;
+   procedure Cancel_Commit (State : in out Controller);
+   -- At most32 descriptor comparisons and one leaf clear per commit step.
+   -- Partial metadata is hidden (image invalid) until one final epoch commit.
+   -- Owner/source loss or cancellation leaves it hidden and backing retained.
    -- Split form for VM_Update's Publish/Invalidate/Resume stages. Publish
    -- leaves metadata untouched and admission poisoned until Commit. The
    -- trusted coordinator supplies completed invalidation, never a client.
@@ -60,9 +86,14 @@ private
    type Controller is limited record
       Poisoned : Boolean := False;
       Pending : Boolean := False;
-      Active, Executing : Boolean := False;
+      Active, Executing, Prepare_Active : Boolean := False;
+      Commit_Active : Boolean := False;
       Cursor : Natural := 0;
       Root, Epoch, First : Unsigned_64 := 0;
       Pages : Natural := 0;
+      Cached_Leaf : Natural := 0;
+      Cached_Region : Unsigned_64 := 0;
+      Route_Level : Natural range 0 .. 3 := 0;
+      Route_Current, Route_Next : Natural := 0;
    end record;
 end Intel_GPU_VM_Image.Removal;

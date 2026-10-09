@@ -1,0 +1,6 @@
+(executable-manifest v1
+  (identity "com.cubit.desktop-metrics-observer")
+  (version "0.1.0")
+  (request-service metrics-observer read-write metrics-observer)
+ (request-service filesystem read-write filesystem)
+ (filesystem-scope (rights read write create) "@nvme:0/work/"))

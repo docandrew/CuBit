@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+from native_mesa_targets import archives as select_archives
 
 
 def digest(path):
@@ -30,6 +31,18 @@ def compiler_command(entry):
         elif arg not in ('-MD', '-MMD', '-MP', '-c') and not arg.endswith('/anv_kmd_backend.c'):
             result.append(arg)
     return result
+
+
+def track_archive(path, track):
+    """A thin archive's identity includes its externally stored members."""
+    path = Path(path).resolve()
+    track(path)
+    with path.open('rb') as stream:
+        thin = stream.read(8) == b'!<thin>\n'
+    if thin:
+        for name in subprocess.check_output(['ar', 't', str(path)], text=True).splitlines():
+            member = Path(name)
+            track(member if member.is_absolute() else path.parent / member)
 
 
 def main():
@@ -62,14 +75,23 @@ def main():
     targets_file = track(build / 'meson-info/intro-targets.json')
     commands_file = track(build / 'compile_commands.json')
     targets = json.loads(targets_file.read_text())
+    options_file = track(build / 'meson-info/intro-buildoptions.json')
+    options = {item['name']: item['value'] for item in json.loads(options_file.read_text())}
+    gallium = options.get('gallium-drivers')
+    if gallium not in ([], ['softpipe']):
+        raise SystemExit('Expected ANV-only or combined ANV/softpipe configuration')
+    combined = gallium == ['softpipe']
+    track(Path(__file__).with_name('native_mesa_targets.py'))
     libraries = sorted({Path(name).resolve() for target in targets
                         if target['type'] == 'static library' for name in target['filename']})
     aggregate = build / 'src/intel/vulkan/libvulkan_intel.a'
+    if combined:
+        libraries = select_archives(targets, build)
     if aggregate not in libraries or any(not p.is_relative_to(build) or p.suffix != '.a'
                                          for p in libraries):
         raise SystemExit('Invalid native static archive inventory')
     for path in libraries:
-        track(path)
+        track_archive(path, track)
     native = root / 'userspace/mesa/anv'
     prepared = source / 'src/intel/vulkan'
     for name in ('anv_cubit_memory.c', 'anv_cubit_memory.h', 'anv_cubit_physical.c',
@@ -131,6 +153,9 @@ def main():
              '--RTS=' + str(root / 'userspace/runtime'), '-I' + str(native), native / (name + '.adb')])
         objects.append(out / (name + '.o'))
     symbols = ['cubit_mesa_service_' + name for name in ('start', 'device', 'status', 'close')]
+    if combined:
+        symbols += ['softpipe_create_screen', 'util_make_vertex_passthrough_shader',
+                    'util_make_fragment_tex_shader']
     dispatch = ['vk_common_' + name for name in ('GetPhysicalDeviceProperties2', 'CreateFramebuffer',
                 'DestroyFramebuffer', 'CreatePipelineLayout', 'DestroyPipelineLayout',
                 'QueueSubmit', 'CmdCopyImageToBuffer')]
@@ -166,4 +191,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

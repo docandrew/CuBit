@@ -1,0 +1,10 @@
+# The control-events test launcher (tests/control-events): lends its child
+# an outlet ring, revokes it, and sends the child a Stop. As the ipc-test
+# endpoint holder it passes the child its way to control-producer.app's
+# outlet (a launcher holds what its child requests).
+(Executable_Manifest
+  identity => "com.cubit.control-check"
+  version => "0.1.0"
+  requests => [(service "process-manager" "process-manager")
+               (service "ipc-test" "ipc-test")]
+  may_launch => [(Launch "control-child.app")])

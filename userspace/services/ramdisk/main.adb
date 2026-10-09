@@ -14,7 +14,7 @@ procedure Main is
    Image : System.Address;
    Image_Size, Heap : Unsigned_64;
    Request, Response : Message;
-   Sender : ProcessID;
+   Sender : Process_ID;
    Ignore : Unsigned_64;
    Tag : MessageTag;
 begin
@@ -52,7 +52,8 @@ begin
    debugPrint ("ramdisk: volatile block device ready" & ASCII.LF);
    Tag := capSend
      (15, (tag => (label => 16#FF00#, length => 0, flags => 0, reserved => 0),
-           authorityTag => 0, words => [others => 0]));
+           authorityTag => 0, words => [others => 0]),
+      CuBit.Messages.Wait_Forever);
    loop
       receive (Sender, Request);
       Ram_Device.Handle (Sender, Request, Response);

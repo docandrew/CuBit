@@ -60,16 +60,43 @@ package body Intel_GPU_Buffer_Handles with SPARK_Mode is
    function Session_Closed (Object : Registry; Session : Session_ID) return Boolean is
      (for all I in 1 .. Object.Used => Read_Item (Object, I).Session /= Session or else
                            not Read_Item (Object, I).Open);
-   -- Names are monotonic, never table offsets. This bounded bootstrap search
-   -- must become indexed lookup with growable storage; no caller may derive
-   -- an index from a handle. The fallback is not a match: callers check ID.
+   -- Names remain monotonic, never table offsets. The radix payload resolves
+   -- an internal stable record; callers still verify its full ID and owner.
+   -- The fallback is not a match: callers check ID before using the record.
    function Slot_Of (Object : Registry; ID : Handle) return Slot is
+      function Capacity return Natural is (Object.Used);
+      function Read (Index : Positive) return Intel_GPU_Name_Index.Node is
+        (Read_Item (Object, Index).Name_Node);
+      procedure No_Write (Index : Positive; Value : Intel_GPU_Name_Index.Node) is
+         pragma Unreferenced (Index, Value);
+      begin raise Program_Error; end No_Write;
+      package Names is new Intel_GPU_Name_Index.Table (Capacity, Read, No_Write);
+      Found : constant Natural := Names.Lookup (Object.Names, ID);
    begin
-      for I in 1 .. Object.Used loop
-         if Read_Item (Object, I).ID = ID then return I; end if;
-      end loop;
-      return Slot'First;
+      return (if Found in 1 .. Object.Used then Found else Slot'First);
    end Slot_Of;
+   procedure Index_Name
+     (Object : in out Registry; Record_Slot : Slot; Previous, ID : Handle;
+      Accepted : out Boolean) is
+      function Capacity return Natural is (Object.Used);
+      function Read (Index : Positive) return Intel_GPU_Name_Index.Node is
+        (Read_Item (Object, Index).Name_Node);
+      procedure Write (Index : Positive; Value : Intel_GPU_Name_Index.Node) is
+      begin
+         Write_Item (Object, Index, (Read_Item (Object, Index) with delta Name_Node => Value));
+      end Write;
+      package Names is new Intel_GPU_Name_Index.Table (Capacity, Read, Write);
+      Free_Node : Natural := Record_Slot;
+   begin
+      Accepted := False;
+      if Previous /= No_Handle then
+         Names.Remove (Object.Names, Previous, Free_Node, Accepted);
+         if not Accepted then Object.Failed := True; return; end if;
+      end if;
+      if Free_Node = 0 then Object.Failed := True; Accepted := False; return; end if;
+      Names.Insert (Object.Names, ID, Record_Slot, Free_Node, Accepted);
+      if not Accepted then Object.Failed := True; end if;
+   end Index_Name;
    function Open_Item (Value : Item; Session : Session_ID; ID : Handle)
       return Boolean is
      (Session /= 0 and then ID /= No_Handle and then Value.ID = ID and then
@@ -249,6 +276,7 @@ package body Intel_GPU_Buffer_Handles with SPARK_Mode is
    procedure Register
      (Object : in out Registry; Session : Session_ID;
       Backing : Replies.Backing; ID : out Handle) is
+      Indexed : Boolean;
    begin
       ID := No_Handle;
       if not Can_Issue (Object) or else Session = 0 or else Object.Used = Object.Available or else
@@ -267,7 +295,10 @@ package body Intel_GPU_Buffer_Handles with SPARK_Mode is
       Object.Used := Object.Used + 1;
       Object.Last_Issued := Object.Last_Issued + 1;
       ID := Object.Last_Issued;
-      Write_Item (Object, Object.Used, (ID, Session, True, False, Backing, 0, 0));
+      Write_Item (Object, Object.Used,
+        (ID, Session, True, False, Backing, 0, 0, Intel_GPU_Name_Index.Empty));
+      Index_Name (Object, Object.Used, No_Handle, ID, Indexed);
+      if not Indexed then ID := No_Handle; end if;
    end Register;
    procedure Close
      (Object : in out Registry; Session : Session_ID; ID : Handle;
@@ -284,21 +315,38 @@ package body Intel_GPU_Buffer_Handles with SPARK_Mode is
          Write_Item (Object, Index, (Value with delta Open => False));
       end if;
    end Close;
-   procedure Close_Session (Object : in out Registry; Session : Session_ID) is
+   procedure Close_Session_Step
+     (Object : in out Registry; Session : Session_ID; Last : Natural;
+      Cursor : in out Natural; Complete : out Boolean) is
+      Finish : Natural;
    begin
-      for I in 1 .. Object.Used loop
+      Complete := False;
+      if Cursor > Last or else Last > Object.Used then return; end if;
+      Finish := Cursor + Natural'Min (32, Last - Cursor);
+      while Cursor < Finish loop
+         declare I : constant Positive := Cursor + 1; begin
          if Read_Item (Object, I).Session = Session then
             Write_Item (Object, I, (Read_Item (Object, I) with delta Open => False));
          end if;
-         pragma Loop_Invariant
-           (for all J in 1 .. I => Read_Item (Object, J).Session /= Session or else
-                                  not Read_Item (Object, J).Open);
+         Cursor := I;
+         end;
+      end loop;
+      Complete := Cursor = Last;
+   end Close_Session_Step;
+   procedure Close_Session (Object : in out Registry; Session : Session_ID) is
+      Cursor : Natural := 0;
+      Complete : Boolean;
+   begin
+      loop
+         Close_Session_Step (Object, Session, Object.Used, Cursor, Complete);
+         exit when Complete;
       end loop;
    end Close_Session;
    procedure Replace_Retired
      (Object : in out Registry; Previous_Session, Session : Session_ID; Previous : Handle;
       Backing : Replies.Backing; References_Retired : Boolean; ID : out Handle) is
       Index : constant Slot := Slot_Of (Object, Previous);
+      Indexed : Boolean;
    begin
       ID := No_Handle;
       if not Can_Issue (Object) or else not References_Retired or else Session = 0 or else Previous_Session = 0 or else
@@ -322,7 +370,12 @@ package body Intel_GPU_Buffer_Handles with SPARK_Mode is
       end loop;
       Object.Last_Issued := Object.Last_Issued + 1;
       ID := Object.Last_Issued;
-      Write_Item (Object, Index, (ID, Session, True, False, Backing, 0, 0));
+      Index_Name (Object, Index, Previous, ID, Indexed);
+      if not Indexed then ID := No_Handle; return; end if;
+      -- Removing a radix node may move a neighbor's index payload into this
+      -- slot. Preserve the current node, not a pre-removal copy of the record.
+      Write_Item (Object, Index,
+        (ID, Session, True, False, Backing, 0, 0, Read_Item (Object, Index).Name_Node));
    end Replace_Retired;
    function Can_Release_Backing
      (Object : Registry; Session : Session_ID; ID : Handle) return Boolean is

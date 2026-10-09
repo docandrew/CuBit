@@ -10,53 +10,89 @@ package body Intel_GPU_VM_Image.Growth.Backing.Writer is
       Expected => Item.Expected, Value => Item.Value, Fill => Item.Fill,
       Index => Item.Index, Existing_Parent => Topology.Existing_Parent,
       New_Parent => Topology.New_Parent, Level => Topology.Level);
-   procedure Start_From_Pages
-     (Object : in out State; Source : Image; GPU, Bytes, Retained_Root : Unsigned_64;
-      Page_Count : Natural; Accepted : out Boolean)
-   is
+   function Preparing (Work : Preparation) return Boolean is
+     (Work.Phase in Capture_Pages | Resolve_Pages);
+   function Preparation_Current (Work : Preparation; Object : State; Source : Image) return Boolean is
+     (not Work.Cancelled and then Object.Begun and then not Object.Commit_Tried and then not Object.Done and then
+      Object.Root = Work.Root and then Object.Epoch = Work.Epoch and then
+      Object.Hardware_Root = Work.Hardware_Root and then Object.Count = Work.Count and then
+      Sealed (Source) and then Root_DMA (Source) = Work.Root and then Revision (Source) = Work.Epoch);
+   function Prepared (Work : Preparation; Object : State; Source : Image) return Boolean is
+     (Work.Phase = Ready and then Object.Phase = Fill_Child and then
+      Preparation_Current (Work, Object, Source));
+   procedure Cancel_Preparation (Work : in out Preparation; Object : in out State) is
+   begin
+      Work.Cancelled := True; Work.Phase := Rejected; Cancel_Resolution (Work.Resolver);
+      Object.Phase := Failed;
+   end Cancel_Preparation;
+   procedure Begin_Preparation
+     (Work : in out Preparation; Object : in out State; Source : Image;
+      GPU, Bytes, Retained_Root : Unsigned_64; Page_Count : Natural; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if Preparing (Work) or else Object.Begun or else Object.Commit_Tried then return; end if;
+      if Page_Count > Growth_Capacity (Object) then return; end if;
+      if Source.Count > Metadata_Capacity (Source) or else
+        Page_Count > Metadata_Capacity (Source) - Source.Count then return; end if;
+      Object.Begun := True; Object.Phase := Failed;
+      Work.Phase := Rejected; Cancel_Resolution (Work.Resolver);
+      Work.Cancelled := False;
+      Object.Root := Root_DMA (Source); Object.Epoch := Revision (Source);
+      Object.GPU := GPU; Object.Bytes := Bytes; Object.Hardware_Root := Retained_Root;
+      Object.Count := Page_Count;
+      Work.Root := Object.Root; Work.Epoch := Object.Epoch;
+      Work.Hardware_Root := Retained_Root; Work.Count := Page_Count; Work.Cursor := 1;
+      if Page_Count = 0 or else not Exclusive or else not Preparation_Current (Work, Object, Source)
+        or else not Owned_Table (Retained_Root) or else not Exclusive
+        or else not Preparation_Current (Work, Object, Source) then return; end if;
+      Work.Phase := Capture_Pages; Accepted := True;
+   end Begin_Preparation;
+   procedure Prepare_Step (Work : in out Preparation; Object : in out State; Source : Image) is
       OK : Boolean;
-      Epoch : constant Unsigned_64 := Revision (Source);
-      Root : constant Unsigned_64 := Root_DMA (Source);
       DMA : Unsigned_64;
       function Retained_Page (Ordinal : Positive) return Unsigned_64 is
         (Growth_Storage.Get (Object.Plan, Ordinal).Child_DMA);
-      function Held (DMA : Unsigned_64) return Boolean is
-        (not Object.Commit_Tried and then Exclusive and then Sealed (Source)
-         and then Root_DMA (Source) = Root and then Revision (Source) = Epoch
-         and then Owned_Table (DMA) and then Exclusive and then not Object.Commit_Tried);
+      function Held return Boolean is
+        (Preparing (Work) and then Preparation_Current (Work, Object, Source) and then
+         Exclusive and then Owned_Table (Work.Hardware_Root) and then Exclusive and then
+         Preparing (Work) and then Preparation_Current (Work, Object, Source));
       procedure Store_Link (Ordinal : Positive; Item : Link; Topology : Node; OK : out Boolean) is
       begin
-         OK := Held (Retained_Root) and then Item.Child_DMA = Retained_Page (Ordinal);
+         OK := Held and then Item.Child_DMA = Retained_Page (Ordinal);
          if OK then Growth_Storage.Put (Object.Plan, Ordinal, Retained_Link (Item, Topology)); end if;
       end Store_Link;
-      procedure Resolve_Retained is new Resolve_Into (Retained_Page, Store_Link);
-      -- Provenance resolution is a trusted callback, but may observe/revoke
-      -- an owner while returning its lookup result. Do not let an earlier
-      -- exclusion sample authorize the next memory access after that callback.
+      procedure Resolve_Step is new Step_Resolution (Held, Retained_Page, Store_Link);
    begin
-      Accepted := False;
-      if Object.Begun or else Object.Commit_Tried then return; end if;
-      if Page_Count > Growth_Capacity (Object) then return; end if;
-      -- Receipt storage does not imply source mirror/descriptor capacity.
-      -- Reject before publishing directories that software cannot adopt.
-      if Source.Count > Metadata_Capacity (Source) or else
-        Page_Count > Metadata_Capacity (Source) - Source.Count then return; end if;
-      Object.Begun := True;
-      Object.Phase := Failed;
-      if not Held (Retained_Root) then return; end if;
-      for N in 1 .. Page_Count loop
-         DMA := Read_Page (N);
-         if not Held (Retained_Root) then return; end if;
-         Growth_Storage.Put (Object.Plan, N, (Child_DMA => DMA, others => <>));
-      end loop;
-      Resolve_Retained (Source, GPU, Bytes, Retained_Root, Page_Count, Growth_Capacity (Object), OK);
-      if not OK or else not Held (Retained_Root) then return; end if;
-      Object.Root := Root_DMA (Source); Object.Epoch := Epoch;
-      Object.GPU := GPU; Object.Bytes := Bytes;
-      Object.Hardware_Root := Retained_Root;
-      Object.Count := Page_Count;
+      if not Preparing (Work) then return; end if;
+      if not Held then Cancel_Preparation (Work, Object); return; end if;
+      if Work.Phase = Capture_Pages then
+         DMA := Read_Page (Work.Cursor);
+         if not Held then Cancel_Preparation (Work, Object); return; end if;
+         Growth_Storage.Put (Object.Plan, Work.Cursor, (Child_DMA => DMA, others => <>));
+         if Work.Cursor < Work.Count then Work.Cursor := Work.Cursor + 1; return; end if;
+         Start_Resolution (Work.Resolver, Source, Object.GPU, Object.Bytes,
+                           Work.Hardware_Root, Work.Count, Growth_Capacity (Object), OK);
+         if not OK then Cancel_Preparation (Work, Object); return; end if;
+         Work.Phase := Resolve_Pages;
+         return;
+      end if;
+      Resolve_Step (Work.Resolver, Source);
+      if not Held then Cancel_Preparation (Work, Object); return; end if;
+      if Phase (Work.Resolver) in Inspecting .. Resolving then return; end if;
+      if not Resolution_Valid (Work.Resolver, Source) then Cancel_Preparation (Work, Object); return; end if;
       Object.Cursor := 1; Object.Word := 0; Object.Phase := Fill_Child;
-      Accepted := True;
+      Work.Phase := Ready;
+   end Prepare_Step;
+   procedure Start_From_Pages
+     (Object : in out State; Source : Image; GPU, Bytes, Retained_Root : Unsigned_64;
+      Page_Count : Natural; Accepted : out Boolean) is
+      Work : Preparation;
+      procedure Advance is new Prepare_Step (Read_Page);
+   begin
+      Begin_Preparation (Work, Object, Source, GPU, Bytes, Retained_Root, Page_Count, Accepted);
+      if not Accepted then return; end if;
+      while Preparing (Work) loop Advance (Work, Object, Source); end loop;
+      Accepted := Prepared (Work, Object, Source);
    end Start_From_Pages;
    procedure Start
      (Object : in out State; Source : Image; GPU, Bytes, Retained_Root : Unsigned_64;
@@ -134,91 +170,175 @@ package body Intel_GPU_VM_Image.Growth.Backing.Writer is
          when others => null;
       end case;
    end Step;
-   procedure Commit
-     (Object : in out State; Source : in out Image; Accepted : out Boolean)
-   is
-      Base, Parent : Natural;
+   function Committing (Work : Adoption) return Boolean is
+     (Work.Phase in Validate_Plan | Clear_Mirrors | Link_Mirrors);
+   procedure Cancel_Commit (Work : in out Adoption) is
+   begin
+      Work.Cancelled := True; Work.Phase := Adoption_Failed; Cancel_Resolution (Work.Resolver);
+   end Cancel_Commit;
+   function Adoption_Current (Work : Adoption; Object : State; Source : Image) return Boolean is
+     (not Work.Cancelled and then Committing (Work) and then Object.Commit_Tried and then Object.Done and then
+      not Object.Adopted and then Object.Root = Work.Root and then Object.Epoch = Work.Epoch and then
+      Object.Count = Work.Count and then Object.Hardware_Root = Work.Hardware_Root and then
+      Source.Frozen and then Source.Count = Work.Base and then Source.Epoch = Work.Epoch and then
+      Descriptor (Source, 1).DMA = Work.Root and then
+      Source.Valid = (Work.Phase = Validate_Plan));
+   procedure Begin_Commit
+     (Work : in out Adoption; Object : in out State; Source : Image; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if Committing (Work) or else Object.Commit_Tried then return; end if;
+      Cancel_Commit (Work);
+      Work.Cancelled := False;
+      Object.Commit_Tried := True;
+      if Pending (Object) then Object.Phase := Failed; end if;
+      if not Object.Done or else not Exclusive or else not Source.Valid or else not Sealed (Source)
+        or else Root_DMA (Source) /= Object.Root or else Revision (Source) /= Object.Epoch
+        or else Source.Epoch = Unsigned_64'Last or else not Invalidation_Confirmed or else Work.Cancelled
+      then return; end if;
+      if Source.Count > Metadata_Capacity (Source) or else
+        Object.Count > Metadata_Capacity (Source) - Source.Count then return; end if;
+      Work.Root := Object.Root; Work.Epoch := Object.Epoch; Work.Hardware_Root := Object.Hardware_Root;
+      Work.Base := Source.Count; Work.Count := Object.Count; Work.Cursor := 0;
+      Start_Resolution (Work.Resolver, Source, Object.GPU, Object.Bytes, Object.Hardware_Root,
+                        Object.Count, Object.Count, Accepted);
+      if Accepted then Work.Phase := Validate_Plan; end if;
+   end Begin_Commit;
+   procedure Commit_Step (Work : in out Adoption; Object : in out State; Source : in out Image) is
+      Parent, Page : Natural;
       OK : Boolean;
+      function Held return Boolean is
+        (Adoption_Current (Work, Object, Source) and then Exclusive and then
+         Invalidation_Confirmed and then Exclusive and then Adoption_Current (Work, Object, Source));
       function Retained_Page (Ordinal : Positive) return Unsigned_64 is
         (Growth_Storage.Get (Object.Plan, Ordinal).Child_DMA);
       procedure Check_Link (Ordinal : Positive; Item : Link; Topology : Node; OK : out Boolean) is
       begin
-         OK := Exclusive and then Sealed (Source) and then
-           Revision (Source) = Object.Epoch and then Root_DMA (Source) = Object.Root and then
+         OK := Held and then
            Growth_Storage.Get (Object.Plan, Ordinal) = Retained_Link (Item, Topology);
       end Check_Link;
-      procedure Resolve_Retained is new Resolve_Into (Retained_Page, Check_Link);
+      procedure Resolve_Step is new Step_Resolution (Held, Retained_Page, Check_Link);
    begin
-      Accepted := False;
-      if Object.Commit_Tried then return; end if;
-      Object.Commit_Tried := True;
-      if Pending (Object) then Object.Phase := Failed; end if;
-      if not Object.Done or else not Exclusive or else not Sealed (Source)
-        or else Root_DMA (Source) /= Object.Root or else Revision (Source) /= Object.Epoch
-        or else Source.Epoch = Unsigned_64'Last or else not Invalidation_Confirmed
-      then return; end if;
-      if Source.Count > Metadata_Capacity (Source) or else
-        Object.Count > Metadata_Capacity (Source) - Source.Count then return; end if;
-      Resolve_Retained (Source, Object.GPU, Object.Bytes, Object.Hardware_Root,
-               Object.Count, Object.Count, OK);
-      if not OK then return; end if;
-      if not Exclusive or else not Sealed (Source) or else Root_DMA (Source) /= Object.Root
-        or else Revision (Source) /= Object.Epoch or else not Invalidation_Confirmed
-      then return; end if;
-      Base := Source.Count;
-      -- All fallible checks/callbacks precede mutation. Serialized owner only.
-      -- Logical holes stay zero; Entry_Value exports the scratch fallback.
-      for N in 1 .. Object.Count loop
-         Set_Descriptor (Source, Base + N,
-           (Growth_Storage.Get (Object.Plan, N).Child_DMA, Growth_Storage.Get (Object.Plan, N).Level));
-         Clear_Table (Source, Base + N);
-      end loop;
-      for N in 1 .. Object.Count loop
-         declare Item : constant Growth_Link := Growth_Storage.Get (Object.Plan, N); begin
+      if not Committing (Work) then return; end if;
+      if not Held then Cancel_Commit (Work); return; end if;
+      if Work.Phase = Validate_Plan then
+         Resolve_Step (Work.Resolver, Source);
+         if not Held then Cancel_Commit (Work); return; end if;
+         if Phase (Work.Resolver) in Inspecting .. Resolving then return; end if;
+         OK := Resolution_Valid (Work.Resolver, Source);
+         if not OK then Cancel_Commit (Work); return; end if;
+         -- No partial mirror is usable. Only this controller can restore valid
+         -- after all retained words are adopted; cancellation leaves it hidden.
+         Source.Valid := False; Work.Phase := Clear_Mirrors; Work.Cursor := 0;
+         return;
+      elsif Work.Phase = Clear_Mirrors then
+         for Action in 1 .. 32 loop
+            Page := Work.Cursor / 512 + 1;
+            if Work.Cursor mod 512 = 0 then
+               Set_Descriptor (Source, Work.Base + Page,
+                 (Growth_Storage.Get (Object.Plan, Page).Child_DMA,
+                  Growth_Storage.Get (Object.Plan, Page).Level));
+            end if;
+            Set_Raw_Word (Source, Work.Base + Page,
+                          Intel_GPU_ADLN_PPGTT.Table_Index (Work.Cursor mod 512), 0);
+            Work.Cursor := Work.Cursor + 1;
+            if Work.Cursor = Work.Count * 512 then
+               Work.Cursor := 1; Work.Phase := Link_Mirrors; return;
+            end if;
+         end loop;
+         return;
+      end if;
+      for Action in 1 .. 32 loop
+         declare Item : constant Growth_Link := Growth_Storage.Get (Object.Plan, Work.Cursor); begin
             Parent := (if Item.Existing_Parent /= 0 then Item.Existing_Parent
-                       else Base + Item.New_Parent);
+                       else Work.Base + Item.New_Parent);
             Set_Raw_Word (Source, Parent, Item.Index, Item.Value);
          end;
+         exit when Work.Cursor = Work.Count;
+         Work.Cursor := Work.Cursor + 1;
+         if Action = 32 then return; end if;
       end loop;
-      Source.Count := Base + Object.Count; Source.Epoch := Source.Epoch + 1;
+      Source.Count := Work.Base + Work.Count; Source.Epoch := Source.Epoch + 1;
       Source.Backed := Natural'Max (Source.Backed, Source.Count);
       Source.Predecessor_Root := 0; Source.Predecessor_Epoch := 0;
-      Object.First_Adopted := Base + 1;
-      Object.Adopted := True; Accepted := True;
+      Object.First_Adopted := Work.Base + 1;
+      Object.Adopted := True; Source.Valid := True; Work.Phase := Adoption_Done;
+   end Commit_Step;
+   procedure Commit
+     (Object : in out State; Source : in out Image; Accepted : out Boolean) is
+      Work : Adoption;
+   begin
+      Begin_Commit (Work, Object, Source, Accepted);
+      if not Accepted then return; end if;
+      while Committing (Work) loop Commit_Step (Work, Object, Source); end loop;
+      Accepted := Object.Adopted;
    end Commit;
-   procedure Rearm
-     (Object : in out State; Source : Image; Retained_Root : Unsigned_64;
-      Accepted : out Boolean)
-   is
-      Epoch : constant Unsigned_64 := Revision (Source);
+   function Rearm_Pending (Work : Rearming) return Boolean is
+     (Work.Phase = Rearm_Checking);
+   function Rearmed (Work : Rearming) return Boolean is (Work.Phase = Rearm_Done);
+   procedure Cancel_Rearm (Work : in out Rearming) is
+   begin
+      Work.Phase := Rearm_Failed;
+   end Cancel_Rearm;
+   function Rearm_Current (Work : Rearming; Object : State; Source : Image) return Boolean is
+     (Rearm_Pending (Work) and then Object.Adopted and then Object.Root = Work.Root
+      and then Object.Epoch = Work.Receipt_Epoch and then Object.Count = Work.Count
+      and then Object.First_Adopted = Work.First and then
+      Object.Hardware_Root = Work.Hardware_Root and then Sealed (Source)
+      and then Root_DMA (Source) = Work.Root and then Revision (Source) = Work.Epoch);
+   procedure Begin_Rearm
+     (Work : in out Rearming; Object : State; Source : Image;
+      Retained_Root : Unsigned_64; Accepted : out Boolean) is
    begin
       Accepted := False;
+      if Rearm_Pending (Work) then return; end if;
+      Work.Phase := Rearm_Failed;
       if not Object.Adopted or else not Exclusive or else not Sealed (Source) or else
-        Root_DMA (Source) /= Object.Root or else Epoch <= Object.Epoch or else
+        Root_DMA (Source) /= Object.Root or else Revision (Source) <= Object.Epoch or else
         Retained_Root /= Object.Hardware_Root or else Object.Count = 0 or else
         Object.First_Adopted = 0 or else Object.First_Adopted > Source.Count or else
-        Object.Count > Source.Count - Object.First_Adopted + 1 or else
-        not Owned_Table (Retained_Root)
+        Object.Count > Source.Count - Object.First_Adopted + 1
       then return; end if;
-      for N in 1 .. Object.Count loop
-         if Descriptor (Source, Object.First_Adopted + N - 1).DMA /=
-           Growth_Storage.Get (Object.Plan, N).Child_DMA or else
-           not Owned_Table (Growth_Storage.Get (Object.Plan, N).Child_DMA) or else not Exclusive
-         then return; end if;
-      end loop;
-      if not Exclusive or else not Sealed (Source) or else
-        Revision (Source) /= Epoch or else Root_DMA (Source) /= Object.Root
-      then return; end if;
-      -- The source/provenance retains the pages. Only this transaction receipt
-      -- is cleared; no hardware writes, TLB actions or allocator releases.
-      for N in 1 .. Object.Count loop
-         Growth_Storage.Put (Object.Plan, N, (others => <>));
-      end loop;
+      Work.Root := Object.Root; Work.Epoch := Revision (Source);
+      Work.Receipt_Epoch := Object.Epoch; Work.Hardware_Root := Retained_Root;
+      Work.Count := Object.Count; Work.First := Object.First_Adopted; Work.Cursor := 1;
+      Work.Phase := Rearm_Checking; Accepted := True;
+   end Begin_Rearm;
+   procedure Rearm_Step
+     (Work : in out Rearming; Object : in out State; Source : Image) is
+      DMA : Unsigned_64;
+      function Current return Boolean is
+        (Rearm_Current (Work, Object, Source) and then Exclusive and then
+         Rearm_Current (Work, Object, Source));
+   begin
+      if not Rearm_Pending (Work) then return; end if;
+      if not Current or else not Owned_Table (Work.Hardware_Root) or else not Current
+      then Cancel_Rearm (Work); return; end if;
+      DMA := Growth_Storage.Get (Object.Plan, Work.Cursor).Child_DMA;
+      if Descriptor (Source, Work.First + Work.Cursor - 1).DMA /= DMA or else
+        not Owned_Table (DMA) or else not Current
+      then Cancel_Rearm (Work); return; end if;
+      if Work.Cursor < Work.Count then Work.Cursor := Work.Cursor + 1; return; end if;
+      -- The source/provenance retains the pages. Invalidate the logical receipt
+      -- without sweeping its growable storage. Begin_Preparation establishes a
+      -- new Count, and Capture_Pages overwrites every used record before the
+      -- resolver or publication can consume it; unused tail records stay inert.
+      -- This is not page release, TLB retirement, or a security-domain transfer.
       Object.Begun := False; Object.Done := False;
       Object.Commit_Tried := False; Object.Adopted := False;
       Object.Root := 0; Object.Epoch := 0; Object.GPU := 0; Object.Bytes := 0;
       Object.Hardware_Root := 0; Object.Count := 0; Object.First_Adopted := 0;
       Object.Phase := Idle; Object.Cursor := 1; Object.Word := 0;
-      Accepted := True;
+      Work.Phase := Rearm_Done;
+   end Rearm_Step;
+   procedure Rearm
+     (Object : in out State; Source : Image; Retained_Root : Unsigned_64;
+      Accepted : out Boolean) is
+      Work : Rearming;
+   begin
+      Begin_Rearm (Work, Object, Source, Retained_Root, Accepted);
+      if not Accepted then return; end if;
+      while Rearm_Pending (Work) loop Rearm_Step (Work, Object, Source); end loop;
+      Accepted := Rearmed (Work);
    end Rearm;
 end Intel_GPU_VM_Image.Growth.Backing.Writer;

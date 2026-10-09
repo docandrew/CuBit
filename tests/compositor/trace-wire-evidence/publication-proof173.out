@@ -1,0 +1,91 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+-----------------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total        Flow                              Provers   Justified   Unproved
+-----------------------------------------------------------------------------------------------------------
+Data Dependencies                 .           .                                    .           .          .
+Flow Dependencies                 .           .                                    .           .          .
+Initialization                    4           4                                    .           .          .
+Non-Aliasing                      .           .                                    .           .          .
+Run-time Checks                  42           .                42 (CVC5 18%, Z3 82%)           .          .
+Assertions                        .           .                                    .           .          .
+Functional Contracts             15           .    15 (CVC5 59%, Trivial 5%, Z3 36%)           .          .
+LSP Verification                  .           .                                    .           .          .
+Termination                      29          29                                    .           .          .
+Concurrency                       .           .                                    .           .          .
+-----------------------------------------------------------------------------------------------------------
+Total                            90    33 (37%)                             57 (63%)           .          .
+
+
+max steps used for successful proof: 1408
+
+============================
+Most difficult proved checks
+============================
+
+No check found with max time greater than 1 second
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 2 units
+in unit compositor_metric_batch_policy, 15 subprograms and packages out of 15 analyzed
+  Compositor_Metric_Batch_Policy at compositor_metric_batch_policy.ads:6 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Metric_Batch_Policy.Accepted at compositor_metric_batch_policy.ads:32 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  Compositor_Metric_Batch_Policy.Accepted_Group at compositor_metric_batch_policy.ads:38 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  Compositor_Metric_Batch_Policy.Delay_Us at compositor_metric_batch_policy.ads:24 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Compositor_Metric_Batch_Policy.Due at compositor_metric_batch_policy.ads:23 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Metric_Batch_Policy.First at compositor_metric_batch_policy.ads:19 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Metric_Batch_Policy.Group_Room at compositor_metric_batch_policy.ads:36 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Metric_Batch_Policy.Next at compositor_metric_batch_policy.ads:20 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Metric_Batch_Policy.Request_Flush at compositor_metric_batch_policy.ads:43 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Compositor_Metric_Batch_Policy.Samples at compositor_metric_batch_policy.ads:21 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Metric_Batch_Policy.State at compositor_metric_batch_policy.ads:51 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Metric_Batch_Policy.Statepredicate at compositor_metric_batch_policy.ads:51 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Metric_Batch_Policy.Submitted at compositor_metric_batch_policy.ads:48 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Compositor_Metric_Batch_Policy.Used at compositor_metric_batch_policy.ads:18 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Metric_Batch_Policy.Wake_At_Ms at compositor_metric_batch_policy.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+in unit trace_publication_instances, 40 subprograms and packages out of 40 analyzed
+  Trace_Publication_Instances at trace_publication_instances.ads:2 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Empty_Run at trace_publication_instances.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Empty_Run.Following at compositor_trace_publication.ads:20, instantiated at trace_publication_instances.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Empty_Run.Identified at compositor_trace_publication.ads:7, instantiated at trace_publication_instances.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Trace_Publication_Instances.Empty_Run.Increment at compositor_trace_publication.ads:24, instantiated at trace_publication_instances.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Empty_Run.Invalid at compositor_trace_publication.ads:21, instantiated at trace_publication_instances.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Empty_Run.Note_Refusal at compositor_trace_publication.ads:40, instantiated at trace_publication_instances.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Trace_Publication_Instances.Empty_Run.Note_Unsupported at compositor_trace_publication.ads:44, instantiated at trace_publication_instances.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Trace_Publication_Instances.Empty_Run.Prepare at compositor_trace_publication.ads:29, instantiated at trace_publication_instances.ads:5 flow analyzed (0 errors, 0 checks, 1 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Trace_Publication_Instances.Empty_Run.Refused at compositor_trace_publication.ads:22, instantiated at trace_publication_instances.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Empty_Run.State at compositor_trace_publication.ads:49, instantiated at trace_publication_instances.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Trace_Publication_Instances.Empty_Run.Statepredicate at compositor_trace_publication.ads:49, instantiated at trace_publication_instances.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Empty_Run.Unsupported at compositor_trace_publication.ads:23, instantiated at trace_publication_instances.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Empty_Run.Valid_Content at compositor_trace_publication.ads:13, instantiated at trace_publication_instances.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Production at trace_publication_instances.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Production.Following at compositor_trace_publication.ads:20, instantiated at trace_publication_instances.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Production.Identified at compositor_trace_publication.ads:7, instantiated at trace_publication_instances.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Trace_Publication_Instances.Production.Increment at compositor_trace_publication.ads:24, instantiated at trace_publication_instances.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Production.Invalid at compositor_trace_publication.ads:21, instantiated at trace_publication_instances.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Production.Note_Refusal at compositor_trace_publication.ads:40, instantiated at trace_publication_instances.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Trace_Publication_Instances.Production.Note_Unsupported at compositor_trace_publication.ads:44, instantiated at trace_publication_instances.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Trace_Publication_Instances.Production.Prepare at compositor_trace_publication.ads:29, instantiated at trace_publication_instances.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Trace_Publication_Instances.Production.Refused at compositor_trace_publication.ads:22, instantiated at trace_publication_instances.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Production.State at compositor_trace_publication.ads:49, instantiated at trace_publication_instances.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Trace_Publication_Instances.Production.Statepredicate at compositor_trace_publication.ads:49, instantiated at trace_publication_instances.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Production.Unsupported at compositor_trace_publication.ads:23, instantiated at trace_publication_instances.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Production.Valid_Content at compositor_trace_publication.ads:13, instantiated at trace_publication_instances.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Short_Run at trace_publication_instances.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Short_Run.Following at compositor_trace_publication.ads:20, instantiated at trace_publication_instances.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Short_Run.Identified at compositor_trace_publication.ads:7, instantiated at trace_publication_instances.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Trace_Publication_Instances.Short_Run.Increment at compositor_trace_publication.ads:24, instantiated at trace_publication_instances.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Short_Run.Invalid at compositor_trace_publication.ads:21, instantiated at trace_publication_instances.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Short_Run.Note_Refusal at compositor_trace_publication.ads:40, instantiated at trace_publication_instances.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Trace_Publication_Instances.Short_Run.Note_Unsupported at compositor_trace_publication.ads:44, instantiated at trace_publication_instances.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Trace_Publication_Instances.Short_Run.Prepare at compositor_trace_publication.ads:29, instantiated at trace_publication_instances.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Trace_Publication_Instances.Short_Run.Refused at compositor_trace_publication.ads:22, instantiated at trace_publication_instances.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Short_Run.State at compositor_trace_publication.ads:49, instantiated at trace_publication_instances.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Trace_Publication_Instances.Short_Run.Statepredicate at compositor_trace_publication.ads:49, instantiated at trace_publication_instances.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Short_Run.Unsupported at compositor_trace_publication.ads:23, instantiated at trace_publication_instances.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Trace_Publication_Instances.Short_Run.Valid_Content at compositor_trace_publication.ads:13, instantiated at trace_publication_instances.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)

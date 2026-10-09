@@ -1,0 +1,6 @@
+# Grant lifecycle events and control messages (tests/control-events).
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "control-producer.app" (priority 3))
+  (start "control-check.app" (priority 3))
+)

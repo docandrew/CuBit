@@ -16,7 +16,11 @@ elif [[ -n ${2:-} ]]; then
     echo 'Expected optional --uefi' >&2
     exit 2
 fi
-if [[ ${3:-} == --render-session ]]; then
+if [[ ${3:-} == --gpu ]]; then
+    # The ordinary live image with GPU rendering approved for Desktop.
+    profile=../images/laptop-usb-gpu.ccl
+    output=${output%.img}_gpu.img
+elif [[ ${3:-} == --render-session ]]; then
     profile=../images/render-session.ccl
     output=cubit_live_render_session.img
 elif [[ ${3:-} == --mesa-device ]]; then
@@ -34,8 +38,16 @@ elif [[ ${3:-} == --desktop-mesa-startup ]]; then
     desktop_candidate=$(python3 ../tests/hardware/verify-desktop-mesa-startup.py \
         "${CUBIT_DESKTOP_MESA_DIR:?explicit verified Desktop candidate directory required}")
     extra_inputs=(--input "desktop-mesa-startup=$desktop_candidate")
+elif [[ ${3:-} == --desktop-vulkan-compositor ]]; then
+    # Same explicit render approval, but a drawing-enabled artifact rather
+    # than the historical initialization-only Desktop checkpoint.
+    profile=../images/desktop-mesa-startup.ccl
+    output=cubit_live_desktop_vulkan_compositor.img
+    desktop_candidate=$(python3 ../tools/verify_desktop_vulkan_compositor.py \
+        "${CUBIT_DESKTOP_VULKAN_DIR:?explicit verified Vulkan compositor directory required}")
+    extra_inputs=(--input "desktop-mesa-startup=$desktop_candidate")
 elif [[ -n ${3:-} ]]; then
-    echo 'Expected --render-session, --mesa-device, --mesa-triangle, --mesa-triangle-window or --desktop-mesa-startup after the platform option' >&2
+    echo 'Expected --gpu, --render-session, --mesa-device, --mesa-triangle, --mesa-triangle-window, --desktop-mesa-startup or --desktop-vulkan-compositor after the platform option' >&2
     exit 2
 fi
 if [[ -n ${SAMEBOY_ROMS_DIR:-} ]]; then

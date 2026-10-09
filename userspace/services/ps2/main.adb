@@ -21,6 +21,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Input; use CuBit.Input;
 with PS2_Boot_Probe;
 with Input_Pending;
+with Keyboard_Pending;
 
 procedure main is
    use ASCII;
@@ -37,11 +38,11 @@ procedure main is
    packetLen : Natural := 3;
 
    --  Consumer PIDs (looked up via sysinfo)
-   kbdConsumer   : Unsigned_64 := 0;
-   mouseConsumer : Unsigned_64 := 0;
+   kbdConsumer   : Process_ID := No_Process;
+   mouseConsumer : Process_ID := No_Process;
 
-   keyboardSequence : Source_Sequence := 0;
-   keyboardResyncPending : Boolean := False;
+   keyboardPending : Keyboard_Pending.State;
+   keyboardOverflowReported : Boolean := False;
    pointerPending : Input_Pending.Queue;
    pointerOverflowReported : Boolean := False;
 
@@ -186,10 +187,14 @@ procedure main is
    --  refreshConsumers - re-read registered consumer PIDs from sysinfo
    ---------------------------------------------------------------------------
    procedure refreshConsumers is
-      previousMouse : constant Unsigned_64 := mouseConsumer;
+      previousMouse : constant Process_ID := mouseConsumer;
+      previousKeyboard : constant Process_ID := kbdConsumer;
    begin
-      kbdConsumer := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_KEYBOARD);
-      mouseConsumer := getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_MOUSE);
+      kbdConsumer := Registered_Driver (DRIVER_KEYBOARD);
+      if kbdConsumer /= previousKeyboard then
+         Keyboard_Pending.Reset_Consumer (keyboardPending);
+      end if;
+      mouseConsumer := Registered_Driver (DRIVER_MOUSE);
       if mouseConsumer /= previousMouse then
          Input_Pending.Reset (pointerPending);
       end if;
@@ -203,7 +208,7 @@ procedure main is
       report : Source_Report;
    begin
       for Attempt in 1 .. Input_Pending.Capacity loop
-         exit when mouseConsumer = 0 or else
+         exit when mouseConsumer = No_Process or else
            Input_Pending.Count (pointerPending) = 0;
          pending := Input_Pending.Element (pointerPending, 0);
          report :=
@@ -223,24 +228,36 @@ procedure main is
    ---------------------------------------------------------------------------
    --  handleKeyboard - read keyboard byte and forward to consumer
    ---------------------------------------------------------------------------
-   procedure handleKeyboard (code : Unsigned_8) is
-      accepted : Boolean;
-      report   : Source_Report;
+   procedure flushKeyboard is
+      pending : Input_Pending.Item;
    begin
-      if kbdConsumer /= 0 then
-         keyboardSequence := Next_Sequence (keyboardSequence);
-         report :=
-           (sourceAuthorityTag => 0,
-            sequence    => keyboardSequence,
-            generation  => 1,
-            device      => KEYBOARD,
-            delivery    => ORDERED_TRANSITION,
-            flags       =>
-              (RESYNCHRONIZE => keyboardResyncPending),
-            payload     => Unsigned_64 (code),
-            snapshot    => 0);
-         accepted := trySendEvent (kbdConsumer, Encode (report));
-         keyboardResyncPending := not accepted;
+      for Attempt in 1 .. Input_Pending.Capacity loop
+         exit when kbdConsumer = No_Process or else Keyboard_Pending.Count (keyboardPending) = 0;
+         pending := Keyboard_Pending.Element (keyboardPending, 0);
+         exit when not trySendEvent (kbdConsumer, Encode
+           (Source_Report'(sourceAuthorityTag => 0, sequence => pending.Sequence,
+            generation => 1, device => KEYBOARD, delivery => ORDERED_TRANSITION,
+            flags => (RESYNCHRONIZE => pending.Recover),
+            payload => pending.Payload, snapshot => 0)));
+         Keyboard_Pending.Acknowledge (keyboardPending);
+      end loop;
+   end flushKeyboard;
+
+   procedure handleKeyboard (code : Unsigned_8) is
+      added : Keyboard_Pending.Frame_Length;
+      lost : Boolean;
+   begin
+      Keyboard_Pending.Append_Byte (keyboardPending, code, added, lost);
+      if kbdConsumer = No_Process then
+         -- Consume framing even without a receiver; never retain old input
+         -- for a replacement consumer or deliver an orphan prefix suffix.
+         Keyboard_Pending.Reset_Consumer (keyboardPending);
+      else
+         if lost and then not keyboardOverflowReported then
+            debugPrint ("ps2: keyboard retention overflow; resynchronizing" & LF);
+            keyboardOverflowReported := True;
+         end if;
+         flushKeyboard;
       end if;
    end handleKeyboard;
 
@@ -274,7 +291,7 @@ procedure main is
          --  Complete packet received, decode and forward
          byteIdx := 0;
 
-         if mouseConsumer /= 0 then
+         if mouseConsumer /= No_Process then
             --  Pack mouse event into words(0):
             --  Bits  0-7:   buttons (L=0, R=1, M=2)
             --  Bits  8-19:  dx (signed 12-bit)
@@ -368,7 +385,7 @@ begin
          Ready_Result := capSend (CAP_SLOT_READY,
            (tag => (label => OP_NOT_PRESENT, length => 0,
                     flags => 0, reserved => 0),
-            authorityTag => 0, words => (others => 0)));
+            authorityTag => 0, words => (others => 0)), CuBit.Messages.Wait_Forever);
          ignore := syscall (SYSCALL_EXIT);
          return;
       end if;
@@ -387,13 +404,13 @@ begin
          (tag      => (label => OP_READY, length => 0,
                        flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => (others => 0)));
+          words    => (others => 0)), CuBit.Messages.Wait_Forever);
    end;
 
    --  Wait for at least one consumer to register before starting
    loop
       refreshConsumers;
-      exit when kbdConsumer /= 0 or mouseConsumer /= 0;
+      exit when kbdConsumer /= No_Process or mouseConsumer /= No_Process;
       ignore := syscall (SYSCALL_SLEEP, 100);
    end loop;
 
@@ -401,7 +418,8 @@ begin
 
    --  Main event loop
    loop
-      if Input_Pending.Count (pointerPending) = 0 then
+      if Input_Pending.Count (pointerPending) = 0 and then
+        Keyboard_Pending.Count (keyboardPending) = 0 then
          -- No retry timer when idle: ordinary input is interrupt-driven.
          event := Wait_Event;
       else
@@ -412,8 +430,8 @@ begin
             activity : Activity_Result;
          begin
             activity := Wait_For_Activity_Until
-              (Input_Pending.Wake_Deadline
-                 (pointerPending, now, Unsigned_64'Last));
+              (Keyboard_Pending.Wake_Deadline (keyboardPending, now,
+                Input_Pending.Wake_Deadline (pointerPending, now, Unsigned_64'Last)));
             if activity = Unavailable then
                ignore := syscall (SYSCALL_SLEEP, 1);
             end if;
@@ -424,6 +442,7 @@ begin
       end if;
 
       refreshConsumers;
+      flushKeyboard;
       flushPointer;
 
       loop
@@ -446,6 +465,7 @@ begin
          status := inb (STATUS_PORT);
          exit when (status and 16#01#) = 0;
       end loop;
+      flushKeyboard;
       flushPointer;
    end loop;
 end main;

@@ -33,7 +33,7 @@ package body Mesa_Gallery_Surface is
       Request := CuBit.Desktop_Messages.From_Wire
         (D.Encode_Title ((D.Live_Surface_Name (Surface), D.Make_Title
           ((if Milli_FPS = Unsigned_64'Last then "20 pots clock N/A" else Text)))));
-      Request.tag := M.capCall (M.CapabilitySlot (Mesa_Triangle_Surface.Desktop_Slot), Request);
+      Request.tag := M.capCall (M.CapabilitySlot (Mesa_Triangle_Surface.Desktop_Slot), Request, M.Wait_Forever);
    end Rate;
    function Frame (Source : System.Address; Width, Height, Pitch : Unsigned_32)
      return Unsigned_32 is
@@ -55,7 +55,7 @@ package body Mesa_Gallery_Surface is
       for I in 1 .. 32 loop
          Request := CuBit.Desktop_Messages.From_Wire
            (D.Encode_Input_Request ((D.Poll_Input, D.Live_Surface_Name (Surface), Serial)));
-         Request.tag := M.capCall (M.CapabilitySlot (Mesa_Triangle_Surface.Desktop_Slot), Request);
+         Request.tag := M.capCall (M.CapabilitySlot (Mesa_Triangle_Surface.Desktop_Slot), Request, M.Wait_Forever);
          Event := D.Decode_Input_Result (CuBit.Desktop_Messages.To_Wire (Request), D.Poll_Input);
          if Event.Status /= D.Success then return 12; end if;
          if Event.Value.Serial > Serial then Serial := Event.Value.Serial; end if;

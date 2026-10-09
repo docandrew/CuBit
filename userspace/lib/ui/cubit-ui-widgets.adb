@@ -512,7 +512,7 @@ package body CuBit.UI.Widgets is
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
    begin
       if retainedInput then
-         CuBit.UI.Controls.Add_Button (controls, id, CuBit.UI.Clamp_Rect (pc, bounds), damage);
+         CuBit.UI.Controls.Add_Button (controls, id, CuBit.UI.Input_Rect (pc, bounds), damage);
          result :=
            (hot => st.pointer.enabled and then
               CuBit.UI.Point_In_Rect
@@ -525,7 +525,7 @@ package body CuBit.UI.Widgets is
                  CuBit.UI.Controls.Bounds (controls, id)),
             activated => False);
       else
-         CuBit.UI.Controls.Add (controls, id, CuBit.UI.Clamp_Rect (pc, bounds), damage);
+         CuBit.UI.Controls.Add (controls, id, CuBit.UI.Input_Rect (pc, bounds), damage);
          result := CuBit.UI.State.Button
            (st, CuBit.UI.Controls.Bounds (controls, id),
             CuBit.UI.State.Widget_ID (id));
@@ -825,7 +825,7 @@ package body CuBit.UI.Widgets is
        padding : Natural := 2)
    is
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
-      visible : constant CuBit.UI.Rect := CuBit.UI.Clamp_Rect (pc, bounds);
+      visible : constant CuBit.UI.Rect := CuBit.UI.Input_Rect (pc, bounds);
    begin
       CuBit.UI.Controls.Add_Button (controls, id, visible, damage);
       result :=

@@ -16,7 +16,7 @@ generic
    Saved_Reply_Slot : CuBit.Messages.CapabilitySlot;
    with procedure Acquire
      (Reference : CuBit.Memory_Grants.Grant_Reference;
-      Expected_Owner : CuBit.Messages.ProcessID;
+      Expected_Owner : CuBit.Messages.Process_ID;
       Byte_Offset, Byte_Length : Interfaces.Unsigned_64;
       Required_Access : CuBit.Memory_Grants.Required_Access;
       Mapped_Address : out System.Address; Success : out Boolean);
@@ -40,7 +40,7 @@ package Config_Object_Receiver is
    procedure Begin_Definition
      (Object : in out State; Store : in out Config_Typed_Store.State;
       Action : Definition_Operation;
-      Authority : Config_Authority.Authority_State; Sender : CuBit.Messages.ProcessID;
+      Authority : Config_Authority.Authority_State; Sender : CuBit.Messages.Process_ID;
       Request : CuBit.Messages.Message; Storage_Available : Boolean; Staged : out Boolean);
    procedure Pending_Definition
      (Object : State; Control : out Config_Object_Messages.Open_Descriptor;
@@ -51,7 +51,7 @@ package Config_Object_Receiver is
    procedure Handle
      (Object : in out State; Store : in out Config_Typed_Store.State;
       Authority : Config_Authority.Authority_State;
-      Sender : CuBit.Messages.ProcessID; Request : CuBit.Messages.Message;
+      Sender : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message;
       Storage_Token : Interfaces.Unsigned_64; Staged : out Boolean);
    --  Called only with a request and sender returned by kernel RECEIVE, with
    --  that request's CURRENT reply cap still installed on this same thread.

@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
+with CuBit.Process_IDs; use CuBit.Process_IDs;
 with CuBit.Network_Authority; use CuBit.Network_Authority;
 
 --  Installed network scopes and the channels charged to each.
@@ -25,11 +26,11 @@ package Network_Grants with SPARK_Mode is
    --  Only the authenticated policy endpoint may call Install/Release.
    --  Capacity is the number of channels netstack can hold at once.
    procedure Install
-     (State : in out Table; Owner : Unsigned_64; Item : Scope;
+     (State : in out Table; Owner : Process_ID; Item : Scope;
       Capacity : Reservation; Tag : out Unsigned_64; Success : out Boolean)
      with Pre  => Reserved (State) <= Capacity and Within_Limits (State),
           Post => Reserved (State) <= Capacity and Within_Limits (State);
-   procedure Release (State : in out Table; Owner, Tag : Unsigned_64)
+   procedure Release (State : in out Table; Owner : Process_ID; Tag : Unsigned_64)
      with Pre  => Within_Limits (State),
           Post => Within_Limits (State) and
                   Reserved (State) <= Reserved (State)'Old;
@@ -37,17 +38,17 @@ package Network_Grants with SPARK_Mode is
    --  their reservations; Tags lists what was released, zero elsewhere.
    type Tag_List is array (1 .. Maximum_Grants) of Unsigned_64;
    procedure Release_Owner
-     (State : in out Table; Owner : Unsigned_64; Tags : out Tag_List)
+     (State : in out Table; Owner : Process_ID; Tags : out Tag_List)
      with Pre  => Within_Limits (State),
           Post => Within_Limits (State) and
                   Reserved (State) <= Reserved (State)'Old;
-   function Owned (State : Table; Owner, Tag : Unsigned_64) return Boolean;
+   function Owned (State : Table; Owner : Process_ID; Tag : Unsigned_64) return Boolean;
    --  Owner's scope under Tag (Denied_Scope if it holds none).
-   function Scope_Of (State : Table; Owner, Tag : Unsigned_64) return Scope;
+   function Scope_Of (State : Table; Owner : Process_ID; Tag : Unsigned_64) return Scope;
    function May_Resolve
-     (State : Table; Owner, Tag : Unsigned_64) return Boolean;
+     (State : Table; Owner : Process_ID; Tag : Unsigned_64) return Boolean;
    function Allows
-     (State : Table; Owner, Tag : Unsigned_64; Action : Operation;
+     (State : Table; Owner : Process_ID; Tag : Unsigned_64; Action : Operation;
       Address : Unsigned_32; Port : Unsigned_16) return Boolean;
 
    --  Channels open under Tag, and the number it declared.
@@ -57,7 +58,7 @@ package Network_Grants with SPARK_Mode is
    --  Take one of Owner's channels under Tag; fails once it has as many
    --  open as it declared.
    procedure Charge
-     (State : in out Table; Owner, Tag : Unsigned_64; Success : out Boolean)
+     (State : in out Table; Owner : Process_ID; Tag : Unsigned_64; Success : out Boolean)
      with Pre  => Within_Limits (State),
           Post => Within_Limits (State) and
                   Reserved (State) = Reserved (State)'Old;
@@ -67,7 +68,7 @@ package Network_Grants with SPARK_Mode is
                   Reserved (State) = Reserved (State)'Old;
 private
    type Grant_Record is record
-      Owner : Unsigned_64 := 0;
+      Owner : Process_ID := No_Process;
       Tag : Unsigned_64 := 0;
       Item : Scope := Denied_Scope;
       Open : Connection_Count := 0;

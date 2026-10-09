@@ -1,3 +1,4 @@
+with CuBit.Process_IDs;
 package body Intel_Render_Admission_Dispatch is
    package Native renames Intel_Render_Admission_Native;
    package Core renames Intel_Render_Admission;
@@ -57,14 +58,14 @@ package body Intel_Render_Admission_Dispatch is
       -- is a syscall, not IPC. Never admit work that could exhaust cleanup.
       if Last_Token - Object.Next_Token < 2 then return; end if;
       for I in 1 .. Object.Used loop
-         if Object.Entries (I).Identity = Grants.Incarnation (Target) and
+         if Object.Entries (I).Identity = CuBit.Process_IDs.To_Word (Grants.Incarnation (Target)) and
            Object.Entries (I).Destination = Destination
          then return; end if;
       end loop;
       Object.Used := Object.Used + 1;
       ID := Object.Used;
       Object.Last_Time := Now;
-      Object.Entries (ID).Identity := Grants.Incarnation (Target);
+      Object.Entries (ID).Identity := CuBit.Process_IDs.To_Word (Grants.Incarnation (Target));
       Object.Entries (ID).Destination := Destination;
       Object.Entries (ID).Deadline := Deadline;
       Object.Entries (ID).Token_Base := Object.Next_Token;

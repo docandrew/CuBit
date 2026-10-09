@@ -29,7 +29,10 @@ package body CuBit.Messages is
       Ada.Text_IO.Put (value);
    end debugPrint;
 
-   function capCall (slot : Unsigned_64; msg : in out Message) return MessageTag is
+   function capCall (slot : Unsigned_64; msg : in out Message; Deadline : Unsigned_64)
+     return MessageTag
+   is
+      pragma Unreferenced (Deadline);
       pragma Unreferenced (slot);
       Op : constant Unsigned_32 := msg.tag.label;
       Offset : constant Unsigned_64 := msg.words (0) * 512;

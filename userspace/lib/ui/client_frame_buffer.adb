@@ -13,7 +13,7 @@ package body Client_Frame_Buffer is
       Message_Value : Message := CuBit.Desktop_Messages.From_Wire (Request);
    begin
       -- capCall authenticates the reply through the endpoint invocation.
-      Message_Value.tag := capCall (CAP_SLOT_DESKTOP, Message_Value);
+      Message_Value.tag := capCall (CAP_SLOT_DESKTOP, Message_Value, CuBit.Messages.Wait_Forever);
       return CuBit.Desktop_Messages.To_Wire (Message_Value);
    end Call;
    procedure Receipt

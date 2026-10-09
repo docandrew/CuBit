@@ -1,6 +1,7 @@
 with Interfaces; use Interfaces;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Process_IDs; use CuBit.Process_IDs;
 package Log_Fanout with SPARK_Mode is
    --  Single-owner broker; logstore serializes access in its service loop.
    --  Caller and Authority_Tag must be authenticated by a trusted adapter.
@@ -22,7 +23,7 @@ package Log_Fanout with SPARK_Mode is
    --  (a viewer's "recent records of service X"); a retry keeps the queue
    --  and updates the filter for later publications.
    procedure Subscribe
-     (Item : in out Broker; Caller, Authority_Tag : Unsigned_64;
+     (Item : in out Broker; Caller : Process_ID; Authority_Tag : Unsigned_64;
       Handle : out Unsigned_64; Result : out CuBit.Log_Protocol.Status;
       Minimum : CuBit.Log_Records.Severity := CuBit.Log_Records.Trace;
       Source : Unsigned_64 := CuBit.Log_Protocol.Every_Source);
@@ -31,13 +32,13 @@ package Log_Fanout with SPARK_Mode is
    --  owner's use for the lease; logstore's draining passes False, so only
    --  the reader's own calls keep a subscription alive.
    procedure Read_Next
-     (Item : in out Broker; Caller, Authority_Tag, Handle : Unsigned_64;
+     (Item : in out Broker; Caller : Process_ID; Authority_Tag, Handle : Unsigned_64;
       Value : out CuBit.Log_Protocol.Event; Lost : out Unsigned_64;
       Result : out CuBit.Log_Protocol.Status; Renew : Boolean := True);
    --  Whether Handle names a live subscription (not closed, not expired).
    function Active (Item : Broker; Handle : Unsigned_64) return Boolean;
    procedure Close
-     (Item : in out Broker; Caller, Authority_Tag, Handle : Unsigned_64;
+     (Item : in out Broker; Caller : Process_ID; Authority_Tag, Handle : Unsigned_64;
       Result : out CuBit.Log_Protocol.Status);
 private
    subtype Index is Natural range 0 .. Capacity - 1;
@@ -50,7 +51,7 @@ private
       Lost : Unsigned_64 := 0;
    end record;
    type Subscriber is record
-      Owner : Unsigned_64 := 0;
+      Owner : Process_ID := No_Process;   --  No_Process: a free entry
       Authority_Tag : Unsigned_64 := 0;
       Last_Use : Unsigned_64 := 0;
       Handle : Unsigned_64 := 0;

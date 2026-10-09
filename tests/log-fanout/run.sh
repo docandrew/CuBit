@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../kernel"
 mkdir -p ../tests/log-fanout/build/source
-cp ../userspace/runtime/gnat/cubit.ads ../userspace/runtime/gnat/cubit-log_protocol.ads \
+cp ../userspace/runtime/gnat/cubit.ads ../userspace/runtime/gnat/cubit-process_ids.ads ../userspace/runtime/gnat/cubit-process_ids.adb ../userspace/runtime/gnat/cubit-log_protocol.ads \
    ../userspace/runtime/gnat/cubit-authority_policy.ads \
    ../userspace/runtime/gnat/cubit-process_observer.ads \
    ../userspace/runtime/gnat/cubit-grant_references.ads \

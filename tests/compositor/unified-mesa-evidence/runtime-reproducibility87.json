@@ -1,0 +1,17 @@
+{
+  "status": "PASS",
+  "scope": "Actual kernel ar rcs packaging on two forced allocator builds with different TMPDIRs; exact runtime archive identity and debug sections retained",
+  "runtime_sha256": "94ff462e3298197ba1728df8cc472c3e23f6fff6a045e0ea5cb07ba39a857e22",
+  "allocator_objects": 7,
+  "seed_runtime": "/home/doc/git/cubit/.build-workspaces/compositor-desktop-full82-9jsq3y8e/userspace/runtime/adalib/libgnat-user.a",
+  "seed_sha256": "b736ec4544173bb398d15ef81876abd7588f32a3c31bbf87199012e9fa4447d7",
+  "negative_control": "Original flags produce different packaged runtime hashes across TMPDIRs",
+  "stripped_objects_equal": true,
+  "control_hashes": [
+    "8fdbb16bac1cc5a2477f5252612e9235827d16930854c4897108d1a16bf7374d",
+    "91b09c9b5f951e40a26b908874392dcb83e287bb0e914c29a239bc9ea00d079f"
+  ],
+  "project_before_sha256": "fb9aae941ff445018202408c739e9c3d35f6f4d8a5ee8069840b8aab7cd2be8b",
+  "project_after_sha256": "ed7f22b0343181e673beb348a74560bee2fa672c5228d4533a60c4cdbe480f32",
+  "scope_note": "Build reproducibility only; no runtime or hardware performance claim"
+}

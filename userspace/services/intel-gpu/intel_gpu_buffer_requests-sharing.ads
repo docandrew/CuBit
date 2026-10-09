@@ -58,6 +58,17 @@ package Intel_GPU_Buffer_Requests.Sharing is
    -- Close admission first so no subsequent request resolves this session.
    -- This hook drains its grants; it does not edit the admission controller.
    procedure Retire_Session (Object : in out Service; Table : in out Mapping_Table; Session : Unsigned_64);
+   -- Close admission before Begin. Pins the service/table roots and captures
+   -- the used prefix; no later mapping for Session may be admitted. Each Step
+   -- visits at most Poll_Budget entries. Complete means retirement requested,
+   -- NOT all grants drained; Observe_Retirement remains the separate gate.
+   type Mapping_Retirement is limited private;
+   procedure Begin_Retire_Session
+     (Object : in out Service; Table : in out Mapping_Table; Session : Unsigned_64;
+      State : in out Mapping_Retirement; Accepted : out Boolean);
+   procedure Retire_Session_Step
+     (Object : in out Service; Table : in out Mapping_Table;
+      State : in out Mapping_Retirement; Complete : out Boolean);
    type Retirement_State is (Clear, Outstanding, Uncertain);
    -- Trusted dispatcher observation, not caller authentication. Clear means
    -- no outstanding grant in this table for Session, not closed admission,
@@ -101,6 +112,12 @@ package Intel_GPU_Buffer_Requests.Sharing is
       Writable : Boolean; View : in out Intel_GPU_Buffer_Views.View;
       Accepted : out Boolean; Presentation : Boolean := False);
 private
+   type Mapping_Retirement is limited record
+      Origin, Table_Origin : System.Address := System.Null_Address;
+      Session : Unsigned_64 := 0;
+      Last, Cursor : Natural := 0;
+      Started, Done : Boolean := False;
+   end record;
    type Mapping_Entry is limited record
       ID : Mapping_ID := 0;
       Session : Unsigned_64 := 0;

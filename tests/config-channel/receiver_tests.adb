@@ -37,7 +37,7 @@ procedure Receiver_Tests is
    Good : Boolean;
    Calls, Cases : Natural := 0;
 
-   function Authorized (Sender : ProcessID; Authority_Tag : Unsigned_64) return Boolean is
+   function Authorized (Sender : Process_ID; Authority_Tag : Unsigned_64) return Boolean is
      (Sender = 42 and Authority_Tag = 77);
 
    procedure Invoke
@@ -104,7 +104,7 @@ procedure Receiver_Tests is
       Server : Receiver.State;
       Input, Output : T.Frame;
       Envelope, Reply : Message;
-      Source : ProcessID := 42;
+      Source : Process_ID := 42;
       Ok, Valid, Taken : Boolean;
       Sent : Submission;
       Done : Completion_Result;
@@ -173,7 +173,7 @@ procedure Receiver_Tests is
       Input, Output : P.Frame;
       Schema : CCL.Objects.Schemas.Image;
       Envelope, Reply : Message;
-      Sender : ProcessID := 42;
+      Sender : Process_ID := 42;
       Ok, Valid, Taken : Boolean;
       Sent : Submission;
       Done : Completion_Result;
@@ -271,7 +271,7 @@ procedure Receiver_Tests is
       Schema : CCL.Objects.Schemas.Image;
       Envelope, Reply : Message;
       Previous_Calls : constant Natural := Calls;
-      procedure Send (Sender : ProcessID; Expected : Wire.Status) is
+      procedure Send (Sender : Process_ID; Expected : Wire.Status) is
       begin
          Grants.Acquisitions := 0; Grants.Returns := 0;
          Receiver.Handle (Server, Sender, Envelope, Reply);

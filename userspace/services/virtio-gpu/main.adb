@@ -181,6 +181,8 @@ procedure main is
    notifyOff : Unsigned_64 := 0;
    isrOff : Unsigned_64 := 0;
    notifyMult : Unsigned_64 := 0;
+   barBytes, notifyBytes : Unsigned_64 := 0;
+   queueNotifyOffset : Unsigned_64 := 0;
    gpuPrimary : Boolean := False;
    lastUsedIdx : Unsigned_16 := 0;
    nextDesc : Natural := 0;
@@ -262,7 +264,7 @@ procedure main is
       ignore := capSend (15,
          (tag      => (label => label, length => 0, flags => 0, reserved => 0),
           authorityTag => 0,
-          words    => [others => 0]));
+          words    => [others => 0]), CuBit.Messages.Wait_Forever);
    end signalReady;
 
    procedure fail (why : String) is
@@ -342,8 +344,7 @@ procedure main is
    procedure notifyQueue is
       notifyAddr : constant System.Address :=
          To_Address (Integer_Address
-           (BAR_VIRT_BASE + notifyOff +
-            Unsigned_64 (read16 (REG_QUEUE_NOTIFY_OFF)) * notifyMult));
+           (BAR_VIRT_BASE + queueNotifyOffset));
       reg : Unsigned_16 with Import, Address => notifyAddr, Volatile;
    begin
       reg := CTRL_QUEUE;
@@ -477,9 +478,36 @@ procedure main is
       status : Unsigned_8;
       qsz : Unsigned_16;
       ret : Unsigned_64;
+      type Capability_Words is array (0 .. 5) of Unsigned_64;
+      Cap, Notify_Cap : aliased Capability_Words := (others => 0);
+      Notify_Displacement : Unsigned_64;
+      function Fits (Offset, Bytes, Limit : Unsigned_64) return Boolean is
+        (Bytes /= 0 and then Offset <= Limit and then Bytes <= Limit - Offset);
    begin
+      ret := syscall (SYSCALL_INSPECT_CAPABILITY, syscall (SYSCALL_GETPID),
+                      4, Unsigned_64 (To_Integer (Cap'Address)));
+      if ret /= 1 or else Cap (0) /= 7 or else (Cap (1) and 3) /= 3 or else
+        Cap (3) /= barPhys or else barPhys mod 4096 /= 0 or else
+        Cap (4) < 4096 or else Cap (4) > 1024 * 1024 or else
+        Cap (4) mod 4096 /= 0 or else barPhys > Unsigned_64'Last - Cap (4)
+      then fail ("invalid BAR capability"); return; end if;
+      barBytes := Cap (4);
+      if commonOff mod 4 /= 0 or else notifyOff mod 2 /= 0 or else
+        not Fits (commonOff, 56, barBytes) or else
+        not Fits (notifyOff, 2, barBytes) or else
+        not Fits (isrOff, 1, barBytes) or else
+        notifyMult > Unsigned_64 (Unsigned_32'Last)
+      then fail ("invalid BAR register spans"); return; end if;
+      ret := syscall (SYSCALL_INSPECT_CAPABILITY, syscall (SYSCALL_GETPID),
+                      7, Unsigned_64 (To_Integer (Notify_Cap'Address)));
+      if ret /= 1 or else Notify_Cap (0) /= 7 or else
+        (Notify_Cap (1) and 2) = 0 or else
+        Notify_Cap (3) /= barPhys + notifyOff or else
+        not Fits (notifyOff, Notify_Cap (4), barBytes) or else Notify_Cap (4) < 2
+      then fail ("invalid notify capability"); return; end if;
+      notifyBytes := Notify_Cap (4);
       trace ("map BAR");
-      ret := syscall (SYSCALL_MAP_DEVICE, barPhys, BAR_VIRT_BASE, 16);
+      ret := syscall (SYSCALL_MAP_DEVICE, barPhys, BAR_VIRT_BASE, barBytes / 4096);
       if ret = Unsigned_64'Last then
          fail ("BAR map failed");
          return;
@@ -541,6 +569,15 @@ procedure main is
 
       trace ("select control queue");
       write16 (REG_QUEUE_SELECT, CTRL_QUEUE);
+      -- 16-bit queue offset times a validated32-bit multiplier cannot overflow.
+      -- Cache only the checked address; later notifications do not trust a
+      -- potentially changed device register to choose an MMIO destination.
+      Notify_Displacement := Unsigned_64 (read16 (REG_QUEUE_NOTIFY_OFF)) * notifyMult;
+      if Notify_Displacement mod 2 /= 0 or else
+        not Fits (Notify_Displacement, 2, notifyBytes) then
+         fail ("queue notification outside admitted span"); return;
+      end if;
+      queueNotifyOffset := notifyOff + Notify_Displacement;
       qsz := read16 (REG_QUEUE_SIZE);
       debugPrint ("virtio-gpu: control qsz=");
       printDec (Unsigned_64 (qsz));
@@ -976,7 +1013,7 @@ procedure main is
       end loop;
    end collectCommands;
 
-   procedure handleRequest (from : ProcessID; incoming : Message) is
+   procedure handleRequest (from : Process_ID; incoming : Message) is
       request : Message := incoming;
       replyMsg : Message := NULL_MESSAGE;
       ignore : Unsigned_64;
@@ -1139,7 +1176,7 @@ procedure main is
 
    eventMsg : Message;
    eventFound : Boolean;
-   from : ProcessID;
+   from : Process_ID;
    msg : Message;
    found : Boolean;
 begin
@@ -1173,8 +1210,7 @@ begin
    debugPrint ("" & LF);
 
    if barPhys = 0 or else barPhys = Unsigned_64'Last or else
-      dmaPhys = 0 or else dmaPhys = Unsigned_64'Last or else
-      notifyMult = 0
+      dmaPhys = 0 or else dmaPhys = Unsigned_64'Last
    then
       fail ("missing devmgr transport info");
       return;

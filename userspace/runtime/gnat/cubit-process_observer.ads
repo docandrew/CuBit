@@ -29,28 +29,30 @@ package CuBit.Process_Observer with Pure, SPARK_Mode is
                    Unavailable => 16#F007#);
 
    --  One record per process, little-endian:
-   --     0  u32 pid               4  u32 launcher pid (0: unknown)
-   --     8  u8  state (the kernel's ProcessState position)
-   --     9  u8  cpu              10  i16 priority
-   --    12  u32 frames (4 KiB pages)
-   --    16  u64 started (monotonic ms; 0: unknown)
-   --    24  u8  name length      25..40  name (16 bytes)
-   --    41  u8  identity length  42..105 identity (64 bytes)
-   --   106..127 reserved (zero)
+   --     0  u64 process identity (KERN-003, docs/process-objects.md)
+   --     8  u64 launcher's process identity (0: unknown)
+   --    16  u8  state (the kernel's ProcessState position)
+   --    17  u8  cpu              18  i16 priority
+   --    20  u32 frames (4 KiB pages)
+   --    24  u64 started (monotonic ms; 0: unknown)
+   --    32  u8  name length      33..48  name (16 bytes)
+   --    49  u8  manifest identity length  50..113 manifest identity (64 bytes)
+   --   114..127 reserved (zero)
    Record_Bytes : constant := 128;
    Page_Bytes : constant := 4_096;
    Page_Records : constant := Page_Bytes / Record_Bytes;
    Name_Bytes : constant := 16;
    Identity_Bytes : constant := 64;
+   Pid_Bytes : constant := 8;
    Pid_Offset : constant := 0;
-   Launcher_Offset : constant := 4;
-   State_Offset : constant := 8;
-   CPU_Offset : constant := 9;
-   Priority_Offset : constant := 10;
-   Frames_Offset : constant := 12;
-   Started_Offset : constant := 16;
-   Name_Length_Offset : constant := 24;
-   Name_Offset : constant := 25;
-   Identity_Length_Offset : constant := 41;
-   Identity_Offset : constant := 42;
+   Launcher_Offset : constant := 8;
+   State_Offset : constant := 16;
+   CPU_Offset : constant := 17;
+   Priority_Offset : constant := 18;
+   Frames_Offset : constant := 20;
+   Started_Offset : constant := 24;
+   Name_Length_Offset : constant := 32;
+   Name_Offset : constant := 33;
+   Identity_Length_Offset : constant := 49;
+   Identity_Offset : constant := 50;
 end CuBit.Process_Observer;

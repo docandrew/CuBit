@@ -1,0 +1,137 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+-------------------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total         Flow                               Provers   Justified   Unproved
+-------------------------------------------------------------------------------------------------------------
+Data Dependencies                 .            .                                     .           .          .
+Flow Dependencies                 .            .                                     .           .          .
+Initialization                   58           58                                     .           .          .
+Non-Aliasing                      3            3                                     .           .          .
+Run-time Checks                 160            .    160 (CVC5 19%, Trivial 1%, Z3 80%)           .          .
+Assertions                       32            .    32 (CVC5 17%, Trivial 10%, Z3 73%)           .          .
+Functional Contracts             44            .     44 (CVC5 15%, Trivial 8%, Z3 77%)           .          .
+LSP Verification                  .            .                                     .           .          .
+Termination                      54           54                                     .           .          .
+Concurrency                       .            .                                     .           .          .
+-------------------------------------------------------------------------------------------------------------
+Total                           351    115 (33%)                             236 (67%)           .          .
+
+
+max steps used for successful proof: 31514
+
+============================
+Most difficult proved checks
+============================
+
+metric_store.adb:144:19: postcondition proved in max 8 seconds
+metric_store.adb:166:13: loop invariant after first iteration proved in max 7 seconds
+metric_store.ads:63:19: postcondition proved in max 2 seconds
+metric_history.ads:37:29: precondition proved in max 1 seconds
+metric_history.ads:32:16: postcondition proved in max 1 seconds
+compositor_trace_metrics.adb:15:13: loop invariant after first iteration proved in max 1 seconds
+compositor_trace_stream.ads:41:19: postcondition proved in max 1 seconds
+compositor_trace_metrics.ads:41:19: postcondition proved in max 1 seconds
+compositor_trace_metrics.ads:43:68: discriminant check proved in max 1 seconds
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 8 units
+in unit compositor_trace_metrics, 5 subprograms and packages out of 5 analyzed
+  Compositor_Trace_Metrics at compositor_trace_metrics.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Metrics.Assemble at compositor_trace_metrics.ads:40 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (8 checks)
+  Compositor_Trace_Metrics.Coherent at compositor_trace_metrics.ads:18 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Compositor_Trace_Metrics.Fragment at compositor_trace_metrics.ads:33 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (17 checks)
+  Compositor_Trace_Metrics.Part_Data at compositor_trace_metrics.ads:31 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+in unit compositor_trace_stream, 11 subprograms and packages out of 11 analyzed
+  Compositor_Trace_Stream at compositor_trace_stream.ads:2 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Stream.Add at compositor_trace_stream.adb:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Stream.Counts at compositor_trace_stream.ads:25 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Stream.Cursor at compositor_trace_stream.ads:23 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Stream.Discard_Partial at compositor_trace_stream.ads:55 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Trace_Stream.Feed at compositor_trace_stream.ads:38 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (18 checks)
+  Compositor_Trace_Stream.Increment at compositor_trace_stream.ads:26 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Stream.Owner at compositor_trace_stream.ads:22 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Stream.Pending at compositor_trace_stream.ads:24 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Stream.Start at compositor_trace_stream.ads:30 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Trace_Stream.State at compositor_trace_stream.ads:63 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+in unit compositor_trace_wire, 6 subprograms and packages out of 6 analyzed
+  Compositor_Trace_Wire at compositor_trace_wire.ads:10 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Wire.Checked at compositor_trace_wire.ads:52 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Wire.Decode at compositor_trace_wire.ads:42 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (5 checks)
+  Compositor_Trace_Wire.Encode at compositor_trace_wire.ads:47 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (27 checks)
+  Compositor_Trace_Wire.Lemma_Decoded_Valid at compositor_trace_wire.ads:44 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Compositor_Trace_Wire.Valid at compositor_trace_wire.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+in unit cubit-metric_batches, 17 subprograms and packages out of 17 analyzed
+  CuBit.Metric_Batches at cubit-metric_batches.ads:10 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Batches.Append at cubit-metric_batches.ads:50 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (5 checks)
+  CuBit.Metric_Batches.Append_Group at cubit-metric_batches.ads:87 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (21 checks)
+  CuBit.Metric_Batches.Builder at cubit-metric_batches.ads:149 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Batches.Complete at cubit-metric_batches.ads:139 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  CuBit.Metric_Batches.Consistent at cubit-metric_batches.ads:39 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Batches.Drop_Group at cubit-metric_batches.ads:82 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Batches.Dropped at cubit-metric_batches.ads:25 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Batches.Exhausted at cubit-metric_batches.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Batches.Filling at cubit-metric_batches.ads:22 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Batches.Has_Group_Room at cubit-metric_batches.ads:78 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Batches.Has_Room at cubit-metric_batches.ads:30 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Batches.In_Flight at cubit-metric_batches.ads:24 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Batches.Other at cubit-metric_batches.ads:34 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Batches.Saturating_Increment at cubit-metric_batches.ads:47 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Batches.Seal at cubit-metric_batches.ads:122 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (5 checks)
+  CuBit.Metric_Batches.Used at cubit-metric_batches.ads:23 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+in unit cubit-metric_raw_validation, 2 subprograms and packages out of 2 analyzed
+  CuBit.Metric_Raw_Validation at cubit-metric_raw_validation.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Raw_Validation.Valid at cubit-metric_raw_validation.ads:6 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+in unit cubit-metric_records, 16 subprograms and packages out of 16 analyzed
+  CuBit.Metric_Records at cubit-metric_records.ads:8 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  CuBit.Metric_Records.Batch_Bytes at cubit-metric_records.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  CuBit.Metric_Records.Byte_Of at cubit-metric_records.adb:29 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  CuBit.Metric_Records.Decode at cubit-metric_records.ads:126 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (5 checks)
+  CuBit.Metric_Records.Decode_Header at cubit-metric_records.ads:151 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (5 checks)
+  CuBit.Metric_Records.Encode at cubit-metric_records.ads:124 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (12 checks)
+  CuBit.Metric_Records.Encode_Header at cubit-metric_records.ads:149 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Records.Name_Byte_Allowed at cubit-metric_records.ads:52 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Records.Name_Word_Of at cubit-metric_records.adb:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  CuBit.Metric_Records.Put_Slot at cubit-metric_records.ads:159 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (10 checks)
+  CuBit.Metric_Records.Same_Name at cubit-metric_records.ads:61 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Records.Slot at cubit-metric_records.ads:157 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Records.To_Name at cubit-metric_records.ads:64 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (8 checks)
+  CuBit.Metric_Records.Valid at cubit-metric_records.ads:99 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  CuBit.Metric_Records.Valid_Group at cubit-metric_records.ads:108 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  CuBit.Metric_Records.Valid_Name at cubit-metric_records.ads:56 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+in unit metric_raw_query, 2 subprograms and packages out of 2 analyzed
+  Metric_Raw_Query at metric_raw_query.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Raw_Query.Fill at metric_raw_query.ads:6 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (8 checks)
+in unit metric_store, 28 subprograms and packages out of 28 analyzed
+  Metric_Store at metric_store.ads:13 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Absorb at metric_store.adb:134 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (15 checks)
+  Metric_Store.Advance_Time at metric_store.ads:47 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Metric_Store.Apply at metric_store.adb:73 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (12 checks)
+  Metric_Store.Fill_Summaries at metric_store.ads:73 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (8 checks)
+  Metric_Store.History_Dropped at metric_store.ads:31 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.History_Next at metric_store.ads:30 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Ingest at metric_store.ads:58 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (5 checks)
+  Metric_Store.Owned_By at metric_store.ads:52 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Raw at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Raw.Append at metric_history.ads:28, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Metric_Store.Raw.Exhausted at metric_history.ads:24, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Raw.First at metric_history.ads:22, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Raw.Following at metric_history.ads:23, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Raw.Index at metric_history.ads:55, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Metric_Store.Raw.Item at metric_history.ads:25, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Metric_Store.Raw.Read at metric_history.ads:42, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Metric_Store.Raw.State at metric_history.ads:58, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Metric_Store.Raw.Valid at metric_history.ads:21, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Raw.Valid_Event at metric_history.ads:17, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Read_History at metric_store.ads:32 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Metric_Store.Record_Sample at metric_store.adb:56 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Same_Except at metric_store.ads:55 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Saturating_Add at metric_store.adb:6 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Select_Source at metric_store.adb:17 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Metric_Store.Store at metric_store.ads:105 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Metric_Store.Summary at metric_store.adb:243 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Valid at metric_store.ads:29 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)

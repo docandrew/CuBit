@@ -165,7 +165,7 @@ package body CuBit.UI.Combo_Boxes is
         (if not Usable then Button_Disabled elsif State.Opened then Button_Pressed
          elsif State.Hot then Button_Hot else Button_Normal), Arrow_Down);
       if not Usable then return; end if;
-      Controls.Add_Button (Map, Base, Clamp_Rect (PC, R), (0, 0, C.width, C.height));
+      Controls.Add_Button (Map, Base, Input_Rect (PC, R), (0, 0, C.width, C.height));
       if not State.Opened then return; end if;
       Below := C.height - (R.y + R.h);
       H := Natural'Min (Definition.Count, Natural'Min (Max_Choices, Visible_Rows));
@@ -179,7 +179,7 @@ package body CuBit.UI.Combo_Boxes is
       Popup := (R.x, (if Above then R.y - H else R.y + R.h), R.w, H);
       RC := With_Clip (C, Popup);
       Draw_Table_Viewport (RC, Popup, Colors);
-      Controls.Add_Button (Map, Base + Max_Choices + 1, Clamp_Rect (RC, Popup),
+      Controls.Add_Button (Map, Base + Max_Choices + 1, Input_Rect (RC, Popup),
         (0, 0, C.width, C.height));
       for I in First .. First + Rows - 1 loop
          Row := (Popup.x + Natural'Min (2, Popup.w), Popup.y + 2 + (I - First) * Row_Height,
@@ -193,7 +193,7 @@ package body CuBit.UI.Combo_Boxes is
            Row.x + 8, Row.y + (if Row.h > UI_Text_Height then (Row.h - UI_Text_Height) / 2 else 0),
            Value (Definition.Choices (I).Caption), FG, BG);
          if Definition.Choices (I).Enabled then
-            Controls.Add_Button (Map, Choice_ID (Base, I), Clamp_Rect (RC, Row),
+            Controls.Add_Button (Map, Choice_ID (Base, I), Input_Rect (RC, Row),
               (0, 0, C.width, C.height));
          end if;
       end loop;

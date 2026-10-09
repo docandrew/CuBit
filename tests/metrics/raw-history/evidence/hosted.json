@@ -1,0 +1,6 @@
+{
+  "status": "PASS",
+  "scope": "Hosted policy/adapter tests; kernel IPC and grants mocked",
+  "proof_run": true,
+  "negative": "forged publisher acceptance rejected"
+}

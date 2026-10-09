@@ -31,9 +31,9 @@ package CuBit.Metric_Records with Pure, SPARK_Mode is
    subtype Key_Count is Natural range 0 .. Maximum_Keys;
    subtype Metric_Key is Key_Count range 1 .. Maximum_Keys;
 
-   type Record_Kind is (Describe, Counter, Gauge, Latency, Span);
+   type Record_Kind is (Describe, Counter, Gauge, Latency, Span, Trace);
    for Record_Kind use
-     (Describe => 1, Counter => 2, Gauge => 3, Latency => 4, Span => 5);
+     (Describe => 1, Counter => 2, Gauge => 3, Latency => 4, Span => 5, Trace => 6);
    subtype Metric_Kind is Record_Kind range Counter .. Span;
 
    type Unit is (Count, Microseconds, Nanoseconds, Bytes);
@@ -69,6 +69,11 @@ package CuBit.Metric_Records with Pure, SPARK_Mode is
    type Clock_Domain is (Monotonic_Microseconds);
    for Clock_Domain use (Monotonic_Microseconds => 1);
 
+   --  Trace is raw-only: Key is a schema identifier, not a summary series.
+   --  Four consecutive fragments form one 128-byte event within one batch.
+   subtype Trace_Part is Natural range 0 .. 3;
+   type Trace_Data is array (Trace_Part) of Unsigned_64;
+
    type Metric_Record (Kind : Record_Kind := Counter) is record
       Key : Metric_Key := Metric_Key'First;
       case Kind is
@@ -80,6 +85,10 @@ package CuBit.Metric_Records with Pure, SPARK_Mode is
             Time_Us : Unsigned_64 := 0;
             Value : Unsigned_64 := 0;
             Correlation : Unsigned_64 := 0;
+         when Trace =>
+            Trace_ID : Unsigned_64 := 0;
+            Part : Trace_Part := 0;
+            Data : Trace_Data := [others => 0];
          when Span =>
             Start_Us : Unsigned_64 := 0;
             End_Us : Unsigned_64 := 0;
@@ -91,11 +100,20 @@ package CuBit.Metric_Records with Pure, SPARK_Mode is
      (case Item.Kind is
          when Describe => Valid_Name (Item.Name),
          when Counter .. Latency => True,
-         when Span => Item.Start_Us <= Item.End_Us);
+         when Span => Item.Start_Us <= Item.End_Us,
+         when Trace => Item.Trace_ID /= 0);
+
+   subtype Trace_Record is Metric_Record (Trace);
+   type Trace_Group is array (Trace_Part) of Trace_Record;
+   function Valid_Group (Values : Trace_Group) return Boolean is
+     (for all I in Trace_Part =>
+        Valid (Values (I)) and then Values (I).Part = I and then
+        Values (I).Trace_ID = Values (0).Trace_ID and then
+        Values (I).Key = Values (0).Key);
 
    type Record_Error is
      (Unknown_Kind, Invalid_Key, Invalid_Declaration, Invalid_Name,
-      Nonzero_Reserved, Reversed_Span);
+      Nonzero_Reserved, Reversed_Span, Invalid_Trace);
    type Decoded_Record (Success : Boolean := False) is record
       case Success is
          when False => Reason : Record_Error := Unknown_Kind;

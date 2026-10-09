@@ -1,0 +1,30 @@
+{
+  "status": "COLLECTED",
+  "rows": [
+    {
+      "key": 11,
+      "count": 12,
+      "min_us": 43,
+      "max_us": 1146,
+      "p50_upper_us": 80,
+      "p99_upper_us": 1280,
+      "flags": 0,
+      "producer_dropped": 0
+    },
+    {
+      "key": 12,
+      "count": 6,
+      "min_us": 607,
+      "max_us": 6523,
+      "p50_upper_us": 3584,
+      "p99_upper_us": 7168,
+      "flags": 0,
+      "producer_dropped": 0
+    }
+  ],
+  "units": "microseconds",
+  "serial_sha256_at_collection": "34c92ba324be3d48b5156747821f1b233bb00f8643fc94147811cb96469144f4",
+  "limits": "QEMU functional workload with competing host work, verbose serial tracing enabled; sampled collector snapshot, not whole-run performance. Quantiles are histogram upper bounds. No hardware/scanout/photon claim. Diagnostic interval excludes first argument formatting.",
+  "native_status": "PASS",
+  "source_log": "/home/doc/git/compositor-test-artifacts/profiling-summary-native-99/serial.log"
+}

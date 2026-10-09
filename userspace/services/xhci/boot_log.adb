@@ -50,7 +50,7 @@ package body Boot_Log is
       if Now < Due then return; end if;
       Due := Now + 100;
       if not Granted then
-         if getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_LOGSTORE) = 0 then
+         if Registered_Driver (DRIVER_LOGSTORE) = No_Process then
             Due := Now + 1000;
             return;
          end if;

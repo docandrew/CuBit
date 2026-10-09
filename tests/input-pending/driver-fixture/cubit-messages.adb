@@ -54,7 +54,7 @@ package body CuBit.Messages is
    begin
       return (others => 0);
    end capSend;
-   function trySendEvent (Dest : ProcessID; Msg : Message) return Boolean is
+   function trySendEvent (Dest : Process_ID; Msg : Message) return Boolean is
       Report : CuBit.Input.Source_Report;
       Valid : Boolean;
       Authenticated : Message := Msg;

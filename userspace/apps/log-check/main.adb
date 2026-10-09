@@ -167,7 +167,7 @@ begin
       Check (Result = P.Unavailable, "ordinary launch has no observer");
       Msg := Request (P.Subscribe);
       Msg.authorityTag := P.Observer_Authority_Tag;
-      Tag := capCall (P.Publisher_Slot, Msg);
+      Tag := capCall (P.Publisher_Slot, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = P.Status'Enum_Rep (P.Denied) and then
              Msg.words = [0, 0, 0, 0], "forged observer tag denied");
       Publish_Record;
@@ -184,7 +184,7 @@ begin
       Check (Result = P.OK, "initial retained records");
       if L.Text (Value.Data) = "clock: service ready" then
          Saw_Clock := Value.Source =
-           getInfo (SYSINFO_REGISTERED_DRIVER, DRIVER_CLOCK) and then
+           To_Word (Registered_Driver (DRIVER_CLOCK)) and then
            P.Is_Publisher (Value.Publication_Tag);
       end if;
    end loop;
@@ -192,11 +192,11 @@ begin
 
    Msg := Request (P.Subscribe);
    Msg.authorityTag := P.Observer_Authority_Tag;
-   Tag := capCall (P.Publisher_Slot, Msg);
+   Tag := capCall (P.Publisher_Slot, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = P.Status'Enum_Rep (P.Denied) and then
           Msg.words = [0, 0, 0, 0], "publisher cannot observe with forged tag");
    Msg := Open_Publishing (0);
-   Tag := capCall (P.Observer_Slot, Msg);
+   Tag := capCall (P.Observer_Slot, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = CuBit.Kernel_ABI.Reply_Error, "observer cannot publish");
    --  Subscribing again renews the lease and keeps the stream.
    CuBit.Logging.Subscribe (Reader, Result);
@@ -207,13 +207,13 @@ begin
      (P.Publisher_Slot, Buffer'Address, 1, False, Grant, Created);
    Check (Created, "malformed-input grant created");
    Msg := Open_Publishing (CuBit.Grant_References.Encode (Grant));
-   Tag := capCall (P.Publisher_Slot, Msg);
+   Tag := capCall (P.Publisher_Slot, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = CuBit.Kernel_ABI.Reply_Error
           and then Msg.words (0) = CP.Open_Refusal'Enum_Rep (CP.Bad_Grant),
           "a one-page region is not the channel's ring");
    Msg := Open_Publishing
      (CuBit.Grant_References.Encode ((Grant.slot, Grant.generation + 1)));
-   Tag := capCall (P.Publisher_Slot, Msg);
+   Tag := capCall (P.Publisher_Slot, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = CuBit.Kernel_ABI.Reply_Error
           and then Msg.words (0) = CP.Open_Refusal'Enum_Rep (CP.Bad_Grant),
           "wrong grant generation rejected");
@@ -222,12 +222,12 @@ begin
 
    Msg := Request (P.Subscribe);
    Msg.tag.length := 3;
-   Tag := capCall (P.Observer_Slot, Msg);
+   Tag := capCall (P.Observer_Slot, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = P.Status'Enum_Rep (P.Invalid_Request),
           "malformed IPC header rejected");
    Msg := Request (P.Subscribe);
    Msg.tag.label := 16#0800#;
-   Tag := capCall (P.Observer_Slot, Msg);
+   Tag := capCall (P.Observer_Slot, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = P.Status'Enum_Rep (P.Denied), "retired query rejected");
 
    --  Every record arrives, in order, from this publisher, with no gap.
@@ -251,7 +251,7 @@ begin
    --  A handle logstore never issued (or no longer holds) names nothing.
    Msg := Request (P.Close);
    Msg.words (0) := Never_Issued_Handle;
-   Tag := capCall (P.Observer_Slot, Msg);
+   Tag := capCall (P.Observer_Slot, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = P.Status'Enum_Rep (P.Denied), "stale handle rejected");
 
    --  Launch the same executable through ordinary OP_SPAWN, not startup.
@@ -267,8 +267,8 @@ begin
       Check (Created, "spawn name grant created");
       Msg := NULL_MESSAGE;
       Msg.tag := (16#0100#, Filename'Length, 0, 0);
-      Msg.words := [Grant.slot, 5, 0, 0];
-      Tag := capCall (12, Msg);
+      Msg.words := [CuBit.Grant_References.Encode (Grant), 5, 0, 0];
+      Tag := capCall (12, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = 16#F000#, "ordinary child launched");
    end;
    debugPrint ("TEST: PASS log-authority" & ASCII.LF);

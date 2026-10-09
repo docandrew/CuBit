@@ -38,7 +38,7 @@ procedure Receiver_Tests is
    Checks, Acquires, Returns, Saves, Replies : Natural := 0;
    Active, Saved, Current, Allow_Acquire, Allow_Return, Allow_Save, Allow_Delivery : Boolean := False;
    Mutate_On_Return : Boolean := False;
-   Saved_Caller, Current_Caller, Last_Caller : ProcessID := 0;
+   Saved_Caller, Current_Caller, Last_Caller : Process_ID := 0;
    Last_Slot : CapabilitySlot := 0;
    Last_Reply : Message := NULL_MESSAGE;
    Expected_Offset, Expected_Length : Unsigned_64 := 0;
@@ -49,7 +49,7 @@ procedure Receiver_Tests is
       if not OK then raise Program_Error with "Config receiver check" & Checks'Image; end if;
    end Check;
    procedure Acquire
-     (Reference : G.Grant_Reference; Expected_Owner : ProcessID;
+     (Reference : G.Grant_Reference; Expected_Owner : Process_ID;
       Byte_Offset, Byte_Length : Unsigned_64; Required_Access : G.Required_Access;
       Mapped_Address : out System.Address; Success : out Boolean) is
    begin
@@ -113,7 +113,7 @@ procedure Receiver_Tests is
    Good, Staged, Available : Boolean;
    Before_Acquires, Before_Saves, Before_Replies : Natural;
    procedure Call
-     (Caller : ProcessID; Op : W.Operation; Token : Unsigned_64 := 0;
+     (Caller : Process_ID; Op : W.Operation; Token : Unsigned_64 := 0;
       Revision : Unsigned_64 := 0) is
    begin
       Check (not Current);
@@ -125,7 +125,7 @@ procedure Receiver_Tests is
       R.Handle (Object, Store, Authority, Caller, Request, Token, Staged);
       Check (not Current);
    end Call;
-   procedure Is_Reply (Code : W.Status; Caller : ProcessID := 42; Slot : CapabilitySlot := 63) is
+   procedure Is_Reply (Code : W.Status; Caller : Process_ID := 42; Slot : CapabilitySlot := 63) is
    begin
       Check (Last_Reply.tag.label = W.Status'Enum_Rep (Code) and Last_Caller = Caller and Last_Slot = Slot);
    end Is_Reply;
@@ -222,7 +222,7 @@ begin
       Read_Rules, Other_Rules : A.Rule_Set;
       Control_Snapshot : W.Open_Descriptor;
       Binding_Snapshot : CCL.Objects.Binding;
-      procedure Create_Call (Caller : ProcessID := 42; Online : Boolean := True) is
+      procedure Create_Call (Caller : Process_ID := 42; Online : Boolean := True) is
       begin
          Current := True; Current_Caller := Caller; Creating_Request := True;
          R.Begin_Definition (Creator, Store, W.Create_Collection, Authority, Caller,

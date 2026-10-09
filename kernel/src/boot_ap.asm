@@ -35,6 +35,8 @@ ap_real:
     ; turn on protection
     mov eax, cr0
     or eax, 0x0000_00001            ; bit 0 = protection enabled
+    or eax, 1 << 16                 ; WP: ring 0 honours read-only pages
+                                    ; (boot.asm's enable_paging sets it too)
     mov cr0, eax
 
     ;mov ecx, 0x134f                 ; test code, remove me

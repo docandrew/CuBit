@@ -1,0 +1,55 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+----------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total        Flow                       Provers   Justified   Unproved
+----------------------------------------------------------------------------------------------------
+Data Dependencies                 .           .                             .           .          .
+Flow Dependencies                 .           .                             .           .          .
+Initialization                    8           8                             .           .          .
+Non-Aliasing                      2           2                             .           .          .
+Run-time Checks                   2           .                      2 (CVC5)           .          .
+Assertions                        8           .     8 (CVC5 71%, Trivial 29%)           .          .
+Functional Contracts             18           .    18 (CVC5 85%, Trivial 15%)           .          .
+LSP Verification                  .           .                             .           .          .
+Termination                       7           7                             .           .          .
+Concurrency                       .           .                             .           .          .
+----------------------------------------------------------------------------------------------------
+Total                            45    17 (38%)                      28 (62%)           .          .
+
+
+max steps used for successful proof: 2761
+
+============================
+Most difficult proved checks
+============================
+
+No check found with max time greater than 1 second
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 1 unit
+in unit mesa_cache, 20 subprograms and packages out of 20 analyzed
+  Mesa_Cache at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Mesa_Cache.Attempted at compositor_cache.ads:33, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Mesa_Cache.Can_Retire at compositor_cache.ads:34, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Mesa_Cache.Empty at compositor_cache.ads:35, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Mesa_Cache.Ensure at compositor_cache.ads:50, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Mesa_Cache.Ensure_Source at compositor_cache.ads:68, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (5 checks)
+  Mesa_Cache.Forget at compositor_cache.ads:40, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Mesa_Cache.Forget_Source at compositor_cache.ads:72, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Mesa_Cache.Forget_Targets at compositor_cache.ads:46, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (6 checks)
+  Mesa_Cache.Initialize at compositor_cache.ads:38, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Mesa_Cache.Mode at compositor_cache.ads:32, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Mesa_Cache.Render at compositor_cache.ads:83, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Mesa_Cache.Render.Draw_Views at compositor_cache.adb:132, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Mesa_Cache.Render.Executegp5734 at compositor_cache.adb:137, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Mesa_Cache.Render.Executegp5734.Execute at compositor_cache.adb:137, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  Mesa_Cache.Render.Fits_Views at compositor_cache.adb:130, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Mesa_Cache.Shutdown at compositor_cache.ads:97, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (7 checks)
+  Mesa_Cache.State at compositor_cache.ads:106, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Mesa_Cache.Targets_Clear at compositor_cache.ads:36, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Mesa_Cache.Views_Clear at compositor_cache.ads:37, instantiated at mesa_cache.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)

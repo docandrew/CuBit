@@ -32,7 +32,7 @@ package Config_Object_Service is
       Result : out Config_Objects.Outcome);
    procedure Handle
      (Object : in out State; Authority : Config_Authority.Authority_State;
-      Sender : CuBit.Messages.ProcessID; Request : CuBit.Messages.Message);
+      Sender : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message);
    --  Same owning thread and current reply-cap requirements as Receiver.Handle.
    procedure Complete
      (Object : in out State; Authority : Config_Authority.Authority_State;

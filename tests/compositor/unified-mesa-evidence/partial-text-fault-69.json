@@ -1,0 +1,80 @@
+{
+  "status": "PASS",
+  "gpu_enabled": false,
+  "scope": "native CuBit runtime-dispatch software fallback with explicit boot seeds",
+  "binary_sha256": "56bb96b384fd97af56b1abdace46b10161f48af1da7877a695703bd35a6ec526",
+  "memory": "1G",
+  "render_approved": true,
+  "render_attempts": [
+    [
+      "4294967329",
+      "FALSE"
+    ],
+    [
+      "4294967330",
+      "TRUE"
+    ]
+  ],
+  "software_fallback": "PASS",
+  "hardware_validated": false,
+  "mesa_execution": {
+    "status": "PASS",
+    "injected_fault": "text-partial",
+    "recovery": "retained CPU text and client fallback",
+    "scope": "Native failure/recovery markers; separate pixel/input checks required"
+  },
+  "client_pixels": {
+    "status": "PASS",
+    "client_rectangle": [
+      102,
+      112,
+      512,
+      384
+    ],
+    "cursor_exclusion": [
+      78,
+      158,
+      97,
+      186
+    ],
+    "scale": [
+      1,
+      1
+    ]
+  },
+  "input_overlay": "off",
+  "cursor_moves": 32,
+  "cursor_roundtrips": 8,
+  "cursor_damage": "PASS exact restoration and no changes outside old/new footprints",
+  "overlay_click_pixels": "unchanged without HUD",
+  "scaled_cursor_moves": 16,
+  "scaled_cursor_roundtrips": 4,
+  "native_scales": [
+    [
+      5,
+      4
+    ]
+  ],
+  "output_pixels": [
+    1024,
+    768
+  ],
+  "metrics": {
+    "status": "PASS",
+    "frames": 15,
+    "batches": 38,
+    "producer_dropped_at_observer_exit": 0,
+    "schema_rejections": 0,
+    "batch_gaps": 0,
+    "scope": "Authenticated progress and schema; loss snapshot at observer exit, not full-run sampling completeness"
+  },
+  "log_channel": "PASS authenticated ordered startup/backend records and reader close",
+  "observer_sha256": "b04ccc9c30841f197e5d5c3623664ffce0652098848460e72232989d437a398e",
+  "menu_changed_pixels": [
+    104238,
+    104238,
+    104238
+  ],
+  "restored_cycles": 3,
+  "false_gpu_markers": 0
+}

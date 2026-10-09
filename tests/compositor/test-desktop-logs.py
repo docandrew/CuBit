@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile,subprocess,shutil,os
 assert os.environ.get('IN_NIX_SHELL')
 r=Path(__file__).resolve().parents[2];w=Path(tempfile.mkdtemp(prefix='desktop-logs-host-',dir=r/'tests/compositor/build'));print(w,flush=True)
-for folder,names in [('userspace/services/desktop',['desktop_logs']),('userspace/runtime/gnat',['cubit','cubit-log_records','cubit-text_to_log','cubit-protocols']),('userspace/lib/compositor',['compositor_requests'])]:
+for folder,names in [('userspace/services/desktop',['desktop_logs','desktop_log_io']),('userspace/runtime/gnat',['cubit','cubit-log_records','cubit-text_to_log','cubit-protocols']),('userspace/lib/compositor',['compositor_requests'])]:
  for n in names:
   for ext in ['ads','adb']:
    p=r/folder/(n+'.'+ext)

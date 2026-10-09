@@ -35,14 +35,17 @@ begin
         1, False, References (I), OK);
       if not OK then debugPrint ("grant capacity: failed index=" & Natural'Image (I) & ASCII.LF); end if;
       Check (OK, "create through metadata growth");
-      Check (References (I).slot = PID * 4096 + Unsigned_64 (I), "slot geometry");
+      --  Slots are global (KERN-003 step 2): each grant its own, never 0.
+      Check (References (I).slot /= 0 and then
+             (for all J in References'First .. I - 1 =>
+                References (J).slot /= References (I).slot), "distinct slots");
       Check (R.Decode (R.Encode (References (I))) = References (I), "wire roundtrip");
       G.Acquire_Via_Capability (15, References (I), 0, 4096,
         G.Read_Access, Addresses (I), OK);
       Check (OK, "acquire through metadata growth");
    end loop;
    G.Create_Via_Capability (15, Buffer'Address, 1, False, Fresh, OK);
-   Check (not OK, "namespace exhaustion fails closed");
+   Check (not OK, "the owner's grant quota fails closed");
    for I in References'Range loop
       declare Alias : Unsigned_8 with Import, Address => Addresses (I), Volatile; begin
          Check (Alias = 16#A3#, "all acquisitions survive growth and exhaustion");

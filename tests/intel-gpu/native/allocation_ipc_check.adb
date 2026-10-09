@@ -24,6 +24,8 @@ procedure Allocation_IPC_Check is
    Ping_Sent : Boolean := False;
    Local_Ping_Sent : Boolean := False;
    Local_Pings, Local_Turns : Natural := 0;
+   Gap_Ping_Sent : Boolean := False;
+   Gap_Pings : Natural := 0;
    Ignore : Unsigned_64;
    function Owner return Boolean is (True);
    procedure Check (Condition : Boolean; Detail : String) is
@@ -80,9 +82,9 @@ procedure Allocation_IPC_Check is
      (Intel_GPU_Metadata_Platform.Storage, Client_Capacity, Client_Publish);
    use type CG.Phase;
    Client_Growth : CG.Controller;
-   Views : array (1 .. 17) of V.Backing;
+   Views : array (1 .. 201) of V.Backing;
    OK, Found, Consumed : Boolean;
-   From : ProcessID;
+   From : Process_ID;
    Msg, Answer : Message;
    Receipt : aliased CompletionEntry;
    Deadline : Unsigned_64;
@@ -102,14 +104,24 @@ begin
          exit when CG.Snapshot (Client_Growth).State in CG.Idle | CG.Failed;
       end loop;
       Check (CG.Snapshot (Client_Growth).State = CG.Idle, "driver growth");
-      Client.Start (Driver, Index, (if Index = 1 then 1024 else 512), OK);
+      Client.Start (Driver, Index,
+        (if Index = 1 then 1024 elsif Index <= 17 then 512 else 1), OK);
       Check (OK, "driver start");
       Deadline := syscall (SYSCALL_GETTIME) + 30_000;
       while Client.Pending (Driver) loop
          declare Before : constant Natural := Calls; begin
             D.Step (Dispatcher);
             Check (Calls <= Before + 1, "unbounded backing step");
+            Check (A.Last_Gap_Probes (Pool) <= A.Gap_Probe_Limit, "unbounded gap step");
          end;
+         if Index >= 130 and then D.Pending (Dispatcher) and then
+           A.Last_Gap_Probes (Pool) = 64 and then not Gap_Ping_Sent
+         then
+            Answer := NULL_MESSAGE;
+            Answer.tag := (16#7779#, 0, 0, 0);
+            Check (capSubmit (15, Answer, 16#7779#), "gap search interleave submit");
+            Gap_Ping_Sent := True;
+         end if;
          Poll_Service_Request (From, Msg, Found);
          if Found then
             Check (Unsigned_64 (From) = PID and Msg.authorityTag = 16#4947#,
@@ -129,6 +141,9 @@ begin
             elsif Msg.tag = (16#7777#, 0, 0, 0) then
                Check (D.Pending (Dispatcher), "ping must interleave pending allocation");
                Check (reply (From, Msg) = 1, "interleaved reply");
+            elsif Msg.tag = (16#7779#, 0, 0, 0) then
+               Check (D.Pending (Dispatcher), "gap request not serviced while search pending");
+               Check (reply (From, Msg) = 1, "gap interleave reply");
             elsif Msg.tag = (16#7778#, 0, 0, 0) then
                Check (Client.Local_Work_Pending (Driver), "ping must interleave local work");
                Check (not Client.Result (Driver).Ready, "local work published early");
@@ -158,6 +173,11 @@ begin
                Check (Receipt.status = COMPLETION_OK and Receipt.msg.tag.label = 16#7777#,
                  "interleaved completion");
                Pings := Pings + 1;
+            elsif Receipt.token = 16#7779# then
+               Check (Receipt.status = COMPLETION_OK and Receipt.msg.tag = (16#7779#, 0, 0, 0),
+                 "gap interleave completion");
+               Check (D.Pending (Dispatcher), "gap completion after allocation reply");
+               Gap_Pings := Gap_Pings + 1;
             elsif Receipt.token = 16#7778# then
                Check (Receipt.status = COMPLETION_OK and Receipt.msg.tag = (16#7778#, 0, 0, 0),
                  "local work completion");
@@ -196,13 +216,15 @@ begin
          end;
       end loop;
    end loop;
-   Check (Calls = 18 and Extents = 18 and Saves = 17 and Responses = 17 and Pings = 1,
+   Check (Calls = 19 and Extents = 19 and Saves = 201 and Responses = 201 and Pings = 1,
      "transport counters");
    Check (not D.Pending (Dispatcher), "pending saved request");
    Check (Driver_Metadata_Observed and A.Extent_Capacity (Pool) > 16, "both directories grew");
    Check (Poll_Completion (Receipt'Address) = 0, "duplicate completion");
    Check (Local_Pings = 1 and Local_Turns >= 32, "local initialization interleave counters");
+   Check (Gap_Pings = 1, "gap search interleave counter");
+   debugPrint ("native allocation IPC: 64-probe gap search with interleaved completion PASS" & ASCII.LF);
    debugPrint ("native allocation IPC: bounded local work and interleaved completion PASS" & ASCII.LF);
-   debugPrint ("TEST: PASS native allocation IPC 17 saved replies 18 extents both directories grew 1 interleaved request (NO GPU/ISOLATION)" & ASCII.LF);
+   debugPrint ("TEST: PASS native allocation IPC 201 saved replies 19 extents both directories grew 2 interleaved requests (NO GPU/ISOLATION)" & ASCII.LF);
    loop Ignore := syscall (SYSCALL_SLEEP, 1000); end loop;
 end Allocation_IPC_Check;

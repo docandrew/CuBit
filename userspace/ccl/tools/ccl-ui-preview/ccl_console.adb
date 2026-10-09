@@ -239,7 +239,7 @@ package body CCL_Console is
             Run : constant String :=
               (if Name'Length > 0 then Name
                else "(Run program => """ & O.Launched (1 .. O.Launched_Length) & """ pid => " &
-                    Image (O.Pid) & " generation => " & Image (O.Generation) & ")");
+                    Image (O.Pid) & ")");
          begin
             if O.Kind = CCL_Program_Bindings.Outcome_Started then
                --  Its state, live: Running until it ends, then Done with

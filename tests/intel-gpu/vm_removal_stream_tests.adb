@@ -6,7 +6,8 @@ with Intel_GPU_VM_Image.Removal;
 procedure VM_Removal_Stream_Tests is
    package VM is new Intel_GPU_VM_Image (8);
 begin
-   for Fault in 0 .. 5 loop
+   for Stepped in Boolean loop
+   for Fault in 0 .. (if Stepped then 8 else 5) loop
       declare
          Source : VM.Image;
          Held : Boolean := True;
@@ -52,6 +53,7 @@ begin
             return 16#200000# + Unsigned_64 (Ordinal - 1) * 4096;
          end Expected_Page;
          procedure Start is new Remove.Start_From_Pages (Expected_Page);
+         procedure Capture is new Remove.Capture_Step (Expected_Page);
       begin
          VM.Initialize (Source, [4096, 8192, 12288, 16384, others => 0], OK,
            Backing_Count => 4); pragma Assert (OK);
@@ -71,9 +73,40 @@ begin
          end;
          Start (State, Source, Epoch, 4096, 0, OK);
          pragma Assert (not OK and Calls = 0 and Writes = 0);
-         Start (State, Source, Epoch, 4096, 3, OK);
+         if Stepped then
+            Remove.Begin_Prepare (State, Source, Epoch, 4096, 3, OK);
+            pragma Assert (OK and Calls = 0 and Writes = 0 and Remove.Preparing (State));
+            declare
+               Duplicate : Boolean;
+               Before : Natural;
+            begin
+               Remove.Begin_Prepare (State, Source, Epoch, 4096, 1, Duplicate);
+               pragma Assert (not Duplicate and Remove.Preparing (State));
+               while Remove.Preparing (State) loop
+                  Before := Calls;
+                  if Calls = 1 then
+                     case Fault is
+                        when 6 => Held := False;
+                        when 7 => Remove.Cancel_Prepare (State);
+                        when 8 =>
+                           Remove.Commit (State, Source, True, Duplicate);
+                           pragma Assert (not Duplicate);
+                        when others => null;
+                     end case;
+                  end if;
+                  Capture (State, Source, OK);
+                  pragma Assert (Calls <= Before + 1 and Writes = 0);
+                  pragma Assert (VM.Revision (Source) = Epoch);
+                  if Calls < 3 then pragma Assert (not Remove.Publishing (State)); end if;
+                  exit when not OK;
+               end loop;
+            end;
+         else
+            Start (State, Source, Epoch, 4096, 3, OK);
+         end if;
          pragma Assert (OK = (Fault = 0));
-         pragma Assert (Calls = 3 and Writes = 0 and VM.Revision (Source) = Epoch);
+         pragma Assert (Calls = (if Fault >= 6 then 1 else 3));
+         pragma Assert (Writes = 0 and VM.Revision (Source) = Epoch);
          if OK then
             while Remove.Publishing (State) loop Remove.Step (State, Source); end loop;
             pragma Assert (Writes = 3 and Remove.Published (State));
@@ -83,9 +116,16 @@ begin
          else
             pragma Assert (not Remove.Publishing (State) and not Remove.Published (State));
             pragma Assert (VM.Lookup (Source, 12288) /= 0);
-            pragma Assert (Remove.Failed (State) = (Fault in 4 .. 5));
+            pragma Assert (Remove.Failed (State) = (Fault in 4 .. 5 | 7 .. 8));
+            declare
+               Before : constant Natural := Calls;
+            begin
+               Capture (State, Source, OK);
+               pragma Assert (not OK and Calls = Before and Writes = 0);
+            end;
          end if;
       end;
    end loop;
-   Ada.Text_IO.Put_Line ("Removal streaming PASS6: complete preflight, no borrowed array, callback loss/mismatch/reentry rejected before hardware writes (mock GPU)");
+   end loop;
+   Ada.Text_IO.Put_Line ("Removal streaming PASS15: synchronous/one-page capture, no early writes, callback and between-turn owner loss, cancellation/premature commit, mismatch/reentry (mock GPU)");
 end VM_Removal_Stream_Tests;

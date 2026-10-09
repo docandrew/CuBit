@@ -1,15 +1,22 @@
 with Vulkan_Submission;
 package body Desktop_GPU_Scene with SPARK_Mode is
+   use type Compositor_Pool.Ticket;
    use type Vulkan_Glyph_Sources.Key, R.Outcome, D.Frame_Result, D.Poll_Result, D.Capture_Admission;
    procedure Retire (S : in out State; Safe : out Boolean)
      with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid,
        Post => Valid (S) and D.Valid and (if Safe then Current (S) = Idle)
    is
+      Cancelled : Boolean;
    begin
       Safe := False;
       if not D.Can_Retire_Readers then return; end if;
       -- Drop the CPU snapshot BEFORE attesting that its references retired.
       S.Scene := V.Open (V.Output (S.Scene));
+      if S.Reservation /= Compositor_Pool.None then
+         D.Cancel_Capture (S.Reservation, Cancelled);
+         if not Cancelled then S.Status := Quarantined; return; end if;
+         S.Reservation := Compositor_Pool.None;
+      end if;
       for I in 1 .. S.Used loop
          R.Release (S.Cache, S.Readers (I).Reader, True);
          if R.Held (S.Cache, S.Readers (I).Reader) then
@@ -26,10 +33,21 @@ package body Desktop_GPU_Scene with SPARK_Mode is
       S.Images_Used := 0;
       S.Used := 0; S.Status := Idle; S.Cold := False; S.Invalid := False; Safe := True;
    end Retire;
+   procedure Capture_Repaint (S : State; Plan : out Compositor_Damage.State;
+      Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      Compositor_Damage.Clear (Plan);
+      if S.Status /= Capturing then return; end if;
+      D.Capture_Repaint (S.Reservation, Plan, Accepted);
+   end Capture_Repaint;
    procedure Begin_Frame (S : in out State; Screen : V.A.G.Output;
       Background : V.A.Word; Accepted : out Boolean) is
    begin
       Accepted := S.Status = Idle and then D.Admit_Capture (Screen) = D.Capture_Allowed;
+      if not Accepted then return; end if;
+      D.Reserve_Capture (Screen, S.Reservation);
+      Accepted := S.Reservation /= Compositor_Pool.None;
       if not Accepted then return; end if;
       S.Scene := V.Open (Screen, Background); S.Status := Capturing;
       S.Cold := False; S.Invalid := False;
@@ -122,9 +140,9 @@ package body Desktop_GPU_Scene with SPARK_Mode is
       end if;
       V.Seal (S.Scene, OK);
       if not OK then Discard (S, Result); if Result = Retry then Result := Rejected; end if; return; end if;
-      D.Render (S.Scene, Frame);
+      D.Render (S.Scene, Frame, S.Reservation);
       case Frame is
-         when D.Submitted => S.Status := Submitted; Result := Pending;
+         when D.Submitted => S.Reservation := Compositor_Pool.None; S.Status := Submitted; Result := Pending;
          when D.Failed => S.Status := Quarantined; Result := Unsafe;
          when D.Deferred | D.Rejected =>
             Discard (S, Result);

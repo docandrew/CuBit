@@ -6,6 +6,8 @@ with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Buffer_Requests;
 with Intel_GPU_Buffer_Handles;
 with Intel_GPU_Buffer_Requests.Binding;
+with Intel_GPU_Buffer_Requests.Closed_Tables;
+with Intel_GPU_Buffer_Requests.Contexts;
 with Intel_GPU_VM_Image;
 with Intel_GPU_VM_Materialize;
 with Intel_GPU_ADLN_PPGTT;
@@ -57,6 +59,124 @@ procedure Buffer_Requests_Tests is
       end if;
    end Call;
 begin
+   declare
+      function Account (Sender, Stamp : Unsigned_64) return Unsigned_64 is
+        (if Sender = 42 then Stamp else 0);
+      package P is new Intel_GPU_Buffer_Requests (Account, Owner_Ready);
+      package C is new P.Contexts;
+      Pool : P.Service;
+      First, Second, Next : P.Ticket;
+      OK : Boolean;
+   begin
+      P.Configure_Client_Budgets (Pool, 8192, OK); pragma Assert (OK);
+      C.Reserve (Pool, 99, First, Pages => 1); pragma Assert (First /= 0);
+      P.Finish_Private (Pool, First, OK); pragma Assert (OK);
+      C.Reserve (Pool, 99, Second, Pages => 1); pragma Assert (Second /= 0);
+      P.Finish_Private (Pool, Second, OK); pragma Assert (OK);
+      C.Acknowledge (Pool, 99, First, True, OK); pragma Assert (not OK);
+      P.Retire_Session (Pool, 99);
+      C.Acknowledge (Pool, 99, First, False, OK); pragma Assert (not OK);
+      C.Acknowledge (Pool, 99, First, True, OK); pragma Assert (OK);
+      C.Acknowledge (Pool, 99, Second, True, OK); pragma Assert (OK);
+      C.Acknowledge (Pool, 99, Second, True, OK); pragma Assert (not OK);
+      C.Reserve (Pool, 99, Next, Pages => 1); pragma Assert (Next = 0);
+      C.Reserve (Pool, 100, Next, Pages => 3); pragma Assert (Next = 0);
+      C.Reserve (Pool, 100, Next, Pages => 1);
+      pragma Assert (Next = Second + P.Ticket_Stride);
+      P.Finish_Private (Pool, Next, OK); pragma Assert (OK);
+      C.Acknowledge (Pool, 99, Second, True, OK); pragma Assert (not OK);
+      C.Reserve (Pool, 100, Next, Pages => 1);
+      pragma Assert (Next = First + P.Ticket_Stride);
+      P.Finish_Private (Pool, Next, OK); pragma Assert (OK);
+      pragma Assert (P.Client_Usage (Pool, 99).Charged = 0 and
+                     P.Client_Usage (Pool, 100).Charged = 8192);
+   end;
+   Ada.Text_IO.Put_Line ("Context reuse list PASS: closure/retirement required, quota refusal, two generations preserved");
+   declare
+      function Account (Sender, Stamp : Unsigned_64) return Unsigned_64 is
+        (if Sender = 42 then Stamp else 0);
+      package P is new Intel_GPU_Buffer_Requests (Account, Owner_Ready);
+      package Closed is new P.Closed_Tables;
+      Pool : P.Service;
+      First, Second, Next : P.Ticket;
+      OK : Boolean;
+   begin
+      P.Configure_Client_Budgets (Pool, 8192, OK); pragma Assert (OK);
+      P.Reserve_Private (Pool, 99, First, True, Pages => 1);
+      pragma Assert (First /= 0);
+      P.Finish_Private (Pool, First, OK); pragma Assert (OK);
+      P.Reserve_Private (Pool, 99, Second, True, Pages => 1);
+      pragma Assert (Second /= 0 and Second /= First);
+      P.Finish_Private (Pool, Second, OK); pragma Assert (OK);
+      P.Acknowledge_Private_Retirement (Pool, 99, First, True, OK);
+      pragma Assert (OK);
+      P.Retire_Session (Pool, 99);
+      Closed.Acknowledge (Pool, 99, Second, False, OK); pragma Assert (not OK);
+      Closed.Acknowledge (Pool, 99, Second, True, OK); pragma Assert (OK);
+      Closed.Acknowledge (Pool, 99, Second, True, OK); pragma Assert (not OK);
+      P.Reserve_Private (Pool, 100, Next, True, Pages => 3);
+      pragma Assert (Next = 0); -- quota refusal preserves both reusable nodes
+      P.Reserve_Private (Pool, 100, Next, True, Pages => 1);
+      pragma Assert (Next = Second + P.Ticket_Stride);
+      P.Finish_Private (Pool, Next, OK); pragma Assert (OK);
+      Closed.Acknowledge (Pool, 99, Second, True, OK); pragma Assert (not OK);
+      P.Reserve_Private (Pool, 100, Next, True, Pages => 1);
+      pragma Assert (Next = First + P.Ticket_Stride);
+      P.Finish_Private (Pool, Next, OK); pragma Assert (OK);
+      P.Acknowledge_Private_Retirement (Pool, 99, First, True, OK);
+      pragma Assert (not OK);
+      pragma Assert (P.Client_Usage (Pool, 99).Charged = 0 and
+                     P.Client_Usage (Pool, 100).Charged = 8192);
+   end;
+   Ada.Text_IO.Put_Line ("Private reuse list PASS: live/closed retirement paths, quota refusal, cross-session generations");
+   declare
+      function Account (Sender, Stamp : Unsigned_64) return Unsigned_64 is
+        (if Sender = 42 then Stamp else 0);
+      package P is new Intel_GPU_Buffer_Requests (Account, Owner_Ready);
+      Pool : P.Service;
+      Tickets : array (1 .. 4) of P.Ticket;
+      Names : array (1 .. 4) of Unsigned_64;
+      Reply : P.Words;
+      ID : P.Ticket;
+      OK, Consumed : Boolean;
+   begin
+      P.Configure_Client_Budgets (Pool, 16384, OK); pragma Assert (OK);
+      for I in 1 .. 4 loop
+         P.Handle (Pool, 42, 99, P.Label, 4, 0, 0, [1, P.Create, 4096, 0], Reply, ID);
+         pragma Assert (ID /= 0); Tickets (I) := ID;
+         P.Complete (Pool, ID, Intel_GPU_Buffer_Reply.From_Linear
+           (16#10000000# + Unsigned_64 (I - 1) * 4096,
+            Layout.CPU_Base + Unsigned_64 (I - 1) * 4096, 4096, 16#10000000#), Reply, Consumed);
+         pragma Assert (Consumed and Reply (0) = P.OK); Names (I) := Reply (2);
+      end loop;
+      for I in 1 .. 4 loop
+         if I mod 2 = 0 then
+            P.Handle (Pool, 42, 99, P.Label, 4, 0, 0, [1, P.Close, Names (I), 0], Reply, ID);
+            pragma Assert (Reply (0) = P.OK);
+            P.Acknowledge_Retirement (Pool, 99, Tickets (I), False, OK);
+            pragma Assert (not OK);
+            P.Acknowledge_Retirement (Pool, 99, Tickets (I), True, OK);
+            pragma Assert (OK);
+            P.Acknowledge_Retirement (Pool, 99, Tickets (I), True, OK);
+            pragma Assert (not OK);
+         end if;
+      end loop;
+      -- Quota refusal must not consume the head or lose its successor.
+      P.Handle (Pool, 42, 99, P.Label, 4, 0, 0, [1, P.Create, 12288, 0], Reply, ID);
+      pragma Assert (ID = 0 and Reply (0) = P.Unavailable);
+      for I in reverse 1 .. 2 loop
+         P.Handle (Pool, 42, 99, P.Label, 4, 0, 0, [1, P.Create, 4096, 0], Reply, ID);
+         pragma Assert (ID = Tickets (I * 2) + P.Ticket_Stride);
+         P.Complete (Pool, ID, Intel_GPU_Buffer_Reply.From_Linear
+           (16#10000000# + Unsigned_64 (I * 2 - 1) * 4096,
+            Layout.CPU_Base + Unsigned_64 (I * 2 - 1) * 4096, 4096, 16#10000000#), Reply, Consumed);
+         pragma Assert (Consumed and Reply (0) = P.OK and Reply (2) /= Names (I * 2));
+         P.Acknowledge_Retirement (Pool, 99, Tickets (I * 2), True, OK);
+         pragma Assert (not OK);
+      end loop;
+      pragma Assert (P.Client_Usage (Pool, 99).Charged = 16384);
+   end;
+   Ada.Text_IO.Put_Line ("Application reuse list PASS: two retired slots, denial preserves list, stale and duplicate acknowledgements rejected");
    pragma Assert (Buffers.Ticket_Generation (0) = 0);
    declare
       type Generations is array (Positive range <>) of Unsigned_64;

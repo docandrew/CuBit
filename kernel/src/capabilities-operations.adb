@@ -5,6 +5,7 @@
 -- Capability Table Operations - Implementation
 -------------------------------------------------------------------------------
 with Device_Memory_Admission;
+with Process_Identities;
 package body Capabilities.Operations with
     SPARK_Mode => On
 is
@@ -323,7 +324,11 @@ is
         table(0) := (
             capType  => CAP_ENDPOINT,
             rights   => READ_WRITE,
-            authorityTag => pid,
+            -- The default sender tag is the holder's identity (KERN-003),
+            -- the same word a receiver gets as the sender.
+            authorityTag => Process_Identities.To_Word (Process_Identities.Encode
+                              (Process_Identities.Slot (pid),
+                               Process_Identities.Generation (gen))),
             object   => (ref => pid, param => 0),
             gen      => gen);
 

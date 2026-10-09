@@ -54,7 +54,7 @@ package body CuBit.Memory_Grants is
       + (if notify then CuBit.Kernel_ABI.Grant_Notify else 0));
 
    procedure Create_For_Process
-     (grantee   : CuBit.Messages.ProcessID;
+     (grantee   : CuBit.Messages.Process_ID;
       localAddr : System.Address;
       numPages  : Natural;
       readWrite : Boolean;
@@ -64,7 +64,7 @@ package body CuBit.Memory_Grants is
    is
       Raw : constant Unsigned_64 := CuBit.Messages.syscall
         (CuBit.Messages.SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID,
-         Unsigned_64 (grantee), To_Number (localAddr), Unsigned_64 (numPages),
+         CuBit.Messages.To_Word (grantee), To_Number (localAddr), Unsigned_64 (numPages),
          Creation_Flags (readWrite, notify));
    begin
       reference := (slot => 0, generation => 1);
@@ -150,7 +150,7 @@ package body CuBit.Memory_Grants is
 
    procedure Acquire
      (reference     : Grant_Reference;
-      expectedOwner : CuBit.Messages.ProcessID;
+      expectedOwner : CuBit.Messages.Process_ID;
       byteOffset    : Unsigned_64;
       byteLength    : Unsigned_64;
       requiredAccess : Required_Access;
@@ -161,7 +161,7 @@ package body CuBit.Memory_Grants is
         (CuBit.Messages.SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT,
          reference.slot,
          reference.generation,
-         expectedOwner,
+         CuBit.Messages.To_Word (expectedOwner),
          byteOffset,
          byteLength,
          Required_Access'Enum_Rep (requiredAccess));

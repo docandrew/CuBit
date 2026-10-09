@@ -90,7 +90,8 @@ static int call(unsigned label, uint64_t a, uint64_t b, uint64_t c, uint64_t d,
     message->tag.label = label; message->tag.length = 4;
     message->words[0] = a; message->words[1] = b;
     message->words[2] = c; message->words[3] = d;
-    return syscall2(SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, CAP_SLOT_DESKTOP, message) != -1 &&
+    return syscall3(SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, CAP_SLOT_DESKTOP,
+                    message, CUBIT_WAIT_FOREVER) != -1 &&
            message->tag.label == label && !message->tag.reserved &&
            (!message->tag.flags || (label == 0x0821 && message->tag.flags == 1));
 }

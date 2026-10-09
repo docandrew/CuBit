@@ -1,0 +1,574 @@
+{
+  "status": "PASS",
+  "date": "2026-10-08",
+  "session": 28939,
+  "scope": "Selected SPARK policy units, not the complete Desktop service or foreign implementations",
+  "units": [
+    "compositor_damage.adb",
+    "vulkan_owned_targets.adb",
+    "desktop_vulkan_startup.adb",
+    "desktop_readback_output.adb"
+  ],
+  "checks": {
+    "total": 512,
+    "flow": 262,
+    "prover": 250,
+    "justified": 0,
+    "unproved": 0
+  },
+  "switches": [
+    "--mode=all",
+    "--level=2",
+    "--timeout=30",
+    "-j2",
+    "--counterexamples=off",
+    "--report=all"
+  ],
+  "source_dependencies": [
+    {
+      "path": "userspace/lib/compositor/compositor_affine.adb",
+      "sha256": "abc0de674fca4d5d00fca78adc0148e006f15c27f989af75993d757a4d32d507"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_affine.ads",
+      "sha256": "35a4d2582045834c8726a158738d0b18531f2ea69a61b1a0a83591ea25c8f991"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_backdrop.adb",
+      "sha256": "65670ec6216ff80e687f27f1d1f30239936272ff6825714bf7b29bca7afcc69d"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_backdrop.ads",
+      "sha256": "5ac1bc6b52330bfc558eadab595c173de402485561a86f77fa8f41736ad33fd0"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_capture_reservation.adb",
+      "sha256": "2ff1a91e603358ae2485ca84e7bab8b332a9aef40e40d7d68d7528b37353a8eb"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_capture_reservation.ads",
+      "sha256": "6982afdc270f82cc4e728a521027abd4ed3438d92f2d0a3489f6bb3983bd8a2b"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_damage.adb",
+      "sha256": "20367af8055a4ec644e1b0d31d4d51eeaa1708c2259a3ea608f647178d98b6d3"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_damage.ads",
+      "sha256": "e74f3565fc80ed65eb9e55ea38435c921ff4e1151e679a3e3b66cff769fca656"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_glyph_cache.adb",
+      "sha256": "035ff795c71523ae2ea381873d9c0ccc511e0ee8424cd9854ebecb42a66faefd"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_glyph_cache.ads",
+      "sha256": "f21f5cf86660a3eb65d812888b35d5a90c1e9c9df9ffb3b972f768c226cadb17"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_glyph_layout.adb",
+      "sha256": "e2f5d4e7f8b3835f4c4eb90e9969732b6fbd75ef89b726e21eda4ac988df75cb"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_glyph_layout.ads",
+      "sha256": "d90c25775f2ff6b923aa2bff47cf65054d6d4cb42f271d3eac413da33b099baa"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_glyph_placement.adb",
+      "sha256": "5f0002e9092208ff6abf032989555285b428e2b884a0dcffeca7a3a94bcb783e"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_glyph_placement.ads",
+      "sha256": "b176d464fe8f0a625352537211e3d02945a3c65b83f850c7565956c59c18a6aa"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_gradient.adb",
+      "sha256": "330860e9037374620861d02a435f32be3dc8f03c02756bf87f99d56ac50e1b65"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_gradient.ads",
+      "sha256": "d8ed8afdc74aff6405b64390bef519c52d4f41c2c25488067355004734c428c6"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_identity.ads",
+      "sha256": "be9c7a386614839707bfba63f618e67f9368d4d31830d07c9527bb775226a3a1"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_image_sampling.adb",
+      "sha256": "40a3ede2d54346722811cb6caa4f6a96ad4afce9e5b41656e4064d64e9468cf4"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_image_sampling.ads",
+      "sha256": "d23c95f62e9e3089892c7efa2dd00979b3094860861f3f7ab47b1c61e07722c4"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_pool.adb",
+      "sha256": "f0c159618bdc8975266ab14a299bbc8cfc1ef1823ff3eaf9aa9d382fe6341ba0"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_pool.ads",
+      "sha256": "145c11248f08603600a5bdaeb9a7cd8d17dba6a34da69bc50963e036c8bd4f5a"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_preview_geometry.adb",
+      "sha256": "0b8c38eea7924afd74923288a7a05e4ead418c56f0c97c49b7695688f253b7a9"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_preview_geometry.ads",
+      "sha256": "f3a2f186ded3617faf12838c1232522ff306083aa79ffa3c27dd78a317305b33"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_readback_copy.adb",
+      "sha256": "fe7abfff2875ccc9ce304735a73204086e60902d0325aa59c6952d1c116133a0"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_readback_copy.ads",
+      "sha256": "3205f6098df18b60c8ebdb99e34dee950591fa508c1e865549cadb12ebc4f1b9"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_row_copy.adb",
+      "sha256": "a1c78cb94cd4c8e446dc78d67652734745c2c3a9405d9ddf75872386fc7c42a5"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_row_copy.ads",
+      "sha256": "86d325b5e39204ec3ffd539b292d474d837ee3e66540ede0942cabfe920eedfa"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_source_region.ads",
+      "sha256": "404a63cc34fb18a905ae2d70c776d418d69f3ff7428e1806998f8bcdc4232dcc"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_storage.adb",
+      "sha256": "adfc388f03c27417fd1c3dafb6fac9816626f558a09b8bc03151e2aaa06f905b"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_storage.ads",
+      "sha256": "d21bf7b0dc5b4c94e6b7243d71dd61f73efefc215d437d7a318eebc4cf3f32a5"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_target_damage.adb",
+      "sha256": "723bf26776333a0a75643208127c9bdcddd59059aca8a6b3d3a6ee8863625506"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_target_damage.ads",
+      "sha256": "a25fb974b61a006a1c398e0675467c0cf1a90372c5788176f0fc5067ed1d287e"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_text.adb",
+      "sha256": "64a0bb42e6fd5cb7dcfba693d448a011bef08b89a260889937d46efccd4e27ae"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_text.ads",
+      "sha256": "6fff3cc04e4102d3b1ea61a50c7e937969461c90197d83ddbf5aaf9c9fd2b782"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_transform.adb",
+      "sha256": "d12b665bc6655da5388405c6ef85848ac8b0e7df35ef4404ebb92656efd4e965"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_transform.ads",
+      "sha256": "ce34ccdceca21fdf1b1d07fcc627cb8ceeb541ddd72d056e6e595642735cbc53"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_upload.adb",
+      "sha256": "016b8179bc7cca40c803cca285d9a4991132aafb44d7dbc33514182a53417265"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_upload.ads",
+      "sha256": "7d38a2ade2db22242baaadcea7823f4847a109011fd04c7eeb98fa6e60dc53f9"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_upload_progress.adb",
+      "sha256": "c2b174e6fcca70951eece760b262704259d60347a3e4be303de13894c1bc6458"
+    },
+    {
+      "path": "userspace/lib/compositor/compositor_upload_progress.ads",
+      "sha256": "fb7fefb9dfd857aafe7200835b3beb39901d5de87b8c0bc16c4fd0d5a30a8b33"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_affine_binding-regions.adb",
+      "sha256": "4850effecd5eaebb064b321b922c5bd8dd4d4ea4b1fc2f981f66a342cc7b4c04"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_affine_binding-regions.ads",
+      "sha256": "af40222bed1c13a3fc831574e0c537422e29c0bd03fc506ca37b161222c82f90"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_affine_binding.adb",
+      "sha256": "0e97ca47badbe905aa2a3d317762ab0ffb3a6e1986a575924b43194d749e3e44"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_affine_binding.ads",
+      "sha256": "64c27b6c39c9c214e3d38773c29e80e762838fcb9e343a05d4592b84fd036f15"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_affine_ffi.adb",
+      "sha256": "15bc3b311e0f487c2d7e17e21c29cd4b01c932745bad979f311cbf403f101e0a"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_affine_ffi.ads",
+      "sha256": "e2b3cc286c4a4d3b07413b0eeacbf3eb7de5acc1236628775b0562034ee5be21"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_backdrop_binding.adb",
+      "sha256": "4368089b1b0c5e63bd80dfdc2ec23a1d08702591a073dfd3f84bbaebc6c09a29"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_backdrop_binding.ads",
+      "sha256": "3643eb0958e2ac491e490d0f6417e09fe8a74aec46f71ac3c0a5e4a92e5992e9"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_backdrop_ffi.adb",
+      "sha256": "15f881d1dedfe073d969ffe36c59d8b9dd3d4c33250364b907dd94fe15f02253"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_backdrop_ffi.ads",
+      "sha256": "6234103992a58e33fa2e645f5a1f261fdece143b2e911646eaa8a3aa85dbbd36"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_checker_ffi.adb",
+      "sha256": "5083844399a8373ffba1d29d019cabd8c4d903a918b2da3b66c79ece46767ffb"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_checker_ffi.ads",
+      "sha256": "2b81d5738ebaaa58894bf6def87a0ea0bb13e21b543139891ab216d8b1438a48"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_context_ffi.adb",
+      "sha256": "44a25655e4ee935cd4faf49c4c9944cde8befeccadb5734e4f4b8e81e25deb1e"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_context_ffi.ads",
+      "sha256": "02bc033466bcf0a2a883cb0d18dd995494c712bef96ee6dabee97b93155f3b61"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_context_owner.adb",
+      "sha256": "2eacfd5c3d066f602e6099687b79038196aab86dc95645936915008ae103bb88"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_context_owner.ads",
+      "sha256": "7eca175bff92b677b8cec1e975dcab285777a414e721061d6eabb82faae6ff29"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_device_ffi.adb",
+      "sha256": "6b128239e8889ef299ee7270fa46028c1996804cb70c0c7b27b9adf0d33937ae"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_device_ffi.ads",
+      "sha256": "62b01c776eca068c2a0e05a696d7ddf7efa81a609a9e382903eb74665243282f"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_device_owner.adb",
+      "sha256": "52ae81accca9c949b78dffa99d9548879de5e5bf26c4822146d64b37c26c3fac"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_device_owner.ads",
+      "sha256": "e3867f4838a43f12bfd209e28a0e287eb433911911b040f46b49c199c3c01888"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_device_pipeline_ffi.adb",
+      "sha256": "5e0764e9a02f3c56679c1bdee3674d0de0005be22c36136fafaae083abfa514e"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_device_pipeline_ffi.ads",
+      "sha256": "051e50ebb77da54509e7c02a01b69c0da2cb5d869e557c64ef4097bb29e7d942"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_device_source_ffi.adb",
+      "sha256": "e49fa16ed38409b602b503c72fca1873eb1650d11c8aa786bb129681487e7518"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_device_source_ffi.ads",
+      "sha256": "8a5b50e1cee5c0b2c18bc589ba5d866f4faca81f696c8d1215b2779fa5c64e8c"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_device_targets_ffi.adb",
+      "sha256": "f808145c3a98b06b381ed773c58214fad10fe9ab32e7bdebc68ebe5b1e7959c3"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_device_targets_ffi.ads",
+      "sha256": "c3fc614bb37003b42f190f8d8b573df60da8af1cb92cd2b94a11b6cea4272ab6"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_device_upload_ffi.adb",
+      "sha256": "9359970c5d5c7cad5c425e02e179071f33031e8450b9731c6de775d1e58357b7"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_device_upload_ffi.ads",
+      "sha256": "291ecc254e7639da8eb13e89cd4a7acc2d78d4729982ef6f5038e814f3301e5f"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_frame.adb",
+      "sha256": "b26a9382dde4ee2b1a1f3d2d79ff30bcccd248a1ff9252cf75f8d2b9b5626be8"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_frame.ads",
+      "sha256": "94d3fb0cc6041d3cb57106ad12a0d34b712d979bccc3096fbbfa4459db7215cd"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_glyph_sources.adb",
+      "sha256": "65edccfcde3e092d50df46a4cc12cb929bdc3c6fa5281352d2525c6816e07f30"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_glyph_sources.ads",
+      "sha256": "6b86f29b8cc6e95486401afcc104a8b02dcdf0584ac9802993825eb6f6c83a80"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_image_ffi.adb",
+      "sha256": "95f7a0b58bce1093388cbf82aba7d9cc9a0056c01bb62a021c5836aa1a3e9474"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_image_ffi.ads",
+      "sha256": "88ca3cde8715040074b087e6a12fd1adb027d0e53a2188aefb010d7a3f83861e"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_image_owner.adb",
+      "sha256": "cae8f0d6cd2acd40f7843fefb0140816a3532f06fb7ba7193305c8cbc17acbbe"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_image_owner.ads",
+      "sha256": "937bcc4e2ad19d3be413a250c1fe1c0a4b390a1d3336ac6be6c048635934797d"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_owned_source.adb",
+      "sha256": "ab79bf64d8698d96d0bebc15c75d7ad89c0688e8fc3ea140056b00c145207d68"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_owned_source.ads",
+      "sha256": "0fa2935dcd47efe3ffb3c7f4bf0779c8ed28a8332512bda30d0e40089e913448"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_owned_target_ffi.adb",
+      "sha256": "63c5ad515abff21d6d11a854e9abd73f9ab765f5307dd42b6f61af8bf4b180bd"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_owned_target_ffi.ads",
+      "sha256": "1194f6c29db9d7e6cbb30ed066156180194b35de3f0908f2db1daa61301b3b21"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_owned_targets.adb",
+      "sha256": "c7eb20391e9438b302cb26c1d5e2b2ce6bfb3157cf0d1b11a9b3ac42427e84c1"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_owned_targets.ads",
+      "sha256": "b39b8dd8511021e3f93ddd4debc104247306acc2b2eafd981d6785804c1867ee"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_preview_binding.adb",
+      "sha256": "c8b045710c35e09d1437da06ef05b7233c34aa030f7a2331ebf4d1386c1a8e04"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_preview_binding.ads",
+      "sha256": "95dbbc86964ff8def8a58fdf1bbbf01105b990e1b70fe71664a25b103afd42b5"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_preview_ffi.adb",
+      "sha256": "68232e7b5f438eff14217442a168cdc205e7bbe6c73d51681e99fcb2e983d378"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_preview_ffi.ads",
+      "sha256": "e6bc240f1bc3c70aa8178298ea00b3b1843d320a5e83f1c0fe582dce18b3aeca"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_region_ffi.adb",
+      "sha256": "d849499978e3adec23da18a043ca217dd1163ef296c70d86b2adfeb836493b53"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_region_ffi.ads",
+      "sha256": "d4e8619e3e54ffec962c52e521bbf2f803a0b0cd7df625a9d4ae890c60bb55ef"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_scene.adb",
+      "sha256": "29c6ff9a9d18cf183d7a328624957afb98ccb281d1348dd8bcb8229e9a5fcd3b"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_scene.ads",
+      "sha256": "2bcf6675d748f55d94cc3424d54e6e3b6b3f1aa8cd841d59de71f50595a75d02"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_scene_recording.adb",
+      "sha256": "77e504baa46219cf2a165a81308ae51513d91be0f9548008428c8580e11524dc"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_scene_recording.ads",
+      "sha256": "4315c96b0814d526fee8af0766776960530fee4c540bedb8d6f0b8c3f89e0041"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_submission-backdrops.adb",
+      "sha256": "a3042b30fa80c483793494f53d44c3732a6798bdc1a1610e0933a0242f6e7b2e"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_submission-backdrops.ads",
+      "sha256": "d500207ba2c54c114deef34a4bf9483757e5622f3d6d55fdc5a3dca9ecdb4275"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_submission-checkers.adb",
+      "sha256": "dd104e19c44f13e88bdefc84c302c44c5a0b0747cd137a8b2bfbcdd7163d2250"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_submission-checkers.ads",
+      "sha256": "53e3f48fc976a56a7a01236a5355dd7a8c240338dda1fab03e7c6bf13cb3b1b4"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_submission-previews.adb",
+      "sha256": "c945ac35f044d79b7c90fad4ab87f696985f66bccfee7fb87c431c2a54145fea"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_submission-previews.ads",
+      "sha256": "16d985a2d7039e031a42210b05ddefbf845000a151021240439e6f03cc5b2f78"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_submission-regions.adb",
+      "sha256": "4fc82b626fd918ab617ab2c1bf5c58e13949707f6535eb2b18e1f37667385b77"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_submission-regions.ads",
+      "sha256": "b01629bc55790bdac34aeb2398f535df293835118737f28f514196a1cc6f37ed"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_submission.adb",
+      "sha256": "195aca3890e86bd07af1e6ae662aae9e1eb650c791de20e0f27fd1af8a868f65"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_submission.ads",
+      "sha256": "5ceb6984b8e53f3e5face00f89296fc6d3b9b15195b0d3cf81e80c3e7260fed8"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_submission_ffi.adb",
+      "sha256": "e2c005e2c5fc3f1d22755752041b7c2718a6e7725f19b4eb04e0bb2f9dae1737"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_submission_ffi.ads",
+      "sha256": "23af919b0ce383c04be18f3ede91f15c90a2146b1d398e9275e57be026623523"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_target_ffi.adb",
+      "sha256": "acc2f4a0b47c78ac2428e748b7e2748c89230becb4939f99aaf923e0b45fd014"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_target_ffi.ads",
+      "sha256": "7c863d105b46f03853bc7b5a21b73e5f574939ba6251e6ced638d9f664a281ff"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_target_owner.adb",
+      "sha256": "e414bab4c75be14e05bd5d23f9d1fc01355eaa9aa5b25882721bde726d4cffbf"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_target_owner.ads",
+      "sha256": "357b3f9e8b1e7a5c72b0c8c3a1d2aa8481c7749f39cef2c544367af4960179ef"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_upload_ffi.adb",
+      "sha256": "0b2ae7c96e9dbd50b264fede804f06ba8adeeeb7a01cfc630263cb427420ac7f"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_upload_ffi.ads",
+      "sha256": "eda307e770b4b3b6f53fd8e66b53105209d49987c507faabf3fa6ea8c6f25957"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_upload_owner.adb",
+      "sha256": "03ba01c4f366660c7089e042e0c1e65236fbdd609d7f43b0a51b9c8c3fae833a"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_upload_owner.ads",
+      "sha256": "a81e89933c4dd7e9821f824f0496095ecda5b32a2a76de84a8db85d61e7231b1"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_upload_record_ffi.adb",
+      "sha256": "b6b855033cc9a6c7545406248166524d536ddc09df0927b79f6b82f83572fa6f"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_upload_record_ffi.ads",
+      "sha256": "3dac7c71f5fe30a0b1e51a117a9fccabb082bfcbc57b4276794237b0ae110d3f"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_upload_recording.adb",
+      "sha256": "c86df4d26ae9b06960b2425f7a179e5f5d82d8a69312bcfad6ba11d3c5101f1b"
+    },
+    {
+      "path": "userspace/lib/compositor/vulkan_upload_recording.ads",
+      "sha256": "d075b333141b130c5e4551b5316f4143743e11697b12dbf6377180e3b9ca66ce"
+    },
+    {
+      "path": "userspace/lib/display/cubit-display_geometry.adb",
+      "sha256": "2c82b31e2f5b86f0d413afbdf425a11cf4b04103f470ed09e2f61060a48f3125"
+    },
+    {
+      "path": "userspace/lib/display/cubit-display_geometry.ads",
+      "sha256": "326711bd615222f449b39bfe4fdb511baa5b103bd14575a260ce6ddd655f95b5"
+    },
+    {
+      "path": "userspace/lib/ui/tests/editor/cubit.ads",
+      "sha256": "25728f8da538720347d29258fe6606de90872f27dca1c327f503678a5feb4eab"
+    },
+    {
+      "path": "userspace/lib/ui/tests/surfaces/cubit.ads",
+      "sha256": "25728f8da538720347d29258fe6606de90872f27dca1c327f503678a5feb4eab"
+    },
+    {
+      "path": "userspace/lib/ui/tests/toolbar/cubit.ads",
+      "sha256": "25728f8da538720347d29258fe6606de90872f27dca1c327f503678a5feb4eab"
+    },
+    {
+      "path": "userspace/mesa/mesa_service.adb",
+      "sha256": "73a2027722d96a73e396a852c574004f8e3bb90b2757c6f24d0cea8d39633093"
+    },
+    {
+      "path": "userspace/mesa/mesa_service.ads",
+      "sha256": "f43234d81aa06d30e292378531b56acce57a6c0f899f71b50c7012be06dec7f6"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit.ads",
+      "sha256": "ad85bc92372bca950674268c2b1b5507b5edc382b13176f73304a2db5725f52c"
+    },
+    {
+      "path": "userspace/runtime/gnat/i-c.ads",
+      "sha256": "135e7326f0057fefe55797a3a59548b139364a7aa67d18be7af129a9f78dfdb1"
+    },
+    {
+      "path": "userspace/runtime/gnat/interfac.ads",
+      "sha256": "9b013b76f597c175c92aeac6345196bc6809d72279094393d6affd13c993bf60"
+    },
+    {
+      "path": "userspace/runtime/gnat/s-stoele.ads",
+      "sha256": "8a64c410dfb6f3c0948ac91dcc13b30e2e107efa4e5c02f4e623db50c4c714f8"
+    },
+    {
+      "path": "userspace/runtime/gnat/system.ads",
+      "sha256": "01d6389a8e1a08492008f9b246ddd39d127059d803828ea93f34191739d9eca7"
+    },
+    {
+      "path": "userspace/services/desktop/desktop_readback_output.adb",
+      "sha256": "95d0f7c0ff47e1d20c5b01aa127bd54fb56019a158d06622eb4740b7c30aa75a"
+    },
+    {
+      "path": "userspace/services/desktop/desktop_readback_output.ads",
+      "sha256": "540ca28c5ee1caf3577ef88630b30f26dc5e0c2e04be90ff8d032900629a7c3d"
+    },
+    {
+      "path": "userspace/services/desktop/desktop_vulkan_startup.adb",
+      "sha256": "9eeb74911a2bf3c81af48b4a82e5bee537fed21fcc0c1b377d0d34806b872898"
+    },
+    {
+      "path": "userspace/services/desktop/desktop_vulkan_startup.ads",
+      "sha256": "ab80fd7d28a3e6f123a991b4c30798ce6d6fb29fdae7b8767cabf16812e533a6"
+    }
+  ],
+  "warnings": [
+    "desktop_vulkan_startup.adb:392:52: warning: \"Cancelled\" is set by \"Cancel_Write\" but not used after the call",
+    "desktop_vulkan_startup.adb:695:60: warning: \"Released\" is set by \"Release_Backing\" but not used after the call",
+    "desktop_vulkan_startup.adb:697:26: warning: \"Released\" is set by \"Release_Upload\" but not used after the call",
+    "desktop_vulkan_startup.adb:698:36: warning: \"Released\" is set by \"Release_Readback_Storage\" but not used after the call",
+    "desktop_vulkan_startup.adb:699:63: warning: \"Released\" is set by \"Close\" but not used after the call"
+  ],
+  "warning_review": "Submit_Write cancellation follows guards establishing the active producer ticket. Stop attempts each child cleanup; refused/uncertain release retains owner state. Device Close checks context retirement before foreign device close. These warnings are retained, not represented as zero warnings.",
+  "proof_boundaries": [
+    "Foreign Mesa/Vulkan implementation and truthful completion/retirement reports",
+    "Mapped-memory authority, lifetime, nonaliasing and actual pixel stores",
+    "Desktop main event loop and native kernel integration",
+    "Physical scanout retirement, tear-free output and input-to-photon timing"
+  ],
+  "report_sha256": "4312db745a74a876e050bcadd3a273fceb722e59c3ae3389c333fb54661a3cb2",
+  "log_sha256": "cca0e9ea10a9cd3a6f2e480b7c211685b49a7e553fac219b5edeffc3f0388744",
+  "frozen_source": "/home/doc/git/compositor-test-artifacts/desktop-policy-source-129"
+}
