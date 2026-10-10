@@ -21,6 +21,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Input; use CuBit.Input;
 with PS2_Boot_Probe;
 with Input_Pending;
+with Pointer_Pending;
 with Keyboard_Pending;
 
 procedure main is
@@ -43,7 +44,9 @@ procedure main is
 
    keyboardPending : Keyboard_Pending.State;
    keyboardOverflowReported : Boolean := False;
-   pointerPending : Input_Pending.Queue;
+   pointerPending : Pointer_Pending.State;
+   --  Device flag carried in pointer reports: the mouse negotiated a wheel.
+   POINTER_HAS_WHEEL : constant Pointer_Pending.Device_Flags := 1;
    pointerOverflowReported : Boolean := False;
 
    ---------------------------------------------------------------------------
@@ -196,7 +199,7 @@ procedure main is
       end if;
       mouseConsumer := Registered_Driver (DRIVER_MOUSE);
       if mouseConsumer /= previousMouse then
-         Input_Pending.Reset (pointerPending);
+         Pointer_Pending.Reset (pointerPending);
       end if;
    end refreshConsumers;
 
@@ -209,8 +212,8 @@ procedure main is
    begin
       for Attempt in 1 .. Input_Pending.Capacity loop
          exit when mouseConsumer = No_Process or else
-           Input_Pending.Count (pointerPending) = 0;
-         pending := Input_Pending.Element (pointerPending, 0);
+           Pointer_Pending.Count (pointerPending) = 0;
+         pending := Pointer_Pending.Element (pointerPending, 0);
          report :=
            (sourceAuthorityTag => 0,
             sequence => pending.Sequence,
@@ -221,7 +224,7 @@ procedure main is
             payload => pending.Payload,
             snapshot => Pointer_Snapshot (pending.Payload, pending.Observed_Ms));
          exit when not trySendEvent (mouseConsumer, Encode (report));
-         Input_Pending.Acknowledge (pointerPending);
+         Pointer_Pending.Acknowledge (pointerPending);
       end loop;
    end flushPointer;
 
@@ -265,13 +268,18 @@ procedure main is
    --  handleMouse - accumulate mouse bytes into packet, forward when complete
    ---------------------------------------------------------------------------
    procedure handleMouse (code : Unsigned_8) is
-      buttons : Unsigned_64;
-      dx      : Unsigned_64;
-      dy      : Unsigned_64;
-      dz      : Unsigned_64;
-      flags   : Unsigned_64;
-      packed  : Unsigned_64;
-      lost : Boolean;
+      --  Nine-bit two's complement: the packet's sign bits extend byte 1/2.
+      SIGN_EXTENSION : constant Integer := 256;
+      X_SIGN : constant Unsigned_8 := 16#10#;
+      Y_SIGN : constant Unsigned_8 := 16#20#;
+      WHEEL_MASK : constant Unsigned_8 := 16#0F#;
+      WHEEL_NEGATIVE_FIRST : constant Unsigned_8 := 8;
+      WHEEL_FIELD : constant Integer := 16;
+      BUTTON_MASK : constant Unsigned_8 := 7;
+      wheelRaw : Unsigned_8;
+      report : Pointer_Pending.Report;
+      outcome : Pointer_Pending.Append_Outcome;
+      use type Pointer_Pending.Append_Outcome;
    begin
       --  Sync check: byte 0 has an always-one bit.  Overflow reports cannot
       --  express a trustworthy displacement, so discard them as well.  This
@@ -292,23 +300,11 @@ procedure main is
          byteIdx := 0;
 
          if mouseConsumer /= No_Process then
-            --  Pack mouse event into words(0):
-            --  Bits  0-7:   buttons (L=0, R=1, M=2)
-            --  Bits  8-19:  dx (signed 12-bit)
-            --  Bits 20-31:  dy (signed 12-bit)
-            --  Bits 32-39:  dz (signed 8-bit scroll)
-            --  Bits 40-47:  flags (bit 0 = hasWheel)
-            buttons := Unsigned_64 (packetBuf (0) and 7);
-
-            dx := Unsigned_64 (packetBuf (1));
-            if (packetBuf (0) and 16#10#) /= 0 then
-               dx := dx or 16#F00#;
-            end if;
-
-            dy := Unsigned_64 (packetBuf (2));
-            if (packetBuf (0) and 16#20#) /= 0 then
-               dy := dy or 16#F00#;
-            end if;
+            report.Buttons := packetBuf (0) and BUTTON_MASK;
+            report.X := Integer (packetBuf (1)) -
+              (if (packetBuf (0) and X_SIGN) /= 0 then SIGN_EXTENSION else 0);
+            report.Y := Integer (packetBuf (2)) -
+              (if (packetBuf (0) and Y_SIGN) /= 0 then SIGN_EXTENSION else 0);
 
             if hasWheel then
                --  IntelliMouse encodes the wheel as a signed four-bit value.
@@ -318,30 +314,22 @@ procedure main is
                --  the user (down); CuBit's UI convention is positive away
                --  from the user (up), so normalize direction at the driver
                --  boundary.
-               dz := Unsigned_64 (packetBuf (3) and 16#0F#);
-               if dz in 1 .. 7 then
-                  dz := 256 - dz;
-               elsif dz >= 8 then
-                  dz := 16 - dz;
-               end if;
+               wheelRaw := packetBuf (3) and WHEEL_MASK;
+               report.Wheel :=
+                 (if wheelRaw >= WHEEL_NEGATIVE_FIRST
+                  then WHEEL_FIELD - Integer (wheelRaw)
+                  else -Integer (wheelRaw));
+               report.Flags := POINTER_HAS_WHEEL;
             else
-               dz := 0;
+               report.Wheel := 0;
+               report.Flags := 0;
             end if;
 
-            if hasWheel then
-               flags := 1;
-            else
-               flags := 0;
-            end if;
-
-            packed := buttons
-               or Shift_Left (dx and 16#FFF#, 8)
-               or Shift_Left (dy and 16#FFF#, 20)
-               or Shift_Left (dz and 16#FF#, 32)
-               or Shift_Left (flags and 16#FF#, 40);
-
-            Input_Pending.Append (pointerPending, packed, lost, syscall (SYSCALL_GETTIME));
-            if lost and then not pointerOverflowReported then
+            Pointer_Pending.Append
+              (pointerPending, report, syscall (SYSCALL_GETTIME), outcome);
+            if outcome = Pointer_Pending.Overflowed and then
+              not pointerOverflowReported
+            then
                debugPrint ("ps2: pointer retention overflow; resynchronizing" & LF);
                pointerOverflowReported := True;
             end if;
@@ -418,7 +406,7 @@ begin
 
    --  Main event loop
    loop
-      if Input_Pending.Count (pointerPending) = 0 and then
+      if Pointer_Pending.Count (pointerPending) = 0 and then
         Keyboard_Pending.Count (keyboardPending) = 0 then
          -- No retry timer when idle: ordinary input is interrupt-driven.
          event := Wait_Event;
@@ -431,7 +419,7 @@ begin
          begin
             activity := Wait_For_Activity_Until
               (Keyboard_Pending.Wake_Deadline (keyboardPending, now,
-                Input_Pending.Wake_Deadline (pointerPending, now, Unsigned_64'Last)));
+                Pointer_Pending.Wake_Deadline (pointerPending, now, Unsigned_64'Last)));
             if activity = Unavailable then
                ignore := syscall (SYSCALL_SLEEP, 1);
             end if;

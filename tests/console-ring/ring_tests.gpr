@@ -1,0 +1,12 @@
+project Ring_Tests is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("console_ring.ads", "console_ring.adb", "ring_tests.adb");
+   for Object_Dir use "build/test";
+   for Main use ("ring_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-Es");
+   end Binder;
+end Ring_Tests;

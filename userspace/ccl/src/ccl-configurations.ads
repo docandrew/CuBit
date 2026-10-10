@@ -73,12 +73,15 @@ package CCL.Configurations with SPARK_Mode => On is
       Invalid_Key, Invalid_Value, Duplicate_Key, Too_Many_Entries,
       Invalid_Executable, Invalid_Priority, Invalid_Approval, Invalid_Role, Duplicate_Field,
       Missing_Field, Trailing_Input, Invalid_Dependency, Invalid_Launch_Mode,
-      Invalid_Scheduling, Invalid_Deadline);
+      Invalid_Scheduling, Invalid_Deadline, Invalid_Typed_Value);
    type Compilation_Result is record
       Success : Boolean := False;
       Diagnostic : Diagnostic_Code := No_Error;
       Syntax_Diagnostic : CCL.Declarations.Diagnostic_Code := CCL.Declarations.No_Error;
       Position : Positive := 1;
+      --  Why a typed setting's value was refused (Invalid_Typed_Value).
+      Typed_Message : String (1 .. 160) := [others => ' '];
+      Typed_Message_Length : Natural range 0 .. 160 := 0;
       Plan : Configuration_Plan;
    end record;
    procedure Compile (Source : String; Result : out Compilation_Result);

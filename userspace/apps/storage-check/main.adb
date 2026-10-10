@@ -12,6 +12,13 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with CuBit.Filesystems; use CuBit.Filesystems;
+with CuBit.Directory_Pages;
+with CuBit.Filesystem_Queues;
+with CuBit.Filesystem_Sessions;
+with CuBit.Filesystem_Events;
+with CuBit.File_Access;
+with CuBit.Volume_Descriptions;
+with CuBit.Channels;
 
 procedure main is
    use ASCII;
@@ -928,15 +935,15 @@ procedure main is
          foundCreated : Boolean := False;
 
          function entryEquals
-           (item : Directory_Entry;
+           (name : CuBit.Directory_Pages.Name_Bytes; length : Natural;
             expected : String) return Boolean
          is
          begin
-            if Natural (item.nameLength) /= expected'Length then
+            if length /= expected'Length then
                return False;
             end if;
             for index in 1 .. expected'Length loop
-               if Character'Val (item.name (index)) /=
+               if Character'Val (name (index)) /=
                  expected (expected'First + index - 1)
                then
                   return False;
@@ -977,38 +984,40 @@ procedure main is
             end if;
 
             declare
-               pageAddress : constant System.Address :=
-                 To_Address (Integer_Address (aligned));
-               header : Directory_Page_Header
-                 with Import, Address => pageAddress;
-               entries : Directory_Entries
-                 with Import,
-                      Address => pageAddress + DIRECTORY_PAGE_HEADER_BYTES;
+               package DP renames CuBit.Directory_Pages;
+               shared : constant DP.Page
+                 with Import, Address => To_Address (Integer_Address (aligned));
+               page : constant DP.Page := shared;   --  copied, then checked
+               valid, ended, ok : Boolean;
+               count : DP.Entry_Count;
+               used : DP.Used_Bytes;
+               resume, stamp : Unsigned_64;
+               atEntry : Natural := DP.Header_Bytes;
+               nextEntry : Natural;
+               item : DP.Facts;
+               name : DP.Name_Bytes;
+               length : DP.Name_Length;
             begin
-               if header.version /= PROTOCOL_VERSION or else
-                 header.headerBytes /= DIRECTORY_PAGE_HEADER_BYTES or else
-                 header.entryBytes /= DIRECTORY_ENTRY_BYTES or else
-                 header.entryCount > MAXIMUM_DIRECTORY_PAGE_ENTRIES
-               then
+               DP.Check (page, valid, count, used, ended, resume, stamp);
+               if not valid then
                   debugPrint ("STORAGE-CHECK: invalid directory page" & LF);
                   return False;
                end if;
-
-               if header.entryCount > 0 then
-                  for index in 0 .. Natural (header.entryCount) - 1 loop
-                     if entries (index).nameLength >
-                       MAXIMUM_DIRECTORY_NAME_BYTES
-                     then
-                        return False;
-                     end if;
-                     foundConfig := foundConfig or else
-                       entryEquals (entries (index), "config.dat");
-                     foundCreated := foundCreated or else
-                       entryEquals (entries (index), "cubit-new.dat");
-                  end loop;
-               end if;
-
-               exit when (header.flags and DIRECTORY_PAGE_END) /= 0;
+               for index in 1 .. count loop
+                  DP.Get (page, atEntry, used, item, name, length, nextEntry, ok);
+                  if not ok then
+                     return False;
+                  end if;
+                  atEntry := nextEntry;
+                  --  Listings carry metadata: the fixture's size is known.
+                  if entryEquals (name, length, "config.dat") then
+                     foundConfig := (item.Valid and INSPECTED_SIZE) /= 0 and then
+                       item.Kind = DIRECTORY_KIND_FILE;
+                  end if;
+                  foundCreated := foundCreated or else
+                    entryEquals (name, length, "cubit-new.dat");
+               end loop;
+               exit when ended;
             end;
          end loop;
 
@@ -1019,9 +1028,12 @@ procedure main is
 
       function exerciseDirectoryNavigation return Boolean is
          root, child, reopened : Directory_Handle;
-         firstCursor : Unsigned_64;
-         header : Directory_Page_Header
-           with Import, Address => To_Address (Integer_Address (aligned));
+         firstResume : Unsigned_64;
+         --  The page's resume token (CuBit.Directory_Pages), read in place:
+         --  compared only, never used to index anything.
+         resumeToken : Unsigned_64
+           with Import, Volatile, Address => To_Address
+             (Integer_Address (aligned + CuBit.Directory_Pages.Resume_At));
 
          procedure Put_Name (name : String) is
             view : String (name'Range)
@@ -1058,7 +1070,7 @@ procedure main is
          if msg.tag.label /= REPLY_OK then
             return False;
          end if;
-         firstCursor := header.nextCursor;
+         firstResume := resumeToken;
          msg := Rewind_Directory_Request (root);
          msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
          if msg.tag.label /= REPLY_OK then
@@ -1066,7 +1078,7 @@ procedure main is
          end if;
          msg := Read_Directory_Page_Request (root, grantRef);
          msg.tag := capCall (CAP_SLOT_FS, msg, CuBit.Messages.Wait_Forever);
-         if msg.tag.label /= REPLY_OK or else header.nextCursor /= firstCursor then
+         if msg.tag.label /= REPLY_OK or else resumeToken /= firstResume then
             return False;
          end if;
 
@@ -1639,6 +1651,1136 @@ procedure main is
         exerciseRename;
    end exerciseStorage;
 
+   --  The request queue's wake and queued rename
+   --  (docs/filesystem-protocol-v2.md steps 1 and 2), through
+   --  CuBit.Filesystem_Sessions.
+   function exerciseQueue return Boolean is
+      package FQ renames CuBit.Filesystem_Queues;
+      package FS renames CuBit.Filesystem_Sessions;
+      use type FS.Token;
+      use type FS.Wait_Result;
+      Session : FS.Session;
+      Opened : Boolean;
+      --  Process-wide, increasing completion tokens for the wake.
+      Next_Wake_Token : Unsigned_64 := 16#F5_0000#;
+      SHORT_MS : constant := 50;
+      PROMPT_MS : constant := 2_000;
+
+      procedure Put (Value : String) is
+         View : String (Value'Range) with Import, Address => FS.Arena (Session);
+      begin
+         View := Value;
+      end Put;
+
+      --  One request, waited for (blocking form, explicit deadline).
+      function Call (Item : FQ.Request; Value : out Unsigned_64) return Unsigned_32 is
+         Tag : FS.Token;
+         Answer : FQ.Queues.Completion;
+         Got : Boolean;
+         Waited : FS.Wait_Result;
+      begin
+         Value := 0;
+         FS.Submit (Session, Item, Tag);
+         if Tag = 0 then
+            return REPLY_ERR;
+         end if;
+         FS.Wait_Answer (Session, Deadline_After (PROMPT_MS), Waited);
+         if Waited /= FS.Answer_Waiting then
+            return REPLY_ERR;
+         end if;
+         FS.Reap (Session, Answer, Got);
+         if not Got or else Answer.Tag /= Tag then
+            return REPLY_ERR;
+         end if;
+         Value := Answer.Answer.Value;
+         return Answer.Answer.Status;
+      end Call;
+
+      function Path_Call (Operation : Unsigned_32; Path : String; Options : Unsigned_32 := 0;
+                          Handle : Unsigned_64 := 0) return Unsigned_32 is
+         Ignore : Unsigned_64;
+      begin
+         Put (Path);
+         return Call ((Operation => Operation, Options => Options, Handle => Handle,
+                       Length => Path'Length, others => <>), Ignore);
+      end Path_Call;
+
+      function Arm return Boolean is
+         Accepted : Boolean;
+      begin
+         Next_Wake_Token := Next_Wake_Token + 1;
+         FS.Arm_Wake (Session, Next_Wake_Token, Accepted);
+         return Accepted;
+      end Arm;
+
+      --  Wait in "the event loop" until the wake completes or Milliseconds
+      --  pass; Woken says how it completed.
+      function Wake_Completes (Milliseconds : Unsigned_64; Woken : out Boolean) return Boolean is
+         Deadline : constant Unsigned_64 := Deadline_After (Milliseconds);
+         Receipt : aliased CompletionEntry;
+         Consumed : Boolean;
+      begin
+         Woken := False;
+         loop
+            while Poll_Completion (Receipt'Address) /= 0 loop
+               FS.Complete_Wake (Session, Receipt, Consumed, Woken);
+               if Consumed then
+                  return True;
+               end if;
+               debugPrint ("QUEUE-WAKE-CHECK: foreign completion" & LF);
+            end loop;
+            --  Other activity (a kernel notice) also wakes the wait: the
+            --  deadline is checked here too.
+            exit when Wait_For_Activity_Until (Deadline) /= Work_Available or else
+              syscall (SYSCALL_GETTIME) >= Deadline;
+         end loop;
+         return False;
+      end Wake_Completes;
+
+      function Wake_Check return Boolean is
+         Woken : Boolean;
+         Tag : FS.Token;
+         Answer : FQ.Queues.Completion;
+         Got : Boolean;
+         Directory : Unsigned_64;
+         Waited : FS.Wait_Result;
+      begin
+         --  Nothing outstanding: the wake is held, not answered.
+         if not Arm or else Wake_Completes (SHORT_MS, Woken) then
+            debugPrint ("QUEUE-WAKE-CHECK: idle wake answered" & LF);
+            return False;
+         end if;
+         --  An answer posted wakes it, without a call blocking anywhere.
+         Put ("@nvme:0/");
+         FS.Submit (Session, (Operation => FQ.Queue_Open_Directory, Length => 8, others => <>), Tag);
+         if Tag = 0 or else not Wake_Completes (PROMPT_MS, Woken) or else not Woken then
+            debugPrint ("QUEUE-WAKE-CHECK: answer did not wake" & LF);
+            return False;
+         end if;
+         FS.Reap (Session, Answer, Got);
+         if not Got or else Answer.Tag /= Tag or else Answer.Answer.Status /= REPLY_OK then
+            debugPrint ("QUEUE-WAKE-CHECK: open answer" & LF);
+            return False;
+         end if;
+         Directory := Answer.Answer.Value;
+         --  Answers already waiting: a wake is answered at once.
+         FS.Submit (Session, (Operation => FQ.Queue_Close_Directory, Handle => Directory, others => <>), Tag);
+         FS.Wait_Answer (Session, Deadline_After (PROMPT_MS), Waited);
+         if Waited /= FS.Answer_Waiting or else not Arm or else
+           not Wake_Completes (PROMPT_MS, Woken) or else not Woken
+         then
+            debugPrint ("QUEUE-WAKE-CHECK: waiting answer not reported" & LF);
+            return False;
+         end if;
+         FS.Reap (Session, Answer, Got);
+         if not Got or else Answer.Answer.Status /= REPLY_OK then
+            return False;
+         end if;
+         --  A blocking wait supersedes a held wake (answered), and its own
+         --  timeout leaves nothing that answers the next wake early.
+         if not Arm then
+            return False;
+         end if;
+         FS.Wait_Answer (Session, Deadline_After (SHORT_MS), Waited);
+         if Waited /= FS.Deadline_Reached or else not Wake_Completes (PROMPT_MS, Woken) then
+            debugPrint ("QUEUE-WAKE-CHECK: supersede" & LF);
+            return False;
+         end if;
+         if not Arm or else Wake_Completes (SHORT_MS, Woken) then
+            debugPrint ("QUEUE-WAKE-CHECK: stale wait answered a new wake" & LF);
+            return False;
+         end if;
+         Put ("@nvme:0/");
+         FS.Submit (Session, (Operation => FQ.Queue_Open_Directory, Length => 8, others => <>), Tag);
+         if not Wake_Completes (PROMPT_MS, Woken) or else not Woken then
+            return False;
+         end if;
+         FS.Reap (Session, Answer, Got);
+         if not Got or else Answer.Answer.Status /= REPLY_OK or else
+           Path_Call (FQ.Queue_Close_Directory, "", Handle => Answer.Answer.Value) /= REPLY_OK
+         then
+            return False;
+         end if;
+         debugPrint ("QUEUE-WAKE-CHECK: PASS" & LF);
+         return True;
+      end Wake_Check;
+
+      function Rename_Check return Boolean is
+         A : constant String := "@nvme:0/queue-rename-a.dat";
+         B : constant String := "@nvme:0/queue-rename-b.dat";
+         C : constant String := "@nvme:0/lost+found/queue-rename-c.dat";
+         D : constant String := "@nvme:0/queue-rename-d.dat";
+         Create : constant Unsigned_32 :=
+           Unsigned_32 (OPEN_READ_WRITE or OPEN_CREATE or OPEN_TRUNCATE);
+
+         function Make (Name : String) return Boolean is
+            Handle : Unsigned_64;
+            Status : Unsigned_32;
+         begin
+            Put (Name);
+            Status := Call ((Operation => FQ.Queue_Open, Options => Create,
+                             Length => Name'Length, others => <>), Handle);
+            return Status = REPLY_OK and then
+              Path_Call (FQ.Queue_Close, "", Handle => Handle) = REPLY_OK;
+         end Make;
+
+         function Rename_Is (Before, After : String; Expected : Unsigned_32;
+                             Split : Unsigned_64 := 0) return Boolean is
+            Ignore : Unsigned_64;
+            Status : Unsigned_32;
+         begin
+            Put (Before & After);
+            Status := Call ((Operation => FQ.Queue_Rename,
+                             Position => (if Split = 0 then Before'Length else Split),
+                             Length => Before'Length + After'Length, others => <>), Ignore);
+            if Status /= Expected then
+               debugPrint ("QUEUE-RENAME-CHECK: " & Before & " -> " & After & " expected" &
+                 Expected'Image & " got" & Status'Image & LF);
+            end if;
+            return Status = Expected;
+         end Rename_Is;
+
+         function Exists (Name : String) return Boolean is
+            Handle : Unsigned_64;
+         begin
+            Put (Name);
+            if Call ((Operation => FQ.Queue_Open, Length => Name'Length, others => <>), Handle) /= REPLY_OK then
+               return False;
+            end if;
+            return Path_Call (FQ.Queue_Close, "", Handle => Handle) = REPLY_OK;
+         end Exists;
+      begin
+         if not Make (A) or else
+           not Rename_Is (A, B, REPLY_OK) or else Exists (A) or else not Exists (B) or else
+           --  A move into another directory of the volume.
+           not Rename_Is (B, C, REPLY_OK) or else not Exists (C) or else
+           --  Onto an existing file: replaced (POSIX).
+           not Make (D) or else not Rename_Is (C, D, REPLY_OK) or else Exists (C) or else
+           not Exists (D) or else
+           --  A split that leaves a path empty.
+           not Rename_Is (D, A, REPLY_ERR, Split => D'Length + A'Length) or else
+           --  Outside the grant, and across volumes.
+           not Rename_Is (D, "@nvme:1/queue-rename.dat", REPLY_ACCESS_DENIED) or else
+           not Rename_Is (D, "@mem:0/work/queue-rename.dat", REPLY_CROSS_VOLUME) or else
+           not Exists (D) or else
+           Path_Call (FQ.Queue_Unlink, D) /= REPLY_OK or else Exists (D)
+         then
+            return False;
+         end if;
+         debugPrint ("QUEUE-RENAME-CHECK: PASS" & LF);
+         return True;
+      end Rename_Check;
+
+      --  Directory.Page.V2 through the queue (docs/filesystem-protocol-v2.md
+      --  step 3): a folder of many names over several pages, each entry
+      --  with its metadata; a resume token continued on a new handle; a
+      --  token of another folder refused; and an entry removed at the
+      --  listing's cursor (its record merged into the one before) neither
+      --  listed nor hiding the entries after it.
+      function Directory_Check return Boolean is
+         package V2 renames CuBit.Directory_Pages;
+         Folder : constant String := "@nvme:0/v2-dir";
+         Names : constant := 120;
+         PAGE_AT : constant := 4_096;   --  pages after the path in the arena
+         type Seen_Set is array (1 .. Names) of Boolean;
+
+         function Name_Of (I : Positive) return String is
+            Digits_Image : constant String := Positive'Image (I);
+            Number : constant String := Digits_Image (Digits_Image'First + 1 .. Digits_Image'Last);
+         begin
+            --  Mixed lengths, so records of several sizes share pages.
+            return (if I mod 3 = 0 then "a-much-longer-entry-name-" & Number & ".dat"
+                    elsif I mod 3 = 1 then "f" & Number else "mid-" & Number & ".txt");
+         end Name_Of;
+
+         function Index_Of (Name : String) return Natural is
+         begin
+            for I in 1 .. Names loop
+               if Name_Of (I) = Name then
+                  return I;
+               end if;
+            end loop;
+            return 0;
+         end Index_Of;
+
+         function Open_Folder (Handle : out Unsigned_64) return Boolean is
+         begin
+            Put (Folder);
+            return Call ((Operation => FQ.Queue_Open_Directory, Length => Folder'Length, others => <>),
+                         Handle) = REPLY_OK;
+         end Open_Folder;
+
+         --  One page into PAGE_AT; its entries marked in Seen (a repeat or an
+         --  unknown name fails). First: the page's first entry's index.
+         function Read_Page
+           (Handle : Unsigned_64; Seen : in out Seen_Set; Ended : out Boolean;
+            Resume : out Unsigned_64; First : out Natural; Count : out Natural) return Boolean
+         is
+            Pages : Unsigned_64;
+            Shared : constant V2.Page with Import, Address => FS.Arena (Session) + Storage_Offset (PAGE_AT);
+            Copy : V2.Page;
+            Valid, OK : Boolean;
+            Entries : V2.Entry_Count;
+            Used : V2.Used_Bytes;
+            Stamp : Unsigned_64;
+            At_Entry : Natural := V2.Header_Bytes;
+            Next : Natural;
+            Item : V2.Facts;
+            Bytes : V2.Name_Bytes;
+            Length : V2.Name_Length;
+         begin
+            Ended := False;
+            Resume := 0;
+            First := 0;
+            Count := 0;
+            if Call ((Operation => FQ.Queue_Read_Directory, Options => FQ.Directory_Metadata,
+                      Handle => Handle, Length => V2.Page_Bytes, Arena_Offset => PAGE_AT, others => <>),
+                     Pages) /= REPLY_OK or else Pages /= 1
+            then
+               return False;
+            end if;
+            Copy := Shared;
+            V2.Check (Copy, Valid, Entries, Used, Ended, Resume, Stamp);
+            if not Valid then
+               debugPrint ("QUEUE-DIRECTORY-CHECK: page refused" & LF);
+               return False;
+            end if;
+            for Ordinal in 1 .. Entries loop
+               V2.Get (Copy, At_Entry, Used, Item, Bytes, Length, Next, OK);
+               if not OK then
+                  return False;
+               end if;
+               At_Entry := Next;
+               declare
+                  Name : String (1 .. Length);
+                  Index : Natural;
+               begin
+                  for C in Name'Range loop
+                     Name (C) := Character'Val (Bytes (C));
+                  end loop;
+                  Index := Index_Of (Name);
+                  if Index = 0 or else Seen (Index) or else Item.Kind /= V2.Kind_File or else
+                    (Item.Valid and V2.Valid_Size) = 0 or else (Item.Valid and V2.Valid_Times) = 0
+                  then
+                     debugPrint ("QUEUE-DIRECTORY-CHECK: bad entry " & Name & LF);
+                     return False;
+                  end if;
+                  Seen (Index) := True;
+                  if First = 0 then
+                     First := Index;
+                  end if;
+               end;
+               Count := Count + 1;
+            end loop;
+            return True;
+         end Read_Page;
+
+         Handle, Other, Root : Unsigned_64;
+         Seen, Again : Seen_Set := [others => False];
+         Ended : Boolean;
+         Resume, First_Resume, Root_Resume : Unsigned_64;
+         First, Count, Second_First, Pages : Natural := 0;
+         Ignore : Unsigned_64;
+      begin
+         if Path_Call (FQ.Queue_Mkdir, Folder) /= REPLY_OK then
+            debugPrint ("QUEUE-DIRECTORY-CHECK: mkdir" & LF);
+            return False;
+         end if;
+         for I in 1 .. Names loop
+            declare
+               Path : constant String := Folder & "/" & Name_Of (I);
+               File : Unsigned_64;
+            begin
+               Put (Path);
+               if Call ((Operation => FQ.Queue_Open,
+                         Options => Unsigned_32 (OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE),
+                         Length => Path'Length, others => <>), File) /= REPLY_OK or else
+                 Path_Call (FQ.Queue_Close, "", Handle => File) /= REPLY_OK
+               then
+                  debugPrint ("QUEUE-DIRECTORY-CHECK: create " & Path & LF);
+                  return False;
+               end if;
+            end;
+         end loop;
+         --  The whole listing, a page at a time.
+         if not Open_Folder (Handle) then
+            return False;
+         end if;
+         loop
+            if not Read_Page (Handle, Seen, Ended, Resume, First, Count) then
+               return False;
+            end if;
+            Pages := Pages + 1;
+            if Pages = 1 then
+               First_Resume := Resume;
+            elsif Pages = 2 then
+               Second_First := First;
+            end if;
+            exit when Ended or else Pages > Names;
+         end loop;
+         if Seen /= [1 .. Names => True] or else Pages < 3 then
+            debugPrint ("QUEUE-DIRECTORY-CHECK: listing incomplete, pages" & Pages'Image & LF);
+            return False;
+         end if;
+         --  Resumed on a new handle: the page after the first.
+         if not Open_Folder (Other) or else
+           Call ((Operation => FQ.Queue_Seek_Directory, Handle => Other, Position => First_Resume,
+                  others => <>), Ignore) /= REPLY_OK or else
+           not Read_Page (Other, Again, Ended, Resume, First, Count) or else First /= Second_First
+         then
+            debugPrint ("QUEUE-DIRECTORY-CHECK: resume" & LF);
+            return False;
+         end if;
+         --  A token of another folder.
+         Put ("@nvme:0/");
+         if Call ((Operation => FQ.Queue_Open_Directory, Length => 8, others => <>), Root) /= REPLY_OK then
+            return False;
+         end if;
+         Again := [others => False];
+         declare
+            Pages_Read : Unsigned_64;
+            Root_Page : constant V2.Page with Import, Address => FS.Arena (Session) + Storage_Offset (PAGE_AT);
+            Copy : V2.Page;
+            Valid : Boolean;
+            Entries : V2.Entry_Count;
+            Used : V2.Used_Bytes;
+            Stamp : Unsigned_64;
+         begin
+            if Call ((Operation => FQ.Queue_Read_Directory, Handle => Root, Length => V2.Page_Bytes,
+                      Arena_Offset => PAGE_AT, others => <>), Pages_Read) /= REPLY_OK
+            then
+               return False;
+            end if;
+            Copy := Root_Page;
+            V2.Check (Copy, Valid, Entries, Used, Ended, Root_Resume, Stamp);
+            if not Valid or else
+              Call ((Operation => FQ.Queue_Seek_Directory, Handle => Other, Position => Root_Resume,
+                     others => <>), Ignore) /= REPLY_OUT_OF_RANGE
+            then
+               debugPrint ("QUEUE-DIRECTORY-CHECK: foreign token accepted" & LF);
+               return False;
+            end if;
+         end;
+         if Path_Call (FQ.Queue_Close_Directory, "", Handle => Root) /= REPLY_OK then
+            return False;
+         end if;
+         --  Remove the entry the cursor stands on, then go on: it is not
+         --  listed, and every other name still is, once.
+         Again := [others => False];
+         if Call ((Operation => FQ.Queue_Seek_Directory, Handle => Other, Position => 0,
+                   others => <>), Ignore) /= REPLY_OK or else
+           not Read_Page (Other, Again, Ended, Resume, First, Count) or else
+           Path_Call (FQ.Queue_Unlink, Folder & "/" & Name_Of (Second_First)) /= REPLY_OK
+         then
+            return False;
+         end if;
+         loop
+            if not Read_Page (Other, Again, Ended, Resume, First, Count) then
+               return False;
+            end if;
+            exit when Ended;
+         end loop;
+         for I in 1 .. Names loop
+            if Again (I) /= (I /= Second_First) then
+               debugPrint ("QUEUE-DIRECTORY-CHECK: after removal " & Name_Of (I) & LF);
+               return False;
+            end if;
+         end loop;
+         --  Clean up.
+         if Path_Call (FQ.Queue_Close_Directory, "", Handle => Handle) /= REPLY_OK or else
+           Path_Call (FQ.Queue_Close_Directory, "", Handle => Other) /= REPLY_OK
+         then
+            return False;
+         end if;
+         for I in 1 .. Names loop
+            if I /= Second_First and then
+              Path_Call (FQ.Queue_Unlink, Folder & "/" & Name_Of (I)) /= REPLY_OK
+            then
+               return False;
+            end if;
+         end loop;
+         if Path_Call (FQ.Queue_Rmdir, Folder) /= REPLY_OK then
+            return False;
+         end if;
+         debugPrint ("QUEUE-DIRECTORY-CHECK: PASS" & LF);
+         return True;
+      end Directory_Check;
+
+      --  Change notifications (docs/filesystem-protocol-v2.md step 4): a
+      --  folder watch and a subtree watch see creations, writes, renames
+      --  and removals, typed and named; a flood past the ring's room ends in
+      --  one Rescan_Needed and nothing after it until the client reads; the
+      --  watch then works again; unwatching or removing the folder ends a
+      --  watch with a Watch_Ended record.
+      function Events_Check return Boolean is
+         package FE renames CuBit.Filesystem_Events;
+         use type FE.Event_Kind, FS.Event_Result;
+         Folder : constant String := "@nvme:0/watch-dir";
+         Opened, Woken : Boolean;
+         Folder_Handle, Folder_Watch, Tree_Watch, Ignore : Unsigned_64;
+
+         --  The next record, waiting through the wake if none is there.
+         function Next (Item : out FE.Event; Name : out String; Length : out Natural) return Boolean is
+            Bytes : FE.Name_Bytes;
+            Got : FE.Name_Length;
+            Result : FS.Event_Result;
+         begin
+            Name := [others => ' '];
+            Length := 0;
+            for Attempt in 1 .. 3 loop
+               FS.Take_Event (Session, Item, Bytes, Got, Result);
+               case Result is
+                  when FS.Taken =>
+                     Length := Natural'Min (Got, Name'Length);
+                     for I in 1 .. Length loop
+                        Name (Name'First + I - 1) := Character'Val (Bytes (I));
+                     end loop;
+                     return True;
+                  when FS.Malformed =>
+                     debugPrint ("QUEUE-EVENTS-CHECK: malformed record" & LF);
+                     return False;
+                  when FS.Empty =>
+                     if not Arm or else not Wake_Completes (PROMPT_MS, Woken) then
+                        debugPrint ("QUEUE-EVENTS-CHECK: step 1" & LF);
+                        return False;
+                     end if;
+               end case;
+            end loop;
+            debugPrint ("QUEUE-EVENTS-CHECK: step 2" & LF);
+            return False;
+         end Next;
+
+         function Expect (Watch : Unsigned_64; Kind : FE.Event_Kind; Name : String) return Boolean is
+            Item : FE.Event;
+            Text : String (1 .. 300);
+            Length : Natural;
+         begin
+            if not Next (Item, Text, Length) then
+               debugPrint ("QUEUE-EVENTS-CHECK: no record for " & Name & LF);
+               return False;
+            elsif Unsigned_64 (Item.Watch) /= Watch or else Item.Kind /= Kind or else
+              Text (1 .. Length) /= Name
+            then
+               debugPrint ("QUEUE-EVENTS-CHECK: wanted " & Name & " got " & Text (1 .. Length) &
+                 Item.Watch'Image & FE.Event_Kind'Image (Item.Kind) & LF);
+               debugPrint ("QUEUE-EVENTS-CHECK: step 3" & LF);
+               return False;
+            end if;
+            return True;
+         end Expect;
+
+         function Make (Path : String) return Boolean is
+            File : Unsigned_64;
+         begin
+            Put (Path);
+            return Call ((Operation => FQ.Queue_Open,
+                          Options => Unsigned_32 (OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE),
+                          Length => Path'Length, others => <>), File) = REPLY_OK
+              and then Path_Call (FQ.Queue_Close, "", Handle => File) = REPLY_OK;
+         end Make;
+
+         --  Flood names: long relative paths (two 240-byte folders) but
+         --  short entries, so the folder stays within ext2's direct blocks
+         --  (the service removes no directory that uses indirect blocks).
+         Deep_1 : constant String := "sub/" & [1 .. 240 => 'd'];
+         Deep_2 : constant String := Deep_1 & "/" & [1 .. 240 => 'e'];
+         function Long_Name (I : Positive) return String is
+            Image : constant String := Positive'Image (I);
+         begin
+            return Deep_2 & "/f" & Image (Image'First + 1 .. Image'Last);
+         end Long_Name;
+
+         Empty_Ring : FE.Event;
+         Bytes_Unused : FE.Name_Bytes;
+         Length_Unused : FE.Name_Length;
+         Result_Unused : FS.Event_Result := FS.Empty;
+         Created_Seen, Rescans, After_Rescan : Natural := 0;
+         Flood : constant := 200;
+      begin
+         FS.Open_Events (Session, Opened);
+         if not Opened or else Path_Call (FQ.Queue_Mkdir, Folder) /= REPLY_OK then
+            debugPrint ("QUEUE-EVENTS-CHECK: setup" & LF);
+            return False;
+         end if;
+         Put (Folder);
+         if Call ((Operation => FQ.Queue_Open_Directory, Length => Folder'Length, others => <>),
+                  Folder_Handle) /= REPLY_OK or else
+           Call ((Operation => FQ.Queue_Watch, Handle => Folder_Handle, Options => 16#80#,
+                  others => <>), Ignore) /= REPLY_ERR or else
+           Call ((Operation => FQ.Queue_Watch, Handle => Folder_Handle, others => <>),
+                 Folder_Watch) /= REPLY_OK or else
+           Call ((Operation => FQ.Queue_Watch, Handle => Folder_Handle, Options => FQ.Watch_Subtree,
+                  others => <>), Tree_Watch) /= REPLY_OK or else
+           Path_Call (FQ.Queue_Close_Directory, "", Handle => Folder_Handle) /= REPLY_OK
+         then
+            debugPrint ("QUEUE-EVENTS-CHECK: watch" & LF);
+            return False;
+         end if;
+         --  A file, a folder and a file in it: the folder watch sees its own
+         --  entries only, the subtree watch all of them.
+         if not Make (Folder & "/a.txt") or else
+           not Expect (Folder_Watch, FE.Created, "a.txt") or else
+           not Expect (Tree_Watch, FE.Created, "a.txt") or else
+           Path_Call (FQ.Queue_Mkdir, Folder & "/sub") /= REPLY_OK or else
+           not Expect (Folder_Watch, FE.Created, "sub") or else
+           not Expect (Tree_Watch, FE.Created, "sub") or else
+           not Make (Folder & "/sub/b.txt") or else
+           not Expect (Tree_Watch, FE.Created, "sub/b.txt")
+         then
+            debugPrint ("QUEUE-EVENTS-CHECK: step 4" & LF);
+            return False;
+         end if;
+         --  A write, reported once at close.
+         declare
+            Path : constant String := Folder & "/a.txt";
+            File : Unsigned_64;
+         begin
+            Put (Path);
+            if Call ((Operation => FQ.Queue_Open, Options => Unsigned_32 (OPEN_READ_WRITE),
+                      Length => Path'Length, others => <>), File) /= REPLY_OK
+            then
+               debugPrint ("QUEUE-EVENTS-CHECK: step 5" & LF);
+               return False;
+            end if;
+            Put ("hello");
+            for Twice in 1 .. 2 loop
+               if Call ((Operation => FQ.Queue_Write_At, Handle => File, Position => 0, Length => 5,
+                         others => <>), Ignore) /= REPLY_OK
+               then
+                  debugPrint ("QUEUE-EVENTS-CHECK: step 6" & LF);
+                  return False;
+               end if;
+            end loop;
+            if Path_Call (FQ.Queue_Close, "", Handle => File) /= REPLY_OK or else
+              not Expect (Folder_Watch, FE.Modified, "a.txt") or else
+              not Expect (Tree_Watch, FE.Modified, "a.txt")
+            then
+               debugPrint ("QUEUE-EVENTS-CHECK: step 7" & LF);
+               return False;
+            end if;
+         end;
+         --  A rename: two records sharing a cookie, each watch.
+         Put (Folder & "/a.txt" & Folder & "/c.txt");
+         if Call ((Operation => FQ.Queue_Rename, Position => Folder'Length + 6,
+                   Length => 2 * (Folder'Length + 6), others => <>), Ignore) /= REPLY_OK or else
+           not Expect (Folder_Watch, FE.Renamed_From, "a.txt") or else
+           not Expect (Tree_Watch, FE.Renamed_From, "a.txt") or else
+           not Expect (Folder_Watch, FE.Renamed_To, "c.txt") or else
+           not Expect (Tree_Watch, FE.Renamed_To, "c.txt") or else
+           Path_Call (FQ.Queue_Unlink, Folder & "/c.txt") /= REPLY_OK or else
+           not Expect (Folder_Watch, FE.Removed, "c.txt") or else
+           not Expect (Tree_Watch, FE.Removed, "c.txt")
+         then
+            debugPrint ("QUEUE-EVENTS-CHECK: step 8" & LF);
+            return False;
+         end if;
+         --  An unwatched watch's last record is its Watch_Ended.
+         if Call ((Operation => FQ.Queue_Unwatch, Handle => Folder_Watch, others => <>), Ignore) /= REPLY_OK
+           or else not Expect (Folder_Watch, FE.Watch_Ended, "")
+         then
+            debugPrint ("QUEUE-EVENTS-CHECK: step 9" & LF);
+            return False;
+         end if;
+         --  A flood, unread: events while there is room, then one
+         --  Rescan_Needed, then nothing for that watch.
+         if Path_Call (FQ.Queue_Mkdir, Folder & "/" & Deep_1) /= REPLY_OK or else
+           Path_Call (FQ.Queue_Mkdir, Folder & "/" & Deep_2) /= REPLY_OK
+         then
+            debugPrint ("QUEUE-EVENTS-CHECK: deep folders" & LF);
+            return False;
+         end if;
+         for I in 1 .. Flood loop
+            if not Make (Folder & "/" & Long_Name (I)) then
+               debugPrint ("QUEUE-EVENTS-CHECK: flood create" & LF);
+               return False;
+            end if;
+         end loop;
+         loop
+            FS.Take_Event (Session, Empty_Ring, Bytes_Unused, Length_Unused, Result_Unused);
+            exit when Result_Unused /= FS.Taken;
+            if Empty_Ring.Kind = FE.Rescan_Needed then
+               Rescans := Rescans + 1;
+            elsif Rescans > 0 then
+               After_Rescan := After_Rescan + 1;
+            elsif Empty_Ring.Kind = FE.Created then
+               Created_Seen := Created_Seen + 1;
+            end if;
+         end loop;
+         if Result_Unused /= FS.Empty or else Rescans /= 1 or else After_Rescan /= 0 or else
+           Created_Seen = 0 or else Created_Seen >= Flood
+         then
+            debugPrint ("QUEUE-EVENTS-CHECK: flood" & Created_Seen'Image & Rescans'Image &
+              After_Rescan'Image & LF);
+            debugPrint ("QUEUE-EVENTS-CHECK: step 10" & LF);
+            return False;
+         end if;
+         --  Read: the watch works again.
+         if not Make (Folder & "/sub/after.txt") or else
+           not Expect (Tree_Watch, FE.Created, "sub/after.txt")
+         then
+            debugPrint ("QUEUE-EVENTS-CHECK: step 11" & LF);
+            return False;
+         end if;
+         --  Clean up (unwatched), then the folder's removal ends a watch.
+         if Call ((Operation => FQ.Queue_Unwatch, Handle => Tree_Watch, others => <>), Ignore) /= REPLY_OK
+           or else not Expect (Tree_Watch, FE.Watch_Ended, "")
+         then
+            debugPrint ("QUEUE-EVENTS-CHECK: step 12" & LF);
+            return False;
+         end if;
+         for I in 1 .. Flood loop
+            if Path_Call (FQ.Queue_Unlink, Folder & "/" & Long_Name (I)) /= REPLY_OK then
+               debugPrint ("QUEUE-EVENTS-CHECK: step 13" & LF);
+               return False;
+            end if;
+         end loop;
+         if Path_Call (FQ.Queue_Rmdir, Folder & "/" & Deep_2) /= REPLY_OK or else
+           Path_Call (FQ.Queue_Rmdir, Folder & "/" & Deep_1) /= REPLY_OK or else
+           Path_Call (FQ.Queue_Unlink, Folder & "/sub/after.txt") /= REPLY_OK or else
+           Path_Call (FQ.Queue_Unlink, Folder & "/sub/b.txt") /= REPLY_OK or else
+           Path_Call (FQ.Queue_Rmdir, Folder & "/sub") /= REPLY_OK
+         then
+            debugPrint ("QUEUE-EVENTS-CHECK: step 14" & LF);
+            return False;
+         end if;
+         Put (Folder);
+         if Call ((Operation => FQ.Queue_Open_Directory, Length => Folder'Length, others => <>),
+                  Folder_Handle) /= REPLY_OK or else
+           Call ((Operation => FQ.Queue_Watch, Handle => Folder_Handle, others => <>),
+                 Folder_Watch) /= REPLY_OK or else
+           Path_Call (FQ.Queue_Close_Directory, "", Handle => Folder_Handle) /= REPLY_OK or else
+           Path_Call (FQ.Queue_Rmdir, Folder) /= REPLY_OK or else
+           not Expect (Folder_Watch, FE.Watch_Ended, "") or else
+           Call ((Operation => FQ.Queue_Unwatch, Handle => Folder_Watch, others => <>), Ignore) /= REPLY_ERR
+         then
+            debugPrint ("QUEUE-EVENTS-CHECK: step 15" & LF);
+            return False;
+         end if;
+         debugPrint ("QUEUE-EVENTS-CHECK: PASS" & LF);
+         return True;
+      end Events_Check;
+
+      --  Granted-scope query (docs/filesystem-protocol-v2.md step 6): the
+      --  service answers this process's own profile, exactly its manifest's
+      --  two scopes; a range too small for them is refused with the count.
+      function Scopes_Check return Boolean is
+         package FA renames CuBit.File_Access;
+         Count : Unsigned_64;
+         Policy : FA.Policy;
+         Decoded : Boolean;
+         Read_Write_Create : constant FA.Rights_Set :=
+           [FA.Read_Objects | FA.Write_Objects | FA.Create_Objects => True, others => False];
+      begin
+         if Call ((Operation => FQ.Queue_List_Scopes, Length => FA.Wire_Entry_Bytes, others => <>),
+                  Count) /= REPLY_NO_SPACE or else Count /= 2
+         then
+            debugPrint ("QUEUE-SCOPES-CHECK: small range" & Count'Image & LF);
+            return False;
+         end if;
+         if Call ((Operation => FQ.Queue_List_Scopes, Length => 2 * FA.Wire_Entry_Bytes, others => <>),
+                  Count) /= REPLY_OK or else Count /= 2
+         then
+            debugPrint ("QUEUE-SCOPES-CHECK: list" & Count'Image & LF);
+            return False;
+         end if;
+         declare
+            Shared : constant FA.Wire_Bytes (1 .. 2 * FA.Wire_Entry_Bytes)
+              with Import, Address => FS.Arena (Session);
+            Copy : constant FA.Wire_Bytes := Shared;   --  copy, then validate
+            Prefix_At : constant := 9;
+            function Prefix (Number : Positive) return String is
+               Base : constant Positive := (Number - 1) * FA.Wire_Entry_Bytes + 1;
+               Length : constant Natural := Natural (Copy (Base + 1));
+               Text : String (1 .. Length);
+            begin
+               for I in Text'Range loop
+                  Text (I) := Character'Val (Copy (Base + Prefix_At - 1 + I - 1));
+               end loop;
+               return Text;
+            end Prefix;
+         begin
+            FA.Decode (Copy, Policy, Decoded);
+            if not Decoded or else Prefix (1) /= "@nvme:0/" or else Prefix (2) /= "@mem:0/work/"
+              or else Copy (1) /= FA.Rights_To_Wire (Read_Write_Create)
+              or else not FA.Allows (Policy, "@nvme:0/watch-dir", Read_Write_Create)
+              or else FA.Allows (Policy, "@cd:0/apps", [FA.Read_Objects => True, others => False])
+            then
+               debugPrint ("QUEUE-SCOPES-CHECK: entries " & Prefix (1) & " " & Prefix (2) & LF);
+               return False;
+            end if;
+         end;
+         debugPrint ("QUEUE-SCOPES-CHECK: PASS" & LF);
+         return True;
+      end Scopes_Check;
+
+      --  Free space (step 7): a volume's description, free counts that
+      --  follow a 1 MiB file's writes and removal, refusals for a path
+      --  outside the grant, a traversal and a short range.
+      function Volume_Check return Boolean is
+         package VD renames CuBit.Volume_Descriptions;
+         use type VD.Volume_Kind;
+         Ignore : Unsigned_64;
+
+         function Describe (Path : String; Item : out VD.Description) return Unsigned_32 is
+            Label : Unsigned_32;
+            Length : Unsigned_64;
+            Decoded : Boolean;
+         begin
+            Item := (others => <>);
+            Put (Path);
+            Label := Call ((Operation => FQ.Queue_Describe_Volume, Position => Path'Length,
+                            Length => Unsigned_64'Max (Path'Length, VD.Record_Bytes), others => <>),
+                           Length);
+            if Label = REPLY_OK then
+               declare
+                  Shared : constant VD.Record_Image with Import, Address => FS.Arena (Session);
+                  Copy : constant VD.Record_Image := Shared;
+               begin
+                  VD.Decode (Copy, Item, Decoded);
+                  if Length /= VD.Record_Bytes or else not Decoded then
+                     return REPLY_ERR;
+                  end if;
+               end;
+            end if;
+            return Label;
+         end Describe;
+
+         function Name_Is (Item : VD.Description; Name : String) return Boolean is
+           (Item.Length = Name'Length and then
+            (for all I in Name'Range => Item.Name (I - Name'First + 1) = Character'Pos (Name (I))));
+
+         Before, During, After, Work : VD.Description;
+         Path : constant String := "@nvme:0/volume-check.bin";
+         Chunk : constant := 4_096;
+         Chunks : constant := 256;   --  1 MiB
+         File : Unsigned_64;
+      begin
+         if Describe ("@nvme:0/", Before) /= REPLY_OK or else
+           Before.Kind not in VD.Ext2 | VD.Ext3 or else not Name_Is (Before, "nvme:0") or else
+           Before.Total_Blocks = 0 or else Before.Free_Blocks = 0 or else Before.Total_Inodes = 0
+         then
+            debugPrint ("QUEUE-VOLUME-CHECK: describe nvme" & LF);
+            return False;
+         end if;
+         Put (Path);
+         if Call ((Operation => FQ.Queue_Open,
+                   Options => Unsigned_32 (OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE),
+                   Length => Path'Length, others => <>), File) /= REPLY_OK
+         then
+            return False;
+         end if;
+         Put ([1 .. Chunk => 'v']);
+         for I in 0 .. Chunks - 1 loop
+            if Call ((Operation => FQ.Queue_Write_At, Handle => File, Position => Unsigned_64 (I * Chunk),
+                      Length => Chunk, others => <>), Ignore) /= REPLY_OK
+            then
+               return False;
+            end if;
+         end loop;
+         if Path_Call (FQ.Queue_Close, "", Handle => File) /= REPLY_OK or else
+           Describe ("@nvme:0/volume-check.bin", During) /= REPLY_OK or else
+           During.Free_Blocks + Unsigned_64 (Chunks * Chunk) / Unsigned_64 (During.Block) > Before.Free_Blocks
+           or else During.Free_Inodes >= Before.Free_Inodes
+         then
+            debugPrint ("QUEUE-VOLUME-CHECK: free after write" & Before.Free_Blocks'Image &
+              During.Free_Blocks'Image & LF);
+            return False;
+         end if;
+         --  Removed: its blocks are free, or freed and free once committed.
+         if Path_Call (FQ.Queue_Unlink, Path) /= REPLY_OK or else
+           Describe ("@nvme:0/", After) /= REPLY_OK or else
+           After.Free_Blocks + After.Releasing_Blocks + Before.Releasing_Blocks < Before.Free_Blocks
+           or else After.Free_Inodes /= Before.Free_Inodes
+         then
+            debugPrint ("QUEUE-VOLUME-CHECK: free after unlink" & After.Free_Blocks'Image &
+              After.Releasing_Blocks'Image & LF);
+            return False;
+         end if;
+         if Describe ("@mem:0/work/", Work) /= REPLY_OK or else not Name_Is (Work, "mem:0") or else
+           Describe ("@cd:0/apps", Work) /= REPLY_ACCESS_DENIED or else
+           Describe ("@nvme:0/../x", Work) /= REPLY_ERR
+         then
+            debugPrint ("QUEUE-VOLUME-CHECK: other volumes" & LF);
+            return False;
+         end if;
+         Put ("@nvme:0/");
+         if Call ((Operation => FQ.Queue_Describe_Volume, Position => 8, Length => VD.Record_Bytes - 1,
+                   others => <>), Ignore) /= REPLY_ERR
+         then
+            debugPrint ("QUEUE-VOLUME-CHECK: short range" & LF);
+            return False;
+         end if;
+         debugPrint ("QUEUE-VOLUME-CHECK: PASS" & LF);
+         return True;
+      end Volume_Check;
+
+      --  Server-side copy (step 5): whole files and ranges, across volumes,
+      --  byte-exact; a cancel and a passed deadline end a copy with a prefix
+      --  copied; past Maximum_Copies running, busy; refusals for a target
+      --  that cannot write and for overlapping ranges of one file.
+      function Copy_Check return Boolean is
+         Chunk : constant := 4_096;
+         Source_Bytes : constant := 1_536 * 1_024;
+         Big_Bytes : constant := 3 * Source_Bytes;
+         Source_Path : constant String := "@nvme:0/copy-source.bin";
+         Ignore : Unsigned_64;
+
+         function Pattern (At_Byte : Unsigned_64) return Character is
+           (Character'Val ((At_Byte * 7 + At_Byte / 4_099) mod 251));
+
+         function Open (Path : String; Options : Open_Options; File : out Unsigned_64) return Boolean is
+         begin
+            Put (Path);
+            return Call ((Operation => FQ.Queue_Open, Options => Unsigned_32 (Options),
+                          Length => Path'Length, others => <>), File) = REPLY_OK;
+         end Open;
+
+         function Close (File : Unsigned_64) return Boolean is
+           (Path_Call (FQ.Queue_Close, "", Handle => File) = REPLY_OK);
+
+         function Copy_Request
+           (Source, Target, From, To, Length : Unsigned_64;
+            Deadline : Unsigned_64 := CuBit.Messages.Wait_Forever) return FQ.Request is
+           (Operation => FQ.Queue_Copy, Handle => Source, Spare_1 => Target, Position => From,
+            Arena_Offset => To, Length => Length, Spare_2 => Deadline, others => <>);
+
+         --  Target bytes At .. At + Length - 1 hold the source's From ...
+         function Holds (File, At_Byte, From, Length : Unsigned_64) return Boolean is
+            Done : Unsigned_64 := 0;
+            Got : Unsigned_64;
+         begin
+            while Done < Length loop
+               declare
+                  Part : constant Unsigned_64 := Unsigned_64'Min (Chunk, Length - Done);
+               begin
+                  if Call ((Operation => FQ.Queue_Read_At, Handle => File, Position => At_Byte + Done,
+                            Length => Part, others => <>), Got) /= REPLY_OK or else Got /= Part
+                  then
+                     return False;
+                  end if;
+                  declare
+                     View : constant String (1 .. Natural (Part)) with Import, Address => FS.Arena (Session);
+                     Copy : constant String := View;
+                  begin
+                     for I in Copy'Range loop
+                        if Copy (I) /= Pattern ((From + Done + Unsigned_64 (I - 1)) mod Source_Bytes) then
+                           return False;
+                        end if;
+                     end loop;
+                  end;
+                  Done := Done + Part;
+               end;
+            end loop;
+            return True;
+         end Holds;
+
+         --  Submit, then wait for answers until Tag's (others recorded).
+         type Answer_Of is record
+            Tag : FS.Token := 0;
+            Status : Unsigned_32 := 0;
+            Value : Unsigned_64 := 0;
+         end record;
+         Seen : array (1 .. 8) of Answer_Of;
+         Seen_Count : Natural := 0;
+         function Await (Tag : FS.Token; Status : out Unsigned_32; Value : out Unsigned_64) return Boolean is
+            Answer : FQ.Queues.Completion;
+            Got : Boolean;
+            Waited : FS.Wait_Result;
+         begin
+            Status := 0;
+            Value := 0;
+            for I in 1 .. Seen_Count loop
+               if Seen (I).Tag = Tag then
+                  Status := Seen (I).Status;
+                  Value := Seen (I).Value;
+                  Seen (I) := Seen (Seen_Count);
+                  Seen_Count := Seen_Count - 1;
+                  return True;
+               end if;
+            end loop;
+            loop
+               FS.Wait_Answer (Session, Deadline_After (PROMPT_MS), Waited);
+               if Waited /= FS.Answer_Waiting then
+                  return False;
+               end if;
+               FS.Reap (Session, Answer, Got);
+               if Got then
+                  if Answer.Tag = Tag then
+                     Status := Answer.Answer.Status;
+                     Value := Answer.Answer.Value;
+                     return True;
+                  elsif Seen_Count = Seen'Last then
+                     return False;
+                  end if;
+                  Seen_Count := Seen_Count + 1;
+                  Seen (Seen_Count) := (Answer.Tag, Answer.Answer.Status, Answer.Answer.Value);
+               end if;
+            end loop;
+         end Await;
+
+         Source, Target, Big, Small, Work, Reader : Unsigned_64;
+         Status : Unsigned_32;
+         Value : Unsigned_64;
+      begin
+         --  The source: 1.5 MiB of a pattern.
+         if not Open (Source_Path, OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE, Source) then
+            debugPrint ("QUEUE-COPY-CHECK: source" & LF);
+            return False;
+         end if;
+         for C in 0 .. Source_Bytes / Chunk - 1 loop
+            declare
+               View : String (1 .. Chunk) with Import, Address => FS.Arena (Session);
+            begin
+               for I in View'Range loop
+                  View (I) := Pattern (Unsigned_64 (C * Chunk + I - 1));
+               end loop;
+            end;
+            if Call ((Operation => FQ.Queue_Write_At, Handle => Source, Position => Unsigned_64 (C * Chunk),
+                      Length => Chunk, others => <>), Ignore) /= REPLY_OK
+            then
+               return False;
+            end if;
+         end loop;
+         --  Whole file, to the source's end: one answer, every byte.
+         if not Open ("@nvme:0/copy-target.bin", OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE, Target)
+           or else Call (Copy_Request (Source, Target, 0, 0, FQ.Copy_To_End), Value) /= REPLY_OK
+           or else Value /= Source_Bytes or else not Holds (Target, 0, 0, Source_Bytes)
+         then
+            debugPrint ("QUEUE-COPY-CHECK: whole" & Value'Image & LF);
+            return False;
+         end if;
+         --  A range at odd offsets, across volumes (rename would answer
+         --  CROSS_VOLUME; the copy goes through the service).
+         if not Open ("@mem:0/work/copy-range.bin", OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE, Small)
+           or else Call (Copy_Request (Source, Small, 4_099, 10, 70_001), Value) /= REPLY_OK
+           or else Value /= 70_001 or else not Holds (Small, 10, 4_099, 70_001)
+         then
+            debugPrint ("QUEUE-COPY-CHECK: range" & Value'Image & LF);
+            return False;
+         end if;
+         --  A file three times as long, by three copies; then copies of it
+         --  that a cancel and a passed deadline end early.
+         if not Open ("@nvme:0/copy-big.bin", OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE, Big) then
+            return False;
+         end if;
+         for Part in 0 .. 2 loop
+            if Call (Copy_Request (Source, Big, 0, Unsigned_64 (Part) * Source_Bytes, Source_Bytes), Value)
+              /= REPLY_OK or else Value /= Source_Bytes
+            then
+               debugPrint ("QUEUE-COPY-CHECK: big" & LF);
+               return False;
+            end if;
+         end loop;
+         if not Open ("@nvme:0/copy-work.bin", OPEN_READ_WRITE or OPEN_CREATE or OPEN_EXCLUSIVE, Work) then
+            return False;
+         end if;
+         declare
+            Copy_Tag, Cancel_Tag : FS.Token;
+            Cancel_Status : Unsigned_32;
+         begin
+            FS.Submit (Session, Copy_Request (Big, Work, 0, 0, FQ.Copy_To_End), Copy_Tag);
+            FS.Submit (Session, (Operation => FQ.Queue_Cancel, Handle => Unsigned_64 (Copy_Tag), others => <>),
+                       Cancel_Tag);
+            if Copy_Tag = 0 or else Cancel_Tag = 0
+              or else not Await (Cancel_Tag, Cancel_Status, Ignore) or else Cancel_Status /= REPLY_OK
+              or else not Await (Copy_Tag, Status, Value) or else Status /= REPLY_CANCELLED
+              or else Value >= Big_Bytes or else not Holds (Work, 0, 0, Value)
+            then
+               debugPrint ("QUEUE-COPY-CHECK: cancel" & Value'Image & LF);
+               return False;
+            end if;
+         end;
+         if Call (Copy_Request (Big, Work, 0, 0, FQ.Copy_To_End, Deadline => syscall (SYSCALL_GETTIME)), Value)
+           /= REPLY_DEADLINE or else Value >= Big_Bytes or else not Holds (Work, 0, 0, Value)
+         then
+            debugPrint ("QUEUE-COPY-CHECK: deadline" & Value'Image & LF);
+            return False;
+         end if;
+         --  Past Maximum_Copies running: busy. The others complete.
+         declare
+            Tags : array (1 .. FQ.Maximum_Copies + 1) of FS.Token;
+            Busy, Done : Natural := 0;
+         begin
+            for T of Tags loop
+               FS.Submit (Session, Copy_Request (Big, Work, 0, 0, FQ.Copy_To_End), T);
+            end loop;
+            for T of Tags loop
+               if T = 0 or else not Await (T, Status, Value) then
+                  return False;
+               elsif Status = REPLY_BUSY then
+                  Busy := Busy + 1;
+               elsif Status = REPLY_OK and then Value = Big_Bytes then
+                  Done := Done + 1;
+               end if;
+            end loop;
+            if Busy /= 1 or else Done /= FQ.Maximum_Copies or else not Holds (Work, 0, 0, Big_Bytes) then
+               debugPrint ("QUEUE-COPY-CHECK: busy" & Busy'Image & Done'Image & LF);
+               return False;
+            end if;
+         end;
+         --  Refusals: a read-only target, ranges of one file that overlap,
+         --  a handle that is not one.
+         if not Open (Source_Path, OPEN_READ_ONLY, Reader)
+           or else Call (Copy_Request (Source, Reader, 0, 0, 10), Ignore) /= REPLY_ACCESS_DENIED
+           or else Call (Copy_Request (Big, Big, 0, 100, 200), Ignore) /= REPLY_ERR
+           or else Call (Copy_Request (Big, Big, 0, Big_Bytes, 200), Value) /= REPLY_OK
+           or else Call (Copy_Request (Source, 16#DEAD#, 0, 0, 10), Ignore) /= REPLY_WRONG_OBJECT_TYPE
+           or else not Close (Reader)
+         then
+            debugPrint ("QUEUE-COPY-CHECK: refusals" & LF);
+            return False;
+         end if;
+         if not (Close (Source) and then Close (Target) and then Close (Small) and then Close (Big)
+                 and then Close (Work))
+           or else Path_Call (FQ.Queue_Unlink, Source_Path) /= REPLY_OK
+           or else Path_Call (FQ.Queue_Unlink, "@nvme:0/copy-target.bin") /= REPLY_OK
+           or else Path_Call (FQ.Queue_Unlink, "@mem:0/work/copy-range.bin") /= REPLY_OK
+           or else Path_Call (FQ.Queue_Unlink, "@nvme:0/copy-big.bin") /= REPLY_OK
+           or else Path_Call (FQ.Queue_Unlink, "@nvme:0/copy-work.bin") /= REPLY_OK
+         then
+            debugPrint ("QUEUE-COPY-CHECK: cleanup" & LF);
+            return False;
+         end if;
+         debugPrint ("QUEUE-COPY-CHECK: PASS" & LF);
+         return True;
+      end Copy_Check;
+
+      Good : Boolean;
+   begin
+      FS.Open (Session, CAP_SLOT_FS, 2, Opened);
+      if not Opened then
+         debugPrint ("QUEUE-WAKE-CHECK: queue refused" & LF);
+         return False;
+      end if;
+      --  Every section runs, so each reports its own marker.
+      Good := Wake_Check and then Rename_Check and then Directory_Check;
+      Good := Events_Check and then Good;
+      Good := Scopes_Check and then Good;
+      Good := Volume_Check and then Good;
+      Good := Copy_Check and then Good;
+      FS.Close (Session);
+      --  The session's pages are released once the service has let go of
+      --  them (OWNED-EXIT-CHECK counts what the process leaves behind).
+      declare
+         Deadline : constant Unsigned_64 := Deadline_After (PROMPT_MS);
+         Ignore : Message;
+         Yielded : Unsigned_64 with Unreferenced;
+      begin
+         while CuBit.Channels.Retiring_Regions > 0 loop
+            if syscall (SYSCALL_GETTIME) >= Deadline then
+               debugPrint ("QUEUE-CHECK: session memory not released" & LF);
+               return False;
+            end if;
+            --  Kernel notices (the grants' ends) are not needed here.
+            while Poll_Event (Ignore) loop
+               null;
+            end loop;
+            Yielded := syscall (SYSCALL_YIELD);
+         end loop;
+      end;
+      return Good;
+   end exerciseQueue;
+
 begin
    raw := syscall (SYSCALL_SBRK, 2 * PAGE_SIZE);
    if raw = Unsigned_64'Last then
@@ -1711,6 +2853,11 @@ begin
       debugPrint ("LINK-POLICY-CHECK: PASS" & LF);
    else
       debugPrint ("LINK-POLICY-CHECK: FAIL" & LF);
+      return;
+   end if;
+
+   if not exerciseQueue then
+      debugPrint ("QUEUE-CHECK: FAIL" & LF);
       return;
    end if;
 

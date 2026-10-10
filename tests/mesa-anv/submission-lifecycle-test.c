@@ -1,29 +1,30 @@
-/* Actual ANV adapter/types, mocked IPC: not GPU execution. */
+/* Actual ANV adapter/types, mocked IPC and session queue: not GPU execution.
+ * Preparation, offline binding, the session queue's open and close around
+ * the session, live VM generations and sticky failure, recycled lifetimes. */
 #include "../../userspace/mesa/anv/anv_cubit_memory.h"
+#include "gpu-queue-mock.h"
 #include "../../userspace/mesa/anv/native_gpu_buffers.h"
 #include "../../userspace/mesa/anv/native_gpu_mapping.h"
 #include <assert.h>
 #include <stdio.h>
 
-static unsigned prepares, registers, submits, fail_prepare, fail_register, fail_submit;
-static uint32_t marker = 1;
-static bool override_completion;
-static uint32_t supplied_completion;
+static unsigned prepares, registers, fail_prepare, fail_register;
 static unsigned binds, fail_bind;
 static unsigned updates;
 static uint32_t vm_generation, update_status;
 static bool override_generation;
 static uint32_t supplied_generation;
 static unsigned drains, closes, retirement_polls;
-static unsigned submission_failures;
+static unsigned update_failures;
 void cubit_test_mesa_transport_failure(const char *operation, uint32_t status,
                                        uint32_t handle);
 void cubit_test_mesa_transport_failure(const char *operation, uint32_t status,
                                        uint32_t handle)
 {
-   if (strcmp(operation, "submit-batch")) return;
-   assert(status == 4 && handle == 17);
-   submission_failures++;
+   (void)status;
+   if (strcmp(operation, "vm-bind") && strcmp(operation, "vm-unbind")) return;
+   assert(handle == 17);
+   update_failures++;
 }
 bool cubit_cpu_tracker_drain(struct cubit_cpu_mapping_tracker *tracker)
 {
@@ -35,6 +36,7 @@ bool cubit_cpu_tracker_drain(struct cubit_cpu_mapping_tracker *tracker)
 uint32_t cubit_intel_close_session(uint64_t slot, uint64_t *tag)
 {
    assert(slot == 53 || slot == 47);
+   assert(!gpu_queue_mock[slot].open);   /* the queue closes first */
    closes++;
    *tag = closes;
    return 0;
@@ -74,15 +76,6 @@ uint32_t cubit_intel_prepare_context(uint64_t slot)
 { assert(slot < 64); prepares++; return fail_prepare; }
 uint32_t cubit_intel_register_context(uint64_t slot)
 { assert(slot < 64); registers++; return fail_register; }
-uint32_t cubit_intel_submit_batch(uint64_t slot, uint32_t handle,
-   uint64_t gpu, uint64_t offset, uint64_t bytes, uint32_t previous, uint32_t *completion)
-{
-   assert(slot < 64 && handle == 17 && gpu == 0x20000 && offset == 8 && bytes == 4096);
-   assert(previous == marker);
-   submits++;
-   *completion = override_completion ? supplied_completion : fail_submit ? 0 : ++marker;
-   return fail_submit;
-}
 VkResult _vk_device_set_lost(struct vk_device *device, const char *file,
                             int line, const char *message, ...)
 {
@@ -91,7 +84,8 @@ VkResult _vk_device_set_lost(struct vk_device *device, const char *file,
 }
 int main(void)
 {
-   static struct anv_device device, failed_prepare, failed_register, bad_extent, premature, failed_binding;
+   static struct anv_device device, failed_prepare, failed_register, refused_queue, premature,
+      failed_binding;
    struct anv_bo bo = { .gem_handle = 17, .actual_size = 8192 };
    assert(anv_cubit_memory_init(&device, 63) == VK_SUCCESS);
    assert(anv_cubit_bind_bo_offline(&device, NULL, 0x20000) == VK_ERROR_INITIALIZATION_FAILED);
@@ -102,42 +96,37 @@ int main(void)
    assert(anv_cubit_bind_bo_offline(&device, &slab, 0x20000) == VK_ERROR_INITIALIZATION_FAILED);
    assert(binds == 0);
    assert(anv_cubit_bind_bo_offline(&device, &bo, 0x20000) == VK_SUCCESS && binds == 1);
+   gpu_queue_mock_reset();
    assert(anv_cubit_prepare_submission(&device) == VK_SUCCESS);
+   assert(gpu_queue_mock_opens == 1 && gpu_queue_mock[63].open);
    assert(anv_cubit_bind_bo_offline(&device, &bo, 0x20000) == VK_ERROR_FEATURE_NOT_PRESENT);
    assert(binds == 1);
    assert(prepares == 1 && registers == 1);
    assert(anv_cubit_prepare_submission(&device) == VK_ERROR_INITIALIZATION_FAILED);
-   assert(prepares == 1 && registers == 1);
-   for (unsigned n = 0; n < 20; n++)
-      assert(anv_cubit_submit_bo(&device, &bo, 0x20000, 8, 4096) == VK_SUCCESS);
-   assert(submits == 20 && marker == 21);
-   fail_submit = 4;
-   assert(anv_cubit_submit_bo(&device, &bo, 0x20000, 8, 4096) == VK_ERROR_DEVICE_LOST);
-   assert(submission_failures == 1);
-   fail_submit = 0;
-   assert(anv_cubit_submit_bo(&device, &bo, 0x20000, 8, 4096) == VK_ERROR_DEVICE_LOST);
-   assert(submission_failures == 1); /* sticky failure must not replay/report */
-   assert(submits == 21); /* No retry/revival even if transport recovers. */
+   assert(prepares == 1 && registers == 1 && gpu_queue_mock_opens == 1);
    assert(anv_cubit_memory_init(&failed_prepare, 62) == VK_SUCCESS);
    fail_prepare = 4;
    assert(anv_cubit_prepare_submission(&failed_prepare) == VK_ERROR_DEVICE_LOST);
    fail_prepare = 0;
    assert(anv_cubit_prepare_submission(&failed_prepare) == VK_ERROR_INITIALIZATION_FAILED);
-   assert(prepares == 2 && registers == 1);
+   assert(prepares == 2 && registers == 1 && gpu_queue_mock_opens == 1);
    assert(anv_cubit_memory_init(&failed_register, 61) == VK_SUCCESS);
    fail_register = 3;
    assert(anv_cubit_prepare_submission(&failed_register) == VK_ERROR_DEVICE_LOST);
    fail_register = 0;
    assert(anv_cubit_prepare_submission(&failed_register) == VK_ERROR_INITIALIZATION_FAILED);
-   assert(prepares == 3 && registers == 2);
-   assert(anv_cubit_memory_init(&bad_extent, 60) == VK_SUCCESS);
-   assert(anv_cubit_prepare_submission(&bad_extent) == VK_SUCCESS);
-   assert(anv_cubit_submit_bo(&bad_extent, &bo, 0x20000, 8192, 4) == VK_ERROR_DEVICE_LOST);
-   assert(submits == 21);
+   assert(prepares == 3 && registers == 2 && gpu_queue_mock_opens == 1);
+   /* A queue the driver refuses fails preparation, never replayed. */
+   assert(anv_cubit_memory_init(&refused_queue, 60) == VK_SUCCESS);
+   gpu_queue_mock_refuse_open = 60;
+   assert(anv_cubit_prepare_submission(&refused_queue) == VK_ERROR_DEVICE_LOST);
+   gpu_queue_mock_refuse_open = UINT64_MAX;
+   assert(anv_cubit_prepare_submission(&refused_queue) == VK_ERROR_INITIALIZATION_FAILED);
+   assert(prepares == 4 && registers == 3 && gpu_queue_mock_opens == 2);
    assert(anv_cubit_memory_init(&premature, 59) == VK_SUCCESS);
-   assert(anv_cubit_submit_bo(&premature, &bo, 0x20000, 8, 4096) == VK_ERROR_DEVICE_LOST);
-   assert(anv_cubit_prepare_submission(&premature) == VK_ERROR_INITIALIZATION_FAILED);
-   assert(submits == 21 && prepares == 4 && registers == 3);
+   assert(anv_cubit_update_bo_binding(&premature, &bo, 0x20000, 4096, 4096, false) ==
+          VK_ERROR_INITIALIZATION_FAILED);
+   assert(prepares == 4 && registers == 3);
    assert(anv_cubit_memory_init(&failed_binding, 58) == VK_SUCCESS);
    fail_bind = 4;
    assert(anv_cubit_bind_bo_offline(&failed_binding, &bo, 0x20000) == VK_ERROR_DEVICE_LOST);
@@ -145,25 +134,6 @@ int main(void)
    assert(anv_cubit_bind_bo_offline(&failed_binding, &bo, 0x20000) == VK_ERROR_DEVICE_LOST);
    assert(anv_cubit_prepare_submission(&failed_binding) == VK_ERROR_INITIALIZATION_FAILED);
    assert(binds == 2 && prepares == 4);
-   /* A successful transport response is not a GPU completion unless its
-    * sequence is the exact successor. Do not revive after stale, skipped,
-    * zero or wrap-like replies, even when the next reply would be valid. */
-   static struct anv_device malformed[4];
-   const uint32_t invalid_completions[] = {0, 1, 3, UINT32_MAX};
-   for (unsigned n = 0; n < 4; n++) {
-      assert(anv_cubit_memory_init(&malformed[n], 57 - n) == VK_SUCCESS);
-      assert(anv_cubit_prepare_submission(&malformed[n]) == VK_SUCCESS);
-      marker = 1;
-      override_completion = true;
-      supplied_completion = invalid_completions[n];
-      unsigned before = submits;
-      assert(anv_cubit_submit_bo(&malformed[n], &bo, 0x20000, 8, 4096) == VK_ERROR_DEVICE_LOST);
-      assert(submits == before + 1);
-      supplied_completion = 2;
-      assert(anv_cubit_submit_bo(&malformed[n], &bo, 0x20000, 8, 4096) == VK_ERROR_DEVICE_LOST);
-      assert(anv_cubit_prepare_submission(&malformed[n]) == VK_ERROR_INITIALIZATION_FAILED);
-      assert(submits == before + 1);
-   }
    static struct anv_device live, bad_update[4], rejected_update;
    assert(anv_cubit_memory_init(&live, 53) == VK_SUCCESS);
    assert(anv_cubit_update_bo_binding(&live, &bo, 0x20000, 4096, 4096, false) ==
@@ -182,13 +152,9 @@ int main(void)
    assert(anv_cubit_update_bo_binding(&live, &slab, 0x20000, 4096, 4096, false) ==
           VK_ERROR_INITIALIZATION_FAILED);
    assert(updates == 0);
-   override_completion = false;
-   marker = 1;
-   for (unsigned n = 0; n < 20; n++) {
+   for (unsigned n = 0; n < 20; n++)
       assert(anv_cubit_update_bo_binding(&live, &bo, 0x20000, 4096, 4096, n & 1) == VK_SUCCESS);
-      assert(anv_cubit_submit_bo(&live, &bo, 0x20000, 8, 4096) == VK_SUCCESS);
-   }
-   assert(updates == 20 && vm_generation == 20 && marker == 21);
+   assert(updates == 20 && vm_generation == 20);
    const uint32_t invalid_generations[] = {0, 2, 7, UINT32_MAX};
    for (unsigned n = 0; n < 4; n++) {
       assert(anv_cubit_memory_init(&bad_update[n], 52 - n) == VK_SUCCESS);
@@ -196,12 +162,12 @@ int main(void)
       vm_generation = 0;
       override_generation = true;
       supplied_generation = invalid_generations[n];
-      unsigned before = updates, submissions_before = submits;
+      unsigned before = updates, failures = update_failures;
       assert(anv_cubit_update_bo_binding(&bad_update[n], &bo, 0x20000, 4096, 4096, false) == VK_ERROR_DEVICE_LOST);
       supplied_generation = 1;
+      /* Sticky: never replayed, never reported twice. */
       assert(anv_cubit_update_bo_binding(&bad_update[n], &bo, 0x20000, 4096, 4096, false) == VK_ERROR_DEVICE_LOST);
-      assert(anv_cubit_submit_bo(&bad_update[n], &bo, 0x20000, 8, 4096) == VK_ERROR_DEVICE_LOST);
-      assert(updates == before + 1 && submits == submissions_before);
+      assert(updates == before + 1 && update_failures == failures + 1);
    }
    assert(anv_cubit_memory_init(&rejected_update, 48) == VK_SUCCESS);
    assert(anv_cubit_prepare_submission(&rejected_update) == VK_SUCCESS);
@@ -214,10 +180,12 @@ int main(void)
    assert(anv_cubit_update_bo_binding(&rejected_update, &bo, 0x20000, 4096, 4096, false) == VK_ERROR_DEVICE_LOST);
    assert(updates == before);
    /* Recycle a genuinely used submission lifetime, not an empty tracker.
-    * The old session reached VM generation20 and completion21. A new session
-    * must prepare/register anew and start with VM0/completion1. */
+    * The old session reached VM generation 20. A new session must
+    * prepare/register and open its queue anew and start at VM 0. */
    struct cubit_cpu_mapping_tracker *retired_tracker = live.cubit_cpu_mappings;
+   const unsigned queue_closes = gpu_queue_mock_closes;
    assert(anv_cubit_memory_finish(&live) == VK_SUCCESS);
+   assert(gpu_queue_mock_closes == queue_closes + 1 && !gpu_queue_mock[53].open);
    assert(!live.cubit_cpu_mappings && !anv_cubit_memory_slot_retained(53));
    for (unsigned cycle = 0; cycle < 64; cycle++) {
       uint64_t slot = cycle & 1 ? 53 : 47;
@@ -228,12 +196,11 @@ int main(void)
       assert(anv_cubit_bind_bo_offline(&live, &bo, 0x20000) == VK_SUCCESS);
       assert(anv_cubit_prepare_submission(&live) == VK_SUCCESS);
       assert(prepares == before_prepare + 1 && registers == before_register + 1);
-      vm_generation = 0; marker = 1;
-      for (unsigned operation = 0; operation < 3; operation++) {
+      assert(gpu_queue_mock[slot].open);
+      vm_generation = 0;
+      for (unsigned operation = 0; operation < 3; operation++)
          assert(anv_cubit_update_bo_binding(&live, &bo, 0x20000, 4096, 4096, false) == VK_SUCCESS);
-         assert(anv_cubit_submit_bo(&live, &bo, 0x20000, 8, 4096) == VK_SUCCESS);
-      }
-      assert(vm_generation == 3 && marker == 4);
+      assert(vm_generation == 3);
       assert(anv_cubit_memory_finish(&live) == VK_SUCCESS);
       unsigned saved_closes = closes;
       assert(anv_cubit_memory_poll() == 0 && closes == saved_closes);
@@ -241,6 +208,6 @@ int main(void)
       assert(anv_cubit_memory_slot_retained(63)); /* other failed session retained */
    }
    assert(drains == 65 && closes == 65 && retirement_polls == 65);
-   puts("ANV submission lifecycle PASS: real types, mocked IPC, independent VM/batch generations and sticky failure");
+   puts("ANV submission lifecycle PASS: real types, mocked IPC/queue, one-shot preparation and queue open, refused queue, live VM generations with sticky failure, queue closed before the session over 65 recycled lifetimes");
    return 0;
 }

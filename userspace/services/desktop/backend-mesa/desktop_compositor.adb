@@ -26,6 +26,7 @@ package body Desktop_Compositor with SPARK_Mode,
       Secondary : Boolean; Drawn, Must_Restart : out Boolean) renames Renderer.Draw_Fill;
    procedure Draw_Backdrop
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
       Style : CuBit.Appearance.Preferences; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean) renames Renderer.Draw_Backdrop;
    procedure Draw_Preview
@@ -57,8 +58,44 @@ package body Desktop_Compositor with SPARK_Mode,
       Screen : CuBit.Display_Geometry.Output;
       Surface : CuBit.Display_Geometry.Logical_Rectangle;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Secondary : Boolean; Drawn, Must_Restart : out Boolean;
-      Over : Boolean := False; Straight_Alpha : Boolean := False) renames Renderer.Draw_Output;
+      Key : Compositor_Source_Content.Source_Key;
+      Version : Compositor_Source_Content.Content_Version;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean) is
+      pragma Unreferenced (Key, Version);
+   begin
+      Renderer.Draw_Output (Target, Source, Target_Bytes, Source_Bytes, Screen, Surface,
+        Damage, Secondary, Drawn, Must_Restart);
+   end Draw_Output;
+   procedure Note_Source_Change
+     (Key : Compositor_Source_Content.Source_Key; Rows : Compositor_Source_Content.Row_Band) is null;
+   procedure Retire_Source (Key : Compositor_Source_Content.Source_Key) is null;
+   procedure Draw_Icon
+     (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Screen : CuBit.Display_Geometry.Output; Item : Desktop_Icon_Pixels.Asset;
+      Surface : CuBit.Display_Geometry.Logical_Rectangle;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean) is
+      pragma Unreferenced (Target, Target_Bytes, Screen, Item, Surface, Damage, Secondary);
+   begin
+      Drawn := False; Must_Restart := False;
+   end Draw_Icon;
+   procedure Draw_Cursor
+     (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Screen : CuBit.Display_Geometry.Output; Cursor : Desktop_Cursors.Cursor_ID;
+      Surface : CuBit.Display_Geometry.Logical_Rectangle;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean) is
+      pragma Unreferenced (Target, Target_Bytes, Screen, Cursor, Surface, Damage, Secondary);
+   begin
+      Drawn := False; Must_Restart := False;
+   end Draw_Cursor;
+   function Backing_Events (Class : Vulkan_Submission.Source_Class; Freed : Boolean)
+     return Interfaces.Unsigned_64 is (0);
+   function Resident_Sources return Natural is (0);
+   function Upload_Progress return Interfaces.Unsigned_64 is (0);
+   function Peak_Scene_Layers return Natural is (0);
+   function Placeholder_Draws return Natural is (0);
+   function Last_Retry_Cause return Retry_Cause is (No_Retry);
    procedure Complete_Output
      (Target : System.Address; Writer : Compositor_Pool.Ticket;
       Secondary, Poll : Boolean; Result : out Render_Completion) renames Renderer.Complete_Output;

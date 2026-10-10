@@ -13,7 +13,7 @@ project Desktop_Policy_Proof is
    for Source_Dirs use
      (".", "backend-" & Backend, Startup, "input-overlay-off", "timing-off",
       "metrics-off", "storage-production", "build/generated", "../../mesa",
-      "../../lib/display", "../../lib/compositor", "../../allocator/src",
+      "../../lib/display", "../../lib/compositor", "../../lib/image", "../../allocator/src",
       "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/production");
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022");

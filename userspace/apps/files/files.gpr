@@ -3,7 +3,7 @@ with "../../lib/ui/toolkit_flags.gpr";
 project Files is
    for Languages use ("Ada");
    for Object_Dir use "build";
-   for Source_Dirs use (".", "../../lib/ui", "../../lib/theme", "build/generated", "../../lib/compositor", "../../lib/display", "../../allocator/src");
+   for Source_Dirs use (".", "native", "../../lib/ui", "../../lib/theme", "build/generated", "../../lib/compositor", "../../lib/display", "../../allocator/src");
    for Main use ("main.adb");
    for Runtime ("Ada") use "../../runtime";
    for Library_Dir use "";

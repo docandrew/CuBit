@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<defs>
+<linearGradient id="violet" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#c3adff"/><stop offset="1" stop-color="#8457ff"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M11 7 L28 3 L28 8 L11 12Z" transform="translate(2 2)"/>
+  <path d="M11 7 L28 3 L28 8 L11 12Z" transform="translate(1 1)"/>
+  <path d="M11 7 L28 3 L28 8 L11 12Z"/>
+  <path d="M11 10 L13 10 L13 25 L11 25Z" transform="translate(2 2)"/>
+  <path d="M11 10 L13 10 L13 25 L11 25Z" transform="translate(1 1)"/>
+  <path d="M11 10 L13 10 L13 25 L11 25Z"/>
+  <path d="M26 5 L28 5 L28 21 L26 21Z" transform="translate(2 2)"/>
+  <path d="M26 5 L28 5 L28 21 L26 21Z" transform="translate(1 1)"/>
+  <path d="M26 5 L28 5 L28 21 L26 21Z"/>
+</g>
+<path d="M11 7 L28 3 L28 8 L11 12Z" fill="#3b1e96" transform="translate(2 2)"/>
+<path d="M11 7 L28 3 L28 8 L11 12Z" fill="#3b1e96" transform="translate(1 1)"/>
+<path d="M11 7 L28 3 L28 8 L11 12Z" fill="#5a32d6"/>
+<path d="M11 10 L13 10 L13 25 L11 25Z" fill="#3b1e96" transform="translate(2 2)"/>
+<path d="M11 10 L13 10 L13 25 L11 25Z" fill="#3b1e96" transform="translate(1 1)"/>
+<path d="M11 10 L13 10 L13 25 L11 25Z" fill="#5a32d6"/>
+<path d="M26 5 L28 5 L28 21 L26 21Z" fill="#3b1e96" transform="translate(2 2)"/>
+<path d="M26 5 L28 5 L28 21 L26 21Z" fill="#3b1e96" transform="translate(1 1)"/>
+<path d="M26 5 L28 5 L28 21 L26 21Z" fill="#5a32d6"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M4.25 26 A4.69 3.44 0 1 0 13.62 26 A4.69 3.44 0 1 0 4.25 26Z" transform="translate(2 2)"/>
+  <path d="M4.25 26 A4.69 3.44 0 1 0 13.62 26 A4.69 3.44 0 1 0 4.25 26Z" transform="translate(1 1)"/>
+  <path d="M4.25 26 A4.69 3.44 0 1 0 13.62 26 A4.69 3.44 0 1 0 4.25 26Z"/>
+  <path d="M19.25 22 A4.69 3.44 0 1 0 28.62 22 A4.69 3.44 0 1 0 19.25 22Z" transform="translate(2 2)"/>
+  <path d="M19.25 22 A4.69 3.44 0 1 0 28.62 22 A4.69 3.44 0 1 0 19.25 22Z" transform="translate(1 1)"/>
+  <path d="M19.25 22 A4.69 3.44 0 1 0 28.62 22 A4.69 3.44 0 1 0 19.25 22Z"/>
+</g>
+<path d="M4.25 26 A4.69 3.44 0 1 0 13.62 26 A4.69 3.44 0 1 0 4.25 26Z" fill="#3b1e96" transform="translate(2 2)"/>
+<path d="M4.25 26 A4.69 3.44 0 1 0 13.62 26 A4.69 3.44 0 1 0 4.25 26Z" fill="#3b1e96" transform="translate(1 1)"/>
+<path d="M4.25 26 A4.69 3.44 0 1 0 13.62 26 A4.69 3.44 0 1 0 4.25 26Z" fill="url(#violet)"/>
+<path d="M5.5 24.75 A1.88 1 0 1 0 9.25 24.75 A1.88 1 0 1 0 5.5 24.75Z" fill="#ffffff" opacity="0.55"/>
+<path d="M19.25 22 A4.69 3.44 0 1 0 28.62 22 A4.69 3.44 0 1 0 19.25 22Z" fill="#3b1e96" transform="translate(2 2)"/>
+<path d="M19.25 22 A4.69 3.44 0 1 0 28.62 22 A4.69 3.44 0 1 0 19.25 22Z" fill="#3b1e96" transform="translate(1 1)"/>
+<path d="M19.25 22 A4.69 3.44 0 1 0 28.62 22 A4.69 3.44 0 1 0 19.25 22Z" fill="url(#violet)"/>
+<path d="M20.5 20.75 A1.88 1 0 1 0 24.25 20.75 A1.88 1 0 1 0 20.5 20.75Z" fill="#ffffff" opacity="0.55"/>
+</svg>

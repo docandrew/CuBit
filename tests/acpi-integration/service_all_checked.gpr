@@ -1,0 +1,9 @@
+project Service_All_checked is
+   for Source_Dirs use (".", "mocks", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../userspace/services/acpi/native", "../../shared/firmware");
+   for Object_Dir use "build-all-checked/obj";
+   for Exec_Dir use "build-all-checked";
+   for Main use ("metadata_query_tests.adb", "initialization_metrics_tests.adb", "requests_owned_tests.adb", "endpoint_owned_tests.adb", "bootstrap_owned_tests.adb", "static_member_tests.adb", "member_data_tests.adb", "copy_value_tests.adb", "namespace_owner_tests.adb", "madt_query_tests.adb", "string_compare_tests.adb", "string_replace_tests.adb", "string_store_tests.adb", "srat_query_tests.adb", "quota_store_tests.adb", "dmar_query_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+   end Compiler;
+end Service_All_checked;

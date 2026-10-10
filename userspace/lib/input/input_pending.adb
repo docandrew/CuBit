@@ -20,6 +20,12 @@ package body Input_Pending with SPARK_Mode is
       Q.Used := Q.Used + 1;
    end Append;
 
+   procedure Replace_Newest (Q : in out Queue; Payload : Word) is
+      Newest : constant Offset_Type := (Q.Head + Q.Used - 1) mod Capacity;
+   begin
+      Q.Data (Newest).Payload := Payload;
+   end Replace_Newest;
+
    procedure Reset (Q : in out Queue) is
    begin
       Q.Used := 0;

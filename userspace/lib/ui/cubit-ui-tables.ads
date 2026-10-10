@@ -92,8 +92,14 @@ package CuBit.UI.Tables is
        colors : CuBit.UI.Theme;
        Layout : in out Column_Layout);
 
+   --  Columns whose text sits against the cell's right padding (numbers).
+   type Column_Flags is array (Column_Index) of Boolean;
+   NO_COLUMNS : constant Column_Flags := [others => False];
+
    --  One row: Cell gives each column's text, Ink its color given the
    --  row's ordinary text color (selected rows pass the selection text).
+   --  Right_Aligned columns end their text at the right padding; the first
+   --  column's text starts First_Indent further right (room for an icon).
    generic
       with function Cell (Column : Column_Index) return String;
       with function Ink (Column : Column_Index; Default : CuBit.UI.Color) return CuBit.UI.Color;
@@ -103,5 +109,7 @@ package CuBit.UI.Tables is
        colors : CuBit.UI.Theme;
        Layout : Column_Layout;
        selected, hot : Boolean;
-       textStyle : CuBit.UI.Table_Text_Style := CuBit.UI.Table_Interface_Text);
+       textStyle : CuBit.UI.Table_Text_Style := CuBit.UI.Table_Interface_Text;
+       Right_Aligned : Column_Flags := NO_COLUMNS;
+       First_Indent : Natural := 0);
 end CuBit.UI.Tables;

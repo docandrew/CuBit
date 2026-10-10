@@ -1,0 +1,19 @@
+project Desktop_Scene_Sources extends "desktop_gpu_scene.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat", "../../userspace/services/desktop");
+   for Source_Files use Desktop_GPU_Scene'Source_Files &
+     ("compositor_formats.ads", "compositor_upload_copy.ads", "compositor_upload_copy.adb",
+      "compositor_source_content.ads", "compositor_source_residency.ads", "compositor_source_residency.adb",
+      "desktop_image_source.ads", "desktop_image_source.adb",
+      "desktop_image_registry.ads", "desktop_image_registry.adb",
+      "desktop_gpu_scene-images.ads", "desktop_gpu_scene-images.adb",
+      "desktop_gpu_scene-drawing.ads", "desktop_gpu_scene-drawing.adb",
+      "desktop_gpu_scene-output.ads", "desktop_gpu_scene-output.adb",
+      "desktop_readback_output.ads", "desktop_readback_output.adb",
+      "compositor_row_copy.ads", "compositor_row_copy.adb",
+      "compositor_shadow.ads", "compositor_shadow.adb",
+      "compositor_readback_copy.ads", "compositor_readback_copy.adb",
+      "desktop_scene_sources_tests.adb");
+   for Object_Dir use "build/desktop-scene-sources/obj";
+   for Exec_Dir use "build/desktop-scene-sources";
+   for Main use ("desktop_scene_sources_tests.adb");
+end Desktop_Scene_Sources;

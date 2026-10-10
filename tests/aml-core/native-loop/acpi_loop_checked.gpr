@@ -1,0 +1,9 @@
+project ACPI_Loop_checked is
+ for Source_Dirs use (".", "../build/native-loop/abi", "../../../userspace/services/acpi", "../../../userspace/services/acpi/native", "../../../userspace/lib/acpi", "../../../shared/firmware");
+ for Object_Dir use "../build/native-loop-checked/obj";
+ for Exec_Dir use "../build/native-loop-checked";
+ for Main use ("loop_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnato", "-gnata", "-gnatwa", "-gnatwe", "-gnatwJ");
+ end Compiler;
+end ACPI_Loop_checked;

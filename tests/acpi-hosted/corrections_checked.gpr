@@ -1,0 +1,8 @@
+project Corrections_checked is
+ for Source_Dirs use ("../../tests/aml-core", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "corrections-checked";
+ for Main use ("decode_tests.adb", "load_tests.adb", "integer_oracle_tests.adb", "service_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Corrections_checked;

@@ -4,10 +4,8 @@ with Ext2; use Ext2;
 with Ext2_Support; use Ext2_Support;
 with Volume_Admission; use Volume_Admission;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Filesystems;
 
 procedure Object_Admission is
-   use type CuBit.Filesystems.Directory_Entries;
    fs : Filesystem;
    sb : Superblock with Import, Address => Disk (1024)'Address;
    bgd : BlockGroupDescriptor with Import, Address => Disk (2048)'Address;
@@ -24,7 +22,7 @@ procedure Object_Admission is
    writeStatus : Write_Status;
    truncateStatus : Truncate_Status;
    admission : Admission_Result;
-   entries : CuBit.Filesystems.Directory_Entries;
+   entries : Listed_Records;
    entryCount : Natural;
    cursor : Unsigned_64;
    pageStatus : Directory_Read_Status;
@@ -86,7 +84,7 @@ procedure Object_Admission is
       --  Unsupported objects remain visible without opening or following them.
       readDirectoryPage (fs, root, 0, entries, entryCount, cursor, pageStatus);
       pragma Assert (pageStatus = Directory_End and entryCount = 1);
-      pragma Assert (entries (0).objectHint = 3 and entries (0).nameLength = 4);
+      pragma Assert (entries (0).inode = 3 and entries (0).length = 4);
    end Rejected;
 begin
    for Kind in Unsigned_16 range 0 .. 15 loop

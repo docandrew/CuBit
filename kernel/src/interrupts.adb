@@ -10,6 +10,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Capabilities.IRQ;
 with Build;
 with Boot_Timer_Probe;
+with Boot_Diagnostics;
 with Config;
 with ioapic;
 with IPC_Labels;
@@ -137,6 +138,34 @@ is
     --  function needs to know what (PIC, APIC, x2APIC) is generating these
     --  interrupts.
     ---------------------------------------------------------------------------
+    --  Fixed-size images for the on-screen panic banner: no allocation or
+    --  secondary stack in an exception handler.
+    Hex_Digits : constant String := "0123456789ABCDEF";
+    function hex64 (Value : Unsigned_64) return String is
+        Result : String (1 .. 18) := "0x0000000000000000";
+        V : Unsigned_64 := Value;
+    begin
+        for I in reverse 3 .. Result'Last loop
+            Result (I) := Hex_Digits (Natural (V and 16#F#) + 1);
+            V := Shift_Right (V, 4);
+        end loop;
+        return Result;
+    end hex64;
+
+    function decimal (Value : Natural) return String is
+        Result : String (1 .. 10) := (others => '0');
+        V : Natural := Value;
+        First : Positive := Result'Last;
+    begin
+        for I in reverse Result'Range loop
+            Result (I) := Character'Val (Character'Pos ('0') + V mod 10);
+            V := V / 10;
+            First := I;
+            exit when V = 0;
+        end loop;
+        return Result (First .. Result'Last);
+    end decimal;
+
     procedure interruptHandler (frame : not null access constant Stackframe.InterruptStackFrame)
         with SPARK_Mode => Off -- live CPU/process overlays and hardware dispatch
     is
@@ -225,6 +254,21 @@ is
                 -- will eventually return to interruptReturn in
                 -- interrupt.asm, not here.
                 eoi (TIMER);
+                -- Where user code was running (Process.IPC.reportStuckCalls).
+                if Util.isBitSet (frame.cs, 0) or Util.isBitSet (frame.cs, 1) then
+                    declare
+                        tid : constant Process.ThreadID := PerCPUData.getCurrentThread;
+                    begin
+                        if Process."/=" (tid, Process.NO_THREAD) then
+                            Process.threadtab (tid).sampledRIP :=
+                              Unsigned_64 (Util.addrToNum (frame.rip));
+                        end if;
+                    end;
+                end if;
+                if PerCPUData.getCPUNumber = 0 then
+                    Boot_Diagnostics.Heartbeat;
+                    TextIO.drainStalledConsole;
+                end if;
                 if not Build.Test_Deadline_Timer or else
                    not Timer_Expiry_Probe.Handle_Interrupt
                 then
@@ -280,7 +324,10 @@ is
                 println ("Spurious Interrupt");
 
             when KERNEL_PANIC =>
+                TextIO.stopAsynchronous;
                 println ("KERNEL PANIC!");
+                Boot_Diagnostics.Emergency
+                  (System.Null_Address, "panic interrupt RIP " & hex64 (Unsigned_64 (Util.addrToNum (frame.rip))));
                 printRegs (frame);
                 x86.halt;
 
@@ -303,7 +350,14 @@ is
                         detail2    => Interfaces.Unsigned_64 (frame.errorCode));
                     Process.kill (PerCPUData.getCurrentPID);
                 else
-                    -- Kernel exception: halt
+                    TextIO.stopAsynchronous;
+                    -- Kernel exception: report on screen too (no serial on
+                    -- most hardware), then halt.
+                    Boot_Diagnostics.Emergency
+                      (System.Null_Address,
+                       "kernel exception " & decimal (Natural (interruptNumber)) &
+                       " RIP " & hex64 (Unsigned_64 (Util.addrToNum (frame.rip))) &
+                       " error " & hex64 (Unsigned_64 (frame.errorCode)));
                     printRegs (frame);
                     x86.halt;
                 end if;

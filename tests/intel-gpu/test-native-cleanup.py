@@ -82,8 +82,13 @@ procedure Native_Cleanup_Test is
       pragma Assert (Session /= 0);
       Context_Closes := Context_Closes + 1;
    end Retire_Application_Context;
+   Queue_Ends : Natural := 0;
+   procedure End_Session_Queue (S : Positive) is
+   begin
+      Queue_Ends := Queue_Ends + 1;
+   end End_Session_Queue;
 ''' + state + actions + '''
-   Buffer_Retirement_Pending, Selected_Index, Preparing_Index,
+   Buffer_Retirement_Pending, Preparing_Index,
      Application_Pending, Private_Pending, Update_Pending : Unsigned_64 := 0;
    In_Place_Active, Table_Ledger_Busy : Boolean := False;
 ''' + deferred + '''
@@ -111,21 +116,22 @@ procedure Native_Cleanup_Test is
    end Close;
 begin
    -- Exact shared predicate: every independent publisher, plus all combinations.
-   for Mask in Unsigned_64 range 0 .. 255 loop
+   -- (GPU-001 step 2: GPU work in flight is the queue service's to track,
+   -- not a deferred publisher.)
+   for Mask in Unsigned_64 range 0 .. 127 loop
       Buffer_Retirement_Pending := Mask and 1;
-      Selected_Index := Mask and 2;
-      Preparing_Index := Mask and 4;
-      Application_Pending := Mask and 8;
-      Private_Pending := Mask and 16;
-      Update_Pending := Mask and 32;
-      In_Place_Active := (Mask and 64) /= 0;
-      Table_Ledger_Busy := (Mask and 128) /= 0;
+      Preparing_Index := Mask and 2;
+      Application_Pending := Mask and 4;
+      Private_Pending := Mask and 8;
+      Update_Pending := Mask and 16;
+      In_Place_Active := (Mask and 32) /= 0;
+      Table_Ledger_Busy := (Mask and 64) /= 0;
       pragma Assert (Deferred_Application_Work = (Mask /= 0));
    end loop;
-   Buffer_Retirement_Pending := 0; Selected_Index := 0; Preparing_Index := 0;
+   Buffer_Retirement_Pending := 0; Preparing_Index := 0;
    Application_Pending := 0; Private_Pending := 0; Update_Pending := 0;
    In_Place_Active := False; Table_Ledger_Busy := False;
-   Ada.Text_IO.Put_Line ("PASS exact deferred publisher predicate: 256 combinations");
+   Ada.Text_IO.Put_Line ("PASS exact deferred publisher predicate: 128 combinations");
    Control.Bind (Render_Admission, 1, 9);
    for I in Sessions'Range loop
       Control.Handle (Render_Admission, 1, 9, True, Control.Label, 4, 0, 0,
@@ -174,7 +180,7 @@ begin
    pragma Assert (Pending /= 0);
    Close (Sessions (1));
    Retire_Application_Resources (Sessions (1));
-   pragma Assert (Context_Closes = 1 and Cleanup_Pending (Sessions (1)));
+   pragma Assert (Context_Closes = 1 and Queue_Ends = 1 and Cleanup_Pending (Sessions (1)));
    pragma Assert (Pending_Cleanups = 1 and Cleanup_Work_Ready);
    Application_Buffers.Complete (Application_Buffer_State, Pending,
      Intel_GPU_Buffer_Reply.From_Linear (16#30000000#, Base, 4096, 16#30000000#), Reply, Consumed);

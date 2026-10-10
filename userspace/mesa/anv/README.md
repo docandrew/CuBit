@@ -135,30 +135,29 @@ GPU translations. The Ada/C bridge rejects sealed images and malformed replies.
 the startup transition and sticky failures with actual ANV types and mocked IPC.
 This does not enable the native physical-device factory or public admission.
 
-## Queue synchronization adapter (not yet installed)
+## Session-queue submission (GPU-001 step 3)
 
-`anv_cubit_queue_exec_locked` implements the ordinary synchronous render-queue
-callback: nonblocking dependency verification, Mesa's existing command-buffer
-chaining and required batch cache flush, native submission with confirmed
-completion, then output and optional queue-debug-fence signaling. Empty submissions only resolve dependencies
-and signal. Missed dependencies poison the session instead of blocking under
-the device mutex. Performance-query, companion-engine and trace submissions
-are explicitly unsupported. The native backend factory is not selected yet.
-`queue-exec-test.c` uses actual ANV structures with mocked chaining/sync/IPC to
-check ordering and failures; it does not establish hardware batch execution.
+`anv_cubit_queue_exec_locked` and `anv_cubit_queue_exec_async` submit through
+the GPU session's queue (`native_gpu_queue.ads`, over `CuBit.GPU_Sessions`;
+design in `docs/gpu-async-submission.md`). Each translates its waits, writes
+one descriptor and returns: the signals get GPU timeline points
+(`anv_cubit_sync.c`) that resolve when the GPU reaches them. No call waits for
+the GPU and none holds `lifetime_mutex`; a per-queue lock orders descriptors
+and their points. Waits on a point of the job's own context are dropped (ring
+order), waits on another context become descriptor waits, and the pre-lock
+hook (`anv_cubit_wait_dependencies`) waits only until every dependency is
+pending. An empty submission's signals follow the queue's last job, or happen
+at once when nothing is outstanding; with a cross-context wait it is a
+`Signal` barrier. The first internal batch prepares and registers the context
+and opens the queue; device teardown closes it before the session. Live VM
+updates (`0x0A28`) stay synchronous under their own lock. Performance-query,
+companion-engine and trace submissions remain unsupported.
 
-`anv_cubit_queue_exec_async` supplies the internal/startup RCS batch callback.
-It validates retained batch BO extents, prepares/registers the context on the
-first valid startup batch, waits dependencies without the common device mutex,
-flushes the actual allocating pool's cached BOs when required, and submits the
-first chained batch. Caller signals, the private startup fence and the optional
-queue debug fence follow confirmed completion. Its execution is synchronous
-despite the upstream callback name. Preparation is delayed because common
-`setup_context` runs before state and batch BO allocation; later binds route
-through live VM updates. Preparation or registration failures are not replayed.
-`queue-async-test.c` exercises these paths with mocked transport, including the
-real startup shape with only a private fence. Native Mesa startup execution is
-still unverified.
+Hosted coverage (actual ANV types, Mesa's vk_sync, mocked queue ABI and IPC):
+`tests/mesa-anv/test-gpu-timeline.py <native Mesa build>`, which also runs the
+no-wait source check `test-submit-no-wait.py`. The Ada logic meets the real
+step 2 queue service in `tests/mesa-anv/gpu-timeline/` (and its mutation
+script). None of this is native or hardware execution.
 
 ### Remaining factory requirements
 
@@ -367,57 +366,26 @@ returning `pdev->revision` and the pinned Mesa i915 discovery consuming it.
 Do not substitute Linux's internal `enum intel_step` value here. Final Mesa
 workaround initialization still belongs after all runtime fields are complete.
 
-`anv_cubit_submit_bo_sync` waits for all input syncs to complete, submits one
-native batch, then signals outputs only after the checked driver completion.
-The wait is outside the tracker mutex; the session is revalidated afterward.
-A wait timeout submits nothing. Wait errors and uncertain/partial signaling
-poison the session without replay. The caller must serialize each queue and
-retain BO/sync lifetimes and manage binary wait consumption.
-
-This is an internal synchronous worker primitive, not `vkQueueSubmit` or an
-installed ANV KMD callback. Native CPU-waitable/signallable sync types, runtime
-queue integration, multi-command-buffer submission and WSI remain required.
-Do not install dummy syncs to satisfy those requirements. `queue-sync-test.c`
-uses real Mesa types/adapter with mocked sync functions and IPC; it validates
-ordering and error propagation, not Vulkan conformance or GPU execution.
-
-`anv_cubit_cpu_timeline_type` supplies process-local CPU timeline values with
-monotonic condition-variable deadlines, wait-all/any and device-loss checks.
-It supports queue waits through the synchronous CPU worker, not a hardware
-semaphore. Pending waits conservatively wait for actual completion; there is
-no earlier submitted-but-incomplete signal point. External sharing is rejected.
-The reproducible CuBit source preparation copies this implementation and its
-header, and the native ANV Meson source list compiles it. This does not install
-the physical-device backend or advertise synchronization support by itself.
-`anv_cubit_init_sync_types` is the physical-device initialization callback:
-it verifies condition initialization before publishing a terminated timeline/
-binary list, with the binary wrapper stored in the physical device itself.
-Republishing an existing provider is rejected. `sync-types-test.c` checks two
-independent devices and exercises both published types through Mesa dispatch.
-The factory installs this callback; instance enumeration remains unwired.
-`cpu-sync-test.c` tests the real implementation with host pthreads, including
-device loss without a signal. The same timeline tests now pass in native CuBit
-on four-CPU QEMU TCG with actual libc threads and timed waits (2026-09-30).
-Native combination with Mesa queue/binary-semaphore handling remains unverified;
-it is not installed in the physical-device factory. The 10ms device-loss check is a fallback wakeup
-bound, not a submission latency or performance result.
-
-For native threading/timing validation, under the shared build lock and Nix:
-build `tests/mesa-anv/build-native-sync.py <prepared-native-build>`, then run
-`tests/headless/run.sh --test mesa-sync --accel tcg,thread=multi --cpus 4`
-with `MESA_SYNC_IMAGE` set to the resulting executable. This exercises the
-actual timeline implementation and CuBit libc, not Intel GPU submission.
-
-`queue-real-sync-test.c` composes the actual upstream Mesa sync dispatcher and
-time support, CuBit timeline and native submission adapter. Only device IPC
-and the debug-option source are mocked. It checks that an unsignaled dependency
-blocks submission, successful native completion signals the output, and failed
-submission leaves the output unsignaled and reports device loss.
+`anv_cubit_gpu_timeline_type` is the device's one timeline sync type: a
+reached value plus pending points, each a (context, value) on the session
+queue, kept by the proved Ada unit `native_gpu_timeline.ads`. `get_value`
+resolves points against the queue's status lines (no IPC); waits spin briefly,
+then sleep in `OP_GPU_WAKE` with the caller's deadline, or poll the status
+line when another thread holds the session's one wake. `WAIT_PENDING` treats
+a submitted point as pending, so Mesa's threaded submit works. CPU-only waits
+keep the condition variable with 10 ms slices for device-loss checks.
+External sharing is rejected. `anv_cubit_init_sync_types` publishes it with
+its binary wrapper during physical-device construction.
+`gpu-timeline-sync-test.c` tests it with Mesa's dispatcher and host pthreads;
+`build-native-sync.py` links the same test for native CuBit
+(`tests/headless/run.sh --test mesa-sync` with `MESA_SYNC_IMAGE`), which
+exercises CuBit libc threads and timed waits, not GPU submission.
 
 `anv_cubit_binary_sync_type` reuses Mesa's binary-on-timeline wrapper, with a
-completed-payload move for threaded queue waits. The move requires the source
-to be completed, transfers that event to the destination, and advances the
-source to an unsignaled point under the timeline lock. It rejects an unready
+payload move for threaded queue waits. The move requires the source to be
+signalled or pending, transfers that event (with its point) to the
+destination, and advances the source to an unsignaled point under the
+timeline lock. It rejects an unready
 source and overflow; reset also rejects counter exhaustion without wrapping
 an unsignaled event to zero. External sync-file hooks are disabled. The
 real-dispatch test covers repeated signal/move/reset cycles and exhaustion.
@@ -629,20 +597,12 @@ and no revival after failure. They do not prove callbacks, GPU security or
 execution. Native callbacks and label `0A27` are now connected, and the C/Ada
 bridge checks exact completion successors; admission remains closed.
 
-`anv_cubit_prepare_submission` and `anv_cubit_submit_bo` connect that bridge to
-actual ANV device/BO types. Process-owned lifetime records retain one-shot
-preparation state and completion sequence. Preparation seals the already-bound
-VM and executes setup; submission accepts a real (non-slab) BO slice, serializes
-with memory operations, and marks device/session state lost on failure without
-retrying. The initial process mutex spans synchronous GPU waits: this is not
-the eventual asynchronous/per-queue implementation. Callers still retain all
-batch-reachable resources; a BO extent check does not validate GPU commands.
-
-These helpers are not installed as a complete ANV backend. Offline-only binding,
-slab address handling, live VM updates, Vulkan synchronization, teardown and
-security/recovery gates remain prerequisites. Hosted actual-type coverage:
-`tests/mesa-anv/test-memory-lifecycle.sh <prepared-build> submission-lifecycle-test.c`.
-The transport is mocked; this tests ANV-side state transitions, not GPU execution.
+`anv_cubit_prepare_submission` connects that bridge to actual ANV device/BO
+types: process-owned lifetime records retain one-shot preparation state;
+preparation seals the already-bound VM, executes setup and opens the session
+queue. Batches then go through the queue (see "Session-queue submission").
+Hosted actual-type coverage of preparation, live VM generations and recycled
+lifetimes: `submission-lifecycle-test.c` in `test-gpu-timeline.py`.
 
 `anv_cubit_bind_bo_offline` now connects actual ANV real BOs to the existing
 native binding bridge before preparation. It binds the full page-aligned

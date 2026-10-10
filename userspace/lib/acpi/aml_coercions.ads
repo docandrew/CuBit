@@ -21,6 +21,12 @@ package AML_Coercions with SPARK_Mode, Pure is
    function From_String (Data : AML_Decode.Bytes; Width : AML_Decode.Integer_Width) return Result
      with Post => From_String'Result.Status = Converted
        and then From_String'Result.Value <= Maximum (Width);
+   -- Explicit ToInteger conversion: decimal unless prefixed with 0x/0X.
+   -- Stop at the first non-digit or before active-width overflow.
+   function From_Explicit_String
+     (Data : AML_Decode.Bytes; Width : AML_Decode.Integer_Width) return Result
+     with Post => From_Explicit_String'Result.Status = Converted
+       and then From_Explicit_String'Result.Value <= Maximum (Width);
    -- Least-significant byte first; ignore bytes beyond the table integer width.
    function From_Buffer (Data : AML_Decode.Bytes; Width : AML_Decode.Integer_Width) return Result
      with Post => From_Buffer'Result.Value <= Maximum (Width)

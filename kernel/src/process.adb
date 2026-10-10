@@ -16,6 +16,7 @@ pragma Ada_2022;
 with Ada.Unchecked_Conversion;
 
 with BuddyAllocator;
+with Clock_Page;
 with Memory_Accounting;
 with Process_Memory_Budget;
 with Build;
@@ -979,6 +980,16 @@ package body Process is
 
         zeroize (addrtab(pid));
         Mem_mgr.mapKernelMemIntoProcess (addrtab(pid));
+        -- Every process reads the clock publication at its fixed address.
+        declare
+            mapped : Boolean;
+        begin
+            Clock_Page.Map (addrtab(pid), mapped);
+            if not mapped then
+                discardUnpublished (pid);
+                return NO_PROCESS;
+            end if;
+        end;
         -- Add a page for the process' stack
         tryAddPage (proctab(pid), procStack - Virtmem.PAGE_SIZE, storage, allocation);
         if allocation /= Page_Added then

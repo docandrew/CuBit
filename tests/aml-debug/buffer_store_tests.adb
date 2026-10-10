@@ -1,0 +1,42 @@
+with Ada.Text_IO;
+with AML_Decode; use AML_Decode;
+with AML_Objects; use AML_Objects;
+procedure Buffer_Store_Tests is
+   use type AML_Decode.Byte;
+   S, Prior : State := Empty;
+   Empty_ID, Full_ID, Other_ID : Object_ID;
+   Alloc : Allocation_Status;
+   Updated : Buffer_Update_Status;
+   Checks : Natural := 0;
+   procedure Check (B : Boolean) is
+   begin Checks := Checks + 1; if not B then raise Program_Error with Checks'Image; end if; end Check;
+begin
+   New_Bytes (S, Buffer_Object, Bytes'(1 .. 0 => 0), Empty_ID, Alloc); Check (Alloc = Allocated);
+   New_Bytes (S, Buffer_Object, [16#AA#,16#BB#,16#CC#], Full_ID, Alloc); Check (Alloc = Allocated);
+   New_Bytes (S, String_Object, [16#45#], Other_ID, Alloc); Check (Alloc = Allocated);
+   Prior := S;
+   Store_Buffer (S, Empty_ID, Bytes'(Natural'Last - 1 => 1, Natural'Last => 2), Updated);
+   Check (Updated = Buffer_Updated and then Length (S, Empty_ID) = 2);
+   Check (Byte_Data (S, Empty_ID) = Bytes'[1,2]);
+   Check (Byte_Data (S, Full_ID) = Byte_Data (Prior, Full_ID));
+   Check (Byte_Data (S, Other_ID) = Byte_Data (Prior, Other_ID));
+   Check (Byte_Count (S) = Byte_Count (Prior) + 2 and then Live_Count (S) = Live_Count (Prior));
+   pragma Assert (Buffer_Stored (S, Prior, Empty_ID, [1,2]));
+   Prior := S;
+   Store_Buffer (S, Full_ID, [9], Updated);
+   Check (Updated = Buffer_Updated and then Byte_Data (S, Full_ID) = Bytes'[9,0,0]);
+   Check (Usage_Of (S) = Usage_Of (Prior));
+   Store_Buffer (S, Full_ID, [1,2,3,4], Updated);
+   Check (Updated = Buffer_Updated and then Byte_Data (S, Full_ID) = Bytes'[1,2,3]);
+   Prior := S;
+   Store_Buffer (S, No_Object, [1], Updated); Check (Updated = Invalid_Buffer_ID and then S = Prior);
+   Store_Buffer (S, Other_ID, [1], Updated); Check (Updated = Not_A_Buffer and then S = Prior);
+   S := Empty;
+   New_Bytes (S, Buffer_Object, Bytes'(1 .. 0 => 0), Empty_ID, Alloc); Check (Alloc = Allocated);
+   New_Bytes (S, Buffer_Object, Bytes'(1 .. Max_Bytes => 16#A5#), Full_ID, Alloc); Check (Alloc = Allocated);
+   Prior := S;
+   Store_Buffer (S, Empty_ID, [1], Updated); Check (Updated = Buffer_Byte_Limit and then S = Prior);
+   Store_Buffer (S, Full_ID, [1], Updated); Check (Updated = Buffer_Updated and then Byte_Count (S) = Max_Bytes);
+   Check (Stored_Byte (S, Full_ID, 0) = 1 and then Stored_Byte (S, Full_ID, Max_Bytes - 1) = 0);
+   Ada.Text_IO.Put_Line ("BUFFER STORE PASS" & Checks'Image);
+end Buffer_Store_Tests;

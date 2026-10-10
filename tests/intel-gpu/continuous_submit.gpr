@@ -1,0 +1,18 @@
+with "gpu_queue_runtime.gpr";
+project Continuous_Submit is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-continuous-submit";
+   -- Continuous-rendering reproduction plus the GuC context/transport
+   -- regressions that exercise the units it changes.
+   for Main use ("continuous_submit_tests.adb",
+                 "guc_fast_fences_tests.adb", "guc_context_event_tests.adb",
+                 "guc_context_request_tests.adb", "guc_context_wait_tests.adb",
+                 "guc_context_policy_tests.adb", "guc_deregister_lifecycle_tests.adb",
+                 "guc_deregister_request_tests.adb", "context_deregister_table_tests.adb",
+                 "context_update_hold_tests.adb", "context_table_tests.adb",
+                 "guc_context_lifecycle_tests.adb", "guc_context_session_tests.adb",
+                 "guc_notification_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2", "-I-");
+   end Compiler;
+end Continuous_Submit;

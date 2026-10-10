@@ -4,7 +4,8 @@ project CuBit is
     
     for Object_Dir use "build";
     
-    for Source_Dirs use ("src", "src/services", "../shared/firmware", "../shared/hardware");
+    for Source_Dirs use ("src", "src/services", "../shared/firmware", "../shared/hardware",
+                         "../shared/time");
     -- @TODO add src/test for "test" builds
     
     for Main use ("kmain.adb");

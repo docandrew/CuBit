@@ -8,7 +8,7 @@ project Buffers is
    for Source_Files use
      ("buffer_bridge_tests.adb", "buffer_c_test.c", "cubit.ads",
       "cubit-messages.ads", "cubit-messages.adb", "cubit-grant_references.ads",
-      "native_gpu_buffers.ads", "native_gpu_buffers.adb",
+      "native_gpu_calls.ads", "native_gpu_calls.adb", "native_gpu_buffers.ads", "native_gpu_buffers.adb",
       "intel_gpu_buffer_requests.ads", "intel_gpu_buffer_requests.adb",
       "intel_gpu_buffer_requests-binding.ads", "intel_gpu_buffer_requests-binding.adb",
       "intel_gpu_buffer_backing.ads", "intel_gpu_buffer_reply.ads", "intel_gpu_buffer_reply.adb",

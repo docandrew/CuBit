@@ -1,0 +1,9 @@
+project Condref_oracle_checked is
+ for Source_Dirs use (".", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "build-checked/obj";
+ for Exec_Dir use "build-checked";
+ for Main use ("condref_oracle_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Condref_oracle_checked;

@@ -1,6 +1,9 @@
 package body Intel_GPU_GuC_Fast_Fences with SPARK_Mode is
    function Failed (Object : Stream) return Boolean is (Object.Broken);
    function Pending (Object : Stream) return Boolean is (Object.Sending);
+   function Next_Fence (Object : Stream) return Fast_Fence is (Object.Next_ID);
+   function Published_Count (Object : Stream) return Request_Count is
+     (Object.Published);
    procedure Fail (Object : in out Stream) is
    begin
       Object.Broken := True;
@@ -22,8 +25,9 @@ package body Intel_GPU_GuC_Fast_Fences with SPARK_Mode is
       case Result is
          when Not_Published => null;
          when Published =>
-            Object.Next_ID := (if Object.Next_ID = Unsigned_16'Last
-                               then 16#8000# else Object.Next_ID + 1);
+            Object.Next_ID := (if Object.Next_ID = Fast_Fence'Last
+                               then Fast_Fence'First else Object.Next_ID + 1);
+            Object.Published := Object.Published + 1;
          when Uncertain => Fail (Object);
       end case;
    end Sent;

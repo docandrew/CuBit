@@ -1,0 +1,19 @@
+--  SPARK proof of Files' policy units (docs/files-app.md): run.sh --prove.
+project Files_Proof is
+   for Source_Dirs use ("../../userspace/apps/files", "build/source");
+   for Source_Files use
+     ("files_limits.ads", "files_listing.ads", "files_listing.adb", "files_order.ads", "files_order.adb",
+      "files_filter.ads", "files_filter.adb", "files_viewport.ads", "files_viewport.adb",
+      "files_marks.ads", "files_marks.adb", "files_pages.ads", "files_pages.adb", "files_plan.ads", "files_plan.adb",
+      --  The protocol's specs, with their bodies for representation
+      --  information only: run.sh proves the files_* units alone.
+      "cubit.ads", "cubit-filesystems.ads", "cubit-filesystems.adb", "cubit-directory_paths.ads",
+      "cubit-directory_paths.adb", "cubit-memory_grants.ads", "cubit-memory_grants.adb",
+      "cubit-messages.ads", "cubit-messages.adb", "cubit-process_ids.ads", "cubit-process_ids.adb",
+      "cubit-grant_references.ads", "cubit-kernel_abi.ads", "cubit-directory_pages.ads",
+      "cubit-directory_pages.adb");
+   for Object_Dir use "build/proof";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Files_Proof;

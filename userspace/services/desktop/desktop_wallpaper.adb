@@ -1,4 +1,5 @@
 with Desktop_Backdrop_Style;
+with Desktop_Wallpaper_Store;
 with Compositor_Backdrop_Strips;
 with Compositor_Image_Sampling;
 with Compositor_Sampling;
@@ -8,12 +9,18 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 package body Desktop_Wallpaper is
    use CuBit.Appearance;
+   package Store renames Desktop_Wallpaper_Store;
    type Pixels is array (Natural range <>) of Unsigned_32
      with Convention => C;
-   Source : constant Pixels (0 .. Source_Width * Source_Height - 1)
-     with Import, Convention => C, External_Name => "cubit_desktop_wallpaper";
-   Cubie_Source : constant Pixels (0 .. Cubie_Width * Cubie_Height - 1)
-     with Import, Convention => C, External_Name => "cubit_desktop_wallpaper_cubie";
+   --  A decoded raster is only drawn once it is Ready; until then (or if its
+   --  file is unavailable) the backdrop is its flat theme colour.
+   function Image_Ready (Style : Preferences) return Boolean is
+     (Desktop_Backdrop_Style.Has_Image (Style.Backdrop) and then
+      Store.Ready (Style.Backdrop));
+   --  The address of Style's raster, or a null address when it has none.
+   function Raster (Style : Preferences) return System.Address is
+     (if Image_Ready (Style) then Store.Pixels (Style.Backdrop)
+      else System.Null_Address);
 
    function Blend (A, B : Unsigned_32; Fraction : Natural)
      return Unsigned_32
@@ -53,14 +60,15 @@ package body Desktop_Wallpaper is
         Desktop_Backdrop_Style.Width (Style.Backdrop);
       Image_Height : constant S.Extent :=
         Desktop_Backdrop_Style.Height (Style.Backdrop);
-      Has_Image : constant Boolean := Desktop_Backdrop_Style.Has_Image (Style.Backdrop);
+      Has_Image : constant Boolean := Image_Ready (Style);
       Background : constant Unsigned_32 :=
         Desktop_Backdrop_Style.Color (Style);
+      Source : constant Pixels (0 .. Image_Width * Image_Height - 1)
+        with Import, Address => Raster (Style);
       Plan : S.Layout;
       First : Natural := X;
       function Sample (X, Y : S.Index) return Unsigned_32 is
-        (if Style.Backdrop = Cubie then Cubie_Source (Y * Image_Width + X)
-         else Source (Y * Image_Width + X)) with Inline;
+        (Source (Y * Image_Width + X)) with Inline;
    begin
       -- Output extents and clipping belong to the validated display geometry.
       -- Reject invalid callers before computing offsets or touching memory.
@@ -119,13 +127,15 @@ package body Desktop_Wallpaper is
       IH : constant S.Extent := Desktop_Backdrop_Style.Height (Style.Backdrop);
       Background : constant Unsigned_32 :=
         Desktop_Backdrop_Style.Color (Style);
+      Has_Image : constant Boolean := Image_Ready (Style);
+      Source : constant Pixels (0 .. IW * IH - 1)
+        with Import, Address => Raster (Style);
       Plan : S.Layout;
       Point : Compositor_Sampling.Fine_Sample;
       Q : S.Sample;
       Color : Unsigned_32;
       function Read_Source (X, Y : S.Index) return Unsigned_32 is
-        (if Style.Backdrop = Cubie then Cubie_Source (Y * IW + X)
-         else Source (Y * IW + X));
+        (Source (Y * IW + X));
    begin
       if W not in 1 .. S.Wide (S.Extent'Last) or else
         H not in 1 .. S.Wide (S.Extent'Last) or else
@@ -139,7 +149,7 @@ package body Desktop_Wallpaper is
               Compositor_Sampling.Fine_Extent (W * 256), Compositor_Sampling.Fine_Extent (H * 256));
             if Point.Valid then
                Color := Background;
-               if Desktop_Backdrop_Style.Has_Image (Style.Backdrop) then
+               if Has_Image then
                   Q := S.At_Point (Plan, S.From_Centre (Point.X, S.Extent (W)),
                                         S.From_Centre (Point.Y, S.Extent (H)));
                   if Q.Valid then

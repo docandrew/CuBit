@@ -1,4 +1,327 @@
-# Opt-in SPARK compositor
+# CuBit desktop compositor
+
+## Current normal build — 2026-10-07
+
+Normal Desktop builds now default to `CUBIT_COMPOSITOR=vulkan`: one runtime
+compositor dispatches to the platform-supported Vulkan path or the shared Mesa
+software renderer. This selects a build, not evidence that GPU rendering or
+scanout is ready on a particular machine. Existing images are unchanged until
+rebuilt. Historical sections below retain their original backend and evidence
+scope; statements there that legacy was the default describe earlier builds.
+
+2026-10-08: when GPU rendering is not selected, the Vulkan build now uses
+`Desktop_CPU_Software_Renderer` (the legacy CPU renderer, now a shared generic)
+instead of Mesa softpipe. QEMU/KVM at 1920x1080, sustained drag of a 960x646
+window: softpipe 19-20 frames/s at about 47 ms draw per frame; CPU renderer
+about 93 frames/s at about 8.4 ms. Softpipe remains the `CUBIT_COMPOSITOR=mesa`
+build. Timing builds (`CUBIT_COMPOSITOR_TIMING=on`) also log one
+`desktop: frames=... max_frame_ms=... max_motion_ms=...` record per second to
+logstore while frames are submitted. `tests/compositor/test-rapid-drag-repair.py`
+checks rapid move/resize repair on the live image (QEMU, not hardware).
+
+`make -C kernel desktop` builds the runtime/libc prerequisites and automatically
+builds or reuses a verified combined softpipe/Intel Mesa dependency under
+`userspace/mesa/build/combined`. `CUBIT_MESA_CACHE` can select a different cache.
+Explicit `CUBIT_MESA_BUNDLE` and `CUBIT_MESA_SOURCE` must be supplied together;
+`CUBIT_MESA_BUILD` can identify their matching native build. Verification rejects
+mismatched runtime inputs and fault-injected normal artifacts. Failed dependency
+builds preserve the previous verified generation; cache generations are retained
+and have no automatic disk-space reclamation yet.
+
+See [unified Mesa tests and proof boundaries](../tests/compositor/unified-mesa.md).
+Cold automatic dependency/build, warm-cache reuse, and native CuBit software
+rendering at 100%/125% passed with explicit frozen platform/runtime seeds. These
+are not a complete `make world` rebuild or hardware latency measurements.
+Metrics on/off variants passed. The normal wrapper accepts
+`CUBIT_COMPOSITOR_TIMING=on` (or `--timing on`) for a separately identified
+diagnostic artifact. Native timing-on validation passed Mesa/pixel/DPI checks
+and emitted nonzero keyboard, pointer, button, frame and submission records.
+The full desktop-display regression also passed against a frozen current-tree
+snapshot with rebuilt kernel, stage-one services, Desktop, Display, runtime,
+libc and Mesa; its other stage-two applications were recorded seeds. That
+snapshot predates the later Intel insertion patch. Timing remains off by default. Hardware latch/retirement timing,
+tear-free scanout, and supported-hardware 240 Hz measurements remain open.
+
+## Open large-output limit
+
+Desktop surface layouts and the current Vulkan upload/readback path cap a buffer
+at 16 MiB. A packed 3840×2160 BGRA frame needs 33,177,600 bytes, so full 4K output
+support is not established by the current native tests. Extending this path
+requires coordinated larger-buffer CPU export/mapping and retirement support;
+raising geometry constants alone is insufficient. Graphics has the concrete
+interface audit recorded in `large-output-audit-90.json` in compositor artifacts.
+
+Multiple grants alone do not provide the contiguous CPU pointer expected by
+Mesa. `Process.IPC.createGrant` chooses each recipient address from the global
+grant slot (`GRANT_REGION_BASE + globalId * GRANT_SLOT_SIZE`), and
+`CuBit.Memory_Grants.Acquire_Via_Capability` accepts no requested placement.
+A larger logical buffer therefore needs authenticated receiver address-space
+reservation and slice binding, or an explicitly scatter-aware consumer API.
+Any such design must retain every slice until GPU, CPU/TLB and Display readers
+have retired; a failed mapping or uncertain retirement cannot authorize reuse.
+These are interface requirements, not implemented larger-output support.
+
+## Current task order — graphics handoff, 2026-10-07
+
+This queue takes precedence over historical execution-order notes below. It
+tracks compositor work supporting the [graphics handoff](graphics-morning-handoff-2026-10-07.md);
+it does not transfer driver, kernel or toolkit ownership.
+
+- [x] Deliver the IN1 Desktop diagnostic and reviewed evidence: raw versus
+  admitted input, rejection reasons, button masks, drops, pointer age and cached
+  pipeline failure. Native software tests passed; Graphics packaged the separate
+  image with SHA-256 `a7dc5874a1ba87ee7141a31dac2897c4d716d8f65ff703ce1b80fdc3b9aebaac`.
+  See [the evidence and limits](compositor-evidence/input-diagnostic-in1/README.md).
+- [x] **Triage the IN1 graphics failure and integrate the identified fix.**
+  Physical `301/0/-2` led to exact-binary confirmation that the Mesa adapter
+  rejected two descriptor-pool GPU address flags before backing allocation.
+  Graphics fixed and regression-tested the adapter. The checked frozen Desktop
+  relink includes that change in both Mesa archive references; native fallback,
+  menu and cursor gates pass. See [evidence](compositor-evidence/descriptor-pool-in1/README.md).
+- [x] **Confirm pipeline preparation on the descriptor-fix NUC image.**
+  Physical feedback for image `7bef6359` reaches `UPLOAD_BEFORE`, which requires
+  successful pipeline preparation. Startup still selects software: the later
+  8,294,400-byte readback allocation reports `physical-result` failure. See
+  [the hardware evidence](compositor-evidence/readback-hardware-20261007/README.md).
+  This does not establish GPU rendering or presentation.
+- [x] **Record Graphics' shared kernel DMA integration and evidence.**
+  Growable stable records and RAM-derived admission replace the old 32-record
+  and 64 MiB ceilings. Graphics reports native 40-buffer/80 MiB growth,
+  partial-map rollback, live-grant owner death and report-aware PID reuse
+  tests passing. These establish allocation/lifetime behavior, not GPU rendering.
+  See [the current handoff](graphics-morning-handoff-2026-10-07.md).
+- [ ] **Track the remaining kernel release gates with Graphics.**
+  Kernel-owner review, concurrent allocation/quota/exit stress and native
+  metadata-failure injection must precede replacement-image packaging. The
+  latest Graphics follow-up also tracks a half-managed-RAM global ceiling,
+  per-owner accounting and confirmed-last-reference release; use its agreed
+  final policy, not the earlier three-eighths policy as a final requirement. These
+  stay kernel/Graphics-owned. Preserve retained orphan accounting: owner death
+  or logical ticket retirement cannot establish safe GPU backing reclamation.
+  The latest handoff additionally requires native charged-refund coverage,
+  sparse charge-table metadata accounting, sticky charge handoff on rollback,
+  and safe adoption of the 64-bit quota without unchecked narrowing. Hosted
+  ledger/proof results do not close these native integration gates.
+- [x] **Publish the cleared PS/2 and xHCI keyboard retention work.**
+  The private grouped-byte policy passes 63 SPARK checks; actual PS/2 caller
+  tests pass eight modes and both native driver candidates compile/link.
+  Native PS/2 and USB-only delivery now pass three menu restorations and
+  32 cursor moves/eight exact round trips. This exposed and fixed Desktop
+  clearing a newly accepted recovery-marked E0 prefix; that narrow Desktop
+  fix is published. See [native evidence](compositor-evidence/keyboard-driver-integration/native-prefix-recovery/README.md).
+  Native injected suffix-refusal/retry now passes on both drivers; disabling
+  PS2 keyboard retry wakeups fails the negative control as expected. See
+  [refusal evidence](compositor-evidence/keyboard-driver-integration/native-refusal/README.md).
+  Both also pass [real kernel send-refusal recovery](compositor-evidence/keyboard-driver-integration/native-kernel-capacity/README.md)
+  through the seeded native kernel. [Native consumer replacement](compositor-evidence/keyboard-driver-integration/native-consumer-replacement/README.md)
+  also passes on both drivers with real registration and exact fresh-report checks.
+  Four production files and `tests/keyboard-pending` are now published under
+  the shared lock. The published-source runner passes all eight modes and 63
+  SPARK checks, none unproved; see [publication evidence](compositor-evidence/keyboard-driver-integration/published/result.json).
+  The newer per-holder credit kernel remains part of matched-platform testing.
+  Controller and USB initialization remain Graphics-owned. Physical NUC keyboard
+  stability remains a separate acceptance test. See
+  [candidate evidence](compositor-evidence/keyboard-driver-integration/README.md).
+- [x] **Integrate the tested Desktop through the standard build.**
+  Publish the reviewed hardware-ready Main, narrow Vulkan startup boundary,
+  current log-channel consumer and optional IN1 overlay as one coherent source
+  change. Isolate backend-specific initialization so ordinary software builds
+  remain functional. Propagate `CUBIT_INPUT_OVERLAY` through the standard builder,
+  variant directory resolver and artifact metadata; verify both off/on paths.
+  Reviewed source, build tools and tests are published through a held-lock,
+  before/after-hash-checked manifest. No installed image or Git index changed.
+  The separately tracked matched-platform build remains required.
+- [x] **Validate the private standard-build integration across software backends.**
+  Main's GPU startup imports now live behind backend-specific startup adapters.
+  The default software Desktop links without GPU-owner symbols and passes native
+  input/log/DPI checks. Existing Mesa softpipe links and passes the same native
+  checks with actual Mesa text execution and no CPU text fallback. Vulkan's
+  standard wrapper also builds/verifies the candidate. Backend callable APIs
+  match; accurate software effect contracts pass 57 default-software and 102
+  Mesa-software SPARK checks, none unproved. Fourteen hosted Mesa glyph/fault
+  checks pass. Vulkan dispatch now passes 199 SPARK checks; startup/logging
+  passes 46 Vulkan and 21 software checks, all with zero unproved. Raw syscall,
+  channel transport, memory-copy and C-library implementations remain audited
+  boundaries. Main's legacy loop is not covered by these proofs. See
+  [SPARK/native evidence](compositor-evidence/log-channel-integration/spark-policy/README.md) and
+  [integration evidence](compositor-evidence/log-channel-integration/backend-contracts/README.md).
+- [x] **Publish the migrated native completion fixtures.**
+  Current one-output delayed-completion and renderer-retry tests pass, including
+  writer/damage preservation, discarded-frame nonpublication and recapture.
+  One-output unsafe-completion also passes a five-second nonpublication check.
+  Two-output delayed completion, seam restoration and menu isolation also pass
+  at mixed resolutions. Two-output retry and secondary 125%/150% DPI cursor
+  repair now pass with a 100% primary. The standard fixture builder accepts
+  explicit matched inputs and builds successfully. Primary switching to the
+  150% secondary and back now passes taskbar migration and exact secondary
+  restoration; see [evidence](compositor-evidence/log-channel-integration/backend-contracts/native-completion/primary-switch/README.md).
+  Reviewed fixture/source changes are published. The bootstrap CPU frame
+  precedes renderer initialization and must not
+  be mistaken for unsafe renderer publication. These tests establish Desktop
+  control flow, not physical GPU retirement.
+- [ ] **Prepare and validate a matched compositor/platform integration.**
+  After the kernel/runtime/Graphics source handoff, audit Desktop's IPC-002 and
+  KERN-003 consumers and adapt only to the agreed interfaces. Build a separate
+  matched candidate with recorded source and binary identities; preserve the
+  released image. Preserve the hardware-ready Main's Vulkan startup/recovery
+  and IN1 diagnostics while integrating the published presentation retry/freshness
+  policy: its Prepare/Submitted API is incompatible with the older CP.Submit
+  caller. Include the already tested Mesa four-flag follow-up in both archive
+  references only with Graphics' agreed artifact set. Run software fallback, focus/titlebar, menus,
+  cursor repair and real keyboard/pointer gates before hardware handoff.
+- [x] **Relink the hardware-ready Desktop against the current runtime.**
+  The private candidate preserves Vulkan startup/recovery, IN1, presentation
+  retry/freshness and the keyboard prefix fix, uses current channel logging,
+  and links the rebuilt runtime plus both four-flag Mesa archives. The bundle
+  and final Desktop link verify. Matched software boots now also pass as
+  recorded below; this is not a replacement NUC image or GPU rendering evidence. See
+  [link evidence](compositor-evidence/log-channel-integration/README.md).
+- [x] **Verify Desktop startup diagnostics through the actual log service channel.**
+  The native observer passes against the rebuilt current kernel, procmgr and
+  logstore: publisher identity, ordered startup/backend records, no stream gaps
+  and reader closure. It reads the actual channel; serial carries only its test
+  verdict. The same run passes fresh-child software fallback, three menu
+  restorations and 32 cursor moves/eight exact round trips. See
+  [native evidence](compositor-evidence/log-channel-integration/native-current-platform/README.md).
+  This does not cover loss-injection recovery, GPU hardware or physical latency.
+- [x] **Run the current matched software/input regression baseline.**
+  Rebuilt kernel/runtime/services with the private Desktop pass PS/2 and USB-only
+  menu/input tests, exact cursor restoration at 100% and 125% DPI, and six
+  titlebar focus changes at 100% DPI. The actual log-service observer passes.
+  IN1 on/off builds and native runs pass; the default-off candidate removes the
+  overlay without changing pixels outside its region above the taskbar.
+  See [USB](compositor-evidence/log-channel-integration/native-current-usb/README.md),
+  [focus](compositor-evidence/log-channel-integration/native-current-focus/README.md)
+  and [overlay/DPI](compositor-evidence/log-channel-integration/native-overlay-off/README.md)
+  evidence. These are recorded-input QEMU software results, not validation of
+  Graphics' subsequent account-routing changes or physical HID/GPU behavior.
+- [ ] **Exercise DMA growth and failure handling through the compositor.**
+  Pair kernel-owned tests beyond 32 records and 64 MiB retained backing with
+  native compositor startup/source-allocation coverage. Cover denied admission,
+  allocation/metadata failure, rollback, owner death, stale identities and
+  delayed/ambiguous retirement. Verify bounded work and retained charges; a
+  logical compositor ticket release must never imply physical DMA reclamation.
+  Consume the Graphics-owned final account/retirement contract, preserving
+  owner-incarnation identity after process exit and PID reuse. Add compositor
+  assertions that failure cannot revive quarantined resources, retry cannot
+  duplicate release, and software recovery does not free GPU-visible backing.
+  Production Process/DMA hooks, receipt lookup, synchronization, metadata-owner
+  charging and authenticated final physical release remain Graphics/kernel work;
+  their native fixture successes do not by themselves close this integration.
+- [ ] **G1 — Keep Desktop usable when GPU admission fails.**
+  Inject owner-quota, global retained-DMA budget, metadata and allocation denial
+  separately at target, pipeline, upload and readback setup. Require working
+  keyboard/pointer interaction and readable logsvc diagnostics identifying the
+  exact failed stage, bounded startup work/retries, and software fallback.
+  Check both pre-handoff cancellation and partial initialization. The private
+  bootstrap fix now passes a ten-second delayed-CQ test: input and authenticated
+  log access continue during the hold, and real completion restores rendering.
+  See [bootstrap evidence](compositor-evidence/log-channel-integration/startup-adapter/bootstrap-fallback/README.md).
+  A permanently withheld completion also passes a five-second observation with
+  22 dispatched key events and no release/republication. Stale completion and allocation-stage coverage remain open. Definite bootstrap
+  submission refusal now passes input/log progress and later recovery, and the
+  Vulkan-linked delayed-bootstrap path passes native software recovery. These
+  tests do not close the allocation-denial matrix.
+- [ ] **G2 — Release ownership exactly once on failure.**
+  Inject failures immediately before and after each ownership transfer, including
+  partial setup, retry and software recovery. Assert no double release, no lost
+  ownership, no revival of quarantined resources and no premature backing reuse.
+  Verify charge conservation against the agreed kernel accounting interface;
+  logical compositor ticket completion is not evidence of physical reclamation.
+- [ ] **G3 — Make shutdown/restart obey whole-allocation retirement.**
+  Keep backing unavailable until authenticated per-allocation GPU completion
+  AND CPU/grant retirement permit actual reclamation. Exercise delayed, missing,
+  stale and duplicate completion reports. Context or slice retirement alone must
+  not retire a whole arena; ambiguous completion must retain/quarantine it.
+  Protocol fixtures can proceed now; end-to-end acceptance depends on Graphics'
+  authenticated physical-release interface and Intel hardware validation.
+- [ ] **G4 — Preserve allocation identity across owner death and PID reuse.**
+  Restart Desktop with a new owner incarnation, including numeric PID reuse.
+  Require old retained allocations to remain charged to the original account,
+  no old-allocation refund to the new account, and exactly one refund on actual
+  reclamation. Ordinary DMA frees must not refund the retained-DMA global budget.
+  Kernel-owner tests are prerequisites, not substitutes for Desktop integration.
+
+  For G1–G4, retain exact source/artifact identities, injected failure point,
+  ownership/accounting assertions and native logsvc evidence. Hosted and QEMU
+  results establish only the exercised policy/protocol/fallback behavior;
+  physical Intel completion remains a separate hardware acceptance gate.
+- [ ] **Validate readback and the full accelerated path on the NUC.**
+  Once DMA integration passes, confirm upload/readback readiness, backend
+  selection, actual GPU composition, presentation and recovery. Record the exact
+  failed gate if startup still falls back. Resolve keyboard readiness separately;
+  the existing physical mouse evidence and QEMU tests without a USB keyboard
+  do not establish physical keyboard stability.
+- [x] **Implement bounded presentation retry and fresh-frame replacement.**
+  Shared Desktop now distinguishes never-published frames from in-flight work,
+  retains or replaces refused frames safely, and cancels only unpublished work
+  during output drain. Both existing backends compile; shared hosted tests and
+  91 SPARK checks pass. Native runtime-dispatch fixtures cover real kernel
+  admission refusal/recovery, freshness with a negative control, reconfiguration
+  and shutdown. See [publication and evidence](compositor-evidence/presentation-kernel-capacity/README.md).
+  Current-tree matched boot, newer per-holder queues and GPU retirement remain
+  part of the integration gate above; installed images have not changed.
+  Coordinate the separately reported PS/2/xHCI dropped-key issue with input owners.
+- [x] **Publish the native focus/titlebar regression.**
+  `tests/compositor/focus-visual/` was published under the shared build lock;
+  files match the validated fixture exactly. Native evidence covers six focus
+  cycles and three exact restorations at 100% DPI in software QEMU.
+- [x] **Integrate the independent UI hit-map repair and validate Files.**
+  Seven reviewed UI files now separate repair clipping from retained input
+  geometry, preserving current IPC deadlines. Native software CuBit scrolls
+  Files to row 17 and then accepts Refresh by pointer and F5 by keyboard;
+  the unrepaired UI fails the same pointer sequence after successful scrolling.
+  Hosted hit-map/pixel checks pass at 100%, 125%, and 200%, alongside menu and
+  combo regressions. See [tests and paired evidence](../tests/ui-repair-hit-map/README.md).
+- [x] **Validate native menu interaction after partial repair.**
+  Files now passes at 100%, 125%, and 200% DPI. The 125% run uses 1024×768;
+  the 200% run uses a verified 1600×1200 firmware framebuffer with an explicit
+  private boot-mode fixture. See `tests/ui-repair-hit-map` for identities and
+  limits. A native100%DPI menu fixture now retains its item after an8×8 repair
+  and dispatches pointer/keyboard commands exactly once; removing the repair
+  fails the paired assertion. Native scaled menus and outside-click isolation
+  are not established by that fixture. Physical GPU validation remains open.
+- [ ] **After hardware admission: validate and measure the complete desktop.**
+  Confirm accelerated composition, retirement, software recovery, DPI and
+  presentation on supported hardware; measure input latency, frame deadlines,
+  copy traffic and memory under a defined load. Remove avoidable readback/copies
+  as the presentation contract permits. The 240 Hz target and 1 ms physical
+  stretch goal remain unverified.
+  Sparse capture/repair and region readback are now implemented in the shared
+  compositor. Writer reservation precedes painting; GPU target history and CPU
+  output repair remain separate. CPU region copies are limited to 256 KiB per
+  advance and exclude row padding. Publication36 records 52 reviewed files;
+  hosted copy-boundary and native software/delayed-completion tests validate
+  their exercised policy paths. This does not establish accelerated execution
+  or copy traffic on the NUC. IN1 and verbose timing are off by default;
+  measurements must still record the enabled instrumentation.
+
+Immediate order: validate the published sources against the agreed current
+platform; implement G1 denial/responsiveness and G2 ownership-transfer tests;
+prepare G3/G4 fixtures
+while Graphics completes authenticated reclamation and metadata charging; then
+run all four against the agreed matched platform candidate. These gates take
+priority over additional effects or performance tuning. The software/input/log-channel baseline and private
+optional overlay are already verified; repeat affected gates when their inputs
+change, not merely while waiting. Graphics' composed native refund test now
+shows that last-pin release refunds the closed original account without touching
+a new account, but production routing, common allocation hooks, synchronization,
+metadata ownership and authenticated GPU release remain open. These are external
+integration dependencies, not compositor-owned kernel edits.
+
+Package a separately named NUC candidate only after Graphics/kernel release
+clearance and agreement on exact kernel/runtime/services/Mesa/Desktop artifacts.
+Exclude early-boot allocator fixtures and injected test kernels. Preserve the
+released image. Record boot duration, backend selection, upload/readback
+allocation, first GPU submit and completion, plus keyboard/click/cursor
+responsiveness through logsvc, with IN1 available for inaccessible Logs.
+Actual GPU composition/presentation, recovery and physical input validation stay
+open. Sparse rendering/readback and independent target-age repair have policy
+and regression evidence, but still require validation on the accelerated
+hardware path. Eliminating the remaining readback/output copy depends on an
+authenticated presentation and retirement contract. The 240 Hz and physical
+latency targets require hardware measurements. The broader acceptance gates
+below remain in force.
 
 ## Active goal and acceptance gates
 
@@ -4370,7 +4693,7 @@ The queue uses 792 bytes on x86-64 and no heap or pixel storage. Reports are
 removed only after accepted publication. Local overflow discards stale pending
 history, retains the newest report/button snapshot and explicitly flags
 recovery; it cannot reconstruct discarded movement or clicks. The kernel
-`event_drop` metric counts admission refusals, including successful later
+`event_busy` metric (formerly `event_drop`) counts admission refusals, including successful later
 retries; source sequence gaps distinguish actual missing reports.
 
 The shared policy has 28 SPARK analysis results (7 flow, 21 prover), zero

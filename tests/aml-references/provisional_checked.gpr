@@ -1,0 +1,9 @@
+project Provisional_checked is
+ for Source_Dirs use (".", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "build-provisional-checked/obj";
+ for Exec_Dir use "build-provisional-checked";
+ for Main use ("provisional_write_tests.adb", "name_reservation_tests.adb", "copy_compound_quota_tests.adb", "copy_boundary_extended_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Provisional_checked;

@@ -2,7 +2,34 @@
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
+with Interfaces;
+with CCL.Objects.Views;
+with CCL.Typed_Settings;
+
 package body Desktop_Launch is
+   package DL renames CCL.Interfaces.Desktop_Launch;
+   --  The schema's member names (enumeration 'Image is numeric natively).
+   function Name_Of (Member : DL.Launch_Icon) return String is
+     (case Member is
+         when DL.Workbench => "Workbench", when DL.Console => "Console", when DL.Logs => "Logs",
+         when DL.Trace => "Trace", when DL.Doom => "Doom", when DL.Devices => "Devices",
+         when DL.Penny => "Penny", when DL.Files => "Files", when DL.Gameboy => "Gameboy",
+         when DL.Settings => "Settings", when DL.Inspector => "Inspector", when DL.Mesa => "Mesa",
+         when DL.Boot => "Boot");
+   function Name_Of (Member : DL.App_Category) return String is
+     (case Member is
+         when DL.System => "System", when DL.Development => "Development", when DL.Web => "Web",
+         when DL.Games => "Games", when DL.Media => "Media", when DL.Tools => "Tools");
+
+   function Icon_Of (Member : CCL.Interfaces.Desktop_Launch.Launch_Icon) return Desktop_Icons.Icon_ID is
+     (case Member is
+         when DL.Workbench => Desktop_Icons.Workbench, when DL.Console => Desktop_Icons.Console,
+         when DL.Logs => Desktop_Icons.Logs, when DL.Trace => Desktop_Icons.Trace,
+         when DL.Doom => Desktop_Icons.Doom, when DL.Devices => Desktop_Icons.Devices,
+         when DL.Penny => Desktop_Icons.Penny, when DL.Files => Desktop_Icons.Files,
+         when DL.Gameboy => Desktop_Icons.Gameboy, when DL.Settings => Desktop_Icons.Settings,
+         when DL.Inspector => Desktop_Icons.Inspector, when DL.Mesa => Desktop_Icons.Mesa,
+         when DL.Boot => Desktop_Icons.Boot);
 
    procedure Append (Items : in out Menu; Item : Entry_Info) is
    begin
@@ -16,6 +43,7 @@ package body Desktop_Launch is
      (Label   : String;
       Program : String;
       Icon    : Desktop_Icons.Icon_ID;
+      Group   : Category;
       Kind    : Entry_Kind := Launch_Program;
       Single  : Boolean := False) return Entry_Info
    is
@@ -28,6 +56,7 @@ package body Desktop_Launch is
       Item.Program_Length := Program'Length;
       Item.Icon := Icon;
       Item.Single_Instance := Single;
+      Item.Group := Group;
       return Item;
    end Make;
 
@@ -35,154 +64,76 @@ package body Desktop_Launch is
       use Desktop_Icons;
       Items : Menu;
    begin
-      Append (Items, Make ("CCL Workbench", "ccl-workbench.app", UILab));
-      Append (Items, Make ("DOOM", "doom.elf", Doom, Single => True));
-      Append (Items, Make ("Devices", "devices.app", Files));
-      Append (Items, Make ("Penny", "cubitshell.app", Penny));
-      Append (Items, Make ("Files", "files.app", Files));
-      Append (Items, Make ("SameBoy", "sameboy.app", Doom));
-      Append (Items, Make ("Settings", "", UILab, Kind => Internal_Settings));
-      Append (Items, Make ("Config Inspector", "config-inspector.app", Files));
+      Append (Items, Make ("CCL Workbench", "ccl-workbench.app", Workbench, DL.Development));
+      Append (Items, Make ("DOOM", "doom.elf", Doom, DL.Games, Single => True));
+      Append (Items, Make ("Devices", "devices.app", Devices, DL.System));
+      Append (Items, Make ("Penny", "cubitshell.app", Penny, DL.Web));
+      Append (Items, Make ("Files", "files.app", Files, DL.Tools));
+      Append (Items, Make ("SameBoy", "sameboy.app", Gameboy, DL.Games));
+      Append (Items, Make ("Settings", "", Settings, DL.System, Kind => Internal_Settings));
+      Append (Items, Make ("Config Inspector", "config-inspector.app", Inspector, DL.System));
       return Items;
    end Defaults;
 
-   procedure Parse (Source : String; Item : out Entry_Info; Success : out Boolean) is
-      Pos : Natural := Source'First;
-      Has_Label, Has_Program, Has_Internal : Boolean := False;
+   type Snapshot_Access is access CCL.Objects.Views.Snapshot;
+   Work : Snapshot_Access;
 
-      function At_End return Boolean is (Pos > Source'Last);
-
-      procedure Skip_Space is
-      begin
-         while not At_End and then
-           Source (Pos) in ' ' | ASCII.HT | ASCII.LF | ASCII.CR
-         loop
-            Pos := Pos + 1;
-         end loop;
-      end Skip_Space;
-
-      function Accept_Char (C : Character) return Boolean is
-      begin
-         Skip_Space;
-         if not At_End and then Source (Pos) = C then
-            Pos := Pos + 1;
-            return True;
-         end if;
-         return False;
-      end Accept_Char;
-
-      --  A bare word: letters, digits, '-', '_'.
-      procedure Word (First, Last : out Natural) is
-      begin
-         Skip_Space;
-         First := Pos;
-         while not At_End and then
-           Source (Pos) in 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_'
-         loop
-            Pos := Pos + 1;
-         end loop;
-         Last := Pos - 1;
-      end Word;
-
-      --  A double-quoted string without escapes or control characters.
-      procedure Quoted (First, Last : out Natural; OK : out Boolean) is
-      begin
-         OK := False;
-         First := 1;
-         Last := 0;
-         if not Accept_Char ('"') then
-            return;
-         end if;
-         First := Pos;
-         while not At_End and then Source (Pos) /= '"' loop
-            if Source (Pos) < ' ' or else Source (Pos) = '\' then
-               return;
-            end if;
-            Pos := Pos + 1;
-         end loop;
-         if At_End then
-            return;
-         end if;
-         Last := Pos - 1;
-         Pos := Pos + 1;
-         OK := True;
-      end Quoted;
-
-      function Is_Word (First, Last : Natural; Text : String) return Boolean is
-        (Last - First + 1 = Text'Length and then Source (First .. Last) = Text);
-
-      F, L : Natural;
-      OK : Boolean;
+   procedure Decode (Source : String; Item : out Entry_Info; Success : out Boolean) is
+      package Views renames CCL.Objects.Views;
+      package TS renames CCL.Typed_Settings;
+      Read : Boolean;
    begin
       Item := (others => <>);
       Success := False;
-      if not Accept_Char ('(') then return; end if;
-      Word (F, L);
-      if not Is_Word (F, L, "launch") then return; end if;
-      Word (F, L);
-      if not Is_Word (F, L, "v1") then return; end if;
-
-      loop
-         if Accept_Char (')') then
-            exit;
+      if Work = null then
+         Work := new Views.Snapshot;
+      end if;
+      TS.Read (TS.Launch_Entry_Setting, Source, Work.all, Read);
+      if not Read then
+         return;
+      end if;
+      declare
+         Root : constant Views.Cursor := Views.Root (Work.all);
+         Label : constant String := Views.Text (Work.all, TS.Named (Work.all, Root, "label"));
+         Action : constant Views.Cursor := TS.Named (Work.all, Root, "action");
+         Icon : constant String := TS.Alternative_Name (Work.all, TS.Named (Work.all, Root, "icon"));
+         Group : constant String := TS.Alternative_Name (Work.all, TS.Named (Work.all, Root, "category"));
+      begin
+         if Label'Length not in 1 .. Maximum_Label then
+            return;
          end if;
-         if not Accept_Char ('(') then return; end if;
-         Word (F, L);
-         if Is_Word (F, L, "label") then
-            Quoted (F, L, OK);
-            if not OK or else Has_Label or else L < F or else
-              L - F + 1 > Maximum_Label
-            then
-               return;
-            end if;
-            Item.Label (1 .. L - F + 1) := Source (F .. L);
-            Item.Label_Length := L - F + 1;
-            Has_Label := True;
-         elsif Is_Word (F, L, "program") then
-            Quoted (F, L, OK);
-            if not OK or else Has_Program or else L < F or else
-              L - F + 1 > Maximum_Program
-            then
-               return;
-            end if;
-            --  A program name, not a path: procmgr resolves it.
-            for C of Source (F .. L) loop
-               if C not in 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' | '.'
+         Item.Label (1 .. Label'Length) := Label;
+         Item.Label_Length := Label'Length;
+         if TS.Alternative_Name (Work.all, Action) = "Program" then
+            declare
+               Program : constant String := Views.Text (Work.all, Views.Payload (Work.all, Action));
+            begin
+               --  A program name, not a path: procmgr resolves it.
+               if Program'Length not in 1 .. Maximum_Program
+                 or else (for some C of Program => C not in 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' | '.')
                then
                   return;
                end if;
-            end loop;
-            Item.Program (1 .. L - F + 1) := Source (F .. L);
-            Item.Program_Length := L - F + 1;
-            Has_Program := True;
-         elsif Is_Word (F, L, "icon") then
-            Word (F, L);
-            if Is_Word (F, L, "start") then Item.Icon := Desktop_Icons.Start;
-            elsif Is_Word (F, L, "console") then Item.Icon := Desktop_Icons.Console;
-            elsif Is_Word (F, L, "uilab") then Item.Icon := Desktop_Icons.UILab;
-            elsif Is_Word (F, L, "doom") then Item.Icon := Desktop_Icons.Doom;
-            elsif Is_Word (F, L, "security") then Item.Icon := Desktop_Icons.Security;
-            elsif Is_Word (F, L, "files") then Item.Icon := Desktop_Icons.Files;
-            elsif Is_Word (F, L, "penny") then Item.Icon := Desktop_Icons.Penny;
-            else return;
-            end if;
-         elsif Is_Word (F, L, "single-instance") then
-            Item.Single_Instance := True;
-         elsif Is_Word (F, L, "internal") then
-            Word (F, L);
-            if not Is_Word (F, L, "settings") or else Has_Internal then
-               return;
-            end if;
-            Item.Kind := Internal_Settings;
-            Has_Internal := True;
+               Item.Program (1 .. Program'Length) := Program;
+               Item.Program_Length := Program'Length;
+               Item.Kind := Launch_Program;
+            end;
          else
-            return;
+            Item.Kind := Internal_Settings;
          end if;
-         if not Accept_Char (')') then return; end if;
-      end loop;
-
-      Skip_Space;
-      Success := At_End and then Has_Label and then
-        (Has_Internal xor Has_Program);
-   end Parse;
+         --  The schema's members map one to one onto these enums.
+         for Member in DL.Launch_Icon loop
+            if Name_Of (Member) = Icon then
+               Item.Icon := Icon_Of (Member);
+            end if;
+         end loop;
+         for Member in DL.App_Category loop
+            if Name_Of (Member) = Group then
+               Item.Group := Member;
+            end if;
+         end loop;
+         Item.Single_Instance := Interfaces."=" (Views.Scalar (Work.all, TS.Named (Work.all, Root, "single_instance")).First, 1);
+         Success := True;
+      end;
+   end Decode;
 end Desktop_Launch;

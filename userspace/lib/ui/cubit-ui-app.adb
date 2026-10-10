@@ -893,6 +893,21 @@ package body CuBit.UI.App is
       end if;
    end Apply_Pointer_Event;
 
+   procedure No_Completion
+      (win : in out Window;
+       receipt : CuBit.Messages.CompletionEntry;
+       consumed : out Boolean;
+       dirty : in out CuBit.UI.Rect;
+       running : in out Boolean)
+   is
+      pragma Unreferenced (win, receipt, dirty, running);
+   begin
+      consumed := False;
+   end No_Completion;
+
+   --  Input wait tokens (Activity_Wait), process-wide and increasing.
+   Last_Input_Token : Unsigned_64 := 0;
+
    procedure Run (win : in out Window)
    is
       running : Boolean := True;
@@ -1016,6 +1031,43 @@ package body CuBit.UI.App is
                   if appDeadline /= 0 and then now >= appDeadline then
                      On_Deadline (win, timerDirty, running);
                      if running and then not CuBit.UI.Is_Empty (timerDirty) then Paint (timerDirty); end if;
+                  elsif Activity_Wait and then (Input_Wait_Pending (win) or else not win.batchedInput) then
+                     --  One wait for input, other completions and the
+                     --  deadline; no blocking call.
+                     declare
+                        accepted, consumed, found, healthy : Boolean;
+                        activity : Activity_Result;
+                        receipt : CompletionEntry;
+                        event : Input_Event;
+                        pragma Unreferenced (activity);
+                     begin
+                        if not Input_Wait_Pending (win) and then Last_Input_Token < APPLICATION_TOKEN_FIRST - 1 then
+                           Last_Input_Token := Last_Input_Token + 1;
+                           Submit_Input_Wait (win, Last_Input_Token, accepted);
+                        end if;
+                        activity := Wait_For_Activity_Until (if deadline = 0 then Unsigned_64'Last else deadline);
+                        while Poll_Completion (receipt'Address) /= 0 loop
+                           Complete_Input_Wait (win, receipt, event, found, consumed, healthy);
+                           if consumed then
+                              if not healthy then
+                                 win.inputStopped := True;
+                              elsif found then
+                                 pendingEvent := event;
+                                 hasPendingEvent := True;
+                              end if;
+                           else
+                              On_Completion (win, receipt, consumed, timerDirty, running);
+                           end if;
+                        end loop;
+                        if win.inputStopped then
+                           running := False;
+                        elsif not hasPendingEvent and then appDeadline /= 0 and then
+                          syscall (SYSCALL_GETTIME) >= appDeadline
+                        then
+                           On_Deadline (win, timerDirty, running);
+                        end if;
+                        if running and then not CuBit.UI.Is_Empty (timerDirty) then Paint (timerDirty); end if;
+                     end;
                   elsif deadline = 0 then
                      Wait_Input (win, pendingEvent, hasPendingEvent);
                      if not hasPendingEvent then running := False; end if;

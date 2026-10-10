@@ -54,7 +54,6 @@ if args.scenario_output:
 manifest=desktop/('build-metrics-manifest' if args.metrics=='on' else 'build')/'manifest.o'
 temporary=result.with_suffix('.svc.pending')
 run([root/'userspace/libc/cubit-c++',d/'b__main.o',*objects,obj,*trace_args,
-     desktop/'build/wallpaper.o',desktop/'build/wallpaper_cubie.o',
      root/'userspace/rust/build/font-native/libcubit_fonts.a','-Wl,--start-group',
      *(mesa/x for x in libs),root/'userspace/runtime/adalib/libgnat-user.a','-Wl,--end-group',
      '--manifest',manifest,'-o',temporary])

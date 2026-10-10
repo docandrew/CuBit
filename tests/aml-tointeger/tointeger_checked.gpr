@@ -1,0 +1,8 @@
+project Tointeger_checked is
+ for Source_Dirs use (".", "../aml-debug", "../aml-core", "../aml-references", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "build-checked";
+ for Main use ("coercion_tests.adb", "tointeger_quota_tests.adb", "explicit_coercion_tests.adb", "tointeger_owned_tests.adb", "tointeger_oracle_runner.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnato", "-gnatwa", "-gnatwe", "-gnata");
+ end Compiler;
+end Tointeger_checked;

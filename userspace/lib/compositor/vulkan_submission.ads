@@ -5,14 +5,34 @@ with Vulkan_Affine_Binding;
 package Vulkan_Submission with SPARK_Mode is
    use type Vulkan_Affine_Binding.Outcome, System.Address, Interfaces.Unsigned_64;
    type Phase is (Idle, Recording, Sealed, Pending, Quarantined);
-   Maximum_Draws : constant := 4096;
+   -- Per-frame draw budget. Each scene layer may expand into one draw per
+   -- damage box (Vulkan_Scene.Maximum_Layers = Maximum_Draws / box capacity);
+   -- 4096 capped a frame at 512 layers, which a full repaint with the Apps
+   -- menu open (one layer per glyph) can exceed. An unrepresentable scene
+   -- retries forever, so the budget must cover realistic desktops.
+   Maximum_Draws : constant := 16384;
    subtype Draw_Count is Natural range 0 .. Maximum_Draws;
    -- Fixed descriptor metadata, independent of the configured pixel-byte budget.
-   type Source_Slot is range 0 .. 139;
-   subtype Glyph_Slot is Source_Slot range 0 .. 127;
-   subtype Backdrop_Slot is Source_Slot range 128 .. 129;
-   subtype Icon_Atlas_Slot is Source_Slot range 130 .. 131;
-   subtype Client_Slot is Source_Slot range 132 .. 139;
+   -- Native mirrors: CUBIT_VULKAN_SOURCE_CAPACITY/OWNED_SOURCE_CAPACITY.
+   Glyph_Slots : constant := 128;
+   Backdrop_Slots : constant := 2;
+   -- Application icons; window controls with cursor styles.
+   Icon_Atlas_Slots : constant := 2;
+   -- One persistent image per client surface, updated in place. Twice the
+   -- Desktop surface limit keeps room for LRU/retiring entries; immutable
+   -- assets use the atlases, never these slots.
+   Client_Slots : constant := 16;
+   Source_Capacity : constant := Glyph_Slots + Backdrop_Slots + Icon_Atlas_Slots + Client_Slots;
+   type Source_Slot is range 0 .. Source_Capacity - 1;
+   subtype Glyph_Slot is Source_Slot range 0 .. Glyph_Slots - 1;
+   subtype Backdrop_Slot is Source_Slot range Glyph_Slot'Last + 1 .. Glyph_Slot'Last + Backdrop_Slots;
+   subtype Icon_Atlas_Slot is Source_Slot range Backdrop_Slot'Last + 1 .. Backdrop_Slot'Last + Icon_Atlas_Slots;
+   subtype Client_Slot is Source_Slot range Icon_Atlas_Slot'Last + 1 .. Source_Slot'Last;
+   type Source_Class is (Glyph_Cell, Backdrop_Image, Icon_Atlas, Client_Image);
+   function Class_Of (Index : Source_Slot) return Source_Class is
+     (if Index in Glyph_Slot then Glyph_Cell
+      elsif Index in Backdrop_Slot then Backdrop_Image
+      elsif Index in Icon_Atlas_Slot then Icon_Atlas else Client_Image);
    type Source_Ticket is private;
    No_Source : constant Source_Ticket;
    type State is private;

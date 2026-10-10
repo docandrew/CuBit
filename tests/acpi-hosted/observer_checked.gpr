@@ -1,0 +1,8 @@
+project Observer_checked is
+ for Source_Dirs use (".", "../../tests/aml-core", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "observer-checked";
+ for Main use ("observer_cost.adb", "service_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Observer_checked;

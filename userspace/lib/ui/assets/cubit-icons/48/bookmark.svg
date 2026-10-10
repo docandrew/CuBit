@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs>
+<linearGradient id="gffe58fff9a12" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffe58f"/><stop offset="1" stop-color="#ff9a12"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M22.5 3 L28.3 16.02 L42.47 17.51 L31.89 27.05 L34.84 40.99 L22.5 33.87 L10.16 40.99 L13.11 27.05 L2.53 17.51 L16.7 16.02Z" transform="translate(3 3)"/>
+  <path d="M22.5 3 L28.3 16.02 L42.47 17.51 L31.89 27.05 L34.84 40.99 L22.5 33.87 L10.16 40.99 L13.11 27.05 L2.53 17.51 L16.7 16.02Z" transform="translate(2 2)"/>
+  <path d="M22.5 3 L28.3 16.02 L42.47 17.51 L31.89 27.05 L34.84 40.99 L22.5 33.87 L10.16 40.99 L13.11 27.05 L2.53 17.51 L16.7 16.02Z" transform="translate(1 1)"/>
+  <path d="M22.5 3 L28.3 16.02 L42.47 17.51 L31.89 27.05 L34.84 40.99 L22.5 33.87 L10.16 40.99 L13.11 27.05 L2.53 17.51 L16.7 16.02Z"/>
+</g>
+<path d="M22.5 3 L28.3 16.02 L42.47 17.51 L31.89 27.05 L34.84 40.99 L22.5 33.87 L10.16 40.99 L13.11 27.05 L2.53 17.51 L16.7 16.02Z" fill="#9a4a07" transform="translate(3 3)"/>
+<path d="M22.5 3 L28.3 16.02 L42.47 17.51 L31.89 27.05 L34.84 40.99 L22.5 33.87 L10.16 40.99 L13.11 27.05 L2.53 17.51 L16.7 16.02Z" fill="#9a4a07" transform="translate(2 2)"/>
+<path d="M22.5 3 L28.3 16.02 L42.47 17.51 L31.89 27.05 L34.84 40.99 L22.5 33.87 L10.16 40.99 L13.11 27.05 L2.53 17.51 L16.7 16.02Z" fill="#9a4a07" transform="translate(1 1)"/>
+<path d="M22.5 3 L28.3 16.02 L42.47 17.51 L31.89 27.05 L34.84 40.99 L22.5 33.87 L10.16 40.99 L13.11 27.05 L2.53 17.51 L16.7 16.02Z" fill="url(#gffe58fff9a12)"/>
+<path d="M22.5 24 L22.5 3 L28.3 16.02Z" fill="#ffffff" opacity="0.35"/>
+<path d="M22.5 24 L2.53 17.51 L16.7 16.02Z" fill="#ffffff" opacity="0.35"/>
+<path d="M22.5 24 L31.89 27.05 L34.84 40.99Z" fill="#d9700b" opacity="0.45"/>
+<path d="M22.5 24 L34.84 40.99 L22.5 33.87Z" fill="#d9700b" opacity="0.45"/>
+<path d="M22.5 24 L22.5 33.87 L10.16 40.99Z" fill="#d9700b" opacity="0.45"/>
+</svg>

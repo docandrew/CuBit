@@ -24,11 +24,28 @@ package Desktop_GPU_Scene with SPARK_Mode is
    function Reader_Count (S : State) return Natural;
    function Image_Reader_Count (S : State) return Natural;
    function Layer_Count (S : State) return V.Length;
+   -- Why the last capture was discarded without a frame (evidence only).
+   type Capture_Failure is
+     (No_Failure, Cold_Source, Layer_Limit, Glyph_Limit, Image_Limit, Rejected_Draw);
+   function Last_Failure (S : State) return Capture_Failure;
+   -- Most layers any capture of this owner has held.
+   function Peak_Layers (S : State) return V.Length;
+   -- Surfaces drawn as a placeholder because the device refused their image
+   -- even after every idle source was evicted (saturating count).
+   function Placeholder_Draws (S : State) return Natural;
+   procedure Note_Placeholder (S : in out State)
+     with Global => null, Pre => Valid (S),
+       Post => Valid (S) and Current (S) = Current (S)'Old and
+         Layer_Count (S) = Layer_Count (S)'Old;
    procedure Capture_Repaint (S : State; Plan : out Compositor_Damage.State;
       Accepted : out Boolean)
      with Global => (Input => D.Engine), Pre => Valid (S) and D.Valid,
        Post => Compositor_Damage.Valid (Plan) and
          (if not Accepted then Compositor_Damage.Count (Plan) = 0);
+   -- See Desktop_Glyph_Residency.Prepare_Cells. Only while Idle.
+   procedure Prepare_Glyph_Cells (S : in out State; Scale : V.A.G.UI_Scale; Prepared : out Natural)
+     with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid,
+       Post => Valid (S) and D.Valid;
    procedure Begin_Frame (S : in out State; Screen : V.A.G.Output;
       Background : V.A.Word; Accepted : out Boolean)
      with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid,
@@ -38,7 +55,7 @@ package Desktop_GPU_Scene with SPARK_Mode is
    procedure Append (S : in out State; Item : V.Layer; Accepted : out Boolean)
      with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid, Post => Valid (S) and D.Valid;
    procedure Set_Clip (S : in out State; Area : V.A.G.Physical_Rectangle; Accepted : out Boolean)
-     with Global => null, Pre => Valid (S), Post => Valid (S) and
+     with Global => null, Pre => Valid (S), Post => Valid (S) and Current (S) = Current (S)'Old and
        Layer_Count (S) = Layer_Count (S)'Old + (if Accepted then 1 else 0) and
        Reader_Count (S) = Reader_Count (S)'Old and
        Image_Reader_Count (S) = Image_Reader_Count (S)'Old;
@@ -106,6 +123,9 @@ private
       Reservation : Compositor_Pool.Ticket := Compositor_Pool.None;
       Status : Phase := Idle;
       Cold, Invalid : Boolean := False;
+      Failure : Capture_Failure := No_Failure;
+      Peak : V.Length := 0;
+      Placeholders : Natural := 0;
    end record;
    function Valid (S : State) return Boolean is
      (R.Valid (S.Cache) and (if S.Status in Idle | Closed then S.Used = 0 and S.Images_Used = 0));
@@ -113,4 +133,7 @@ private
    function Reader_Count (S : State) return Natural is (S.Used);
    function Image_Reader_Count (S : State) return Natural is (S.Images_Used);
    function Layer_Count (S : State) return V.Length is (V.Count (S.Scene));
+   function Last_Failure (S : State) return Capture_Failure is (S.Failure);
+   function Peak_Layers (S : State) return V.Length is (S.Peak);
+   function Placeholder_Draws (S : State) return Natural is (S.Placeholders);
 end Desktop_GPU_Scene;

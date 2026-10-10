@@ -15,6 +15,7 @@ with XHCI_Capabilities;
 with Optical_Service;
 with USB_Keyboards;
 with Input_Pending;
+with Pointer_Pending;
 with Keyboard_Pending;
 
 procedure main is
@@ -42,11 +43,16 @@ procedure main is
    interruptEnabled : Boolean := False;
    interruptDriven : Boolean := False;
    lastButtons : Unsigned_8 := 0;
-   pointerPending : Input_Pending.Queue;
+   pointerPending : Pointer_Pending.State;
    pointerOverflowReported : Boolean := False;
    pointerNeedsSnapshot : Boolean := True;
-   packed : Unsigned_64;
-   pointerLost : Boolean;
+   pointerOutcome : Pointer_Pending.Append_Outcome;
+   --  Publication accounting (stats line): reports merged by agreement,
+   --  true retention overflows (explicit loss, flagged for recovery), and
+   --  kernel credit refusals (busy: the report was kept and retried).
+   pointerCoalesced : Unsigned_64 := 0;
+   pointerOverflows : Unsigned_64 := 0;
+   publishBusy : Unsigned_64 := 0;
    diagnostics : XHCI.Boot_Mouse_Diagnostics;
    diagnosticsStartMs : Unsigned_64 := 0;
    diagnosticsCountdown : Natural := 64;
@@ -68,7 +74,7 @@ procedure main is
    begin
       mouseConsumer := Registered_Driver (DRIVER_MOUSE);
       if previous /= mouseConsumer then
-         Input_Pending.Reset (pointerPending);
+         Pointer_Pending.Reset (pointerPending);
          pointerNeedsSnapshot := True;
       end if;
    end Refresh_Pointer_Consumer;
@@ -79,8 +85,8 @@ procedure main is
    begin
       for Attempt in 1 .. Input_Pending.Capacity loop
          exit when mouseConsumer = No_Process or else
-           Input_Pending.Count (pointerPending) = 0;
-         pending := Input_Pending.Element (pointerPending, 0);
+           Pointer_Pending.Count (pointerPending) = 0;
+         pending := Pointer_Pending.Element (pointerPending, 0);
          report :=
            (sourceAuthorityTag => 0, sequence => pending.Sequence,
             generation => 1, device => RELATIVE_POINTER,
@@ -88,8 +94,11 @@ procedure main is
             flags => [RESYNCHRONIZE => pending.Recover],
             payload => pending.Payload,
             snapshot => Pointer_Snapshot (pending.Payload, pending.Observed_Ms));
-         exit when not trySendEvent (mouseConsumer, Encode (report));
-         Input_Pending.Acknowledge (pointerPending);
+         if not trySendEvent (mouseConsumer, Encode (report)) then
+            publishBusy := publishBusy + 1;
+            exit;
+         end if;
+         Pointer_Pending.Acknowledge (pointerPending);
       end loop;
    end Flush_Pointer;
 
@@ -108,10 +117,14 @@ procedure main is
       for Attempt in 1 .. Input_Pending.Capacity loop
          exit when keyboardConsumer = No_Process or else Keyboard_Pending.Count (keyboardPending) = 0;
          Pending := Keyboard_Pending.Element (keyboardPending, 0);
-         exit when not trySendEvent (keyboardConsumer, Encode
+         if not trySendEvent (keyboardConsumer, Encode
            (Source_Report'(sourceAuthorityTag => 0, sequence => Pending.Sequence,
              generation => 1, device => KEYBOARD, delivery => ORDERED_TRANSITION,
-             flags => [RESYNCHRONIZE => Pending.Recover], payload => Pending.Payload, snapshot => 0)));
+             flags => [RESYNCHRONIZE => Pending.Recover], payload => Pending.Payload, snapshot => 0)))
+         then
+            publishBusy := publishBusy + 1;
+            exit;
+         end if;
          Keyboard_Pending.Acknowledge (keyboardPending);
       end loop;
    end Flush_Keyboard;
@@ -217,6 +230,12 @@ procedure main is
       Print_Decimal (Unsigned_64 (diagnostics.lastLength));
       Boot_Log.Write (" cc=");
       Print_Decimal (Unsigned_64 (diagnostics.lastCompletion));
+      Boot_Log.Write (" coalesced=");
+      Print_Decimal (pointerCoalesced);
+      Boot_Log.Write (" overflow=");
+      Print_Decimal (pointerOverflows);
+      Boot_Log.Write (" busy=");
+      Print_Decimal (publishBusy);
       Boot_Log.Write (LF & "");
       publish :=
         (tag => (label => CuBit.Devices.OP_PUBLISH_XHCI_STATS,
@@ -244,14 +263,6 @@ procedure main is
       end if;
       diagnosticsStartMs := now;
    end Maybe_Print_Diagnostics;
-
-   function Pack_Signed_12 (value : Integer) return Unsigned_64 is
-   begin
-      if value < 0 then
-         return Unsigned_64 (4096 + value) and 16#FFF#;
-      end if;
-      return Unsigned_64 (value) and 16#FFF#;
-   end Pack_Signed_12;
 
    procedure Reply_With
      (label : Unsigned_32;
@@ -415,7 +426,7 @@ begin
       end if;
       XHCI.Poll_Boot_Mouse
         (buttons, deltaX, deltaY, deltaZ, reportReady, eventAvailable);
-      if reportReady or else Input_Pending.Count (pointerPending) > 0 then
+      if reportReady or else Pointer_Pending.Count (pointerPending) > 0 then
          Refresh_Pointer_Consumer;
          Flush_Pointer;
       end if;
@@ -425,16 +436,27 @@ begin
              buttons /= lastButtons or else pointerNeedsSnapshot)
          then
             --  The desktop's existing event ABI uses PS/2 Y orientation
-            --  (positive upward); USB HID uses positive downward.
-            packed := Unsigned_64 (buttons) or
-              Shift_Left (Pack_Signed_12 (deltaX), 8) or
-              Shift_Left (Pack_Signed_12 (-deltaY), 20) or
-              Shift_Left (Unsigned_64 (deltaZ mod 256), 32);
-            Input_Pending.Append (pointerPending, packed, pointerLost, syscall (SYSCALL_GETTIME));
-            if pointerLost and then not pointerOverflowReported then
-               Boot_Log.Write ("xhci: pointer retention overflow; resynchronizing" & LF);
-               pointerOverflowReported := True;
-            end if;
+            --  (positive upward); USB HID uses positive downward. Boot
+            --  report fields are signed bytes, inside the wire ranges.
+            Pointer_Pending.Append
+              (pointerPending,
+               (Buttons => buttons,
+                X => deltaX,
+                Y => -deltaY,
+                Wheel => deltaZ,
+                Flags => 0),
+               syscall (SYSCALL_GETTIME), pointerOutcome);
+            case pointerOutcome is
+               when Pointer_Pending.Appended => null;
+               when Pointer_Pending.Coalesced =>
+                  pointerCoalesced := pointerCoalesced + 1;
+               when Pointer_Pending.Overflowed =>
+                  pointerOverflows := pointerOverflows + 1;
+                  if not pointerOverflowReported then
+                     Boot_Log.Write ("xhci: pointer retention overflow; resynchronizing" & LF);
+                     pointerOverflowReported := True;
+                  end if;
+            end case;
             Flush_Pointer;
             pointerNeedsSnapshot := False;
             lastButtons := buttons;
@@ -457,8 +479,8 @@ begin
                if Boot_Log.Deadline /= 0 and then (D = 0 or else Boot_Log.Deadline < D) then
                   D := Boot_Log.Deadline;
                end if;
-               if Input_Pending.Count (pointerPending) > 0 then
-                  D := Input_Pending.Wake_Deadline
+               if Pointer_Pending.Count (pointerPending) > 0 then
+                  D := Pointer_Pending.Wake_Deadline
                     (pointerPending, syscall (SYSCALL_GETTIME), D);
                end if;
                if Keyboard_Pending.Count (keyboardPending) > 0 then
@@ -466,7 +488,7 @@ begin
                end if;
                activity := Wait_For_Activity_Until (D);
                if activity = Unavailable and then
-                  (Input_Pending.Count (pointerPending) > 0 or else
+                  (Pointer_Pending.Count (pointerPending) > 0 or else
                    Keyboard_Pending.Count (keyboardPending) > 0)
                then
                   ignore := syscall (SYSCALL_SLEEP, 1);

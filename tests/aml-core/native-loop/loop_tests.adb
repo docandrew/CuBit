@@ -10,13 +10,14 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 procedure Loop_Tests is
    package Grants renames CuBit.Memory_Grants;
-   Server, Before : ACPI_Requests.State := ACPI_Requests.Fresh;
+   Server, Server_2 : ACPI_Requests.State (2, 128, 64, 0);
+   Before : ACPI_Requests.State_Model (2, 128, 64) with Ghost;
    Adapter : ACPI_Native_Blocks.State;
    Config : constant ACPI_Endpoint.Configuration := (17, 31);
    Reason : Stop_Reason;
    Raw : aliased Firmware_Tables.Bytes (1 .. 36) := [others => 0];
    Checks : Natural := 0;
-   use type ACPI_Requests.State;
+   use type ACPI_Requests.State_Model;
    use type ACPI_Requests.Phase;
    procedure Check (B : Boolean) is
    begin
@@ -37,9 +38,10 @@ procedure Loop_Tests is
       Incoming (3) := ((ACPI_Requests.Finish_Snapshot, 4, 0, 0), 31, [2, 0, 0, 0]);
    end Queue_Snapshot;
 begin
-   Before := Server;
+   Before := ACPI_Requests.Model (Server);
    Run (Server, Adapter, (0, 0), 7, Reason);
-   Check (Reason = Invalid_Configuration and Server = Before and Polls = 0 and Waits = 0);
+   pragma Assert (ACPI_Requests.Model (Server) = Before);
+   Check (Reason = Invalid_Configuration and Polls = 0 and Waits = 0);
    Run (Server, Adapter, Config, 7, Reason);
    Check (Reason = Wait_Unavailable and Last_Deadline = Unsigned_64'Last and Sent = 0);
    Reset_Transport; Completion_Ready := True;
@@ -65,27 +67,29 @@ begin
       Check (Replies (I).authorityTag = 0 and Replies (I).tag.reserved = 0);
    end loop;
    -- Fatal wait preserves a completed import and its pending cleanup in caller state.
-   Reset_Transport; Queue_Snapshot; Server := ACPI_Requests.Fresh;
+   Reset_Transport; Queue_Snapshot;
    Grants.Return_OK := False;
-   Run (Server, Adapter, Config, 7, Reason);
+   Run (Server_2, Adapter, Config, 7, Reason);
    Check (Reason = Wait_Unavailable and ACPI_Native_Blocks.Pending (Adapter));
    Check (Last_Deadline = 100 and Grants.Acquisitions = 2 and Sent = 3);
-   Check (ACPI_Requests.Current (Server) = ACPI_Requests.Complete);
-   Before := Server;
+   Check (ACPI_Requests.Current (Server_2) = ACPI_Requests.Complete);
+   Before := ACPI_Requests.Model (Server_2);
    Reset_Transport; Now := Unsigned_64'Last - 50;
-   Run (Server, Adapter, Config, 7, Reason);
+   Run (Server_2, Adapter, Config, 7, Reason);
    Check (Reason = Wait_Unavailable and Last_Deadline = Unsigned_64'Last - 1);
-   Check (ACPI_Native_Blocks.Pending (Adapter) and Server = Before);
+   pragma Assert (ACPI_Requests.Model (Server_2) = Before);
+   Check (ACPI_Native_Blocks.Pending (Adapter));
    Reset_Transport; Completion_Ready := True;
-   Run (Server, Adapter, Config, 7, Reason);
+   Run (Server_2, Adapter, Config, 7, Reason);
    Check (Reason = Unexpected_Completion and ACPI_Native_Blocks.Pending (Adapter));
    Reset_Transport;
-   Run (Server, Adapter, (0, 0), 7, Reason);
+   Run (Server_2, Adapter, (0, 0), 7, Reason);
    Check (Reason = Invalid_Configuration and ACPI_Native_Blocks.Pending (Adapter) and Waits = 0);
    -- Restart the loop with the same state; cleanup only, no repeated import.
    Reset_Transport; Repair_On_Wait := True;
-   Run (Server, Adapter, Config, 7, Reason);
-   Check (not ACPI_Native_Blocks.Pending (Adapter) and Server = Before);
+   Run (Server_2, Adapter, Config, 7, Reason);
+   pragma Assert (ACPI_Requests.Model (Server_2) = Before);
+   Check (not ACPI_Native_Blocks.Pending (Adapter));
    Check (Grants.Acquisitions = 2 and Sent = 0 and Waits = 2);
    declare
       Configured : ACPI_Endpoint.Configuration;
@@ -121,7 +125,7 @@ begin
       Await_Configuration (Configured, Provider, Accepted);
       Check (Accepted and Provider = 7 and Configured.Observer_Tag = 17 and Configured.Provider_Tag = 31);
       Check (Next = 2 and Sent = 2 and Replies (1).tag.label = ACPI_Endpoint.Reply_Error);
-      Run (Server, Adapter, Configured, Provider, Reason);
+      Run (Server_2, Adapter, Configured, Provider, Reason);
       Check (Next = 3 and Sent = 3 and Replies (3).tag.label = ACPI_Endpoint.Reply_Error);
       Check (Configured.Observer_Tag = 17 and Configured.Provider_Tag = 31);
    end;

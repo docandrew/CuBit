@@ -1,7 +1,7 @@
 project Wallpaper_Output is
-   for Source_Dirs use (".", "../../userspace/services/desktop", "../../userspace/lib/compositor",
+   for Source_Dirs use (".", "../../userspace/services/desktop", "../../userspace/lib/compositor", "../../userspace/lib/image",
      "../../userspace/lib/display", "../../userspace/lib/theme", "../../userspace/runtime/gnat");
-   for Source_Files use ("wallpaper_output_tests.adb", "wallpaper_assets.ads",
+   for Source_Files use ("wallpaper_output_tests.adb", "wallpaper_assets.ads", "wallpaper_loader.ads", "wallpaper_loader.adb", "desktop_wallpaper_store.ads", "desktop_wallpaper_store.adb", "cubit-qoi.ads", "cubit-qoi.adb",
      "desktop_backdrop_style.ads", "desktop_wallpaper.ads", "desktop_wallpaper.adb", "cubit.ads", "cubit-appearance.ads",
      "cubit-appearance.adb", "cubit-display_geometry.ads", "cubit-display_geometry.adb",
      "compositor_backdrop_strips.ads", "compositor_backdrop_strips.adb", "compositor_image_sampling.ads", "compositor_image_sampling.adb",

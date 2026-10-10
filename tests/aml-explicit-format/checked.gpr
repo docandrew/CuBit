@@ -1,0 +1,9 @@
+project Checked is
+ for Source_Dirs use (".", "../acpi-integration", "../acpi-integration/mocks", "../aml-core", "../aml-tostring", "../aml-tobuffer", "../aml-tointeger", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../userspace/services/acpi/native", "../../shared/firmware");
+ for Object_Dir use "build-checked/obj";
+ for Exec_Dir use "build-checked";
+ for Main use ("format_tests.adb", "format_owner_tests.adb", "format_capture_tests.adb", "format_collecting_tests.adb", "format_runner.adb", "to_string_owner_tests.adb", "to_string_collecting_tests.adb", "to_buffer_owner_tests.adb", "to_buffer_collecting_tests.adb", "tointeger_target_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Checked;

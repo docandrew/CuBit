@@ -134,6 +134,16 @@ package Process.IPC is
     --  are removed from their one mailbox queue and made runnable when due.
     procedure expireReceiveDeadlines (nowMs : Unsigned_64);
 
+    --  Diagnostics for machines without serial: every Stuck_Report_Period_Ms
+    --  the BSP timer draws the threads blocked in a synchronous call for at
+    --  least Stuck_Call_Ms (Boot_Diagnostics.Stuck_Calls), with the server's
+    --  main-thread state. Reads thread records without locks: a torn line is
+    --  possible and harmless; it grants and changes nothing. Each line is
+    --  also printed to serial as "STUCK-CALL: ...".
+    Stuck_Report_Period_Ms : constant := 2_000;
+    Stuck_Call_Ms          : constant := 3_000;
+    procedure reportStuckCalls (nowMs : Unsigned_64);
+
     ---------------------------------------------------------------------------
     -- receiveEvent
     -- Block until an event is received, or return the event if one is already

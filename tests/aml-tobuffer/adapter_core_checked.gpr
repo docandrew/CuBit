@@ -1,0 +1,7 @@
+project adapter_core_checked is
+ for Source_Dirs use ("../aml-core", "../aml-debug", "../aml-retention", "../acpi-integration/mocks", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../userspace/services/acpi/native", "../../shared/firmware");
+ for Object_Dir use "adapter_core_checked-obj";
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end adapter_core_checked;

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs>
+<linearGradient id="amber" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffdc80"/><stop offset="1" stop-color="#ffa41f"/></linearGradient>
+<linearGradient id="paper" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ebeef6"/></linearGradient>
+<linearGradient id="steel" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#eef1f8"/><stop offset="1" stop-color="#b4bccf"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M8 6 H36 A2 2 0 0 1 38 8 V40 A2 2 0 0 1 36 42 H8 A2 2 0 0 1 6 40 V8 A2 2 0 0 1 8 6Z" transform="translate(3 3)"/>
+  <path d="M8 6 H36 A2 2 0 0 1 38 8 V40 A2 2 0 0 1 36 42 H8 A2 2 0 0 1 6 40 V8 A2 2 0 0 1 8 6Z" transform="translate(2 2)"/>
+  <path d="M8 6 H36 A2 2 0 0 1 38 8 V40 A2 2 0 0 1 36 42 H8 A2 2 0 0 1 6 40 V8 A2 2 0 0 1 8 6Z" transform="translate(1 1)"/>
+  <path d="M8 6 H36 A2 2 0 0 1 38 8 V40 A2 2 0 0 1 36 42 H8 A2 2 0 0 1 6 40 V8 A2 2 0 0 1 8 6Z"/>
+</g>
+<path d="M8 6 H36 A2 2 0 0 1 38 8 V40 A2 2 0 0 1 36 42 H8 A2 2 0 0 1 6 40 V8 A2 2 0 0 1 8 6Z" fill="#9a4a07" transform="translate(3 3)"/>
+<path d="M8 6 H36 A2 2 0 0 1 38 8 V40 A2 2 0 0 1 36 42 H8 A2 2 0 0 1 6 40 V8 A2 2 0 0 1 8 6Z" fill="#9a4a07" transform="translate(2 2)"/>
+<path d="M8 6 H36 A2 2 0 0 1 38 8 V40 A2 2 0 0 1 36 42 H8 A2 2 0 0 1 6 40 V8 A2 2 0 0 1 8 6Z" fill="#9a4a07" transform="translate(1 1)"/>
+<path d="M8 6 H36 A2 2 0 0 1 38 8 V40 A2 2 0 0 1 36 42 H8 A2 2 0 0 1 6 40 V8 A2 2 0 0 1 8 6Z" fill="url(#amber)"/>
+<path d="M11 12 L33 12 L33 37 L11 37Z" fill="url(#paper)"/>
+<path d="M13 18 L31 18" fill="none" stroke="#5a32d6" stroke-width="2" stroke-linecap="butt"/>
+<path d="M13 23 L31 23" fill="none" stroke="#5a32d6" stroke-width="2" stroke-linecap="butt"/>
+<path d="M13 28 L25 28" fill="none" stroke="#5a32d6" stroke-width="2" stroke-linecap="butt"/>
+<path d="M13 33 L31 33" fill="none" stroke="#5a32d6" stroke-width="2" stroke-linecap="butt"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M16 2 H28 A1 1 0 0 1 29 3 V10 A1 1 0 0 1 28 11 H16 A1 1 0 0 1 15 10 V3 A1 1 0 0 1 16 2Z"/>
+</g>
+<path d="M16 2 H28 A1 1 0 0 1 29 3 V10 A1 1 0 0 1 28 11 H16 A1 1 0 0 1 15 10 V3 A1 1 0 0 1 16 2Z" fill="url(#steel)"/>
+</svg>

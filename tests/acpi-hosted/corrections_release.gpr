@@ -1,0 +1,8 @@
+project Corrections_release is
+ for Source_Dirs use ("../../tests/aml-core", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "corrections-release";
+ for Main use ("decode_tests.adb", "load_tests.adb", "integer_oracle_tests.adb", "service_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+ end Compiler;
+end Corrections_release;

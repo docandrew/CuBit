@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<defs>
+<linearGradient id="amber" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffdc80"/><stop offset="1" stop-color="#ffa41f"/></linearGradient>
+<linearGradient id="paper" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ebeef6"/></linearGradient>
+<linearGradient id="steel" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#eef1f8"/><stop offset="1" stop-color="#b4bccf"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M6 4 H23 A2 2 0 0 1 25 6 V26 A2 2 0 0 1 23 28 H6 A2 2 0 0 1 4 26 V6 A2 2 0 0 1 6 4Z" transform="translate(2 2)"/>
+  <path d="M6 4 H23 A2 2 0 0 1 25 6 V26 A2 2 0 0 1 23 28 H6 A2 2 0 0 1 4 26 V6 A2 2 0 0 1 6 4Z" transform="translate(1 1)"/>
+  <path d="M6 4 H23 A2 2 0 0 1 25 6 V26 A2 2 0 0 1 23 28 H6 A2 2 0 0 1 4 26 V6 A2 2 0 0 1 6 4Z"/>
+</g>
+<path d="M6 4 H23 A2 2 0 0 1 25 6 V26 A2 2 0 0 1 23 28 H6 A2 2 0 0 1 4 26 V6 A2 2 0 0 1 6 4Z" fill="#9a4a07" transform="translate(2 2)"/>
+<path d="M6 4 H23 A2 2 0 0 1 25 6 V26 A2 2 0 0 1 23 28 H6 A2 2 0 0 1 4 26 V6 A2 2 0 0 1 6 4Z" fill="#9a4a07" transform="translate(1 1)"/>
+<path d="M6 4 H23 A2 2 0 0 1 25 6 V26 A2 2 0 0 1 23 28 H6 A2 2 0 0 1 4 26 V6 A2 2 0 0 1 6 4Z" fill="url(#amber)"/>
+<path d="M8 8 L21 8 L21 24 L8 24Z" fill="url(#paper)"/>
+<path d="M10 11.5 L19 11.5" fill="none" stroke="#5a32d6" stroke-width="1" stroke-linecap="butt"/>
+<path d="M10 14.5 L19 14.5" fill="none" stroke="#5a32d6" stroke-width="1" stroke-linecap="butt"/>
+<path d="M10 17.5 L16 17.5" fill="none" stroke="#5a32d6" stroke-width="1" stroke-linecap="butt"/>
+<path d="M10 20.5 L19 20.5" fill="none" stroke="#5a32d6" stroke-width="1" stroke-linecap="butt"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M11 2 H18 A1 1 0 0 1 19 3 V7 A1 1 0 0 1 18 8 H11 A1 1 0 0 1 10 7 V3 A1 1 0 0 1 11 2Z"/>
+</g>
+<path d="M11 2 H18 A1 1 0 0 1 19 3 V7 A1 1 0 0 1 18 8 H11 A1 1 0 0 1 10 7 V3 A1 1 0 0 1 11 2Z" fill="url(#steel)"/>
+</svg>

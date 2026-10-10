@@ -8,7 +8,21 @@ with ACPI_Endpoint; use ACPI_Endpoint;
 with ACPI_Native_Blocks; use ACPI_Native_Blocks;
 with CuBit.Memory_Grants; use CuBit.Memory_Grants;
 procedure Block_Tests is
-   Server, Before : ACPI_Requests.State := ACPI_Requests.Fresh;
+   Small_Table_Limit : constant := 65_536;
+   subtype Scenario_Index is Positive range 1 .. 8;
+   type Scenario_States is array (Scenario_Index) of aliased
+     ACPI_Requests.State (2, Small_Table_Limit, Small_Table_Limit, 0);
+   Instances : Scenario_States;
+   Next_Instance : Scenario_Index := Scenario_Index'First;
+   Exhausted : aliased ACPI_Requests.State (2, Small_Table_Limit, Small_Table_Limit, Max_Revision);
+   Server : access ACPI_Requests.State := Instances (Next_Instance)'Access;
+   Before : ACPI_Requests.State_Model (2, Small_Table_Limit, Small_Table_Limit) with Ghost;
+   procedure Fresh_Instance is
+   begin
+      Next_Instance := Next_Instance + 1;
+      Server := Instances (Next_Instance)'Access;
+   end Fresh_Instance;
+
    Adapter : ACPI_Native_Blocks.State;
    Config : constant Configuration := (17, 31);
    Reply : Packet;
@@ -26,15 +40,15 @@ procedure Block_Tests is
    procedure Start is
       Result : Response;
    begin
-      Server := Fresh;
-      Handle (Server, Snapshot_Provider,
+      Fresh_Instance;
+      Handle (Server.all, Snapshot_Provider,
         (Label => Start_Snapshot, Data => [0, 1, 0, 0], others => <>), Result);
       Check (Result.Status = OK);
    end Start;
    procedure Import (Stamp : Unsigned_64 := 31; Length : Natural := 36;
-                     Token : Unsigned_64 := Revision (Server)) is
+                     Token : Unsigned_64 := Revision (Server.all)) is
    begin
-      Import_Grant (Adapter, Server, Config, Stamp, 7, Reference,
+      Import_Grant (Adapter, Server.all, Config, Stamp, 7, Reference,
                     Token, 1, ACPI_Service.DSDT, Length, Reply, Status);
    end Import;
 begin
@@ -48,43 +62,50 @@ begin
    end;
    Source := Raw'Address;
    Start;
-   Before := Server;
+   Before := Model (Server.all);
    for Stamp of Bad_Stamps loop
       Import (Stamp);
-      Check (Status = Rejected and Acquisitions = 0 and Returns = 0 and Server = Before);
+      pragma Assert (Model (Server.all) = Before);
+      Check (Status = Rejected and Acquisitions = 0 and Returns = 0);
       Check (Reply.Data (0) = Outcome'Pos (Denied));
    end loop;
    Import (Length => 0);
-   Check (Status = Rejected and Acquisitions = 0 and Server = Before);
+   pragma Assert (Model (Server.all) = Before);
+      Check (Status = Rejected and Acquisitions = 0);
    Import (Length => ACPI_Service.Max_Table_Bytes + 1);
-   Check (Status = Rejected and Acquisitions = 0 and Server = Before);
+   pragma Assert (Model (Server.all) = Before);
+      Check (Status = Rejected and Acquisitions = 0);
    Acquire_OK := False;
    Import;
    Check (Status = Acquisition_Failed and Acquisitions = 1 and Returns = 0);
-   Check (not Pending (Adapter) and Server = Before);
+   pragma Assert (Model (Server.all) = Before);
+      Check (not Pending (Adapter));
    Acquire_OK := True;
    Import (Token => 0);
-   Check (Status = Rejected and Server = Before and Returns = 0 and not Pending (Adapter)
+   pragma Assert (Model (Server.all) = Before);
+      Check (Status = Rejected and Returns = 0 and not Pending (Adapter)
           and Acquisitions = 1);
    Check (Reply.Data (0) = Outcome'Pos (Stale));
    Return_OK := False;
    Import;
    Check (Status = Cleanup_Pending and Pending (Adapter));
-   Check (Reply.Label = Reply_OK and Observe (Server).Tables = 1);
+   Check (Reply.Label = Reply_OK and Observe (Server.all).Tables = 1);
    Check (Last_Slot = 7 and Last_Reference = Reference and Last_Offset = 0 and Last_Length = 36);
    Check (Last_Access = Read_Access and Returned_Reference = Reference);
-   Before := Server;
+   Before := Model (Server.all);
    declare
       Old_Acquisitions : constant Natural := Acquisitions;
    begin
       Import;
-      Check (Status = Rejected and Server = Before and Acquisitions = Old_Acquisitions);
+      pragma Assert (Model (Server.all) = Before);
+      Check (Status = Rejected and Acquisitions = Old_Acquisitions);
       Check (Pending (Adapter) and Reply.Data (0) = Outcome'Pos (Resource_Limit));
       Retry_Return (Adapter);
       Check (Pending (Adapter) and Returned_Reference = Reference);
       Return_OK := True;
       Retry_Return (Adapter);
-      Check (not Pending (Adapter) and Server = Before);
+      pragma Assert (Model (Server.all) = Before);
+      Check (not Pending (Adapter));
       declare
          Old_Returns : constant Natural := Returns;
       begin
@@ -96,12 +117,13 @@ begin
    Raw (10) := Raw (10) + 1;
    Import;
    Check (Status = Processed and not Pending (Adapter));
-   Check (Current (Server) = Failed and Reply.Data (0) = Outcome'Pos (Table_Rejected));
+   Check (Current (Server.all) = Failed and Reply.Data (0) = Outcome'Pos (Table_Rejected));
    Start;
    Source := System.Null_Address;
-   Before := Server;
+   Before := Model (Server.all);
    Import;
-   Check (Status = Processed and not Pending (Adapter) and Server = Before);
+   pragma Assert (Model (Server.all) = Before);
+      Check (Status = Processed and not Pending (Adapter));
    Check (Reply.Data (0) = Outcome'Pos (Malformed));
    -- Rejections must not touch grant state, even with a valid provider stamp.
    declare
@@ -110,21 +132,22 @@ begin
       Result : Response;
       procedure Rejected_Without_Acquire (Expected : Outcome) is
       begin
-         Before := Server;
+         Before := Model (Server.all);
          Import;
-         Check (Status = Rejected and Server = Before and not Pending (Adapter));
+         pragma Assert (Model (Server.all) = Before);
+      Check (Status = Rejected and not Pending (Adapter));
          Check (Acquisitions = Old_Acquisitions and Returns = Old_Returns);
          Check (Reply.Label = Reply_Error and Reply.Data (0) = Outcome'Pos (Expected));
       end Rejected_Without_Acquire;
    begin
-      Server := Fresh;
+      Fresh_Instance;
       Rejected_Without_Acquire (Wrong_Order);
-      Server := Fresh (Max_Revision);
+      Server := Exhausted'Access;
       Rejected_Without_Acquire (Resource_Limit);
       Start;
-      Handle (Server, Snapshot_Provider,
-        (Label => Begin_Table, Data => [Revision (Server), 1, 0, 36], others => <>), Result);
-      Check (Result.Status = OK and Table_Open (Server));
+      Handle (Server.all, Snapshot_Provider,
+        (Label => Begin_Table, Data => [Revision (Server.all), 1, 0, 36], others => <>), Result);
+      Check (Result.Status = OK and Table_Open (Server.all));
       Rejected_Without_Acquire (Wrong_Order);
    end;
    declare
@@ -134,13 +157,14 @@ begin
       procedure Reset_Request is
       begin
          Request := (Label => Import_Table_Grant,
-           Data => [Revision (Server), 27 * Base + 19, 1, 36], others => <>);
+           Data => [Revision (Server.all), 27 * Base + 19, 1, 36], others => <>);
       end Reset_Request;
       procedure Reject_Wire (Stamp : Unsigned_64 := 31) is
       begin
-         Before := Server; Old_Acquisitions := Acquisitions;
-         Dispatch (Adapter, Server, Config, Stamp, 7, Request, Reply);
-         Check (Server = Before and Acquisitions = Old_Acquisitions);
+         Before := Model (Server.all); Old_Acquisitions := Acquisitions;
+         Dispatch (Adapter, Server.all, Config, Stamp, 7, Request, Reply);
+         pragma Assert (Model (Server.all) = Before);
+      Check (Acquisitions = Old_Acquisitions);
          Check (Reply.Label = Reply_Error);
       end Reject_Wire;
    begin
@@ -173,25 +197,27 @@ begin
       Reset_Request; Request.Data (0) := 0;
       Reject_Wire; Check (Reply.Data (0) = Outcome'Pos (Stale));
       Reset_Request; Acquire_OK := False;
-      Before := Server;
-      Dispatch (Adapter, Server, Config, 31, 7, Request, Reply);
-      Check (Server = Before and Reply.Data (0) = Outcome'Pos (Denied));
+      Before := Model (Server.all);
+      Dispatch (Adapter, Server.all, Config, 31, 7, Request, Reply);
+      pragma Assert (Model (Server.all) = Before);
+      Check (Reply.Data (0) = Outcome'Pos (Denied));
       Acquire_OK := True; Return_OK := False;
-      Dispatch (Adapter, Server, Config, 31, 7, Request, Reply);
+      Dispatch (Adapter, Server.all, Config, 31, 7, Request, Reply);
       Check (Reply.Label = Reply_OK and Pending (Adapter));
       Check (Last_Reference = Reference and Last_Length = 36 and Last_Slot = 7);
-      Before := Server; Old_Acquisitions := Acquisitions;
-      Dispatch (Adapter, Server, Config, 31, 7, Request, Reply);
-      Check (Server = Before and Acquisitions = Old_Acquisitions);
+      Before := Model (Server.all); Old_Acquisitions := Acquisitions;
+      Dispatch (Adapter, Server.all, Config, 31, 7, Request, Reply);
+      pragma Assert (Model (Server.all) = Before);
+      Check (Acquisitions = Old_Acquisitions);
       Check (Reply.Label = Reply_Error); -- Never replay an imported block.
       Return_OK := True; Retry_Return (Adapter); Check (not Pending (Adapter));
       Start; Reset_Request;
       Request.Data (1) := Unsigned_64 (Unsigned_32'Last) * Base + 4095;
-      Dispatch (Adapter, Server, Config, 31, 7, Request, Reply);
+      Dispatch (Adapter, Server.all, Config, 31, 7, Request, Reply);
       Check (Reply.Label = Reply_OK and not Pending (Adapter));
       Check (Last_Reference.slot = 4095 and Last_Reference.generation = Unsigned_64 (Unsigned_32'Last));
       Request := (Label => Read_Metrics, others => <>);
-      Dispatch (Adapter, Server, Config, 17, 7, Request, Reply);
+      Dispatch (Adapter, Server.all, Config, 17, 7, Request, Reply);
       Check (Reply.Label = Reply_OK); -- Scalar operations share this dispatcher.
    end;
    -- Construction-time capacities travel through the actual grant adapter and
@@ -200,7 +226,7 @@ begin
    declare
       Length : constant := 1_048_577;
       Total : constant := Length + 34 * 36;
-      Large : ACPI_Requests.State := Fresh (0, 35, Total, Length);
+      Large : ACPI_Requests.State (35, Total, Length, 0);
       Loan : ACPI_Native_Blocks.State;
       Base : constant Unsigned_64 := 2 ** 32;
       function Make_Table (Signature : String; Size : Positive) return Firmware_Tables.Bytes is

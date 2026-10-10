@@ -1,0 +1,9 @@
+project Integration_checked is
+ for Source_Dirs use ("../../tests/aml-tointeger", "../../tests/aml-core", "../../tests/aml-debug", "../../tests/aml-references", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "build-checked/obj";
+ for Exec_Dir use "build-checked";
+ for Main use ("buffer_store_tests.adb", "named_store_owner_tests.adb", "named_pairs_tests.adb", "tointeger_target_tests.adb", "name_member_tests.adb", "name_member_identity_tests.adb", "coercion_tests.adb", "tointeger_quota_tests.adb", "explicit_coercion_tests.adb", "tointeger_owned_tests.adb", "tointeger_oracle_runner.adb", "increment_tests.adb", "slot_copy_tests.adb", "debug_target_tests.adb", "debug_owned_tests.adb", "runtime_buffer_tests.adb", "runtime_buffer_oracle_tests.adb", "buffer_completion_tests.adb", "copy_compound_quota_tests.adb", "copy_boundary_extended_tests.adb", "package_store_atomicity_tests.adb", "condref_tests.adb", "condref_oracle_tests.adb", "integer_origin_tests.adb", "runtime_name_tests.adb", "reference_model_tests.adb", "name_reservation_tests.adb", "provisional_write_tests.adb", "debug_oracle_runner.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Integration_checked;

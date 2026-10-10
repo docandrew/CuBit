@@ -90,8 +90,17 @@ raw adapters remain trusted Ada, not newly proved SPARK code. Firmware tables
 are assumed immutable during boot; complete immutable child-table snapshots,
 all semantic validators, and device-register resource admission remain work.
 
-For VT-d, admit DMAR and its variable-length device scopes next; full AML is
-not a prerequisite. Isolation must account for hardware topology, reserved
+The userspace DMAR metadata candidate now provides bounded decoding of forms
+0–6 and variable-length device scopes/paths, with authenticated read-only queries
+19–23. Unknown records and scopes stay explicit. Full-table structural validation
+precedes replies; addresses are signed-safe split words, not mapping permissions.
+Unknown-record scope counts describe decoded scopes only. ANDD names are bounded
+raw bytes accessible through existing table reads, not admitted namespace objects.
+Hosted release and checked query/routing tests pass; current-source proof and
+live startup remain pending. This does not implement VT-d resource admission.
+
+For VT-d, admit topology and explicit hardware resources next; full AML is not
+a prerequisite. Isolation must account for hardware topology, reserved
 regions and devices that cannot be separated. Teardown must quiesce DMA and
 complete invalidations before releasing pinned buffers. Fault reporting should
 identify the device and affected domain without exposing unrelated memory.

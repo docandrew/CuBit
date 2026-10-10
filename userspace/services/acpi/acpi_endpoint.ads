@@ -6,6 +6,7 @@ with Firmware_Tables;
 -- The tags and received stamp are trusted native-adapter inputs. This unit
 -- classifies existing authority; it cannot allocate or authenticate a tag.
 package ACPI_Endpoint with SPARK_Mode is
+   pragma Unevaluated_Use_Of_Old (Allow);
    use Interfaces;
    use ACPI_Requests;
    type Configuration is record
@@ -39,10 +40,11 @@ package ACPI_Endpoint with SPARK_Mode is
    procedure Dispatch
      (Server : in out State; Config : Configuration;
       Stamp : Unsigned_64; Request : Packet; Reply : out Packet) with
-     Post => Reply.Length = 4 and then Reply.Flags = 0 and then Reply.Reserved = 0
+     Pre => ACPI_Requests.Valid (Server),
+     Post => ACPI_Requests.Valid (Server) and then Reply.Length = 4 and then Reply.Flags = 0 and then Reply.Reserved = 0
        and then Reply.Label in Reply_OK | Reply_Error
        and then (for all Word of Reply.Data => Word <= Max_Revision)
-       and then (if Classify (Config, Stamp) /= Snapshot_Provider then Server = Server'Old)
+       and then (if Classify (Config, Stamp) /= Snapshot_Provider then Model (Server) = Model (Server)'Old)
        and then (if Classify (Config, Stamp) = No_Authority then
          Reply.Label = Reply_Error and then
          Reply.Data = [Unsigned_64 (Outcome'Pos (Denied)), 0, 0, 0]);
@@ -52,10 +54,11 @@ package ACPI_Endpoint with SPARK_Mode is
      (Server : in out State; Config : Configuration; Stamp : Unsigned_64;
       Token : Unsigned_64; ID : Positive; Kind : ACPI_Service.Table_Kind;
       Data : Firmware_Tables.Bytes; Reply : out Packet) with
-     Post => Reply.Length = 4 and then Reply.Flags = 0 and then Reply.Reserved = 0
+     Pre => ACPI_Requests.Valid (Server),
+     Post => ACPI_Requests.Valid (Server) and then Reply.Length = 4 and then Reply.Flags = 0 and then Reply.Reserved = 0
        and then Reply.Label in Reply_OK | Reply_Error
        and then (for all Word of Reply.Data => Word <= Max_Revision)
-       and then (if Classify (Config, Stamp) /= Snapshot_Provider then Server = Server'Old)
+       and then (if Classify (Config, Stamp) /= Snapshot_Provider then Model (Server) = Model (Server)'Old)
        and then (if Classify (Config, Stamp) = No_Authority then
          Reply.Label = Reply_Error and then
          Reply.Data = [Unsigned_64 (Outcome'Pos (Denied)), 0, 0, 0]);

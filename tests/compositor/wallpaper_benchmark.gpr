@@ -1,5 +1,5 @@
 project Wallpaper_Benchmark extends "wallpaper_output.gpr" is
-   for Source_Dirs use (".", "../../userspace/services/desktop", "../../userspace/lib/compositor",
+   for Source_Dirs use (".", "../../userspace/services/desktop", "../../userspace/lib/compositor", "../../userspace/lib/image",
      "../../userspace/lib/display", "../../userspace/lib/theme", "../../userspace/runtime/gnat");
    for Source_Files use Wallpaper_Output'Source_Files & ("wallpaper_benchmark.adb");
    for Main use ("wallpaper_benchmark.adb");

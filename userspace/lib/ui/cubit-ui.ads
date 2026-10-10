@@ -214,6 +214,11 @@ package CuBit.UI is
    procedure Draw_Bitmap
      (c : Canvas; x, y : Natural; pixels : ARGB_Bitmap;
       enabled : Boolean := True);
+   --  The bitmap stretched over the logical rectangle r, sampled at the
+   --  canvas's physical pixels (nearest): a bitmap made at twice the logical
+   --  size stays sharp on a density-2 canvas.
+   procedure Draw_Bitmap_Fitted
+     (c : Canvas; r : Rect; pixels : ARGB_Bitmap; enabled : Boolean := True);
    procedure Fill_Rect (c : Canvas; r : Rect; fill : Color);
    procedure Fill_Vertical_Gradient
       (c : Canvas; r : Rect; topColor, bottomColor : Color);

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Test_Results;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Service; use ACPI_Service;
@@ -41,7 +42,7 @@ procedure Field_Boundary_Tests is
      [16#5B#, 16#81#, 14] & Enc ("RGN0") & [1,0,16#40#,16#12#] &
      Enc ("FLD0") & [8,16#A4#] & Enc ("FLD0");
    procedure Exercise (Code : Bytes; Budget : Natural; Complete : Boolean) is
-      Service : aliased State := Fresh;
+      Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
       Status : Install_Status;
       Bound : Namespace.Bind_Status;
       Region : Namespace.Node_ID;
@@ -54,11 +55,12 @@ procedure Field_Boundary_Tests is
       Check (Status = Installed);
       Declare_Table_Region (Service, Namespace.Root, "RGN0", (Name => "TEST",others => <>), Region, Bound);
       Check (Bound = Namespace.Bound);
-      Before := Namespace.Count (Snapshot (Service));
-      Invoke (Service, Namespace.Child (Snapshot (Service),Namespace.Root,"READ"),
+      ACPI_Test_Results.Seal (Service);
+      Before := Observe (Service).Objects;
+      Invoke_Scalar (Service, ACPI_Test_Results.Child (Service,Namespace.Root,"READ"),
               [others => 0],0,Budget,R);
       Check (R.Charged <= Budget);
-      Check (Namespace.Count (Snapshot (Service)) = Before);
+      Check (Observe (Service).Objects = Before);
       if not Complete then
          Check (R.Status not in AML_Execute.Returned | AML_Execute.Object_Returned);
       elsif R.Status = AML_Execute.Returned then
@@ -70,10 +72,10 @@ procedure Field_Boundary_Tests is
       if Complete and Budget = 100 then Check (R.Status = AML_Execute.Returned); end if;
       -- Repeat on the same namespace: failed/truncated execution must not leave
       -- a dynamic field that causes Duplicate_Name on the next invocation.
-      Invoke (Service, Namespace.Child (Snapshot (Service),Namespace.Root,"READ"),
+      Invoke_Scalar (Service, ACPI_Test_Results.Child (Service,Namespace.Root,"READ"),
               [others => 0],0,Budget,R);
       Check (R.Status /= AML_Execute.Duplicate_Name);
-      Check (Namespace.Count (Snapshot (Service)) = Before);
+      Check (Observe (Service).Objects = Before);
    end Exercise;
 begin
    for Prefix in 0 .. Full_Code'Length - 1 loop

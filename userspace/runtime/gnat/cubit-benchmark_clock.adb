@@ -1,5 +1,6 @@
 with System.Machine_Code; use System.Machine_Code;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Published_Clock;
 
 package body CuBit.Benchmark_Clock is
    function Read_Counter return Unsigned_64 is
@@ -25,11 +26,11 @@ package body CuBit.Benchmark_Clock is
    begin
       Ticks_Per_Millisecond := 0;
       for Attempt in 1 .. 3 loop
-         Start_Ms := syscall (SYSCALL_GETTIME);
+         Start_Ms := CuBit.Published_Clock.Milliseconds;
          Start_Ticks := Read_Counter;
          Ignored := syscall (SYSCALL_SLEEP, 200);
          End_Ticks := Read_Counter;
-         End_Ms := syscall (SYSCALL_GETTIME);
+         End_Ms := CuBit.Published_Clock.Milliseconds;
          if End_Ms <= Start_Ms or else End_Ticks <= Start_Ticks then
             return;
          end if;

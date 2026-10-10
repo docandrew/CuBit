@@ -1,6 +1,7 @@
 with Interfaces; use Interfaces;
 with CCL.Language;
 with CCL.VM;
+with CCL.Typed_Settings;
 
 package body CCL.Configurations with SPARK_Mode => On is
    use CCL.Declarations;
@@ -27,6 +28,7 @@ package body CCL.Configurations with SPARK_Mode => On is
          when Invalid_Launch_Mode => return "INVALID_LAUNCH_MODE";
          when Invalid_Scheduling => return "INVALID_SCHEDULING";
          when Invalid_Deadline => return "INVALID_DEADLINE";
+         when Invalid_Typed_Value => return "INVALID_TYPED_VALUE";
       end case;
    end Diagnostic_Name;
 
@@ -102,6 +104,31 @@ package body CCL.Configurations with SPARK_Mode => On is
          Count := Count + 1;
          Result.Plan.Settings (Count).Key := Key;
          Result.Plan.Setting_Count := Count;
+         --  A typed setting: its value is checked against the key's declared
+         --  type and stored as the value's canonical source.
+         if CCL.Typed_Settings."/=" (CCL.Typed_Settings.Kind_Of (Key.Data (1 .. Key.Length)),
+                                     CCL.Typed_Settings.Untyped)
+         then
+            declare
+               First : Positive;
+               Last : Natural;
+               Checked : CCL.Typed_Settings.Check_Result;
+            begin
+               Take_Expression (Reader, First, Last);
+               if Stopped then return; end if;
+               CCL.Typed_Settings.Check
+                 (CCL.Typed_Settings.Kind_Of (Key.Data (1 .. Key.Length)), Source_Of (Reader, First, Last), Checked);
+               if not Checked.Success then
+                  Fail (Invalid_Typed_Value);
+                  Result.Position := First + (if Checked.Position > 0 then Checked.Position - 1 else 0);
+                  Result.Typed_Message_Length := Checked.Message_Length;
+                  Result.Typed_Message (1 .. Checked.Message_Length) := Checked.Message (1 .. Checked.Message_Length);
+                  return;
+               end if;
+               Store_Value (Checked.Canonical (1 .. Checked.Length));
+            end;
+            return;
+         end if;
          Evaluate (Reader, Value);
          if Stopped then return; end if;
          if Value.Has_Text then

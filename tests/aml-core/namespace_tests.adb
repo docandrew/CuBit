@@ -1,7 +1,8 @@
+with AML_Delays;
 with Ada.Text_IO; use Ada.Text_IO;
 with AML_Namespace;
 procedure Namespace_Tests is
-   package NS is new AML_Namespace (Capacity => 128);
+   package NS is new AML_Namespace (Perform_Delay => AML_Delays.Unavailable_Provider, Capacity => 128);
    use NS;
    Tree : State := Empty;
    Node : Node_ID;

@@ -1,46 +1,27 @@
+with ACPI_Test_Results;
 with Ada.Command_Line;
 with Ada.Streams.Stream_IO;
 with Ada.Text_IO;
 with ACPI_Service; use ACPI_Service;
 with AML_Decode;
 with AML_Execute;
-with AML_Objects;
 with Firmware_Tables;
 procedure Table_Runner is
    use type Ada.Streams.Stream_Element_Offset;
    use type AML_Execute.Execution_Status;
    package IO renames Ada.Streams.Stream_IO;
    File : IO.File_Type;
-   Service : aliased State := Fresh;
+   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+   Held : ACPI_Test_Results.Holder;
    Status : Install_Status;
    Metrics_Mode : constant Boolean := Ada.Command_Line.Argument_Count = 2
      and then Ada.Command_Line.Argument (2) = "--metrics";
    Args : AML_Execute.Arguments := [others => 0];
    Object_Mode : constant Boolean := Ada.Command_Line.Argument_Count = 3
      and then Ada.Command_Line.Argument (3) = "--object";
-   Result_Object_Mode : constant Boolean := Ada.Command_Line.Argument_Count = 3
+   Result_Object_Mode : constant Boolean := Ada.Command_Line.Argument_Count >= 3
      and then Ada.Command_Line.Argument (3) = "--result-object";
-   procedure Emit (Store : AML_Objects.State; ID : AML_Objects.Object_ID; Depth : Natural) is
-      use AML_Objects;
-   begin
-      if Depth > 64 then raise Program_Error with "object depth"; end if;
-      if ID = 0 then Ada.Text_IO.Put_Line ("NULL"); return; end if;
-      case Kind (Store, ID) is
-         when Integer_Object =>
-            Ada.Text_IO.Put_Line ("INTEGER" & Integer_Data (Store, ID)'Image);
-         when String_Object =>
-            Ada.Text_IO.Put ("STRING ");
-            for B of Byte_Data (Store, ID) loop Ada.Text_IO.Put (Character'Val (B)); end loop;
-            Ada.Text_IO.New_Line;
-         when Package_Object =>
-            Ada.Text_IO.Put_Line ("PACKAGE" & Length (Store, ID)'Image);
-            for I in 1 .. Length (Store, ID) loop Emit (Store, Element (Store, ID, I - 1), Depth + 1); end loop;
-         when Buffer_Object =>
-            Ada.Text_IO.Put ("BUFFER");
-            for B of Byte_Data (Store, ID) loop Ada.Text_IO.Put (B'Image); end loop;
-            Ada.Text_IO.New_Line;
-      end case;
-   end Emit;
+
 begin
    if Ada.Command_Line.Argument_Count < 2
      or else Ada.Command_Line.Argument_Count > 9
@@ -69,6 +50,9 @@ begin
       end if;
       raise Program_Error with "install: " & Status'Image;
    end if;
+   -- This runner accepts exactly one initial definition block. Bind deferred
+   -- package members only after its complete installation, before reads/calls.
+   ACPI_Test_Results.Seal (Service);
    if Metrics_Mode then
       declare
          M : constant Metrics := Observe (Service);
@@ -81,47 +65,50 @@ begin
       end;
       return;
    end if;
-   if not Object_Mode and not Result_Object_Mode then
-      for I in 3 .. Ada.Command_Line.Argument_Count loop
-         Args (I - 3) := AML_Decode.Integer_Value'Value (Ada.Command_Line.Argument (I));
+   if not Object_Mode then
+      for I in (if Result_Object_Mode then 4 else 3) .. Ada.Command_Line.Argument_Count loop
+         Args (I - (if Result_Object_Mode then 4 else 3)) := AML_Decode.Integer_Value'Value (Ada.Command_Line.Argument (I));
       end loop;
    end if;
    declare
-      Tree : Namespace.State := Snapshot (Service);
       Node : Namespace.Node_ID := Namespace.Root;
       Path : constant String := Ada.Command_Line.Argument (2);
       Start : Positive := Path'First;
-      Result : AML_Execute.Execution_Result;
+      Result : Values.Result;
    begin
       for I in Path'First .. Path'Last + 1 loop
          if I > Path'Last or else Path (I) = '.' then
             if I - Start /= 4 then raise Program_Error with "expected four-character path segments"; end if;
-            Node := Namespace.Child (Tree, Node, Path (Start .. I - 1));
+            Node := ACPI_Test_Results.Child (Service, Node, Path (Start .. I - 1));
             if Node = Namespace.Root then raise Program_Error with "missing path segment"; end if;
             Start := I + 1;
          end if;
       end loop;
       if Node = Namespace.Root then raise Program_Error with "missing method"; end if;
       if Object_Mode then
-         Emit (Namespace.Value_Store (Tree), Namespace.Data_Object (Tree, Node), 0);
+         ACPI_Test_Results.Emit_Named (Service, Node);
          return;
       end if;
-      Invoke
-        (Service, Node, Args, (if Result_Object_Mode then 0 else Ada.Command_Line.Argument_Count - 2), 100_000, Result);
-      Tree := Snapshot (Service);
+      ACPI_Test_Results.Invoke (Service, Held, Node, Args, (if Result_Object_Mode then Ada.Command_Line.Argument_Count - 3 else Ada.Command_Line.Argument_Count - 2), 100_000, Result);
       if Result_Object_Mode then
          if Result.Status = AML_Execute.Object_Returned then
-            Emit (Namespace.Value_Store (Tree), Result.Object.ID, 0);
+            ACPI_Test_Results.Emit (Service, Result.Handle);
          elsif Result.Status = AML_Execute.Returned then
-            Ada.Text_IO.Put_Line ("INTEGER" & Result.Value'Image);
+            Ada.Text_IO.Put_Line ("INTEGER" & Result.Number'Image);
          else
             raise Program_Error with "execute: " & Result.Status'Image;
          end if;
+         ACPI_Test_Results.Drop (Service, Held);
          return;
       end if;
       if Result.Status /= AML_Execute.Returned then
          raise Program_Error with "execute: " & Result.Status'Image;
       end if;
-      Ada.Text_IO.Put_Line ("RESULT" & Result.Value'Image);
+      Ada.Text_IO.Put_Line ("RESULT" & Result.Number'Image);
+      ACPI_Test_Results.Drop (Service, Held);
+   exception
+      when others =>
+         ACPI_Test_Results.Drop (Service, Held);
+         raise;
    end;
 end Table_Runner;

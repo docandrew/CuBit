@@ -366,7 +366,9 @@ package body CuBit.UI.Tables is
        colors : CuBit.UI.Theme;
        Layout : Column_Layout;
        selected, hot : Boolean;
-       textStyle : CuBit.UI.Table_Text_Style := CuBit.UI.Table_Interface_Text)
+       textStyle : CuBit.UI.Table_Text_Style := CuBit.UI.Table_Interface_Text;
+       Right_Aligned : Column_Flags := NO_COLUMNS;
+       First_Indent : Natural := 0)
    is
       Background : constant CuBit.UI.Color :=
         (if selected then colors.selection elsif hot then colors.panel else colors.field);
@@ -385,6 +387,16 @@ package body CuBit.UI.Tables is
             Clipped : constant CuBit.UI.Canvas :=
               CuBit.UI.With_Clip (c, CuBit.UI.Content_Rect (Cell_Area, Layout.Cell_Padding, 1));
             Text_Ink : constant CuBit.UI.Color := Ink (Column, Foreground);
+            Text : constant String := Cell (Column);
+            Text_Width : constant Natural :=
+              (if textStyle = CuBit.UI.Table_Code_Text then CuBit.UI.Code_Text_Width (Text)
+               else CuBit.UI.UI_Text_Width (Text));
+            --  Left at the padding, or ending at the right padding when the
+            --  column is right-aligned and the text fits.
+            Text_X : constant Natural :=
+              (if Right_Aligned (Column) and then Width > 2 * Layout.Cell_Padding + Text_Width
+               then Cell_Area.x + Width - Layout.Cell_Padding - Text_Width
+               else Cell_Area.x + Layout.Cell_Padding + (if Column = 1 then First_Indent else 0));
          begin
             if Column < Layout.Count and then Width > 0 and then Left + Width < bounds.w then
                CuBit.UI.Fill_Rect (c, (bounds.x + Left + Width - 1, bounds.y, 1, bounds.h), colors.edge);
@@ -392,14 +404,13 @@ package body CuBit.UI.Tables is
             if textStyle = CuBit.UI.Table_Code_Text then
                --  Text cells over the row's own colour: cached blended glyphs.
                CuBit.UI.Draw_Code_Text
-                 (Clipped, Cell_Area.x + Layout.Cell_Padding,
+                 (Clipped, Text_X,
                   (if Cell_Area.h > CuBit.UI.Code_Text_Height
                    then Cell_Area.y + (Cell_Area.h - CuBit.UI.Code_Text_Height) / 2 else Cell_Area.y),
-                  Cell (Column), Text_Ink, Background);
+                  Text, Text_Ink, Background);
             else
                CuBit.UI.Draw_UI_Text
-                 (Clipped, Cell_Area.x + Layout.Cell_Padding, CuBit.UI.Center_Text_Y (Cell_Area),
-                  Cell (Column), Text_Ink, Background);
+                 (Clipped, Text_X, CuBit.UI.Center_Text_Y (Cell_Area), Text, Text_Ink, Background);
             end if;
          end;
       end loop;

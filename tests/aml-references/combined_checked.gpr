@@ -1,0 +1,9 @@
+project Combined_checked is
+ for Source_Dirs use (".", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "build-combined-checked/obj";
+ for Exec_Dir use "build-combined-checked";
+ for Main use ("condref_tests.adb", "condref_oracle_tests.adb", "provisional_write_tests.adb", "name_reservation_tests.adb", "integer_origin_tests.adb", "runtime_name_tests.adb", "reference_model_tests.adb", "copy_compound_quota_tests.adb", "copy_boundary_extended_tests.adb", "package_store_atomicity_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Combined_checked;

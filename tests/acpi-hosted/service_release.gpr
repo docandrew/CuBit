@@ -1,0 +1,8 @@
+project service_release is
+ for Source_Dirs use ("../../tests/acpi-integration", "../../tests/acpi-integration/mocks", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../userspace/services/acpi/native", "../../shared/firmware");
+ for Object_Dir use "service_release";
+ for Main use ("quota_store_tests.adb", "string_store_tests.adb", "copy_value_tests.adb", "string_compare_tests.adb", "static_member_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+ end Compiler;
+end service_release;

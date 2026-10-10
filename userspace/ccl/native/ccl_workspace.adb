@@ -4,6 +4,7 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Filesystems; use CuBit.Filesystems;
+with CuBit.Directory_Pages;
 with CuBit.Memory_Grants;
 
 package body CCL_Workspace is
@@ -88,12 +89,19 @@ package body CCL_Workspace is
       Close_Result : Storage_Result;
 
       procedure Pages is
-         Header : Directory_Page_Header
+         package DP renames CuBit.Directory_Pages;
+         Shared : constant DP.Page
            with Import, Address => To_Address (Integer_Address (Buffer_Address));
-         Entries : Directory_Entries
-           with Import, Address => To_Address
-             (Integer_Address (Buffer_Address + DIRECTORY_PAGE_HEADER_BYTES));
-         Previous_Cursor : Unsigned_64 := 0;
+         Copy : DP.Page;
+         Valid, Ended, OK : Boolean;
+         Count : DP.Entry_Count;
+         Used : DP.Used_Bytes;
+         Resume, Stamp : Unsigned_64;
+         Previous_Resume : Unsigned_64 := 0;
+         At_Entry, Next : Natural;
+         Item : DP.Facts;
+         Bytes : DP.Name_Bytes;
+         Length : DP.Name_Length;
          Number : Revision;
          Pending : Boolean;
          Accepted : Boolean;
@@ -102,47 +110,45 @@ package body CCL_Workspace is
             Request := Read_Directory_Page_Request (Directory, Loan);
             Result := Call (Request);
             if Result /= Succeeded then return; end if;
-            if Header.version /= PROTOCOL_VERSION or else
-              Header.headerBytes /= DIRECTORY_PAGE_HEADER_BYTES or else
-              Header.entryBytes /= DIRECTORY_ENTRY_BYTES or else
-              Header.entryCount > MAXIMUM_DIRECTORY_PAGE_ENTRIES or else
-              (Header.flags and not DIRECTORY_PAGE_END) /= 0
-            then
+            Copy := Shared;   --  copied, then checked
+            DP.Check (Copy, Valid, Count, Used, Ended, Resume, Stamp);
+            if not Valid then
                Result := IO_Failed;
                return;
             end if;
-            for Index in 1 .. Natural (Header.entryCount) loop
+            At_Entry := DP.Header_Bytes;
+            for Index in 1 .. Count loop
+               DP.Get (Copy, At_Entry, Used, Item, Bytes, Length, Next, OK);
+               if not OK then
+                  Result := IO_Failed;
+                  return;
+               end if;
+               At_Entry := Next;
                declare
-                  Entry_Info : Directory_Entry renames Entries (Index - 1);
-                  Name : String (1 .. MAXIMUM_DIRECTORY_NAME_BYTES);
+                  Name : String (1 .. Length);
                begin
-                  if Entry_Info.nameLength > MAXIMUM_DIRECTORY_NAME_BYTES then
-                     Result := IO_Failed;
-                     return;
-                  end if;
-                  for C in 1 .. Natural (Entry_Info.nameLength) loop
-                     Name (C) := Character'Val (Entry_Info.name (C));
+                  for C in Name'Range loop
+                     Name (C) := Character'Val (Bytes (C));
                   end loop;
-                  if Collect and then Entry_Info.kind = DIRECTORY_KIND_FILE and then
-                    Valid_Source_Name (Name (1 .. Natural (Entry_Info.nameLength)))
+                  if Collect and then Item.Kind = DIRECTORY_KIND_FILE and then
+                    Valid_Source_Name (Name)
                   then
-                     CuBit.File_Selection.Append
-                       (Files, Name (1 .. Natural (Entry_Info.nameLength)), Accepted);
+                     CuBit.File_Selection.Append (Files, Name, Accepted);
                      if not Accepted then
                         Result := Limit_Reached;
                         return;
                      end if;
                   end if;
-                  Decode (Name (1 .. Natural (Entry_Info.nameLength)), Number, Pending);
+                  Decode (Name, Number, Pending);
                   Highest := Revision'Max (Highest, Number);
                end;
             end loop;
-            if (Header.flags and DIRECTORY_PAGE_END) /= 0 then return; end if;
-            if Header.nextCursor <= Previous_Cursor then
-               Result := IO_Failed;
+            if Ended then return; end if;
+            if Count = 0 or else Resume = Previous_Resume then
+               Result := IO_Failed;   --  no progress
                return;
             end if;
-            Previous_Cursor := Header.nextCursor;
+            Previous_Resume := Resume;
          end loop;
          Result := Limit_Reached; -- Never mistake an incomplete scan for latest.
       end Pages;

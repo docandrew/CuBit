@@ -15,6 +15,7 @@ with Strings; use Strings;
 with Boot_Output;
 with System.Machine_Code; use System.Machine_Code;
 with x86;
+with Console_Ring;
 
 package body TextIO is
 
@@ -151,6 +152,70 @@ package body TextIO is
     -- Print a single char at the current cursor and update cursor.
     --  This will wrap cursor around to the next row and scroll up
     --  if necessary. Treat LF and CR as the same for text purposes.
+    ---------------------------------------------------------------------------
+    -- Asynchronous console state (see the spec). consoleRing is touched only
+    -- under the output lock. transmitting is 1 while a CPU writes a batch it
+    -- took from the ring; with the output lock it orders all UART writes:
+    -- lock, then transmitting, never the reverse while spinning.
+    ---------------------------------------------------------------------------
+    use type Console_Ring.Byte_Count;
+    consoleRing  : Console_Ring.Ring;
+    asynchronous : Boolean := False with Atomic;
+    transmitting : aliased Unsigned_64 := 0 with Volatile;
+    stalledTicks : Natural := 0 with Atomic;
+    TRANSMITTER_FREE  : constant Unsigned_64 := 0;
+    TRANSMITTER_TAKEN : constant Unsigned_64 := 1;
+
+    function compareAndSwapTransmitter (Expected, Desired : Unsigned_64)
+      return Unsigned_64;
+
+    procedure writeBatch (b : Console_Ring.Batch; n : Console_Ring.Batch_Count) is
+    begin
+        Serial.sendBytes (Config.serialMirrorPort, b'Address, Natural (n));
+    end writeBatch;
+
+    -- Caller holds the output lock, or output is unlocked/panicked. Waits
+    -- for a CPU writing a batch it already took, so bytes stay in order.
+    procedure takeTransmitter is
+    begin
+        if x86.panicked then return; end if;
+        while compareAndSwapTransmitter (TRANSMITTER_FREE, TRANSMITTER_TAKEN) /=
+              TRANSMITTER_FREE
+        loop
+            Asm ("pause", Volatile => True);
+        end loop;
+    end takeTransmitter;
+
+    procedure releaseTransmitter is
+    begin
+        if not x86.panicked then transmitting := TRANSMITTER_FREE; end if;
+    end releaseTransmitter;
+
+    -- The ring is full: this writer pays for one batch, as it would have
+    -- paid for its own bytes before.
+    procedure sendOldest is
+        b : Console_Ring.Batch;
+        n : Console_Ring.Batch_Count;
+    begin
+        takeTransmitter;
+        Console_Ring.Take (consoleRing, b, n);
+        writeBatch (b, n);
+        releaseTransmitter;
+    end sendOldest;
+
+    procedure flushConsole is
+        b : Console_Ring.Batch;
+        n : Console_Ring.Batch_Count;
+    begin
+        takeTransmitter;
+        loop
+            Console_Ring.Take (consoleRing, b, n);
+            exit when n = 0;
+            writeBatch (b, n);
+        end loop;
+        releaseTransmitter;
+    end flushConsole;
+
     procedure putChar (ch : in Character; fg,bg : in TextIO.Color) is
         use ASCII;
     begin
@@ -180,7 +245,17 @@ package body TextIO is
         if output = SERIAL_ONLY or output = SERIAL_VIDEO then
             -- Mirror to serial port, if enabled.
             if ch /= NUL and Character'Pos(ch) < 127 then
-                Serial.send (Config.serialMirrorPort, ch);
+                if asynchronous and then not x86.panicked then
+                    if Console_Ring.Is_Full (consoleRing) then
+                        sendOldest;
+                    end if;
+                    Console_Ring.Put (consoleRing, ch);
+                else
+                    if not Console_Ring.Is_Empty (consoleRing) then
+                        flushConsole;
+                    end if;
+                    Serial.send (Config.serialMirrorPort, ch);
+                end if;
             end if;
         end if;
     end putChar;
@@ -271,6 +346,75 @@ package body TextIO is
             restoreFlags (hold.Flags);
         end if;
     end unlockOutput;
+
+    function compareAndSwapTransmitter (Expected, Desired : Unsigned_64)
+      return Unsigned_64 is
+    begin
+        return compareAndSwap (transmitting'Address, Expected, Desired);
+    end compareAndSwapTransmitter;
+
+    procedure startAsynchronous is
+    begin
+        if outputLocking and then not x86.panicked then
+            asynchronous := True;
+        end if;
+    end startAsynchronous;
+
+    procedure stopAsynchronous is
+        hold : Output_Hold;
+    begin
+        asynchronous := False;
+        lockOutput (hold);
+        flushConsole;
+        unlockOutput (hold);
+    end stopAsynchronous;
+
+    procedure drainConsole (More : out Boolean) is
+        flags : Unsigned_64;
+        hold  : Output_Hold;
+        b     : Console_Ring.Batch;
+        n     : Console_Ring.Batch_Count := 0;
+        owned : Boolean := False;
+    begin
+        More := False;
+        if not asynchronous or else x86.panicked then
+            return;
+        end if;
+        -- Interrupts stay masked from taking the transmitter until it is
+        -- released: a preempted owner would stall every other writer.
+        flags := saveFlagsAndDisable;
+        lockOutput (hold);
+        if Console_Ring.Is_Empty (consoleRing) then
+            stalledTicks := 0;
+        elsif Serial.transmitReady (Config.serialMirrorPort) and then
+              compareAndSwapTransmitter (TRANSMITTER_FREE, TRANSMITTER_TAKEN) =
+              TRANSMITTER_FREE
+        then
+            owned := True;
+            Console_Ring.Take (consoleRing, b, n);
+            More := not Console_Ring.Is_Empty (consoleRing);
+        end if;
+        unlockOutput (hold);
+        if owned then
+            writeBatch (b, n);
+            transmitting := TRANSMITTER_FREE;
+            stalledTicks := 0;
+        end if;
+        restoreFlags (flags);
+    end drainConsole;
+
+    procedure drainStalledConsole is
+        More : Boolean;
+    begin
+        if not asynchronous then
+            return;
+        end if;
+        if stalledTicks < Console_Stall_Ticks then
+            stalledTicks := stalledTicks + 1;
+        else
+            drainConsole (More);
+        end if;
+    end drainStalledConsole;
 
     procedure print (ch : in Character; fg,bg : in TextIO.Color) is
         hold : Output_Hold;

@@ -12,6 +12,7 @@ with Ada.Unchecked_Conversion;
 with System;
 with System.Storage_Elements;
 with System.Machine_Code; use System.Machine_Code;
+with CuBit.Published_Clock;
 
 package body CuBit.Messages is
 
@@ -257,7 +258,7 @@ package body CuBit.Messages is
    --  Returns: reply tag in RAX
 
    function Deadline_After (Milliseconds : Unsigned_64) return Unsigned_64 is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Published_Clock.Milliseconds;
    begin
       return (if Milliseconds >= Wait_Forever - Now then Wait_Forever else Now + Milliseconds);
    end Deadline_After;

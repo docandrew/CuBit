@@ -13,7 +13,13 @@ package body Compositor_Stage_Metrics with SPARK_Mode is
          when Completion_Dispatch =>
            (Bytes => [100, 101, 115, 107, 116, 111, 112, 46, 99, 111, 109, 112, 108, 101, 116, 105, 111, 110, 95, 100, 105, 115, 112, 97, 116, 99, 104, others => 0], Length => 27),
          when Diagnostic_Output =>
-           (Bytes => [100, 101, 115, 107, 116, 111, 112, 46, 100, 105, 97, 103, 110, 111, 115, 116, 105, 99, 95, 111, 117, 116, 112, 117, 116, others => 0], Length => 25));
+           (Bytes => [100, 101, 115, 107, 116, 111, 112, 46, 100, 105, 97, 103, 110, 111, 115, 116, 105, 99, 95, 111, 117, 116, 112, 117, 116, others => 0], Length => 25),
+         when Loop_Turn =>
+           (Bytes => [100, 101, 115, 107, 116, 111, 112, 46, 108, 111, 111, 112, 95, 116, 117, 114, 110, others => 0], Length => 17),
+         when Input_To_Present =>
+           (Bytes => [100, 101, 115, 107, 116, 111, 112, 46, 105, 110, 112, 117, 116, 95, 116, 111, 95, 112, 114, 101, 115, 101, 110, 116, others => 0], Length => 24),
+         when Input_Source_Age =>
+           (Bytes => [100, 101, 115, 107, 116, 111, 112, 46, 105, 110, 112, 117, 116, 95, 115, 111, 117, 114, 99, 101, 95, 97, 103, 101, others => 0], Length => 24));
    begin
       return (Records.Describe, Key (Item), Records.Latency, Records.Microseconds, Name);
    end Declaration;

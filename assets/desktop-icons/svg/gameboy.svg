@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f7f7fa"/><stop offset="1" stop-color="#c9c9d4"/></linearGradient><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c4ee6a"/><stop offset="1" stop-color="#6fae2a"/></linearGradient></defs>
+<path d="M 13 7 L 33 4 Q 36 4 36 7 L 37 40 Q 37 43 34 43 L 27 44 Q 15 46 13 42 Z" fill="#8e8ea0" stroke="#26263a" stroke-width="2.0" stroke-linejoin="round"/>
+<path d="M 11 6 L 31 4 Q 34 4 34 7 L 34 39 Q 34 42 31 42 L 25 43 Q 14 45 11 41 Z" fill="url(#g1)" stroke="#26263a" stroke-width="2.0" stroke-linejoin="round"/>
+<path d="M 14 9 L 31 8 L 31 23 L 14 24 Z" fill="#55557a"/>
+<path d="M 16.5 11 L 28.5 10.4 L 28.5 21 L 16.5 21.6 Z" fill="url(#g2)"/>
+<polyline points="14.50,32.00 21.50,31.60" fill="none" stroke="#26263a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="18.00,28.30 18.00,35.30" fill="none" stroke="#26263a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="26.50" cy="32.50" r="2.10" fill="#e8244e" stroke="#26263a" stroke-width="0.9"/>
+<circle cx="30.80" cy="29.80" r="2.10" fill="#e8244e" stroke="#26263a" stroke-width="0.9"/>
+</svg>

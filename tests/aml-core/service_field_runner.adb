@@ -1,11 +1,11 @@
 pragma Ada_2022;
+with ACPI_Test_Results;
 with Ada.Command_Line;
 with Ada.Streams.Stream_IO;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Service; use ACPI_Service;
 with AML_Execute;
-with AML_Objects;
 with Firmware_Tables;
 procedure Service_Field_Runner is
    use type Firmware_Tables.Bytes;
@@ -37,7 +37,8 @@ procedure Service_Field_Runner is
       B (10) := 0 - Sum;
       return B;
    end Table;
-   Service : aliased State := Fresh;
+   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+   Held : ACPI_Test_Results.Holder;
    Status : Install_Status;
    Bound : Namespace.Bind_Status;
    Region : Namespace.Node_ID;
@@ -54,7 +55,7 @@ procedure Service_Field_Runner is
    end Length_Code;
    Entries : constant Bytes := [0] & Length_Code (Offset) & Enc ("FLD0") & Length_Code (Bits);
    Declaration : constant Bytes := [16#5B#,16#81#, Unsigned_8 (6 + Entries'Length)] & Enc ("REG0") & [1] & Entries;
-   Result : AML_Execute.Execution_Result;
+   Result : Values.Result;
 begin
    Install (Service, 1, DSDT, Table ("DSDT", Revision,
      Method ("READ", Declaration & [16#A4#] & Enc ("FLD0"))), Status);
@@ -80,19 +81,23 @@ begin
    end;
    Declare_Table_Region (Service, Namespace.Root, "REG0", (Name => "TEST", others => <>), Region, Bound);
    if Bound /= Namespace.Bound then raise Program_Error with "region binding"; end if;
-   Invoke (Service, Namespace.Child (Snapshot (Service), Namespace.Root, "READ"),
+   ACPI_Test_Results.Seal (Service);
+   ACPI_Test_Results.Invoke (Service, Held, ACPI_Test_Results.Child (Service, Namespace.Root, "READ"),
            [others => 0], 0, 100, Result);
    if Result.Status = AML_Execute.Returned then
-      Ada.Text_IO.Put_Line ("INTEGER" & Result.Value'Image);
+      Ada.Text_IO.Put_Line ("INTEGER" & Result.Number'Image);
    elsif Result.Status = AML_Execute.Object_Returned then
-      declare
-         Store : constant AML_Objects.State := Namespace.Value_Store (Snapshot (Service));
       begin
          Ada.Text_IO.Put ("BUFFER");
-         for B of AML_Objects.Byte_Data (Store, Result.Object.ID) loop Ada.Text_IO.Put (B'Image); end loop;
+         for B of ACPI_Test_Results.Bytes (Service, Result.Handle) loop Ada.Text_IO.Put (B'Image); end loop;
          Ada.Text_IO.New_Line;
       end;
    else
       raise Program_Error with Result.Status'Image;
    end if;
+   ACPI_Test_Results.Drop (Service, Held);
+exception
+   when others =>
+      ACPI_Test_Results.Drop (Service, Held);
+      raise;
 end Service_Field_Runner;

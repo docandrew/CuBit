@@ -19,6 +19,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Config;
 with CuBit.Filesystems;
+with CuBit.Directory_Pages;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Process_IDs.Text;
 with CuBit.Process_IDs;
@@ -1150,38 +1151,34 @@ procedure main is
          end if;
 
          declare
-            header : CuBit.Filesystems.Directory_Page_Header
-              with Import, Address => fsBuf;
-            entries : CuBit.Filesystems.Directory_Entries
-              with Import,
-                   Address => fsBuf +
-                     CuBit.Filesystems.DIRECTORY_PAGE_HEADER_BYTES;
+            package DP renames CuBit.Directory_Pages;
+            shared : constant DP.Page with Import, Address => fsBuf;
+            page : constant DP.Page := shared;   --  copied, then checked
+            valid, ended, ok : Boolean;
+            count : DP.Entry_Count;
+            used : DP.Used_Bytes;
+            resume, stamp : Unsigned_64;
+            atEntry : Natural := DP.Header_Bytes;
+            nextEntry : Natural;
+            item : DP.Facts;
+            name : DP.Name_Bytes;
+            nameLength : DP.Name_Length;
          begin
-            if header.version /= CuBit.Filesystems.PROTOCOL_VERSION or else
-              header.headerBytes /=
-                CuBit.Filesystems.DIRECTORY_PAGE_HEADER_BYTES or else
-              header.entryBytes /= CuBit.Filesystems.DIRECTORY_ENTRY_BYTES or else
-              header.entryCount >
-                CuBit.Filesystems.MAXIMUM_DIRECTORY_PAGE_ENTRIES
-            then
+            DP.Check (page, valid, count, used, ended, resume, stamp);
+            if not valid then
                putStr ("ls: malformed directory reply" & LF);
                exit;
             end if;
-
-            if header.entryCount > 0 then
-               for entryIndex in 0 .. Natural (header.entryCount) - 1 loop
-                  for nameIndex in 1 ..
-                    Natural (entries (entryIndex).nameLength)
-                  loop
-                     putChar (Character'Val
-                       (entries (entryIndex).name (nameIndex)));
-                  end loop;
-                  putChar (LF);
+            for entryIndex in 1 .. count loop
+               DP.Get (page, atEntry, used, item, name, nameLength, nextEntry, ok);
+               exit when not ok;
+               atEntry := nextEntry;
+               for nameIndex in 1 .. nameLength loop
+                  putChar (Character'Val (name (nameIndex)));
                end loop;
-            end if;
-
-            exit when
-              (header.flags and CuBit.Filesystems.DIRECTORY_PAGE_END) /= 0;
+               putChar (LF);
+            end loop;
+            exit when ended;
          end;
       end loop;
 

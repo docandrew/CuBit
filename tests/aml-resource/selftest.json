@@ -1,0 +1,6 @@
+{
+  "checks": 288,
+  "rows": 72,
+  "result": "passed",
+  "kind": "synthetic classifier tests, not CuBit replay"
+}

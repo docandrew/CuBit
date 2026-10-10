@@ -7,7 +7,7 @@ package Desktop_Icon_Pixels.Atlases with SPARK_Mode is
    function Width (Kind : Family) return Positive is
      (if Kind = Application then Desktop_Icons.ICON_SIZE else Desktop_Cursors.MAX_WIDTH);
    function Height (Kind : Family) return Positive is
-     (if Kind = Application then 192 else 161);
+     (if Kind = Application then Desktop_Icons.Icon_ID'Range_Length * Desktop_Icons.ICON_SIZE else 161);
    -- The second atlas holds straight-alpha controls and premultiplied cursors.
    -- Blend mode belongs to each draw, not the texture. Cursor metadata/hotspots
    -- remain in Desktop_Cursors; this only selects immutable source pixels.

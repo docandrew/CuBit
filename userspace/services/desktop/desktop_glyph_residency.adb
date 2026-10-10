@@ -2,10 +2,29 @@ with Desktop_Glyph_Upload;
 with Interfaces;
 with System;
 package body Desktop_Glyph_Residency with SPARK_Mode is
-   use type D.Source_Result, D.Poll_Result, System.Address, Vulkan_Owned_Targets.I.Phase;
+   use type D.Source_Result, D.Poll_Result, System.Address, Vulkan_Owned_Targets.I.Phase, C.State;
    function Index (Slot : C.Slot) return D.Backing_Slot is (D.Backing_Slot (Slot - 1));
    function Cache_Key (Key : Vulkan_Glyph_Sources.Key) return C.Key is ((Key.Face, Key.Code, Key.Scale));
-   procedure Retire (S : in out State; T : C.Token; OK : out Boolean)
+   -- Free the cell allocation kept at Position (no glyph token involved).
+   procedure Free_Cell (S : in out State; Position : C.Slot; OK : out Boolean)
+     with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid and S.Stage = Idle,
+       Post => Valid (S) and D.Valid and S.Stopping = S.Stopping'Old and (if OK then S.Stage = Idle) and
+         S.Cache = S.Cache'Old and S.Sources = S.Sources'Old and S.Active = S.Active'Old and
+         (if OK then S.Backings (Position) = A.No_Ticket) and
+         (for all P in C.Slot => (if P /= Position then S.Backings (P) = S.Backings'Old (P)))
+   is
+   begin
+      if S.Backings (Position) /= A.No_Ticket then
+         D.Release_Backing (Index (Position), S.Backings (Position), OK);
+      else
+         OK := D.Backing_Phase (Index (Position)) in Vulkan_Owned_Targets.I.Fresh | Vulkan_Owned_Targets.I.Closed;
+      end if;
+      if not OK then S.Stage := Quarantined; return; end if;
+      S.Backings (Position) := A.No_Ticket;
+      S.Extents (Position) := (others => <>);
+   end Free_Cell;
+   -- Keep_Cell retains the R8 allocation for the next glyph at Position.
+   procedure Retire (S : in out State; T : C.Token; Keep_Cell : Boolean; OK : out Boolean)
      with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid and S.Stage = Idle,
        Post => Valid (S) and D.Valid and S.Stopping = S.Stopping'Old and (if OK then S.Stage = Idle)
    is
@@ -19,13 +38,10 @@ package body Desktop_Glyph_Residency with SPARK_Mode is
          if Retired = System.Null_Address then S.Stage := Quarantined; OK := False; return; end if;
       end if;
       S.Sources (Position) := V.No_Source;
-      if S.Backings (Position) /= A.No_Ticket then
-         D.Release_Backing (Index (Position), S.Backings (Position), OK);
-      else
-         OK := D.Backing_Phase (Index (Position)) in Vulkan_Owned_Targets.I.Fresh | Vulkan_Owned_Targets.I.Closed;
+      if not Keep_Cell or else S.Backings (Position) = A.No_Ticket then
+         Free_Cell (S, Position, OK);
+         if not OK then return; end if;
       end if;
-      if not OK then S.Stage := Quarantined; return; end if;
-      S.Backings (Position) := A.No_Ticket;
       C.Retired (S.Cache, T, True);
    end Retire;
    procedure Acquire (S : in out State; Key : Vulkan_Glyph_Sources.Key;
@@ -56,20 +72,40 @@ package body Desktop_Glyph_Residency with SPARK_Mode is
       if T = C.No_Token then
          Found := C.Victim (S.Cache);
          if Found = 0 then return; end if;
-         Retire (S, C.At_Slot (S.Cache, Found), OK);
+         Retire (S, C.At_Slot (S.Cache, Found), True, OK);
          if not OK then Result := Unsafe; return; end if;
          C.Reserve (S.Cache, Cache_Key (Key), T);
          if T = C.No_Token then return; end if;
       end if;
-      D.Allocate_Backing (Index (T.Position), Interfaces.Unsigned_32 (Layout.Width),
-         Interfaces.Unsigned_32 (Layout.Height), True, S.Backings (T.Position), Native);
+      if S.Backings (T.Position) /= A.No_Ticket and then
+        (S.Extents (T.Position).Width /= Natural (Layout.Width) or else
+         S.Extents (T.Position).Height /= Natural (Layout.Height))
+      then
+         -- Another density: this cell extent cannot hold the new glyph.
+         Free_Cell (S, T.Position, OK);
+         if not OK then Result := Unsafe; return; end if;
+      end if;
+      if S.Backings (T.Position) /= A.No_Ticket then
+         -- Same extent: rasterize into the retained allocation.
+         D.Restart_Content (Index (T.Position), S.Backings (T.Position), OK);
+         Native := (if OK then D.Source_Accepted else D.Source_Rejected);
+         if not OK then
+            Retire (S, T, False, OK); Result := (if OK then Rejected else Unsafe); return;
+         end if;
+      else
+         D.Allocate_Backing (Index (T.Position), Interfaces.Unsigned_32 (Layout.Width),
+            Interfaces.Unsigned_32 (Layout.Height), True, S.Backings (T.Position), Native);
+         if Native = D.Source_Accepted then
+            S.Extents (T.Position) := (Natural (Layout.Width), Natural (Layout.Height));
+         end if;
+      end if;
       if Native /= D.Source_Accepted then
          if Native = D.Source_Unsafe then S.Stage := Quarantined; Result := Unsafe;
          else
             -- A rejected setup can still own a native object. Record its actual
             -- lease and require confirmed retirement before refunding cache quota.
             S.Backings (T.Position) := D.Backing_Lease (Index (T.Position));
-            Retire (S, T, OK); Result := (if OK then Rejected else Unsafe);
+            Retire (S, T, False, OK); Result := (if OK then Rejected else Unsafe);
          end if;
          return;
       end if;
@@ -80,7 +116,7 @@ package body Desktop_Glyph_Residency with SPARK_Mode is
       if Native = D.Source_Accepted then
          S.Active := T; S.Key := Key; S.Stage := Transferring; Result := Uploading;
       elsif Native = D.Source_Unsafe then S.Stage := Quarantined; Result := Unsafe;
-      else Retire (S, T, OK); Result := (if OK then Rejected else Unsafe);
+      else Retire (S, T, False, OK); Result := (if OK then Rejected else Unsafe);
       end if;
    end Acquire;
    procedure Poll (S : in out State; Result : out Outcome) is
@@ -103,6 +139,34 @@ package body Desktop_Glyph_Residency with SPARK_Mode is
       S.Active := C.No_Token;
       Result := Available;
    end Poll;
+   procedure Prepare_Cells (S : in out State; Scale : C.L.G.UI_Scale; Prepared : out Natural) is
+      Layout : constant C.L.Layout := C.L.Plan (Scale);
+      Lease : A.Ticket;
+      Native : D.Source_Result;
+   begin
+      Prepared := 0;
+      if S.Stopping or else S.Stage /= Idle or else not D.Can_Retire_Readers then return; end if;
+      for Position in C.Slot loop
+         pragma Loop_Invariant (Valid (S) and D.Valid and S.Stage = Idle);
+         pragma Loop_Invariant (Prepared <= Natural (Position - C.Slot'First));
+         if not C.Current (S.Cache, C.At_Slot (S.Cache, Position)) and then
+           S.Backings (Position) = A.No_Ticket
+         then
+            D.Allocate_Backing (Index (Position), Interfaces.Unsigned_32 (Layout.Width),
+              Interfaces.Unsigned_32 (Layout.Height), True, Lease, Native);
+            if Native /= D.Source_Accepted or else Lease = A.No_Ticket then
+               if Native = D.Source_Unsafe or else Lease /= A.No_Ticket then
+                  -- An unaccepted lease is still a live native object.
+                  S.Backings (Position) := Lease; S.Stage := Quarantined;
+               end if;
+               return;
+            end if;
+            S.Backings (Position) := Lease;
+            S.Extents (Position) := (Natural (Layout.Width), Natural (Layout.Height));
+            Prepared := Prepared + 1;
+         end if;
+      end loop;
+   end Prepare_Cells;
    procedure Release (S : in out State; Reader : C.Lease; Capture_Retired : Boolean) is
    begin
       if S.Stage = Closed then return; end if;
@@ -115,7 +179,9 @@ package body Desktop_Glyph_Residency with SPARK_Mode is
       Safe := False; S.Stopping := True;
       if S.Stage = Closed then Safe := True; return; end if;
       if S.Stage /= Idle then return; end if;
-      if C.Charged (S.Cache) = 0 and C.Reader_Count (S.Cache) = 0 then
+      if C.Charged (S.Cache) = 0 and C.Reader_Count (S.Cache) = 0 and
+        (for all Position in C.Slot => S.Backings (Position) = A.No_Ticket)
+      then
          S.Stage := Closed; Safe := True; return;
       end if;
       if not D.Can_Retire_Readers then return; end if;
@@ -123,7 +189,9 @@ package body Desktop_Glyph_Residency with SPARK_Mode is
          T := C.At_Slot (S.Cache, Position);
          if C.Current (S.Cache, T) then
             if C.Pinned (S.Cache, Position) then return; end if;
-            Retire (S, T, OK); if not OK then return; end if;
+            Retire (S, T, False, OK); if not OK then return; end if;
+         elsif S.Backings (Position) /= A.No_Ticket then
+            Free_Cell (S, Position, OK); if not OK then return; end if;
          end if;
          pragma Loop_Invariant (Valid (S) and D.Valid and S.Stage = Idle and S.Stopping);
       end loop;

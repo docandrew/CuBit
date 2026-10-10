@@ -70,8 +70,10 @@ begin
          Expect ([16#A4#,16#72#,1,1,Target], 2);
       elsif Target not in 16#60# .. 16#6E# then
          R := Run ([16#A4#,16#70#,1,Target], Bits_64, [others => 0], 0, 10);
+         -- Extended targets, RefOf, DerefOf and Index need further bytes; these forms
+         -- must not be classified as unknown target opcodes.
          Check (R.Status = (if Target in 16#41# .. 16#5A# | 16#5F# |
-                             16#5C# | 16#5E# | 16#2E# | 16#2F#
+                             16#5B# | 16#5C# | 16#5E# | 16#2E# | 16#2F# | 16#71# | 16#83# | 16#88#
                             then Truncated else Unsupported));
       end if;
    end loop;

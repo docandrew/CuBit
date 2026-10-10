@@ -20,12 +20,17 @@ Successful cleanup restores indefinite idle waiting. The runner is tested native
 boundary code, not itself SPARK-proved, and has not yet been launched on CuBit.
 
 prepare.py extracts the actual runtime message/completion layouts, activity enum,
-capability-slot subtype and time syscall number. The IPC script and grant mock
+capability-slot subtype, time syscall number and complete used IPC/syscall
+declarations. It copies the runtime opaque Process_ID spec/body unchanged and
+records their hashes. Hosted scripts alternate two distinct 64-bit identities
+with equal low bits and require exact reply identity; PID values never
+authenticate requests. Grant mocks remain isolated from runtime declarations. The IPC script and grant mock
 then exercise the real runner, native endpoint, block importer and service core.
 These mocks do not establish kernel authentication or live IPC behavior.
 
 ```sh
-nix develop -c bash -c 'set -e; ulimit -S -s 65536; python3 tests/aml-core/native-loop/prepare.py; cd kernel; alr exec -- gprbuild -p -P ../tests/aml-core/native-loop/acpi_loop.gpr; ../tests/aml-core/build/native-loop/loop_tests'
+export TMPDIR=/home/doc/cubit-build-tmp
+nix develop --command nice -n 19 bash -c 'set -e; ulimit -S -s 65536; python3 tests/aml-core/native-loop/prepare.py; gprbuild -p -j1 -P tests/aml-core/native-loop/acpi_loop.gpr; tests/aml-core/build/native-loop/loop_tests'
 ```
 
 The standard AML runner includes this target. 2026-10-01: 23 checks passed,
@@ -45,3 +50,11 @@ tags, unavailable startup wait, failed acknowledgment and rejected reconfigurati
 zero unproved/justified checks. `run.sh --prove` includes it. The native loop and
 runtime transport remain outside that SPARK proof. The service README documents
 the linked executable and the still-unimplemented trusted launcher/provider wiring.
+
+The current owned-state fixture uses two independent bounded service instances,
+not copies or resets of service identity. Checked builds assert model preservation;
+release builds retain ordinary scenario checks. Optional acpi_loop_release.gpr
+and acpi_loop_checked.gpr use disjoint output directories with the same generated
+ABI and source scenarios. The 64 MiB hosted stack is a harness requirement, not
+evidence that the eventual native service stack is sufficient. Historical proof
+and native-build evidence above applies only to its recorded inputs.

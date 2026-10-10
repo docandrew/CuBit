@@ -7,6 +7,7 @@ with Interfaces; use Interfaces;
 with Ada.Unchecked_Conversion;
 with System.Machine_Code; use System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
+with CuBit.Published_Clock;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Process_IDs;
@@ -179,19 +180,41 @@ package body CuBit.Libc_System_Calls is
       null;
    end Console;
 
-   function Now_Milliseconds return Unsigned_64 is (Kernel (K.Get_Time));
+   --  The kernel's millisecond clock, read from the clock publication
+   --  without a system call when it is published (CuBit.Published_Clock).
+   function Now_Milliseconds return Unsigned_64 is (CuBit.Published_Clock.Milliseconds);
 
-   --  The kernel's high-resolution clock (HPET or invariant TSC), or the
-   --  millisecond clock where it has none.
+   --  The high-resolution clock: the clock publication (invariant TSC) on
+   --  the millisecond clock's epoch, else the kernel's (HPET), else the
+   --  millisecond clock.
    function Now_Microseconds return Unsigned_64;
    function Now_Microseconds return Unsigned_64 is
-      Count : constant Unsigned_64 := Kernel (K.Read_Monotonic_Microseconds);
+      Count     : Unsigned_64;
+      Available : Boolean;
    begin
-      if Count = K.Failed then
+      CuBit.Published_Clock.Microseconds (Count, Available);
+      if not Available then
          return Now_Milliseconds * Microseconds_Per_Millisecond;
       end if;
       return Count;
    end Now_Microseconds;
+
+   --  Nanoseconds on the same clock: the publication's own resolution,
+   --  else the microsecond clock's.
+   function Now_Nanoseconds return Unsigned_64;
+   function Now_Nanoseconds return Unsigned_64 is
+      Count     : Unsigned_64;
+      Published : Boolean;
+   begin
+      CuBit.Published_Clock.Read_Nanoseconds (Count, Published);
+      if Published then
+         return Count;
+      end if;
+      Count := Now_Microseconds;
+      return (if Count > Unsigned_64'Last / Nanoseconds_Per_Microsecond
+              then Unsigned_64'Last
+              else Count * Nanoseconds_Per_Microsecond);
+   end Now_Nanoseconds;
 
    --  Milliseconds since the Unix epoch: the kernel's wall-clock offset,
    --  published by clock.svc while its time is current, plus the
@@ -471,7 +494,7 @@ package body CuBit.Libc_System_Calls is
          T : Timespec with Import, Address => Where;
       begin
          T := (if Coarse (Clock) then From_Milliseconds (Realtime_Milliseconds)
-               else From_Microseconds (Now_Microseconds));
+               else From_Nanoseconds (Now_Nanoseconds));
       end;
       return 0;
    end Clock_Get_Time;

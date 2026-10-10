@@ -4,7 +4,7 @@
 Requires Nix and an existing verified Mesa bundle. Does not patch Desktop,
 metadata, shared staging or the installed image. Output must be a new directory.
 Caller must keep selected inputs stable; shared inputs require build.lock.
-Prebuilt runtime, fonts and wallpaper inputs are recorded, not rebuilt here.
+Prebuilt runtime and font inputs are recorded, not rebuilt here.
 """
 import argparse
 import hashlib
@@ -177,7 +177,7 @@ def main():
         for header in sorted((mesa / 'include').rglob('*.h')):
             record(header)
         for directory in ('userspace/services/desktop', 'userspace/lib/compositor',
-                          'userspace/lib/display', 'userspace/lib/theme', 'userspace/lib/ui',
+                          'userspace/lib/display', 'userspace/lib/image', 'userspace/lib/theme', 'userspace/lib/ui',
                           'userspace/ccl/src', 'userspace/allocator/src',
                           'userspace/services/display/production'):
             for path in sorted((source / directory).rglob('*')):
@@ -192,8 +192,6 @@ def main():
                          'userspace/runtime/runtime.xml', 'userspace/runtime/target_properties',
                          'userspace/mesa/mesa_service.ads', 'userspace/mesa/mesa_service.adb',
                          'userspace/mesa/service-device.h', 'userspace/services/desktop/manifest.ccl',
-                         'userspace/services/desktop/build/wallpaper.o',
-                         'userspace/services/desktop/build/wallpaper_cubie.o',
                          'userspace/rust/build/font-native/libcubit_fonts.a'):
             copy(source / relative, Path(relative))
         shader_script = Path('tests/compositor/build-vulkan-affine-shaders.py')
@@ -242,7 +240,7 @@ def main():
         bound = exchange.split('[BOUND OBJECT FILES]\n', 1)[1].split('\n[', 1)[0].splitlines()
         binary = out / 'desktop-vulkan-compositor.svc'
         run([*prefix, '--manifest', metadata / 'manifest.o', directory / 'b__main.o',
-             *bound, *objects, desktop / 'build/wallpaper.o', desktop / 'build/wallpaper_cubie.o',
+             *bound, *objects,
              out / 'userspace/rust/build/font-native/libcubit_fonts.a', *flags, '-o', binary])
         if subprocess.check_output(['nm', '-u', str(binary)], text=True).strip():
             raise ValueError('Linked Desktop contains unresolved symbols')

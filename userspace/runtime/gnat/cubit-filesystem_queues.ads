@@ -14,14 +14,25 @@
 --      sides write: request data, read results.
 --    Dirty_Connector (optional): the dirty arena (DIRTY_CONTRACT); without
 --      it, no write delegations.
---    Queue_Connector, last: the queue pair (QUEUE_CONTRACT, duplex). The
+--    Event_Connector (optional, after the queue pair): the event ring
+--      (EVENT_CONTRACT), which the client opens consuming: the service
+--      produces CuBit.Filesystem_Events records for its watches
+--      (Queue_Watch) into memory it owns, granted read-only.
+--    Queue_Connector: the queue pair (QUEUE_CONTRACT, duplex). The
 --      client's region holds the requests and the indices it writes; the
 --      service's region (granted back, read-only) the answers, the indices
 --      it writes, its wake word, the namespace generation and the
 --      delegations. Each side writes only its own region.
 --  One queue per client process. Kicks are the channel protocol's OP_KICK
 --  on the queue's channel number.
---  OP_FS_WAIT (submit): completes once answers wait in the client's queue.
+--  OP_FS_WAKE, a wake request (docs/filesystem-protocol-v2.md step 1),
+--  is answered (REPLY_OK) once answers wait in the client's queue or
+--  records in its event ring, at once if some already do. Submitted asynchronously (capSubmit), its completion
+--  wakes the client's own event loop (Wait_For_Activity_Until), so a UI
+--  thread never blocks in the service; called, it is the blocking wait.
+--  The service holds one per queue: a newer one supersedes it (the held one
+--  is answered first), and the queue's end answers it REPLY_ERR. It has no
+--  timeout of its own: the deadline is the waiting client's.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -31,11 +42,12 @@ with CuBit.Submission_Queues;
 
 package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
 
-   OP_FS_WAIT  : constant := 16#0022#;
+   OP_FS_WAKE  : constant := 16#0022#;
 
    Queue_Connector    : constant := 1;
    Transfer_Connector : constant := 2;
    Dirty_Connector    : constant := 3;
+   Event_Connector    : constant := 4;
 
    Slot_Bits      : constant := 6;
    Slots          : constant := 64;
@@ -62,6 +74,17 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
    --  client's access policy). A client reuses a closed ("parked") handle
    --  for a name only while it is unchanged since the handle was parked.
    Server_Namespace_At : constant := 192;
+   --  Server-side copies' progress (Queue_Copy): Maximum_Copies entries
+   --  of Copy_Entry_Bytes, each the copy's request token and the bytes it
+   --  has copied (monotonic). The service writes the count, then the
+   --  token, when a copy starts; the token 0 when it ends. A reader takes
+   --  the token, the count and the token again, and keeps the count only
+   --  if both tokens are its copy's.
+   Server_Copies_At    : constant := 256;
+   Copy_Entry_Bytes    : constant := 16;
+   Copy_Token_At       : constant := 0;
+   Copy_Done_At        : constant := 8;
+   Maximum_Copies      : constant := 4;   --  per client; past it, REPLY_BUSY
    Server_Answers_At   : constant := 4_096;
 
    --  Read delegations (docs/filesystem-data-plane.md), written by the
@@ -125,10 +148,14 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
    Queue_Unlink   : constant := 7;
    Queue_Mkdir    : constant := 8;   --  path at Arena_Offset, Length
    Queue_Rmdir    : constant := 9;   --  path at Arena_Offset, Length
-   --  Handle (a directory), Length = bytes of Directory.Page.V1 pages
-   --  wanted at Arena_Offset; the answer's value is the pages filled (the
-   --  last one ends the directory if its END flag is set).
+   --  Handle (a directory), Length = bytes of Directory.Page.V2 pages
+   --  (CuBit.Directory_Pages) wanted at Arena_Offset, Options =
+   --  Directory_Metadata to fill each entry's metadata (else only its kind
+   --  and object); the answer's value is the pages filled (the last one
+   --  ends the directory if its Page_End flag is set). Each page's resume
+   --  token continues the listing after it (Queue_Seek_Directory).
    Queue_Read_Directory : constant := 10;
+   Directory_Metadata : constant := 1;
    Queue_Open_Directory  : constant := 11;   --  path at Arena_Offset, Length
    Queue_Close_Directory : constant := 12;   --  Handle
    --  Handle (a file that may read): keep it open for a later read-only
@@ -137,11 +164,6 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
    --  on write-back), or is delegated as a reader's would be. A handle
    --  that cannot read is closed instead (answer REPLY_ERR).
    Queue_Park : constant := 13;
-   --  As Queue_Read_Directory, in pairs of a Directory.Page.V1 and its
-   --  Directory.Inspection.V1 page (CuBit.Filesystems,
-   --  DIRECTORY_INSPECTED_BYTES each): a listing with each entry's metadata.
-   --  Length = bytes of pairs wanted; the answer's value is pairs filled.
-   Queue_Read_Directory_Inspected : constant := 14;
    --  Handle (an open file or directory): one Directory.Inspection.V1
    --  record of its object at Arena_Offset (Length at least
    --  CuBit.Filesystems.DIRECTORY_INSPECTION_BYTES), as fstat needs. A
@@ -151,6 +173,60 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
    --  Handle (a file that may write), Length = its new size (truncate,
    --  ftruncate). Queued, it follows the client's earlier writes.
    Queue_Resize : constant := 16;
+   --  The old path and then the new path at Arena_Offset; Length = both,
+   --  Position = the old path's length (1 .. Length - 1). As OP_RENAME
+   --  (CuBit.Filesystems.Rename_Request): POSIX rename or move within one
+   --  volume, REPLY_CROSS_VOLUME across volumes (the client copies).
+   Queue_Rename : constant := 17;
+   --  Handle (a directory), Position = a resume token from one of its pages
+   --  (0: the start): the next read continues after that page. A token of
+   --  another directory is refused (REPLY_OUT_OF_RANGE); one whose entry
+   --  has since gone resumes at the next entry still there.
+   Queue_Seek_Directory : constant := 18;
+   --  Handle (a directory the client may read), Options = Watch_Subtree to
+   --  watch everything below it too: changes to its entries arrive as
+   --  CuBit.Filesystem_Events records in the client's event ring (opened
+   --  first; REPLY_ERR without it). The answer's value is the watch number.
+   --  REPLY_NO_SPACE: the client's watches are all in use, or its ring has
+   --  no room for one more watch's reserve. The watch names the folder by
+   --  its path; it outlives the handle.
+   Queue_Watch : constant := 19;
+   Watch_Subtree : constant := 1;
+   --  Handle = a watch number: it ends; its last record is a Watch_Ended
+   --  (REPLY_ERR: not a live watch). The number is reused only after the
+   --  client has read that record.
+   Queue_Unwatch : constant := 20;
+   --  The caller's own access profile (docs/filesystem-protocol-v2.md step
+   --  6) into the arena range as CuBit.File_Access wire entries
+   --  (Wire_Entry_Bytes each: rights, prefix length, prefix), as Decode
+   --  takes them. The answer's value is the entry count: REPLY_OK, written;
+   --  REPLY_NO_SPACE, the range holds fewer and nothing was written. A
+   --  bootstrap wildcard profile is one entry with an empty prefix.
+   Queue_List_Scopes : constant := 21;
+   --  Free space (step 7): a scoped path the caller may read, Position =
+   --  its length, at the start of the arena range; the range (Length, at
+   --  least Volume_Description_Bytes) then receives one
+   --  Volume.Description.V1 record (CuBit.Volume_Descriptions) of the
+   --  path's volume. The answer's value is the record's length.
+   Queue_Describe_Volume : constant := 22;
+   Volume_Description_Bytes : constant := 104;
+   --  Server-side copy (step 5): Handle = the source (a file handle that
+   --  may read: ext2, ISO 9660 or the boot archive), Spare_1 = the target
+   --  (one that may write, ext2, any volume), Position = the source offset,
+   --  Arena_Offset = the target offset (no arena is used), Length = bytes
+   --  or Copy_To_End (to the source's end), Spare_2 = an absolute
+   --  monotonic deadline in ms (CuBit.Messages.Wait_Forever spelled out
+   --  for none). Answered once, when it ends: REPLY_OK, REPLY_CANCELLED or
+   --  REPLY_DEADLINE, or an error, with the bytes copied (always a prefix
+   --  of the range; a partly copied target is the client's to remove).
+   --  Progress meanwhile: Server_Copies_At. REPLY_BUSY: Maximum_Copies are
+   --  running. One file into itself only between ranges that cannot
+   --  overlap (REPLY_ERR otherwise).
+   Queue_Copy : constant := 23;
+   Copy_To_End : constant Unsigned_64 := Unsigned_64'Last;
+   --  Handle = a running copy's request token: it ends REPLY_CANCELLED at
+   --  its next slice (this request: REPLY_OK; REPLY_NOT_FOUND if none).
+   Queue_Cancel : constant := 24;
 
    --  Byte offsets within a request and an answer (the token first).
    Token_At        : constant := 0;
@@ -235,6 +311,8 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
      (Queues.Submissions.Slots /= Slots or else
       Client_Requests_At + Slots * Request_Bytes > Client_Pages * Page_Bytes or else
       Server_Answers_At + Slots * Answer_Bytes > Delegations_At or else
+      Server_Copies_At < Server_Namespace_At + 8 or else
+      Server_Copies_At + Maximum_Copies * Copy_Entry_Bytes > Server_Answers_At or else
       Delegations_At mod Page_Bytes /= 0 or else
       (Delegations_At + Maximum_Delegations * Delegation_Bytes) mod Page_Bytes /= 0 or else
       Dirty_Pages_At /= Dirty_Entries * Dirty_Entry_Bytes or else
@@ -246,6 +324,7 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
    QUEUE_SCHEMA    : constant CuBit.Protocols.Schema_Id := 16#4653_5155_4555_0001#;
    TRANSFER_SCHEMA : constant CuBit.Protocols.Schema_Id := 16#4653_5452_414E_0001#;
    DIRTY_SCHEMA    : constant CuBit.Protocols.Schema_Id := 16#4653_4449_5254_0001#;
+   EVENT_SCHEMA    : constant CuBit.Protocols.Schema_Id := 16#4653_4556_4E54_0001#;
 
    QUEUE_CONTRACT : constant CuBit.Channel_Contracts.Contract :=
      (Element => (Identity => QUEUE_SCHEMA, Version => 1,
@@ -271,6 +350,20 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
       Policy  => CuBit.Channel_Contracts.Lossless,
       Pages   => 1,
       Buffers => Dirty_Arena_Pages,
+      Rule    => CuBit.Channel_Contracts.Copy_Then_Validate);
+
+   --  The event ring: bounded records (CuBit.Filesystem_Events, at most
+   --  Event_Record_Bytes), lossless; the service never waits on it: what
+   --  would not fit becomes a Rescan_Needed record.
+   Event_Record_Bytes : constant := 4_128;
+   Event_Ring_Pages : constant := 16;
+   EVENT_CONTRACT : constant CuBit.Channel_Contracts.Contract :=
+     (Element => (Identity => EVENT_SCHEMA, Version => 1,
+                  Sizing => CuBit.Protocols.Bounded_Size, Wire_Size => Event_Record_Bytes),
+      Kind    => CuBit.Channel_Contracts.Queue,
+      Policy  => CuBit.Channel_Contracts.Lossless,
+      Pages   => Event_Ring_Pages,
+      Buffers => 1,
       Rule    => CuBit.Channel_Contracts.Copy_Then_Validate);
 
    --  A request's arena range lies inside an arena of Arena_Bytes.

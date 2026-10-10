@@ -1,0 +1,103 @@
+with AML_Delays;
+with Ada.Text_IO;
+with AML_Decode; use AML_Decode;
+with AML_Execute; use AML_Execute;
+with AML_Namespace;
+with AML_Objects;
+with AML_Objects.Byte_References;
+with AML_References;
+procedure Named_Store_Owner_Tests is
+   use type AML_Decode.Byte;
+   use type AML_Decode.Integer_Value;
+   package NS is new AML_Namespace (16, AML_Delays.Unavailable_Provider);
+   use NS; use NS.Owned;
+   use type AML_Objects.Allocation_Status;
+   use type AML_Objects.Byte_References.Result_Status;
+   A, B : Arena;
+   OK : Boolean;
+   Loaded_Result : Load_Status;
+   Status : Execution_Status;
+   Source, Foreign, Bad : Datum;
+   Handle : AML_References.Object_Handle;
+   Target, Alias_Ref, Foreign_Target : Reference;
+   Ref_Status : AML_Objects.Byte_References.Result_Status;
+   Prior : State;
+   Octet : Byte;
+   Saved_ID, Unused : AML_Objects.Object_ID;
+   Allocated : AML_Objects.Allocation_Status;
+   Checks : Natural := 0;
+   Fixture : constant Bytes :=
+     [16#08#,65,65,65,65,16#0D#,97,98,99,0,
+      16#08#,66,66,66,66,16#0D#,49,48,0,
+      16#08#,67,67,67,67,16#11#,6,16#0A#,3,1,2,3,
+      16#08#,68,68,68,68,16#11#,2,0];
+   procedure Check (C : Boolean) is
+   begin Checks := Checks + 1; if not C then raise Program_Error with Checks'Image; end if; end Check;
+   procedure Fetch (Node : Node_ID; Item : out Datum) is
+   begin Make_Source (A, Data_Object (Snapshot (A), Node), Handle, OK); Check (OK);
+      Read_Source (A, Handle, Item, Status); Check (Status = Returned); end Fetch;
+begin
+   Reset (A, OK); Check (OK); Reset (B, OK); Check (OK);
+   Load (A, Fixture, Bits_64, Loaded_Result); Check (Loaded_Result = Loaded);
+   Load (B, Fixture, Bits_64, Loaded_Result); Check (Loaded_Result = Loaded);
+   Make_Named_Reference (A, 1, Target, OK); Check (OK);
+   Make_Named_Reference (B, 1, Foreign_Target, OK); Check (OK);
+   Fetch (2, Source); Saved_ID := Data_Object (Snapshot (A), 1);
+   Make (A, Saved_ID, 1, Alias_Ref, Ref_Status); Check (Ref_Status = AML_Objects.Byte_References.Ready);
+   Store_Reference_Value (A, Target, Bits_64, Source, Status); Check (Status = Returned);
+   Check (Data_Object (Snapshot (A), 1) = Saved_ID);
+   Read (A, Alias_Ref, Octet, OK); Check (OK and then Octet = Character'Pos ('0'));
+   Prior := Snapshot (A);
+   Store_Reference_Value (A, Foreign_Target, Bits_64, Source, Status);
+   Check (Status = Unsupported_Value and then Snapshot (A) = Prior);
+   Make_Source (B, Data_Object (Snapshot (B), 2), Handle, OK); Check (OK);
+   Read_Source (B, Handle, Foreign, Status); Check (Status = Returned);
+   Store_Reference_Value (A, Target, Bits_64, Foreign, Status);
+   Check (Status = Unsupported_Value and then Snapshot (A) = Prior);
+   Bad := Source; Bad.Object.ID := Saved_ID;
+   Store_Reference_Value (A, Target, Bits_64, Bad, Status);
+   Check (Status = Unsupported_Value and then Snapshot (A) = Prior);
+   Make_Named_Reference (A, 3, Target, OK); Check (OK);
+   Saved_ID := Data_Object (Snapshot (A), 3);
+   Make (A, Saved_ID, 2, Alias_Ref, Ref_Status); Check (Ref_Status = AML_Objects.Byte_References.Ready);
+   Store_Reference_Value (A, Target, Bits_64, Source, Status); Check (Status = Returned);
+   Read (A, Alias_Ref, Octet, OK); Check (OK and then Octet = 0);
+   Check (Data_Object (Snapshot (A), 3) = Saved_ID);
+   Make_Named_Reference (A, 4, Target, OK); Check (OK);
+   Saved_ID := Data_Object (Snapshot (A), 4);
+   Store_Reference_Value (A, Target, Bits_64, Source, Status); Check (Status = Returned);
+   Check (Buffer_Data (Snapshot (A), 4) = Bytes'[49,48,0]);
+   Make (A, Saved_ID, 2, Alias_Ref, Ref_Status); Check (Ref_Status = AML_Objects.Byte_References.Ready);
+   Store_Reference_Value (A, Target, Bits_64, (Integer_Datum, 16#123456#, Ordinary_Integer), Status);
+   Check (Status = Returned and then Data_Object (Snapshot (A), 4) = Saved_ID);
+   Read (A, Alias_Ref, Octet, OK); Check (OK and then Octet = 16#12#);
+   Prior := Snapshot (A);
+   Store_Reference_Value (A, Target, Bits_64, (Reference_Datum, Ref => Target), Status);
+   Check (Status = Unsupported_Value and then Snapshot (A) = Prior);
+   Append (A, [1 .. AML_Objects.Max_Bytes - Values_Used (A).Bytes => 0], Unused, Allocated);
+   Check (Allocated = AML_Objects.Allocated);
+   Make_Named_Reference (A, 1, Target, OK); Check (OK); Prior := Snapshot (A);
+   Store_Reference_Value (A, Target, Bits_64, Source, Status);
+   Check (Status = Value_Limit and then Snapshot (A) = Prior);
+   Fetch (1, Bad); Prior := Snapshot (A);
+   Store_Reference_Value (A, Target, Bits_64, Bad, Status);
+   Check (Status = Returned and then Snapshot (A) = Prior);
+   Reset (A, OK); Check (OK); Prior := Snapshot (A);
+   Store_Reference_Value (A, Target, Bits_64, Source, Status);
+   Check (Status = Unsupported_Value and then Snapshot (A) = Prior);
+   Load (A, Fixture, Bits_64, Loaded_Result); Check (Loaded_Result = Loaded);
+   Make_Named_Reference (A, 1, Target, OK); Check (OK);
+   Store_Reference_Value (A, Target, Bits_64, (Integer_Datum, 7, Ordinary_Integer), Status,
+                          Mode => Argument_Indirect_Target);
+   Check (Status = Returned and then Has_Integer (Snapshot (A), 1));
+   Check (Integer_Data (Snapshot (A), 1) = 7);
+   Make_Source (A, Data_Object (Snapshot (A), 4), Handle, OK); Check (OK);
+   Read_Source (A, Handle, Source, Status); Check (Status = Returned);
+   Prior := Snapshot (A);
+   Store_Reference_Value (A, Target, Bits_64, Source, Status);
+   Check (Status = Empty_Buffer and then Snapshot (A) = Prior);
+   Make_Named_Reference (A, 2, Target, OK); Check (OK);
+   Store_Reference_Value (A, Target, Bits_64, Source, Status);
+   Check (Status = Returned and then String_Data (Snapshot (A), 2) = "");
+   Ada.Text_IO.Put_Line ("NAMED STORE OWNER PASS" & Checks'Image);
+end Named_Store_Owner_Tests;

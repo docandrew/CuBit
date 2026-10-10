@@ -1,0 +1,8 @@
+project core_checked is
+ for Source_Dirs use ("../../tests/aml-core", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../userspace/services/acpi/native", "../../shared/firmware");
+ for Object_Dir use "core_checked";
+ for Main use ("typed_tests.adb", "store_tests.adb", "call_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end core_checked;

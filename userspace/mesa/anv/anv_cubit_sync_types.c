@@ -11,7 +11,7 @@ VkResult anv_cubit_init_sync_types(struct anv_physical_device *device)
    VkResult result = anv_cubit_sync_prepare();
    if (result != VK_SUCCESS) return result;
    device->cubit_binary_sync_type = anv_cubit_binary_sync_type();
-   device->sync_types[0] = &anv_cubit_cpu_timeline_type;
+   device->sync_types[0] = &anv_cubit_gpu_timeline_type;
    device->sync_types[1] = &device->cubit_binary_sync_type.sync;
    device->sync_types[2] = NULL;
    device->vk.supported_sync_types = device->sync_types;

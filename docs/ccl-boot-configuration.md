@@ -108,3 +108,28 @@ comparisons, not an artifact consumed by CuBit. Legacy profiles exist only in
 This is the boot-configuration slice of the package plan. Declarative ISO
 membership, build graph realization, installation approvals, signatures, and
 runtime policy brokering remain follow-on work.
+
+## Typed settings
+
+A setting whose key has a declared type (`CCL.Typed_Settings.Kind_Of`) takes
+a typed CCL value instead of a string:
+
+```
+(setting "desktop.launch.45-servo"
+  (Launch_Entry label => "Penny" action => (Launch_Action.Program "cubitshell.app")
+    icon => Launch_Icon.Penny category => App_Category.Web))
+```
+
+Each `Launch_Icon` names one of the desktop's icons (Workbench, Console,
+Logs, Trace, Doom, Devices, Penny, Files, Gameboy, Settings, Inspector, Mesa,
+Boot; artwork in `assets/desktop-icons`, atlas built by
+`tools/generate_desktop_icons.py`). Categories carry their own icons.
+
+`CCL.Configurations.Compile` analyses the value against the declarations
+(`CCL.Interfaces.Desktop_Launch` for `desktop.launch.*`). A refusal is
+`INVALID_TYPED_VALUE`, with the checker's message. The plan stores the
+value's canonical source, in which every field is named in declaration
+order. A reader such as the desktop reads it back through
+`CCL.Typed_Settings.Read`, which accepts only that canonical spelling.
+Carrying typed values in binary through config.svc is backlog CFG-001.
+

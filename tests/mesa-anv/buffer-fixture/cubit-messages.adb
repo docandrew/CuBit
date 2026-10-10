@@ -72,10 +72,6 @@ package body CuBit.Messages is
          Update_Request := Msg.words;
          Response := (if Slot = 63 then Server.Words (Update_Response)
                       else [1, 1, 0, 0]);
-      elsif Msg.tag.label = 16#0A27# then
-         Submit_Request := Msg.words;
-         Response := (if Slot = 63 then Server.Words (Submit_Response)
-                      else [1, 1, 0, 0]);
       elsif Msg.tag.label = 16#0A23# then
          Map_Request := Msg.words;
          Response := (if Slot = 63 then Server.Words (Map_Response)

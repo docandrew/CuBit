@@ -1,4 +1,6 @@
+with ACPI_Test_Results;
 with Ada.Text_IO;
+with Ada.Unchecked_Deallocation;
 with FADT_Tests;
 with ACPI_FADT;
 with ACPI_Service; use ACPI_Service;
@@ -13,11 +15,20 @@ procedure Service_Tests is
    use type AML_Decode.Status;
    use type Namespace.Bind_Status;
    use type AML_Field_Data.Read_Result;
-   use type Namespace.State;
-   Service : State := Fresh;
+   use type Values.Audit_Value;
+   -- Test-only fixture lifetime management. Each reset constructs a new
+   -- noncopyable owner; production exposes no reset or copying operation.
+   type State_Access is access State;
+   procedure Free is new Ada.Unchecked_Deallocation (State, State_Access);
+   Service_Ptr : State_Access := new State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+   procedure Reset_Fixture is
+   begin
+      Free (Service_Ptr);
+      Service_Ptr := new State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+   end Reset_Fixture;
    Result : Install_Status;
    Data : Firmware_Tables.Bytes (1 .. 42) := [others => 0];
-   Before : Namespace.State;
+   Before : Values.Audit_Value;
    Checks : Natural := 0;
    procedure Check (OK : Boolean) is
    begin
@@ -77,41 +88,41 @@ procedure Service_Tests is
 begin
    Data (37 .. 42) := [8,16#54#,16#45#,16#53#,16#54#,16#FF#];
    Seal (SSDT, 2);
-   Install (Service, 1, SSDT, Data, Result);
-   Check (Result = Wrong_Order and then Observe (Service).Tables = 0);
+   Install (Service_Ptr.all, 1, SSDT, Data, Result);
+   Check (Result = Wrong_Order and then Observe (Service_Ptr.all).Tables = 0);
    Seal (DSDT, 1);
-   Install (Service, 1, DSDT, Data, Result);
-   Check (Result = Installed and then Observe (Service).Objects = 1
-          and then Observe (Service).Bytes = 42);
-   Check (Observe (Service).Value_Objects = 1 and then
-          Observe (Service).Value_Bytes = 0 and then Observe (Service).Package_Elements = 0);
-   Check (Namespace.Integer_Data (Snapshot (Service), 1) = 16#FFFF_FFFF#);
-   Before := Snapshot (Service);
-   Install (Service, 2, DSDT, Data, Result);
-   Check (Result = Wrong_Order and then Snapshot (Service) = Before);
+   Install (Service_Ptr.all, 1, DSDT, Data, Result);
+   Check (Result = Installed and then Observe (Service_Ptr.all).Objects = 1
+          and then Observe (Service_Ptr.all).Bytes = 42);
+   Check (Observe (Service_Ptr.all).Value_Objects = 1 and then
+          Observe (Service_Ptr.all).Value_Bytes = 0 and then Observe (Service_Ptr.all).Package_Elements = 0);
+   Check (ACPI_Test_Results.Integer_Data (Service_Ptr.all, 1) = 16#FFFF_FFFF#);
+   Before := Audit (Service_Ptr.all);
+   Install (Service_Ptr.all, 2, DSDT, Data, Result);
+   Check (Result = Wrong_Order and then Audit (Service_Ptr.all) = Before);
    Data (41) := 16#32#;
    Seal (SSDT, 2);
-   Install (Service, 1, SSDT, Data, Result);
-   Check (Result = Duplicate_ID and then Snapshot (Service) = Before);
-   Install (Service, 2, SSDT, Data, Result);
-   Check (Result = Installed and then Observe (Service).Tables = 2);
-   Check (Namespace.Integer_Data (Snapshot (Service), 2) = 16#FFFF_FFFF#);
-   Before := Snapshot (Service);
+   Install (Service_Ptr.all, 1, SSDT, Data, Result);
+   Check (Result = Duplicate_ID and then Audit (Service_Ptr.all) = Before);
+   Install (Service_Ptr.all, 2, SSDT, Data, Result);
+   Check (Result = Installed and then Observe (Service_Ptr.all).Tables = 2);
+   Check (ACPI_Test_Results.Integer_Data (Service_Ptr.all, 2) = 16#FFFF_FFFF#);
+   Before := Audit (Service_Ptr.all);
    for I in Data'Range loop
       declare
          Mutant : Firmware_Tables.Bytes := Data;
       begin
          Mutant (I) := Mutant (I) + 1;
-         Install (Service, 3, SSDT, Mutant, Result);
-         Check (Result = Invalid_Table and then Snapshot (Service) = Before);
+         Install (Service_Ptr.all, 3, SSDT, Mutant, Result);
+         Check (Result = Invalid_Table and then Audit (Service_Ptr.all) = Before);
       end;
    end loop;
    Data (37) := 16#5B#;
    Seal (SSDT, 2);
-   Install (Service, 3, SSDT, Data, Result);
-   Check (Result = Invalid_AML and then Snapshot (Service) = Before
-          and then Observe (Service).Tables = 2);
-   Check (Observe (Service).Rejections = 46);
+   Install (Service_Ptr.all, 3, SSDT, Data, Result);
+   Check (Result = Invalid_AML and then Audit (Service_Ptr.all) = Before
+          and then Observe (Service_Ptr.all).Tables = 2);
+   Check (Observe (Service_Ptr.all).Rejections = 46);
    declare
       Empty_Table : Firmware_Tables.Bytes (1 .. 36) := [others => 0];
       Sum : Firmware_Tables.Byte := 0;
@@ -122,118 +133,118 @@ begin
       for B of Empty_Table loop Sum := Sum + B; end loop;
       Empty_Table (10) := 0 - Sum;
       for ID in 3 .. 32 loop
-         Install (Service, ID, SSDT, Empty_Table, Result);
-         Check (Result = Installed and then Observe (Service).Tables = ID);
+         Install (Service_Ptr.all, ID, SSDT, Empty_Table, Result);
+         Check (Result = Installed and then Observe (Service_Ptr.all).Tables = ID);
       end loop;
-      Before := Snapshot (Service);
-      Install (Service, 33, SSDT, Empty_Table, Result);
-      Check (Result = Table_Limit and then Snapshot (Service) = Before);
-      Service := Fresh;
-      Install (Service, 1, DSDT,
+      Before := Audit (Service_Ptr.all);
+      Install (Service_Ptr.all, 33, SSDT, Empty_Table, Result);
+      Check (Result = Table_Limit and then Audit (Service_Ptr.all) = Before);
+      Reset_Fixture;
+      Install (Service_Ptr.all, 1, DSDT,
         Firmware_Tables.Bytes'(1 .. Max_Table_Bytes + 1 => 0), Result);
-      Check (Result = Byte_Limit and then Observe (Service).Tables = 0);
+      Check (Result = Byte_Limit and then Observe (Service_Ptr.all).Tables = 0);
       Seal (DSDT, 2);
       Data (37) := 8;
       Seal (DSDT, 2);
-      Install (Service, 1, DSDT, Data & [0], Result);
-      Check (Result = Invalid_Table and then Observe (Service).Tables = 0);
-      Install (Service, 1, DSDT, Data, Result);
-      Check (Result = Installed and then Namespace.Integer_Data
-             (Snapshot (Service), 1) = AML_Decode.Integer_Value'Last);
+      Install (Service_Ptr.all, 1, DSDT, Data & [0], Result);
+      Check (Result = Invalid_Table and then Observe (Service_Ptr.all).Tables = 0);
+      Install (Service_Ptr.all, 1, DSDT, Data, Result);
+      Check (Result = Installed and then ACPI_Test_Results.Integer_Data
+             (Service_Ptr.all, 1) = AML_Decode.Integer_Value'Last);
    end;
-   Service := Fresh;
-   Check (Observe (Service).Last_Load_Code = 0);
-   Install (Service, 1, DSDT, Named_Table (0, Max_Namespace_Nodes), Result);
-   Check (Result = Installed and Observe (Service).Objects = Max_Namespace_Nodes);
-   Check (Observe (Service).Last_Load_Code = Namespace.Load_Status'Pos (Namespace.Loaded) + 1);
-   Before := Snapshot (Service);
-   Install (Service, 2, SSDT, Named_Table (Max_Namespace_Nodes, 1, True), Result);
-   Check (Result = Invalid_AML and Snapshot (Service) = Before);
-   Check (Observe (Service).Last_Load_Code = Namespace.Load_Status'Pos (Namespace.Storage_Full) + 1);
+   Reset_Fixture;
+   Check (Observe (Service_Ptr.all).Last_Load_Code = 0);
+   Install (Service_Ptr.all, 1, DSDT, Named_Table (0, Max_Namespace_Nodes), Result);
+   Check (Result = Installed and Observe (Service_Ptr.all).Objects = Max_Namespace_Nodes);
+   Check (Observe (Service_Ptr.all).Last_Load_Code = Namespace.Load_Status'Pos (Namespace.Loaded) + 1);
+   Before := Audit (Service_Ptr.all);
+   Install (Service_Ptr.all, 2, SSDT, Named_Table (Max_Namespace_Nodes, 1, True), Result);
+   Check (Result = Invalid_AML and Audit (Service_Ptr.all) = Before);
+   Check (Observe (Service_Ptr.all).Last_Load_Code = Namespace.Load_Status'Pos (Namespace.Storage_Full) + 1);
    declare
       Bad : Firmware_Tables.Bytes := Named_Table (0, 1, True);
    begin
       Bad (10) := Bad (10) + 1;
-      Install (Service, 2, SSDT, Bad, Result);
-      Check (Result = Invalid_Table and Snapshot (Service) = Before);
-      Check (Observe (Service).Last_Load_Code = Namespace.Load_Status'Pos (Namespace.Storage_Full) + 1);
+      Install (Service_Ptr.all, 2, SSDT, Bad, Result);
+      Check (Result = Invalid_Table and Audit (Service_Ptr.all) = Before);
+      Check (Observe (Service_Ptr.all).Last_Load_Code = Namespace.Load_Status'Pos (Namespace.Storage_Full) + 1);
    end;
    -- Retained immutable SDTs, including binary payloads that are not AML.
-   Service := Fresh;
-   Install (Service, 11, DSDT, Named_Table (0, 0), Result);
+   Reset_Fixture;
+   Install (Service_Ptr.all, 11, DSDT, Named_Table (0, 0), Result);
    Check (Result = Installed);
-   Before := Snapshot (Service);
+   Before := Audit (Service_Ptr.all);
    declare
       type Signatures is array (Positive range <>) of Firmware_Tables.Signature;
       Index : Positive := 2;
-      Old_Load : constant Natural := Observe (Service).Last_Load_Code;
+      Old_Load : constant Natural := Observe (Service_Ptr.all).Last_Load_Code;
    begin
       for Sig of Signatures'("FACP", "APIC", "MCFG", "HPET", "DMAR", "SRAT", "SLIT", "ASF!") loop
          declare
             Original : constant Firmware_Tables.Bytes := Description_Table (Sig, 36 + Index * 3, Index);
             Source : Firmware_Tables.Bytes (101 .. 100 + Original'Length) := Original;
          begin
-            Install (Service, Index + 20, Description, Source, Result);
-            Check (Result = Installed and then Snapshot (Service) = Before);
-            Check (Table_Info (Service, Index) =
+            Install (Service_Ptr.all, Index + 20, Description, Source, Result);
+            Check (Result = Installed and then Audit (Service_Ptr.all) = Before);
+            Check (Table_Info (Service_Ptr.all, Index) =
               Table_Metadata'(ID => Index + 20, Signature => Sig, Extent => Original'Length, Revision => 2));
             Source := [others => 0];
-            for I in Original'Range loop Check (Table_Byte (Service, Index, I - 1) = Original (I)); end loop;
-            Check (Observe (Service).Last_Load_Code = Old_Load);
+            for I in Original'Range loop Check (Table_Byte (Service_Ptr.all, Index, I - 1) = Original (I)); end loop;
+            Check (Observe (Service_Ptr.all).Last_Load_Code = Old_Load);
          end;
          Index := Index + 1;
       end loop;
       for Sig of Signatures'("DSDT", "SSDT", "FACS") loop
-         Install (Service, 100, Description, Description_Table (Sig, 40), Result);
-         Check (Result = Invalid_Table and then Observe (Service).Tables = Index - 1);
+         Install (Service_Ptr.all, 100, Description, Description_Table (Sig, 40), Result);
+         Check (Result = Invalid_Table and then Observe (Service_Ptr.all).Tables = Index - 1);
       end loop;
-      Install (Service, 22, Description, Description_Table ("DMAR", 40), Result);
-      Check (Result = Duplicate_ID and then Observe (Service).Tables = Index - 1);
+      Install (Service_Ptr.all, 22, Description, Description_Table ("DMAR", 40), Result);
+      Check (Result = Duplicate_ID and then Observe (Service_Ptr.all).Tables = Index - 1);
       declare
          Broken : Firmware_Tables.Bytes := Description_Table ("HPET", 40);
       begin
          Broken (40) := Broken (40) + 1;
-         Install (Service, 100, Description, Broken, Result);
-         Check (Result = Invalid_Table and then Observe (Service).Tables = Index - 1);
+         Install (Service_Ptr.all, 100, Description, Broken, Result);
+         Check (Result = Invalid_Table and then Observe (Service_Ptr.all).Tables = Index - 1);
       end;
-      Check (Snapshot (Service) = Before);
+      Check (Audit (Service_Ptr.all) = Before);
    end;
    -- Fill exactly the aggregate byte budget, then prove rejection doesn't
    -- corrupt either end of an earlier table or the final retained table.
-   Service := Fresh;
-   Install (Service, 1, DSDT, Named_Table (0, 0), Result);
+   Reset_Fixture;
+   Install (Service_Ptr.all, 1, DSDT, Named_Table (0, 0), Result);
    Check (Result = Installed);
    for ID in 2 .. 17 loop
       declare
          Size : constant Positive := (if ID = 17 then Max_Table_Bytes - 36 else Max_Table_Bytes);
          Value : constant Firmware_Tables.Bytes := Description_Table ("DMAR", Size, ID);
       begin
-         Install (Service, ID, Description, Value, Result);
+         Install (Service_Ptr.all, ID, Description, Value, Result);
          Check (Result = Installed);
-         for I in Value'Range loop Check (Table_Byte (Service, ID, I - 1) = Value (I)); end loop;
+         for I in Value'Range loop Check (Table_Byte (Service_Ptr.all, ID, I - 1) = Value (I)); end loop;
       end;
    end loop;
-   Check (Observe (Service).Bytes = Max_Total_Bytes and Observe (Service).Tables = 17);
-   Install (Service, 18, Description, Description_Table ("HPET", 36), Result);
-   Check (Result = Byte_Limit and Observe (Service).Bytes = Max_Total_Bytes and Observe (Service).Tables = 17);
-   Check (Table_Byte (Service, 1, 0) = Character'Pos ('D'));
-   Check (Table_Byte (Service, 17, Max_Table_Bytes - 37) = Firmware_Tables.Byte ((Max_Table_Bytes - 36 + 17) mod 256));
-   Service := Fresh;
-   Install (Service, 1, DSDT, Named_Table (0, 0), Result);
-   Check (Result = Installed and then not Fixed_Description (Service, 1).Valid);
+   Check (Observe (Service_Ptr.all).Bytes = Max_Total_Bytes and Observe (Service_Ptr.all).Tables = 17);
+   Install (Service_Ptr.all, 18, Description, Description_Table ("HPET", 36), Result);
+   Check (Result = Byte_Limit and Observe (Service_Ptr.all).Bytes = Max_Total_Bytes and Observe (Service_Ptr.all).Tables = 17);
+   Check (Table_Byte (Service_Ptr.all, 1, 0) = Character'Pos ('D'));
+   Check (Table_Byte (Service_Ptr.all, 17, Max_Table_Bytes - 37) = Firmware_Tables.Byte ((Max_Table_Bytes - 36 + 17) mod 256));
+   Reset_Fixture;
+   Install (Service_Ptr.all, 1, DSDT, Named_Table (0, 0), Result);
+   Check (Result = Installed and then not Fixed_Description (Service_Ptr.all, 1).Valid);
    declare
       Value : constant Firmware_Tables.Bytes := Description_Table ("FACP", 276);
       Expected : constant ACPI_FADT.Result := ACPI_FADT.Decode (Value);
       use type ACPI_FADT.Result;
    begin
-      Install (Service, 2, Description, Value, Result);
+      Install (Service_Ptr.all, 2, Description, Value, Result);
       Check (Result = Installed and then Expected.Valid);
-      Check (Fixed_Description (Service, 2) = Expected);
+      Check (Fixed_Description (Service_Ptr.all, 2) = Expected);
    end;
    declare
       package IDs renames Firmware_Tables.Identifiers;
       use type IDs.Identity;
-      S : State := Fresh;
+      S : State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
       Query : IDs.Selection := (Name => "OEMX", others => <>);
       function Table_With_ID (Ident : IDs.Identity) return Firmware_Tables.Bytes is
          Raw : Firmware_Tables.Bytes (7 .. 42) := [others => 0];
@@ -303,7 +314,7 @@ begin
    -- retained table is adjacent in the backing array. Mutating input cannot
    -- affect the service-owned copy.
    declare
-      S : State := Fresh;
+      S : State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
       Source : Firmware_Tables.Bytes := Description_Table ("TEST", 72);
       Expected : constant Firmware_Tables.Bytes := Source;
       Bits : AML_Field_Data.Read_Result;
@@ -338,10 +349,10 @@ begin
       Check (Table_Field (S, 2, Natural'Last, 1).Status = AML_Decode.Truncated);
    end;
    declare
-      S : State := Fresh;
+      S : State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
       Region, Field, Node : Namespace.Node_ID;
       Bound : Namespace.Bind_Status;
-      Prior : Namespace.State;
+      Prior : Values.Audit_Value;
    begin
       Install (S, 1, DSDT, Named_Table (0, 0), Result);
       Check (Result = Installed);
@@ -352,19 +363,19 @@ begin
       Declare_Table_Field (S, 0, "FLD0", Region, 7, 65, Field, Bound);
       Check (Bound = Namespace.Bound and then Observe (S).Objects = 2);
       Check (Read_Namespace_Field (S, Field) = Table_Field (S, 2, 7, 65));
-      Prior := Snapshot (S);
+      Prior := Audit (S);
       Declare_Table_Region (S, 0, "MISS", (Name => "NONE", others => <>), Node, Bound);
-      Check (Bound = Namespace.Binding_Invalid and then Node = 0 and then Snapshot (S) = Prior);
+      Check (Bound = Namespace.Binding_Invalid and then Node = 0 and then Audit (S) = Prior);
       Declare_Table_Region (S, 512, "MISS", (Name => "TEST", others => <>), Node, Bound);
-      Check (Bound = Namespace.Binding_Invalid and then Snapshot (S) = Prior);
+      Check (Bound = Namespace.Binding_Invalid and then Audit (S) = Prior);
       Declare_Table_Region (S, 0, "MISS", (Name => "TEST", others => <>), Node, Bound, Owner => 512);
-      Check (Bound = Namespace.Binding_Invalid and then Snapshot (S) = Prior);
+      Check (Bound = Namespace.Binding_Invalid and then Audit (S) = Prior);
       Declare_Table_Field (S, 0, "BAD0", Field, 0, 8, Node, Bound);
-      Check (Bound = Namespace.Binding_Invalid and then Snapshot (S) = Prior);
+      Check (Bound = Namespace.Binding_Invalid and then Audit (S) = Prior);
       Declare_Table_Field (S, 0, "BAD0", Region, 576, 1, Node, Bound);
-      Check (Bound = Namespace.Binding_Invalid and then Snapshot (S) = Prior);
+      Check (Bound = Namespace.Binding_Invalid and then Audit (S) = Prior);
       Declare_Table_Field (S, 0, "FLD0", Region, 0, 8, Node, Bound);
-      Check (Bound = Namespace.Binding_Duplicate and then Snapshot (S) = Prior);
+      Check (Bound = Namespace.Binding_Duplicate and then Audit (S) = Prior);
       Check (Read_Namespace_Field (S, 512).Status = AML_Decode.Malformed);
       Check (Read_Namespace_Field (S, Region).Status = AML_Decode.Malformed);
       Check (Read_Namespace_Field (S, 0).Status = AML_Decode.Malformed);
@@ -376,7 +387,7 @@ begin
    -- retained large table even after the caller overwrites its source.
    declare
       Length : constant Positive := 1_048_577;
-      S : State := Fresh (40, Length + 39 * 36, Length);
+      S : State (40, Length + 39 * 36, Length);
       Source : Firmware_Tables.Bytes := Description_Table ("LARG", Length, 17);
       Last_Byte : constant Firmware_Tables.Byte := Source (Source'Last);
       Region, Field : Namespace.Node_ID;
@@ -404,29 +415,30 @@ begin
       Bits := Read_Namespace_Field (S, Field);
       Check (Bits.Status = AML_Decode.Accepted and then Bits.Length = 1
              and then Bits.Content (1) = Last_Byte);
-      Before := Snapshot (S);
+      Before := Audit (S);
       Install (S, 41, Description, Description_Table ("TINY", 36), Result);
-      Check (Result = Table_Limit and Snapshot (S) = Before
+      Check (Result = Table_Limit and Audit (S) = Before
              and Observe (S).Tables = 40 and Observe (S).Bytes = S.Byte_Capacity);
       Check (Table_Byte (S, 2, Length - 1) = Last_Byte);
    end;
    -- Exact fit and one-byte shortage are distinct from the per-table quota.
    for Case_ID in 0 .. 2 loop
       declare
-         S : State := Fresh
+         S : State
            (3, (if Case_ID = 1 then 72 else 73),
             (if Case_ID = 2 then 36 else 37));
       begin
          Install (S, 1, DSDT, Named_Table (0, 0), Result);
          Check (Result = Installed);
-         Before := Snapshot (S);
+         Before := Audit (S);
          Install (S, 2, Description, Description_Table ("TEST", 37), Result);
          Check (Result = (if Case_ID = 0 then Installed else Byte_Limit));
-         Check (Snapshot (S) = Before);
+         Check (Audit (S) = Before);
          Check (Observe (S).Tables = (if Case_ID = 0 then 2 else 1));
          Check (Observe (S).Bytes = (if Case_ID = 0 then 73 else 36));
       end;
    end loop;
+   Free (Service_Ptr);
    FADT_Tests;
    Ada.Text_IO.Put_Line ("ACPI-SERVICE-CHECK: PASS" & Checks'Image);
 end Service_Tests;

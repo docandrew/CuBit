@@ -1,0 +1,8 @@
+project Debug_release is
+ for Source_Dirs use (".", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "build-release";
+ for Main use ("debug_target_tests.adb", "debug_owned_tests.adb", "debug_oracle_runner.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+ end Compiler;
+end Debug_release;

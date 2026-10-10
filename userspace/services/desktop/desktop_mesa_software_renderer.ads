@@ -60,6 +60,7 @@ package Desktop_Mesa_Software_Renderer with SPARK_Mode, Abstract_State => State,
    -- Capture checker strips as bounded scene work, not one layer per pixel.
    procedure Draw_Backdrop
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
       Style : CuBit.Appearance.Preferences; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean)
      with Global => (Proof_In => State);

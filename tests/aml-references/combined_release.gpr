@@ -1,0 +1,9 @@
+project Combined_release is
+ for Source_Dirs use (".", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "build-combined-release/obj";
+ for Exec_Dir use "build-combined-release";
+ for Main use ("condref_tests.adb", "condref_oracle_tests.adb", "provisional_write_tests.adb", "name_reservation_tests.adb", "integer_origin_tests.adb", "runtime_name_tests.adb", "reference_model_tests.adb", "copy_compound_quota_tests.adb", "copy_boundary_extended_tests.adb", "package_store_atomicity_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatwF", "-gnatp");
+ end Compiler;
+end Combined_release;

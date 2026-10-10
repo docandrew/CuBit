@@ -360,6 +360,63 @@ package body CuBit.UI is
       end loop;
    end Draw_Bitmap;
 
+   procedure Draw_Bitmap_Fitted
+     (c : Canvas; r : Rect; pixels : ARGB_Bitmap; enabled : Boolean := True)
+   is
+      package G renames Client_Canvas_Geometry;
+      clipped : constant Rect := Raster_Rect (c, r);
+      left, top, right, bottom : Natural;
+      source : Color;
+      alpha : Unsigned_8;
+      gray : Unsigned_32;
+   begin
+      if c.addr = System.Null_Address or else Is_Empty (clipped) or else pixels'Length (1) = 0
+        or else pixels'Length (2) = 0
+        or else c.width > G.Logical_Edge'Last - c.originX or else c.height > G.Logical_Edge'Last - c.originY
+        or else r.x > G.Logical_Edge'Last - r.w or else r.y > G.Logical_Edge'Last - r.h
+      then
+         return;
+      end if;
+      if c.densityNumerator = c.densityDenominator then
+         left := r.x; top := r.y; right := r.x + r.w; bottom := r.y + r.h;
+      else
+         left := G.Relative (c.originX, r.x, c.densityNumerator, c.densityDenominator);
+         right := G.Relative (c.originX, r.x + r.w, c.densityNumerator, c.densityDenominator);
+         top := G.Relative (c.originY, r.y, c.densityNumerator, c.densityDenominator);
+         bottom := G.Relative (c.originY, r.y + r.h, c.densityNumerator, c.densityDenominator);
+      end if;
+      if right <= left or else bottom <= top then
+         return;
+      end if;
+      for row in clipped.y .. clipped.y + clipped.h - 1 loop
+         for col in clipped.x .. clipped.x + clipped.w - 1 loop
+            if row >= top and then row < bottom and then col >= left and then col < right then
+               source := pixels
+                 (pixels'First (1) + (row - top) * pixels'Length (1) / (bottom - top),
+                  pixels'First (2) + (col - left) * pixels'Length (2) / (right - left));
+               alpha := Unsigned_8 (Shift_Right (source, 24));
+               if alpha /= 0 then
+                  if not enabled then
+                     gray :=
+                       (77 * (Shift_Right (source, 16) and 16#FF#) +
+                        150 * (Shift_Right (source, 8) and 16#FF#) +
+                        29 * (source and 16#FF#) + 128) / 256;
+                     source := Shift_Left (gray, 16) or Shift_Left (gray, 8) or gray;
+                     alpha := Unsigned_8 (Unsigned_32 (alpha) * 112 / 255);
+                  end if;
+                  declare
+                     offset : constant Storage_Offset := Storage_Offset (row * c.pitch + col * 4);
+                     destination : Color with Import, Address => c.addr + offset;
+                  begin
+                     destination :=
+                       (if alpha = 255 then source and 16#00FF_FFFF# else Blend (source, destination, alpha));
+                  end;
+               end if;
+            end if;
+         end loop;
+      end loop;
+   end Draw_Bitmap_Fitted;
+
    procedure Fill_Vertical_Gradient
       (c : Canvas; r : Rect; topColor, bottomColor : Color)
    is
@@ -516,6 +573,8 @@ package body CuBit.UI is
       Ch : Character := ' ';
       Scale : Positive := 1;
       Ink, Under : Color := 0;
+      --  A density-1 cell (Draw_Opaque_Glyph), never a density path's.
+      Direct : Boolean := False;
    end record;
    type Composite_Entry is record
       Key : Composite_Key;
@@ -532,7 +591,8 @@ package body CuBit.UI is
       H : Unsigned_32 := Unsigned_32 (Character'Pos (Key.Ch)) * 16#9E37_79B1#;
    begin
       H := H xor (Unsigned_32 (CuBit.Fonts.Face'Pos (Key.Face)) * 16#85EB_CA6B#);
-      H := H xor (Key.Ink * 16#C2B2_AE35#) xor (Key.Under * 16#27D4_EB2F#) xor Unsigned_32 (Key.Scale);
+      H := H xor (Key.Ink * 16#C2B2_AE35#) xor (Key.Under * 16#27D4_EB2F#) xor Unsigned_32 (Key.Scale)
+        xor Boolean'Pos (Key.Direct);
       H := H xor Shift_Right (H, 15);
       return Composite_Index (H mod COMPOSITE_ENTRIES);
    end Composite_Slot;
@@ -550,7 +610,7 @@ package body CuBit.UI is
       Scale : constant Natural :=
         (if c.densityDenominator /= 0 and then c.densityNumerator mod c.densityDenominator = 0
          then Natural (c.densityNumerator / c.densityDenominator) else 0);
-      Key : constant Composite_Key := (face, ch, Positive'Max (1, Scale), fg, bg);
+      Key : constant Composite_Key := (face, ch, Positive'Max (1, Scale), fg, bg, Direct => False);
       Slot : constant Composite_Index := Composite_Slot (Key);
       E : Composite_Entry renames Composites (Slot);
 
@@ -628,15 +688,62 @@ package body CuBit.UI is
       end;
    end Draw_Density_Cell;
 
+   --  An opaque glyph cell (Width logical pixels by a line) at density 1:
+   --  blended over bg once into the composite cache, then row copies. The
+   --  cached cell is exactly what Blit_Glyph paints, so the pixels are the
+   --  same either way; a cell the cache cannot hold is blended directly.
+   procedure Draw_Opaque_Glyph
+     (c : Canvas; x, y : Natural; ch : Character; face : CuBit.Fonts.Face; glyph : CuBit.Fonts.Glyph_Access;
+      Width : Natural; fg, bg : Color)
+   is
+      package R renames Client_Raster;
+      clipped : constant Rect := Clamp_Rect (c, (x => x, y => y, w => Width, h => CuBit.Fonts.Line_Height));
+      Key : constant Composite_Key := (face, ch, 1, fg, bg, Direct => True);
+      Slot : constant Composite_Index := Composite_Slot (Key);
+      E : Composite_Entry renames Composites (Slot);
+   begin
+      if Width = 0 or else Width > COMPOSITE_WIDTH or else Width > R.MASK_COLUMNS
+        or else CuBit.Fonts.Line_Height > COMPOSITE_HEIGHT or else CuBit.Fonts.Line_Height > R.MASK_ROWS
+      then
+         Blit_Glyph (c, clipped, glyph, x, y, fg, True, bg);
+         return;
+      end if;
+      if c.addr = System.Null_Address or else Is_Empty (clipped) or else c.pitch mod 4 /= 0 or else
+        clipped.x + clipped.w > c.pitch / 4 or else clipped.x < x or else clipped.y < y or else
+        clipped.x - x + clipped.w > Width or else clipped.y - y + clipped.h > CuBit.Fonts.Line_Height
+      then
+         return;
+      end if;
+      if not E.Filled or else E.Key /= Key or else E.Cell_Width /= Width then
+         declare
+            Source : R.Mask with Import, Address => glyph.Alpha'Address;
+         begin
+            E.Key := Key;
+            E.Filled := True;
+            E.Usable := True;
+            E.Cell_Width := Width;
+            E.Pixels := [others => bg];
+            R.Blit_Mask (E.Pixels, COMPOSITE_WIDTH, (0, 0, Width, CuBit.Fonts.Line_Height), Source, 0, 0, fg,
+                         True, bg);
+         end;
+      end if;
+      declare
+         Pitch : constant Positive := c.pitch / 4;
+         Target : R.Pixels (0 .. (clipped.h - 1) * Pitch + clipped.x + clipped.w - 1)
+           with Import, Address => c.addr + Storage_Offset (clipped.y * c.pitch);
+      begin
+         R.Copy_Block (Target, Pitch, (clipped.x, 0, clipped.w, clipped.h), E.Pixels, COMPOSITE_WIDTH,
+                       clipped.x - x, clipped.y - y);
+      end;
+   end Draw_Opaque_Glyph;
+
    procedure Draw_UI_Glyph
       (c : Canvas; x, y : Natural; ch : Character; fg, bg : Color)
    is
       glyph : constant CuBit.Fonts.Glyph_Access := CuBit.Fonts.Get (CuBit.Fonts.Sans, ch);
-      clipped : constant Rect :=
-        Clamp_Rect (c, (x => x, y => y, w => Natural (glyph.Advance), h => CuBit.Fonts.Line_Height));
    begin
       --  Opaque: the glyph cell is painted whole, background where uncovered.
-      Blit_Glyph (c, clipped, glyph, x, y, fg, True, bg);
+      Draw_Opaque_Glyph (c, x, y, ch, CuBit.Fonts.Sans, glyph, Natural (glyph.Advance), fg, bg);
    end Draw_UI_Glyph;
 
    procedure Draw_UI_Text
@@ -760,10 +867,8 @@ package body CuBit.UI is
       (c : Canvas; x, y : Natural; ch : Character; fg, bg : Color)
    is
       glyph : constant CuBit.Fonts.Glyph_Access := CuBit.Fonts.Get (CuBit.Fonts.Monospace, ch);
-      clipped : constant Rect :=
-        Clamp_Rect (c, (x => x, y => y, w => CuBit.Fonts.Mono_Width, h => CuBit.Fonts.Line_Height));
    begin
-      Blit_Glyph (c, clipped, glyph, x, y, fg, True, bg);
+      Draw_Opaque_Glyph (c, x, y, ch, CuBit.Fonts.Monospace, glyph, CuBit.Fonts.Mono_Width, fg, bg);
    end Draw_Code_Glyph;
 
    procedure Draw_Code_Text

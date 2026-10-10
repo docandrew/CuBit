@@ -10,8 +10,13 @@ pragma Elaborate_All (Vulkan_Context_Owner);
 with Desktop_Breadcrumbs;
 with Desktop_Logs;
 with Desktop_Capability_IO;
+with Desktop_GPU_Calls;
 package body Desktop_Renderer_Startup with SPARK_Mode is
    use Interfaces;
+   --  The longest one GPU-service reply may take before Desktop gives up the
+   --  GPU path for software (IPC-004). A legitimate operation is far below it;
+   --  one that is not is itself a fault worth reporting.
+   GPU_Call_Timeout_Ms : constant := 5_000;
    package GPU renames Desktop_Vulkan_Startup;
    procedure debugPrint (Text : String) renames Desktop_Logs.Write;
    procedure Initialize
@@ -28,6 +33,7 @@ package body Desktop_Renderer_Startup with SPARK_Mode is
    begin
       Evidence := (others => False);
       Diagnostic := (others => <>);
+      Desktop_GPU_Calls.Bound (GPU_Call_Timeout_Ms);
       Desktop_Capability_IO.Inspect
         (CCL_Manifest_Bindings.Slot_render, Capability, Inspected);
       Evidence.Admitted := Inspected and then Capability (0) = 1 and then
@@ -109,6 +115,15 @@ package body Desktop_Renderer_Startup with SPARK_Mode is
       elsif not Evidence.Readback then
          debugPrint ("DESKTOP-VULKAN: setup unavailable stage=readback" & ASCII.LF);
       end if;
+      declare
+         Timeouts, Label : Unsigned_32;
+      begin
+         Desktop_GPU_Calls.Read (Timeouts, Label);
+         if Timeouts /= 0 then
+            debugPrint ("DESKTOP-VULKAN: GPU service call timed out count=" &
+              Timeouts'Image & " label=" & Label'Image & ASCII.LF);
+         end if;
+      end;
    end Initialize;
    procedure Stop is
    begin

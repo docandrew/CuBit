@@ -2,6 +2,7 @@ with Ada.Text_IO; use Ada.Text_IO;
 with AML_Decode; use AML_Decode;
 procedure Decode_Tests is
    use type Integer_Value;
+   use type Byte;
    Checks : Natural := 0;
    procedure Check (OK : Boolean) is
    begin
@@ -45,8 +46,11 @@ begin
    Literal ([16#0C#, 16#78#, 16#56#, 16#34#, 16#12#], 16#12345678#, 5);
    Literal ([16#0E#, 16#EF#, 16#CD#, 16#AB#, 16#89#,
              16#67#, 16#45#, 16#23#, 16#01#], 16#0123456789ABCDEF#, 9);
+   Literal ([Extended_Op, Revision_Extension], Interpreter_Revision, Revision_Bytes);
    for B in Byte loop
-      if B not in 0 | 1 | 16#FF# | 16#0A# | 16#0B# | 16#0C# | 16#0E# then
+      if B = Extended_Op then
+         Check (Read_Integer ([1 => B], Bits_64).Kind = Truncated);
+      elsif B not in 0 | 1 | 16#FF# | 16#0A# | 16#0B# | 16#0C# | 16#0E# then
          Check (Read_Integer ([1 => B], Bits_64).Kind = Unsupported);
       end if;
       Literal ([Positive'Last - 1 => 16#0A#, Positive'Last => B],

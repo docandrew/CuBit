@@ -37,7 +37,9 @@ package CuBit.Messages is
    SYSCALL_RECEIVE_EVENT_NB : constant Unsigned_64 := 26;
    SYSCALL_POLL_EVENT      : constant Unsigned_64 := 26;
    SYSCALL_GETTIME         : constant Unsigned_64 := 27;
-   --  Separate microsecond epoch; Last indicates unavailable. Never UTC.
+   --  GETTIME's epoch when the kernel publishes the clock page (then read
+   --  CuBit.Monotonic instead, docs/fast-clock.md), else the HPET's own;
+   --  Last indicates unavailable. Never UTC.
    SYSCALL_READ_MONOTONIC_MICROSECONDS : constant Unsigned_64 := 114;
    --  Allocate zero-filled RW/NX private RAM: arg0 bytes (1..16MiB), rounded
    --  to 4KiB. Returns a page-aligned base, or zero on failure.

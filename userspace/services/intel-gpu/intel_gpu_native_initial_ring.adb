@@ -5,6 +5,8 @@ with Intel_GPU_Initial_Ring_Publish;
 with Intel_GPU_Submission_Backing;
 with Intel_GPU_ADLN_L3_Commands;
 with Intel_GPU_Submission_Image;
+with Intel_GPU_ADLN_PPHWSP;
+with Intel_GPU_Timeline;
 with System.Machine_Code;
 package body Intel_GPU_Native_Initial_Ring is
    Base : constant Unsigned_64 := CPU_Base;
@@ -59,19 +61,47 @@ package body Intel_GPU_Native_Initial_Ring is
    end Flush;
    package Writer is new Intel_GPU_Initial_Ring_Publish (Owned, Store, Load, Flush);
    Attempt : Writer.Attempt;
+   -- A torn read (high half changed) is retried this many times before
+   -- the read is reported failed.
+   Timeline_Read_Attempts : constant := 3;
    procedure Read_Marker (Value : out Unsigned_64; OK : out Boolean) is
+      package PPHWSP renames Intel_GPU_ADLN_PPHWSP;
+      Sample : Intel_GPU_Timeline.Read_Result;
+      High_First, Low, High_Second : Unsigned_32 := 0;
+      -- CPU never writes the PPHWSP after backing initialization. Flush the
+      -- retained page before each volatile DWORD read, so every half is
+      -- fetched from memory rather than one possibly torn cached line.
+      procedure Read_Half (Offset : Unsigned_32; Half : out Unsigned_32;
+                           Read_OK : out Boolean) is
+      begin
+         Half := Unsigned_32'Last;
+         Read_OK := Intel_GPU_DMA_Cache.Flush_Range (Base, PPHWSP.Page_Bytes)
+           and then Owner_Ready;
+         if not Read_OK then return; end if;
+         declare
+            Word : Unsigned_32 with Import, Volatile_Full_Access,
+              Address => To_Address (Integer_Address (Base + Unsigned_64 (Offset)));
+         begin Half := Word; end;
+      end Read_Half;
    begin
       Value := Unsigned_64'Last; OK := False;
       if not Mapping_Valid or else not Owner_Ready then return; end if;
-      -- CPU never writes the HWSP after backing initialization. Flush the
-      -- retained page before an aligned volatile64 read of the GPU marker.
-      if not Intel_GPU_DMA_Cache.Flush_Range (Base, 4096) or else not Owner_Ready
-      then return; end if;
-      declare
-         Marker : Unsigned_64 with Import, Volatile_Full_Access,
-           Address => To_Address (Integer_Address (Base + 16#D0#));
-      begin Value := Marker; end;
-      OK := Owner_Ready;
+      for Attempt in 1 .. Timeline_Read_Attempts loop
+         Read_Half (PPHWSP.Timeline_Offset + 4, High_First, OK);
+         if OK then Read_Half (PPHWSP.Timeline_Offset, Low, OK); end if;
+         if OK then Read_Half (PPHWSP.Timeline_Offset + 4, High_Second, OK); end if;
+         if not OK then Value := Unsigned_64'Last; return; end if;
+         Sample := Intel_GPU_Timeline.Combine
+           (Intel_GPU_Timeline.Half (High_First), Intel_GPU_Timeline.Half (Low),
+            Intel_GPU_Timeline.Half (High_Second));
+         if Sample.Stable then
+            Value := Unsigned_64 (Sample.Observed);
+            OK := Owner_Ready;
+            if not OK then Value := Unsigned_64'Last; end if;
+            return;
+         end if;
+      end loop;
+      OK := False;
    end Read_Marker;
    procedure Read_Batch_Result (Value : out Unsigned_64; OK : out Boolean) is
       package Backing renames Intel_GPU_Submission_Backing;

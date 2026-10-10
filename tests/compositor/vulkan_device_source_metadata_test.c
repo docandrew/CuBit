@@ -113,5 +113,5 @@ int main(void)
     assert(!backing.image&&!backing.allowed_types);
     assert(!cubit_vulkan_device_upload_prepare());
     puts("PASS upload metadata: matching admitted device, nine rejection/preservation cases, closed reuse, retired provider");
-    puts("PASS owned-source metadata: 140 bounded backing slots, reuse/format/extent/live/quarantine guards, normalized rejection,  device/role/extent/alias/bounds, BGRA/R8, occupied-request preservation, retired provider");
+    printf("PASS owned-source metadata: %u bounded backing slots, reuse/format/extent/live/quarantine guards, normalized rejection,  device/role/extent/alias/bounds, BGRA/R8, occupied-request preservation, retired provider\n",(unsigned)CUBIT_VULKAN_OWNED_SOURCE_CAPACITY);
 }

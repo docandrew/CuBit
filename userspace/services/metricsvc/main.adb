@@ -100,7 +100,7 @@ begin
                            Grants.Return_Acquisition (Ref, Returned);
                            if Returned then
                               Metric_Store.Ingest
-                                (Store, Unsigned_64 (From),
+                                (Store, To_Word (From),
                                  Request.authorityTag, Batch,
                                  Request.words (2), Outcome);
                               Result := Outcome.Result;

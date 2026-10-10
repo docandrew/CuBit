@@ -107,12 +107,37 @@ Transitive dependencies also apply.
 | --- | --- |
 | Mailbox (`mailtab(pid).lock`) | Process table, its send/receive queues; IPC sleep wake takes process then sleep queue |
 | Process table | Ready/sleep/send/receive queue locks; grants; PID tracker; memory cleanup through slabs/buddy |
-| Grant table | TLB round serialization; buddy frame ownership/pins; deferred DMA release and PID retirement |
+| Grant table | TLB round serialization; buddy frame ownership/pins; DMA registry enqueue; reportLock then PID bitmap for deferred PID retirement |
+| DMA registry (Process.DMA.Registry_Lock) | May be taken under ordered mailbox locks, Process.lock, grantLock or addressSpaceLock; takes the buddy lock for metadata and ownership tags. Never takes those outer locks. Cleanup is bounded to 64 tags per step and runs outside grantLock |
+| Memory_Accounting ledger | Below process/mailbox/grant/address-space/DMA-registry locks. Serializes original-owner quotas and global retained charges together. Never holds ledger across buddy allocation/free; preparation and deferred metadata frees run after unlock |
+| DMA mapping publication | Ordered caller/target mailbox locks precede addressSpaceLock; metadata commit then takes the DMA registry lock. This pins the target incarnation, but current allocation/mapping loops still extend the interrupt-off interval |
 | Slab pool | Buddy allocation when expanding the pool |
 | TLB round | No further spinlock acquisition in request/acknowledgment service |
 | Individual process queue | No further spinlock acquisition; release before moving to another queue |
 | Buddy allocator / PID bitmap | Leaf locking in the inspected allocation/bitmap paths |
+| Kernel notices (2026-10-07, docs/ipc-delivery.md) | `reportLock` (exit and fault reports) and `controlLock` (control messages) are leaves; a PID a report read releases is freed after `reportLock` is dropped. Grant notices live under the grant-table lock. Receive paths take notices while holding the mailbox lock (mailbox, then grant, then report or control). Producers set a notice under its own lock, release it, then take the recipient's mailbox lock to ring its doorbell, so no notice path holds the grant lock while taking a mailbox lock |
 | Console output (`TextIO` output lock) | Leaf: held for one string print or `println`, including each already-copied chunk of a user `SYSCALL_WRITE`. Enabled by `Process.setup`; unlocked in early boot, after a panic, and for nested prints on the owning CPU |
+
+Buddy charge completion (2026-10-07): charge identities are separate from
+access-owner PIDs. `freeFrame` keeps the charge on deferred/pinned frames;
+`unpinFrame` detaches it only at actual reclamation. Both paths, and whole-block
+`free`, invoke the once-installed refund handler only AFTER dropping the buddy
+lock. A handler must not raise or reacquire an outer process/mailbox/grant lock:
+its caller may still hold any of those. The ledger sits below those outer locks
+and never holds its lock across buddy operations. Process.setup installs the
+handler before creating accounts. Ordinary pages, ordinary/retained DMA and
+owner-slab metadata reserve against the same original-owner quota; retained
+DMA also reserves the global ceiling in that transaction. Quota adoption at
+RESUME rejects an already-overcharged child, preserving zero-as-unlimited.
+The original charge ledger outlives owner death and PID reuse.
+
+DMA registry metadata uses reclaimable owner arenas and packed 64-record slabs.
+Registry operations may enter the ledger, release it, then allocate/bind/free
+through Buddy; physical frees call the ledger only after the Buddy lock drops.
+Sparse frame-charge metadata and account-store caches remain separately globally
+budgeted, not fully attributed to individual owners. No whole-allocation GPU
+release interface exists yet: retained orphan backing and its live records stay
+charged. A slice acknowledgement cannot trigger a physical refund.
 
 Never acquire a mailbox lock while holding `Process.lock`. Async submission
 acquires two distinct mailboxes in ascending PID order (self-submission takes

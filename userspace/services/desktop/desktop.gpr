@@ -57,10 +57,10 @@ project Desktop is
     case Test_Mode is
         when "production" =>
             for Object_Dir use "build" & Backend_Suffix;
-            for Source_Dirs use ("../../mesa", "../../lib/display", "../../lib/compositor", "../../allocator/src", Backend_Directory, Startup_Directory, Input_Overlay_Directory, Timing_Directory, Storage_Directory, Metrics_Directory, Manifest_Directory & "/generated", ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/production");
+            for Source_Dirs use ("../../mesa", "../../lib/display", "../../lib/compositor", "../../lib/image", "../../allocator/src", Backend_Directory, Startup_Directory, Input_Overlay_Directory, Timing_Directory, Storage_Directory, Metrics_Directory, Manifest_Directory & "/generated", ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/production");
         when "delayed" =>
             for Object_Dir use "build-delayed" & Backend_Suffix;
-            for Source_Dirs use ("../../mesa", "../../lib/display", "../../lib/compositor", "../../allocator/src", Backend_Directory, Startup_Directory, Input_Overlay_Directory, Timing_Directory, Storage_Directory, Metrics_Directory, Manifest_Directory & "/generated", ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/test-delayed");
+            for Source_Dirs use ("../../mesa", "../../lib/display", "../../lib/compositor", "../../lib/image", "../../allocator/src", Backend_Directory, Startup_Directory, Input_Overlay_Directory, Timing_Directory, Storage_Directory, Metrics_Directory, Manifest_Directory & "/generated", ".", "../../lib/theme", "../../lib/ui", "../../ccl/src", "../display/test-delayed");
     end case;
 
     for Main use ("main.adb");
@@ -112,9 +112,7 @@ project Desktop is
             "-lgnat-user",
             "-T", "../../c/link.ld",
             "../../c/build/crt0.o",
-            Manifest_Directory & "/manifest.o",
-            "build/wallpaper.o",
-            "build/wallpaper_cubie.o"
+            Manifest_Directory & "/manifest.o"
         );
     end Linker;
 

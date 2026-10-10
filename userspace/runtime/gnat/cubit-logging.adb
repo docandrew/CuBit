@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with CuBit.Channel_Protocol;
+with CuBit.Published_Clock;
 with CuBit.Log_Publish_Rings;
 with CuBit.Log_Streams;
 package body CuBit.Logging is
@@ -233,7 +234,7 @@ package body CuBit.Logging is
          Item.Subscription := Msg.words (0);
          Item.Minimum := Minimum;
          Item.Source := Source;
-         Item.Renewed_Ms := syscall (SYSCALL_GETTIME);
+         Item.Renewed_Ms := CuBit.Published_Clock.Milliseconds;
       else
          if Result = OK then
             Result := Invalid_Request;
@@ -265,7 +266,7 @@ package body CuBit.Logging is
       if Taken = Channels.Empty then
          Result := Empty;
          --  Nothing to read: a good moment to keep the subscription alive.
-         Now := syscall (SYSCALL_GETTIME);
+         Now := CuBit.Published_Clock.Milliseconds;
          if Now >= Item.Renewed_Ms + RENEW_MS then
             Subscribe (Item, Renewal, Item.Minimum, Item.Source);
          end if;

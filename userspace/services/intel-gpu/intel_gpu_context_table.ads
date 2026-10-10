@@ -23,6 +23,9 @@ package Intel_GPU_Context_Table is
    No_Context : constant Unsigned_32 := 65535;
    function Count (Object : Table) return Natural;
    function Can_Run_And_Retire (Object : Table; ID : Unsigned_32) return Boolean;
+   -- Submission admission: open, unheld, live context resting either
+   -- Enabled (resident between submissions) or Disabled (parked).
+   function Can_Submit (Object : Table; ID : Unsigned_32) return Boolean;
    function Failed (Object : Table) return Boolean;
    -- Session comes from authenticated render admission, never IPC words.
    -- Zero is reserved for internal/bootstrap contexts and never resolves.
@@ -62,6 +65,10 @@ package Intel_GPU_Context_Table is
    -- Serialized with ring publication and dispatch; no IPC caller supplies ID.
    -- Holds do not drain existing work or acknowledge scheduling disable.
    function Work_Allowed (Object : Table; ID : Unsigned_32) return Boolean;
+   -- Ring-tail publication admission: as Work_Allowed, but a parked
+   -- (acknowledged Disabled) context may also take a new tail, because the
+   -- MODE_SET enable that follows submits it (H6).
+   function Publish_Allowed (Object : Table; ID : Unsigned_32) return Boolean;
    procedure Hold_Work
      (Object : in out Table; ID : Unsigned_32; Accepted : out Boolean);
    -- Release only after successful publication/invalidation and acknowledged

@@ -1,0 +1,9 @@
+project Mixed_checked is
+ for Source_Dirs use (".", "../acpi-integration", "../acpi-integration/mocks", "../aml-core", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../userspace/services/acpi/native", "../../shared/firmware");
+ for Object_Dir use "build-checked/obj";
+ for Exec_Dir use "build-checked";
+ for Main use ("mixed_comparison_tests.adb", "mixed_owner_tests.adb", "buffer_compare_tests.adb", "mixed_oracle_runner.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Mixed_checked;

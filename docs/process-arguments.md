@@ -60,7 +60,10 @@ Design (approved by the user, 2026-10-02):
    named) and to procmgr with four words: PID, kind (1 Exited, 2
    Stopped), code, and the process's generation, which `OP_LAUNCH` also
    returns, so a launcher matches exits exactly even when a PID is reused
-   (`CuBit.Child_Exits`, `<cubit/launch.h>`).
+   (`CuBit.Child_Exits`, `<cubit/launch.h>`). Since 2026-10-07 the report
+   is kept until each recipient reads it, and the PID is not reused until
+   then, like a Unix zombie (docs/ipc-delivery.md). A launcher should take
+   its children's exits.
 
 ## Launch authority (`CuBit.Launch_Authority`)
 

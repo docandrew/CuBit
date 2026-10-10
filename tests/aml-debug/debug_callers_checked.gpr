@@ -1,0 +1,8 @@
+project Debug_callers_checked is
+ for Source_Dirs use ("../aml-core", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "build-callers-checked";
+ for Main use ("timer_executor_tests.adb", "region_executor_tests.adb", "readonly_input_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Debug_callers_checked;

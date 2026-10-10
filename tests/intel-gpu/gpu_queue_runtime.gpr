@@ -1,0 +1,17 @@
+project GPU_Queue_Runtime is
+   -- The few user-runtime units the GPU queue (GPU-001 step 2) needs, for
+   -- hosted test projects. Listed one by one: the runtime directory also
+   -- holds its own System and Ada units, which a host build must not see
+   -- (projects that import this one compile with -I-).
+   for Source_Dirs use ("../../userspace/runtime/gnat");
+   for Source_Files use
+     ("cubit.ads", "cubit-protocols.ads", "cubit-channel_contracts.ads",
+      "cubit-channel_contracts.adb", "cubit-channel_rings.ads", "cubit-channel_rings.adb",
+      "cubit-slot_rings.ads", "cubit-slot_rings.adb",
+      "cubit-submission_queues.ads", "cubit-submission_queues.adb",
+      "cubit-gpu_queues.ads", "cubit-gpu_queue_clients.ads", "cubit-gpu_queue_clients.adb");
+   for Object_Dir use external ("QUEUE_RUNTIME_OBJ", "build-gpu-queue-runtime");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2", "-I-");
+   end Compiler;
+end GPU_Queue_Runtime;

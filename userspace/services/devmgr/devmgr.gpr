@@ -80,7 +80,9 @@ project Devmgr is
        "ccl-vm-native_objects.ads", "ccl-vm-native_objects.adb",
        "ccl-vm-resource_values.ads", "ccl-vm-resource_values.adb",
        "ccl-scheduling_limits.ads",
-       "ccl-configurations.ads", "ccl-configurations.adb");
+       "ccl-configurations.ads", "ccl-configurations.adb",
+       "ccl-typed_settings.ads", "ccl-typed_settings.adb", "ccl-interfaces.ads",
+       "ccl-interfaces-desktop_launch.ads");
 
     for Runtime ("Ada") use "../../runtime";
 

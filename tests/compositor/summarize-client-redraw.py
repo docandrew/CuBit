@@ -14,7 +14,7 @@ def summarize(directory):
   v={k:int(n) for k,n in re.findall(r'\b([a-z_]+)=(\d+)',line)}
   if (v.get('frames')==1 and v.get('full')==0 and v.get('ev')==0
       and v.get('px')==425600 and v.get('scene_px',v.get('repair_px'))==426132):
-   if any(v.get(k,1) for k in ['event_drop','input_resync','source_gap','source_reject']):
+   if any(v.get(k,1) for k in ['event_busy','input_resync','source_gap','source_reject']):
     raise ValueError('input loss in matched interval')
    rows.append(v['draw_ms'])
  if len(rows)<5:raise ValueError('too few matching client redraw intervals')

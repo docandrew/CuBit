@@ -41,6 +41,15 @@ package body Desktop_GPU_Scene with SPARK_Mode is
       if S.Status /= Capturing then return; end if;
       D.Capture_Repaint (S.Reservation, Plan, Accepted);
    end Capture_Repaint;
+   procedure Note_Placeholder (S : in out State) is
+   begin
+      if S.Placeholders < Natural'Last then S.Placeholders := S.Placeholders + 1; end if;
+   end Note_Placeholder;
+   procedure Prepare_Glyph_Cells (S : in out State; Scale : V.A.G.UI_Scale; Prepared : out Natural) is
+   begin
+      Prepared := 0;
+      if S.Status = Idle then R.Prepare_Cells (S.Cache, Scale, Prepared); end if;
+   end Prepare_Glyph_Cells;
    procedure Begin_Frame (S : in out State; Screen : V.A.G.Output;
       Background : V.A.Word; Accepted : out Boolean) is
    begin
@@ -113,6 +122,20 @@ package body Desktop_GPU_Scene with SPARK_Mode is
       D.Capture_Glyph (S.Scene, Key, Cell, Tint, Accepted);
       if not Accepted then S.Invalid := True; end if;
    end Add_Glyph;
+   -- Record why a capture ends without a frame, before its snapshot drops.
+   procedure Classify (S : in out State)
+     with Global => null, Pre => Valid (S), Post => Valid (S) and S.Status = S.Status'Old
+   is
+   begin
+      S.Peak := V.Length'Max (S.Peak, V.Count (S.Scene));
+      S.Failure :=
+        (if not S.Invalid then (if S.Cold then Cold_Source else No_Failure)
+         elsif V.Count (S.Scene) = V.Maximum_Layers or else
+           V.Current (S.Scene) = V.Rejected then Layer_Limit
+         elsif S.Used = Count'Last then Glyph_Limit
+         elsif S.Images_Used = Image_Count'Last then Image_Limit
+         else Rejected_Draw);
+   end Classify;
    procedure Discard (S : in out State; Result : out Outcome) is
       Safe : Boolean;
    begin
@@ -120,6 +143,7 @@ package body Desktop_GPU_Scene with SPARK_Mode is
       if S.Status = Quarantined then Result := Unsafe; return; end if;
       if S.Status in Submitted | Uploading then Result := Pending; return; end if;
       if S.Status = Closed then return; end if;
+      if S.Status = Capturing then Classify (S); end if;
       S.Scene := V.Open (V.Output (S.Scene));
       if R.Pending (S.Cache) then S.Status := Uploading; Result := Pending; return; end if;
       Retire (S, Safe);
@@ -138,8 +162,10 @@ package body Desktop_GPU_Scene with SPARK_Mode is
          if Was_Invalid and Result = Retry then Result := Rejected; end if;
          return;
       end if;
+      S.Peak := V.Length'Max (S.Peak, V.Count (S.Scene));
+      S.Failure := No_Failure;
       V.Seal (S.Scene, OK);
-      if not OK then Discard (S, Result); if Result = Retry then Result := Rejected; end if; return; end if;
+      if not OK then S.Invalid := True; Discard (S, Result); if Result = Retry then Result := Rejected; end if; return; end if;
       D.Render (S.Scene, Frame, S.Reservation);
       case Frame is
          when D.Submitted => S.Reservation := Compositor_Pool.None; S.Status := Submitted; Result := Pending;

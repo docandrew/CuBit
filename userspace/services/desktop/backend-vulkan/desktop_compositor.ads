@@ -9,6 +9,10 @@ with Compositor_Formats;
 with Desktop_Composition;
 with CuBit.Display_Geometry;
 with Compositor_Pool;
+with Compositor_Source_Content;
+with Vulkan_Submission;
+with Desktop_Cursors;
+with Desktop_Icon_Pixels;
 package Desktop_Compositor with SPARK_Mode, Abstract_State => Engine, Initializes => Engine,
   Initial_Condition => Valid is
    function Valid return Boolean with Ghost, Global => (Input => Engine);
@@ -65,6 +69,7 @@ package Desktop_Compositor with SPARK_Mode, Abstract_State => Engine, Initialize
    -- Capture checker strips as bounded scene work, not one layer per pixel.
    procedure Draw_Backdrop
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
       Style : CuBit.Appearance.Preferences; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean)
      with Global => (In_Out => (Engine, Desktop_Vulkan_Startup.Engine)),
@@ -102,23 +107,71 @@ package Desktop_Compositor with SPARK_Mode, Abstract_State => Engine, Initialize
       Target_Bytes, Source_Bytes : Compositor_Formats.Byte_Count;
       Plan : Desktop_Composition.Blit_Plan; Drag_Target : Boolean;
       Drawn, Must_Restart : out Boolean)
-     with Global => (Proof_In => Desktop_Vulkan_Startup.Engine, In_Out => Engine),
-       Pre => Valid and Desktop_Vulkan_Startup.Valid,
-       Post => Valid and Desktop_Vulkan_Startup.Valid;
-   -- Over selects premultiplied source-over for immutable assets such as
-   -- cursors. Source backing must remain alive until safe source retirement.
+     with Global => (Proof_In => Desktop_Vulkan_Startup.Engine, Input => Engine),
+       Pre => Valid and Desktop_Vulkan_Startup.Valid;
+   -- Client surface pixels. Source is the CPU mapping holding Version of
+   -- the surface's content Key; a GPU renderer keeps one persistent image
+   -- per Key and copies only rows changed since its held version. The
+   -- mapping must stay valid until Forget_Source succeeds.
    procedure Draw_Output
      (Target, Source : Compositor_Formats.Image;
       Target_Bytes, Source_Bytes : Compositor_Formats.Byte_Count;
       Screen : CuBit.Display_Geometry.Output;
       Surface : CuBit.Display_Geometry.Logical_Rectangle;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Secondary : Boolean; Drawn, Must_Restart : out Boolean;
-      Over : Boolean := False; Straight_Alpha : Boolean := False)
+      Key : Compositor_Source_Content.Source_Key;
+      Version : Compositor_Source_Content.Content_Version;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean)
      with Global => (In_Out => (Engine, Desktop_Vulkan_Startup.Engine)),
        Pre => Valid and Desktop_Vulkan_Startup.Valid,
        Post => Valid and Desktop_Vulkan_Startup.Valid;
-   type Render_Completion is (Complete, Pending, Retry, Software_Required, Unsafe);
+   -- A new content version of Key changed these source rows. Call for every
+   -- version, before drawing it; a full-surface change passes every row.
+   procedure Note_Source_Change
+     (Key : Compositor_Source_Content.Source_Key; Rows : Compositor_Source_Content.Row_Band)
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
+   -- The surface behind Key is gone; its GPU image is freed once idle.
+   procedure Retire_Source (Key : Compositor_Source_Content.Source_Key)
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
+   -- Immutable embedded assets from the shared icon/cursor atlases: icons
+   -- and window controls blend straight alpha, cursors premultiplied.
+   -- Surface is the asset's own logical rectangle. Drawn = False asks
+   -- Desktop for its CPU loop (software renderers).
+   procedure Draw_Icon
+     (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Screen : CuBit.Display_Geometry.Output; Item : Desktop_Icon_Pixels.Asset;
+      Surface : CuBit.Display_Geometry.Logical_Rectangle;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean)
+     with Global => (In_Out => (Engine, Desktop_Vulkan_Startup.Engine)),
+       Pre => Valid and Desktop_Vulkan_Startup.Valid,
+       Post => Valid and Desktop_Vulkan_Startup.Valid;
+   procedure Draw_Cursor
+     (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Screen : CuBit.Display_Geometry.Output; Cursor : Desktop_Cursors.Cursor_ID;
+      Surface : CuBit.Display_Geometry.Logical_Rectangle;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean)
+     with Global => (In_Out => (Engine, Desktop_Vulkan_Startup.Engine)),
+       Pre => Valid and Desktop_Vulkan_Startup.Valid,
+       Post => Valid and Desktop_Vulkan_Startup.Valid;
+   -- Persistent-source evidence: device backing allocations and frees by
+   -- slot class, the client keys holding a GPU image, accepted upload
+   -- transfers (progress), and the largest scene captured (zero for CPU).
+   function Backing_Events (Class : Vulkan_Submission.Source_Class; Freed : Boolean)
+     return Interfaces.Unsigned_64
+     with Global => (Input => Desktop_Vulkan_Startup.Engine);
+   function Resident_Sources return Natural with Global => (Input => Engine);
+   function Upload_Progress return Interfaces.Unsigned_64
+     with Global => (Input => Desktop_Vulkan_Startup.Engine);
+   function Peak_Scene_Layers return Natural with Global => (Input => Engine);
+   function Placeholder_Draws return Natural with Global => (Input => Engine);
+   -- Why the last Retry happened: a cold upload (progress expected), a
+   -- scene beyond a renderer limit, or a failed readback.
+   type Retry_Cause is
+     (No_Retry, Cold_Upload, Layer_Limit, Glyph_Limit, Image_Limit, Rejected_Draw, Readback_Failed);
+   function Last_Retry_Cause return Retry_Cause with Global => (Input => Engine);
+   type Render_Completion is (Complete, Pending, Retry, Unsafe);
    -- Finish the output's drawing scope (Poll=False), then observe it only
    -- (Poll=True). Pending retains all source/target/descriptor leases and
    -- prohibits further writes to this target. Complete means every renderer
@@ -138,7 +191,7 @@ package Desktop_Compositor with SPARK_Mode, Abstract_State => Engine, Initialize
    -- Busy retains every source reference and may be polled without waiting.
    -- Retired permits grant return; Unsafe forbids return or slot reuse.
    procedure Forget_Source (Pixels : System.Address; Result : out Source_Release)
-     with Global => (In_Out => (Engine, Desktop_Vulkan_Startup.Engine)),
+     with Global => (In_Out => Engine, Proof_In => Desktop_Vulkan_Startup.Engine),
        Pre => Valid and Desktop_Vulkan_Startup.Valid,
        Post => Valid and Desktop_Vulkan_Startup.Valid;
    type Target_Release is (Targets_Retired, Targets_Busy, Targets_Unsafe);

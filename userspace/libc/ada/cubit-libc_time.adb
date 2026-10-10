@@ -59,22 +59,12 @@ package body CuBit.Libc_Time with SPARK_Mode is
       end;
    end From_Milliseconds;
 
-   function From_Microseconds (Count : Unsigned_64) return Timespec is
-      Whole : constant Unsigned_64 := Count / Microseconds_Per_Second;
-      Part : constant Unsigned_64 := Count mod Microseconds_Per_Second;
+   function From_Nanoseconds (Count : Unsigned_64) return Timespec is
+      Whole : constant Unsigned_64 := Count / Nanoseconds_Per_Second;
+      Part : constant Unsigned_64 := Count mod Nanoseconds_Per_Second;
    begin
-      pragma Assert (Whole <= Unsigned_64'Last / Microseconds_Per_Second);
-      pragma Assert (Part < Microseconds_Per_Second);
-      declare
-         Result : constant Timespec :=
-           (Seconds => Integer_64 (Whole),
-            Nanoseconds => Integer_64 (Part) * Nanoseconds_Per_Microsecond);
-      begin
-         pragma Assert (Integer_64 (Part) <= Microseconds_Per_Second - 1);
-         pragma Assert (Result.Nanoseconds <= (Microseconds_Per_Second - 1) * Nanoseconds_Per_Microsecond);
-         pragma Assert (Result.Seconds >= 0 and then Result.Nanoseconds >= 0);
-         return Result;
-      end;
-   end From_Microseconds;
+      pragma Assert (Whole <= Unsigned_64'Last / Nanoseconds_Per_Second);
+      return (Seconds => Integer_64 (Whole), Nanoseconds => Integer_64 (Part));
+   end From_Nanoseconds;
 
 end CuBit.Libc_Time;

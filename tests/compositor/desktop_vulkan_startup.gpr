@@ -8,7 +8,13 @@ project Desktop_Vulkan_Startup extends "vulkan_device_owner.gpr" is
       "vulkan_owned_targets_mock.c", "vulkan_image_owner_mock.c",
       "vulkan_image_owner.ads", "vulkan_image_owner.adb",
       "vulkan_image_ffi.ads", "vulkan_image_ffi.adb",
-      "compositor_storage.ads", "compositor_storage.adb");
+      "compositor_storage.ads", "compositor_storage.adb",
+      "compositor_capture_reservation.ads", "compositor_capture_reservation.adb",
+      "vulkan_submission-previews.ads", "vulkan_submission-previews.adb",
+      "vulkan_preview_binding.ads", "vulkan_preview_binding.adb",
+      "vulkan_preview_ffi.ads", "vulkan_preview_ffi.adb",
+      "compositor_preview_geometry.ads", "compositor_preview_geometry.adb",
+      "desktop_vulkan_link_mock.c");
    for Object_Dir use "build/desktop-vulkan-startup/obj";
    for Exec_Dir use "build/desktop-vulkan-startup";
    for Main use ("desktop_vulkan_upload_tests.adb", "desktop_vulkan_backing_tests.adb", "desktop_vulkan_startup_tests.adb", "desktop_vulkan_targets_tests.adb", "desktop_vulkan_frames_tests.adb", "desktop_vulkan_pipeline_tests.adb", "desktop_vulkan_sources_tests.adb");

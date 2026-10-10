@@ -206,9 +206,11 @@ with (run / 'qemu.log').open('w') as log:
             return qmp('human-monitor-command', {'command-line': text})
 
         def wait_for(marker, count=1):
+            # A tuple of markers: any one of them is enough.
+            markers = marker if isinstance(marker, tuple) else (marker,)
             while time.monotonic() < deadline and process.poll() is None:
                 text = serial.read_text(errors='replace') if serial.exists() else ''
-                if text.count(marker) >= count:
+                if any(text.count(m) >= count for m in markers):
                     return
                 if 'EXCEPTION' in text or 'optical transport quarantined' in text:
                     raise RuntimeError('native fault; see serial.log')
@@ -224,18 +226,36 @@ with (run / 'qemu.log').open('w') as log:
             hmp(f'sendkey {name}')
             time.sleep(0.2)
 
-        # The Apps menu lists the live settings' desktop.launch.* entries in
-        # key order, starting on the first. Navigate by label, so new entries
-        # do not silently shift every launch to the wrong program.
+        # The Apps menu lists the live settings' desktop.launch.* entries, typed
+        # Launch_Entry values (CCL.Interfaces.Desktop_Launch), in key order,
+        # starting on the first. Navigate by label, so new entries do not
+        # silently shift every launch to the wrong program.
         live_settings = (pathlib.Path(__file__).resolve().parents[1] /
                          'hardware/system-live.ccl').read_text()
-        apps_menu = [label for _, label in sorted(re.findall(
-            r'\(setting "desktop\.launch\.([^"]+)" "\(launch v1 \(label \\"([^"\\]+)\\"',
-            live_settings))]
+        launch_entries = sorted(re.findall(
+            r'\(setting "desktop\.launch\.([^"]+)"\s*\(Launch_Entry\s+label\s*=>\s*"([^"\\]+)"([^\n]*)',
+            live_settings))
+        apps_menu = [label for _, label, _ in launch_entries]
+        if not apps_menu:
+            raise RuntimeError('no desktop.launch entries found in system-live.ccl')
+        # The menu's top rows are the categories that hold entries, in
+        # App_Category order (CCL.Interfaces.Desktop_Launch; the default is
+        # Tools); each opens a submenu of its entries in key order (UI-013).
+        categories = ['System', 'Development', 'Web', 'Games', 'Media', 'Tools']
+        def category_of(rest):
+            found = re.search(r'category\s*=>\s*App_Category\.(\w+)', rest)
+            return found.group(1) if found else 'Tools'
+        entry_category = {label: category_of(rest) for _, label, rest in launch_entries}
+        menu_rows = [c for c in categories if c in entry_category.values()]
 
         def launch(label):
+            category = entry_category[label]
+            members = [l for _, l, _ in launch_entries if entry_category[l] == category]
             key('meta_l')
-            for _ in range(apps_menu.index(label)):
+            for _ in range(menu_rows.index(category)):
+                key('down')
+            key('right')
+            for _ in range(members.index(label)):
                 key('down')
             key('ret')
 
@@ -344,7 +364,9 @@ with (run / 'qemu.log').open('w') as log:
             # The first asynchronous frame can be the renderer-startup splash
             # (the Vulkan build tries GPU startup before software); the
             # baseline must be the drawn desktop.
-            wait_for('desktop: physical output client drawing active')
+            # Mesa-composited or CPU-fallback desktop, whichever drew.
+            wait_for(('desktop: physical output client drawing active',
+                      'desktop: software rendering ('))
             from PIL import Image
             from input_pixels import check_usb_pointer
 

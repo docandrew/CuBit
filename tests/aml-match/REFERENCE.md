@@ -1,0 +1,9 @@
+# Portable Match observations
+
+This bundle preserves all465 audit-declared files from aml-match-oracle-fbajm6vf and aml-match-followup-193t0ufk. The54 normal source attempts comprise36 returned Integers,12 runtime failures and6 normal compiler rejections. Only48 executable cases are compared. Four rejection logs report6058 invalid operand type; two report6126 syntax rejection for invalid operator syntax. None is forced AML or a runtime expectation.
+
+Raw TEST error lines establish six AE_AML_PACKAGE_LIMIT to PACKAGE_LIMIT, two AE_AML_BUFFER_LIMIT to EMPTY_BUFFER and four AE_AML_OPERAND_TYPE to UNSUPPORTED_VALUE mappings. The exact ACPICA spelling includes AML in AE_AML_PACKAGE_LIMIT. Verifier rechecks raw errors and MARK as well as cached payload metadata. Every executable table binds DSDT signature/revision/checksum/length/hash, runtime WIDT and Match presence in method-specific TEST disassembly.
+
+Use `python3 compare.py --mode release --runner /absolute/path/runner --output /new/results` or checked. Runner emits STATUS, complete Integer/Buffer/Package tree on success, then MARK from the same service. This corpus returns Integers only; generic parser still supports bounded complete byte/package trees and rejects raw Strings. Driver applies1GiB address-space,64MiB stack and30second per-case limits, saves partial failures incrementally, and binds runner/cases/manifest hashes before and after replay.
+
+90 generic parser checks and384 full-corpus synthetic checks passed, including every48 expected output and malformed variants. A final384check pass followed raw-log validation strengthening. These are lightweight host Python checks, not a compiler build or interpreter replay. Host wrapper stream-fd warnings are separate from successful Python logs. No proof/native claim or production change. Original oracle sources remain unchanged. Import the complete manifest/audit union without filtering opaque declared evidence.

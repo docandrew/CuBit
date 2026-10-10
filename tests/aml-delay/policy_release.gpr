@@ -1,0 +1,9 @@
+project Policy_release is
+ for Source_Dirs use (".", "../../userspace/lib/acpi");
+ for Object_Dir use "policy-release/obj";
+ for Exec_Dir use "policy-release";
+ for Main use ("policy_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+ end Compiler;
+end Policy_release;

@@ -35,6 +35,45 @@ package body AML_Coercions with SPARK_Mode is
       end loop;
       return (Status => Converted, Value => Value);
    end From_String;
+   function From_Explicit_String (Data : Bytes; Width : Integer_Width) return Result is
+      type Radix is (Decimal, Hexadecimal);
+      Base : Radix := Decimal;
+      Offset : Natural := 0;
+      Value : Integer_Value := 0;
+      Digit : Integer_Value range 0 .. 15;
+      Factor : Integer_Value range 10 .. 16 := 10;
+      B : Byte;
+   begin
+      while Offset < Data'Length and then Data (Data'First + Offset) in 9 .. 13 | 32 loop
+         pragma Loop_Variant (Decreases => Data'Length - Offset);
+         Offset := Offset + 1;
+      end loop;
+      if Data'Length - Offset >= 2 and then Data (Data'First + Offset) = 48
+        and then Data (Data'First + (Offset + 1)) in 88 | 120 then
+         Base := Hexadecimal;
+         Factor := 16;
+         Offset := Offset + 2;
+      end if;
+      while Offset < Data'Length loop
+         pragma Loop_Invariant (Value <= Maximum (Width));
+         pragma Loop_Variant (Decreases => Data'Length - Offset);
+         B := Data (Data'First + Offset);
+         case B is
+            when 48 .. 57 => Digit := Integer_Value (B - 48);
+            when 65 .. 70 =>
+               exit when Base = Decimal;
+               Digit := Integer_Value (B - 55);
+            when 97 .. 102 =>
+               exit when Base = Decimal;
+               Digit := Integer_Value (B - 87);
+            when others => exit;
+         end case;
+         exit when Value > (Maximum (Width) - Digit) / Factor;
+         Value := Value * Factor + Digit;
+         Offset := Offset + 1;
+      end loop;
+      return (Status => Converted, Value => Value);
+   end From_Explicit_String;
    function From_Buffer (Data : Bytes; Width : Integer_Width) return Result is
       Count : constant Natural := Buffer_Count (Data'Length, Width);
       Value : Integer_Value := 0;

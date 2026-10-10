@@ -1,13 +1,17 @@
 with Compositor_Storage;
 with Interfaces;
+with Vulkan_Submission;
 with System;
 -- One aggregate ledger per authorized device, shared by all these owners.
--- Bounded scene inventory: three targets, 140 sources and two staging buffers
+-- Bounded scene inventory: three targets, every source slot and two staging buffers
 -- (upload and readback). This is not the driver's general BO allocator.
 -- Do not copy/reset an owner or ledger, or publish handles before Live.
 -- Rearm is the only supported owner reuse; the device ledger is never reset.
 package Vulkan_Image_Owner with SPARK_Mode is
-   package Accounting is new Compositor_Storage (Slot_Count => 3 + 140 + 2);
+   Target_Images : constant := 3;
+   Staging_Buffers : constant := 2;
+   package Accounting is new Compositor_Storage
+     (Slot_Count => Target_Images + Vulkan_Submission.Source_Capacity + Staging_Buffers);
    use type Accounting.State, Accounting.Ticket;
    subtype U32 is Interfaces.Unsigned_32;
    type Phase is (Fresh, Prepared, Live, Closed, Quarantined);

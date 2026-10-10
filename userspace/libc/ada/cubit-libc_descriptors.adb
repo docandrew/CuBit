@@ -311,10 +311,13 @@ package body CuBit.Libc_Descriptors is
    Ring_Object_Bytes : constant size_t := Ring_Object'Size / 8;
 
    --  A directory being listed: one page and the next entry.
+   --  A directory descriptor's current Directory.Page.V2: a checked private
+   --  copy, the next entry's offset and how many entries are left.
    type Listing is record
-      Page   : Entries.Page;
+      Page   : Entries.DP.Page;
       Next   : Natural := 0;
-      Count  : Natural := 0;
+      Left   : Natural := 0;
+      Used   : Natural := 0;
       Loaded : Boolean := False;
       Ended  : Boolean := False;
    end record;
@@ -1407,11 +1410,15 @@ package body CuBit.Libc_Descriptors is
       end;
    end Fcntl;
 
-   --  getdents64 over Directory.Page.V1 (CuBit.Libc_Directory_Entries).
+   --  getdents64 over Directory.Page.V2 (CuBit.Libc_Directory_Entries).
    function Getdents (Fd : int; Buffer : System.Address; Count : size_t) return long is
       Used : Natural := 0;
-      Fits : Boolean;
+      Fits, OK : Boolean;
       Valid : Boolean;
+      Entry_Count : Entries.DP.Entry_Count;
+      Page_Used : Entries.DP.Used_Bytes;
+      Resume, Stamp : Unsigned_64;
+      Next : Natural;
       Capacity : constant Natural :=
         Natural (size_t'Min (Count, Entries.Maximum_Buffer_Bytes));
       Target : Entries.Bytes (0 .. Capacity - 1) with Import, Address => Buffer;
@@ -1427,25 +1434,31 @@ package body CuBit.Libc_Descriptors is
          D : Listing with Import, Address => To_Address (E.Listing);
       begin
          loop
-            if not D.Loaded or else D.Next >= D.Count then
-               exit when D.Ended;
+            if not D.Loaded or else D.Left = 0 then
+               exit when D.Loaded and then D.Ended;
                R := Directory_Read_Page (E.Handle, D.Page'Address);
                if R /= 0 then
                   return (if Used > 0 then long (Used) else R);
                end if;
-               Entries.Header (D.Page, Valid, D.Count, D.Ended);
+               Entries.DP.Check (D.Page, Valid, Entry_Count, Page_Used, D.Ended, Resume, Stamp);
                if not Valid then
+                  D.Loaded := False;
                   return Error (EIO);
                end if;
-               D.Next := 0;
+               D.Next := Entries.DP.Header_Bytes;
+               D.Left := Entry_Count;
+               D.Used := Page_Used;
                D.Loaded := True;
             end if;
-            if D.Next < D.Count then
-               Entries.Encode (D.Page, D.Next, Target, Used, Fits);
-               if not Fits then
+            if D.Left > 0 then
+               Entries.Encode (D.Page, D.Next, D.Used, Target, Used, Fits, OK, Next);
+               if not OK then
+                  return Error (EIO);
+               elsif not Fits then
                   return (if Used = 0 then Error (EINVAL) else long (Used));
                end if;
-               D.Next := D.Next + 1;
+               D.Next := Next;
+               D.Left := D.Left - 1;
             end if;
          end loop;
       end;

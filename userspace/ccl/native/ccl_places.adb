@@ -2,6 +2,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Filesystem_Queues;
+with CuBit.Directory_Pages;
 with CuBit.Channel_Protocol;
 with CuBit.Channels;
 
@@ -22,9 +23,9 @@ package body CCL_Places is
      (if Index = 1 then "@nvme:0/work" else "@mem:0/work");
 
    PAGE_BYTES : constant := DIRECTORY_PAGE_BYTES;
-   --  Room for eight page and inspection pairs per request.
-   PAIRS_PER_REQUEST : constant := 8;
-   ARENA_BYTES : constant := PAIRS_PER_REQUEST * DIRECTORY_INSPECTED_BYTES;
+   --  Room for sixteen Directory.Page.V2 pages per request.
+   PAGES_PER_REQUEST : constant := 16;
+   ARENA_BYTES : constant := PAGES_PER_REQUEST * PAGE_BYTES;
    ARENA_PAGES : constant := ARENA_BYTES / PAGE_BYTES;
    MAXIMUM_REQUESTS : constant := 64;   --  per listing: 512 pages
    ANSWER_SPINS : constant := 256;
@@ -76,7 +77,7 @@ package body CCL_Places is
    --  One request through the queue, waiting for its answer.
    procedure Call
      (Operation : Unsigned_32; Handle, Length : Unsigned_64;
-      Status : out Unsigned_32; Value : out Unsigned_64)
+      Status : out Unsigned_32; Value : out Unsigned_64; Options : Unsigned_32 := 0)
    is
       --  The rings are written and read only inside the proved Submit and
       --  Reap; the shared header words are volatile.
@@ -99,7 +100,8 @@ package body CCL_Places is
       if not Q.Can_Submit (Client) then return; end if;
       Next_Tag := Next_Tag + 1;
       Q.Submit (Client, Requests, Next_Tag,
-                (Operation => Operation, Handle => Handle, Length => Length, others => <>));
+                (Operation => Operation, Options => Options, Handle => Handle, Length => Length,
+                 others => <>));
       Submitted := Unsigned_32 (Client.Requests.Produced);
       --  The count before the wake word: kick only a service that sleeps.
       Armed := Wake;
@@ -111,8 +113,8 @@ package body CCL_Places is
          Q.Completions.Accept_Produced (Client.Answers, Q.Completions.Index (Answered), Accepted);
          exit when Client.Answers.Available > 0;
          if Look > ANSWER_SPINS then
-            --  Block until an answer waits (OP_FS_WAIT completes then).
-            Waiting.tag := (label => FQ.OP_FS_WAIT, length => 0, flags => 0, reserved => 0);
+            --  Block until an answer waits (the wake is answered then).
+            Waiting.tag := (label => FQ.OP_FS_WAKE, length => 0, flags => 0, reserved => 0);
             Tag := capCall (CAP_SLOT_FS, Waiting, CuBit.Messages.Wait_Forever);
          end if;
       end loop;
@@ -174,61 +176,58 @@ package body CCL_Places is
       return (if Home_Index = 0 then "" else Root_Text (Home_Index));
    end Home;
 
-   --  Take one page and inspection pair from the arena.
-   procedure Take_Pair
-     (Pair : Natural; Entries : in out Listing; Count : in out Listed_Count;
+   --  Take one Directory.Page.V2 from the arena: copied, then checked.
+   procedure Take_Page
+     (Index : Natural; Entries : in out Listing; Count : in out Listed_Count;
       Total : in out Natural; Valid, At_End : out Boolean)
    is
-      Base : constant Unsigned_64 := Arena_Address + Unsigned_64 (Pair * DIRECTORY_INSPECTED_BYTES);
-      Header : Directory_Page_Header with Import, Address => To_Address (Integer_Address (Base));
-      Page_Entries : Directory_Entries
-        with Import, Address => To_Address (Integer_Address (Base + DIRECTORY_PAGE_HEADER_BYTES));
-      Inspections : Directory_Inspections
-        with Import, Address => To_Address (Integer_Address (Base + PAGE_BYTES));
+      package DP renames CuBit.Directory_Pages;
+      Shared : constant DP.Page
+        with Import, Address => To_Address (Integer_Address (Arena_Address + Unsigned_64 (Index * PAGE_BYTES)));
+      Copy : constant DP.Page := Shared;
+      Entry_Count : DP.Entry_Count;
+      Used : DP.Used_Bytes;
+      Resume, Stamp : Unsigned_64;
+      At_Entry : Natural := DP.Header_Bytes;
+      Item : DP.Facts;
+      Name : DP.Name_Bytes;
+      Length : DP.Name_Length;
+      Next : Natural;
+      OK : Boolean;
    begin
-      Valid := Header.version = PROTOCOL_VERSION and then
-        Header.headerBytes = DIRECTORY_PAGE_HEADER_BYTES and then
-        Header.entryBytes = DIRECTORY_ENTRY_BYTES and then
-        Header.entryCount <= MAXIMUM_DIRECTORY_PAGE_ENTRIES and then
-        (Header.flags and not DIRECTORY_PAGE_END) = 0;
-      At_End := (Header.flags and DIRECTORY_PAGE_END) /= 0;
+      DP.Check (Copy, Valid, Entry_Count, Used, At_End, Resume, Stamp);
       if not Valid then return; end if;
-      for Index in 0 .. Natural (Header.entryCount) - 1 loop
-         declare
-            E : Directory_Entry renames Page_Entries (Index);
-            I : Entry_Inspection renames Inspections (Index);
-            Length : constant Natural := Natural'Min (Natural (E.nameLength), Files.MAXIMUM_NAME);
-         begin
-            if Total < Natural'Last then Total := Total + 1; end if;
-            if Count < Files.MAXIMUM_LISTED and then Length > 0 then
-               Count := Count + 1;
-               for C in 1 .. Length loop
-                  Entries (Count).Name (C) := Character'Val (E.name (C));
-               end loop;
-               Entries (Count).Name_Length := Length;
-               Entries (Count).Kind :=
-                 (case E.kind is
-                     when DIRECTORY_KIND_FILE => Files.File,
-                     when DIRECTORY_KIND_DIRECTORY => Files.Directory,
-                     when DIRECTORY_KIND_SYMLINK => Files.Link,
-                     when others => Files.Other);
-               Entries (Count).Size :=
-                 (if (I.valid and INSPECTED_SIZE) /= 0 then I.sizeBytes
-                  elsif (E.flags and DIRECTORY_ENTRY_SIZE_VALID) /= 0 then E.sizeBytes
-                  else 0);
-               if (I.valid and INSPECTED_TIMES) /= 0 then
-                  Entries (Count).Modified_Ms := I.modifiedMs;
-               end if;
-               if (I.valid and INSPECTED_MODE) /= 0 then
-                  Entries (Count).Mode := Natural (I.mode and 16#FFFF#);
-               end if;
-               if (I.valid and INSPECTED_LINKS) /= 0 then
-                  Entries (Count).Links := Natural (I.links and 16#FFFF#);
-               end if;
+      for Ordinal in 1 .. Entry_Count loop
+         DP.Get (Copy, At_Entry, Used, Item, Name, Length, Next, OK);
+         exit when not OK;   --  Check accepted every entry
+         At_Entry := Next;
+         if Total < Natural'Last then Total := Total + 1; end if;
+         if Count < Files.MAXIMUM_LISTED then
+            Count := Count + 1;
+            Length := Natural'Min (Length, Files.MAXIMUM_NAME);
+            for C in 1 .. Length loop
+               Entries (Count).Name (C) := Character'Val (Name (C));
+            end loop;
+            Entries (Count).Name_Length := Length;
+            Entries (Count).Kind :=
+              (case Item.Kind is
+                  when DIRECTORY_KIND_FILE => Files.File,
+                  when DIRECTORY_KIND_DIRECTORY => Files.Directory,
+                  when DIRECTORY_KIND_SYMLINK => Files.Link,
+                  when others => Files.Other);
+            Entries (Count).Size := (if (Item.Valid and INSPECTED_SIZE) /= 0 then Item.Size else 0);
+            if (Item.Valid and INSPECTED_TIMES) /= 0 then
+               Entries (Count).Modified_Ms := Item.Modified;
             end if;
-         end;
+            if (Item.Valid and INSPECTED_MODE) /= 0 then
+               Entries (Count).Mode := Natural (Item.Mode and 16#FFFF#);
+            end if;
+            if (Item.Valid and INSPECTED_LINKS) /= 0 then
+               Entries (Count).Links := Natural (Item.Links and 16#FFFF#);
+            end if;
+         end if;
       end loop;
-   end Take_Pair;
+   end Take_Page;
 
    procedure List
      (Path : String; Entries : out Listing; Count : out Listed_Count;
@@ -246,16 +245,17 @@ package body CCL_Places is
       Open (Path, Directory, Result);
       if Result /= Listed_All then return; end if;
       for Request in 1 .. MAXIMUM_REQUESTS loop
-         Call (FQ.Queue_Read_Directory_Inspected, Directory, ARENA_BYTES, Status, Filled);
+         Call (FQ.Queue_Read_Directory, Directory, ARENA_BYTES, Status, Filled,
+               Options => FQ.Directory_Metadata);
          Result := Outcome (Status);
          exit when Result /= Listed_All;
-         if Filled > PAIRS_PER_REQUEST then Result := Failed; exit; end if;
-         for Pair in 0 .. Natural (Filled) - 1 loop
-            Take_Pair (Pair, Entries, Count, Total, Valid, At_End);
+         if Filled > PAGES_PER_REQUEST then Result := Failed; exit; end if;
+         for Index in 0 .. Natural (Filled) - 1 loop
+            Take_Page (Index, Entries, Count, Total, Valid, At_End);
             if not Valid then Result := Failed; end if;
             exit when not Valid or else At_End;
          end loop;
-         exit when Result /= Listed_All or else At_End or else Filled < PAIRS_PER_REQUEST;
+         exit when Result /= Listed_All or else At_End or else Filled < PAGES_PER_REQUEST;
       end loop;
       Close (Directory);
    end List;

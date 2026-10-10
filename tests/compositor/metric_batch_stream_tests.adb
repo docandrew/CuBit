@@ -60,6 +60,15 @@ procedure Metric_Batch_Stream_Tests is
       if P.Next (Policy) = P.Describe_Diagnostic then
          Write (SM.Declaration (SM.Diagnostic_Output), Frame + 1);
       end if;
+      if P.Next (Policy) = P.Describe_Loop_Turn then
+         Write (SM.Declaration (SM.Loop_Turn), Frame + 1);
+      end if;
+      if P.Next (Policy) = P.Describe_Input_To_Present then
+         Write (SM.Declaration (SM.Input_To_Present), Frame + 1);
+      end if;
+      if P.Next (Policy) = P.Describe_Input_Source_Age then
+         Write (SM.Declaration (SM.Input_Source_Age), Frame + 1);
+      end if;
       pragma Assert (P.Next (Policy) = P.Measurement);
       Write (V.Value, Frame + 1); Admitted := Admitted + 1;
       if P.Due (Policy, Frame + 1) then
@@ -94,7 +103,7 @@ procedure Metric_Batch_Stream_Tests is
               D.Value.Key = WM.Key (Kind) and then D.Value.Declared = R.Counter);
          end;
       end loop;
-      for Slot in 11 .. 12 loop
+      for Slot in 11 .. 15 loop
          declare D : constant R.Decoded_Record := R.Decode (R.Slot (Pages (Which), Slot));
          begin
             pragma Assert (D.Success and then D.Value.Kind = R.Describe and then
@@ -103,29 +112,29 @@ procedure Metric_Batch_Stream_Tests is
       end loop;
    end Check_Declarations;
 begin
-   for Frame in 1 .. 102 loop Offer (Unsigned_64 (Frame)); end loop;
-   pragma Assert (Admitted = 102 and B.In_Flight (Builder, 1) and B.In_Flight (Builder, 2));
+   for Frame in 1 .. 96 loop Offer (Unsigned_64 (Frame)); end loop;
+   pragma Assert (Admitted = 96 and B.In_Flight (Builder, 1) and B.In_Flight (Builder, 2));
    pragma Assert (P.Used (Policy) = 0);
    Check_Declarations (1, 63); Check_Declarations (2, 63);
    Held := Pages;
-   for Frame in 103 .. 1000 loop Offer (Unsigned_64 (Frame)); end loop;
-   pragma Assert (Admitted = 102 and B.Dropped (Builder) = 898 and Pages = Held);
+   for Frame in 97 .. 1000 loop Offer (Unsigned_64 (Frame)); end loop;
+   pragma Assert (Admitted = 96 and B.Dropped (Builder) = 904 and Pages = Held);
    pragma Assert (P.Used (Policy) = 0);
    -- A confirmed out-of-order release makes precisely that page writable.
    B.Complete (Builder, 2);
    Offer (1001);
-   pragma Assert (Admitted = 103 and P.Used (Policy) = 13 and P.Samples (Policy) = 1);
+   pragma Assert (Admitted = 97 and P.Used (Policy) = 16 and P.Samples (Policy) = 1);
    pragma Assert (P.Due (Policy, 101_002));
    B.Seal (Builder, Pages, Sealed, Page, Bytes);
-   pragma Assert (Sealed and Page = 2 and Bytes = R.Batch_Bytes (13));
+   pragma Assert (Sealed and Page = 2 and Bytes = R.Batch_Bytes (16));
    P.Submitted (Policy);
-   Check_Declarations (2, 13);
+   Check_Declarations (2, 16);
    declare H : constant R.Decoded_Header := R.Decode_Header (R.Slot (Pages (2), 0), Bytes);
    begin
-      pragma Assert (H.Success and then H.Value.Sequence = 3 and then H.Value.Producer_Dropped = 898);
+      pragma Assert (H.Success and then H.Value.Sequence = 3 and then H.Value.Producer_Dropped = 904);
    end;
    for I in R.Page_Word_Index loop
       pragma Assert (Pages (1) (I) = Held (1) (I));
    end loop;
-   Ada.Text_IO.Put_Line ("METRIC-BATCH-STREAM: PASS two real pages, 898 overload drops, retained-page immutability and out-of-order release/redeclaration");
+   Ada.Text_IO.Put_Line ("METRIC-BATCH-STREAM: PASS two real pages, 904 overload drops, retained-page immutability and out-of-order release/redeclaration");
 end Metric_Batch_Stream_Tests;

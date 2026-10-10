@@ -56,8 +56,9 @@ executables take scenarios 0, 1 and 2. Their device is mocked; real staging
 memory is used. The desktop_backdrop_real.gpr oracle uses real hosted Vulkan.
 Run test-desktop-backdrop-real.sh in vulkan-affine-shell.nix, with
 CUBIT_FONT_HOST_ARCHIVE pointing to the matching frozen host font library.
-CUBIT_WALLPAPER_OBJECT and CUBIT_CUBIE_OBJECT optionally select frozen embedded
-asset objects; otherwise the existing Desktop build objects are used.
+The wallpapers are no longer linked objects: the hosted tests make
+Desktop_Wallpaper_Store Ready with generated rasters (wallpaper_loader.adb),
+and Desktop loads the QOI asset package at run time (docs/assets.md).
 
 This prepares the GPU path. Mainloop GPU routing, complete decoration/client
 capture, physical display handoff, hardware tear-free operation and measured

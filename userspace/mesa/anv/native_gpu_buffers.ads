@@ -38,14 +38,6 @@ package Native_GPU_Buffers is
       Remove, Previous : Unsigned_32; Generation : access Unsigned_32)
       return Unsigned_32
      with Export, Convention => C, External_Name => "cubit_intel_update_binding";
-   -- Synchronous application submission after trusted setup. Previous starts
-   -- at 1; success must return its exact successor. Caller serializes the
-   -- session and pins all reachable BO/VM backing. Output clears on failure.
-   -- Same codes as Create; uncertainty requires retirement, NEVER replay.
-   function Submit
-     (Slot : Unsigned_64; Handle : Unsigned_32; GPU, Offset, Bytes : Unsigned_64;
-      Previous : Unsigned_32; Completion : access Unsigned_32) return Unsigned_32
-     with Export, Convention => C, External_Name => "cubit_intel_submit_batch";
    -- Register and initialize the prepared context, once per session.
    -- Success means driver setup completed and scheduling disable acknowledged,
    -- NOT permission to submit application batches. Same uncertainty rules as Create.

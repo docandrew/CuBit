@@ -1,0 +1,9 @@
+project Static_Buffer_release is
+ for Source_Dirs use (".", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "build-release/obj";
+ for Exec_Dir use "build-release";
+ for Main use ("static_buffer_count_tests.adb", "static_buffer_edge_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+ end Compiler;
+end Static_Buffer_release;

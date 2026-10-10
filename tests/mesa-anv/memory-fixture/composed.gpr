@@ -3,6 +3,7 @@ project Composed extends "sharing.gpr" is
      "../../../userspace/runtime/gnat", "../../../userspace/mesa/anv");
    for Source_Files use ("composed_tests.adb", "messages_composed.ads", "messages_composed.adb",
      "memory_mock.ads", "memory_mock.adb", "cubit.ads", "cubit-grant_references.ads",
+     "cubit-process_ids.ads", "cubit-process_ids.adb",
      "cubit-capability_grants.ads", "cubit-capability_grants.adb",
      "intel_gpu_buffer_views.ads", "intel_gpu_buffer_views.adb",
      "intel_gpu_buffer_handles.ads", "intel_gpu_buffer_handles.adb",
@@ -15,7 +16,7 @@ project Composed extends "sharing.gpr" is
      "intel_gpu_buffer_reply.ads", "intel_gpu_buffer_reply.adb",
      "intel_gpu_buffer_backing.ads", "intel_gpu_buffer_requests.ads",
      "intel_gpu_buffer_requests.adb", "intel_gpu_buffer_requests-sharing.ads",
-     "intel_gpu_buffer_requests-sharing.adb", "native_gpu_buffers.ads", "native_gpu_buffers.adb",
+     "intel_gpu_buffer_requests-sharing.adb", "native_gpu_calls.ads", "native_gpu_calls.adb", "native_gpu_buffers.ads", "native_gpu_buffers.adb",
      "native_gpu_memory.ads", "native_gpu_memory.adb",
      "native_gpu_mapping.c", "composed_mapping_c.c");
    for Object_Dir use "../target/buffer-composed-host";

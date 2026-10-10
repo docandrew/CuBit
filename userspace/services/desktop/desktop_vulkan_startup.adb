@@ -11,7 +11,7 @@ with System;
 with Vulkan_Context_Owner;
 with Vulkan_Submission;
 package body Desktop_Vulkan_Startup with SPARK_Mode,
-  Refined_State => (Engine => (Device, Context, Submission, Targets, Budget, Pool, Damage, Configured, Stopping, Pipeline, Pipeline_Ticket, Backings, Upload, Readback_Storage, Readback_Operation, Coverage, Extents, Writer, Active_Write, Write_Plan, Write_Discard, Glyph_Sources, Source_Readers, Reader_Sequence)) is
+  Refined_State => (Engine => (Device, Context, Submission, Targets, Budget, Pool, Damage, Configured, Stopping, Pipeline, Pipeline_Ticket, Backings, Upload, Readback_Storage, Readback_Operation, Coverage, Extents, Writer, Active_Write, Write_Plan, Write_Discard, Glyph_Sources, Source_Readers, Reader_Sequence, Transfers, Allocations, Allocated_By, Released_By)) is
    package CP renames Upload_Progress;
    package GS renames Vulkan_Glyph_Sources;
    Glyph_Sources : GS.State;
@@ -52,6 +52,9 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
    type Reader_Array is array (Reader_Index) of Reader_Record;
    Source_Readers : Reader_Array;
    Reader_Sequence : Interfaces.Unsigned_64 := 0;
+   Transfers, Allocations : Interfaces.Unsigned_64 := 0;
+   type Class_Counts is array (V.Source_Class) of Interfaces.Unsigned_64;
+   Allocated_By, Released_By : Class_Counts := (others => 0);
    use type Interfaces.Unsigned_64;
    Damage : TD.State := TD.Open (1, 1);
    Configured, Stopping : Boolean := False;
@@ -67,6 +70,10 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
    Context : Vulkan_Context_Owner.State;
    Submission : Vulkan_Submission.State := Vulkan_Submission.Open (System.Null_Address);
    use type Vulkan_Context_Owner.Phase, Vulkan_Context_Owner.Child, System.Address;
+   function Transfers_Submitted return Interfaces.Unsigned_64 is (Transfers);
+   function Allocated_In (Class : V.Source_Class) return Interfaces.Unsigned_64 is (Allocated_By (Class));
+   function Released_In (Class : V.Source_Class) return Interfaces.Unsigned_64 is (Released_By (Class));
+   function Backings_Allocated return Interfaces.Unsigned_64 is (Allocations);
    function Valid return Boolean is
      (O.A.Valid (Budget) and then
       (for all Index in Backing_Slot => CP.Valid (Coverage (Index)) and
@@ -220,7 +227,13 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
          Extents (Index) := (G.Edge (Width), G.Edge (Height), (if Mask then G.R8 else G.BGRA8));
          CP.Begin_Image (Coverage (Index), O.A.Identity (Backing_Lease (Index)),
             G.Edge (Width), G.Edge (Height), Extents (Index).Kind, Accepted);
-         if Accepted then Lease := Backing_Lease (Index); Result := Source_Accepted; end if;
+         if Accepted then
+            Lease := Backing_Lease (Index); Result := Source_Accepted;
+            if Allocations < Interfaces.Unsigned_64'Last then Allocations := Allocations + 1; end if;
+            if Allocated_By (V.Class_Of (Index)) < Interfaces.Unsigned_64'Last then
+               Allocated_By (V.Class_Of (Index)) := Allocated_By (V.Class_Of (Index)) + 1;
+            end if;
+         end if;
       elsif Backing_Phase (Index) = O.I.Quarantined then Result := Source_Unsafe;
       end if;
    end Allocate_Backing;
@@ -232,6 +245,9 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
          Lease = O.A.No_Ticket or else Lease /= Backing_Lease (Index) or else
          V.Source_Present (Submission, Index) then return; end if;
       S.Close (Backings (Index), Context, Budget, True, Released);
+      if Released and then Released_By (V.Class_Of (Index)) < Interfaces.Unsigned_64'Last then
+         Released_By (V.Class_Of (Index)) := Released_By (V.Class_Of (Index)) + 1;
+      end if;
    end Release_Backing;
    function Glyph_Source (Key : GS.Key) return V.Source_Ticket is
      (GS.Resolve (Glyph_Sources, Submission, Key));
@@ -350,6 +366,13 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
       CP.Begin_Image (Coverage (Index), O.A.Identity (Lease), Extents (Index).Width,
          Extents (Index).Height, Extents (Index).Kind, Accepted);
    end Restart_Content;
+   procedure Update_Content (Index : Backing_Slot; Lease : O.A.Ticket;
+      First, Last : Compositor_Upload.Edge; Accepted : out Boolean) is
+   begin
+      Accepted := False;
+      if not Can_Produce (Index, Lease) then return; end if;
+      CP.Begin_Update (Coverage (Index), O.A.Identity (Lease), First, Last, Accepted);
+   end Update_Content;
    procedure Begin_Write (Index : Backing_Slot; Lease : O.A.Ticket;
       Ticket : out Write_Ticket; Plan : out G.Plan; Mapping : out System.Address;
       Result : out Source_Result; Row_Pixels : Compositor_Upload.Edge := 0) is
@@ -408,6 +431,7 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
       end if;
       CP.Submitted (Coverage (Ticket.Index), Ticket.Chunk, Accepted);
       Writer := (if Accepted then Transferring else Unsafe);
+      if Accepted and then Transfers < Interfaces.Unsigned_64'Last then Transfers := Transfers + 1; end if;
       Result := (if Accepted then Source_Accepted else Source_Unsafe);
    end Submit_Write;
    procedure Poll_Upload (Result : out Poll_Result) is

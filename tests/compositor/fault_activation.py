@@ -1,7 +1,8 @@
 """Test-only recovery oracle; never accepts a production artifact as fault-injected."""
 from mesa_activation import BOOT, START, CLIENT
 TEXT_FALLBACK = 'desktop: retained software text active'
-CLIENT_FALLBACK = 'desktop: Mesa unavailable; CPU compositor fallback'
+# Any cause: startup, runtime switch or a declined client draw.
+CLIENT_FALLBACK = 'desktop: software rendering ('
 PARTIAL = 'desktop: text batch failed; repainting scene in software'
 def expected_markers(manifest):
     fault = manifest.get('build_variant', {}).get('software_fault')

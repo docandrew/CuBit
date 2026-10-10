@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2c3240"/><stop offset="1" stop-color="#12151c"/></linearGradient><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#59627a"/><stop offset="1" stop-color="#30364a"/></linearGradient><linearGradient id="g3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8a96aa"/><stop offset="1" stop-color="#5d677a"/></linearGradient></defs>
+<polygon points="4.95,36.00 22.27,46.00 22.27,24.00 4.95,14.00" fill="url(#g1)" stroke="#1d1030" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="43.05,34.00 22.27,46.00 22.27,24.00 43.05,12.00" fill="url(#g2)" stroke="#1d1030" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="25.73,2.00 43.05,12.00 22.27,24.00 4.95,14.00" fill="url(#g3)" stroke="#1d1030" stroke-width="2.0" stroke-linejoin="round"/>
+<polyline points="7.55,21.50 11.88,28.00 7.55,29.50" fill="none" stroke="#4dff7c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="13.61,36.00 18.80,39.00" fill="none" stroke="#4dff7c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

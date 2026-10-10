@@ -1,0 +1,4 @@
+# Clock publication checks (docs/fast-clock.md). No authority.
+(executable-manifest v1
+  (identity "com.cubit.clock-check")
+  (version "0.1.0"))

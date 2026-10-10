@@ -33,7 +33,7 @@ inputs={}
 def copy(path):
  data=path.read_bytes();dest=out/path.relative_to(root);dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(data)
  inputs[str(path.relative_to(root))]=hashlib.sha256(data).hexdigest()
-for rel in ('userspace/services/desktop','userspace/lib/compositor','userspace/lib/display','userspace/lib/theme',
+for rel in ('userspace/services/desktop','userspace/lib/compositor','userspace/lib/display','userspace/lib/image','userspace/lib/theme',
  'userspace/lib/ui','userspace/ccl/src','userspace/allocator/src','userspace/services/display/production'):
  for path in (root/rel).rglob('*'):
   if path.is_file() and path.suffix in ('.ads','.adb','.gpr','.c','.h','.vert','.frag') and not any(p.startswith('build') for p in path.relative_to(root/rel).parts):copy(path)
@@ -43,7 +43,6 @@ for rel in ('userspace/runtime/gnat','userspace/runtime/adalib'):
 for rel in ('userspace/runtime/ada_source_path','userspace/runtime/ada_object_path','userspace/runtime/runtime.xml','userspace/runtime/target_properties',
  'userspace/mesa/mesa_service.ads','userspace/mesa/mesa_service.adb','userspace/mesa/service-device.h',
  'userspace/services/desktop/build/generated/ccl_manifest_bindings.ads','userspace/services/desktop/build/manifest.o',
- 'userspace/services/desktop/build/wallpaper.o','userspace/services/desktop/build/wallpaper_cubie.o',
  'userspace/rust/build/font-native/libcubit_fonts.a','tests/compositor/build-vulkan-affine-shaders.py'):
  copy(root/rel)
 desktop=out/'userspace/services/desktop';main=desktop/'main.adb';main.write_text('with Mesa_Service;\npragma Elaborate_All (Mesa_Service);\nwith Vulkan_Context_Owner;\npragma Elaborate_All (Vulkan_Context_Owner);\n'+main.read_text())
@@ -189,7 +188,7 @@ try:
  bound=exchange.split('[BOUND OBJECT FILES]\n',1)[1].split('\n[',1)[0].splitlines()
  exe=out/'desktop-vulkan-link.svc'
  run([*prefix,'--manifest',directory/'manifest.o',directory/'b__main.o',*bound,*objects,
-  directory/'wallpaper.o',directory/'wallpaper_cubie.o',out/'userspace/rust/build/font-native/libcubit_fonts.a',*flags,'-o',exe])
+  out/'userspace/rust/build/font-native/libcubit_fonts.a',*flags,'-o',exe])
  if args.optional_render_probe:
   final_caps=out/'linked.caps'
   run(['objcopy','--dump-section','.cubit.caps='+str(final_caps),exe])

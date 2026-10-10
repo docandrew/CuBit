@@ -159,3 +159,66 @@ Its interaction fixture uses PS/2; physical USB timing remains unvalidated.
 The motivating failure and accepted binary hash are documented in
 `../compositor/desktop-frame-completion.md`. Millisecond timestamps fix gesture
 semantics; they are not sufficient for sub-millisecond latency profiling.
+
+## Agreed motion coalescing (Pointer_Pending, 2026-10-09)
+
+Raw retention made the pending backlog grow with the device report rate.
+The kernel takes 16 events per publisher (IPC-002 credits) and the driver
+kept 32 more, so a desktop stall longer than 48 report periods (48 ms at
+1 kHz, 384 ms at 125 Hz) overflowed: the backlog was discarded, desktop saw a
+sequence gap and resynchronized (NUC: a resize drag cancelled mid-drag).
+The backlog was also FIFO, so after a stall desktop replayed stale motion.
+
+`Pointer_Pending` (userspace/lib/input) replaces raw pointer retention in
+both xhci.drv and ps2.drv. RELATIVE_POINTER reports are already declared
+ACCUMULABLE_DISPLACEMENT, so motion is merged by agreement into the newest
+*unpublished* report when:
+- that report is not itself a button/flag transition (its buttons equal the
+  report before it), and the new report has the same buttons and flags;
+- the newest report has no wheel steps, or the new report has no motion (a
+  wheel step is never moved past later motion);
+- the summed X/Y/wheel still fit the wire fields (12/12/8 bits).
+Merging keeps the report's sequence number, recovery flag and acquisition
+time (so desktop's source age is the oldest contained input), and consumes
+no new sequence: no gap. Buttons and wheel are never lost or reordered; a
+press or release lands at exactly the position it happened at. True overflow
+now needs 32 unpublished *transitions* and stays explicit (Overflowed,
+RESYNCHRONIZE, `xhci: pointer retention overflow`).
+
+xhci.drv's stats line adds `coalesced=` (reports merged), `overflow=`
+(retention losses) and `busy=` (kernel credit refusals; the report was kept
+and retried). Desktop's `event_drop=` is renamed `event_busy=`: since IPC-002
+step 3 it counts credit refusals that the publisher kept, not losses. Desktop
+adds `src_age_max_ms=`/`src_age_avg_ms=`: driver acquisition to intake.
+
+Proof (SPARK level 2, all of userspace/lib/input: Input_Pending,
+Keyboard_Pending, Pointer_Pending): 142 checks, 0 unproved, 0 justified.
+Proved: the pending tail is exactly the last report on the wire; a coalesce
+keeps count and sequence, conserves displacement (tail = old tail + report),
+and the merged tail still has the buttons of the report before it; an append
+preserves FIFO content; overflow is flagged.
+
+```sh
+cd kernel
+alr exec -- gnatprove -P ../tests/input-pending/prove.gpr --mode=all --level=2 \
+  --report=fail --checks-as-errors=on
+alr exec -- gprbuild -p -P ../tests/input-pending/pending.gpr
+../tests/input-pending/build/pointer_tests
+```
+
+`pointer_tests` drives a model consumer that applies reports as desktop does
+(move, then button change and wheel at the new position) and compares every
+observation (transition or wheel turn, with its position) against the raw
+stream: a 1000-report flood, a press-drag-release mid-flood, wheel between
+motion, and 20,000 random reports with random partial drains. Mutation
+checks: dropping the transition guard or the wheel guard each fails the
+model (observation/position mismatch) with assertions off. A stall model
+reproduces the NUC loss under the old policy (1 kHz, 100 ms stall: 2
+overflows) and shows none with coalescing (peak 1 pending) for 125/500/1000 Hz
+and stalls up to 1 s.
+
+The PS/2 driver fixture (`driver.gpr`, real ps2 main.adb) now expects four
+-70 packets to arrive as -70 then -210, button transitions unchanged, and
+uses 40 button transitions (not motion) for its overflow case. The fixture
+had drifted from the runtime API (No_Process, Registered_Driver, capSend
+deadline); it compiles again.

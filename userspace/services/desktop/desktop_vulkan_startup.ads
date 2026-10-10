@@ -123,9 +123,27 @@ package Desktop_Vulkan_Startup with SPARK_Mode,
    procedure Cancel_Write (Ticket : Write_Ticket; Producer_Retired : Boolean;
       Cancelled : out Boolean)
      with Global => (In_Out => Engine), Pre => Valid, Post => Valid and not Write_Active (Ticket);
+   -- New content for the same live allocation: every row (Restart_Content)
+   -- or only rows First .. Last - 1, keeping the rest (Update_Content). The
+   -- descriptor must already be released; Import_Backing republishes it only
+   -- after the whole pass completes. Neither allocates nor frees memory.
    procedure Restart_Content (Index : Backing_Slot; Lease : Vulkan_Owned_Targets.A.Ticket;
       Accepted : out Boolean)
      with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
+   procedure Update_Content (Index : Backing_Slot; Lease : Vulkan_Owned_Targets.A.Ticket;
+      First, Last : Compositor_Upload.Edge; Accepted : out Boolean)
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
+   -- Monotonic count of accepted transfer submissions (progress evidence for
+   -- callers that must distinguish cold uploads from a stalled scene).
+   function Transfers_Submitted return Interfaces.Unsigned_64 with Global => (Input => Engine);
+   -- Monotonic counts of backing allocations accepted and backings freed on
+   -- this device, by slot class: the steady-state churn evidence (each one
+   -- is a GPU VM update in the driver).
+   function Backings_Allocated return Interfaces.Unsigned_64 with Global => (Input => Engine);
+   function Allocated_In (Class : Vulkan_Submission.Source_Class) return Interfaces.Unsigned_64
+     with Global => (Input => Engine);
+   function Released_In (Class : Vulkan_Submission.Source_Class) return Interfaces.Unsigned_64
+     with Global => (Input => Engine);
    procedure Import_Backing (Index : Backing_Slot; Lease : Vulkan_Owned_Targets.A.Ticket;
       Ticket : out Vulkan_Submission.Source_Ticket; Result : out Source_Result)
      with Global => (In_Out => Engine), Pre => Valid,

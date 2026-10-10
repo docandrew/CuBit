@@ -45,7 +45,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, avx, rust-std, libc, processes, control-events, binutils, gcc, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
@@ -274,7 +274,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary|bench-latency)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary|bench-latency)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -545,6 +545,16 @@ case "$TEST_NAME" in
     futex)
         # Threads of one process on every CPU at once (default four).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-futex.ccl"
+        ;;
+    clock)
+        # docs/fast-clock.md: the clock publication page. The kernel
+        # publishes it only for an invariant TSC, which QEMU exposes with
+        # +invtsc under KVM (TCG drops the flag: run with --accel kvm).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-clock.ccl"
+        case "$QEMU_CPU_MODEL" in
+            *invtsc*) ;;
+            *) QEMU_CPU_MODEL="$QEMU_CPU_MODEL,+invtsc" ;;
+        esac
         ;;
     avx)
         # Two processes sharing one CPU, each holding its own YMM pattern
@@ -963,6 +973,24 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
+        # Desktop's wallpaper package (docs/assets.md), from the current build.
+        WALLPAPER_PACKAGE=Assets/cubit-wallpapers/1
+        for WALLPAPER_DIR in Assets Assets/cubit-wallpapers "$WALLPAPER_PACKAGE"; do
+            debugfs -w -R "mkdir $WALLPAPER_DIR" "$TEMP_DISK" >/dev/null 2>&1
+        done
+        for WALLPAPER_NAME in cubes.qoi cubie.qoi; do
+            WALLPAPER_FILE="$KERNEL_DIR/build/$WALLPAPER_PACKAGE/$WALLPAPER_NAME"
+            if [ ! -f "$WALLPAPER_FILE" ]; then
+                echo "headless: build wallpaper-assets first: $WALLPAPER_FILE" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $WALLPAPER_PACKAGE/$WALLPAPER_NAME" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $WALLPAPER_FILE $WALLPAPER_PACKAGE/$WALLPAPER_NAME" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $WALLPAPER_PACKAGE/$WALLPAPER_NAME" >&2
+                exit 1
+            fi
+        done
     fi
     if [ "${CUBIT_TEST_IDLE_DPI:-0}" = 1 ]; then
         DPI_IMAGE="$ROOT_DIR/tests/compositor/build/dpi-client/dpi-client.app"
@@ -1259,6 +1287,16 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$THREADS_IMAGE $THREADS_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $THREADS_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "clock" ]; then
+        for CLOCK_IMAGE in logstore.svc clock-check.app; do
+            debugfs -w -R "rm $CLOCK_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$CLOCK_IMAGE $CLOCK_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $CLOCK_IMAGE" >&2
                 exit 1
             fi
         done
@@ -1972,8 +2010,10 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             exit 0
         fi
         if [ "$TEST_NAME" = "servo" ] && [ -n "${SERVO_DESKTOP:-}" ]; then
-            # Launch Servo from the Apps menu (5th entry) once the desktop is
-            # up, then photograph the window after the first page renders.
+            # Launch Servo (Penny) from the Apps menu once the desktop is up:
+            # the Web category is the third row (system.ccl: System,
+            # Development, Web, Games, Tools), its first entry. Then
+            # photograph the window after the first page renders.
             for ((attempt = 0; attempt < 300; attempt++)); do
                 grep -F "desktop: active outputs=" "$SERIAL_LOG" >/dev/null 2>&1 && break
                 sleep 0.1
@@ -1982,7 +2022,7 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             {
                 printf 'sendkey meta_l\n'
                 sleep 0.5
-                for key in down down down down ret; do
+                for key in down down right ret; do
                     printf 'sendkey %s\n' "$key"
                     sleep 0.3
                 done
@@ -2041,8 +2081,13 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             }
             if [ "${CUBIT_DOOM_MULTIAPP:-0}" = 1 ]; then
                 {
+                    # Workbench: Development (second row), first entry.
                     printf 'sendkey meta_l\n'
                     sleep 0.3
+                    printf 'sendkey down\n'
+                    sleep 0.2
+                    printf 'sendkey right\n'
+                    sleep 0.2
                     printf 'sendkey ret\n'
                     sleep 4
                     printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-workbench.ppm"
@@ -2058,8 +2103,8 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             fi
             # Launch through Apps: boot-time spawning bypasses compositor
             # bookkeeping and cannot cover interactive-launch regressions.
-            # DOOM is the fourth entry (system.ccl: Workbench, Console,
-            # Logs, DOOM).
+            # DOOM is the first entry of Games, the fourth category row
+            # (system.ccl: System, Development, Web, Games, Tools).
             {
                 printf 'sendkey meta_l\n'
                 sleep 0.3
@@ -2067,6 +2112,8 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                     printf 'sendkey down\n'
                     sleep 0.2
                 done
+                printf 'sendkey right\n'
+                sleep 0.2
                 printf 'sendkey ret\n'
             } | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
             doom_ready=0
@@ -2547,126 +2594,70 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
             fi
         elif [ "$TEST_NAME" = "files" ]; then
-            # Files is the first native client of the shared resizable table
-            # header.  Exercise an actual captured drag through QEMU's i8042
-            # device, then use F5 to prove that input delivery and the client
-            # event loop remain live after release.
-            files_ready=0
-            for ((attempt = 0; attempt < 100; attempt++)); do
-                if grep -F "files: first frame presented" \
-                    "$SERIAL_LOG" >/dev/null 2>&1; then
-                    files_ready=1
-                    break
-                fi
-                sleep 0.1
-            done
-            if [ "$files_ready" -ne 1 ]; then
-                echo "headless: input injector timed out waiting for Files" >&2
+            # Files (docs/files-app.md) by keyboard only: no pixel
+            # coordinates, so layout changes cannot break it. Each step
+            # waits for the marker of the previous one.
+            files_wait() {
+                local attempt
+                for ((attempt = 0; attempt < 150; attempt++)); do
+                    grep -aF "$1" "$SERIAL_LOG" >/dev/null 2>&1 && return 0
+                    sleep 0.1
+                done
+                echo "headless: Files did not report: $1" >&2
                 exit 1
-            fi
-            {
-                # QEMU's emulated relative PS/2 device applies its own host
-                # scaling.  The correction lands on the Files divider at
-                # client x=490 (the first column's initial trailing edge).
-                printf 'mouse_move 510 96\n'
-                printf 'mouse_move -77 2\n'
-                sleep 0.4
-                for _step in 1 2 3 4 5 6 7 8; do
-                    printf 'mouse_move 10 0\n'
-                    sleep 0.05
+            }
+            files_wait_count() {
+                local attempt
+                for ((attempt = 0; attempt < 150; attempt++)); do
+                    [ "$(grep -acF "$1" "$SERIAL_LOG" 2>/dev/null)" -ge "$2" ] && return 0
+                    sleep 0.1
                 done
-                printf 'mouse_button 1\n'
-                sleep 0.1
-                for _step in 1 2 3 4 5 6 7 8; do
-                    printf 'mouse_move 10 0\n'
-                    sleep 0.05
-                done
-                printf 'mouse_button 0\n'
-                sleep 0.2
-                printf 'mouse_move 0 20\n'
-                # Move from the table divider to the shared scrollbar's
-                # increment arrow and click it.  This catches integration
-                # failures that isolated scrollbar-state tests cannot: stale
-                # control maps, incorrect client-coordinate translation, and
-                # missing pressed-frame damage.
-                printf 'mouse_move 272 409\n'
-                sleep 0.2
-                printf 'mouse_button 1\n'
-                sleep 0.1
-                printf 'mouse_button 0\n'
-                sleep 0.2
-                # The thumb is tall at the top of this short fixture. Grab it
-                # below its leading edge and drag far enough to change the
-                # first visible row while capture remains active.
-                printf 'mouse_move 0 -380\n'
-                sleep 0.2
-                printf 'mouse_button 1\n'
-                sleep 0.1
-                for _step in 1 2 3 4 5 6 7 8; do
-                    printf 'mouse_move 0 10\n'
-                    sleep 0.05
-                done
-                printf 'mouse_button 0\n'
-                sleep 0.2
-            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
-            {
-                printf '{"execute":"qmp_capabilities"}\n'
-                sleep 0.1
-                printf '%s\n' '{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":true,"button":"wheel-down"}},{"type":"btn","data":{"down":false,"button":"wheel-down"}}]}}'
-            } | nc -U -q 1 "$QMP_SOCKET" >/dev/null
-            {
-                # Return from the thumb at client (843,195) to the Refresh
-                # button and exercise the complete retained-button lifecycle.
-                # F5 below then proves the event loop remained live after the
-                # mouse activation and its filesystem reload.
-                # Large relative moves are split by QEMU into several PS/2
-                # packets.  Pace them so the button edge cannot overtake the
-                # final motion packets in the guest input stream.
-                for _step in 1 2 3 4 5 6 7 8 9 10; do
-                    printf 'mouse_move -79 -17\n'
-                    sleep 0.05
-                done
-                printf 'mouse_move -3 2\n'
-                sleep 0.5
-                printf 'mouse_button 1\n'
-                sleep 0.1
-                printf 'mouse_button 0\n'
-            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
-            sleep 0.2
-            printf 'sendkey f5\n' | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
-            sleep 0.2
-            {
-                # Root's first visible object is lost+found. Enter traverses
-                # owned directory handles; Backspace never resolves '..'.
-                printf 'sendkey home\n'
-                sleep 0.3
-                printf 'sendkey ret\n'
-                sleep 0.4
-                printf 'sendkey home\n'
-                sleep 0.2
-                printf 'sendkey ret\n'
-                sleep 0.4
-                printf 'sendkey f5\n'
-                sleep 0.3
-                printf 'sendkey backspace\n'
-                sleep 0.4
-                printf 'sendkey backspace\n'
-                sleep 0.4
-            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
-            {
-                # Finish by dragging the Files title bar. This exercises live
-                # compositor movement while a client surface is attached and
-                # catches held-button input or region-present regressions.
-                printf 'mouse_move 0 -44\n'
-                sleep 0.2
-                printf 'mouse_button 1\n'
-                sleep 0.1
-                for _step in 1 2 3 4 5 6; do
-                    printf 'mouse_move 10 4\n'
-                    sleep 0.05
-                done
-                printf 'mouse_button 0\n'
-            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+                echo "headless: Files did not report $2 times: $1" >&2
+                exit 1
+            }
+            files_keys() {
+                local key
+                for key in "$@"; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.15
+                done | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            }
+            files_wait "files: first frame presented"
+            files_wait "files: pane 1 listed @nvme:0/ "
+            # Screenshots for review: Files, then the Apps menu with its
+            # first category open (the taskbar and its logo show in both).
+            sleep 0.5
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-files.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            files_keys meta_l
+            sleep 0.4
+            files_keys right
+            sleep 0.4
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-apps.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            files_keys esc esc
+            sleep 0.3
+            # The quick filter narrows to lost+found; Enter opens it.
+            files_keys l o s t ret
+            files_wait "files: pane 1 listed @nvme:0/lost+found "
+            # Below a root, row 1 is ".."; row 2 is the fixture's folder.
+            files_keys home down ret
+            files_wait "files: pane 1 listed @nvme:0/lost+found/nested "
+            files_keys backspace
+            files_wait_count "files: pane 1 listed @nvme:0/lost+found " 2
+            files_keys backspace
+            files_wait_count "files: pane 1 listed @nvme:0/ " 2
+            # Refresh (Ctrl+R) relists the same folder.
+            files_keys ctrl-r
+            files_wait_count "files: pane 1 listed @nvme:0/ " 3
+            # The other pane, then a folder there: the manifest grants
+            # read only, so the service must refuse and Files must say so.
+            files_keys tab
+            files_wait "files: active pane 2"
+            files_keys f7 x ret
+            files_wait "files: status "
+            sleep 0.5
+            # F10 quits through the view; the window closes cleanly.
+            files_keys f10
+            files_wait "files: closed"
         else
             {
                 printf 'sendkey a\n'
@@ -2679,7 +2670,12 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 printf 'mouse_move 16 8\n'
                 if [ "$TEST_NAME" = "desktop-display" ]; then
                     sleep 0.2
+                    # Workbench: Development (second row), first entry.
                     printf 'sendkey meta_l\n'
+                    sleep 0.2
+                    printf 'sendkey down\n'
+                    sleep 0.2
+                    printf 'sendkey right\n'
                     sleep 0.2
                     printf 'sendkey ret\n'
                     sleep 2
@@ -3134,7 +3130,7 @@ MESA-WINDOW: Escape; exiting
             required_markers+="
 desktop: physical output client drawing active
 "
-            if grep -qF 'desktop: Mesa unavailable; CPU compositor fallback' "$SERIAL_LOG"; then
+            if grep -qF 'desktop: software rendering (' "$SERIAL_LOG"; then
                 echo "headless: required physical-output Mesa path fell back to CPU" >&2
                 exit 1
             fi
@@ -3177,6 +3173,7 @@ libc-check: pthread mutex across 8 threads PASS
 libc-check: __thread variables per thread and join values PASS
 libc-check: main thread's __thread initial value PASS
 libc-check: usleep and clock_gettime PASS
+libc-check: clock_gettime monotonic over 100000 reads PASS
 libc-check: printf floats PASS
 libc-check: main thread stack bounds PASS
 libc-check: open and read (DER begins with a SEQUENCE) PASS
@@ -3386,6 +3383,31 @@ RUST-STD: PASS
 Process: user FP/SIMD state saved with XSAVEOPT
 avx-check: all 16 YMM registers kept across 20000 yields PASS
 "
+        ;;
+    clock)
+        required_markers="
+clock-check: clock publication present PASS
+clock-check: 1000000 page reads are published and monotonic PASS
+clock-check: 1000000 page millisecond reads are monotonic PASS
+clock-check: a page read is cheaper than either system call PASS
+clock-check: READ_MONOTONIC_MICROSECONDS lies between two page reads PASS
+clock-check: the page is never behind GETTIME, and at most 10 ms ahead PASS
+clock-check: a futex deadline from the page does not expire early PASS
+clock-check: sleeping until a page microsecond does not return early PASS
+TEST: PASS clock
+clock-check: write to the clock page armed
+"
+        grep -F 'clock-check: cost ' "$SERIAL_LOG" || true
+        # The write must fault at the page's address (0x5B00_0000_0000) and
+        # retire the process; nothing may print after the write.
+        if grep -F 'clock-check: ' "$SERIAL_LOG" | grep -qF 'FAIL' ||
+           ! awk '/clock-check: write to the clock page armed/ { seen = 1 }
+                  seen && /USER-MEMORY-FAULT: pid [0-9]+ address 100055558127616 kind=write-protection/ { fault = 1 }
+                  fault && /reclaimProcess: stopped PID/ { found = 1 }
+                  END { exit !found }' "$SERIAL_LOG"; then
+            echo "headless: clock checks failed, or the page write was not refused" >&2
+            exit 1
+        fi
         ;;
     futex)
         required_markers="
@@ -3722,6 +3744,13 @@ MALFORMED-DIRECTORY-CHECK: PASS
 RENAME-CHECK: PASS
 DIRECTORY-NAVIGATION-CHECK: PASS
 FILESYSTEM-SCOPE-CHECK: PASS
+QUEUE-WAKE-CHECK: PASS
+QUEUE-RENAME-CHECK: PASS
+QUEUE-DIRECTORY-CHECK: PASS
+QUEUE-EVENTS-CHECK: PASS
+QUEUE-SCOPES-CHECK: PASS
+QUEUE-VOLUME-CHECK: PASS
+QUEUE-COPY-CHECK: PASS
 STORAGE-CHECK: PASS
 "
         ;;
@@ -3752,6 +3781,7 @@ mixer: HDA period IRQ active
     desktop-display)
         required_markers="
 display: gpu not primary, using linear-fb
+desktop: wallpaper loaded @nvme:0/Assets/cubit-wallpapers/1/cubes.qoi
 desktop: active outputs= 1 primary= 0
 desktop: internal shell active
 shell: cwd=@nvme:0/
@@ -3810,6 +3840,7 @@ display: boot output registered
 display: gpu not primary, using linear-fb
 DISPLAY-GRANTS-CHECK: PASS
 DISPLAY-POOL-CHECK: PASS
+DISPLAY-PLANES-CHECK: PASS composited
 "
         ;;
     display-dual-output)
@@ -3826,6 +3857,8 @@ DISPLAY-GRANTS-CHECK: PASS
 display: boot output registered
 display: backend virtio-gpu
 display: gpu copy buffer attached
+display: output 0 hardware cursor planes 1
+DISPLAY-PLANES-CHECK: PASS hardware
 DISPLAY-GRANTS-CHECK: PASS
 "
         ;;
@@ -3898,28 +3931,24 @@ TEST: PASS native Mesa lifecycle without provider (NO GPU)
         ;;
     files)
         required_markers="
-files: starting read-only filesystem browser
-files: directory page protocol ready
+files: starting
+files: filesystem queue ready
 files: native window ready
 files: first frame presented
 ui-app: protected frame published
-files: column resize complete first=
-files: scrollbar scroll row=
-files: scrollbar thumb drag row=
-files: wheel scroll row=
-files: refresh click activated
-files: refresh input received
-files: entered /lost+found
-files: entered /lost+found/nested
-files: returned /lost+found
-files: returned /
-desktop: retained move path active
+files: pane 1 listed @nvme:0/ entries=
+files: pane 2 entered @mem:0/
+files: pane 1 listed @nvme:0/lost+found entries=
+files: pane 1 listed @nvme:0/lost+found/nested entries=
+files: active pane 2
+files: closed
 "
         ;;
     desktop-virtio-vga)
         required_markers="
 display: backend virtio-gpu
-display: gpu copy buffer attached
+display: output 0 hardware cursor planes 1
+desktop: pointer composited (host-pointer cursor planes need absolute input)
 virtio-gpu: page flipping active
 desktop: active outputs= 1 primary= 0
 desktop: internal shell active
@@ -4154,14 +4183,10 @@ if [ "$TEST_NAME" = "desktop-display" ]; then
 fi
 
 if [ "$TEST_NAME" = "files" ]; then
-    if ! grep -E 'desktop: ptr hit-down [0-9]+ [0-9]+ 1$' \
+    # The read-only grant: making a folder must have been refused.
+    if ! grep -aE 'files: status Stopped at x: (not granted|the place is read-only)' \
         "$SERIAL_LOG" >/dev/null; then
-        echo "headless: Files title-bar drag was not observed" >&2
-        exit 1
-    fi
-    if ! grep -E 'desktop: ptr drag-up [0-9]+ [0-9]+ [0-9]+$' \
-        "$SERIAL_LOG" >/dev/null; then
-        echo "headless: Files title-bar drag did not complete" >&2
+        echo "headless: Files did not report the refused folder" >&2
         exit 1
     fi
 fi

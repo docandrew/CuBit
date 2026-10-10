@@ -5,7 +5,7 @@ project Fixture is
      ("main.adb", "ccl_manifest_bindings.ads", "discovery.c",
       "cubit-device-query.c", "cubit-device-native.c",
       "native_gpu_query.ads", "native_gpu_query.adb",
-      "native_gpu_buffers.ads", "native_gpu_buffers.adb",
+      "native_gpu_calls.ads", "native_gpu_calls.adb", "native_gpu_buffers.ads", "native_gpu_buffers.adb",
       "native_gpu_memory.ads", "native_gpu_memory.adb");
    for Object_Dir use "build";
    for Main use ("main.adb");

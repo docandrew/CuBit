@@ -1,7 +1,7 @@
 project Native is
    for Languages use ("Ada");
    for Source_Dirs use ("../../../userspace/mesa/anv");
-   for Source_Files use ("native_gpu_buffers.ads", "native_gpu_buffers.adb");
+   for Source_Files use ("native_gpu_calls.ads", "native_gpu_calls.adb", "native_gpu_buffers.ads", "native_gpu_buffers.adb");
    for Object_Dir use "../target/buffer-requests-native";
    for Runtime ("Ada") use "../../../userspace/runtime";
    package Compiler is

@@ -1,5 +1,131 @@
 # GPU rendering and presentation boundaries
 
+## Persistent client sources (2026-10-09)
+
+NUC evidence: Vulkan Desktop started (`startup=READY`), then intel-gpu logged
+several VM updates per second (each ~4 ms plus a GuC context park), and
+Desktop switched permanently to software. Cause, in the source:
+
+- `Desktop_Image_Registry` was keyed by the CPU mapping address. Every client
+  publication arrives in a newly acquired grant mapping, so each one allocated
+  a new GPU image, and returning the previous buffer (`Forget_Source`) freed
+  one: an allocation and a free per publication, i.e. two VM updates.
+- Desktop icons, window controls and every cursor style went through the same
+  `Draw_Output` path, each by its own static address, and were never
+  forgotten. With only 8 client slots, a desktop with a few icons and windows
+  filled every slot; the next image hit `Slots_Full`, `Complete_Output`
+  turned the repaint into `Software_Required`, and `Recover_Renderer` stopped
+  the device for good. The icon/cursor atlas owner (`Desktop_Icon_Atlas_Owner`,
+  slots 130..131) existed but was never wired in.
+- Glyph eviction released and reallocated a cell backing per new glyph once
+  the 128-entry cache was full.
+
+Current design:
+
+- **One persistent image per client surface.** The registry key is the
+  surface id (`Compositor_Source_Content.Source_Key`); `Draw_Output` carries
+  the content version Desktop bumps on every publication, attach and legacy
+  present, and `Note_Source_Change` records the changed source rows. A new
+  version is copied into the same allocation: only the accumulated changed
+  row band (`Compositor_Upload_Progress.Begin_Update`, no discard), or every
+  row when no band is known. Only an extent change replaces the allocation.
+- **Safety model unchanged.** The descriptor is released before a pass writes
+  the image and republished only after the whole pass completes; a pass starts
+  only when the submission is idle and no scene reader pins the image, so no
+  write races a frame that samples it. Client mappings are read only by the
+  synchronous staging copy, so `Forget_Source` returns a buffer without GPU
+  work unless a pass still copies from it (then Busy, as before).
+- **Slots and eviction.** 16 client slots (`Vulkan_Submission.Client_Slots`,
+  twice `MAX_SURFACES`); immutable assets use the two atlases. When a slot or
+  device memory is needed, the least-recently-used key that no scene reads
+  and no pass writes is evicted (retired surfaces first;
+  `Compositor_Source_Residency`, SPARK level 2). Retired surfaces are freed
+  by `Collect` once idle. A surface that still cannot be allocated after
+  every idle key is evicted is drawn as a placeholder fill for that frame;
+  the renderer stays in GPU mode.
+- **Glyph cells** keep their R8 allocation across eviction; the next glyph of
+  the same cell extent is rasterized into it (`Restart_Content`). All 128
+  cells are allocated together before the first capture
+  (`Prepare_Cells`), so first-use glyphs (a menu opening) allocate nothing.
+- **Scene budget.** `Vulkan_Submission.Maximum_Draws` is 16384, so a scene
+  holds 2048 layers (was 512; one layer per glyph and per clip).
+- **Runtime software switch** happens only for a real stall, judged by time
+  and progress (`Compositor_Stall_Watch`, SPARK level 2): captures keep
+  failing for `GPU_Stall_Deadline_Ms` (2000 ms) from the first failure after
+  progress, with no published frame, no accepted upload and no quiet gap of a
+  whole deadline. Cold uploads (one writer, serialized) are progress. Slot or
+  memory pressure never triggers it. Each software-rendering line states its
+  cause once: `GPU unavailable at startup`, `GPU not started; bootstrap
+  unconfirmed`, `GPU scene stalled 2000 ms, cause=<retry cause>
+  peak_layers=<n>; switched at runtime`, or (software/Mesa builds)
+  `renderer declined client surface`.
+- **Evidence line.** `desktop: gpu sources alloc ... free ... resident=
+  uploads= retry cold= layers= glyphs= images= draw= readback= peak_layers=`
+  is printed once per stats period only when a backing was allocated or
+  freed (by class: glyph, client, atlas, backdrop) or a capture retried;
+  steady state prints nothing.
+
+NUC run 3 (2026-10-10): GPU mode stays up and steady state allocates
+nothing (`gpu sources alloc glyph=128 client=2 atlas=2 backdrop=1`, no
+frees; submit latency min 1.04 ms, avg ~6 ms). One artifact: a wallpaper
+coloured bar, cursor sized, over the "A" of Apps for about a second. Cause:
+`Desktop_GPU_Scene.Backdrop.Capture` appended its full-output fill and
+wallpaper without a clip, and scene clips persist. In a frame with several
+repair boxes, the second box's wallpaper inherited the clip the first box
+left behind (its last draw, the composited cursor footprint) and painted
+wallpaper over the taskbar there. The backdrop now sets the pass's own
+damage clip first (`Draw_Backdrop` takes the repair box); every other draw
+already set its own clip. Placeholder fills remain only for an allocation
+refused after every idle source was evicted, logged once
+(`desktop: GPU source memory exhausted; surface drawn as placeholder`) and
+counted as `placeholders=` in the evidence line; cold uploads always retry
+and never publish a partial frame.
+
+NUC run 2 (2026-10-09, image after the first landing): GPU mode for ~30 s,
+then `GPU scene stalled; switched at runtime`. The intel-gpu counters are
+cumulative (`submit resident ... jobs=512 parks=42` since boot), so the
+`in-place updates=29` second was a burst, not a steady rate: the glyph cells
+allocated when a menu first opened (~1 VM update and one park per new
+glyph). The stall was the old frame-count rule: 8 repaint-only captures
+without a transfer, which a scene over the 512-layer budget (Apps menu open
+during a full repaint, one layer per glyph) produces forever and which the
+rule could not tell apart from a slow frame. `in-place updates=104` after the
+switch is device teardown. The three changes above address these; the
+evidence line confirms or refutes it on the next run.
+
+Evidence: `tests/compositor/desktop_source_churn_tests.adb` (200 publications
+of one surface with zero image binds/releases, band-only copies checked
+against staging bytes, resize replaces once, 20 windows over 16 slots with
+LRU and no pressure, single-scene pressure defers and clears, retire/collect),
+`desktop_scene_sources_tests.adb` (120 whole scenes x 12 windows, every window
+republished each frame, no pressure, every frame completes, no allocation
+after warm-up; an 1800-layer scene submits and an overflow reports
+`Layer_Limit`), `stall_watch_tests.adb`, the glyph residency test (prepared
+cells: no allocation on first use or eviction), `test-source-churn-mutation.py`
+(9/9 mutations killed). These
+are hosted mocks: no GPU executes, and NUC behaviour is unverified.
+
+Known limits / next:
+
+- Uploads remain one row chunk per transfer submission and one writer at a
+  time; a scene that finds a stale surface is discarded and recaptured after
+  the copy. With several windows publishing in the same frame this costs one
+  submission round trip each. Next: batch every stale band into one transfer
+  submission before capture (backlog GPU-004).
+- Reversible software fallback is designed, not implemented (GPU-004): after
+  a runtime switch, retry GPU after an explicit deadline by re-running
+  `Desktop_Renderer_Startup.Initialize` on a freshly opened device. Needs
+  `Vulkan_Device_Owner` to reopen from `Retired`,
+  `Compositor_Backend_Selection` to accept GPU after Recovered, and the Mesa
+  device to be re-created in-process; all untested on hardware, so the switch
+  remains one-way today.
+- A scene beyond 2048 layers still cannot be captured; it would stall and
+  switch after the deadline (cause `Layer_Limit`). Splitting such a frame
+  into damage bands is the next step if the evidence line ever shows it.
+- The 128 MiB Desktop GPU budget (targets, readback, upload, wallpaper and
+  sources) is tight at 1440p and above; one maximized client image is
+  W*H*4 bytes.
+
 ## Rendering-to-presentation checkpoint (2026-10-04)
 
 This checkpoint supersedes the dated bring-up status below, not the historical

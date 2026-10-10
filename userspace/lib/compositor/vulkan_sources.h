@@ -1,7 +1,8 @@
 #ifndef CUBIT_VULKAN_SOURCES_H
 #define CUBIT_VULKAN_SOURCES_H
 #include "vulkan_affine.h"
-#define CUBIT_VULKAN_SOURCE_CAPACITY 140u
+/* Mirrors Vulkan_Submission.Source_Capacity. */
+#define CUBIT_VULKAN_SOURCE_CAPACITY 148u
 struct cubit_vulkan_sources;
 struct cubit_vulkan_source {
     /* Must be first: the stable draw address is the provider's release key. */

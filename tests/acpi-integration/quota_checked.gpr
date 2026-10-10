@@ -1,0 +1,9 @@
+project Quota_checked is
+   for Source_Dirs use (".", "mocks", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../userspace/services/acpi/native", "../../shared/firmware");
+   for Object_Dir use "build-quota-checked/obj";
+   for Exec_Dir use "build-quota-checked";
+   for Main use ("quota_store_tests.adb", "string_store_tests.adb", "string_replace_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+   end Compiler;
+end Quota_checked;

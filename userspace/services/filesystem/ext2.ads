@@ -9,7 +9,7 @@
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Block_Devices;
-with CuBit.Filesystems;
+with CuBit.Directory_Pages;
 with CuBit.Memory_Grants;
 with Volume_Admission;
 with Ext2_Inodes;
@@ -31,6 +31,7 @@ package Ext2 is
    --  Directory entry file types
    FILETYPE_REGULAR   : constant Unsigned_8 := 1;
    FILETYPE_DIRECTORY : constant Unsigned_8 := 2;
+   FILETYPE_SYMLINK   : constant Unsigned_8 := 7;
 
    --  Superblock (at byte offset 1024 in the filesystem image)
    type Superblock is record
@@ -295,15 +296,31 @@ package Ext2 is
      (fs : Filesystem; path : String; inodeNum : out Unsigned_32;
       status : out Directory_Lookup_Status);
 
-   --  Decode one bounded page of directory metadata. Cursor is an opaque
-   --  byte position returned by the preceding call (zero starts a scan).
-   --  Every ext2 record is validated before its variable-length name is
-   --  viewed, and cursor advances only across validated records.
+   --  One listed record of a directory: its inode, kind
+   --  (CuBit.Directory_Pages.Kind_*) and name.
+   type Listed_Record is record
+      inode  : Unsigned_32 := 0;
+      kind   : Unsigned_8 := CuBit.Directory_Pages.Kind_Unknown;
+      length : CuBit.Directory_Pages.Name_Length := 0;
+      name   : CuBit.Directory_Pages.Name_Bytes := [others => 0];
+   end record;
+   subtype Listed_Index is Natural range 0 .. CuBit.Directory_Pages.Maximum_Entries - 1;
+   type Listed_Records is array (Listed_Index) of Listed_Record;
+
+   --  Decode the records one Directory.Page.V2 holds (CuBit.Directory_Pages:
+   --  as many as their records fit in a page). Cursor is a byte position
+   --  returned by the preceding call (zero starts a scan); it is checked
+   --  anew each time: the scan starts at its block's first record, and
+   --  only records starting at or after Cursor are listed, so a cursor
+   --  left inside a record that a removal merged (or handed back by a
+   --  client) resumes at the next record still there. Every ext2 record is
+   --  validated before its variable-length name is viewed, and the cursor
+   --  advances only across validated records.
    procedure readDirectoryPage
      (fs       : Filesystem;
       dirIno   : Inode;
       cursor       : Unsigned_64;
-      entries      : out CuBit.Filesystems.Directory_Entries;
+      entries      : out Listed_Records;
       entryCount   : out Natural;
       nextCursor   : out Unsigned_64;
       status       : out Directory_Read_Status);

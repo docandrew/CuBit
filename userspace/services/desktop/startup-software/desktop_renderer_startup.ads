@@ -13,6 +13,8 @@ package Desktop_Renderer_Startup with SPARK_Mode is
       Result : Interfaces.Integer_32 := 0;
       Valid : Boolean := False;
    end record;
+   -- Software-only build: no GPU renderer exists to fall back from.
+   GPU_Capable : constant Boolean := False;
    procedure Initialize
      (Configuration : Boolean; Width, Height : Interfaces.Unsigned_64;
       Epoch : Compositor_Pool.ID;

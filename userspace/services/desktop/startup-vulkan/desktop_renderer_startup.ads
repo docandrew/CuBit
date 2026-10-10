@@ -4,6 +4,8 @@ with Desktop_Breadcrumbs;
 with Desktop_Logs;
 with Desktop_Log_IO;
 with Desktop_Vulkan_Startup;
+with Desktop_GPU_Calls;
+with Desktop_Startup_Clock;
 with Compositor_Pool;
 with Compositor_Backend_Selection;
 -- Native startup boundary. Readiness is evidence for the proved selection
@@ -15,12 +17,16 @@ package Desktop_Renderer_Startup with SPARK_Mode is
       Result : Interfaces.Integer_32 := 0;
       Valid : Boolean := False;
    end record;
+   -- A GPU renderer is built in; selecting software is a fallback to announce.
+   GPU_Capable : constant Boolean := True;
    procedure Initialize
      (Configuration : Boolean; Width, Height : Interfaces.Unsigned_64;
       Epoch : Compositor_Pool.ID;
       Evidence : out Compositor_Backend_Selection.Readiness;
       Diagnostic : out Pipeline_Diagnostic)
-     with Global => (In_Out => (Desktop_Breadcrumbs.State, Desktop_Logs.State, Desktop_Log_IO.State, Desktop_Vulkan_Startup.Engine)),
+     with Global => (Input => Desktop_Startup_Clock.Clock,
+                     In_Out => (Desktop_Breadcrumbs.State, Desktop_Logs.State, Desktop_Log_IO.State,
+                                Desktop_Vulkan_Startup.Engine, Desktop_GPU_Calls.Service)),
        Pre => Desktop_Vulkan_Startup.Valid,
        Post => Desktop_Vulkan_Startup.Valid and
          Evidence.Configuration = (Configuration and Epoch /= 0 and

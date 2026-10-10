@@ -94,7 +94,9 @@ class Images(unittest.TestCase):
                     apps = {row[5].removeprefix("apps/") for row in rows if row[5].startswith("apps/")}
                     self.assertEqual(apps, (stage1 | stage2 | {"sameboy.app", "sameboy/00.gb", "doom1.wad", "config-storage.svc", "cubitshell.app",
                                                             "intel-gpu.drv", "firmware/intel/tgl_guc_70.bin", "mesa-cube.app",
-                                                            "boot-logs.app", "logs.app", "ccl-console.app", "gpu-viewer.app"})
+                                                            "boot-logs.app", "logs.app", "ccl-console.app", "gpu-viewer.app",
+                                                            "Assets/cubit-wallpapers/1/cubes.qoi",
+                                                            "Assets/cubit-wallpapers/1/cubie.qoi"})
                                      - {"devmgr.svc", "filesystem.svc", "ramdisk.drv", "ps2.drv", "xhci.drv",
                                         "ata.drv", "nvme.drv", "storage-check.app"})
                     self.assertFalse(any("network-check" in row[2] or "ccl-control" in row[2] for row in rows))

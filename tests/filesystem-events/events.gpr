@@ -1,0 +1,18 @@
+--  Hosted tests and proofs: filesystem change events
+--  (docs/filesystem-protocol-v2.md step 4). EVENTS_SRC/RESERVE_SRC point
+--  at the units' directories (the tree's by default).
+project Events is
+   Events_Src  := external ("EVENTS_SRC", "../../userspace/runtime/gnat");
+   Reserve_Src := external ("RESERVE_SRC", "../../userspace/services/filesystem");
+   for Source_Dirs use (".", Events_Src, Reserve_Src, "../../userspace/runtime/gnat");
+   for Source_Files use ("main.adb", "cubit.ads", "cubit-filesystem_events.ads", "cubit-filesystem_events.adb",
+      "cubit-datagram_rings.ads", "cubit-datagram_rings.adb", "cubit-channel_rings.ads", "cubit-channel_rings.adb",
+      "watch_reserve.ads", "watch_reserve.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe", "-O2");
+   end Compiler;
+end Events;

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+<defs>
+<linearGradient id="steel" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#eef1f8"/><stop offset="1" stop-color="#b4bccf"/></linearGradient>
+<linearGradient id="violet" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#c3adff"/><stop offset="1" stop-color="#8457ff"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M4 1 L6 1 L9 9 L7 10Z" transform="translate(1 1)"/>
+  <path d="M4 1 L6 1 L9 9 L7 10Z"/>
+  <path d="M9 1 L11 1 L8 10 L6 9Z" transform="translate(1 1)"/>
+  <path d="M9 1 L11 1 L8 10 L6 9Z"/>
+</g>
+<path d="M4 1 L6 1 L9 9 L7 10Z" fill="#4f5870" transform="translate(1 1)"/>
+<path d="M4 1 L6 1 L9 9 L7 10Z" fill="url(#steel)"/>
+<path d="M9 1 L11 1 L8 10 L6 9Z" fill="#4f5870" transform="translate(1 1)"/>
+<path d="M9 1 L11 1 L8 10 L6 9Z" fill="#eef1f8"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M2.5 11.5 A2 2 0 1 0 6.5 11.5 A2 2 0 1 0 2.5 11.5Z" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M8.5 11.5 A2 2 0 1 0 12.5 11.5 A2 2 0 1 0 8.5 11.5Z" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<path d="M2.5 11.5 A2 2 0 1 0 6.5 11.5 A2 2 0 1 0 2.5 11.5Z" fill="none" stroke="url(#violet)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M8.5 11.5 A2 2 0 1 0 12.5 11.5 A2 2 0 1 0 8.5 11.5Z" fill="none" stroke="url(#violet)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

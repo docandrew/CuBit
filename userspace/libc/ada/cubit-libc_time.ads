@@ -5,7 +5,7 @@
 --  @summary
 --  Time arithmetic for the libc's system calls (docs/c-removal.md): C
 --  timespecs and timevals to the kernel's millisecond and microsecond
---  clocks, and back.
+--  clocks, and milliseconds and nanoseconds (docs/fast-clock.md) back.
 --
 --  @description
 --  The kernel's clocks are Unsigned_64 counts since boot. A deadline past
@@ -73,7 +73,7 @@ package CuBit.Libc_Time with Pure, SPARK_Mode is
 
    function From_Milliseconds (Count : Unsigned_64) return Timespec
    with Post => Valid (From_Milliseconds'Result);
-   function From_Microseconds (Count : Unsigned_64) return Timespec
-   with Post => Valid (From_Microseconds'Result);
+   function From_Nanoseconds (Count : Unsigned_64) return Timespec
+   with Post => Valid (From_Nanoseconds'Result);
 
 end CuBit.Libc_Time;

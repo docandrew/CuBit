@@ -25,18 +25,21 @@ package Compositor_Upload with SPARK_Mode, Pure is
        Area (P) = Region and Image_Width (P) = Width and Image_Height (P) = Height and
        Capacity (P) = Buffer_Size and Buffer_Offset (P) = Offset and
        Row_Length (P) = Row_Pixels and Format (P) = Kind);
-   -- Full-width row slices for initialization larger than staging. Row_Pixels
-   -- optionally preserves producer padding; zero selects tightly packed rows.
-   -- Every row including its padding fits the staging capacity, allowing a
-   -- rasterizer to write directly without repacking or copying CPU pixels.
-   -- Completion/publication policy must track the confirmed row prefix; these
-   -- bounds alone do not authorize sampling a cold, partially uploaded image.
-   procedure Row_Chunk (Width, Height, First_Row : Edge; Buffer_Size : Byte_Count;
+   -- Full-width row slices of rows First_Row .. Last_Row - 1, for initial
+   -- uploads larger than staging (Last_Row = Height) and for retained-content
+   -- updates of a damaged row band. Row_Pixels optionally preserves producer
+   -- padding; zero selects tightly packed rows. Every row including its
+   -- padding fits the staging capacity, allowing a rasterizer to write
+   -- directly without repacking or copying CPU pixels. Completion/publication
+   -- policy must track the confirmed rows; these bounds alone do not authorize
+   -- sampling a cold, partially uploaded image.
+   procedure Row_Chunk (Width, Height, First_Row, Last_Row : Edge; Buffer_Size : Byte_Count;
       Kind : Pixel_Format; P : out Plan; Accepted : out Boolean;
       Row_Pixels : Edge := 0)
      with Post => Accepted = Valid (P) and (if Accepted then
        Area (P).X = 0 and Area (P).Y = First_Row and Area (P).Width = Width and
-       Area (P).Height > 0 and Area (P).Y + Area (P).Height <= Height and
+       Area (P).Height > 0 and Area (P).Y + Area (P).Height <= Last_Row and
+       Last_Row <= Height and
        Image_Width (P) = Width and Image_Height (P) = Height and
        Capacity (P) = Buffer_Size and Buffer_Offset (P) = 0 and Row_Length (P) = Row_Pixels and Format (P) = Kind and
        Long_Long_Integer (Area (P).Height) *

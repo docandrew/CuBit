@@ -7,7 +7,9 @@ import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-TOOL = ROOT / 'userspace/ccl/build/config/ccl-config'
+import os
+# CCL_CONFIG_TOOL: a ccl-config built elsewhere (a private build tree).
+TOOL = pathlib.Path(os.environ.get('CCL_CONFIG_TOOL', ROOT / 'userspace/ccl/build/config/ccl-config'))
 FIXTURES = pathlib.Path(__file__).with_name('fixtures')
 
 
@@ -87,11 +89,27 @@ class Configurations(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         settings = dict(line.split('=', 1) for line in result.stdout.splitlines())
         self.assertEqual(settings['logs.minimum-level'], 'Severity.Information')
+        # Typed Launch_Entry values, stored in their canonical spelling.
         self.assertEqual(settings['desktop.launch.96-logs'],
-                         '(launch v1 (label "Logs") (program "logs.app") (icon files))')
+                         '(Launch_Entry label => "Logs" action => (Launch_Action.Program "logs.app") '
+                         'icon => Launch_Icon.Logs category => App_Category.System single_instance => false)')
         self.assertEqual(settings['desktop.launch.12-console'],
-                         '(launch v1 (label "CCL Console") (program "ccl-console.app") (icon uilab))')
+                         '(Launch_Entry label => "CCL Console" action => (Launch_Action.Program "ccl-console.app") '
+                         'icon => Launch_Icon.Console category => App_Category.Development single_instance => false)')
         self.assertIn('desktop.launch.95-boot-logs', settings)
+
+    def test_typed_launch_entries(self):
+        self.reject('(system-config v1 (setting "desktop.launch.10-x" "(launch v1 (label \\"X\\") (internal settings))"))',
+                    'INVALID_TYPED_VALUE')
+        self.reject('(system-config v1 (setting "desktop.launch.10-x" '
+                    '(Launch_Entry label => "X" action => Launch_Action.Settings category => App_Category.Toys)))',
+                    'INVALID_TYPED_VALUE')
+        result = self.compile('(system-config v1 (setting "desktop.launch.10-x" '
+                              '(Launch_Entry "X" Launch_Action.Settings)))')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('desktop.launch.10-x=(Launch_Entry label => "X" action => Launch_Action.Settings '
+                      'icon => Launch_Icon.Files category => App_Category.Tools single_instance => false)',
+                      result.stdout)
 
     def test_real_ccl_field_expressions(self):
         result = self.compile('''# Ordinary CCL, no host callbacks

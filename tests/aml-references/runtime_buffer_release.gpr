@@ -1,0 +1,9 @@
+project Runtime_buffer_release is
+ for Source_Dirs use (".", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "build-release/obj";
+ for Exec_Dir use "build-release";
+ for Main use ("runtime_buffer_tests.adb", "runtime_buffer_oracle_tests.adb", "buffer_completion_tests.adb", "condref_tests.adb", "name_reservation_tests.adb", "integer_origin_tests.adb", "runtime_name_tests.adb", "reference_model_tests.adb", "copy_compound_quota_tests.adb", "copy_boundary_extended_tests.adb", "package_store_atomicity_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatwF", "-gnatp");
+ end Compiler;
+end Runtime_buffer_release;

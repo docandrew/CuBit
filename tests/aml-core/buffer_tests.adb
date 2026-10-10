@@ -47,10 +47,11 @@ begin
    Check (Read_Buffer ([16#11#,4,16#0B#,1,4], Bits_64).Kind = Limit_Exceeded);
    Check (Read_Buffer ([16#11#,1], Bits_64).Kind = Malformed);
    Check (Read_Buffer ([16#11#,2,16#60#], Bits_64).Kind = Unsupported);
-   --  QWord size truncates to DSDT integer width before budget admission.
+   -- Buffer sizing additionally truncates to UINT32 in either DSDT width.
    R := Read_Buffer ([16#11#,10,16#0E#,0,0,0,0,1,0,0,0], Bits_32);
    Check (R.Kind = Accepted and then R.Length = 0);
-   Check (Read_Buffer ([16#11#,10,16#0E#,0,0,0,0,1,0,0,0], Bits_64).Kind = Limit_Exceeded);
+   R := Read_Buffer ([16#11#,10,16#0E#,0,0,0,0,1,0,0,0], Bits_64);
+   Check (R.Kind = Accepted and then R.Length = 0);
    R := Read_Buffer ([Positive'Last - 2 => 16#11#,
                      Positive'Last - 1 => 2, Positive'Last => 0], Bits_64);
    Check (R.Kind = Accepted and then R.Length = 0);

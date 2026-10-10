@@ -115,7 +115,7 @@ with (d/'qemu.log').open('w') as log:
             assert 'completion uncertain' not in contents and 'restarting' not in contents,'recovery restarted Desktop'
         elif options.backend=='mesa':
             assert 'desktop: Mesa retained-mask text active' in contents,'Mesa text path was not exercised'
-            assert not re.search(r'Mesa unavailable|CPU text fallback|text batch failed|retained software text',contents),'Mesa silently fell back'
+            assert not re.search(r'software rendering|Mesa unavailable|CPU text fallback|text batch failed|retained software text',contents),'Mesa silently fell back'
         for service in ('logstore.svc','clock.svc','config-storage.svc','tls.svc','display.svc','metrics.svc','desktop.svc'):
             assert 'procmgr: init launched: '+service in contents,service
         assert re.search(r'desktop: stats .*key=[1-9]\d*',contents),'no input statistics'

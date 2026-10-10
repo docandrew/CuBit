@@ -8,6 +8,10 @@ with Compositor_Formats;
 with Desktop_Composition;
 with CuBit.Display_Geometry;
 with Compositor_Pool;
+with Compositor_Source_Content;
+with Vulkan_Submission;
+with Desktop_Cursors;
+with Desktop_Icon_Pixels;
 package Desktop_Compositor with SPARK_Mode, Abstract_State => Engine is
    type Transfer_Counters is record
       GPU_Submitted, CPU_Copied : Interfaces.Unsigned_64 := 0;
@@ -56,6 +60,7 @@ package Desktop_Compositor with SPARK_Mode, Abstract_State => Engine is
    -- Capture checker strips as bounded scene work, not one layer per pixel.
    procedure Draw_Backdrop
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
       Style : CuBit.Appearance.Preferences; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean)
      with Global => (Proof_In => Engine);
@@ -94,10 +99,46 @@ package Desktop_Compositor with SPARK_Mode, Abstract_State => Engine is
       Screen : CuBit.Display_Geometry.Output;
       Surface : CuBit.Display_Geometry.Logical_Rectangle;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Secondary : Boolean; Drawn, Must_Restart : out Boolean;
-      Over : Boolean := False; Straight_Alpha : Boolean := False)
+      Key : Compositor_Source_Content.Source_Key;
+      Version : Compositor_Source_Content.Content_Version;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean)
      with Global => (Proof_In => Engine);
-   type Render_Completion is (Complete, Pending, Retry, Software_Required, Unsafe);
+   -- Software renderers read client mappings directly: no persistent copies.
+   procedure Note_Source_Change
+     (Key : Compositor_Source_Content.Source_Key; Rows : Compositor_Source_Content.Row_Band)
+     with Global => null;
+   procedure Retire_Source (Key : Compositor_Source_Content.Source_Key)
+     with Global => null;
+   procedure Draw_Icon
+     (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Screen : CuBit.Display_Geometry.Output; Item : Desktop_Icon_Pixels.Asset;
+      Surface : CuBit.Display_Geometry.Logical_Rectangle;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean)
+     with Global => null;
+   procedure Draw_Cursor
+     (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Screen : CuBit.Display_Geometry.Output; Cursor : Desktop_Cursors.Cursor_ID;
+      Surface : CuBit.Display_Geometry.Logical_Rectangle;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean)
+     with Global => null;
+
+   -- Persistent-source evidence: device backing allocations and frees by
+   -- slot class, the client keys holding a GPU image, accepted upload
+   -- transfers (progress), and the largest scene captured (zero for CPU).
+   function Backing_Events (Class : Vulkan_Submission.Source_Class; Freed : Boolean)
+     return Interfaces.Unsigned_64 with Global => null;
+   function Resident_Sources return Natural with Global => null;
+   function Upload_Progress return Interfaces.Unsigned_64 with Global => null;
+   function Peak_Scene_Layers return Natural with Global => null;
+   function Placeholder_Draws return Natural with Global => null;
+   -- Why the last Retry happened: a cold upload (progress expected), a
+   -- scene beyond a renderer limit, or a failed readback.
+   type Retry_Cause is
+     (No_Retry, Cold_Upload, Layer_Limit, Glyph_Limit, Image_Limit, Rejected_Draw, Readback_Failed);
+   function Last_Retry_Cause return Retry_Cause with Global => null;
+   type Render_Completion is (Complete, Pending, Retry, Unsafe);
    -- Finish the output's drawing scope (Poll=False), then observe it only
    -- (Poll=True). Pending retains all source/target/descriptor leases and
    -- prohibits further writes to this target. Complete means every renderer

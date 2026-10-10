@@ -1,0 +1,8 @@
+project Adapter_original_checked is
+ for Source_Dirs use ("../../tests/aml-core", "../../tests/aml-debug", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "adapter-original-checked";
+ for Main use ("readonly_input_tests.adb", "region_executor_tests.adb", "timer_executor_tests.adb", "debug_target_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Adapter_original_checked;

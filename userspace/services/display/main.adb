@@ -27,6 +27,9 @@ with Compositor_Repaint;
 with Compositor_Damage;
 with Compositor_Requests;
 with CuBit.Backend_Targets;
+with CuBit.Display_Planes;
+with CuBit.Display_Plane_Protocol;
+with CuBit.GPU_Plane_Protocol;
 
 procedure main is
    package DSP renames CuBit.Display_Protocol;
@@ -42,6 +45,13 @@ procedure main is
    package GM renames CuBit.Graphics_Metrics;
    package Repair renames Compositor_Repaint;
    package BT renames CuBit.Backend_Targets;
+   package DPL renames CuBit.Display_Planes;
+   package PP renames CuBit.Display_Plane_Protocol;
+   package GP renames CuBit.GPU_Plane_Protocol;
+   use type DPL.Plan, DPL.Plan_Epoch, DPL.Backing_Kind, DPL.Plane_Count,
+            DPL.Request_Count, DPL.Plane_Kind, DPL.Anchor_Coordinate;
+   use type PP.Operation;
+   use type GP.Position;
    use type BT.Phase;
    backendCopies, repairCopies : GM.Counter;
    backendReporter, repairReporter : CuBit.Graphics_Metrics_IO.Reporter;
@@ -149,6 +159,8 @@ procedure main is
       backendID : PS.Submission_ID := PS.No_Submission;
       backendTarget : Gpu_Buffer_Index := 0;
       backendDamage : Rect;
+      --  Plan epoch the in-flight frame was rendered for (No_Epoch: none).
+      frameEpoch : DPL.Plan_Epoch := DPL.No_Epoch;
    end record;
    outputStates : array (Output_Index) of Output_State;
    readyOutputs : array (Output_Index) of Boolean := [others => False];
@@ -255,6 +267,10 @@ procedure main is
       end if;
    end backendCaps;
 
+   --  The longest display waits for one intel-gpu answer (IPC-004): past
+   --  it the call fails like any refused request, never hangs the display.
+   GPU_Call_Deadline_Ms : constant := 10_000;
+
    function callGpu
       (label : Unsigned_32;
        w0    : Unsigned_64 := 0;
@@ -269,7 +285,11 @@ procedure main is
          words    => [w0, w1, w2, w3]);
       tag : MessageTag;
    begin
-      tag := capCall (CAP_SLOT_GPU, msg, CuBit.Messages.Wait_Forever);
+      tag := capCall (CAP_SLOT_GPU, msg,
+                      CuBit.Messages.Deadline_After (GPU_Call_Deadline_Ms));
+      if tag.label = CuBit.Messages.REPLY_TIMEOUT then
+         debugPrint ("display: gpu call timed out" & LF);
+      end if;
       msg.tag := tag;
       return msg;
    end callGpu;
@@ -1002,6 +1022,564 @@ procedure main is
       end if;
    end presentPackedRegion;
 
+   ---------------------------------------------------------------------------
+   --  Display planes (docs/display-planes.md). Requests live in desktop
+   --  space and belong to the owner of output zero's lease. The pure planner
+   --  (CuBit.Display_Planes) maps them onto each output's hardware planes;
+   --  changes that move a request between a plane and the client composite
+   --  commit only with a published frame rendered for that plan's epoch.
+   ---------------------------------------------------------------------------
+   Image_Pixels_Limit : constant :=
+     DPL.Cursor_Extent_Limit * DPL.Cursor_Extent_Limit;
+   type Image_Pixels is array (0 .. Image_Pixels_Limit - 1) of Unsigned_32;
+   type Image_Store is array (DPL.Request_Id) of Image_Pixels;
+   --  Display's own copy: a client grant is never read after the reply.
+   requestImages : Image_Store := [others => [others => 0]];
+   imageVersions : array (DPL.Request_Id) of Unsigned_64 := [others => 0];
+   planeRequests : DPL.Request_Table;
+   requestOwner : Process_ID := No_Process;
+   planeOutputs : DPL.Output_Table;
+
+   --  One mapped driver plane buffer and what it currently shows.
+   type Plane_Buffer is record
+      Mapped : System.Address := System.Null_Address;
+      Width, Height : DPL.Cursor_Extent := DPL.Cursor_Extent'First;
+      Shown : Boolean := False;
+      Request : DPL.Request_Count := DPL.No_Request;
+      Version : Unsigned_64 := 0;
+      Hot_X, Hot_Y : DPL.Hotspot_Coordinate := 0;
+      Position : GP.Position;
+      --  Asynchronous move in flight; newer positions wait for it.
+      Move_Token : Unsigned_64 := 0;
+      Sent : GP.Position;
+      Faulted : Boolean := False;
+   end record;
+   planeBuffers : array (Output_Index, DPL.Plane_Number) of Plane_Buffer;
+
+   --  Proposed plans by epoch; frames may acknowledge any recent one.
+   Plan_History_Size : constant := 8;
+   type History_Slot is mod Plan_History_Size;
+   type Proposal is record
+      Epoch : DPL.Plan_Epoch := DPL.No_Epoch;
+      Item : DPL.Plan;
+   end record;
+   planHistory : array (History_Slot) of Proposal;
+   latestSlot : History_Slot := 0;
+   latestEpoch : DPL.Plan_Epoch := DPL.No_Epoch;
+   committedPlan : DPL.Plan;
+   acknowledged : array (Output_Index) of DPL.Plan_Epoch :=
+     [others => DPL.No_Epoch];
+
+   function Output_Of (O : Output_Index) return DPL.Output_Id is
+     (DPL.Output_Id (O));
+
+   function callGpuOn (Output : Output_Index; Request : DSP.Wire_Message)
+      return DSP.Wire_Message
+   is
+      Msg : Message := CuBit.Desktop_Messages.From_Wire
+        (DSP.With_Output (Request, Output));
+   begin
+      Msg.tag := capCall (CAP_SLOT_GPU, Msg,
+                          CuBit.Messages.Deadline_After (GPU_Call_Deadline_Ms));
+      if Msg.tag.label = CuBit.Messages.REPLY_TIMEOUT then
+         debugPrint ("display: gpu plane call timed out" & LF);
+      end if;
+      return CuBit.Desktop_Messages.To_Wire (Msg);
+   end callGpuOn;
+
+   --  Ask the driver for its planes, map those that can carry cursors.
+   procedure discoverPlanes (Output : Output_Index) is
+      State : Output_State renames outputStates (Output);
+      Item : DPL.Output_State renames planeOutputs (Output_Of (Output));
+      Reply : DSP.Wire_Message;
+      Described : GP.Description_Decoding;
+      Mapping : GP.Buffer_Decoding;
+      Mapped : System.Address;
+      Acquired : Boolean;
+      Cursor_Planes : Natural := 0;
+   begin
+      Item := (Present => True, X => 0, Y => 0,
+               Width => DPL.Output_Extent (State.fbWidth),
+               Height => DPL.Output_Extent (State.fbHeight),
+               Count => 0, Planes => [others => <>]);
+      if Output = 1 then
+         Item.X := DPL.Space_Coordinate (outputStates (0).fbWidth);
+      end if;
+      if State.backend.Kind /= Native_GPU then
+         return;
+      end if;
+      for Plane in DPL.Plane_Number loop
+         Reply := callGpuOn (Output, GP.Encode (GP.Query, Plane));
+         Described := GP.Decode_Description (Reply);
+         exit when not Described.Valid or else Plane > Described.Value.Count;
+         Item.Planes (Plane) := Described.Value.Descriptor;
+         Item.Count := Plane;
+         if Described.Value.Descriptor.Kinds (DPL.Cursor) then
+            Mapping := GP.Decode_Buffer
+              (callGpuOn (Output, GP.Encode (GP.Map_Plane, Plane)));
+            Acquired := False;
+            if Mapping.Valid then
+               MG.Acquire_Via_Capability
+                 (CAP_SLOT_GPU, Mapping.Value.Grant, 0,
+                  GP.Bytes (Mapping.Value), MG.Write_Access, Mapped, Acquired);
+            end if;
+            if Acquired then
+               --  Retained for this instance, like the scanout mappings.
+               planeBuffers (Output, Plane) :=
+                 (Mapped => Mapped, Width => Mapping.Value.Width,
+                  Height => Mapping.Value.Height, others => <>);
+               --  Cursors use the mapped buffer, never more than it holds.
+               Item.Planes (Plane).Max_Width := DPL.Surface_Extent'Min
+                 (Item.Planes (Plane).Max_Width, Mapping.Value.Width);
+               Item.Planes (Plane).Max_Height := DPL.Surface_Extent'Min
+                 (Item.Planes (Plane).Max_Height, Mapping.Value.Height);
+               Cursor_Planes := Cursor_Planes + 1;
+            else
+               Item.Planes (Plane).Kinds (DPL.Cursor) := False;
+            end if;
+         end if;
+      end loop;
+      debugPrint ("display: output" & Output'Image & " hardware cursor planes" &
+                  Cursor_Planes'Image & LF);
+   end discoverPlanes;
+
+   procedure copyImage (Request : DPL.Request_Id; Buffer : Plane_Buffer) is
+      R : DPL.Request_State renames planeRequests (Request);
+      Pitch : constant Natural := Natural (Buffer.Width);
+      Target : array (0 .. Natural (Buffer.Width) * Natural (Buffer.Height) - 1)
+        of Unsigned_32 with Import, Volatile, Address => Buffer.Mapped;
+      Width : constant Natural := Natural (R.Width);
+   begin
+      for Y in 0 .. Natural (Buffer.Height) - 1 loop
+         for X in 0 .. Pitch - 1 loop
+            Target (Y * Pitch + X) :=
+              (if X < Width and then Y < Natural (R.Height)
+               then requestImages (Request) (Y * Width + X) else 0);
+         end loop;
+      end loop;
+   end copyImage;
+
+   procedure sendMove (Output : Output_Index; Plane : DPL.Plane_Number) is
+      B : Plane_Buffer renames planeBuffers (Output, Plane);
+      Token : Unsigned_64;
+   begin
+      if B.Move_Token /= 0 or else B.Faulted or else B.Sent = B.Position then
+         return;
+      end if;
+      Compositor_Requests.Allocate (backendSequence, Token);
+      if capSubmit (CAP_SLOT_GPU, CuBit.Desktop_Messages.From_Wire
+           (DSP.With_Output (GP.Encode (GP.Move'(Plane, B.Position)), Output)),
+         Token)
+      then
+         B.Move_Token := Token;
+         B.Sent := B.Position;
+      else
+         --  Busy: the next completion or request retries the newest position.
+         null;
+      end if;
+   end sendMove;
+
+   --  Make every mapped plane show what the committed plan says, using the
+   --  requests' current images and positions.
+   procedure syncPlanes is
+      Reply : DSP.Wire_Message;
+   begin
+      for Output in Output_Index loop
+         if readyOutputs (Output) then
+            for Plane in DPL.Plane_Number loop
+               declare
+                  B : Plane_Buffer renames planeBuffers (Output, Plane);
+                  Holder : constant DPL.Request_Count :=
+                    committedPlan.Holders (Output_Of (Output), Plane);
+                  Where : DPL.Placement;
+               begin
+                  if B.Mapped /= System.Null_Address and then not B.Faulted then
+                     if Holder /= DPL.No_Request then
+                        Where := DPL.Place (planeRequests (Holder),
+                                            planeOutputs (Output_Of (Output)));
+                     else
+                        Where := (Visible => False);
+                     end if;
+                     if Where.Visible then
+                        B.Position := (Where.X, Where.Y);
+                        if not B.Shown or else B.Request /= Holder or else
+                          B.Version /= imageVersions (Holder) or else
+                          B.Hot_X /= DPL.Hotspot_Coordinate
+                            (planeRequests (Holder).Anchor_X) or else
+                          B.Hot_Y /= DPL.Hotspot_Coordinate
+                            (planeRequests (Holder).Anchor_Y)
+                        then
+                           --  Shape change: rewrite the buffer, then upload
+                           --  and show synchronously (rare; moves are async).
+                           copyImage (Holder, B);
+                           B.Hot_X := DPL.Hotspot_Coordinate
+                             (planeRequests (Holder).Anchor_X);
+                           B.Hot_Y := DPL.Hotspot_Coordinate
+                             (planeRequests (Holder).Anchor_Y);
+                           Reply := callGpuOn (Output, GP.Encode
+                             (GP.Show'(Plane, B.Hot_X, B.Hot_Y, B.Position)));
+                           if GP.Accepted_Reply (GP.Show_Plane, Reply) then
+                              B.Shown := True;
+                              B.Request := Holder;
+                              B.Version := imageVersions (Holder);
+                              B.Sent := B.Position;
+                           else
+                              B.Faulted := True;
+                              debugPrint ("display: plane show failed" & LF);
+                           end if;
+                        else
+                           sendMove (Output, Plane);
+                        end if;
+                     elsif B.Shown then
+                        Reply := callGpuOn (Output,
+                          GP.Encode (GP.Hide_Plane, Plane));
+                        B.Shown := False;
+                        B.Request := DPL.No_Request;
+                        if not GP.Accepted_Reply (GP.Hide_Plane, Reply) then
+                           B.Faulted := True;
+                           debugPrint ("display: plane hide failed" & LF);
+                        end if;
+                     end if;
+                  end if;
+               end;
+            end loop;
+         end if;
+      end loop;
+   end syncPlanes;
+
+   function findProposal (Epoch : DPL.Plan_Epoch) return Natural is
+   begin
+      for Slot in History_Slot loop
+         if Epoch /= DPL.No_Epoch and then planHistory (Slot).Epoch = Epoch then
+            return Natural (Slot) + 1;
+         end if;
+      end loop;
+      return 0;
+   end findProposal;
+
+   procedure commit (Item : DPL.Plan) is
+   begin
+      committedPlan := Item;
+      syncPlanes;
+   end commit;
+
+   --  Commit an acknowledged proposal once every output its swaps touch has
+   --  published a frame rendered for it; then any frame-free newer proposal.
+   procedure tryCommit (Epoch : DPL.Plan_Epoch) is
+      Found : constant Natural := findProposal (Epoch);
+      Ready : Boolean := True;
+   begin
+      if Found /= 0 then
+         declare
+            Candidate : constant DPL.Plan :=
+              planHistory (History_Slot (Found - 1)).Item;
+         begin
+            for Output in Output_Index loop
+               if readyOutputs (Output) and then
+                 DPL.Frame_Affects (committedPlan, Candidate, planeRequests,
+                                    planeOutputs, Output_Of (Output)) and then
+                 acknowledged (Output) /= Epoch
+               then
+                  Ready := False;
+               end if;
+            end loop;
+            if Ready and then Candidate /= committedPlan then
+               commit (Candidate);
+            end if;
+         end;
+      end if;
+      if latestEpoch /= DPL.No_Epoch and then
+        not DPL.Needs_Frame (committedPlan, planHistory (latestSlot).Item) and then
+        planHistory (latestSlot).Item /= committedPlan
+      then
+         commit (planHistory (latestSlot).Item);
+      end if;
+   end tryCommit;
+
+   --  Recompute the plan after any request or output change.
+   procedure replan is
+      Next : constant DPL.Plan := DPL.Plan_Planes (planeRequests, planeOutputs);
+   begin
+      if latestEpoch = DPL.No_Epoch or else
+        Next /= planHistory (latestSlot).Item
+      then
+         latestEpoch := latestEpoch + 1;
+         latestSlot := latestSlot + 1;
+         planHistory (latestSlot) := (latestEpoch, Next);
+      end if;
+      if not DPL.Needs_Frame (committedPlan, Next) then
+         if Next /= committedPlan then
+            commit (Next);
+         else
+            --  Same plan, new positions or images.
+            syncPlanes;
+         end if;
+      else
+         syncPlanes;
+      end if;
+   end replan;
+
+   procedure acknowledgeFrame (Output : Output_Index; Epoch : DPL.Plan_Epoch) is
+   begin
+      if Epoch = DPL.No_Epoch then return; end if;
+      acknowledged (Output) := Epoch;
+      tryCommit (Epoch);
+   end acknowledgeFrame;
+
+   procedure resetRequests is
+   begin
+      planeRequests := [others => (others => <>)];
+      requestOwner := No_Process;
+      replan;
+   end resetRequests;
+
+   function toSet (Item : DPL.Plan; Kind : DPL.Backing_Kind)
+      return PP.Request_Set is
+     ([for R in DPL.Request_Id => Item.Backing (R) = Kind]);
+
+   function planReport (Kind : PP.Operation; Status : DSP.DP.Status_Code)
+      return Message
+   is
+      Latest : constant DPL.Plan := planHistory (latestSlot).Item;
+   begin
+      return CuBit.Desktop_Messages.From_Wire (PP.Encode (Kind,
+        PP.Report'(Status => Status, Epoch => latestEpoch,
+                   Proposed_Hardware => toSet (Latest, DPL.Hardware),
+                   Proposed_Composited => toSet (Latest, DPL.Composited),
+                   Committed_Hardware => toSet (committedPlan, DPL.Hardware),
+                   Committed_Composited =>
+                     toSet (committedPlan, DPL.Composited))));
+   end planReport;
+
+   --  Plane requests. Mutations need output zero's lease; the requester
+   --  becomes the owner of every request until that lease is released.
+   procedure handlePlaneRequest
+     (from : Process_ID; Kind : PP.Operation; request : Message;
+      replyMsg : out Message)
+   is
+      Wire : constant DSP.Wire_Message := CuBit.Desktop_Messages.To_Wire (request);
+      Status : DSP.DP.Status_Code := DSP.DP.Bad_Object;
+      Owner : constant Boolean :=
+        ownsDisplay (from) and then
+        (requestOwner = No_Process or else requestOwner = from);
+      function Live (R : DPL.Request_Id) return Boolean is
+        (planeRequests (R).Live);
+   begin
+      case Kind is
+         when PP.Query_Output =>
+            if PP.Valid_Empty (Wire, Kind) then
+               declare
+                  Item : DPL.Output_State renames
+                    planeOutputs (Output_Of (selectedOutput));
+                  Result : PP.Capability;
+               begin
+                  for Plane in 1 .. Item.Count loop
+                     if Item.Planes (Plane).Host_Pointer then
+                        if Item.Planes (Plane).Kinds (DPL.Cursor) then
+                           Result.Host_Pointer_Cursors :=
+                             Result.Host_Pointer_Cursors + 1;
+                        end if;
+                     else
+                        for K in DPL.Plane_Kind loop
+                           if Item.Planes (Plane).Kinds (K) then
+                              Result.Planes (K) := Result.Planes (K) + 1;
+                           end if;
+                        end loop;
+                     end if;
+                     if Item.Planes (Plane).Kinds (DPL.Cursor) then
+                        Result.Max_Width := DPL.Cursor_Extent'Max
+                          (Result.Max_Width, DPL.Cursor_Extent
+                             (Item.Planes (Plane).Max_Width));
+                        Result.Max_Height := DPL.Cursor_Extent'Max
+                          (Result.Max_Height, DPL.Cursor_Extent
+                             (Item.Planes (Plane).Max_Height));
+                     end if;
+                  end loop;
+                  replyMsg := CuBit.Desktop_Messages.From_Wire (PP.Encode (Result));
+                  return;
+               end;
+            end if;
+         when PP.Get_Plan =>
+            if PP.Valid_Empty (Wire, Kind) then Status := DSP.DP.Success; end if;
+         when PP.Place_Output =>
+            declare
+               D : constant PP.Origin_Decoding := PP.Decode_Origin (Wire);
+            begin
+               if not D.Valid then null;
+               elsif not ownsDisplay (from) then Status := DSP.DP.Denied;
+               else
+                  planeOutputs (Output_Of (selectedOutput)).X := D.Value.X;
+                  planeOutputs (Output_Of (selectedOutput)).Y := D.Value.Y;
+                  Status := DSP.DP.Success;
+                  replan;
+               end if;
+            end;
+         when PP.Create_Request | PP.Set_Priority =>
+            declare
+               D : constant PP.Identity_Decoding := PP.Decode_Identity (Kind, Wire);
+            begin
+               if not D.Valid then null;
+               elsif not Owner then Status := DSP.DP.Denied;
+               elsif Kind = PP.Create_Request then
+                  if D.Value.Kind /= DPL.Cursor then
+                     --  Overlay and primary requests are designed, not built.
+                     Status := DSP.DP.Unsupported;
+                  elsif Live (D.Value.Request) then
+                     Status := DSP.DP.Bad_State;
+                  else
+                     requestOwner := from;
+                     planeRequests (D.Value.Request) := DPL.Cursor_Request
+                       (True, False, D.Value.Priority, 0, 0, 1, 1, 0, 0,
+                        D.Value.Absolute);
+                     requestImages (D.Value.Request) (0) := 0;
+                     imageVersions (D.Value.Request) :=
+                       imageVersions (D.Value.Request) + 1;
+                     Status := DSP.DP.Success;
+                     replan;
+                  end if;
+               elsif not Live (D.Value.Request) then
+                  Status := DSP.DP.Bad_State;
+               else
+                  planeRequests (D.Value.Request).Priority := D.Value.Priority;
+                  Status := DSP.DP.Success;
+                  replan;
+               end if;
+            end;
+         when PP.Destroy_Request =>
+            declare
+               D : constant PP.Request_Decoding := PP.Decode_Destroy (Wire);
+            begin
+               if not D.Valid then null;
+               elsif not Owner then Status := DSP.DP.Denied;
+               elsif not Live (D.Value) then Status := DSP.DP.Bad_State;
+               else
+                  planeRequests (D.Value) := (others => <>);
+                  Status := DSP.DP.Success;
+                  replan;
+               end if;
+            end;
+         when PP.Set_Cursor_Image =>
+            declare
+               D : constant PP.Image_Decoding := PP.Decode_Image (Wire);
+               Mapped : System.Address;
+               Acquired, Returned : Boolean;
+            begin
+               if not D.Valid then null;
+               elsif not Owner then Status := DSP.DP.Denied;
+               elsif not Live (D.Value.Request) then Status := DSP.DP.Bad_State;
+               else
+                  MG.Acquire (D.Value.Grant, from, 0, PP.Image_Bytes (D.Value),
+                              MG.Read_Access, Mapped, Acquired);
+                  if Acquired then
+                     declare
+                        Count : constant Natural :=
+                          Natural (D.Value.Width) * Natural (D.Value.Height);
+                        Source : array (0 .. Count - 1) of Unsigned_32
+                          with Import, Volatile, Address => Mapped;
+                        Target : Image_Pixels renames
+                          requestImages (D.Value.Request);
+                     begin
+                        for I in Source'Range loop
+                           Target (I) := Source (I);
+                        end loop;
+                     end;
+                     MG.Return_Acquisition (D.Value.Grant, Returned);
+                     declare
+                        R : DPL.Request_State renames
+                          planeRequests (D.Value.Request);
+                     begin
+                        R.Width := D.Value.Width;
+                        R.Height := D.Value.Height;
+                        R.Shown_Width := D.Value.Width;
+                        R.Shown_Height := D.Value.Height;
+                        R.Anchor_X := D.Value.Hot_X;
+                        R.Anchor_Y := D.Value.Hot_Y;
+                     end;
+                     imageVersions (D.Value.Request) :=
+                       imageVersions (D.Value.Request) + 1;
+                     Status := (if Returned then DSP.DP.Success
+                                else DSP.DP.Bad_State);
+                     replan;
+                  end if;
+               end if;
+            end;
+         when PP.Set_Anchor =>
+            declare
+               D : constant PP.Anchor_Decoding := PP.Decode_Anchor (Wire);
+            begin
+               if not D.Valid then null;
+               elsif not Owner then Status := DSP.DP.Denied;
+               elsif not Live (D.Value.Request) or else
+                 Natural (D.Value.X) >= Natural (planeRequests (D.Value.Request).Width) or else
+                 Natural (D.Value.Y) >= Natural (planeRequests (D.Value.Request).Height)
+               then
+                  Status := DSP.DP.Bad_State;
+               else
+                  planeRequests (D.Value.Request).Anchor_X := D.Value.X;
+                  planeRequests (D.Value.Request).Anchor_Y := D.Value.Y;
+                  Status := DSP.DP.Success;
+                  replan;
+               end if;
+            end;
+         when PP.Move_Request =>
+            declare
+               D : constant PP.Move_Decoding := PP.Decode_Move (Wire);
+            begin
+               if not D.Valid then null;
+               elsif not Owner then Status := DSP.DP.Denied;
+               elsif not Live (D.Value.Request) then Status := DSP.DP.Bad_State;
+               else
+                  planeRequests (D.Value.Request).X := D.Value.X;
+                  planeRequests (D.Value.Request).Y := D.Value.Y;
+                  Status := DSP.DP.Success;
+                  replan;
+               end if;
+            end;
+         when PP.Set_Visibility =>
+            declare
+               D : constant PP.Visibility_Decoding := PP.Decode_Visibility (Wire);
+            begin
+               if not D.Valid then null;
+               elsif not Owner then Status := DSP.DP.Denied;
+               elsif not Live (D.Value.Request) then Status := DSP.DP.Bad_State;
+               else
+                  planeRequests (D.Value.Request).Visible := D.Value.Visible;
+                  Status := DSP.DP.Success;
+                  replan;
+               end if;
+            end;
+      end case;
+      replyMsg := planReport (Kind, Status);
+   end handlePlaneRequest;
+
+   --  A plane move completion; False if Token is not a plane move.
+   function collectPlaneMove (Completion : CompletionEntry) return Boolean is
+   begin
+      for Output in Output_Index loop
+         for Plane in DPL.Plane_Number loop
+            declare
+               B : Plane_Buffer renames planeBuffers (Output, Plane);
+            begin
+               if B.Move_Token /= 0 and then B.Move_Token = Completion.token then
+                  B.Move_Token := 0;
+                  if not (Completion.valid and then
+                          Completion.status = COMPLETION_OK and then
+                          GP.Accepted_Reply (GP.Move_Plane,
+                            CuBit.Desktop_Messages.To_Wire (Completion.msg)))
+                  then
+                     B.Faulted := True;
+                     debugPrint ("display: plane move failed" & LF);
+                  else
+                     sendMove (Output, Plane);
+                  end if;
+                  return True;
+               end if;
+            end;
+         end loop;
+      end loop;
+      return False;
+   end collectPlaneMove;
+
    function frameResponse (Result : DSP.Frame_Result; Slot : Natural) return Message is
    begin
       if Slot = 0 then
@@ -1077,6 +1655,12 @@ procedure main is
             end if;
          end;
       end if;
+      --  A published frame rendered for a plan epoch commits that plan's
+      --  plane changes on this output (glitch-free swaps, see replan).
+      if Result.Outcome = DSP.Published and then not State.presentationFault then
+         acknowledgeFrame (Output, State.frameEpoch);
+      end if;
+      State.frameEpoch := DPL.No_Epoch;
       Response := frameResponse (Result, State.Pool_Slot);
       if State.Pool_Slot /= 0 and then Result.Buffer_State = DSP.Released then
          State.srcAddr := System.Null_Address;
@@ -1094,12 +1678,12 @@ procedure main is
       --  producer monopolize this loop with unbounded completion traffic.
       for Count in 1 .. COMPLETION_QUEUE_SIZE loop
          exit when Poll_Completion (Completion'Address) /= 1;
-         Matched := False;
+         Matched := collectPlaneMove (Completion);
          for Output in Output_Index loop
             declare
                State : Output_State renames outputStates (Output);
             begin
-               if State.backendToken /= 0 and then
+               if not Matched and then State.backendToken /= 0 and then
                  State.backendToken = Completion.token
                then
                   Matched := True;
@@ -1136,6 +1720,9 @@ procedure main is
          end if;
       end loop;
    end collectFrames;
+
+   --  Epoch of the plan frame being decoded (Submit_Plan_Frame), else none.
+   pendingFrameEpoch : DPL.Plan_Epoch := DPL.No_Epoch;
 
    procedure submitFrame (from : Process_ID; request : Message;
                           replyMsg : out Message) is
@@ -1207,6 +1794,7 @@ procedure main is
       State.srcGrant := Source_Grant;
       State.Pool_Slot := Slot;
       State.lastFrame := decoded.Value.Frame;
+      State.frameEpoch := pendingFrameEpoch;
       result.Buffer_State := DSP.Still_Held;
       result.Outcome := DSP.Failed;
       PS.Apply (State.frameState, id, PS.Begin_Read, applied, obligation);
@@ -1303,7 +1891,10 @@ procedure main is
       --  lease and session until their captured continuation has retired.
       if PS.Current (outputStates (selectedOutput).frameState) /= PS.Idle and then
         request.tag.label not in OP_DISPLAY_GET_INFO | OP_DISPLAY_GET_STATUS |
-          OP_SUBMIT_FRAME | Pool_Wire.Submit_Frame
+          OP_SUBMIT_FRAME | Pool_Wire.Submit_Frame | PP.Submit_Plan_Frame and then
+        --  Plane requests never touch the frame's buffers: pointer motion
+        --  must not wait for presentation.
+        not PP.Decode_Operation (request.tag.label).Valid
       then
          replyMsg.tag := (request.tag.label, 1, 0, 0);
          replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
@@ -1424,6 +2015,22 @@ procedure main is
          when OP_SUBMIT_FRAME | Pool_Wire.Submit_Frame =>
             submitFrame (from, request, replyMsg);
 
+         when PP.Submit_Plan_Frame =>
+            declare
+               Tagged_Frame : constant PP.Plan_Frame_Decoding :=
+                 PP.Decode_Plan_Frame (CuBit.Desktop_Messages.To_Wire (request));
+            begin
+               if Tagged_Frame.Valid then
+                  pendingFrameEpoch := Tagged_Frame.Value.Epoch;
+                  submitFrame (from, CuBit.Desktop_Messages.From_Wire
+                    (Pool_Wire.Encode (Tagged_Frame.Value.Item)), replyMsg);
+                  pendingFrameEpoch := DPL.No_Epoch;
+               else
+                  replyMsg.tag := (request.tag.label, 1, 0, 0);
+                  replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
+               end if;
+            end;
+
          when OP_DISPLAY_GET_INFO =>
             replyMsg.tag := (label  => OP_DISPLAY_GET_INFO,
                              length => 4,
@@ -1477,6 +2084,9 @@ procedure main is
                else
                   outputStates (selectedOutput).displayOwner := No_Process;
                   outputStates (selectedOutput).leasedOutput := Outputs.No_Output;
+                  if selectedOutput = 0 and then requestOwner = from then
+                     resetRequests;
+                  end if;
                   replyMsg.words (0) := DISPLAY_OK;
                end if;
             elsif outputStates (selectedOutput).displayOwner = No_Process then
@@ -1635,11 +2245,20 @@ procedure main is
             end if;
 
          when others =>
-            replyMsg.tag := (label  => request.tag.label,
-                             length => 1,
-                             flags  => 0,
-                             reserved  => 0);
-            replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
+            declare
+               Plane_Kind : constant PP.Operation_Decoding :=
+                 PP.Decode_Operation (request.tag.label);
+            begin
+               if Plane_Kind.Valid then
+                  handlePlaneRequest (from, Plane_Kind.Value, request, replyMsg);
+               else
+                  replyMsg.tag := (label  => request.tag.label,
+                                   length => 1,
+                                   flags  => 0,
+                                   reserved  => 0);
+                  replyMsg.words (0) := DISPLAY_ERR_UNSUPPORTED;
+               end if;
+            end;
       end case;
 
    end handleRequest;
@@ -1712,6 +2331,12 @@ begin
       end loop;
       selectedOutput := 0;
    end if;
+   for Output in Output_Index loop
+      if readyOutputs (Output) then
+         discoverPlanes (Output);
+      end if;
+   end loop;
+   replan;
    debugPrint ("display: ready" & LF);
 
    loop

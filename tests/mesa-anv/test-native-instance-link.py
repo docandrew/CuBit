@@ -272,7 +272,7 @@ if args.present_triangle:
     native_objects.append(str(presenter))
 retain_flags = []
 if args.retain_transport:
-    for unit in ('native_gpu_buffers', 'native_gpu_memory', 'native_gpu_query',
+    for unit in ('native_gpu_buffers', 'native_gpu_memory', 'native_gpu_query', 'native_gpu_queue',
                  *(['native_gpu_presentation'] if args.present_triangle else [])):
         subprocess.run(['gnatmake', '-q', '-c', '-gnatA', '-gnat2022', '-O2',
                         '-mno-red-zone', '-fno-pic',
@@ -281,6 +281,8 @@ if args.retain_transport:
                         str(root / 'userspace/mesa/anv' / (unit + '.adb'))],
                        cwd=out, check=True)
         native_objects.append(str(out / (unit + '.o')))
+    # The session queue's proved logic, compiled with it above.
+    native_objects += [str(out / 'native_gpu_timeline.o'), str(out / 'native_gpu_job_rules.o')]
     retain_flags = ['-Wl,--undefined=' + name for name in (
         'anv_cubit_transport_backend', 'cubit_mesa_query_device_defaults',
         'cubit_gpu_native_query_call', 'cubit_mesa_init_memory_types',

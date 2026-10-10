@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Exercise the exact native work-drain predicate with controlled observations.
 
+GPU-001 step 2: a session is drained when the queue service says it has no
+job in flight (Session_Idle), on top of the deferred-publisher guards.
+
 This is hosted decision coverage, not proof of hardware quiescence or authority.
 The negative control removes a real deferred-publisher guard and must fail.
 """
@@ -13,13 +16,12 @@ import tempfile
 
 root = Path(__file__).resolve().parents[2]
 source = root / 'userspace/services/intel-gpu'
-inputs = [source / 'main.adb', source / 'intel_gpu_application_submit.ads']
+inputs = [source / 'main.adb']
 original = {p: p.read_bytes() for p in inputs}
 main = original[inputs[0]].decode()
 start = main.index('   function Application_Work_Drained (Session : Unsigned_64) return Boolean is')
 end = main.index('   end Application_Work_Drained;', start) + len('   end Application_Work_Drained;')
 guard = main[start:end]
-phase, = re.findall(r'type Phase is (\([^;]+\));', original[inputs[1]].decode())
 prefix = '''with Ada.Text_IO;
 with Interfaces; use Interfaces;
 procedure Work_Drain_Tests is
@@ -36,65 +38,61 @@ procedure Work_Drain_Tests is
          elsif Tag = 103 then 2 else 0);
    end Intel_GPU_Render_Control;
    Render_Admission : Natural := 1;
-   package Application_Submission is
-      type Phase is ''' + phase + ''';
-      function Current (Value : Phase) return Phase is (Value);
-   end Application_Submission;
+   package Queue_Service is
+      type Table is array (1 .. 4) of Boolean;   -- Session_Idle per index
+      function Session_Idle (T : Table; Index : Positive) return Boolean is (T (Index));
+   end Queue_Service;
+   Queue_State : Queue_Service.Table := [others => True];
    Runtime_Fault : Boolean := False;
    Context_Owner : Boolean := True;
-   Buffer_Retirement_Pending, Selected_Index, Preparing_Index,
-     Application_Pending, Private_Pending, Update_Pending : Natural := 0;
+   Deferred : Boolean := False;
+   function Deferred_Application_Work return Boolean is (Deferred);
+   Cleaning : Boolean := False;
+   function Cleanup_Pending (Session : Unsigned_64) return Boolean is (Cleaning);
    Application_Setup_Complete : array (1 .. 4) of Boolean := [others => False];
-   Application_Submissions : array (1 .. 4) of Application_Submission.Phase :=
-     [others => Application_Submission.Uninitialized];
    Sessions : constant array (1 .. 9) of Unsigned_64 :=
      [0, 99, 100, 101, 102, 103, 104, 105, Unsigned_64'Last];
    Checks : Natural := 0;
    Expected : Boolean;
-   use type Application_Submission.Phase;
 '''
 suffix = '''
 begin
-   for Mask in Unsigned_32 range 0 .. 255 loop
+   for Mask in Unsigned_32 range 0 .. 15 loop
       Runtime_Fault := (Mask and 1) /= 0;
       Context_Owner := (Mask and 2) = 0;
-      Buffer_Retirement_Pending := (if (Mask and 4) /= 0 then 1 else 0);
-      Selected_Index := (if (Mask and 8) /= 0 then 1 else 0);
-      Preparing_Index := (if (Mask and 16) /= 0 then 1 else 0);
-      Application_Pending := (if (Mask and 32) /= 0 then 1 else 0);
-      Private_Pending := (if (Mask and 64) /= 0 then 1 else 0);
-      Update_Pending := (if (Mask and 128) /= 0 then 1 else 0);
+      Deferred := (Mask and 4) /= 0;
+      Cleaning := (Mask and 8) /= 0;
       for Session of Sessions loop
          for Setup in Boolean loop
-            for State in Application_Submission.Phase loop
+            for Idle in Boolean loop
                Application_Setup_Complete := [others => False];
-               Application_Submissions := [others => Application_Submission.Failed];
+               Queue_State := [others => False];
                if Session in 101 .. 103 then
                   declare
                      Index : constant Positive :=
                        (case Session is when 101 => 4, when 102 => 1, when others => 2);
                   begin
                      Application_Setup_Complete (Index) := Setup;
-                     Application_Submissions (Index) := State;
+                     Queue_State (Index) := Idle;
                   end;
                end if;
-               Expected := Mask = 0 and then Session in 101 .. 103 and then
-                 Setup and then State in Application_Submission.Uninitialized | Application_Submission.Idle;
+               Expected := Mask = 0 and then Session in 101 .. 103 and then Setup and then Idle;
                pragma Assert (Application_Work_Drained (Session) = Expected);
                Checks := Checks + 1;
             end loop;
          end loop;
       end loop;
    end loop;
-   pragma Assert (Checks = 23040);
+   pragma Assert (Checks = 576);
    Ada.Text_IO.Put_Line ("Native work-drain predicate PASS" & Natural'Image (Checks));
 end Work_Drain_Tests;
 '''
 output = root / 'tests/intel-gpu/build'
 output.mkdir(exist_ok=True)
 work = Path(tempfile.mkdtemp(prefix='work-drain.', dir=output))
-for name, body in [('actual', guard), ('missing-private-publisher',
-        guard.replace('Private_Pending /= 0 or else ', '', 1)),
+for name, body in [('actual', guard), ('missing-deferred-publisher',
+        guard.replace('Deferred_Application_Work or else ', '', 1)),
+        ('missing-idle-check', guard.replace('Queue_Service.Session_Idle (Queue_State, Index)', 'True', 1)),
         ('tag-as-index', guard.replace('Positive := Stored;',
          'Positive := Positive (Session - Intel_GPU_Render_Sessions.Tag_Base);', 1))]:
     if name != 'actual' and body == guard:
@@ -116,7 +114,7 @@ for name, body in [('actual', guard), ('missing-private-publisher',
     result = subprocess.run([str(directory / 'work_drain_tests')], capture_output=True, text=True)
     (directory / 'result.log').write_text(result.stdout + result.stderr)
     if name == 'actual':
-        if result.returncode or 'PASS 23040' not in result.stdout:
+        if result.returncode or 'PASS 576' not in result.stdout:
             raise SystemExit('Actual predicate failed: ' + result.stdout + result.stderr)
         print(result.stdout.strip())
     elif result.returncode == 0 or 'ASSERTION_ERROR' not in result.stderr.upper():
@@ -126,7 +124,7 @@ for name, body in [('actual', guard), ('missing-private-publisher',
 if any(p.read_bytes() != data for p, data in original.items()):
     raise SystemExit('Source changed during test')
 (work / 'result.json').write_text(json.dumps({
-    'hosted_only': True, 'actual_checks': 23040, 'negative_control_detected': True,
+    'hosted_only': True, 'actual_checks': 576, 'negative_control_detected': True,
     'source_sha256': {str(p): hashlib.sha256(data).hexdigest() for p, data in original.items()},
 }, indent=2) + '\n')
 print('Evidence:', work)

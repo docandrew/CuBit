@@ -1,0 +1,31 @@
+with Ada.Text_IO; use Ada.Text_IO;
+with Ada.Calendar; use Ada.Calendar;
+with ACPI_Service; use ACPI_Service;
+with Firmware_Tables;
+procedure Observer_Cost is
+ use type Firmware_Tables.Byte;
+ S : State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
+ Raw : Firmware_Tables.Bytes (1 .. 36) := [others => 0];
+ Status : Install_Status;
+ Checksum : Firmware_Tables.Byte := 0;
+ Sum : Natural := 0;
+ Started : Time;
+ Iterations : constant Positive := 1_000;
+begin
+ Raw (1 .. 4) := [68,83,68,84]; Raw (5) := 36; Raw (9) := 2;
+ for B of Raw loop Checksum := Checksum + B; end loop;
+ Raw (10) := 0 - Checksum;
+ Install (S, 1, DSDT, Raw, Status);
+ if Status /= Installed then raise Program_Error; end if;
+ Started := Clock;
+ for I in 1 .. Iterations loop Sum := Sum + Natural (Raw (1)); end loop;
+ Put_Line ("direct seconds" & Duration'Image (Clock - Started));
+ Started := Clock;
+ for I in 1 .. Iterations loop Sum := Sum + Observe (S).Tables; end loop;
+ Put_Line ("observe seconds" & Duration'Image (Clock - Started));
+ Started := Clock;
+ for I in 1 .. Iterations loop Sum := Sum + Natural (Table_Byte (S, 1, 0)); end loop;
+ Put_Line ("table-byte seconds" & Duration'Image (Clock - Started));
+ if Sum /= Iterations * 137 then raise Program_Error; end if;
+ Put_Line ("OBSERVER-COST PASS" & Sum'Image);
+end Observer_Cost;

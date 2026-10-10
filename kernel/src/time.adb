@@ -17,14 +17,24 @@ with Scheduler_Timing;
 with TextIO;
 with x86;
 with Platform_Monotonic;
+with Clock_Page;
+with Clock_Publication;
 
 package body Time with
     SPARK_Mode => On
 is
     procedure Read_Monotonic (Microseconds : out Unsigned_64;
                              Success : out Boolean) with SPARK_Mode => Off is
+        Nanoseconds : Unsigned_64;
     begin
-        Platform_Monotonic.Read (Microseconds, Success);
+        -- One epoch with the clock publication and msTicks when user space
+        -- has the page; the HPET's own epoch otherwise.
+        if Clock_Page.Shared then
+            Clock_Page.Read (x86.readOrderedTSC, Nanoseconds, Success);
+            Microseconds := Clock_Publication.Microseconds (Nanoseconds);
+        else
+            Platform_Monotonic.Read (Microseconds, Success);
+        end if;
     end Read_Monotonic;
 
     function Try_CPU_TSC return Boolean with SPARK_Mode => Off is
@@ -133,6 +143,12 @@ is
             raise Program_Error with "Missing reference TSC calibration";
         end if;
         referenceEpoch := Stamp;
+        -- msTicks continues from here on the clock publication's conversion.
+        Clock_Page.Publish
+          (Frequency         => tscFrequencyHz,
+           Base_Ticks        => Stamp,
+           Base_Milliseconds => msTicks,
+           Invariant         => CPUID.hasInvariantTSC);
         for CPU in cpuClock'Range loop
             cpuClock(CPU) := Scheduler_Timing.Start
               (0, Scheduler_Timing.Tick_Rate (tscFrequencyHz / 1000));
@@ -147,10 +163,13 @@ is
         elapsed : Unsigned_64 := 1;
         valid : Boolean;
         clockDelta : Scheduler_Timing.Tick_Count;
+        counter : Unsigned_64 := 0;
+        previousMs, publishedNs : Unsigned_64;
     begin
         if schedulingClock then
+            counter := x86.readOrderedTSC;
             readClock : declare
-                stamp : constant Unsigned_64 := x86.readOrderedTSC - referenceEpoch;
+                stamp : constant Unsigned_64 := counter - referenceEpoch;
             begin
                 elapsed := 0;
                 valid := stamp <= Unsigned_64 (Scheduler_Timing.Tick_Count'Last);
@@ -172,11 +191,30 @@ is
             Process.Queues.expireSleepers (x86.rdtsc);
         end if;
         Process.armWakeAlarm;
-        -- Only BSP handles global timekeeping and receive/futex deadlines
-        if cpuNum = 0 and then elapsed > 0 then
-            Time.msTicks := Time.msTicks + elapsed;
-            Process.IPC.expireReceiveDeadlines (Time.msTicks);
-            Process.Futex.expireDeadlines (Time.msTicks);
+        -- Only BSP handles global timekeeping and receive/futex deadlines.
+        -- msTicks is the clock publication's time at this tick, so a reader
+        -- of the page is never behind it (docs/fast-clock.md).
+        if cpuNum = 0 then
+            previousMs := Time.msTicks;
+            if schedulingClock and then Clock_Page.Converting then
+                Clock_Page.Read (counter, publishedNs, valid);
+                if valid and then
+                   Clock_Publication.Milliseconds (publishedNs) > previousMs
+                then
+                    Time.msTicks := Clock_Publication.Milliseconds (publishedNs);
+                end if;
+            elsif elapsed > 0 then
+                Time.msTicks := previousMs + elapsed;
+            end if;
+            if Time.msTicks /= previousMs then
+                Process.IPC.expireReceiveDeadlines (Time.msTicks);
+                if Time.msTicks / Process.IPC.Stuck_Report_Period_Ms /=
+                   previousMs / Process.IPC.Stuck_Report_Period_Ms
+                then
+                    Process.IPC.reportStuckCalls (Time.msTicks);
+                end if;
+                Process.Futex.expireDeadlines (Time.msTicks);
+            end if;
         end if;
 
         -- Existing coarse CPU quota accounting remains at one-millisecond

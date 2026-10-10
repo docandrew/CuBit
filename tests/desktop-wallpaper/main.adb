@@ -1,17 +1,52 @@
+with Ada.Command_Line;
+with Ada.Directories;
+with Ada.Streams.Stream_IO;
 with Ada.Text_IO; use Ada.Text_IO;
 with Desktop_Wallpaper;
+with Desktop_Wallpaper_Store;
 with CuBit.Appearance; use CuBit.Appearance;
+with CuBit.QOI;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 procedure Main is
+   package Store renames Desktop_Wallpaper_Store;
+   --  The built asset package (make -C kernel wallpaper-assets).
+   Package_Directory : constant String :=
+     (if Ada.Command_Line.Argument_Count >= 1 then Ada.Command_Line.Argument (1)
+      else "build/Assets/cubit-wallpapers/1");   --  from kernel/
+
+   --  Decode one asset file into the store, as Desktop does, in 64 KiB
+   --  chunks; returns its raster's address.
+   function Load (Asset : Store.Image; Name : String) return System.Address is
+      use Ada.Streams.Stream_IO;
+      Path : constant String := Package_Directory & "/" & Name;
+      Size : constant Natural := Natural (Ada.Directories.Size (Path));
+      Data : access CuBit.QOI.Byte_Array := new CuBit.QOI.Byte_Array (1 .. Size);
+      File : Ada.Streams.Stream_IO.File_Type;
+      First : Positive := 1;
+      Result : Store.Load_Result;
+   begin
+      Open (File, In_File, Path);
+      CuBit.QOI.Byte_Array'Read (Stream (File), Data.all);
+      Close (File);
+      Store.Begin_Load (Asset);
+      while First <= Size loop
+         Store.Feed (Asset, Data (First .. Natural'Min (Size, First + 65_535)));
+         First := First + 65_536;
+      end loop;
+      Store.End_Load (Asset, False, Result);
+      pragma Assert (Result.Loaded);
+      return Store.Pixels (Asset);
+   end Load;
+
    type Pixels is array (Natural range <>) of Unsigned_32 with Convention => C;
    Source : constant Pixels
      (0 .. Desktop_Wallpaper.Source_Width * Desktop_Wallpaper.Source_Height - 1)
-     with Import, Convention => C, External_Name => "cubit_desktop_wallpaper";
+     with Import, Address => Load (Wallpaper, "cubes.qoi");
    Cubie_Source : constant Pixels
      (0 .. Desktop_Wallpaper.Cubie_Width * Desktop_Wallpaper.Cubie_Height - 1)
-     with Import, Convention => C, External_Name => "cubit_desktop_wallpaper_cubie";
+     with Import, Address => Load (Cubie, "cubie.qoi");
 
    procedure Check (Width, Height, Pitch : Positive;
                     Backdrop : Background := Wallpaper) is

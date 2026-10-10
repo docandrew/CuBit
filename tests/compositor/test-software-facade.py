@@ -13,9 +13,9 @@ for name in names:
  for ext in ['ads','adb']:
   hits=[p for folder in ['userspace/lib/compositor','userspace/lib/display','userspace/lib/theme','userspace/runtime/gnat','userspace/allocator/src'] if (p:=r/folder/(name+'.'+ext)).exists()]
   if hits:copy(hits[0])
-for ext in ['ads','adb']:copy(r/'userspace/services/desktop/backend-legacy'/('desktop_compositor.'+ext))
+for ext in ['ads','adb']:copy(r/'userspace/services/desktop/backend-legacy'/('desktop_compositor.'+ext));copy(r/'userspace/services/desktop'/('desktop_cpu_software_renderer.'+ext))
 for name in ['software_facade_tests.adb','raster.c','test.gpr']:copy(fixture/name)
-for cmd in [['gprbuild','-q','-p','-P',str(w/'test.gpr')],['gnatprove','-P',str(w/'test.gpr'),'-u','desktop_compositor.adb','--level=2','--timeout=30','-j2']]:
+for cmd in [['gprbuild','-q','-p','-P',str(w/'test.gpr')],['gnatprove','-P',str(w/'test.gpr'),'-u','desktop_compositor.adb','-u','desktop_cpu_software_renderer.adb','--level=2','--timeout=30','-j2']]:
  subprocess.run(['alr','exec','--',*cmd],cwd=args.toolchain/'kernel',check=True)
 for mode in [[],['first-fault']]:subprocess.run([str(w/'software_facade_tests'),*mode],check=True)
 report=(w/'obj/gnatprove/gnatprove.out').read_text();total=next(line for line in report.splitlines() if line.startswith('Total '))

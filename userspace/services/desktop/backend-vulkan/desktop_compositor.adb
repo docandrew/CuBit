@@ -1,4 +1,4 @@
-with Desktop_Mesa_Software_Renderer;
+with Desktop_CPU_Software_Renderer;
 with Mesa_Binding;
 with Compositor_Policy;
 with Compositor_Affine;
@@ -19,8 +19,11 @@ with Desktop_GPU_Scene.Drawing;
 with Desktop_GPU_Scene.Images;
 with Desktop_Readback_Output;
 with Desktop_Image_Registry;
+with Desktop_Icon_Atlas_Owner;
+with Desktop_Icon_Pixels.Atlases;
 with Desktop_Vulkan_Startup;
 with Compositor_Backend_Selection;
+with Compositor_Source_Region;
 package body Desktop_Compositor with SPARK_Mode,
   Refined_State => (Engine => (Choice, Recovery_Targets_Retired, CPU.State, GPU.State)) is
 package Selection renames Compositor_Backend_Selection;
@@ -28,7 +31,8 @@ use type Selection.Mode, Selection.Recovery_Phase;
 Choice : Selection.State;
 Recovery_Targets_Retired : Boolean := False;
 function Use_GPU return Boolean is (Selection.Current (Choice) = Selection.GPU);
-package CPU is new Desktop_Mesa_Software_Renderer
+-- Non-GPU selection: CPU drawing, not softpipe (about 5x cheaper per pixel).
+package CPU is new Desktop_CPU_Software_Renderer
   (Recovery_Result, Recovery_Unsafe,
      Output_Start, Started, Start_Unsafe,
      Render_Completion, Complete, Unsafe,
@@ -58,6 +62,7 @@ procedure Draw_Fill
     Post => Valid and Desktop_Vulkan_Startup.Valid;
 procedure Draw_Backdrop
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
       Style : CuBit.Appearance.Preferences; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean)
   with Pre => Valid and Desktop_Vulkan_Startup.Valid,
@@ -91,8 +96,27 @@ procedure Draw_Output
       Screen : CuBit.Display_Geometry.Output;
       Surface : CuBit.Display_Geometry.Logical_Rectangle;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Secondary : Boolean; Drawn, Must_Restart : out Boolean;
-      Over : Boolean := False; Straight_Alpha : Boolean := False)
+      Key : Compositor_Source_Content.Source_Key;
+      Version : Compositor_Source_Content.Content_Version;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean)
+  with Pre => Valid and Desktop_Vulkan_Startup.Valid,
+    Post => Valid and Desktop_Vulkan_Startup.Valid;
+procedure Note_Source_Change
+     (Key : Compositor_Source_Content.Source_Key; Rows : Compositor_Source_Content.Row_Band)
+  with Pre => Valid, Post => Valid;
+procedure Retire_Source (Key : Compositor_Source_Content.Source_Key)
+  with Pre => Valid, Post => Valid;
+function Resident_Sources return Natural;
+function Last_Retry_Cause return Retry_Cause;
+function Peak_Scene_Layers return Natural;
+function Placeholder_Draws return Natural;
+procedure Draw_Atlas
+     (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Screen : CuBit.Display_Geometry.Output; Family : Desktop_Icon_Pixels.Family;
+      Region : Compositor_Source_Region.Rectangle;
+      Surface : CuBit.Display_Geometry.Logical_Rectangle;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
+      Straight_Alpha, Secondary : Boolean; Drawn, Must_Restart : out Boolean)
   with Pre => Valid and Desktop_Vulkan_Startup.Valid,
     Post => Valid and Desktop_Vulkan_Startup.Valid;
 procedure Complete_Output
@@ -101,8 +125,9 @@ procedure Complete_Output
   with Pre => Valid and Desktop_Vulkan_Startup.Valid,
     Post => Valid and Desktop_Vulkan_Startup.Valid;
 procedure Forget_Source (Pixels : System.Address; Result : out Source_Release)
-  with Pre => Valid and Desktop_Vulkan_Startup.Valid,
-    Post => Valid and Desktop_Vulkan_Startup.Valid;
+  with Global => (In_Out => State, Proof_In => Desktop_Vulkan_Startup.Engine),
+    Pre => Valid and Desktop_Vulkan_Startup.Valid,
+    Post => Valid;
 procedure Forget_Targets (Result : out Target_Release)
   with Pre => Valid and Desktop_Vulkan_Startup.Valid,
     Post => Valid and Desktop_Vulkan_Startup.Valid;
@@ -116,12 +141,13 @@ procedure Forget_Targets (Result : out Target_Release)
     Post => Valid and Desktop_Vulkan_Startup.Valid;
 end GPU;
 
-package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Copy, Opened, Captured, Destination, Capacity, Held_Writer, Geometry, Copy_Repair)) is
+package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Atlases, Copy, Opened, Captured, Destination, Capacity, Held_Writer, Geometry, Copy_Repair, Asset_Cold, Retried, Cells_Prepared)) is
+   use type Interfaces.Unsigned_64;
 
    package G renames Desktop_GPU_Scene;
    package D renames Desktop_Vulkan_Startup;
    package R renames Desktop_Image_Registry;
-   use type R.Capacity_Pressure, Desktop_Readback_Output.Phase, D.Presentation_Ticket;
+   use type Desktop_Readback_Output.Phase, D.Presentation_Ticket;
    use type G.Output_Completion, D.Capture_Admission, Compositor_Formats.Image,
      Compositor_Formats.Byte_Count, Compositor_Formats.Word, Compositor_Pool.ID,
      Compositor_Pool.Ticket, System.Address;
@@ -130,6 +156,15 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Cop
    package B renames Desktop_Backdrop_Owner;
    use type B.Phase, B.Outcome, G.Phase, CuBit.Appearance.Background;
    Backdrops : array (B.Slot) of B.State;
+   package IA renames Desktop_Icon_Atlas_Owner;
+   use type IA.Phase, IA.Outcome;
+   Atlases : array (Desktop_Icon_Pixels.Family) of IA.State;
+   function Atlas_Slot (Family : Desktop_Icon_Pixels.Family) return IA.Slot is
+     (IA.Slot'Val (IA.Slot'Pos (IA.Slot'First) + Desktop_Icon_Pixels.Family'Pos (Family)));
+   -- An atlas or backdrop draw in this capture found its image cold.
+   Asset_Cold : Boolean := False;
+   Retried : Retry_Cause := No_Retry;
+   Cells_Prepared : Boolean := False;
    Copy : Desktop_Readback_Output.State;
    Opened, Captured : Boolean := False;
    Destination : Compositor_Formats.Image;
@@ -143,7 +178,8 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Cop
    function Valid return Boolean is
      (G.Valid (Scene) and R.Valid (Sources) and
       Desktop_Readback_Output.Valid (Copy) and Compositor_Damage.Valid (Copy_Repair) and
-      (for all Index in B.Slot => B.Valid (Backdrops (Index))));
+      (for all Index in B.Slot => B.Valid (Backdrops (Index))) and
+      (for all Family in Desktop_Icon_Pixels.Family => IA.Valid (Atlases (Family))));
    function Readback_Work return Transfer_Counters is
      (GPU_Submitted => Desktop_Readback_Output.GPU_Bytes (Copy),
       CPU_Copied => Desktop_Readback_Output.CPU_Bytes (Copy),
@@ -186,6 +222,14 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Cop
          if not OK then return; end if;
          pragma Loop_Invariant (D.Valid);
       end loop;
+      if not Cells_Prepared then
+         -- Before the first capture, while the renderer is idle: allocate
+         -- the glyph cells together rather than during interaction.
+         declare Prepared : Natural; begin
+            G.Prepare_Glyph_Cells (Scene, Screen.Scale, Prepared);
+         end;
+         Cells_Prepared := True;
+      end if;
       G.Begin_Frame (Scene, Screen, 0, OK);
       if not OK then return; end if;
       G.Capture_Repaint (Scene, Repaint, OK);
@@ -195,7 +239,7 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Cop
          Compositor_Damage.Add (Copy_Repair, (0, 0, Natural (Target.Width), Natural (Target.Height)));
       end if;
       Destination := Target; Capacity := Target_Bytes; Held_Writer := Writer;
-      Geometry := Screen; Opened := True; Captured := True; Result := Started;
+      Geometry := Screen; Opened := True; Captured := True; Asset_Cold := False; Result := Started;
    end Begin_Output;
    procedure Draw_Fill
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
@@ -209,6 +253,7 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Cop
    end Draw_Fill;
    procedure Draw_Backdrop
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
       Style : CuBit.Appearance.Preferences; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean) is
       Source : Vulkan_Submission.Source_Ticket := Vulkan_Submission.No_Source;
@@ -224,12 +269,12 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Cop
       if Desktop_Backdrop_Style.Has_Image (Style.Backdrop) then
          B.Acquire (Backdrops (Index), Index, Style.Backdrop, Source, Status);
          if Status /= B.Available then
-            Captured := False;
+            Captured := False; Asset_Cold := True;
             Must_Restart := Status = B.Unsafe;
             return;
          end if;
       end if;
-      G.Backdrop.Capture (Scene, Style, Source, OK);
+      G.Backdrop.Capture (Scene, Style, Source, Damage, OK);
       Captured := OK;
    end Draw_Backdrop;
    procedure Draw_Shadow
@@ -276,8 +321,9 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Cop
       Screen : CuBit.Display_Geometry.Output;
       Surface : CuBit.Display_Geometry.Logical_Rectangle;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Secondary : Boolean; Drawn, Must_Restart : out Boolean;
-      Over : Boolean := False; Straight_Alpha : Boolean := False) is
+      Key : Compositor_Source_Content.Source_Key;
+      Version : Compositor_Source_Content.Content_Version;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean) is
       OK : Boolean;
       use type CuBit.Display_Geometry.Output;
    begin
@@ -285,14 +331,49 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Cop
       Drawn := True;
       if Must_Restart or not Captured then return; end if;
       if Source_Bytes > Compositor_Formats.Byte_Count (Natural'Last) then Captured := False; return; end if;
-      G.Images.Capture (Scene, Sources, Source, Natural (Source_Bytes), Surface, Damage,
-        OK, Over, Straight_Alpha); Captured := OK;
+      G.Images.Capture (Scene, Sources, Key, Version, Source, Natural (Source_Bytes), Surface, Damage, OK);
+      Captured := OK;
    end Draw_Output;
+   procedure Note_Source_Change
+     (Key : Compositor_Source_Content.Source_Key; Rows : Compositor_Source_Content.Row_Band) is
+   begin
+      R.Note_Change (Sources, Key, Rows);
+   end Note_Source_Change;
+   procedure Retire_Source (Key : Compositor_Source_Content.Source_Key) is
+   begin
+      R.Retire (Sources, Key);
+   end Retire_Source;
+   function Resident_Sources return Natural is (R.Resident_Keys (Sources));
+   procedure Draw_Atlas
+     (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Screen : CuBit.Display_Geometry.Output; Family : Desktop_Icon_Pixels.Family;
+      Region : Compositor_Source_Region.Rectangle;
+      Surface : CuBit.Display_Geometry.Logical_Rectangle;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
+      Straight_Alpha, Secondary : Boolean; Drawn, Must_Restart : out Boolean) is
+      Source : Vulkan_Submission.Source_Ticket;
+      Status : IA.Outcome;
+      OK : Boolean;
+      use type CuBit.Display_Geometry.Output;
+   begin
+      Must_Restart := not Matches (Target, Target_Bytes, Secondary) or Screen /= Geometry;
+      Drawn := True;
+      if Must_Restart or not Captured then return; end if;
+      IA.Acquire (Atlases (Family), Atlas_Slot (Family), Family, Source, Status);
+      if Status /= IA.Available then
+         -- Cold atlas: discard this capture; Complete_Output drives the upload.
+         Captured := False; Asset_Cold := True; Must_Restart := Status = IA.Unsafe; return;
+      end if;
+      G.Drawing.Image_Region (Scene, Source, Surface, Damage, Region, OK,
+        Over => True, Straight_Alpha => Straight_Alpha);
+      Captured := OK;
+   end Draw_Atlas;
    procedure Complete_Output
      (Target : System.Address; Writer : Compositor_Pool.Ticket;
       Secondary, Poll : Boolean; Result : out Render_Completion) is
       Finished : G.Output_Completion;
       Progress : B.Outcome;
+      Atlas_Progress : IA.Outcome;
    begin
       Result := Unsafe;
       if not Opened or Secondary or Target /= Destination.Pixels or Writer /= Held_Writer then return; end if;
@@ -306,6 +387,16 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Cop
             Result := Pending; return;
          end if;
       end loop;
+      for Family in Atlases'Range loop
+         if IA.Current (Atlases (Family)) = IA.Quarantined then return; end if;
+         if IA.Current (Atlases (Family)) in IA.Uploading | IA.Ready_To_Upload then
+            if Poll then
+               IA.Poll (Atlases (Family), Atlas_Progress);
+               if Atlas_Progress in IA.Unsafe | IA.Rejected then return; end if;
+            end if;
+            Result := Pending; return;
+         end if;
+      end loop;
       G.Images.Complete (Scene, Sources, Copy, Destination, Capacity, Writer,
         Poll and not (not Captured and G.Current (Scene) = G.Capturing
                       and not R.Upload_Work (Sources)),
@@ -314,17 +405,31 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Cop
         when G.Output_Repaint => Retry, when G.Output_Pending => Pending, when G.Output_Unsafe => Unsafe);
       if Finished in G.Output_Complete | G.Output_Repaint then
          Opened := False; Held_Writer := Compositor_Pool.None;
+         -- No capture is open: free images of surfaces that have gone.
+         R.Collect (Sources);
       end if;
-      if Finished = G.Output_Repaint and then R.Last_Pressure (Sources) /= R.None then
-         Result := Software_Required;
+      if Finished = G.Output_Repaint then
+         Retried :=
+           (case G.Last_Failure (Scene) is
+              when G.Cold_Source => Cold_Upload,
+              when G.Layer_Limit => Layer_Limit,
+              when G.Glyph_Limit => Glyph_Limit,
+              when G.Image_Limit => Image_Limit,
+              when G.Rejected_Draw => Rejected_Draw,
+              when G.No_Failure => (if Asset_Cold then Cold_Upload else Readback_Failed));
+      elsif Finished = G.Output_Complete then
+         Retried := No_Retry;
       end if;
    end Complete_Output;
+   function Last_Retry_Cause return Retry_Cause is (Retried);
+   function Peak_Scene_Layers return Natural is (Natural (G.Peak_Layers (Scene)));
+   function Placeholder_Draws return Natural is (G.Placeholder_Draws (Scene));
    procedure Forget_Source (Pixels : System.Address; Result : out Source_Release) is
       Safe : Boolean;
    begin
+      -- Never touches GPU state: the mapping is only read into staging.
       Result := Source_Busy;
-      if Opened then return; end if;
-      R.Forget (Sources, Pixels, True, Safe);
+      R.Forget (Sources, Pixels, Safe);
       if Safe then Result := Source_Retired;
       elsif R.Faulted (Sources) then Result := Source_Unsafe; end if;
    end Forget_Source;
@@ -364,6 +469,14 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Cop
             return;
          end if;
       end loop;
+      for Family in Atlases'Range loop
+         pragma Loop_Invariant (Valid and D.Valid);
+         IA.Close (Atlases (Family), True, Safe);
+         if not Safe then
+            if IA.Current (Atlases (Family)) = IA.Quarantined then Result := Targets_Unsafe; end if;
+            return;
+         end if;
+      end loop;
       G.Close (Scene, Safe);
       Result := (if Safe then Targets_Retired else Targets_Unsafe);
    end Forget_Targets;
@@ -386,7 +499,7 @@ package body GPU with Refined_State => (State => (Scene, Sources, Backdrops, Cop
       if Desktop_Backdrop_Style.Has_Image (Style.Backdrop) then
          B.Acquire (Backdrops (Index), Index, Style.Backdrop, Source, Status);
          if Status /= B.Available then
-            Captured := False; Must_Restart := Status = B.Unsafe; return;
+            Captured := False; Asset_Cold := True; Must_Restart := Status = B.Unsafe; return;
          end if;
       end if;
       G.Set_Clip (Scene, Damage, OK);
@@ -474,10 +587,11 @@ if Use_GPU then GPU.Draw_Fill (Target, Target_Bytes, Area, Color, Secondary, Dra
 end Draw_Fill;
 procedure Draw_Backdrop
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
       Style : CuBit.Appearance.Preferences; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean) is
 begin
-if Use_GPU then GPU.Draw_Backdrop (Target, Target_Bytes, Style, Secondary, Drawn, Must_Restart); else CPU.Draw_Backdrop (Target, Target_Bytes, Style, Secondary, Drawn, Must_Restart); end if;
+if Use_GPU then GPU.Draw_Backdrop (Target, Target_Bytes, Damage, Style, Secondary, Drawn, Must_Restart); else CPU.Draw_Backdrop (Target, Target_Bytes, Damage, Style, Secondary, Drawn, Must_Restart); end if;
 end Draw_Backdrop;
 procedure Draw_Shadow
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
@@ -511,11 +625,57 @@ procedure Draw_Output
       Screen : CuBit.Display_Geometry.Output;
       Surface : CuBit.Display_Geometry.Logical_Rectangle;
       Damage : CuBit.Display_Geometry.Physical_Rectangle;
-      Secondary : Boolean; Drawn, Must_Restart : out Boolean;
-      Over : Boolean := False; Straight_Alpha : Boolean := False) is
+      Key : Compositor_Source_Content.Source_Key;
+      Version : Compositor_Source_Content.Content_Version;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean) is
 begin
-if Use_GPU then GPU.Draw_Output (Target, Source, Target_Bytes, Source_Bytes, Screen, Surface, Damage, Secondary, Drawn, Must_Restart, Over, Straight_Alpha); else CPU.Draw_Output (Target, Source, Target_Bytes, Source_Bytes, Screen, Surface, Damage, Secondary, Drawn, Must_Restart, Over, Straight_Alpha); end if;
+if Use_GPU then GPU.Draw_Output (Target, Source, Target_Bytes, Source_Bytes, Screen, Surface, Damage, Key, Version, Secondary, Drawn, Must_Restart); else CPU.Draw_Output (Target, Source, Target_Bytes, Source_Bytes, Screen, Surface, Damage, Secondary, Drawn, Must_Restart); end if;
 end Draw_Output;
+-- Content bookkeeping is kept even while the CPU renderer is selected; it
+-- holds no GPU resources and costs one band union per publication.
+procedure Note_Source_Change
+     (Key : Compositor_Source_Content.Source_Key; Rows : Compositor_Source_Content.Row_Band) is
+begin
+GPU.Note_Source_Change (Key, Rows);
+end Note_Source_Change;
+procedure Retire_Source (Key : Compositor_Source_Content.Source_Key) is
+begin
+GPU.Retire_Source (Key);
+end Retire_Source;
+procedure Draw_Icon
+     (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Screen : CuBit.Display_Geometry.Output; Item : Desktop_Icon_Pixels.Asset;
+      Surface : CuBit.Display_Geometry.Logical_Rectangle;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean) is
+begin
+if Use_GPU then
+   GPU.Draw_Atlas (Target, Target_Bytes, Screen, Item.Kind, Desktop_Icon_Pixels.Atlases.Region (Item),
+     Surface, Damage, True, Secondary, Drawn, Must_Restart);
+else Drawn := False; Must_Restart := False; end if;
+end Draw_Icon;
+procedure Draw_Cursor
+     (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Screen : CuBit.Display_Geometry.Output; Cursor : Desktop_Cursors.Cursor_ID;
+      Surface : CuBit.Display_Geometry.Logical_Rectangle;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
+      Secondary : Boolean; Drawn, Must_Restart : out Boolean) is
+begin
+if Use_GPU then
+   GPU.Draw_Atlas (Target, Target_Bytes, Screen, Desktop_Icon_Pixels.Window_Control,
+     Desktop_Icon_Pixels.Atlases.Cursor_Region (Cursor), Surface, Damage, False, Secondary,
+     Drawn, Must_Restart);
+else Drawn := False; Must_Restart := False; end if;
+end Draw_Cursor;
+function Backing_Events (Class : Vulkan_Submission.Source_Class; Freed : Boolean)
+  return Interfaces.Unsigned_64 is
+  (if Freed then Desktop_Vulkan_Startup.Released_In (Class)
+   else Desktop_Vulkan_Startup.Allocated_In (Class));
+function Resident_Sources return Natural is (GPU.Resident_Sources);
+function Upload_Progress return Interfaces.Unsigned_64 is (Desktop_Vulkan_Startup.Transfers_Submitted);
+function Peak_Scene_Layers return Natural is (GPU.Peak_Scene_Layers);
+function Placeholder_Draws return Natural is (GPU.Placeholder_Draws);
+function Last_Retry_Cause return Retry_Cause is (GPU.Last_Retry_Cause);
 procedure Complete_Output
      (Target : System.Address; Writer : Compositor_Pool.Ticket;
       Secondary, Poll : Boolean; Result : out Render_Completion) is

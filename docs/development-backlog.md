@@ -71,6 +71,30 @@ ported, can build CuBit on CuBit.
 - The SameBoy boot ROMs (Game Boy assembly) are a separate toolchain and out
   of scope.
 
+### SELF-001 — Back to self-hosting: develop CuBit on CuBit (user, 2026-10-08)
+
+The user: "add a task for us to get back to the original self-hosting goal."
+The plan and its status are in docs/self-hosting.md.
+
+Where it stopped (2026-10-05):
+- binutils 2.46 runs on CuBit (`as` and `ld` with typed parameters).
+- GCC 15.3 `cc1` and the driver compile C to byte-identical objects.
+- Remaining: a musl `libgnat`, then `gnat1 -c`, `gnatbind` and the link
+  through `gcc`.
+- Also not done: gprbuild's replacement (BLD-001, the CCL build tool), git/jj,
+  and the hardening items in docs/self-hosting.md (D4–D7: partial `munmap`,
+  response files for long links).
+
+Direction, in order:
+1. **Re-run where it left off.** Run the `binutils` and `gcc` guest tests on
+   today's tree. KERN-003 changed process identities and grant mappings
+   under them.
+2. **GNAT,** items 4–5 of the plan: `gnat1 -c hello.adb`, `gnatbind`, the
+   link.
+3. **The CCL build tool (BLD-001)** builds one real userspace component, then
+   the kernel.
+4. **Milestone:** edit, build and boot a changed CuBit service, on CuBit.
+
 ### BLD-001 — Content-addressable CCL builds, like Nix (user-requested, 2026-10-04)
 
 The CCL build tool that replaces make (docs/self-hosting.md, item 6) should
@@ -135,6 +159,48 @@ timestamp-driven rule runner:
   4. Mark it retired in `docs/ccl-repl.md` and `docs/ccl-system-data.md`.
   5. Verify with `make -C kernel world` and the six affected headless tests.
 
+### CCL-005 — Named slots from CCL; no hand-numbered capability or reply slots (user, 2026-10-09)
+
+The user: CCL should define names that the slot system refers to, so slot
+numbers update themselves instead of being hand-assigned. Today services mix
+generated bindings with literals. Examples in intel-gpu `main.adb`:
+`capSubmit (15, ...)`, `Budget_Reply_Slot := 61`, `Activation_Reply_Slot := 60`,
+`Application_Reply_Slot := 62`, and the new `Submission_Reply_Slot` (59),
+whose uniqueness was checked by reading the code by hand. Some services
+already use generated `CCL_Manifest_Bindings` (`Slot_Files_Filesystem`).
+- **Declare by name.** A manifest names every capability slot (the endpoints
+  it is granted) and every reply slot it holds (saved reply capabilities).
+- **Generate, never write.** The manifest compiler assigns the numbers,
+  checks they are unique and within range, and generates the bindings
+  package each program uses (`CCL_Manifest_Bindings.Slot_GPU`,
+  `Reply_Slot_Submission`). No numeric slot literal survives in program code.
+- **Typed.** A slot is a typed CCL value checked by the type system (no
+  keyword readers). A grant and the code that uses it agree because both
+  come from one declaration.
+- **Checked at build:** a static check fails the build on any remaining
+  literal passed to `capCall`/`capSubmit`/`saveReplyCap`/`replyCap`.
+- Migrate every service, driver and app. intel-gpu, display, desktop and
+  devmgr first: they have the most slots.
+
+### CODE-001 — Formatting and readability pass (user, 2026-10-09)
+
+The user: many source files have no comments and no blank lines between
+subprogram declarations. Make the code read well, without changing
+behaviour:
+- **Layout:** a blank line between subprograms; group declarations by
+  concern with a short heading comment.
+- **Comments:** each package and non-trivial subprogram says what it is for,
+  in the surrounding code's voice. No restating the code.
+- **Formatter:** pick a GNAT-native formatter configuration (gnatformat /
+  gnatpp) matching the project's style, check it in, and run it per package.
+  Formatting-only commits are kept separate from logic changes.
+- **Safety:** no behaviour change. Proofs are rerun on SPARK units and every
+  headless test affected by each batch must pass. One owner per area, under
+  the build lock, coordinated through `coordination/` so it never collides
+  with feature work. Biggest and most-edited files first: desktop, intel-gpu,
+  display, filesystem, devmgr, procmgr. Pairs naturally with splitting the
+  monolithic `main.adb` programs below.
+
 ### Break up monolithic `main.adb` programs
 
 - [ ] Split large services and apps into a pure, testable core (SPARK where
@@ -169,6 +235,75 @@ timestamp-driven rule runner:
 
 ## Nonblocking GPU follow-up
 
+### GPU-001 — Asynchronous GPU submission and completion (user, 2026-10-09)
+
+The NUC freeze (IPC-004, IPC-005) traced to intel-gpu busy-waiting inside
+request handlers: every submit waits for the GPU, every VM update parks
+contexts with a GuC round trip. The user: start on async submit and
+completion now, as the base for Vulkan games, 3D applications and video.
+Design doc to follow (current path mapped first). Direction: per-session
+submission queue in shared memory; a GPU-written per-context timeline page
+the client reads without IPC; waits woken from the driver's event loop (then
+MSI); batched VM updates; at least two frames in flight in Desktop; hang and
+device-lost detection per context. Steps land one at a time, each tested.
+Design: [gpu-async-submission.md](gpu-async-submission.md).
+
+- [x] Step 1 (2026-10-09): driver-loop completion, no in-handler busy-wait.
+- [x] Step 2 (2026-10-10, driver side): session queue over a Channel_Protocol
+  open, up to 32 jobs in flight per context, 64-bit timelines, one kick per
+  context per turn, the loop serving completions and wakes for every
+  session; VM updates park only with nothing in flight (proved rule).
+  Hosted and proved; NUC validation pending.
+- [x] Step 3 (2026-10-10, Mesa): `anv_cubit_queue_exec_locked`/`_async` write
+  descriptors and return; GPU timeline `vk_sync` (points resolved from the
+  status lines, `OP_GPU_WAKE` waits, `WAIT_PENDING`); per-queue lock, no
+  `lifetime_mutex` on submit/completion/VM update paths; synchronous
+  `0x0A27` client binding removed. Hosted and proved; NUC validation pending.
+- [ ] The read-only one-page timeline grant (PPHWSP `+0x200`) for Mesa's
+  `get_value`, replacing the status-line copy.
+- [ ] Wakes for every session: the 64-slot capability table leaves the
+  driver one saved-reply slot for `OP_GPU_WAKE` (others get `Not_Held`).
+- [ ] Steps 4-8 as in the design doc.
+
+### GPU-002 — Vulkan games and 3D applications on the iGPU (user, 2026-10-09)
+
+Applications, not just Desktop, get their own GPU sessions through Mesa ANV:
+presentation to the compositor (WSI), timeline semaphores, multiple queues,
+large buffers (the item below), conformance subsets (dEQP-VK) and a demo
+title. Depends on GPU-001.
+
+### GPU-003 — Hardware video acceleration (user, 2026-10-09)
+
+Decode (and later encode) on the media engines (VCS/VECS) through a
+VA-API-style interface for players and browsers (Penny/Servo). Reuses
+GPU-001's per-engine queues and timelines; needs HuC firmware loading and
+authentication on Gen12.
+Design: [gpu-video-decode.md](gpu-video-decode.md) (2026-10-09): Vulkan Video
+through ANV, not VA-API/iHD; ANV decode needs no HuC, so HuC moves off the
+critical path. Standalone fuse, HuC and VCS segment units are built and proved.
+
+- [ ] Support large individual GPU buffers, not just a growable total arena.
+  The 2026-10-07 source audit still finds a 16 MiB per-buffer ceiling in
+  `anv_cubit_memory.c`, native buffer adapters, submission/cache operations and
+  GGTT helpers. A 3840x2160 RGBA8 surface alone needs 33,177,600 bytes before
+  padding. Audit the inherited ANV `maxMemoryAllocationSize`, `maxBufferSize`
+  and buffer-range properties against actual CuBit limits; allocation failure
+  due to a permanent protocol ceiling is not transient budget exhaustion.
+  Implement large logical buffers over separately accounted physical extents,
+  with bounded allocation, map/bind/unbind and retirement steps. Preserve
+  authenticated identities and checked 64-bit offsets across every chunk;
+  do not merely increase a fixed bound or introduce unbounded page loops.
+  Required acceptance includes 4K targets, allocations spanning many extents,
+  near-boundary sizes/offset overflow, partial allocation/map failures,
+  asynchronous cleanup and exact budget restoration after real reclamation.
+  Advertised limits must be tested through the public Vulkan query path.
+
+- [ ] Implement authenticated physical GPU-backing retirement, separately from
+  logical slice reuse. Follow the [retirement design](intel-gpu-physical-retirement.md):
+  stable allocation identities, per-extent view/publication drain, confirmed
+  GPU/TLB/CPU retirement, hole-preserving residency and actual-reclamation refunds.
+  Kernel-owner coordination and native/hardware acceptance remain pending.
+
 - **2026-09-22 progress:** bounded pre-paint input dispatch passed an A/B/B/A
   native loaded comparison (repainting p99 <=0.277 ms versus <=1.381 ms; not
   photons). Mixed 1024x768 + 1280x720 output pixels, pointer confinement and
@@ -188,6 +323,66 @@ timestamp-driven rule runner:
   do not merely null a callback concurrently with an executing writer.
   GTK rewrites both display hints and its synthesized EDID; persist desired CCL
   mode policy separately from transient host observations.
+
+
+### GPU-004 — Batched source uploads and reversible software fallback (2026-10-09)
+
+Persistent client sources landed (docs/gpu-rendering-and-presentation.md,
+"Persistent client sources"): steady-state publication no longer allocates,
+glyph cells are allocated together at renderer start, the scene budget is
+2048 layers, and the runtime switch is judged by time and progress.
+Remaining: (1) every stale surface still costs its own transfer submission
+and a discarded capture; batch all stale row bands into one transfer before
+capture (one submission, no recapture per surface). (2) The runtime software
+switch (now only for a real stall) is one-way; reopen the Vulkan device from
+`Retired`, let `Compositor_Backend_Selection` return to GPU after
+`Recovered`, and retry after an explicit deadline. (3) Split frames beyond
+the layer budget into damage bands. All need NUC validation.
+
+### VM-first accelerated desktop experience (user-requested, 2026-10-07)
+
+Initial users should be able to try CuBit in a VM with responsive input,
+accelerated composition and 3D applications, working audio, and usable display
+configuration. This complements, rather than replaces, native Intel bring-up.
+Current virtio-gpu support is a 2D resource/transfer/scanout path; enabling the
+Vulkan compositor alone does not give that path host-GPU acceleration.
+
+- [ ] **Virtio Vulkan backend:** evaluate and port Mesa Venus using the existing
+  Mesa/runtime integration. Implement negotiated capability sets, contexts,
+  command submission, blob/host-visible resources and synchronization in the
+  CuBit virtio driver/adapter. Check pinned QEMU, host renderer and host Vulkan
+  requirements before selecting a supported launch profile; do not assume
+  Linux guest ioctls or services exist in CuBit. Keep 2D fallback explicit.
+- [ ] **Resource safety:** authenticate context/resource ownership, use stable
+  generation-bound identities and growable metadata, and account separately
+  for guest RAM, host-visible apertures and device allocations. Bound service
+  work; require completion and CPU/display reader retirement before reuse.
+  Validate lengths, offsets, feature combinations and host responses.
+- [ ] **Accelerated compositor and apps:** discover the virtio Vulkan device,
+  exercise composition and the animated teapot gallery, and connect rendered
+  resources to presentation with explicit acquire/release synchronization.
+  Reduce avoidable readback/copies without bypassing buffer-lifetime checks.
+  Report the selected renderer and distinguish host hardware from software
+  Vulkan; API availability or a successful submission is not acceleration proof.
+- [ ] **Virtual modesetting:** extend existing EDID/startup scanout selection
+  with runtime resolution changes, safe resource replacement, output-generation
+  changes, compositor relayout, Settings Apply/Revert, resize and multi-output
+  tests. No dependency on 3D support; no claim of physical Intel link validation.
+- [ ] **Audio and input acceptance:** choose a documented virtual audio device
+  supported by CuBit (do not require virtio-snd merely because graphics uses
+  virtio). Verify audible playback, volume/mute, underrun recovery and input
+  responsiveness while 3D and window resizing run concurrently. Automated
+  service/grant tests supplement, not replace, end-to-end playback checks.
+- [ ] **Reproducible VM acceptance:** publish an exact tested launcher and
+  host prerequisites, plus a usable nonaccelerated fallback. Test cold boot,
+  application startup, sustained animation with frame-time distributions,
+  audio/input under load, repeated resize, resource exhaustion and cleanup.
+  Compare software and host-accelerated paths under controlled host load;
+  record guest CPU virtualization and renderer separately. These results prove
+  the VM experience, not CuBit's physical Intel command submission or modesetting.
+
+Reference protocols: [Mesa Venus](https://docs.mesa3d.org/drivers/venus.html) and
+[QEMU virtio-gpu](https://www.qemu.org/docs/master/system/devices/virtio/virtio-gpu.html).
 
 ### Native Intel modesetting and monitor discovery
 
@@ -617,6 +812,100 @@ process-write authority to the compositor. Count and attribute rejected IPC
 alongside accepted traffic, with bounded reporting, and test endpoint budgets
 against sustained abusive clients.
 
+### UI-016..UI-021 — Retained-layer compositor (docs/compositor-scene-design.md; user, 2026-10-09)
+
+The user asked to restructure the desktop scene along established practice.
+The survey (macOS Core Animation, DWM/DirectComposition, SurfaceFlinger/HWC,
+wlroots/KWin/Mutter, Chrome viz, WebRender, Skia) finds every system keeps a
+retained texture per surface plus hardware planes; CuBit's gap is the
+desktop's own UI (chrome, taskbar, menus, text), redrawn every frame as about
+60–80 tiny draws per decorated window, each re-recorded per damage box with
+a full pipeline/descriptor rebind. Ordered steps (each tested on its own):
+- **UI-016 Bind on change, coalesced chrome primitives:** per-frame counters
+  first (draws, binds, boxes); bind pipeline/descriptor/scissor only when
+  they change; title gradient and borders as single primitives.
+- **UI-017 Glyph atlas, instanced text:** one R8 atlas replaces the 128 cell
+  images; one instanced draw per text run; cache key shared with the CPU
+  path. Bitmap masks, no SDF at UI sizes.
+- **UI-018 Layer table, damage and culling (SPARK):** one flat retained
+  layer list (wallpaper; per window a chrome image and its client surface;
+  taskbar, menus, popups; pointers and video as plane requests); damage per
+  layer mapped onto the proved 8-box output set; opaque-cover culling proved
+  sound; batch builder emits each layer/box pair once, in order.
+- **UI-019 Retained shell images, one CPU/GPU layer walk:** desktop-owned UI
+  rendered by the shared toolkit into retained per-layer images only when its
+  state changes; the CPU renderer walks the same list. A frame becomes about
+  20 quads for 8 windows; budget drops to 256 draws and GPU-004 item 3
+  (frame splitting) is dropped.
+- **UI-020 Render into scanout slots:** no GPU readback
+  (`desktop_readback_output`); on the N100's single DDR5 channel a blended
+  4K full-screen pass costs about 2.6 ms, so planes and damage limiting are
+  required for the 1 ms target.
+- **UI-021 Tiled large layers:** tiling only inside layers larger than the
+  buffer cap (also lifts the 16 MiB limit that blocks 4K), with
+  compositor-side scroll (UI-014).
+Planes (UI-015) then carry the Intel cursor, fullscreen bypass and video.
+
+### UI-015 — Display planes: hardware cursors, then video overlays and fullscreen bypass (2026-10-09)
+
+Design and as-built record: [display-planes.md](display-planes.md).
+
+The pointer is a display *plane request*, like a future video overlay or
+fullscreen primary.
+- **Planner.** One pure planner (`CuBit.Display_Planes`, proved at level 2:
+  deterministic, exclusive, covered, complete, prioritized) assigns each
+  output's hardware planes. A request without a plane is composited by the
+  desktop.
+- **Glitch-free swaps.** A request that moves between a plane and the
+  composite commits with the first published frame tagged with its plan
+  epoch.
+
+**Done (2026-10-09):**
+- generic plane protocols, Desktop to display (0x0920..0x092A) and display
+  to driver (0x0A10..0x0A14);
+- virtio-gpu cursor queue plane, tested in QEMU with host-side evidence;
+- desktop pointer on the plane, unscaled layouts only;
+- Intel cursor register encoder (proved) and native writer (hosted tests).
+
+**Next:**
+- **Intel wiring** (display-planes.md, "Hardware wiring pending"):
+  - cursor register pages from the broker;
+  - GGTT cursor surface;
+  - plane protocol in intel-gpu;
+  - planes on firmware outputs.
+
+  Then test on the NUC.
+- **Scaled outputs:** map desktop space to native pixels, so scaled outputs
+  keep the hardware pointer.
+- **Absolute pointer input** (USB HID tablet or virtio-input, plus a typed
+  absolute event): until then, virtio-gpu's host-pointer cursor plane is
+  never used by Desktop's relative mouse, so `run-desktop` keeps a
+  composited pointer.
+- **More pointers:** a second pointer source in Desktop, for a second mouse
+  or an agent pointer. The API and planner already take 8.
+- **Scaler budget:** a per-pipe scaler budget as a planner input.
+- **Video overlays (GPU-003):** NV12/P010 on HDR planes 1–3, with the
+  safety rules in display-planes.md: grant, producer timeline wait,
+  release after the flip.
+- **Fullscreen bypass:** primary requests.
+
+### UI-014 — Compositor-side scrolling: "region moved by N rows" (2026-10-08)
+
+The Files work measured that a 4K full frame cannot meet the 1 ms target on
+one core: filling 3840×2160 pixels once costs 1.33 ms at memory bandwidth, and
+an in-app scroll blit costs as much as redrawing. Scrolling is the common
+case, so the compositor should move scrolled content itself.
+- **Protocol:** a desktop-protocol request "this rectangle's content moved by
+  (dx, dy)", sent with the frame whose damage is only the newly exposed rows.
+- **Compositor:** Desktop shifts the client's retained pixels in its own
+  buffer, or, once GPU composition works, with a GPU copy. Then it composites
+  the exposed rows from the client's frame.
+- **Correctness:** the move applies to exactly one published frame, in order,
+  never to a stale buffer. A client that can't take part keeps sending full
+  damage.
+- **First user:** Files, then Logs, the Workbench and CCL console.
+Full redraws use several cores later (banded rendering, after TASK-001).
+
 ### UI-013 — Submenus in the Apps menu (user-requested, 2026-10-04)
 
 The desktop's Apps menu is one flat list (`desktop.launch.*` settings in
@@ -631,6 +920,12 @@ Logs, Workbench, Files, DOOM, SameBoy, Penny, and soon the build tools.
   already does).
 - **Shared widget:** the submenu belongs to the shared UI toolkit's menu
   (native menubars use it too), held to UI-011's reliability gate.
+
+2026-10-08: The entries are now typed. `(category ...)` is an `App_Category`
+member (System, Development, Web, Games, Media, Tools; the default is
+Tools), checked at config compile time (CFG-001, option A). The hand-written
+`Desktop_Launch.Parse` and the `launch v1` string format are gone. The
+submenu work in the desktop's Apps menu follows.
 
 ### UI-012 — Copy and paste (user-requested, 2026-10-04)
 
@@ -663,6 +958,21 @@ state snapshot, and explicit resynchronization. Desktop keeps independent
 source state and deliberately merges pointer buttons. Event-driven toolkit apps
 no longer poll or sleep between input deliveries, and one stalled surface cannot
 evict another surface's transitions.
+
+Driver-side pointer retention no longer loses reports under a desktop stall
+(2026-10-09, coordination/input-loss.md, tests/input-pending/README.md).
+Root cause of the NUC resize cancel: xhci.drv and ps2.drv kept one slot per
+raw HID report (32, plus the kernel's 16-event publisher credit), so a stall
+longer than 48 report periods (48 ms at 1 kHz) discarded the backlog and
+desktop saw a sequence gap. `Pointer_Pending` (SPARK level 2) now coalesces
+motion by agreement into the newest unpublished non-transition report:
+buttons, flags and wheel are never merged away or moved, displacement is
+conserved, no sequence is consumed. Overflow needs 32 unpublished
+transitions and stays explicit. xhci stats add `coalesced=`, `overflow=`,
+`busy=`; desktop's `event_drop=` is renamed `event_busy=` (credit refusals
+the publisher kept), and desktop reports pointer source age at intake.
+Still open here: the credit-returned notice (publishers retry busy reports
+on a 1 ms timer) and keyboard retention (32 bytes, explicit overflow).
 
 The remaining architectural boundary is driver-to-input-router publication,
 which still uses the transitional bounded `sendEvent` lane directly to desktop
@@ -803,6 +1113,91 @@ Steps, in order:
 5. Borrow and release on lossless queues; single-fetch parsers where a copy
    shows up in profiles.
 
+### IPC-002 — Guaranteed delivery: no event or request is ever lost (user, 2026-10-07)
+
+Design: docs/ipc-delivery.md. The rule: nothing is lost unless both
+parties agreed to a lossy channel. The shared 32-entry mailbox ring drops
+whatever arrives when it is full, so any sender can flood it, and kernel
+events (grant ends, child exits, control) are lost behind the flood. A
+bigger ring only moves the cliff.
+
+Decided (direction):
+- Events are state on kernel objects (grants owned and held, children,
+  control capabilities), linked into a per-process ready list through the
+  objects themselves: capacity equals the number of objects, so it never
+  fills. Both parties to a grant always learn of its end.
+- Control (Stop, Interrupt, Reload) is pending bits per sender
+  capability, so two senders' messages stay two facts.
+- Requests use per-capability queues with credits that the receiver
+  grants from its declared capacity. A sender out of credit is told
+  "busy" and keeps its request; a flooder starves only itself.
+- One port-style wait over ready objects, request queues and data-plane
+  doorbells.
+
+Steps, in order:
+1. Events on objects and the port wait (grants, children, faults).
+   Done 2026-10-07.
+2. Control per capability. Done 2026-10-07 (per sender slot on the
+   target's process record).
+3. Per-capability request queues with credits; retire the ring.
+4. Remove the drop recovery (`Control_Events.Lost`, the drop-count
+   checks, the No_Room sweeps, the filesystem resync) and `OP_CLOSE`.
+
+Open: "busy" versus blocking in the kernel (recommended: always busy),
+credit defaults, folding synchronous call and reply into credit 1.
+
+### IPC-003 — A proved fast path for call and reply (user, 2026-10-07)
+
+The user: make control-plane IPC as fast as possible. IPC stays for the
+control plane, with bulk data on the data plane (docs/data-plane.md).
+
+Where it stands: bench-ipc (KVM, 09-26) does 20,000 synchronous round
+trips in about 50 ms, roughly 2.5 µs each. That is in Linux's
+pipe/futex ping-pong range and roughly 5–10× seL4's fast path (a few
+hundred cycles one way). Async submissions run about 0.8 µs each,
+batched.
+
+Direction:
+1. **Measure first.**
+   - Cycle breakdown of a call/reply (tracing already exists).
+   - Same CPU against cross CPU, KVM against bare metal.
+   - Finer than bench-ipc's whole milliseconds.
+2. **A dedicated path** for the common case: a call to a receiver already
+   blocked in receive (or reply-and-receive), with the message in
+   registers. It switches straight from caller to callee, with no queue,
+   no lane selection and no general scheduler pass, then back on reply.
+   Anything unusual falls back to the general path: a receiver not
+   waiting, a long message, a capability transfer, a cross-CPU target, a
+   pending notice.
+3. **Safety, as in seL4:** the fast path is a proved refinement of the
+   general path. The same authority checks, the same state afterwards and
+   the same reply-capability rules, in SPARK at level 1–2. Tests run each
+   case both ways, with mutation checks.
+4. **Interactions:**
+   - the scheduler (Kolivas-style virtual deadlines, and the scheduler
+     work in coordination/sched-latency.md): a direct switch must keep its
+     accounting and fairness;
+   - IPC-002's credits: a direct handoff queues nothing, so it uses no
+     credit.
+
+After IPC-002 step 3, so it is measured against the final queue
+structure.
+
+**Status, 2026-10-07** (docs/ipc-fastpath.md):
+- **Built:** the call handoff and reply-and-receive fast paths (sync round
+  trip −43%), and call deadlines (no default: every call states its
+  deadline or `Wait_Forever`; `REPLY_TIMEOUT` is a kernel-only label).
+- **Open:**
+  - the refinement proof (step 3 above);
+  - async batching (PERF-002), and cross-CPU wakeup latency (with the
+    scheduler);
+  - **tightening the deadlines:** about 340 call sites were migrated with
+    `Wait_Forever`, keeping old behaviour. Give each a real deadline where
+    the caller can act on a timeout, UI and network-facing paths first.
+    `grep -rn "Wait_Forever\|WAIT_FOREVER" userspace` lists them; most are
+    in the runtime (`userspace/runtime/gnat`), lib/ui, ccl/native,
+    filesystem, mesa/anv and desktop-check.
+
 ### PERF-001 — How it feels under load: a standing latency benchmark (user, 2026-10-06)
 
 The user: traction needs CuBit at least somewhat competitive with Linux;
@@ -829,7 +1224,62 @@ is busy?", on CuBit and on Linux in the same QEMU configuration:
 - **Standing:** run before and after scheduler, IPC and driver changes
   (A/B), like fs-bench and net-bench.
 
+### PERF-002 — Async batching: many requests and completions per system call (user, 2026-10-08)
+
+The user: next after KERN-003. The largest remaining control-plane IPC win
+(docs/ipc-fastpath.md, "Next").
+
+Where it stands (bench-ipc, KVM, 2026-10-07): 8,192 async requests at
+depth 16 take 16–20 ms, about 2 µs each. That is no better than a
+synchronous round trip on the fast path (about 1.4 µs). Each request still
+costs the server one receive and one reply system call, each with its own
+mailbox lock round, and each completion wakes the client separately.
+
+Direction:
+1. **Receive many:** a server takes up to N queued requests in one call,
+   into a caller-sized buffer (checked with `Process.User_Memory`).
+   - The selection stays the same as N single receives: round-robin across
+     senders (`Kernel_Credits.Take`), each sender's order kept, nothing
+     taken that a single receive would not have taken.
+   - Async requests carry their reply authority by request ID. Synchronous
+     calls in a batch need one reply authority each, not the thread's one
+     slot; decide between saving them automatically and taking only async
+     requests in a batch.
+2. **Reply many:** one call completes N requests; completions for one
+   client are queued under one lock round, and its waiters are woken once.
+3. **Client side:** submit many in one call, and `waitCompletion` already
+   returns several. Check the runtime and libc use both.
+4. **Users:** the netstack, filesystem and desktop service loops move to
+   the batch calls where they serve several clients (see "Reduce IPC").
+
+Interactions:
+- Credits (IPC-002 step 3): a batch frees credit as it takes, so senders
+  are told busy no more often than with single receives.
+- Call deadlines: a synchronous caller that times out while its request
+  sits in a taken batch is answered as today (the reply is refused).
+- KERN-003: built on the process objects, after it.
+
+Verification:
+- **SPARK, level 1–2:** the batch selection equals N single `Take`s.
+- **Guest tests:** batch receive and reply, mixed with single calls;
+  fairness under a flooding sender; hostile buffer pointers.
+- **Bench:** bench-ipc's async phase, A/B against single calls under KVM,
+  plus the netstack and filesystem benches once they use it.
+
 ### Console output is synchronous serial I/O
+
+Status (2026-10-10): asynchronous console landed. Prints copy into one
+bounded kernel FIFO (`Console_Ring`, SPARK level 2) under the output lock;
+idle CPUs write it in 16-byte `rep outsb` batches when the UART's holding
+register is empty, CPU 0's timer after 10 ticks without progress. No loss: a
+writer finding the FIFO full writes its oldest batch itself; fatal stops
+flush and write directly; output before the first idle thread is direct.
+Single global FIFO, not per-CPU: one owner keeps cross-CPU order. Measured
+(QEMU KVM, 500 Hz pointer flood, timing Desktop): Desktop's once-per-second
+14.5 KiB report cost 60-200 ms of blocked loop per second before (input
+source age p99 57 ms), under 1 ms after; see
+coordination/desktop-1hz-stall.md and tests/console-ring/. Remaining from the
+direction below: logstore for applications, the PERF-003 verbosity level.
 
 Every kernel print and user `debugPrint` writes the UART one byte at a time
 (an `out` per byte: a VM exit under KVM, about 87 µs per byte at 115200 baud
@@ -940,6 +1390,34 @@ Keep signatures separate from capability grants and cover boot-path bypasses,
 tampering, substitution, development exceptions and rollback/key rotation.
 See [signed executable admission](signed-executable-admission.md).
 
+### KERN-004 — Kernel interfaces for the userspace ACPI service (user, 2026-10-09; low priority)
+
+The userspace AML interpreter (coordination/acpi.md) is hosted and tested
+but has no hardware authority. Before it touches hardware, design and build
+the small set of capability-gated kernel interfaces it needs, and nothing
+broader:
+- **SCI forwarding:** the FADT's SCI interrupt is routed by the kernel
+  (level-triggered, shared, active-low on most machines) and delivered to the
+  ACPI service as an IRQ doorbell, masked until the service acknowledges
+  (as NVMe/xHCI interrupts are).
+- **OperationRegion access:** SystemMemory regions mapped read or write per
+  exact range; SystemIO through a per-process I/O permission bitmap limited
+  to the granted ports; PCI_Config through the existing PCI config path. Each
+  grant names the range and access; ranges overlapping other drivers'
+  devices are refused.
+- **Sleep:** the service decides and runs `_PTS`/`_GTS`; the kernel parks the
+  other CPUs, saves state, performs the final PM1 control writes and owns the
+  real-mode wake trampoline and resume path. S3 first; S4/S5 power-off and
+  reset through the same final-step call.
+- **CPU power:** C-state hints from `_CST` used by the kernel idle loop;
+  P-state and thermal MSR writes as a narrow capability-gated call.
+- **Early tables stay in the kernel** (RSDP, MADT, HPET), as today; the
+  service gets the rest (DSDT/SSDTs) read-only.
+
+Write a design doc first (docs/acpi-kernel-interface.md), then the backlog
+steps. Pick up after the current graphics work (user may hand the ACPI
+service itself over too).
+
 ### KERN-001 — Move hardware service work out of the kernel
 
 Status: planned — follow-up audit, not an immediate migration
@@ -1027,7 +1505,229 @@ First users:
 Not for secrets or per-request state. Wall time is not worth gating:
 attacker code can measure time in plenty of other ways.
 
+Status: the first publication, the monotonic clock, is done (2026-10-09,
+docs/fast-clock.md). The kernel maps a read-only page at
+0x5B00_0000_0000 into every process. It holds the TSC-to-nanosecond
+conversion behind a seqlock, and is published when the TSC is invariant.
+`CuBit.Monotonic`, `Deadline_After`, the runtime's clock users and libc's
+`CLOCK_MONOTONIC` read it without a system call. `msTicks` is now the same
+conversion sampled at CPU 0's ticks, so page deadlines never expire early.
+The conversion and the seqlock model are proved at level 2. The headless
+`--test clock` runs under KVM. Under KVM a read costs 35 ns, against 6.9 µs
+for the old HPET system call.
+
+Next:
+- the wall-clock offset into the page, so `CLOCK_REALTIME` needs no system
+  call;
+- moving services' direct `SYSCALL_GETTIME` calls (about 230) to
+  `CuBit.Monotonic.Milliseconds`;
+- refining the PIT-calibrated rate against the HPET through the proved
+  rebase protocol;
+- the other publications, as per-publication pages behind manifest grants.
+
+### PERF-003 — Serial verbosity: no unconditional serial output on hot or benchmarked paths (user, 2026-10-08)
+
+The user asked whether benchmarks skip serial output. They do not: no
+build or startup flag exists. Bench loops do not print, but kernel
+lifecycle messages print unconditionally to the slow serial port, and so
+do procmgr's per-launch lines. Examples: `reclaimProcess: stopped PID`,
+spawn and loader lines. Process-heavy benchmarks pay for these.
+
+Direction:
+- A typed verbosity level: a CCL startup value for services, and a
+  `Build` constant for the kernel, compiled out at the lowest level.
+- Lifecycle and diagnostic prints are gated by it.
+- Bench builds and profiles run at the lowest level.
+- Headless markers the runner waits for stay. They are test protocol,
+  not diagnostics, and are counted separately.
+
+2026-10-10: serial output no longer stalls the printer (asynchronous kernel
+console, "Console output is synchronous serial I/O"). Desktop's periodic
+report is housekeeping: captured at the period boundary, written a line at a
+time only while no input, request or completion is pending; Desktop's
+loop-turn, input-to-present and pointer source-age latencies are permanent
+metrics (keys 13-15). Volume is still a cost on idle CPUs and on the UART,
+so the verbosity level remains open.
+
+### PERF-004 — No linear scans over processes or slots (user, 2026-10-08)
+
+The user: linear scans are no longer acceptable as performance becomes a
+priority. KERN-003 steps 3–4 remove the eight the inventory found
+(docs/process-objects.md, "Steps 3–4 plan"):
+- reaping
+- mailbox retirement
+- grant-notice wakes
+- the DMA pending round-robin
+- PROCLIST
+- owned-memory conflict checks
+- `Kernel_Reports.Take` and `Close`
+- `Id_Ledger`'s first-free search (O(N²) with its page scans)
+
+Also `Grant_Windows.Allocate`, which scans up to 256 words: add a summary
+level so it finds a free window in a constant number of steps.
+
+New kernel code keeps per-process sets as lists or summarized bitmaps,
+never whole-table scans.
+
+### IPC-004 — The synchronous call graph is a DAG (user, 2026-10-08)
+
+The user: "we need to keep the IPC graph as a DAG to the max extent possible
+to avoid deadlocks." The GPU live image froze Desktop on the NUC. Every Mesa
+glue call to intel-gpu used `Wait_Forever` on Desktop's main thread
+(`userspace/mesa/anv/native_gpu_buffers.adb`, `native_gpu_query.adb`,
+`native_gpu_presentation.adb`), and intel-gpu also calls Desktop (viewer
+target requests). That cycle can deadlock, and either way a stalled driver
+froze the UI.
+
+Direction:
+1. **Layering:** synchronous calls go only down: clients → compositor →
+   display/GPU drivers → kernel. Anything flowing back up is an async event,
+   completion or published state.
+2. **Bounded waits:** no `Wait_Forever` toward a peer that may call back.
+   Desktop's GPU calls take explicit deadlines, and a timeout falls back to
+   software with the timed-out operation logged.
+3. **Static check:** declared endpoints in manifests give the call graph.
+   Reject cycles at image build, as part of the capability graph.
+4. **Kernel check:** a call that would close a wait-for cycle (the callee's
+   thread is blocked calling the caller, directly or through a short chain) is
+   refused with a distinct error and counted, instead of hanging.
+5. **Audit existing two-way synchronous pairs:** Desktop ↔ intel-gpu,
+   Desktop ↔ procmgr, display ↔ Desktop, netstack ↔ drivers.
+6. **GPU → CPU failover at runtime (Desktop).** The NUC GPU image froze
+   about 30 s after boot, with or without input. Mesa's completion wait has
+   no deadline, so any GPU or driver stall hangs Desktop's thread.
+   - Prepared, not applied: capping `anv_cubit_sync.c` completion waits with
+     the process's call bound, marking the device lost on expiry. Held back
+     until the failover exists, because without it a lost device makes
+     Desktop exit rather than freeze.
+   - The gap: a GPU frame with an unknown outcome takes the `Unsafe` branch
+     in main.adb and calls `exitCompositor (1)`, so Desktop exits instead of
+     recovering.
+   - Needed: quarantine every target and source the GPU touched (it may
+     still write them), allocate fresh targets, and continue on the CPU
+     renderer (`Desktop_CPU_Software_Renderer`).
+   - Correction (2026-10-08): fence exhaustion was not the cause. The fence
+     stream has wrapped since 0988b8ab (40,000 submissions pass). The driver
+     now keeps contexts resident and logs submission and gate stalls; the
+     freeze's cause is still unknown.
+7. **Done 2026-10-08 (bounds and visibility, not yet a fix):**
+   - display → intel-gpu calls wait at most 10 s (`GPU_Call_Deadline_Ms`),
+     and desktop → display calls at most 30 s (`Display_Call_Deadline_Ms`).
+     A timeout fails like a refused request and is logged.
+   - The kernel draws a stuck-call panel above the heartbeat every 2 s
+     (`Process.IPC.reportStuckCalls`): each thread blocked in a call for
+     3 s or more, as caller → server, the seconds waited, queued or taken,
+     and the server's state. It is meant for the NUC, which has no serial;
+     headless runs get the same lines on serial as `STUCK-CALL: ...` (a
+     healthy boot prints none).
+   - Open: a filesystem.svc build stalled 3/3 boots at devmgr's first
+     OP_SET_ACL (2026-10-09, before the serial report existed); the same
+     binary booted fine later in a rebuilt tree. Timing-dependent, cause
+     unknown; the next STUCK-CALL line should say which side waits.
+
+### IPC-005 — Every request terminates (user, 2026-10-09)
+
+The NUC GPU freeze (2026-10-09) was not a deadlock: intel-gpu's main loop
+spun at 98% CPU with a pending stage that never cleared, and Desktop retried
+the VM update (label 0x0A28) on every "unavailable" answer without bound. The
+user agreed that the fix is in how requests end, not in the multi-server
+design:
+
+1. **No busy bounce.** A request that cannot run now is queued and later
+   completed, failed or timed out (async submit + completion, the default
+   for all clients); "unavailable, try again" over a synchronous call is
+   removed from driver protocols.
+2. **Bounded stages.** Each multi-step driver operation has a deadline; a
+   stage that makes no progress faults that operation (and its context),
+   replies with an error and logs it. Prove the step bound (SPARK level 2).
+3. **Recovery.** Clients have a failure path: Desktop falls back to the CPU
+   renderer (IPC-004 item 6); services become restartable (separate
+   follow-up).
+
+First target: intel-gpu's VM-update path, once the stuck stage is found.
+
+## Developer tools
+
+### APP-001 — CuBuilder: a Visual Basic-like GUI builder for native apps (user, 2026-10-08)
+
+The user: "I want to eventually give CuBit a Visual Basic-like tool that
+supports writing easy GUI Ada, Rust and/or CCL apps using our native toolkit
+with nice drag-and-drop interface. Since we support DPI scaling it should
+look and feel great no matter what, and be fast - no Electron or any gross
+slow stuff like that. And we'll bake in IPC endpoints that make it easy to
+drive from an AI agent running in CuBit."
+
+Shape:
+- **A form designer on the native toolkit** (userspace/lib/ui): drag
+  widgets from a palette onto a form, set properties in an inspector, and
+  wire events to handlers. The same toolkit renders the designer and the app
+  it builds, so what you see is what runs.
+- **Resolution independence:** layouts use the toolkit's DPI-aware,
+  responsive primitives (UI-003 density/typography, UI-004 layout
+  primitives), not pixel positions. Forms look right at every scale.
+- **Speed:** native code and no web runtime. The designer and generated apps
+  meet the render target (1 ms keypress-to-photon, software rendering first).
+- **Languages:** forms are a typed CCL description (no hand-written keyword
+  readers). They generate or bind to Ada, Rust or CCL handlers. CCL apps can
+  run directly in the CCL VM. Ada and Rust go through the toolchain
+  (SELF-001, BLD-001).
+- **Agent-drivable:** typed IPC endpoints for everything the designer does:
+  create and arrange widgets, set properties, attach handlers, build, run,
+  inspect. An AI agent in CuBit can then build an app through the same
+  operations a person uses. Agent authority follows docs/agent-security.md:
+  capability-scoped, approved and visible.
+- **Output:** an app bundle (Applications/<name>/<version>/) with its
+  manifest, declared inlets and outlets, and requested capabilities.
+
+Depends on: the shared toolkit's layout and widget reliability work (UI-003,
+UI-004, UI-011), the CCL VM, and for compiled languages SELF-001 and BLD-001.
+
 ## Shared UI toolkit
+
+### KERN-003 — Process identities that are never reused, and more than 256 processes (user, 2026-10-07)
+
+Design: docs/process-objects.md (2026-10-07). Order agreed with the user:
+this design, then IPC-002 step 3 built against it, then this, then
+PERF-002.
+
+**Status, 2026-10-08:** step 1 (64-bit identities on the wire, a typed
+`Process_ID` in userspace and a private `Identity` in the kernel) is
+built; see the design doc, "Step 1, as built". Steps 2–4 (global grant
+table, process objects, raising the limit) are next. Follow-up from step
+1: retype the remaining process words (completion `from`, CCL `Run`,
+`Channel_Arenas`, lib/display and intel-gpu incarnation records, mixer
+streams), and the ports' hand-picked runtime unit lists (doom, sameboy)
+should link the built runtime library instead.
+
+Since IPC-002 step 1 (docs/ipc-delivery.md), a PID is not reused until
+every exit and fault report about it has been read, like a Unix zombie.
+The scarce resource is now the process table's 256 slots, not the
+identities. The user suggested fresh or random PIDs.
+
+The user, same day: "the 256-slot table was always kind of a primitive,
+proof-of-concept way to do it ... We should have a search tree or
+something that supports more processes/slots."
+
+Direction (to design before building):
+- Process objects allocated on demand and found through a search
+  structure (a balanced or radix tree keyed by identity), replacing
+  `proctab` and `mailtab` and every other array indexed by process number.
+- The grant global slot is owner index × 4,096, and the received-grant
+  address region is laid out from it, so grant slots and their address
+  ranges must be allocated rather than computed from the owner's number.
+- New per-process state belongs on the process object, not in global
+  tables. `Kernel_Controls` is already per-target state. `Kernel_Reports`
+  is still a table indexed by subject, and its `Take` scans every possible
+  subject; it needs recipient-side lists.
+- Expose a 64-bit process identity that is never reused: the slot plus
+  its generation, or a monotonic counter. The slot becomes a
+  kernel-internal index. Stale-PID bugs go away by construction.
+- Optionally randomise the identity's low bits. A PID grants nothing
+  (authority is capabilities), but sequential IDs show how many processes
+  started and when, a small side channel.
+- Allocate the least-recently-freed slot rather than the lowest.
+- No fixed process limit: slots, not identities, run out under zombies.
+- Make unread exit reports (zombies) visible per parent.
 
 ### CCL source-view proof and remaining surface integration
 
@@ -1256,6 +1956,39 @@ hidden controls must not receive focus, and client surfaces must not be able to
 spoof or consume desktop-owned shortcuts. Add interaction tests that exercise
 the entire Apps-to-application path with no mouse events.
 
+## Configuration
+
+### CFG-001 — Typed config values end to end, in a binary typed codec (parent, 2026-10-08)
+
+Owner: the config owner (the main session). Follows UI-013.
+
+Since UI-013, a setting whose key has a declared type (`CCL.Typed_Settings`;
+first user `desktop.launch.*`, declared in `CCL.Interfaces.Desktop_Launch`)
+is type-checked by the CCL analyser when the profile compiles (devmgr,
+config activation, the host `ccl-config` preflight). It is stored and
+carried as the value's canonical source text. The desktop reads it back
+through the same typed path and accepts only that canonical spelling
+(option A in the UI-013 decision).
+
+The full form (option B) still needs:
+- a compact binary typed codec carrying a schema key: not the 16 KiB
+  native `CCL.Objects.Image`, which is not a disk or network codec;
+- binary-safe values through devmgr's seed format, config.svc storage and
+  its IPC, and the `CuBit.Config` client;
+- typed rendering in Config Inspector and the Workbench;
+- consumers decoding with `CCL.Objects.Views` against the bound contract
+  instead of analysing canonical text.
+
+See also: docs/ccl-boot-configuration.md ("Typed settings") and
+docs/config-declarative-state.md (typed schema binding).
+
+Known failing (noted 2026-10-08): `tests/ccl-configurations/
+test-configurations.py` `test_all_existing_profiles` fails for system.conf,
+system-live.conf, init-usb-live.conf and init-desktop-session.conf. These
+failures predate UI-013: the fixtures in `tests/ccl-configurations/fixtures`
+are stale, with no `desktop.launch.*` or `config-storage` entries. Refresh
+the fixtures from `ccl-config --dump-plan` once their contents are agreed.
+
 ## CCL console
 
 ### CCL-001 — Launched programs' output as live, re-wirable buffers
@@ -1470,8 +2203,30 @@ it. Points to settle when this is implemented:
   - The config service enforces that only the owning identity (or the user,
     through an inspector) writes a collection, so ownership can be trusted.
     This and registration at install are still planned there.
-- **Open:** whether the system's own core (kernel, procmgr, filesystem)
-  gets a `System/` sibling, so `Applications/` stays safely removable.
+- **`System/<name>/<version>/` (decided, user 2026-10-09):** the OS core
+  (kernel, procmgr, filesystem, devmgr and the other stage-1 services) gets
+  its own sibling of the same shape, so `Applications/` stays safely
+  removable. No binary has moved yet: they still sit at the volume root and
+  in the initrd.
+- **`Assets/<name>/<version>/` (decided, user 2026-10-09):** read-only data
+  packages (wallpapers, later icons, fonts and sounds) as a fourth sibling.
+  The rules are the same: read-only, self-contained, views over the
+  Storehouse later; plain directories on the disk images for now. The root
+  is one setting, `system.assets.root`, so moving it under `System/Assets/`
+  later changes configuration and image placement, not programs.
+  - **As built (2026-10-09):** `Assets/cubit-wallpapers/1/{cubes,cubie}.qoi`
+    on the development and desktop disks (`@nvme:0`), the headless test disks
+    and the USB live images (`@cd:0`). Desktop reads the package through the
+    filesystem queue with a read-only scope on exactly it, decodes with the
+    proved streaming QOI decoder, and falls back to the flat theme colour
+    with a logged warning. The wallpapers left `desktop.svc` (13.5 MiB of
+    linked rasters; 4.6 MiB of QOI on disk). `docs/assets.md` covers layout,
+    formats, adding an asset and theme selection.
+  - **Later:** `Assets/cubit-icons/1/`, once the icon atlas is loaded at run
+    time (it is about 50 KB, baked by the atlas generator, and stays linked
+    for now). A package version catalog (which version a name means), as for
+    applications. The all-in-initrd laptop fallback image has no asset
+    volume.
 
 **Storehouse and views, the Guix/Nix model (user, 2026-10-05).** CuBit takes the
 Nix model, with clean names:
@@ -1631,6 +2386,48 @@ tests. Sorting, change streams, rich metadata, and chooser delegation remain.
 Navigation retains at most 16 handles, displays at most 128 entries, and
 publishes a new listing only after validation. The first controls are Open/Enter
 and Back/Backspace; double-click activation is still pending. Escape closes Files.
+
+2026-10-08: The rewrite is designed in [files-app.md](files-app.md). It is a
+two-pane Commander-style view over the filesystem request queue, with
+streaming listing, incremental sort and filter, and a 1 ms latency budget.
+The shared SPARK policy units, the view and a Linux-hosted harness
+(tests/files-app) are done. The harness has a mock service over the real
+queue layout, an SDL2 window and benchmarks. Remaining work:
+- switch the native main to the shared view;
+- copy, move, mkdir, delete and rename through the queue, with progress and cancel;
+- the protocol gaps listed in files-app.md (queue rename, server-side copy,
+  change subscriptions, packed directory pages, a list-places query, and a
+  completion wake the UI loop can wait on);
+- the roadmap there (preview, viewer, thumbnails, tabs, bookmarks, search,
+  archives, multi-rename, compare/sync, and CCL hooks).
+
+### FS-007 — Filesystem protocol, second round (what Files needs)
+
+Status: done (steps 1-3 2026-10-08, 4-7 2026-10-09); open follow-ups below
+
+Fill the request-queue gaps the Files browser found, each end to end
+(protocol, service, client runtime, tests). Design:
+[filesystem-protocol-v2.md](filesystem-protocol-v2.md).
+1. Done: completion wake a client's own event loop can wait on
+   (`OP_FS_WAKE` submitted asynchronously; `CuBit.Filesystem_Sessions`;
+   proved `Queue_Wakes`; storage-check `QUEUE-WAKE-CHECK`).
+2. Done: rename and move as a queued request (`Queue_Rename`; libc
+   `rename()` uses it; storage-check `QUEUE-RENAME-CHECK`).
+3. Done: `Directory.Page.V2` (`CuBit.Directory_Pages`), metadata per
+   request, a checked resume token (`Queue_Seek_Directory`); V1 removed.
+4. Done: change notifications (`Queue_Watch`/`Queue_Unwatch`, event ring,
+   `CuBit.Filesystem_Events`, proved `Watch_Reserve`: overflow becomes
+   `Rescan_Needed`, every watch ends with `Watch_Ended`; `QUEUE-EVENTS-CHECK`).
+5. Done: server-side copy (`Queue_Copy`/`Queue_Cancel`, progress words,
+   deadline, busy past four; proved `Copy_Slices`; `QUEUE-COPY-CHECK`).
+6. Done: granted-scope query (`Queue_List_Scopes`, `File_Access.Encode`;
+   `QUEUE-SCOPES-CHECK`).
+7. Done: free space per volume (`Queue_Describe_Volume`,
+   `CuBit.Volume_Descriptions`; `QUEUE-VOLUME-CHECK`).
+Follow-ups: `Attributes` events (mode/time changes) are not reported; libc
+`statvfs` could use `Queue_Describe_Volume`; the service removes no
+directory that uses indirect blocks (rmdir answers unsupported after a
+folder grew past 12 blocks).
 
 ### FS-003 — Add logical per-application storage roots
 

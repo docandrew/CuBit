@@ -1,0 +1,10 @@
+project GPU_Async is
+   -- GPU-001 step 1: timeline acceptance, deferred completion and the
+   -- retained G2H event queue (pure SPARK), plus their hosted tests.
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-gpu-async";
+   for Main use ("timeline_tests.adb", "guc_event_queue_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end GPU_Async;

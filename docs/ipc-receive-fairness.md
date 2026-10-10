@@ -20,11 +20,14 @@ All request/mixed receive variants now use one mailbox-locked selection helper:
 blocking receive, deadline receive, service-request poll, and mixed IPC poll.
 The mailbox retains an enum-valued round-robin cursor across calls and across
 receiver threads. It rotates between queued messages, waiting synchronous
-senders, and persistent IRQ doorbells, skipping unavailable/ineligible lanes.
-Service-only polling leaves events and IRQs alone.
+senders, persistent IRQ doorbells and (since 2026-10-07) kernel notices,
+skipping unavailable/ineligible lanes. Kernel notices are grant ends, exit
+and fault reports and control messages, kept on their objects until read
+(docs/ipc-delivery.md). Service-only polling leaves events, IRQs and
+notices alone.
 
-A continuously available eligible lane can be preceded by at most two other
-successful selections (one in service-only polling). FIFO order within a lane
+A continuously available eligible lane can be preceded by at most three
+other successful selections (one in service-only polling). FIFO order within a lane
 is retained within each selected traffic class. No allocation, additional IPC,
 or bulk-data copy is added. The
 cursor resets when a mailbox is initialized/retired. Reply-capability

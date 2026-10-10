@@ -1,0 +1,1220 @@
+[
+  {
+    "key": "1-FULL",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-FULL.asl",
+    "aml": "reference/group1/cases/1-FULL.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-LIM1",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-LIM1.asl",
+    "aml": "reference/group1/cases/1-LIM1.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "4100"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-ZERO",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-ZERO.asl",
+    "aml": "reference/group1/cases/1-ZERO.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "00"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-END",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-END.asl",
+    "aml": "reference/group1/cases/1-END.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-NUL0",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-NUL0.asl",
+    "aml": "reference/group1/cases/1-NUL0.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "00"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-EMPTY",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-EMPTY.asl",
+    "aml": "reference/group1/cases/1-EMPTY.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "00"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-ISTR",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-ISTR.asl",
+    "aml": "reference/group1/cases/1-ISTR.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "4142434400"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-SSTR",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-SSTR.asl",
+    "aml": "reference/group1/cases/1-SSTR.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-LENH",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-LENH.asl",
+    "aml": "reference/group1/cases/1-LENH.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "4100"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-LENB",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-LENB.asl",
+    "aml": "reference/group1/cases/1-LENB.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "4100"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-LEN0",
+    "group": 1,
+    "classification": "runtime_error",
+    "asl": "reference/group1/cases/1-LEN0.asl",
+    "aml": "reference/group1/cases/1-LEN0.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "EMPTY_BUFFER",
+      "result": null,
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-PACK",
+    "group": 1,
+    "classification": "compile_rejected",
+    "asl": "reference/group1/cases/1-PACK.asl"
+  },
+  {
+    "key": "1-LREF",
+    "group": 1,
+    "classification": "runtime_error",
+    "asl": "reference/group1/cases/1-LREF.asl",
+    "aml": "reference/group1/cases/1-LREF.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "UNSUPPORTED_VALUE",
+      "result": null,
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-AREF",
+    "group": 1,
+    "classification": "runtime_error",
+    "asl": "reference/group1/cases/1-AREF.asl",
+    "aml": "reference/group1/cases/1-AREF.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "UNSUPPORTED_VALUE",
+      "result": null,
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-INDX",
+    "group": 1,
+    "classification": "compile_rejected",
+    "asl": "reference/group1/cases/1-INDX.asl"
+  },
+  {
+    "key": "1-MREF",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-MREF.asl",
+    "aml": "reference/group1/cases/1-MREF.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-TINT",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-TINT.asl",
+    "aml": "reference/group1/cases/1-TINT.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-TSTR",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-TSTR.asl",
+    "aml": "reference/group1/cases/1-TSTR.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-TBUF",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-TBUF.asl",
+    "aml": "reference/group1/cases/1-TBUF.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-TEXP",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-TEXP.asl",
+    "aml": "reference/group1/cases/1-TEXP.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-ALOC",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-ALOC.asl",
+    "aml": "reference/group1/cases/1-ALOC.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "5a4200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-TARG",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-TARG.asl",
+    "aml": "reference/group1/cases/1-TARG.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-ANAM",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-ANAM.asl",
+    "aml": "reference/group1/cases/1-ANAM.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-TPKG",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-TPKG.asl",
+    "aml": "reference/group1/cases/1-TPKG.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-TBYT",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-TBYT.asl",
+    "aml": "reference/group1/cases/1-TBYT.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "41"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-LATE",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-LATE.asl",
+    "aml": "reference/group1/cases/1-LATE.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "00"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-ORDR",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-ORDR.asl",
+    "aml": "reference/group1/cases/1-ORDR.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "4100"
+      },
+      "marker": 123
+    }
+  },
+  {
+    "key": "1-ERRL",
+    "group": 1,
+    "classification": "runtime_error",
+    "asl": "reference/group1/cases/1-ERRL.asl",
+    "aml": "reference/group1/cases/1-ERRL.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "EMPTY_BUFFER",
+      "result": null,
+      "marker": 1
+    }
+  },
+  {
+    "key": "1-BOTH",
+    "group": 1,
+    "classification": "runtime_error",
+    "asl": "reference/group1/cases/1-BOTH.asl",
+    "aml": "reference/group1/cases/1-BOTH.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "EMPTY_BUFFER",
+      "result": null,
+      "marker": 1
+    }
+  },
+  {
+    "key": "1-KIND",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-KIND.asl",
+    "aml": "reference/group1/cases/1-KIND.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 2
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-RETN",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-RETN.asl",
+    "aml": "reference/group1/cases/1-RETN.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-TYPE",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-TYPE.asl",
+    "aml": "reference/group1/cases/1-TYPE.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 514
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-RAWB",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-RAWB.asl",
+    "aml": "reference/group1/cases/1-RAWB.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "800aff00"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-RTYP",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-RTYP.asl",
+    "aml": "reference/group1/cases/1-RTYP.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 515
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-SAFE",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-SAFE.asl",
+    "aml": "reference/group1/cases/1-SAFE.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 65
+      },
+      "marker": 88
+    }
+  },
+  {
+    "key": "1-I64",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/1-I64.asl",
+    "aml": "reference/group1/cases/1-I64.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "4142434400"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-FULL",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-FULL.asl",
+    "aml": "reference/group1/cases/2-FULL.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-LIM1",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-LIM1.asl",
+    "aml": "reference/group1/cases/2-LIM1.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "4100"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-ZERO",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-ZERO.asl",
+    "aml": "reference/group1/cases/2-ZERO.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "00"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-END",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-END.asl",
+    "aml": "reference/group1/cases/2-END.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-NUL0",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-NUL0.asl",
+    "aml": "reference/group1/cases/2-NUL0.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "00"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-EMPTY",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-EMPTY.asl",
+    "aml": "reference/group1/cases/2-EMPTY.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "00"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-ISTR",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-ISTR.asl",
+    "aml": "reference/group1/cases/2-ISTR.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "4142434400"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-SSTR",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-SSTR.asl",
+    "aml": "reference/group1/cases/2-SSTR.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-LENH",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-LENH.asl",
+    "aml": "reference/group1/cases/2-LENH.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "4100"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-LENB",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-LENB.asl",
+    "aml": "reference/group1/cases/2-LENB.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "4100"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-LEN0",
+    "group": 1,
+    "classification": "runtime_error",
+    "asl": "reference/group1/cases/2-LEN0.asl",
+    "aml": "reference/group1/cases/2-LEN0.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "EMPTY_BUFFER",
+      "result": null,
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-PACK",
+    "group": 1,
+    "classification": "compile_rejected",
+    "asl": "reference/group1/cases/2-PACK.asl"
+  },
+  {
+    "key": "2-LREF",
+    "group": 1,
+    "classification": "runtime_error",
+    "asl": "reference/group1/cases/2-LREF.asl",
+    "aml": "reference/group1/cases/2-LREF.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "UNSUPPORTED_VALUE",
+      "result": null,
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-AREF",
+    "group": 1,
+    "classification": "runtime_error",
+    "asl": "reference/group1/cases/2-AREF.asl",
+    "aml": "reference/group1/cases/2-AREF.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "UNSUPPORTED_VALUE",
+      "result": null,
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-INDX",
+    "group": 1,
+    "classification": "compile_rejected",
+    "asl": "reference/group1/cases/2-INDX.asl"
+  },
+  {
+    "key": "2-MREF",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-MREF.asl",
+    "aml": "reference/group1/cases/2-MREF.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-TINT",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-TINT.asl",
+    "aml": "reference/group1/cases/2-TINT.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-TSTR",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-TSTR.asl",
+    "aml": "reference/group1/cases/2-TSTR.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-TBUF",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-TBUF.asl",
+    "aml": "reference/group1/cases/2-TBUF.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-TEXP",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-TEXP.asl",
+    "aml": "reference/group1/cases/2-TEXP.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-ALOC",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-ALOC.asl",
+    "aml": "reference/group1/cases/2-ALOC.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "5a4200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-TARG",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-TARG.asl",
+    "aml": "reference/group1/cases/2-TARG.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-ANAM",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-ANAM.asl",
+    "aml": "reference/group1/cases/2-ANAM.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-TPKG",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-TPKG.asl",
+    "aml": "reference/group1/cases/2-TPKG.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-TBYT",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-TBYT.asl",
+    "aml": "reference/group1/cases/2-TBYT.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "41"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-LATE",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-LATE.asl",
+    "aml": "reference/group1/cases/2-LATE.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "00"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-ORDR",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-ORDR.asl",
+    "aml": "reference/group1/cases/2-ORDR.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "4100"
+      },
+      "marker": 123
+    }
+  },
+  {
+    "key": "2-ERRL",
+    "group": 1,
+    "classification": "runtime_error",
+    "asl": "reference/group1/cases/2-ERRL.asl",
+    "aml": "reference/group1/cases/2-ERRL.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "EMPTY_BUFFER",
+      "result": null,
+      "marker": 1
+    }
+  },
+  {
+    "key": "2-BOTH",
+    "group": 1,
+    "classification": "runtime_error",
+    "asl": "reference/group1/cases/2-BOTH.asl",
+    "aml": "reference/group1/cases/2-BOTH.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "EMPTY_BUFFER",
+      "result": null,
+      "marker": 1
+    }
+  },
+  {
+    "key": "2-KIND",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-KIND.asl",
+    "aml": "reference/group1/cases/2-KIND.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 2
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-RETN",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-RETN.asl",
+    "aml": "reference/group1/cases/2-RETN.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-TYPE",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-TYPE.asl",
+    "aml": "reference/group1/cases/2-TYPE.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 514
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-RAWB",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-RAWB.asl",
+    "aml": "reference/group1/cases/2-RAWB.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "800aff00"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-RTYP",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-RTYP.asl",
+    "aml": "reference/group1/cases/2-RTYP.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 515
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-SAFE",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-SAFE.asl",
+    "aml": "reference/group1/cases/2-SAFE.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 65
+      },
+      "marker": 88
+    }
+  },
+  {
+    "key": "2-I64",
+    "group": 1,
+    "classification": "returned",
+    "asl": "reference/group1/cases/2-I64.asl",
+    "aml": "reference/group1/cases/2-I64.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "414243444546474800"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-NINT",
+    "group": 2,
+    "classification": "returned",
+    "asl": "reference/group2/cases/1-NINT.asl",
+    "aml": "reference/group2/cases/1-NINT.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "5a4200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-NBUF",
+    "group": 2,
+    "classification": "returned",
+    "asl": "reference/group2/cases/1-NBUF.asl",
+    "aml": "reference/group2/cases/1-NBUF.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "5a4200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-NINT",
+    "group": 2,
+    "classification": "returned",
+    "asl": "reference/group2/cases/2-NINT.asl",
+    "aml": "reference/group2/cases/2-NINT.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "5a4200"
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-NBUF",
+    "group": 2,
+    "classification": "returned",
+    "asl": "reference/group2/cases/2-NBUF.asl",
+    "aml": "reference/group2/cases/2-NBUF.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "OBJECT_RETURNED",
+      "result": {
+        "kind": "buffer",
+        "hex": "5a4200"
+      },
+      "marker": 0
+    }
+  }
+]

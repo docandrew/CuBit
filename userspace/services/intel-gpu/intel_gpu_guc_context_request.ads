@@ -1,5 +1,6 @@
 with Interfaces; use Interfaces;
 with Intel_GPU_ADLN_LRC_Descriptor;
+with Intel_GPU_GuC_Actions;
 package Intel_GPU_GuC_Context_Request with SPARK_Mode is
    type Request_Words is array (Natural range 0 .. 11) of Unsigned_32;
    type Request is record
@@ -63,6 +64,8 @@ package Intel_GPU_GuC_Context_Request with SPARK_Mode is
    -- not permit IDs, context pages, PPGTT or application backing to be reused.
    function Deregister (ID : Unsigned_32) return Schedule_Words
      with Post => Deregister'Result =
-       (if ID < 65535 then Schedule_Words'[16#20004503#, ID]
+       (if ID < 65535 then Schedule_Words'
+          [Intel_GPU_GuC_Actions.Fast_Request_Header
+             (Intel_GPU_GuC_Actions.Deregister_Context), ID]
         else Schedule_Words'[0, 0]);
 end Intel_GPU_GuC_Context_Request;

@@ -2,12 +2,14 @@
 #include "anv_cubit_memory.h"
 #include "native_gpu_mapping.h"
 #include "native_gpu_buffers.h"
+#include "native_gpu_queue.h"
+#include "anv_cubit_sync.h"
 #include <pthread.h>
 #include <unistd.h>
 #include <limits.h>
 
-/* Optional diagnostic fixture sink. Called under lifetime_mutex: it MUST
- * only capture scalar evidence, never perform IPC or reenter Mesa. */
+/* Optional diagnostic fixture sink, called with or without lifetime_mutex:
+ * it MUST only capture scalar evidence, never perform IPC or reenter Mesa. */
 extern void cubit_test_mesa_transport_failure(const char *operation,
    uint32_t status, uint32_t handle) __attribute__((weak));
 static void transport_failure(const char *operation, uint32_t status,
@@ -71,9 +73,21 @@ anv_cubit_bo_flags(struct anv_device *device, enum anv_bo_alloc_flags flags)
  * Growable stable records: recycle only detached, confirmed-complete records.
  * The current 64-slot capability namespace bounds lookup/poll work, not an
  * arbitrary smaller metadata array. Endpoint slots remain retained on failure.
- * The endpoint capability must remain stable through deferred cleanup. */
+ * The endpoint capability must remain stable through deferred cleanup.
+ *
+ * Locks. lifetime_mutex guards the directory and the session lifecycle
+ * (attach, context claim, preparation, buffer/mapping requests, teardown);
+ * it is never taken on the submit, completion or live VM update paths.
+ * Each record's queue_mutex serializes that session queue's descriptors and
+ * their signal points; it is held for no wait and no blocking call, and
+ * lifetime_mutex is never taken while holding it (lifetime_mutex then
+ * queue_mutex is allowed). Each record's vm_mutex orders live VM updates
+ * and their generation; it is taken with neither of the others. Order with
+ * the sync layer: queue_mutex, then its timeline lock. */
 #define CUBIT_MEMORY_LIFETIMES UINT_MAX
 #define CUBIT_ENDPOINT_SLOTS 64u
+/* The session's one backed GPU context (GPU-001 step 2: context 0). */
+#define CUBIT_RENDER_CONTEXT 0u
 static pthread_mutex_t lifetime_mutex = PTHREAD_MUTEX_INITIALIZER;
 struct cubit_memory_lifetime {
    struct cubit_cpu_mapping_tracker tracker;
@@ -87,11 +101,43 @@ struct cubit_memory_lifetime {
    struct anv_queue *engine_queue; /* cleared before Vulkan wrapper teardown */
    bool null_heap_active, null_heap_closed;
    uint64_t null_heap_address, null_heap_size;
-   uint32_t completion;
+   /* Session queue (GPU-001 step 3), under queue_mutex. Admitting: opened
+    * and not yet closed by null-heap teardown or device finish. Failed:
+    * sticky; the device is lost. queue_open is also read atomically. */
+   pthread_mutex_t queue_mutex;
+   bool queue_open, queue_admitting, queue_failed;
+   /* Live VM updates (0x0A28), under vm_mutex. Failed: sticky, never
+    * replayed. */
+   pthread_mutex_t vm_mutex;
    uint32_t vm_generation;
+   bool vm_failed;
 };
 static struct cubit_memory_lifetime **lifetimes;
 static unsigned lifetime_count, lifetime_capacity;
+
+/* The record of the device's current session, without lifetime_mutex.
+ * Records are never freed and device->cubit_cpu_mappings changes only at
+ * attach and finish, which Vulkan orders against queue and VM use. */
+static struct cubit_memory_lifetime *
+device_record(struct anv_device *device)
+{
+   struct cubit_cpu_mapping_tracker *tracker = device ? device->cubit_cpu_mappings : NULL;
+   return tracker ? container_of(tracker, struct cubit_memory_lifetime, tracker) : NULL;
+}
+
+/* A record's own locks, at creation and after recycling (when no thread can
+ * hold them: the record is detached and complete). */
+static bool
+init_record_locks(struct cubit_memory_lifetime *record)
+{
+   if (pthread_mutex_init(&record->queue_mutex, NULL))
+      return false;
+   if (pthread_mutex_init(&record->vm_mutex, NULL)) {
+      pthread_mutex_destroy(&record->queue_mutex);
+      return false;
+   }
+   return true;
+}
 
 /* Called with lifetime_mutex held. Only the pointer directory moves; exported
  * tracker addresses and outstanding cleanup references stay stable. Failure
@@ -168,6 +214,10 @@ anv_cubit_vm_bind(struct anv_device *device, struct anv_sparse_submission *submi
                  bind->size == (*lifetimes[i]).null_heap_size) {
          (*lifetimes[i]).null_heap_active = false;
          (*lifetimes[i]).null_heap_closed = true;
+         /* Teardown forbids further GPU work: close queue admission too. */
+         pthread_mutex_lock(&(*lifetimes[i]).queue_mutex);
+         (*lifetimes[i]).queue_admitting = false;
+         pthread_mutex_unlock(&(*lifetimes[i]).queue_mutex);
          result = VK_SUCCESS;
       }
    }
@@ -175,13 +225,22 @@ anv_cubit_vm_bind(struct anv_device *device, struct anv_sparse_submission *submi
    return result;
 }
 
-static VkResult update_bo_locked(struct anv_device *device, struct anv_bo *bo,
-   uint64_t gpu, uint64_t offset, uint64_t bytes, bool remove);
-
 VkResult
 anv_cubit_check_status(struct vk_device *vk_device)
 {
    struct anv_device *device = container_of(vk_device, struct anv_device, vk);
+   /* Once the queue is open its status lines carry session health: no IPC
+    * and no lifetime_mutex (fence waits call this). */
+   struct cubit_memory_lifetime *record = device_record(device);
+   if (record && p_atomic_read(&record->queue_open)) {
+      struct native_gpu_values completed, submitted;
+      enum cubit_gpu_queue_status status =
+         cubit_gpu_queue_observe(record->tracker.slot, &completed, &submitted);
+      if (status == CUBIT_GPU_QUEUE_OK)
+         return VK_SUCCESS;
+      transport_failure("queue-health", status, 0);
+      return vk_device_set_lost(vk_device, "CuBit render session unavailable");
+   }
    pthread_mutex_lock(&lifetime_mutex);
    unsigned i = submission_lifetime(device);
    bool healthy = i != CUBIT_MEMORY_LIFETIMES;
@@ -326,18 +385,23 @@ anv_cubit_destroy_engine(struct anv_device *device, struct anv_queue *queue)
    pthread_mutex_unlock(&lifetime_mutex);
 }
 
+/* Offline binding before preparation, under lifetime_mutex. *live: the
+ * context is prepared, so the change is a live VM update the caller makes
+ * after releasing lifetime_mutex (allow_live), or refuses. */
 static VkResult
 change_binding_locked(struct anv_device *device, struct anv_bo *bo, uint64_t gpu,
-                      bool allow_live, bool remove)
+                      bool allow_live, bool remove, bool *live)
 {
+   *live = false;
    unsigned i = submission_lifetime(device);
    if (i == CUBIT_MEMORY_LIFETIMES) {
       return vk_device_set_lost(&device->vk, "CuBit binding session unavailable");
    }
    if ((*lifetimes[i]).submission_attempted) {
-      if (allow_live)
-         return update_bo_locked(device, bo, gpu, 0, bo ? bo->actual_size : 0, remove);
-      return VK_ERROR_FEATURE_NOT_PRESENT; /* Live VM update is a different operation. */
+      if (!allow_live)
+         return VK_ERROR_FEATURE_NOT_PRESENT; /* Live VM update is a different operation. */
+      *live = true;
+      return VK_SUCCESS;
    }
    if (!bo || anv_bo_get_real(bo) != bo || !bo->gem_handle || !bo->actual_size ||
        (bo->actual_size & 4095) || bo->actual_size > UINT64_C(16) * 1024 * 1024 ||
@@ -358,18 +422,33 @@ change_binding_locked(struct anv_device *device, struct anv_bo *bo, uint64_t gpu
    return VK_SUCCESS;
 }
 
+/* Sticky queue failure: no further descriptors; the device is lost. */
 static VkResult
-update_bo_locked(struct anv_device *device, struct anv_bo *bo,
-                            uint64_t gpu, uint64_t offset, uint64_t bytes,
-                            bool remove)
+queue_failure(struct anv_device *device, struct cubit_memory_lifetime *record,
+              const char *why)
 {
-   unsigned i = submission_lifetime(device);
-   if (i == CUBIT_MEMORY_LIFETIMES) {
+   if (record) {
+      pthread_mutex_lock(&record->queue_mutex);
+      record->queue_failed = true;
+      pthread_mutex_unlock(&record->queue_mutex);
+   }
+   return vk_device_set_lost(&device->vk, "%s", why);
+}
+
+/* A live VM update (0x0A28), synchronous to this thread: the driver applies
+ * it once the GPU is idle. It holds only vm_mutex, never lifetime_mutex or a
+ * queue lock, so queued work, its completion and fence waits all proceed
+ * while it waits; nothing that completion needs is held here. */
+static VkResult
+update_bo_live(struct anv_device *device, struct anv_bo *bo,
+               uint64_t gpu, uint64_t offset, uint64_t bytes, bool remove)
+{
+   struct cubit_memory_lifetime *record = device_record(device);
+   if (!record || vk_device_is_lost_no_report(&device->vk))
       return vk_device_set_lost(&device->vk, "CuBit VM session unavailable");
-   }
-   if (!(*lifetimes[i]).submission_ready) {
+   /* Set once by preparation, which Vulkan orders before any live bind. */
+   if (!record->submission_ready)
       return VK_ERROR_INITIALIZATION_FAILED;
-   }
    if (!bo || anv_bo_get_real(bo) != bo || !bo->gem_handle || !bytes ||
        (bytes & 4095) || bytes > UINT64_C(16) * 1024 * 1024 ||
        (offset & 4095) || offset > bo->actual_size ||
@@ -380,27 +459,37 @@ update_bo_locked(struct anv_device *device, struct anv_bo *bo,
       return VK_ERROR_INITIALIZATION_FAILED;
    }
    uint32_t generation = 0;
-   /* Serialize updates with submission and BO/CPU lifecycle operations.
-    * A generation is a committed VM transaction, not a batch marker. */
-   uint32_t status = (*lifetimes[i]).vm_generation == UINT32_MAX ? 4 :
-      cubit_intel_update_binding((*lifetimes[i]).tracker.slot, bo->gem_handle,
-         gpu, offset, bytes, remove, (*lifetimes[i]).vm_generation, &generation);
-   if (status != 0 || (*lifetimes[i]).vm_generation == UINT32_MAX ||
-       generation != (*lifetimes[i]).vm_generation + 1) {
-      transport_failure(remove ? "vm-unbind" : "vm-bind", status, bo->gem_handle);
-      (*lifetimes[i]).tracker.lost = true;
-      (*lifetimes[i]).submission_ready = false;
-      return vk_device_set_lost(&device->vk, "CuBit VM update failed; session retained");
+   /* A generation is a committed VM transaction, not a batch marker. */
+   pthread_mutex_lock(&record->vm_mutex);
+   if (record->vm_failed) {
+      pthread_mutex_unlock(&record->vm_mutex);
+      return vk_device_set_lost(&device->vk, "CuBit VM session failed");
    }
-   (*lifetimes[i]).vm_generation = generation;
+   const uint32_t previous = record->vm_generation;
+   uint32_t status = previous == UINT32_MAX ? 4 :
+      cubit_intel_update_binding(record->tracker.slot, bo->gem_handle,
+         gpu, offset, bytes, remove, previous, &generation);
+   const bool committed = status == 0 && previous != UINT32_MAX &&
+                          generation == previous + 1;
+   if (committed)
+      record->vm_generation = generation;
+   else
+      record->vm_failed = true;
+   pthread_mutex_unlock(&record->vm_mutex);
+   if (!committed) {
+      transport_failure(remove ? "vm-unbind" : "vm-bind", status, bo->gem_handle);
+      /* No queue work after a VM the session cannot trust. */
+      return queue_failure(device, record, "CuBit VM update failed; session retained");
+   }
    return VK_SUCCESS;
 }
 
 VkResult
 anv_cubit_bind_bo_offline(struct anv_device *device, struct anv_bo *bo, uint64_t gpu)
 {
+   bool live;
    pthread_mutex_lock(&lifetime_mutex);
-   VkResult result = change_binding_locked(device, bo, gpu, false, false);
+   VkResult result = change_binding_locked(device, bo, gpu, false, false, &live);
    pthread_mutex_unlock(&lifetime_mutex);
    return result;
 }
@@ -409,10 +498,7 @@ VkResult
 anv_cubit_update_bo_binding(struct anv_device *device, struct anv_bo *bo,
    uint64_t gpu, uint64_t offset, uint64_t bytes, bool remove)
 {
-   pthread_mutex_lock(&lifetime_mutex);
-   VkResult result = update_bo_locked(device, bo, gpu, offset, bytes, remove);
-   pthread_mutex_unlock(&lifetime_mutex);
-   return result;
+   return update_bo_live(device, bo, gpu, offset, bytes, remove);
 }
 
 static VkResult
@@ -423,10 +509,14 @@ change_bo(struct anv_device *device, struct anv_bo *bo, bool remove)
     * context preparation cannot race an offline bind into a sealed image. */
    if (!bo || intel_canonical_address(intel_48b_address(bo->offset)) != bo->offset)
       return VK_ERROR_INITIALIZATION_FAILED;
+   bool live;
    pthread_mutex_lock(&lifetime_mutex);
    VkResult result = change_binding_locked(device, bo,
-      intel_48b_address(bo->offset), true, remove);
+      intel_48b_address(bo->offset), true, remove, &live);
    pthread_mutex_unlock(&lifetime_mutex);
+   if (result == VK_SUCCESS && live)
+      result = update_bo_live(device, bo, intel_48b_address(bo->offset), 0,
+                              bo->actual_size, remove);
    return result;
 }
 
@@ -458,13 +548,20 @@ prepare_submission(struct anv_device *device, bool allow_ready)
    }
    (*lifetimes[i]).submission_attempted = true;
    uint64_t slot = (*lifetimes[i]).tracker.slot;
+   /* The session queue opens once the context is registered: every batch,
+    * the startup ones included, goes through it from here on. */
    if (cubit_intel_prepare_context(slot) != 0 ||
-       cubit_intel_register_context(slot) != 0) {
+       cubit_intel_register_context(slot) != 0 ||
+       cubit_gpu_queue_open(slot) != CUBIT_GPU_QUEUE_OK) {
       (*lifetimes[i]).tracker.lost = true;
       pthread_mutex_unlock(&lifetime_mutex);
       return vk_device_set_lost(&device->vk, "CuBit context preparation failed; session retained");
    }
-   (*lifetimes[i]).completion = 1;
+   pthread_mutex_lock(&(*lifetimes[i]).queue_mutex);
+   (*lifetimes[i]).queue_admitting = true;
+   (*lifetimes[i]).queue_failed = false;
+   p_atomic_set(&(*lifetimes[i]).queue_open, true);
+   pthread_mutex_unlock(&(*lifetimes[i]).queue_mutex);
    (*lifetimes[i]).submission_ready = true;
    pthread_mutex_unlock(&lifetime_mutex);
    return VK_SUCCESS;
@@ -476,18 +573,17 @@ anv_cubit_prepare_submission(struct anv_device *device)
    return prepare_submission(device, false);
 }
 
-VkResult
-anv_cubit_submit_bo(struct anv_device *device, struct anv_bo *bo,
-                    uint64_t gpu, uint64_t offset, uint64_t bytes)
+/* A batch as a descriptor names it: its real BO's handle, its offset in
+ * that BO (slab children translate to the parent), bytes and raw48 start. */
+struct batch_ref {
+   uint32_t handle, offset, bytes;
+   uint64_t gpu;
+};
+
+static bool
+batch_reference(struct anv_bo *bo, uint64_t gpu, uint64_t offset, uint64_t bytes,
+                struct batch_ref *batch)
 {
-   pthread_mutex_lock(&lifetime_mutex);
-   unsigned i = submission_lifetime(device);
-   if (i == CUBIT_MEMORY_LIFETIMES || !(*lifetimes[i]).submission_ready) {
-      if (i != CUBIT_MEMORY_LIFETIMES)
-         (*lifetimes[i]).tracker.lost = true;
-      pthread_mutex_unlock(&lifetime_mutex);
-      return vk_device_set_lost(&device->vk, "CuBit submission context unavailable");
-   }
    struct anv_bo *real = bo ? anv_bo_get_real(bo) : NULL;
    uint64_t parent_offset = offset;
    bool valid = real && !real->slab_parent && real->gem_handle && bytes &&
@@ -506,42 +602,122 @@ anv_cubit_submit_bo(struct anv_device *device, struct anv_bo *bo,
       if (valid)
          parent_offset += child - base; /* bounded by the parent extent */
    }
+   /* Native_GPU_Job_Rules.Valid_Batch rechecks the descriptor's limits. */
    if (!valid || parent_offset > real->actual_size ||
-       bytes > real->actual_size - parent_offset) {
-      (*lifetimes[i]).tracker.lost = true;
-      pthread_mutex_unlock(&lifetime_mutex);
-      return vk_device_set_lost(&device->vk, "CuBit batch outside retained BO");
+       bytes > real->actual_size - parent_offset ||
+       parent_offset > UINT32_MAX || bytes > UINT32_MAX)
+      return false;
+   *batch = (struct batch_ref){.handle = real->gem_handle, .offset = (uint32_t)parent_offset,
+                               .bytes = (uint32_t)bytes, .gpu = gpu};
+   return true;
+}
+
+/* Signal lists one submission carries: the caller's, then private ones. */
+struct signal_list {
+   uint32_t count;
+   const struct vk_sync_signal *signals;
+};
+
+/* One queue operation, under the record's queue_mutex and nothing it
+ * waits for: translate the waits, write at most one descriptor, give every
+ * signal its point. No blocking call (a full queue is the queue's own
+ * bounded backpressure). batch NULL: no commands. */
+static VkResult
+queue_submit_locked(struct anv_device *device, struct cubit_memory_lifetime *record,
+                    const struct batch_ref *batch, uint32_t wait_count,
+                    const struct vk_sync_wait *waits, const struct signal_list *lists,
+                    uint32_t list_count, const char **why)
+{
+   const uint64_t slot = record->tracker.slot;
+   if (!record->queue_admitting || record->queue_failed) {
+      *why = "CuBit submission queue closed";
+      return VK_ERROR_DEVICE_LOST;
    }
-   uint32_t completion = 0;
-   uint32_t status = cubit_intel_submit_batch((*lifetimes[i]).tracker.slot,
-      real->gem_handle, gpu, parent_offset, bytes, (*lifetimes[i]).completion, &completion);
-   if (status != 0 || (*lifetimes[i]).completion == UINT32_MAX ||
-       completion != (*lifetimes[i]).completion + 1) {
-      /* Record the submission failure before teardown can report a secondary
-       * denied close after the service revokes this session. Status 4 is the
-       * transport's malformed/uncertain-result classification. */
-      transport_failure("submit-batch", status ? status : 4, real->gem_handle);
-      (*lifetimes[i]).tracker.lost = true;
-      (*lifetimes[i]).submission_ready = false;
-      pthread_mutex_unlock(&lifetime_mutex);
-      return vk_device_set_lost(&device->vk, "CuBit batch completion failed; session retained");
+   /* Waits: a point on this queue becomes a descriptor wait (dropped on
+    * the job's own context, whose ring runs in order). Reached ones need
+    * nothing. The pre-lock hook already waited for every wait to be
+    * pending, so an unsubmitted one is a sequencing error. */
+   struct native_gpu_values set;
+   native_gpu_wait_set_clear(&set);
+   for (uint32_t i = 0; i < wait_count; i++) {
+      enum native_gpu_wait_kind kind;
+      uint32_t context, merged;
+      uint64_t gpu;
+      if (anv_cubit_sync_find(&device->vk, &waits[i], slot, &kind, &context, &gpu) != VK_SUCCESS ||
+          kind == NATIVE_GPU_WAIT_UNSUBMITTED) {
+         *why = "CuBit queue dependency not submitted";
+         return VK_ERROR_DEVICE_LOST;
+      }
+      if (kind == NATIVE_GPU_WAIT_ON_GPU) {
+         native_gpu_wait_set_merge(&set, CUBIT_RENDER_CONTEXT, context, gpu, &merged);
+         if (!merged) { *why = "CuBit queue wait on an unknown context"; return VK_ERROR_DEVICE_LOST; }
+      }
    }
-   (*lifetimes[i]).completion = completion;
-   pthread_mutex_unlock(&lifetime_mutex);
+   struct cubit_gpu_job job = {.context = CUBIT_RENDER_CONTEXT,
+                               .deadline_us = CUBIT_GPU_NO_DEADLINE};
+   uint32_t fits;
+   native_gpu_wait_set_select(&set, &job.first.context, &job.first.target,
+                              &job.second.context, &job.second.target, &fits);
+   if (!fits) { *why = "CuBit queue waits exceed a descriptor"; return VK_ERROR_DEVICE_LOST; }
+
+   uint64_t signal = 0;
+   bool on_cpu = false;
+   if (batch || job.first.target || job.second.target) {
+      if (batch) {
+         job.operation = CUBIT_GPU_EXECUTE;
+         job.handle = batch->handle;
+         job.offset = batch->offset;
+         job.bytes = batch->bytes;
+         job.gpu = batch->gpu;
+      } else {
+         job.operation = CUBIT_GPU_SIGNAL;   /* a timeline-only barrier */
+      }
+      enum cubit_gpu_queue_status status = cubit_gpu_queue_submit(slot, &job, &signal);
+      if (status != CUBIT_GPU_QUEUE_OK) {
+         transport_failure("queue-submit", status, job.handle);
+         *why = "CuBit queue submission failed; session retained";
+         return VK_ERROR_DEVICE_LOST;
+      }
+   } else {
+      /* No commands and nothing to wait for on the GPU: the signals follow
+       * the queue's last job (ring order), or happen now if it is done. */
+      struct native_gpu_values completed, submitted;
+      if (cubit_gpu_queue_observe(slot, &completed, &submitted) != CUBIT_GPU_QUEUE_OK) {
+         *why = "CuBit GPU session failed";
+         return VK_ERROR_DEVICE_LOST;
+      }
+      signal = submitted.value[CUBIT_RENDER_CONTEXT];
+      on_cpu = signal <= completed.value[CUBIT_RENDER_CONTEXT];
+   }
+   for (uint32_t l = 0; l < list_count; l++) {
+      for (uint32_t i = 0; i < lists[l].count; i++) {
+         const struct vk_sync_signal *s = &lists[l].signals[i];
+         VkResult result = on_cpu ?
+            vk_sync_signal(&device->vk, s->sync, s->signal_value) :
+            anv_cubit_sync_add_point(&device->vk, s, slot, CUBIT_RENDER_CONTEXT, signal);
+         if (result != VK_SUCCESS) {
+            *why = "CuBit queue signal failed";
+            return VK_ERROR_DEVICE_LOST;
+         }
+      }
+   }
    return VK_SUCCESS;
 }
 
 static VkResult
-sync_failure(struct anv_device *device)
+queue_submit(struct anv_device *device, struct cubit_memory_lifetime *record,
+             const struct batch_ref *batch, uint32_t wait_count,
+             const struct vk_sync_wait *waits, const struct signal_list *lists,
+             uint32_t list_count)
 {
-   pthread_mutex_lock(&lifetime_mutex);
-   unsigned i = submission_lifetime(device);
-   if (i != CUBIT_MEMORY_LIFETIMES) {
-      (*lifetimes[i]).tracker.lost = true;
-      (*lifetimes[i]).submission_ready = false;
-   }
-   pthread_mutex_unlock(&lifetime_mutex);
-   return vk_device_set_lost(&device->vk, "CuBit queue synchronization failed");
+   const char *why = NULL;
+   pthread_mutex_lock(&record->queue_mutex);
+   VkResult result = queue_submit_locked(device, record, batch, wait_count, waits,
+                                         lists, list_count, &why);
+   if (result != VK_SUCCESS)
+      record->queue_failed = true;
+   pthread_mutex_unlock(&record->queue_mutex);
+   return result == VK_SUCCESS ? result : vk_device_set_lost(&device->vk, "%s", why);
 }
 
 VkResult
@@ -549,46 +725,18 @@ anv_cubit_wait_dependencies(struct anv_device *device,
    uint32_t wait_count, const struct vk_sync_wait *waits,
    uint64_t abs_timeout_ns)
 {
-   pthread_mutex_lock(&lifetime_mutex);
-   unsigned i = submission_lifetime(device);
-   bool ready = i != CUBIT_MEMORY_LIFETIMES && (*lifetimes[i]).submission_ready;
-   pthread_mutex_unlock(&lifetime_mutex);
-   if (!ready || (wait_count && !waits))
-      return sync_failure(device);
-   /* Another queue may need the tracker lock to satisfy these dependencies.
-    * Flags=0 waits ALL for completion, not ANY and not merely PENDING. The
-    * submission helper revalidates the session after this unlocked wait. */
+   struct cubit_memory_lifetime *record = device_record(device);
+   if (!record || !p_atomic_read(&record->queue_open) || (wait_count && !waits))
+      return queue_failure(device, record, "CuBit queue synchronization failed");
+   /* Runs before device->mutex. A wait is met for the queue once it is
+    * pending: a point the queue will signal becomes a descriptor wait, so
+    * only a wait whose signal is not submitted yet blocks here. */
    VkResult result = vk_sync_wait_many(&device->vk, wait_count, waits,
-                                      0, abs_timeout_ns);
+                                      VK_SYNC_WAIT_PENDING, abs_timeout_ns);
    if (result == VK_TIMEOUT)
       return result;
-   if (result != VK_SUCCESS)
-      return sync_failure(device);
-   pthread_mutex_lock(&lifetime_mutex);
-   i = submission_lifetime(device);
-   ready = i != CUBIT_MEMORY_LIFETIMES && (*lifetimes[i]).submission_ready;
-   pthread_mutex_unlock(&lifetime_mutex);
-   return ready ? VK_SUCCESS : sync_failure(device);
-}
-
-VkResult
-anv_cubit_submit_bo_sync(struct anv_device *device, struct anv_bo *bo,
-   uint64_t gpu, uint64_t offset, uint64_t bytes,
-   uint32_t wait_count, const struct vk_sync_wait *waits,
-   uint32_t signal_count, const struct vk_sync_signal *signals,
-   uint64_t abs_timeout_ns)
-{
-   if (signal_count && !signals)
-      return sync_failure(device);
-   VkResult result = anv_cubit_wait_dependencies(device, wait_count, waits,
-                                                abs_timeout_ns);
-   if (result != VK_SUCCESS)
-      return result;
-   result = anv_cubit_submit_bo(device, bo, gpu, offset, bytes);
-   if (result != VK_SUCCESS)
-      return result;
-   result = vk_sync_signal_many(&device->vk, signal_count, signals);
-   return result == VK_SUCCESS ? VK_SUCCESS : sync_failure(device);
+   return result == VK_SUCCESS ? result :
+      queue_failure(device, record, "CuBit queue synchronization failed");
 }
 
 VkResult
@@ -600,37 +748,34 @@ anv_cubit_queue_exec_locked(struct anv_queue *queue,
    struct anv_utrace_submit *utrace_submit)
 {
    struct anv_device *device = queue->device;
-   pthread_mutex_lock(&lifetime_mutex);
-   unsigned lifetime = submission_lifetime(device);
-   bool owned = lifetime != CUBIT_MEMORY_LIFETIMES &&
-                (*lifetimes[lifetime]).engine_queue == queue;
-   pthread_mutex_unlock(&lifetime_mutex);
-   if (!owned) return sync_failure(device);
+   struct cubit_memory_lifetime *record = device_record(device);
+   if (!record || record->engine_queue != queue)
+      return queue_failure(device, record, "CuBit queue not owned");
    (void)perf_query_pass;
    if (perf_query_pool || utrace_submit || !queue->family ||
        queue->family->engine_class != INTEL_ENGINE_CLASS_RENDER)
       return VK_ERROR_FEATURE_NOT_PRESENT;
-   if ((cmd_buffer_count && !cmd_buffers) || (signal_count && !signals))
-      return sync_failure(device);
-   /* A missed pre-lock dependency is a backend sequencing error. Never wait
-    * for its producer while holding the common ANV device mutex. */
-   VkResult result = anv_cubit_wait_dependencies(device, wait_count, waits, 0);
-   if (result != VK_SUCCESS) return sync_failure(device);
+   if ((cmd_buffer_count && !cmd_buffers) || (signal_count && !signals) ||
+       (wait_count && !waits))
+      return queue_failure(device, record, "CuBit malformed queue submission");
    for (uint32_t i = 0; i < cmd_buffer_count; i++) {
       struct anv_cmd_buffer *cmd = cmd_buffers[i];
       if (!cmd || cmd->device != device || list_is_empty(&cmd->batch_bos))
-         return sync_failure(device);
+         return queue_failure(device, record, "CuBit malformed command buffer");
       if (cmd->companion_rcs_cmd_buffer)
          return VK_ERROR_FEATURE_NOT_PRESENT;
       struct anv_batch_bo *batch =
          list_first_entry(&cmd->batch_bos, struct anv_batch_bo, link);
       if (!batch->bo || !batch->length || batch->length > batch->bo->actual_size ||
           intel_canonical_address(intel_48b_address(batch->bo->offset)) != batch->bo->offset)
-         return sync_failure(device);
+         return queue_failure(device, record, "CuBit malformed command buffer");
    }
+   struct batch_ref batch;
    if (cmd_buffer_count) {
-      /* Same common batch chaining as upstream xe_queue_exec_locked. All
-       * batch-reachable BOs must remain bound and alive until this returns. */
+      /* Same common batch chaining as upstream xe_queue_exec_locked. The
+       * application keeps every batch-reachable BO alive until the signals
+       * complete; the driver applies no VM update while GPU work is in
+       * flight, so no mapping a queued batch uses is removed under it. */
       anv_cmd_buffer_chain_command_buffers(cmd_buffers, cmd_buffer_count);
 #ifdef SUPPORT_INTEL_INTEGRATED_GPUS
       if (device->physical->memory.need_flush &&
@@ -639,18 +784,19 @@ anv_cubit_queue_exec_locked(struct anv_queue *queue,
 #endif
       struct anv_batch_bo *first =
          list_first_entry(&cmd_buffers[0]->batch_bos, struct anv_batch_bo, link);
-      result = anv_cubit_submit_bo(device, first->bo,
-         intel_48b_address(first->bo->offset), 0, first->length);
-      if (result != VK_SUCCESS) return result;
+      if (!batch_reference(first->bo, intel_48b_address(first->bo->offset), 0,
+                           first->length, &batch))
+         return queue_failure(device, record, "CuBit batch outside retained BO");
    }
-   /* Empty submissions are dependency/signal operations. Nonempty ones reach
-    * here only after the driver marker and scheduling disable acknowledged. */
-   result = vk_sync_signal_many(&device->vk, signal_count, signals);
-   if (result == VK_SUCCESS && queue->sync) {
-      const struct vk_sync_signal completed = {.sync = queue->sync};
-      result = vk_sync_signal_many(&device->vk, 1, &completed);
-   }
-   return result == VK_SUCCESS ? VK_SUCCESS : sync_failure(device);
+   /* Returns once the descriptor is written: the signals carry points the
+    * queue resolves when the GPU reaches them. */
+   const struct vk_sync_signal debug = {.sync = queue->sync};
+   const struct signal_list lists[] = {
+      {signal_count, signals},
+      {queue->sync ? 1u : 0u, &debug},
+   };
+   return queue_submit(device, record, cmd_buffer_count ? &batch : NULL,
+                       wait_count, waits, lists, ARRAY_SIZE(lists));
 }
 
 VkResult
@@ -660,35 +806,30 @@ anv_cubit_queue_exec_async(struct anv_async_submit *submit,
 {
    struct anv_queue *queue = submit->queue;
    struct anv_device *device = queue->device;
-   pthread_mutex_lock(&lifetime_mutex);
-   unsigned lifetime = submission_lifetime(device);
-   bool owned = lifetime != CUBIT_MEMORY_LIFETIMES &&
-                (*lifetimes[lifetime]).engine_queue == queue;
-   pthread_mutex_unlock(&lifetime_mutex);
-   if (!owned) return sync_failure(device);
+   struct cubit_memory_lifetime *record = device_record(device);
+   if (!record || record->engine_queue != queue)
+      return queue_failure(device, record, "CuBit queue not owned");
    if (submit->use_companion_rcs || !queue->family ||
        queue->family->engine_class != INTEL_ENGINE_CLASS_RENDER)
       return VK_ERROR_FEATURE_NOT_PRESENT;
    if ((signal_count && !signals) || !submit->bo_pool ||
        !util_dynarray_num_elements(&submit->batch_bos, struct anv_bo *))
-      return sync_failure(device);
+      return queue_failure(device, record, "CuBit malformed internal submission");
    util_dynarray_foreach(&submit->batch_bos, struct anv_bo *, bo) {
       if (!*bo || !(*bo)->map || !(*bo)->size ||
           (*bo)->size > (*bo)->actual_size ||
           intel_canonical_address(intel_48b_address((*bo)->offset)) != (*bo)->offset)
-         return sync_failure(device);
+         return queue_failure(device, record, "CuBit malformed internal submission");
    }
-   /* This callback is entered without the common ANV device mutex. The
-    * bring-up transport completes synchronously even though the KMD entry
-    * point permits asynchronous implementations. Retain every chained BO. */
-   /* setup_context runs before Mesa allocates its state/batch BOs. Seal the
-    * initial bindings here, at the first internal batch, not during setup.
-    * The shared lifetime lock makes concurrent first submissions observe one
+   /* Entered without the common ANV device mutex. setup_context runs before
+    * Mesa allocates its state/batch BOs: seal the initial bindings, register
+    * the context and open the session queue here, at the first internal
+    * batch. The lifetime lock makes concurrent first submissions observe one
     * preparation; a failed attempt remains poisoned and is never replayed. */
    VkResult result = prepare_submission(device, true);
-   if (result != VK_SUCCESS) return sync_failure(device);
-   result = anv_cubit_wait_dependencies(device, wait_count, waits,
-                                                UINT64_MAX);
+   if (result != VK_SUCCESS)
+      return queue_failure(device, record, "CuBit context preparation failed");
+   result = anv_cubit_wait_dependencies(device, wait_count, waits, UINT64_MAX);
    if (result != VK_SUCCESS) return result;
 #ifdef SUPPORT_INTEL_INTEGRATED_GPUS
    if (device->physical->memory.need_flush &&
@@ -699,17 +840,18 @@ anv_cubit_queue_exec_async(struct anv_async_submit *submit,
 #endif
    struct anv_bo *first =
       *util_dynarray_element(&submit->batch_bos, struct anv_bo *, 0);
-   result = anv_cubit_submit_bo(device, first,
-                               intel_48b_address(first->offset), 0, first->size);
-   if (result != VK_SUCCESS) return result;
-   result = vk_sync_signal_many(&device->vk, signal_count, signals);
-   if (result == VK_SUCCESS && submit->signal.sync)
-      result = vk_sync_signal_many(&device->vk, 1, &submit->signal);
-   if (result == VK_SUCCESS && queue->sync) {
-      const struct vk_sync_signal completed = {.sync = queue->sync};
-      result = vk_sync_signal_many(&device->vk, 1, &completed);
-   }
-   return result == VK_SUCCESS ? VK_SUCCESS : sync_failure(device);
+   struct batch_ref batch;
+   if (!batch_reference(first, intel_48b_address(first->offset), 0, first->size, &batch))
+      return queue_failure(device, record, "CuBit batch outside retained BO");
+   /* The private startup fence completes with the batch: Mesa frees the
+    * batch BOs only once anv_async_submit_done sees it. */
+   const struct vk_sync_signal debug = {.sync = queue->sync};
+   const struct signal_list lists[] = {
+      {signal_count, signals},
+      {submit->signal.sync ? 1u : 0u, &submit->signal},
+      {queue->sync ? 1u : 0u, &debug},
+   };
+   return queue_submit(device, record, &batch, wait_count, waits, lists, ARRAY_SIZE(lists));
 }
 
 static bool
@@ -760,11 +902,21 @@ memory_init(struct anv_device *device, uint64_t slot,
       }
       lifetimes[index] = record;
       lifetime_count++;
+   } else {
+      pthread_mutex_destroy(&(*lifetimes[index]).queue_mutex);
+      pthread_mutex_destroy(&(*lifetimes[index]).vm_mutex);
    }
    /* Only detached AND confirmed-complete bookkeeping may be recycled.
     * No device wrapper points here, and polling has no outstanding cleanup.
-    * This clears CPU records, not driver BO storage or GPU mapping ownership. */
+    * This clears CPU records, not driver BO storage or GPU mapping ownership.
+    * No thread can hold its locks: they are made afresh. A record whose
+    * locks cannot be made stays complete and is not published. */
    memset(&(*lifetimes[index]), 0, sizeof((*lifetimes[index])));
+   if (!init_record_locks(lifetimes[index])) {
+      (*lifetimes[index]).detached = (*lifetimes[index]).complete = true;
+      pthread_mutex_unlock(&lifetime_mutex);
+      return VK_ERROR_INITIALIZATION_FAILED;
+   }
    struct cubit_cpu_mapping_tracker *tracker = &(*lifetimes[index]).tracker;
    tracker->slot = slot;
    if (pin) {
@@ -834,6 +986,15 @@ anv_cubit_memory_finish(struct anv_device *device)
       tracker->lost = true;
       (*lifetimes[i]).detached = true;
       (*lifetimes[i]).engine_queue = NULL;
+      /* After queue teardown: no descriptor follows. Closing the channel
+       * answers a held wake; the driver retires what is in flight. */
+      pthread_mutex_lock(&(*lifetimes[i]).queue_mutex);
+      (*lifetimes[i]).queue_admitting = false;
+      if ((*lifetimes[i]).queue_open) {
+         p_atomic_set(&(*lifetimes[i]).queue_open, false);
+         cubit_gpu_queue_close(tracker->slot);
+      }
+      pthread_mutex_unlock(&(*lifetimes[i]).queue_mutex);
       device->cubit_cpu_mappings = NULL;
       complete = drain_lifetime(i);
       (*lifetimes[i]).complete = complete;
@@ -1034,9 +1195,10 @@ unmap_bo_locked(struct anv_device *device, struct anv_bo *bo,
 }
 
 /* Serialize tracker mutations across distinct BOs as well as detach/poll.
- * This initial coarse lock covers control-plane IPC, including synchronous
- * submission waits. It is not a parallel/asynchronous queue implementation.
- * Destruction still requires Vulkan's caller-side object lifetime rules. */
+ * This coarse lock covers buffer and mapping IPC only: submission, completion
+ * and live VM updates never take it, so a buffer request the driver defers
+ * while GPU work is in flight stalls neither. Destruction still requires
+ * Vulkan's caller-side object lifetime rules. */
 uint32_t
 anv_cubit_gem_create(struct anv_device *device,
                     const struct intel_memory_class_instance **regions,

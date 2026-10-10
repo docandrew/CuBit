@@ -3,7 +3,8 @@ with Interfaces; use Interfaces;
 --  Polling while traffic flows (NAPI/busy-poll style): a side that just
 --  did work keeps checking its rings for a short window, measured with
 --  the TSC, before it arms a doorbell and sleeps. Calibrate once at
---  startup (about 10 ms).
+--  startup: immediate with the clock publication's TSC rate, otherwise
+--  about 10 ms against the millisecond clock.
 package CuBit.Busy_Poll is
 
    --  Linux's default busy-poll window.

@@ -1,0 +1,30 @@
+project GPU_Queue is
+   -- GPU-001 step 2: the session queue, many jobs in flight per context and
+   -- the queue service (pure SPARK units), the client-side queue logic, and
+   -- their hosted tests. QUEUE_SRC points at a mutated copy of the driver
+   -- sources (test-gpu-queue-mutations.sh).
+   Driver_Src := external ("QUEUE_SRC", "../../userspace/services/intel-gpu");
+   for Source_Dirs use (".", Driver_Src, "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("cubit.ads", "cubit-protocols.ads", "cubit-channel_contracts.ads", "cubit-channel_contracts.adb",
+      "cubit-channel_rings.ads", "cubit-channel_rings.adb",
+      "cubit-slot_rings.ads", "cubit-slot_rings.adb",
+      "cubit-submission_queues.ads", "cubit-submission_queues.adb",
+      "cubit-gpu_queues.ads", "cubit-gpu_queue_clients.ads", "cubit-gpu_queue_clients.adb",
+      "intel_gpu_ring_reservation.ads", "intel_gpu_ring_reservation.adb",
+      "intel_gpu_segment_window.ads", "intel_gpu_segment_window.adb",
+      "intel_gpu_timeline.ads", "intel_gpu_timeline.adb",
+      "intel_gpu_context_ledger.ads", "intel_gpu_context_ledger.adb",
+      "intel_gpu_queue_admission.ads", "intel_gpu_queue_admission.adb",
+      "intel_gpu_queue_wakes.ads", "intel_gpu_queue_wakes.adb",
+      "intel_gpu_session_queue.ads", "intel_gpu_session_queue.adb",
+      "intel_gpu_guc_context_lifecycle.ads", "intel_gpu_guc_context_lifecycle.adb",
+      "intel_gpu_guc_submission_policy.ads",
+      "intel_gpu_queue_service.ads", "intel_gpu_queue_service.adb",
+      "gpu_queue_model.ads", "gpu_queue_model.adb", "gpu_queue_tests.adb");
+   for Object_Dir use external ("QUEUE_OBJ", "build-gpu-queue");
+   for Main use ("gpu_queue_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2", "-I-");
+   end Compiler;
+end GPU_Queue;

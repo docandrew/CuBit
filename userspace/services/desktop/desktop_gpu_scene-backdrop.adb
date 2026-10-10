@@ -44,7 +44,8 @@ package body Desktop_GPU_Scene.Backdrop with SPARK_Mode is
    end Capture_Preview;
    procedure Capture
      (S : in out State; Style : CuBit.Appearance.Preferences;
-      Source : Vulkan_Submission.Source_Ticket; Accepted : out Boolean)
+      Source : Vulkan_Submission.Source_Ticket; Damage : V.A.G.Physical_Rectangle;
+      Accepted : out Boolean)
    is
       use CuBit.Appearance;
       Screen : constant V.A.G.Output := V.Output (S.Scene);
@@ -58,6 +59,8 @@ package body Desktop_GPU_Scene.Backdrop with SPARK_Mode is
          Pin_Image (S, Source, Accepted);
          if not Accepted then return; end if;
       end if;
+      Set_Clip (S, Damage, Accepted);
+      if not Accepted then return; end if;
       -- Paint the entire physical output under Fit/Center letterboxing. This
       -- deliberately ignores logical DPI and desktop origin, like Paint.
       V.Append_Physical_Fill (S.Scene, (0, 0, Screen.Width, Screen.Height), Color, Accepted);

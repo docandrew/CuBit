@@ -6,7 +6,7 @@ package body AML_Objects.Byte_References with SPARK_Mode is
    is
    begin
       Ref := No_Reference;
-      if Source = No_Object or else Source > Count (Store) then
+      if not Is_Live (Store, Source) then
          Status := Invalid_Object; return;
       end if;
       if Kind (Store, Source) not in Byte_Kind then
@@ -19,7 +19,7 @@ package body AML_Objects.Byte_References with SPARK_Mode is
       if Natural (Index) >= Length (Store, Source) then
          Status := Out_Of_Bounds; return;
       end if;
-      Ref := (Present => True, Source => Source, Index => Natural (Index));
+      Ref := AML_Index_Handles.Bind_Byte (Address_Of (Store, Source), Natural (Index));
       Status := Ready;
    end Make;
    procedure Read

@@ -13,6 +13,7 @@ project Libc_Ada is
                          "cubit-launch_arguments.ads", "cubit-launch_arguments.adb",
                          "cubit-libc_rings.ads", "cubit-libc_rings.adb",
                          "cubit-libc_directory_entries.ads", "cubit-libc_directory_entries.adb",
+                         "cubit-directory_pages.ads", "cubit-directory_pages.adb",
                          "cubit-libc_descriptor_rules.ads", "cubit-libc_descriptor_rules.adb",
                          "cubit-libc_file_cache.ads", "cubit-libc_file_cache.adb",
                          "cubit-libc_dirty_map.ads", "cubit-libc_dirty_map.adb",

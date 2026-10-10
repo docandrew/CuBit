@@ -9,11 +9,11 @@ package Compositor_Metric_Batch_Policy with SPARK_Mode, Pure is
    subtype Count is CuBit.Metric_Records.Record_Count;
    Capacity : constant := CuBit.Metric_Records.Maximum_Records;
    Flush_Interval_Us : constant Tick := 100_000;
-   Declaration_Count : constant := 12;
+   Declaration_Count : constant := 15;
    type Append_Kind is (Describe_Output_0, Describe_Output_1,
                        Describe_Input, Describe_Request, Describe_Draw, Describe_Submit,
-                       Describe_Scene_Pixels, Describe_Repair_Pixels, Describe_GPU_Readback_Bytes, Describe_CPU_Copy_Bytes, Describe_Completion, Describe_Diagnostic, Measurement, Full);
-   subtype Description is Append_Kind range Describe_Output_0 .. Describe_Diagnostic;
+                       Describe_Scene_Pixels, Describe_Repair_Pixels, Describe_GPU_Readback_Bytes, Describe_CPU_Copy_Bytes, Describe_Completion, Describe_Diagnostic, Describe_Loop_Turn, Describe_Input_To_Present, Describe_Input_Source_Age, Measurement, Full);
+   subtype Description is Append_Kind range Describe_Output_0 .. Describe_Input_Source_Age;
    type State is private;
    function Used (S : State) return Count;
    function First (S : State) return Tick;
@@ -70,6 +70,9 @@ private
          when 9 => Describe_CPU_Copy_Bytes,
          when 10 => Describe_Completion,
          when 11 => Describe_Diagnostic,
+         when 12 => Describe_Loop_Turn,
+         when 13 => Describe_Input_To_Present,
+         when 14 => Describe_Input_Source_Age,
          when Declaration_Count .. Capacity - 1 => Measurement,
          when Capacity => Full);
    function Due (S : State; Now : Tick) return Boolean is

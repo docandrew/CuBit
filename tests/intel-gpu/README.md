@@ -1,5 +1,107 @@
 # Intel probe foundation (Linux-hosted)
 
+## Session queues and many jobs in flight, GPU-001 step 2 (2026-10-10)
+
+`docs/gpu-async-submission.md` ("As built (step 2)") describes the design.
+From `kernel`, in the Nix shell:
+
+```sh
+alr exec -- gprbuild -p -P ../tests/intel-gpu/gpu_queue.gpr
+../tests/intel-gpu/build-gpu-queue/gpu_queue_tests
+bash ../tests/intel-gpu/test-gpu-queue-mutations.sh
+alr exec -- gprbuild -p -P ../tests/intel-gpu/continuous_submit.gpr
+../tests/intel-gpu/build-continuous-submit/continuous_submit_tests
+alr exec -- gprbuild -p -P ../tests/intel-gpu/live_ring_publish.gpr
+../tests/intel-gpu/build-live-ring-publish/ring_exhaustion_submit_tests
+python3 ../tests/intel-gpu/test-submit-handler-no-wait.py
+alr exec -- gnatprove -P ../tests/intel-gpu/gpu_queue.gpr --subdirs=proof-step2 -u cubit-gpu_queues.ads intel_gpu_segment_window.adb intel_gpu_context_ledger.adb intel_gpu_queue_admission.adb intel_gpu_queue_wakes.adb intel_gpu_session_queue.adb intel_gpu_ring_reservation.adb --level=2 --report=fail --checks-as-errors=on -j8
+```
+
+**Results, 2026-10-10.**
+- Proof: 533 checks, 0 unproved (step 1's list, rerun with the 64-bit
+  builders and the stronger `Reserve`: 259 checks, 0 unproved).
+- `gpu_queue_tests`: 3291 checks. The production queue service, session
+  queue, ledgers, ring windows, admission and wakes against a model GPU and
+  GuC that owns every ring byte (0 overwrites of unretired work), with the
+  production client (`CuBit.GPU_Queue_Clients`) on the shared regions.
+- `test-gpu-queue-mutations.sh`: 20 mutations, all caught.
+- `continuous_submit_tests`: 40,000 wrapper calls through the real context
+  table and GuC session: 1 enable, 39,999 `SCHED_CONTEXT`, 1 G2H event.
+- `ring_exhaustion_submit_tests`: the native ring writer on real memory,
+  4,096 calls and 4,096 queue jobs (32 in flight), 195 wraps, every
+  breadcrumb executed in order by a model GPU.
+- The no-wait harness checks 26 fragments and catches 36 injected waits.
+
+`gpu_queue_runtime.gpr` lists the few user-runtime units these projects
+need; projects that import it compile with `-I-`, so the runtime's own
+System units stay out of a host build.
+
+These are hosted models and source checks, not Intel hardware evidence.
+
+## Driver-loop completion, GPU-001 step 1 (2026-10-09)
+
+`docs/gpu-async-submission.md` ("As built (step 1)") describes the design.
+In brief:
+- The final breadcrumb writes the PPHWSP timeline slot (`+0x200`), and the
+  barriers write scratch (`+0xD0`).
+- The submit handler publishes, kicks, saves the reply capability and
+  returns. The service loop observes the timeline once per turn, sleeping
+  1 ms between turns, and sends the deferred reply.
+- A parked context is enabled by a non-blocking `MODE_SET`, which also
+  submits the job.
+- G2H is drained every turn into a proved queue.
+
+From `kernel`:
+
+```sh
+alr exec -- gprbuild -p -P ../tests/intel-gpu/gpu_async.gpr
+../tests/intel-gpu/build-gpu-async/timeline_tests
+../tests/intel-gpu/build-gpu-async/guc_event_queue_tests
+alr exec -- gprbuild -p -P ../tests/intel-gpu/continuous_submit.gpr
+../tests/intel-gpu/build-continuous-submit/continuous_submit_tests
+../tests/intel-gpu/build-continuous-submit/guc_context_event_tests
+alr exec -- gprbuild -p -P ../tests/intel-gpu/completion_sequences.gpr
+../tests/intel-gpu/build-completion-sequences/initial_completion_tests
+../tests/intel-gpu/build-completion-sequences/context_init_tests
+alr exec -- gprbuild -p -P ../tests/intel-gpu/live_ring_publish.gpr
+../tests/intel-gpu/build-live-ring-publish/live_ring_publish_tests
+../tests/intel-gpu/build-live-ring-publish/ring_exhaustion_submit_tests
+../tests/intel-gpu/build-live-ring-publish/native_initial_ring_tests
+python3 ../tests/intel-gpu/test-submit-handler-no-wait.py
+alr exec -- gnatprove -P ../tests/intel-gpu/gpu_async.gpr --subdirs=proof-step1 -u intel_gpu_timeline.adb intel_gpu_guc_event_queue.adb intel_gpu_adln_pphwsp.ads intel_gpu_adln_barrier.adb intel_gpu_adln_context_init.adb intel_gpu_guc_context_event.adb intel_gpu_guc_actions.ads intel_gpu_guc_submission_policy.ads intel_gpu_guc_context_lifecycle.adb intel_gpu_guc_fast_fences.adb intel_gpu_guc_context_request.adb live_ring_proof.ads --level=2 --report=fail --checks-as-errors=on -j8
+```
+
+**Results, 2026-10-09.**
+- Proof: 229 checks, 0 unproved.
+- `continuous_submit_tests`:
+  - 40,000 deferred replies on one context;
+  - one asynchronous enable, no waiter pauses on the submit path;
+  - the late-`MODE_DONE` gate held for one turn;
+  - at most 3 turns per job;
+  - a hung GPU is answered at its 1 s deadline after 1000 turns of 1 ms.
+- The fragment harness checks 13 fragments and catches 18 injected waits.
+
+These are hosted models and source checks, not Intel hardware evidence.
+
+## Continuous submission and GuC residency (2026-10-08)
+
+`continuous_submit_tests` drives 40,000 jobs on one context through the
+production submission coordinator, context table, session, lifecycle and
+FAST-ID stream against a hosted GuC/GPU model, parks and re-enables, retires
+and deregisters, and checks a bounded typed failure for a GPU that never
+completes. Before residency it completed every job but spent two lifecycle
+H2G and two G2H waits per job; it now requires one enable in total. The
+project also builds the GuC context/transport regressions. Since GPU-001
+step 1 every job is a deferred reply (section above). From `kernel`:
+
+```sh
+alr exec -- gprbuild -p -P ../tests/intel-gpu/continuous_submit.gpr
+../tests/intel-gpu/build-continuous-submit/continuous_submit_tests
+alr exec -- gnatprove -P ../tests/intel-gpu/continuous_submit.gpr --subdirs=proof-residency -u intel_gpu_guc_fast_fences.adb intel_gpu_guc_context_lifecycle.adb intel_gpu_guc_submission_policy.ads intel_gpu_guc_actions.ads intel_gpu_guc_context_request.adb intel_gpu_guc_context_event.adb --level=2 --report=fail --checks-as-errors=on -j4
+```
+
+Hosted model only: not CT memory, firmware or hardware evidence.
+
 ## Bounded presentation retirement
 
 `Buffer_Requests.Sharing.Poll` visits at most 16 mapping entries per call,

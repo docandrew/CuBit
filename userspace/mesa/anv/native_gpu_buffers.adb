@@ -1,4 +1,5 @@
 with CuBit.Messages; use CuBit.Messages;
+with Native_GPU_Calls;
 with CuBit.Grant_References;
 package body Native_GPU_Buffers is
    function Query_Accounting
@@ -15,7 +16,7 @@ package body Native_GPU_Buffers is
       then return 4; end if;
       Msg.tag := Expected;
       Msg.words := [1, 0, 0, 0];
-      Returned := capCall (CapabilitySlot (Slot), Msg, CuBit.Messages.Wait_Forever);
+      Returned := Native_GPU_Calls.Call (CapabilitySlot (Slot), Msg);
       if Returned /= Expected or else Msg.tag /= Expected or else
         Msg.words (0) > 3 or else Msg.words (1) /= 1
       then return 4; end if;
@@ -38,7 +39,7 @@ package body Native_GPU_Buffers is
       if Slot > Unsigned_64 (CapabilitySlot'Last) then return 0; end if;
       Msg.tag := Expected;
       Msg.words := [1, 3, 0, 0];
-      Returned := capCall (CapabilitySlot (Slot), Msg, CuBit.Messages.Wait_Forever);
+      Returned := Native_GPU_Calls.Call (CapabilitySlot (Slot), Msg);
       if Returned /= Expected or else Msg.tag /= Expected or else
         Msg.words (0) /= 0 or else Msg.words (1) /= 1 or else
         Msg.words (2) not in 1 .. 2 or else Msg.words (3) /= 0
@@ -53,7 +54,7 @@ package body Native_GPU_Buffers is
       if Slot > Unsigned_64 (CapabilitySlot'Last) then return 4; end if;
       Msg.tag := Expected;
       Msg.words := [1, 0, 0, 0];
-      Returned := capCall (CapabilitySlot (Slot), Msg, CuBit.Messages.Wait_Forever);
+      Returned := Native_GPU_Calls.Call (CapabilitySlot (Slot), Msg);
       if Returned /= Expected or else Msg.tag /= Expected or else
         Msg.words (0) > 3 or else Msg.words (1) /= 1 or else
         Msg.words (2) /= 0 or else Msg.words (3) /= 0
@@ -68,7 +69,7 @@ package body Native_GPU_Buffers is
       if Slot > Unsigned_64 (CapabilitySlot'Last) then return 5; end if;
       Msg.tag := Expected;
       Msg.words := [1, 0, 0, 0];
-      Returned := capCall (CapabilitySlot (Slot), Msg, CuBit.Messages.Wait_Forever);
+      Returned := Native_GPU_Calls.Call (CapabilitySlot (Slot), Msg);
       if Returned /= Expected or else Msg.tag /= Expected or else
         Msg.words (0) > 4 or else Msg.words (1) /= 1 or else
         Msg.words (2) /= 0 or else Msg.words (3) /= 0
@@ -86,7 +87,7 @@ package body Native_GPU_Buffers is
       then return 4; end if;
       Msg.tag := Expected;
       Msg.words := [1, 0, 0, 0];
-      Returned := capCall (CapabilitySlot (Slot), Msg, CuBit.Messages.Wait_Forever);
+      Returned := Native_GPU_Calls.Call (CapabilitySlot (Slot), Msg);
       if Returned /= Expected or else Msg.tag /= Expected or else
         Msg.words (0) > 3 or else Msg.words (1) /= 1 or else Msg.words (3) /= 0
       then return 4; end if;
@@ -118,7 +119,7 @@ package body Native_GPU_Buffers is
       Msg.words :=
         [1 + Shift_Left (Unsigned_64 (Remove), 16) + Shift_Left (Unsigned_64 (Previous), 32),
          Unsigned_64 (Handle) + Shift_Left (Offset / 4096, 32), GPU, Bytes];
-      Returned := capCall (CapabilitySlot (Slot), Msg, CuBit.Messages.Wait_Forever);
+      Returned := Native_GPU_Calls.Call (CapabilitySlot (Slot), Msg);
       if Returned /= Expected or else Msg.tag /= Expected or else
         Msg.words (0) > 3 or else Msg.words (1) /= 1 or else Msg.words (3) /= 0
       then return 4; end if;
@@ -130,35 +131,6 @@ package body Native_GPU_Buffers is
       Generation.all := Unsigned_32 (Msg.words (2));
       return 0;
    end Update_Binding;
-   function Submit
-     (Slot : Unsigned_64; Handle : Unsigned_32; GPU, Offset, Bytes : Unsigned_64;
-      Previous : Unsigned_32; Completion : access Unsigned_32) return Unsigned_32 is
-      Expected : constant MessageTag := (16#0A27#, 4, 0, 0);
-      Msg : Message := NULL_MESSAGE;
-      Returned : MessageTag;
-   begin
-      if Completion /= null then Completion.all := 0; end if;
-      if Completion = null or else Slot > Unsigned_64 (CapabilitySlot'Last) or else
-        Handle = 0 or else Previous = 0 or else Previous = Unsigned_32'Last or else
-        GPU = 0 or else GPU >= 2 ** 48 or else GPU mod 8 /= 0 or else
-        Bytes = 0 or else Bytes mod 4 /= 0 or else Bytes > 16 * 1024 * 1024 or else
-        Offset mod 8 /= 0 or else Offset > 16 * 1024 * 1024 - Bytes or else
-        Bytes > 2 ** 48 - GPU
-      then return 4; end if;
-      Msg.tag := Expected;
-      Msg.words := [1 + Shift_Left (Offset, 32), Unsigned_64 (Handle), GPU, Bytes];
-      Returned := capCall (CapabilitySlot (Slot), Msg, CuBit.Messages.Wait_Forever);
-      if Returned /= Expected or else Msg.tag /= Expected or else
-        Msg.words (0) > 3 or else Msg.words (1) /= 1 or else Msg.words (3) /= 0
-      then return 4; end if;
-      if Msg.words (0) /= 0 then
-         if Msg.words (2) /= 0 then return 4; end if;
-         return Unsigned_32 (Msg.words (0));
-      end if;
-      if Msg.words (2) /= Unsigned_64 (Previous) + 1 then return 4; end if;
-      Completion.all := Unsigned_32 (Msg.words (2));
-      return 0;
-   end Submit;
    function Context_Transition
      (Slot : Unsigned_64; Label : Unsigned_32) return Unsigned_32 is
       Expected : constant MessageTag := (Label, 4, 0, 0);
@@ -168,7 +140,7 @@ package body Native_GPU_Buffers is
       if Slot > Unsigned_64 (CapabilitySlot'Last) then return 4; end if;
       Msg.tag := Expected;
       Msg.words := [1, 0, 0, 0];
-      Returned := capCall (CapabilitySlot (Slot), Msg, CuBit.Messages.Wait_Forever);
+      Returned := Native_GPU_Calls.Call (CapabilitySlot (Slot), Msg);
       if Returned /= Expected or Msg.tag /= Expected or
         Msg.words (0) > 3 or Msg.words (1) /= 1 or
         Msg.words (2) /= 0 or Msg.words (3) /= 0
@@ -196,7 +168,7 @@ package body Native_GPU_Buffers is
       Msg.tag := Expected;
       Msg.words := [1 + (if Remove then 16#10000# else 0) +
         Shift_Left (Offset / 4096, 32), Unsigned_64 (Handle), GPU, Bytes];
-      Returned := capCall (CapabilitySlot (Slot), Msg, CuBit.Messages.Wait_Forever);
+      Returned := Native_GPU_Calls.Call (CapabilitySlot (Slot), Msg);
       if Returned /= Expected or Msg.tag /= Expected or
         Msg.words (0) > 3 or Msg.words (1) /= 1 then return 4; end if;
       if Msg.words (0) = 0 then
@@ -231,7 +203,7 @@ package body Native_GPU_Buffers is
       Msg.tag := Map_Tag;
       Msg.words := [1 + Shift_Left (Unsigned_64 (Operation), 32),
                     Unsigned_64 (Handle), Offset, Bytes];
-      Returned := capCall (CapabilitySlot (Slot), Msg, CuBit.Messages.Wait_Forever);
+      Returned := Native_GPU_Calls.Call (CapabilitySlot (Slot), Msg);
       if Returned /= Map_Tag or Msg.tag /= Map_Tag or Msg.words (0) > 3 or
         Msg.words (1) /= 1 then return 5; end if;
       if Msg.words (0) /= 0 then
@@ -272,7 +244,7 @@ package body Native_GPU_Buffers is
       if Slot > Unsigned_64 (CapabilitySlot'Last) or Mapping = 0 then return 5; end if;
       Msg.tag := Map_Tag;
       Msg.words := [1 + 2 * 2 ** 32, Unsigned_64 (Mapping), 0, 0];
-      Returned := capCall (CapabilitySlot (Slot), Msg, CuBit.Messages.Wait_Forever);
+      Returned := Native_GPU_Calls.Call (CapabilitySlot (Slot), Msg);
       if Returned /= Map_Tag or Msg.tag /= Map_Tag or Msg.words (0) > 4 or
         Msg.words (1) /= 1 or Msg.words (2) /= 0 or Msg.words (3) /= 0
       then return 5; end if;
@@ -288,7 +260,7 @@ package body Native_GPU_Buffers is
       if Slot > Unsigned_64 (CapabilitySlot'Last) then return 4; end if;
       Msg.tag := Expected;
       Msg.words := [1, Operation, Value, 0];
-      Returned := capCall (CapabilitySlot (Slot), Msg, CuBit.Messages.Wait_Forever);
+      Returned := Native_GPU_Calls.Call (CapabilitySlot (Slot), Msg);
       if Returned /= Expected or Msg.tag /= Expected or
         Msg.words (0) > 3 or Msg.words (1) /= 1 then return 4; end if;
       if Msg.words (0) /= 0 then

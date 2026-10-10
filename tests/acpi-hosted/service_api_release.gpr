@@ -1,0 +1,9 @@
+project Service_API_release is
+ for Source_Dirs use ("../aml-core", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "service-api-release/obj";
+ for Exec_Dir use "service-api-release";
+ for Main use ("service_tests.adb", "literal_value_tests.adb", "service_field_execution_tests.adb", "field_boundary_tests.adb", "field_declaration_tests.adb", "region_service_tests.adb", "bootstrap_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+ end Compiler;
+end Service_API_release;

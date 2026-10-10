@@ -113,6 +113,18 @@ package body CuBit.Channels is
       end loop;
    end Release_Retired;
 
+   function Retiring_Regions return Natural is
+      Waiting : Natural := 0;
+   begin
+      Release_Retired;
+      for R of Retiring loop
+         if R.Used then
+            Waiting := Waiting + 1;
+         end if;
+      end loop;
+      return Waiting;
+   end Retiring_Regions;
+
    --  Keep Base until Grant retires (or release it now if it has).
    procedure Retire (Base, Bytes : Unsigned_64; Grant : MG.Grant_Reference);
    procedure Retire (Base, Bytes : Unsigned_64; Grant : MG.Grant_Reference) is

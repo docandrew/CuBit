@@ -41,14 +41,6 @@ uint32_t cubit_intel_prepare_context(uint64_t slot);
  * no application batch is executed and this does not authorize submission.
  * Same codes as create. Retire on uncertainty; never automatically retry. */
 uint32_t cubit_intel_register_context(uint64_t slot);
-/* Synchronous batch submission, not admission or a Vulkan queue implementation.
- * previous=1 after setup; caller serializes and retains ALL reachable backing.
- * Success confirms exact next marker plus scheduling-disable acknowledgement,
- * not Desktop reader release. *completion clears on failure. Same codes as
- * create; retire on uncertain reply, NEVER replay. Driver admission is closed. */
-uint32_t cubit_intel_submit_batch(uint64_t slot, uint32_t handle,
-   uint64_t gpu_address, uint64_t bo_byte_offset, uint64_t bytes,
-   uint32_t previous, uint32_t *completion);
 /* Bind a whole-page BO slice into the session's unsealed GPU VM. No live
  * remap or execution. Same codes as create; status4 may mean binding occurred,
  * so retire the session instead of blindly retrying or recycling backing. */

@@ -1,3 +1,4 @@
+with Ada.Unchecked_Deallocation;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Requests; use ACPI_Requests;
@@ -5,7 +6,22 @@ with ACPI_Service;
 with Firmware_Tables;
 procedure Request_Tests is
    Checks : Natural := 0;
-   Server, Before : State := ACPI_Requests.Fresh;
+   -- Hosted fixture ownership only: production State remains limited.
+   type State_Access is access State;
+   procedure Free is new Ada.Unchecked_Deallocation (State, State_Access);
+   Server : State_Access := null;
+   Before : State_Model
+     (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes,
+      ACPI_Service.Max_Table_Bytes) with Ghost;
+   procedure Reset (Initial_Revision : Revision_Number := 0) is
+   begin
+      Free (Server);
+      Server := new State
+        (Table_Capacity => ACPI_Service.Max_Tables,
+         Byte_Capacity => ACPI_Service.Max_Total_Bytes,
+         Table_Byte_Limit => ACPI_Service.Max_Table_Bytes,
+         Initial_Revision => Initial_Revision);
+   end Reset;
    Reply : Response;
    function Table (Length : Positive := 42; SSDT : Boolean := False) return Firmware_Tables.Bytes is
       Data : Firmware_Tables.Bytes (1 .. Length) := [others => 0];
@@ -22,40 +38,35 @@ procedure Request_Tests is
       Data (10) := 0 - Sum;
       return Data;
    end Table;
-   procedure Check (OK : Boolean) is
-   begin
-      Checks := Checks + 1;
-      if not OK then raise Program_Error with Checks'Image; end if;
-   end Check;
    procedure Send (Label : Unsigned_32; A, B, C : Unsigned_64 := 0;
                    Expected : Outcome := OK; Origin : Authority := Snapshot_Provider) is
-      Old_Revision : constant Unsigned_64 := Revision (Server);
+      Old_Revision : constant Unsigned_64 := Revision (Server.all);
    begin
-      Before := Server;
-      Handle (Server, Origin, (Label => Label, Data => [Old_Revision, A, B, C], others => <>), Reply);
-      Check (Reply.Status = Expected and Reply.Data (0) = Revision (Server));
+      Before := Model (Server.all);
+      Handle (Server.all, Origin, (Label => Label, Data => [Old_Revision, A, B, C], others => <>), Reply);
+      Checks := Checks + 1; pragma Assert (Reply.Status = Expected and Reply.Data (0) = Revision (Server.all), Checks'Image);
       if Expected in Denied | Malformed | Stale | Wrong_Order | Resource_Limit then
-         Check (Server = Before);
+         Checks := Checks + 1; pragma Assert (Model (Server.all) = Before, Checks'Image);
       else
-         Check (Revision (Server) = Old_Revision + 1);
+         Checks := Checks + 1; pragma Assert (Revision (Server.all) = Old_Revision + 1, Checks'Image);
       end if;
    end Send;
    procedure Metrics is
    begin
-      Before := Server;
-      Handle (Server, No_Authority, (Label => Read_Metrics, others => <>), Reply);
-      Check (Reply.Status = Denied and Reply.Data = [0,0,0,0] and Server = Before);
+      Before := Model (Server.all);
+      Handle (Server.all, No_Authority, (Label => Read_Metrics, others => <>), Reply);
+      Checks := Checks + 1; pragma Assert (Reply.Status = Denied and Reply.Data = [0,0,0,0] and Model (Server.all) = Before, Checks'Image);
       for Page in Unsigned_64 range 0 .. 6 loop
-         Handle (Server, Observer, (Label => Read_Metrics, Data => [Page, 0, 0, 0], others => <>), Reply);
-         Check (Reply.Status = OK and Reply.Data (0) = Revision (Server));
-         Check (Server = Before);
+         Handle (Server.all, Observer, (Label => Read_Metrics, Data => [Page, 0, 0, 0], others => <>), Reply);
+         Checks := Checks + 1; pragma Assert (Reply.Status = OK and Reply.Data (0) = Revision (Server.all), Checks'Image);
+         Checks := Checks + 1; pragma Assert (Model (Server.all) = Before, Checks'Image);
       end loop;
    end Metrics;
    procedure Page (Index, A, B, C : Unsigned_64) is
    begin
-      Before := Server;
-      Handle (Server, Observer, (Label => Read_Metrics, Data => [Index,0,0,0], others => <>), Reply);
-      Check (Reply.Status = OK and Reply.Data = [Revision (Server),A,B,C] and Server = Before);
+      Before := Model (Server.all);
+      Handle (Server.all, Observer, (Label => Read_Metrics, Data => [Index,0,0,0], others => <>), Reply);
+      Checks := Checks + 1; pragma Assert (Reply.Status = OK and Reply.Data = [Revision (Server.all),A,B,C] and Model (Server.all) = Before, Checks'Image);
    end Page;
    procedure Upload (Data : Firmware_Tables.Bytes; ID : Positive := 1; SSDT : Boolean := False;
                      Expected : Outcome := OK; Other_Table : Boolean := False) is
@@ -69,36 +80,36 @@ procedure Request_Tests is
       Send (Write_Chunk, Unsigned_64'Last, Expected => Wrong_Order);
       while Offset < Data'Length loop
          Amount := Natural'Min (16, Data'Length - Offset);
-         Request.Data := [Revision (Server), Unsigned_64 (Offset), 0, 0];
+         Request.Data := [Revision (Server.all), Unsigned_64 (Offset), 0, 0];
          for I in 0 .. Amount - 1 loop
             Request.Data (2 + I / 8) := Request.Data (2 + I / 8) or
               Shift_Left (Unsigned_64 (Data (Data'First + Offset + I)), (I mod 8) * 8);
          end loop;
-         Before := Server;
-         Handle (Server, Observer, Request, Reply);
-         Check (Reply.Status = Denied and Server = Before);
+         Before := Model (Server.all);
+         Handle (Server.all, Observer, Request, Reply);
+         Checks := Checks + 1; pragma Assert (Reply.Status = Denied and Model (Server.all) = Before, Checks'Image);
          if Amount < 16 then
             declare
                Bad : Packet := Request;
             begin
                Bad.Data (3) := Bad.Data (3) or 16#FF00_0000_0000_0000#;
-               Handle (Server, Snapshot_Provider, Bad, Reply);
-               Check (Reply.Status = Malformed and Server = Before);
+               Handle (Server.all, Snapshot_Provider, Bad, Reply);
+               Checks := Checks + 1; pragma Assert (Reply.Status = Malformed and Model (Server.all) = Before, Checks'Image);
             end;
          end if;
-         Handle (Server, Snapshot_Provider, Request, Reply);
-         Check (Reply.Status = OK and Received (Server) = Offset + Amount);
-         Before := Server;
-         Handle (Server, Snapshot_Provider, Request, Reply);
-         Check (Reply.Status = Stale and Server = Before);
+         Handle (Server.all, Snapshot_Provider, Request, Reply);
+         Checks := Checks + 1; pragma Assert (Reply.Status = OK and Received (Server.all) = Offset + Amount, Checks'Image);
+         Before := Model (Server.all);
+         Handle (Server.all, Snapshot_Provider, Request, Reply);
+         Checks := Checks + 1; pragma Assert (Reply.Status = Stale and Model (Server.all) = Before, Checks'Image);
          Offset := Offset + Amount;
       end loop;
       Send (Write_Chunk, Unsigned_64 (Offset), Expected => Wrong_Order);
       Send (Commit_Table, Expected => Expected);
-      Check (not Table_Open (Server) and Received (Server) = 0);
+      Checks := Checks + 1; pragma Assert (not Table_Open (Server.all) and Received (Server.all) = 0, Checks'Image);
    end Upload;
 begin
-   Server := Fresh;
+   Reset;
    Metrics;
    Page (0,0,0,0);
    Page (1,0,0,0);
@@ -108,39 +119,39 @@ begin
    Page (5,0,65_536,65_536);
    Page (6,0,512,512);
    for Label in Unsigned_32 range 0 .. 7 loop
-      Before := Server;
-      Handle (Server, No_Authority, (Label => Label, others => <>), Reply);
-      Check (Reply.Status = Denied and Reply.Data = [0,0,0,0] and Server = Before);
+      Before := Model (Server.all);
+      Handle (Server.all, No_Authority, (Label => Label, others => <>), Reply);
+      Checks := Checks + 1; pragma Assert (Reply.Status = Denied and Reply.Data = [0,0,0,0] and Model (Server.all) = Before, Checks'Image);
    end loop;
-   Before := Server;
-   Handle (Server, Observer, (Label => Read_Metrics, Data => [7,0,0,0], others => <>), Reply);
-   Check (Reply.Status = Malformed and Server = Before);
-   Handle (Server, Observer, (Label => Read_Metrics, Data => [Unsigned_64'Last,0,0,0], others => <>), Reply);
-   Check (Reply.Status = Malformed and Server = Before);
-   Handle (Server, Observer, (Label => Read_Metrics, Data => [0,0,0,1], others => <>), Reply);
-   Check (Reply.Status = Malformed and Server = Before);
+   Before := Model (Server.all);
+   Handle (Server.all, Observer, (Label => Read_Metrics, Data => [9,0,0,0], others => <>), Reply);
+   Checks := Checks + 1; pragma Assert (Reply.Status = Malformed and Model (Server.all) = Before, Checks'Image);
+   Handle (Server.all, Observer, (Label => Read_Metrics, Data => [Unsigned_64'Last,0,0,0], others => <>), Reply);
+   Checks := Checks + 1; pragma Assert (Reply.Status = Malformed and Model (Server.all) = Before, Checks'Image);
+   Handle (Server.all, Observer, (Label => Read_Metrics, Data => [0,0,0,1], others => <>), Reply);
+   Checks := Checks + 1; pragma Assert (Reply.Status = Malformed and Model (Server.all) = Before, Checks'Image);
    for Label in Unsigned_32 range Start_Snapshot .. Finish_Snapshot loop
       Send (Label, Expected => Denied, Origin => Observer);
    end loop;
    for Count in Unsigned_8 loop
       if Count /= 4 then
-         Before := Server;
-         Handle (Server, Snapshot_Provider,
+         Before := Model (Server.all);
+         Handle (Server.all, Snapshot_Provider,
                  (Label => Start_Snapshot, Length => Count, Data => [0,1,0,0], others => <>), Reply);
-         Check (Reply.Status = Malformed and Server = Before);
+         Checks := Checks + 1; pragma Assert (Reply.Status = Malformed and Model (Server.all) = Before, Checks'Image);
       end if;
    end loop;
    for Flag in Unsigned_8 range 1 .. Unsigned_8'Last loop
-      Before := Server;
-      Handle (Server, Snapshot_Provider,
+      Before := Model (Server.all);
+      Handle (Server.all, Snapshot_Provider,
               (Label => Start_Snapshot, Flags => Flag, Data => [0,1,0,0], others => <>), Reply);
-      Check (Reply.Status = Malformed and Server = Before);
+      Checks := Checks + 1; pragma Assert (Reply.Status = Malformed and Model (Server.all) = Before, Checks'Image);
    end loop;
    for Reserved in Unsigned_16 range 1 .. Unsigned_16'Last loop
-      Before := Server;
-      Handle (Server, Snapshot_Provider,
+      Before := Model (Server.all);
+      Handle (Server.all, Snapshot_Provider,
               (Label => Start_Snapshot, Reserved => Reserved, Data => [0,1,0,0], others => <>), Reply);
-      Check (Reply.Status = Malformed and Server = Before);
+      Checks := Checks + 1; pragma Assert (Reply.Status = Malformed and Model (Server.all) = Before, Checks'Image);
    end loop;
    Send (Start_Snapshot, 0, Expected => Malformed);
    Send (Start_Snapshot, 33, Expected => Malformed);
@@ -148,30 +159,30 @@ begin
    Send (Start_Snapshot, 1, 1, Expected => Malformed);
    Send (Begin_Table, 1, 0, 42, Expected => Wrong_Order);
    for Count in 1 .. ACPI_Service.Max_Tables loop
-      Server := Fresh;
+      Reset;
       Send (Start_Snapshot, Unsigned_64 (Count));
       Send (Start_Snapshot, Unsigned_64 (Count), Expected => Wrong_Order);
       Metrics;
       Upload (Table);
       for ID in 2 .. Count loop Upload (Table (36, True), ID, True); end loop;
-      Check (Observe (Server).Tables = Count and Observe (Server).Objects = 1);
+      Checks := Checks + 1; pragma Assert (Observe (Server.all).Tables = Count and Observe (Server.all).Objects = 1, Checks'Image);
       Page (0,1,Unsigned_64 (Count),Unsigned_64 (Count));
       Page (1,Unsigned_64 (42 + 36 * (Count - 1)),1,1);
       Page (2,0,0,0);
       Send (Finish_Snapshot);
-      Check (Current (Server) = Complete);
+      Checks := Checks + 1; pragma Assert (Current (Server.all) = Complete, Checks'Image);
       Page (0,2,Unsigned_64 (Count),Unsigned_64 (Count));
       Metrics;
       Send (Finish_Snapshot, Expected => Wrong_Order);
       Send (Begin_Table, 1, 0, 42, Expected => Wrong_Order);
    end loop;
-   Server := Fresh;
+   Reset;
    Send (Start_Snapshot, 2);
    Upload (Table);
    Send (Finish_Snapshot, Expected => Incomplete);
-   Check (Current (Server) = Failed);
+   Checks := Checks + 1; pragma Assert (Current (Server.all) = Failed, Checks'Image);
    Send (Begin_Table, 2, 1, 36, Expected => Wrong_Order);
-   Server := Fresh;
+   Reset;
    Send (Start_Snapshot, 1);
    declare
       Bad : Firmware_Tables.Bytes := Table;
@@ -179,10 +190,10 @@ begin
       Bad (10) := Bad (10) + 1;
       Upload (Bad, Expected => Table_Rejected);
    end;
-   Check (Current (Server) = Failed and Observe (Server).Tables = 0);
+   Checks := Checks + 1; pragma Assert (Current (Server.all) = Failed and Observe (Server.all).Tables = 0, Checks'Image);
    Page (2,0,0,1);
    Metrics;
-   Server := Fresh;
+   Reset;
    Send (Start_Snapshot, 1);
    Send (Begin_Table, 0, 0, 42, Expected => Malformed);
    Send (Begin_Table, Unsigned_64'Last, 0, 42, Expected => Malformed);
@@ -194,7 +205,7 @@ begin
    Send (Begin_Table, 1, 0, Unsigned_64'Last, Expected => Malformed);
    -- Transport maximum, with valid checksum but unsupported AML body.
    Upload (Table (ACPI_Service.Max_Table_Bytes), Expected => Table_Rejected);
-   Check (Current (Server) = Failed and Observe (Server).Tables = 0);
+   Checks := Checks + 1; pragma Assert (Current (Server.all) = Failed and Observe (Server.all).Tables = 0, Checks'Image);
    -- Observe real method-code admission through the same upload protocol.
    declare
       Method_Table : Firmware_Tables.Bytes := Table (45);
@@ -204,18 +215,18 @@ begin
       Method_Table (10) := 0;
       for B of Method_Table loop Sum := Sum + B; end loop;
       Method_Table (10) := 0 - Sum;
-      Server := Fresh;
+      Reset;
       Send (Start_Snapshot, 1);
       Upload (Method_Table);
       Page (5,2,65_536,65_534);
       Page (6,1,512,511);
-      Check (Observe (Server).Method_Bytes = 2);
+      Checks := Checks + 1; pragma Assert (Observe (Server.all).Method_Bytes = 2, Checks'Image);
       Send (Finish_Snapshot);
       Page (5,2,65_536,65_534);
    end;
-   Server := Fresh (Max_Revision - 1);
+   Reset (Max_Revision - 1);
    Send (Start_Snapshot, 1);
-   Check (Revision (Server) = Max_Revision);
+   Checks := Checks + 1; pragma Assert (Revision (Server.all) = Max_Revision, Checks'Image);
    Send (Begin_Table, 1, 0, 42, Expected => Resource_Limit);
    Metrics;
 
@@ -227,14 +238,14 @@ begin
       procedure Query (Label : Unsigned_32; Index, Offset : Unsigned_64;
                        Expected : Outcome := OK; Origin : Authority := Observer) is
       begin
-         Before := Server;
-         Handle (Server, Origin,
-           (Label => Label, Data => [Revision (Server), Index, Offset, 0], others => <>), Reply);
-         Check (Reply.Status = Expected and Server = Before);
-         Check (Reply.Data (0) = (if Origin = No_Authority then 0 else Revision (Server)));
+         Before := Model (Server.all);
+         Handle (Server.all, Origin,
+           (Label => Label, Data => [Revision (Server.all), Index, Offset, 0], others => <>), Reply);
+         Checks := Checks + 1; pragma Assert (Reply.Status = Expected and Model (Server.all) = Before, Checks'Image);
+         Checks := Checks + 1; pragma Assert (Reply.Data (0) = (if Origin = No_Authority then 0 else Revision (Server.all)), Checks'Image);
       end Query;
    begin
-      Server := Fresh;
+      Reset;
       Query (Read_Table_Info, 1, 0, Wrong_Order);
       Send (Start_Snapshot, 2);
       Upload (Table (36));
@@ -248,9 +259,9 @@ begin
       Query (Read_Table_Info, 2, 0, Wrong_Order);
       Send (Finish_Snapshot);
       Query (Read_Table_Info, 1, 0);
-      Check (Reply.Data = [Revision (Server), 1, 36, 16#5444_5344#]);
+      Checks := Checks + 1; pragma Assert (Reply.Data = [Revision (Server.all), 1, 36, 16#5444_5344#], Checks'Image);
       Query (Read_Table_Info, 2, 0);
-      Check (Reply.Data = [Revision (Server), 37, 51, 16#5241_4D44#]);
+      Checks := Checks + 1; pragma Assert (Reply.Data = [Revision (Server.all), 37, 51, 16#5241_4D44#], Checks'Image);
       for Origin in Authority range Observer .. Snapshot_Provider loop
          for Offset in 0 .. Raw'Length loop
             Query (Read_Table_Chunk, 2, Unsigned_64 (Offset), Origin => Origin);
@@ -260,7 +271,7 @@ begin
                if I < 4 then Low := Low + Unsigned_64 (Raw (Offset + I + 1)) * 256 ** I;
                else High := High + Unsigned_64 (Raw (Offset + I + 1)) * 256 ** (I - 4); end if;
             end loop;
-            Check (Reply.Data = [Revision (Server), Unsigned_64 (Amount), Low, High]);
+            Checks := Checks + 1; pragma Assert (Reply.Data = [Revision (Server.all), Unsigned_64 (Amount), Low, High], Checks'Image);
          end loop;
       end loop;
       Query (Read_Table_Chunk, 2, 52, Malformed);
@@ -270,15 +281,15 @@ begin
       Query (Read_Table_Chunk, Unsigned_64'Last, 0, Not_Found);
       Query (Read_Table_Info, 2, 1, Malformed);
       Query (Read_Table_Info, 2, 0, Denied, No_Authority);
-      Check (Reply.Data = [0, 0, 0, 0]);
-      Before := Server;
-      Handle (Server, Observer,
-        (Label => Read_Table_Chunk, Data => [Revision (Server) - 1, 2, 0, 0], others => <>), Reply);
-      Check (Reply.Status = Stale and Server = Before and Reply.Data (1 .. 3) = [0, 0, 0]);
-      Handle (Server, Observer,
-        (Label => Read_Table_Chunk, Data => [Revision (Server), 2, 0, 1], others => <>), Reply);
-      Check (Reply.Status = Malformed and Server = Before);
-      Server := Fresh;
+      Checks := Checks + 1; pragma Assert (Reply.Data = [0, 0, 0, 0], Checks'Image);
+      Before := Model (Server.all);
+      Handle (Server.all, Observer,
+        (Label => Read_Table_Chunk, Data => [Revision (Server.all) - 1, 2, 0, 0], others => <>), Reply);
+      Checks := Checks + 1; pragma Assert (Reply.Status = Stale and Model (Server.all) = Before and Reply.Data (1 .. 3) = [0, 0, 0], Checks'Image);
+      Handle (Server.all, Observer,
+        (Label => Read_Table_Chunk, Data => [Revision (Server.all), 2, 0, 1], others => <>), Reply);
+      Checks := Checks + 1; pragma Assert (Reply.Status = Malformed and Model (Server.all) = Before, Checks'Image);
+      Reset;
       Send (Start_Snapshot, 1);
       Upload (Table (36), Expected => Table_Rejected, Other_Table => True);
       Query (Read_Table_Info, 1, 0, Wrong_Order);
@@ -292,26 +303,26 @@ begin
       Huge : constant Firmware_Tables.Bytes (1 .. ACPI_Service.Max_Table_Bytes + 1) := [others => 0];
       procedure Bulk (Data : Firmware_Tables.Bytes; Expected : Outcome := OK;
                       Origin : Authority := Snapshot_Provider;
-                      Token : Unsigned_64 := Revision (Server);
+                      Token : Unsigned_64 := Revision (Server.all);
                       ID : Positive := 1;
                       Kind : ACPI_Service.Table_Kind := ACPI_Service.DSDT) is
-         Old_Revision : constant Unsigned_64 := Revision (Server);
+         Old_Revision : constant Unsigned_64 := Revision (Server.all);
       begin
-         Before := Server;
-         Import_Block (Server, Origin, Token, ID, Kind, Data, Reply);
-         Check (Reply.Status = Expected);
-         Check (Reply.Data (0) = (if Origin = No_Authority then 0 else Revision (Server)));
+         Before := Model (Server.all);
+         Import_Block (Server.all, Origin, Token, ID, Kind, Data, Reply);
+         Checks := Checks + 1; pragma Assert (Reply.Status = Expected, Checks'Image);
+         Checks := Checks + 1; pragma Assert (Reply.Data (0) = (if Origin = No_Authority then 0 else Revision (Server.all)), Checks'Image);
          if Expected in OK | Table_Rejected then
-            Check (Revision (Server) = Old_Revision + 1 and not Table_Open (Server) and Received (Server) = 0);
+            Checks := Checks + 1; pragma Assert (Revision (Server.all) = Old_Revision + 1 and not Table_Open (Server.all) and Received (Server.all) = 0, Checks'Image);
          else
-            Check (Server = Before);
+            Checks := Checks + 1; pragma Assert (Model (Server.all) = Before, Checks'Image);
          end if;
       end Bulk;
    begin
-      Server := Fresh;
+      Reset;
       Bulk (Raw, Wrong_Order);
       Bulk (Raw, Denied, No_Authority);
-      Check (Reply.Data = [0, 0, 0, 0]);
+      Checks := Checks + 1; pragma Assert (Reply.Data = [0, 0, 0, 0], Checks'Image);
       Bulk (Raw, Denied, Observer);
       Send (Start_Snapshot, 2);
       Bulk (Raw, Stale, Token => 0);
@@ -321,35 +332,35 @@ begin
       Bulk (Huge, Malformed);
       Send (Begin_Table, 1, 0, 42);
       Bulk (Raw, Wrong_Order);
-      Server := Fresh;
+      Reset;
       Send (Start_Snapshot, 2);
       Bulk (Raw);
-      Check (Observe (Server).Tables = 1 and Observe (Server).Bytes = 42);
+      Checks := Checks + 1; pragma Assert (Observe (Server.all).Tables = 1 and Observe (Server.all).Bytes = 42, Checks'Image);
       Raw := [others => 255]; -- accepted table must no longer borrow this data
       Upload (Table (36, SSDT => True), ID => 2, SSDT => True);
       Bulk (Table (36, SSDT => True), Wrong_Order, ID => 3, Kind => ACPI_Service.SSDT);
       Send (Finish_Snapshot);
       Bulk (Table, Wrong_Order);
-      Handle (Server, Observer,
-        (Label => Read_Table_Chunk, Data => [Revision (Server), 1, 36, 0], others => <>), Reply);
-      Check (Reply.Status = OK and Reply.Data (1 .. 3) = [6, 16#4C41_5608#, 16#0130#]);
+      Handle (Server.all, Observer,
+        (Label => Read_Table_Chunk, Data => [Revision (Server.all), 1, 36, 0], others => <>), Reply);
+      Checks := Checks + 1; pragma Assert (Reply.Status = OK and Reply.Data (1 .. 3) = [6, 16#4C41_5608#, 16#0130#], Checks'Image);
       -- A corrupt table poisons the advertised snapshot, as chunked commit does.
       Bad (10) := Bad (10) + 1;
-      Server := Fresh;
+      Reset;
       Send (Start_Snapshot, 1);
       Bulk (Bad, Table_Rejected);
-      Check (Current (Server) = Failed and Observe (Server).Tables = 0);
+      Checks := Checks + 1; pragma Assert (Current (Server.all) = Failed and Observe (Server.all).Tables = 0, Checks'Image);
       Bulk (Table, Wrong_Order);
       -- No implied signature/kind trust at the mapping boundary.
-      Server := Fresh;
+      Reset;
       Send (Start_Snapshot, 1);
       Bulk (Table, Table_Rejected, Kind => ACPI_Service.Description);
-      Check (Current (Server) = Failed);
+      Checks := Checks + 1; pragma Assert (Current (Server.all) = Failed, Checks'Image);
       -- Last token may admit one table, but can never wrap or finish afterward.
-      Server := Fresh (Max_Revision - 2);
+      Reset (Max_Revision - 2);
       Send (Start_Snapshot, 1);
       Bulk (Table);
-      Check (Revision (Server) = Max_Revision);
+      Checks := Checks + 1; pragma Assert (Revision (Server.all) = Max_Revision, Checks'Image);
       Bulk (Table, Resource_Limit);
       Send (Finish_Snapshot, Expected => Resource_Limit);
    end;
@@ -357,30 +368,31 @@ begin
    -- may open, but a partial payload must never commit as a complete table.
    declare
       Length : constant := 1_048_577;
-      Large : State := Fresh (0, 2, Length + 36, Length);
+      Large : State (2, Length + 36, Length, 0);
       Token : Revision_Number;
    begin
       Handle (Large, Snapshot_Provider,
         (Label => Start_Snapshot, Data => [0, 2, 0, 0], others => <>), Reply);
-      Check (Reply.Status = OK);
+      Checks := Checks + 1; pragma Assert (Reply.Status = OK, Checks'Image);
       Token := Revision (Large);
       Handle (Large, Snapshot_Provider,
         (Label => Begin_Table, Data => [Token, 1, 0, Length + 1], others => <>), Reply);
-      Check (Reply.Status = Malformed and Revision (Large) = Token and not Table_Open (Large));
+      Checks := Checks + 1; pragma Assert (Reply.Status = Malformed and Revision (Large) = Token and not Table_Open (Large), Checks'Image);
       Handle (Large, Snapshot_Provider,
         (Label => Begin_Table, Data => [Token, 1, 0, Length], others => <>), Reply);
-      Check (Reply.Status = OK and Table_Open (Large));
+      Checks := Checks + 1; pragma Assert (Reply.Status = OK and Table_Open (Large), Checks'Image);
       Handle (Large, Snapshot_Provider,
         (Label => Write_Chunk, Data => [Revision (Large), 0, 0, 0], others => <>), Reply);
-      Check (Reply.Status = OK and Received (Large) = 16);
+      Checks := Checks + 1; pragma Assert (Reply.Status = OK and Received (Large) = 16, Checks'Image);
       Token := Revision (Large);
       Handle (Large, Snapshot_Provider,
         (Label => Commit_Table, Data => [Token, 0, 0, 0], others => <>), Reply);
-      Check (Reply.Status = Wrong_Order and Revision (Large) = Token
-             and Table_Open (Large) and Observe (Large).Tables = 0);
+      Checks := Checks + 1; pragma Assert (Reply.Status = Wrong_Order and Revision (Large) = Token
+             and Table_Open (Large) and Observe (Large).Tables = 0, Checks'Image);
       Handle (Large, Observer,
         (Label => Read_Metrics, Data => [4, 0, 0, 0], others => <>), Reply);
-      Check (Reply.Status = OK and Reply.Data (1 .. 3) = [Length, Length + 36, 2]);
+      Checks := Checks + 1; pragma Assert (Reply.Status = OK and Reply.Data (1 .. 3) = [Length, Length + 36, 2], Checks'Image);
    end;
+   Free (Server);
    Ada.Text_IO.Put_Line ("ACPI-REQUEST-CHECK: PASS" & Checks'Image);
 end Request_Tests;

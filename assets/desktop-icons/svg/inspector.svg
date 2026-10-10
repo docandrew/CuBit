@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dce4f2"/></linearGradient><radialGradient id="g2" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#e8fbff"/><stop offset="1" stop-color="#7fd0ff"/></radialGradient></defs>
+<polygon points="8.00,6.00 32.00,6.00 38.00,12.00 38.00,42.00 8.00,42.00" fill="url(#g1)" stroke="#1d2440" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="32.00,6.00 32.00,12.00 38.00,12.00" fill="#b9c6de" stroke="#1d2440" stroke-width="1.2" stroke-linejoin="round"/>
+<polyline points="12.00,13.00 18.00,13.00" fill="none" stroke="#7b3fd6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="21.00,13.00 31.00,13.00" fill="none" stroke="#7a869e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="12.00,19.00 18.00,19.00" fill="none" stroke="#7b3fd6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="21.00,19.00 31.00,19.00" fill="none" stroke="#7a869e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="12.00,25.00 18.00,25.00" fill="none" stroke="#7b3fd6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="21.00,25.00 31.00,25.00" fill="none" stroke="#7a869e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="12.00,31.00 18.00,31.00" fill="none" stroke="#7b3fd6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="21.00,31.00 31.00,31.00" fill="none" stroke="#7a869e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="33.00,33.00 43.00,43.00" fill="none" stroke="#2b2b2b" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="33.00,33.00 43.00,43.00" fill="none" stroke="#e0a030" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="26.00" cy="26.00" r="9.00" fill="url(#g2)" stroke="#11346b" stroke-width="2.6"/>
+<path d="M 21 23 A 6 6 0 0 1 27 20" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/>
+</svg>

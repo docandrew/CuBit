@@ -20,6 +20,10 @@ package body AML_Decode with SPARK_Mode is
          when 16#0B# => Payload := 2;
          when 16#0C# => Payload := 4;
          when 16#0E# => Payload := 8;
+         when Extended_Op =>
+            if Data'Length < Revision_Bytes then return (Kind => Truncated); end if;
+            if Data (Data'First + 1) /= Revision_Extension then return (Kind => Unsupported); end if;
+            return (Kind => Accepted, Value => Interpreter_Revision, Consumed => Revision_Bytes);
          when others => return (Kind => Unsupported);
       end case;
       if Data'Length < Payload + 1 then
@@ -106,14 +110,56 @@ package body AML_Decode with SPARK_Mode is
       end if;
       return (Kind => Accepted, Encoding_Bytes => Length.Encoding_Bytes, Extent => Length.Bits);
    end Read_Package;
+   function Check_Buffer_Count_Span
+     (Data : Bytes; Count_Consumed : Natural) return Buffer_Count_Layout
+   is
+      subtype Failure_Status is Status range Truncated .. Limit_Exceeded;
+      function Failure (Kind : Failure_Status) return Buffer_Count_Layout is ((Kind => Kind));
+      P : Package_Result;
+      Offset : Natural;
+   begin
+      if Data'Length < 2 then return (Kind => Truncated); end if;
+      if Data (Data'First) /= 16#11# then return (Kind => Unsupported); end if;
+      P := Read_Package (Data (Data'First + 1 .. Data'Last));
+      if P.Kind /= Accepted then return Failure (P.Kind); end if;
+      if Count_Consumed = 0 or else Count_Consumed > P.Extent - P.Encoding_Bytes then
+         return (Kind => Malformed);
+      end if;
+      Offset := 1 + P.Encoding_Bytes + Count_Consumed;
+      return (Kind => Accepted, Raw_Offset => Offset,
+        Raw_Length => P.Extent + 1 - Offset, Consumed => P.Extent + 1);
+   end Check_Buffer_Count_Span;
+
+   function Read_Buffer_With_Count
+     (Data : Bytes; Width : Integer_Width; Count_Value : Integer_Value;
+      Count_Consumed : Natural) return Buffer_Result
+   is
+      pragma Unreferenced (Width); -- Both AML widths feed a UINT32 Buffer length.
+      subtype Failure_Status is Status range Truncated .. Limit_Exceeded;
+      function Failure (Kind : Failure_Status) return Buffer_Result is ((Kind => Kind));
+      Buffer_Size_Mask : constant Integer_Value := 16#FFFF_FFFF#;
+      Size : constant Integer_Value := Count_Value and Buffer_Size_Mask;
+      Layout : constant Buffer_Count_Layout := Check_Buffer_Count_Span (Data, Count_Consumed);
+      Content : Buffer_Storage := [others => 0];
+   begin
+      if Layout.Kind /= Accepted then return Failure (Layout.Kind); end if;
+      if Size > Max_Buffer_Length or else Layout.Raw_Length > Max_Buffer_Length then
+         return (Kind => Limit_Exceeded);
+      end if;
+      for I in 1 .. Layout.Raw_Length loop
+         Content (I) := Data (Data'First + (Layout.Raw_Offset + I - 1));
+      end loop;
+      return (Kind => Accepted, Content => Content,
+        Length => Natural'Max (Natural (Size), Layout.Raw_Length), Consumed => Layout.Consumed);
+   end Read_Buffer_With_Count;
+
    function Read_Buffer (Data : Bytes; Width : Integer_Width) return Buffer_Result is
       subtype Failure_Status is Status range Truncated .. Limit_Exceeded;
       function Failure (Kind : Failure_Status) return Buffer_Result is
         ((Kind => Kind));
       P : Package_Result;
       Size : Integer_Result;
-      Offset, Initial : Natural;
-      Content : Buffer_Storage := [others => 0];
+      Offset : Natural;
    begin
       if Data'Length = 0 then return (Kind => Truncated); end if;
       if Data (Data'First) /= 16#11# then return (Kind => Unsupported); end if;
@@ -125,16 +171,6 @@ package body AML_Decode with SPARK_Mode is
       Size := Read_Integer
         (Data (Data'First + Offset .. Data'First + P.Extent), Width);
       if Size.Kind /= Accepted then return Failure (Size.Kind); end if;
-      Offset := Offset + Size.Consumed;
-      Initial := P.Extent + 1 - Offset;
-      if Size.Value > Max_Buffer_Length or else Initial > Max_Buffer_Length then
-         return (Kind => Limit_Exceeded);
-      end if;
-      for I in 1 .. Initial loop
-         Content (I) := Data (Data'First + (Offset + I - 1));
-      end loop;
-      return (Kind => Accepted, Content => Content,
-              Length => Natural'Max (Natural (Size.Value), Initial),
-              Consumed => P.Extent + 1);
+      return Read_Buffer_With_Count (Data, Width, Size.Value, Size.Consumed);
    end Read_Buffer;
 end AML_Decode;

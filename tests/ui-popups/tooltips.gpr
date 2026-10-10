@@ -1,0 +1,16 @@
+--  Hosted tests and timing of CuBit.UI.Tooltips: gprbuild -P tooltips.gpr,
+--  then build/tooltips_tests (from the repository root, under nix develop).
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Tooltips is
+   for Source_Dirs use (".", "../../userspace/lib/ui",
+     "../../userspace/lib/theme", "../../userspace/ccl/tools/ccl-ui-preview/host",
+     "../../userspace/lib/compositor", "../../userspace/lib/display",
+     "../../userspace/allocator/src");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("tooltips_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa");
+   end Compiler;
+end Tooltips;

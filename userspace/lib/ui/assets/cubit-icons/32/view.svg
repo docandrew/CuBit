@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<defs>
+<linearGradient id="paper" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ebeef6"/></linearGradient>
+<linearGradient id="teal" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#8af5e8"/><stop offset="1" stop-color="#1fc8c3"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M2 15 Q15 -2 28 15 Q15 32 2 15Z" transform="translate(2 2)"/>
+  <path d="M2 15 Q15 -2 28 15 Q15 32 2 15Z" transform="translate(1 1)"/>
+  <path d="M2 15 Q15 -2 28 15 Q15 32 2 15Z"/>
+</g>
+<path d="M2 15 Q15 -2 28 15 Q15 32 2 15Z" fill="#959db3" transform="translate(2 2)"/>
+<path d="M2 15 Q15 -2 28 15 Q15 32 2 15Z" fill="#959db3" transform="translate(1 1)"/>
+<path d="M2 15 Q15 -2 28 15 Q15 32 2 15Z" fill="url(#paper)"/>
+<path d="M9 15 A6 6 0 1 0 21 15 A6 6 0 1 0 9 15Z" fill="url(#teal)"/>
+<path d="M12 15 A3 3 0 1 0 18 15 A3 3 0 1 0 12 15Z" fill="#1d1530"/>
+<path d="M11.58 12.9 A1.32 1.32 0 1 0 14.22 12.9 A1.32 1.32 0 1 0 11.58 12.9Z" fill="#ffffff"/>
+</svg>

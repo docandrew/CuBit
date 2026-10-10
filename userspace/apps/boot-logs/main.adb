@@ -12,6 +12,7 @@ with CuBit.UI.Input;
 procedure Main is
    package P renames CuBit.Log_Protocol;
    use type P.Status;
+   use type CuBit.Log_Records.Severity;
    Win : CuBit.UI.App.Window;
    UI : CuBit.UI.State.UI_State;
    Controls : CuBit.UI.Controls.Control_Map;
@@ -23,15 +24,55 @@ procedure Main is
    Lost_Records : Unsigned_64 := 0;
    Viewer_Dropped : Unsigned_64 := 0;
    Rows : Positive := 25;
+   --  Records that explain a boot, pinned above the rotating pages so one
+   --  photograph of any page shows them: every Warning or worse, and the
+   --  key startup lines (the renderer's result and why it stopped).
+   Summary_Capacity : constant := 6;
+   Summary : array (1 .. Summary_Capacity) of CuBit.Log_Records.Log_Record;
+   Summary_Count : Natural range 0 .. Summary_Capacity := 0;
+   Key_Prefixes : constant array (1 .. 4) of access constant String :=
+     [new String'("DESKTOP-VULKAN:"), new String'("intel-gpu: backing denied"),
+      new String'("desktop: software rendering"), new String'("procmgr: render")];
+   Line_Height : constant := 21;
+   function Pinned (Item : CuBit.Log_Records.Log_Record) return Boolean is
+      Text : constant String := CuBit.Log_Records.Text (Item);
+   begin
+      if CuBit.Log_Records.Level (Item) >= CuBit.Log_Records.Warning then
+         return True;
+      end if;
+      for Prefix of Key_Prefixes loop
+         if Text'Length >= Prefix'Length and then
+           Text (Text'First .. Text'First + Prefix'Length - 1) = Prefix.all
+         then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end Pinned;
+   --  Keep the latest pinned records; the oldest gives way.
+   procedure Pin (Item : CuBit.Log_Records.Log_Record) is
+   begin
+      if Summary_Count < Summary_Capacity then
+         Summary_Count := Summary_Count + 1;
+      else
+         for J in 1 .. Summary_Capacity - 1 loop
+            Summary (J) := Summary (J + 1);
+         end loop;
+      end if;
+      Summary (Summary_Count) := Item;
+   end Pin;
    Due, Turn_Page : Unsigned_64 := 0;
    Opened : Boolean;
    procedure Render (Win : in out CuBit.UI.App.Window; Damage : Rect) is
       C : constant Canvas := CuBit.UI.App.Canvas (Win, Damage);
       Colors : constant Theme := Current_Theme;
       First : constant Natural := Page * Rows + 1;
+      --  Rows below the pinned summary (and its divider line).
+      Top : constant Natural := 40 + (if Summary_Count = 0 then 0
+                                      else (Summary_Count + 1) * Line_Height);
    begin
       Fill_Rect (C, CuBit.UI.App.Full_Rect (Win), Colors.panel);
-      Draw_UI_Text (C, 12, 10, "Boot diagnostics - pages rotate automatically every 8 seconds", Colors.text, Colors.panel);
+      Draw_UI_Text (C, 12, 10, "Boot diagnostics - key records first; pages rotate every 8 seconds", Colors.text, Colors.panel);
       Draw_UI_Text (C, 12, CuBit.UI.App.Height (Win) - 30, "Page" & Natural'Image (Page + 1) &
         "  Records" & Natural'Image (Count) & "  Service lost" & Unsigned_64'Image (Lost_Records) &
         "  Viewer dropped" & Unsigned_64'Image (Viewer_Dropped),
@@ -44,9 +85,15 @@ procedure Main is
       elsif Count = 0 then
          Draw_UI_Text (C, 12, 36, "Waiting for driver startup records via logstore...", Colors.text, Colors.panel);
       else
+         for I in 1 .. Summary_Count loop
+            Draw_UI_Text (C, 12, 40 + (I - 1) * Line_Height,
+              CuBit.Log_Records.Text (Summary (I)),
+              (if CuBit.Log_Records.Level (Summary (I)) >= CuBit.Log_Records.Warning
+               then Colors.danger else Colors.text), Colors.panel);
+         end loop;
          for I in 0 .. Rows - 1 loop
             if First + I <= Count then
-               Draw_UI_Text (C, 12, 40 + I * 21,
+               Draw_UI_Text (C, 12, Top + I * Line_Height,
                  CuBit.Log_Records.Text (Records (First + I)), Colors.text, Colors.panel);
             end if;
          end loop;
@@ -58,7 +105,8 @@ procedure Main is
       if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
          Running := False;
       elsif Event.kind = CuBit.UI.Input.INPUT_CONFIGURE then
-         Rows := Positive'Max (1, (CuBit.UI.App.Height (Win) - 80) / 21);
+         Rows := Positive'Max (1, (CuBit.UI.App.Height (Win) - 80 -
+           (Summary_Capacity + 1) * Line_Height) / Line_Height);
          Page := Natural'Min (Page, (if Count = 0 then 0 else (Count - 1) / Rows));
          Dirty := CuBit.UI.App.Full_Rect (Win);
       end if;
@@ -82,6 +130,9 @@ procedure Main is
             end if;
             exit when Status /= P.OK;
             debugPrint ("boot-logs: " & CuBit.Log_Records.Text (Event.Data) & ASCII.LF);
+            if Pinned (Event.Data) then
+               Pin (Event.Data);
+            end if;
             if Count < Records'Length then
                Count := Count + 1; Records (Count) := Event.Data;
             else

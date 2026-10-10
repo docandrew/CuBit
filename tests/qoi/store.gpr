@@ -1,0 +1,12 @@
+--  Proof scope for Desktop_Wallpaper_Store (make -C kernel prove-qoi).
+project Store is
+   for Source_Dirs use ("../../userspace/lib/image", "../../userspace/services/desktop",
+     "../../userspace/lib/theme", "../../userspace/lib/compositor", "../../userspace/runtime/gnat");
+   for Source_Files use ("cubit.ads", "cubit-qoi.ads", "cubit-qoi.adb", "cubit-appearance.ads",
+     "cubit-appearance.adb", "compositor_image_sampling.ads", "compositor_image_sampling.adb",
+     "desktop_backdrop_style.ads", "desktop_wallpaper_store.ads", "desktop_wallpaper_store.adb");
+   for Object_Dir use "build/store";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Store;

@@ -19,7 +19,7 @@ project Crash is
       "directory_blocks.ads", "directory_blocks.adb",
       "directory_commit.ads", "directory_commit.adb", "cubit-memory_grants.ads",
       "cubit-grant_references.ads", "cubit-block_devices.ads", "cubit-block_devices.adb",
-      "cubit-filesystems.ads", "cubit-filesystems.adb", "cubit-file_access.ads",
+      "cubit-filesystems.ads", "cubit-filesystems.adb", "cubit-directory_pages.ads", "cubit-directory_pages.adb", "cubit-file_access.ads",
       "cubit-file_access.adb", "cubit-directory_paths.ads", "cubit-directory_paths.adb");
    for Object_Dir use Fs_Obj;
    for Exec_Dir use Fs_Obj;

@@ -4,6 +4,7 @@ with Interfaces.C;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 with Intel_GPU_ADLN_Context_Init;
+with Intel_GPU_ADLN_PPHWSP;
 with Intel_GPU_Native_Initial_Ring;
 with Intel_GPU_Native_Live_Ring;
 with Intel_GPU_Submission_Backing;
@@ -51,6 +52,8 @@ procedure Native_Initial_Ring_Tests is
    RAM : Words with Import, Volatile, Address => To_Address (Base);
    Mapping : System.Address;
    Marker : Unsigned_64;
+   Timeline_Low : constant Natural := Intel_GPU_ADLN_PPHWSP.Timeline_Low_Word;
+   Timeline_High : constant Natural := Intel_GPU_ADLN_PPHWSP.Timeline_High_Word;
    L3_Value, L3_Parameters : Unsigned_32;
    Pixels : Native.Pixel_Samples;
    Image : Native.Target_Image;
@@ -114,9 +117,18 @@ begin
       pragma Assert (OK and Value = I.Copy_Probe_Value);
    end;
    Exclusive := False; -- hardware simulation only: GPU writes final marker
-   RAM (52) := 1;
+   -- Barrier scratch (+0xD0) is not the timeline: its writes never show.
+   RAM (52) := 16#DEAD#; RAM (53) := 16#BEEF#;
+   Native.Read_Marker (Marker, OK);
+   pragma Assert (OK and Marker = 0);
+   RAM (Timeline_Low) := 1;
    Native.Read_Marker (Marker, OK);
    pragma Assert (OK and Marker = 1);
+   -- The slot is a quadword: the high half is part of the value.
+   RAM (Timeline_High) := 2;
+   Native.Read_Marker (Marker, OK);
+   pragma Assert (OK and Marker = 16#2_0000_0001#);
+   RAM (Timeline_High) := 0;
    declare
       package B renames Intel_GPU_Submission_Backing;
       Index : constant Natural := Natural
@@ -192,7 +204,7 @@ begin
          -- cannot be appended. This channel stays quarantined afterwards.
          Live.Append (Premature_Channel, Dispatch, OK);
          pragma Assert (not OK and RAM = Before);
-         RAM (52) := 1; -- simulated GPU completion, not a native execution test
+         RAM (Timeline_Low) := 1; -- simulated GPU completion, not a native execution test
          Before := RAM;
          Live.Append (Premature_Channel, Dispatch, OK);
          pragma Assert (not OK and RAM = Before);
@@ -209,7 +221,7 @@ begin
          -- The encoder selects nonprivileged PPGTT and the owned batch VA.
          pragma Assert (RAM (16480 + 59) = 16#18800101# and
                         RAM (16480 + 60) = 16#208000#);
-         RAM (52) := 2; -- simulated completion of the first dispatch
+         RAM (Timeline_Low) := 2; -- simulated completion of the first dispatch
          Before := RAM;
          Dispatch := Intel_GPU_ADLN_Context_Init.Build_Batch
            (True, 16#12345678#, 3, 16#20A000#);

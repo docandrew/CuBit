@@ -1,0 +1,53 @@
+--  Hosted Files (docs/files-app.md): the app's shared units on Linux, with
+--  a mock filesystem service (host/) in place of CuBit's.
+with "../../userspace/lib/ui/fonts_host.gpr";
+with "sdl/files_sdl.gpr";
+project Files_App is
+   --  profile: gprof build (-pg) in its own object directory.
+   type Build_Mode is ("fast", "profile");
+   Mode : Build_Mode := external ("FILES_MODE", "fast");
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "host", "build/source", "../../userspace/apps/files",
+                        "../../userspace/lib/ui", "../../userspace/lib/theme",
+                        "../../userspace/lib/compositor", "../../userspace/lib/display",
+                        "../../userspace/allocator/src",
+                        --  CCL.Declarations, for the themes (CuBit.UI.Theme_CCL).
+                        "../../userspace/ccl/src");
+   --  The native entry point is not hosted; native platform glue lives in
+   --  userspace/apps/files/native, its hosted bodies in host/.
+   for Excluded_Source_Files use ("main.adb");
+   case Mode is
+      when "fast" =>
+         for Object_Dir use "build";
+         for Exec_Dir use "build";
+      when "profile" =>
+         for Object_Dir use "build/profile";
+         for Exec_Dir use "build/profile";
+   end case;
+   for Main use ("files_tests.adb", "files_bench.adb", "files_window.adb");
+   Strict := ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe", "-gnatwJ");
+   Profiling := ();
+   case Mode is
+      when "fast" => null;
+      when "profile" => Profiling := ("-pg");
+   end case;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnatwJ") & Profiling;
+      for Switches ("files_listing.adb") use Strict & Profiling;
+      for Switches ("files_order.adb") use Strict;
+      for Switches ("files_filter.adb") use Strict;
+      for Switches ("files_viewport.adb") use Strict;
+      for Switches ("files_marks.adb") use Strict;
+      for Switches ("files_pages.adb") use Strict;
+      --  Proved units (see files_proof.gpr); the toolkit's blend core leaves
+      --  its whole-target contracts to the proof, as native builds do.
+      --  The toolkit's proved pixel loops as native apps build them
+      --  (userspace/lib/ui/toolkit_flags.gpr): -O3 vectorised.
+      for Switches ("client_glyph_blend.adb") use ("-O3", "-gnat2022", "-gnatwa", "-fno-tree-vrp") & Profiling;
+      for Switches ("client_raster.adb") use ("-O3", "-gnat2022", "-gnatwa", "-fno-tree-vrp") & Profiling;
+   end Compiler;
+   package Linker is
+      for Default_Switches ("Ada") use Profiling;
+      for Switches ("files_window.adb") use ("-lSDL2");
+   end Linker;
+end Files_App;

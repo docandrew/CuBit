@@ -1,0 +1,9 @@
+project Policy_checked is
+ for Source_Dirs use (".", "../../userspace/lib/acpi");
+ for Object_Dir use "policy-checked/obj";
+ for Exec_Dir use "policy-checked";
+ for Main use ("policy_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Policy_checked;

@@ -6,7 +6,7 @@ package body AML_Objects.Package_References with SPARK_Mode is
    is
    begin
       Ref := No_Reference;
-      if Source = No_Object or else Source > Count (Store) then
+      if not Is_Live (Store, Source) then
          Status := Invalid_Object; return;
       end if;
       if Kind (Store, Source) /= Package_Object then
@@ -19,7 +19,7 @@ package body AML_Objects.Package_References with SPARK_Mode is
       if Natural (Index) >= Length (Store, Source) then
          Status := Out_Of_Bounds; return;
       end if;
-      Ref := (Present => True, Source => Source, Index => Natural (Index));
+      Ref := AML_Index_Handles.Bind_Package (Address_Of (Store, Source), Natural (Index));
       Status := Ready;
    end Make;
    procedure Read
@@ -38,7 +38,7 @@ package body AML_Objects.Package_References with SPARK_Mode is
    is
    begin
       if not Is_Valid (Store, Ref) then Status := Invalid_Reference; return; end if;
-      if Value > Count (Store) then Status := Invalid_Value; return; end if;
+      if Value /= No_Object and then not Is_Live (Store, Value) then Status := Invalid_Value; return; end if;
       Set_Element (Store, Owner (Ref), Offset (Ref), Value);
       Status := Ready;
    end Write;

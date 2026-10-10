@@ -1,0 +1,8 @@
+project Containers_checked is
+ for Source_Dirs use (".", "../aml-sync-metadata", "../aml-concatenate", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "build-checked";
+ for Main use ("container_tests.adb", "sync_metadata_tests.adb", "concatenate_oracle_runner.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Containers_checked;

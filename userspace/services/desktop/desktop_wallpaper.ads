@@ -8,9 +8,10 @@ package Desktop_Wallpaper is
    Source_Height : constant := Desktop_Backdrop_Style.Wallpaper_Height;
    Cubie_Width : constant := Desktop_Backdrop_Style.Cubie_Width;
    Cubie_Height : constant := Desktop_Backdrop_Style.Cubie_Height;
-   --  Render the immutable embedded asset into a private, validated display
-   --  buffer. Aspect-fill scaling crops centrally without stretching or bars.
-   --  No runtime image parser, file I/O or additional full-screen allocation.
+   --  Render the decoded wallpaper (Desktop_Wallpaper_Store) into a private,
+   --  validated display buffer. Aspect-fill scaling crops centrally without
+   --  stretching or bars. An image that is not loaded is drawn as its flat
+   --  theme colour. No file I/O or additional full-screen allocation here.
    procedure Render
      (Target : System.Address;
       Width, Height, Pitch : Positive);
@@ -23,7 +24,7 @@ package Desktop_Wallpaper is
       X, Y, W, H : Natural;
       Style : CuBit.Appearance.Preferences := CuBit.Appearance.Default);
    -- Caller owns Pitch * Screen.Height writable bytes in the acquired target.
-   -- Samples the immutable asset directly; no intermediate preview allocation.
+   -- Samples the decoded raster directly; no intermediate preview allocation.
    procedure Paint_Output
      (Target : System.Address; Pitch : Positive;
       Screen : CuBit.Display_Geometry.Output;

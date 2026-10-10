@@ -15,6 +15,7 @@ with CuBit.Launch_Arguments;
 with CuBit.Libc_Start_Layout;
 with CuBit.Libc_Rings;
 with CuBit.Libc_Directory_Entries;
+with CuBit.Directory_Pages;
 with CuBit.Libc_Descriptor_Rules;
 with CuBit.Libc_File_Cache;
 with CuBit.Libc_Park_Table;
@@ -116,7 +117,9 @@ begin
       Check (Wall_Deadline (100, 1_000, 1_500) = 600, "wall deadline");
       Check (Wall_Deadline (100, 1_000, 900) = 100, "wall past: now");
       Check (From_Milliseconds (1_234) = Timespec'(1, 234_000_000), "from ms");
-      Check (From_Microseconds (1_000_001) = Timespec'(1, 1_000), "from us");
+      Check (From_Nanoseconds (1_000_000_001) = Timespec'(1, 1), "from ns");
+      Check (From_Nanoseconds (Unsigned_64'Last)
+               = Timespec'(18_446_744_073, 709_551_615), "from ns, largest");
       --  Differential: random valid times against wide arithmetic.
       declare
          Seed : Unsigned_64 := 16#9E37_79B9_7F4A_7C15#;
@@ -314,37 +317,39 @@ begin
    --------------------------------------------------------- directory entries
    declare
       package D renames CuBit.Libc_Directory_Entries;
-      P : D.Page := [others => 0];
-      Valid, Ended, Fits : Boolean;
-      Count : D.Entry_Count;
+      package DP renames CuBit.Directory_Pages;
+      P : DP.Page;
+      W : DP.Writer;
+      Valid, Ended, Fits, OK : Boolean;
+      Count : DP.Entry_Count;
+      Page_Used : DP.Used_Bytes;
+      Resume, Stamp : Unsigned_64;
       Buffer : D.Bytes (0 .. 63) := [others => 16#AA#];
       Used : Natural := 0;
+      Next, Second : Natural;
       Name : constant String := "hello.txt";
+      Bytes : DP.Name_Bytes := [others => 0];
    begin
-      P (D.Header_Bytes_Offset) := D.Page_Header_Bytes;
-      P (D.Entry_Bytes_Offset) := Unsigned_8 (D.Entry_Bytes mod 256);
-      P (D.Entry_Bytes_Offset + 1) := Unsigned_8 (D.Entry_Bytes / 256);
-      P (D.Entry_Count_Offset) := 1;
-      P (D.Flags_Offset) := D.Page_End;
-      P (D.Page_Header_Bytes) := 42;                          --  object hint
-      P (D.Page_Header_Bytes + D.Name_Length_Offset) := Name'Length;
-      P (D.Page_Header_Bytes + D.Kind_Offset) := D.Kind_File;
       for K in Name'Range loop
-         P (D.Page_Header_Bytes + D.Name_Offset + K - 1) := Character'Pos (Name (K));
+         Bytes (K) := Character'Pos (Name (K));
       end loop;
-      D.Header (P, Valid, Count, Ended);
-      Check (Valid and then Count = 1 and then Ended, "page header");
-      D.Encode (P, 0, Buffer, Used, Fits);
-      Check (Fits and then Used = 32 and then Buffer (0) = 42 and then Buffer (16) = 32
+      DP.Start (P, W);
+      DP.Append (P, W, (Kind => DP.Kind_File, Object => 42, others => <>), Bytes, Name'Length);
+      DP.Append (P, W, (Kind => DP.Kind_Directory, Object => 43, others => <>), Bytes, Name'Length);
+      DP.Finish (P, W, True, 0, 0);
+      DP.Check (P, Valid, Count, Page_Used, Ended, Resume, Stamp);
+      Check (Valid and then Count = 2 and then Ended, "page header");
+      D.Encode (P, DP.Header_Bytes, Page_Used, Buffer, Used, Fits, OK, Next);
+      Check (Fits and then OK and then Used = 32 and then Buffer (0) = 42 and then Buffer (16) = 32
              and then Buffer (18) = D.DT_REG and then Buffer (19) = Character'Pos ('h')
              and then Buffer (19 + Name'Length) = 0, "dirent record");
-      D.Encode (P, 0, Buffer, Used, Fits);
-      Check (Fits and then Used = 64, "second record fits exactly");
-      D.Encode (P, 0, Buffer, Used, Fits);
-      Check (not Fits and then Used = 64, "a full buffer refuses the next");
-      P (D.Entry_Count_Offset) := 15;
-      D.Header (P, Valid, Count, Ended);
-      Check (not Valid, "too many entries: refused");
+      D.Encode (P, Next, Page_Used, Buffer, Used, Fits, OK, Second);
+      Check (Fits and then OK and then Used = 64 and then Buffer (32 + 18) = D.DT_DIR,
+             "second record fits exactly");
+      D.Encode (P, Next, Page_Used, Buffer, Used, Fits, OK, Second);
+      Check (OK and then not Fits and then Used = 64, "a full buffer refuses the next");
+      D.Encode (P, Next + 8, Page_Used, Buffer, Used, Fits, OK, Second);
+      Check (not OK and then Used = 64, "a bad offset is refused");
    end;
 
    --------------------------------------------------------------- page cache

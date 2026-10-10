@@ -1,9 +1,11 @@
 project Pending is
    for Source_Dirs use (".", "../../userspace/lib/input");
-   for Source_Files use ("pending_tests.adb", "input_pending.ads", "input_pending.adb");
+   for Source_Files use ("pending_tests.adb", "pointer_tests.adb",
+     "input_pending.ads", "input_pending.adb",
+     "pointer_pending.ads", "pointer_pending.adb");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";
-   for Main use ("pending_tests.adb");
+   for Main use ("pending_tests.adb", "pointer_tests.adb");
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
    end Compiler;

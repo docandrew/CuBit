@@ -1,0 +1,13 @@
+project QOI is
+   for Source_Dirs use (".", "../../userspace/lib/image", "../../userspace/runtime/gnat");
+   for Source_Files use ("qoi_tests.adb", "cubit.ads", "cubit-qoi.ads", "cubit-qoi.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("qoi_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-O2");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=1", "--timeout=10");
+   end Prove;
+end QOI;

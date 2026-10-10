@@ -1,0 +1,9 @@
+project Capacity_release is
+ for Source_Dirs use (".", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "build-release/obj";
+ for Exec_Dir use "build-release";
+ for Main use ("namespace_capacity_tests.adb", "core_capacity_tests.adb", "capacity_metrics_tests.adb", "capacity_cleanup_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+ end Compiler;
+end Capacity_release;

@@ -59,10 +59,11 @@ VkResult anv_cubit_check_status(struct vk_device *device);
 VkResult anv_cubit_vm_bind(struct anv_device *device,
    struct anv_sparse_submission *submit, enum anv_vm_bind_flags flags);
 /* Startup/internal batch callback: caller holds no ANV device mutex, retains
- * all chained BOs and serializes queue access. Synchronous completion for now;
- * caller outputs, private submit fence and debug queue fence follow completion.
- * First call seals offline binds and prepares/registers the context exactly
- * once; later BO binds use live VM updates. No companion engine yet. */
+ * all chained BOs and serializes queue access. First call seals offline
+ * binds, prepares/registers the context and opens the session queue exactly
+ * once; later BO binds use live VM updates. Writes one descriptor and
+ * returns: caller outputs, the private submit fence and the debug queue
+ * fence get GPU timeline points. No companion engine yet. */
 VkResult anv_cubit_queue_exec_async(struct anv_async_submit *submit,
    uint32_t wait_count, const struct vk_sync_wait *waits,
    uint32_t signal_count, const struct vk_sync_signal *signals);
@@ -101,50 +102,34 @@ VkResult anv_cubit_bind_bo(struct anv_device *device, struct anv_bo *bo);
  * close, backing release or Vulkan signal is implied. */
 VkResult anv_cubit_unbind_bo(struct anv_device *device, struct anv_bo *bo);
 /* Explicit post-registration bind/unbind adapter for native 0A28.
- * Not installed in the KMD factory; public service admission remains closed.
- * Caller owns VA allocation and retains BOs; success is a VM-generation
- * commit, not permission to destroy backing or a Vulkan synchronization event.
- * Uncertain replies poison the session without replay. Does not change offset. */
+ * Synchronous: the driver applies it once the GPU is idle. Holds only the
+ * session's VM lock, never lifetime_mutex or the queue lock, so queued work
+ * and its completion proceed meanwhile. Caller owns VA allocation and
+ * retains BOs; success is a VM-generation commit, not permission to destroy
+ * backing or a Vulkan synchronization event. Uncertain replies poison the
+ * session without replay. Does not change offset. */
 VkResult anv_cubit_update_bo_binding(struct anv_device *device, struct anv_bo *bo,
                                      uint64_t gpu, uint64_t offset, uint64_t bytes,
                                      bool remove);
-/* Synchronous bring-up path; offset is relative to this BO (including slab
- * children); transport uses its real parent's handle and translated offset.
- * GPU is the raw48 address of this BO slice, not a
- * CPU pointer. Caller retains all batch-reachable resources and obeys Vulkan
- * external lifetime synchronization. No semaphore/timeline/WSI signaling here.
- * Success includes the driver marker and scheduling-disable acknowledgement. */
-VkResult anv_cubit_submit_bo(struct anv_device *device, struct anv_bo *bo,
-                            uint64_t gpu, uint64_t offset, uint64_t bytes);
-/* Resolve dependencies BEFORE taking device->mutex. Does not submit, signal,
- * or consume binary waits. Revalidates the session after waiting; success is
- * not an ownership lease, so the later submission must still revalidate it.
- * Caller retains device/sync objects and serializes the queue. */
+/* Before device->mutex: waits until every dependency is pending (reached, or
+ * a point the session queue will signal, which becomes a descriptor wait).
+ * Does not submit, signal, or consume binary waits. Success is not an
+ * ownership lease; the submission revalidates the session. Caller retains
+ * device/sync objects and serializes the queue. */
 VkResult anv_cubit_wait_dependencies(struct anv_device *device,
    uint32_t wait_count, const struct vk_sync_wait *waits,
    uint64_t abs_timeout_ns);
-/* Render-only synchronous KMD callback. Dependencies must already be resolved
- * by the pre-lock hook; only nonblocking checks are allowed here. Optional
- * perf/companion/trace submissions remain unsupported, not silently skipped. */
+/* Render-only KMD callback on the session queue: translates waits, writes
+ * one descriptor and records GPU timeline points on the signals, then
+ * returns; it makes no blocking call. Dependencies are pending already (the
+ * pre-lock hook). Optional perf/companion/trace submissions remain
+ * unsupported, not silently skipped. */
 VkResult anv_cubit_queue_exec_locked(struct anv_queue *queue,
    uint32_t wait_count, const struct vk_sync_wait *waits,
    uint32_t cmd_buffer_count, struct anv_cmd_buffer **cmd_buffers,
    uint32_t signal_count, const struct vk_sync_signal *signals,
    struct anv_query_pool *perf_query_pool, uint32_t perf_query_pass,
    struct anv_utrace_submit *utrace_submit);
-/* Synchronous worker operation, NOT vkQueueSubmit or a complete KMD callback.
- * Caller serializes each queue, owns sync/BO lifetimes and binary consumption.
- * Real CPU-waitable/signallable sync types are required (never dummy syncs).
- * Timeout submits/signals nothing. Signal failure is sticky device loss;
- * partial signals must never cause replay. Waits run outside the BO lock.
- * IMPORTANT: caller must not hold ANV device->mutex either. Consequently this
- * is NOT directly usable as queue_exec_locked: dependencies must be resolved
- * before ANV takes that mutex or a producer on another queue can deadlock. */
-VkResult anv_cubit_submit_bo_sync(struct anv_device *device, struct anv_bo *bo,
-   uint64_t gpu, uint64_t offset, uint64_t bytes,
-   uint32_t wait_count, const struct vk_sync_wait *waits,
-   uint32_t signal_count, const struct vk_sync_signal *signals,
-   uint64_t abs_timeout_ns);
 /* Owned WB CPU grants require HOST_CACHED without HOST_COHERENT, with
  * physical memory.need_flush enabled. Flags0/WC is not backed by this service.
  * This admits explicit cache maintenance, not hardware coherence guarantees. */

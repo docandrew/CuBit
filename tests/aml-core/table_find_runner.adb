@@ -9,7 +9,7 @@ procedure Table_Find_Runner is
    use type IO.Count;
    use type Ada.Streams.Stream_Element_Offset;
    use type ACPI_Service.Install_Status;
-   Service : ACPI_Service.State := ACPI_Service.Fresh;
+   Service : ACPI_Service.State (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, ACPI_Service.Max_Table_Bytes);
    Status : ACPI_Service.Install_Status;
    File : IO.File_Type;
    Query : Firmware_Tables.Identifiers.Selection := (Name => "____", others => <>);

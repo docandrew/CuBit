@@ -21,7 +21,6 @@ uint32_t test_buffer_c_bridge(void)
    if (cubit_intel_close_session(64, &retired) != 4 || retired != 0)
       return 21;
    uint32_t handle = UINT32_MAX;
-   uint32_t completion = UINT32_MAX;
    uint32_t generation = UINT32_MAX;
    if (cubit_intel_update_binding(63, 1, 0x20000, 4096, 4096, 1, 0,
                                   &generation) != 0 || generation != 1)
@@ -29,12 +28,6 @@ uint32_t test_buffer_c_bridge(void)
    if (cubit_intel_update_binding(63, 1, 0x20000, 4096, 4096, 2, 0,
                                   &generation) != 4 || generation != 0)
       return 14;
-   if (cubit_intel_submit_batch(63, 1, 0x20000, 8, 4096, 1, &completion) != 0 ||
-       completion != 2)
-      return 11;
-   if (cubit_intel_submit_batch(64, 1, 0x20000, 8, 4096, 1, &completion) != 4 ||
-       completion != 0)
-      return 12;
    if (cubit_intel_create_buffer(63, 4096, &handle) != 0 || handle == 0)
       return 1;
    if (cubit_intel_bind_buffer(63, handle, 0x10000, 0, 4096) != 0)

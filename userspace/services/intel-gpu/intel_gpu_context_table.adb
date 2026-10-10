@@ -16,6 +16,11 @@ package body Intel_GPU_Context_Table is
       not Object.Retired (Natural (ID - First_ID) + 1) and then
       not Object.Work_Held (Natural (ID - First_ID) + 1) and then
       Driver.Can_Run_And_Retire (Object.Items (Natural (ID - First_ID) + 1)));
+   function Can_Submit (Object : Table; ID : Unsigned_32) return Boolean is
+     (not Object.Broken and then Owner_Ready and then Known (Object, ID) and then
+      not Object.Retired (Natural (ID - First_ID) + 1) and then
+      not Object.Work_Held (Natural (ID - First_ID) + 1) and then
+      Driver.Can_Submit (Object.Items (Natural (ID - First_ID) + 1)));
    function Session_Context (Object : Table; Session : Unsigned_64) return Unsigned_32 is
    begin
       if Session = 0 or else Object.Broken or else not Owner_Ready then return No_Context; end if;
@@ -56,6 +61,11 @@ package body Intel_GPU_Context_Table is
       and then not Object.Retired (Natural (ID - First_ID) + 1)
       and then not Object.Work_Held (Natural (ID - First_ID) + 1)
       and then State (Object, ID) = Life.Enabled);
+   function Publish_Allowed (Object : Table; ID : Unsigned_32) return Boolean is
+     (not Object.Broken and then Owner_Ready and then Known (Object, ID)
+      and then not Object.Retired (Natural (ID - First_ID) + 1)
+      and then not Object.Work_Held (Natural (ID - First_ID) + 1)
+      and then State (Object, ID) in Life.Enabled | Life.Disabled);
    procedure Hold_Work
      (Object : in out Table; ID : Unsigned_32; Accepted : out Boolean) is
    begin

@@ -1,0 +1,15 @@
+--  Hosted tests and proofs for the clock publication (run.sh).
+project Fast_Clock is
+   Shared_Src := external ("FAST_CLOCK_SRC", "../../shared/time");
+   for Source_Dirs use (".", Shared_Src);
+   for Object_Dir use external ("FAST_CLOCK_OBJ", "build/obj");
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Fast_Clock;

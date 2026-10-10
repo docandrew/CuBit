@@ -148,10 +148,19 @@ def main():
         obj = out / (name + '.o')
         run(['bash', wrapper, 'c', '-c', native / (name + '.c'), '-o', obj])
         objects.append(obj)
-    for name in ('native_gpu_buffers', 'native_gpu_memory', 'native_gpu_query'):
+    for name in ('native_gpu_calls', 'native_gpu_buffers', 'native_gpu_memory', 'native_gpu_query',
+                 'native_gpu_queue'):
         run(['gnatmake', '-q', '-c', '-gnatA', '-gnat2022', '-O2', '-mno-red-zone', '-fno-pic',
              '--RTS=' + str(root / 'userspace/runtime'), '-I' + str(native), native / (name + '.adb')])
         objects.append(out / (name + '.o'))
+    # The session queue's proved logic (GPU-001 step 3), compiled with it.
+    objects += [out / 'native_gpu_timeline.o', out / 'native_gpu_job_rules.o']
+    # C imports these units by name and no binder elaborates them: any
+    # elaboration code would never run. Refuse it.
+    for obj in objects:
+        if obj.name.startswith('native_gpu_') and '___elab' in subprocess.check_output(
+                ['nm', '--defined-only', str(obj)], text=True):
+            raise SystemExit('Mesa Ada unit needs elaboration, which never runs: ' + obj.name)
     symbols = ['cubit_mesa_service_' + name for name in ('start', 'device', 'status', 'close')]
     if combined:
         symbols += ['softpipe_create_screen', 'util_make_vertex_passthrough_shader',

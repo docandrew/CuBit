@@ -21,7 +21,7 @@ procedure Object_Tests is
       if not OK then raise Program_Error with Checks'Image; end if;
    end Check;
 begin
-   Check (Valid (Store) and Count (Store) = 0);
+   Check (Valid (Store) and Live_Count (Store) = 0);
    New_Integer (Store, 123, Number, Status);
    Check (Status = Allocated and Number /= No_Object and Integer_Data (Store, Number) = 123);
    New_Bytes (Store, String_Object, [7 => 65, 8 => 66], ID, Status);
@@ -37,7 +37,7 @@ begin
    Set_Element (Store, Package_ID, 2, ID);
    Check (Element (Store, Package_ID, 0) = Number and Element (Store, Package_ID, 1) = Package_ID
           and Element (Store, Package_ID, 2) = ID and Valid (Store));
-   for I in Count (Store) + 1 .. Max_Objects loop
+   for I in Live_Count (Store) + 1 .. Max_Objects loop
       New_Integer (Store, AML_Decode.Integer_Value (I), ID, Status);
       Check (Status = Allocated and ID = I);
    end loop;
@@ -59,7 +59,7 @@ begin
                 and Element (Store, Package_ID, 1) = Package_ID
                 and Byte_Data (Store, 2) = [65, 66]
                 and Byte_Data (Store, 3) = [1 => 77]);
-         for J in 5 .. Count (Store) loop
+         for J in 5 .. Slot_Bound (Store) loop
             Check (Integer_Data (Store, J) = Integer_Data (Before, J));
          end loop;
          Set_Integer (Store, Number, Value);

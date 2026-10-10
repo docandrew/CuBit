@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+<defs>
+<linearGradient id="amber" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffdc80"/><stop offset="1" stop-color="#ffa41f"/></linearGradient>
+<linearGradient id="gffe9c4e8b47a" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffe9c4"/><stop offset="1" stop-color="#e8b47a"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M1 19.72 L10.13 19.72 L10.13 21.54 L1 21.54Z"/>
+</g>
+<path d="M1 19.72 L10.13 19.72 L10.13 21.54 L1 21.54Z" fill="#5a32d6"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M5.57 14.7 L16.52 3.74 L20.63 7.85 L9.67 18.8 L3.74 20.63Z" transform="translate(1 1)"/>
+  <path d="M5.57 14.7 L16.52 3.74 L20.63 7.85 L9.67 18.8 L3.74 20.63Z"/>
+</g>
+<path d="M5.57 14.7 L16.52 3.74 L20.63 7.85 L9.67 18.8 L3.74 20.63Z" fill="#9a4a07" transform="translate(1 1)"/>
+<path d="M5.57 14.7 L16.52 3.74 L20.63 7.85 L9.67 18.8 L3.74 20.63Z" fill="url(#amber)"/>
+<path d="M14.7 5.57 L16.52 3.74 L20.63 7.85 L18.8 9.67Z" fill="#f2353f"/>
+<path d="M13.33 6.93 L14.7 5.57 L18.8 9.67 L17.43 11.04Z" fill="#b4bccf"/>
+<path d="M5.57 14.7 L9.67 18.8 L3.74 20.63Z" fill="url(#gffe9c4e8b47a)"/>
+<path d="M4.42 18.58 L5.79 19.95 L3.74 20.63Z" fill="#1d1530"/>
+<path d="M6.48 14.7 L15.61 5.57" fill="none" stroke="#ffffff" stroke-width="1" stroke-linecap="butt" opacity="0.55"/>
+</svg>

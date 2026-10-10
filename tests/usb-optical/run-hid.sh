@@ -21,7 +21,7 @@ make -C "$root/kernel" xhci devmgr desktop display devices
     # Include that build time in startup readiness, not the input deadline.
     for ((attempt=0; attempt<1200; attempt++)); do
         if [[ -S "$CUBIT_USB_MONITOR" ]] &&
-           rg -q 'devices: native window ready' "$serial" 2>/dev/null; then
+           grep -q 'devices: native window ready' "$serial" 2>/dev/null; then
             ready=1
             break
         fi
@@ -48,8 +48,8 @@ QEMU_BIN="$root/tests/usb-optical/qemu-hid.sh" \
         > "$test_dir/headless.log" 2>&1
 wait "$injector"
 injector=""
-rg -q 'xhci: interrupt-driven HID input enabled' "$serial"
-if rg -q 'xhci: completion routing fault|EXCEPTION|PANIC' "$serial"; then
+grep -q 'xhci: interrupt-driven HID input enabled' "$serial"
+if grep -Eq 'xhci: completion routing fault|EXCEPTION|PANIC' "$serial"; then
     echo "USB HID regression failed; logs: $test_dir" >&2
     exit 1
 fi

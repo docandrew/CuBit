@@ -5,13 +5,13 @@ Status (2026-10-02): steps 1 and 3 are implemented; watch, the typed clipboard a
 ## Landed
 
 - **Filesystem service:**
-  - `OP_READ_DIRECTORY_INSPECTED` (0x13) returns, in one request, a `Directory.Page.V1` followed by a page of 64-byte `Entry_Inspection` records: size, the modified, created and accessed times, mode, links and owner, each with a valid bit.
+  - Directory pages are `Directory.Page.V2` (`CuBit.Directory_Pages`, docs/filesystem-protocol-v2.md): packed entries, each with size, the modified, changed and accessed times, mode, links, owner and object identity, each with a valid bit.
   - For ext2 the service fills them from each entry's inode, and fixes the listing's missing sizes. CPIO fills the size only.
   - The existing page request, and everything that parses it (libc `getdents`, Files, the shell), are unchanged.
 - **CCL:**
   - `interfaces/fs.schema` provides `File_Kind`, `Place`, `Child`, `File_Metadata` and `Listing`, and the operations `fs.home`, `fs.enter`, `fs.up` and `fs.list`. They are installed in the shared host environment, so the console and the Workbench both have them.
   - `CCL_Places` has a native body (the filesystem service) and a Linux-preview body (host files).
-  - The native body lists over the filesystem queue (`CuBit.Filesystem_Queues`, `Queue_Read_Directory_Inspected` = 14), not one IPC per request. It lends a queue and a 64 KiB arena once. Each listing is a submit and a reap, with a kick only when the service's wake word is armed.
+  - The native body lists over the filesystem queue (`CuBit.Filesystem_Queues`, `Queue_Read_Directory` with `Directory_Metadata`), not one IPC per request. It lends a queue and a 64 KiB arena once (sixteen pages a request). Each listing is a submit and a reap, with a kick only when the service's wake word is armed.
   - The metadata fields are typed by unit: `size : Bytes`, `modified : Timestamp`, `mode : UNIX_File_Permissions`. Front ends humanize them through `CCL.Units` (and the Observatory's matching `units.js`): "1.2 KiB", "2026-10-02 20:46", "drwxr-xr-x". The value stays a number for sorting and arithmetic. The name `UNIX_File_Permissions` is deliberate: ext2/3 is a stop-gap, and a native filesystem's rights will not be Unix modes.
 - **First cut: a `Place` is data, `(Place root path)`, not yet a handle.**
   - It grants nothing; the service checks the process's manifest scope on every request.

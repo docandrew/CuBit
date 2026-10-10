@@ -82,6 +82,7 @@ MAX_STACK_USAGE := 2048
 # kernel ELF object
 cubit_kernel: build/libcubit.a build/init.bin build/boot.o cubit.gpr linker.ld Makefile \
               $(wildcard ../shared/firmware/*.ads ../shared/firmware/*.adb) \
+              $(wildcard ../shared/time/*.ads ../shared/time/*.adb) \
               $(wildcard src/*.ads src/*.adb src/*.asm src/*.adc \
                          src/services/*.ads src/services/*.adb src/*.inc)
 # Compile and bind only
@@ -503,6 +504,19 @@ prove-stream-policies: prepare-stream-policies
 	$(ALR) gnatprove -P ../tests/stream-policies/policies.gpr \
 		-u cubit-protocols-stream_policies.ads proof_cases.adb --level=2 --report=all --checks-as-errors=on -j2
 	@cat ../tests/stream-policies/build/obj/gnatprove/gnatprove.out
+
+# The streaming QOI decoder and the wallpaper store (tests/qoi/README.md).
+.PHONY: test-qoi prove-qoi
+test-qoi: wallpaper-assets
+	python3 ../tests/qoi/make_fixtures.py ../tests/qoi/build/fixtures
+	python3 ../tools/build_wallpaper_assets.py ../assets/wallpapers ../tests/qoi/build/Assets \
+		--reference ../tests/qoi/build/reference >/dev/null
+	$(ALR) gprbuild -q -p -P ../tests/qoi/qoi.gpr
+	../tests/qoi/build/qoi_tests ../tests/qoi/build/fixtures ../tests/qoi/build/Assets ../tests/qoi/build/reference
+
+prove-qoi:
+	$(ALR) gnatprove -P ../tests/qoi/qoi.gpr -u cubit-qoi.adb --mode=all --level=1 --timeout=10 -j2
+	$(ALR) gnatprove -P ../tests/qoi/store.gpr -u desktop_wallpaper_store.adb --mode=all --level=1 --timeout=10 -j2
 
 .PHONY: test-appearance prove-appearance
 test-appearance: ui-fonts-host
@@ -1123,6 +1137,14 @@ futex-check: user_runtime ccl-manifest
 	$(ALR) gprbuild -P ../userspace/apps/futex-check/futex_check.gpr
 	cp ../userspace/apps/futex-check/build/futex-check.app isodir/boot/futex-check.app
 
+# Clock publication checks (docs/fast-clock.md): headless --test clock.
+.PHONY : clock-check
+clock-check: user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/clock-check/build
+	$(call compile_ccl_manifest,../userspace/apps/clock-check)
+	$(ALR) gprbuild -P ../userspace/apps/clock-check/clock_check.gpr
+	cp ../userspace/apps/clock-check/build/clock-check.app isodir/boot/clock-check.app
+
 .PHONY : thread-check
 thread-check: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/thread-check/build
@@ -1471,7 +1493,7 @@ desktop-metrics: desktop metricsvc
 
 # Build the userspace desktop compositor/session service prototype
 .PHONY : desktop
-desktop: user_runtime ccl-manifest ui-fonts-native ../userspace/services/desktop/build/wallpaper.o ../userspace/services/desktop/build/wallpaper_cubie.o
+desktop: user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/services/desktop/build
 	$(call compile_ccl_manifest,../userspace/services/desktop)
 	@python3 ../tools/desktop_build_variant.py --metrics off >/dev/null
@@ -1485,15 +1507,20 @@ desktop: user_runtime ccl-manifest ui-fonts-native ../userspace/services/desktop
 	fi
 	cp ../userspace/services/desktop/$$(python3 ../tools/desktop_build_variant.py --metrics off)/desktop.svc isodir/boot/desktop.svc
 
-../userspace/services/desktop/build/wallpaper.o: ../assets/wallpapers/wallpaper2.png ../tools/prepare_wallpaper.py
-	mkdir -p ../userspace/services/desktop/build
-	$(ALR) python3 ../tools/prepare_wallpaper.py $< ../userspace/services/desktop/build
-	$(ALR) gcc -c ../userspace/services/desktop/build/wallpaper.S -o $@
+# Read-only asset packages (docs/assets.md): Assets/<name>/<version>/ on each
+# image's system volume. ASSET_ROOT is the one place the root is spelled for
+# the disk builders; Desktop reads it from the system.assets.root setting.
+ASSET_ROOT := Assets
+WALLPAPER_PACKAGE := $(ASSET_ROOT)/cubit-wallpapers/1
+WALLPAPER_ASSETS := build/$(WALLPAPER_PACKAGE)/cubes.qoi build/$(WALLPAPER_PACKAGE)/cubie.qoi
+WALLPAPER_SOURCES := ../assets/wallpapers/wallpaper2.png \
+	../assets/wallpapers/cubit-girl-wallpaper-4k-3840x2160.png
+WALLPAPER_DISK_FILES = $(foreach f,$(WALLPAPER_ASSETS),--file "$(WALLPAPER_PACKAGE)/$(notdir $(f))=$(f)")
 
-../userspace/services/desktop/build/wallpaper_cubie.o: ../assets/wallpapers/cubit-girl-wallpaper-4k-3840x2160.png ../tools/prepare_wallpaper.py
-	mkdir -p ../userspace/services/desktop/build
-	$(ALR) python3 ../tools/prepare_wallpaper.py $< ../userspace/services/desktop/build --asset cubie
-	$(ALR) gcc -c ../userspace/services/desktop/build/wallpaper_cubie.S -o $@
+.PHONY : wallpaper-assets
+wallpaper-assets: $(WALLPAPER_ASSETS)
+$(WALLPAPER_ASSETS) &: $(WALLPAPER_SOURCES) ../tools/build_wallpaper_assets.py ../tools/qoi.py
+	$(ALR) python3 ../tools/build_wallpaper_assets.py ../assets/wallpapers build/$(WALLPAPER_PACKAGE)
 
 # Build the userspace display scanout service prototype
 .PHONY : display
@@ -1567,7 +1594,7 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.ap
 	isodir/boot/logstore.svc isodir/boot/display.svc isodir/boot/desktop.svc \
 	build/tls-roots.der \
 	../init.ccl ../userspace/motd.txt $(DOOM_WAD) \
-	$(SERVO_DISK_CONTENTS)
+	$(SERVO_DISK_CONTENTS) $(WALLPAPER_ASSETS)
 
 SERVO_FONT_DIR = $(dir $(IBM_PLEX_SANS_FONT))
 SERVO_DISK_FILES = $(if $(SERVO_DISK_CONTENTS), \
@@ -1596,10 +1623,11 @@ DESKTOP_OVERLAY := isodir/boot/desktop.svc isodir/boot/display.svc isodir/boot/m
 DESKTOP_SAMPLE_ARGS = $(foreach sample,$(DESKTOP_CONFIG_SAMPLES),--file "work/$(notdir $(sample))=$(sample)")
 
 .PHONY : prepare-desktop-disk
-prepare-desktop-disk:
+prepare-desktop-disk: $(WALLPAPER_ASSETS)
 	python3 ../tools/prepare_desktop_disk.py "$(DESKTOP_BASE_DISK)" "$(DESKTOP_SCRATCH_DISK)" --replace \
 		--boot $(DESKTOP_OVERLAY) \
-		--file "init.ccl=../tests/headless/init-desktop-session.ccl" $(DESKTOP_SAMPLE_ARGS)
+		--file "init.ccl=../tests/headless/init-desktop-session.ccl" $(DESKTOP_SAMPLE_ARGS) \
+		$(WALLPAPER_DISK_FILES)
 
 .PHONY : servo
 servo: libc ccl-manifest
@@ -1631,7 +1659,8 @@ ata_disk.img nvme_disk.img: $(DISK_CONTENTS) $(DESKTOP_CONFIG_SAMPLES) ../tools/
 		--file "tls/roots.der=build/tls-roots.der" \
 		--file "init.ccl=../init.ccl" \
 		$(DESKTOP_SAMPLE_ARGS) \
-		$(SERVO_DISK_FILES)
+		$(SERVO_DISK_FILES) \
+		$(WALLPAPER_DISK_FILES)
 
 # Convenience aliases for manual rebuilds (e.g. make ata_disk)
 .PHONY : ata_disk nvme_disk
@@ -1685,7 +1714,7 @@ CCL_WORKSPACE_SAMPLES := $(sort $(wildcard ../userspace/ccl/samples/*.ccl))
 # Native USB optical edition. Keep the original initrd-only laptop image as
 # an independent fallback; no ATA/NVMe driver is admitted in this profile.
 .PHONY: usb-live-iso run-usb-live run-usb-live-fast
-usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu gpu-viewer config-storage mesa-cube $(LAPTOP_LIVE_RW_DISK)
+usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu gpu-viewer config-storage mesa-cube $(LAPTOP_LIVE_RW_DISK) $(WALLPAPER_ASSETS)
 	@test -s isodir/boot/cubitshell.app || (echo "missing Servo payload; run make -C kernel servo first" && false)
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)"
 
@@ -1844,7 +1873,7 @@ TEST_PROGRAMS := logs boot-logs timesync-test ccl-console log-check \
 .PHONY : test-programs
 test-programs: $(TEST_PROGRAMS)
 
-world: trace-viewer test-programs cubit_kernel doom sameboy sleep thread-check futex-check avx-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
+world: trace-viewer test-programs cubit_kernel doom sameboy sleep thread-check futex-check clock-check avx-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme virtio-net virtio-gpu netstack wget devices files config-inspector desktop-shell procmgr shell hda mixer ps2 xhci config config-storage netmgr logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso
 
 .PHONY : headless-test
 headless-test: world

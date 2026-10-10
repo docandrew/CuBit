@@ -27,12 +27,12 @@ uint32_t cubit_vulkan_device_checker_record(void *borrowed,const struct cubit_vu
 /* Private live owned-image record only, from this admitted device. Does not
  * validate external capabilities, perform upload, or establish image layout. */
 void *cubit_vulkan_device_source_request(uint32_t slot,void *owned_image);
-/* All 140 backing slots share the 144-entry GPU ledger with three targets
+/* All 148 backing slots share the 153-entry GPU ledger with three targets
  * and one upload buffer, under the same aggregate byte limit.
  * Caller must serialize and own this slot with a Fresh/confirmed-Closed SPARK
  * source owner; native stage zero can also mean a clean pre-creation failure.
  * This constructs metadata only. No allocation, upload or descriptor import. */
-#define CUBIT_VULKAN_OWNED_SOURCE_CAPACITY 140
+#define CUBIT_VULKAN_OWNED_SOURCE_CAPACITY 148
 struct cubit_vulkan_device_source { void *image; uint32_t allowed_types; };
 uint32_t cubit_vulkan_device_source_prepare(uint32_t slot,uint32_t width,
     uint32_t height,uint32_t mask,struct cubit_vulkan_device_source *out);

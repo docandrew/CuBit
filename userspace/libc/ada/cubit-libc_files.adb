@@ -62,7 +62,7 @@ package body CuBit.Libc_Files is
    REPLY_IS_DIRECTORY      : constant := 16#F011#;
    REPLY_INVALID_MOVE      : constant := 16#F012#;
    REPLY_CROSS_VOLUME      : constant := 16#F013#;
-   PROTOCOL_VERSION : constant := 1;
+   PROTOCOL_VERSION : constant := 2;   --  CuBit.Filesystems: Directory.Page.V2
    Seek_From_End : constant := 2;
    Open_Read_Only : constant Unsigned_64 := 0;
    --  The kinds __cubit_path_remove takes (cubit_fd.h).
@@ -472,7 +472,7 @@ package body CuBit.Libc_Files is
          elsif Looks < Answer_Spins + Answer_Yields then
             Value := Kernel (K.Yield);
          else
-            Ignore := Call (FQ.OP_FS_WAIT, 0, 0, 0, 0, 0);   --  returns once one waits
+            Ignore := Call (FQ.OP_FS_WAKE, 0, 0, 0, 0, 0);   --  returns once one waits
             Looks := 0;
          end if;
          Looks := Looks + 1;
@@ -1821,8 +1821,9 @@ package body CuBit.Libc_Files is
    function Path_Mkdir (Path : System.Address) return long is
      (Path_Operation (Path, FQ.Queue_Mkdir, OP_MKDIR));
 
-   --  Rename a file or directory (the service refuses an existing target:
-   --  -EEXIST, not POSIX replacement). By message: it is rare.
+   --  Rename or move a file or directory within a volume (POSIX
+   --  replacement of an existing target; -EXDEV across volumes). Through
+   --  the queue (Queue_Rename): both names in the arena, split at Position.
    function Path_Rename (From, To : System.Address) return long is
       Old_Name, New_Name : aliased Name_Text;
       Old_Length : constant long := Name_Of (From, Old_Name'Address);
@@ -1842,6 +1843,13 @@ package body CuBit.Libc_Files is
          Park_Drop (Old_Name (1 .. Natural (Old_Length)), Held => False);
          Park_Drop (New_Name (1 .. Natural (New_Length)), Held => False);
       end if;
+      if Old_Length + New_Length <= long (Arena_Bytes) and then Queue_Ready then
+         Arena_Put (Old_Name (1 .. Natural (Old_Length)) & New_Name (1 .. Natural (New_Length)));
+         Label := Request (FQ.Queue_Rename, 0, 0, Unsigned_64 (Old_Length),
+                           Unsigned_64 (Old_Length + New_Length));
+         Unlock;
+         return (if Label = K.Reply_OK then 0 else To_Errno (Label));
+      end if;
       R := Lend_Bounce;
       if R /= 0 then
          Unlock;
@@ -1855,7 +1863,8 @@ package body CuBit.Libc_Files is
       return (if Label = K.Reply_OK then 0 else To_Errno (Label));
    end Path_Rename;
 
-   --  One Directory.Page.V1 into Page. Through the queue, pages come in
+   --  One Directory.Page.V2 (no metadata: readdir needs names and kinds)
+   --  into Page; the caller checks it. Through the queue, pages come in
    --  batches and are handed out one per call until the batch that ends
    --  the directory is used up.
    function Directory_Read_Page (Handle : Unsigned_64; Page : System.Address) return long is

@@ -1,0 +1,5 @@
+# The clock publication (docs/fast-clock.md): one clock-check process.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock-check.app" (priority 3))
+)

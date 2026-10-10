@@ -7,6 +7,9 @@ with Desktop_Breadcrumbs;
 with Compositor_Backend_Selection;
 with Compositor_Focus;
 with Compositor_Source_Damage;
+with Compositor_Source_Content;
+with Vulkan_Submission;
+with Compositor_Stall_Watch;
 with Compositor_Surface_State;
 with Compositor_Source_Loans;
 with Compositor_Density;
@@ -73,14 +76,24 @@ with CuBit.Clocks;
 with CuBit.Click_Sequences;
 with CuBit.Theme;
 with Desktop_Cursors;
+with Desktop_Pointer_Plane;
+with CuBit.Display_Plane_Protocol;
+with CuBit.Display_Planes;
 with Compositor_Cursor;
 with Desktop_Icons;
+with Desktop_Icon_Pixels;
 with CuBit.Fonts;
 with Desktop_Window_Icons;
 with Desktop_Wallpaper;
+with Desktop_Wallpaper_Assets;
+with Desktop_Wallpaper_Layers;
 with Desktop_Settings;
 with Desktop_Launch;
 with Desktop_Launch_Refresh;
+with Desktop_Status_Refresh;
+with Desktop_Launch_Menus;
+with Client_Popup_Layout;
+with CCL.Interfaces.Desktop_Launch;
 with CuBit.Appearance;
 with CuBit.Config;
 with CuBit.UI;
@@ -258,7 +271,8 @@ procedure main is
 
    -- The current canvas is always privately writable. Completed output slots
    -- remain immutable until Display confirms the matching frame acquisition ended.
-   mesaAnnounced, mesaFallbackAnnounced : Boolean := False;
+   -- One software-rendering line per process, carrying its actual cause.
+   mesaAnnounced, softwareAnnounced : Boolean := False;
    mesaTextAnnounced, mesaTextFallbackAnnounced, retainedTextAnnounced : Boolean := False;
    textSceneRetry : Boolean := False;
    physicalClientAnnounced : Boolean := False;
@@ -332,6 +346,20 @@ procedure main is
    gpuProgress : array (Output_Index) of GPU_Progress;
    Renderer_Recovery : Boolean := False;
    Renderer_Recovery_Key : Compositor_Backend_Selection.Recovery_Key;
+   -- GPU stall judgement by time and progress, never by frame counts: the
+   -- renderer is stalled only when no GPU frame has completed and no upload
+   -- has been accepted for this long while repaints keep being retried.
+   -- Cold uploads (serialized, one writer) are progress, not a stall.
+   GPU_Stall_Deadline_Ms : constant := 2_000;
+   gpuStallWatch : Compositor_Stall_Watch.State;
+   gpuStallCause : Desktop_Compositor.Retry_Cause := Desktop_Compositor.No_Retry;
+   -- Evidence for the stats line: retried captures by cause this period and
+   -- the backing allocation/free counters at the last report.
+   type Retry_Counts is array (Desktop_Compositor.Retry_Cause) of Unsigned_64;
+   statsRetries : Retry_Counts := (others => 0);
+   type Backing_Counts is array (Vulkan_Submission.Source_Class, Boolean) of Unsigned_64;
+   reportedBackings : Backing_Counts := (others => (others => 0));
+   reportedPlaceholders : Natural := 0;
    package Output_Retirement is new Compositor_Output_Retirement
      (Positive (BP.Live_Slot'Last));
    use type Output_Retirement.Phase, Output_Retirement.Grant_Phase;
@@ -475,6 +503,11 @@ procedure main is
       bufferH        : Natural := 0;
       bufferPitch    : Natural := 0;
       bufferFormat   : Unsigned_64 := 0;
+      -- Version of the pixels behind bufferAddr; the surface id is the
+      -- renderer's persistent source key. Bumped with every content change
+      -- together with Note_Source_Change.
+      contentVersion : Compositor_Source_Content.Content_Version :=
+        Compositor_Source_Content.No_Version;
       pointerCursor  : Pointer_Cursor_Style := POINTER_DEFAULT;
    end record;
 
@@ -575,6 +608,8 @@ procedure main is
    audioSliderDragging : Boolean := False;
    clockText : String (1 .. 5) := "--:--";
    statusDueMs : Unsigned_64 := 0;
+   --  Status area clock and volume refresh period (and the latest next read).
+   Status_Interval_Ms : constant := 10_000;
    desktopExtendedPrefix : Boolean := False;
    desktopShiftDown : Boolean := False;
    desktopCtrlDown  : Boolean := False;
@@ -695,28 +730,16 @@ procedure main is
    LAUNCH_POWER : constant := Desktop_Launch.Maximum_Entries + 1;
    subtype Launch_Action is Natural range LAUNCH_NONE .. LAUNCH_POWER;
 
-   launchMenuSelection : Launch_Action := 1;
    type Launch_PID_Array is array (1 .. Desktop_Launch.Maximum_Entries) of Process_ID;
    launchPids : Launch_PID_Array :=
      [others => No_Process];
 
-   --  Keyboard selection moves through the entries (not Power), wrapping.
-   function nextLaunchSelection
-      (current : Launch_Action;
-       upward  : Boolean) return Launch_Action
-   is
-      count : constant Natural := launchMenu.Count;
-   begin
-      if count = 0 then
-         return LAUNCH_NONE;
-      elsif current not in 1 .. count then
-         return 1;
-      elsif upward then
-         return (if current = 1 then count else current - 1);
-      else
-         return (if current = count then 1 else current + 1);
-      end if;
-   end nextLaunchSelection;
+   --  The menu's two levels (UI-013): category rows, then Power; a
+   --  category's submenu lists its entries (Desktop_Launch_Menus).
+   launchMenuState : Desktop_Launch_Menus.Menu_State;
+   package LM renames Desktop_Launch_Menus;
+   function launchRows return Natural is (LM.Rows (launchMenu));
+   function launchPowerRow return Natural is (LM.Power_Row (launchMenu));
 
    type Pointer_Action is
      (DRAG_NONE, DRAG_MOVE, DRAG_RESIZE_E, DRAG_RESIZE_S, DRAG_RESIZE_SE,
@@ -755,12 +778,14 @@ procedure main is
    LAUNCH_W     : constant Natural := 88;
    LAUNCH_H     : constant Natural := 24;
    MENU_W       : constant Natural := 250;
-   --  Menu layout: entries every 34 pixels from 42, a separator, then Power.
+   --  Menu layout: category rows every 34 pixels from 42, a separator,
+   --  then Power; a submenu beside the open category, rows every 34.
    LAUNCH_FIRST_Y : constant Natural := 42;
    LAUNCH_STEP    : constant Natural := 34;
+   SUBMENU_PAD    : constant Natural := 6;
 
    function MENU_H return Natural is
-     (LAUNCH_FIRST_Y + launchMenu.Count * LAUNCH_STEP - 2 + 8 + LAUNCH_STEP);
+     (LAUNCH_FIRST_Y + launchRows * LAUNCH_STEP - 2 + 8 + LAUNCH_STEP);
    TASK_BUTTON_W : constant Natural := 156;
    TASK_BUTTON_H : constant Natural := 24;
    TASK_BUTTON_GAP : constant Natural := 6;
@@ -909,7 +934,7 @@ procedure main is
                declare
                   Source : String (1 .. Length) with Import, Address => Value;
                begin
-                  Desktop_Launch.Parse (Source, Item, OK);
+                  Desktop_Launch.Decode (Source, Item, OK);
                end;
             end if;
             if OK then
@@ -959,6 +984,22 @@ procedure main is
    statsScenePixels  : Unsigned_64 := 0;
    statsSourceGaps   : Unsigned_64 := 0;
    statsSourceRejects : Unsigned_64 := 0;
+   -- Timing builds only (microseconds): the longest output pass that
+   -- published a frame, and the longest wait from the first unpresented
+   -- pointer motion until the next accepted frame submission.
+   statsMaxFrameUs   : Unsigned_64 := 0;
+   statsMaxMotionUs  : Unsigned_64 := 0;
+   --  Pointer source age at intake: driver acquisition (GETTIME ms, carried
+   --  in the report snapshot) to desktop dispatch. Includes driver retention
+   --  and kernel queueing; timing builds only.
+   statsSourceAgeMaxMs : Unsigned_64 := 0;
+   statsSourceAgeSumMs : Unsigned_64 := 0;
+   statsSourceAgeCount : Unsigned_64 := 0;
+   pendingMotionUs   : Unsigned_64 := Compositor_Elapsed.Unavailable;
+   --  Intake of the oldest input not yet shown by a submitted frame
+   --  (Input_To_Present metric); Unavailable when none is waiting.
+   pendingInputUs    : Unsigned_64 := Compositor_Elapsed.Unavailable;
+   MICROSECONDS_PER_MILLISECOND : constant := 1_000;
    lastEventDrops    : Unsigned_64 := 0;
    lastInputQueueOverflows : Unsigned_64 := 0;
    inputTraceBudget  : Natural := 64;
@@ -1030,8 +1071,10 @@ procedure main is
    package DB renames Compositor_Dispatch_Budget;
    type Timing_Stage is (Input_Dispatch, Request_Dispatch, Scene_Draw,
                         Submit_Call, Submit_To_Completion);
-   Timing : array (Timing_Stage) of TH.Histogram := (others => TH.Empty);
-   Timing_Invalid, Timing_Dropped : array (Timing_Stage) of Unsigned_64 := (others => 0);
+   type Stage_Histograms is array (Timing_Stage) of TH.Histogram;
+   type Stage_Counts is array (Timing_Stage) of Unsigned_64;
+   Timing : Stage_Histograms := (others => TH.Empty);
+   Timing_Invalid, Timing_Dropped : Stage_Counts := (others => 0);
    function dispatchNow return Unsigned_64 is
       R : constant CuBit.Monotonic.Reading := CuBit.Monotonic.Read;
    begin
@@ -1117,137 +1160,389 @@ procedure main is
          end;
       end if;
    end noteTiming;
-   procedure publishTiming is
-      -- Opt-in trace batches belong to the serial test transport. Publishing
-      -- them into logsvc crowds out lifecycle/error records; production
-      -- performance counters use the bounded metrics publisher instead.
-      First_Output : Unsigned_64 := Compositor_Elapsed.Unavailable;
-      procedure debugPrint (Text : String) is
+   ---------------------------------------------------------------------------
+   -- Periodic report. The period boundary (maybePrintStats) only captures
+   -- it: counter values and copies of the bounded trace rings, then resets
+   -- them. Its text is housekeeping: formatted and written one line at a
+   -- time by runHousekeeping, only while no input, request or completion is
+   -- pending, for at most Housekeeping_Slice_Us per loop turn. A report still
+   -- unwritten at the next boundary is finished there first (counted in
+   -- report_forced=), so no line is lost. Serial and log text never runs
+   -- between taking input and presenting it.
+   ---------------------------------------------------------------------------
+   Housekeeping_Slice_Us : constant := 250;
+   type Period_Counters is record
+      Events, Keyboard, Mouse, Buttons, Wheel, Event_Busy, Input_Resync,
+      Source_Gaps, Source_Rejects, Age_Max_Ms, Age_Avg_Ms, Requests, Frames,
+      Fast_Frames, Full_Frames, Present_Req, Input_Req, Other_Req, Draw_Ms,
+      Present_Ops, Completion_Ms, Damage_Px, Repair_Px, Scene_Px,
+      Cursor_X, Cursor_Y, Max_Frame_Us, Max_Motion_Us, Forced : Unsigned_64 := 0;
+   end record;
+   type Report_Step is
+     (Stats_Line, Frames_Line, GPU_Sources_Line, Stage_Lines,
+      Frame_Records, Frame_Summary, Source_Records, Source_Summary,
+      Input_Records, Input_Summary, Render_Records, Render_Summary,
+      Graphics_Line, Report_Done);
+   type Period_Report is record
+      Counters : Period_Counters;
+      Stages : Stage_Histograms;
+      Stage_Invalid, Stage_Dropped : Stage_Counts;
+      Frames : FT.State;
+      Sources : ST.State;
+      Inputs : IT.State;
+      Renders : RT.State;
+      GPU_Changed : Boolean := False;
+      Backings : Backing_Counts := (others => (others => 0));
+      Retries : Retry_Counts := (others => 0);
+      Resident, Uploads, Peak_Layers, Placeholders : Unsigned_64 := 0;
+      Staging : GM.Counter;
+   end record;
+   report : Period_Report;
+   reportStep : Report_Step := Report_Done;
+   reportItem : Natural := 0;
+   reportsForced : Unsigned_64 := 0;
+
+   function Stage_Name (Stage : Timing_Stage) return String is
+     (case Stage is
+        when Input_Dispatch => "input_dispatch",
+        when Request_Dispatch => "request_dispatch",
+        when Scene_Draw => "scene_draw",
+        when Submit_Call => "submit_call",
+        when Submit_To_Completion => "submit_to_completion");
+
+   --  Write the report's next line, skipping steps with nothing to say.
+   --  Opt-in trace batches belong to the serial test transport (they stay
+   --  out of logsvc); the frames and GPU source lines also go to the log.
+   procedure writeReportLine is
+      C : Period_Counters renames report.Counters;
+      Written : Boolean := False;
+      procedure Next (Step : Report_Step) is
       begin
-         if First_Output = Compositor_Elapsed.Unavailable and then
-           DM.Enabled and then not DM.Disabled
-         then First_Output := dispatchNow; end if;
-         CuBit.Messages.debugPrint (Text);
-      end debugPrint;
-      function Name (Stage : Timing_Stage) return String is
-        (case Stage is
-           when Input_Dispatch => "input_dispatch",
-           when Request_Dispatch => "request_dispatch",
-           when Scene_Draw => "scene_draw",
-           when Submit_Call => "submit_call",
-           when Submit_To_Completion => "submit_to_completion");
+         reportStep := Step;
+         reportItem := 0;
+      end Next;
    begin
-      if not Desktop_Timing_Policy.Enabled then return; end if;
-      for Stage in Timing_Stage loop
-         if TH.Count (Timing (Stage)) > 0 or Timing_Invalid (Stage) > 0 or
-           Timing_Dropped (Stage) > 0
-         then
-            debugPrint ("COMPOSITOR-TIMING: stage=" & Name (Stage) &
-              " count=" & Decimal (Unsigned_64 (TH.Count (Timing (Stage)))) &
-              " min_us=" & Decimal (TH.Minimum (Timing (Stage))) &
-              " max_us=" & Decimal (TH.Maximum (Timing (Stage))) &
-              " p50_upper_us=" & Decimal (TH.Quantile_Upper (Timing (Stage), 50)) &
-              " p99_upper_us=" & Decimal (TH.Quantile_Upper (Timing (Stage), 99)) &
-              " invalid=" & Decimal (Timing_Invalid (Stage)) &
-              " dropped=" & Decimal (Timing_Dropped (Stage)) & LF);
+      while not Written and then reportStep /= Report_Done loop
+         case reportStep is
+            when Stats_Line =>
+               if Desktop_Timing_Policy.Enabled and then (C.Frames > 0 or else C.Events > 0) then
+                  CuBit.Messages.debugPrint
+                    ("desktop: stats ev=" & Decimal (C.Events) &
+                     " key=" & Decimal (C.Keyboard) &
+                     " mouse=" & Decimal (C.Mouse) &
+                     " button=" & Decimal (C.Buttons) &
+                     " wheel=" & Decimal (C.Wheel) &
+                     " event_busy=" & Decimal (C.Event_Busy) &
+                     " input_resync=" & Decimal (C.Input_Resync) &
+                     " source_gap=" & Decimal (C.Source_Gaps) &
+                     " source_reject=" & Decimal (C.Source_Rejects) &
+                     " src_age_max_ms=" & Decimal (C.Age_Max_Ms) &
+                     " src_age_avg_ms=" & Decimal (C.Age_Avg_Ms) &
+                     " req=" & Decimal (C.Requests) &
+                     " frames=" & Decimal (C.Frames) &
+                     " fast=" & Decimal (C.Fast_Frames) &
+                     " full=" & Decimal (C.Full_Frames) &
+                     " present_req=" & Decimal (C.Present_Req) &
+                     " input_req=" & Decimal (C.Input_Req) &
+                     " other_req=" & Decimal (C.Other_Req) &
+                     " draw_ms=" & Decimal (C.Draw_Ms) &
+                     " submit=" & Decimal (C.Present_Ops) &
+                     " completion_ms=" & Decimal (C.Completion_Ms) &
+                     " px=" & Decimal (C.Damage_Px) &
+                     " repair_px=" & Decimal (C.Repair_Px) &
+                     " scene_px=" & Decimal (C.Scene_Px) &
+                     " cursor_x=" & Decimal (C.Cursor_X) &
+                     " cursor_y=" & Decimal (C.Cursor_Y) &
+                     " report_forced=" & Decimal (C.Forced) & LF);
+                  Written := True;
+               end if;
+               Next (Frames_Line);
+            when Frames_Line =>
+               -- Hardware evidence for the on-screen Logs viewer: at most one
+               -- record per period, and only while frames are published.
+               if Desktop_Timing_Policy.Enabled and then C.Present_Ops > 0 then
+                  debugPrint
+                    ("desktop: frames=" & Decimal (C.Present_Ops) &
+                     " draw_ms=" & Decimal (C.Draw_Ms) &
+                     " present_ms=" & Decimal (C.Completion_Ms) &
+                     " max_frame_ms=" & Decimal (C.Max_Frame_Us / MICROSECONDS_PER_MILLISECOND) &
+                     " max_motion_ms=" & Decimal (C.Max_Motion_Us / MICROSECONDS_PER_MILLISECOND) &
+                     " motion_events=" & Decimal (C.Mouse) &
+                     " scene_px=" & Decimal (C.Scene_Px) & LF);
+                  Written := True;
+               end if;
+               Next (GPU_Sources_Line);
+            when GPU_Sources_Line =>
+               -- Printed only when backings were allocated or freed, or
+               -- captures retried, that period (steady state is silent).
+               if report.GPU_Changed then
+                  declare
+                     package VS renames Vulkan_Submission;
+                     B : Backing_Counts renames report.Backings;
+                     R : Retry_Counts renames report.Retries;
+                  begin
+                     debugPrint
+                       ("desktop: gpu sources alloc glyph=" & Decimal (B (VS.Glyph_Cell, False)) &
+                        " client=" & Decimal (B (VS.Client_Image, False)) &
+                        " atlas=" & Decimal (B (VS.Icon_Atlas, False)) &
+                        " backdrop=" & Decimal (B (VS.Backdrop_Image, False)) &
+                        " free glyph=" & Decimal (B (VS.Glyph_Cell, True)) &
+                        " client=" & Decimal (B (VS.Client_Image, True)) &
+                        " atlas=" & Decimal (B (VS.Icon_Atlas, True)) &
+                        " backdrop=" & Decimal (B (VS.Backdrop_Image, True)) &
+                        " resident=" & Decimal (report.Resident) &
+                        " uploads=" & Decimal (report.Uploads) &
+                        " retry cold=" & Decimal (R (Desktop_Compositor.Cold_Upload)) &
+                        " layers=" & Decimal (R (Desktop_Compositor.Layer_Limit)) &
+                        " glyphs=" & Decimal (R (Desktop_Compositor.Glyph_Limit)) &
+                        " images=" & Decimal (R (Desktop_Compositor.Image_Limit)) &
+                        " draw=" & Decimal (R (Desktop_Compositor.Rejected_Draw)) &
+                        " readback=" & Decimal (R (Desktop_Compositor.Readback_Failed)) &
+                        " peak_layers=" & Decimal (report.Peak_Layers) &
+                        " placeholders=" & Decimal (report.Placeholders) & LF);
+                  end;
+                  Written := True;
+               end if;
+               Next (Stage_Lines);
+            when Stage_Lines =>
+               if not Desktop_Timing_Policy.Enabled or else
+                 reportItem > Timing_Stage'Pos (Timing_Stage'Last)
+               then
+                  Next (Frame_Records);
+               else
+                  declare
+                     Stage : constant Timing_Stage := Timing_Stage'Val (reportItem);
+                  begin
+                     reportItem := reportItem + 1;
+                     if TH.Count (report.Stages (Stage)) > 0 or else
+                       report.Stage_Invalid (Stage) > 0 or else report.Stage_Dropped (Stage) > 0
+                     then
+                        CuBit.Messages.debugPrint
+                          ("COMPOSITOR-TIMING: stage=" & Stage_Name (Stage) &
+                           " count=" & Decimal (Unsigned_64 (TH.Count (report.Stages (Stage)))) &
+                           " min_us=" & Decimal (TH.Minimum (report.Stages (Stage))) &
+                           " max_us=" & Decimal (TH.Maximum (report.Stages (Stage))) &
+                           " p50_upper_us=" & Decimal (TH.Quantile_Upper (report.Stages (Stage), 50)) &
+                           " p99_upper_us=" & Decimal (TH.Quantile_Upper (report.Stages (Stage), 99)) &
+                           " invalid=" & Decimal (report.Stage_Invalid (Stage)) &
+                           " dropped=" & Decimal (report.Stage_Dropped (Stage)) & LF);
+                        Written := True;
+                     end if;
+                  end;
+               end if;
+            when Frame_Records =>
+               if reportItem >= FT.Count (report.Frames) then
+                  Next (Frame_Summary);
+               else
+                  reportItem := reportItem + 1;
+                  declare V : constant FT.Record_Value := FT.Item (report.Frames, reportItem);
+                  begin
+                     CuBit.Messages.debugPrint
+                       ("COMPOSITOR-FRAME: output=" & Decimal (Unsigned_64 (V.Output_ID)) &
+                        " session=" & Decimal (V.Session) & " frame=" & Decimal (V.Frame) &
+                        " submit_us=" & Decimal (V.Submitted) & " complete_us=" & Decimal (V.Completed) & LF);
+                  end;
+                  Written := True;
+               end if;
+            when Frame_Summary =>
+               if FT.Count (report.Frames) > 0 or else FT.Invalid (report.Frames) > 0 or else
+                 FT.Lost (report.Frames) > 0
+               then
+                  CuBit.Messages.debugPrint
+                    ("COMPOSITOR-FRAME-STATS: count=" & Decimal (Unsigned_64 (FT.Count (report.Frames))) &
+                     " invalid=" & Decimal (Unsigned_64 (FT.Invalid (report.Frames))) &
+                     " dropped=" & Decimal (Unsigned_64 (FT.Lost (report.Frames))) & LF);
+                  Written := True;
+               end if;
+               Next (Source_Records);
+            when Source_Records =>
+               if reportItem >= ST.Count (report.Sources) then
+                  Next (Source_Summary);
+               else
+                  reportItem := reportItem + 1;
+                  declare V : constant ST.Record_Value := ST.Item (report.Sources, reportItem);
+                  begin
+                     CuBit.Messages.debugPrint
+                       ("COMPOSITOR-SOURCE: surface=" & Decimal (V.Surface) &
+                        " epoch=" & Decimal (V.Epoch) & " ticket=" & Decimal (V.Ticket) &
+                        " input_after=" & Decimal (V.Input_After) &
+                        " accepted_us=" & Decimal (V.Accepted) & LF);
+                  end;
+                  Written := True;
+               end if;
+            when Source_Summary =>
+               if ST.Count (report.Sources) > 0 or else ST.Invalid (report.Sources) > 0 or else
+                 ST.Lost (report.Sources) > 0
+               then
+                  CuBit.Messages.debugPrint
+                    ("COMPOSITOR-SOURCE-STATS: count=" & Decimal (Unsigned_64 (ST.Count (report.Sources))) &
+                     " invalid=" & Decimal (Unsigned_64 (ST.Invalid (report.Sources))) &
+                     " dropped=" & Decimal (Unsigned_64 (ST.Lost (report.Sources))) & LF);
+                  Written := True;
+               end if;
+               Next (Input_Records);
+            when Input_Records =>
+               if reportItem >= IT.Count (report.Inputs) then
+                  Next (Input_Summary);
+               else
+                  reportItem := reportItem + 1;
+                  declare V : constant IT.Record_Value := IT.Item (report.Inputs, reportItem);
+                  begin
+                     CuBit.Messages.debugPrint
+                       ("COMPOSITOR-INPUT: surface=" & Decimal (V.Surface) &
+                        " serial=" & Decimal (V.Serial) & " kind=" & Decimal (V.Kind) &
+                        " dequeued_us=" & Decimal (V.Dequeued) & LF);
+                  end;
+                  Written := True;
+               end if;
+            when Input_Summary =>
+               if IT.Count (report.Inputs) > 0 or else IT.Invalid (report.Inputs) > 0 or else
+                 IT.Lost (report.Inputs) > 0
+               then
+                  CuBit.Messages.debugPrint
+                    ("COMPOSITOR-INPUT-STATS: count=" & Decimal (Unsigned_64 (IT.Count (report.Inputs))) &
+                     " invalid=" & Decimal (Unsigned_64 (IT.Invalid (report.Inputs))) &
+                     " dropped=" & Decimal (Unsigned_64 (IT.Lost (report.Inputs))) & LF);
+                  Written := True;
+               end if;
+               Next (Render_Records);
+            when Render_Records =>
+               if reportItem >= RT.Count (report.Renders) then
+                  Next (Render_Summary);
+               else
+                  reportItem := reportItem + 1;
+                  declare V : constant RT.Record_Value := RT.Item (report.Renders, reportItem);
+                  begin
+                     CuBit.Messages.debugPrint
+                       ("COMPOSITOR-RENDER: kind=" & Decimal (RT.Phase'Pos (V.Kind) + 1) &
+                        " output=" & Decimal (Unsigned_64 (V.Output_ID)) &
+                        " buffer=" & Decimal (V.Buffer) & " writer_epoch=" & Decimal (V.Writer_Epoch) &
+                        " writer_serial=" & Decimal (V.Writer_Serial) & " surface=" & Decimal (V.Surface) &
+                        " source_epoch=" & Decimal (V.Source_Epoch) & " source_ticket=" & Decimal (V.Source_Ticket) &
+                        " session=" & Decimal (V.Session) & " frame=" & Decimal (V.Frame) &
+                        " observed_us=" & Decimal (V.Observed) & LF);
+                  end;
+                  Written := True;
+               end if;
+            when Render_Summary =>
+               if RT.Count (report.Renders) > 0 or else RT.Invalid (report.Renders) > 0 or else
+                 RT.Lost (report.Renders) > 0 or else RT.Unsupported (report.Renders) > 0
+               then
+                  CuBit.Messages.debugPrint
+                    ("COMPOSITOR-RENDER-STATS: count=" & Decimal (Unsigned_64 (RT.Count (report.Renders))) &
+                     " invalid=" & Decimal (Unsigned_64 (RT.Invalid (report.Renders))) &
+                     " dropped=" & Decimal (Unsigned_64 (RT.Lost (report.Renders))) &
+                     " unsupported=" & Decimal (Unsigned_64 (RT.Unsupported (report.Renders))) & LF);
+                  Written := True;
+               end if;
+               Next (Graphics_Line);
+            when Graphics_Line =>
+               CuBit.Graphics_Metrics_IO.Publish
+                 (GM.Desktop_Staging, report.Staging, stagingReporter);
+               Next (Report_Done);
+            when Report_Done =>
+               null;
+         end case;
+      end loop;
+   end writeReportLine;
+
+   --  Housekeeping slice, at the end of a loop turn: report lines while no
+   --  work is pending (a nonblocking activity check before each line), for
+   --  at most Housekeeping_Slice_Us.
+   procedure runHousekeeping is
+      Started : Unsigned_64;
+      Wrote : Boolean := False;
+   begin
+      if reportStep = Report_Done then return; end if;
+      Started := dispatchNow;
+      while reportStep /= Report_Done loop
+         exit when Wait_For_Activity_Until (0) /= Deadline_Reached;
+         writeReportLine;
+         Wrote := True;
+         declare Spent : constant Compositor_Elapsed.Sample :=
+           Compositor_Elapsed.Measure (Started, dispatchNow);
+         begin
+            exit when not Spent.Valid or else Spent.Microseconds >= Housekeeping_Slice_Us;
+         end;
+      end loop;
+      --  As before, Diagnostic_Output measures the timing builds' text.
+      if Wrote and then Desktop_Timing_Policy.Enabled and then DM.Enabled and then not DM.Disabled then
+         DM.Record_Stage (Compositor_Stage_Metrics.Diagnostic_Output, Started, dispatchNow);
+      end if;
+   end runHousekeeping;
+
+   --  The period boundary: capture the report and reset the period's
+   --  counters and traces. Cheap (copies of bounded records, no text).
+   procedure capturePeriod (Event_Busy, Input_Resync : Unsigned_64) is
+   begin
+      if reportStep /= Report_Done then
+         --  Housekeeping never found a quiet moment for the whole period.
+         while reportStep /= Report_Done loop writeReportLine; end loop;
+         if reportsForced < Unsigned_64'Last then reportsForced := reportsForced + 1; end if;
+      end if;
+      report.Counters :=
+        (Events => statsEvents, Keyboard => statsKeyboardEvents, Mouse => statsMouseEvents,
+         Buttons => statsButtonTransitions, Wheel => statsWheelEvents,
+         Event_Busy => Event_Busy, Input_Resync => Input_Resync,
+         Source_Gaps => statsSourceGaps, Source_Rejects => statsSourceRejects,
+         Age_Max_Ms => statsSourceAgeMaxMs,
+         Age_Avg_Ms => (if statsSourceAgeCount = 0 then 0 else statsSourceAgeSumMs / statsSourceAgeCount),
+         Requests => statsRequests, Frames => statsFrames, Fast_Frames => statsFastFrames,
+         Full_Frames => statsFullFrames, Present_Req => statsPresentReq, Input_Req => statsInputReq,
+         Other_Req => statsOtherReq, Draw_Ms => statsDrawMs, Present_Ops => statsPresentOps,
+         Completion_Ms => statsCompletionMs, Damage_Px => statsDamagePixels,
+         Repair_Px => statsRepairPixels, Scene_Px => statsScenePixels,
+         Cursor_X => Unsigned_64 (cursorX), Cursor_Y => Unsigned_64 (cursorY),
+         Max_Frame_Us => statsMaxFrameUs, Max_Motion_Us => statsMaxMotionUs,
+         Forced => reportsForced);
+      report.Stages := Timing;
+      report.Stage_Invalid := Timing_Invalid;
+      report.Stage_Dropped := Timing_Dropped;
+      Timing := (others => TH.Empty);
+      Timing_Invalid := (others => 0);
+      Timing_Dropped := (others => 0);
+      report.Frames := frameTrace; FT.Reset (frameTrace);
+      report.Sources := sourceTrace; ST.Reset (sourceTrace);
+      report.Inputs := inputDequeueTrace; IT.Reset (inputDequeueTrace);
+      report.Renders := renderTrace; RT.Reset (renderTrace);
+      report.GPU_Changed := False;
+      for Class in Vulkan_Submission.Source_Class loop
+         for Freed in Boolean loop
+            report.Backings (Class, Freed) := Desktop_Compositor.Backing_Events (Class, Freed);
+            if report.Backings (Class, Freed) /= reportedBackings (Class, Freed) then
+               report.GPU_Changed := True;
+               reportedBackings (Class, Freed) := report.Backings (Class, Freed);
+            end if;
+         end loop;
+      end loop;
+      for Cause in Desktop_Compositor.Retry_Cause loop
+         report.GPU_Changed := report.GPU_Changed or else statsRetries (Cause) /= 0;
+      end loop;
+      report.Retries := statsRetries;
+      statsRetries := (others => 0);
+      report.Resident := Unsigned_64 (Desktop_Compositor.Resident_Sources);
+      report.Uploads := Desktop_Compositor.Upload_Progress;
+      report.Peak_Layers := Unsigned_64 (Desktop_Compositor.Peak_Scene_Layers);
+      report.Placeholders := Unsigned_64 (Desktop_Compositor.Placeholder_Draws);
+      if Desktop_Compositor.Placeholder_Draws /= reportedPlaceholders then
+         -- Placeholders only follow a refused allocation after every idle
+         -- source was evicted; say so once, then count it in the line.
+         if reportedPlaceholders = 0 then
+            debugPrint ("desktop: GPU source memory exhausted; surface drawn as placeholder" & LF);
          end if;
-         Timing (Stage) := TH.Empty;
-         Timing_Invalid (Stage) := 0;
-         Timing_Dropped (Stage) := 0;
-      end loop;
-      for I in 1 .. FT.Count (frameTrace) loop
-         declare V : constant FT.Record_Value := FT.Item (frameTrace, I);
-         begin
-            debugPrint ("COMPOSITOR-FRAME: output=" & Decimal (Unsigned_64 (V.Output_ID)) &
-              " session=" & Decimal (V.Session) & " frame=" & Decimal (V.Frame) &
-              " submit_us=" & Decimal (V.Submitted) & " complete_us=" & Decimal (V.Completed) & LF);
-         end;
-      end loop;
-      if FT.Count (frameTrace) > 0 or FT.Invalid (frameTrace) > 0 or FT.Lost (frameTrace) > 0 then
-         debugPrint ("COMPOSITOR-FRAME-STATS: count=" & Decimal (Unsigned_64 (FT.Count (frameTrace))) &
-           " invalid=" & Decimal (Unsigned_64 (FT.Invalid (frameTrace))) &
-           " dropped=" & Decimal (Unsigned_64 (FT.Lost (frameTrace))) & LF);
+         reportedPlaceholders := Desktop_Compositor.Placeholder_Draws;
+         report.GPU_Changed := True;
       end if;
-      FT.Reset (frameTrace);
-      for I in 1 .. ST.Count (sourceTrace) loop
-         declare V : constant ST.Record_Value := ST.Item (sourceTrace, I);
-         begin
-            debugPrint ("COMPOSITOR-SOURCE: surface=" & Decimal (V.Surface) &
-              " epoch=" & Decimal (V.Epoch) & " ticket=" & Decimal (V.Ticket) &
-              " input_after=" & Decimal (V.Input_After) &
-              " accepted_us=" & Decimal (V.Accepted) & LF);
-         end;
-      end loop;
-      if ST.Count (sourceTrace) > 0 or ST.Invalid (sourceTrace) > 0 or ST.Lost (sourceTrace) > 0 then
-         debugPrint ("COMPOSITOR-SOURCE-STATS: count=" & Decimal (Unsigned_64 (ST.Count (sourceTrace))) &
-           " invalid=" & Decimal (Unsigned_64 (ST.Invalid (sourceTrace))) &
-           " dropped=" & Decimal (Unsigned_64 (ST.Lost (sourceTrace))) & LF);
-      end if;
-      ST.Reset (sourceTrace);
-      for I in 1 .. IT.Count (inputDequeueTrace) loop
-         declare V : constant IT.Record_Value := IT.Item (inputDequeueTrace, I);
-         begin
-            debugPrint ("COMPOSITOR-INPUT: surface=" & Decimal (V.Surface) &
-              " serial=" & Decimal (V.Serial) & " kind=" & Decimal (V.Kind) &
-              " dequeued_us=" & Decimal (V.Dequeued) & LF);
-         end;
-      end loop;
-      if IT.Count (inputDequeueTrace) > 0 or IT.Invalid (inputDequeueTrace) > 0 or
-        IT.Lost (inputDequeueTrace) > 0
-      then
-         debugPrint ("COMPOSITOR-INPUT-STATS: count=" & Decimal (Unsigned_64 (IT.Count (inputDequeueTrace))) &
-           " invalid=" & Decimal (Unsigned_64 (IT.Invalid (inputDequeueTrace))) &
-           " dropped=" & Decimal (Unsigned_64 (IT.Lost (inputDequeueTrace))) & LF);
-      end if;
-      IT.Reset (inputDequeueTrace);
-      for I in 1 .. RT.Count (renderTrace) loop
-         declare V : constant RT.Record_Value := RT.Item (renderTrace, I);
-         begin
-            debugPrint ("COMPOSITOR-RENDER: kind=" & Decimal (RT.Phase'Pos (V.Kind) + 1) &
-              " output=" & Decimal (Unsigned_64 (V.Output_ID)) &
-              " buffer=" & Decimal (V.Buffer) & " writer_epoch=" & Decimal (V.Writer_Epoch) &
-              " writer_serial=" & Decimal (V.Writer_Serial) & " surface=" & Decimal (V.Surface) &
-              " source_epoch=" & Decimal (V.Source_Epoch) & " source_ticket=" & Decimal (V.Source_Ticket) &
-              " session=" & Decimal (V.Session) & " frame=" & Decimal (V.Frame) &
-              " observed_us=" & Decimal (V.Observed) & LF);
-         end;
-      end loop;
-      if RT.Count (renderTrace) > 0 or RT.Invalid (renderTrace) > 0 or
-        RT.Lost (renderTrace) > 0 or RT.Unsupported (renderTrace) > 0
-      then
-         debugPrint ("COMPOSITOR-RENDER-STATS: count=" & Decimal (Unsigned_64 (RT.Count (renderTrace))) &
-           " invalid=" & Decimal (Unsigned_64 (RT.Invalid (renderTrace))) &
-           " dropped=" & Decimal (Unsigned_64 (RT.Lost (renderTrace))) &
-           " unsupported=" & Decimal (Unsigned_64 (RT.Unsupported (renderTrace))) & LF);
-      end if;
-      RT.Reset (renderTrace);
-      if First_Output /= Compositor_Elapsed.Unavailable and then
-        DM.Enabled and then not DM.Disabled
-      then
-         DM.Record_Stage (Compositor_Stage_Metrics.Diagnostic_Output,
-           First_Output, dispatchNow);
-      end if;
-   end publishTiming;
+      report.Staging := stagingCopies;
+      reportStep := Stats_Line;
+      reportItem := 0;
+   end capturePeriod;
 
-   procedure printDec (val : Unsigned_64) is
-      buf : String (1 .. 20);
-      pos : Natural := buf'Last;
-      v   : Unsigned_64 := val;
-   begin
-      if v = 0 then
-         debugPrint ("0");
-         return;
-      end if;
-
-      while v > 0 loop
-         buf (pos) := Character'Val (Character'Pos ('0') +
-                                      Natural (v mod 10));
-         v := v / 10;
-         pos := pos - 1;
-      end loop;
-
-      debugPrint (buf (pos + 1 .. buf'Last));
-   end printDec;
+   type Turn_Work is record
+      Events, Requests, Presents : Unsigned_64 := 0;
+   end record;
+   turnStartedUs : Unsigned_64 := 0;
+   turnWork : Turn_Work;
 
    procedure maybePrintStats is
       now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
@@ -1288,41 +1583,7 @@ procedure main is
       end if;
       lastInputQueueOverflows := inputQueueOverflows;
 
-      -- Periodic serial counters are opt-in diagnostic output. Metrics below
-      -- remain available in production without formatting this text stream.
-      if Desktop_Timing_Policy.Enabled and then
-        (statsFrames > 0 or else statsEvents > 0) then
-         -- One write, not a scheduling opportunity between every field.
-         -- This fixes same-CPU service interleaving; the debug console is not
-         -- a cross-CPU structured or bounded-latency logging transport.
-         -- Serial regression evidence only; periodic work metrics use metrics.
-         -- Keep these periodic records out of logsvc.
-         CuBit.Messages.debugPrint
-           ("desktop: stats ev=" & Decimal (statsEvents) &
-            " key=" & Decimal (statsKeyboardEvents) &
-            " mouse=" & Decimal (statsMouseEvents) &
-            " button=" & Decimal (statsButtonTransitions) &
-            " wheel=" & Decimal (statsWheelEvents) &
-            " event_drop=" & Decimal (eventDropsThisPeriod) &
-            " input_resync=" & Decimal (inputOverflowsThisPeriod) &
-            " source_gap=" & Decimal (statsSourceGaps) &
-            " source_reject=" & Decimal (statsSourceRejects) &
-            " req=" & Decimal (statsRequests) &
-            " frames=" & Decimal (statsFrames) &
-            " fast=" & Decimal (statsFastFrames) &
-            " full=" & Decimal (statsFullFrames) &
-            " present_req=" & Decimal (statsPresentReq) &
-            " input_req=" & Decimal (statsInputReq) &
-            " other_req=" & Decimal (statsOtherReq) &
-            " draw_ms=" & Decimal (statsDrawMs) &
-            " submit=" & Decimal (statsPresentOps) &
-            " completion_ms=" & Decimal (statsCompletionMs) &
-            " px=" & Decimal (statsDamagePixels) &
-            " repair_px=" & Decimal (statsRepairPixels) &
-            " scene_px=" & Decimal (statsScenePixels) &
-            " cursor_x=" & Decimal (Unsigned_64 (cursorX)) &
-            " cursor_y=" & Decimal (Unsigned_64 (cursorY)) & LF);
-      end if;
+      capturePeriod (eventDropsThisPeriod, inputOverflowsThisPeriod);
 
       -- Reuse the existing reporting clock. The store sums Counter deltas;
       -- submit each interval once, before resetting the local work counters.
@@ -1336,11 +1597,8 @@ procedure main is
       if Trace_Metrics_Enabled and then not DM.Disabled and then
         now < Unsigned_64'Last / 1000
       then DM.Record_Trace_Status (now * 1000); end if;
-      publishTiming;
       statsStartMs := now;
       statsEvents := 0;
-      CuBit.Graphics_Metrics_IO.Publish
-        (GM.Desktop_Staging, stagingCopies, stagingReporter);
       statsKeyboardEvents := 0;
       statsMouseEvents := 0;
       statsButtonTransitions := 0;
@@ -1360,6 +1618,11 @@ procedure main is
       statsScenePixels := 0;
       statsSourceGaps := 0;
       statsSourceRejects := 0;
+      statsMaxFrameUs := 0;
+      statsMaxMotionUs := 0;
+      statsSourceAgeMaxMs := 0;
+      statsSourceAgeSumMs := 0;
+      statsSourceAgeCount := 0;
    end maybePrintStats;
 
    procedure tracePointer
@@ -1576,18 +1839,19 @@ procedure main is
                          w => MENU_W, h => MENU_H));
    end launchMenuRect;
 
-   function launchItemRect (action : Launch_Action) return Rect is
+   --  A top row: a category (1 .. launchRows) or Power (launchPowerRow).
+   function launchItemRect (row : Natural) return Rect is
       menu : constant Rect := launchMenuRect;
       y    : Natural;
    begin
-      if isEmpty (menu) or else action = LAUNCH_NONE or else menu.w <= 16 then
+      if isEmpty (menu) or else row = 0 or else menu.w <= 16 then
          return (others => 0);
       end if;
 
-      if action = LAUNCH_POWER then
-         y := menu.y + LAUNCH_FIRST_Y + launchMenu.Count * LAUNCH_STEP - 2 + 8;
-      elsif action <= launchMenu.Count then
-         y := menu.y + LAUNCH_FIRST_Y + (action - 1) * LAUNCH_STEP;
+      if row = launchPowerRow then
+         y := menu.y + LAUNCH_FIRST_Y + launchRows * LAUNCH_STEP - 2 + 8;
+      elsif row <= launchRows then
+         y := menu.y + LAUNCH_FIRST_Y + (row - 1) * LAUNCH_STEP;
       else
          return (others => 0);
       end if;
@@ -1596,6 +1860,59 @@ procedure main is
                          w => menu.w - 16, h => 30));
    end launchItemRect;
 
+   --  The open category's submenu, beside its row and kept on the output
+   --  above the taskbar (Client_Popup_Layout).
+   function launchSubmenuRect return Rect is
+      package PL renames Client_Popup_Layout;
+      menu : constant Rect := launchMenuRect;
+      open : constant Natural := launchMenuState.Open;
+      items : constant Natural := LM.Items (launchMenu, open);
+      row : constant Rect := launchItemRect (open);
+      areaHeight : constant Natural :=
+        (if taskbarY > primaryBounds.y then taskbarY - primaryBounds.y else primaryBounds.h);
+      placed : PL.Box;
+   begin
+      if not launchMenuOpen or else open = 0 or else items = 0 or else isEmpty (menu) or else isEmpty (row) then
+         return (others => 0);
+      end if;
+      placed := PL.Place_Beside
+        ((Natural'Min (menu.x, PL.MAXIMUM_COORDINATE), Natural'Min (menu.y, PL.MAXIMUM_COORDINATE),
+          Natural'Min (menu.w, PL.MAXIMUM_COORDINATE), Natural'Min (menu.h, PL.MAXIMUM_COORDINATE)),
+         Natural'Min ((if row.y > SUBMENU_PAD then row.y - SUBMENU_PAD else row.y), PL.MAXIMUM_COORDINATE),
+         MENU_W, 2 * SUBMENU_PAD + items * LAUNCH_STEP - 4,
+         (Natural'Min (primaryBounds.x, PL.MAXIMUM_COORDINATE), Natural'Min (primaryBounds.y, PL.MAXIMUM_COORDINATE),
+          Natural'Min (primaryBounds.w, PL.MAXIMUM_COORDINATE), Natural'Min (areaHeight, PL.MAXIMUM_COORDINATE)));
+      return clampRect ((x => placed.X, y => placed.Y, w => placed.W, h => placed.H));
+   end launchSubmenuRect;
+
+   function launchSubItemRect (index : Natural) return Rect is
+      sub : constant Rect := launchSubmenuRect;
+   begin
+      if isEmpty (sub) or else index = 0 or else sub.w <= 16 then
+         return (others => 0);
+      end if;
+      return clampRect ((x => sub.x + 8, y => sub.y + SUBMENU_PAD + (index - 1) * LAUNCH_STEP,
+                         w => sub.w - 16, h => 30));
+   end launchSubItemRect;
+
+   --  Everything the open menu covers (for damage).
+   function launchMenuArea return Rect is
+      menu : constant Rect := launchMenuRect;
+      sub : constant Rect := launchSubmenuRect;
+      left, top, right, bottom : Natural;
+   begin
+      if isEmpty (sub) then
+         return menu;
+      elsif isEmpty (menu) then
+         return sub;
+      end if;
+      left := Natural'Min (menu.x, sub.x);
+      top := Natural'Min (menu.y, sub.y);
+      right := Natural'Max (menu.x + menu.w, sub.x + sub.w);
+      bottom := Natural'Max (menu.y + menu.h, sub.y + sub.h);
+      return (x => left, y => top, w => right - left, h => bottom - top);
+   end launchMenuArea;
+
    function launchSeparatorRect return Rect is
       menu : constant Rect := launchMenuRect;
       y    : Natural := 0;
@@ -1603,7 +1920,7 @@ procedure main is
       if isEmpty (menu) or else menu.w <= 24 then
          return (others => 0);
       end if;
-      y := menu.y + LAUNCH_FIRST_Y + launchMenu.Count * LAUNCH_STEP - 2;
+      y := menu.y + LAUNCH_FIRST_Y + launchRows * LAUNCH_STEP - 2;
       return clampRect ((x => menu.x + 12, y => y,
                          w => menu.w - 24, h => 1));
    end launchSeparatorRect;
@@ -1672,18 +1989,27 @@ procedure main is
          x < r.x + r.w and then y < r.y + r.h;
    end pointInRect;
 
-   function hitLaunchItem (x, y : Natural) return Launch_Action is
+   --  The top row under (x, y), 0 for none.
+   function hitLaunchItem (x, y : Natural) return Natural is
    begin
-      for action in 1 .. launchMenu.Count loop
-         if pointInRect (x, y, launchItemRect (action)) then
-            return action;
+      for row in 1 .. launchPowerRow loop
+         if pointInRect (x, y, launchItemRect (row)) then
+            return row;
          end if;
       end loop;
-      if pointInRect (x, y, launchItemRect (LAUNCH_POWER)) then
-         return LAUNCH_POWER;
-      end if;
-      return LAUNCH_NONE;
+      return 0;
    end hitLaunchItem;
+
+   --  The open submenu's entry under (x, y), 0 for none.
+   function hitLaunchSubItem (x, y : Natural) return Natural is
+   begin
+      for index in 1 .. LM.Items (launchMenu, launchMenuState.Open) loop
+         if pointInRect (x, y, launchSubItemRect (index)) then
+            return index;
+         end if;
+      end loop;
+      return 0;
+   end hitLaunchSubItem;
 
    function hitTaskButton (x, y : Natural) return Integer is
    begin
@@ -2188,6 +2514,10 @@ procedure main is
            completion.token = Desktop_Launch_Refresh.Token
          then
             Desktop_Launch_Refresh.Collect (completion);
+         elsif Desktop_Pointer_Plane.Matches (completion.token) then
+            Desktop_Pointer_Plane.Collect (completion, requestSequence);
+         elsif Desktop_Status_Refresh.Matches (completion.token) then
+            Desktop_Status_Refresh.Collect (completion, requestSequence);
          elsif completion.token > retiredThrough then
             matched := False;
             for Output in Output_Index loop
@@ -2307,11 +2637,22 @@ procedure main is
    begin
       if not CP.Can_Attempt (P.Transfer, Attempt_Time) then return; end if;
       if Held = BP.None or else isEmpty (r) then exitCompositor (1); end if;
-      request := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
-        (PW.Encode (PW.Frame'
+      declare
+         use type CuBit.Display_Planes.Plan_Epoch;
+         Item : constant PW.Frame :=
            (Held.Buffer, (CP.Session (P.Transfer), CP.Token (P.Transfer),
              (DP.Pixel_Coordinate (r.x), DP.Pixel_Coordinate (r.y),
-              DP.Pixel_Extent (r.w), DP.Pixel_Extent (r.h))))), Output));
+              DP.Pixel_Extent (r.w), DP.Pixel_Extent (r.h))));
+         Epoch : constant CuBit.Display_Planes.Plan_Epoch :=
+           Desktop_Pointer_Plane.Frame_Epoch;
+      begin
+         --  Tag the frame with the plane plan whose pointer composition it
+         --  shows; display swaps plane and composite with this frame.
+         request := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
+           ((if Epoch = CuBit.Display_Planes.No_Epoch then PW.Encode (Item)
+             else CuBit.Display_Plane_Protocol.Encode
+               (CuBit.Display_Plane_Protocol.Plan_Frame'(Item, Epoch))), Output));
+      end;
       P.Started := Attempt_Time;
       P.Started_Us := presentationNow;
       if not Bootstrap_CPU then Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Submit); end if;
@@ -2327,6 +2668,20 @@ procedure main is
                0, 0, 0, CP.Session (P.Transfer), CP.Token (P.Transfer), P.Started_Us));
          end if;
          noteTiming (Submit_Call, P.Started_Us);
+         if pendingInputUs /= Compositor_Elapsed.Unavailable then
+            if DM.Enabled and then not DM.Disabled then
+               DM.Record_Stage (Compositor_Stage_Metrics.Input_To_Present, pendingInputUs, dispatchNow);
+            end if;
+            pendingInputUs := Compositor_Elapsed.Unavailable;
+         end if;
+         declare Waited : constant Compositor_Elapsed.Sample :=
+           Compositor_Elapsed.Measure (pendingMotionUs, timingNow);
+         begin
+            if Waited.Valid then
+               statsMaxMotionUs := Unsigned_64'Max (statsMaxMotionUs, Waited.Microseconds);
+            end if;
+            pendingMotionUs := Compositor_Elapsed.Unavailable;
+         end;
          Compositor_Damage.Clear (P.Frame_Damage);
          statsPresentOps := statsPresentOps + 1;
          if not asyncAnnounced then
@@ -2350,6 +2705,7 @@ procedure main is
       Held, Next_Writer : BP.Ticket;
       copiedBytes : Unsigned_64 := 0;
       envelopeBytes : Unsigned_64 := 0;
+      Frame_Started : constant Unsigned_64 := timingNow;
       use type DG.Scale_Component;
       procedure copyRegion (r : Rect) is
          ignored : System.Address;
@@ -2498,7 +2854,7 @@ procedure main is
             Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Unsafe);
             debugPrint ("desktop: renderer completion uncertain; writer retained" & LF);
             exitCompositor (1);
-         when Desktop_Compositor.Retry | Desktop_Compositor.Software_Required =>
+         when Desktop_Compositor.Retry =>
             -- The renderer has retired every reader/writer, but has no frame
             -- to publish (for example, a cold glyph upload needs recapture).
             -- Preserve fresh damage and mark this possibly partial target for
@@ -2506,10 +2862,21 @@ procedure main is
             if not nativeScene then exitCompositor (1); end if;
             Held := BP.Writer (P.Pool);
             if Held = BP.None then exitCompositor (1); end if;
-            if Completion = Desktop_Compositor.Software_Required then
-               Renderer_Recovery := True;
-               Renderer_Recovery_Key := (Unsigned_64 (Output), Held.Epoch, Held.Serial, Unsigned_64 (Held.Buffer));
-            end if;
+            declare
+               Cause : constant Desktop_Compositor.Retry_Cause := Desktop_Compositor.Last_Retry_Cause;
+               Stalled : Boolean;
+            begin
+               if statsRetries (Cause) < Unsigned_64'Last then
+                  statsRetries (Cause) := statsRetries (Cause) + 1;
+               end if;
+               Compositor_Stall_Watch.Retried (gpuStallWatch, nowMs,
+                 Desktop_Compositor.Upload_Progress, GPU_Stall_Deadline_Ms, Stalled);
+               if Stalled and then Desktop_Compositor.Full_Output then
+                  gpuStallCause := Cause;
+                  Renderer_Recovery := True;
+                  Renderer_Recovery_Key := (Unsigned_64 (Output), Held.Epoch, Held.Serial, Unsigned_64 (Held.Buffer));
+               end if;
+            end;
             BP.Finish_Render (P.Pool, Held, BP.Failed_Quiescent);
             if BP.Faulted (P.Pool) then exitCompositor (1); end if;
             RP.Failed_Render (P.Repaint, Held.Buffer);
@@ -2524,6 +2891,7 @@ procedure main is
             return;
          when Desktop_Compositor.Complete =>
             if not Bootstrap_CPU then Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Complete); end if;
+            Compositor_Stall_Watch.Completed (gpuStallWatch);
       end case;
       if Desktop_Compositor.Full_Output and then not gpuProgress (Output).Completed then
          gpuProgress (Output).Completed := True;
@@ -2543,6 +2911,13 @@ procedure main is
       BP.Finish_Render (P.Pool, BP.Writer (P.Pool), BP.Completed);
       BP.Present (P.Pool, Held);
       if Held = BP.None then exitCompositor (1); end if;
+      declare Frame : constant Compositor_Elapsed.Sample :=
+        Compositor_Elapsed.Measure (Frame_Started, timingNow);
+      begin
+         if Frame.Valid then
+            statsMaxFrameUs := Unsigned_64'Max (statsMaxFrameUs, Frame.Microseconds);
+         end if;
+      end;
       if not nativeScene and then not directOutput and then not sparseCopyAnnounced and then
         copiedBytes < envelopeBytes
       then
@@ -2611,7 +2986,11 @@ procedure main is
             case Result is
                when Desktop_Compositor.Recovery_Complete =>
                   Renderer_Recovery := False;
-                  debugPrint ("desktop: renderer retired; full software repaint queued" & LF);
+                  softwareAnnounced := True;
+                  debugPrint ("desktop: software rendering (GPU scene stalled" & Natural'Image (GPU_Stall_Deadline_Ms) &
+                    " ms, cause=" & Desktop_Compositor.Retry_Cause'Image (gpuStallCause) &
+                    " peak_layers=" & Natural'Image (Desktop_Compositor.Peak_Scene_Layers) &
+                    "; switched at runtime)" & LF);
                when Desktop_Compositor.Recovery_Pending => null;
                when Desktop_Compositor.Recovery_Unsafe =>
                   debugPrint ("desktop: renderer recovery uncertain; backing retained" & LF);
@@ -2742,7 +3121,11 @@ procedure main is
    procedure drawWallpaper (Cull_Windows : Boolean := False) is
       use type DG.Physical_Rectangle;
       Area : Rect := (0, 0, fbWidth, fbHeight);
+      --  The appearance's backdrop, or its flat colour while its image file
+      --  is unavailable (loaded on first use; docs/assets.md).
+      shown : CuBit.Appearance.Preferences;
    begin
+      Desktop_Wallpaper_Assets.Resolve (appearance, shown);
       if nativeOutputPass then
          -- The shell subsequently fills every visible window body opaquely.
          -- Only skip a complete damage rectangle: no fragmentation, allocation
@@ -2775,15 +3158,16 @@ procedure main is
                  ((P.Buffer, Unsigned_32 (P.Geometry.Width),
                    Unsigned_32 (P.Geometry.Height), Unsigned_32 (P.Pitch), 1),
                   Unsigned_64 (P.Pitch) * Unsigned_64 (P.Geometry.Height),
-                  appearance, activeOutput = 1, Drawn, Must_Restart);
+                  outputDamage, shown, activeOutput = 1, Drawn, Must_Restart);
                if Must_Restart then exitCompositor (1); end if;
                if Drawn then return; end if;
             end;
-            Desktop_Wallpaper.Paint
-              (P.Buffer, Natural (P.Geometry.Width), Natural (P.Geometry.Height),
+            Desktop_Wallpaper_Layers.Paint
+              (Natural (activeOutput),
+               P.Buffer, Natural (P.Geometry.Width), Natural (P.Geometry.Height),
                P.Pitch, Natural (outputDamage.Left), Natural (outputDamage.Top),
                Natural (outputDamage.Right - outputDamage.Left),
-               Natural (outputDamage.Bottom - outputDamage.Top), appearance);
+               Natural (outputDamage.Bottom - outputDamage.Top), shown);
          end;
          return;
       end if;
@@ -2801,12 +3185,12 @@ procedure main is
                B : constant Rect := logicalBounds (P.Geometry);
             begin
                if not isEmpty (R) then
-                  Desktop_Wallpaper.Paint
-                    (backBufferAddr + Storage_Offset
+                  Desktop_Wallpaper_Layers.Paint
+                    (Natural (Output), backBufferAddr + Storage_Offset
                        (Natural (P.Geometry.Y) * fbPitch +
                         Natural (P.Geometry.X) * 4),
                      B.w, B.h,
-                     fbPitch, R.x, R.y, R.w, R.h, appearance);
+                     fbPitch, R.x, R.y, R.w, R.h, shown);
                end if;
             end;
          end if;
@@ -2942,9 +3326,10 @@ procedure main is
    end premultipliedPixelOver;
 
    function drawNativeIcon
-     (Pixels : System.Address; Size, X, Y : Natural) return Boolean
+     (Item : Desktop_Icon_Pixels.Asset; X, Y : Natural) return Boolean
    is
       Drawn, Must_Restart : Boolean;
+      Size : constant Positive := Desktop_Icon_Pixels.Size (Item);
    begin
       if not nativeOutputPass then return False; end if;
       declare
@@ -2952,15 +3337,14 @@ procedure main is
          Damage : constant DG.Physical_Rectangle := physicalClip ((X, Y, Size, Size));
       begin
          if Damage.Left >= Damage.Right or else Damage.Top >= Damage.Bottom then return True; end if;
-         -- Embedded icons use straight alpha. Retain the existing immutable
-         -- atlas directly; do not allocate/copy a premultiplied shadow atlas.
-         Desktop_Compositor.Draw_Output
+         -- Embedded icons use straight alpha from the shared immutable icon
+         -- atlas; no per-icon GPU image or premultiplied shadow copy.
+         Desktop_Compositor.Draw_Icon
            ((O.Buffer, Unsigned_32 (O.Geometry.Width), Unsigned_32 (O.Geometry.Height), Unsigned_32 (O.Pitch), 1),
-            (Pixels, Unsigned_32 (Size), Unsigned_32 (Size), Unsigned_32 (Size * 4), 0),
-            Unsigned_64 (O.Pitch) * Unsigned_64 (O.Geometry.Height), Unsigned_64 (Size * Size * 4),
-            O.Geometry, (DG.Logical_Coordinate (X), DG.Logical_Coordinate (Y),
+            Unsigned_64 (O.Pitch) * Unsigned_64 (O.Geometry.Height),
+            O.Geometry, Item, (DG.Logical_Coordinate (X), DG.Logical_Coordinate (Y),
               DG.Logical_Coordinate (X + Size), DG.Logical_Coordinate (Y + Size)),
-            Damage, activeOutput = 1, Drawn, Must_Restart, Over => True, Straight_Alpha => True);
+            Damage, activeOutput = 1, Drawn, Must_Restart);
          if Must_Restart then exitCompositor (1); end if;
          return Drawn;
       end;
@@ -2973,7 +3357,7 @@ procedure main is
    is
       pixel : Unsigned_32;
    begin
-      if drawNativeIcon (Desktop_Icons.Pixels (id) (0)'Address, Desktop_Icons.ICON_SIZE, x, y) then return; end if;
+      if drawNativeIcon ((Desktop_Icon_Pixels.Application, id), x, y) then return; end if;
       for yy in 0 .. Desktop_Icons.ICON_SIZE - 1 loop
          for xx in 0 .. Desktop_Icons.ICON_SIZE - 1 loop
             pixel := Desktop_Icons.Pixels (id)
@@ -2992,7 +3376,7 @@ procedure main is
    is
       pixel : Unsigned_32;
    begin
-      if drawNativeIcon (Desktop_Window_Icons.Pixels (id) (0)'Address, Desktop_Window_Icons.ICON_SIZE, x, y) then return; end if;
+      if drawNativeIcon ((Desktop_Icon_Pixels.Window_Control, id), x, y) then return; end if;
       for yy in 0 .. Desktop_Window_Icons.ICON_SIZE - 1 loop
          for xx in 0 .. Desktop_Window_Icons.ICON_SIZE - 1 loop
             pixel := Desktop_Window_Icons.Pixels (id)
@@ -3458,12 +3842,14 @@ procedure main is
          begin
             if Damage.Left >= Damage.Right or else Damage.Top >= Damage.Bottom then return; end if;
             drawn := False; mustRestart := False;
-               Desktop_Compositor.Draw_Output
+            Desktop_Compositor.Draw_Output
               ((O.Buffer, Unsigned_32 (O.Geometry.Width), Unsigned_32 (O.Geometry.Height), Unsigned_32 (O.Pitch), 1),
                (s.bufferAddr, Unsigned_32 (s.bufferW), Unsigned_32 (s.bufferH), Unsigned_32 (s.bufferPitch), 0),
                Unsigned_64 (O.Pitch) * Unsigned_64 (O.Geometry.Height),
                Unsigned_64 (s.bufferPitch) * Unsigned_64 (s.bufferH),
-               O.Geometry, Surface_Bounds, Damage, activeOutput = 1, drawn, mustRestart);
+               O.Geometry, Surface_Bounds, Damage,
+               Compositor_Source_Content.Source_Key (s.id), s.contentVersion,
+               activeOutput = 1, drawn, mustRestart);
             if mustRestart then exitCompositor (1); end if;
             if drawn then
                noteClientDraw (S);
@@ -3477,9 +3863,10 @@ procedure main is
                end if;
                return;
             end if;
-            if not mesaFallbackAnnounced then
-               debugPrint ("desktop: Mesa unavailable; CPU compositor fallback" & LF);
-               mesaFallbackAnnounced := True;
+            if not softwareAnnounced then
+               -- Startup and runtime selections announce their own cause.
+               debugPrint ("desktop: software rendering (renderer declined client surface)" & LF);
+               softwareAnnounced := True;
             end if;
             -- Opaque 1:1 client pixels need no per-pixel division. The SPARK
             -- planner clips both mappings; grants and nonaliasing remain the
@@ -3661,6 +4048,10 @@ procedure main is
       if outputDrainRequested or else outputReopenPending or else isEmpty (r) then
          return;
       end if;
+      --  A hardware cursor plane shows the pointer: frames never contain it.
+      if Desktop_Pointer_Plane.Composed_Hardware then
+         return;
+      end if;
 
       if nativeOutputPass then
          declare
@@ -3670,18 +4061,13 @@ procedure main is
             Drawn, Must_Restart : Boolean;
          begin
             if Damage.Left >= Damage.Right or else Damage.Top >= Damage.Bottom then return; end if;
-            -- The immutable atlas outlives every frame and retained view. Keep
-            -- the cursor in scene order through the renderer facade; the CPU
-            -- loop remains the known-quiescent software fallback.
-            Desktop_Compositor.Draw_Output
+            -- Cursor styles share one immutable atlas image that outlives every
+            -- frame. Keep the cursor in scene order through the renderer
+            -- facade; the CPU loop remains the known-quiescent software path.
+            Desktop_Compositor.Draw_Cursor
               ((O.Buffer, Unsigned_32 (O.Geometry.Width), Unsigned_32 (O.Geometry.Height), Unsigned_32 (O.Pitch), 1),
-               (Desktop_Cursors.Pixels (metadata.Offset)'Address,
-                Unsigned_32 (metadata.Width), Unsigned_32 (metadata.Height),
-                Unsigned_32 (metadata.Width * 4), 0),
                Unsigned_64 (O.Pitch) * Unsigned_64 (O.Geometry.Height),
-               Unsigned_64 (metadata.Width * metadata.Height * 4),
-               O.Geometry, Shape, Damage, activeOutput = 1, Drawn, Must_Restart,
-               Over => True);
+               O.Geometry, asset, Shape, Damage, activeOutput = 1, Drawn, Must_Restart);
             if Must_Restart then exitCompositor (1); end if;
             if Drawn then return; end if;
             for Y in Natural (Damage.Top) .. Natural (Damage.Bottom) - 1 loop
@@ -3758,19 +4144,69 @@ procedure main is
       if outputDrainRequested or else outputReopenPending then return; end if;
       -- Both helpers queue their exact written footprints. Keep them separate
       -- so a pointer jump does not copy the unchanged rectangle between them.
+      --  Switch between plane and composite here, where both pointer
+      --  footprints join the frame damage, so the tagged frame shows it.
+      Desktop_Pointer_Plane.Note_Composed;
       restoreCursorOverlay;
       drawCursorOverlay;
       noteCursorPresented;
       noteTiming (Scene_Draw, Started);
    end presentCursorOverlay;
 
+   uploadedCursor : Desktop_Cursors.Cursor_ID := Desktop_Cursors.Arrow;
+   --  The first shape has been handed to the plane (it submits it, and any
+   --  later one, without waiting).
+   pointerShapeSent : Boolean := False;
+
+   --  Hand the current shape and position to the pointer plane request.
+   procedure updatePointerPlane is
+      use type Desktop_Cursors.Cursor_ID;
+      Asset : constant Desktop_Cursors.Cursor_ID := cursorAsset;
+      M : constant Desktop_Cursors.Cursor_Metadata := Desktop_Cursors.Metadata (Asset);
+   begin
+      if not Desktop_Pointer_Plane.Active then return; end if;
+      if not pointerShapeSent or else Asset /= uploadedCursor then
+         Desktop_Pointer_Plane.Set_Shape
+           (Desktop_Cursors.Pixels (M.Offset)'Address, M.Width, M.Height,
+            M.Hotspot_X, M.Hotspot_Y, requestSequence);
+         uploadedCursor := Asset;
+         pointerShapeSent := True;
+      end if;
+      Desktop_Pointer_Plane.Move (cursorX, cursorY, requestSequence);
+   end updatePointerPlane;
+
+   --  Declare every output's place in pointer space (logical coordinates;
+   --  only unscaled, unrotated outputs can show a hardware pointer).
+   procedure syncPointerPlane is
+      use type DG.Scale_Component, DG.Orientation;
+   begin
+      Desktop_Pointer_Plane.Start;
+      for I in 1 .. desktopLayout.Count loop
+         declare
+            G : DG.Output renames desktopLayout.Items (I).Geometry;
+         begin
+            Desktop_Pointer_Plane.Place
+              (I - 1, Integer (G.X), Integer (G.Y),
+               G.Scale.Numerator = G.Scale.Denominator and then
+               G.Rotation = DG.Unrotated);
+         end;
+      end loop;
+      updatePointerPlane;
+   end syncPointerPlane;
+
    procedure scheduleCursorPresent is
    begin
+      updatePointerPlane;
+      --  A hardware pointer needs no frame unless a composited one must be
+      --  erased (presentCursorOverlay restores only a drawn footprint).
       cursorPresentPending := True;
    end scheduleCursorPresent;
 
    procedure flushCursorPresent is
    begin
+      if Desktop_Pointer_Plane.Take_Change then
+         cursorPresentPending := True;
+      end if;
       if cursorPresentPending and then not outputReopenPending and then not shutdownRequested then
          presentCursorOverlay;
       end if;
@@ -3916,15 +4352,17 @@ procedure main is
       P : constant CuBit.UI.Rect := CuBit.UI.Clamp_Rect (C, Bounds);
       O : Output_Presentation renames presentations (activeOutput);
       Drawn, Must_Restart : Boolean;
+      Shown : CuBit.Appearance.Preferences;
    begin
       if P.w = 0 or else P.h = 0 then return; end if;
+      Desktop_Wallpaper_Assets.Resolve (Style, Shown);
       if Desktop_Compositor.Full_Output then
          Desktop_Compositor.Draw_Preview
            ((O.Buffer, Unsigned_32 (O.Geometry.Width), Unsigned_32 (O.Geometry.Height), Unsigned_32 (O.Pitch), 1),
             Unsigned_64 (O.Pitch) * Unsigned_64 (O.Geometry.Height),
             (DG.Logical_Coordinate (Bounds.x), DG.Logical_Coordinate (Bounds.y),
              DG.Logical_Coordinate (Bounds.x + Bounds.w), DG.Logical_Coordinate (Bounds.y + Bounds.h)),
-            physicalClip ((P.x, P.y, P.w, P.h)), Style, activeOutput = 1, Drawn, Must_Restart);
+            physicalClip ((P.x, P.y, P.w, P.h)), Shown, activeOutput = 1, Drawn, Must_Restart);
          if Must_Restart then exitCompositor (1); end if;
          if Drawn then return; end if;
       end if;
@@ -3932,7 +4370,7 @@ procedure main is
         (O.Buffer, O.Pitch, O.Geometry,
          (DG.Logical_Coordinate (Bounds.x), DG.Logical_Coordinate (Bounds.y),
           DG.Logical_Coordinate (Bounds.x + Bounds.w), DG.Logical_Coordinate (Bounds.y + Bounds.h)),
-         physicalClip ((P.x, P.y, P.w, P.h)), Style);
+         physicalClip ((P.x, P.y, P.w, P.h)), Shown);
    end settingsWallpaper;
 
    procedure renderSettings is new Desktop_Settings.Render
@@ -4043,6 +4481,7 @@ procedure main is
                if nativeOutputPass then
                   renderSettings (settingsView, C, (bounds.x, bounds.y, bounds.w, bounds.h));
                else
+                  Desktop_Wallpaper_Assets.Prepare (settingsView.Pending.Backdrop);
                   Desktop_Settings.Draw (settingsView, C, (bounds.x, bounds.y, bounds.w, bounds.h));
                end if;
             end;
@@ -4064,6 +4503,12 @@ procedure main is
             end if;
       end case;
    end drawWindow;
+
+   --  Where a taskbar button's label goes: its line box centred in the
+   --  button, the same for the Apps button and every window button, so the
+   --  baselines line up.
+   function taskbarTextY (r : Rect) return Natural is
+     (r.y + (if r.h > CuBit.Fonts.Line_Height then (r.h - CuBit.Fonts.Line_Height) / 2 else 0));
 
    procedure drawTaskButtons is
       r : Rect;
@@ -4091,7 +4536,7 @@ procedure main is
 
                fillRect (r.x, r.y, r.w, r.h, face);
                strokeRect (r.x, r.y, r.w, r.h, light, dark);
-               drawSurfaceTitle (surfaces (i), r.x + 10, r.y + 6,
+               drawSurfaceTitle (surfaces (i), r.x + 10, taskbarTextY (r),
                                  C_TEXT, face);
             end if;
          end if;
@@ -4115,28 +4560,44 @@ procedure main is
       end if;
    end drawDragOutline;
 
+   --  A category's icon in the Apps menu.
+   function categoryIcon (group : Desktop_Launch.Category) return Desktop_Icons.Icon_ID is
+     (case group is
+         when CCL.Interfaces.Desktop_Launch.System => Desktop_Icons.Category_System,
+         when CCL.Interfaces.Desktop_Launch.Development => Desktop_Icons.Category_Development,
+         when CCL.Interfaces.Desktop_Launch.Web => Desktop_Icons.Category_Web,
+         when CCL.Interfaces.Desktop_Launch.Games => Desktop_Icons.Category_Games,
+         when CCL.Interfaces.Desktop_Launch.Media => Desktop_Icons.Category_Media,
+         when CCL.Interfaces.Desktop_Launch.Tools => Desktop_Icons.Category_Tools);
+
    procedure drawLaunchMenu is
       r : constant Rect := launchMenuRect;
 
-      procedure drawLaunchItem
-         (action : Launch_Action;
-          icon   : Desktop_Icons.Icon_ID;
-          label  : String;
-          fg     : Unsigned_32)
+      procedure drawRow
+         (item     : Rect;
+          selected : Boolean;
+          icon     : Desktop_Icons.Icon_ID;
+          label    : String;
+          fg       : Unsigned_32;
+          arrow    : Boolean)
       is
-         item : constant Rect := launchItemRect (action);
-         selected : constant Boolean := launchMenuSelection = action;
          bg : constant Unsigned_32 :=
            (if selected then C_ACCENT else C_PANEL);
          textColor : constant Unsigned_32 :=
            (if selected then C_WHITE else fg);
       begin
+         if isEmpty (item) then
+            return;
+         end if;
          if selected then
             fillRect (item.x, item.y, item.w, item.h, bg);
          end if;
          drawIcon (icon, item.x + 8, item.y + 3, bg);
          drawUIText (item.x + 40, item.y + 7, label, textColor, bg);
-      end drawLaunchItem;
+         if arrow and then item.w > 24 then
+            drawUIText (item.x + item.w - 18, item.y + 7, ">", textColor, bg);
+         end if;
+      end drawRow;
    begin
       if not launchMenuOpen or else isEmpty (r) then
          return;
@@ -4149,18 +4610,44 @@ procedure main is
 
       drawIcon (Desktop_Icons.Start, r.x + 12, r.y + 10, C_PANEL);
       drawUIText (r.x + 44, r.y + 14, "CuBit", C_TEXT, C_PANEL);
-      for action in 1 .. launchMenu.Count loop
-         drawLaunchItem
-           (action, launchMenu.Entries (action).Icon,
-            Desktop_Launch.Label_Of (launchMenu.Entries (action)), C_TEXT);
+      for row in 1 .. launchRows loop
+         drawRow
+           (launchItemRect (row),
+            launchMenuState.Row = row and then not launchMenuState.In_Submenu,
+            categoryIcon (LM.Category_Of (launchMenu, row)),
+            LM.Category_Name (LM.Category_Of (launchMenu, row)),
+            (if launchMenuState.Open = row then C_ACCENT else C_TEXT), True);
       end loop;
       declare
          sep : constant Rect := launchSeparatorRect;
       begin
          fillRect (sep.x, sep.y, sep.w, sep.h, C_EDGE);
       end;
-      drawLaunchItem
-        (LAUNCH_POWER, Desktop_Icons.Power, "Power", C_MUTED);
+      drawRow (launchItemRect (launchPowerRow), False, Desktop_Icons.Power, "Power", C_MUTED, False);
+
+      --  The open category's submenu, in the same look.
+      declare
+         sub : constant Rect := launchSubmenuRect;
+      begin
+         if not isEmpty (sub) then
+            drawDappledShadow (sub.x, sub.y, sub.w, sub.h);
+            fillRect (sub.x, sub.y, sub.w, sub.h, C_PANEL);
+            strokeRect (sub.x, sub.y, sub.w, sub.h, C_EDGE, C_SHADOW);
+            for index in 1 .. LM.Items (launchMenu, launchMenuState.Open) loop
+               declare
+                  entryIndex : constant Natural := LM.Entry_Of (launchMenu, launchMenuState.Open, index);
+               begin
+                  if entryIndex in 1 .. launchMenu.Count then
+                     drawRow
+                       (launchSubItemRect (index),
+                        launchMenuState.In_Submenu and then launchMenuState.Item = index,
+                        launchMenu.Entries (entryIndex).Icon,
+                        Desktop_Launch.Label_Of (launchMenu.Entries (entryIndex)), C_TEXT, False);
+                  end if;
+               end;
+            end loop;
+         end if;
+      end;
    end drawLaunchMenu;
 
    procedure drawStatus is
@@ -4228,11 +4715,7 @@ procedure main is
          (if launch.h > Desktop_Icons.ICON_SIZE
           then (launch.h - Desktop_Icons.ICON_SIZE) / 2
           else 0);
-      launchTextY : constant Natural :=
-         launch.y +
-         (if launch.h > CuBit.Fonts.Line_Height
-          then (launch.h - CuBit.Fonts.Line_Height) / 2
-          else 0);
+      launchTextY : constant Natural := taskbarTextY (launch);
    begin
       if fbWidth = 0 or else fbHeight = 0 then
          return;
@@ -4683,6 +5166,25 @@ procedure main is
       end if;
    end scheduleRedrawRect;
 
+   --  Every way a move or resize ends (release, cancel, resynchronization,
+   --  surface destruction) goes through here. The outline or window that the
+   --  last frame showed, and any newer preview, is scene damage: forgetting
+   --  the drag state first would leave that outline on screen for good.
+   procedure endDrag is
+   begin
+      if dragPresentedValid then
+         scheduleRedrawRect (windowVisualRect (dragPresentedRect));
+      end if;
+      if dragPreviewValid then
+         scheduleRedrawRect (windowVisualRect (dragPreviewRect));
+      end if;
+      dragPreviewValid := False;
+      dragPresentedValid := False;
+      dragBaseReady := False;
+      dragMode := DRAG_NONE;
+      dragSurfaceId := 0;
+   end endDrag;
+
    procedure clearInputForTarget (target : Unsigned_64);
 
    procedure reapDeadClientSurfaces (damage : in out Rect);
@@ -5099,6 +5601,36 @@ procedure main is
         (DP.Success, Publication.Identity (Epoch), Publication.Identity (Ticket));
    end retirePublicationBuffer;
 
+   -- New pixels behind S (any buffer/attachment change or client present).
+   -- Rows are source rows changed since the previous version; the renderer
+   -- copies only those into its persistent image of this surface.
+   procedure noteContentChange
+     (S : in out Surface; Rows : Compositor_Source_Content.Row_Band)
+   is
+      use type Compositor_Source_Content.Content_Version;
+   begin
+      if S.contentVersion < Compositor_Source_Content.Content_Version'Last then
+         S.contentVersion := S.contentVersion + 1;
+      else
+         -- Versions never wrap; 2**64 changes of one surface cannot occur.
+         return;
+      end if;
+      Desktop_Compositor.Note_Source_Change (Compositor_Source_Content.Source_Key (S.id), Rows);
+   end noteContentChange;
+
+   function bufferRows (Height : Natural) return Compositor_Source_Content.Row_Band is
+     (Compositor_Source_Content.Whole
+        (Natural'Min (Height, Compositor_Source_Content.Maximum_Rows)));
+
+   -- The surface record is about to be destroyed: its persistent renderer
+   -- image is released once no frame reads it.
+   procedure retireSurfaceSource (S : Surface) is
+   begin
+      if S.id /= 0 then
+         Desktop_Compositor.Retire_Source (Compositor_Source_Content.Source_Key (S.id));
+      end if;
+   end retireSurfaceSource;
+
    procedure releaseSurfaceBuffer (S : in out Surface) is
    begin
       if S.publicationMode then
@@ -5141,14 +5673,12 @@ procedure main is
          pointerSurfaceId := 0;
       end if;
       if dragSurfaceId = oldId then
-         dragSurfaceId := 0;
-         dragMode := DRAG_NONE;
-         dragPreviewValid := False;
-         dragPresentedValid := False;
+         endDrag;
       end if;
       clearInputForTarget (oldId);
 
       releaseSurfaceBuffer (surfaces (idx));
+      retireSurfaceSource (surfaces (idx));
       surfaces (idx) := (others => <>);
 
       if focusSurface = oldId then
@@ -5185,10 +5715,7 @@ procedure main is
                pointerSurfaceId := 0;
             end if;
             if dragSurfaceId = surfaces (i).id then
-               dragSurfaceId := 0;
-               dragMode := DRAG_NONE;
-               dragPreviewValid := False;
-               dragPresentedValid := False;
+               endDrag;
             end if;
             clearInputForTarget (surfaces (i).id);
             if focusSurface = surfaces (i).id then
@@ -5198,6 +5725,7 @@ procedure main is
                releaseSurfaceBuffer (surfaces (i));
                debugPrint ("desktop: dead client buffer retirement requested" & LF);
             end if;
+            retireSurfaceSource (surfaces (i));
             surfaces (i) := (others => <>);
             damage := unionRect (damage, inflateRect (oldBounds, 4));
             damage := unionRect (damage, inflateRect (oldTask, 4));
@@ -5350,6 +5878,7 @@ procedure main is
          bufferH => 0,
          bufferPitch => 0,
          bufferFormat => 0,
+         contentVersion => Compositor_Source_Content.No_Version,
          pointerCursor => POINTER_DEFAULT,
          publicationPolicy => <>, publicationConfiguration => <>,
          publicationMode => False, publicationBuffers => <>,
@@ -5668,10 +6197,7 @@ procedure main is
    begin
       CuBit.Click_Sequences.Reset (titleClicks);
       pointerSurfaceId := 0;
-      dragSurfaceId := 0;
-      dragMode := DRAG_NONE;
-      dragPreviewValid := False;
-      dragPresentedValid := False;
+      endDrag;
       desktopExtendedPrefix := False;
 
       if desktopShiftDown then
@@ -6172,17 +6698,29 @@ procedure main is
                            then
                               declare
                                  B : Publication_Buffer renames S.publicationBuffers (I);
+                                 Whole_Change : constant Boolean :=
+                                   Natural (Decoded.Value.Area.Width) = 0 or else not S.bufferAttached or else
+                                   S.bufferW /= Natural (B.Configuration.Layout.Width) or else
+                                   S.bufferH /= Natural (B.Configuration.Layout.Height) or else
+                                   S.bufferLogicalW /= Natural (B.Configuration.Width) or else
+                                   S.bufferLogicalH /= Natural (B.Configuration.Height);
                                  Damage : constant Compositor_Source_Damage.Box :=
                                    Compositor_Source_Damage.Map
                                      (Natural (B.Configuration.Layout.Width), Natural (B.Configuration.Layout.Height),
                                       Natural (B.Configuration.Width), Natural (B.Configuration.Height),
                                       (Natural (Decoded.Value.Area.X), Natural (Decoded.Value.Area.Y),
                                        Natural (Decoded.Value.Area.Width), Natural (Decoded.Value.Area.Height)),
-                                      Full => Natural (Decoded.Value.Area.Width) = 0 or else not S.bufferAttached or else
-                                        S.bufferW /= Natural (B.Configuration.Layout.Width) or else
-                                        S.bufferH /= Natural (B.Configuration.Layout.Height) or else
-                                        S.bufferLogicalW /= Natural (B.Configuration.Width) or else
-                                        S.bufferLogicalH /= Natural (B.Configuration.Height));
+                                      Full => Whole_Change);
+                                 -- Source rows for the persistent renderer image.
+                                 Source_Rows : constant Compositor_Source_Content.Row_Band :=
+                                   (if Whole_Change or else Natural (Decoded.Value.Area.Height) = 0
+                                    then bufferRows (Natural (B.Configuration.Layout.Height))
+                                    else Compositor_Source_Content.Clip
+                                      (Compositor_Source_Content.Band
+                                         (Natural (Decoded.Value.Area.Y),
+                                          Natural'Min (Compositor_Source_Content.Maximum_Rows,
+                                            Natural (Decoded.Value.Area.Y) + Natural (Decoded.Value.Area.Height))),
+                                       Natural (B.Configuration.Layout.Height)));
                                  Origin_X : constant Natural := S.x +
                                    (if (S.flags and SURFACE_FLAG_WINDOW) /= 0 then CLIENT_INSET_X else 0);
                                  Origin_Y : constant Natural := S.y +
@@ -6203,6 +6741,7 @@ procedure main is
                                     S.bufferAttached := True;
                                     S.dirty := True;
                                     S.serial := S.serial + 1;
+                                    noteContentChange (S, Source_Rows);
                                     S.publicationInputAfter := Decoded.Value.Input_After;
                                     if Trace_Enabled then
                                        -- Capture the accepted publication identity; both
@@ -6626,6 +7165,7 @@ procedure main is
                      bufferH => 0,
                      bufferPitch => 0,
                      bufferFormat => 0,
+                     contentVersion => Compositor_Source_Content.No_Version,
                      pointerCursor => POINTER_DEFAULT,
          publicationPolicy => <>, publicationConfiguration => <>,
          publicationMode => False, publicationBuffers => <>,
@@ -6818,6 +7358,8 @@ procedure main is
                   scheduleRedrawRect
                     (inflateRect
                        (surfaceRect (surfaces (SurfaceIndex (idx))), 2));
+                  --  The taskbar button shows the same title.
+                  scheduleRedrawRect (taskButtonRect (SurfaceIndex (idx)));
                end if;
                replyMsg := CuBit.Desktop_Messages.From_Wire
                  (DP.Encode_Status (DP.Set_Window_Title, result));
@@ -6866,6 +7408,8 @@ procedure main is
                      surfaces (SurfaceIndex (idx)).dirty := True;
                      surfaces (SurfaceIndex (idx)).serial :=
                        surfaces (SurfaceIndex (idx)).serial + 1;
+                     noteContentChange (surfaces (SurfaceIndex (idx)),
+                       bufferRows (surfaces (SurfaceIndex (idx)).bufferH));
                      replyMsg.words (0) := UI_OK;
                      scheduleRedrawRect
                        (inflateRect
@@ -6907,7 +7451,18 @@ procedure main is
                         clientRect (surfaces (SurfaceIndex (idx)));
                      damage : constant DP.Rectangle :=
                        DP.Clip (present.Value.Area, client.w, client.h);
+                     bufferH : constant Natural := surfaces (SurfaceIndex (idx)).bufferH;
                   begin
+                     -- Client-local damage rows are buffer rows only at 1:1.
+                     noteContentChange (surfaces (SurfaceIndex (idx)),
+                       (if DP.Mode (present.Value) = DP.Whole_Surface or else bufferH /= client.h
+                        then bufferRows (bufferH)
+                        else Compositor_Source_Content.Clip
+                          (Compositor_Source_Content.Band
+                             (Natural'Min (Natural (damage.Y), Compositor_Source_Content.Maximum_Rows),
+                              Natural'Min (Natural (damage.Y) + Natural (damage.Height),
+                                Compositor_Source_Content.Maximum_Rows)),
+                           Natural'Min (bufferH, Compositor_Source_Content.Maximum_Rows))));
                      if DP.Mode (present.Value) = DP.Whole_Surface then
                         scheduleRedrawRect (client);
                      else
@@ -6918,6 +7473,8 @@ procedure main is
                      end if;
                   end;
                else
+                  noteContentChange (surfaces (SurfaceIndex (idx)),
+                    bufferRows (surfaces (SurfaceIndex (idx)).bufferH));
                   scheduleRedraw;
                end if;
             end;
@@ -6938,13 +7495,11 @@ procedure main is
                      pointerSurfaceId := 0;
                   end if;
                   if dragSurfaceId = target then
-                     dragSurfaceId := 0;
-                     dragMode := DRAG_NONE;
-                     dragPreviewValid := False;
-                     dragPresentedValid := False;
+                     endDrag;
                   end if;
                   clearInputForTarget (target);
                   releaseSurfaceBuffer (surfaces (SurfaceIndex (idx)));
+                  retireSurfaceSource (surfaces (SurfaceIndex (idx)));
                   surfaces (SurfaceIndex (idx)) := (others => <>);
                   if focusSurface = target then
                      -- Select after removal, before accepting more input.
@@ -7026,13 +7581,11 @@ procedure main is
                      pointerSurfaceId := 0;
                   end if;
                   if dragSurfaceId = surfaces (i).id then
-                     dragSurfaceId := 0;
-                     dragMode := DRAG_NONE;
-                     dragPreviewValid := False;
-                     dragPresentedValid := False;
+                     endDrag;
                   end if;
                   clearInputForTarget (surfaces (i).id);
                   releaseSurfaceBuffer (surfaces (i));
+                  retireSurfaceSource (surfaces (i));
                   surfaces (i) := (others => <>);
                end if;
             end loop;
@@ -7327,6 +7880,7 @@ procedure main is
       backBufferAddr := privateSceneAddr;
       fbWidth := Width; fbHeight := Height; fbPitch := Compositor_Workspace.Pitch (Width);
       desktopLayout := Candidate;
+      syncPointerPlane;
       primaryOutput := Output_Index (Choice.Index - 1);
       preferredPrimary := Choice.Display;
       for Output in Output_Index loop
@@ -7556,10 +8110,12 @@ procedure main is
       return clampWindowRect (s, r);
    end previewRectFromPointer;
 
+   --  The clock and volume arrive as completions (Desktop_Status_Refresh):
+   --  this only applies fresh replies and submits the next reads when due.
    procedure refreshStatus is
       stamp : CuBit.Clocks.Snapshot;
       audio : CuBit.Audio_Control.State;
-      ok : Boolean;
+      fresh : Boolean;
       nextText : String (1 .. 5) := "--:--";
       now : constant Unsigned_64 := nowMs;
       use type CuBit.Clocks.Time_Quality;
@@ -7567,42 +8123,44 @@ procedure main is
       function digit (v : Natural) return Character is
         (Character'Val (Character'Pos ('0') + v));
    begin
-      if now < statusDueMs then return; end if;
-      statusDueMs := now + 10_000;
-      CuBit.Clocks.Read (stamp, ok);
-      if ok and then CuBit.Clocks.Is_Valid_Wall_Time (stamp.Quality) then
-         nextText := [digit (stamp.Hour / 10), digit (stamp.Hour mod 10), ':',
-                      digit (stamp.Minute / 10), digit (stamp.Minute mod 10)];
-         statusDueMs := now + Unsigned_64'Min
-           (10_000, Unsigned_64 (60 - stamp.Second) * 1000);
-      elsif ok and then stamp.Quality = CuBit.Clocks.Invalid_Zone then
-         nextText := " TZ? ";
+      Desktop_Status_Refresh.Take_Clock (stamp, fresh);
+      if fresh then
+         if CuBit.Clocks.Is_Valid_Wall_Time (stamp.Quality) then
+            nextText := [digit (stamp.Hour / 10), digit (stamp.Hour mod 10), ':',
+                         digit (stamp.Minute / 10), digit (stamp.Minute mod 10)];
+            --  Next read at the next minute, within the regular interval.
+            if now < Unsigned_64'Last - Status_Interval_Ms then
+               statusDueMs := Unsigned_64'Min
+                 (statusDueMs, now + Unsigned_64 (60 - stamp.Second) * 1000);
+            end if;
+         elsif stamp.Quality = CuBit.Clocks.Invalid_Zone then
+            nextText := " TZ? ";
+         end if;
+         if clockText /= nextText then
+            clockText := nextText;
+            scheduleRedrawRect (statusRect);
+         end if;
       end if;
-      if clockText /= nextText then
-         clockText := nextText;
-         scheduleRedrawRect (statusRect);
-      end if;
-      CuBit.Audio_Control.Read (audio, ok);
-      if ok and then audio /= masterAudio then
+      Desktop_Status_Refresh.Take_Audio (audio, fresh);
+      if fresh and then audio /= masterAudio then
          masterAudio := audio;
          scheduleRedrawRect (statusRect);
          if audioPopupOpen then scheduleRedrawRect (audioPopupRect); end if;
       end if;
+      if now = Unsigned_64'Last or else now < statusDueMs then return; end if;
+      statusDueMs := (if now < Unsigned_64'Last - Status_Interval_Ms
+                      then now + Status_Interval_Ms else Unsigned_64'Last - 1);
+      Desktop_Status_Refresh.Request_Clock (requestSequence);
+      Desktop_Status_Refresh.Request_Audio (requestSequence);
    end refreshStatus;
 
    procedure setMasterAudio (level : CuBit.Audio_Control.Percent; muted : Boolean) is
-      value : CuBit.Audio_Control.State;
-      ok : Boolean;
    begin
       if not masterAudio.Available or else
         (level = masterAudio.Level and then muted = masterAudio.Muted)
       then return; end if;
-      CuBit.Audio_Control.Set (level, muted, value, ok);
-      if ok then
-         masterAudio := value;
-         scheduleRedrawRect (statusRect);
-         if audioPopupOpen then scheduleRedrawRect (audioPopupRect); end if;
-      end if;
+      --  The mixer's reply (its resulting state) redraws the status area.
+      Desktop_Status_Refresh.Set_Audio (level, muted, requestSequence);
    end setMasterAudio;
 
    procedure handleMouseMotion
@@ -7618,7 +8176,10 @@ procedure main is
       oldCursorStyle : constant Pointer_Cursor_Style := cursorStyle;
       oldBounds : Rect := (others => 0);
       newBounds : Rect := (others => 0);
-      damage    : Rect := oldCursor;
+      --  Scene damage only. The pointer footprints are presented separately
+      --  (scheduleCursorPresent); any area recorded here schedules a scene
+      --  pass, so no handler can compute damage that is then dropped.
+      damage    : Rect := (others => 0);
       idx       : Integer;
       leftDown  : constant Boolean := (buttons and 1) /= 0;
       leftWasDown : constant Boolean := (lastButtons and 1) /= 0;
@@ -7673,7 +8234,6 @@ procedure main is
             cursorY := Natural (Visible.Point.Y);
          end;
       end if;
-      damage := unionRect (damage, cursorRect);
 
       --  Popup input belongs to the desktop, including the release outside
       --  its bounds. Never deliver half a gesture to the focused application.
@@ -7687,8 +8247,8 @@ procedure main is
             if pointInRect (cursorX, cursorY, speakerRect) then
                audioPopupOpen := not audioPopupOpen and then masterAudio.Available;
                if launchMenuOpen then
+                  scheduleRedrawRect (inflateRect (launchMenuArea, 4));
                   launchMenuOpen := False;
-                  scheduleRedrawRect (inflateRect (launchMenuRect, 4));
                end if;
             elsif audioPopupOpen and then
               pointInRect (cursorX, cursorY, muteButtonRect)
@@ -7770,30 +8330,72 @@ procedure main is
          end if;
       end if;
 
+      --  The Apps menu follows the pointer: a resting category opens
+      --  (Desktop_Launch_Menus.Tick), a submenu entry is selected.
+      if launchMenuOpen and then not leftDown then
+         declare
+            before : constant LM.Menu_State := launchMenuState;
+            area : constant Rect := launchMenuArea;
+            subItem : constant Natural := hitLaunchSubItem (cursorX, cursorY);
+         begin
+            if subItem > 0 then
+               LM.Hover_Item (launchMenuState, subItem);
+            elsif pointInRect (cursorX, cursorY, launchMenuRect) then
+               LM.Hover_Row (launchMenuState, launchMenu, hitLaunchItem (cursorX, cursorY));
+            end if;
+            if not Desktop_Launch_Menus."=" (launchMenuState, before) then
+               damage := unionRect (damage, inflateRect (unionRect (area, launchMenuArea), 4));
+            end if;
+         end;
+      end if;
+
       if leftDown and then not leftWasDown then
          if shellSurfaceVisible and then
             pointInRect (cursorX, cursorY, launchButtonRect)
          then
+            damage := unionRect (damage, inflateRect (launchMenuArea, 4));
             launchMenuOpen := not launchMenuOpen;
             if launchMenuOpen then
                Desktop_Launch_Refresh.Request;
-               launchMenuSelection := 1;
+               LM.Reset (launchMenuState);
             end if;
             damage := unionRect
               (damage,
-               inflateRect (unionRect (launchButtonRect, launchMenuRect), 4));
+               inflateRect (unionRect (launchButtonRect, launchMenuArea), 4));
+            handledChromeClick := True;
+         elsif launchMenuOpen and then
+            pointInRect (cursorX, cursorY, launchSubmenuRect)
+         then
+            declare
+               index : constant Natural := hitLaunchSubItem (cursorX, cursorY);
+               entryIndex : constant Natural :=
+                 (if index > 0 then LM.Entry_Of (launchMenu, launchMenuState.Open, index) else 0);
+            begin
+               damage := unionRect (damage, inflateRect (launchMenuArea, 4));
+               if entryIndex > 0 then
+                  launchMenuOpen := False;
+                  performLaunchAction (entryIndex, damage);
+               end if;
+            end;
             handledChromeClick := True;
          elsif launchMenuOpen and then
             pointInRect (cursorX, cursorY, launchMenuRect)
          then
-            launchAction := hitLaunchItem (cursorX, cursorY);
-            launchMenuOpen := False;
-            damage := unionRect (damage, inflateRect (launchMenuRect, 4));
-            performLaunchAction (launchAction, damage);
+            declare
+               result : LM.Choice;
+               use type LM.Choice;
+            begin
+               damage := unionRect (damage, inflateRect (launchMenuArea, 4));
+               LM.Click_Row (launchMenuState, launchMenu, hitLaunchItem (cursorX, cursorY), result);
+               if result = LM.Power then
+                  launchMenuOpen := False;
+               end if;
+               damage := unionRect (damage, inflateRect (launchMenuArea, 4));
+            end;
             handledChromeClick := True;
          elsif launchMenuOpen then
+            damage := unionRect (damage, inflateRect (launchMenuArea, 4));
             launchMenuOpen := False;
-            damage := unionRect (damage, inflateRect (launchMenuRect, 4));
          end if;
 
          taskIdx := hitTaskButton (cursorX, cursorY);
@@ -7895,7 +8497,7 @@ procedure main is
                         -- No focus/z-order/menu damage and no pointer motion:
                         -- this press only arms a possible drag/double click.
                         if nativeScene and then not pointerMoved and then
-                          damage = oldCursor
+                          isEmpty (damage)
                         then sceneDamage := False; end if;
                      else
                         dragPreviewValid := dragMode /= DRAG_NONE;
@@ -7949,7 +8551,7 @@ procedure main is
 
                if nativeScene and then dragMode = DRAG_MOVE and then
                  dragPresentedValid and then dragPresentedRect = newBounds and then
-                 oldBounds = newBounds and then not pointerMoved and then damage = oldCursor
+                 oldBounds = newBounds and then not pointerMoved and then isEmpty (damage)
                then sceneDamage := False; end if;
 
                --  Ensure a final position that arrived just before release is
@@ -7969,17 +8571,9 @@ procedure main is
             end if;
          end if;
 
-         dragPreviewValid := False;
-         dragPresentedValid := False;
-         dragBaseReady := False;
-         dragMode := DRAG_NONE;
-         dragSurfaceId := 0;
+         endDrag;
       elsif not leftDown then
-         dragPreviewValid := False;
-         dragPresentedValid := False;
-         dragBaseReady := False;
-         dragMode := DRAG_NONE;
-         dragSurfaceId := 0;
+         endDrag;
       end if;
 
       if leftDown and then dragMode /= DRAG_NONE and then dragSurfaceId /= 0 then
@@ -8002,12 +8596,15 @@ procedure main is
       end if;
 
       cursorStyle := cursorStyleAtPointer;
-      damage := unionRect (damage, cursorRect);
       lastButtons := buttons;
-      if sceneDamage then
-         scheduleRedrawRect (inflateRect (damage, 2));
+      if sceneDamage or else not isEmpty (damage) then
+         scheduleRedrawRect
+           (inflateRect (unionRect (damage, unionRect (oldCursor, cursorRect)), 2));
       elsif not nativeScene or else oldCursor /= cursorRect or else oldCursorStyle /= cursorStyle then
          scheduleCursorPresent;
+      end if;
+      if pointerMoved and then pendingMotionUs = Compositor_Elapsed.Unavailable then
+         pendingMotionUs := timingNow;
       end if;
    end handleMouseMotion;
 
@@ -8192,15 +8789,16 @@ procedure main is
                   (code = KEY_LEFT_SUPER or else code = KEY_RIGHT_SUPER)
                then
                   if not release and then shellSurfaceVisible then
+                     damage := unionRect (damage, inflateRect (launchMenuArea, 4));
                      launchMenuOpen := not launchMenuOpen;
                      if launchMenuOpen then
                         Desktop_Launch_Refresh.Request;
                      end if;
-                     launchMenuSelection := 1;
+                     LM.Reset (launchMenuState);
                      damage := unionRect
                        (damage,
                         inflateRect
-                          (unionRect (launchButtonRect, launchMenuRect), 4));
+                          (unionRect (launchButtonRect, launchMenuArea), 4));
                      scheduleRedrawRect (inflateRect (damage, 2));
                   end if;
                elsif launchMenuOpen then
@@ -8208,25 +8806,40 @@ procedure main is
                   --  is open. Swallow both presses and releases so the focused
                   --  client cannot observe half of a key transition.
                   if not release then
-                     if code = KEY_UP then
-                        launchMenuSelection :=
-                          nextLaunchSelection
-                            (launchMenuSelection, upward => True);
-                     elsif code = KEY_DOWN then
-                        launchMenuSelection :=
-                          nextLaunchSelection
-                            (launchMenuSelection, upward => False);
-                     elsif code = KEY_ENTER then
-                        launchMenuOpen := False;
-                        performLaunchAction (launchMenuSelection, damage);
-                     elsif code = KEY_ESCAPE then
-                        launchMenuOpen := False;
-                     end if;
+                     declare
+                        --  Set-1 arrow scancodes (sent after the extended prefix).
+                        KEY_LEFT_ARROW : constant Unsigned_8 := 16#4B#;
+                        KEY_RIGHT_ARROW : constant Unsigned_8 := 16#4D#;
+                        result : LM.Choice := LM.Nothing;
+                        entryIndex : Natural := 0;
+                        use type LM.Choice;
+                     begin
+                        damage := unionRect (damage, inflateRect (launchMenuArea, 4));
+                        if code = KEY_UP then
+                           LM.Press (launchMenuState, launchMenu, LM.Up, result, entryIndex);
+                        elsif code = KEY_DOWN then
+                           LM.Press (launchMenuState, launchMenu, LM.Down, result, entryIndex);
+                        elsif code = KEY_LEFT_ARROW then
+                           LM.Press (launchMenuState, launchMenu, LM.Left, result, entryIndex);
+                        elsif code = KEY_RIGHT_ARROW then
+                           LM.Press (launchMenuState, launchMenu, LM.Right, result, entryIndex);
+                        elsif code = KEY_ENTER then
+                           LM.Press (launchMenuState, launchMenu, LM.Enter, result, entryIndex);
+                        elsif code = KEY_ESCAPE then
+                           LM.Press (launchMenuState, launchMenu, LM.Escape, result, entryIndex);
+                        end if;
+                        if result = LM.Launch then
+                           launchMenuOpen := False;
+                           performLaunchAction (entryIndex, damage);
+                        elsif result in LM.Close | LM.Power then
+                           launchMenuOpen := False;
+                        end if;
+                     end;
 
                      damage := unionRect
                        (damage,
                         inflateRect
-                          (unionRect (launchButtonRect, launchMenuRect), 4));
+                          (unionRect (launchButtonRect, launchMenuArea), 4));
                      scheduleRedrawRect (inflateRect (damage, 2));
                   end if;
                --  Once a shell/client surface has focus, keyboard events
@@ -8264,6 +8877,31 @@ procedure main is
          packed :=
            (if sourceAccepted then sourceReport.payload
             else eventMsg.words (0));
+         if (Desktop_Timing_Policy.Enabled or else (DM.Enabled and then not DM.Disabled))
+           and then sourceAccepted and then
+           CuBit.Input.Pointer_Time (sourceReport.snapshot) /= Unsigned_64'Last
+         then
+            declare
+               Observed : constant Unsigned_64 :=
+                 CuBit.Input.Pointer_Time (sourceReport.snapshot);
+               Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+            begin
+               if DM.Enabled and then not DM.Disabled and then Now /= Unsigned_64'Last and then
+                 Now >= Observed and then Now < Unsigned_64'Last / MICROSECONDS_PER_MILLISECOND
+               then
+                  DM.Record_Stage (Compositor_Stage_Metrics.Input_Source_Age,
+                    Observed * MICROSECONDS_PER_MILLISECOND, Now * MICROSECONDS_PER_MILLISECOND);
+               end if;
+               if Now /= Unsigned_64'Last and then Now >= Observed and then
+                 statsSourceAgeSumMs < Unsigned_64'Last - (Now - Observed)
+               then
+                  statsSourceAgeMaxMs :=
+                    Unsigned_64'Max (statsSourceAgeMaxMs, Now - Observed);
+                  statsSourceAgeSumMs := statsSourceAgeSumMs + (Now - Observed);
+                  statsSourceAgeCount := statsSourceAgeCount + 1;
+               end if;
+            end;
+         end if;
          if signed8 (Shift_Right (packed, 32)) /= 0 then
             statsWheelEvents := statsWheelEvents + 1;
          end if;
@@ -8378,6 +9016,7 @@ procedure main is
       Renderer : Desktop_Compositor.Target_Release;
       Confirmed : Boolean;
    begin
+      Desktop_Wallpaper_Layers.Release (Natural (Output));
       if CP.Current (P.Transfer) = CP.Prepared then
          -- No successful publication occurred. Retire only this local hold;
          -- renderer and grant retirement remain independently required.
@@ -8748,6 +9387,7 @@ procedure main is
       debugPrint ("desktop: active outputs=" & Candidate.Count'Image &
         " primary=" & primaryOutput'Image & LF);
       desktopLayout := Candidate;
+      syncPointerPlane;
       ok := True;
    end setupDisplayBuffer;
 
@@ -8864,6 +9504,11 @@ procedure main is
       else
          debugPrint ("DESKTOP-VULKAN: startup=SOFTWARE" & LF);
          if Allow_GPU then Desktop_Renderer_Startup.Stop; end if;
+         if Desktop_Renderer_Startup.GPU_Capable then
+            softwareAnnounced := True;
+            debugPrint ((if Allow_GPU then "desktop: software rendering (GPU unavailable at startup)"
+                         else "desktop: software rendering (GPU not started; bootstrap unconfirmed)") & LF);
+         end if;
       end if;
    end Start_Renderer;
 
@@ -8876,6 +9521,7 @@ procedure main is
 begin
    debugPrint ("desktop: starting" & LF);
    Read_Appearance;
+   Desktop_Wallpaper_Assets.Prepare (appearance.Backdrop);
    Read_Trace_Configuration;
    Load_Launch_Menu;
    Desktop_Launch_Refresh.Initialize;
@@ -8961,6 +9607,9 @@ begin
                end if;
                declare Started : constant Unsigned_64 := timingNow;
                begin
+                  if pendingInputUs = Compositor_Elapsed.Unavailable then
+                     pendingInputUs := dispatchNow;
+                  end if;
                   handleEvent (eventMsg, running);
                   noteTiming (Input_Dispatch, Started);
                end;
@@ -8983,6 +9632,8 @@ begin
          end Drain_Requests;
       begin
          if Diagnostic_Loops < Unsigned_64'Last then Diagnostic_Loops := Diagnostic_Loops + 1; end if;
+         turnStartedUs := dispatchNow;
+         turnWork := (statsEvents, statsRequests, statsPresentOps);
          collectPresentations;
          if Desktop_Launch_Refresh.Can_Take (launchMenuOpen) then
             declare
@@ -9003,7 +9654,7 @@ begin
                      end loop;
                   end loop;
                   launchMenu := Fresh;
-                  launchMenuSelection := 1;
+                  LM.Reset (launchMenuState);
                end if;
             end;
          end if;
@@ -9062,13 +9713,32 @@ begin
             debugPrint ("desktop: metrics quarantined dropped=" & Decimal (DM.Dropped) &
               " invalid=" & Decimal (DM.Invalid) & " rejected=" & Decimal (DM.Rejected) & LF);
          end if;
-         maybePrintStats;
          expireInputWaiters;
+         --  Input, requests and presentation are done for this turn;
+         --  housekeeping (the period boundary, then report text) comes
+         --  last, and only while nothing is pending. A turn that did work is
+         --  one Loop_Turn sample, housekeeping included.
+         if not framePending and then not cursorPresentPending then
+            --  Nothing left to show: input that changed no pixels is not
+            --  carried into a later, unrelated frame's latency.
+            pendingInputUs := Compositor_Elapsed.Unavailable;
+         end if;
+         maybePrintStats;
+         runHousekeeping;
+         if DM.Enabled and then not DM.Disabled and then
+           turnWork /= (statsEvents, statsRequests, statsPresentOps)
+         then
+            DM.Record_Stage (Compositor_Stage_Metrics.Loop_Turn, turnStartedUs, dispatchNow);
+         end if;
          if DM.Enabled and then DM.Pending then metricsDelayUs := DM.Delay_Us (dispatchNow); end if;
 
          if not eventFound and then not found and then
            (running or else outputDrainRequested or else sourceRetirementPending) then
-            if not framePending and then not cursorPresentPending and then
+            if reportStep /= Report_Done then
+               --  Housekeeping yielded to work or ran out of its slice:
+               --  take the next turn without sleeping.
+               null;
+            elsif not framePending and then not cursorPresentPending and then
               nextInputDeadline = 0 and then statusDueMs = 0 and then
               metricsDelayUs = Unsigned_64'Last and then not renderingPending and then
               not sourceRetirementPending and then not outputDrainRequested and then not outputReopenPending

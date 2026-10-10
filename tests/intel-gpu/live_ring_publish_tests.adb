@@ -80,6 +80,11 @@ begin
                pragma Assert (Status = Ring.Published and Writes = 30 and
                  Ring.Tail (Object) = 504 and Ring.Sequence (Object) = 2);
                pragma Assert (Memory (126) = 16#DEADBEEF#);
+               -- Barrier post-syncs hit PPHWSP scratch; only the final
+               -- breadcrumb writes the timeline slot (+0x200).
+               pragma Assert (Memory (96 + 2) = 16#D0# and Memory (96 + 9) = 16#D0#);
+               pragma Assert (Memory (96 + 24) = 16#200# and Memory (96 + 26) = 2 and
+                              Memory (96 + 27) = 0);
             else
                pragma Assert (Status /= Ring.Published and
                  Ring.State (Object) = Ring.Quarantined and Steps = At_Step);
@@ -133,6 +138,7 @@ begin
          pragma Assert (Status = Ring.Published and Ring.Sequence (Object) = Seq);
          pragma Assert (Ring.Tail (Object) = Seq * 384);
          pragma Assert (Memory ((Start + 90 * 4) / 4) = Seq);
+         pragma Assert (Memory ((Start + 88 * 4) / 4) = 16#200#);
       end loop;
       -- Initial commands and end guard were never overwritten.
       pragma Assert (for all I in Unsigned_32 range 0 .. 95 => Memory (I) = 16#DEADBEEF#);

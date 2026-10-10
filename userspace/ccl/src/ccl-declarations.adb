@@ -99,6 +99,47 @@ package body CCL.Declarations with SPARK_Mode => On is
       end if;
    end Read_Symbol;
 
+   function Source_Of (Item : Scanner; First : Positive; Last : Natural) return String is
+     (if First > Last then "" else Item.Text (First .. Last));
+
+   procedure Take_Expression (Item : in out Scanner; First : out Positive; Last : out Natural) is
+      Depth : Natural range 0 .. CCL.Language.MAX_NESTING := 0;
+      Quoted, Escaped, Comment : Boolean := False;
+      C : Character;
+   begin
+      First := 1;
+      Last := 0;
+      if Failed (Item) then return; end if;
+      Skip (Item);
+      First := Item.Cursor;
+      while Item.Cursor <= Item.Last and then not Failed (Item) loop
+         C := Item.Text (Item.Cursor);
+         if Comment then
+            if C = ASCII.LF then Comment := False; end if;
+         elsif Quoted then
+            if Escaped then Escaped := False;
+            elsif C = '\' then Escaped := True;
+            elsif C = '"' then Quoted := False;
+            end if;
+         elsif Depth = 0 and then (C = ')' or else Space (C) or else C = '#') then
+            exit;
+         elsif C = '#' then Comment := True;
+         elsif C = '"' then Quoted := True;
+         elsif C = '(' then
+            if Depth = CCL.Language.MAX_NESTING then Item.Error := Nesting_Too_Deep;
+            else Depth := Depth + 1;
+            end if;
+         elsif C = ')' then Depth := Depth - 1;
+         end if;
+         Item.Cursor := Item.Cursor + 1;
+      end loop;
+      if Failed (Item) or else Item.Cursor = First then
+         First := 1;
+         return;
+      end if;
+      Last := Item.Cursor - 1;
+   end Take_Expression;
+
    procedure Evaluate
      (Item : in out Scanner; Value : out CCL.Language.Interpretation_Result)
    is

@@ -44,13 +44,19 @@ package body CuBit.Messages is
       Byte_Index := Byte_Index + 1;
       if Consumer = 2 then
          return (if Part = 0 then 8 else 0);
-      elsif Mode /= "overflow" and Packet > 4 then
+      elsif Mode = "overflow" then
+         -- Button transitions only: these are never coalesced, so 40 of
+         -- them overflow the 32-report retention bound.
+         return (if Part = 0 then (if Packet mod 2 = 1 then 9 else 8) else 0);
+      elsif Packet > 4 then
          -- A button down/up pair after the four -70 displacement packets.
          return (if Part = 0 then (if Packet = 5 then 9 else 8) else 0);
       end if;
       return (case Part is when 0 => 16#18#, when 1 => 186, when others => 0);
    end portInp8;
-   function capSend (Slot : Unsigned_64; Msg : Message) return MessageTag is
+   function Registered_Driver (Driver : Unsigned_64) return Process_ID is
+     (getInfo (SYSINFO_REGISTERED_DRIVER, Driver));
+   function capSend (Slot : Unsigned_64; Msg : Message; Deadline : Unsigned_64) return MessageTag is
    begin
       return (others => 0);
    end capSend;
@@ -70,14 +76,21 @@ package body CuBit.Messages is
          return False;
       end if;
       Delivered := Delivered + 1;
+      -- Four -70 motion packets coalesce by agreement: the first stays
+      -- alone (it opens the stream), the next three sum to -210. The
+      -- button down/up pair stays two ordered reports. Replacement drops
+      -- the old consumer's four reports and starts at sequence five.
       Expected := (if Mode = "overflow" then 32 + Delivered
-                   elsif Mode = "replace" then 7 else Delivered);
+                   elsif Mode = "replace" then 5 else Delivered);
       pragma Assert (Report.sequence = Unsigned_64 (Expected));
       pragma Assert (Report.flags (CuBit.Input.RESYNCHRONIZE) = (Delivered = 1));
       Payload := (if Mode = "replace" then 0
-                  elsif Mode /= "overflow" and Expected > 4 then
-                    (if Expected = 5 then 1 else 0)
-                  else 16#FBA# * 256);
+                  elsif Mode = "overflow" then Unsigned_64 (Expected mod 2)
+                  else (case Expected is
+                          when 1 => 16#FBA# * 256,
+                          when 2 => Unsigned_64 (4096 - 210) * 256,
+                          when 3 => 1,
+                          when others => 0));
       pragma Assert (Report.payload = Payload);
       pragma Assert ((Report.snapshot and 16#FF#) = (Payload and 16#FF#));
       pragma Assert (CuBit.Input.Pointer_Time (Report.snapshot) = 100);
@@ -114,7 +127,7 @@ package body CuBit.Messages is
    begin
       pragma Assert (Timer_Waits = 1 and Refusals >= Packets);
       pragma Assert (Delivered = (if Mode = "overflow" then 8
-                                  elsif Mode = "replace" then 1 else 6));
+                                  elsif Mode = "replace" then 1 else 4));
       pragma Assert (Overflow_Seen = (Mode = "overflow"));
       Ada.Text_IO.Put_Line ("PS2-PUBLICATION: PASS " & Mode &
         " exact source packets, final timed retry, refusals=" & Refusals'Image);

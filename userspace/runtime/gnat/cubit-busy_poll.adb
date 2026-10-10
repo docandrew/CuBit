@@ -1,11 +1,12 @@
 with System.Machine_Code; use System.Machine_Code;
-with CuBit.Messages; use CuBit.Messages;
+with CuBit.Published_Clock;
 
 package body CuBit.Busy_Poll is
 
    Ticks_Per_Microsecond : Unsigned_64 := 1;
    Calibration_Ms        : constant := 10;
    Microseconds_Per_Ms   : constant := 1_000;
+   Microseconds_Per_Second : constant := 1_000_000;
 
    function Now return Unsigned_64 is
       Low, High : Unsigned_32;
@@ -17,21 +18,27 @@ package body CuBit.Busy_Poll is
       return Shift_Left (Unsigned_64 (High), 32) or Unsigned_64 (Low);
    end Now;
 
-   --  Count TSC ticks across Calibration_Ms whole milliseconds, starting
-   --  at a millisecond boundary.
+   --  The clock publication's TSC rate when the kernel publishes one;
+   --  otherwise count TSC ticks across Calibration_Ms whole milliseconds,
+   --  starting at a millisecond boundary.
    procedure Calibrate is
+      Published_Hz : constant Unsigned_64 := CuBit.Published_Clock.Counter_Frequency;
       Start_Ms, Current : Unsigned_64;
       Start_Ticks : Unsigned_64;
    begin
-      Start_Ms := syscall (SYSCALL_GETTIME);
+      if Published_Hz /= 0 then
+         Ticks_Per_Microsecond := Published_Hz / Microseconds_Per_Second;
+         return;
+      end if;
+      Start_Ms := CuBit.Published_Clock.Milliseconds;
       loop
-         Current := syscall (SYSCALL_GETTIME);
+         Current := CuBit.Published_Clock.Milliseconds;
          exit when Current /= Start_Ms;
       end loop;
       Start_Ms := Current;
       Start_Ticks := Now;
       loop
-         Current := syscall (SYSCALL_GETTIME);
+         Current := CuBit.Published_Clock.Milliseconds;
          exit when Current >= Start_Ms + Calibration_Ms;
       end loop;
       Ticks_Per_Microsecond := Unsigned_64'Max

@@ -5,13 +5,13 @@ with ACPI_Native_Blocks;
 with ACPI_Native_Server;
 with CuBit.Messages;
 package body ACPI_Native_Instance is
-   -- Keep the current startup instance in static storage. An unconstrained
-   -- library-level object initialized by Fresh would request an implicit heap
-   -- allocation, which this freestanding runtime does not provide. Discovery-
-   -- sized allocation must be explicit in the future bootstrap adapter.
+   -- Fixed, process-lifetime limited storage creates one owned arena in place.
+   -- Discovery-sized allocation remains future bootstrap work; construction
+   -- never copies an initialized arena or requests implicit heap storage.
    Server : ACPI_Requests.State
-     (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, ACPI_Service.Max_Table_Bytes)
-     := ACPI_Requests.Fresh;
+     (Table_Capacity => ACPI_Service.Max_Tables,
+      Byte_Capacity => ACPI_Service.Max_Total_Bytes,
+      Table_Byte_Limit => ACPI_Service.Max_Table_Bytes, Initial_Revision => 0);
    Adapter : ACPI_Native_Blocks.State;
    Started : Boolean := False;
    procedure Start is

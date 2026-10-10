@@ -9,7 +9,9 @@ package CuBit.UI.Controls is
    subtype Control_ID is Natural;
    NO_CONTROL : constant Control_ID := 0;
 
-   MAX_CONTROLS : constant Natural := 128;
+   --  Room for a busy window (several file panes with their columns,
+   --  toolbar, drawer and menus) without an application budgeting IDs.
+   MAX_CONTROLS : constant Natural := 256;
    subtype Control_Index is Natural range 1 .. MAX_CONTROLS;
    subtype Control_Count is Natural range 0 .. MAX_CONTROLS;
 

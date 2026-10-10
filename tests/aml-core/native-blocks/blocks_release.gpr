@@ -1,0 +1,12 @@
+project Blocks_release is
+   for Source_Dirs use (".", "../../../userspace/services/acpi",
+     "../../../userspace/services/acpi/native", "../../../userspace/lib/acpi",
+     "../../../shared/firmware");
+   for Object_Dir use "../build/blocks-release/obj";
+   for Exec_Dir use "../build/blocks-release";
+   for Main use ("block_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatp", "-gnatwa", "-gnatwe", "-gnatwF");
+   end Compiler;
+end Blocks_release;

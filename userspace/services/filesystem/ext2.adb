@@ -11,7 +11,6 @@ with Ada.Unchecked_Conversion;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
-with CuBit.Filesystems;
 with CuBit.Directory_Paths;
 with CuBit.File_Access;
 with Directory_Blocks;
@@ -889,7 +888,7 @@ package body Ext2 is
       inodeNum : out Unsigned_32;
       status : out Directory_Lookup_Status)
    is
-      entries   : CuBit.Filesystems.Directory_Entries;
+      entries   : Listed_Records;
       cursor    : Unsigned_64 := 0;
       nextCursor : Unsigned_64;
       count     : Natural;
@@ -923,7 +922,7 @@ package body Ext2 is
             for index in 0 .. count - 1 loop
                declare
                   matches : Boolean :=
-                    Natural (entries (index).nameLength) = name'Length;
+                    entries (index).length = name'Length;
                begin
                   if matches then
                      for characterIndex in 1 .. name'Length loop
@@ -938,7 +937,7 @@ package body Ext2 is
                   end if;
 
                   if matches then
-                     inodeNum := Unsigned_32 (entries (index).objectHint);
+                     inodeNum := entries (index).inode;
                      status := Lookup_Found;
                      return;
                   end if;
@@ -1281,16 +1280,19 @@ package body Ext2 is
      (fs          : Filesystem;
       dirIno      : Inode;
       cursor      : Unsigned_64;
-      entries     : out CuBit.Filesystems.Directory_Entries;
+      entries     : out Listed_Records;
       entryCount  : out Natural;
       nextCursor  : out Unsigned_64;
       status      : out Directory_Read_Status)
    is
-      use CuBit.Filesystems;
+      package DP renames CuBit.Directory_Pages;
       size : constant Unsigned_64 := fileSize (dirIno);
       blockBuf : String (1 .. Natural (fs.blkSize))
         with Alignment => 8;
-      scanCursor : Unsigned_64 := cursor;
+      --  From the first record of the cursor's block (see the spec).
+      scanCursor : Unsigned_64 := cursor - cursor mod Unsigned_64 (fs.blkSize);
+      --  The page's bytes, as its records are counted (CuBit.Directory_Pages).
+      pageUsed : Natural := DP.Header_Bytes;
       loadedLogicalBlock : Unsigned_64 := Unsigned_64'Last;
 
       procedure locateDirectoryBlock
@@ -1382,10 +1384,7 @@ package body Ext2 is
          end if;
       end locateDirectoryBlock;
    begin
-      entries := [others =>
-        (objectHint => 0, sizeBytes => 0, nameLength => 0,
-         kind => DIRECTORY_KIND_UNKNOWN, flags => 0, reserved => 0,
-         name => [others => 0])];
+      entries := [others => (others => <>)];
       entryCount := 0;
       nextCursor := cursor;
       status := Directory_Malformed;
@@ -1469,24 +1468,24 @@ package body Ext2 is
                        (nameLength = 2 and then entryName (1) = '.' and then
                         entryName (2) = '.');
                   begin
-                     if not isDot then
-                        if entryCount = MAXIMUM_DIRECTORY_PAGE_ENTRIES then
+                     if not isDot and then scanCursor >= cursor then
+                        if entryCount = DP.Maximum_Entries or else
+                          pageUsed > DP.Page_Bytes - DP.Record_Bytes (nameLength)
+                        then
                            nextCursor := scanCursor;
                            status := Directory_Page_Complete;
                            return;
                         end if;
+                        pageUsed := pageUsed + DP.Record_Bytes (nameLength);
 
-                        entries (entryCount).objectHint :=
-                          Unsigned_64 (dent.inode);
-                        entries (entryCount).nameLength :=
-                          Unsigned_16 (nameLength);
+                        entries (entryCount).inode := dent.inode;
+                        entries (entryCount).length := nameLength;
                         entries (entryCount).kind :=
                           (case dent.fileType is
-                              when FILETYPE_REGULAR => DIRECTORY_KIND_FILE,
-                              when FILETYPE_DIRECTORY =>
-                                DIRECTORY_KIND_DIRECTORY,
-                              when 7 => DIRECTORY_KIND_SYMLINK,
-                              when others => DIRECTORY_KIND_UNKNOWN);
+                              when FILETYPE_REGULAR => DP.Kind_File,
+                              when FILETYPE_DIRECTORY => DP.Kind_Directory,
+                              when FILETYPE_SYMLINK => DP.Kind_Symlink,
+                              when others => DP.Kind_Unknown);
                         for index in 1 .. nameLength loop
                            entries (entryCount).name (index) :=
                              Unsigned_8 (Character'Pos (entryName (index)));

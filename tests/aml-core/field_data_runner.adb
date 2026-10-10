@@ -13,7 +13,7 @@ procedure Field_Data_Runner is
    use type ACPI_Service.Namespace.Bind_Status;
    use type AML_Decode.Status;
    use type AML_Decode.Integer_Value;
-   Service : ACPI_Service.State := ACPI_Service.Fresh;
+   Service : ACPI_Service.State (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, ACPI_Service.Max_Table_Bytes);
    Status : ACPI_Service.Install_Status;
    File : IO.File_Type;
    Result : AML_Field_Data.Read_Result;

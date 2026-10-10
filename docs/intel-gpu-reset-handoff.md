@@ -1,5 +1,332 @@
 # ADL-N reset and GPU-address ownership
 
+## NUC regression and candidate-profile correction (2026-10-08)
+
+User reports the offered latest image reaches Desktop quickly but has severely
+laggy pointer motion, redraw artifacts during window movement/resizing and
+nearly unusable log scrolling. Photo shows `DESKTOP-OPTIONAL-RENDER: PASS empty
+slot`, `setup unavailable stage=admission`, `startup=SOFTWARE`, and Intel viewer
+target delivery/backing TRUE with runtime-fault FALSE. This does not establish
+the cause of input latency or redraw corruption, or exonerate the display driver.
+
+The offered frozen `intel-matched-stepped-nu4ho_n9` normal UEFI image profile
+is `images/laptop-usb.ccl`, selecting `tests/hardware/init-usb-live.ccl`. Its
+Desktop start omits `(render approve-declared)` while Desktop's manifest asks
+for optional render. `CuBit.Render_Startup.Initial_Attempt` therefore selects
+Software_Only. The photographed empty slot matches that deliberate policy;
+it is not evidence of a GPU allocation/pipeline rejection. The earlier READY
+request below was incorrect for this normal profile. The separate
+`init-desktop-mesa-startup.ccl` approves render explicitly. A future hardware
+candidate must verify its actual embedded startup policy as well as binaries.
+
+The existing `--desktop-mesa-startup` wrapper option is also not a GPU-drawing
+compositor profile: `verify-desktop-mesa-startup.py` deliberately requires
+`gpu_drawing_enabled=False` for that historical initialization checkpoint.
+Do not remove that guard or label its output accelerated. A drawing-enabled
+candidate must pass `tools/verify_desktop_vulkan_compositor.py` (which requires
+the drawing-enabled runtime-dispatch artifact and source/binary identities),
+AND have explicit render approval in the startup actually embedded in the
+image. Neither check establishes execution, successful admission, or hardware
+presentation; those need separate runtime evidence. The live wrapper now has
+`--desktop-vulkan-compositor`, requiring `CUBIT_DESKTOP_VULKAN_DIR` and producing
+the separately named `cubit_live_desktop_vulkan_compositor.img`. It reuses the
+explicit-approval startup profile (including its separate triangle-window demo)
+but selects a drawing-enabled Desktop through the compositor identity guard.
+This option has hosted routing/rejection coverage, not a newly built or
+hardware-tested image. Keep the matched runtime/Mesa/driver checks and embedded
+payload inspection when building a real candidate; a directory name alone is
+not sufficient provenance.
+
+Do not recommend this candidate as a responsiveness baseline. Do not claim
+software fallback explains the magnitude or corruption: compositor is examining
+the frozen damage/presentation/input path against newer fixes. IPC attribution
+requires evidence. No new image or rollback has been made. The source findings
+assume the user ran the offered SHA256 84b099392c19... candidate; confirm the
+filename if their stick came from another image.
+
+## Source progress after the frozen candidate (2026-10-08)
+
+Public retirement quiescence now shares internal teardown's deferred-work
+predicate. A pending buffer retirement, selection, preparation, public/private
+allocation, VM update, in-place update or table-ledger operation conservatively
+keeps the reply pending, including work belonging to another session. Previously
+the query checked a narrower allocation/preparation subset. Existing GPU,
+translation, CPU-grant and cleanup checks remain; OK still grants no physical
+reuse authority. Exact-source hosted coverage passed all 256 combinations and
+the coordinator lifecycle suite; native Intel compile/link/staging passed
+(44621, terminal 0; hosted evidence `native-cleanup-j5c12_na`). No frozen NUC
+image replacement or hardware-rendering claim.
+
+### Remaining lifetime-admission bottleneck: source audit
+
+Buffer metadata growth/reuse does not remove the render-session lifetime cap.
+`Intel_GPU_Render_Sessions.Reserve` rejects at `Used = Capacity` (16), and
+`Close` preserves both Used and the issued identity. Independently,
+`Intel_GPU_Render_Control.Handle` stops reservation when Next_Recipient_Slot
+reaches 56 after assigning slots 40 through 55. Aborted reservations consume
+these resources too. This is a lifetime limit, not a concurrent-client quota.
+
+Do not recycle either counter or interpret `Handle_Retirement_Query` OK as a
+metadata-reuse certificate. That handler explicitly establishes quiescence,
+not backing reuse. Its checks cover the session sweep, deferred allocation,
+context preparation, GuC deregistration, image-address release and CPU grants;
+the actual backing teardown paths maintain additional allocation tickets,
+translation evidence and parent-slice retirement state.
+
+The implementation boundary for removing this cap must include all of:
+
+- Session identities remain monotonically issued and never reused; stale
+  stamped requests must not resolve after storage is reassigned.
+- Authenticated recipient capability retirement/replacement must be confirmed
+  independently of CPU mapping-grant retirement; a new endpoint must match
+  the new recorded incarnation before activation.
+- Preserve per-session private context, images, registration/retirement flags,
+  channels, submission state and cleanup cursors until their exact outstanding
+  work and backing tickets finish. These currently share the registry index.
+  Growing only the registry would leave the other arrays incorrectly bounded.
+- Retained closed quota records cannot be treated as live-client capacity;
+  their outstanding charges remain until exact ticket retirement refunds them.
+- Stress more than 16 sequential admissions, overlapping live sessions,
+  failed activation, failed delivery, pending GPU/TLB/CPU retirement and stale
+  endpoint messages. An uncertain retirement must retain state, not free a slot.
+
+Next implementation needs coordinated growable session-associated storage and
+an explicit endpoint-slot lifecycle, rather than a larger fixed admission cap.
+No recycling was enabled by this audit; the existing conservative boundary is
+still present and the full driver goal remains incomplete.
+Hosted `render_control_tests` passed under Nix (61064, terminal 0), including
+authority, incarnation, activation, late replies, retirement and exhaustion.
+This checks existing behavior; it does not demonstrate admission beyond 16.
+
+### Verified buffer allocation and cleanup work
+
+Native indexed-handle replacement regression passed (70879, terminal 0):
+128 cycles reuse a stable allocation slot with advancing ticket generations
+and fresh names, while a neighboring real self-grant remains acquired. Stale
+names cannot map or close, retired grants cannot be reacquired, and retained
+neighbor contents survive each replacement. The subsequent closed-admission
+sweep visits 193 mapping records in thirteen bounded calls and still cannot
+dismiss the two held readers. Evidence: `tests/intel-gpu/demand-backing.GrOPfF`
+serial log and input hashes, using the existing kernel. This is CPU-only
+native lifetime evidence, not GPU completion or physical arena release proof.
+No production source, runtime, or NUC image was changed by this test extension.
+
+The bounded name index is now integrated into `Intel_GPU_Buffer_Handles`.
+Name lookup no longer scans all records. Each stable, growable buffer record
+also stores an independent index node; index payload relocation cannot move
+the buffer or its retained references. Replacement retains existing retirement
+and ownership checks, consumes a fresh monotonically issued name, removes the
+old key and preserves the current node payload at the buffer's slot.
+
+Full handle/request/quota/stepped-cleanup suites passed (61739); an additional
+129-buffer, 1,024-cross-owner-replacement regression passed (92957), checking
+every neighbor and a retained pin after each replacement. Full sharing with
+4,096 presentation cycles and the exact-source native coordinator passed
+(12474). Native Intel compile/link and real-grant mapping tests passed (53432),
+with evidence in `tests/intel-gpu/demand-backing.ZbJ9sn`. Explicit test dependency
+lists were updated under the shared lock. No hardware image was replaced.
+Backing-overlap admission and other observers still scan records; this is not
+a claim that all allocation work is bounded or that GPU rendering is verified.
+
+A bounded handle-name index primitive now passes hosted stress tests (34688):
+2,048 caller-grown metadata slots, 8,192 replacements, stale/duplicate names,
+sequential keys and malformed-link quarantine. Its 32-bit radix paths bound
+lookup to33 node reads, insertion to35 and removal to68; removal relocates index
+payloads, not named buffer records. This primitive-only result preceded the
+integration above. The read-count bound is not a measured frame-rate speedup.
+
+The session registry and controller endpoint slots also retain a separate
+16-admission lifetime limit. Growable buffer metadata does not solve that
+limit. Safely removing it needs session/context/endpoint lifecycle work, not a
+larger fixed array or reuse based solely on the cleanup sweep's completion.
+
+Native stepped CPU-grant teardown now has real-kernel evidence (28218).
+`mapping_growth_check.adb` closes its trusted admission before taking buffer
+and mapping snapshots, then advances the actual primitives while readers remain
+held in inline and expanded metadata. The 65-record mapping prefix completes
+in five calls (16/16/16/16/1); every call retains Outstanding status and prevents
+buffer retirement. Only returning both readers and bounded polling makes the
+CPU-grant observation Clear and the closed buffer eligible for the next gate.
+Evidence: `tests/intel-gpu/demand-backing.ylx0OC/serial.log` and `input.sha256`.
+This uses actual CuBit self-grants and the existing recorded kernel; it is not
+cross-process isolation, a full Intel-service boot, physical reuse, GPU/TLB
+retirement or rendering proof. No hardware image changed.
+
+Teardown now verifies closed admission explicitly before taking its snapshots.
+`Render_Control.Retired_Admission` uses the controller's recorded recipient
+identity and accepts only a known retired session; reserved, active, unknown
+and quarantined observations fail closed. A native caller that skipped or
+failed its close cannot start a sweep: the coordinator quarantines instead.
+Hosted lifecycle and exact-source coordinator tests55509 passed, including a
+live fourth-session rejection while another cleanup is queued; the rejected
+session's cursor/context stays untouched. Native compile/link14018 passed.
+These are regression and compile results, not SPARK proof or hardware evidence.
+
+Cleanup scheduling also tracks outstanding sweeps so the native loop does not
+insert its 10 ms idle wait between runnable cleanup steps. The count increments
+once per session and decrements only after its mapping sweep; duplicate closes
+cannot double-count. Completed sweeps with outstanding grants return to normal
+polling, and a runtime fault cannot make this scheduling predicate busy-spin.
+Final hosted coordinator regression93673 passed, including a third queued
+session during fault injection (`.vm-intel-o4CEuh/native-cleanup-uiz9hajw`).
+Native compilation/link71614 passed against runtime publication162. The native
+two-process accounting test18514 also passed with real IPC and retained quota
+checks (`tests/intel-gpu/demand-backing.OUA9vD/serial.log`, `input.sha256`), using
+the existing recorded kernel binary. Neither test validates Intel rendering or
+the full service's teardown on hardware. The matched Mesa/Desktop stack has not
+been rebuilt into a new image.
+
+Native `Retire_Application_Resources` now begins limited allocation/name and
+mapping sweeps instead of draining them in the close handler. The serialized
+loop visits one existing stable session slot per turn, advancing at most one
+32-name, 32-allocation-record, or 16-mapping chunk. Duplicate notifications do
+not restart the cursor; an unknown nonzero session quarantines admission.
+Retirement queries and physical teardown checks additionally require sweep
+completion, without replacing GPU, translation, CPU-grant or backing receipts.
+
+Native compilation/link/staging passed (16582). The hosted exact-source test
+`tests/intel-gpu/test-native-cleanup.py` passed (14518), compiling coordinator
+blocks extracted from `main.adb` with real session/allocation registries and
+mock grants. It covers 65 names, 49 retained views, two-session progress,
+duplicate closure, late completion, retained charges and unknown identities.
+Generated fixture/output: `.vm-intel-o4CEuh/native-cleanup-nhxl60t0`.
+This is not a native boot or hardware-retirement test. The native build preceded
+compositor runtime publication162; the next matched stack must rebuild against
+that runtime. No NUC image was replaced.
+
+Late allocation completion no longer synchronously closes all names when
+`Begin_Retire_Session` has already cancelled that ticket. It returns Denied
+without publishing a handle; the existing retirement cursor remains responsible
+for the name sweep. A new 65-name hosted regression verifies no early closures,
+32/32/1 stepped closure, and retention of all 66 allocation charges, including
+the cancelled allocation. The full buffer-request and client-quota suites passed
+(45182); native Intel compilation/link/staging passed (49293). The separate
+authority-loss path without begun retirement still closes synchronously.
+The coordinator integration above uses these steps. This does not make every
+service path bounded or prove GPU retirement.
+
+The candidate below is unchanged. Later source changes add own-account query
+0A30, its Mesa client adapter, and role-specific reusable-slot lists for
+application buffers, private page tables and context parents. These lists
+replace allocation-time capacity sweeps; only the existing exact confirmed
+retirement paths can insert entries. Quota refusal leaves the list intact,
+and reused tickets still advance generation and bind to the new owner.
+This is not a larger fixed slot limit or permission to recycle unretired memory.
+
+Hosted buffer-request and client-quota suites passed (10479), including multiple
+retired nodes, stale/duplicate acknowledgements, cross-session reuse, quota
+refusal, growth and existing repeated lifecycle regressions. Native Intel
+compile/link passed against the newly published metrics runtime (7493).
+The two-process accounting fixture also passed with real IPC and DMA backing:
+`tests/intel-gpu/demand-backing.aiQJL1/serial.log` and `input.sha256`.
+That disposable test uses the production adapter and accounting handler, not
+the full Intel service or GPU; it does not establish GPU retirement or rendering.
+The existing hashed kernel was reused, not rebuilt.
+
+Session teardown still contains capacity-sized work. Complete bounded teardown,
+GPU/TLB/CPU/grant/display retirement evidence and the next physical NUC run remain
+outstanding. Future image packaging must rebuild matched Mesa/desktop components
+for the updated runtime; the current staged Intel binary alone is not a matched
+image. No commit, push or replacement of the offered NUC image was performed.
+
+Teardown audit: `Retire_Application_Resources` invokes context retirement, then
+`Buffer_Requests.Retire_Session` (handle and allocation sweeps), then
+`Sharing.Retire_Session` (mapping-grant retirement requests). The own-close path
+closes render admission before entering this sequence. Yielding requires each
+phase to retain progress and must not report completed GPU/grant retirement
+merely because all name records have been visited.
+
+The first primitive, `Buffer_Handles.Close_Session_Step`, now visits at most32
+records per call using a caller-retained count snapshot/cursor. Hosted95127
+passed65 records in32/32/1 visits, foreign-owner preservation, invalid snapshot
+refusal and retained-reader lifetime checks. Its caller must already deny new
+admission/issuance for that session. The existing synchronous close drains this
+same primitive; native event-loop yielding is not implemented yet. This result
+is regression-tested behavior, not a SPARK proof or hardware-retirement result.
+
+`Buffer_Requests.Begin_Retire_Session` / `Retire_Session_Step` now retain the
+service identity and captured handle/allocation bounds. Begin closes the client
+budget and cancels pending allocation immediately; each step visits at most32
+names or allocation records. Existing synchronous retirement drains the same
+core. Hosted63811 passed66 allocation records, active-restart/foreign-root
+refusal, immediate cancellation, other-session preservation and retained charges,
+plus the existing request/quota suites. This was the primitive-only milestone;
+the native coordinator and cancelled-completion integration are recorded above.
+
+Mapping teardown now also has a root-bound snapshot and16-entry steps. Hosted
+20039 passed49 views in16/16/16/1 visits and verified that sweep completion is
+still Outstanding until grant retirement is confirmed. The full sharing suite,
+including4096 presentation/recycling cycles and metadata growth, passed; tests
+that assumed one Poll swept the whole table were corrected to use bounded full
+passes and explicitly check incomplete drainage. Native Intel compile/link
+passed with all new teardown primitives. Existing synchronous wrappers still
+drain them for explicit synchronous callers; the native close coordinator now
+uses the stepped interfaces as recorded above.
+
+## Matched stepped-allocation candidate (2026-10-08)
+
+New, separately retained image:
+`.build-workspaces/intel-matched-stepped-nu4ho_n9/kernel/cubit_live_uefi.img`.
+SHA256: `84b099392c19f08503d2cf2fbd9f1a6e4df35415f671400d4f1167d4db883dcb`.
+The previous `build-graphics-tests/cubit_intel_matched_deadline_candidate2_20261007.img`
+is unchanged. No commit or push was made.
+
+This frozen snapshot contains the resumable GPU VM-growth preparation, hidden
+adoption and rearm work, with ownership checks and stable metadata identities;
+it does not replace dynamic allocation with a larger fixed slot array. It also
+contains the matched explicit-deadline runtime and compositor startup-stage
+diagnostics. Runtime/libc, Intel driver, combined Mesa, desktop, kernel and the
+normal live-image service targets were rebuilt. The snapshot manifest records
+seeded artifacts separately; this is not a claim that every bundled application
+was rebuilt (notably the seeded browser). It predates the compositor's later UI
+hit-map/minimum-window changes. The only private build-script correction uses
+an explicit Nix `path:` input in `userspace/libc/build.sh`; no Git mutation was
+used to make the snapshot visible to Nix.
+
+Build session16833 completed successfully. Image audit91425 verified firmware,
+notices and bootstrap membership, and compared the embedded binaries byte for
+byte with the private builds:
+
+- Intel driver: `00a99eaa0e278b1a21c8d892d063f774ac580c5889e4ca275f8a47a72b91a866`.
+- Desktop: `ba9e3bd471132ef2bfc843159ba3b3f48015d680b21f769e5b0e16cc2d56aa72`.
+
+Exact-image QEMU/KVM test73316 passed with UEFI, four CPUs, i8042 disabled,
+USB keyboard/mouse behind a hub, quiet xHCI, boot-log delivery and Mesa testing.
+Evidence is retained under
+`.vm-intel-o4CEuh/nix-shell.1CCWzn/cubit-usb-live.k2rtu6t8/`.
+The pointer opened/closed Apps twice; keyboard-driven application launches
+worked; the software cube passed194673 geometric pixels, animated retired-buffer
+reuse, pause and Escape/exit. Mesa and DOOM screenshots were visually inspected;
+DOOM shows its rendered scene/menu, not a sustained-gameplay benchmark. The
+image hash was unchanged after the test. USB harness fixes remove dependence
+on disabled statistics/enumeration traces, not functional acceptance checks.
+
+This run explicitly reported `setup unavailable stage=admission` and
+`startup=SOFTWARE`. It validates native CuBit integration and software fallback
+under QEMU, NOT physical Intel rendering, GPU retirement, modesetting or audio
+quality. The full Intel goal remains incomplete.
+
+### Exact next NUC request
+
+1. Boot this exact image at1080p or lower; record elapsed time to a responsive
+   desktop. Leave the existing known image available for recovery.
+2. Test keyboard navigation and an Apps click through the usual Das Keyboard
+   USB hub. Cursor movement alone is not input acceptance.
+3. This normal profile selects software-only (see correction above). Photograph
+   `DESKTOP-VULKAN: startup=SOFTWARE`, and the
+   first `setup unavailable stage=...` or `pipeline failure stage=...` line.
+4. Capture any allocation-denial reason, backing stage, quota/bytes and metadata
+   growth records. Do not infer successful hardware rendering from growth alone.
+5. If READY, exercise window movement/overlap and opening/closing applications;
+   report corruption, hangs and stutter cadence. This image's menu cube is
+   explicitly software-rendered; it is not a hardware teapot test.
+
+Independent remaining work includes bounded removal/reclamation, complete
+GPU/TLB/CPU/grant/display retirement before physical reuse, owner-death and
+exhaustion tests, and native Intel modesetting/EDID. Hosted metadata test28291
+passed optimized typed initialization and old-record preservation across sparse
+growth; that regression is not a lifetime proof or hardware result.
+
 ## Render permissions / application setup image (2026-09-30)
 
 Private image: `.build-workspaces/graphics-permissions-ef2lftob/kernel/cubit_live_permissions.img`.

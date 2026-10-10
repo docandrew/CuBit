@@ -63,7 +63,7 @@ begin
       Before := Store;
       AML_Data.Load (Store, Nested (Depth), Bits_64, ID, Used, Result);
       if Depth <= 64 then
-         Check (Result = Accepted and Count (Store) = Depth + 1);
+         Check (Result = Accepted and Live_Count (Store) = Depth + 1);
          for J in 1 .. Depth loop
             Check (Kind (Store, ID) = Package_Object and Length (Store, ID) = 1);
             ID := Element (Store, ID, 0);

@@ -85,7 +85,7 @@ procedure Icon_Atlas_Tests is
       pragma Assert (not Done and Target = P.Pixels'(0 .. 8193 => Sentinel));
    end Check;
 begin
-   pragma Assert (A.Width (P.Application) = 24 and A.Height (P.Application) = 192);
+   pragma Assert (A.Width (P.Application) = 24 and A.Height (P.Application) = Desktop_Icons.Icon_ID'Range_Length * 24);
    pragma Assert (A.Width (P.Window_Control) = 25 and A.Height (P.Window_Control) = 161);
    for C in Desktop_Cursors.Cursor_ID loop
       declare

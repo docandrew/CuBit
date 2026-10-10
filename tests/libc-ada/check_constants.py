@@ -175,14 +175,17 @@ expected = ["self", "dtv", "prev", "next", "sysinfo", "canary_pad", "canary"]
 if [n for n in names if n != "canary_pad"] != [n for n in expected if n != "canary_pad"]:
     print(f"FAIL: musl struct pthread fields before tid changed: {names}")
     failed = True
-# The filesystem service's open options and Directory.Page.V1 layout, as
-# the libc's Ada repeats them, against CuBit.Filesystems.
+# The filesystem service's open options and inspection bits, as the libc's
+# Ada repeats them, against CuBit.Filesystems (whose page constants name
+# CuBit.Directory_Pages).
 fs = (repo / "userspace/runtime/gnat/cubit-filesystems.ads").read_text()
+pages = (repo / "userspace/runtime/gnat/cubit-directory_pages.ads").read_text()
 def fs_constant(name):
-    m = re.search(r"\b" + name + r"\s*:\s*constant[^:]*:=\s*([\w#]+)\s*;", fs)
+    m = re.search(r"\b" + name + r"\s*:\s*constant[^:]*:=\s*([\w#.]+)\s*;", fs)
+    if m and m.group(1).startswith("CuBit.Directory_Pages."):
+        m = re.search(r"\b" + m.group(1).split(".")[-1] + r"\s*:\s*constant\s*:=\s*([\w#]+)\s*;", pages)
     return value(m.group(1)) if m else None
 rules = (libc_dir / "cubit-libc_descriptor_rules.ads").read_text()
-entries = (libc_dir / "cubit-libc_directory_entries.ads").read_text()
 def ours_constant(text, name):
     m = re.search(r"\b" + name + r"\s*:\s*constant[^:]*:=\s*([\w#]+)\s*;", text)
     return value(m.group(1)) if m else None
@@ -198,23 +201,6 @@ for name in ("OPEN_READ_ONLY", "OPEN_WRITE_ONLY", "OPEN_READ_WRITE", "OPEN_CREAT
     checked += 1
     if ours_constant(rules, name) != fs_constant(name):
         print(f"FAIL: {name} differs from CuBit.Filesystems")
-        failed = True
-for ours_name, theirs in (("Page_Bytes", "DIRECTORY_PAGE_BYTES"),
-                          ("Page_Header_Bytes", "DIRECTORY_PAGE_HEADER_BYTES"),
-                          ("Entry_Bytes", "DIRECTORY_ENTRY_BYTES"),
-                          ("Maximum_Entries", "MAXIMUM_DIRECTORY_PAGE_ENTRIES"),
-                          ("Page_End", "DIRECTORY_PAGE_END"),
-                          ("Kind_File", "DIRECTORY_KIND_FILE"),
-                          ("Kind_Directory", "DIRECTORY_KIND_DIRECTORY"),
-                          ("Kind_Symlink", "DIRECTORY_KIND_SYMLINK")):
-    checked += 1
-    if ours_constant(entries, ours_name) != fs_constant(theirs):
-        print(f"FAIL: {ours_name} differs from CuBit.Filesystems {theirs}")
-        failed = True
-for field, offset in (("objectHint", 0), ("nameLength", 16), ("kind", 18), ("name", 24)):
-    checked += 1
-    if not re.search(field + r"\s+at\s+" + str(offset) + r"\b", fs):
-        print(f"FAIL: Directory_Entry {field} is not at {offset}")
         failed = True
 # musl's struct stat field order (x86-64), as the libc's Ada lays it out.
 stat_h = (musl / "arch/x86_64/bits/stat.h").read_text()

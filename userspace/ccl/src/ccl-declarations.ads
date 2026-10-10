@@ -27,6 +27,11 @@ package CCL.Declarations with SPARK_Mode => On is
    procedure Read_Symbol (Item : in out Scanner; Value : out Symbol);
    procedure Evaluate
      (Item : in out Scanner; Value : out CCL.Language.Interpretation_Result);
+   --  The next expression's source, not evaluated (a typed setting is
+   --  checked against its declared type instead). Empty on failure.
+   procedure Take_Expression (Item : in out Scanner; First : out Positive; Last : out Natural);
+   function Source_Of (Item : Scanner; First : Positive; Last : Natural) return String
+     with Pre => Last <= MAX_SOURCE;
    function Matches (Value : Symbol; Text : String) return Boolean;
    function At_Close (Item : Scanner) return Boolean;
    function At_End (Item : Scanner) return Boolean;

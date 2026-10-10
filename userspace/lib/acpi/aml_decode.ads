@@ -5,7 +5,19 @@ with Interfaces;
 --  starting at the operand, within its enclosing package/table.
 package AML_Decode with SPARK_Mode, Pure is
    subtype Byte is Interfaces.Unsigned_8;
+   Increment_Op : constant Byte := 16#75#;
+   Decrement_Op : constant Byte := 16#76#;
+   Extended_Op : constant Byte := 16#5B#;
+   Revision_Extension : constant Byte := 16#30#;
+   Revision_Bytes : constant Positive := 2;
+   Debug_Extension : constant Byte := 16#31#;
+   Debug_Target_Bytes : constant Positive := 2;
+   type Integer_Origin is (Ordinary_Integer, AML_Constant);
+   function Literal_Origin (Opcode : Byte) return Integer_Origin is
+     (if Opcode in 0 | 1 | 16#FF# then AML_Constant else Ordinary_Integer);
    subtype Integer_Value is Interfaces.Unsigned_64;
+   -- CuBit AML interpreter policy version; distinct from _REV/table revision.
+   Interpreter_Revision : constant Integer_Value := 1;
    type Bytes is array (Positive range <>) of Byte;
    type Status is (Accepted, Truncated, Unsupported, Malformed, Limit_Exceeded);
    type Integer_Width is (Bits_32, Bits_64);
@@ -97,6 +109,28 @@ package AML_Decode with SPARK_Mode, Pure is
          when others => null;
       end case;
    end record;
+   type Buffer_Count_Layout (Kind : Status := Truncated) is record
+      case Kind is
+         when Accepted =>
+            Raw_Offset : Natural;
+            Raw_Length : Natural;
+            Consumed : Positive;
+         when others => null;
+      end case;
+   end record;
+   -- Structural span validation only: no integer conversion, quota or AML evaluation.
+   function Check_Buffer_Count_Span
+     (Data : Bytes; Count_Consumed : Natural) return Buffer_Count_Layout
+     with Post => (if Check_Buffer_Count_Span'Result.Kind = Accepted then
+       Check_Buffer_Count_Span'Result.Consumed <= Data'Length
+       and then Check_Buffer_Count_Span'Result.Raw_Offset <= Check_Buffer_Count_Span'Result.Consumed
+       and then Check_Buffer_Count_Span'Result.Raw_Length =
+         Check_Buffer_Count_Span'Result.Consumed - Check_Buffer_Count_Span'Result.Raw_Offset);
+   function Read_Buffer_With_Count
+     (Data : Bytes; Width : Integer_Width; Count_Value : Integer_Value;
+      Count_Consumed : Natural) return Buffer_Result
+     with Post => (if Read_Buffer_With_Count'Result.Kind = Accepted then
+       Read_Buffer_With_Count'Result.Consumed <= Data'Length);
    --  BufferOp with an integer-constant BufferSize. General TermArg evaluation
    --  belongs to the interpreter and is explicitly unsupported here.
    function Read_Buffer (Data : Bytes; Width : Integer_Width) return Buffer_Result

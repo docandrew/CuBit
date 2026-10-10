@@ -134,8 +134,11 @@ holds the handle slot, the page number, a byte range and a sequence word.
   - The service's side is in filesystem `main.adb`: entries are handled
     by the IPC handlers, routed through `sendReply` and
     `acquireClientMemory`.
-  - libc's open, read_at, write_at, flush, close, unlink, mkdir, rmdir
-    and directory reads use the queue; rename is a message.
+  - libc's open, read_at, write_at, flush, close, unlink, mkdir, rmdir,
+    rename and directory reads use the queue.
+  - Waiting: a client sleeps on its own event loop with a wake request
+    (`OP_FS_WAKE`, docs/filesystem-protocol-v2.md); further queue
+    operations are designed there.
   - The service polls its queues for 50 µs after activity, then arms its
     wake word.
 - **Read and write delegations: implemented.** A per-handle table (one

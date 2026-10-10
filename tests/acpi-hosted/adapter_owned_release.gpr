@@ -1,0 +1,7 @@
+project Adapter_owned_release is
+ for Source_Dirs use ("../../tests/aml-references", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "adapter-owned-release";
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+ end Compiler;
+end Adapter_owned_release;

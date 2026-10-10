@@ -6,6 +6,7 @@ executable with mocked IPC. This does not execute on CuBit or validate GPU
 cache coherence. Run inside the pinned Nix development environment.
 """
 import argparse
+import importlib.util
 import json
 from pathlib import Path
 import shlex
@@ -59,10 +60,7 @@ def main():
         'session-attach': [native / 'anv_cubit_memory.c', tests / 'session-attach-test.c'],
         'session-status': [native / 'anv_cubit_memory.c', tests / 'session-status-test.c'],
         'memory-lifecycle': [native / 'anv_cubit_memory.c', tests / 'memory-lifecycle-test.c'],
-        'submission-lifecycle': [native / 'anv_cubit_memory.c', tests / 'submission-lifecycle-test.c'],
         'binding-route': [native / 'anv_cubit_memory.c', tests / 'binding-route-test.c'],
-        'concurrent-submission': [native / 'anv_cubit_memory.c', tests / 'concurrent-submission-test.c'],
-        'slab-submission': [native / 'anv_cubit_memory.c', tests / 'slab-submission-test.c'],
         'state-table-backing': [native / 'anv_cubit_state_table.c',
                                 tests / 'state-table-backing-test.c'],
     }
@@ -72,7 +70,18 @@ def main():
     fixtures['native-query-adapter'] = [native / 'cubit-device-native.c',
                                         native / 'cubit-device-query.c',
                                         tests / 'cubit-device-native-test.c']
+    # The adapter links the GPU timeline sync type (Mesa's vk_sync, the Ada
+    # timeline logic) and the session queue's C ABI (mocked); the queue and
+    # sync fixtures themselves are test-gpu-timeline.py's.
+    for name, sources in fixtures.items():
+        if native / 'anv_cubit_memory.c' in sources:
+            sources += [native / 'anv_cubit_sync.c', tests / 'sync-support.c',
+                        tests / 'gpu-queue-mock.c']
+    spec = importlib.util.spec_from_file_location('gpu_timeline', tests / 'test-gpu-timeline.py')
+    gpu_timeline = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gpu_timeline)
     print('Hosted mock-IPC regression artifacts:', out, flush=True)
+    ada = gpu_timeline.ada_objects(root, out)
     # Device-info/topology need the full Mesa device-info library to link.
     # Compile every production discovery adapter with the configured target
     # command here; separate finalizer/topology fixtures exercise semantics.
@@ -95,7 +104,8 @@ def main():
         binary = directory / 'test'
         wrappers = (['-Wl,--wrap=calloc', '-Wl,--wrap=realloc']
                     if name in ('memory-lifecycle', 'session-attach') else [])
-        subprocess.run(['cc', '-Wl,--gc-sections', *wrappers, *objects, '-o', str(binary)], check=True)
+        subprocess.run(['cc', '-Wl,--gc-sections', *wrappers, *objects, *ada, '-lpthread',
+                        '-o', str(binary)], check=True)
         if name == 'service-device':
             # Static production owner is deliberately never reset/reused.
             for scenario in range(23):

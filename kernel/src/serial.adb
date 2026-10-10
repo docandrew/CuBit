@@ -6,6 +6,7 @@
 -------------------------------------------------------------------------------
 
 with Ada.Unchecked_Conversion;
+with System.Machine_Code;
 
 -- x86-specific instruction wrappers
 package body serial with 
@@ -131,6 +132,31 @@ is
     begin
         out8(THR(port), Character'Pos(c));
     end send;
+
+    function transmitReady(port : SerialPort) return Boolean
+      with SPARK_Mode => Off is
+        inByte : Unsigned_8;
+        function byteToLine is new Ada.Unchecked_Conversion(Unsigned_8, LineStatus);
+    begin
+        in8(serial.LSR(port), inByte);
+        return byteToLine(inByte).THREmpty;
+    end transmitReady;
+
+    procedure sendBytes(port : SerialPort; Addr : System.Address; Count : Natural)
+      with SPARK_Mode => Off is
+        Source : System.Address := Addr;
+        Remaining : Unsigned_64 := Unsigned_64 (Count);
+    begin
+        if Count = 0 then return; end if;
+        System.Machine_Code.Asm ("cld; rep outsb",
+            Outputs => (System.Address'Asm_Output ("=S", Source),
+                        Unsigned_64'Asm_Output ("=c", Remaining)),
+            Inputs  => (Unsigned_16'Asm_Input ("d", Unsigned_16 (THR (port))),
+                        System.Address'Asm_Input ("0", Source),
+                        Unsigned_64'Asm_Input ("1", Remaining)),
+            Clobber => "memory, cc",
+            Volatile => True);
+    end sendBytes;
 
     -- See if this serial port has data available.
     function hasData(port : in SerialPort) return Boolean

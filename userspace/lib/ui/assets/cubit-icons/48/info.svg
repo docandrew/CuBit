@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs>
+<linearGradient id="teal" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#8af5e8"/><stop offset="1" stop-color="#1fc8c3"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M2 22.5 A20.5 20.5 0 1 0 43 22.5 A20.5 20.5 0 1 0 2 22.5Z" transform="translate(3 3)"/>
+  <path d="M2 22.5 A20.5 20.5 0 1 0 43 22.5 A20.5 20.5 0 1 0 2 22.5Z" transform="translate(2 2)"/>
+  <path d="M2 22.5 A20.5 20.5 0 1 0 43 22.5 A20.5 20.5 0 1 0 2 22.5Z" transform="translate(1 1)"/>
+  <path d="M2 22.5 A20.5 20.5 0 1 0 43 22.5 A20.5 20.5 0 1 0 2 22.5Z"/>
+</g>
+<path d="M2 22.5 A20.5 20.5 0 1 0 43 22.5 A20.5 20.5 0 1 0 2 22.5Z" fill="#0a5f6b" transform="translate(3 3)"/>
+<path d="M2 22.5 A20.5 20.5 0 1 0 43 22.5 A20.5 20.5 0 1 0 2 22.5Z" fill="#0a5f6b" transform="translate(2 2)"/>
+<path d="M2 22.5 A20.5 20.5 0 1 0 43 22.5 A20.5 20.5 0 1 0 2 22.5Z" fill="#0a5f6b" transform="translate(1 1)"/>
+<path d="M2 22.5 A20.5 20.5 0 1 0 43 22.5 A20.5 20.5 0 1 0 2 22.5Z" fill="url(#teal)"/>
+<path d="M19.3 13.28 A3.2 3.2 0 1 0 25.7 13.28 A3.2 3.2 0 1 0 19.3 13.28Z" fill="#ffffff"/>
+<path d="M19.5 19.43 L25.5 19.43 L25.5 34.8 L19.5 34.8Z" fill="#ffffff"/>
+<path d="M17.38 19.43 h5.12 v3 h-5.12Z" fill="#ffffff"/>
+<path d="M8.15 18.4 A14.76 14.76 0 0 1 18.4 8.15" fill="none" stroke="#ffffff" stroke-width="1" stroke-linecap="round" opacity="0.5"/>
+</svg>

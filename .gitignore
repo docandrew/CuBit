@@ -84,3 +84,14 @@ src/build.ads
 /tests/intel-gpu/demand-backing.*/
 /.gpu-status-test.*/
 /.vm-intel-*/
+
+# ACPI/AML tool output: compiled AML, ASL sources and disassembly generated
+# by the AML tests (cached ACPICA references are curated separately).
+*.aml
+*.asl
+*.dsl
+tests/**/reference/**/*.log
+tests/**/reference/**/*.out
+tests/**/reference/**/*.err
+tests/**/reference/**/*.stdout
+tests/**/reference/**/*.stderr

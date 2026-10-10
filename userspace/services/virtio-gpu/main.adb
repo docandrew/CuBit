@@ -24,11 +24,17 @@ with CuBit.Monitor_EDID;
 with CuBit.Desktop_Messages;
 with CuBit.Graphics_Metrics;
 with CuBit.Graphics_Metrics_IO;
+with CuBit.Display_Protocol;
+with CuBit.Display_Planes;
+with CuBit.GPU_Plane_Protocol;
 with GPU_Test_Policy;
 
 procedure main is
    use ASCII;
    package OD renames CuBit.Output_Discovery;
+   package DPL renames CuBit.Display_Planes;
+   package GP renames CuBit.GPU_Plane_Protocol;
+   use type DPL.Plane_Number;
    scanouts : OD.Catalog;
    package GM renames CuBit.Graphics_Metrics;
    uploads, legacyCopies : GM.Counter;
@@ -41,6 +47,8 @@ procedure main is
 
    QUEUE_SIZE : constant Natural := 16;
    CTRL_QUEUE : constant Unsigned_16 := 0;
+   --  virtio-gpu cursor queue: UPDATE_CURSOR/MOVE_CURSOR, no responses.
+   CURSOR_QUEUE : constant Unsigned_16 := 1;
 
    DESC_OFF  : constant Storage_Offset := 16#0000#;
    AVAIL_OFF : constant Storage_Offset := 16#1000#;
@@ -49,7 +57,22 @@ procedure main is
    RESP_OFF  : constant Storage_Offset := 16#4000#;
    --  Rings and command responses occupy the first 64 KiB. Keep framebuffer
    --  pages separate without wasting almost a MiB of each bounded DMA bank.
+   --  Cursor queue rings, its command slots, and one 64x64 ARGB cursor
+   --  backing per head, all inside the first 64 KiB of the first bank.
+   CURSOR_DESC_OFF  : constant Storage_Offset := 16#5000#;
+   CURSOR_AVAIL_OFF : constant Storage_Offset := 16#5400#;
+   CURSOR_USED_OFF  : constant Storage_Offset := 16#5800#;
+   CURSOR_CMD_OFF   : constant Storage_Offset := 16#5C00#;
+   CURSOR_CMD_STRIDE : constant Storage_Offset := 64;
+   CURSOR_IMAGE_OFF : constant Storage_Offset := 16#6000#;
+   CURSOR_EXTENT : constant := 64;
+   CURSOR_PITCH : constant := CURSOR_EXTENT * 4;
+   CURSOR_IMAGE_BYTES : constant := CURSOR_PITCH * CURSOR_EXTENT;
    FB0_OFF   : constant Storage_Offset := 16#10000#;
+   pragma Compile_Time_Error
+     (CURSOR_CMD_OFF + 16 * CURSOR_CMD_STRIDE > CURSOR_IMAGE_OFF or else
+      CURSOR_IMAGE_OFF + 2 * CURSOR_IMAGE_BYTES > FB0_OFF,
+      "cursor queue and backing overlap other DMA regions");
    DMA_BANK_BYTES : constant Storage_Offset := 16#800000#;
 
    package EDID renames CuBit.Monitor_EDID;
@@ -92,6 +115,8 @@ procedure main is
    CMD_TRANSFER_TO_HOST_2D : constant Unsigned_32 := 16#0105#;
    CMD_RESOURCE_ATTACH     : constant Unsigned_32 := 16#0106#;
    CMD_GET_EDID            : constant Unsigned_32 := 16#010A#;
+   CMD_UPDATE_CURSOR       : constant Unsigned_32 := 16#0300#;
+   CMD_MOVE_CURSOR         : constant Unsigned_32 := 16#0301#;
 
    RESP_OK_NODATA       : constant Unsigned_32 := 16#1100#;
    RESP_OK_DISPLAY_INFO : constant Unsigned_32 := 16#1101#;
@@ -112,6 +137,7 @@ procedure main is
    GPU_ERR_BAD_STATE   : constant Unsigned_64 := 3;
    GPU_ERR_UNSUPPORTED : constant Unsigned_64 := 5;
 
+   FORMAT_B8G8R8A8_UNORM : constant Unsigned_32 := 1;
    FORMAT_B8G8R8X8_UNORM : constant Unsigned_32 := 2;
    SUBMIT_POLL_LIMIT : constant Natural := 500_000;
 
@@ -173,6 +199,15 @@ procedure main is
    descs : DescArray with Import, Address => DMA_BASE + DESC_OFF, Volatile;
    avail : VringAvail with Import, Address => DMA_BASE + AVAIL_OFF, Volatile;
    used  : VringUsed with Import, Address => DMA_BASE + USED_OFF, Volatile;
+   cursorDescs : DescArray
+     with Import, Address => DMA_BASE + CURSOR_DESC_OFF, Volatile;
+   cursorAvail : VringAvail
+     with Import, Address => DMA_BASE + CURSOR_AVAIL_OFF, Volatile;
+   cursorUsed  : VringUsed
+     with Import, Address => DMA_BASE + CURSOR_USED_OFF, Volatile;
+   cursorNotifyOffset : Unsigned_64 := 0;
+   cursorUsedSeen : Unsigned_16 := 0;
+   cursorQueueReady : Boolean := False;
 
    dmaPhys : Unsigned_64 := 0;
    secondDmaPhys : Unsigned_64 := 0;
@@ -593,6 +628,27 @@ procedure main is
       write64 (REG_QUEUE_DEVICE, dmaPhys + Unsigned_64 (USED_OFF));
       write16 (REG_QUEUE_ENABLE, 1);
 
+      --  The cursor queue is optional: without it every cursor stays a
+      --  software cursor, which display.svc already handles.
+      trace ("select cursor queue");
+      write16 (REG_QUEUE_SELECT, CURSOR_QUEUE);
+      Notify_Displacement := Unsigned_64 (read16 (REG_QUEUE_NOTIFY_OFF)) * notifyMult;
+      qsz := read16 (REG_QUEUE_SIZE);
+      if Notify_Displacement mod 2 = 0 and then
+        Fits (Notify_Displacement, 2, notifyBytes) and then
+        qsz >= Unsigned_16 (QUEUE_SIZE)
+      then
+         write16 (REG_QUEUE_SIZE, Unsigned_16 (QUEUE_SIZE));
+         write64 (REG_QUEUE_DESC, dmaPhys + Unsigned_64 (CURSOR_DESC_OFF));
+         write64 (REG_QUEUE_DRIVER, dmaPhys + Unsigned_64 (CURSOR_AVAIL_OFF));
+         write64 (REG_QUEUE_DEVICE, dmaPhys + Unsigned_64 (CURSOR_USED_OFF));
+         write16 (REG_QUEUE_ENABLE, 1);
+         cursorNotifyOffset := notifyOff + Notify_Displacement;
+         cursorQueueReady := True;
+      else
+         debugPrint ("virtio-gpu: no usable cursor queue; software cursors only" & LF);
+      end if;
+
       status := status or VIRTIO_STATUS_DRIVER_OK;
       trace ("set DRIVER_OK");
       write8 (REG_DEVICE_STATUS, status);
@@ -673,6 +729,144 @@ procedure main is
            " nominal_millihz" & EDID.Refresh_Millihertz (Mode)'Image & LF);
       end;
    end selectPreferredMode;
+
+   ---------------------------------------------------------------------------
+   --  Hardware cursor plane (CuBit.GPU_Plane_Protocol): one plane per head.
+   --  display.svc writes the head's mapped backing, Show uploads it with a
+   --  fenced TRANSFER_TO_HOST_2D on the control queue and then defines the
+   --  cursor on the cursor queue. Moves and hides go straight to the cursor
+   --  queue. The host composes the cursor; the guest scanout never holds it.
+   ---------------------------------------------------------------------------
+   CURSOR_PLANE : constant DPL.Plane_Number := 1;
+   CURSOR_PLANES : constant DPL.Plane_Number := 1;
+   CURSOR_Z : constant DPL.Plane_Z := 1;
+   CURSOR_TRANSFER_ID : constant Natural := 4;
+   CURSOR_TRANSFER_CMD : constant Storage_Offset := CMD_OFF + 2 * 512;
+   CURSOR_TRANSFER_RESP : constant Storage_Offset := RESP_OFF + 2 * 512;
+   CURSOR_REPLY_SLOT : constant CapabilitySlot := 34;
+   UPDATE_CURSOR_BYTES : constant Unsigned_32 := 56;
+
+   function cursorResource (Head : Head_Index) return Unsigned_32 is
+     (Unsigned_32 (5 + Head));
+   function cursorImageOffset (Head : Head_Index) return Storage_Offset is
+     (CURSOR_IMAGE_OFF + Storage_Offset (Head) * CURSOR_IMAGE_BYTES);
+
+   type Cursor_State is record
+      Ready : Boolean := False;
+      --  Desired host state and whether it still has to be queued.
+      Defined : Boolean := False;
+      Position : GP.Position;
+      Hot_X, Hot_Y : DPL.Hotspot_Coordinate := 0;
+      Kind : Unsigned_32 := CMD_UPDATE_CURSOR;
+      Dirty : Boolean := False;
+   end record;
+   cursors : array (Head_Index) of Cursor_State;
+   cursorAvailIdx : Unsigned_16 := 0;
+   cursorFaulted : Boolean := False;
+
+   type Transfer_Phase is (Idle, Transfer, Quarantined);
+   type Cursor_Transfer is record
+      Phase : Transfer_Phase := Idle;
+      Head : Head_Index := 0;
+      Fence : Unsigned_64 := 0;
+      Deadline : Unsigned_64 := 0;
+      Show : GP.Show;
+   end record;
+   cursorTransfer : Cursor_Transfer;
+
+   procedure notifyCursorQueue is
+      reg : Unsigned_16 with Import, Volatile,
+        Address => To_Address (Integer_Address (BAR_VIRT_BASE + cursorNotifyOffset));
+   begin
+      reg := CURSOR_QUEUE;
+   end notifyCursorQueue;
+
+   --  Retire used cursor commands. QEMU completes the cursor queue in order;
+   --  anything else is treated as a fault rather than guessed at.
+   procedure reclaimCursorQueue is
+      Seen : constant Unsigned_16 := cursorUsed.idx;
+   begin
+      System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
+      if Seen - cursorUsedSeen > cursorAvailIdx - cursorUsedSeen then
+         cursorFaulted := True;
+         debugPrint ("virtio-gpu: invalid cursor used index" & LF);
+         return;
+      end if;
+      cursorUsedSeen := Seen;
+   end reclaimCursorQueue;
+
+   --  Queue the newest state for each head that has a change pending.
+   procedure flushCursors is
+      Slot : Natural;
+      Cmd : Storage_Offset;
+   begin
+      if not cursorQueueReady or else cursorFaulted then return; end if;
+      reclaimCursorQueue;
+      for Head in Head_Index loop
+         if cursors (Head).Dirty and then
+           cursorAvailIdx - cursorUsedSeen < Unsigned_16 (QUEUE_SIZE)
+         then
+            Slot := Natural (cursorAvailIdx mod Unsigned_16 (QUEUE_SIZE));
+            Cmd := CURSOR_CMD_OFF + Storage_Offset (Slot) * CURSOR_CMD_STRIDE;
+            for Offset in Storage_Offset range 0 .. CURSOR_CMD_STRIDE - 1 loop
+               declare
+                  B : Unsigned_8 with Import, Address => DMA_BASE + Cmd + Offset;
+               begin
+                  B := 0;
+               end;
+            end loop;
+            put32 (Cmd, 0, cursors (Head).Kind);
+            put32 (Cmd, 24, Unsigned_32 (Head));
+            put32 (Cmd, 28, Unsigned_32'Mod (Integer (cursors (Head).Position.X)));
+            put32 (Cmd, 32, Unsigned_32'Mod (Integer (cursors (Head).Position.Y)));
+            --  QEMU shows the cursor for MOVE_CURSOR only with a resource.
+            put32 (Cmd, 40, (if cursors (Head).Defined then cursorResource (Head) else 0));
+            put32 (Cmd, 44, Unsigned_32 (cursors (Head).Hot_X));
+            put32 (Cmd, 48, Unsigned_32 (cursors (Head).Hot_Y));
+            cursorDescs (Slot) :=
+              (dmaPhys + Unsigned_64 (Cmd), UPDATE_CURSOR_BYTES, 0, 0);
+            cursorAvail.ring (Slot) := Unsigned_16 (Slot);
+            System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+            cursorAvailIdx := cursorAvailIdx + 1;
+            cursorAvail.idx := cursorAvailIdx;
+            System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+            notifyCursorQueue;
+            cursors (Head).Dirty := False;
+            --  A queued definition is followed only by moves.
+            cursors (Head).Kind := CMD_MOVE_CURSOR;
+         end if;
+      end loop;
+   end flushCursors;
+
+   function cursorsPending return Boolean is
+     (for some C of cursors => C.Dirty);
+
+   --  Boot only: one 64x64 ARGB resource per ready head.
+   procedure createCursor (Head : Head_Index) is
+   begin
+      if not cursorQueueReady then return; end if;
+      beginCmd (CMD_RESOURCE_CREATE_2D);
+      put32 (CMD_OFF, 24, cursorResource (Head));
+      put32 (CMD_OFF, 28, FORMAT_B8G8R8A8_UNORM);
+      put32 (CMD_OFF, 32, CURSOR_EXTENT);
+      put32 (CMD_OFF, 36, CURSOR_EXTENT);
+      if not submitCmd (40, 24, RESP_OK_NODATA) then
+         debugPrint ("virtio-gpu: cursor resource rejected; software cursors only" & LF);
+         return;
+      end if;
+      beginCmd (CMD_RESOURCE_ATTACH);
+      put32 (CMD_OFF, 24, cursorResource (Head));
+      put32 (CMD_OFF, 28, 1);
+      put64 (CMD_OFF, 32, dmaPhys + Unsigned_64 (cursorImageOffset (Head)));
+      put32 (CMD_OFF, 40, CURSOR_IMAGE_BYTES);
+      put32 (CMD_OFF, 44, 0);
+      if not submitCmd (48, 24, RESP_OK_NODATA) then
+         debugPrint ("virtio-gpu: cursor backing rejected; software cursors only" & LF);
+         return;
+      end if;
+      cursors (Head).Ready := True;
+      debugPrint ("virtio-gpu: hardware cursor plane head" & Head'Image & LF);
+   end createCursor;
 
    procedure initGpu is
       ok : Boolean;
@@ -827,6 +1021,7 @@ procedure main is
                   end;
                end if;
             end loop;
+            createCursor (Head);
             readyHeads (Head) := True;
          end if;
       end loop;
@@ -933,6 +1128,72 @@ procedure main is
       notifyQueue;
    end issueCommand;
 
+   procedure finishCursorTransfer (Success : Boolean) is
+      Ignored : Unsigned_64;
+      Head : constant Head_Index := cursorTransfer.Head;
+   begin
+      if cursorTransfer.Phase /= Transfer then return; end if;
+      if Success then
+         cursors (Head).Defined := True;
+         cursors (Head).Kind := CMD_UPDATE_CURSOR;
+         cursors (Head).Position := cursorTransfer.Show.At_Position;
+         cursors (Head).Hot_X := cursorTransfer.Show.Hot_X;
+         cursors (Head).Hot_Y := cursorTransfer.Show.Hot_Y;
+         cursors (Head).Dirty := True;
+         flushCursors;
+         cursorTransfer.Phase := Idle;
+      else
+         --  Like presentation failures: the backing stays owned by the
+         --  device until a designed reset; no further cursor uploads.
+         cursorTransfer.Phase := Quarantined;
+         debugPrint ("virtio-gpu: cursor upload failed" & LF);
+      end if;
+      Ignored := replyCap (CURSOR_REPLY_SLOT, CuBit.Desktop_Messages.From_Wire
+        (GP.Encode_Status (GP.Show_Plane,
+           (if Success then GP.Accepted else GP.Bad_State))));
+   end finishCursorTransfer;
+
+   procedure issueCursorTransfer is
+      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Head : constant Head_Index := cursorTransfer.Head;
+   begin
+      if Fence_Sequence = Unsigned_64'Last or else
+        Now > Unsigned_64'Last - Command_Timeout_Ms
+      then
+         finishCursorTransfer (False);
+         return;
+      end if;
+      for Offset in Storage_Offset range 0 .. Command_Stride - 1 loop
+         declare
+            C : Unsigned_8 with Import, Address => DMA_BASE + CURSOR_TRANSFER_CMD + Offset;
+            R : Unsigned_8 with Import, Address => DMA_BASE + CURSOR_TRANSFER_RESP + Offset;
+         begin
+            C := 0;
+            R := 0;
+         end;
+      end loop;
+      Fence_Sequence := Fence_Sequence + 1;
+      cursorTransfer.Fence := Fence_Sequence;
+      cursorTransfer.Deadline := Now + Command_Timeout_Ms;
+      put32 (CURSOR_TRANSFER_CMD, 0, CMD_TRANSFER_TO_HOST_2D);
+      put32 (CURSOR_TRANSFER_CMD, 4, 1); -- VIRTIO_GPU_FLAG_FENCE
+      put64 (CURSOR_TRANSFER_CMD, 8, cursorTransfer.Fence);
+      put32 (CURSOR_TRANSFER_CMD, 32, CURSOR_EXTENT);
+      put32 (CURSOR_TRANSFER_CMD, 36, CURSOR_EXTENT);
+      put32 (CURSOR_TRANSFER_CMD, 48, cursorResource (Head));
+      descs (CURSOR_TRANSFER_ID) :=
+        (dmaPhys + Unsigned_64 (CURSOR_TRANSFER_CMD), 56, VRING_DESC_F_NEXT,
+         Unsigned_16 (CURSOR_TRANSFER_ID + 1));
+      descs (CURSOR_TRANSFER_ID + 1) :=
+        (dmaPhys + Unsigned_64 (CURSOR_TRANSFER_RESP), 24, VRING_DESC_F_WRITE, 0);
+      avail.ring (Natural (avail.idx mod Unsigned_16 (QUEUE_SIZE))) :=
+        Unsigned_16 (CURSOR_TRANSFER_ID);
+      System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+      avail.idx := avail.idx + 1;
+      System.Machine_Code.Asm ("mfence", Clobber => "memory", Volatile => True);
+      notifyQueue;
+   end issueCursorTransfer;
+
    procedure collectCommands is
       Entry_Value : VringUsedElem;
       Head : Head_Index;
@@ -952,7 +1213,20 @@ procedure main is
          System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
          Entry_Value := used.ring (Natural (lastUsedIdx mod Unsigned_16 (QUEUE_SIZE)));
          lastUsedIdx := lastUsedIdx + 1;
-         if Entry_Value.id /= 0 and then Entry_Value.id /= 2 then
+         if Entry_Value.id = Unsigned_32 (CURSOR_TRANSFER_ID) then
+            declare
+               Fence_Seen : constant Unsigned_64 :=
+                 Unsigned_64 (get32 (CURSOR_TRANSFER_RESP, 8)) or
+                 Shift_Left (Unsigned_64 (get32 (CURSOR_TRANSFER_RESP, 12)), 32);
+            begin
+               finishCursorTransfer
+                 (Entry_Value.len = 24 and then
+                  get32 (CURSOR_TRANSFER_RESP, 0) = RESP_OK_NODATA and then
+                  get32 (CURSOR_TRANSFER_RESP, 4) = 1 and then
+                  Fence_Seen = cursorTransfer.Fence);
+            end;
+            goto Next_Completion;
+         elsif Entry_Value.id /= 0 and then Entry_Value.id /= 2 then
             for H in Head_Index loop finishPresentation (H, False); end loop;
             debugPrint ("virtio-gpu: invalid used descriptor" & LF);
             return;
@@ -998,8 +1272,16 @@ procedure main is
                end case;
             end if;
          end if;
+         <<Next_Completion>>
       end loop;
       Now := syscall (SYSCALL_GETTIME);
+      if cursorTransfer.Phase = Transfer and then Now >= cursorTransfer.Deadline then
+         finishCursorTransfer (False);
+         debugPrint ("virtio-gpu: cursor upload timeout" & LF);
+      end if;
+      if cursorsPending then
+         flushCursors;
+      end if;
       for H in Head_Index loop
          if Pending (H).Phase = Awaiting_Scanout and then Now >= Pending (H).Deadline then
             Pending (H).Phase := Set_Scanout;
@@ -1038,6 +1320,106 @@ procedure main is
       end if;
       selectedHead := Natural (request.tag.reserved);
       request.tag.reserved := 0;
+      --  Cursor planes use their own queue and transfer slot: they never
+      --  wait for, or disturb, a presentation in flight on the head.
+      if request.tag.label in GP.Code (GP.Query) .. GP.Code (GP.Hide_Plane) then
+         declare
+            Wire : constant CuBit.Display_Protocol.Wire_Message :=
+              CuBit.Desktop_Messages.To_Wire (request);
+            C : Cursor_State renames cursors (selectedHead);
+            Result : CuBit.Display_Protocol.Wire_Message;
+            function Status (Kind : GP.Operation; Item : GP.Status)
+              return CuBit.Display_Protocol.Wire_Message
+              renames GP.Encode_Status;
+         begin
+            if request.tag.label = GP.Code (GP.Query) then
+               declare
+                  D : constant GP.Plane_Decoding := GP.Decode_Plane (GP.Query, Wire);
+               begin
+                  if D.Valid and then D.Value = CURSOR_PLANE and then C.Ready then
+                     Result := GP.Encode (GP.Description'
+                       (Count => CURSOR_PLANES,
+                        Descriptor =>
+                          (Kinds => [DPL.Cursor => True, others => False],
+                           Formats => [DPL.ARGB8888 => True, others => False],
+                           Max_Width => CURSOR_EXTENT,
+                           Max_Height => CURSOR_EXTENT,
+                           Scaler => False, Z => CURSOR_Z,
+                           --  QEMU draws it as the host pointer image.
+                           Host_Pointer => True)));
+                  else
+                     Result := Status (GP.Query, GP.Unsupported);
+                  end if;
+               end;
+            elsif request.tag.label = GP.Code (GP.Map_Plane) then
+               declare
+                  D : constant GP.Plane_Decoding := GP.Decode_Plane (GP.Map_Plane, Wire);
+                  Reference : CuBit.Memory_Grants.Grant_Reference;
+                  Granted : Boolean := False;
+               begin
+                  if D.Valid and then D.Value = CURSOR_PLANE and then C.Ready then
+                     CuBit.Memory_Grants.Create_For_Process
+                       (grantee => from,
+                        localAddr => DMA_BASE + cursorImageOffset (selectedHead),
+                        numPages => CURSOR_IMAGE_BYTES / 4096,
+                        readWrite => True, reference => Reference,
+                        success => Granted);
+                  end if;
+                  Result := (if Granted then GP.Encode (GP.Buffer'
+                               (Reference, CURSOR_EXTENT, CURSOR_EXTENT))
+                             else Status (GP.Map_Plane, GP.Bad_State));
+               end;
+            elsif request.tag.label = GP.Code (GP.Show_Plane) then
+               declare
+                  D : constant GP.Show_Decoding := GP.Decode_Show (Wire);
+               begin
+                  if D.Valid and then D.Value.Plane = CURSOR_PLANE and then
+                    C.Ready and then cursorTransfer.Phase = Idle and then
+                    saveReplyCap (Unsigned_64 (CURSOR_REPLY_SLOT)) = 1
+                  then
+                     cursorTransfer := (Phase => Transfer, Head => selectedHead,
+                                        Show => D.Value, others => <>);
+                     issueCursorTransfer;
+                     return; -- answered when the upload completes
+                  end if;
+                  Result := Status (GP.Show_Plane, GP.Bad_State);
+               end;
+            elsif request.tag.label = GP.Code (GP.Move_Plane) then
+               declare
+                  D : constant GP.Move_Decoding := GP.Decode_Move (Wire);
+               begin
+                  if D.Valid and then D.Value.Plane = CURSOR_PLANE and then
+                    C.Defined and then not cursorFaulted
+                  then
+                     C.Position := D.Value.At_Position;
+                     C.Dirty := True;
+                     flushCursors;
+                     Result := Status (GP.Move_Plane, GP.Accepted);
+                  else
+                     Result := Status (GP.Move_Plane, GP.Bad_State);
+                  end if;
+               end;
+            else
+               declare
+                  D : constant GP.Plane_Decoding := GP.Decode_Plane (GP.Hide_Plane, Wire);
+               begin
+                  if D.Valid and then D.Value = CURSOR_PLANE and then
+                    C.Ready and then not cursorFaulted
+                  then
+                     C.Defined := False;
+                     C.Kind := CMD_UPDATE_CURSOR;
+                     C.Dirty := True;
+                     flushCursors;
+                     Result := Status (GP.Hide_Plane, GP.Accepted);
+                  else
+                     Result := Status (GP.Hide_Plane, GP.Bad_State);
+                  end if;
+               end;
+            end if;
+            ignore := reply (from, CuBit.Desktop_Messages.From_Wire (Result));
+            return;
+         end;
+      end if;
       if Pending (selectedHead).Phase /= Idle and then
         request.tag.label not in OP_GPU_GET_INFO | OP_GPU_GET_STATUS
       then
@@ -1275,6 +1657,13 @@ begin
                   Deadline := Unsigned_64'Min (Deadline, Item.Deadline);
                end if;
             end loop;
+            if cursorTransfer.Phase = Transfer then
+               Deadline := Unsigned_64'Min (Deadline, cursorTransfer.Deadline);
+            end if;
+            --  A cursor queue that was full is retried by polling soon.
+            if cursorsPending then
+               Deadline := Unsigned_64'Min (Deadline, syscall (SYSCALL_GETTIME) + 1);
+            end if;
             if Wait_For_Activity_Until (Deadline) = Unavailable then
                fail ("activity wait unavailable");
                return;

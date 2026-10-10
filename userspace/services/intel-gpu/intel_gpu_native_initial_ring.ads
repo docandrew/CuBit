@@ -10,6 +10,9 @@ generic
 package Intel_GPU_Native_Initial_Ring is
    procedure Publish (Segment : Intel_GPU_ADLN_Context_Init.Segment;
                       Success : out Boolean);
+   -- The context's 64-bit PPHWSP timeline slot, read high, low, high with a
+   -- cache flush before each half; a torn read is retried a bounded number
+   -- of times, then reported as OK = False.
    procedure Read_Marker (Value : out Interfaces.Unsigned_64;
                           OK : out Boolean);
    -- Reads the dedicated private-VM probe destination, not the ring HWSP.

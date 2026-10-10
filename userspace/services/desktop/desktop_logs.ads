@@ -7,4 +7,8 @@ package Desktop_Logs with SPARK_Mode, Abstract_State => State,
    --  or are shed are counted, and the count is published when it changes.
    procedure Write (Text : String)
      with Global => (In_Out => (State, Desktop_Log_IO.State));
+   --  Echo one line (Text, without its line feed) and publish it as a
+   --  Warning record.
+   procedure Warn (Text : String)
+     with Global => (In_Out => (State, Desktop_Log_IO.State));
 end Desktop_Logs;

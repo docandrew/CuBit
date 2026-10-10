@@ -54,6 +54,24 @@ package Input_Pending with SPARK_Mode, Pure is
        (if not Lost then
          (for all I in Offset_Type =>
             (if I < Count (Q'Old) then Element (Q, I) = Element (Q'Old, I))));
+   -- Rewrite the newest (not yet published) report in place: its sequence,
+   -- recovery flag and acquisition time stay, so the stream has no gap.
+   -- Callers own the payload meaning; Pointer_Pending uses this to coalesce
+   -- motion by agreement (ACCUMULABLE_DISPLACEMENT), never transitions.
+   procedure Replace_Newest (Q : in out Queue; Payload : Word)
+     with Pre => Count (Q) > 0,
+       Post => Count (Q) = Count (Q'Old) and then
+         Sequence (Q) = Sequence (Q'Old) and then
+         Recovery_Pending (Q) = Recovery_Pending (Q'Old) and then
+         Element (Q, Count (Q) - 1).Payload = Payload and then
+         Element (Q, Count (Q) - 1).Sequence =
+           Element (Q'Old, Count (Q) - 1).Sequence and then
+         Element (Q, Count (Q) - 1).Recover =
+           Element (Q'Old, Count (Q) - 1).Recover and then
+         Element (Q, Count (Q) - 1).Observed_Ms =
+           Element (Q'Old, Count (Q) - 1).Observed_Ms and then
+         (for all I in Offset_Type =>
+            (if I < Count (Q) - 1 then Element (Q, I) = Element (Q'Old, I)));
    -- Never deliver a previous consumer's pending input to its replacement.
    procedure Reset (Q : in out Queue)
      with Post => Count (Q) = 0 and then Sequence (Q) = Sequence (Q'Old) and then

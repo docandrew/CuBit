@@ -196,6 +196,13 @@ package CuBit.UI.App is
 
    --  Defaults for Run's optional timed-work hooks: no deadline.
    function No_Deadline return Interfaces.Unsigned_64 is (0);
+   --  Default for Run's completion hook: no other asynchronous work.
+   procedure No_Completion
+      (win : in out Window;
+       receipt : CuBit.Messages.CompletionEntry;
+       consumed : out Boolean;
+       dirty : in out CuBit.UI.Rect;
+       running : in out Boolean);
    procedure No_Deadline_Work
       (win : in out Window;
        dirty : in out CuBit.UI.Rect;
@@ -227,7 +234,24 @@ package CuBit.UI.App is
           dirty : in out CuBit.UI.Rect;
           running : in out Boolean)
          is No_Deadline_Work;
+      --  Activity_Wait: Run never blocks in a call. It submits the window's
+      --  input wait asynchronously and waits once, for input, the program's
+      --  other completions (a filesystem wake: CuBit.Filesystem_Sessions)
+      --  and its deadline (CuBit.Messages.Wait_For_Activity_Until). Each
+      --  completion that is not the window's input goes to On_Completion,
+      --  which says whether it was its own. The window must be opened with
+      --  batched_input => False. Input wait tokens come from below
+      --  APPLICATION_TOKEN_FIRST; the program's own tokens from it on.
+      Activity_Wait : Boolean := False;
+      with procedure On_Completion
+         (win : in out Window;
+          receipt : CuBit.Messages.CompletionEntry;
+          consumed : out Boolean;
+          dirty : in out CuBit.UI.Rect;
+          running : in out Boolean)
+         is No_Completion;
    procedure Run (win : in out Window);
+   APPLICATION_TOKEN_FIRST : constant Interfaces.Unsigned_64 := 2 ** 48;
 
 
    procedure Close (win : in out Window);

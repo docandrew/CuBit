@@ -1,13 +1,16 @@
-with CuBit.Messages;
+with CuBit.Published_Clock;
 package body CuBit.Monotonic is
-   use type Interfaces.Unsigned_64;
    function Read return Reading is
-      Value : constant Interfaces.Unsigned_64 := CuBit.Messages.syscall
-        (CuBit.Messages.SYSCALL_READ_MONOTONIC_MICROSECONDS);
+      Value     : Interfaces.Unsigned_64;
+      Available : Boolean;
    begin
-      if Value = Interfaces.Unsigned_64'Last then
+      CuBit.Published_Clock.Microseconds (Value, Available);
+      if not Available then
          return (Available => False);
       end if;
       return (Available => True, Microseconds => Value);
    end Read;
+
+   function Milliseconds return Interfaces.Unsigned_64 is
+     (CuBit.Published_Clock.Milliseconds);
 end CuBit.Monotonic;

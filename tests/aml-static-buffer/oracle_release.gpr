@@ -1,0 +1,9 @@
+project Oracle_release is
+ for Source_Dirs use (".", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "oracle-release/obj";
+ for Exec_Dir use "oracle-release";
+ for Main use ("static_buffer_oracle_runner.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+ end Compiler;
+end Oracle_release;

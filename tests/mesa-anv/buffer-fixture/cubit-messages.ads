@@ -23,12 +23,14 @@ package CuBit.Messages is
    Close_Response : MessageWords := [0, 1, 16#4750_0000_0000_0001#, 0];
    Retirement_Response : MessageWords := [0, 1, 0, 0];
    Register_Response : MessageWords := [0, 1, 0, 0];
-   Submit_Response : MessageWords := [0, 1, 2, 0];
-   Submit_Request : MessageWords := [others => 0];
    Update_Response : MessageWords := [0, 1, 1, 0];
    Update_Request : MessageWords := [others => 0];
    Bound_DMA, Last_Allocation_DMA : Unsigned_64 := 0;
    Wait_Forever : constant Unsigned_64 := Unsigned_64'Last;
+   --  The runtime's call-deadline surface (Native_GPU_Calls): a mock reply
+   --  never times out, so the deadline value is unused.
+   REPLY_TIMEOUT : constant Unsigned_32 := 16#FFFF_0001#;
+   function Deadline_After (Milliseconds : Unsigned_64) return Unsigned_64 is (Milliseconds);
    function capCall (Slot : CapabilitySlot; Msg : in out Message;
                      Deadline : Unsigned_64) return MessageTag;
 end CuBit.Messages;

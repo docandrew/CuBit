@@ -7,6 +7,8 @@ with CuBit.Display_Protocol; use CuBit.Display_Protocol;
 with CuBit.Display_Pool_Protocol;
 with CuBit.Desktop_Messages; use CuBit.Desktop_Messages;
 with CuBit.Output_Discovery;
+with CuBit.Display_Planes;
+with CuBit.Display_Plane_Protocol;
 with Presentation_Test_Policy;
 with GPU_Test_Policy;
 
@@ -589,6 +591,206 @@ procedure Main is
       if Passed then debugPrint ("DISPLAY-POOL-CHECK: PASS three slots, exact replies, revocation and release" & ASCII.LF); end if;
    end Exercise_Pool;
 
+   --  Display planes: two cursors (primary and agent pointer). On virtio-gpu
+   --  the primary takes the head's single hardware cursor plane and the
+   --  agent pointer is composited; a priority swap waits for a plan frame.
+   --  Firmware framebuffers report no planes: both are composited.
+   procedure Exercise_Planes is
+      package DPL renames CuBit.Display_Planes;
+      package PP renames CuBit.Display_Plane_Protocol;
+      package P renames CuBit.Display_Pool_Protocol;
+      use type PP.Request_Set, DPL.Plane_Count, DPL.Plan_Epoch, DPL.Request_Count,
+        DPL.Surface_Extent, DP.Status_Code;
+      Image_Extent : constant := 32;
+      Image_Pages : constant := 1;
+      Pause_Ms : constant := 3000;
+      Hardware_Expected : Boolean;
+      Images : array (DPL.Request_Id range 1 .. 2) of MG.Grant_Reference;
+      Colors : constant array (DPL.Request_Id range 1 .. 2) of Unsigned_32 :=
+        [16#FFFF_00FF#, 16#FF00_FF00#];
+      Last : PP.Report;
+      function Only (R : DPL.Request_Id) return PP.Request_Set is
+        ([for X in DPL.Request_Id => X = R]);
+      function Both return PP.Request_Set is
+        ([for X in DPL.Request_Id => X in 1 .. 2]);
+      procedure Plane (Request : Wire_Message; Kind : PP.Operation;
+                       Status : DP.Status_Code; Name : String) is
+         Decoded : constant PP.Report_Decoding :=
+           PP.Decode_Report (Kind, Send (Request));
+      begin
+         Check (Decoded.Valid and then Decoded.Value.Status = Status, Name);
+         if Decoded.Valid then Last := Decoded.Value; end if;
+      end Plane;
+      function Status_Word (Value : Wire_Message) return Unsigned_64 is
+        (Value.Words (0));
+      Status : Wire_Message;
+      Start, Finish : Unsigned_64;
+      Move_Count : constant := 64;
+   begin
+      Status := Send ((Label => Code (Get_Status), others => <>));
+      Hardware_Expected := Status_Word (Status) = 3;
+      Expect (Encode_Lease_Request (Acquire_Display), DP.Success, "planes lease");
+      declare
+         C : constant PP.Capability_Decoding :=
+           PP.Decode_Capability (Send (PP.Encode_Empty (PP.Query_Output)));
+      begin
+         --  virtio-gpu's cursor is drawn by the host as its pointer image:
+         --  a host-pointer plane, never offered to relative pointers.
+         Check (C.Valid and then C.Value.Planes (DPL.Cursor) = 0 and then
+                C.Value.Host_Pointer_Cursors = (if Hardware_Expected then 1 else 0) and then
+                C.Value.Capacity = DPL.Request_Capacity, "plane capability");
+         if C.Valid and then Hardware_Expected then
+            Check (C.Value.Max_Width = 64 and then C.Value.Max_Height = 64,
+                   "virtio cursor limit");
+         end if;
+      end;
+      --  Both pointers are absolute (as a tablet or remote session would be).
+      Plane (PP.Encode (PP.Create_Request, PP.Identity'(1, DPL.Cursor, DPL.Primary_Pointer, True)),
+             PP.Create_Request, DP.Success, "create primary pointer");
+      Plane (PP.Encode (PP.Create_Request, PP.Identity'(2, DPL.Cursor, DPL.Agent_Pointer, True)),
+             PP.Create_Request, DP.Success, "create agent pointer");
+      Plane (PP.Encode (PP.Create_Request, PP.Identity'(2, DPL.Cursor, DPL.Agent_Pointer, True)),
+             PP.Create_Request, DP.Bad_State, "duplicate request rejected");
+      Plane (PP.Encode (PP.Create_Request, PP.Identity'(3, DPL.Overlay, DPL.Agent_Pointer, False)),
+             PP.Create_Request, DP.Unsupported, "overlay requests not built yet");
+      for R in Images'Range loop
+         Raw := syscall (SYSCALL_SBRK, 2 * 4096);
+         Check (Raw /= Unsigned_64'Last, "cursor image storage");
+         if not Passed then return; end if;
+         declare
+            Base : constant Integer_Address :=
+              Integer_Address ((Raw + 4095) and not Unsigned_64'(4095));
+            Pixels : array (0 .. Image_Extent * Image_Extent - 1) of Unsigned_32
+              with Import, Address => To_Address (Base), Volatile;
+         begin
+            --  Solid square with a transparent 8-pixel hole at the hotspot.
+            for Y in 0 .. Image_Extent - 1 loop
+               for X in 0 .. Image_Extent - 1 loop
+                  Pixels (Y * Image_Extent + X) :=
+                    (if X < 8 and then Y < 8 then 0 else Colors (R));
+               end loop;
+            end loop;
+            MG.Create_Via_Capability (CAP_SLOT_DISPLAY, To_Address (Base),
+                                      Image_Pages, False, Images (R), Ok);
+            Check (Ok, "cursor image grant");
+         end;
+         if not Passed then return; end if;
+         Plane (PP.Encode (PP.Cursor_Image'(R, Images (R), Image_Extent, Image_Extent, 4, 4)),
+                PP.Set_Cursor_Image, DP.Success, "set cursor image");
+      end loop;
+      Plane (PP.Encode (PP.Move'(1, 300, 200)), PP.Move_Request, DP.Success, "move primary");
+      Plane (PP.Encode (PP.Move'(2, 600, 400)), PP.Move_Request, DP.Success, "move agent");
+      Plane (PP.Encode (PP.Visibility'(1, True)), PP.Set_Visibility, DP.Success, "show primary");
+      Plane (PP.Encode (PP.Visibility'(2, True)), PP.Set_Visibility, DP.Success, "show agent");
+      if Hardware_Expected then
+         Check (Last.Committed_Hardware = Only (1) and then
+                Last.Committed_Composited = Only (2),
+                "primary on the plane, agent composited");
+      else
+         Check (Last.Committed_Hardware = PP.No_Requests and then
+                Last.Committed_Composited = Both, "no planes: all composited");
+      end if;
+      if not Passed then return; end if;
+      --  A relative pointer (a mouse) never takes a host-pointer plane, even
+      --  at the highest priority: the host would hide it under a grab.
+      Plane (PP.Encode (PP.Create_Request, PP.Identity'(3, DPL.Cursor, DPL.Primary_Pointer, False)),
+             PP.Create_Request, DP.Success, "create relative pointer");
+      Plane (PP.Encode (PP.Cursor_Image'(3, Images (1), Image_Extent, Image_Extent, 4, 4)),
+             PP.Set_Cursor_Image, DP.Success, "relative pointer image");
+      Plane (PP.Encode (PP.Visibility'(3, True)), PP.Set_Visibility, DP.Success, "show relative pointer");
+      Check (Last.Committed_Composited (3) and then not Last.Committed_Hardware (3) and then
+             Last.Committed_Hardware = (if Hardware_Expected then Only (1) else PP.No_Requests),
+             "relative pointer composited");
+      Plane (PP.Encode_Destroy (3), PP.Destroy_Request, DP.Success, "destroy relative pointer");
+      if not Passed then return; end if;
+      debugPrint ("DISPLAY-PLANES: shown primary=300,200 agent=600,400" & ASCII.LF);
+      Ignored := syscall (SYSCALL_SLEEP, Pause_Ms);
+      Start := syscall (SYSCALL_GETTIME);
+      for Step in 1 .. Move_Count loop
+         Plane (PP.Encode (PP.Move'(1, DPL.Space_Coordinate (300 + Step * 400 / Move_Count),
+                                       DPL.Space_Coordinate (200 + Step * 300 / Move_Count))),
+                PP.Move_Request, DP.Success, "pointer motion");
+      end loop;
+      Finish := syscall (SYSCALL_GETTIME);
+      debugPrint ("DISPLAY-PLANES: moved primary=700,500 moves=" & Move_Count'Image &
+                  " ms=" & Unsigned_64'Image (Finish - Start) & ASCII.LF);
+      Ignored := syscall (SYSCALL_SLEEP, Pause_Ms);
+      --  Negative positions relative to the hotspot: partly off the top-left.
+      Plane (PP.Encode (PP.Move'(1, 1, 1)), PP.Move_Request, DP.Success, "edge motion");
+      Check (Last.Committed_Hardware = (if Hardware_Expected then Only (1) else PP.No_Requests),
+             "partly visible cursor keeps its plane");
+      --  Swap priorities: the swap waits for a frame rendered for the plan.
+      Plane (PP.Encode (PP.Set_Priority, PP.Identity'(1, DPL.Cursor, DPL.Agent_Pointer, False)),
+             PP.Set_Priority, DP.Success, "demote primary");
+      Plane (PP.Encode (PP.Set_Priority, PP.Identity'(2, DPL.Cursor, DPL.Primary_Pointer, False)),
+             PP.Set_Priority, DP.Success, "promote agent");
+      if Hardware_Expected then
+         Check (Last.Proposed_Hardware = Only (2) and then
+                Last.Committed_Hardware = Only (1), "swap waits for a frame");
+         declare
+            Epoch : constant DPL.Plan_Epoch := Last.Epoch;
+            Grant : MG.Grant_Reference;
+            Session : Unsigned_64;
+            C : CompletionEntry := NULL_COMPLETION;
+            Deadline : Unsigned_64;
+            Activity : Activity_Result;
+         begin
+            for B in P.Buffer_Slot loop
+               Raw := syscall (SYSCALL_SBRK, 8192);
+               Check (Raw /= Unsigned_64'Last, "plan frame storage");
+               if not Passed then return; end if;
+               MG.Create_Via_Capability
+                 (CAP_SLOT_DISPLAY, To_Address (Integer_Address ((Raw + 4095) and not Unsigned_64'(4095))),
+                  1, False, Grant, Ok);
+               Expect (P.Encode (P.Attachment'(B, (Grant, (32, 32, 128)))),
+                       DP.Success, "plan frame slot");
+            end loop;
+            Wire := Send (P.Encode_Open);
+            Check (Wire.Words (0) = 0, "plan frame session");
+            Session := Wire.Words (1);
+            if not Passed then return; end if;
+            Frame_Token := Frame_Token + 1;
+            Check (capSubmit (CAP_SLOT_DISPLAY, From_Wire (PP.Encode (PP.Plan_Frame'
+                     ((1, (Session, 1, (0, 0, 32, 32))), Epoch))), Frame_Token),
+                   "plan frame submit");
+            Deadline := syscall (SYSCALL_GETTIME) + 5000;
+            loop
+               Ignored := Poll_Completion (C'Address);
+               exit when Ignored = 1;
+               Activity := Wait_For_Activity_Until (Deadline);
+               if Activity /= Work_Available or else syscall (SYSCALL_GETTIME) >= Deadline then
+                  Check (False, "plan frame completion deadline"); return;
+               end if;
+            end loop;
+            declare
+               R : constant P.Completion_Decoding := P.Decode_Completion (To_Wire (C.msg));
+            begin
+               Check (R.Valid and then R.Value.Result.Outcome = Published,
+                      "plan frame published");
+            end;
+            Plane (PP.Encode_Empty (PP.Get_Plan), PP.Get_Plan, DP.Success, "plan query");
+            Check (Last.Committed_Hardware = Only (2) and then
+                   Last.Committed_Composited = Only (1),
+                   "frame committed the swap");
+         end;
+         if not Passed then return; end if;
+         debugPrint ("DISPLAY-PLANES: swapped agent=600,400 on the plane" & ASCII.LF);
+         Ignored := syscall (SYSCALL_SLEEP, Pause_Ms);
+      end if;
+      Plane (PP.Encode (PP.Visibility'(2, False)), PP.Set_Visibility, DP.Success, "hide agent");
+      Plane (PP.Encode_Destroy (1), PP.Destroy_Request, DP.Success, "destroy primary");
+      Plane (PP.Encode_Destroy (1), PP.Destroy_Request, DP.Bad_State, "destroy twice");
+      Expect (Encode_Lease_Request (Release_Display), DP.Success, "planes release");
+      for R in Images'Range loop
+         MG.Revoke (Images (R), Ok);
+         Check (Ok and then Generation (Images (R)) = 0, "image grants returned");
+      end loop;
+      if Passed then
+         debugPrint ("DISPLAY-PLANES-CHECK: PASS " &
+                     (if Hardware_Expected then "hardware" else "composited") & ASCII.LF);
+      end if;
+   end Exercise_Planes;
+
    procedure Exercise_Backend_Failure is
       Info, Status : Wire_Message;
    begin
@@ -622,6 +824,7 @@ begin
       Exercise;
       if Passed then Exercise_Outputs; end if;
       if Passed then Exercise_Pool; end if;
+      if Passed then Exercise_Planes; end if;
    end if;
    if Passed then
       debugPrint ("DISPLAY-GRANTS-CHECK: PASS" & ASCII.LF);

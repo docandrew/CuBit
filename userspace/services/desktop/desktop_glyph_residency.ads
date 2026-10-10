@@ -7,6 +7,10 @@ with Vulkan_Submission;
 -- 0..127. No reset/copy, heap storage or internal waiting. CPU scene builders
 -- retain returned reader leases until their captured scene is retired; the
 -- frame owner additionally prevents release while a GPU frame is pending.
+-- Each slot's R8 cell allocation outlives the glyphs it holds: eviction
+-- retires only the descriptor and the next glyph of the same cell extent is
+-- rasterized into the same allocation, so steady-state text allocates
+-- nothing. A cell of another extent (density change) is replaced.
 package Desktop_Glyph_Residency with SPARK_Mode is
    package D renames Desktop_Vulkan_Startup;
    package V renames Vulkan_Submission;
@@ -31,6 +35,14 @@ package Desktop_Glyph_Residency with SPARK_Mode is
    procedure Poll (S : in out State; Result : out Outcome)
      with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid,
        Post => Valid (S) and D.Valid;
+   -- Allocate every empty cell for Scale's extent now, back to back, so the
+   -- driver's VM updates happen together (one context park) at renderer
+   -- start instead of one per first-use glyph during interaction. Later
+   -- glyphs rasterize into these cells. One bounded pass; stops at the
+   -- first refusal (budget) and leaves the rest lazy.
+   procedure Prepare_Cells (S : in out State; Scale : C.L.G.UI_Scale; Prepared : out Natural)
+     with Global => (In_Out => D.Engine), Pre => Valid (S) and D.Valid,
+       Post => Valid (S) and D.Valid;
    procedure Release (S : in out State; Reader : C.Lease; Capture_Retired : Boolean)
      with Global => (Input => D.Engine), Pre => Valid (S) and D.Valid,
        Post => Valid (S);
@@ -39,11 +51,16 @@ package Desktop_Glyph_Residency with SPARK_Mode is
        Post => Valid (S) and D.Valid and (if Safe then Charged (S) = 0);
 private
    type Lease_Table is array (C.Slot) of A.Ticket;
+   type Cell_Extent is record
+      Width, Height : Natural := 0;
+   end record;
+   type Extent_Table is array (C.Slot) of Cell_Extent;
    type Source_Table is array (C.Slot) of V.Source_Ticket;
    type Mode is (Idle, Transferring, Quarantined, Closed);
    type State is limited record
       Cache : C.State := C.Open (C.Byte_Count'Last);
       Backings : Lease_Table := (others => A.No_Ticket);
+      Extents : Extent_Table := (others => <>);
       Sources : Source_Table := (others => V.No_Source);
       Stage : Mode := Idle;
       Stopping : Boolean := False;

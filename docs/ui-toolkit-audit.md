@@ -160,7 +160,7 @@ QEMU's accepted `meta_l` key name; `super_l` was rejected by the monitor.
   tiny surface cannot underflow its position calculation.
 * Non-motion events that dirty a view now form an event-dispatch barrier so the
   control map is rebuilt before a later queued event is hit-tested.
-* The bounded control map now holds 128 controls, detects duplicate live IDs or
+* The bounded control map now holds 256 controls (128 until 2026-10-08), detects duplicate live IDs or
   exhaustion, and makes hit/damage lookup fail inertly while the app harness
   disables toolkit pointer dispatch and reports the fault.
 * Horizontal sliders now share one inset-track/thumb layout between rendering
@@ -252,6 +252,21 @@ stabilization, vertical/horizontal scrollbar arrows and thumb dragging, wheel
 clamping, Files table resizing, Files scrollbar arrow and thumb operation
 through QEMU's real input path, Files wheel scrolling, and application
 liveness after those operations.
+
+Tooltips (`CuBit.UI.Tooltips`, 2026-10-08) are a toolkit widget, not per-app
+code. The timing policy (`Client_Tooltip_Policy`) is proved at SPARK level 2 in
+`tests/ui-popups/popups_proof.gpr`: show after resting, slide at once to the next
+target, stay hidden after a dismissal until the pointer reaches another target.
+Placement uses the proved `Client_Popup_Layout`. The tip never takes focus or
+input, and the application adds its `Next_Deadline` to its single wait, so an
+idle window still sleeps. Damage covers the old and the new box, laid out before
+paint, so a clipped repaint never cuts the tip. Hosted cases in
+`tests/ui-popups/tooltips_tests.adb` (18 checks) cover the delay, a move
+restarting it, sliding, hiding on a target that has no tip, dismissal, regions
+(cut-off cells) looked up before controls, and staying on screen at the edge.
+Cost on the development host: `Pointer_At` over a full 96-entry table takes
+about 0.25 us, and drawing one tip about 9 us. Not wired into an application
+yet; Files comes first, then Settings, Logs and Workbench.
 
 ## Release gate
 

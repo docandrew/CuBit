@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+<defs>
+<linearGradient id="paper" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ebeef6"/></linearGradient>
+<linearGradient id="violet" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#c3adff"/><stop offset="1" stop-color="#8457ff"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M1 2 L14 2 L14 13 L1 13Z" transform="translate(1 1)"/>
+  <path d="M1 2 L14 2 L14 13 L1 13Z"/>
+</g>
+<path d="M1 2 L14 2 L14 13 L1 13Z" fill="#7d879f" transform="translate(1 1)"/>
+<path d="M1 2 L14 2 L14 13 L1 13Z" fill="url(#paper)"/>
+<path d="M1 2 L14 2 L14 5 L1 5Z" fill="url(#violet)"/>
+<path d="M1 5.5 L14 5.5" fill="none" stroke="#1d1530" stroke-width="1" stroke-linecap="butt" opacity="0.6"/>
+<path d="M5.5 6 L5.5 13" fill="none" stroke="#1d1530" stroke-width="1" stroke-linecap="butt" opacity="0.7"/>
+<path d="M10.5 6 L10.5 13" fill="none" stroke="#1d1530" stroke-width="1" stroke-linecap="butt" opacity="0.7"/>
+</svg>

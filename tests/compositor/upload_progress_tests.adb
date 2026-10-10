@@ -75,5 +75,47 @@ begin
       Small.Begin_Image (S, 2, 8, 3, G.BGRA8, OK); pragma Assert (OK);
       Small.Begin_Write (S, 32, Plan, T, Discard, OK); pragma Assert (not OK);
    end;
-   Ada.Text_IO.Put_Line ("PASS upload progress: 2160 completed chunks, 21600 pending observations, same-backing content reuse, stale/duplicate/cancel/uncertain/exhaustion publication gates");
+   -- Retained-content band updates: same allocation, only damaged rows,
+   -- no discard, unpublishable until the band completes, then whole again.
+   declare S : P.State; T : P.Ticket; Before : P.State; Band_Steps : Natural; begin
+      P.Begin_Update (S, 1, 0, 4, OK); pragma Assert (not OK);
+      P.Begin_Image (S, 7, 640, 480, G.BGRA8, OK); pragma Assert (OK);
+      P.Begin_Update (S, 7, 0, 4, OK); pragma Assert (not OK);
+      while not P.Publishable (S, 7) loop
+         P.Begin_Write (S, 640 * 4 * 64, Plan, T, Discard, OK); pragma Assert (OK);
+         P.Submitted (S, T, OK); pragma Assert (OK); P.Observe (S, T, P.Completed);
+      end loop;
+      for Version in 1 .. 200 loop
+         declare
+            First : constant Natural := (Version * 37) mod 470;
+            Last : constant Natural := Natural'Min (480, First + 1 + (Version * 13) mod 150);
+         begin
+            Before := S;
+            P.Begin_Update (S, 8, First, Last, OK); pragma Assert (not OK and S = Before);
+            P.Begin_Update (S, 7, Last, Last, OK); pragma Assert (not OK and S = Before);
+            P.Begin_Update (S, 7, First, 481, OK); pragma Assert (not OK and S = Before);
+            P.Begin_Update (S, 7, First, Last, OK);
+            pragma Assert (OK and P.Retaining (S) and not P.Publishable (S, 7));
+            pragma Assert (P.Completed_Rows (S) = First and P.Pass_End (S) = Last);
+            Before := S;
+            P.Begin_Update (S, 7, First, Last, OK); pragma Assert (not OK and S = Before);
+            Band_Steps := 0;
+            while not P.Publishable (S, 7) loop
+               P.Begin_Write (S, 640 * 4 * 64, Plan, T, Discard, OK); pragma Assert (OK);
+               pragma Assert (not Discard and G.Area (Plan).Y >= First and
+                 G.Area (Plan).Y + G.Area (Plan).Height <= Last and G.Image_Height (Plan) = 480);
+               P.Submitted (S, T, OK); pragma Assert (OK); P.Observe (S, T, P.Completed);
+               Band_Steps := Band_Steps + 1;
+            end loop;
+            pragma Assert (Band_Steps = (Last - First + 63) / 64);
+            pragma Assert (P.Completed_Rows (S) = 480 and P.Pass_End (S) = 480 and not P.Retaining (S));
+         end;
+      end loop;
+      -- A full restart of the same allocation discards again.
+      P.Begin_Image (S, 7, 640, 480, G.BGRA8, OK); pragma Assert (OK);
+      P.Begin_Write (S, 640 * 4 * 64, Plan, T, Discard, OK); pragma Assert (OK and Discard);
+      P.Cancel (S, T, True);
+      P.Begin_Update (S, 7, 0, 1, OK); pragma Assert (not OK);
+   end;
+   Ada.Text_IO.Put_Line ("PASS upload progress: 2160 completed chunks, 21600 pending observations, same-backing content reuse, stale/duplicate/cancel/uncertain/exhaustion publication gates, 200 retained row-band updates without discard");
 end Upload_Progress_Tests;

@@ -17,6 +17,8 @@ package Intel_GPU_GuC_Context_Session is
    type Result is (Rejected, Backpressure, Queued, Handled, Retained, Faulted);
    function State (Object : Session) return Intel_GPU_GuC_Context_Lifecycle.Phase;
    function Can_Run_And_Retire (Object : Session) return Boolean;
+   -- Resting Enabled (GuC-resident) or Disabled with nothing in flight.
+   function Can_Submit (Object : Session) return Boolean;
    procedure Initialize
      (Object : in out Session; ID : Interfaces.Unsigned_32;
       GPU_Start, Pin_Bias : Interfaces.Unsigned_64;

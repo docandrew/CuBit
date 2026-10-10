@@ -146,7 +146,7 @@ package body Desktop_Launch_Refresh is
                Item : Desktop_Launch.Entry_Info;
                OK : Boolean;
             begin
-               Desktop_Launch.Parse (Source, Item, OK);
+               Desktop_Launch.Decode (Source, Item, OK);
                if OK then Desktop_Launch.Append (Candidate, Item); end if;
             end;
          end if;

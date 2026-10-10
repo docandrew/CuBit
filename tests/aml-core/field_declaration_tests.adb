@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Test_Results;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Service; use ACPI_Service;
@@ -50,7 +51,7 @@ procedure Field_Declaration_Tests is
      Method ("TRUN", Field (Skip_Header & Enc ("FLD0")) & [16#A4#,0]) &
      Method ("OVER", Field ([0,16#40#,16#20#] & Named) & [16#A4#,0]) &
      Method ("ACCS", Field (Skip_Header & [1,1,0] & Named) & [16#A4#] & Enc ("FLD0"));
-   Service : aliased State := Fresh;
+   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
    Installed : Install_Status;
    Region : Namespace.Node_ID;
    Bound : Namespace.Bind_Status;
@@ -58,15 +59,15 @@ procedure Field_Declaration_Tests is
    Base_Count : Namespace.Node_ID;
    procedure Run (Name : String; Expected : AML_Execute.Execution_Status;
                   Value : AML_Decode.Integer_Value := 0; Budget : Natural := 1000) is
-      Tree : constant Namespace.State := Snapshot (Service);
-      Node : constant Namespace.Node_ID := Namespace.Child (Tree, Namespace.Root, Name);
+
+      Node : constant Namespace.Node_ID := ACPI_Test_Results.Child (Service, Namespace.Root, Name);
    begin
       Check (Node /= Namespace.Root);
-      Invoke (Service, Node, [others => 0], 0, Budget, R);
+      Invoke_Scalar (Service, Node, [others => 0], 0, Budget, R);
       Check (R.Status = Expected);
       Check (R.Charged <= Budget);
       if Expected = AML_Execute.Returned then Check (R.Value = Value); end if;
-      Check (Namespace.Count (Snapshot (Service)) = Base_Count);
+      Check (Observe (Service).Objects = Base_Count);
    end Run;
 begin
    Install (Service, 1, DSDT, Table ("DSDT",2,Code), Installed);
@@ -75,7 +76,8 @@ begin
    Check (Installed = ACPI_Service.Installed);
    Declare_Table_Region (Service, Namespace.Root, "RGN0", (Name => "TEST", others => <>), Region, Bound);
    Check (Bound = Namespace.Bound);
-   Base_Count := Namespace.Count (Snapshot (Service));
+   ACPI_Test_Results.Seal (Service);
+   Base_Count := Observe (Service).Objects;
    for I in 1 .. 100 loop
       Run ("READ", AML_Execute.Returned, 16#AA#);
       Run ("TYPE", AML_Execute.Returned, 5);

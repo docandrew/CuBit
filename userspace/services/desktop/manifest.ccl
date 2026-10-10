@@ -14,5 +14,11 @@
   (request-service clock read-write clock)
   (request-service display read-write display)
   (request-service process-manager read-write process-manager)
+  # Wallpapers (docs/assets.md): read-only, exactly the wallpaper package on
+  # each image's system volume; system.assets.root names the asset root.
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read) "@nvme:0/Assets/cubit-wallpapers/")
+  (filesystem-scope (rights read) "@cd:0/Assets/cubit-wallpapers/")
+  (config-scope (rights read) "system.assets.")
   (request-notification keyboard manage keyboard)
   (request-notification mouse manage mouse))

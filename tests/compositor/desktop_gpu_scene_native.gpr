@@ -1,6 +1,6 @@
 project Desktop_GPU_Scene_Native is
    for Languages use ("Ada");
-   for Source_Dirs use ("../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/services/desktop", "../../userspace/lib/theme", "../../userspace/mesa");
+   for Source_Dirs use ("../../userspace/lib/compositor", "../../userspace/lib/image", "../../userspace/lib/display", "../../userspace/services/desktop", "../../userspace/lib/theme", "../../userspace/mesa");
    for Source_Files use ("desktop_cursors.ads", "desktop_icon_atlas_owner.ads", "desktop_icon_atlas_owner.adb",
       "desktop_icon_pixels-atlases.ads", "desktop_icon_pixels-atlases.adb",
       "compositor_source_region.ads", "vulkan_region_ffi.ads", "vulkan_region_ffi.adb", "vulkan_affine_binding-regions.ads", "vulkan_affine_binding-regions.adb", "vulkan_submission-regions.ads", "vulkan_submission-regions.adb",
@@ -64,7 +64,7 @@ project Desktop_GPU_Scene_Native is
       "desktop_gpu_scene-drawing.ads", "desktop_gpu_scene-drawing.adb", "desktop_gpu_scene.ads",
       "desktop_vulkan_startup.adb",
       "desktop_vulkan_startup.ads",
-      "desktop_wallpaper.adb",
+      "desktop_wallpaper.adb", "desktop_wallpaper_store.ads", "desktop_wallpaper_store.adb", "cubit-qoi.ads", "cubit-qoi.adb",
       "desktop_wallpaper.ads",
       "mesa_service.adb",
       "mesa_service.ads",

@@ -1,0 +1,13 @@
+--  The hosted window's thin SDL2 glue (files_sdl.c): flat events and
+--  partial presents for files_window.adb. C only as glue.
+library project Files_SDL is
+   for Languages use ("C");
+   for Source_Dirs use (".");
+   for Object_Dir use "../build/sdl";
+   for Library_Dir use "../build/sdl-lib";
+   for Library_Name use "files_sdl";
+   for Library_Kind use "static";
+   package Compiler is
+      for Default_Switches ("C") use ("-O2", "-Wall", "-Wextra", "-Werror", "-D_REENTRANT");
+   end Compiler;
+end Files_SDL;

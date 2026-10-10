@@ -1,9 +1,11 @@
 pragma Ada_2022;
+with AML_Index_Handles;
 package AML_Objects.Byte_References with SPARK_Mode, Pure is
    -- Internal arena-local descriptors, not IPC capabilities. Keep the owning
    -- arena alive and never use a descriptor with a different/reset arena.
-   type Reference is private;
-   No_Reference : constant Reference;
+   subtype Reference is AML_Index_Handles.Byte_Reference;
+   use type Reference;
+   No_Reference : Reference renames AML_Index_Handles.No_Byte_Reference;
    type Result_Status is (Ready, Invalid_Object, Wrong_Kind, Out_Of_Bounds, Invalid_Reference);
    function Owner (Ref : Reference) return Object_ID;
    function Offset (Ref : Reference) return Natural;
@@ -29,27 +31,21 @@ package AML_Objects.Byte_References with SPARK_Mode, Pure is
       Status : out Result_Status)
    with Pre => Valid (Store),
      Post => Valid (Store)
-       and then Count (Store) = Count (Store'Old)
+       and then Slot_Bound (Store) = Slot_Bound (Store'Old)
        and then Usage_Of (Store) = Usage_Of (Store'Old)
-       and then (for all J in 1 .. Count (Store) =>
+       and then (for all J in 1 .. Slot_Bound (Store) => (if Is_Live (Store, J) then
          Kind (Store, J) = Kind (Store'Old, J)
-         and then Length (Store, J) = Length (Store'Old, J))
+         and then Length (Store, J) = Length (Store'Old, J)))
        and then (if Is_Valid (Store'Old, Ref) then
          Status = Ready and then Is_Valid (Store, Ref)
          and then Stored_Byte_Updated (Store, Store'Old, Owner (Ref), Offset (Ref), Value)
          and then Stored_Byte (Store, Owner (Ref), Offset (Ref)) = Value
          else Status = Invalid_Reference and then Store = Store'Old);
 private
-   type Reference is record
-      Present : Boolean := False;
-      Source : Object_ID := No_Object;
-      Index : Natural := 0;
-   end record;
-   No_Reference : constant Reference := (others => <>);
-   function Owner (Ref : Reference) return Object_ID is (Ref.Source);
-   function Offset (Ref : Reference) return Natural is (Ref.Index);
+   function Owner (Ref : Reference) return Object_ID is (AML_Index_Handles.Owner (Ref));
+   function Offset (Ref : Reference) return Natural is (AML_Index_Handles.Offset (Ref));
    function Is_Valid (Store : State; Ref : Reference) return Boolean is
-     (Ref.Present and then Ref.Source > 0 and then Ref.Source <= Count (Store)
-      and then Kind (Store, Ref.Source) in Byte_Kind
-      and then Ref.Index < Length (Store, Ref.Source));
+     (AML_Index_Handles.Present (Ref) and then Matches_Address (Store, AML_Index_Handles.Address (Ref)) and then Is_Live (Store, Owner (Ref))
+      and then Kind (Store, Owner (Ref)) in Byte_Kind
+      and then Offset (Ref) < Length (Store, Owner (Ref)));
 end AML_Objects.Byte_References;

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<defs>
+<linearGradient id="amber" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffdc80"/><stop offset="1" stop-color="#ffa41f"/></linearGradient>
+<linearGradient id="steel" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#eef1f8"/><stop offset="1" stop-color="#b4bccf"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M10 2 L19 2 L19 9 L10 9Z" transform="translate(2 2)"/>
+  <path d="M10 2 L19 2 L19 9 L10 9Z" transform="translate(1 1)"/>
+  <path d="M10 2 L19 2 L19 9 L10 9Z"/>
+</g>
+<path d="M10 2 L19 2 L19 9 L10 9Z" fill="#4f5870" transform="translate(2 2)"/>
+<path d="M10 2 L19 2 L19 9 L10 9Z" fill="#4f5870" transform="translate(1 1)"/>
+<path d="M10 2 L19 2 L19 9 L10 9Z" fill="url(#steel)"/>
+<path d="M12 4 L14 4 L14 6 L12 6Z" fill="#1d1530"/>
+<path d="M15 4 L17 4 L17 6 L15 6Z" fill="#1d1530"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M11 9 H18 A3 3 0 0 1 21 12 V24 A3 3 0 0 1 18 27 H11 A3 3 0 0 1 8 24 V12 A3 3 0 0 1 11 9Z" transform="translate(2 2)"/>
+  <path d="M11 9 H18 A3 3 0 0 1 21 12 V24 A3 3 0 0 1 18 27 H11 A3 3 0 0 1 8 24 V12 A3 3 0 0 1 11 9Z" transform="translate(1 1)"/>
+  <path d="M11 9 H18 A3 3 0 0 1 21 12 V24 A3 3 0 0 1 18 27 H11 A3 3 0 0 1 8 24 V12 A3 3 0 0 1 11 9Z"/>
+</g>
+<path d="M11 9 H18 A3 3 0 0 1 21 12 V24 A3 3 0 0 1 18 27 H11 A3 3 0 0 1 8 24 V12 A3 3 0 0 1 11 9Z" fill="#9a4a07" transform="translate(2 2)"/>
+<path d="M11 9 H18 A3 3 0 0 1 21 12 V24 A3 3 0 0 1 18 27 H11 A3 3 0 0 1 8 24 V12 A3 3 0 0 1 11 9Z" fill="#9a4a07" transform="translate(1 1)"/>
+<path d="M11 9 H18 A3 3 0 0 1 21 12 V24 A3 3 0 0 1 18 27 H11 A3 3 0 0 1 8 24 V12 A3 3 0 0 1 11 9Z" fill="url(#amber)"/>
+<path d="M10 15 L19 15 L19 17 L10 17Z" fill="#d9700b"/>
+<path d="M12.9 22.4 A1.6 1.6 0 1 0 16.1 22.4 A1.6 1.6 0 1 0 12.9 22.4Z" fill="#d8ff85"/>
+<path d="M9.5 10 L9.5 24" fill="none" stroke="#ffffff" stroke-width="1" stroke-linecap="butt" opacity="0.5"/>
+</svg>

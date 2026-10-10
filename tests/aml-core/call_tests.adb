@@ -3,10 +3,12 @@ with AML_Decode; use AML_Decode;
 with AML_Execute; use AML_Execute;
 with Namespace_Instance;
 with AML_Integers;
+with AML_References;
 procedure Call_Tests is
    package NS renames Namespace_Instance;
    use type NS.Load_Status;
    use type NS.State;
+   use type AML_References.Node_Incarnation;
    use type Integer_Value;
    Checks : Natural := 0;
    function Enc (Text : String) return Bytes is
@@ -146,23 +148,25 @@ begin
          for Repeat in 1 .. 100 loop
             NS.Invoke_Mutable (Tree, NS.Child (Tree, NS.Root, "MAK0"), [others => 0], 0, 1000, R);
             Check (R.Status = Returned and then R.Value = 42);
-            Check (Tree = Before);
+            Check (NS.Cleanup_Frame (Tree, Before));
+            Check (NS.Last_Incarnation (Tree) = NS.Last_Incarnation (Before)
+              + AML_References.Node_Incarnation (Repeat));
          end loop;
          for Fuel in 0 .. 8 loop
             NS.Invoke_Mutable (Tree, NS.Child (Tree, NS.Root, "MAK0"), [others => 0], 0, Fuel, R);
             Check (R.Status in Returned | Budget_Exceeded);
-            Check (Tree = Before);
+            Check (NS.Cleanup_Frame (Tree, Before));
          end loop;
          NS.Invoke_Mutable (Tree, NS.Child (Tree, NS.Root, "DUP0"), [others => 0], 0, 1000, R);
-         Check (R.Status = Duplicate_Name and Tree = Before);
+         Check (R.Status = Duplicate_Name and NS.Cleanup_Frame (Tree, Before));
          NS.Invoke_Mutable (Tree, NS.Child (Tree, NS.Root, "ERR0"), [others => 0], 0, 1000, R);
-         Check (R.Status = Division_By_Zero and Tree = Before);
+         Check (R.Status = Division_By_Zero and NS.Cleanup_Frame (Tree, Before));
          NS.Invoke_Mutable (Tree, NS.Child (Tree, NS.Root, "RECU"), [0 => 1, others => 0], 1, 1000, R);
-         Check (R.Status = Returned and then R.Value = 7 and then Tree = Before);
+         Check (R.Status = Returned and then R.Value = 7 and then NS.Cleanup_Frame (Tree, Before));
          NS.Invoke_Mutable (Tree, NS.Child (Tree, NS.Root, "GONE"), [others => 0], 0, 1000, R);
-         Check (R.Status = Unknown_Name and Tree = Before);
+         Check (R.Status = Unknown_Name and NS.Cleanup_Frame (Tree, Before));
          NS.Invoke_Mutable (Tree, NS.Child (Tree, NS.Root, "MIDL"), [0 => 1, others => 0], 1, 1000, R);
-         Check (R.Status = Returned and then R.Value = 9 and then Tree = Before);
+         Check (R.Status = Returned and then R.Value = 9 and then NS.Cleanup_Frame (Tree, Before));
       end;
       declare
          Before : NS.State;
@@ -212,11 +216,11 @@ begin
          Before := Tree;
          NS.Set_Integer (Before, 1, 7);
          NS.Invoke_Mutable (Tree, 2, [others => 0], 0, 1000, R);
-         Check (R.Status = Division_By_Zero and Tree = Before);
+         Check (R.Status = Division_By_Zero and NS.Cleanup_Frame (Tree, Before));
          NS.Invoke_Mutable (Tree, 3, [others => 0], 0, 1000, R);
-         Check (R.Status = Duplicate_Name and Tree = Before);
+         Check (R.Status = Duplicate_Name and NS.Cleanup_Frame (Tree, Before));
          NS.Invoke_Mutable (Tree, 4, [others => 0], 0, 1000, R);
-         Check (R.Status = Unknown_Name and Tree = Before);
+         Check (R.Status = Unknown_Name and NS.Cleanup_Frame (Tree, Before));
       end;
       -- Exhaustive call-order matrix, including ignored nonserialized levels.
       for Caller_Level in Sync_Level loop

@@ -1,0 +1,9 @@
+project Dmar_release is
+   for Source_Dirs use (".", "mocks", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../userspace/services/acpi/native", "../../shared/firmware");
+   for Object_Dir use "build-dmar-release/obj";
+   for Exec_Dir use "build-dmar-release";
+   for Main use ("dmar_query_tests.adb", "srat_query_tests.adb", "madt_query_tests.adb", "metadata_query_tests.adb", "requests_owned_tests.adb", "endpoint_owned_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+   end Compiler;
+end Dmar_release;

@@ -2,7 +2,8 @@ with System;
 with Compositor_Upload;
 with CuBit.Appearance;
 -- Narrow pointer boundary: caller supplies an exclusive writable staging
--- mapping covering Bytes, disjoint from both immutable embedded assets.
+-- mapping covering Bytes, disjoint from the decoded wallpaper rasters
+-- (Desktop_Wallpaper_Store). An image that is not Ready copies nothing.
 -- The synchronous call never retains Mapping. Padding remains untouched.
 package Desktop_Backdrop_Pixels with SPARK_Mode is
    procedure Copy_Chunk

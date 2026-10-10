@@ -10,7 +10,11 @@ record.
 All of it is built from toolkit controls (`userspace/lib/ui`):
 
 - **Search field** (`CuBit.UI.Editor`, `Draw_Text_Edit_Field`): matches the
-  message or the source's name, ignoring case.
+  message, the source's name or the node, ignoring case. Every row stays
+  shown: matching rows carry a bar at their left edge and their matched text
+  is marked. Typing selects the nearest match (while following, the newest
+  one) and brings it into view with rows around it. **Only** shows just the
+  matches (and gaps); **All** shows every row again.
 - **Service combo box**: "All services", then every distinct source name seen.
   The filter is by name, so it still applies after a service restarts with a
   new pid.
@@ -18,14 +22,21 @@ All of it is built from toolkit controls (`userspace/lib/ui`):
   hour. Records leave the view as they age past the window.
 - **Level combo box**: the severity floor.
 - **Clear** resets every filter. **Pause/Follow** stops or resumes following.
-  While following, the newest record stays selected and in view.
+  While following, the newest record stays selected and in view. Scrolling
+  away (wheel or scrollbar) pauses following.
+- **Scrolling** moves the view alone: the wheel and the scrollbar leave the
+  selection where it is, drawn or not, and records arriving while paused
+  leave the view on the records it showed. Only moving the selection (keys,
+  a click, next/previous match) brings it into view. The policy is the
+  proved `Log_Viewport` unit.
 - **Table** (`CuBit.UI.Tables` columns API): Time, Level, Source and Message.
   Drag a column's right edge to resize it; the last column takes the rest.
   Click a header to sort by that column; click again to reverse. Ties keep
   arrival order.
 - **Selected record**: the whole message, its typed fields, and its pid.
-- **Status bar**: the connection state, how many rows are shown, records lost,
-  and records that arrived while paused.
+- **Status bar**: the connection state, how many rows are shown, the search's
+  matches (`match 3 of 20`, or `no matches`), records lost, and records that
+  arrived while paused.
 
 Gaps, where logstore could not deliver records to this viewer, show as rows
 under every filter.
@@ -36,13 +47,18 @@ under every filter.
 | --- | --- | --- |
 | `/` | anywhere outside the search field | focus the search field |
 | `Tab` / `Shift+Tab` | anywhere | next / previous control |
-| Up, Down, PgUp, PgDn, Home | table | move the selection; pauses following |
+| Up, Down, PgUp, PgDn, Home | table | move the selection and bring it into view; pauses following |
 | `End` | table | follow again |
 | `1`–`6` | table | severity floor (Trace … Critical) |
 | `s` | table | only the selected record's service, or every service again |
 | `f` | table | toggle following |
 | `Esc` | table | clear every filter |
 | `Esc` | search field | clear the text, then return to the table |
+| Enter / Shift+Enter | search field, or table with a search | next / previous match, wrapping |
+| `F3` / `Shift+F3` | anywhere | next / previous match, wrapping |
+| `n` / `N` | table | next / previous match, wrapping |
+| `o` | table | only the matches, or every row again |
+| `Down` | search field | return to the table |
 | Enter, Space, arrows, letters | combo box | the toolkit's combo box keys |
 
 ## Names and reused pids
@@ -57,7 +73,9 @@ limitation.
 
 - `tests/log-viewer/run.sh`: the view on Linux, driven through the same retained
   control dispatch as `CuBit.UI.App.Run`. It covers filters, combo boxes, sorting,
-  following, pid reuse and ring capacity, and writes frames to
-  `tests/log-viewer/build/*.ppm`.
+  following, free scrolling, search marking and navigation, pid reuse and ring
+  capacity, and writes frames to `tests/log-viewer/build/*.ppm`.
+- `tests/log-viewer/log_viewport_proof.gpr`: gnatprove (level 1) of the scroll,
+  selection and match-navigation policy (`Log_Viewport`).
 - `tests/headless/run.sh --test logs`: the native app on a QEMU guest with
   logstore, clock, timesync and the desktop.

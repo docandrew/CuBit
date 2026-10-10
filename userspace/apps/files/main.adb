@@ -1,743 +1,433 @@
-with CuBit.Logging;
-with CCL_Manifest_Bindings;
 ------------------------------------------------------------------------------
---  CuBit Files
---  Read-only native browser for explicitly granted filesystem roots.
+--  CuBit Files (docs/files-app.md)
+--  The platform glue only: the view (Files_View) holds the panes, listings,
+--  operations and drawing, the same units the hosted harness runs
+--  (tests/files-app). This translates the desktop's input into view events,
+--  runs the view's pump between frames, and waits once, in CuBit.UI.App.Run
+--  (Activity_Wait), for input, the filesystem's wake (OP_FS_WAKE) or the
+--  view's next deadline. Nothing here blocks on the filesystem.
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
-with System; use System;
-with System.Storage_Elements; use System.Storage_Elements;
-
-with CuBit.Filesystems; use CuBit.Filesystems;
-with CuBit.Directory_Paths;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Memory_Grants;
-with CuBit.UI;
+with CuBit.Desktop_Protocol;
+with CuBit.Logging;
+with CuBit.Log_Records;
+with CuBit.Monotonic;
+with CuBit.UI; use CuBit.UI;
 with CuBit.UI.App;
 with CuBit.UI.Controls;
-with CuBit.UI.Labels;
+with CuBit.UI.Icons;
+with CuBit.UI.Input;
 with CuBit.UI.State;
-with CuBit.UI.Tables;
-with CuBit.UI.Widgets;
+with Files_Limits;
+with Files_Queue;
+with Files_View;
 
-procedure main is
-   use ASCII;
-   use type CuBit.UI.Scrollbar_Part;
+procedure Main is
+   use Files_View;
+   use type CuBit.UI.Controls.Pointer_Action;
 
-   INITIAL_WIDTH : constant Positive := 860;
-   INITIAL_HEIGHT : constant Positive := 540;
-   PAGE_SIZE : constant Unsigned_64 := 4096;
-   CAP_SLOT_FILESYSTEM : constant CapabilitySlot := CCL_Manifest_Bindings.Slot_Files_Filesystem;
-   MAXIMUM_ITEMS : constant Positive := 128;
-   ROW_HEIGHT : constant Positive := 24;
-
-   CONTROL_REFRESH : constant CuBit.UI.Controls.Control_ID := 1;
-   CONTROL_SCROLLBAR : constant CuBit.UI.Controls.Control_ID := 2;
-   CONTROL_FIRST_COLUMN : constant CuBit.UI.Controls.Control_ID := 3;
-   CONTROL_SECOND_COLUMN : constant CuBit.UI.Controls.Control_ID := 4;
-   CONTROL_BACK : constant CuBit.UI.Controls.Control_ID := 5;
-   CONTROL_OPEN : constant CuBit.UI.Controls.Control_ID := 6;
-   CONTROL_ROW_FIRST : constant CuBit.UI.Controls.Control_ID := 100;
-
-   type Local_Item is record
-      name : String (1 .. MAXIMUM_DIRECTORY_NAME_BYTES) := [others => ' '];
-      nameLength : Natural range 0 .. MAXIMUM_DIRECTORY_NAME_BYTES := 0;
-      kind : Unsigned_8 := DIRECTORY_KIND_UNKNOWN;
-      flags : Unsigned_8 := 0;
-      sizeBytes : Unsigned_64 := 0;
-   end record;
-   type Item_Array is array (Positive range 1 .. MAXIMUM_ITEMS) of Local_Item;
-
-   win : CuBit.UI.App.Window;
-   ui : CuBit.UI.State.UI_State;
-   controls : CuBit.UI.Controls.Control_Map;
-   items : Item_Array;
-   itemCount : Natural range 0 .. MAXIMUM_ITEMS := 0;
-   selectedItem : Natural range 0 .. MAXIMUM_ITEMS := 0;
-   scrollRow : Natural := 0;
-   lastListBounds : CuBit.UI.Rect := (others => 0);
-   sourceName : String (1 .. 16) := [others => ' '];
-   sourceNameLength : Natural range 0 .. sourceName'Length := 0;
-   --  Back retains an already-authorized object; it never resolves '..'.
-   --  Bound retained handles, and close every abandoned child on navigation.
-   MAXIMUM_NAVIGATION_DEPTH : constant := 16;
-   type Navigation_Entry is record
-      handle : Directory_Handle := INVALID_DIRECTORY_HANDLE;
-      displayPath : CuBit.Directory_Paths.Path;
-      selected : Natural range 0 .. MAXIMUM_ITEMS := 0;
-      scroll : Natural := 0;
-   end record;
-   navigation : array (1 .. MAXIMUM_NAVIGATION_DEPTH) of Navigation_Entry;
-   depth : Natural range 0 .. MAXIMUM_NAVIGATION_DEPTH := 0;
-   type Browser_Status is
-     (Ready, No_Root, Open_Failed, Read_Failed, Navigation_Limit);
-   browserStatus : Browser_Status := No_Root;
-   loadSucceeded : Boolean := False;
-   listTruncated : Boolean := False;
-   rawBuffer : Unsigned_64 := 0;
-   pageAddress : Unsigned_64 := 0;
-   pageGrant : CuBit.Memory_Grants.Grant_Reference;
-   pageGrantReady : Boolean := False;
-   firstFrameLogged : Boolean := False;
-   firstWheelLogged : Boolean := False;
-   firstScrollbarLogged : Boolean := False;
-   firstScrollbarDragLogged : Boolean := False;
-   ignore : Unsigned_64;
-   tableColumns : CuBit.UI.Table_Column_Layout :=
-     (First_Width => 480, Second_Width => 130, Cell_Padding => 7);
-   type Column_Drag_State is
-     (No_Column_Drag, First_Column_Drag, Second_Column_Drag);
-   activeColumnDrag : Column_Drag_State := No_Column_Drag;
-
-   KEY_UP : constant Unsigned_64 := 16#48#;
-   KEY_DOWN : constant Unsigned_64 := 16#50#;
-   KEY_HOME : constant Unsigned_64 := 16#47#;
-   KEY_PAGE_UP : constant Unsigned_64 := 16#49#;
-   KEY_END : constant Unsigned_64 := 16#4F#;
-   KEY_PAGE_DOWN : constant Unsigned_64 := 16#51#;
-   KEY_F5 : constant Unsigned_64 := 16#3F#;
-   KEY_ENTER : constant Unsigned_64 := 16#1C#;
+   --  Set-1 scan codes the desktop delivers (payload0 of a key event).
+   KEY_ESCAPE : constant Unsigned_64 := CuBit.UI.App.KEY_ESC;
    KEY_BACKSPACE : constant Unsigned_64 := 16#0E#;
+   KEY_TAB : constant Unsigned_64 := 16#0F#;
+   KEY_W : constant Unsigned_64 := 16#11#;
+   KEY_R : constant Unsigned_64 := 16#13#;
+   KEY_T : constant Unsigned_64 := 16#14#;
+   KEY_U : constant Unsigned_64 := 16#16#;
+   KEY_I : constant Unsigned_64 := 16#17#;
+   KEY_ENTER : constant Unsigned_64 := 16#1C#;
+   KEY_A : constant Unsigned_64 := 16#1E#;
+   KEY_D : constant Unsigned_64 := 16#20#;
+   KEY_B : constant Unsigned_64 := 16#30#;
+   KEY_N : constant Unsigned_64 := 16#31#;
+   KEY_SPACE : constant Unsigned_64 := 16#39#;
+   KEY_F1 : constant Unsigned_64 := 16#3B#;
+   KEY_F10 : constant Unsigned_64 := 16#44#;
+   KEY_HOME : constant Unsigned_64 := 16#47#;
+   KEY_UP : constant Unsigned_64 := 16#48#;
+   KEY_PAGE_UP : constant Unsigned_64 := 16#49#;
+   KEY_LEFT : constant Unsigned_64 := 16#4B#;
+   KEY_RIGHT : constant Unsigned_64 := 16#4D#;
+   KEY_END : constant Unsigned_64 := 16#4F#;
+   KEY_DOWN : constant Unsigned_64 := 16#50#;
+   KEY_PAGE_DOWN : constant Unsigned_64 := 16#51#;
+   KEY_INSERT : constant Unsigned_64 := 16#52#;
+   KEY_DELETE : constant Unsigned_64 := 16#53#;
+   KEY_F11 : constant Unsigned_64 := 16#57#;
+   KEY_F12 : constant Unsigned_64 := 16#58#;
+   --  Pointer events carry the held buttons in payload1, never modifiers:
+   --  the primary button shares bit 0 with KEYMOD_SHIFT. Modifiers come from
+   --  key events (payload1's low word) and INPUT_RESYNC (its high word).
+   KEY_MODIFIERS_MASK : constant Unsigned_64 := 16#FFFF_FFFF#;
+   RESYNC_MODIFIERS_SHIFT : constant := 32;
+   PRIMARY_BUTTON : constant Unsigned_64 := 1;
+   SECONDARY_BUTTON : constant Unsigned_64 := 2;
+   MIDDLE_BUTTON : constant Unsigned_64 := 4;
+   --  Text events: the code point in payload0's low word.
+   CODE_POINT_MASK : constant Unsigned_64 := 16#FFFF_FFFF#;
 
-   function Decimal (value : Unsigned_64) return String is
-      raw : constant String := Unsigned_64'Image (value);
+   --  Fits a 1024x768 screen above the taskbar.
+   INITIAL_WIDTH : constant := 860;
+   INITIAL_HEIGHT : constant := 540;
+   MINIMUM_WIDTH : constant := 480;
+   MINIMUM_HEIGHT : constant := 280;
+   --  One pane's explicit capacity (docs/files-app.md, "Limits"): entries
+   --  and their names' bytes (24 per name on average).
+   PANE_ENTRIES : constant := 262_144;
+   AVERAGE_NAME_BYTES : constant := 24;
+   PANE_NAME_BYTES : constant := PANE_ENTRIES * AVERAGE_NAME_BYTES;
+   --  Sorting and filtering work per pump, between input checks.
+   PUMP_BUDGET : constant Files_Limits.Work_Budget := 20_000;
+   MICROSECONDS_PER_MILLISECOND : constant := 1_000;
+   --  The places the manifest grants (filesystem-scope).
+   VOLUME_PLACE : constant String := "@nvme:0/";
+   WORKSPACE_PLACE : constant String := "@mem:0/";
+
+   Win : CuBit.UI.App.Window;
+   UI : CuBit.UI.State.UI_State;
+   Controls : CuBit.UI.Controls.Control_Map;
+   View : View_State;
+   Logger : CuBit.Logging.Publisher;
+   Opened : Boolean;
+   --  More pump work waits: Run comes straight back (deadline now).
+   Busy : Boolean := True;
+   Buttons : Unsigned_64 := 0;
+   --  The desktop's modifier state as of the latest key or resync event.
+   Modifiers : Unsigned_64 := 0;
+   Last_Pump_Us : Unsigned_64 := 0;
+   First_Frame : Boolean := True;
+
+   --  What the markers below last reported, per pane.
+   type Path_Text is record
+      Text : String (1 .. 512) := [others => ' '];
+      Length : Natural := 0;
+   end record;
+   type Settled_Table is array (Side) of Boolean;
+   type Path_Table is array (Side) of Path_Text;
+   Reported_Settled : Settled_Table := [others => False];
+   Reported_Path : Path_Table;
+   Reported_Active : Side := Left_Pane;
+   Reported_Status : Path_Text;
+
+   function Now_Us return Unsigned_64 is
+      Reading : constant CuBit.Monotonic.Reading := CuBit.Monotonic.Read;
    begin
-      return raw (raw'First + 1 .. raw'Last);
+      return (if Reading.Available then Reading.Microseconds
+              else syscall (SYSCALL_GETTIME) * MICROSECONDS_PER_MILLISECOND);
+   end Now_Us;
+
+   function Decimal (Value : Unsigned_64) return String is
+      Image : constant String := Unsigned_64'Image (Value);
+   begin
+      return Image (Image'First + 1 .. Image'Last);
    end Decimal;
 
-   function Size_Label (item : Local_Item) return String is
-      value : constant Unsigned_64 := item.sizeBytes;
+   function Same (Saved : Path_Text; Text : String) return Boolean is
+     (Saved.Length = Natural'Min (Text'Length, Saved.Text'Length)
+      and then Saved.Text (1 .. Saved.Length) = Text (Text'First .. Text'First + Saved.Length - 1));
+
+   procedure Save (Saved : out Path_Text; Text : String) is
    begin
-      if (item.flags and DIRECTORY_ENTRY_SIZE_VALID) = 0 then
-         return "--";
-      end if;
-      if value >= 1024 * 1024 then
-         return Decimal (value / (1024 * 1024)) & " MiB";
-      elsif value >= 1024 then
-         return Decimal (value / 1024) & " KiB";
-      else
-         return Decimal (value) & " bytes";
-      end if;
-   end Size_Label;
+      Saved.Length := Natural'Min (Text'Length, Saved.Text'Length);
+      Saved.Text := [others => ' '];
+      Saved.Text (1 .. Saved.Length) := Text (Text'First .. Text'First + Saved.Length - 1);
+   end Save;
 
-   function Kind_Label (kind : Unsigned_8) return String is
+   --  One timing record into logstore: no IPC, never waits (shed when full).
+   procedure Log_Timing (Text : String; Name : String; Microseconds : Unsigned_64; Count : Unsigned_64 := 0) is
+      use CuBit.Log_Records;
+      Made : constant Decoded := Make (Text);
+      Accepted : Boolean;
    begin
-      case kind is
-         when DIRECTORY_KIND_FILE => return "File";
-         when DIRECTORY_KIND_DIRECTORY => return "Folder";
-         when DIRECTORY_KIND_SYMLINK => return "Link";
-         when others => return "Object";
-      end case;
-   end Kind_Label;
-
-   procedure Set_Source_Name (value : String) is
-   begin
-      sourceNameLength := Natural'Min (value'Length, sourceName'Length);
-      sourceName := [others => ' '];
-      for index in 1 .. sourceNameLength loop
-         sourceName (index) := value (value'First + index - 1);
-      end loop;
-   end Set_Source_Name;
-
-   procedure Close_Handle (handle : Directory_Handle) is
-      msg : Message := Close_Directory_Request (handle);
-      tag : MessageTag;
-   begin
-      tag := capCall (CAP_SLOT_FILESYSTEM, msg, CuBit.Messages.Wait_Forever);
-   end Close_Handle;
-
-   procedure Load_Handle
-     (directory : Directory_Handle; success : out Boolean)
-   is
-      msg : Message := Rewind_Directory_Request (directory);
-      tag : MessageTag;
-      previousCursor : Unsigned_64 := 0;
-      pageValid : Boolean;
-      candidateItems : Item_Array;
-      candidateCount : Natural range 0 .. MAXIMUM_ITEMS := 0;
-      candidateTruncated : Boolean := False;
-   begin
-      success := False;
-      tag := capCall (CAP_SLOT_FILESYSTEM, msg, CuBit.Messages.Wait_Forever);
-      if tag.label /= REPLY_OK then
-         return;
-      end if;
-      loop
-         msg := Read_Directory_Page_Request (directory, pageGrant);
-         tag := capCall (CAP_SLOT_FILESYSTEM, msg, CuBit.Messages.Wait_Forever);
-         if tag.label /= REPLY_OK then
-            exit;
-         end if;
-
-         declare
-            address : constant System.Address :=
-              To_Address (Integer_Address (pageAddress));
-            header : Directory_Page_Header
-              with Import, Address => address;
-            pageItems : Directory_Entries
-              with Import,
-                   Address => address + DIRECTORY_PAGE_HEADER_BYTES;
-         begin
-            pageValid := True;
-            if header.version /= PROTOCOL_VERSION or else
-              header.headerBytes /= DIRECTORY_PAGE_HEADER_BYTES or else
-              header.entryBytes /= DIRECTORY_ENTRY_BYTES or else
-              header.entryCount > MAXIMUM_DIRECTORY_PAGE_ENTRIES
-            then
-               pageValid := False;
-            end if;
-
-            if pageValid and then header.entryCount > 0 then
-               for pageIndex in 0 .. Natural (header.entryCount) - 1 loop
-                  if pageItems (pageIndex).nameLength >
-                    MAXIMUM_DIRECTORY_NAME_BYTES
-                  then
-                     pageValid := False;
-                     exit;
-                  elsif candidateCount = MAXIMUM_ITEMS then
-                     candidateTruncated := True;
-                     exit;
-                  else
-                     candidateCount := candidateCount + 1;
-                     candidateItems (candidateCount).nameLength :=
-                       Natural (pageItems (pageIndex).nameLength);
-                     candidateItems (candidateCount).kind := pageItems (pageIndex).kind;
-                     candidateItems (candidateCount).flags := pageItems (pageIndex).flags;
-                     candidateItems (candidateCount).sizeBytes :=
-                       pageItems (pageIndex).sizeBytes;
-                     for nameIndex in 1 .. candidateItems (candidateCount).nameLength loop
-                        candidateItems (candidateCount).name (nameIndex) := Character'Val
-                          (pageItems (pageIndex).name (nameIndex));
-                     end loop;
-                  end if;
-               end loop;
-            end if;
-
-            if pageValid and then
-              (header.flags and DIRECTORY_PAGE_END) = 0 and then
-              header.nextCursor <= previousCursor
-            then
-               pageValid := False;
-            end if;
-
-            if not pageValid then
-               exit;
-            end if;
-            previousCursor := header.nextCursor;
-
-            if candidateTruncated or else
-              (header.flags and DIRECTORY_PAGE_END) /= 0
-            then
-               success := True;
-               exit;
-            end if;
-         end;
-      end loop;
-
-      if success then
-         --  Publish only a complete, validated (possibly bounded) listing.
-         items := candidateItems;
-         itemCount := candidateCount;
-         listTruncated := candidateTruncated;
-         selectedItem := 0;
-         scrollRow := 0;
-         loadSucceeded := True;
-         browserStatus := Ready;
-      end if;
-   end Load_Handle;
-
-   procedure Open_Root (path : String; success : out Boolean) is
-      msg : Message;
-      tag : MessageTag;
-      directory : Directory_Handle;
-      pathOK : Boolean;
-   begin
+      if not Made.Success then return; end if;
       declare
-         pathView : String (path'Range)
-           with Import, Address => To_Address (Integer_Address (pageAddress));
+         Timed : constant Decoded := With_Field (Made.Value, Name, Duration_Microseconds, Microseconds);
       begin
-         pathView := path;
-      end;
-      msg := Open_Directory_Request (pageGrant, path'Length);
-      tag := capCall (CAP_SLOT_FILESYSTEM, msg, CuBit.Messages.Wait_Forever);
-      success := tag.label = REPLY_OK;
-      if not success then
-         return;
-      end if;
-      directory := Directory_Handle (msg.words (0));
-      Load_Handle (directory, success);
-      if success then
-         depth := 1;
-         navigation (depth).handle := directory;
-         CuBit.Directory_Paths.Set_Root
-           ("/", navigation (depth).displayPath, pathOK);
-      else
-         Close_Handle (directory);
-      end if;
-   end Open_Root;
-
-   procedure Load_Directory is
-      loaded : Boolean;
-   begin
-      if not pageGrantReady then
-         return;
-      end if;
-      if depth > 0 then
-         Load_Handle (navigation (depth).handle, loaded);
-         if not loaded then
-            browserStatus := Read_Failed;
-         end if;
-         return;
-      end if;
-      Open_Root ("@nvme:0/", loaded);
-      if loaded then
-         Set_Source_Name ("NVMe volume 0");
-         return;
-      end if;
-      Open_Root ("@mem:0/", loaded);
-      if loaded then
-         Set_Source_Name ("Live workspace");
-      else
-         Set_Source_Name ("Unavailable");
-         browserStatus := No_Root;
-      end if;
-   end Load_Directory;
-
-   function Can_Open_Selected return Boolean is
-     (depth > 0 and then selectedItem > 0 and then
-      items (selectedItem).kind = DIRECTORY_KIND_DIRECTORY);
-
-   procedure Open_Selected is
-      msg : Message;
-      tag : MessageTag;
-      child : Directory_Handle;
-      childPath : CuBit.Directory_Paths.Path;
-      loaded : Boolean;
-   begin
-      if not Can_Open_Selected then
-         return;
-      end if;
-      if depth = MAXIMUM_NAVIGATION_DEPTH then
-         browserStatus := Navigation_Limit;
-         return;
-      end if;
-      declare
-         name : constant String :=
-           items (selectedItem).name (1 .. items (selectedItem).nameLength);
-         nameView : String (name'Range)
-           with Import, Address => To_Address (Integer_Address (pageAddress));
-      begin
-         CuBit.Directory_Paths.Append_Child
-           (navigation (depth).displayPath, name, childPath, loaded);
-         if not loaded then
-            browserStatus := Open_Failed;
-            return;
-         end if;
-         nameView := name;
-         msg := Open_Child_Directory_Request
-           (navigation (depth).handle, pageGrant, name'Length);
-      end;
-      tag := capCall (CAP_SLOT_FILESYSTEM, msg, CuBit.Messages.Wait_Forever);
-      if tag.label /= REPLY_OK then
-         browserStatus := Open_Failed;
-         return;
-      end if;
-      child := Directory_Handle (msg.words (0));
-      navigation (depth).selected := selectedItem;
-      navigation (depth).scroll := scrollRow;
-      Load_Handle (child, loaded);
-      if not loaded then
-         Close_Handle (child);
-         browserStatus := Read_Failed;
-         return;
-      end if;
-      depth := depth + 1;
-      navigation (depth) :=
-        (handle => child, displayPath => childPath, others => <>);
-      debugPrint ("files: entered " &
-        CuBit.Directory_Paths.Value (childPath) & LF);
-   end Open_Selected;
-
-   procedure Go_Back is
-      loaded : Boolean;
-   begin
-      if depth <= 1 then
-         return;
-      end if;
-      Load_Handle (navigation (depth - 1).handle, loaded);
-      if not loaded then
-         browserStatus := Read_Failed;
-         return;
-      end if;
-      Close_Handle (navigation (depth).handle);
-      navigation (depth) := (others => <>);
-      depth := depth - 1;
-      selectedItem := Natural'Min (navigation (depth).selected, itemCount);
-      scrollRow := navigation (depth).scroll;
-      debugPrint ("files: returned " &
-        CuBit.Directory_Paths.Value (navigation (depth).displayPath) & LF);
-   end Go_Back;
-
-   procedure Ensure_Selected_Visible (visibleRows : Natural) is
-   begin
-      if selectedItem > 0 then
-         if selectedItem <= scrollRow then
-            scrollRow := selectedItem - 1;
-         elsif selectedItem > scrollRow + visibleRows then
-            scrollRow := selectedItem - visibleRows;
-         end if;
-      end if;
-   end Ensure_Selected_Visible;
-
-   procedure Render
-     (win : in out CuBit.UI.App.Window; damage : CuBit.UI.Rect)
-   is
-      colors : constant CuBit.UI.Theme := CuBit.UI.Current_Theme;
-      c : constant CuBit.UI.Canvas := CuBit.UI.App.Canvas (win, damage);
-      full : constant CuBit.UI.Rect := CuBit.UI.App.Full_Rect (win);
-      toolbar : CuBit.UI.Rect;
-      status : CuBit.UI.Rect;
-      table : CuBit.UI.Rect;
-      regions : CuBit.UI.Table_Regions;
-      rowBounds : CuBit.UI.Rect;
-      scrollBounds : CuBit.UI.Rect;
-      refreshResult, rowResult, scrollResult, navigationResult :
-        CuBit.UI.Widget_Result;
-      backBounds, openBounds : CuBit.UI.Rect;
-      visibleRows : Natural;
-      maximumScroll : Natural := 0;
-      previousScroll : Natural;
-   begin
-      CuBit.UI.State.Begin_Frame (ui);
-      CuBit.UI.Controls.Clear (controls);
-      CuBit.UI.Fill_Rect (c, full, colors.face);
-
-      toolbar := (x => 8, y => 8, w => full.w - 16, h => 38);
-      status := (x => 8, y => full.h - 30, w => full.w - 16, h => 22);
-      table := (x => 8, y => 52, w => full.w - 16, h => full.h - 88);
-      CuBit.UI.Widgets.Toolbar (c, toolbar, colors);
-      CuBit.UI.Widgets.Button
-         (c, ui, controls, CONTROL_REFRESH,
-         (x => toolbar.x + 7, y => toolbar.y + 6, w => 82, h => 26),
-         toolbar, colors, "Refresh", refreshResult, retainedInput => True);
-      backBounds :=
-        (x => toolbar.x + 96, y => toolbar.y + 6, w => 64, h => 26);
-      openBounds :=
-        (x => toolbar.x + 167, y => toolbar.y + 6, w => 64, h => 26);
-      if depth > 1 then
-         CuBit.UI.Widgets.Button
-           (c, ui, controls, CONTROL_BACK, backBounds, toolbar, colors,
-            "Back", navigationResult, retainedInput => True);
-      else
-         CuBit.UI.Widgets.Disabled_Button (c, backBounds, colors, "Back");
-      end if;
-      if Can_Open_Selected then
-         CuBit.UI.Widgets.Button
-           (c, ui, controls, CONTROL_OPEN, openBounds, toolbar, colors,
-            "Open", navigationResult, retainedInput => True);
-      else
-         CuBit.UI.Widgets.Disabled_Button (c, openBounds, colors, "Open");
-      end if;
-      CuBit.UI.Labels.Label
-        (c, (x => toolbar.x + 244, y => toolbar.y + 9,
-             w => (if toolbar.w > 359 then toolbar.w - 359 else 0),
-             h => 20), colors,
-         (if sourceNameLength = 0 then "No filesystem root" else
-            sourceName (1 .. sourceNameLength) &
-              (if depth = 0 then "" else "  " &
-                 CuBit.Directory_Paths.Value (navigation (depth).displayPath))),
-         muted => True);
-      CuBit.UI.Widgets.Badge
-        (c, (x => toolbar.x + toolbar.w - 105, y => toolbar.y + 8,
-             w => 96, h => 21), colors, "Read only",
-         CuBit.UI.Widgets.Badge_Good);
-
-      CuBit.UI.Draw_Table_Viewport (c, table, colors);
-      regions := CuBit.UI.Layout_Table (table);
-      lastListBounds := regions.Rows;
-      CuBit.UI.Tables.Resizable_Header
-        (c, ui, controls, CONTROL_FIRST_COLUMN, CONTROL_SECOND_COLUMN,
-         regions.Header, table, colors, "Name", "Kind", "Size",
-         tableColumns,
-         minimumFirst => 120, minimumSecond => 72, minimumThird => 90,
-         retainedInput => True);
-      visibleRows := regions.Rows.h / ROW_HEIGHT;
-      if itemCount > visibleRows then
-         maximumScroll := itemCount - visibleRows;
-      end if;
-      scrollRow := Natural'Min (scrollRow, maximumScroll);
-
-      --  Evaluate scrolling before drawing rows so a thumb drag, arrow click,
-      --  or page-track click is visible in the same presented frame.
-      if maximumScroll > 0 and then visibleRows > 0 then
-         previousScroll := scrollRow;
-         scrollBounds :=
-           (x => regions.Rows.x + regions.Rows.w - 14,
-            y => regions.Rows.y, w => 14, h => regions.Rows.h);
-         CuBit.UI.Widgets.Vertical_Scrollbar
-           (c, ui, controls, CONTROL_SCROLLBAR, scrollBounds, table,
-            colors, 0, itemCount - 1, scrollRow, scrollResult,
-            pageSize => Positive (visibleRows), retainedInput => True);
-         if scrollRow /= previousScroll and then not firstScrollbarLogged then
-            debugPrint
-              ("files: scrollbar scroll row=" &
-               Decimal (Unsigned_64 (scrollRow)) & LF);
-            firstScrollbarLogged := True;
-         end if;
-         if scrollRow /= previousScroll and then
-           CuBit.UI.Controls.Active_Scrollbar_Part
-             (controls, CONTROL_SCROLLBAR) =
-             CuBit.UI.Scrollbar_Thumb and then
-           not firstScrollbarDragLogged
-         then
-            debugPrint
-              ("files: scrollbar thumb drag row=" &
-               Decimal (Unsigned_64 (scrollRow)) & LF);
-            firstScrollbarDragLogged := True;
-         end if;
-      end if;
-
-      if visibleRows > 0 then
-         for visibleIndex in 0 .. visibleRows - 1 loop
+         if not Timed.Success then return; end if;
+         if Count = 0 then
+            CuBit.Logging.Emit (Logger, Timed.Value, Accepted);
+         else
             declare
-               itemIndex : constant Natural := scrollRow + visibleIndex + 1;
+               Counted : constant Decoded := With_Field (Timed.Value, "entries", Unsigned_Integer, Count);
             begin
-               exit when itemIndex > itemCount;
-               rowBounds :=
-                 (x => regions.Rows.x,
-                  y => regions.Rows.y + visibleIndex * ROW_HEIGHT,
-                  w => regions.Rows.w -
-                    (if maximumScroll > 0 then 15 else 0),
-                  h => ROW_HEIGHT);
-               CuBit.UI.Controls.Add_Button
-                 (controls, CONTROL_ROW_FIRST + visibleIndex,
-                  rowBounds, regions.Rows);
-               rowResult :=
-                 (hot => ui.pointer.enabled and then
-                    CuBit.UI.Point_In_Rect
-                      (ui.pointer.x, ui.pointer.y,
-                       CuBit.UI.Controls.Bounds
-                         (controls, CONTROL_ROW_FIRST + visibleIndex)),
-                  active => CuBit.UI.Controls.Is_Active
-                    (controls, CONTROL_ROW_FIRST + visibleIndex),
-                  activated => False);
-               CuBit.UI.Draw_Table_Row
-                 (c, rowBounds, colors, selectedItem = itemIndex,
-                  rowResult.hot,
-                  items (itemIndex).name
-                    (1 .. items (itemIndex).nameLength),
-                  Kind_Label (items (itemIndex).kind),
-                  Size_Label (items (itemIndex)), tableColumns);
-            end;
-         end loop;
-      end if;
-
-      CuBit.UI.Draw_Status_Bar
-        (c, status, colors,
-         (if browserStatus = Open_Failed then "Folder could not be opened."
-          elsif browserStatus = Read_Failed then
-            "Refresh failed; showing the previous listing."
-          elsif browserStatus = Navigation_Limit then
-            "Navigation limit reached; go Back to release a folder handle."
-          elsif loadSucceeded then
-            Decimal (Unsigned_64 (itemCount)) &
-              (if itemCount = 1 then " object" else " objects")
-          else "No granted filesystem root is available."),
-         (if listTruncated then "list truncated" else
-            "Enter: open   Backspace: back"));
-      CuBit.UI.State.Finish_Frame (ui);
-      if not firstFrameLogged then
-         debugPrint ("files: first frame presented" & LF);
-         firstFrameLogged := True;
-      end if;
-   end Render;
-
-   procedure Handle_Event
-     (win : in out CuBit.UI.App.Window;
-      event : CuBit.UI.App.Input_Event;
-      dirty : in out CuBit.UI.Rect;
-      running : in out Boolean)
-   is
-      wheel : Integer;
-      visibleRows : Natural := 1;
-      maximumScroll : Natural := 0;
-      x, y : Natural;
-      hit : CuBit.UI.Controls.Control_ID;
-      selectionMoved : Boolean := False;
-      oldScroll : Natural;
-   begin
-      if event.kind = CuBit.UI.App.INPUT_KEY_DOWN then
-         if event.payload0 = CuBit.UI.App.KEY_ESC then
-            running := False;
-         elsif event.payload0 = KEY_F5 then
-            Load_Directory;
-            debugPrint ("files: refresh input received" & LF);
-            dirty := CuBit.UI.App.Full_Rect (win);
-         elsif event.payload0 = KEY_ENTER then
-            Open_Selected;
-            dirty := CuBit.UI.App.Full_Rect (win);
-         elsif event.payload0 = KEY_BACKSPACE then
-            Go_Back;
-            dirty := CuBit.UI.App.Full_Rect (win);
-         elsif event.payload0 = KEY_UP and then selectedItem > 1 then
-            selectedItem := selectedItem - 1;
-            selectionMoved := True;
-         elsif event.payload0 = KEY_DOWN and then selectedItem < itemCount then
-            selectedItem := selectedItem + 1;
-            selectionMoved := True;
-         elsif event.payload0 = KEY_HOME and then itemCount > 0 then
-            selectedItem := 1;
-            selectionMoved := True;
-         elsif event.payload0 = KEY_END and then itemCount > 0 then
-            selectedItem := itemCount;
-            selectionMoved := True;
-         elsif (event.payload0 = KEY_PAGE_UP or else
-                event.payload0 = KEY_PAGE_DOWN) and then itemCount > 0
-         then
-            visibleRows := Natural'Max (1, lastListBounds.h / ROW_HEIGHT);
-            if itemCount > visibleRows then
-               maximumScroll := itemCount - visibleRows;
-            end if;
-            CuBit.UI.Apply_Wheel_Scroll
-              (scrollRow, 0, maximumScroll,
-               (if event.payload0 = KEY_PAGE_UP then 1 else -1),
-               Positive (visibleRows));
-            dirty := CuBit.UI.Union_Rect (dirty, lastListBounds);
-         end if;
-         if selectionMoved then
-            visibleRows := Natural'Max (1, lastListBounds.h / ROW_HEIGHT);
-            Ensure_Selected_Visible (visibleRows);
-            dirty := CuBit.UI.App.Full_Rect (win);
-         end if;
-      elsif event.kind = CuBit.UI.App.INPUT_CONFIGURE then
-         dirty := CuBit.UI.App.Full_Rect (win);
-      elsif event.kind = CuBit.UI.App.INPUT_RESYNC then
-         activeColumnDrag := No_Column_Drag;
-      elsif event.kind = CuBit.UI.App.INPUT_POINTER_DOWN then
-         x := Natural (event.payload0 and 16#FFFF_FFFF#);
-         y := Natural (Shift_Right (event.payload0, 32));
-         hit := CuBit.UI.Controls.Hit (controls, x, y);
-         case hit is
-            when CONTROL_FIRST_COLUMN =>
-               activeColumnDrag := First_Column_Drag;
-            when CONTROL_SECOND_COLUMN =>
-               activeColumnDrag := Second_Column_Drag;
-            when others =>
-               activeColumnDrag := No_Column_Drag;
-         end case;
-      elsif event.kind = CuBit.UI.App.INPUT_POINTER_UP then
-         x := Natural (event.payload0 and 16#FFFF_FFFF#);
-         y := Natural (Shift_Right (event.payload0, 32));
-         hit := CuBit.UI.Controls.Hit (controls, x, y);
-         if activeColumnDrag /= No_Column_Drag then
-            debugPrint
-              ("files: column resize complete first=" &
-               Decimal (Unsigned_64 (tableColumns.First_Width)) &
-               " second=" &
-               Decimal (Unsigned_64 (tableColumns.Second_Width)) & LF);
-         end if;
-         activeColumnDrag := No_Column_Drag;
-         if hit = CONTROL_REFRESH and then
-           CuBit.UI.Controls.Take_Activated (controls, hit)
-         then
-            debugPrint ("files: refresh click activated" & LF);
-            Load_Directory;
-            dirty := CuBit.UI.App.Full_Rect (win);
-         elsif hit = CONTROL_BACK and then
-           CuBit.UI.Controls.Take_Activated (controls, hit)
-         then
-            Go_Back;
-            dirty := CuBit.UI.App.Full_Rect (win);
-         elsif hit = CONTROL_OPEN and then
-           CuBit.UI.Controls.Take_Activated (controls, hit)
-         then
-            Open_Selected;
-            dirty := CuBit.UI.App.Full_Rect (win);
-         elsif hit >= CONTROL_ROW_FIRST and then
-           CuBit.UI.Controls.Take_Activated (controls, hit)
-         then
-            declare
-               visibleIndex : constant Natural := hit - CONTROL_ROW_FIRST;
-               itemIndex : constant Natural := scrollRow + visibleIndex + 1;
-            begin
-               if itemIndex <= itemCount then
-                  selectedItem := itemIndex;
-                  dirty := CuBit.UI.App.Full_Rect (win);
+               if Counted.Success then
+                  CuBit.Logging.Emit (Logger, Counted.Value, Accepted);
                end if;
             end;
          end if;
-      elsif event.kind = CuBit.UI.App.INPUT_POINTER_WHEEL and then
-        CuBit.UI.Point_In_Rect
-          (Natural (event.payload0 and 16#FFFF_FFFF#),
-           Natural (Shift_Right (event.payload0, 32)), lastListBounds)
-      then
-         visibleRows := Natural'Max (1, lastListBounds.h / ROW_HEIGHT);
-         if itemCount > visibleRows then
-            maximumScroll := itemCount - visibleRows;
-         end if;
-         oldScroll := scrollRow;
-         wheel := CuBit.UI.App.Pointer_Wheel_Delta (event);
-         CuBit.UI.Apply_Wheel_Scroll
-           (scrollRow, 0, maximumScroll, wheel);
-         if scrollRow /= oldScroll then
-            if not firstWheelLogged then
-               debugPrint
-                 ("files: wheel scroll row=" &
-                  Decimal (Unsigned_64 (scrollRow)) & LF);
-               firstWheelLogged := True;
+      end;
+   end Log_Timing;
+
+   --  Visibility: the serial markers (tests/headless) and the timing
+   --  records follow what the view shows; nothing in the view depends on
+   --  them.
+   procedure Report is
+   begin
+      for Pane in Side range 1 .. Pane_Count (View) loop
+         declare
+            Where : constant String := Path (View, Pane);
+            Done : constant Boolean := Settled (View, Pane) and then Load (View, Pane) in Loaded | Failed;
+         begin
+            if not Same (Reported_Path (Pane), Where) then
+               Save (Reported_Path (Pane), Where);
+               Reported_Settled (Pane) := False;
+               debugPrint ("files: pane" & Side'Image (Pane) & " entered " & Where & ASCII.LF);
             end if;
-            dirty := CuBit.UI.Union_Rect (dirty, lastListBounds);
+            if Done and then not Reported_Settled (Pane) then
+               Reported_Settled (Pane) := True;
+               if Load (View, Pane) = Loaded then
+                  debugPrint ("files: pane" & Side'Image (Pane) & " listed " & Where & " entries="
+                              & Decimal (Unsigned_64 (Listed (View, Pane))) & " us="
+                              & Decimal (Listing_Us (View, Pane)) & ASCII.LF);
+                  Log_Timing ("files: listed " & Where, "listing", Listing_Us (View, Pane),
+                              Unsigned_64 (Listed (View, Pane)));
+               else
+                  debugPrint ("files: pane" & Side'Image (Pane) & " failed " & Where & ASCII.LF);
+               end if;
+            elsif not Done then
+               Reported_Settled (Pane) := False;
+            end if;
+         end;
+      end loop;
+      if Active (View) /= Reported_Active then
+         Reported_Active := Active (View);
+         debugPrint ("files: active pane" & Side'Image (Reported_Active) & ASCII.LF);
+      end if;
+      declare
+         Message : constant String := Status_Message (View);
+      begin
+         if not Same (Reported_Status, Message) then
+            Save (Reported_Status, Message);
+            if Message'Length > 0 then
+               debugPrint ("files: status " & Message & ASCII.LF);
+            end if;
          end if;
+      end;
+   end Report;
+
+   procedure Collect (Dirty : in out Rect) is
+      Area : Rect;
+   begin
+      Take_Damage (View, Area);
+      if not Is_Empty (Area) then
+         Dirty := Union_Rect (Dirty, Area);
+      end if;
+      Report;
+   end Collect;
+
+   procedure Pump_View (Dirty : in out Rect) is
+      Start : constant Unsigned_64 := Now_Us;
+      Changed : Boolean;
+   begin
+      Pump (View, PUMP_BUDGET, Start, Busy, Changed);
+      Last_Pump_Us := Now_Us - Start;
+      Collect (Dirty);
+   end Pump_View;
+
+   procedure Render (Win : in out CuBit.UI.App.Window; Damage : Rect) is
+      Start : constant Unsigned_64 := Now_Us;
+   begin
+      Files_View.Render (View, CuBit.UI.App.Canvas (Win, Damage), CuBit.UI.App.Full_Rect (Win), UI, Controls);
+      Note_Frame (View, Now_Us - Start, Last_Pump_Us);
+      if First_Frame then
+         First_Frame := False;
+         debugPrint ("files: first frame presented render_us=" & Decimal (Now_Us - Start) & ASCII.LF);
+         Log_Timing ("files: first frame", "render", Now_Us - Start);
+      end if;
+   end Render;
+
+   function Key_Of (Code : Unsigned_64; Shift : Boolean) return Key_Name is
+     (if Code = KEY_ESCAPE then Escape
+      elsif Code = KEY_ENTER then Enter
+      elsif Code = KEY_BACKSPACE then Backspace
+      elsif Code = KEY_TAB then Tab
+      elsif Code = KEY_SPACE then Space
+      elsif Code = KEY_UP then Up
+      elsif Code = KEY_DOWN then Down
+      elsif Code = KEY_LEFT then Left
+      elsif Code = KEY_RIGHT then Right
+      elsif Code = KEY_PAGE_UP then Page_Up
+      elsif Code = KEY_PAGE_DOWN then Page_Down
+      elsif Code = KEY_HOME then Home
+      elsif Code = KEY_END then End_Key
+      elsif Code = KEY_INSERT then Insert
+      elsif Code = KEY_DELETE then Delete
+      --  Shift+F10 opens the context menu (no Menu key on most keyboards).
+      elsif Code = KEY_F10 and then Shift then Menu_Key
+      elsif Code in KEY_F1 .. KEY_F10 then Key_Name'Val (Key_Name'Pos (F1) + Integer (Code - KEY_F1))
+      elsif Code = KEY_F11 then F11
+      elsif Code = KEY_F12 then F12
+      elsif Code = KEY_A then Letter_A
+      elsif Code = KEY_B then Letter_B
+      elsif Code = KEY_D then Letter_D
+      elsif Code = KEY_I then Letter_I
+      elsif Code = KEY_N then Letter_N
+      elsif Code = KEY_R then Letter_R
+      elsif Code = KEY_T then Letter_T
+      elsif Code = KEY_U then Letter_U
+      elsif Code = KEY_W then Letter_W
+      else No_Key);
+
+   procedure Handle_Event
+     (Win : in out CuBit.UI.App.Window; Event : CuBit.UI.App.Input_Event; Dirty : in out Rect;
+      Running : in out Boolean)
+   is
+      Redraw : Boolean := False;
+      function Current_Modifiers return Unsigned_64 is
+        (if Event.kind in CuBit.UI.Input.INPUT_KEY_DOWN | CuBit.UI.Input.INPUT_KEY_UP
+         then Event.payload1 and KEY_MODIFIERS_MASK
+         elsif Event.kind = CuBit.UI.Input.INPUT_RESYNC
+         then Shift_Right (Event.payload1, RESYNC_MODIFIERS_SHIFT)
+         else Modifiers);
+      Shift : constant Boolean := (Current_Modifiers and CuBit.UI.App.KEYMOD_SHIFT) /= 0;
+      Control : constant Boolean := (Current_Modifiers and CuBit.UI.App.KEYMOD_CTRL) /= 0;
+      Alt : constant Boolean := (Current_Modifiers and CuBit.UI.App.KEYMOD_ALT) /= 0;
+      Time_Ms : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      procedure Send (Item : Files_View.Event) is
+      begin
+         Set_Clock (View, Now_Us);
+         Handle (View, Item, Controls, Redraw);
+      end Send;
+   begin
+      Modifiers := Current_Modifiers;
+      if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
+         Running := False;
+      elsif Event.kind = CuBit.UI.Input.INPUT_CONFIGURE then
+         Send ((Kind => Resize, X => CuBit.UI.App.Width (Win), Y => CuBit.UI.App.Height (Win), others => <>));
+         Dirty := CuBit.UI.App.Full_Rect (Win);
+      elsif Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN then
+         if Key_Of (Event.payload0, Shift) /= No_Key then
+            Send ((Kind => Key_Event, Key => Key_Of (Event.payload0, Shift), Shift => Shift, Control => Control,
+                   Alt => Alt, others => <>));
+         end if;
+      elsif Event.kind = CuBit.UI.Input.INPUT_TEXT then
+         if (Event.payload0 and CODE_POINT_MASK) in Character'Pos (' ') .. Character'Pos ('~') then
+            Send ((Kind => Text_Event, Character_Value => Character'Val (Event.payload0 and CODE_POINT_MASK),
+                   Control => Control, Alt => Alt, others => <>));
+         end if;
+      elsif Event.kind in CuBit.UI.Input.INPUT_POINTER_DOWN | CuBit.UI.Input.INPUT_POINTER_UP
+                          | CuBit.UI.Input.INPUT_POINTER_MOVE
+      then
+         --  After App.Run's retained dispatch (capture, hover, damage); the
+         --  view handles what the press means. The desktop reports only the
+         --  primary button's edges as presses; the secondary's (context
+         --  menus) and middle's (closing a tab) arrive as a change in the
+         --  held buttons.
+         declare
+            Held : constant Unsigned_64 := Event.payload1 and (PRIMARY_BUTTON or SECONDARY_BUTTON or MIDDLE_BUTTON);
+            X : constant Natural := CuBit.UI.Input.Pointer_X (Event);
+            Y : constant Natural := CuBit.UI.Input.Pointer_Y (Event);
+         begin
+            if Event.kind = CuBit.UI.Input.INPUT_POINTER_MOVE
+              and then (Held and SECONDARY_BUTTON) /= (Buttons and SECONDARY_BUTTON)
+            then
+               Send ((Kind => Pointer_Event,
+                      Action => (if (Held and SECONDARY_BUTTON) /= 0 then CuBit.UI.Controls.Pointer_Press
+                                 else CuBit.UI.Controls.Pointer_Release),
+                      X => X, Y => Y, Time_Ms => Time_Ms, Secondary => True, Control => Control, Shift => Shift,
+                      others => <>));
+            elsif Event.kind = CuBit.UI.Input.INPUT_POINTER_MOVE
+              and then (Held and MIDDLE_BUTTON) /= (Buttons and MIDDLE_BUTTON)
+            then
+               Send ((Kind => Pointer_Event,
+                      Action => (if (Held and MIDDLE_BUTTON) /= 0 then CuBit.UI.Controls.Pointer_Press
+                                 else CuBit.UI.Controls.Pointer_Release),
+                      X => X, Y => Y, Time_Ms => Time_Ms, Middle => True, others => <>));
+            else
+               Send ((Kind => Pointer_Event,
+                      Action => (if Event.kind = CuBit.UI.Input.INPUT_POINTER_DOWN then CuBit.UI.Controls.Pointer_Press
+                                 elsif Event.kind = CuBit.UI.Input.INPUT_POINTER_UP
+                                 then CuBit.UI.Controls.Pointer_Release
+                                 else CuBit.UI.Controls.Pointer_Move),
+                      X => X, Y => Y, Time_Ms => Time_Ms, Control => Control, Shift => Shift, others => <>));
+            end if;
+            Buttons := Held;
+         end;
+      elsif Event.kind = CuBit.UI.Input.INPUT_POINTER_WHEEL then
+         Send ((Kind => Wheel, Steps => CuBit.UI.Input.Pointer_Wheel_Delta (Event),
+                X => CuBit.UI.Input.Pointer_X (Event), Y => CuBit.UI.Input.Pointer_Y (Event), others => <>));
+      end if;
+      --  Input often submits requests (a folder opened): move them now.
+      Pump_View (Dirty);
+      if Quit_Requested (View) then
+         Running := False;
       end if;
    end Handle_Event;
 
-   procedure Run_UI is new CuBit.UI.App.Run
-     (ui => ui, controls => controls,
-      Render => Render, Handle_Event => Handle_Event);
-
-   Announced : Boolean;
-begin
-   debugPrint ("files: starting read-only filesystem browser" & LF);
-   CuBit.Logging.Announce ("files: started (read-only browser)", Announced);
-   rawBuffer := syscall (SYSCALL_SBRK, 2 * PAGE_SIZE);
-   if rawBuffer /= Unsigned_64'Last then
-      pageAddress := (rawBuffer + PAGE_SIZE - 1) and not (PAGE_SIZE - 1);
-      CuBit.Memory_Grants.Create_Via_Capability
-        (slot => CAP_SLOT_FILESYSTEM,
-         localAddr => To_Address (Integer_Address (pageAddress)),
-         numPages => 1, readWrite => True,
-         reference => pageGrant, success => pageGrantReady);
-   end if;
-   Load_Directory;
-   if loadSucceeded then
-      debugPrint ("files: directory page protocol ready" & LF);
-   end if;
-
-   declare
-      ok : Boolean;
-      flags : constant Unsigned_64 :=
-        CuBit.UI.App.WINDOW_FLAG_DECORATED or
-        CuBit.UI.App.WINDOW_FLAG_RESIZABLE or
-        CuBit.UI.App.WINDOW_FLAG_MINIMIZABLE or
-        CuBit.UI.App.WINDOW_FLAG_MAXIMIZABLE or
-        CuBit.UI.App.WINDOW_FLAG_CLOSEABLE;
+   --  Run's deadline, in GETTIME milliseconds: now while pump work waits,
+   --  the view's own deadline otherwise; zero for none (wait for input or
+   --  the filesystem's wake only).
+   function Deadline return Unsigned_64 is
+      Due_Us : constant Unsigned_64 := Next_Deadline_Us (View);
+      Now_Ms : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Current_Us : Unsigned_64;
    begin
-      CuBit.UI.App.Open
-        (win, INITIAL_WIDTH, INITIAL_HEIGHT, flags, ok, title => "Files", protected_frames => True,
-         minimum_width => 480, minimum_height => 280);
-      if not ok then
-         ignore := syscall (SYSCALL_EXIT, 1);
-         return;
+      if Busy then
+         return Now_Ms;
+      elsif Due_Us = Unsigned_64'Last then
+         return 0;
       end if;
-      debugPrint ("files: native window ready" & LF);
-   end;
-   Run_UI (win);
-   CuBit.UI.App.Close (win);
-   for index in 1 .. depth loop
-      Close_Handle (navigation (index).handle);
-   end loop;
-   if pageGrantReady then
-      CuBit.Memory_Grants.Revoke (pageGrant, pageGrantReady);
+      Current_Us := Now_Us;
+      return (if Due_Us <= Current_Us then Now_Ms
+              else Now_Ms + (Due_Us - Current_Us) / MICROSECONDS_PER_MILLISECOND + 1);
+   end Deadline;
+
+   procedure Tick (Win : in out CuBit.UI.App.Window; Dirty : in out Rect; Running : in out Boolean) is
+      pragma Unreferenced (Win);
+   begin
+      Pump_View (Dirty);
+      if Quit_Requested (View) then
+         Running := False;
+      end if;
+   end Tick;
+
+   procedure Completed
+     (Win : in out CuBit.UI.App.Window; Receipt : CompletionEntry; Consumed : out Boolean; Dirty : in out Rect;
+      Running : in out Boolean)
+   is
+      pragma Unreferenced (Win, Running);
+      Woken : Boolean;
+   begin
+      Files_Queue.Complete (Receipt, Consumed, Woken);
+      if Consumed then
+         Pump_View (Dirty);
+      end if;
+   end Completed;
+
+   procedure Run is new CuBit.UI.App.Run
+     (UI, Controls, Render => Render, Handle_Event => Handle_Event, Next_Deadline => Deadline,
+      On_Deadline => Tick, Activity_Wait => True, On_Completion => Completed);
+begin
+   debugPrint ("files: starting" & ASCII.LF);
+   CuBit.Logging.Announce ("files: started", Opened);
+   --  The first listings start here: time them from now.
+   Set_Clock (View, Now_Us);
+   Initialize (View, PANE_ENTRIES, PANE_NAME_BYTES, VOLUME_PLACE, WORKSPACE_PLACE);
+   Add_Place (View, "NVMe volume 0", VOLUME_PLACE, CuBit.UI.Icons.Drive);
+   Add_Place (View, "Live workspace", WORKSPACE_PLACE, CuBit.UI.Icons.Folder);
+   debugPrint ((if Files_Queue.Ready then "files: filesystem queue ready" else "files: no filesystem queue")
+               & ASCII.LF);
+   CuBit.UI.App.Open
+     (Win, INITIAL_WIDTH, INITIAL_HEIGHT,
+      CuBit.Desktop_Protocol.Feature_Bits
+        ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
+          CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
+          CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
+          others => False]),
+      Opened, title => "Files", protected_frames => True, batched_input => False,
+      minimum_width => MINIMUM_WIDTH, minimum_height => MINIMUM_HEIGHT);
+   if Opened then
+      debugPrint ("files: native window ready" & ASCII.LF);
+      declare
+         Ignore : Boolean;
+      begin
+         Handle (View, (Kind => Resize, X => CuBit.UI.App.Width (Win), Y => CuBit.UI.App.Height (Win),
+                        others => <>), Controls, Ignore);
+      end;
+      Run (Win);
+      CuBit.UI.App.Close (Win);
    end if;
-   ignore := syscall (SYSCALL_EXIT, 0);
-end main;
+   Close (View);
+   debugPrint ("files: closed" & ASCII.LF);
+end Main;

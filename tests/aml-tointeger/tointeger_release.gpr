@@ -1,0 +1,8 @@
+project Tointeger_release is
+ for Source_Dirs use (".", "../aml-debug", "../aml-core", "../aml-references", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "build-release";
+ for Main use ("coercion_tests.adb", "tointeger_quota_tests.adb", "explicit_coercion_tests.adb", "tointeger_owned_tests.adb", "tointeger_oracle_runner.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+ end Compiler;
+end Tointeger_release;

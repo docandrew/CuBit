@@ -8,7 +8,9 @@ procedure Stage_Metrics_Tests is
    function Expected_Key (Stage : M.Stage) return R.Metric_Key is
      (case Stage is when M.Input_Dispatch => 3, when M.Request_Dispatch => 4,
        when M.Scene_Draw => 5, when M.Submit_Call => 6,
-       when M.Completion_Dispatch => 11, when M.Diagnostic_Output => 12);
+       when M.Completion_Dispatch => 11, when M.Diagnostic_Output => 12,
+       when M.Loop_Turn => 13, when M.Input_To_Present => 14,
+       when M.Input_Source_Age => 15);
    Checks : Natural := 0;
    procedure Check (Stage : M.Stage; First, Last : M.Tick) is
       S : constant M.Sample := M.Prepare (Stage, First, Last);
@@ -35,7 +37,10 @@ begin
            when M.Scene_Draw => "desktop.scene_draw",
            when M.Submit_Call => "desktop.submit_call",
            when M.Completion_Dispatch => "desktop.completion_dispatch",
-           when M.Diagnostic_Output => "desktop.diagnostic_output");
+           when M.Diagnostic_Output => "desktop.diagnostic_output",
+           when M.Loop_Turn => "desktop.loop_turn",
+           when M.Input_To_Present => "desktop.input_to_present",
+           when M.Input_Source_Age => "desktop.input_source_age");
       begin
          pragma Assert (D.Success and then D.Value.Kind = R.Describe and then
            D.Value.Key = Expected_Key (Stage) and then D.Value.Declared = R.Latency and then
@@ -48,5 +53,5 @@ begin
          Check (Stage, 0, Edge); Check (Stage, Edge, 0); Check (Stage, Edge, Edge);
       end loop;
    end loop;
-   Ada.Text_IO.Put_Line ("STAGE-METRICS: PASS" & Checks'Image & " clock/codec cases and six distinct declarations");
+   Ada.Text_IO.Put_Line ("STAGE-METRICS: PASS" & Checks'Image & " clock/codec cases and nine distinct declarations");
 end Stage_Metrics_Tests;

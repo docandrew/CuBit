@@ -98,5 +98,34 @@ begin
       pragma Assert (Scope_Matches (Extreme, "x"));
       pragma Assert (Valid_Path (Extreme));
    end;
-   Put_Line ("file access: scope boundaries, rights subsets, atomic decode PASS");
+   --  Encode (Queue_List_Scopes): what Decode took comes back byte for byte,
+   --  and the bootstrap wildcard is one entry, empty prefix, all rights.
+   declare
+      All_Entries : Wire_Bytes (1 .. Maximum_Entries * Wire_Entry_Bytes);
+      Count : Natural;
+      Again : Policy;
+   begin
+      for Raw in Unsigned_8 range 0 .. 15 loop
+         Set_Entry (1, "@nvme:0/documents", Raw);
+         Set_Entry (2, "@nvme:0/projects/" & [1 .. Natural (Raw) => 'x'], 15 - Raw);
+         Decode (Data, Item, OK);
+         pragma Assert (OK);
+         Encode (Item, All_Entries, Count);
+         pragma Assert (Count = 2 and then All_Entries (1 .. Data'Length) = Data
+                        and then (for all B of All_Entries (Data'Length + 1 .. All_Entries'Last) => B = 0));
+         Decode (All_Entries (1 .. Count * Wire_Entry_Bytes), Again, OK);
+         pragma Assert (OK and then Allows (Again, "@nvme:0/documents/a", Rights_From_Wire (Raw)) =
+                                    Allows (Item, "@nvme:0/documents/a", Rights_From_Wire (Raw)));
+         pragma Assert (Rights_From_Wire (Rights_To_Wire (Rights_From_Wire (Raw))) = Rights_From_Wire (Raw)
+                        and then Rights_To_Wire (Rights_From_Wire (Raw)) = Raw);
+      end loop;
+      Allow_All_For_Bootstrap (Item);
+      Encode (Item, All_Entries, Count);
+      pragma Assert (Count = 1 and then All_Entries (1) = 15 and then All_Entries (2) = 0
+                     and then All_Entries (3) = 0);
+      Clear (Item);
+      Encode (Item, All_Entries, Count);
+      pragma Assert (Count = 0);
+   end;
+   Put_Line ("file access: scope boundaries, rights subsets, atomic decode, encode PASS");
 end Main;

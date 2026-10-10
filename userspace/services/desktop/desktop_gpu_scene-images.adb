@@ -2,6 +2,8 @@ with Desktop_GPU_Scene.Drawing;
 package body Desktop_GPU_Scene.Images with SPARK_Mode is
    use type Registry.I.Outcome;
    procedure Capture (Scene : in out State; Sources : in out Registry.State;
+      Key : Compositor_Source_Content.Source_Key;
+      Version : Compositor_Source_Content.Content_Version;
       Image : Compositor_Formats.Image; Bytes : Natural;
       Surface : V.A.G.Logical_Rectangle; Damage : V.A.G.Physical_Rectangle;
       Accepted : out Boolean; Over : Boolean := False; Straight_Alpha : Boolean := False)
@@ -11,10 +13,15 @@ package body Desktop_GPU_Scene.Images with SPARK_Mode is
    begin
       Accepted := False;
       if Scene.Status /= Capturing or else Scene.Cold or else Scene.Invalid then return; end if;
-      Registry.Ensure (Sources, Image, Bytes, Ticket, Result);
+      Registry.Ensure (Sources, Key, Version, Image, Bytes, Ticket, Result);
       case Result is
          when Registry.I.Available =>
             Drawing.Image (Scene, Ticket, Surface, Damage, Accepted, Over, Straight_Alpha);
+         when Registry.I.Unaffordable =>
+            -- Permanent for this scene: every idle source was already
+            -- evicted. Transient states (cold, busy writer) never get here.
+            Note_Placeholder (Scene);
+            Drawing.Logical_Fill (Scene, Surface, Damage, Placeholder_Color, Accepted);
          when Registry.I.Pending | Registry.I.Deferred => Scene.Cold := True;
          when Registry.I.Rejected => Scene.Invalid := True;
          when Registry.I.Unsafe => Scene.Status := Quarantined;

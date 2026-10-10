@@ -14,6 +14,7 @@ with Virtmem;
 --  and framebuffer arithmetic are checked separately; this is not a proof of
 --  concurrent memory, device visibility or firmware truth.
 package body Boot_Diagnostics with SPARK_Mode => Off is
+   use type System.Address;
    use type Boot_Panel.Phase;
    use type Boot_Panel.Row;
    Lock : Spinlocks.Spinlock;
@@ -22,6 +23,21 @@ package body Boot_Diagnostics with SPARK_Mode => Off is
    Model : Boot_Panel.State;
    Layout : Boot_Framebuffer.Description;
    Base : System.Address := System.Null_Address;
+   --  The admitted mapping and layout, kept after Retire for Heartbeat and
+   --  Emergency only.
+   Retained_Base : System.Address := System.Null_Address with Atomic;
+   Retained_Layout : Boot_Framebuffer.Description;
+   --  Heartbeat: toggles every Heartbeat_Ticks timer interrupts (~1 kHz).
+   Heartbeat_Ticks : constant := 500;
+   Heartbeat_Size : constant := 8;
+   Heartbeat_Margin : constant := 4;
+   Heartbeat_Lit : constant Unsigned_32 := 16#0080FF20#;
+   Heartbeat_Dark : constant Unsigned_32 := 16#00000000#;
+   Beats : Natural := 0;
+   Lit : Boolean := False;
+   --  Emergency banner rows: a title and the message.
+   Emergency_Rows : constant := 3;
+   Emergency_Background : constant Unsigned_32 := 16#00400010#;
    Scale : Positive range 1 .. 2 := 1;
    QR_Enabled : Boolean := False;
    QR_Scale : Positive range 1 .. 3 := 1;
@@ -155,6 +171,8 @@ package body Boot_Diagnostics with SPARK_Mode => Off is
       if not Closed and then Boot_Panel.Lifecycle (Model) = Boot_Panel.Unavailable then
          Layout := Item;
          Base := Virtmem.P2Va (Integer_Address (Item.Base));
+         Retained_Layout := Item;
+         Retained_Base := Base;
          -- Keep all evidence columns visible at the 1024x768 fallback, too.
          Scale := (if Item.Width >= 32 + Boot_Panel.Columns *
            (Boot_Font.Width + 1) * 2 and Item.Height >=
@@ -283,4 +301,150 @@ package body Boot_Diagnostics with SPARK_Mode => Off is
       Base := System.Null_Address;
       Spinlocks.exitCriticalSection (Lock);
    end Retire;
+   procedure Heartbeat is
+      Target : constant System.Address := Retained_Base;
+      Color : Unsigned_32;
+   begin
+      if Target = System.Null_Address or else
+        Retained_Layout.Width < Heartbeat_Size + Heartbeat_Margin or else
+        Retained_Layout.Height < Heartbeat_Size + Heartbeat_Margin
+      then
+         return;
+      end if;
+      Beats := (if Beats = Heartbeat_Ticks - 1 then 0 else Beats + 1);
+      if Beats /= 0 then return; end if;
+      Lit := not Lit;
+      Color := (if Lit then Heartbeat_Lit else Heartbeat_Dark);
+      for Y in Retained_Layout.Height - Heartbeat_Size - Heartbeat_Margin ..
+               Retained_Layout.Height - Heartbeat_Margin - 1
+      loop
+         for X in Retained_Layout.Width - Heartbeat_Size - Heartbeat_Margin ..
+                  Retained_Layout.Width - Heartbeat_Margin - 1
+         loop
+            declare
+               Value : Unsigned_32 with Import, Volatile,
+                 Address => Target + Storage_Offset
+                   (Boot_Framebuffer.Pixel_Offset (Retained_Layout, X, Y));
+            begin
+               Value := Color;
+            end;
+         end loop;
+      end loop;
+   end Heartbeat;
+
+   --  Bottom-left panel through the retained mapping; title row plus lines.
+   Stuck_Shown : Natural := 0;
+   Stuck_Title : constant String := "STUCK CALLS (caller -> server, seconds)  * = watch";
+   Stuck_Color : constant Unsigned_32 := 16#00FFD040#;
+   Stuck_Background : constant Unsigned_32 := 16#00202020#;
+
+   procedure Stuck_Calls (Lines : Stuck_Lines; Count : Natural) is
+      Target : constant System.Address := Retained_Base;
+      Row_Height : constant Natural := (Boot_Font.Height + 3) * Scale;
+      Cell_Width : constant Natural := (Boot_Font.Width + 1) * Scale;
+      Rows : constant Natural := 1 + Stuck_Rows;
+      Width : constant Natural := 16 + Stuck_Line'Length * Cell_Width;
+      Shown : constant Natural := Natural'Min (Count, Stuck_Rows);
+      Top : Natural;
+
+      procedure Put (X, Y : Natural; Color : Unsigned_32) is
+      begin
+         if X < Retained_Layout.Width and then Y < Retained_Layout.Height then
+            declare
+               Value : Unsigned_32 with Import, Volatile,
+                 Address => Target + Storage_Offset
+                   (Boot_Framebuffer.Pixel_Offset (Retained_Layout, X, Y));
+            begin
+               Value := Color;
+            end;
+         end if;
+      end Put;
+
+      procedure Line (Value : String; Row : Natural; Color : Unsigned_32) is
+         Left : Natural := 8;
+         Y0 : constant Natural := Top + Row * Row_Height;
+      begin
+         for C of Value loop
+            for Y in Boot_Font.Row loop
+               for X in 0 .. Boot_Font.Width loop
+                  for DY in 0 .. Scale - 1 loop
+                     for DX in 0 .. Scale - 1 loop
+                        Put (Left + X * Scale + DX, Y0 + Y * Scale + DY,
+                          (if X < Boot_Font.Width and then Boot_Font.Pixel (C, X, Y)
+                           then Color else Stuck_Background));
+                     end loop;
+                  end loop;
+               end loop;
+            end loop;
+            Left := Left + Cell_Width;
+         end loop;
+         --  The spacing below the glyphs, so rows read as one panel.
+         for Y in Y0 + Boot_Font.Height * Scale .. Y0 + Row_Height - 1 loop
+            for X in 8 .. Left - 1 loop
+               Put (X, Y, Stuck_Background);
+            end loop;
+         end loop;
+      end Line;
+   begin
+      if Target = System.Null_Address or else
+        Retained_Layout.Height < Rows * Row_Height + 32
+      then
+         return;
+      end if;
+      if Shown = 0 and then Stuck_Shown = 0 then return; end if;
+      Top := Retained_Layout.Height - 24 - Rows * Row_Height;
+      if Shown = 0 then
+         --  Clear the panel left by the previous report.
+         for Y in Top .. Top + Rows * Row_Height - 1 loop
+            for X in 0 .. Natural'Min (Width, Retained_Layout.Width) - 1 loop
+               Put (X, Y, 16#00000000#);
+            end loop;
+         end loop;
+      else
+         Line (Stuck_Title, 0, Error_Color);
+         for I in 1 .. Stuck_Rows loop
+            Line ((if I <= Shown then Lines (I) else [Stuck_Line'Range => ' ']),
+                  I, Stuck_Color);
+         end loop;
+      end if;
+      Stuck_Shown := Shown;
+      System.Machine_Code.Asm ("sfence", Clobber => "memory", Volatile => True);
+   end Stuck_Calls;
+
+   procedure Emergency (Message : System.Address; Detail : String) is
+      Line : String (1 .. Boot_Panel.Columns) := [others => ' '];
+      Last : Natural := 0;
+   begin
+      if Retained_Base = System.Null_Address then return; end if;
+      --  Paint through the retained mapping; the stop is final, so the
+      --  painter lock and the Closed admission no longer protect anything.
+      Base := Retained_Base;
+      Layout := Retained_Layout;
+      for Y in 0 .. Natural'Min (Layout.Height,
+        16 + Emergency_Rows * (Boot_Font.Height + 3) * Scale) - 1
+      loop
+         for X in 0 .. Layout.Width - 1 loop
+            Pixel (X, Y, Emergency_Background);
+         end loop;
+      end loop;
+      Text ("CUBIT KERNEL PANIC", 0, Error_Color);
+      if Message /= System.Null_Address then
+         for I in Line'Range loop
+            declare
+               C : Character with Import, Address => Message + Storage_Offset (I - 1);
+            begin
+               exit when C = ASCII.NUL;
+               Line (I) := C;
+               Last := I;
+            end;
+         end loop;
+      end if;
+      for C of Detail loop
+         exit when Last = Line'Last;
+         Last := Last + 1;
+         Line (Last) := C;
+      end loop;
+      Text (Line (1 .. Last), 1, Foreground);
+      System.Machine_Code.Asm ("sfence", Clobber => "memory", Volatile => True);
+   end Emergency;
 end Boot_Diagnostics;

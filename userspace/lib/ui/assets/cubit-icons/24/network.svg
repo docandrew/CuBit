@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+<defs>
+<linearGradient id="teal" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#8af5e8"/><stop offset="1" stop-color="#1fc8c3"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M12 4.5 L5 15.5" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M12 4.5 L19 15.5" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M5 15.5 L19 15.5" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<path d="M12 4.5 L5 15.5" fill="none" stroke="#7d879f" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M12 4.5 L19 15.5" fill="none" stroke="#7d879f" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M5 15.5 L19 15.5" fill="none" stroke="#7d879f" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M12 1 L15 2.5 L15 6.5 L12 8 L9 6.5 L9 2.5Z"/>
+</g>
+<path d="M12 1 L15 2.5 L12 4 L9 2.5Z" fill="#8af5e8"/>
+<path d="M9 2.5 L12 4 L12 8 L9 6.5Z" fill="url(#teal)"/>
+<path d="M15 2.5 L15 6.5 L12 8 L12 4Z" fill="#0e8f99"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M5 12 L8 13.5 L8 17.5 L5 19 L2 17.5 L2 13.5Z"/>
+</g>
+<path d="M5 12 L8 13.5 L5 15 L2 13.5Z" fill="#8af5e8"/>
+<path d="M2 13.5 L5 15 L5 19 L2 17.5Z" fill="url(#teal)"/>
+<path d="M8 13.5 L8 17.5 L5 19 L5 15Z" fill="#0e8f99"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M19 12 L22 13.5 L22 17.5 L19 19 L16 17.5 L16 13.5Z"/>
+</g>
+<path d="M19 12 L22 13.5 L19 15 L16 13.5Z" fill="#8af5e8"/>
+<path d="M16 13.5 L19 15 L19 19 L16 17.5Z" fill="url(#teal)"/>
+<path d="M22 13.5 L22 17.5 L19 19 L19 15Z" fill="#0e8f99"/>
+</svg>

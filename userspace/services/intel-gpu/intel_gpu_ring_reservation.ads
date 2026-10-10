@@ -16,9 +16,21 @@ package Intel_GPU_Ring_Reservation with SPARK_Mode is
    -- physical end must be MI_NOOP before Start=0 commands are published.
    -- Never write the hardware head. A failed publication cannot be retried
    -- merely because a new arithmetic plan can be calculated.
+   -- The free bytes between the tail and the retired head (equal means the
+   -- whole ring is free).
+   function Free_Distance (Retired_Head, Current_Tail : Unsigned_32) return Unsigned_32 is
+     (if Retired_Head > Current_Tail then Retired_Head - Current_Tail
+      else Ring_Bytes - Current_Tail + Retired_Head)
+     with Pre => Retired_Head < Ring_Bytes and Current_Tail < Ring_Bytes;
    function Reserve (Retired_Head, Current_Tail, Bytes : Unsigned_32) return Plan
      with Post =>
        (if Reserve'Result.Status = Ready then
+          Retired_Head < Ring_Bytes and then Retired_Head mod 4 = 0 and then
+          -- Everything written (padding and segment) lies in the free bytes,
+          -- a cacheline short of the retired head: no unretired byte is
+          -- overwritten.
+          Reserve'Result.Consumed + Guard_Bytes <=
+            Free_Distance (Retired_Head, Current_Tail) and then
           Bytes in 8 .. Ring_Bytes - Guard_Bytes and then Bytes mod 8 = 0 and then
           Current_Tail < Ring_Bytes and then Current_Tail mod 8 = 0 and then
           Reserve'Result.Start <= Ring_Bytes - Guard_Bytes - Bytes and then

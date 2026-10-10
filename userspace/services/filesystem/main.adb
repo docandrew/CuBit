@@ -27,6 +27,7 @@ with CuBit.Control_Events;
 with CuBit.Busy_Poll;
 with CuBit.Grant_References;
 with CuBit.Directory_Paths;
+with CuBit.Directory_Pages;
 with CuBit.File_Access;
 with Cpio;
 with Ext2;
@@ -37,6 +38,13 @@ with Shared_Objects;
 with Volume_List; use Volume_List;
 with Volume_Admission; use Volume_Admission;
 with Dirty_Runs;
+with Queue_Wakes;
+with Watch_Reserve;
+with CuBit.Filesystem_Events;
+with CuBit.Channel_Rings;
+with CuBit.Volume_Descriptions;
+with CuBit.Block_Devices;
+with Copy_Slices;
 
 procedure main is
    use ASCII;
@@ -291,6 +299,13 @@ procedure main is
    --  A write-back failure of a released handle, kept for its owner's next
    --  flush or close of the file (defined with writebackFailed below).
    procedure keepWriteError (slot : Natural);
+   --  Change notifications for written files (defined with the watches):
+   --  slot's file changed; slot is going (report and forget its path).
+   procedure noteModified (slot : Integer);
+   procedure forgetNoticePath (slot : Natural);
+   --  Server-side copies (defined with them): slot is going; a copy that
+   --  reads or writes it ends (REPLY_ERR, with the prefix it copied).
+   procedure copyHandleGone (slot : Natural);
 
    procedure releaseHandle (slot : Integer) is
       --  [filesystem-journal agent] last-close reclaim of an unlinked file.
@@ -303,6 +318,10 @@ procedure main is
       --  (a parked handle, say, after its owner's access was revoked).
       dropDelegation (slot);
       keepWriteError (slot);
+      if files (slot).objectKind = FILE_OBJECT then
+         forgetNoticePath (slot);
+         copyHandleGone (slot);
+      end if;
       Open_Inodes.Detach (inodeObjects, Open_Inodes.Owner_Index (slot));
       files (slot).active := False;
       files (slot).ownerPID := No_Process;
@@ -349,8 +368,9 @@ procedure main is
    subtype Client_Queue_Count is Natural range 0 .. MAX_CLIENT_QUEUES;
    subtype Client_Queue_Index is Client_Queue_Count range 1 .. MAX_CLIENT_QUEUES;
    No_Client_Queue : constant Client_Queue_Count := 0;
-   --  Saved reply capabilities for deferred WAITs, one per queue.
-   WAIT_REPLY_SLOT_BASE : constant := 40;
+   --  Saved reply capabilities for held wake requests (FQ.OP_FS_WAKE), one
+   --  per queue.
+   WAKE_REPLY_SLOT_BASE : constant := 40;
 
    --  A client's queue: three channels it opened (FQ: the queue pair, the
    --  transfer arena, the dirty arena), docs/data-plane.md.
@@ -364,7 +384,11 @@ procedure main is
       arena      : System.Address := System.Null_Address;
       arenaBytes : Unsigned_64 := 0;
       server     : FQueues.Server;
-      waiting    : Boolean := False;   --  a WAIT's reply is saved
+      wake       : Queue_Wakes.State := Queue_Wakes.Idle;   --  a held wake request
+      --  The event ring (FQ.Event_Connector), if the client opened one, and
+      --  how many of its watches are Watching (Watch_Reserve).
+      eventLink  : CuBit.Channels.Channel;
+      watching   : Watch_Reserve.Normal_Count := 0;
       --  The dirty arena (FQ.Dirty_*), if the client lent one.
       dirty      : System.Address := System.Null_Address;
    end record;
@@ -396,11 +420,6 @@ procedure main is
       token : FQueues.Token := 0;
    end record;
    curRoute : Reply_Route;
-   --  While set, sendReply records the reply instead of sending it (a
-   --  queue entry made of several handler calls answers once).
-   capturing : Boolean := False;
-   capturedLabel : Unsigned_32 := 0;
-   capturedValue : Unsigned_64 := 0;
    curArena : System.Address := System.Null_Address;
    curArenaBytes : Unsigned_64 := 0;
 
@@ -764,6 +783,7 @@ procedure main is
             written, status);
          Open_Inodes.Replace
            (inodeObjects, Open_Inodes.Owner_Index (slot), currentInode);
+         noteModified (slot);
          if status /= Ext2.Write_Complete or else written /= Unsigned_64 (length) then
             writebackFailed (slot) := True;
          end if;
@@ -946,6 +966,7 @@ procedure main is
          end loop;
       end if;
       bumpVersion (key);
+      noteModified (except);
    end fileChanging;
 
    procedure dropDelegation (slot : Natural) is
@@ -1005,8 +1026,19 @@ procedure main is
       end if;
    end handleOpened;
 
-   --  Answer the entry being handled on its queue, and wake the client's
-   --  WAIT if one is saved.
+   --  Answer queue q's held wake request (its saved reply capability is
+   --  consumed whether or not the client still waits for it).
+   procedure answerWake (q : Client_Queue_Index; label : Unsigned_32) is
+      ignore : Unsigned_64;
+   begin
+      ignore := replyCap
+        (CapabilitySlot (WAKE_REPLY_SLOT_BASE + q),
+         (tag => (label => label, length => 0, flags => 0, reserved => 0),
+          authorityTag => 0, words => [others => 0]));
+   end answerWake;
+
+   --  Answer the entry being handled on its queue, and answer the client's
+   --  held wake request, if any.
    procedure answerEntry
      (label : Unsigned_32; word0, word1 : Unsigned_64; rights : Unsigned_32 := 0)
    is
@@ -1020,7 +1052,7 @@ procedure main is
            Address => serverWord (q, FQ.Server_Answers_At);
          produced : Unsigned_32 with Volatile, Import,
            Address => serverWord (q, FQ.Server_Answered_At);
-         ignore : Unsigned_64;
+         wakeHeld : Boolean;
       begin
          --  Owed <= Space (FQueues.Valid): the answer has its slot.
          FQueues.Complete
@@ -1029,15 +1061,381 @@ procedure main is
          --  The answer is written before the count that hands it over.
          System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
          produced := Unsigned_32 (clientQueues (q).server.Answers.Produced);
-         if clientQueues (q).waiting then
-            clientQueues (q).waiting := False;
-            ignore := replyCap
-              (CapabilitySlot (WAIT_REPLY_SLOT_BASE + q),
-               (tag => (label => REPLY_OK, length => 0, flags => 0, reserved => 0),
-                authorityTag => 0, words => [others => 0]));
+         Queue_Wakes.Posted (clientQueues (q).wake, wakeHeld);
+         if wakeHeld then
+            answerWake (q, REPLY_OK);
          end if;
       end;
    end answerEntry;
+
+   ---------------------------------------------------------------------------
+   --  Change notifications (docs/filesystem-protocol-v2.md step 4): a
+   --  client's watches, each naming a folder of a volume by its path, and
+   --  the records they produce in the client's event ring. Paths are
+   --  matched canonically: relative to the volume, without empty
+   --  components. Room in the ring is Watch_Reserve's: an event that would
+   --  not fit becomes the watch's Rescan_Needed, never a silent loss.
+   ---------------------------------------------------------------------------
+   package FE renames CuBit.Filesystem_Events;
+   package WR renames Watch_Reserve;
+   use type WR.Watch_State, WR.Decision, FE.Event_Kind;
+
+   type Watch_Record is record
+      state   : WR.Watch_State := WR.Unused;
+      subtree : Boolean := False;
+      volume  : Volume_Index := Volume_Index'First;
+      rel     : String (1 .. Natural (MAXIMUM_PATH_BYTES)) := [others => ' '];
+      relLength : Natural range 0 .. Natural (MAXIMUM_PATH_BYTES) := 0;
+      --  The ring's producer index after this watch's last Rescan_Needed
+      --  or its Watch_Ended (Ended: the number is free once read past it).
+      rescanMark : CuBit.Channel_Rings.Index := 0;
+   end record;
+   watches : array (Client_Queue_Index, FE.Watch_Number) of Watch_Record;
+   --  Shared by a rename's two records.
+   renameCookie : Unsigned_64 := 0;
+
+   --  Path without empty components (no leading, trailing or doubled '/').
+   function canonical (path : String) return String is
+      result : String (1 .. path'Length) := [others => ' '];
+      used : Natural := 0;
+   begin
+      for c of path loop
+         if c /= '/' or else (used > 0 and then result (used) /= '/') then
+            used := used + 1;
+            result (used) := c;
+         end if;
+      end loop;
+      if used > 0 and then result (used) = '/' then
+         used := used - 1;
+      end if;
+      return result (1 .. used);
+   end canonical;
+
+   --  A volume's full name for policy checks ("@name/rel").
+   function fullName (volume : Volume_Index; rel : String) return String is
+     ("@" & Volume_List.Name (Volumes, volume) & "/" & rel);
+
+   --  Records the client has not read yet.
+   function eventsWaiting (q : Client_Queue_Index) return Boolean is
+      ignore : Natural;
+   begin
+      if not clientQueues (q).eventLink.Active then
+         return False;
+      end if;
+      ignore := CuBit.Channels.Free_Bytes (clientQueues (q).eventLink);   --  learns the index
+      return clientQueues (q).eventLink.Writer.Fill > 0;
+   end eventsWaiting;
+
+   --  What the reserve may count as free.
+   function ringFree (q : Client_Queue_Index) return WR.Free_Bytes is
+     (Natural'Min (CuBit.Channels.Free_Bytes (clientQueues (q).eventLink), WR.Maximum_Free));
+
+   function rescanRead (q : Client_Queue_Index; w : FE.Watch_Number) return Boolean is
+     (WR.Reached (watches (q, w).rescanMark,
+                  CuBit.Channel_Rings.Consumed (clientQueues (q).eventLink.Writer),
+                  clientQueues (q).eventLink.Writer.Fill));
+
+   --  Put one record in q's ring (room was checked: Watch_Reserve).
+   procedure putRecord
+     (q : Client_Queue_Index; item : FE.Event; name : FE.Name_Bytes; length : FE.Name_Length)
+   is
+      bytes : FE.Record_Bytes;
+      used : FE.Record_Length;
+      result : CuBit.Channels.Put_Result;
+   begin
+      FE.Encode (item, name, length, bytes, used);
+      CuBit.Channels.Put (clientQueues (q).eventLink, bytes'Address, used, result);
+      if item.Kind in FE.Rescan_Needed | FE.Watch_Ended then
+         watches (q, item.Watch).rescanMark := clientQueues (q).eventLink.Writer.Produced;
+      end if;
+   end putRecord;
+
+   procedure putRescan (q : Client_Queue_Index; w : FE.Watch_Number) is
+   begin
+      putRecord (q, (Watch => w, Kind => FE.Rescan_Needed, Flags => 0, Object => 0, Cookie => 0,
+                     Stamp => Unsigned_64 (namespaceGeneration)),
+                 [others => 0], 0);
+   end putRescan;
+
+   procedure putEnded (q : Client_Queue_Index; w : FE.Watch_Number) is
+   begin
+      putRecord (q, (Watch => w, Kind => FE.Watch_Ended, Flags => 0, Object => 0, Cookie => 0,
+                     Stamp => Unsigned_64 (namespaceGeneration)),
+                 [others => 0], 0);
+   end putEnded;
+
+   --  Answer q's held wake: records wait.
+   procedure eventsPosted (q : Client_Queue_Index) is
+      wakeHeld : Boolean;
+   begin
+      Queue_Wakes.Posted (clientQueues (q).wake, wakeHeld);
+      if wakeHeld then
+         answerWake (q, REPLY_OK);
+      end if;
+   end eventsPosted;
+
+   --  Whether watch w of queue q still sees changes.
+   function live (q : Client_Queue_Index; w : FE.Watch_Number) return Boolean is
+     (watches (q, w).state in WR.Live_State);
+
+   --  A live watch w of q ends (unwatched, or its folder went): its
+   --  Watch_Ended goes in now, or as soon as there is room (End_Owed).
+   procedure endWatch (q : Client_Queue_Index; w : FE.Watch_Number) is
+      put : Boolean;
+   begin
+      if live (q, w) and then WR.Holds (ringFree (q), clientQueues (q).watching) then
+         WR.End_Watch (watches (q, w).state, clientQueues (q).watching, ringFree (q), put);
+         if put then
+            putEnded (q, w);
+            eventsPosted (q);
+         end if;
+      end if;
+   end endWatch;
+
+   --  One event for live watch w of queue q, or its Rescan_Needed.
+   procedure offer
+     (q : Client_Queue_Index; w : FE.Watch_Number; item : FE.Event; name : String)
+   is
+      bytes : FE.Name_Bytes := [others => 0];
+      decision : WR.Decision;
+      free : constant WR.Free_Bytes := ringFree (q);
+   begin
+      if name'Length > FE.Maximum_Name_Bytes then
+         return;
+      end if;
+      for i in name'Range loop
+         bytes (i - name'First + 1) := Unsigned_8 (Character'Pos (name (i)));
+      end loop;
+      if not live (q, w) or else
+        (FE.Named (item.Kind) and then not FE.Valid_Relative (bytes, name'Length)) or else
+        not WR.Holds (free, clientQueues (q).watching)
+      then
+         return;
+      end if;
+      WR.Decide (watches (q, w).state, clientQueues (q).watching, free,
+                 FE.Header_Bytes + (if FE.Named (item.Kind) then name'Length else 0),
+                 rescanRead (q, w), decision);
+      case decision is
+         when WR.Put_Event =>
+            putRecord (q, item, bytes, (if FE.Named (item.Kind) then name'Length else 0));
+         when WR.Put_Rescan =>
+            putRescan (q, w);
+         when WR.Drop =>
+            null;
+      end case;
+      if decision /= WR.Drop then
+         eventsPosted (q);
+      end if;
+   end offer;
+
+   --  A change to path (relative to volume) of kind: every watch that sees
+   --  it gets a record, if its owner's policy lets it read that path.
+   procedure notify
+     (volume : Volume_Index; path : String; kind : FE.Event_Kind; isDirectory : Boolean;
+      object : Unsigned_64; cookie : Unsigned_64 := 0)
+   is
+      rel : constant String := canonical (path);
+      parentEnd : Natural := 0;
+      flags : constant Unsigned_8 := (if isDirectory then FE.Is_Directory else 0);
+   begin
+      if rel'Length = 0 then
+         return;
+      end if;
+      for i in reverse rel'Range loop
+         if rel (i) = '/' then
+            parentEnd := i;
+            exit;
+         end if;
+      end loop;
+      for q in clientQueues'Range loop
+         if clientQueues (q).owner /= No_Process and then clientQueues (q).eventLink.Active then
+            for w in FE.Watch_Number loop
+               declare
+                  watch : Watch_Record renames watches (q, w);
+                  root : constant String := watch.rel (1 .. watch.relLength);
+                  item : constant FE.Event :=
+                    (Watch => w, Kind => kind, Flags => flags, Object => object, Cookie => cookie,
+                     Stamp => Unsigned_64 (namespaceGeneration));
+               begin
+                  if live (q, w) and then watch.volume = volume then
+                     if kind in FE.Removed | FE.Renamed_From and then isDirectory and then
+                       (root = rel or else
+                        (root'Length > rel'Length and then
+                         root (1 .. rel'Length) = rel and then root (rel'Length + 1) = '/'))
+                     then
+                        --  The watched folder itself, or a folder above it:
+                        --  the watch named it by its path.
+                        endWatch (q, w);
+                     elsif not checkAccess (clientQueues (q).owner, fullName (volume, rel), ACL_READ) then
+                        null;
+                     elsif not watch.subtree then
+                        if (parentEnd = 0 and then root'Length = 0) or else
+                          (parentEnd > 0 and then rel (rel'First .. parentEnd - 1) = root)
+                        then
+                           offer (q, w, item, rel (parentEnd + 1 .. rel'Last));
+                        end if;
+                     elsif root'Length = 0 then
+                        offer (q, w, item, rel);
+                     elsif rel'Length > root'Length + 1 and then
+                       rel (rel'First .. rel'First + root'Length - 1) = root and then
+                       rel (rel'First + root'Length) = '/'
+                     then
+                        offer (q, w, item, rel (rel'First + root'Length + 1 .. rel'Last));
+                     end if;
+                  end if;
+               end;
+            end loop;
+         end if;
+      end loop;
+   end notify;
+
+   --  A change in volume the service cannot name: its watches rescan.
+   procedure notifyUnnamed (volume : Volume_Index) is
+      put : Boolean;
+   begin
+      for q in clientQueues'Range loop
+         if clientQueues (q).owner /= No_Process and then clientQueues (q).eventLink.Active then
+            for w in FE.Watch_Number loop
+               if live (q, w) and then watches (q, w).volume = volume and then
+                 WR.Holds (ringFree (q), clientQueues (q).watching)
+               then
+                  WR.Force_Rescan (watches (q, w).state, clientQueues (q).watching, ringFree (q),
+                                   rescanRead (q, w), put);
+                  if put then
+                     putRescan (q, w);
+                     eventsPosted (q);
+                  end if;
+               end if;
+            end loop;
+         end if;
+      end loop;
+   end notifyUnnamed;
+
+   --  Each pass: watches whose Rescan_Needed was read watch again, and owed
+   --  records (Rescan_Needed, Watch_Ended) go in when there is room.
+   procedure settleWatches is
+      put : Boolean;
+   begin
+      for q in clientQueues'Range loop
+         if clientQueues (q).owner /= No_Process and then clientQueues (q).eventLink.Active then
+            for w in FE.Watch_Number loop
+               if watches (q, w).state in WR.Rescan_Posted | WR.Rescan_Owed | WR.End_Owed and then
+                 WR.Holds (ringFree (q), clientQueues (q).watching)
+               then
+                  WR.Settle (watches (q, w).state, clientQueues (q).watching, ringFree (q),
+                             rescanRead (q, w), put);
+                  if put then
+                     if watches (q, w).state = WR.Ended then
+                        putEnded (q, w);
+                     else
+                        putRescan (q, w);
+                     end if;
+                     eventsPosted (q);
+                  end if;
+               end if;
+            end loop;
+         end if;
+      end loop;
+   end settleWatches;
+
+
+   ---------------------------------------------------------------------------
+   --  Modified events: a handle that may write keeps the path it was opened
+   --  by (a bounded table: past it, the change is reported unnamed), and a
+   --  written handle reports Modified once at its close, flush, park or the
+   --  periodic commit.
+   ---------------------------------------------------------------------------
+   MAX_NOTICE_PATHS : constant := 128;
+   subtype Notice_Slot is Natural range 0 .. MAX_NOTICE_PATHS;
+   type Notice_Path is record
+      used : Boolean := False;
+      rel  : String (1 .. Natural (MAXIMUM_PATH_BYTES)) := [others => ' '];
+      relLength : Natural range 0 .. Natural (MAXIMUM_PATH_BYTES) := 0;
+   end record;
+   noticePaths : array (1 .. MAX_NOTICE_PATHS) of Notice_Path;
+   noticeOf : array (files'Range) of Notice_Slot := [others => 0];
+   modifiedPending : array (files'Range) of Boolean := [others => False];
+   --  A writable handle whose path could not be kept.
+   pathUnknown : array (files'Range) of Boolean := [others => False];
+
+   procedure keepNoticePath (slot : Natural; rel : String) is
+      kept : constant String := canonical (rel);
+   begin
+      noticeOf (slot) := 0;
+      pathUnknown (slot) := True;
+      modifiedPending (slot) := False;
+      for n in noticePaths'Range loop
+         if not noticePaths (n).used then
+            noticePaths (n).used := True;
+            noticePaths (n).relLength := kept'Length;
+            noticePaths (n).rel (1 .. kept'Length) := kept;
+            noticeOf (slot) := n;
+            pathUnknown (slot) := False;
+            return;
+         end if;
+      end loop;
+   end keepNoticePath;
+
+   procedure noteModified (slot : Integer) is
+   begin
+      if slot in files'Range and then (noticeOf (slot) /= 0 or else pathUnknown (slot)) then
+         modifiedPending (slot) := True;
+      end if;
+   end noteModified;
+
+   procedure reportModified (slot : Natural) is
+   begin
+      if modifiedPending (slot) then
+         modifiedPending (slot) := False;
+         if noticeOf (slot) /= 0 then
+            notify (files (slot).volume,
+                    noticePaths (noticeOf (slot)).rel (1 .. noticePaths (noticeOf (slot)).relLength),
+                    FE.Modified, False,
+                    Shift_Left (Unsigned_64 (files (slot).volume), 32) or Unsigned_64 (files (slot).inodeNum));
+         else
+            notifyUnnamed (files (slot).volume);
+         end if;
+      end if;
+   end reportModified;
+
+   procedure forgetNoticePath (slot : Natural) is
+   begin
+      reportModified (slot);
+      if noticeOf (slot) /= 0 then
+         noticePaths (noticeOf (slot)).used := False;
+      end if;
+      noticeOf (slot) := 0;
+      pathUnknown (slot) := False;
+   end forgetNoticePath;
+
+   --  A rename moved old to new: kept paths at or below old follow it.
+   procedure renameNoticePaths (before, after : String) is
+      from : constant String := canonical (before);
+      to : constant String := canonical (after);
+   begin
+      for n of noticePaths loop
+         if n.used then
+            declare
+               kept : constant String := n.rel (1 .. n.relLength);
+            begin
+               if kept = from then
+                  n.relLength := to'Length;
+                  n.rel (1 .. to'Length) := to;
+               elsif kept'Length > from'Length and then kept (1 .. from'Length) = from and then
+                 kept (from'Length + 1) = '/' and then
+                 to'Length + kept'Length - from'Length <= n.rel'Length
+               then
+                  declare
+                     moved : constant String := to & kept (from'Length + 1 .. kept'Last);
+                  begin
+                     n.relLength := moved'Length;
+                     n.rel (1 .. moved'Length) := moved;
+                  end;
+               end if;
+            end;
+         end if;
+      end loop;
+   end renameNoticePaths;
 
    procedure acquireClientMemory
      (sender        : Process_ID;
@@ -1105,11 +1503,6 @@ procedure main is
       replyMsg : Message;
       ignore   : Unsigned_64;
    begin
-      if capturing then
-         capturedLabel := label;
-         capturedValue := word0;
-         return;
-      end if;
       if curRoute.queue /= No_Client_Queue then
          answerEntry (label, word0, 0);
          return;
@@ -1715,6 +2108,8 @@ procedure main is
                   end if;
                   --  A new file under a number an old one may have had.
                   bumpVersion ((useVolume, inodeNum));
+                  notify (useVolume, relPath, FE.Created, False,
+                          Shift_Left (Unsigned_64 (useVolume), 32) or Unsigned_64 (inodeNum));
                end;
             end;
          end if;
@@ -1842,6 +2237,12 @@ procedure main is
       parkable (handle) := selectedKind = EXT2_FILESYSTEM and then mayRead;
       if selectedKind = EXT2_FILESYSTEM then
          handleOpened (handle);
+         --  Watches see what it writes (Modified at close, flush, park or
+         --  the commit), a truncation included.
+         if Requests_Write (openFlags) then
+            keepNoticePath (handle, pathBuffer (relStart .. Natural (pathLen)));
+            modifiedPending (handle) := (openFlags and OPEN_TRUNCATE) /= 0;
+         end if;
       end if;
 
       --  Reply with handle in words(0) and file size in words(1)
@@ -2260,6 +2661,7 @@ procedure main is
          if not delegated (handle) then
             handleOpened (handle);
          end if;
+         reportModified (handle);
          sendReply (sender, REPLY_OK, 0);
       end if;
    end handlePark;
@@ -2280,6 +2682,7 @@ procedure main is
       if writeDelegated (handle) then
          harvest (handle);
       end if;
+      reportModified (handle);
       case files (handle).filesystemKind is
          when CPIO_ARCHIVE | ISO_FILESYSTEM =>
             status := Ext2.Flush_Unsupported;
@@ -2737,24 +3140,659 @@ procedure main is
                      Unsigned_64 (inodeNum));
    end inspectionOf;
 
-   --  Return one Directory.Page.V1 into a fixed one-page writable grant.
-   --  Inspected: OP_READ_DIRECTORY_INSPECTED, whose grant carries a second
-   --  page of Entry_Inspection records after the listing.
-   procedure handleReadDirectoryPage
-     (sender : Process_ID; msg : Message; inspected : Boolean := False)
+   --  Queue_Watch: a directory handle of the client's; Options: subtree.
+   procedure handleWatch (q : Client_Queue_Index; handleWord : Unsigned_64; options : Unsigned_32) is
+      owner : constant Process_ID := clientQueues (q).owner;
+      handle : constant Integer := resolveHandle (handleWord, owner, DIRECTORY_OBJECT);
+      selection : Path_Selection;
+      volume : Volume_Reference;
+      relFirst : Integer;
+   begin
+      if handle < 0 then
+         sendReply (owner, REPLY_WRONG_OBJECT_TYPE, 0);
+         return;
+      elsif not clientQueues (q).eventLink.Active or else
+        (options and not FQ.Watch_Subtree) /= 0 or else
+        files (handle).filesystemKind /= EXT2_FILESYSTEM
+      then
+         sendReply (owner, REPLY_ERR, 0);
+         return;
+      end if;
+      declare
+         path : constant String := CuBit.Directory_Paths.Value (extras (handle).directoryPath);
+      begin
+         Select_Path (Volumes, path, selection, volume, relFirst);
+         if selection = Unqualified then
+            volume := Default_Write_Volume;
+         elsif selection /= Known_Volume then
+            volume := No_Volume;
+         end if;
+         if volume = No_Volume or else volume /= files (handle).volume then
+            sendReply (owner, REPLY_ERR, 0);
+            return;
+         end if;
+         declare
+            rel : constant String :=
+              canonical (path (Integer'Max (relFirst, path'First) .. path'Last));
+         begin
+            if not checkAccess (owner, fullName (volume, rel), ACL_READ) then
+               sendReply (owner, REPLY_ACCESS_DENIED, 0);
+               return;
+            end if;
+            for w in FE.Watch_Number loop
+               --  A number is free when unused, or ended and its
+               --  Watch_Ended read (no old record is read as the new watch's).
+               if watches (q, w).state = WR.Unused or else
+                 (watches (q, w).state = WR.Ended and then rescanRead (q, w))
+               then
+                  if not WR.May_Admit (ringFree (q), clientQueues (q).watching) then
+                     exit;
+                  end if;
+                  watches (q, w) :=
+                    (state => WR.Watching, subtree => (options and FQ.Watch_Subtree) /= 0,
+                     volume => volume, rel => [others => ' '], relLength => rel'Length,
+                     rescanMark => 0);
+                  watches (q, w).rel (1 .. rel'Length) := rel;
+                  clientQueues (q).watching := clientQueues (q).watching + 1;
+                  sendReply (owner, REPLY_OK, Unsigned_64 (w));
+                  return;
+               end if;
+            end loop;
+            sendReply (owner, REPLY_NO_SPACE, 0);
+         end;
+      end;
+   end handleWatch;
+
+   procedure handleUnwatch (q : Client_Queue_Index; number : Unsigned_64) is
+      owner : constant Process_ID := clientQueues (q).owner;
+   begin
+      --  An ended watch (Watch_Ended posted or owed) is not live.
+      if number not in 1 .. FE.Maximum_Watches or else not live (q, FE.Watch_Number (number)) then
+         sendReply (owner, REPLY_ERR, 0);
+         return;
+      end if;
+      --  Its last record is a Watch_Ended, as for a folder that went.
+      endWatch (q, FE.Watch_Number (number));
+      sendReply (owner, REPLY_OK, 0);
+   end handleUnwatch;
+
+   ---------------------------------------------------------------------------
+   --  Queue_List_Scopes (docs/filesystem-protocol-v2.md step 6): the
+   --  caller's own access profile, as CuBit.File_Access wire entries. A
+   --  process learns only its own grants. Without a profile: no entries.
+   ---------------------------------------------------------------------------
+   procedure handleListScopes (owner : Process_ID; rangeBytes : Unsigned_64) is
+      package FA renames CuBit.File_Access;
+      wire : FA.Wire_Bytes (1 .. FA.Maximum_Entries * FA.Wire_Entry_Bytes);
+      count : Natural := 0;
+   begin
+      for profile of aclProfiles loop
+         if profile.active and then profile.pid = owner then
+            FA.Encode (profile.policy, wire, count);
+            exit;
+         end if;
+      end loop;
+      if Unsigned_64 (count) * FA.Wire_Entry_Bytes > rangeBytes then
+         sendReply (owner, REPLY_NO_SPACE, Unsigned_64 (count));
+         return;
+      end if;
+      if count > 0 then
+         declare
+            target : FA.Wire_Bytes (1 .. count * FA.Wire_Entry_Bytes)
+              with Import, Address => curArena;
+         begin
+            target := wire (1 .. count * FA.Wire_Entry_Bytes);
+         end;
+      end if;
+      sendReply (owner, REPLY_OK, Unsigned_64 (count));
+   end handleListScopes;
+
+   ---------------------------------------------------------------------------
+   --  Queue_Describe_Volume (step 7): the volume of a path the caller may
+   --  read, from the service's in-memory superblock (with the blocks freed
+   --  by the running transaction, which are free once it commits).
+   ---------------------------------------------------------------------------
+   package VD renames CuBit.Volume_Descriptions;
+   use type VD.Volume_Kind;
+   pragma Compile_Time_Error
+     (VD.Record_Bytes /= FQ.Volume_Description_Bytes, "Volume.Description.V1 size");
+
+   procedure handleDescribeVolume (owner : Process_ID; pathLength, rangeBytes : Unsigned_64) is
+      pathBuffer : String (1 .. Natural (MAXIMUM_PATH_BYTES));
+      selection : Path_Selection;
+      reference : Volume_Reference;
+      relStart : Integer;
+      item : VD.Description;
+      bytes : VD.Record_Image;
+
+      procedure setName (name : String) is
+      begin
+         item.Length := Natural'Min (name'Length, VD.Maximum_Name_Bytes);
+         for i in 1 .. item.Length loop
+            item.Name (i) := Character'Pos (name (name'First + i - 1));
+         end loop;
+      end setName;
+   begin
+      if pathLength = 0 or else pathLength > MAXIMUM_PATH_BYTES or else
+        pathLength > rangeBytes or else rangeBytes < VD.Record_Bytes
+      then
+         sendReply (owner, REPLY_ERR, 0);
+         return;
+      end if;
+      declare
+         source : String (1 .. Natural (pathLength)) with Import, Address => curArena;
+      begin
+         pathBuffer (1 .. Natural (pathLength)) := source;   --  copy, then validate
+      end;
+      declare
+         path : String renames pathBuffer (1 .. Natural (pathLength));
+      begin
+         if hasTraversal (path) then
+            sendReply (owner, REPLY_ERR, 0);
+            return;
+         elsif not checkAccess (owner, path, ACL_READ) then
+            sendReply (owner, REPLY_ACCESS_DENIED, 0);
+            return;
+         end if;
+         Select_Path (Volumes, path, selection, reference, relStart);
+      end;
+      if selection = Unqualified then
+         reference := Default_Write_Volume;
+         selection := (if reference = No_Volume then Unknown_Volume else Known_Volume);
+      end if;
+      case selection is
+         when Known_Volume =>
+            declare
+               volume : constant Volume_Index := Volume_Index (reference);
+               admission : Admission_Result;
+            begin
+               ensureVolume (volume, admission);
+               if admission /= Admitted then
+                  sendReply (owner, REPLY_IO_ERROR, 0);
+                  return;
+               end if;
+               declare
+                  fs : Ext2.Filesystem renames Contexts (volume).Fs;
+                  free : constant Unsigned_64 := Unsigned_64 (fs.sb.freeBlocks);
+                  total : constant Unsigned_64 := Unsigned_64 (fs.sb.blockCount);
+               begin
+                  item.Kind := (if (fs.sb.compatibleFeatures and Ext2_Support.Compat_Has_Journal) /= 0
+                                then VD.Ext3 else VD.Ext2);
+                  item.Flags :=
+                    (if fs.writeQuarantined or else
+                        CuBit.Block_Devices.Is_Read_Only (fs.device.description)
+                     then VD.Read_Only else 0) +
+                    (if fs.journal.Active and then item.Kind = VD.Ext3 then VD.Journaled else 0) +
+                    (if CuBit.Block_Devices.Can_Persist (fs.device.description)
+                     then VD.Durable_Flush else 0);
+                  item.Block := VD.Block_Size'Max (VD.Smallest_Block,
+                                  VD.Block_Size'Min (VD.Largest_Block, fs.blkSize));
+                  item.Total_Blocks := total;
+                  item.Free_Blocks := Unsigned_64'Min (free, total);
+                  item.Releasing_Blocks :=
+                    Unsigned_64'Min (Unsigned_64 (fs.pendingCount), total - item.Free_Blocks);
+                  item.Total_Inodes := Unsigned_64 (fs.sb.inodeCount);
+                  item.Free_Inodes := Unsigned_64'Min (Unsigned_64 (fs.sb.freeInodes), item.Total_Inodes);
+                  setName (Volume_List.Name (Volumes, volume));
+               end;
+            end;
+         when Boot_Archive =>
+            if not cpioOk then
+               sendReply (owner, REPLY_NOT_FOUND, 0);
+               return;
+            end if;
+            item := (Kind => VD.Boot_Archive, Flags => VD.Read_Only, Block => VD.Smallest_Block,
+                     Total_Blocks => (cpioArchive.size + VD.Smallest_Block - 1) / VD.Smallest_Block,
+                     others => <>);
+            setName (Volume_List.Boot_Archive_Name);
+         when Optical_Volume =>
+            declare
+               blocks : Unsigned_64;
+               mounted : Boolean;
+            begin
+               ISO9660.Describe (blocks, mounted);
+               if not mounted then
+                  sendReply (owner, REPLY_NOT_FOUND, 0);
+                  return;
+               end if;
+               item := (Kind => VD.ISO_9660, Flags => VD.Read_Only,
+                        Block => ISO_Records.Block_Bytes, Total_Blocks => blocks, others => <>);
+               setName (Volume_List.Optical_Name);
+            end;
+         when Unqualified | Unknown_Volume | Invalid_Path =>
+            sendReply (owner, REPLY_NOT_FOUND, 0);
+            return;
+      end case;
+      if not VD.Valid (item) then
+         sendReply (owner, REPLY_ERR, 0);
+         return;
+      end if;
+      VD.Encode (item, bytes);
+      declare
+         target : VD.Record_Image with Import, Address => curArena;
+      begin
+         target := bytes;
+      end;
+      sendReply (owner, REPLY_OK, VD.Record_Bytes);
+   end handleDescribeVolume;
+
+   ---------------------------------------------------------------------------
+   --  Server-side copy (docs/filesystem-protocol-v2.md step 5): Queue_Copy
+   --  is answered once, when the copy ends; meanwhile the service copies one
+   --  bounded slice (Copy_Slices) per copy per pass between its other work,
+   --  through its block cache, and publishes the bytes done in the queue's
+   --  progress words (FQ.Server_Copies_At). A copy holds no lock a client
+   --  waits on: other requests, including writes to the same files, go on
+   --  between slices (POSIX copy_file_range gives no more).
+   ---------------------------------------------------------------------------
+   subtype Copy_Index is Natural range 0 .. FQ.Maximum_Copies - 1;
+   type Copy_Record is record
+      active   : Boolean := False;
+      token    : FQueues.Token := 0;
+      source   : Natural := 0;           --  handle slots
+      target   : Natural := 0;
+      plan     : Copy_Slices.Copy;
+      deadline : Unsigned_64 := Wait_Forever;
+      cancel   : Boolean := False;
+   end record;
+   copies : array (Client_Queue_Index, Copy_Index) of Copy_Record;
+   COPY_SLICE_BYTES : constant := HARVEST_BUFFER_BYTES;
+   pragma Compile_Time_Error
+     (Copy_Slices.Copy_To_End /= FQ.Copy_To_End, "Copy_To_End");
+
+   --  Publish copy c's progress (the token last when starting, first when
+   --  ending: a reader that sees its token sees that copy's count).
+   procedure publishCopy (q : Client_Queue_Index; c : Copy_Index) is
+      at_byte : constant Natural := FQ.Server_Copies_At + c * FQ.Copy_Entry_Bytes;
+      token : Unsigned_64 with Volatile, Import,
+        Address => serverWord (q, at_byte + FQ.Copy_Token_At);
+      done : Unsigned_64 with Volatile, Import,
+        Address => serverWord (q, at_byte + FQ.Copy_Done_At);
+   begin
+      if copies (q, c).active then
+         done := copies (q, c).plan.Done;
+         token := Unsigned_64 (copies (q, c).token);
+      else
+         token := 0;
+         done := 0;
+      end if;
+   end publishCopy;
+
+   --  Answer copy c (once): label, the bytes copied (always a prefix).
+   procedure finishCopy (q : Client_Queue_Index; c : Copy_Index; label : Unsigned_32) is
+      saved : constant Reply_Route := curRoute;
+      done : constant Unsigned_64 := copies (q, c).plan.Done;
+   begin
+      curRoute := (queue => q, token => copies (q, c).token);
+      copies (q, c).active := False;
+      publishCopy (q, c);
+      answerEntry (label, done, 0);
+      curRoute := saved;
+      copies (q, c) := (others => <>);
+   end finishCopy;
+
+   procedure copyHandleGone (slot : Natural) is
+   begin
+      for q in clientQueues'Range loop
+         for c in Copy_Index loop
+            if copies (q, c).active and then
+              (copies (q, c).source = slot or else copies (q, c).target = slot)
+            then
+               finishCopy (q, c, REPLY_ERR);
+            end if;
+         end loop;
+      end loop;
+   end copyHandleGone;
+
+   function copiesActive return Boolean is
+     (for some q in clientQueues'Range =>
+        (for some c in Copy_Index => copies (q, c).active));
+
+   function sourceSize (slot : Natural) return Unsigned_64 is
+     (case files (slot).filesystemKind is
+         when EXT2_FILESYSTEM =>
+           Ext2.fileSize (Open_Inodes.Value (inodeObjects, Open_Inodes.Owner_Index (slot))),
+         when ISO_FILESYSTEM => Unsigned_64 (extras (slot).opticalFile.Bytes),
+         when CPIO_ARCHIVE => cpioArchive.files (files (slot).cpioFileIdx).dataSize);
+
+   --  Queue_Copy: Handle = source (may read), Spare_1 = target (may write,
+   --  ext2), Position / Arena_Offset = source / target offsets, Length (or
+   --  FQ.Copy_To_End), Spare_2 = deadline (absolute ms, or Wait_Forever).
+   procedure handleCopy (q : Client_Queue_Index; r : FQ.Request) is
+      owner : constant Process_ID := clientQueues (q).owner;
+      source : constant Integer := resolveHandle (r.Handle, owner, FILE_OBJECT);
+      target : constant Integer := resolveHandle (r.Spare_1, owner, FILE_OBJECT);
+      plan : Copy_Slices.Copy;
+      admitted : Boolean;
+   begin
+      if source < 0 or else target < 0 then
+         sendReply (owner, REPLY_WRONG_OBJECT_TYPE, 0);
+         return;
+      elsif (files (source).openRights and ACL_READ) = 0 or else
+        (files (target).openRights and ACL_WRITE) = 0
+      then
+         sendReply (owner, REPLY_ACCESS_DENIED, 0);
+         return;
+      elsif files (target).filesystemKind /= EXT2_FILESYSTEM then
+         sendReply (owner, REPLY_READ_ONLY, 0);
+         return;
+      end if;
+      Copy_Slices.Admit (r.Position, r.Arena_Offset, r.Length, plan, admitted);
+      if not admitted then
+         sendReply (owner, REPLY_OUT_OF_RANGE, 0);
+         return;
+      end if;
+      --  One file into itself: only between ranges that cannot overlap.
+      if files (source).filesystemKind = EXT2_FILESYSTEM and then
+        files (source).volume = files (target).volume and then
+        files (source).inodeNum = files (target).inodeNum and then
+        (r.Length = FQ.Copy_To_End or else
+         (plan.Source_At < plan.Target_At + plan.Wanted and then
+          plan.Target_At < plan.Source_At + plan.Wanted))
+      then
+         sendReply (owner, REPLY_ERR, 0);
+         return;
+      end if;
+      for c in Copy_Index loop
+         if not copies (q, c).active then
+            copies (q, c) := (active => True, token => curRoute.token, source => source,
+                              target => target, plan => plan, deadline => r.Spare_2,
+                              cancel => False);
+            publishCopy (q, c);
+            return;   --  answered when it ends
+         end if;
+      end loop;
+      sendReply (owner, REPLY_BUSY, 0);
+   end handleCopy;
+
+   --  Queue_Cancel: Handle = the copy's token. The copy is answered
+   --  REPLY_CANCELLED (with its prefix) at its next slice.
+   procedure handleCancel (q : Client_Queue_Index; token : Unsigned_64) is
+   begin
+      for c in Copy_Index loop
+         if copies (q, c).active and then Unsigned_64 (copies (q, c).token) = token then
+            copies (q, c).cancel := True;
+            sendReply (clientQueues (q).owner, REPLY_OK, 0);
+            return;
+         end if;
+      end loop;
+      sendReply (clientQueues (q).owner, REPLY_NOT_FOUND, 0);
+   end handleCancel;
+
+   --  One slice of copy c.
+   procedure copySlice (q : Client_Queue_Index; c : Copy_Index) is
+      use type Copy_Slices.Ending;
+      copy : Copy_Record renames copies (q, c);
+      source : constant Natural := copy.source;
+      target : constant Natural := copy.target;
+      slice : Unsigned_64 := 0;
+      copied : Unsigned_64 := 0;
+      label : Unsigned_32 := REPLY_OK;
+      ending : Copy_Slices.Ending;
+   begin
+      if not copy.cancel then
+         --  The source's buffered writes first; the target's client stops
+         --  buffering (its pages are taken in) before the service writes.
+         if writeDelegated (source) then
+            harvest (source);
+         end if;
+         if writeDelegated (target) then
+            recallWrite (target);
+         end if;
+         slice := Copy_Slices.Next (copy.plan, sourceSize (source), COPY_SLICE_BYTES);
+      end if;
+      if slice > 0 then
+         declare
+            read : Unsigned_64 := 0;
+            readStatus : Ext2.Read_Status := Ext2.Read_Complete;
+            writeStatus : Ext2.Write_Status := Ext2.Write_Complete;
+            targetInode : Ext2.Inode;
+         begin
+            case files (source).filesystemKind is
+               when EXT2_FILESYSTEM =>
+                  Ext2.readData
+                    (Contexts (files (source).volume).Fs,
+                     Open_Inodes.Value (inodeObjects, Open_Inodes.Owner_Index (source)),
+                     Copy_Slices.Source_Position (copy.plan), harvestBuffer'Address, slice,
+                     read, readStatus);
+               when ISO_FILESYSTEM =>
+                  declare
+                     ok : Boolean;
+                  begin
+                     ISO9660.Read (extras (source).opticalFile, Copy_Slices.Source_Position (copy.plan),
+                                   slice, harvestBuffer'Address, read, ok);
+                     readStatus := (if ok then Ext2.Read_Complete else Ext2.Read_Device_Error);
+                  end;
+               when CPIO_ARCHIVE =>
+                  read := Cpio.readData (cpioArchive, files (source).cpioFileIdx,
+                                         Copy_Slices.Source_Position (copy.plan),
+                                         harvestBuffer'Address, slice);
+            end case;
+            read := Unsigned_64'Min (read, slice);
+            if readStatus /= Ext2.Read_Complete then
+               label := REPLY_IO_ERROR;
+            elsif read > 0 then
+               fileChanging ((files (target).volume, files (target).inodeNum), target);
+               targetInode := Open_Inodes.Value (inodeObjects, Open_Inodes.Owner_Index (target));
+               Ext2.writeData
+                 (Contexts (files (target).volume).Fs, files (target).inodeNum, targetInode,
+                  Copy_Slices.Target_Position (copy.plan), harvestBuffer'Address, read,
+                  copied, writeStatus);
+               copied := Unsigned_64'Min (copied, read);
+               if writeStatus /= Ext2.Write_Recovery_Required then
+                  Open_Inodes.Replace (inodeObjects, Open_Inodes.Owner_Index (target), targetInode);
+                  refreshDelegation (target);
+               end if;
+               label := replyForWrite (writeStatus);
+            end if;
+            if label = REPLY_OK and then read < slice then
+               label := REPLY_IO_ERROR;   --  the source gave less than it holds
+            end if;
+         end;
+         Copy_Slices.Advance (copy.plan, Unsigned_64'Min (copied, copy.plan.Wanted - copy.plan.Done));
+         publishCopy (q, c);
+      end if;
+      ending := Copy_Slices.Decide
+        (Slice_Failed => label /= REPLY_OK, Cancel_Asked => copy.cancel,
+         Finished => slice = 0 and then not copy.cancel,
+         Deadline_Passed => copy.deadline /= Wait_Forever and then
+                            syscall (SYSCALL_GETTIME) >= copy.deadline);
+      case ending is
+         when Copy_Slices.Going => null;
+         when Copy_Slices.Complete => finishCopy (q, c, REPLY_OK);
+         when Copy_Slices.Cancelled => finishCopy (q, c, REPLY_CANCELLED);
+         when Copy_Slices.Deadline_Reached => finishCopy (q, c, REPLY_DEADLINE);
+         when Copy_Slices.Failed => finishCopy (q, c, label);
+      end case;
+   end copySlice;
+
+   --  Each pass: one slice of every copy.
+   procedure runCopies is
+   begin
+      for q in clientQueues'Range loop
+         for c in Copy_Index loop
+            if copies (q, c).active then
+               copySlice (q, c);
+            end if;
+         end loop;
+      end loop;
+   end runCopies;
+
+   --  Directory resume tokens (Directory.Page.V2): the next record's byte
+   --  position in the directory, and above it a check naming the directory,
+   --  so a token handed back for another directory is refused. The position
+   --  itself is checked by Ext2.readDirectoryPage whatever its origin.
+   TOKEN_POSITION_BITS : constant := 32;
+   function directoryCheck (handle : Natural) return Unsigned_32 is
+      --  Fibonacci hashing: spreads the inode, volume and generation over
+      --  the word (a mix-up detector, not authority: the handle is that).
+      GOLDEN : constant Unsigned_32 := 16#9E37_79B1#;
+      VOLUME_SHIFT : constant := 24;
+      mixed : Unsigned_32 :=
+        files (handle).inodeNum * GOLDEN xor
+        Shift_Left (Unsigned_32 (files (handle).volume), VOLUME_SHIFT);
+   begin
+      if files (handle).filesystemKind = EXT2_FILESYSTEM then
+         mixed := mixed xor extras (handle).directoryInode.generationNumber;
+      end if;
+      return (if mixed = 0 then GOLDEN else mixed);
+   end directoryCheck;
+
+   function resumeToken (handle : Natural; position : Unsigned_64) return Unsigned_64 is
+     (Shift_Left (Unsigned_64 (directoryCheck (handle)), TOKEN_POSITION_BITS) or
+      (position and (2 ** TOKEN_POSITION_BITS - 1)));
+
+   --  Queue_Seek_Directory: continue the handle's listing at a resume token
+   --  (0: from the start).
+   procedure handleSeekDirectory (owner : Process_ID; handleWord, token : Unsigned_64) is
+      handle : constant Integer := resolveHandle (handleWord, owner, DIRECTORY_OBJECT);
+   begin
+      if handle < 0 then
+         sendReply (owner, REPLY_WRONG_OBJECT_TYPE, 0);
+      elsif token = 0 then
+         files (handle).offset := 0;
+         sendReply (owner, REPLY_OK, 0);
+      elsif Unsigned_32 (Shift_Right (token, TOKEN_POSITION_BITS)) /= directoryCheck (handle) then
+         sendReply (owner, REPLY_OUT_OF_RANGE, 0);
+      else
+         files (handle).offset := token and (2 ** TOKEN_POSITION_BITS - 1);
+         sendReply (owner, REPLY_OK, 0);
+      end if;
+   end handleSeekDirectory;
+
+   --  Write one Directory.Page.V2 (CuBit.Directory_Pages) of the handle's
+   --  directory at target, continuing from its cursor. Metadata: fill each
+   --  entry's facts from its inode (else only kind and object). The page is
+   --  built in service memory and copied out whole.
+   procedure readDirectoryInto
+     (handle : Natural; target : System.Address; metadata : Boolean;
+      label : out Unsigned_32; listed : out Natural; ended : out Boolean)
    is
-      grantBytes : constant Natural :=
-        (if inspected then DIRECTORY_INSPECTED_BYTES else DIRECTORY_PAGE_BYTES);
+      package DP renames CuBit.Directory_Pages;
+      VOLUME_SHIFT : constant := 32;
+      page : DP.Page;
+      writer : DP.Writer;
+      nextCursor : Unsigned_64 := files (handle).offset;
+      atEnd : Boolean := False;
+      readStatus : Ext2.Directory_Read_Status := Ext2.Directory_Malformed;
+      records : Ext2.Listed_Records;
+      count : Natural := 0;
+      shared : DP.Page with Import, Address => target;
+   begin
+      label := REPLY_OK;
+      listed := 0;
+      ended := False;
+      DP.Start (page, writer);
+      if files (handle).filesystemKind = CPIO_ARCHIVE then
+         if files (handle).offset > Unsigned_64 (cpioArchive.count) then
+            label := REPLY_MALFORMED_FILESYSTEM;
+         else
+            while nextCursor < Unsigned_64 (cpioArchive.count) loop
+               declare
+                  archiveIndex : constant Natural := Natural (nextCursor);
+                  nameLength : constant Natural := cpioArchive.files (archiveIndex).nameLen;
+                  name : DP.Name_Bytes := [others => 0];
+               begin
+                  if nameLength = 0 or else nameLength > DP.Maximum_Name_Bytes then
+                     label := REPLY_MALFORMED_FILESYSTEM;
+                     exit;
+                  end if;
+                  exit when not DP.Fits (writer, nameLength);
+                  declare
+                     archiveName : String (1 .. nameLength)
+                       with Import,
+                            Address => cpioArchive.base + Storage_Offset
+                              (cpioArchive.files (archiveIndex).nameOff);
+                  begin
+                     for index in 1 .. nameLength loop
+                        name (index) := Unsigned_8 (Character'Pos (archiveName (index)));
+                     end loop;
+                  end;
+                  DP.Append
+                    (page, writer,
+                     (Kind => DP.Kind_File, Valid => DP.Valid_Size or DP.Valid_Object,
+                      Object => nextCursor + 1,
+                      Size => cpioArchive.files (archiveIndex).dataSize, others => <>),
+                     name, nameLength);
+                  nextCursor := nextCursor + 1;
+               end;
+            end loop;
+            atEnd := nextCursor = Unsigned_64 (cpioArchive.count);
+         end if;
+      else
+         case files (handle).filesystemKind is
+            when EXT2_FILESYSTEM =>
+               Ext2.readDirectoryPage
+                 (Contexts (files (handle).volume).Fs, extras (handle).directoryInode,
+                  files (handle).offset, records, count, nextCursor, readStatus);
+            when CPIO_ARCHIVE | ISO_FILESYSTEM => null;
+         end case;
+         case readStatus is
+            when Ext2.Directory_Page_Complete => null;
+            when Ext2.Directory_End => atEnd := True;
+            when Ext2.Directory_Malformed => label := REPLY_MALFORMED_FILESYSTEM;
+            when Ext2.Directory_Device_Error => label := REPLY_IO_ERROR;
+            when Ext2.Directory_Out_Of_Range => label := REPLY_OUT_OF_RANGE;
+            when Ext2.Directory_Range_Unsupported => label := REPLY_FILE_RANGE_UNSUPPORTED;
+         end case;
+         if label = REPLY_OK then
+            for index in 0 .. count - 1 loop
+               declare
+                  item : constant Ext2.Listed_Record := records (index);
+                  facts : DP.Facts :=
+                    (Kind => item.kind, Valid => DP.Valid_Object,
+                     Object => Shift_Left (Unsigned_64 (files (handle).volume), VOLUME_SHIFT) or
+                               Unsigned_64 (item.inode),
+                     others => <>);
+               begin
+                  if metadata then
+                     declare
+                        ino : Ext2.Inode;
+                        inodeStatus : Ext2.Read_Status;
+                        described : Entry_Inspection;
+                     begin
+                        Ext2.readInode
+                          (Contexts (files (handle).volume).Fs, item.inode, ino, inodeStatus);
+                        if inodeStatus = Ext2.Read_Complete then
+                           described := inspectionOf (ino, files (handle).volume, item.inode);
+                           facts :=
+                             (Kind => item.kind, Valid => described.valid,
+                              Object => described.objectId, Size => described.sizeBytes,
+                              Modified => described.modifiedMs, Changed => described.changedMs,
+                              Accessed => described.accessedMs, Mode => described.mode,
+                              Links => described.links, Owner => described.owner,
+                              Group => described.group);
+                        end if;
+                     end;
+                  end if;
+                  --  Ext2 counted the same records against a page.
+                  exit when not DP.Fits (writer, item.length);
+                  DP.Append (page, writer, facts, item.name, item.length);
+               end;
+            end loop;
+         end if;
+      end if;
+      if label = REPLY_OK then
+         DP.Finish (page, writer, atEnd, resumeToken (handle, nextCursor),
+                    Unsigned_64 (namespaceGeneration));
+         shared := page;
+         files (handle).offset := nextCursor;
+         listed := writer.Count;
+         ended := atEnd;
+      end if;
+   end readDirectoryInto;
+
+   --  OP_READ_DIRECTORY_PAGE: one Directory.Page.V2, with metadata, into a
+   --  one-page writable grant.
+   procedure handleReadDirectoryPage (sender : Process_ID; msg : Message) is
       handle : constant Integer :=
         resolveHandle (msg.words (0), sender, DIRECTORY_OBJECT);
       grantAddr : System.Address := System.Null_Address;
       grantOk : Boolean := False;
       returned : Boolean := False;
-      entryCount : Natural := 0;
-      nextCursor : Unsigned_64 := 0;
-      atEnd : Boolean := False;
-      readStatus : Ext2.Directory_Read_Status := Ext2.Directory_Malformed;
-      replyLabel : Unsigned_32 := REPLY_OK;
+      label : Unsigned_32;
+      listed : Natural;
+      ended : Boolean;
    begin
       if msg.tag.length /= 4 or else
          msg.words (2) /= Unsigned_64 (PROTOCOL_VERSION) or else handle < 0
@@ -2764,148 +3802,20 @@ procedure main is
               REPLY_ERR), 0);
          return;
       end if;
-
       acquireClientMemory
-        (sender, msg.words (1), msg.words (3), Unsigned_64 (grantBytes),
+        (sender, msg.words (1), msg.words (3), Unsigned_64 (DIRECTORY_PAGE_BYTES),
          CuBit.Memory_Grants.Write_Access, grantAddr, grantOk);
       if not grantOk then
          sendReply (sender, REPLY_ACCESS_DENIED, 0);
          return;
       end if;
-
-      declare
-         rawPage : String (1 .. grantBytes)
-           with Import, Address => grantAddr;
-         header : Directory_Page_Header
-           with Import, Address => grantAddr;
-         pageEntries : Directory_Entries
-           with Import,
-                Address => grantAddr + DIRECTORY_PAGE_HEADER_BYTES;
-      begin
-         rawPage := (others => Character'Val (0));
-
-         if files (handle).filesystemKind = CPIO_ARCHIVE then
-            if files (handle).offset > Unsigned_64 (cpioArchive.count) then
-               replyLabel := REPLY_MALFORMED_FILESYSTEM;
-            else
-               nextCursor := files (handle).offset;
-               while nextCursor < Unsigned_64 (cpioArchive.count) and then
-                 entryCount < MAXIMUM_DIRECTORY_PAGE_ENTRIES
-               loop
-                  declare
-                     archiveIndex : constant Natural := Natural (nextCursor);
-                     nameLength : constant Natural :=
-                       cpioArchive.files (archiveIndex).nameLen;
-                  begin
-                     if nameLength = 0 or else
-                       nameLength > MAXIMUM_DIRECTORY_NAME_BYTES
-                     then
-                        replyLabel := REPLY_MALFORMED_FILESYSTEM;
-                        exit;
-                     end if;
-                     declare
-                        archiveName : String (1 .. nameLength)
-                          with Import,
-                               Address => cpioArchive.base + Storage_Offset
-                                 (cpioArchive.files (archiveIndex).nameOff);
-                     begin
-                        pageEntries (entryCount).objectHint := nextCursor + 1;
-                        pageEntries (entryCount).sizeBytes :=
-                          cpioArchive.files (archiveIndex).dataSize;
-                        pageEntries (entryCount).nameLength :=
-                          Unsigned_16 (nameLength);
-                        pageEntries (entryCount).kind := DIRECTORY_KIND_FILE;
-                        pageEntries (entryCount).flags :=
-                          DIRECTORY_ENTRY_SIZE_VALID;
-                        for index in 1 .. nameLength loop
-                           pageEntries (entryCount).name (index) :=
-                             Unsigned_8 (Character'Pos (archiveName (index)));
-                        end loop;
-                     end;
-                     entryCount := entryCount + 1;
-                     nextCursor := nextCursor + 1;
-                  end;
-               end loop;
-               atEnd := nextCursor = Unsigned_64 (cpioArchive.count);
-            end if;
-         else
-            case files (handle).filesystemKind is
-               when EXT2_FILESYSTEM =>
-                  Ext2.readDirectoryPage
-                    (Contexts (files (handle).volume).Fs, extras (handle).directoryInode, files (handle).offset,
-                     pageEntries, entryCount, nextCursor, readStatus);
-               when CPIO_ARCHIVE | ISO_FILESYSTEM => null;
-            end case;
-
-            case readStatus is
-               when Ext2.Directory_Page_Complete => null;
-               when Ext2.Directory_End => atEnd := True;
-               when Ext2.Directory_Malformed =>
-                  replyLabel := REPLY_MALFORMED_FILESYSTEM;
-               when Ext2.Directory_Device_Error =>
-                  replyLabel := REPLY_IO_ERROR;
-               when Ext2.Directory_Out_Of_Range =>
-                  replyLabel := REPLY_OUT_OF_RANGE;
-               when Ext2.Directory_Range_Unsupported =>
-                  replyLabel := REPLY_FILE_RANGE_UNSUPPORTED;
-            end case;
-         end if;
-
-         header.version := PROTOCOL_VERSION;
-         header.headerBytes := DIRECTORY_PAGE_HEADER_BYTES;
-         header.entryBytes := DIRECTORY_ENTRY_BYTES;
-         header.entryCount := Unsigned_16 (entryCount);
-         header.flags := (if atEnd then DIRECTORY_PAGE_END else 0);
-         header.reserved := 0;
-         header.nextCursor := nextCursor;
-         header.snapshot :=
-           (if files (handle).filesystemKind = CPIO_ARCHIVE then 0 else
-              Unsigned_64 (extras (handle).directoryInode.generationNumber));
-
-         if inspected and then replyLabel = REPLY_OK then
-            declare
-               inspections : Directory_Inspections
-                 with Import, Address => grantAddr + Storage_Offset (DIRECTORY_PAGE_BYTES);
-            begin
-               for index in 0 .. entryCount - 1 loop
-                  if files (handle).filesystemKind = CPIO_ARCHIVE then
-                     inspections (index).valid := INSPECTED_SIZE;
-                     inspections (index).sizeBytes := pageEntries (index).sizeBytes;
-                  elsif files (handle).filesystemKind = EXT2_FILESYSTEM and then
-                    pageEntries (index).objectHint in 1 .. Unsigned_64 (Unsigned_32'Last)
-                  then
-                     declare
-                        ino : Ext2.Inode;
-                        inodeStatus : Ext2.Read_Status;
-                     begin
-                        Ext2.readInode
-                          (Contexts (files (handle).volume).Fs,
-                           Unsigned_32 (pageEntries (index).objectHint), ino, inodeStatus);
-                        if inodeStatus = Ext2.Read_Complete then
-                           inspections (index) := inspectionOf
-                             (ino, files (handle).volume,
-                              Unsigned_32 (pageEntries (index).objectHint));
-                           --  The listing's own size field, now known.
-                           pageEntries (index).sizeBytes := inspections (index).sizeBytes;
-                           pageEntries (index).flags :=
-                             pageEntries (index).flags or DIRECTORY_ENTRY_SIZE_VALID;
-                        end if;
-                     end;
-                  end if;
-               end loop;
-            end;
-         end if;
-      end;
-
+      readDirectoryInto (handle, grantAddr, True, label, listed, ended);
       returnClientMemory (msg.words (1), msg.words (3), returned);
       if not returned then
          sendReply (sender, REPLY_ERR, 0);
          return;
       end if;
-      if replyLabel = REPLY_OK then
-         files (handle).offset := nextCursor;
-      end if;
-      sendReply (sender, replyLabel, Unsigned_64 (entryCount));
+      sendReply (sender, label, Unsigned_64 (listed));
    end handleReadDirectoryPage;
 
    procedure handleCloseDirectory (sender : Process_ID; msg : Message) is
@@ -3142,6 +4052,25 @@ procedure main is
                   when Ext2.Rename_Invalid_Move => label := REPLY_INVALID_MOVE;
                   when Ext2.Rename_No_Room => label := REPLY_FILE_RANGE_UNSUPPORTED;
                end case;
+               if label = REPLY_OK then
+                  declare
+                     moved : Ext2.Inode;
+                     movedStatus : Ext2.Read_Status;
+                     isDirectory : Boolean := False;
+                  begin
+                     Ext2.readInode (Contexts (volume).Fs, inodeNum, moved, movedStatus);
+                     if movedStatus = Ext2.Read_Complete then
+                        isDirectory := Ext2.inodeType (moved) = Ext2.INODE_DIRECTORY;
+                     end if;
+                     renameCookie := renameCookie + 1;
+                     notify (volume, oldPath (oldRelStart .. oldPath'Last), FE.Renamed_From,
+                             isDirectory, Shift_Left (Unsigned_64 (volume), 32) or Unsigned_64 (inodeNum), renameCookie);
+                     notify (volume, newPath (newRelStart .. newPath'Last), FE.Renamed_To,
+                             isDirectory, Shift_Left (Unsigned_64 (volume), 32) or Unsigned_64 (inodeNum), renameCookie);
+                     renameNoticePaths (oldPath (oldRelStart .. oldPath'Last),
+                                        newPath (newRelStart .. newPath'Last));
+                  end;
+               end if;
                sendReply (sender, label, 0);
             end;
          end;
@@ -3355,6 +4284,10 @@ procedure main is
          writebackFailed (parked) := False;
          releaseHandle (parked);
       end if;
+      if replyForRemove (status) = REPLY_OK then
+         notify (volume, pathBuffer (relStart .. pathLen), FE.Removed, False,
+                 Shift_Left (Unsigned_64 (volume), 32) or Unsigned_64 (target));
+      end if;
       sendReply (sender, replyForRemove (status), 0);
    end handleUnlink;
 
@@ -3376,6 +4309,10 @@ procedure main is
       if lookup /= Ext2.Lookup_Found then
          sendReply (sender, Lookup_Reply_Label (lookup), 0);
       else
+         if replyForWrite (status) = REPLY_OK then
+            notify (volume, pathBuffer (relStart .. pathLen), FE.Created, True,
+                    Shift_Left (Unsigned_64 (volume), 32) or Unsigned_64 (created));
+         end if;
          sendReply (sender, replyForWrite (status), Unsigned_64 (created));
       end if;
    end handleMkdir;
@@ -3413,6 +4350,9 @@ procedure main is
             end if;
          end loop;
          Ext2.removeDirectoryPath (Contexts (volume).Fs, relPath, removed, status);
+         if replyForRemove (status) = REPLY_OK then
+            notify (volume, relPath, FE.Removed, True, Shift_Left (Unsigned_64 (volume), 32) or Unsigned_64 (target));
+         end if;
       end;
       sendReply (sender, replyForRemove (status), 0);
    end handleRmdir;
@@ -3429,8 +4369,9 @@ procedure main is
    --  pair, which takes them in. One queue per process.
    ---------------------------------------------------------------------------
    --  A channel's number here: its queue (or pending entry) and connector.
+   CONNECTORS_PER_QUEUE : constant := 8;   --  more than FQ's connectors
    function channelNumber (index : Client_Queue_Index; connector : Unsigned_16) return Unsigned_64 is
-     (Unsigned_64 (index) * 4 + Unsigned_64 (connector));
+     (Unsigned_64 (index) * CONNECTORS_PER_QUEUE + Unsigned_64 (connector));
 
    procedure handleChannelOpen (sender : Process_ID; msg : Message) is
       use type CuBit.Channel_Contracts.Contract;
@@ -3444,21 +4385,44 @@ procedure main is
       free : Client_Queue_Count := No_Client_Queue;
 
       procedure refuse (why : CuBit.Channel_Protocol.Open_Refusal) is
+         held : Natural := 0;
       begin
+         for q in clientQueues'Range loop
+            if clientQueues (q).owner /= No_Process then held := held + 1; end if;
+         end loop;
+         debugPrint ("FS: channel open refused " &
+                     CuBit.Channel_Protocol.Open_Refusal'Image (why) &
+                     " connector" & connector'Image &
+                     " queues held" & held'Image & LF);
          ignore := reply (sender, CuBit.Channels.Refusal_Reply (why));
       end refuse;
    begin
       CuBit.Channels.Decode_Open (msg, isOpen, valid, offered, openerSide, connector);
       for q in clientQueues'Range loop
          if clientQueues (q).owner = sender then
-            refuse (CuBit.Channel_Protocol.No_Room);     --  one queue per process
+            --  The event ring, once, after the queue pair; the service
+            --  produces into it.
+            if valid and then connector = FQ.Event_Connector and then offered = FQ.EVENT_CONTRACT
+              and then CuBit.Channels."=" (openerSide, CuBit.Channels.Consuming)
+              and then not clientQueues (q).eventLink.Active
+            then
+               CuBit.Channels.Accept_Open
+                 (sender, msg, channelNumber (q, connector), clientQueues (q).eventLink, answer);
+               ignore := reply (sender, answer);
+            else
+               refuse (CuBit.Channel_Protocol.No_Room);     --  one queue per process
+            end if;
             return;
          end if;
       end loop;
       for q in pendingArenas'Range loop
          if pendingArenas (q).owner = sender then
             pending := q;
-         elsif free = No_Client_Queue and then pendingArenas (q).owner = No_Process then
+         elsif free = No_Client_Queue and then pendingArenas (q).owner = No_Process
+           and then clientQueues (q).owner = No_Process
+         then
+            --  A pending slot becomes the client queue of the same index,
+            --  so both must be free.
             free := q;
          end if;
       end loop;
@@ -3468,6 +4432,10 @@ procedure main is
       if not valid or else pending = No_Client_Queue then
          refuse ((if valid then CuBit.Channel_Protocol.No_Room
                   else CuBit.Channel_Protocol.Unsupported));
+         return;
+      elsif not CuBit.Channels."=" (openerSide, CuBit.Channels.Producing) then
+         --  Only the event ring is opened consuming, after the queue pair.
+         refuse (CuBit.Channel_Protocol.Unknown_Type);
          return;
       end if;
       declare
@@ -3509,7 +4477,7 @@ procedure main is
                   c.arena := CuBit.Channels.Buffer_Address (c.transferLink, 0);
                   c.arenaBytes := Unsigned_64 (c.transferLink.Item.Buffers) * FQ.Page_Bytes;
                   c.server := (others => <>);
-                  c.waiting := False;
+                  c.wake := Queue_Wakes.Idle;
                   if p.dirtyLink.Active then
                      c.dirtyLink := p.dirtyLink;
                      c.dirty := CuBit.Channels.Buffer_Address (c.dirtyLink, 0);
@@ -3526,21 +4494,27 @@ procedure main is
    end handleChannelOpen;
 
    procedure releaseClientQueue (owner : Process_ID) is
-      ignore : Unsigned_64;
+      wakeHeld : Boolean;
    begin
       for q in clientQueues'Range loop
          if clientQueues (q).owner = owner then
-            --  A saved WAIT reply is consumed, so the slot is free for the
+            --  A held wake is answered (failed), so its slot is free for the
             --  queue's next owner.
-            if clientQueues (q).waiting then
-               ignore := replyCap
-                 (CapabilitySlot (WAIT_REPLY_SLOT_BASE + q),
-                  (tag => (label => REPLY_ERR, length => 0, flags => 0, reserved => 0),
-                   authorityTag => 0, words => [others => 0]));
+            Queue_Wakes.Ended (clientQueues (q).wake, wakeHeld);
+            if wakeHeld then
+               answerWake (q, REPLY_ERR);
             end if;
             CuBit.Channels.Close (clientQueues (q).queueLink);
             CuBit.Channels.Close (clientQueues (q).transferLink);
             CuBit.Channels.Close (clientQueues (q).dirtyLink);
+            CuBit.Channels.Close (clientQueues (q).eventLink);
+            for w in FE.Watch_Number loop
+               watches (q, w) := (others => <>);
+            end loop;
+            --  Its copies end unanswered: the queue is gone.
+            for c in Copy_Index loop
+               copies (q, c) := (others => <>);
+            end loop;
             clientQueues (q) := (others => <>);
          end if;
       end loop;
@@ -3563,7 +4537,8 @@ procedure main is
    begin
       for c of clientQueues loop
          if c.owner /= No_Process and then
-           (Ends (c.queueLink) or else Ends (c.transferLink) or else Ends (c.dirtyLink))
+           (Ends (c.queueLink) or else Ends (c.transferLink) or else Ends (c.dirtyLink)
+            or else Ends (c.eventLink))
          then
             releaseClientQueue (c.owner);
          end if;
@@ -3585,27 +4560,33 @@ procedure main is
         (clientQueues (q).server, FQueues.Completions.Index (consumed), ignore);
    end acceptReaped;
 
-   --  WAIT (FQ.OP_FS_WAIT): complete now if answers wait, else when one is
-   --  posted.
-   procedure handleWait (sender : Process_ID) is
+   --  A wake request (FQ.OP_FS_WAKE, a call or an asynchronous submit):
+   --  answered now if answers wait, else held until one is posted
+   --  (Queue_Wakes). A held one it supersedes is answered first, which
+   --  frees its slot for this one.
+   procedure handleWake (sender : Process_ID) is
+      outcome : Queue_Wakes.Arrival;
    begin
       for q in clientQueues'Range loop
          if clientQueues (q).owner = sender then
             acceptReaped (q);
-            if clientQueues (q).server.Answers.Fill > 0 or else
-              clientQueues (q).waiting
-            then
+            Queue_Wakes.Arrive
+              (clientQueues (q).wake,
+               clientQueues (q).server.Answers.Fill > 0 or else eventsWaiting (q), outcome);
+            if outcome.Answer_Held then
+               answerWake (q, REPLY_OK);
+            end if;
+            if outcome.Answer_Now then
                sendReply (sender, REPLY_OK, 0);
-            elsif saveReplyCap (Unsigned_64 (WAIT_REPLY_SLOT_BASE + q)) = 1 then
-               clientQueues (q).waiting := True;
-            else
+            elsif saveReplyCap (Unsigned_64 (WAKE_REPLY_SLOT_BASE + q)) /= 1 then
+               Queue_Wakes.Hold_Failed (clientQueues (q).wake);
                sendReply (sender, REPLY_ERR, 0);
             end if;
             return;
          end if;
       end loop;
       sendReply (sender, REPLY_ERR, 0);
-   end handleWait;
+   end handleWake;
 
    --  Queue_Describe: the open handle's object as one Directory.Inspection.V1
    --  record at the request's arena range. A write-delegated handle's
@@ -3771,46 +4752,74 @@ procedure main is
             m.tag := (label => OP_CLOSE_DIRECTORY, length => 1, flags => 0, reserved => 0);
             m.words (0) := r.Handle;
             handleCloseDirectory (owner, m);
-         when FQ.Queue_Read_Directory | FQ.Queue_Read_Directory_Inspected =>
-            --  Consecutive pages (or page and inspection pairs), each built
-            --  by the page handler.
+         when FQ.Queue_Read_Directory =>
+            --  Consecutive Directory.Page.V2 pages until the directory ends
+            --  or the range is full.
             declare
-               inspected : constant Boolean := r.Operation = FQ.Queue_Read_Directory_Inspected;
-               stride : constant Natural :=
-                 (if inspected then DIRECTORY_INSPECTED_BYTES else DIRECTORY_PAGE_BYTES);
+               handle : constant Integer := resolveHandle (r.Handle, owner, DIRECTORY_OBJECT);
                pages : constant Natural :=
-                 (if inArena then Natural (r.Length / Unsigned_64 (stride)) else 0);
+                 (if inArena then Natural (r.Length / Unsigned_64 (DIRECTORY_PAGE_BYTES)) else 0);
+               metadata : constant Boolean := (r.Options and FQ.Directory_Metadata) /= 0;
                filled : Natural := 0;
                label : Unsigned_32 := REPLY_OK;
+               pageLabel : Unsigned_32;
+               listed : Natural;
+               ended : Boolean;
             begin
-               for p in 0 .. pages - 1 loop
-                  curArena := clientQueues (q).arena +
-                    Storage_Offset (r.Arena_Offset) + Storage_Offset (p * stride);
-                  curArenaBytes := Unsigned_64 (stride);
-                  m.tag := (label => (if inspected then OP_READ_DIRECTORY_INSPECTED
-                                      else OP_READ_DIRECTORY_PAGE),
-                            length => 4, flags => 0, reserved => 0);
-                  m.words := [0 => r.Handle, 1 => 0,
-                              2 => Unsigned_64 (PROTOCOL_VERSION), 3 => 1];
-                  capturing := True;
-                  handleReadDirectoryPage (owner, m, inspected);
-                  capturing := False;
-                  if capturedLabel /= REPLY_OK then
-                     if filled = 0 then
-                        label := capturedLabel;
+               if handle < 0 then
+                  label := REPLY_WRONG_OBJECT_TYPE;
+               elsif pages = 0 or else (r.Options and not FQ.Directory_Metadata) /= 0 then
+                  label := REPLY_ERR;
+               else
+                  for p in 0 .. pages - 1 loop
+                     readDirectoryInto
+                       (handle, clientQueues (q).arena + Storage_Offset (r.Arena_Offset)
+                          + Storage_Offset (p * DIRECTORY_PAGE_BYTES),
+                        metadata, pageLabel, listed, ended);
+                     if pageLabel /= REPLY_OK then
+                        if filled = 0 then
+                           label := pageLabel;
+                        end if;
+                        exit;
                      end if;
-                     exit;
-                  end if;
-                  filled := filled + 1;
-                  declare
-                     header : Directory_Page_Header with Import, Address => curArena;
-                  begin
-                     exit when (header.flags and DIRECTORY_PAGE_END) /= 0;
-                  end;
-               end loop;
-               sendReply (owner, (if pages = 0 then REPLY_ERR else label),
-                          Unsigned_64 (filled));
+                     filled := filled + 1;
+                     exit when ended;   --  that page ended the directory
+                  end loop;
+               end if;
+               sendReply (owner, label, Unsigned_64 (filled));
             end;
+         when FQ.Queue_Seek_Directory =>
+            handleSeekDirectory (owner, r.Handle, r.Position);
+         when FQ.Queue_Watch =>
+            handleWatch (q, r.Handle, r.Options);
+         when FQ.Queue_Unwatch =>
+            handleUnwatch (q, r.Handle);
+         when FQ.Queue_Copy =>
+            handleCopy (q, r);
+         when FQ.Queue_Cancel =>
+            handleCancel (q, r.Handle);
+         when FQ.Queue_List_Scopes =>
+            if inArena then
+               handleListScopes (owner, r.Length);
+            else
+               sendReply (owner, REPLY_ERR, 0);
+            end if;
+         when FQ.Queue_Describe_Volume =>
+            if inArena then
+               handleDescribeVolume (owner, r.Position, r.Length);
+            else
+               sendReply (owner, REPLY_ERR, 0);
+            end if;
+         when FQ.Queue_Rename =>
+            --  Both paths in the arena range, split at Position; the
+            --  handler copies them out before it checks either.
+            if inArena and then r.Length >= 2 and then r.Position in 1 .. r.Length - 1 then
+               m.tag := (label => OP_RENAME, length => 4, flags => 0, reserved => 0);
+               m.words := [0 => 0, 1 => r.Position, 2 => r.Length - r.Position, 3 => 1];
+               handleRename (owner, m);
+            else
+               sendReply (owner, REPLY_ERR, 0);
+            end if;
          when FQ.Queue_Resize =>
             m.tag := (label => OP_RESIZE_FILE, length => 2, flags => 0, reserved => 0);
             m.words (0) := r.Handle;
@@ -3973,6 +4982,12 @@ procedure main is
             harvestOwner (q);
          end if;
       end loop;
+      for slot in files'Range loop
+         if files (slot).active and then files (slot).objectKind = FILE_OBJECT then
+            reportModified (slot);
+         end if;
+      end loop;
+      settleWatches;
       for V in Contexts'Range loop
          if Contexts (V).Status = Admitted and then Ext2.dirtyBlocks (Contexts (V).Fs) then
             Ext2.Flush (Contexts (V).Fs, status);
@@ -4072,11 +5087,15 @@ begin
       --  Queued requests first; block only when none wait, and at most
       --  until the next journal commit.
       serviceClientQueues;
+      settleWatches;
+      runCopies;
       if not armClientQueues then
-      receiveUntil (nextCommit, sender, msg, received);
+      --  Copies in progress: look for messages without waiting.
+      receiveUntil ((if copiesActive then 0 else nextCommit), sender, msg, received);
       if received then
       case msg.tag.label is
-         when CuBit.Channel_Protocol.OP_OPEN_PRODUCING =>
+         when CuBit.Channel_Protocol.OP_OPEN_PRODUCING
+            | CuBit.Channel_Protocol.OP_OPEN_CONSUMING =>   --  consuming: the event ring
             handleChannelOpen (sender, msg);
          when CuBit.Channel_Protocol.OP_KICK =>
             null;   --  one-way: the queue is serviced at the loop's top
@@ -4091,8 +5110,8 @@ begin
                  (CuBit.Control_Events.Decode
                     (msg.tag.label, msg.tag.length, msg.words (0), msg.words (1), msg.words (2)));
             end if;
-         when FQ.OP_FS_WAIT =>
-            handleWait (sender);
+         when FQ.OP_FS_WAKE =>
+            handleWake (sender);
          when OP_OPEN =>
             handleOpen (sender, msg);
          when OP_READ =>
@@ -4113,8 +5132,6 @@ begin
             handleOpenDirectory (sender, msg);
          when OP_READ_DIRECTORY_PAGE =>
             handleReadDirectoryPage (sender, msg);
-         when OP_READ_DIRECTORY_INSPECTED =>
-            handleReadDirectoryPage (sender, msg, inspected => True);
          when OP_CLOSE_DIRECTORY =>
             handleCloseDirectory (sender, msg);
          when OP_OPEN_CHILD_DIRECTORY =>

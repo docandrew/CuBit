@@ -41,4 +41,10 @@ package body Desktop_Logs with SPARK_Mode,
          end;
       end if;
    end Write;
+   procedure Warn (Text : String) is
+      R : constant L.Decoded := L.Make (Text, L.Warning);
+   begin
+      Desktop_Log_IO.Echo (Text & ASCII.LF);
+      if R.Success then Publish (R.Value); else Drop; end if;
+   end Warn;
 end Desktop_Logs;

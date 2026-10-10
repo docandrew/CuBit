@@ -7,9 +7,18 @@ package body Compositor_Upload_Progress with SPARK_Mode is
          (Identity > S.Identity or else (Width = S.Width and Height = S.Rows and Kind = S.Kind));
       if Accepted then
          S.Mode := Preparing; S.Identity := Identity; S.Width := Width; S.Rows := Height;
-         S.Kind := Kind; S.Done := 0;
+         S.Kind := Kind; S.Done := 0; S.Limit := Height; S.Retain := False;
       end if;
    end Begin_Image;
+   procedure Begin_Update (S : in out State; Identity : Natural;
+      First, Last : G.Edge; Accepted : out Boolean) is
+   begin
+      Accepted := S.Mode = Ready and Identity > 0 and Identity = S.Identity and
+         First < Last and Last <= S.Rows;
+      if Accepted then
+         S.Mode := Preparing; S.Done := First; S.Limit := Last; S.Retain := True;
+      end if;
+   end Begin_Update;
    procedure Begin_Write (S : in out State; Capacity : G.Byte_Count;
       Plan : out G.Plan; T : out Ticket; Discard : out Boolean; Accepted : out Boolean;
       Row_Pixels : G.Edge := 0) is
@@ -17,10 +26,10 @@ package body Compositor_Upload_Progress with SPARK_Mode is
    begin
       T := No_Ticket; Discard := False; Accepted := False; Plan := Empty;
       if S.Mode /= Preparing or else S.Last = Last_Sequence then return; end if;
-      G.Row_Chunk (S.Width, S.Rows, S.Done, Capacity, S.Kind, Plan, Accepted, Row_Pixels);
+      G.Row_Chunk (S.Width, S.Rows, S.Done, S.Limit, Capacity, S.Kind, Plan, Accepted, Row_Pixels);
       if not Accepted then return; end if;
       S.Last := S.Last + 1; S.Plan := Plan; S.Mode := Writing;
-      T := (S.Identity, S.Last); Discard := S.Done = 0;
+      T := (S.Identity, S.Last); Discard := S.Done = 0 and not S.Retain;
    end Begin_Write;
    procedure Submitted (S : in out State; T : Ticket; Accepted : out Boolean) is
    begin
@@ -35,7 +44,12 @@ package body Compositor_Upload_Progress with SPARK_Mode is
          when Uncertain => S.Mode := Quarantined;
          when Completed =>
             S.Done := S.Done + G.Area (S.Plan).Height;
-            S.Mode := (if S.Done = S.Rows then Ready else Preparing);
+            if S.Done = S.Limit then
+               -- Rows outside a retained band already hold the new content.
+               S.Done := S.Rows; S.Limit := S.Rows; S.Retain := False; S.Mode := Ready;
+            else
+               S.Mode := Preparing;
+            end if;
       end case;
    end Observe;
    procedure Cancel (S : in out State; T : Ticket; Confirmed : Boolean) is

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<defs>
+<linearGradient id="gb79cff7a4cff" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#b79cff"/><stop offset="1" stop-color="#7a4cff"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M2 4 L12 4 L14 7 L28 7 L28 27 L2 27Z" transform="translate(2 2)"/>
+  <path d="M2 4 L12 4 L14 7 L28 7 L28 27 L2 27Z" transform="translate(1 1)"/>
+  <path d="M2 4 L12 4 L14 7 L28 7 L28 27 L2 27Z"/>
+</g>
+<path d="M2 4 L12 4 L14 7 L28 7 L28 27 L2 27Z" fill="#3b1e96" transform="translate(2 2)"/>
+<path d="M2 4 L12 4 L14 7 L28 7 L28 27 L2 27Z" fill="#3b1e96" transform="translate(1 1)"/>
+<path d="M2 4 L12 4 L14 7 L28 7 L28 27 L2 27Z" fill="#5a32d6"/>
+<path d="M2 12 L28 12 L28 27 L2 27Z" fill="url(#gb79cff7a4cff)"/>
+<path d="M2 11.5 L28 11.5" fill="none" stroke="#1d1530" stroke-width="1" stroke-linecap="butt" opacity="0.7"/>
+<path d="M3 12.5 L27 12.5" fill="none" stroke="#ffffff" stroke-width="1" stroke-linecap="butt" opacity="0.65"/>
+</svg>

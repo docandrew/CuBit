@@ -187,9 +187,9 @@ begin
          Before := RAM;
          if Seq mod 2 = 0 then
             Native.Append (Wrapping, Intel_GPU_ADLN_Context_Init.Build_Batch
-              (True, 0, Seq, 16#208000#), OK);
+              (True, 0, Unsigned_64 (Seq), 16#208000#), OK);
          else
-            Native.Append (Wrapping, Intel_GPU_ADLN_Barrier.Build (Seq), OK);
+            Native.Append (Wrapping, Intel_GPU_ADLN_Barrier.Build (Unsigned_64 (Seq)), OK);
          end if;
          New_Tail := Native.Tail (Wrapping);
          pragma Assert (OK and New_Tail = Start + Length and RAM (1031) = New_Tail);

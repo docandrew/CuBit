@@ -10,6 +10,7 @@ package body Intel_GPU_GuC_Context_Session is
    use type Events.Kind;
    function State (Object : Session) return Life.Phase is (Life.State (Object.Life));
    function Can_Run_And_Retire (Object : Session) return Boolean is (Life.Can_Run_And_Retire (Object.Life));
+   function Can_Submit (Object : Session) return Boolean is (Life.Can_Submit (Object.Life));
    procedure Fail (Object : in out Session) is
    begin Life.Fail (Object.Life); end Fail;
    procedure Initialize
@@ -125,7 +126,8 @@ package body Intel_GPU_GuC_Context_Session is
                Life.Deregistration_Done (Object.Life, Item.ID, Matched);
                Status := (if Matched then Handled else Faulted); return;
             end if;
-         when Events.Other_Message => null;
+         when Events.Other_Message | Events.Device_Loss | Events.Notification =>
+            null; -- retained for the service loop, which acts on them
          when Events.Malformed => null; -- rejected above
       end case;
       Retain (Payload, Fence, Matched);

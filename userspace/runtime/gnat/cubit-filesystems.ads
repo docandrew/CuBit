@@ -10,18 +10,20 @@ with Interfaces; use Interfaces;
 with CuBit.Memory_Grants;
 with CuBit.Messages;
 with CuBit.Directory_Paths;
+with CuBit.Directory_Pages;
 
 package CuBit.Filesystems with
    SPARK_Mode => On
 is
-   PROTOCOL_VERSION : constant Unsigned_16 := 1;
+   --  2: directory pages are Directory.Page.V2 (CuBit.Directory_Pages).
+   PROTOCOL_VERSION : constant Unsigned_16 := 2;
 
    type Filesystem_Operation is
      (Open_File, Close_File, Read_File, Write_File, Open_Directory,
       Seek_File, Read_Directory_Page, Rename_File, Close_Directory,
       Open_Child_Directory, Rewind_Directory, Flush_File,
       Read_File_At, Write_File_At, Resize_File, Unlink_Path,
-      Make_Directory, Remove_Directory, Read_Directory_Inspected,
+      Make_Directory, Remove_Directory,
       Set_Access_Profile,
       Revoke_Access_Profile, Release_Owner);
    for Filesystem_Operation use
@@ -43,7 +45,6 @@ is
       Unlink_Path           => 16#0010#,
       Make_Directory        => 16#0011#,
       Remove_Directory      => 16#0012#,
-      Read_Directory_Inspected => 16#0013#,
       Set_Access_Profile    => 16#0080#,
       Revoke_Access_Profile => 16#0081#,
       Release_Owner         => 16#0082#);
@@ -71,11 +72,6 @@ is
    OP_UNLINK     : constant Unsigned_32 := 16#0010#;
    OP_MKDIR      : constant Unsigned_32 := 16#0011#;
    OP_RMDIR      : constant Unsigned_32 := 16#0012#;
-   --  READ_DIRECTORY_INSPECTED: as READ_DIRECTORY_PAGE, over a grant of
-   --  DIRECTORY_INSPECTED_BYTES: a Directory.Page.V1, then on the next page
-   --  one Entry_Inspection per listed entry, in order (an ls with metadata
-   --  in one request instead of one per file).
-   OP_READ_DIRECTORY_INSPECTED : constant Unsigned_32 := 16#0013#;
    OP_SET_ACL    : constant Unsigned_32 := 16#0080#;
    OP_REVOKE_ACL : constant Unsigned_32 := 16#0081#;
    --  A process has exited (procmgr only; words 0 = its PID): its handles
@@ -109,6 +105,11 @@ is
    REPLY_INVALID_MOVE : constant Unsigned_32 := 16#F012#;
    --  rename between volumes: the caller copies instead (EXDEV).
    REPLY_CROSS_VOLUME : constant Unsigned_32 := 16#F013#;
+   --  Queue_Copy endings (docs/filesystem-protocol-v2.md step 5): cancelled
+   --  by Queue_Cancel; its deadline passed; too many copies running.
+   REPLY_CANCELLED : constant Unsigned_32 := 16#F014#;
+   REPLY_DEADLINE  : constant Unsigned_32 := 16#F015#;
+   REPLY_BUSY      : constant Unsigned_32 := 16#F016#;
 
    MAXIMUM_PATH_BYTES : constant := CuBit.Directory_Paths.Maximum_Bytes;
    subtype Path_Byte_Count is Natural range 0 .. MAXIMUM_PATH_BYTES;
@@ -123,93 +124,37 @@ is
    type Directory_Handle is new Unsigned_64;
    INVALID_DIRECTORY_HANDLE : constant Directory_Handle := 0;
 
-   --  Directory.Page.V1 is deliberately fixed-size.  The service acquires
-   --  exactly one page from the caller and never trusts a caller-supplied
-   --  capacity.  Inode/object hints are descriptive identities only: they
+   --  READ_DIRECTORY_PAGE answers one Directory.Page.V2 (CuBit.Directory_Pages)
+   --  into a one-page grant: packed entries, each with its metadata (kind,
+   --  size, times, mode, links, owner, object identity), and a resume token.
+   --  The service acquires exactly one page and never trusts a
+   --  caller-supplied capacity. Object identities are descriptive only: they
    --  cannot be used in place of a handle and confer no authority.
-   DIRECTORY_PAGE_BYTES : constant := 4096;
-   MAXIMUM_DIRECTORY_NAME_BYTES : constant := 255;
-   MAXIMUM_DIRECTORY_PAGE_ENTRIES : constant := 14;
-   DIRECTORY_PAGE_HEADER_BYTES : constant := 32;
-   DIRECTORY_ENTRY_BYTES : constant := 280;
+   DIRECTORY_PAGE_BYTES : constant := CuBit.Directory_Pages.Page_Bytes;
+   MAXIMUM_DIRECTORY_NAME_BYTES : constant := CuBit.Directory_Pages.Maximum_Name_Bytes;
+   DIRECTORY_PAGE_END : constant Unsigned_32 := CuBit.Directory_Pages.Page_End;
 
-   DIRECTORY_PAGE_END : constant Unsigned_32 := 1;
-   DIRECTORY_ENTRY_SIZE_VALID : constant Unsigned_8 := 1;
+   DIRECTORY_KIND_UNKNOWN   : constant Unsigned_8 := CuBit.Directory_Pages.Kind_Unknown;
+   DIRECTORY_KIND_FILE      : constant Unsigned_8 := CuBit.Directory_Pages.Kind_File;
+   DIRECTORY_KIND_DIRECTORY : constant Unsigned_8 := CuBit.Directory_Pages.Kind_Directory;
+   DIRECTORY_KIND_SYMLINK   : constant Unsigned_8 := CuBit.Directory_Pages.Kind_Symlink;
 
-   DIRECTORY_KIND_UNKNOWN   : constant Unsigned_8 := 0;
-   DIRECTORY_KIND_FILE      : constant Unsigned_8 := 1;
-   DIRECTORY_KIND_DIRECTORY : constant Unsigned_8 := 2;
-   DIRECTORY_KIND_SYMLINK   : constant Unsigned_8 := 3;
-
-   subtype Directory_Name_Index is
-     Positive range 1 .. MAXIMUM_DIRECTORY_NAME_BYTES;
-   type Directory_Name is array (Directory_Name_Index) of Unsigned_8
-     with Component_Size => 8;
-
-   type Directory_Page_Header is record
-      version       : Unsigned_16;
-      headerBytes   : Unsigned_16;
-      entryBytes    : Unsigned_16;
-      entryCount    : Unsigned_16;
-      flags         : Unsigned_32;
-      reserved      : Unsigned_32;
-      nextCursor    : Unsigned_64;
-      snapshot      : Unsigned_64;
-   end record with Convention => C, Size => DIRECTORY_PAGE_HEADER_BYTES * 8;
-
-   for Directory_Page_Header use record
-      version     at 0  range 0 .. 15;
-      headerBytes at 2  range 0 .. 15;
-      entryBytes  at 4  range 0 .. 15;
-      entryCount  at 6  range 0 .. 15;
-      flags       at 8  range 0 .. 31;
-      reserved    at 12 range 0 .. 31;
-      nextCursor  at 16 range 0 .. 63;
-      snapshot    at 24 range 0 .. 63;
-   end record;
-
-   type Directory_Entry is record
-      objectHint : Unsigned_64;
-      sizeBytes  : Unsigned_64;
-      nameLength : Unsigned_16;
-      kind       : Unsigned_8;
-      flags      : Unsigned_8;
-      reserved   : Unsigned_32;
-      name       : Directory_Name;
-   end record with Convention => C, Size => DIRECTORY_ENTRY_BYTES * 8;
-
-   for Directory_Entry use record
-      objectHint at 0  range 0 .. 63;
-      sizeBytes  at 8  range 0 .. 63;
-      nameLength at 16 range 0 .. 15;
-      kind       at 18 range 0 .. 7;
-      flags      at 19 range 0 .. 7;
-      reserved   at 20 range 0 .. 31;
-      name       at 24 range 0 .. MAXIMUM_DIRECTORY_NAME_BYTES * 8 - 1;
-   end record;
-
-   subtype Directory_Page_Entry_Index is Natural range
-     0 .. MAXIMUM_DIRECTORY_PAGE_ENTRIES - 1;
-   type Directory_Entries is
-     array (Directory_Page_Entry_Index) of Directory_Entry
-       with Component_Size => DIRECTORY_ENTRY_BYTES * 8;
-
-   --  Directory.Inspection.V1: what the volume records about each entry
-   --  (and, through Queue_Describe, about one open handle's object).
+   --  Directory.Inspection.V1: what the volume records about one open
+   --  handle's object (Queue_Describe, fstat); the same facts a
+   --  Directory.Page.V2 entry carries.
    --  Valid says which fields were filled; a volume without a field leaves
    --  it zero and its bit clear. Times are milliseconds since the Unix
    --  epoch: modified is content (POSIX mtime), changed is the object's
    --  metadata (ctime), accessed is atime. Mode is the stored permission
    --  and type bits. ObjectId names the object within its service (volume
    --  << 32 | inode) for as long as it exists, as st_dev/st_ino do.
-   DIRECTORY_INSPECTED_BYTES : constant := 2 * DIRECTORY_PAGE_BYTES;
    DIRECTORY_INSPECTION_BYTES : constant := 64;
-   INSPECTED_SIZE  : constant Unsigned_32 := 1;
-   INSPECTED_TIMES : constant Unsigned_32 := 2;
-   INSPECTED_MODE  : constant Unsigned_32 := 4;
-   INSPECTED_LINKS : constant Unsigned_32 := 8;
-   INSPECTED_OWNER : constant Unsigned_32 := 16;
-   INSPECTED_OBJECT : constant Unsigned_32 := 32;
+   INSPECTED_SIZE  : constant Unsigned_32 := CuBit.Directory_Pages.Valid_Size;
+   INSPECTED_TIMES : constant Unsigned_32 := CuBit.Directory_Pages.Valid_Times;
+   INSPECTED_MODE  : constant Unsigned_32 := CuBit.Directory_Pages.Valid_Mode;
+   INSPECTED_LINKS : constant Unsigned_32 := CuBit.Directory_Pages.Valid_Links;
+   INSPECTED_OWNER : constant Unsigned_32 := CuBit.Directory_Pages.Valid_Owner;
+   INSPECTED_OBJECT : constant Unsigned_32 := CuBit.Directory_Pages.Valid_Object;
 
    type Entry_Inspection is record
       valid      : Unsigned_32;
@@ -238,10 +183,6 @@ is
       reserved   at 52 range 0 .. 31;
       objectId   at 56 range 0 .. 63;
    end record;
-
-   type Directory_Inspections is
-     array (Directory_Page_Entry_Index) of Entry_Inspection
-       with Component_Size => DIRECTORY_INSPECTION_BYTES * 8;
 
    type Open_Options is mod 2 ** 64;
    OPEN_READ_ONLY  : constant Open_Options := 0;
@@ -331,13 +272,6 @@ is
       pathLength : Path_Byte_Count) return CuBit.Messages.Message;
 
    function Read_Directory_Page_Request
-     (handle : Directory_Handle;
-      loan   : CuBit.Memory_Grants.Grant_Reference)
-      return CuBit.Messages.Message;
-
-   --  The next page with each entry's metadata: the loan covers
-   --  DIRECTORY_INSPECTED_BYTES (the page, then its Directory_Inspections).
-   function Read_Directory_Inspected_Request
      (handle : Directory_Handle;
       loan   : CuBit.Memory_Grants.Grant_Reference)
       return CuBit.Messages.Message;

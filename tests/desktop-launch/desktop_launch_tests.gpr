@@ -1,10 +1,13 @@
+--  Hosted tests of the Apps menu model and its typed settings
+--  (tests/desktop-launch/run.sh builds it into this directory).
+with "../../userspace/ccl/cubit_shared.gpr";
 project Desktop_Launch_Tests is
-   for Source_Dirs use (".", "../../userspace/services/desktop/");
-   for Source_Files use ("main.adb", "desktop_launch.ads", "desktop_launch.adb",
-                         "desktop_icons.ads");
+   for Source_Dirs use (".", "../../userspace/services/desktop/", "../../userspace/ccl/src");
+   for Excluded_Source_Files use ("main.adb");
    for Object_Dir use "build";
-   for Main use ("main.adb");
+   for Exec_Dir use "build";
+   for Main use ("desktop_launch_test.adb");
    package Compiler is
-      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwa", "-g");
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwa", "-g", "-O1");
    end Compiler;
 end Desktop_Launch_Tests;

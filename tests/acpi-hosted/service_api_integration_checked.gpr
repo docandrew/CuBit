@@ -1,0 +1,9 @@
+project Service_API_Integration_checked is
+ for Source_Dirs use ("../acpi-integration", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "service-api-integration-checked/obj";
+ for Exec_Dir use "service-api-integration-checked";
+ for Main use ("bootstrap_owned_tests.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Service_API_Integration_checked;

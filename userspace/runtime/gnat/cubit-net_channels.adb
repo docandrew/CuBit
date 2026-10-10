@@ -6,6 +6,7 @@ pragma Ada_2022;
 with System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Datagram_Rings;
+with CuBit.Published_Clock;
 
 package body CuBit.Net_Channels is
 
@@ -503,7 +504,7 @@ package body CuBit.Net_Channels is
    begin
       loop
          Ready := Now_Ready;
-         exit when Ready or else syscall (SYSCALL_GETTIME) >= Deadline;
+         exit when Ready or else CuBit.Published_Clock.Milliseconds >= Deadline;
          Want (S, Flags);
          Ready := Now_Ready;
          exit when Ready;

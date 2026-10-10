@@ -18,20 +18,34 @@
 (system-config v1
   (setting "desktop.appearance.theme.light" "(theme v1 (base alloy-light))")
   (setting "desktop.appearance.theme.dark" "(theme v1 (base alloy-dark))")
+  # Where read-only asset packages live (docs/assets.md): Desktop reads its
+  # wallpapers from <root>cubit-wallpapers/1/.
+  (setting "system.assets.root" "@nvme:0/Assets/")
   # The desktop's Apps menu, in key order (userspace/services/desktop/
   # desktop_launch.ads). Entries name programs; what they may do is decided
   # by their manifests and procmgr's launch policy.
-  (setting "desktop.launch.10-workbench" "(launch v1 (label \"CCL Workbench\") (program \"ccl-workbench.app\") (icon uilab))")
-  (setting "desktop.launch.12-console" "(launch v1 (label \"CCL Console\") (program \"ccl-console.app\") (icon uilab))")
-  (setting "desktop.launch.14-logs" "(launch v1 (label \"Logs\") (program \"logs.app\") (icon files))")
-  (setting "desktop.launch.16-trace" "(launch v1 (label \"Desktop trace\") (program \"trace-viewer.app\") (icon files))")
-  (setting "desktop.launch.20-doom" "(launch v1 (label \"DOOM\") (program \"doom.elf\") (icon doom) (single-instance))")
-  (setting "desktop.launch.30-devices" "(launch v1 (label \"Devices\") (program \"devices.app\") (icon files))")
-  (setting "desktop.launch.45-servo" "(launch v1 (label \"Penny\") (program \"cubitshell.app\") (icon files))")
-  (setting "desktop.launch.50-files" "(launch v1 (label \"Files\") (program \"files.app\") (icon files))")
-  (setting "desktop.launch.60-sameboy" "(launch v1 (label \"SameBoy\") (program \"sameboy.app\") (icon doom))")
-  (setting "desktop.launch.70-settings" "(launch v1 (label \"Settings\") (internal settings))")
-  (setting "desktop.launch.80-config-inspector" "(launch v1 (label \"Config Inspector\") (program \"config-inspector.app\") (icon files))")
+  (setting "desktop.launch.10-workbench"
+    (Launch_Entry label => "CCL Workbench" action => (Launch_Action.Program "ccl-workbench.app") icon => Launch_Icon.Workbench category => App_Category.Development))
+  (setting "desktop.launch.12-console"
+    (Launch_Entry label => "CCL Console" action => (Launch_Action.Program "ccl-console.app") icon => Launch_Icon.Console category => App_Category.Development))
+  (setting "desktop.launch.14-logs"
+    (Launch_Entry label => "Logs" action => (Launch_Action.Program "logs.app") icon => Launch_Icon.Logs category => App_Category.System))
+  (setting "desktop.launch.16-trace"
+    (Launch_Entry label => "Desktop trace" action => (Launch_Action.Program "trace-viewer.app") icon => Launch_Icon.Trace category => App_Category.System))
+  (setting "desktop.launch.20-doom"
+    (Launch_Entry label => "DOOM" action => (Launch_Action.Program "doom.elf") icon => Launch_Icon.Doom category => App_Category.Games single_instance => true))
+  (setting "desktop.launch.30-devices"
+    (Launch_Entry label => "Devices" action => (Launch_Action.Program "devices.app") icon => Launch_Icon.Devices category => App_Category.System))
+  (setting "desktop.launch.45-servo"
+    (Launch_Entry label => "Penny" action => (Launch_Action.Program "cubitshell.app") icon => Launch_Icon.Penny category => App_Category.Web))
+  (setting "desktop.launch.50-files"
+    (Launch_Entry label => "Files" action => (Launch_Action.Program "files.app") icon => Launch_Icon.Files category => App_Category.Tools))
+  (setting "desktop.launch.60-sameboy"
+    (Launch_Entry label => "SameBoy" action => (Launch_Action.Program "sameboy.app") icon => Launch_Icon.Gameboy category => App_Category.Games))
+  (setting "desktop.launch.70-settings"
+    (Launch_Entry label => "Settings" action => Launch_Action.Settings icon => Launch_Icon.Settings category => App_Category.System))
+  (setting "desktop.launch.80-config-inspector"
+    (Launch_Entry label => "Config Inspector" action => (Launch_Action.Program "config-inspector.app") icon => Launch_Icon.Inspector category => App_Category.System))
   (setting "clock.time-zone" "UTC")
   (setting "cubit.config.storage.database" "@nvme:0/system-config.sqlite")
   # SNTP servers for timesync.svc (host or host:port). A majority of at least

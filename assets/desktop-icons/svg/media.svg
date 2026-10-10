@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b0127a"/><stop offset="1" stop-color="#6e0a4c"/></linearGradient><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d61f92"/><stop offset="1" stop-color="#930d63"/></linearGradient><linearGradient id="g3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff8ad8"/><stop offset="1" stop-color="#e2289f"/></linearGradient></defs>
+<polygon points="3.22,36.00 24.00,48.00 24.00,43.00 3.22,31.00" fill="url(#g1)" stroke="#33001f" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="44.78,36.00 24.00,48.00 24.00,43.00 44.78,31.00" fill="url(#g2)" stroke="#33001f" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="24.00,19.00 44.78,31.00 24.00,43.00 3.22,31.00" fill="url(#g3)" stroke="#33001f" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="21.40,25.50 11.01,31.50 24.87,33.50" fill="#ffffff" stroke="#33001f" stroke-width="1.2" stroke-linejoin="round"/>
+<path d="M 30 20 L 30 5 L 40 3 L 40 8 L 32 9.6 L 32 20 Z" fill="#1d1030" stroke="#1d1030" stroke-width="1.0" stroke-linejoin="round"/>
+<ellipse cx="28.40" cy="20.20" rx="3.40" ry="2.60" fill="#ffe23d" stroke="#1d1030" stroke-width="1.2"/>
+</svg>

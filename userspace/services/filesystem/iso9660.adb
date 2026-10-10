@@ -197,4 +197,11 @@ package body ISO9660 is
       end loop;
       Success := True;
    end Read;
+
+   procedure Describe (Blocks : out Unsigned_64; Mounted_OK : out Boolean) is
+   begin
+      Mounted_OK := Mount;
+      Blocks := (if Mounted_OK then Volume_Blocks else 0);
+   end Describe;
+
 end ISO9660;

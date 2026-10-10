@@ -18,7 +18,8 @@ procedure Context_Init_Tests is
 begin
    for Sequence of Samples'(0, 1, 2, 16#80000000#, Unsigned_32'Last) loop
       declare
-         B : constant Intel_GPU_ADLN_Barrier.Segment := Intel_GPU_ADLN_Barrier.Build (Sequence);
+         B : constant Intel_GPU_ADLN_Barrier.Segment :=
+           Intel_GPU_ADLN_Barrier.Build (Unsigned_64 (Sequence));
          R : constant Init.Segment := Init.Build (True, 0, Sequence);
       begin
          pragma Assert (B.Valid = (Sequence /= 0));
@@ -31,6 +32,15 @@ begin
          end if;
       end;
    end loop;
+   -- 64-bit breadcrumbs (GPU-001 step 2): the high DWORD follows the low.
+   declare
+      B : constant Intel_GPU_ADLN_Barrier.Segment :=
+        Intel_GPU_ADLN_Barrier.Build (16#0000_0007_0000_0000#);
+      E : constant Init.Segment := Init.Build_Batch (True, 0, 16#0000_0005_0000_0002#, 16#208000#);
+   begin
+      pragma Assert (B.Valid and then B.Words (26) = 0 and then B.Words (27) = 7);
+      pragma Assert (E.Valid and then E.Words (90) = 2 and then E.Words (91) = 5);
+   end;
    for Readable in Boolean loop
       for WM of Samples'(0, 1, 16#20#, 16#12345678#, Unsigned_32'Last) loop
          declare
@@ -79,7 +89,9 @@ begin
                pragma Assert (R.Words (86) = 16#7A000004#);
                pragma Assert (R.Words (87) =
                  (Bit (20) or Bit (21) or Bit (14) or Bit (7)));
-               pragma Assert (R.Words (88) = 16#D0# and R.Words (89) = 0);
+               -- Final breadcrumb: the PPHWSP timeline slot (+0x200), its
+               -- only writer. Barriers above dump into scratch (+0xD0).
+               pragma Assert (R.Words (88) = 16#200# and R.Words (89) = 0);
                pragma Assert (R.Words (90) = 1 and R.Words (91) = 0);
                pragma Assert (R.Words (92) = Shift_Left (8, 23) + 1);
                pragma Assert (R.Words (93) = 0 and R.Words (95) = 0);

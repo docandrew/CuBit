@@ -3,7 +3,8 @@
 Run through Nix, with the hosted service's checked-contract stack allowance:
 
 ```sh
-nix develop -c bash -c 'set -e; ulimit -S -s 65536; cd kernel; alr exec -- gprbuild -p -P ../tests/aml-core/native-blocks/blocks.gpr; ../tests/aml-core/build/blocks/block_tests'
+export TMPDIR=/home/doc/cubit-build-tmp
+nix develop --command nice -n 19 bash -c 'set -e; ulimit -S -s 65536; gprbuild -p -j1 -P tests/aml-core/native-blocks/blocks_checked.gpr; tests/aml-core/build/blocks-checked/block_tests'
 ```
 
 This target uses mocked grant acquisition/return with the actual ACPI request,
@@ -53,3 +54,11 @@ checks or assumptions. See the main AML README for the precise proof and
 regression scope. Kernel
 acquisition is still mocked in this target; it is not a live grant test. Startup
 allocation from discovered firmware lengths remains to be connected.
+
+The owned-state migration preserves all 150 original checks, including the
+35-table import with a table larger than 1 MiB. Each reset scenario now selects
+a separately constructed bounded state; service identity is never copied or
+reset. Exact before/after equality uses Ghost models in checked mode, while
+release retains scalar checks. Separate blocks_release.gpr and blocks_checked.gpr
+use disjoint output directories; checked enables both -gnata and -gnato. The
+64 MiB hosted stack is not evidence of native stack sufficiency.

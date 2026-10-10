@@ -210,4 +210,10 @@ package CuBit.Channels is
    --  of the same channel record, or Release_Retired).
    procedure Close (C : in out Channel);
 
+   --  Release the memory of closed channels whose grants have retired
+   --  since (Open does this too), and say how many regions still wait for
+   --  their peer to let go. A process that wants to leave nothing behind
+   --  (a diagnostic counting its own memory) waits for zero.
+   function Retiring_Regions return Natural;
+
 end CuBit.Channels;

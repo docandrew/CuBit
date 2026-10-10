@@ -1,0 +1,8 @@
+project Observer_release is
+ for Source_Dirs use (".", "../../tests/aml-core", "../../userspace/lib/acpi", "../../userspace/services/acpi", "../../shared/firmware");
+ for Object_Dir use "observer-release";
+ for Main use ("observer_cost.adb", "service_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp", "-gnatwF");
+ end Compiler;
+end Observer_release;

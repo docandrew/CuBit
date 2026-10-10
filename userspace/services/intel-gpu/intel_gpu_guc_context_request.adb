@@ -1,11 +1,13 @@
+with Intel_GPU_GuC_Actions;
 package body Intel_GPU_GuC_Context_Request with SPARK_Mode is
+   package Actions renames Intel_GPU_GuC_Actions;
    function Build
      (ID : Unsigned_32; Context_GPU, Pin_Bias : Unsigned_64) return Request
    is
       Result : Request;
    begin
       if not Admissible (ID, Context_GPU, Pin_Bias) then return Result; end if;
-      Result.Words (0) := 16#20004502#; -- HOST FAST_REQUEST, REGISTER_CONTEXT
+      Result.Words (0) := Actions.Fast_Request_Header (Actions.Register_Context);
       Result.Words (1) := 1; -- KMD
       Result.Words (2) := ID;
       Result.Words (3) := 0; -- GuC render class
@@ -28,7 +30,7 @@ package body Intel_GPU_GuC_Context_Request with SPARK_Mode is
          return Result;
       end if;
       Result.Words :=
-        [16#2000100B#, ID, 16#20030001#, 2,
+        [Actions.Fast_Request_Header (Actions.Host2GuC_Update_Context_Policies), ID, 16#20030001#, 2,
          16#20010001#, Quantum_Us, 16#20020001#, Preemption_Us,
          16#20050001#, 0, 0, 0];
       Result.Length := 10;
@@ -43,16 +45,17 @@ package body Intel_GPU_GuC_Context_Request with SPARK_Mode is
    function Scheduling_Mode (ID : Unsigned_32; Enable : Boolean) return Mode_Words is
    begin
       if ID >= 65535 then return [others => 0]; end if;
-      return [16#20001001#, ID, (if Enable then 1 else 0)];
+      return [Actions.Fast_Request_Header (Actions.Sched_Context_Mode_Set), ID,
+              (if Enable then Actions.Context_Enable else Actions.Context_Disable)];
    end Scheduling_Mode;
    function Schedule (ID : Unsigned_32) return Schedule_Words is
    begin
       if ID >= 65535 then return [others => 0]; end if;
-      return [16#20001000#, ID];
+      return [Actions.Fast_Request_Header (Actions.Sched_Context), ID];
    end Schedule;
    function Deregister (ID : Unsigned_32) return Schedule_Words is
    begin
       if ID >= 65535 then return [others => 0]; end if;
-      return [16#20004503#, ID];
+      return [Actions.Fast_Request_Header (Actions.Deregister_Context), ID];
    end Deregister;
 end Intel_GPU_GuC_Context_Request;

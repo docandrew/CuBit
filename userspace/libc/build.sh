@@ -56,11 +56,13 @@ for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gn
     "$here/../runtime/gnat/cubit-outlet_rings.adb" \
     "$here/../runtime/gnat/cubit-path_names.adb" "$here/../runtime/gnat/cubit-path_names_c.adb" \
     "$here/../runtime/gnat/cubit-kernel_calls.adb" "$here/../runtime/gnat/cubit-child_table.adb" \
+    "$here/../../shared/time/clock_publication.adb" "$here/../runtime/gnat/cubit-published_clock.adb" \
     "$here/ada/cubit-libc_process.adb" "$here/ada/cubit-libc_time.adb" \
     "$here/ada/cubit-libc_select.adb" "$here/ada/cubit-libc_reports.adb" \
     "$here/ada/cubit-libc_system_calls.adb" "$here/ada/cubit-libc_start.adb" \
     "$here/ada/cubit-libc_start_layout.adb" "$here/ada/cubit-libc_rings.adb" \
     "$here/ada/cubit-libc_directory_entries.adb" "$here/ada/cubit-libc_descriptor_rules.adb" \
+    "$here/../runtime/gnat/cubit-directory_pages.adb" \
     "$here/ada/cubit-libc_descriptors.adb" "$here/ada/cubit-libc_file_cache.adb" \
     "$here/ada/cubit-libc_dirty_map.adb" "$here/ada/cubit-libc_park_table.adb" \
     "$here/ada/cubit-libc_files.adb" "$here/../runtime/gnat/cubit-filesystem_queues.ads" \
@@ -77,7 +79,7 @@ for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gn
     "$here/ada/cubit-libc_child_outlets.adb"; do
     (cd "$ada_obj" && "$gnat_gcc" -c -O2 -g -gnatp -gnatn -fno-pic -ffunction-sections \
         -gnat2022 -gnatwa -gnatys -gnatec="$here/libc-ada.adc" \
-        -I"$here/ada" -I"$here/../runtime/gnat" \
+        -I"$here/ada" -I"$here/../runtime/gnat" -I"$here/../../shared/time" \
         -I"$here/../allocator/src" -I"$here/../allocator/process" "$unit")
 done
 ar rcs "$sysroot/lib/libc.a" "$ada_obj"/*.o

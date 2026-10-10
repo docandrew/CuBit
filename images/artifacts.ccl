@@ -70,6 +70,8 @@
   (artifact "ccl-function-clock-label" repository "userspace/ccl/samples/function-clock-label.ccl")
   (artifact "ccl-monotonic-clock" repository "userspace/ccl/samples/monotonic-clock.ccl")
   (artifact "sameboy-test" repository "userspace/ports/sameboy/build/test.gb")
+  (artifact "wallpaper-cubes" repository "kernel/build/Assets/cubit-wallpapers/1/cubes.qoi")
+  (artifact "wallpaper-cubie" repository "kernel/build/Assets/cubit-wallpapers/1/cubie.qoi")
   (artifact "doom-wad" supplied-file "doom-wad")
   (artifact "intel-guc" supplied-file "intel-guc")
   (artifact "intel-firmware-license" supplied-file "intel-firmware-license")

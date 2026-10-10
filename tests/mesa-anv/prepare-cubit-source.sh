@@ -72,6 +72,7 @@ done
 for transport in anv_cubit_memory.c anv_cubit_memory.h anv_cubit_sync.c anv_cubit_sync.h \
   anv_cubit_sync_types.c anv_backend_sync.h anv_cubit_physical.c anv_cubit_physical.h \
   native_gpu_mapping.c native_gpu_mapping.h native_gpu_buffers.h native_gpu_memory.h native_gpu_query.h \
+  native_gpu_queue.h native_gpu_timeline.h \
   anv_cubit_state_table.c anv_cubit_state_table.h \
   cubit-device-query.c cubit-device-query.h cubit-device-info.c cubit-device-native.c \
   cubit-topology.c cubit-topology.h cubit-memory-info.c cubit-memory-info.h; do

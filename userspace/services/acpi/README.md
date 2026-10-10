@@ -1,17 +1,63 @@
 # ACPI service core
 
-`ACPI_Service` is the pure, SPARK-analyzed state machine for future userspace
-service integration. It is not yet a launched CuBit service: a native IPC runner now exists, but
-there is no executable main, launch manifest, trusted startup configuration,
-CCL binding, SCI/EC handler or hardware callback.
+`ACPI_Service` is the pure service state machine. A native entry point,
+identity manifest, configuration decoder and IPC runner exist, but real provider
+startup and service launch are not integrated. CCL bindings, SCI/EC handling
+and hardware callbacks remain unfinished.
+
+The current collecting service exposes opaque retained results and copied
+observations. After table loading, Core callers use `Initialize_Members`, which initializes
+and seals the collecting namespace before execution. `Invoke_Retained`, `Describe_Result`, bounded
+read/dereference operations and `Release_Result` keep result lifetimes explicit;
+`Invoke_Scalar` handles integer results. Service callers cannot obtain raw runtime
+namespace snapshots or borrowed object descriptors. Collection traces namespace,
+active-frame, expression and retained-result roots at allocation boundaries.
+Released temporary values can be reclaimed; retained values remain protected.
+
+`ACPI_Service_Core` accepts separate generic budgets for namespace nodes,
+aggregate method bytes and retained results. Defaults remain 512, 65536 and 512.
+Every individual method still has a 65536-byte limit. These are explicit instance
+budgets, not firmware-derived runtime sizing. Requests metrics page 5 reports the
+aggregate method capacity and remaining storage.
+
+Portable hosted checks are registered in
+[the capacity suite](../../../tests/acpi-capacity/README.md) and
+[the static Buffer suite](../../../tests/aml-static-buffer/README.md), and
+[the mixed comparison suite](../../../tests/aml-mixed/README.md).
+The latter checks authenticated String/Buffer-left primitive comparisons and
+cached operand-effect cases. Its scoped helper proof establishes bounds and
+current failure contracts, not full ordering semantics or interpreter correctness.
+The current integrated milestone is hosted-tested, not newly proved or boot-tested.
+Historical proof/native evidence below applies only to its recorded source set;
+it does not establish proof or native compatibility of the changed ownership,
+initialization, comparison and metadata-query sources. See the scoped evidence in
+[the integration tests](../../../tests/acpi-integration/README.md).
 
 Install accepts stable copied SDT bytes and a provider-assigned identity. The
 first successful table must be a DSDT; subsequent tables may be ordered SSDTs or
 other standard description tables (`Description`). The
 shared Firmware_Tables parser checks signature, length and checksum. This API
 requires an exact table-sized input, rejects duplicate identities, and limits
-one table to64KiB, the session to32 tables/1MiB and namespace storage to512 nodes.
+one table by default to 64 KiB, the session to 32 tables/1 MiB and namespace storage to 512 nodes.
 These are explicit development budgets, not ACPI specification limits.
+Service, Bootstrap and Requests state are limited objects: construct them in
+place with explicit table-count, aggregate-byte and single-table discriminants
+when different budgets are needed. Requests also takes `Initial_Revision`.
+There is no copying `Fresh` constructor; the native instance names its default
+budgets and initial revision zero explicitly. Discovery-driven capacity selection
+is still a startup-integration task.
+
+After all advertised tables have been admitted, Bootstrap `Finish_Snapshot`
+initializes static package members once and retains the Bound/Missing/Unsupported
+report and seals the namespace before publishing completion. Direct hosted callers
+call Core `Initialize_Members` after loading; it seals through `Values.Seal`. Execution
+requires the ready lifecycle; loading cannot resume after sealing.
+Initialization resolves supported forward package-member references against the
+completed namespace; it is not general module execution or `_INI`/`_REG` policy.
+Missing or unsupported members remain uninitialized values with retained
+diagnostics; they do not prevent safe immutable table metadata reads from a
+Complete snapshot. This completion does not schedule a later retry.
+
 
 Every admitted SDT is retained byte-for-byte in owned storage. Description
 installation validates only the common SDT header, exact length and checksum;
@@ -100,6 +146,17 @@ The draft request layouts are:
 | 5 | Finish snapshot | revision, 0, 0, 0 |
 | 6 | Read table metadata | revision, one-based catalog index, 0, 0 |
 | 7 | Read table bytes | revision, one-based catalog index, byte offset, 0 |
+| 8 | Import table grant (native adapter only) | revision, packed grant reference, expected provider ID, packed kind/length |
+| 9 | MCFG info | revision, table index, page, 0 |
+| 10 | MCFG allocation | revision, table index, allocation index, page |
+| 11 | SLIT info | revision, table index, 0, 0 |
+| 12 | SLIT distance | revision, table index, source locality, destination locality |
+| 13 | MADT info | revision, table index, page, 0 |
+| 14 | MADT record metadata | revision, table index, record index, 0 |
+| 15 | MADT typed fields | revision, table index, record index, page |
+| 16 | SRAT info | revision, table index, page, 0 |
+| 17 | SRAT record metadata | revision, table index, record index, 0 |
+| 18 | SRAT typed fields | revision, table index, record index, page |
 
 Chunks contain little-endian bytes; unused bytes in the last chunk must be zero.
 Commit requires all declared bytes. Finish requires no open table. Start is
@@ -117,6 +174,40 @@ values so every response word fits a signed CCL integer. Offset equal to length
 returns zero bytes; larger offsets are malformed. Invalid catalog indices return
 Not_Found. Queries preserve the entire state and never execute AML.
 
+Decoded queries use the retained immutable table selected by its one-based catalog
+index, require authenticated observer/provider authority, the exact current
+request revision and a Complete snapshot, and preserve the entire state. Table,
+allocation and record indices are one-based; SLIT localities and byte offsets
+are zero-based. These are snapshot descriptions, never address authority.
+The generic handler explicitly rejects reserved native label 8; metadata labels
+cannot enter grant import or acquire a grant. Native imports acquire a reference
+with its expected opaque 64-bit owner; no address is derived from a slot number.
+
+The three payload words after the request revision are:
+
+| Query/page | Payload |
+| --- | --- |
+| MCFG info 0 / 1 | firmware revision, allocation count, 0 / reserved low32, reserved high32, 0 |
+| MCFG allocation 0 / 1 | base low32, base high32, segment / first bus, last bus, reserved32 |
+| SLIT info / distance | firmware revision, locality count, 0 / distance, 0, 0 |
+| MADT info 0 / 1 | firmware revision, record count, flags / local APIC address low32, high32, 0 |
+| MADT record | wire type, byte offset, record length |
+| MADT fields 0, types 0 or 9 | processor UID, controller ID, processor flags |
+| MADT fields 0, type 1 | I/O APIC ID, address32, GSI base |
+| MADT fields 0, type 2 | bus, source, GSI |
+| MADT fields 1, type 2 only | override flags, 0, 0 |
+| MADT fields 0, type 3 | GSI, NMI flags, 0 |
+| MADT fields 0, types 4 or 10 | processor UID, LINT, flags |
+| MADT fields 0, type 5 | address low32, address high32, 0 |
+
+Only these pages are accepted. Unknown MADT records remain available as bounded
+raw record metadata; typed access returns Unsupported_Record_Kind. Absent table,
+wrong signature, malformed body and invalid element index produce distinct
+Not_Found, Wrong_Table_Kind, Table_Rejected and Index_Out_Of_Range outcomes.
+Malformed pages/reserved words fail closed. Wide metadata is split into 32-bit
+words to fit signed CCL integers. Firmware table revision in payload is distinct
+from the optimistic request-state revision in response word zero.
+
 Authorized replies contain the current revision in word zero. Metrics replies
 use the remaining three words as follows; readers compare revisions across
 pages to detect intervening changes:
@@ -130,6 +221,11 @@ pages to detect intervening changes:
 | 4 | maximum table bytes, maximum aggregate table bytes, maximum table count |
 | 5 | method-code bytes, method-code capacity, remaining method-code bytes |
 | 6 | last AML-load code, namespace capacity, remaining namespace nodes |
+| 7 | initialized member report: bound, missing, unsupported |
+| 8 | members initialized (0/1), pending members, 0 |
+
+Member report counts are zero before initialization. Metrics remain authenticated;
+unknown pages and malformed reserved words are rejected.
 
 The last AML-load code is zero before any load attempt, otherwise one plus
 `ACPI_Service.Namespace.Load_Status'Pos`. Thus1 means Loaded,7 means Storage_Full
@@ -142,7 +238,8 @@ Queries preserve state and execute no AML. `ACPI_Endpoint` encodes success as
 label 0xF000 with the four response words; errors use label 0xF001 and words
 `[outcome, revision, admission detail, 0]`. Outcome codes follow the declared
 order: OK=0, Denied=1, Malformed=2, Stale=3, Wrong_Order=4, Resource_Limit=5,
-Table_Rejected=6, Incomplete=7, Not_Found=8. Reply headers always have length four and zero
+Table_Rejected=6, Incomplete=7, Not_Found=8, Wrong_Table_Kind=9,
+Index_Out_Of_Range=10, Unsupported_Record_Kind=11. Reply headers always have length four and zero
 flags/reserved. An unclassified caller gets only `[Denied, 0, 0, 0]`. Metrics do
 not replace common Logging/logstore integration or CCL event notifications.
 
@@ -184,8 +281,9 @@ value-byte usage, package-element usage, rejection count and saturation state.
 Value storage currently permits 2048 objects, 65536 bytes and 8192 package
 elements; these are development budgets. Value usage is derived from the arena
 without executing AML.
-Method bodies occupy a separate append-only 65536-byte pool shared by the
-namespace. A method is no longer limited by the 1024-byte buffer-literal limit.
+Method bodies occupy a separately provisioned pool shared by the namespace,
+with a default aggregate capacity of 65536 bytes. Temporary-method cleanup
+reclaims a dead suffix without moving surviving method bodies. A method is no longer limited by the 1024-byte buffer-literal limit.
 Definitions returned to the executor contain exactly the method's body length;
 calls retain the same instruction and recursion budgets. Loading copies the
 body, and failed admission rolls back code storage together with the namespace.
@@ -195,7 +293,13 @@ paths. A read-only namespace snapshot supplies counts, and the object loader
 checks both consumed-byte bounds and allocation limits before committing.
 Counts are resolved once during loading. Arbitrary count expressions, method
 calls, forward references and truncating surplus initializers remain unsupported.
-Snapshot returns a read-only-by-copy namespace view for current hosted consumers.
+Static Buffer counts additionally admit already-defined canonical String and
+nonempty Buffer values using implicit integer conversion, scoped name resolution
+and the existing low-32-bit size rule. Empty Buffer and unsupported count forms
+fail admission atomically. This does not execute methods or hardware reads during
+loading, and does not broaden VarPackage count conversion.
+The service exports copied observations and opaque retained result handles;
+raw snapshots belong only to the lower-level namespace API.
 
 `Namespace.Invoke_Mutable` is an internal execution entrypoint for an owned
 namespace state. Named integer stores and integer-operation targets update that
@@ -207,16 +311,17 @@ hardware access.
 
 Named integer operands capture their value when evaluated; Local/Arg operands
 retain the existing deferred slot behavior. ACPICA comparisons cover this
-distinction. Named stores currently require integer sources and integer
-destinations; implicit object conversion, mutable references, other destination
-types and Debug output remain unfinished. Synchronous serialized-method calls
+distinction. Admitted scalar and compound Store/CopyObject conversions are
+covered by the hosted integration tests; the full conversion matrix, target
+semantics and Debug output remain unfinished. Synchronous serialized-method calls
 enforce sync-level ordering, including inherited levels through nonserialized
 calls and recursive entry. Invocations require exclusive context ownership;
 concurrent AML threads, yielding and explicit mutex operations remain unfinished.
 Mutable invocation also supports temporary `Method` declarations, with ownership
 and last-invocation cleanup across recursion and execution errors. It reclaims
 namespace slots and method bytes while preserving completed integer writes.
-Temporary data objects, regions and fields remain unfinished. This is internal
+Temporary data-name lifetimes are hosted-tested with collection; complete
+region/field activation and hardware semantics remain unfinished. This is internal
 interpreter support; it does not add a service execution request.
 The eventual CCL endpoint must provide bounded queries, not serialize this entire
 internal state or expose arbitrary invocation. Metrics are not a log/audit stream.
@@ -237,10 +342,11 @@ a safe native allocation strategy or a native stack bound.
 See [test evidence](../../../tests/aml-core/README.md) and the
 [service contract](../../../docs/acpi-service-contract.md) for remaining work.
 
-The bound interpreter now transports named strings, buffers and packages through
+The lower-level noncollecting namespace interface transports named strings, buffers and packages through
 locals and method calls and can return them as `Object_Returned`. Such a result
 identifies backing data in the same immutable namespace snapshot; it is not a
-wire handle or writable AML reference. The caller must retain that snapshot.
+wire handle or writable AML reference. A lower-level caller must retain that
+snapshot; this borrowed interface is not the collecting service API.
 The future CCL query layer must serialize bounded value results instead of
 exposing internal IDs. Mutable object-copy/reference semantics and native
 execution remain incomplete.
@@ -371,3 +477,62 @@ checks or Assume statements in those subprograms. The combined project report
 contains 5,096 successful analysis results, including previously analyzed units;
 this run selected the identifier and service units, not a clean whole-project
 reproof. Existing generic-body flow warnings remain, without unproved checks.
+
+## Bounded string Store and SRAT query integration
+
+Named string-to-string Store preserves the destination identity and namespace
+attachments, so package aliases see the new string. Local/argument Store captures
+an independent string value. Authenticated descriptor refresh obtains current
+length and coercion from owned storage. Unowned hosted adapters keep their
+existing metadata behavior and gain no arena access.
+
+Replacement uses append-only byte storage; old extents are not reclaimed and
+repeated assignments may exhaust quota. Primitive replacement/clone failures
+publish no mutation, but earlier source materialization is not rolled back by
+an eventual target failure. Mixed named destination conversions and general
+RefOf are unsupported; CopyObject ARGR/LOCR/INXR remain unsupported. An Index
+invalidated by shrinking a string fails closed on later reads/writes. ACPICA's
+observed out-of-range byte result is not used as permission to access stale data.
+These additions are tested, not newly proved.
+
+SRAT labels 16–18 use the same authenticated Complete-snapshot/revision gates
+and signed-safe split words as other table queries. No domain, address or handle
+is authority. Record indices are one-based and metadata offsets zero-based.
+| Label | Words2,3 | Reply words1,2,3 |
+| --- | --- | --- |
+| 16 Read_SRAT_Info | header page0,zero | SDT revision,record count,table revision |
+| 16 Read_SRAT_Info | reserved page1,zero | reserved64 low32,high32,zero |
+| 17 Read_SRAT_Record | record index,zero | wire type,byte offset,record length |
+| 18 Read_SRAT_Fields | record index,page | fields below |
+
+| Record | Page | Values |
+| --- | --- | --- |
+| Local APIC/SAPIC0 | common0 | domain low8,domain high24,APIC ID |
+| Local APIC/SAPIC0 | detail1 | flags,SAPIC EID,clock domain |
+| Memory1 | common0 | proximity domain,flags,zero |
+| Memory1 | base2 | base low32,high32,zero |
+| Memory1 | length3 | length low32,high32,zero |
+| x2APIC2 / GICC3 / RINTC7 | common0 | proximity domain,APIC ID or processor UID,flags |
+| x2APIC2 / GICC3 / RINTC7 | detail1 | clock domain,zero,zero |
+| GIC ITS4 | common0 | proximity domain,ITS ID,zero |
+| Generic initiator5 / port6 | common0 | proximity domain,raw handle type,flags |
+| Generic initiator5 / port6 | handle4–9 | successive three raw handle bytes; final page has byte15,zero,zero |
+
+Every other page/known-kind combination is Malformed. Globally unrecognized
+pages>9 are Malformed before table lookup. Any recognized page0–9 on an unknown
+kind is Unsupported_Record_Kind. Invalid table index, wrong signature, malformed
+body and invalid record index retain distinct outcomes. Full table validation
+precedes publication, including any malformed trailing record.
+
+All64-bit values split into low/high32-bit words, preserving CCL signed-safe
+response bounds. Raw type0 split-domain fields avoid invented legacy-revision
+policy. Generic handles are not interpreted as namespace or PCI authority.
+Domains are firmware identifiers, not compact operating-system topology indices.
+
+
+String Store quota failures now propagate `Value_Limit` through local/argument
+capture and named owner writes. The internal write result appends
+`Write_Value_Limit`; existing result ordinals retain their values. Unsupported
+kinds retain their previous classification. This does not make whole expressions
+transactional: the quota fixture deliberately uses allocation-free earlier
+expressions to check exact state preservation on failed assignment.

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs>
+<linearGradient id="amber" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffdc80"/><stop offset="1" stop-color="#ffa41f"/></linearGradient>
+<linearGradient id="gffe9c4e8b47a" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffe9c4"/><stop offset="1" stop-color="#e8b47a"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M2 38.54 L19.83 38.54 L19.83 42.11 L2 42.11Z"/>
+</g>
+<path d="M2 38.54 L19.83 38.54 L19.83 42.11 L2 42.11Z" fill="#5a32d6"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M10.91 28.74 L32.3 7.35 L40.33 15.37 L18.93 36.76 L7.35 40.33Z" transform="translate(3 3)"/>
+  <path d="M10.91 28.74 L32.3 7.35 L40.33 15.37 L18.93 36.76 L7.35 40.33Z" transform="translate(2 2)"/>
+  <path d="M10.91 28.74 L32.3 7.35 L40.33 15.37 L18.93 36.76 L7.35 40.33Z" transform="translate(1 1)"/>
+  <path d="M10.91 28.74 L32.3 7.35 L40.33 15.37 L18.93 36.76 L7.35 40.33Z"/>
+</g>
+<path d="M10.91 28.74 L32.3 7.35 L40.33 15.37 L18.93 36.76 L7.35 40.33Z" fill="#9a4a07" transform="translate(3 3)"/>
+<path d="M10.91 28.74 L32.3 7.35 L40.33 15.37 L18.93 36.76 L7.35 40.33Z" fill="#9a4a07" transform="translate(2 2)"/>
+<path d="M10.91 28.74 L32.3 7.35 L40.33 15.37 L18.93 36.76 L7.35 40.33Z" fill="#9a4a07" transform="translate(1 1)"/>
+<path d="M10.91 28.74 L32.3 7.35 L40.33 15.37 L18.93 36.76 L7.35 40.33Z" fill="url(#amber)"/>
+<path d="M28.74 10.91 L32.3 7.35 L40.33 15.37 L36.76 18.93Z" fill="#f2353f"/>
+<path d="M26.07 13.59 L28.74 10.91 L36.76 18.93 L34.09 21.61Z" fill="#b4bccf"/>
+<path d="M10.91 28.74 L18.93 36.76 L7.35 40.33Z" fill="url(#gffe9c4e8b47a)"/>
+<path d="M8.68 36.32 L11.36 38.99 L7.35 40.33Z" fill="#1d1530"/>
+<path d="M12.7 28.74 L30.52 10.91" fill="none" stroke="#ffffff" stroke-width="1" stroke-linecap="butt" opacity="0.55"/>
+</svg>

@@ -100,6 +100,7 @@ package body Desktop_Mesa_Software_Renderer with SPARK_Mode,
    end Draw_Fill;
    procedure Draw_Backdrop
      (Target : Compositor_Formats.Image; Target_Bytes : Compositor_Formats.Byte_Count;
+      Damage : CuBit.Display_Geometry.Physical_Rectangle;
       Style : CuBit.Appearance.Preferences; Secondary : Boolean;
       Drawn, Must_Restart : out Boolean)
      with Refined_Global => (Proof_In => Text) is

@@ -26,7 +26,7 @@ procedure Desktop_Strided_Tests is
    Mapping, Retired : System.Address;
    Write : D.Write_Ticket;
    Plan : Compositor_Upload.Plan;
-   Budget : constant := 144 * 4096;
+   Budget : constant := (4 + V.Source_Capacity) * 4096;
    function Addr (N : Natural) return System.Address is
      (System.Storage_Elements.To_Address (System.Storage_Elements.Integer_Address (N)));
 begin
@@ -71,11 +71,11 @@ begin
    end loop;
    pragma Assert (D.Charged_Bytes = 4 * 4096);
    -- A confirmed closed slot can change role without reviving its old lease.
-   D.Import_Owned_Source (139, Addr (30000), Foreign, Result);
+   D.Import_Owned_Source (V.Source_Slot'Last, Addr (30000), Foreign, Result);
    pragma Assert (Result = D.Source_Accepted);
-   D.Import_Backing (139, Leases (139), Rejected, Result);
+   D.Import_Backing (V.Source_Slot'Last, Leases (V.Source_Slot'Last), Rejected, Result);
    pragma Assert (Result = D.Source_Rejected and Rejected = V.No_Source);
    D.Release_Source (Foreign, Retired); pragma Assert (Retired = Addr (30000));
    D.Stop; pragma Assert (D.Charged_Bytes = 0 and Vulkan_Device_Mock.Closes = 1);
-   Ada.Text_IO.Put_Line ("PASS Desktop strided 41-pixel images in 48-pixel rows: 128 masks + 2 backdrops + 2 icon atlases + 8 client images, upload/import/retirement, exact 144-allocation budget, external ownership exclusion and slot role reuse");
+   Ada.Text_IO.Put_Line ("PASS Desktop strided 41-pixel images in 48-pixel rows: 128 masks + 2 backdrops + 2 icon atlases + 16 client images, upload/import/retirement, exact 152-allocation budget, external ownership exclusion and slot role reuse");
 end Desktop_Strided_Tests;

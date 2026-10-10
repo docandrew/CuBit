@@ -13,8 +13,10 @@
 --    futexes      futex -> FUTEX_WAIT/FUTEX_WAKE (requeue wakes instead)
 --    memory       brk -> SBRK; private mmap/whole munmap -> owned regions;
 --                 unsupported protections and partial unmaps fail
---    time         clock_gettime/nanosleep -> the kernel microsecond clock;
---                 CLOCK_REALTIME adds the kernel's wall-clock offset
+--    time         clock_gettime/nanosleep -> the clock publication (no
+--                 system call, docs/fast-clock.md), else the kernel
+--                 microsecond clock; CLOCK_REALTIME adds the kernel's
+--                 wall-clock offset
 --    descriptors  read/write/close/fstat/poll/select -> fd.c's table of
 --                 CuBit objects (stdout/stderr are the program's streams)
 --    files        open/stat/... -> file.c, through filesystem.svc, inside

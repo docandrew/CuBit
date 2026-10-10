@@ -48,6 +48,19 @@ package CuBit.File_Access with SPARK_Mode => On is
      (Data : Wire_Bytes; Item : out Policy; Success : out Boolean)
      with Post => (if not Success then Is_Empty (Item));
 
+   --  Its entries, as Decode takes them (Queue_List_Scopes,
+   --  docs/filesystem-protocol-v2.md step 6): Count entries of
+   --  Wire_Entry_Bytes from Data'First, each prefix zero-padded. The
+   --  bootstrap wildcard is one entry with an empty prefix and all rights.
+   function Entry_Count (Item : Policy) return Natural
+     with Post => Entry_Count'Result <= Maximum_Entries;
+   function Rights_To_Wire (Rights : Rights_Set) return Unsigned_8
+     with Post => Valid_Rights (Rights_To_Wire'Result);
+   --  (Rights_From_Wire (Rights_To_Wire (R)) = R: tested, all 16 sets.)
+   procedure Encode (Item : Policy; Data : out Wire_Bytes; Count : out Natural)
+     with Pre  => Data'First = 1 and then Data'Length = Maximum_Entries * Wire_Entry_Bytes,
+          Post => Count = Entry_Count (Item);
+
 private
    type Scope_Entry is record
       Prefix : String (1 .. Maximum_Prefix_Bytes) := [others => ' '];
@@ -60,4 +73,5 @@ private
       Count : Natural range 0 .. Maximum_Entries := 0;
    end record;
    function Is_Empty (Item : Policy) return Boolean is (Item.Count = 0);
+   function Entry_Count (Item : Policy) return Natural is (Item.Count);
 end CuBit.File_Access;

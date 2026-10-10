@@ -134,6 +134,26 @@ is
     ---------------------------------------------------------------------------
     procedure enableOutputLocking;
 
+    ---------------------------------------------------------------------------
+    -- Asynchronous console. Once started, serial output is copied into a
+    -- bounded FIFO (Console_Ring) under the output lock and written to the
+    -- UART by idle CPUs, so a print costs a memory copy instead of one port
+    -- write (a hypervisor exit) per byte. Nothing is lost: a writer finding
+    -- the FIFO full writes its oldest batch itself, as every print did
+    -- before. Order is kept: one CPU at a time owns the transmitter.
+    ---------------------------------------------------------------------------
+    -- Idle threads exist: drains will happen. Requires output locking.
+    procedure startAsynchronous;
+    -- A fatal stop: write everything queued, then write directly again.
+    procedure stopAsynchronous;
+    -- From an idle thread: write one batch if the transmitter is ready.
+    -- More is True when bytes remain and the transmitter took this batch.
+    procedure drainConsole (More : out Boolean);
+    -- From CPU 0's timer: when no drain made progress for
+    -- Console_Stall_Ticks ticks (no CPU idle), write one batch here.
+    procedure drainStalledConsole;
+    Console_Stall_Ticks : constant := 10;
+
     procedure print (str : in String; fg,bg : in TextIO.Color);
 
     ---------------------------------------------------------------------------

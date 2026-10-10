@@ -1,9 +1,10 @@
+with AML_Delays;
 with Ada.Text_IO; use Ada.Text_IO;
 with AML_Namespace;
 with AML_Decode;
 with AML_Execute;
 procedure Namespace_Field_Tests is
-   package NS is new AML_Namespace (Capacity => 7);
+   package NS is new AML_Namespace (Perform_Delay => AML_Delays.Unavailable_Provider, Capacity => 7);
    use NS;
    use type AML_Execute.Execution_Status;
    use type AML_Decode.Integer_Value;

@@ -1,3 +1,4 @@
+with System;
 -------------------------------------------------------------------------------
 -- CuBit OS
 -- Copyright (C) 2019 Jon Andrew
@@ -356,6 +357,16 @@ is
     ---------------------------------------------------------------------------
     -- Port reads have hardware side effects; these are trusted Ada adapters.
     function hasData(port : SerialPort) return Boolean with SPARK_Mode => Off;
+
+    -- The transmit holding register (with FIFOs: the whole transmit FIFO) is
+    -- empty, so up to the FIFO depth may be written without an overrun. An
+    -- absent port reads all ones and reports ready.
+    function transmitReady(port : SerialPort) return Boolean with SPARK_Mode => Off;
+
+    -- Write Count bytes from Addr with one string instruction (one exit
+    -- under a hypervisor rather than one per byte).
+    procedure sendBytes(port : SerialPort; Addr : System.Address; Count : Natural)
+      with SPARK_Mode => Off;
 
     ---------------------------------------------------------------------------
     -- Receive a single character via this serial port.

@@ -703,6 +703,13 @@ package Process is
         callSequence        : Unsigned_64 := 0;
         callDeadlineMs      : Unsigned_64 := 0;
         callDeadlineActive  : Boolean := False with Atomic;
+        -- The server of the current or last call and when it began
+        -- (Time.msTicks), for the on-screen stuck-call report only.
+        callTarget          : ProcessID := NO_PROCESS;
+        callStartMs         : Unsigned_64 := 0;
+        -- User RIP at this thread's last timer interrupt in user mode,
+        -- for the stuck-call report: where a busy server is spinning.
+        sampledRIP          : Unsigned_64 := 0;
         -- User FS base (thread-local storage), saved on switch-out because
         -- user code may change it with WRFSBASE.
         fsBase              : Unsigned_64 := 0;

@@ -46,6 +46,35 @@ drain. Evaluate transport-level allocation versus stable context-scoped routing
 for failure-only fast requests against the CT ABI before choosing a replacement.
 Context-ID/backing reuse remains a distinct obligation. Main and v33 are unchanged.
 
+### Status and GuC residency (2026-10-08)
+
+The 84-cycle limit above no longer exists in the main tree: the 2026-10-03
+transport-ID migration (`docs/intel-gpu-context-registration.md`) replaced
+per-context fence intervals with one wrapping FAST-ID stream
+(`Intel_GPU_GuC_Fast_Fences`, IDs 8000..FFFF). A hosted reproduction against
+the pre-residency tree (`tests/intel-gpu/continuous_submit_tests.adb`)
+completed 40,000/40,000 submissions on one context and then deregistered, but
+each job still cost MODE_SET(enable) + SCHED_CONTEXT + MODE_SET(disable) and two
+synchronous MODE_DONE waits (80,000 lifecycle H2G, 80,000 G2H). The NUC freeze
+is therefore NOT explained by fence exhaustion in current source.
+
+Submission now follows Linux single-LRC GuC submission (i915
+`__guc_add_request`, xe `submit_exec_queue`): register/policy once, enable on
+the first job, then each job only publishes the ring tail and sends one FAST
+SCHED_CONTEXT (no response, no receive credit). Contexts stay scheduling-enabled
+between jobs. VM updates, buffer/table/image retirement and table recycling
+park resident contexts (bounded MODE_SET disable) before their unchanged
+all-contexts-stopped checks; the drain still disables then deregisters retired
+contexts. GuC v70 doorbells/work queues apply only to parallel contexts and are
+not used. The same reproduction now records 1 lifecycle enable, 40,000
+SCHED_CONTEXT, 1 G2H, FAST IDs wrapping, park/re-enable, clean deregistration
+and a bounded typed failure (`Completion_Wait`) for a GPU that never completes.
+SPARK level 2 proves FAST-ID availability (never exhausted while unbroken),
+that SCHED_CONTEXT keeps the resting Enabled state without credits, that
+deregistration is admitted from any resting Disabled state, and the batch
+admission/report-cadence policy. Hosted model and proofs only: hardware
+acceptance of repeated SCHED_CONTEXT on a resident context needs the NUC.
+
 ### Private fast-request routing prototype
 
 In qmsr03hg, the lifecycle now reserves six permanent failure routes per retained

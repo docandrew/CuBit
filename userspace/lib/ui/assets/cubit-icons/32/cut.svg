@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<defs>
+<linearGradient id="steel" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#eef1f8"/><stop offset="1" stop-color="#b4bccf"/></linearGradient>
+<linearGradient id="violet" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#c3adff"/><stop offset="1" stop-color="#8457ff"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M7.65 2 L11.04 2 L18.96 17.83 L15.57 19.52Z" transform="translate(2 2)"/>
+  <path d="M7.65 2 L11.04 2 L18.96 17.83 L15.57 19.52Z" transform="translate(1 1)"/>
+  <path d="M7.65 2 L11.04 2 L18.96 17.83 L15.57 19.52Z"/>
+  <path d="M18.96 2 L22.35 2 L14.43 19.52 L11.04 17.83Z" transform="translate(2 2)"/>
+  <path d="M18.96 2 L22.35 2 L14.43 19.52 L11.04 17.83Z" transform="translate(1 1)"/>
+  <path d="M18.96 2 L22.35 2 L14.43 19.52 L11.04 17.83Z"/>
+</g>
+<path d="M7.65 2 L11.04 2 L18.96 17.83 L15.57 19.52Z" fill="#4f5870" transform="translate(2 2)"/>
+<path d="M7.65 2 L11.04 2 L18.96 17.83 L15.57 19.52Z" fill="#4f5870" transform="translate(1 1)"/>
+<path d="M7.65 2 L11.04 2 L18.96 17.83 L15.57 19.52Z" fill="url(#steel)"/>
+<path d="M18.96 2 L22.35 2 L14.43 19.52 L11.04 17.83Z" fill="#4f5870" transform="translate(2 2)"/>
+<path d="M18.96 2 L22.35 2 L14.43 19.52 L11.04 17.83Z" fill="#4f5870" transform="translate(1 1)"/>
+<path d="M18.96 2 L22.35 2 L14.43 19.52 L11.04 17.83Z" fill="#eef1f8"/>
+<path d="M14 13.87 A1 1 0 1 0 16 13.87 A1 1 0 1 0 14 13.87Z" fill="#1d1530"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M4.82 22.91 A3.96 3.96 0 1 0 12.74 22.91 A3.96 3.96 0 1 0 4.82 22.91Z" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M17.26 22.91 A3.96 3.96 0 1 0 25.18 22.91 A3.96 3.96 0 1 0 17.26 22.91Z" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<path d="M4.82 22.91 A3.96 3.96 0 1 0 12.74 22.91 A3.96 3.96 0 1 0 4.82 22.91Z" fill="none" stroke="url(#violet)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M17.26 22.91 A3.96 3.96 0 1 0 25.18 22.91 A3.96 3.96 0 1 0 17.26 22.91Z" fill="none" stroke="url(#violet)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -71,6 +71,9 @@ package body Desktop_Metric_Publisher with SPARK_Mode => Off is
                when BP.Describe_CPU_Copy_Bytes => Write_Record (WM.Declaration (WM.CPU_Copy_Bytes), Now);
                when BP.Describe_Completion => Write_Record (SM.Declaration (SM.Completion_Dispatch), Now);
                when BP.Describe_Diagnostic => Write_Record (SM.Declaration (SM.Diagnostic_Output), Now);
+               when BP.Describe_Loop_Turn => Write_Record (SM.Declaration (SM.Loop_Turn), Now);
+               when BP.Describe_Input_To_Present => Write_Record (SM.Declaration (SM.Input_To_Present), Now);
+               when BP.Describe_Input_Source_Age => Write_Record (SM.Declaration (SM.Input_Source_Age), Now);
             end case;
             if Disabled then return; end if;
          end if;

@@ -107,4 +107,31 @@ package body CuBit.File_Access with SPARK_Mode => On is
       Item := Candidate;
       Success := True;
    end Decode;
+
+   function Rights_To_Wire (Rights : Rights_Set) return Unsigned_8 is
+     ((if Rights (Read_Objects) then 1 else 0) +
+      (if Rights (Write_Objects) then 2 else 0) +
+      (if Rights (Execute_Objects) then 4 else 0) +
+      (if Rights (Create_Objects) then 8 else 0));
+
+   procedure Encode (Item : Policy; Data : out Wire_Bytes; Count : out Natural) is
+   begin
+      Data := [others => 0];
+      Count := Item.Count;
+      for Index in 1 .. Item.Count loop
+         pragma Loop_Invariant (Count = Item.Count);
+         declare
+            Base : constant Wire_Index := Data'First + (Index - 1) * Wire_Entry_Bytes;
+            Length : constant Natural := Item.Entries (Index).Length;
+         begin
+            Data (Base) := Rights_To_Wire (Item.Entries (Index).Rights);
+            Data (Base + 1) := Unsigned_8 (Length mod 256);
+            Data (Base + 2) := Unsigned_8 (Length / 256);
+            for Offset in 1 .. Length loop
+               Data (Base + 7 + Offset) :=
+                 Character'Pos (Item.Entries (Index).Prefix (Offset));
+            end loop;
+         end;
+      end loop;
+   end Encode;
 end CuBit.File_Access;

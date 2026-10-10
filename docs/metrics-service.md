@@ -152,3 +152,194 @@ Native results are recorded in `coordination/observability.md` as they land.
   service endpoint and denies everything: native end-to-end needs it.
 - **Catalog:** add `(service metrics 24 read-write)`,
   `(service metrics-observer 25 read-write)` and fixed bindings. Additive only.
+
+## Raw history query (2026-10-08)
+
+`Query_Raw` (0D02) is an observer-only pull operation over a fixed 256-record
+service history. Accepted records, including declarations, retain the kernel
+publisher PID/tag, source batch sequence, producer-drop count, source batch gaps,
+and original metric slot. Rejected records and replayed batches append nothing.
+History overwrites the oldest entry without waiting for readers. Sequence exhaustion
+stops history appends and counts those losses; aggregate ingestion continues.
+
+Requests are four words: next desired sequence (initially 1), writable grant slot,
+grant generation, and 4096-byte capacity. A successful response is four words:
+rows written, next sequence, number overwritten before the requested cursor,
+and terminal history-drop count. Zero/future cursors are invalid. At most 32 rows
+are returned per request; an empty tail is successful. Each 128-byte row contains
+sequence/PID/publisher-tag/batch/producer-drops/batch-gaps, two zero reserved words,
+and the unchanged 64-byte metric encoding. Unused rows are zero. The service
+returns its grant acquisition before acknowledging success.
+
+`CuBit.Metric_Raw_Observer` owns one aligned page and grant. It is synchronous
+collector code, never a render-path call. It captures the endpoint's process
+incarnation and checks it before/after queries. Serialize use and keep the
+capability slot stable during each call. A changed endpoint or uncertain/malformed
+reply disables the object; retain it until `Disconnect` confirms retirement.
+Reacquire a new observer and reset its cursor after service replacement. Raw
+telemetry has no buffer-release or GPU-retirement authority.
+
+Names/declarations may have aged out before a late reader starts. Preserve unknown
+metadata and explicit loss; do not apply a current summary's name to older raw
+records without a matching declaration. PID reuse is separated by publisher tags.
+Source-store lease eviction may also remove metadata, so raw keys alone are not a
+historical schema. Preserve typed numeric records even when names are unavailable.
+
+The SPARK history/store/query policies and actual observer adapter tests are
+reproducible with `tests/metrics/raw-history/run.py`; native acceptance is recorded
+in its evidence directory. The native service loop, mapped-memory access, kernel
+identity enforcement and foreign adapter remain outside those policy proofs.
+Desktop detailed event encoding and export are implemented below. CCL event
+capture/visualization and kernel event export remain separate work; aggregated
+summaries alone still do not supply flame graphs or photons.
+
+## Raw trace groups
+
+Record kind 6 (`Trace`) carries raw diagnostic payload only. It does not
+declare, create, or update a summary series. Its key is a schema identifier
+(1 for the compositor trace codec), independent of ordinary metric keys.
+
+| Slot word | Meaning |
+| --- | --- |
+| 0 | Kind 6 |
+| 1 | Schema key, 1 through 32 |
+| 2 | Nonzero producer event ID |
+| 3 | Fragment index, 0 through 3 |
+| 4–7 | Four payload words, preserving all 64 bits |
+
+Four fragments contain one 128-byte compositor packet. On the publication
+wire they occupy 256 bytes; this is bounded diagnostic overhead, not a
+zero-copy claim. The existing 4 KiB page format and two-page grant lifetime
+remain unchanged. `Metric_Batches.Append_Group` admits all four fragments
+into one filling page or changes neither page and counts four dropped
+records. It refuses after batch sequence exhaustion. `Metrics.Put_Group`
+adds no IPC, allocation or wait. Its native adapter reports a disabled
+publisher's group as four rejected records. `Has_Group_Room` is advisory
+within the same serialized event loop; callers must still check acceptance.
+
+A trusted collector obtains publisher identity and batch identity from raw
+query envelopes, not the trace payload. `Compositor_Trace_Metrics.Assemble`
+requires four consecutive history sequences with identical PID, issued
+publisher tag, batch, schema and event ID, ordered parts 0–3, a valid full
+packet, and equality between the packet event ID and envelope event ID.
+The raw observer's endpoint incarnation must remain stable; discard all
+partial assembly state on observer failure or reconnection. Even valid
+trace payload is a producer claim, never an ownership or retirement fence.
+
+The service retains fragments individually in its bounded 256-record raw
+history. Overwrite can remove the beginning of an event, and raw query page
+boundaries can split an event. A collector must retain at most the bounded
+partial group, reject orphan/mismatched fragments, and expose history gaps,
+producer dropped records, and source batch gaps. `Compositor_Trace_Stream` now provides that bounded streaming collector.
+Call `Start` with the raw observer incarnation and requested cursor, then
+`Feed` for each validated raw row in order. It retains one partial event,
+works across raw-query pages, and rejects orphan, malformed, replayed or
+mixed-identity rows. `Feed` never switches endpoints automatically. Call
+`Discard_Partial` on query failure or capture end; archive the counters before
+calling `Start` for a new capture. No IPC, allocation, waits or clock reads
+occur in this policy.
+
+Native acceptance publishes synthetic input/source/draw/submit/frame events
+through the real SDK and metrics service. It keeps both SDK pages busy,
+refuses 100 additional events (400 fragments), dispatches completions, and
+verifies 64 exact retained events, an overwrite gap of 268 records from its
+prior cursor, reported producer loss, unchanged ordinary summary series,
+and confirmed publisher/observer grant retirement. Earlier 1,000-sample
+summary and raw authority tests also pass. This is a CuBit QEMU functional
+test using explicit kernel/initrd/allocator seeds, not a Desktop trace
+callsite test or supported-hardware performance measurement.
+
+The record codec, batching/store policy and compositor fragment/assembly
+policy are SPARK. Native SDK IPC, capability/grant truth, service FFI and
+clock accuracy remain outside those proofs. Evidence is under
+`tests/metrics/raw-history/evidence/trace-*`; the portable runner exercises
+atomic capacity boundaries, 1,000 held-page attempts, full-width identities,
+mixed publishers/batches/sequences, malformed packets and original metrics
+regressions. Desktop export is validated below; CCL capture/viewer integration
+remains open.
+
+### Streaming collector validation
+
+`Capture.Success` marks a complete event; all other result fields are meaningful
+only when it is true. The result carries observer incarnation, authenticated
+publisher PID/tag, batch, first history sequence, producer drop/batch-gap
+metadata, and the full compositor event. Identity is still supplied by the
+native transport, and event contents remain producer claims. No result grants
+resource ownership or establishes hardware presentation.
+
+The collector counts skipped history rows, rejected rows, abandoned partial
+events, emitted events and endpoint mismatches. These are different scopes:
+skipped rows include unresolved sequence positions after malformed input;
+rejected rows include replay/orphan/malformed data; neither is a count of lost
+complete events. Entirely overwritten events cannot be counted exactly from
+fragments. Producer dropped-record counts and source batch-gap counts are
+preserved separately on complete events. Counters saturate rather than wrap.
+`Start` resets counters explicitly; `Discard_Partial` preserves them.
+
+The hosted regression passes 89,443 checks across all query-page lengths
+1–32, all four initial fragment offsets, replay, altered envelope fields,
+endpoint changes, explicit discard and terminal sequence boundaries. A
+compiled negative control without the endpoint guard is rejected. SPARK
+proves successful output validity and identity binding, final sequence
+correlation, exact emitted-count advancement, and a nondecreasing cursor.
+The state-size regression bounds its storage to one 4 KiB page; no heap is used.
+
+Native CuBit acceptance deliberately shifts retained history to fragment 1.
+The real SDK/service/raw observer test rejects three orphan fragments,
+reconstructs 63 exact events across eight query pages, records a 269-row gap,
+preserves the 400-fragment producer-loss report, and confirms grant retirement.
+Earlier complete-group/authority/summary tests remain covered. The native
+fixture uses explicit prebuilt kernel/initrd/runtime/allocator seeds. This is
+functional transport evidence, not actual Desktop timing or hardware latency.
+Desktop export, archive storage and CCL visualization remain integration work.
+
+## Desktop trace export
+
+Build Desktop with metrics enabled and set the boot configuration to:
+
+```lisp
+(setting "desktop.metrics.trace" "true")
+```
+
+This is a `system-config v1` setting, read once when Desktop starts. Only the
+exact raw value `true` enables detailed tracing; absent/denied/other values keep
+it off. Desktop's manifest grants read-only access to `desktop.metrics.`.
+Normal builds keep detailed tracing disabled. Serial timing may remain off.
+The startup diagnostic goes through Desktop's existing logsvc path.
+
+The exporter covers input dequeue, accepted protected-frame source publication,
+writer-attributed source draw, accepted display submission, and completion
+collection. Legacy buffer attachments do not supply protected publication
+identities; unsupported draw paths are counted rather than given invented
+source/writer identities. Submission and completion events still work there.
+Use the complete raw envelopes and event identities when correlating records.
+Client input watermarks are untrusted; completion collection is not scanout latch.
+
+The existing two SDK pages serve aggregate and trace records together. Four
+fragments are admitted atomically, no retries or IPC occur in the append, and
+an urgent flush request uses the ordinary event-loop pump. Full/held pages shed
+work and expose loss. Health gauges 13/14/15 are `desktop.trace.invalid`,
+`desktop.trace.refused`, and `desktop.trace.unsupported`. They are emitted only
+when trace mode is enabled. Producer dropped-record counts include ordinary
+metrics as well as trace fragments; do not convert them into lost whole events.
+
+Native Desktop validation includes a real protected-frame toolkit client plus
+the Mesa software window, raw and summary observers, menu restoration, and
+cursor checks at 100% and 125% DPI. Serial timing is disabled. Run188 captured
+10 input, 5 source, 19 draw, 20 submission and 21 completion events; its final
+producer loss snapshot was 6 records, with zero batch gaps/history loss/rejected
+rows in that capture and confirmed observer grant retirement. These are
+functional CuBit QEMU results with explicit prebuilt platform seeds, not a
+hardware latency, whole-run completeness, GPU or 240 Hz claim.
+
+Reproduction and native fixture sources: [Desktop trace test](../tests/compositor/trace-native/README.md).
+Publication ID/flush policy and codec/assembly are SPARK; the existing native
+publisher adapter, main event loop, transport truth and clock accuracy are not
+proved by these tests. Capture archives, CCL timeline/flame-graph UI, kernel
+export, physical input timestamps and authoritative display latch timestamps
+remain open.
+
+A repeat with the packaged native fixtures (run194) passed the same complete
+workload; its final producer loss snapshot was 4 records. Loss varies with
+scheduling and is intentionally visible. Evidence:
+`tests/compositor/trace-wire-evidence/desktop-packaged194.json`.

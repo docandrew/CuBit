@@ -1,0 +1,13 @@
+project Endpoint_checked is
+   for Source_Dirs use (".", "../build/native-endpoint/abi", "../regions",
+     "../../../userspace/services/acpi-backend",
+     "../../../userspace/services/acpi-backend/native",
+     "../../../userspace/lib/acpi", "../../../shared/firmware", "../../../shared/hardware");
+   for Object_Dir use "../build/native-endpoint-checked/obj";
+   for Exec_Dir use "../build/native-endpoint-checked";
+   for Main use ("endpoint_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwJ", "-gnatwe");
+   end Compiler;
+end Endpoint_checked;

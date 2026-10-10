@@ -1,76 +1,139 @@
 ![Build](https://github.com/docandrew/CuBit/workflows/CuBit%20CI/badge.svg)
 
-Introduction
-============
-CuBitOS is a multi-processor, 64-bit, (partially) formally-verified, 
-general-purpose operating system, currently for the x86-64 architecture.
+CuBitOS
+=======
+CuBit is a multi-processor, 64-bit capability microkernel operating system for
+x86-64, written in Ada and SPARK, with formally verified (proved) components.
+Drivers and services run in user space and talk over typed capability IPC and
+shared-memory grants. It boots to a graphical desktop with a CCL (CuBit Control
+Language) workbench and console, a log viewer, ported apps (DOOM, a Game Boy
+emulator, Servo) and a native toolchain (binutils, GCC).
 
-CuBit is written in the SPARK dialect of Ada.
+CuBit is very much a work in progress, but it runs well in QEMU: please give it
+a spin. Contributors welcome!
 
-CuBit is very much a WORK-IN-PROGRESS! Having said that, please give it a spin.
-Contributors welcome!
+Quick start: run CuBit in QEMU
+==============================
 
-Build Instructions
-==================
+You need Linux (or WSL2) with [Nix](https://nixos.org/download/) installed.
+The Nix development shell provides everything else: the Ada toolchain (through
+Alire), GRUB and image tools, and QEMU.
 
-Requirements
-------------
-* yasm assembler
-* GNAT CE 2020 with `gprbuild`, `gnat`, etc. in your `$PATH`
-* gcc/ld/GNU make/GNU binutils
+1. **Get the source.**
 
-To create bootable .ISO, you'll also need:
-* grub-mkrescue
-* xorriso
-* grub-pc-bin
+        git clone https://github.com/docandrew/CuBit.git
+        cd CuBit
 
-Building
-========
-Dependencies: You'll need the GNAT 2020 Compiler, and if you want to build
-the live-CD, you'll need the *xorriso* and *grub-mkrescue* tools, and possibly
-*grub-pc-bin* depending on which emulator/virtualization environment you
-are using. These are
-probably provided in your distro's package manager. This can be built in Linux
-and on Windows using WSL.
+2. **Add the DOOM shareware data file.** The development disk image includes
+   DOOM, and the build stops with `No rule to make target '../doom1.wad'` if it
+   is missing. Put the freely distributable shareware `doom1.wad` in the
+   repository root (next to this README). To keep it elsewhere, pass
+   `DOOM_WAD=/path/to/doom1.wad` to `make`.
 
-    git clone https://github.com/docandrew/CuBit.git
-    cd CuBit/kernel
-    make world
+3. **Enter the development shell.** If flakes aren't enabled in your Nix
+   configuration, add `--extra-experimental-features 'nix-command flakes'`.
 
-This will build CuBit and create a Live-CD .iso file. The ISO can be mounted
-and run in VirtualBox, Bochs, or QEMU.
+        nix develop
 
-Reproducible development shell
-------------------------------
+4. **Build and boot the desktop.**
 
-On a system with Nix and flakes enabled, enter the repository's development
-environment before building:
+        make -C kernel world
+        make -C kernel run-desktop
 
-    nix develop
-    make -C kernel world
+   The first build takes a while: it builds the Ada toolchain and a native Mesa
+   (the desktop's renderer). Allow plenty of disk space; the Mesa build
+   directory alone grows to several gigabytes. Later builds are incremental.
 
-The shell provides Alire, image-building utilities, and QEMU. Alire manages
-the Ada compiler and `gprbuild` toolchain used to build CuBit.
+`run-desktop` boots a 4-CPU, 2 GiB q35 machine with an NVMe disk, virtio
+networking, HDA audio and a 1024x768 virtio-vga display, in a GTK window. The
+kernel's serial output goes to `kernel/serial_output.log`.
 
-To boot the graphical desktop after building:
+What you'll see
+---------------
+The desktop comes up with a boot-diagnostics window, a taskbar and an **Apps**
+menu (click it, or press the Windows/Super key). From there you can launch
+DOOM, the CCL Workbench and console, the Logs viewer, Files, Settings and more.
+The Logs viewer shows the typed records every service publishes; it is the
+quickest way to see what the system is doing.
 
-    make -C kernel run-desktop
+No KVM?
+-------
+The run targets use KVM by default. On a host without KVM (some VMs, WSL
+without nested virtualization), use QEMU's software emulator. It's slower but
+works:
 
-Documentation (work in progress):
----------------------------------
+    make -C kernel run-desktop QEMU_ACCEL=
 
-The documentation is being organized as [The CuBit Book](docs/README.md).
+Other ways to run it
+--------------------
 
-Current design records include the [CCL design](docs/control-language.md), the
-[CCL package-management design](docs/ccl-packages.md), and the living
-[security and verification ledger](docs/security-hardening.md). The
-[AI agent security design](docs/agent-security.md) applies CuBit's authority,
-approval, provenance, and information-flow model to bounded agent missions.
-The graphical
-[CuBit editor design](docs/editor.md) carries the DAGBuild and earlier editor
-work into a bounded, multicursor native application.
-User-visible defects and general engineering follow-ups are tracked in the
+| Command (from the repository root) | What it does |
+|---|---|
+| `make -C kernel run-desktop` | Rebuild what changed, then boot the desktop |
+| `make -C kernel run-desktop-fast` | Boot the desktop again without rebuilding |
+| `make -C kernel run-desktop-dual` | Desktop across two virtual monitors |
+| `make -C kernel run` | Boot to the NVMe profile with a 128 MiB guest |
+| `make -C kernel usb-live-uefi-iso` | Build the UEFI live image used on real hardware (`kernel/cubit_live_uefi.img`) |
+
+Automated tests
+---------------
+Headless tests boot QEMU without a window and check the serial log for pass
+markers, for example:
+
+    tests/headless/run.sh --test processes --accel kvm
+    tests/headless/run.sh --test desktop-protocol --accel kvm
+    tests/headless/run.sh --help          # the full list
+
+The live image has its own runner, which drives the real desktop through USB
+input (here behind an emulated USB hub):
+
+    python3 tests/usb-optical/run-live.py --uefi --usb-flash --without-ps2 \
+        --usb-hub --usb-hub-ports 8 --quiet-xhci
+
+Hosted unit tests and SPARK proofs live under `tests/`, one directory per
+component, each with a README or `run.sh`.
+
+Troubleshooting
+---------------
+* **`No rule to make target '../doom1.wad'`:** see step 2.
+* **QEMU fails with a KVM permission error:** add yourself to the `kvm` group,
+  or run without KVM (above).
+* **The desktop build refuses its temporary directory:** the desktop builder
+  will not work in a `TMPDIR` inside the repository. Leave `TMPDIR` unset, or
+  point it outside the checkout *before* running `nix develop`.
+* **Something hangs or crashes:** `kernel/serial_output.log` has the kernel and
+  service output. Bug reports with that log attached are very welcome.
+
+Debugging with GDB
+------------------
+After `run-desktop` has built `kernel/cubit_kernel.iso` and
+`kernel/nvme_disk.img`, start QEMU paused, with a GDB stub on port 1234:
+
+    cd kernel
+    qemu-system-x86_64 -accel kvm -machine q35 -cpu Broadwell -smp 4 -m 2G \
+        -cdrom cubit_kernel.iso -serial stdio -vga none -device virtio-vga \
+        -drive file=nvme_disk.img,if=none,id=nvme0,format=raw \
+        -device nvme,serial=cubitnvme,drive=nvme0 -s -S
+
+Then load the kernel ELF (not the ISO; the ELF has the debug symbols):
+
+    gdb cubit_kernel
+    (gdb) target remote localhost:1234
+    (gdb) continue
+
+Documentation
+-------------
+The documentation is being organized as [The CuBit Book](docs/README.md). Good
+starting points are the [CCL design](docs/control-language.md), the
+[security and verification ledger](docs/security-hardening.md), the
+[AI agent security design](docs/agent-security.md) and the
 [development backlog](docs/development-backlog.md).
+
+|  Task                                 |   Command    |
+|---------------------------------------|--------------|
+| Create documentation (in build/docs)  | `make docs`  |
+| Run provers                           | `make prove` |
+| Build html documentation              | `make html`  |
 
 |  Task                                |   Command   |
 |--------------------------------------|-------------|
@@ -188,7 +251,7 @@ Gaps are omitted, and named regions are not necessarily fully backed by RAM.
                         :                                             :
   0x0000_5000_0000_0000 +-----------------------------------------------+
                         | Received memory grants (16 TiB reserved)    |
-                        | Lazy backing; 4096 slots per owner          |
+                        | One 16 MiB window per received grant        |
   0x0000_4000_0000_0000 +-----------------------------------------------+
                         : Application images, heaps, legacy mappings  :
   0x0000_0000_0000_0000 +-----------------------------------------------+
@@ -413,243 +476,9 @@ stack overflows should be detected at runtime, however use caution. During
 syscalls and interrupts, the process' kernel stack may be in use, which does
 NOT have a secondary stack.
 
-Limitations
-===========
-* Only a single ATA/IDE disk controller is supported
-* Many, many others...
-
-Known or Suspected Bugs
+Status and known issues
 =======================
-* Timer calibration and the busy time.sleep procedure are off a bit on 
-  VirtualBox and QEMU, about 1s fast every 20s or so. On Bochs they are _way_
-  off.
-* Likely many, many others...
-
-TODOs.
-======
-* `X` means finished
-* `-` means in progress
-
-TODO: Kernel Features
----------------------
-```
-[ ] There are a lot of potential circular dependencies for just "proof stuff",
-    i.e. preconditions where we don't want to call a blockingSleep until 
-    interrupts are enabled -> don't want to enable interrupts until the
-    interrupt vector is loaded -> interrupt vector will update the value that
-    blockingSleep depends on. It might make sense to keep a big "state"
-    .ads file with nothing but Ghost variables used in SPARK proofs. It would
-    not have any dependencies itself, but could be included by everything else
-    to update their states. Downside is that it might grow huge and unwieldy,
-    and sorta breaks encapsulation. Might make proofs take a long time too.
-
-[X] Put the stack at a more sensible location
-    [X] Per-CPU Stacks
-    [X] Secondary Stacks
-[X] Print out full register dump with exceptions
-[-] Make type-safe more of the address/number conversions I'm doing.
-[-] Error-handling. Need to formalize the mechanism, could get very messy with MP.
-    [X] Exceptions (Last chance handler)
-    [-] Broadcast panic to other CPUs
-[ ] Figure out a keyboard scancode -> key array scheme with a future eye towards 
-    internationalization. Maybe just use SDL's keyboard handling scheme and let them sort it out.
-[X] Physical memory allocator
-    [X] Boot-mem allocator using bitmaps
-    [X] Boot phys memory allocator
-        [X] Keep track of free space as we allocate/free
-    [X] Buddy allocator
-[X] Virtual memory mapper
-    [X] Mark 0 page as not present
-    [X] Re-map kernel pages with appropriate NXE bits, etc. depending on region.
-[-] Virtual memory allocator
-    [-] Demand paging.
-[-] Processes / Threads
-    [X] Kernel Tasks
-    [X] Usermode
-    [-] Scheduler
-    [X] Implement killing processes.
-    [-] IPC / Messaging
-    [X] Suspend
-    [ ] Sleep / Wakeup
-[-] ACPI tables
-    [X] Find RSDT/XSDT
-    [X] Sane code for parsing these.
-    [-] APIC
-    [ ] HPET
-    [-] MCFG - PCI express
-    [ ] SSDT?
-[-] I/O APIC
-[-] Multiprocessing
-    [ ] MP Tables (necessary?)
-    [-] LAPIC
-    [ ] X2APIC
-[ ] Hardware
-    [X] MSRs
-    [-] Full CPUID detection
-    [-] Disk drivers
-        [ ] MBR/GPT Partition Table
-    [-] PCI bus
-        [-] Hard Drives
-            [-] ATA
-            [-] AHCI
-    [-] PCI express
-        [X] Enhanced Configuration Access Mechanism (ECAM) via MCFG tables
-        [ ] NVMe
-    [ ] Sound
-    [-] Video Drivers
-        [X] VESA Modes
-[-] Filesystem / VFS Layer
-    [ ] Develop FS-agnostic set of VFS hooks to syscalls
-    [ ] Develop Drive-agnostic set of VFS hooks to hardware
-    [-] Ext2
-[ ] Networking
-    [ ] Interface driver
-    [ ] TCP/IP Stack - RecordFlux should help here.
-[ ] Security
-    [ ] ASLR / KASLR
-    [ ] Disable certain branch speculation behavior (see x86.MSR)
-        [ ] if processor supports IBRS in ARCH_CAPABILITIES
-    [-] KPTI
-        [ ] Disable KPTI if ARCH_CAPABILITIES MSR indicates not susceptible to RDCL
-    [ ] Sensible Kernel-Mode-Setting / Framebuffer / Compositor arrangement
-[ ] Wow Factor / Eye Candy
-    [ ] Sweet GRUB splash screen w/ logo
-[-] Syscalls
-    [X] SYSCALL/SYSRET working
-[ ] Microkernel Architecture
-    [-] User-mode drivers
-    [-] IPC?
-[-] More formal proofs of kernel correctness
-    [ ] Preventing race conditions - may not be feasible outside of
-        Ravenscar profile, which doesn't really apply to us.
-[-] Implement more of the Ada standard library, especially for Tasks.
-```
-
-TODO: Usermode/Shell
---------------------
-```
-[-] Init model - should this look like UNIX? Something else?
-[ ] Security Model
-    [X] Codify it (`docs/security-model.md`)
-    [ ] Prove it
-    [ ] Implement it
-[-] IMGUI framework
-```
-
-TODO: Engineering
------------------
-```
-[-] Make all package names Uppercase
-[-] Rename all setupXYZ to just setup, since package name is already there.
-[X] New Makefile
-[-] Use gnatdoc format in comments
-    [ ] Edit gnatdoc format so NOTE, CAUTION, WARNING shows up as different
-        colors.
-    [ ] Edit gnatdoc format to ignore the leading and trailing horizontal rules
-[-] Work out a CI/CD pipeline
-    [ ] Proof Step
-    [ ] Unit Testing
-    [X] Build
-    [ ] Integration/Functional Testing
-    [X] Generate Documentation
-    [-] Build installers, isos, etc.
-[ ] Write unit tests
-[ ] Fuzzing
-[ ] Integration tests that run in the OS.
-```
-Architecture Ideas
-------------------
-* Use system RTC/HPET timers for real-time tasks, perhaps dedicate a CPU
-  scheduler (or more than one) to exclusively run real-time events when
-  they are desired?
-
-Documentation (work in progress):
----------------------------------
-
-|  Task                                |   Command   |
-|--------------------------------------|-------------|
-| Create documentation (in build/docs) | `make docs` |
-| Run provers                          | `make prove`|
-| Build html documentation             | `make html` |
-
-Testing & Debugging Tips
-========================
-
-You can create an Ext2 disk image and read it in CuBit with these commands,
-shown here for a 128MB disk:
-
-    dd if=/dev/zero of=vhd.img bs=1M count=128
-    mkfs -t ext2 -b 4096 vhd.img
-    mkdir vhd
-    mount -t auto -o loop vhd.img vhd
-
-Now you have an empty filesystem in `vhd/` that you can add files to, mess
-around with permissions, etc. When you're done, unmount the image. Note that
-CuBit's Ext2 implementation currently supports only 4K block sizes.
-
-    umount vhd
-
-Now you have a disk image that you can convert to the VirtualBox format with:
-
-    VBoxManage convertfromraw --format VDI vhd.img vhd.vdi
-
-Convert to QEMU format (qcow2) with:
-
-    qemu-img convert -f raw -O qcow2 vhd.img vhd.qcow2
-
-You can add the new disk under Storage -> IDE controller in your VM settings.
-You'll probably want to use the ICH6 chipset. CuBit currently uses the
-ancient PIO method for ATA I/O. If you create a disk image and add it to the
-IDE controller with a different chipset, reads will probably fail.
-
-Note that CuBit just reads the Ext2 superblock currently, but progress is
-being made with basic filesystem support.
-
-Please experiment with different amounts of RAM, number of CPUs, etc.
-
-VirtualBox is a good tool for testing, however QEMU is nice when you need to
-use GDB to track down certain issues. Note that CuBit makes use of some
-fairly recent CPU features, so you'll want to tell QEMU to use a newer
-chipset and CPU. The `-machine q35` and `-cpu Broadwell` options seem to
-work well.
-
-QEMU command w/o debugger:
-
-    qemu-system-x86_64 -machine q35 -cpu Broadwell -m 64M -cdrom path/to/cubit_kernel.iso
-
-GDB Tips:
-
-Register add'l info: `rt`
-Registers: `rg64`
-Stack trace: `k`
-
-To use QEMU to debug:
-
-    qemu-system-x86_64 -machine q35 -cpu Broadwell -s -S -m 4G -cdrom path\to\cubit_kernel.iso -serial stdio
-
-QEMU will start in a paused state while it waits for the debugger. 
-
-Then run GDB:
-`gdb cubit_kernel` (note: no ".iso" here, we want the kernel object file itself,
-which contains debugging symbols)
-
-To connect to QEMU: `target remote localhost:1234`
-Use `(gdb) c` to continue.
-
-From here, normal gdb commands work, like `break`, `x`, etc.
-
-Note that Hyper-V does not appear to boot the .ISO presently. Other
-virtualization or emulation platforms are recommended.
-
-Installing rflx (WIP - not used yet but in planning phase)
-----------------------------------------------------------
-```
-git clone https://github.com/Componolit/RecordFlux
-install >= Python 3.6
-install pip
-install virtualenv if Python 3 not the default
-source bin/activate
-python setup.py build
-python setup.py install
-Now the rflx script at bin/rflx should work.
-```
+CuBit is under active development. Current defects, limitations and planned
+work are tracked in the [development backlog](docs/development-backlog.md);
+the [security and verification ledger](docs/security-hardening.md) records
+what is proved, what is tested and what is assumed.

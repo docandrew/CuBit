@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs>
+<linearGradient id="amber" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffdc80"/><stop offset="1" stop-color="#ffa41f"/></linearGradient>
+<linearGradient id="steel" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#eef1f8"/><stop offset="1" stop-color="#b4bccf"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M16 2 L29 2 L29 13 L16 13Z" transform="translate(3 3)"/>
+  <path d="M16 2 L29 2 L29 13 L16 13Z" transform="translate(2 2)"/>
+  <path d="M16 2 L29 2 L29 13 L16 13Z" transform="translate(1 1)"/>
+  <path d="M16 2 L29 2 L29 13 L16 13Z"/>
+</g>
+<path d="M16 2 L29 2 L29 13 L16 13Z" fill="#4f5870" transform="translate(3 3)"/>
+<path d="M16 2 L29 2 L29 13 L16 13Z" fill="#4f5870" transform="translate(2 2)"/>
+<path d="M16 2 L29 2 L29 13 L16 13Z" fill="#4f5870" transform="translate(1 1)"/>
+<path d="M16 2 L29 2 L29 13 L16 13Z" fill="url(#steel)"/>
+<path d="M18 6 L21 6 L21 9 L18 9Z" fill="#1d1530"/>
+<path d="M24 6 L27 6 L27 9 L24 9Z" fill="#1d1530"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M16 13 H29 A4 4 0 0 1 33 17 V37 A4 4 0 0 1 29 41 H16 A4 4 0 0 1 12 37 V17 A4 4 0 0 1 16 13Z" transform="translate(3 3)"/>
+  <path d="M16 13 H29 A4 4 0 0 1 33 17 V37 A4 4 0 0 1 29 41 H16 A4 4 0 0 1 12 37 V17 A4 4 0 0 1 16 13Z" transform="translate(2 2)"/>
+  <path d="M16 13 H29 A4 4 0 0 1 33 17 V37 A4 4 0 0 1 29 41 H16 A4 4 0 0 1 12 37 V17 A4 4 0 0 1 16 13Z" transform="translate(1 1)"/>
+  <path d="M16 13 H29 A4 4 0 0 1 33 17 V37 A4 4 0 0 1 29 41 H16 A4 4 0 0 1 12 37 V17 A4 4 0 0 1 16 13Z"/>
+</g>
+<path d="M16 13 H29 A4 4 0 0 1 33 17 V37 A4 4 0 0 1 29 41 H16 A4 4 0 0 1 12 37 V17 A4 4 0 0 1 16 13Z" fill="#9a4a07" transform="translate(3 3)"/>
+<path d="M16 13 H29 A4 4 0 0 1 33 17 V37 A4 4 0 0 1 29 41 H16 A4 4 0 0 1 12 37 V17 A4 4 0 0 1 16 13Z" fill="#9a4a07" transform="translate(2 2)"/>
+<path d="M16 13 H29 A4 4 0 0 1 33 17 V37 A4 4 0 0 1 29 41 H16 A4 4 0 0 1 12 37 V17 A4 4 0 0 1 16 13Z" fill="#9a4a07" transform="translate(1 1)"/>
+<path d="M16 13 H29 A4 4 0 0 1 33 17 V37 A4 4 0 0 1 29 41 H16 A4 4 0 0 1 12 37 V17 A4 4 0 0 1 16 13Z" fill="url(#amber)"/>
+<path d="M14 22 L31 22 L31 26 L14 26Z" fill="#d9700b"/>
+<path d="M20.3 34.8 A2.2 2.2 0 1 0 24.7 34.8 A2.2 2.2 0 1 0 20.3 34.8Z" fill="#d8ff85"/>
+<path d="M13.5 14 L13.5 37" fill="none" stroke="#ffffff" stroke-width="1" stroke-linecap="butt" opacity="0.5"/>
+</svg>

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Test_Results;
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with ACPI_Service; use ACPI_Service;
@@ -61,16 +62,16 @@ procedure Region_Service_Tests is
      Method ("DYNM", Region (Enc ("MSEL")) & [16#A4#,16#8E#] & Enc ("REG0")) &
      Method ("BUFF", Region (Text ("DSDT"), [16#11#,3,16#0A#,0]) & [16#A4#,1]) &
      Method ("INTG", Region (Text ("DSDT"), [0]) & [16#A4#,1]);
-   Service : aliased State := Fresh;
+   Service : aliased State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes);
    Status : Install_Status;
    R : AML_Execute.Execution_Result;
    Initial_Count : Namespace.Node_ID;
    procedure Run (Name : String; Budget : Natural := 100) is
    begin
-      Invoke (Service, Namespace.Child (Snapshot (Service),Namespace.Root,Name),
+      Invoke_Scalar (Service, ACPI_Test_Results.Child (Service,Namespace.Root,Name),
               [others => 0],0,Budget,R);
       Check (R.Charged <= Budget);
-      Check (Namespace.Count (Snapshot (Service)) = Initial_Count);
+      Check (Observe (Service).Objects = Initial_Count);
    end Run;
 begin
    Install (Service,1,DSDT,Table ("DSDT",2,Code),Status);
@@ -79,7 +80,8 @@ begin
    Check (Status = Installed);
    Install (Service,3,Description,Table ("1ABC",1,[]),Status);
    Check (Status = Installed);
-   Initial_Count := Namespace.Count (Snapshot (Service));
+   ACPI_Test_Results.Seal (Service);
+   Initial_Count := Observe (Service).Objects;
    for I in 1 .. 20 loop
       Run ("EMPT"); Check (R.Status = AML_Execute.Bad_Name);
       Run ("SHRT"); Check (R.Status = AML_Execute.Bad_Name);

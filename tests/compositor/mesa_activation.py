@@ -12,7 +12,7 @@ FORBIDDEN = (
     'DESKTOP-VULKAN: startup=READY', 'DESKTOP-VULKAN: frame=',
     'desktop: CPU text fallback active', 'desktop: retained software text active',
     'desktop: text batch failed; repainting scene in software',
-    'desktop: Mesa unavailable; CPU compositor fallback',
+    'desktop: software rendering (',
     'desktop: text completion uncertain; restarting',
     'desktop Mesa FFI:', 'MESA-WINDOW: FAIL',
     'MESA-WINDOW: surface unavailable; exiting',

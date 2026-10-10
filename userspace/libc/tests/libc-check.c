@@ -192,6 +192,27 @@ int main(void)
 	long ms = (b.tv_sec - a.tv_sec) * 1000 + (b.tv_nsec - a.tv_nsec) / 1000000;
 	check(ms >= 30 && ms < 2000, "usleep and clock_gettime");
 
+	/* CLOCK_MONOTONIC reads the clock publication without a system call
+	 * where the kernel publishes it (docs/fast-clock.md). */
+	{
+		enum { clock_reads = 100000 };
+		struct timespec first, prev, now;
+		int monotonic = 1;
+		clock_gettime(CLOCK_MONOTONIC, &first);
+		prev = first;
+		for (int i = 0; i < clock_reads; i++) {
+			clock_gettime(CLOCK_MONOTONIC, &now);
+			if (now.tv_sec < prev.tv_sec ||
+			    (now.tv_sec == prev.tv_sec && now.tv_nsec < prev.tv_nsec))
+				monotonic = 0;
+			prev = now;
+		}
+		long long elapsed = (long long)(prev.tv_sec - first.tv_sec) * 1000000000LL +
+			(prev.tv_nsec - first.tv_nsec);
+		say("libc-check: clock_gettime ns/read=%lld\n", elapsed / clock_reads);
+		check(monotonic, "clock_gettime monotonic over 100000 reads");
+	}
+
 	char buf[64];
 	snprintf(buf, sizeof buf, "%.3f %e %d %s", 3.14159, 12345.678, -42, "x");
 	check(strcmp(buf, "3.142 1.234568e+04 -42 x") == 0, "printf floats");

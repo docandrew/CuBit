@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+<defs>
+<linearGradient id="gffe58fff9a12" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffe58f"/><stop offset="1" stop-color="#ff9a12"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M11.5 1.5 L14.4 8.01 L21.49 8.76 L16.19 13.52 L17.67 20.49 L11.5 16.93 L5.33 20.49 L6.81 13.52 L1.51 8.76 L8.6 8.01Z" transform="translate(1 1)"/>
+  <path d="M11.5 1.5 L14.4 8.01 L21.49 8.76 L16.19 13.52 L17.67 20.49 L11.5 16.93 L5.33 20.49 L6.81 13.52 L1.51 8.76 L8.6 8.01Z"/>
+</g>
+<path d="M11.5 1.5 L14.4 8.01 L21.49 8.76 L16.19 13.52 L17.67 20.49 L11.5 16.93 L5.33 20.49 L6.81 13.52 L1.51 8.76 L8.6 8.01Z" fill="#9a4a07" transform="translate(1 1)"/>
+<path d="M11.5 1.5 L14.4 8.01 L21.49 8.76 L16.19 13.52 L17.67 20.49 L11.5 16.93 L5.33 20.49 L6.81 13.52 L1.51 8.76 L8.6 8.01Z" fill="url(#gffe58fff9a12)"/>
+<path d="M11.5 12 L11.5 1.5 L14.4 8.01Z" fill="#ffffff" opacity="0.35"/>
+<path d="M11.5 12 L1.51 8.76 L8.6 8.01Z" fill="#ffffff" opacity="0.35"/>
+<path d="M11.5 12 L16.19 13.52 L17.67 20.49Z" fill="#d9700b" opacity="0.45"/>
+<path d="M11.5 12 L17.67 20.49 L11.5 16.93Z" fill="#d9700b" opacity="0.45"/>
+<path d="M11.5 12 L11.5 16.93 L5.33 20.49Z" fill="#d9700b" opacity="0.45"/>
+</svg>

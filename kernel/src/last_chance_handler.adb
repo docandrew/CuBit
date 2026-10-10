@@ -7,6 +7,7 @@
 with TextIO; use TextIO;
 with x86;
 with Boot_Output;
+with Boot_Diagnostics;
 
 package body Last_Chance_Handler with
     SPARK_Mode => Off -- trusted runtime/output boundary, not a proved unwinder
@@ -21,9 +22,14 @@ is
         -- Stop local scheduling before reporting. Other CPUs and NMIs require
         -- a separate coordinated panic protocol; this is a local fatal stop.
         x86.cli;
+        TextIO.stopAsynchronous;
         --  Best effort before retirement only. Never block on another CPU's
         --  painter or revive a graphical surface after ownership transfer.
         Boot_Output.Panic (msg);
+        --  After the boot panel is retired (a service owns the screen),
+        --  Boot_Output.Panic does nothing; paint the stop over the screen
+        --  anyway, since hardware usually has no serial console.
+        Boot_Diagnostics.Emergency (msg, "");
         --  Only the explicit legacy text-mode diagnostic boot installs a
         --  TextIO video adapter now; graphics is exclusively Boot_Diagnostics.
         TextIO.enableVideo;

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+<defs>
+<linearGradient id="violet" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#c3adff"/><stop offset="1" stop-color="#8457ff"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M8 5 L21 1 L21 5 L8 9Z" transform="translate(1 1)"/>
+  <path d="M8 5 L21 1 L21 5 L8 9Z"/>
+  <path d="M8 7 L10 7 L10 19 L8 19Z" transform="translate(1 1)"/>
+  <path d="M8 7 L10 7 L10 19 L8 19Z"/>
+  <path d="M19 3 L21 3 L21 16 L19 16Z" transform="translate(1 1)"/>
+  <path d="M19 3 L21 3 L21 16 L19 16Z"/>
+</g>
+<path d="M8 5 L21 1 L21 5 L8 9Z" fill="#3b1e96" transform="translate(1 1)"/>
+<path d="M8 5 L21 1 L21 5 L8 9Z" fill="#5a32d6"/>
+<path d="M8 7 L10 7 L10 19 L8 19Z" fill="#3b1e96" transform="translate(1 1)"/>
+<path d="M8 7 L10 7 L10 19 L8 19Z" fill="#5a32d6"/>
+<path d="M19 3 L21 3 L21 16 L19 16Z" fill="#3b1e96" transform="translate(1 1)"/>
+<path d="M19 3 L21 3 L21 16 L19 16Z" fill="#5a32d6"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M3.29 19 A3.59 2.64 0 1 0 10.48 19 A3.59 2.64 0 1 0 3.29 19Z" transform="translate(1 1)"/>
+  <path d="M3.29 19 A3.59 2.64 0 1 0 10.48 19 A3.59 2.64 0 1 0 3.29 19Z"/>
+  <path d="M14.29 16 A3.59 2.64 0 1 0 21.48 16 A3.59 2.64 0 1 0 14.29 16Z" transform="translate(1 1)"/>
+  <path d="M14.29 16 A3.59 2.64 0 1 0 21.48 16 A3.59 2.64 0 1 0 14.29 16Z"/>
+</g>
+<path d="M3.29 19 A3.59 2.64 0 1 0 10.48 19 A3.59 2.64 0 1 0 3.29 19Z" fill="#3b1e96" transform="translate(1 1)"/>
+<path d="M3.29 19 A3.59 2.64 0 1 0 10.48 19 A3.59 2.64 0 1 0 3.29 19Z" fill="url(#violet)"/>
+<path d="M4.25 18.04 A1.44 0.77 0 1 0 7.12 18.04 A1.44 0.77 0 1 0 4.25 18.04Z" fill="#ffffff" opacity="0.55"/>
+<path d="M14.29 16 A3.59 2.64 0 1 0 21.48 16 A3.59 2.64 0 1 0 14.29 16Z" fill="#3b1e96" transform="translate(1 1)"/>
+<path d="M14.29 16 A3.59 2.64 0 1 0 21.48 16 A3.59 2.64 0 1 0 14.29 16Z" fill="url(#violet)"/>
+<path d="M15.25 15.04 A1.44 0.77 0 1 0 18.12 15.04 A1.44 0.77 0 1 0 15.25 15.04Z" fill="#ffffff" opacity="0.55"/>
+</svg>

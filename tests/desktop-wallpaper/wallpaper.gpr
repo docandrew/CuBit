@@ -1,8 +1,8 @@
 project Wallpaper is
-   for Source_Dirs use (".", "../../userspace/services/desktop", "../../userspace/lib/compositor",
+   for Source_Dirs use (".", "../../userspace/services/desktop", "../../userspace/lib/compositor", "../../userspace/lib/image",
      "../../userspace/lib/display", "../../userspace/lib/theme", "../../userspace/runtime/gnat");
    for Source_Files use ("main.adb",
-     "desktop_backdrop_style.ads", "desktop_wallpaper.ads", "desktop_wallpaper.adb", "cubit.ads", "cubit-appearance.ads",
+     "desktop_backdrop_style.ads", "desktop_wallpaper.ads", "desktop_wallpaper.adb", "desktop_wallpaper_store.ads", "desktop_wallpaper_store.adb", "cubit-qoi.ads", "cubit-qoi.adb", "cubit.ads", "cubit-appearance.ads",
      "cubit-appearance.adb", "cubit-display_geometry.ads", "cubit-display_geometry.adb",
      "compositor_backdrop_strips.ads", "compositor_backdrop_strips.adb", "compositor_image_sampling.ads", "compositor_image_sampling.adb",
      "compositor_sampling.ads", "compositor_sampling.adb", "compositor_text.ads",
@@ -13,9 +13,4 @@ project Wallpaper is
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
    end Compiler;
-   package Linker is
-      for Default_Switches ("Ada") use
-        (Wallpaper'Project_Dir & "../../userspace/services/desktop/build/wallpaper.o",
-         Wallpaper'Project_Dir & "../../userspace/services/desktop/build/wallpaper_cubie.o");
-   end Linker;
 end Wallpaper;

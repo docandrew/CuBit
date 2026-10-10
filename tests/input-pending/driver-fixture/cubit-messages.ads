@@ -11,6 +11,8 @@ package CuBit.Messages is
       words : MessageWords := (others => 0);
    end record;
    subtype Process_ID is Unsigned_64;
+   No_Process : constant Process_ID := 0;
+   Wait_Forever : constant Unsigned_64 := Unsigned_64'Last;
    SYSINFO_REGISTERED_DRIVER : constant Unsigned_64 := 1;
    DRIVER_KEYBOARD : constant Unsigned_64 := 2;
    DRIVER_MOUSE : constant Unsigned_64 := 3;
@@ -25,7 +27,8 @@ package CuBit.Messages is
    function getInfo (Number, Arg : Unsigned_64) return Unsigned_64;
    function portOutp8 (Port : Unsigned_16; Value : Unsigned_8) return Unsigned_64;
    function portInp8 (Port : Unsigned_16) return Unsigned_64;
-   function capSend (Slot : Unsigned_64; Msg : Message) return MessageTag;
+   function capSend (Slot : Unsigned_64; Msg : Message; Deadline : Unsigned_64) return MessageTag;
+   function Registered_Driver (Driver : Unsigned_64) return Process_ID;
    function trySendEvent (Dest : Process_ID; Msg : Message) return Boolean;
    function Wait_Event return Message;
    function Poll_Event (Msg : out Message) return Boolean;

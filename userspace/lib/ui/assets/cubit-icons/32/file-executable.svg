@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<defs>
+<linearGradient id="g7ff3e416b5b3" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#7ff3e4"/><stop offset="1" stop-color="#16b5b3"/></linearGradient>
+<linearGradient id="g8a5cff4e28c4" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#8a5cff"/><stop offset="1" stop-color="#4e28c4"/></linearGradient>
+<linearGradient id="ge6dcffb49bff" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#e6dcff"/><stop offset="1" stop-color="#b49bff"/></linearGradient>
+<linearGradient id="paper" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ebeef6"/></linearGradient>
+<linearGradient id="violet" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#c3adff"/><stop offset="1" stop-color="#8457ff"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M10 2 L28 2 L28 20 L10 20Z" transform="translate(2 2)"/>
+  <path d="M10 2 L28 2 L28 20 L10 20Z" transform="translate(1 1)"/>
+  <path d="M10 2 L28 2 L28 20 L10 20Z"/>
+</g>
+<path d="M10 2 L28 2 L28 20 L10 20Z" fill="#7d879f" transform="translate(2 2)"/>
+<path d="M10 2 L28 2 L28 20 L10 20Z" fill="#7d879f" transform="translate(1 1)"/>
+<path d="M10 2 L28 2 L28 20 L10 20Z" fill="url(#paper)"/>
+<path d="M10 2 L28 2 L28 6 L10 6Z" fill="url(#violet)"/>
+<path d="M10 6.5 L28 6.5" fill="none" stroke="#1d1530" stroke-width="1" stroke-linecap="butt" opacity="0.6"/>
+<path d="M17 9 L26 9 L26 12 L17 12Z" fill="#8af5e8"/>
+<path d="M17 14 L23 14 L23 17 L17 17Z" fill="#ffdc80"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M10 12 L18 16 L18 25 L10 29 L2 25 L2 16Z"/>
+</g>
+<path d="M10 12 L18 16 L10 20 L2 16Z" fill="url(#ge6dcffb49bff)"/>
+<path d="M2 16 L10 20 L10 29 L2 25Z" fill="url(#g7ff3e416b5b3)"/>
+<path d="M18 16 L18 25 L10 29 L10 20Z" fill="url(#g8a5cff4e28c4)"/>
+<path d="M2 16 L10 20 L18 16" fill="none" stroke="#ffffff" stroke-width="1" stroke-linecap="butt" opacity="0.55"/>
+</svg>
