@@ -1,0 +1,11 @@
+# Boot timeline (BOOT-001, docs/boot-timeline.md): the hardware live
+# desktop profile (tests/hardware/init-usb-live.ccl) without config-storage
+# and the boot-logs window, plus the reader, which prints the timeline once
+# the Desktop has presented its first frame.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "boot-timeline.app" (priority 2))
+)

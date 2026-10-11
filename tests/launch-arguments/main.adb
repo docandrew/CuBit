@@ -9,6 +9,7 @@ with Interfaces.C;
 with CuBit.Launch_Arguments; use CuBit.Launch_Arguments;
 with CuBit.Launch_Arguments_C;
 with CuBit.Child_Exits;
+with CuBit.Process_IDs;
 with Process_Launch;
 with CuBit.Launch_Authority;
 
@@ -380,14 +381,16 @@ begin
       Check (Process_Launch.To_Exit_Code (300) = 44
              and then Process_Launch.To_Exit_Code (255) = 255,
              "exit codes keep the low 8 bits");
-      Check (Valid (4, 7, Exited_Wire, 42)
-             and then Decode (7, Exited_Wire, 42, 9) = (7, Exited, 42, 9)
-             and then Valid (4, 7, Stopped_Wire, 0)
-             and then not Valid (3, 7, Exited_Wire, 0)
-             and then not Valid (4, 0, Exited_Wire, 0)
-             and then not Valid (4, 7, 3, 0)
-             and then not Valid (4, 7, Exited_Wire, 256)
-             and then not Valid (4, 7, Stopped_Wire, 1),
+      Check (Valid (3, 7, Exited_Wire, 42)
+             and then Decode (7, Exited_Wire, 42) =
+                        (CuBit.Process_IDs.From_Word (7), Exited, 42)
+             and then Valid (3, 7, Stopped_Wire, 0)
+             and then not Valid (2, 7, Exited_Wire, 0)
+             and then not Valid (4, 7, Exited_Wire, 0)
+             and then not Valid (3, 0, Exited_Wire, 0)
+             and then not Valid (3, 7, 3, 0)
+             and then not Valid (3, 7, Exited_Wire, 256)
+             and then not Valid (3, 7, Stopped_Wire, 1),
              "child exit event validation");
       Check (Process_Launch.Page_Count (1) = 1
              and then Process_Launch.Page_Count (4096) = 1

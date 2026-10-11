@@ -3,6 +3,7 @@ with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with Config_Worker_Startup; use Config_Worker_Startup;
 
+with CuBit.Process_IDs;
 procedure Startup_Tests is
    Request : Message := NULL_MESSAGE;
    Valid : Message;
@@ -32,13 +33,26 @@ begin
    pragma Assert (Valid_Attachment (Request));
    --  Envelope checking is not sender authorization. Native Config separately
    --  compares the kernel sender with the registered procmgr before attachment.
-   pragma Assert (Authorized_Config_Request (22, 22, 22));
-   pragma Assert (not Authorized_Config_Request (22, 0, 22));
-   pragma Assert (not Authorized_Config_Request (23, 22, 22));
-   pragma Assert (not Authorized_Config_Request (22, 23, 22));
-   pragma Assert (not Authorized_Config_Request (0, 0, 0));
-   pragma Assert (not Authorized_Config_Request (22, 22, 0));
-   pragma Assert (not Authorized_Config_Request (22, 22, Unsigned_64'Last));
-   pragma Assert (not Authorized_Config_Request (Unsigned_64'Last, Unsigned_64'Last, Unsigned_64'Last));
-   Ada.Text_IO.Put_Line ("Config startup envelope/worker identity: 20 checks PASS");
+   declare
+      package IDs renames CuBit.Process_IDs;
+      Config : constant Process_ID := IDs.To_Process_ID (Slot => 22, Generation => 1);
+      Other : constant Process_ID := IDs.To_Process_ID (Slot => 23, Generation => 1);
+      Tag : constant Unsigned_64 := To_Word (Config);
+      --  Slot 0 is ill formed, whatever its generation.
+      Ill_Formed : constant Process_ID := IDs.To_Process_ID (Slot => 0, Generation => 1);
+      --  The all-ones word is a well-formed identity, not a sentinel.
+      All_Ones : constant Process_ID := IDs.From_Word (Unsigned_64'Last);
+   begin
+      pragma Assert (Authorized_Config_Request (Config, Tag, Config));
+      pragma Assert (not Authorized_Config_Request (Config, 0, Config));
+      pragma Assert (not Authorized_Config_Request (Other, Tag, Config));
+      pragma Assert (not Authorized_Config_Request (Config, Tag + 1, Config));
+      pragma Assert (not Authorized_Config_Request (No_Process, 0, No_Process));
+      pragma Assert (not Authorized_Config_Request (Config, Tag, No_Process));
+      pragma Assert (not Authorized_Config_Request (Config, Tag, Ill_Formed));
+      pragma Assert (not Authorized_Config_Request
+                       (Ill_Formed, To_Word (Ill_Formed), Ill_Formed));
+      pragma Assert (Authorized_Config_Request (All_Ones, Unsigned_64'Last, All_Ones));
+   end;
+   Ada.Text_IO.Put_Line ("Config startup envelope/worker identity: 21 checks PASS");
 end Startup_Tests;

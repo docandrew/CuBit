@@ -1,0 +1,16 @@
+--  SPARK proof of the desktop typematic state machine (level 2).
+project Prove is
+   Src := External ("KEY_REPEAT_SRC", "../../userspace/services/desktop");
+   for Source_Dirs use (Src, "../../userspace/ccl/src");
+   for Source_Files use
+     ("key_repeat.ads", "key_repeat.adb",
+      "ccl.ads", "ccl-interfaces.ads", "ccl-interfaces-desktop_input.ads");
+   for Object_Dir use External ("KEY_REPEAT_OBJ", "build/prove");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use
+        ("--level=2", "--checks-as-errors=on", "--report=fail", "-j0");
+   end Prove;
+end Prove;

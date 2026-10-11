@@ -41,6 +41,11 @@
 --  by other sessions (the 64-slot capability table); the client then polls
 --  its status line on its own timer. It has no timeout of its own: the
 --  deadline is the waiting client's.
+--
+--  OP_GPU_BOOST [] is a one-way hint, sent without a completion token: the
+--  client is about to submit latency-sensitive work (Desktop on input), so
+--  the driver raises the GT frequency now (SLPC waitboost). No reply; the
+--  driver accepts it only on the session's own endpoint.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -51,6 +56,7 @@ with CuBit.Submission_Queues;
 package CuBit.GPU_Queues with Pure, SPARK_Mode is
 
    OP_GPU_WAKE : constant := 16#0A31#;
+   OP_GPU_BOOST : constant := 16#0A32#;
 
    Queue_Connector : constant := 1;
 

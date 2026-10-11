@@ -13,6 +13,8 @@ package body Boot_QR_Capsule with SPARK_Mode is
       end loop;
       return CRC;
    end CRC16;
+   function Hex (Value : Unsigned_16) return String
+     with Post => Hex'Result'First = 1 and then Hex'Result'Length = 4;
    function Hex (Value : Unsigned_16) return String is
       Alphabet : constant String := "0123456789ABCDEF";
       Result : String (1 .. 4);
@@ -25,12 +27,18 @@ package body Boot_QR_Capsule with SPARK_Mode is
       return Result;
    end Hex;
    procedure Field (Line : Boot_Panel.Line; Limit : Natural;
+                    Buffer : in out String; Used : in out Natural)
+     with Pre  => Buffer'First = 1 and then Limit <= Maximum_Length and then Buffer'Last >= Limit and then
+                  Used <= Buffer'Last - Limit,
+          Post => Used in Used'Old .. Used'Old + Limit;
+   procedure Field (Line : Boot_Panel.Line; Limit : Natural;
                     Buffer : in out String; Used : in out Natural) is
       Count : Natural := 0;
       Last : Natural := 0;
    begin
       for I in Line'Range loop
          if Line (I) /= ' ' then Last := I; end if;
+         pragma Loop_Invariant (Last <= I);
       end loop;
       for I in Line'First .. Last loop
          exit when Count = Limit;
@@ -39,20 +47,27 @@ package body Boot_QR_Capsule with SPARK_Mode is
            (if Line (I) = ';' or else Line (I) = '=' then '_' else Line (I));
          Used := Used + 1;
          Count := Count + 1;
+         pragma Loop_Invariant (Count <= Limit and then Used = Used'Loop_Entry + Count);
       end loop;
    end Field;
+   procedure Add (Value : String; Buffer : in out String; Used : in out Natural)
+     with Pre  => Buffer'First = 1 and then Value'Length <= Maximum_Length and then Buffer'Last >= Value'Length and then
+                  Used <= Buffer'Last - Value'Length,
+          Post => Used = Used'Old + Value'Length;
    procedure Add (Value : String; Buffer : in out String; Used : in out Natural) is
    begin
-      for C of Value loop
-         Buffer (Used + 1) := C;
+      for I in Value'Range loop
+         Buffer (Used + 1) := Value (I);
          Used := Used + 1;
+         pragma Loop_Invariant (Used = Used'Loop_Entry + (I - Value'First + 1));
       end loop;
    end Add;
    function Build (Current, Completed, Detail, Failure : Boot_Panel.Line)
      return String
    is
-      Buffer : String (1 .. Maximum_Length);
+      Buffer : String (1 .. Maximum_Length) := [others => ' '];
       Used : Natural := 0;
+      --  6 + 12 + 3 + 12 + 3 + 18 + 3 + 12 + 3 + 4 = 76 <= Maximum_Length.
    begin
       Add ("CB1;C=", Buffer, Used); Field (Current, 12, Buffer, Used);
       Add (";L=", Buffer, Used); Field (Completed, 12, Buffer, Used);

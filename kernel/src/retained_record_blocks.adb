@@ -1,5 +1,5 @@
 pragma Ada_2022;
-package body Retained_Record_Blocks is
+package body Retained_Record_Blocks with SPARK_Mode => Off is
    use System.Storage_Elements;
    use type System.Address;
    use type Pointers.Object_Pointer;

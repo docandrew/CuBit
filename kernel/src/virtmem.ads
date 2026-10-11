@@ -9,7 +9,6 @@
 -- (2MiB on x86-64) "big pages". Mappings using just 2 levels of page tables
 -- (1GiB on x86-64) are called "huge pages".
 -------------------------------------------------------------------------------
-with Ada.Unchecked_Conversion;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
@@ -104,9 +103,10 @@ is
     -- we offset-map all physical memory into the higher-half.
     --
     -- This is the theoretical limit to how much physical memory our OS
-    -- can support, at least with 48-bit canonical virtual addresses. (128TiB)
-    MAX_PHYS_ADDRESS : constant := 2**48 - 1;
-    --MAX_PHYS_ADDRESS : constant := 16#0000_FFFF_FFFF_FFFF#;
+    -- can support, at least with 48-bit canonical virtual addresses: the
+    -- higher half is 2**47 bytes (128TiB) from LINEAR_BASE, so P2V of any
+    -- larger address would wrap past the top of the address space.
+    MAX_PHYS_ADDRESS : constant := 2**47 - 1;
 
     subtype PhysAddress is Integer_Address range 0 .. MAX_PHYS_ADDRESS;
 
@@ -174,7 +174,8 @@ is
         NX              at 0 range 63 .. 63;
     end record;
 
-    function u64ToPTE is new Ada.Unchecked_Conversion(Unsigned_64, PageTableEntry);
+    -- The all-zero entry (not present, no frame): every field's default.
+    EMPTY_PTE : constant PageTableEntry := (others => <>);
 
     -- Types for the page tables
     type P4 is array (PageTableIndex) of PageTableEntry
@@ -243,7 +244,8 @@ is
     -- @param page - page frame number
     -- @return the base address (PAGE_SIZE-aligned) of the page.
     ---------------------------------------------------------------------------
-    function PFNToAddr (page : in PFN) return PhysAddress;
+    function PFNToAddr (page : in PFN) return PhysAddress with
+        Post => PFNToAddr'Result = PhysAddress (page) * FRAME_SIZE;
 
     ---------------------------------------------------------------------------
     -- bigPFNToAddr - Return the address of a given Page Frame Number (PFN) for
@@ -269,8 +271,10 @@ is
     -- @param addr - virtual address
     -- @return PFN containing the corresponding physical address
     ---------------------------------------------------------------------------
-    function vaddrToPFN (addr : in System.Address) return PFN;
-    function vaddrToPFN (addr : in VirtAddress) return PFN;
+    function vaddrToPFN (addr : in System.Address) return PFN with
+        Pre => To_Integer (addr) >= LINEAR_BASE;
+    function vaddrToPFN (addr : in VirtAddress) return PFN with
+        Pre => addr >= LINEAR_BASE;
 
     ---------------------------------------------------------------------------
     -- addrToBigPFN - Return the Big Page Frame Number (PFN) for a given
@@ -287,7 +291,8 @@ is
     --  same physical address if big pages were used. i.e. address 0x1000000
     --  would be the start of PFN 0x1000, or Big PFN 0x8.
     ---------------------------------------------------------------------------
-    function bigPFNToPFN (bigPage : in BigPFN) return PFN;
+    function bigPFNToPFN (bigPage : in BigPFN) return PFN with
+        Post => bigPFNToPFN'Result = PFN (bigPage) * 2 ** (BIG_FRAME_SHIFT - FRAME_SHIFT);
 
     ---------------------------------------------------------------------------
     -- PFNToBigPFN - Convert the given PFN to a big PFN containing the given 
@@ -320,7 +325,8 @@ is
     generic
         type PN is array (PageTableIndex) of PageTableEntry;
     function getNextTable (table : in PN; index : PageTableIndex)
-        return PhysAddress;
+        return PhysAddress with
+        Post => getNextTable'Result mod FRAME_SIZE = 0;
 
     ---------------------------------------------------------------------------
     -- createNextTable - Given a table of level N and index, returns the 
@@ -514,7 +520,8 @@ is
     ---------------------------------------------------------------------------
     function P2V (physAddr : in PhysAddress) return VirtAddress with
         Inline,
-        Post => P2V'Result >= LINEAR_BASE;
+        Post => P2V'Result >= LINEAR_BASE and then
+                P2V'Result = physAddr + LINEAR_BASE;
 
     function P2Va (physAddr : in PhysAddress) return System.Address with
         Inline,

@@ -398,6 +398,33 @@ package body CCL_REPL_View is
          end;
       end if;
    end Draw;
+   function Input_Selected (State : View_State) return Boolean is
+     (CuBit.UI.Editor.Selection_First (State.Input) /= CuBit.UI.Editor.Selection_Last (State.Input));
+
+   procedure Edit_Input (State : in out View_State) is
+      Changed : Boolean;
+   begin
+      Process (State.Input, Changed);
+      if Changed then
+         State.Recalled := 0;
+      end if;
+   end Edit_Input;
+
+   procedure Latest_Value
+     (State : View_State; Found : out Boolean;
+      Outcome : out CCL.Language.Interpretation_Result)
+   is
+      use type CCL.Language.Interpretation_Status;
+      Latest : CCL.Sessions.Submission;
+   begin
+      Found := False;
+      if CCL.Sessions.Length (State.Session) > 0 then
+         CCL.Sessions.Recall (State.Session, CCL.Sessions.Length (State.Session), Latest, Found);
+      end if;
+      Found := Found and then Latest.Outcome.Status = CCL.Language.Succeeded;
+      Outcome := Latest.Outcome;
+   end Latest_Value;
+
    function Latest_Result (State : View_State) return String is
       Latest : CCL.Sessions.Submission;
       Found : Boolean := False;

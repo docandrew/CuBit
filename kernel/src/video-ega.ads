@@ -84,12 +84,16 @@ is
     type Col is new Natural range 0 .. COLS - 1;
     type Row is new Natural range 0 .. ROWS - 1;
 
-    function "*" (Left : Row; Right : Integer) return CursorType;
+    function "*" (Left : Row; Right : Integer) return CursorType with
+        Pre  => Right in 0 .. COLS,
+        Post => Natural ("*"'Result) = Natural (Left) * Right;
     pragma Convention (Intrinsic, "*");
     pragma Inline_Always ("*");
     pragma Pure_Function ("*");
 
-    function "+" (Left : CursorType; Right : Col) return CursorType;
+    function "+" (Left : CursorType; Right : Col) return CursorType with
+        Pre  => Natural (Left) + Natural (Right) <= CURSOR_END,
+        Post => Natural ("+"'Result) = Natural (Left) + Natural (Right);
     pragma Convention (Intrinsic, "+");
     pragma Inline_Always ("+");
     pragma Pure_Function ("+");

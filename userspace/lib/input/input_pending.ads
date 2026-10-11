@@ -72,6 +72,13 @@ package Input_Pending with SPARK_Mode, Pure is
            Element (Q'Old, Count (Q) - 1).Observed_Ms and then
          (for all I in Offset_Type =>
             (if I < Count (Q) - 1 then Element (Q, I) = Element (Q'Old, I)));
+   -- The source lost input upstream: keep every retained report and flag
+   -- the next appended one for explicit recovery.
+   procedure Require_Recovery (Q : in out Queue)
+     with Post => Count (Q) = Count (Q'Old) and then
+       Sequence (Q) = Sequence (Q'Old) and then Recovery_Pending (Q) and then
+       (for all I in Offset_Type =>
+          (if I < Count (Q) then Element (Q, I) = Element (Q'Old, I)));
    -- Never deliver a previous consumer's pending input to its replacement.
    procedure Reset (Q : in out Queue)
      with Post => Count (Q) = 0 and then Sequence (Q) = Sequence (Q'Old) and then

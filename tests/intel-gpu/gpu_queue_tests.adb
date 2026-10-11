@@ -2,6 +2,7 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Command_Line;
 with Interfaces; use Interfaces;
 with CuBit.GPU_Queues;
+with CuBit.GPU_Queues.Kinds;
 with CuBit.GPU_Queue_Clients;
 with GPU_Queue_Model;
 with Intel_GPU_Context_Ledger;
@@ -14,6 +15,7 @@ with Intel_GPU_Session_Queue;
 -- other side of the shared regions. Not hardware evidence.
 procedure GPU_Queue_Tests is
    package Q renames CuBit.GPU_Queues;
+   package QK renames CuBit.GPU_Queues.Kinds;
    package Clients renames CuBit.GPU_Queue_Clients;
    package M renames GPU_Queue_Model;
    package Ledgers renames Intel_GPU_Context_Ledger;
@@ -22,10 +24,12 @@ procedure GPU_Queue_Tests is
             Ledgers.Health, Ledgers.Value, Clients.Token;
 
    Hang_Budget : constant := 1_000_000;   -- 1 s, as the driver
+   Patience : constant := 3_500_000;      -- as the driver: budget + eviction + budget
    package Service is new Intel_GPU_Queue_Service
      (M.Session_Id, M.Select_Context, M.Owner_Ready, M.Batch_Ready, M.Scheduling_Resident, M.Publish_Ready,
-      M.Write_Segment, M.Segment_Bytes, M.Kick, M.Read_Timeline, M.Now_Us, M.Quarantine,
-      M.Call_Finished, M.Answer_Wake, M.Client_Region, M.Server_Region, Hang_Budget);
+      M.Write_Segment, M.Segment_Bytes, M.Kick, M.Read_Timeline, M.Read_Job_Time, M.Job_Started,
+      M.Now_Us, M.Quarantine, M.Call_Finished, M.Answer_Wake, M.Client_Region, M.Server_Region,
+      Hang_Budget, Patience);
    use type Service.Call_Result, Service.Policy.Event_Count;
 
    T : access Service.Table;
@@ -72,7 +76,7 @@ procedure GPU_Queue_Tests is
    function Batch (C : Q.Context_Index := 0) return Clients.Job is
      ((Operation => Q.Execute, Context => C, Handle => 7, GPU => 16#10_0000#, Offset => 0,
        Bytes => 64, First => (others => <>), Second => (others => <>),
-       Deadline => Q.No_Deadline));
+       Deadline => Q.No_Deadline, Kinds => 0));
 
    procedure Submit (S : M.Session_Id; J : Clients.Job; Tag : out Clients.Token;
                      Signal : out Q.Timeline_Value; OK : out Boolean) is
@@ -330,6 +334,55 @@ procedure GPU_Queue_Tests is
       Expect_Record (1, Q.Device_Lost, "torn reads", Q.Timeline_Fault);
    end Hang;
 
+   -- GPU-005: one session's job hangs on the engine while the other's
+   -- waits behind it, never started. Only the hung session fails; the
+   -- waiting one is not charged the budget and completes once unblocked.
+   procedure Innocent_Waits is
+      Tag : Clients.Token;
+      Signal : Q.Timeline_Value;
+      OK, Got : Boolean;
+      Record_Item : Clients.Q.Completion;
+      Completed_2, Lost_2 : Natural := 0;
+   begin
+      Fresh;
+      M.Latency := 2;
+      for I in 1 .. 3 loop
+         Submit (1, Batch, Tag, Signal, OK);
+         Submit (2, Batch, Tag, Signal, OK);
+      end loop;
+      Turn;
+      M.Hung_Only := 1;
+      M.Blocked (2) := True;
+      for I in 1 .. 1_100 loop Turn; end loop;
+      Check (M.Quarantined (1), "innocent: the hung session fails after the budget");
+      Check (not M.Quarantined (2), "innocent: the waiting session is not hung by the budget");
+      Check (Clients.State (Client (1).all, 0) = Q.Hung, "innocent: hung session's status Hung");
+      -- The guilty context is evicted; the waiting session's jobs start.
+      for I in 1 .. 1_000 loop Turn; end loop;
+      Check (not M.Quarantined (2), "innocent: still waiting within the patience");
+      M.Blocked (2) := False;
+      for I in 1 .. 20 loop Turn; end loop;
+      loop
+         Clients.Reap (Client (2).all, Record_Item, Got);
+         exit when not Got;
+         if Record_Item.Answer.Status = Status (Q.Completed) then
+            Completed_2 := Completed_2 + 1;
+         else
+            Lost_2 := Lost_2 + 1;
+         end if;
+      end loop;
+      Check (Completed_2 = 3 and Lost_2 = 0, "innocent: every waiting job completes OK");
+      Check (not M.Quarantined (2), "innocent: never quarantined");
+      -- Waiting past the patience is a hang too (a job that never starts).
+      Fresh;
+      Submit (2, Batch, Tag, Signal, OK);
+      M.Blocked (2) := True;
+      for I in 1 .. 3_400 loop Turn; end loop;
+      Check (not M.Quarantined (2), "patience: not yet");
+      for I in 1 .. 200 loop Turn; end loop;
+      Check (M.Quarantined (2), "patience: a job that never starts fails after the patience");
+   end Innocent_Waits;
+
    procedure Malformed is
       Tag : Clients.Token;
       Signal : Q.Timeline_Value;
@@ -385,7 +438,8 @@ procedure GPU_Queue_Tests is
                 "decide: signal mismatch");
          Check (Verdict ((D with delta Signal_Value => 5)).Kind = A.Reject, "decide: old value");
          Check (Verdict ((D with delta Operation => 9)).Cause = Q.Bad_Opcode, "decide: opcode");
-         Check (Verdict ((D with delta Flags => 1)).Cause = Q.Bad_Flags, "decide: flags");
+         Check (Verdict ((D with delta Flags => 16#10#)).Cause = Q.Bad_Flags, "decide: reserved flags");
+         Check (Verdict ((D with delta Flags => QK.Kinds_Mask)).Cause /= Q.Bad_Flags, "decide: job kinds admitted");
          Check (Verdict ((D with delta Context => 3)).Cause = Q.Bad_Context, "decide: context");
          Check (Verdict ((D with delta Wait_1_Context => 1, Wait_1_Value => 10)).Cause = Q.Bad_Wait,
                 "decide: wait beyond accepted");
@@ -447,6 +501,39 @@ procedure GPU_Queue_Tests is
       Check (M.Completed (1, 1) = Unsigned_64 (Signal), "context 1 reached its value");
    end Cross_Context_Waits;
 
+   -- Per-kind accounting: each completed job counts under the kinds its
+   -- descriptor named, with the execution time its stamps give (the model:
+   -- Latency turns); Signal jobs carry no stamps; reserved flags refuse.
+   procedure Job_Kinds is
+      Tag : Clients.Token;
+      Signal : Q.Timeline_Value;
+      OK : Boolean;
+      Stats : Service.Kind_Table;
+      Render : constant QK.Job_Kinds := QK.Kind_Render;
+      Copy : constant QK.Job_Kinds := QK.Kind_Upload + QK.Kind_Readback;
+   begin
+      Fresh;
+      M.Latency := 4;
+      for N in 1 .. 3 loop
+         Submit (1, (Batch with delta Kinds => Render), Tag, Signal, OK);
+      end loop;
+      Submit (1, (Batch with delta Kinds => Copy), Tag, Signal, OK);
+      Submit (1, (Batch with delta Operation => Q.Signal, Handle => 0, GPU => 0, Bytes => 0,
+                  Kinds => QK.Kind_Internal), Tag, Signal, OK);
+      Drain (5, "kinds");
+      Stats := Service.Kind_Stats (T.all);
+      Check (Stats (Render).Jobs = 3 and then Stats (Render).Untimed = 0 and then
+             Stats (Render).Exec_Max_Us = 4 * M.Microseconds_Per_Turn and then
+             Stats (Render).Exec_Total_Us = 3 * 4 * M.Microseconds_Per_Turn,
+             "render jobs counted with their execution time");
+      Check (Stats (Copy).Jobs = 1 and then Stats (Copy).Untimed = 0, "combined kinds counted together");
+      Check (Stats (QK.Kind_Internal).Jobs = 1 and then Stats (QK.Kind_Internal).Untimed = 1,
+             "a Signal job carries no stamps");
+      Check (Stats (Render).Latency_Max_Us >= Stats (Render).Exec_Max_Us, "latency covers execution");
+      Service.Reset_Kinds (T.all);
+      Check (Service.Kind_Stats (T.all) (Render).Jobs = 0, "reset");
+   end Job_Kinds;
+
    procedure Wakes is
       Tag : Clients.Token;
       Signal : Q.Timeline_Value;
@@ -465,6 +552,7 @@ procedure GPU_Queue_Tests is
       Check (M.Wakes_Answered = 0, "not answered early");
       for I in 1 .. 20 loop Turn; end loop;
       Check (M.Wakes_Answered = 1 and then M.Last_Wake = Q.Woken, "answered Woken on reach");
+      Check (M.Line_At_Wake >= Unsigned_64 (Signal), "status line published before the answer");
       Check (not Service.Wake_Slot_Held (T.all, 1), "slot released");
       -- Reached already: answered at once.
       Service.Wake_Request (T.all, 1, 0, Sessions.Value (Signal), Answer_Held, Answer_Now, Result);
@@ -599,8 +687,10 @@ begin
    Queue_Backpressure;
    Deadlines;
    Hang;
+   Innocent_Waits;
    Malformed;
    Cross_Context_Waits;
+   Job_Kinds;
    Wakes;
    Calls;
    Quiesce;

@@ -2,6 +2,7 @@ with Interfaces;
 with System;
 with Intel_GPU_GuC_CT_Setup;
 with Intel_GPU_Submission_Backing;
+with Intel_GPU_SLPC;
 package Intel_GPU_Firmware_Buffer is
    use type Interfaces.Unsigned_64;
    -- One retained allocation, disjoint firmware/log/CT regions. Preparation
@@ -26,6 +27,14 @@ package Intel_GPU_Firmware_Buffer is
       CT_Region_Bytes < Intel_GPU_GuC_CT_Setup.Required_Bytes or else
       CT_Region_Offset mod 4096 /= 0 or else CT_Region_Bytes mod 4096 /= 0,
       "CT region must be disjoint, page aligned and fit the retained allocation");
+   -- GuC SLPC shared data (Intel_GPU_SLPC): two pages after the submission
+   -- slices, inside the same retained allocation.
+   SLPC_Region_Offset : constant Interfaces.Unsigned_64 := Intel_GPU_Submission_Backing.After_Last;
+   SLPC_Region_Bytes : constant Interfaces.Unsigned_64 := Intel_GPU_SLPC.Shared_Data_Bytes;
+   pragma Compile_Time_Error
+     (SLPC_Region_Offset mod 4096 /= 0 or else SLPC_Region_Bytes mod 4096 /= 0 or else
+      SLPC_Region_Offset + SLPC_Region_Bytes > 1024 * 1024,
+      "SLPC region must be page aligned and fit the retained allocation");
    type Prepared_Buffer (Ready : Boolean := False) is record
       case Ready is
          when True =>
@@ -50,6 +59,14 @@ package Intel_GPU_Firmware_Buffer is
       end case;
    end record;
    function Prepared_CT return Prepared_CT_Buffer;
+   type Prepared_SLPC_Buffer (Ready : Boolean := False) is record
+      case Ready is
+         when True =>
+            DMA_Address, CPU_Address, Region_Bytes : Interfaces.Unsigned_64;
+         when False => null;
+      end case;
+   end record;
+   function Prepared_SLPC return Prepared_SLPC_Buffer;
    -- Non-overlapping, initially zeroed slices of the same retained allocation.
    -- These are CPU/DMA backing views, never GPU VAs or publication permission.
    -- No slice may be independently freed or reinitialized after device use.

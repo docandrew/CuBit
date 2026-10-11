@@ -20,6 +20,7 @@ with System.Machine_Code;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Output_Discovery;
+with CuBit.Output_Modes;
 with CuBit.Monitor_EDID;
 with CuBit.Desktop_Messages;
 with CuBit.Graphics_Metrics;
@@ -28,10 +29,14 @@ with CuBit.Display_Protocol;
 with CuBit.Display_Planes;
 with CuBit.GPU_Plane_Protocol;
 with GPU_Test_Policy;
+with CuBit.Device_Interrupts;
+with CCL_Manifest_Bindings;
 
 procedure main is
    use ASCII;
    package OD renames CuBit.Output_Discovery;
+   package OM renames CuBit.Output_Modes;
+   use type OM.Mode;
    package DPL renames CuBit.Display_Planes;
    package GP renames CuBit.GPU_Plane_Protocol;
    use type DPL.Plane_Number;
@@ -73,15 +78,30 @@ procedure main is
      (CURSOR_CMD_OFF + 16 * CURSOR_CMD_STRIDE > CURSOR_IMAGE_OFF or else
       CURSOR_IMAGE_OFF + 2 * CURSOR_IMAGE_BYTES > FB0_OFF,
       "cursor queue and backing overlap other DMA regions");
-   DMA_BANK_BYTES : constant Storage_Offset := 16#800000#;
+   --  One DMA bank per head: 16 MiB, or 8 MiB on a machine without that
+   --  much contiguous memory (devmgr decides; read from the DMA capability
+   --  at startup). After the first bank's 64 KiB of rings, each head holds
+   --  two scanout buffers of bufferCapacity bytes at fixed offsets, so a
+   --  mode change never moves a buffer: up to 1920x1080 (16 MiB banks) or
+   --  1280x800 (8 MiB) at 32 bits per pixel.
+   LARGE_BANK_BYTES : constant Storage_Offset := 16#1000000#;
+   SMALL_BANK_BYTES : constant Storage_Offset := 16#800000#;
+   DMA_CAP_SLOT : constant := 6;
+   bankBytes : Storage_Offset := SMALL_BANK_BYTES;
+   PAGE_BYTES : constant := 4096;
 
    package EDID renames CuBit.Monitor_EDID;
    use type EDID.Decode_Status;
    FALLBACK_WIDTH : constant EDID.Extent := 1024;
    FALLBACK_HEIGHT : constant EDID.Extent := 768;
+   function bufferCapacity return Storage_Offset is
+     ((bankBytes - FB0_OFF) / 2 / PAGE_BYTES * PAGE_BYTES);
+   --  The smallest mode the desktop is laid out for; hosts asking for less
+   --  (a tiny window) get this, scaled by the host.
+   MINIMUM_MODE : constant OM.Mode := (800, 600);
    pragma Compile_Time_Error
-     (FB0_OFF + 2 * Storage_Offset
-        ((FALLBACK_WIDTH * FALLBACK_HEIGHT * 4 + 4095) / 4096 * 4096) > DMA_BANK_BYTES,
+     (Storage_Offset ((FALLBACK_WIDTH * FALLBACK_HEIGHT * 4 + 4095) / 4096 * 4096) >
+        (SMALL_BANK_BYTES - FB0_OFF) / 2,
       "Fallback GPU double buffers exceed their owned DMA bank");
    edidSupported : Boolean := False;
 
@@ -95,10 +115,12 @@ procedure main is
    REG_DEVICE_FEATURE        : constant Unsigned_64 := 4;
    REG_DRIVER_FEATURE_SELECT : constant Unsigned_64 := 8;
    REG_DRIVER_FEATURE        : constant Unsigned_64 := 12;
+   REG_CONFIG_MSIX_VECTOR    : constant Unsigned_64 := 16;
    REG_NUM_QUEUES            : constant Unsigned_64 := 18;
    REG_DEVICE_STATUS         : constant Unsigned_64 := 20;
    REG_QUEUE_SELECT          : constant Unsigned_64 := 22;
    REG_QUEUE_SIZE            : constant Unsigned_64 := 24;
+   REG_QUEUE_MSIX_VECTOR     : constant Unsigned_64 := 26;
    REG_QUEUE_ENABLE          : constant Unsigned_64 := 28;
    REG_QUEUE_NOTIFY_OFF      : constant Unsigned_64 := 30;
    REG_QUEUE_DESC            : constant Unsigned_64 := 32;
@@ -215,6 +237,16 @@ procedure main is
    commonOff : Unsigned_64 := 0;
    notifyOff : Unsigned_64 := 0;
    isrOff : Unsigned_64 := 0;
+   --  devmgr programmed MSI-X entry MSIX_ENTRY for the vector in the
+   --  manifest's device slot (docs/msi-interrupts.md); without one the
+   --  device signals its legacy line and the ISR register acknowledges it.
+   messageInterrupts : Boolean := False;
+   interruptBlock : CuBit.Device_Interrupts.Interrupt_Block;
+   --  Queues use entry 0; configuration changes entry 1 when devmgr gave
+   --  two vectors (the manifest asks for two), else entry 0 too.
+   MSIX_ENTRY : constant Unsigned_16 := 0;
+   CONFIG_ENTRY : constant Unsigned_16 := 1;
+   configEntry : Unsigned_16 := MSIX_ENTRY;
    notifyMult : Unsigned_64 := 0;
    barBytes, notifyBytes : Unsigned_64 := 0;
    queueNotifyOffset : Unsigned_64 := 0;
@@ -235,8 +267,6 @@ procedure main is
      (Unsigned_32 (geometry (Head).Height));
    function Frame_Bytes (Head : Head_Index) return Unsigned_32 is
      (Frame_Width (Head) * Frame_Height (Head) * 4);
-   function Buffer_Bytes (Head : Head_Index) return Unsigned_32 is
-     (Unsigned_32 (EDID.Buffer_Bytes (geometry (Head).Width, geometry (Head).Height)));
    readyHeads : array (Head_Index) of Boolean := [others => False];
    flipsAnnounced : Boolean := False;
 
@@ -265,12 +295,12 @@ procedure main is
 
    function framebufferOffset
      (index : Natural) return Storage_Offset is
-     (Storage_Offset (selectedHead) * DMA_BANK_BYTES + FB0_OFF +
-        Storage_Offset (index) * Storage_Offset (Buffer_Bytes (selectedHead)));
+     (Storage_Offset (selectedHead) * bankBytes + FB0_OFF +
+        Storage_Offset (index) * bufferCapacity);
 
    function framebufferPhysical (index : Natural) return Unsigned_64 is
      ((if selectedHead = 0 then dmaPhys else secondDmaPhys) +
-        Unsigned_64 (FB0_OFF) + Unsigned_64 (index) * Unsigned_64 (Buffer_Bytes (selectedHead)));
+        Unsigned_64 (FB0_OFF) + Unsigned_64 (index) * Unsigned_64 (bufferCapacity));
 
    function resourceId (index : Natural) return Unsigned_32 is
      (Unsigned_32 (1 + selectedHead * 2 + index));
@@ -602,6 +632,20 @@ procedure main is
          return;
       end if;
 
+      interruptBlock :=
+        CuBit.Device_Interrupts.Block_Of (CCL_Manifest_Bindings.Slot_device);
+      messageInterrupts := interruptBlock.Valid;
+      if messageInterrupts then
+         configEntry := (if interruptBlock.Count >= 2 then CONFIG_ENTRY else MSIX_ENTRY);
+         trace ("route configuration changes to MSI-X");
+         write16 (REG_CONFIG_MSIX_VECTOR, configEntry);
+         if read16 (REG_CONFIG_MSIX_VECTOR) /= configEntry then
+            write8 (REG_DEVICE_STATUS, status or VIRTIO_STATUS_FAILED);
+            fail ("configuration MSI-X vector refused");
+            return;
+         end if;
+      end if;
+
       trace ("select control queue");
       write16 (REG_QUEUE_SELECT, CTRL_QUEUE);
       -- 16-bit queue offset times a validated32-bit multiplier cannot overflow.
@@ -623,6 +667,14 @@ procedure main is
       end if;
       trace ("configure control queue");
       write16 (REG_QUEUE_SIZE, Unsigned_16 (QUEUE_SIZE));
+      if messageInterrupts then
+         write16 (REG_QUEUE_MSIX_VECTOR, MSIX_ENTRY);
+         if read16 (REG_QUEUE_MSIX_VECTOR) /= MSIX_ENTRY then
+            write8 (REG_DEVICE_STATUS, status or VIRTIO_STATUS_FAILED);
+            fail ("control queue MSI-X vector refused");
+            return;
+         end if;
+      end if;
       write64 (REG_QUEUE_DESC, dmaPhys + Unsigned_64 (DESC_OFF));
       write64 (REG_QUEUE_DRIVER, dmaPhys + Unsigned_64 (AVAIL_OFF));
       write64 (REG_QUEUE_DEVICE, dmaPhys + Unsigned_64 (USED_OFF));
@@ -639,6 +691,9 @@ procedure main is
         qsz >= Unsigned_16 (QUEUE_SIZE)
       then
          write16 (REG_QUEUE_SIZE, Unsigned_16 (QUEUE_SIZE));
+         if messageInterrupts then
+            write16 (REG_QUEUE_MSIX_VECTOR, MSIX_ENTRY);
+         end if;
          write64 (REG_QUEUE_DESC, dmaPhys + Unsigned_64 (CURSOR_DESC_OFF));
          write64 (REG_QUEUE_DRIVER, dmaPhys + Unsigned_64 (CURSOR_AVAIL_OFF));
          write64 (REG_QUEUE_DEVICE, dmaPhys + Unsigned_64 (CURSOR_USED_OFF));
@@ -716,10 +771,10 @@ procedure main is
          --  This is a virtual resource-size choice, not physical link training
          --  or a claim that EDID alone authorizes a hardware mode. Keep the
          --  current desktop minimum and the actual owned DMA budget explicit.
-         if Mode.Width < 800 or else Mode.Height < 600 then
+         if Mode.Width < MINIMUM_MODE.Width or else Mode.Height < MINIMUM_MODE.Height then
             debugPrint ("virtio-gpu: EDID preference below startup UI minimum; using fallback" & LF);
             return;
-         elsif Storage_Offset (Bytes) > (DMA_BANK_BYTES - FB0_OFF) / 2 then
+         elsif Storage_Offset (Bytes) > bufferCapacity then
             debugPrint ("virtio-gpu: EDID mode exceeds scanout budget; using fallback" & LF);
             return;
          end if;
@@ -868,6 +923,116 @@ procedure main is
       debugPrint ("virtio-gpu: hardware cursor plane head" & Head'Image & LF);
    end createCursor;
 
+   --  Two complete 2D resources of the selected head's geometry on its
+   --  fixed buffers, the first one scanned out. display.svc updates the
+   --  inactive backing and asks for the switch only after the transfer has
+   --  completed, so the host never scans a resource while it is changing.
+   --  Synchronous: only with no other command outstanding (boot, or a mode
+   --  change on an idle device). False after a transport failure (fail).
+   function bringUpScanout return Boolean is
+      ok : Boolean;
+   begin
+      for index in 0 .. 1 loop
+         trace ("cmd RESOURCE_CREATE_2D");
+         beginCmd (CMD_RESOURCE_CREATE_2D);
+         put32 (CMD_OFF, 24, resourceId (index));
+         put32 (CMD_OFF, 28, FORMAT_B8G8R8X8_UNORM);
+         put32 (CMD_OFF, 32, Frame_Width (selectedHead));
+         put32 (CMD_OFF, 36, Frame_Height (selectedHead));
+         ok := submitCmd (40, 24, RESP_OK_NODATA);
+         if not ok then
+            fail ("RESOURCE_CREATE_2D failed");
+            return False;
+         end if;
+
+         trace ("cmd RESOURCE_ATTACH_BACKING");
+         beginCmd (CMD_RESOURCE_ATTACH);
+         put32 (CMD_OFF, 24, resourceId (index));
+         put32 (CMD_OFF, 28, 1);
+         put64
+           (CMD_OFF, 32,
+            framebufferPhysical (index));
+         put32 (CMD_OFF, 40, Frame_Bytes (selectedHead));
+         put32 (CMD_OFF, 44, 0);
+         ok := submitCmd (48, 24, RESP_OK_NODATA);
+         if not ok then
+            fail ("RESOURCE_ATTACH_BACKING failed");
+            return False;
+         end if;
+
+         trace ("cmd TRANSFER_TO_HOST_2D");
+         beginCmd (CMD_TRANSFER_TO_HOST_2D);
+         put32 (CMD_OFF, 24, 0);
+         put32 (CMD_OFF, 28, 0);
+         put32 (CMD_OFF, 32, Frame_Width (selectedHead));
+         put32 (CMD_OFF, 36, Frame_Height (selectedHead));
+         put64 (CMD_OFF, 40, 0);
+         put32 (CMD_OFF, 48, resourceId (index));
+         put32 (CMD_OFF, 52, 0);
+         GM.Add (uploads, Unsigned_64 (Frame_Bytes (selectedHead)));
+         ok := submitCmd (56, 24, RESP_OK_NODATA);
+         if not ok then
+            fail ("TRANSFER_TO_HOST_2D failed");
+            return False;
+         end if;
+      end loop;
+
+      trace ("cmd SET_SCANOUT");
+      beginCmd (CMD_SET_SCANOUT);
+      put32 (CMD_OFF, 24, 0);
+      put32 (CMD_OFF, 28, 0);
+      put32 (CMD_OFF, 32, Frame_Width (selectedHead));
+      put32 (CMD_OFF, 36, Frame_Height (selectedHead));
+      put32 (CMD_OFF, 40, Unsigned_32 (selectedHead));
+      put32 (CMD_OFF, 44, resourceId (0));
+      ok := submitCmd (48, 24, RESP_OK_NODATA);
+      if not ok then
+         fail ("SET_SCANOUT failed");
+         return False;
+      end if;
+
+      trace ("cmd RESOURCE_FLUSH");
+      beginCmd (CMD_RESOURCE_FLUSH);
+      put32 (CMD_OFF, 24, 0);
+      put32 (CMD_OFF, 28, 0);
+      put32 (CMD_OFF, 32, Frame_Width (selectedHead));
+      put32 (CMD_OFF, 36, Frame_Height (selectedHead));
+      put32 (CMD_OFF, 40, resourceId (0));
+      put32 (CMD_OFF, 44, 0);
+      ok := submitCmd (48, 24, RESP_OK_NODATA);
+      if not ok then
+         fail ("RESOURCE_FLUSH failed");
+         return False;
+      end if;
+      return True;
+   end bringUpScanout;
+
+   --  "WxH" with no padding (log markers the tests match).
+   function Dimensions (Width, Height : Natural) return String is
+      W : constant String := Width'Image;
+      H : constant String := Height'Image;
+   begin
+      return W (W'First + 1 .. W'Last) & "x" & H (H'First + 1 .. H'Last);
+   end Dimensions;
+
+   --  The catalog entry of Head reports the head's geometry as current.
+   procedure noteCurrentMode (Head : Head_Index) is
+   begin
+      for Index in 1 .. scanouts.Count loop
+         if scanouts.Items (Index).Native_Number = OD.Native_Output_Number (Head) then
+            declare
+               Detected : constant OD.Description := scanouts.Items (Index);
+            begin
+               scanouts.Items (Index) :=
+                 (OD.Backend_Ready, OD.Virtio_GPU,
+                  OD.Native_Output_Number (Head),
+                  Detected.Advertised_Width, Detected.Advertised_Height,
+                  OD.Extent (Frame_Width (Head)), OD.Extent (Frame_Height (Head)));
+            end;
+         end if;
+      end loop;
+   end noteCurrentMode;
+
    procedure initGpu is
       ok : Boolean;
       function Decimal (Value : Unsigned_32) return String is
@@ -929,98 +1094,12 @@ procedure main is
             paintFramebuffer (0);
             paintFramebuffer (1);
             trace ("test framebuffer painted");
-
-            --  Keep two complete 2D resources. display.svc updates the inactive
-            --  backing and asks us to switch scanout only after the transfer has
-            --  completed, so the host never scans a resource while it is changing.
-            for index in 0 .. 1 loop
-               trace ("cmd RESOURCE_CREATE_2D");
-               beginCmd (CMD_RESOURCE_CREATE_2D);
-               put32 (CMD_OFF, 24, resourceId (index));
-               put32 (CMD_OFF, 28, FORMAT_B8G8R8X8_UNORM);
-               put32 (CMD_OFF, 32, Frame_Width (selectedHead));
-               put32 (CMD_OFF, 36, Frame_Height (selectedHead));
-               ok := submitCmd (40, 24, RESP_OK_NODATA);
-               if not ok then
-                  fail ("RESOURCE_CREATE_2D failed");
-                  return;
-               end if;
-
-               trace ("cmd RESOURCE_ATTACH_BACKING");
-               beginCmd (CMD_RESOURCE_ATTACH);
-               put32 (CMD_OFF, 24, resourceId (index));
-               put32 (CMD_OFF, 28, 1);
-               put64
-                 (CMD_OFF, 32,
-                  framebufferPhysical (index));
-               put32 (CMD_OFF, 40, Frame_Bytes (selectedHead));
-               put32 (CMD_OFF, 44, 0);
-               ok := submitCmd (48, 24, RESP_OK_NODATA);
-               if not ok then
-                  fail ("RESOURCE_ATTACH_BACKING failed");
-                  return;
-               end if;
-
-               trace ("cmd TRANSFER_TO_HOST_2D");
-               beginCmd (CMD_TRANSFER_TO_HOST_2D);
-               put32 (CMD_OFF, 24, 0);
-               put32 (CMD_OFF, 28, 0);
-               put32 (CMD_OFF, 32, Frame_Width (selectedHead));
-               put32 (CMD_OFF, 36, Frame_Height (selectedHead));
-               put64 (CMD_OFF, 40, 0);
-               put32 (CMD_OFF, 48, resourceId (index));
-               put32 (CMD_OFF, 52, 0);
-               GM.Add (uploads, Unsigned_64 (Frame_Bytes (selectedHead)));
-               ok := submitCmd (56, 24, RESP_OK_NODATA);
-               if not ok then
-                  fail ("TRANSFER_TO_HOST_2D failed");
-                  return;
-               end if;
-            end loop;
-
-            trace ("cmd SET_SCANOUT");
-            beginCmd (CMD_SET_SCANOUT);
-            put32 (CMD_OFF, 24, 0);
-            put32 (CMD_OFF, 28, 0);
-            put32 (CMD_OFF, 32, Frame_Width (selectedHead));
-            put32 (CMD_OFF, 36, Frame_Height (selectedHead));
-            put32 (CMD_OFF, 40, Unsigned_32 (selectedHead));
-            put32 (CMD_OFF, 44, resourceId (0));
-            ok := submitCmd (48, 24, RESP_OK_NODATA);
-            if not ok then
-               fail ("SET_SCANOUT failed");
-               return;
-            end if;
-
-            trace ("cmd RESOURCE_FLUSH");
-            beginCmd (CMD_RESOURCE_FLUSH);
-            put32 (CMD_OFF, 24, 0);
-            put32 (CMD_OFF, 28, 0);
-            put32 (CMD_OFF, 32, Frame_Width (selectedHead));
-            put32 (CMD_OFF, 36, Frame_Height (selectedHead));
-            put32 (CMD_OFF, 40, resourceId (0));
-            put32 (CMD_OFF, 44, 0);
-            ok := submitCmd (48, 24, RESP_OK_NODATA);
-            if not ok then
-               fail ("RESOURCE_FLUSH failed");
+            if not bringUpScanout then
                return;
             end if;
 
             debugPrint ("virtio-gpu: scanout test frame presented" & LF);
-            for Index in 1 .. scanouts.Count loop
-               if scanouts.Items (Index).Native_Number =
-                 OD.Native_Output_Number (selectedHead) then
-                  declare
-                     Detected : constant OD.Description := scanouts.Items (Index);
-                  begin
-                     scanouts.Items (Index) :=
-                       (OD.Backend_Ready, OD.Virtio_GPU,
-                        OD.Native_Output_Number (selectedHead),
-                        Detected.Advertised_Width, Detected.Advertised_Height,
-                        OD.Extent (Frame_Width (selectedHead)), OD.Extent (Frame_Height (selectedHead)));
-                  end;
-               end if;
-            end loop;
+            noteCurrentMode (Head);
             createCursor (Head);
             readyHeads (Head) := True;
          end if;
@@ -1037,6 +1116,156 @@ procedure main is
          pixels (i) := color;
       end loop;
    end clearFb;
+
+   ---------------------------------------------------------------------------
+   --  Mode changes (CuBit.Output_Modes). A host changes its preferred mode
+   --  (QEMU: the window was resized, VIRTIO_GPU_EVENT_DISPLAY). The driver
+   --  re-reads GET_DISPLAY_INFO, publishes the preference in its catalog
+   --  (Advertised) under a new revision and answers the watcher. display.svc
+   --  decides when to switch: Set_Mode on an idle device, fitted to the
+   --  fixed scanout buffers (OM.Fit).
+   ---------------------------------------------------------------------------
+   VIRTIO_GPU_EVENT_DISPLAY : constant Unsigned_32 := 1;
+   ISR_CONFIG_CHANGE : constant Unsigned_8 := 2;
+   --  struct virtio_gpu_config: events_read, events_clear, num_scanouts.
+   GPU_CONFIG_EVENTS_READ  : constant Unsigned_64 := 0;
+   GPU_CONFIG_EVENTS_CLEAR : constant Unsigned_64 := 4;
+   GPU_CONFIG_BYTES : constant := 16;
+   CMD_RESOURCE_UNREF : constant Unsigned_32 := 16#0102#;
+   WATCH_REPLY_SLOT : constant CapabilitySlot := 35;
+   deviceOff : Unsigned_64 := 0;
+   deviceConfigReady : Boolean := False;
+   modeRevision : OM.Revision := 1;
+   watchArmed : Boolean := False;
+   displayEventPending : Boolean := False;
+
+   --  The device configuration structure, at its own offset in the BAR
+   --  (read32/write32 address the common configuration).
+   function configWord (Offset : Unsigned_64) return Unsigned_32 is
+      Reg : Unsigned_32 with Import, Volatile,
+        Address => To_Address (Integer_Address (BAR_VIRT_BASE + deviceOff + Offset));
+   begin
+      return Reg;
+   end configWord;
+   procedure setConfigWord (Offset : Unsigned_64; Value : Unsigned_32) is
+      Reg : Unsigned_32 with Import, Volatile,
+        Address => To_Address (Integer_Address (BAR_VIRT_BASE + deviceOff + Offset));
+   begin
+      Reg := Value;
+   end setConfigWord;
+
+   --  Synchronous commands need the control queue to themselves.
+   function commandsIdle return Boolean is
+     ((for all P of Pending => P.Phase = Idle) and then
+      cursorTransfer.Phase = Idle);
+
+   procedure answerWatch is
+      Ignored : Unsigned_64;
+   begin
+      if watchArmed then
+         watchArmed := False;
+         Ignored := replyCap (WATCH_REPLY_SLOT, CuBit.Desktop_Messages.From_Wire
+           (OM.Encode_Watch (OD.GPU_Backend, modeRevision)));
+      end if;
+   end answerWatch;
+
+   procedure bumpRevision is
+   begin
+      if modeRevision < OM.Revision'Last then
+         modeRevision := modeRevision + 1;
+      end if;
+      answerWatch;
+   end bumpRevision;
+
+   --  VIRTIO_GPU_EVENT_DISPLAY: acknowledge it, re-read the host's preferred
+   --  modes and publish those that changed.
+   procedure readDisplayEvent is
+      Events : Unsigned_32;
+      Changed : Boolean := False;
+   begin
+      displayEventPending := False;
+      if not deviceConfigReady then return; end if;
+      Events := configWord (GPU_CONFIG_EVENTS_READ);
+      if (Events and VIRTIO_GPU_EVENT_DISPLAY) = 0 then
+         debugPrint ("virtio-gpu: configuration change without display event" & LF);
+         return;
+      end if;
+      setConfigWord (GPU_CONFIG_EVENTS_CLEAR, VIRTIO_GPU_EVENT_DISPLAY);
+      beginCmd (CMD_GET_DISPLAY_INFO);
+      if not submitCmd (24, 408, RESP_OK_DISPLAY_INFO) then
+         fail ("GET_DISPLAY_INFO failed");
+         return;
+      end if;
+      for Index in 1 .. scanouts.Count loop
+         declare
+            Item : OD.Description renames scanouts.Items (Index);
+            Offset : constant Storage_Offset := DISPLAY_HEADER_BYTES +
+              Storage_Offset (Item.Native_Number) * DISPLAY_ENTRY_BYTES;
+            Width : constant Unsigned_32 := get32 (RESP_OFF, Offset + 8);
+            Height : constant Unsigned_32 := get32 (RESP_OFF, Offset + 12);
+            Enabled : constant Unsigned_32 := get32 (RESP_OFF, Offset + 16);
+         begin
+            --  A disabled or degenerate preference (a closed or minimized
+            --  window) changes nothing: the output keeps its mode.
+            if Enabled /= 0 and then
+              Width in 1 .. Unsigned_32 (OD.Extent'Last) and then
+              Height in 1 .. Unsigned_32 (OD.Extent'Last) and then
+              (OD.Extent (Width) /= Item.Advertised_Width or else
+               OD.Extent (Height) /= Item.Advertised_Height)
+            then
+               Item.Advertised_Width := OD.Extent (Width);
+               Item.Advertised_Height := OD.Extent (Height);
+               Changed := True;
+               debugPrint ("virtio-gpu: display change head" & Item.Native_Number'Image &
+                 " preferred " & Dimensions (Natural (Width), Natural (Height)) & LF);
+            end if;
+         end;
+      end loop;
+      if Changed then
+         bumpRevision;
+      end if;
+   end readDisplayEvent;
+
+   --  Switch Head to Wanted, fitted to its scanout buffers. Old resources go
+   --  (UNREF also ends their scanout); new ones are built on the same fixed
+   --  buffers, cleared to black. Only on an idle device (commandsIdle).
+   procedure applyMode (Head : Head_Index; Wanted : OM.Mode; Result : out OM.Mode_Result) is
+      Fitted : constant OM.Mode :=
+        OM.Fit (Wanted, MINIMUM_MODE, OM.Byte_Count (bufferCapacity));
+      Black : constant Unsigned_32 := 0;
+   begin
+      Result := (OM.DP.Bad_State,
+                 (OD.Extent (Frame_Width (Head)), OD.Extent (Frame_Height (Head))));
+      if not readyHeads (Head) or else not commandsIdle then
+         return;
+      end if;
+      if Fitted = Result.Current then
+         Result.Status := OM.DP.Success;
+         return;
+      end if;
+      selectedHead := Head;
+      for index in 0 .. 1 loop
+         beginCmd (CMD_RESOURCE_UNREF);
+         put32 (CMD_OFF, 24, resourceId (index));
+         if not submitCmd (32, 24, RESP_OK_NODATA) then
+            fail ("RESOURCE_UNREF failed");
+            readyHeads (Head) := False;
+            return;
+         end if;
+      end loop;
+      geometry (Head) := (EDID.Extent (Fitted.Width), EDID.Extent (Fitted.Height));
+      clearFb (0, Black);
+      clearFb (1, Black);
+      if not bringUpScanout then
+         readyHeads (Head) := False;
+         return;
+      end if;
+      noteCurrentMode (Head);
+      debugPrint ("virtio-gpu: head" & Head'Image & " mode" &
+        " " & Dimensions (Fitted.Width, Fitted.Height) & LF);
+      Result := (OM.DP.Success, Fitted);
+      bumpRevision;
+   end applyMode;
 
    procedure finishPresentation (Head : Head_Index; Success : Boolean) is
       Item : Pending_Presentation renames Pending (Head);
@@ -1304,10 +1533,36 @@ procedure main is
          request.tag.label = OD.Code (OD.GPU_Backend, OD.Get_Description)
       then
          replyMsg := CuBit.Desktop_Messages.From_Wire (OD.Respond
-           (OD.GPU_Backend, scanouts, 1,
+           (OD.GPU_Backend, scanouts, modeRevision,
             CuBit.Desktop_Messages.To_Wire (request)));
          ignore := reply (from, replyMsg);
          return;
+      end if;
+      if request.tag.label = OM.Code (OD.GPU_Backend, OM.Watch) then
+         declare
+            D : constant OM.Revision_Decoding :=
+              OM.Decode_Watch (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (request));
+         begin
+            if not D.Valid then
+               replyMsg.tag := (request.tag.label, 1, 0, 0);
+               replyMsg.words (0) := GPU_ERR_UNSUPPORTED;
+            elsif D.Value /= modeRevision then
+               replyMsg := CuBit.Desktop_Messages.From_Wire
+                 (OM.Encode_Watch (OD.GPU_Backend, modeRevision));
+            else
+               --  One watcher: a newer watch supersedes (and answers) an
+               --  older one, so no saved reply is ever stranded.
+               answerWatch;
+               if saveReplyCap (Unsigned_64 (WATCH_REPLY_SLOT)) = 1 then
+                  watchArmed := True;
+                  return; -- answered on the next revision
+               end if;
+               replyMsg.tag := (request.tag.label, 1, 0, 0);
+               replyMsg.words (0) := GPU_ERR_BAD_STATE;
+            end if;
+            ignore := reply (from, replyMsg);
+            return;
+         end;
       end if;
       if request.tag.length /= 4 or else request.tag.flags /= 0 or else
         request.tag.reserved > Unsigned_16 (Head_Index'Last) or else
@@ -1320,6 +1575,24 @@ procedure main is
       end if;
       selectedHead := Natural (request.tag.reserved);
       request.tag.reserved := 0;
+      if request.tag.label = OM.Code (OD.GPU_Backend, OM.Set_Mode) then
+         declare
+            D : constant OM.Mode_Decoding :=
+              OM.Decode_Set_Mode (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (request));
+            Result : OM.Mode_Result :=
+              (OM.DP.Invalid_Request,
+               (OD.Extent (Frame_Width (selectedHead)), OD.Extent (Frame_Height (selectedHead))));
+            Head : constant Head_Index := selectedHead;
+         begin
+            if D.Valid then
+               applyMode (Head, D.Value, Result);
+            end if;
+            selectedHead := Head;
+            ignore := reply (from, CuBit.Desktop_Messages.From_Wire
+              (OM.Encode_Result (OD.GPU_Backend, Result)));
+            return;
+         end;
+      end if;
       --  Cursor planes use their own queue and transfer slot: they never
       --  wait for, or disturb, a presentation in flight on the head.
       if request.tag.label in GP.Code (GP.Query) .. GP.Code (GP.Hide_Plane) then
@@ -1571,6 +1844,7 @@ begin
    commonOff := getInfo (SYSINFO_GPU_COMMON_OFF);
    notifyOff := getInfo (SYSINFO_GPU_NOTIFY_OFF);
    isrOff := getInfo (SYSINFO_GPU_ISR_OFF);
+   deviceOff := getInfo (SYSINFO_GPU_DEVICE_OFF);
    notifyMult := getInfo (SYSINFO_GPU_NOTIFY_MULT);
    gpuPrimary := getInfo (SYSINFO_GPU_IS_PRIMARY) /= 0;
    debugPrint ("virtio-gpu: bar=");
@@ -1598,7 +1872,42 @@ begin
       return;
    end if;
 
+   --  Bank size from the DMA capability devmgr minted: one bank, or two of
+   --  equal size when the second exists.
+   declare
+      type Capability_Words is array (0 .. 5) of Unsigned_64;
+      Cap : aliased Capability_Words := [others => 0];
+      Total : Unsigned_64;
+   begin
+      if syscall (SYSCALL_INSPECT_CAPABILITY, syscall (SYSCALL_GETPID), DMA_CAP_SLOT,
+                  Unsigned_64 (To_Integer (Cap'Address))) /= 1
+      then
+         fail ("DMA capability unavailable");
+         return;
+      end if;
+      Total := Cap (4);
+      if secondDmaPhys /= 0 then
+         Total := Total / 2;
+      end if;
+      if Total = Unsigned_64 (LARGE_BANK_BYTES) then
+         bankBytes := LARGE_BANK_BYTES;
+      elsif Total = Unsigned_64 (SMALL_BANK_BYTES) then
+         bankBytes := SMALL_BANK_BYTES;
+      else
+         fail ("unexpected DMA bank size");
+         return;
+      end if;
+   end;
    initTransport;
+   --  The device configuration (display events) is optional: without it the
+   --  outputs keep their startup modes.
+   deviceConfigReady := deviceOff /= 0 and then deviceOff mod 4 = 0 and then
+     deviceOff <= barBytes and then GPU_CONFIG_BYTES <= barBytes - deviceOff;
+   if deviceConfigReady then
+      debugPrint ("virtio-gpu: display events enabled" & LF);
+   else
+      debugPrint ("virtio-gpu: no device configuration; modes fixed" & LF);
+   end if;
    initGpu;
 
    declare
@@ -1612,6 +1921,9 @@ begin
 
    loop
       collectCommands;
+      if displayEventPending and then commandsIdle then
+         readDisplayEvent;
+      end if;
       for Count in 1 .. 8 loop
          Poll_Service_Request (from, msg, found);
          exit when not found;
@@ -1632,15 +1944,30 @@ begin
               (GM.GPU_Legacy_Copy, legacyCopies, legacyReporter);
          end if;
       end;
-      if eventFound then
+      if eventFound and then messageInterrupts then
+         --  MSI-X needs no acknowledgement in the device. A configuration
+         --  change (display event) has its own entry when the device has
+         --  two; otherwise any doorbell may be one, and readDisplayEvent
+         --  checks events_read once the control queue is idle.
+         if interruptBlock.Count < 2 or else
+           CuBit.Device_Interrupts.Fired (eventMsg, interruptBlock, Natural (CONFIG_ENTRY))
+         then
+            displayEventPending := True;
+         end if;
+      elsif eventFound then
          declare
             isr : Unsigned_8 with
                Import,
                Address => To_Address (Integer_Address (BAR_VIRT_BASE + isrOff)),
                Volatile;
+            --  Reading the ISR acknowledges (clears) it: read it exactly once.
+            Status : constant Unsigned_8 := isr;
          begin
-            if isr = 16#FF# then
-               null;
+            --  A configuration change (display event) is handled once the
+            --  control queue is idle.
+            if Status /= 16#FF# and then (Status and ISR_CONFIG_CHANGE) /= 0 then
+               debugPrint ("virtio-gpu: configuration change interrupt" & LF);
+               displayEventPending := True;
             end if;
          end;
       else
@@ -1660,6 +1987,8 @@ begin
             if cursorTransfer.Phase = Transfer then
                Deadline := Unsigned_64'Min (Deadline, cursorTransfer.Deadline);
             end if;
+            --  A display event waits for in-flight commands to complete;
+            --  their completions wake this wait.
             --  A cursor queue that was full is retried by polling soon.
             if cursorsPending then
                Deadline := Unsigned_64'Min (Deadline, syscall (SYSCALL_GETTIME) + 1);

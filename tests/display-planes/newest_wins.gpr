@@ -1,0 +1,16 @@
+--  Latest-wins pointer move delivery: hosted test and level-2 proof.
+--    gprbuild -P tests/display-planes/newest_wins.gpr && tests/display-planes/build-newest-wins/newest_wins_tests
+--    gnatprove -P tests/display-planes/newest_wins.gpr -u cubit-newest_wins.adb --level=2
+project Newest_Wins is
+   for Source_Dirs use (".", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use ("newest_wins_tests.adb", "cubit-newest_wins.ads",
+     "cubit-newest_wins.adb", "cubit.ads");
+   for Object_Dir use "build-newest-wins";
+   for Main use ("newest_wins_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Newest_Wins;

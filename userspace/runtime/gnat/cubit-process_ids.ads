@@ -27,6 +27,19 @@ package CuBit.Process_IDs with Pure, SPARK_Mode is
    function To_Word (Process : Process_ID) return Interfaces.Unsigned_64;
    function From_Word (Word : Interfaces.Unsigned_64) return Process_ID;
 
+   --  An identity from its parts: the kernel's process slot and the life
+   --  (generation) of that slot (kernel/src/process_identities.ads). For
+   --  tests and encoders; a program still only compares identities.
+   --  Slot 0 never names a process, so To_Process_ID (0, G) is ill formed.
+   Slot_Bits       : constant := 24;
+   Generation_Bits : constant := 64 - Slot_Bits;
+   Last_Slot       : constant := 2 ** Slot_Bits - 1;
+   Last_Generation : constant := 2 ** Generation_Bits - 1;
+   subtype Slot_Number is Interfaces.Unsigned_64 range 0 .. Last_Slot;
+   subtype Generation_Number is Interfaces.Unsigned_64 range 0 .. Last_Generation;
+   function To_Process_ID
+     (Slot : Slot_Number; Generation : Generation_Number) return Process_ID;
+
    --  Whether it can name a process at all (not No_Process, and well
    --  formed). Whether that process still runs is the kernel's to say.
    function Is_Process (Process : Process_ID) return Boolean;
@@ -60,8 +73,7 @@ private
    No_Process : constant Process_ID := 0;
 
    --  The kernel's layout (kernel/src/process_identities.ads): slot in
-   --  the low 24 bits, generation above. Only this package depends on it.
-   Slot_Bits : constant := 24;
+   --  the low Slot_Bits bits, generation above.
    POSIX_Generation_Bits : constant := 7;
    Slot_Mask : constant Process_ID := 2 ** Slot_Bits - 1;
 
@@ -69,6 +81,9 @@ private
      (Interfaces.Unsigned_64 (Process));
    function From_Word (Word : Interfaces.Unsigned_64) return Process_ID is
      (Process_ID (Word));
+   function To_Process_ID
+     (Slot : Slot_Number; Generation : Generation_Number) return Process_ID is
+     (Process_ID (Interfaces.Shift_Left (Generation, Slot_Bits) or Slot));
    function Is_Process (Process : Process_ID) return Boolean is
      ((Process and Slot_Mask) /= 0);
    function Hash (Process : Process_ID) return Interfaces.Unsigned_64 is

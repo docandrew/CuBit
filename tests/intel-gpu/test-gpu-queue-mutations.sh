@@ -61,9 +61,16 @@ mutate "ledger accepts a failed read" intel_gpu_context_ledger.adb \
 mutate "ledger reports lost jobs as done" intel_gpu_context_ledger.adb \
     "Status := (if V <= L.Done then Done else Lost_Job);" "Status := Done;"
 mutate "no hang watchdog" intel_gpu_context_ledger.adb \
-    "if Now - L.Progress >= Hang_Budget then" "if False then"
+    "if L.Is_Running and then Now - L.Run_Start >= Hang_Budget then" "if False then"
+mutate "watchdog charges a waiting job the budget (GPU-005)" intel_gpu_context_ledger.adb \
+    "if L.Is_Running and then Now - L.Run_Start >= Hang_Budget then" \
+    "if Now - L.Progress >= Hang_Budget then"
+mutate "no patience watchdog (GPU-005)" intel_gpu_context_ledger.adb \
+    "elsif Now - L.Progress >= Patience then" "elsif False then"
+mutate "service ignores the start stamps (GPU-005)" intel_gpu_queue_service.adb \
+    "Job_Started (Unsigned_64 (Ledgers.Completed (L)) + 1);" "True;"
 mutate "no deadline watchdog" intel_gpu_context_ledger.adb \
-    "elsif L.Jobs (Slot_Of (L.Done + 1)).Deadline <= Now then" "elsif False then"
+    "elsif L.Is_Running and then L.Jobs (Slot_Of (L.Done + 1)).Deadline <= Now then" "elsif False then"
 mutate "admission ignores the signal value" intel_gpu_queue_admission.adb \
     "Value (D.Signal_Value) /= View (D.Context).Accepted + 1" "False"
 mutate "admission ignores the in-flight limit" intel_gpu_queue_admission.adb \
@@ -99,6 +106,12 @@ mutate "wake answered before its condition" intel_gpu_queue_wakes.adb \
     "Answer_Held := Item.Current = Held and then Holds;" "Answer_Held := Item.Current = Held;"
 mutate "wake held without a slot" intel_gpu_queue_wakes.adb \
     "elsif Slot_Free or else Was_Held then" "elsif True then"
+
+mutate "status lines published after the wake answer" intel_gpu_queue_service.adb \
+    "      if Sessions.Live (T.Items (S)) then
+         Publish (T, S);
+      end if;
+      Answer_Held_Wake (T, S);" "      Answer_Held_Wake (T, S);"
 
 echo "GPU queue mutations: $caught caught, $survived survived, $stale stale"
 [[ $survived -eq 0 && $stale -eq 0 ]]

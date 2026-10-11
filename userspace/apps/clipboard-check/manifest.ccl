@@ -1,0 +1,6 @@
+# Clipboard regression client (docs/clipboard.md): two text fields, one
+# ordinary and one sensitive. Desktop is its only service.
+(executable-manifest v1
+  (identity "com.cubit.clipboard-check")
+  (version "0.1.0")
+  (request-service desktop read-write desktop))

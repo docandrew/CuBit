@@ -19,6 +19,10 @@ package body Desktop_Renderer_Startup with SPARK_Mode is
    GPU_Call_Timeout_Ms : constant := 5_000;
    package GPU renames Desktop_Vulkan_Startup;
    procedure debugPrint (Text : String) renames Desktop_Logs.Write;
+   -- Shared staging for batched source uploads (GPU-004): one transfer
+   -- submission carries every stale image that fits, so a full-screen
+   -- window (1920x1080 BGRA, about 8 MiB) still goes in one chunk.
+   Upload_Staging_Bytes : constant := 8 * 1024 * 1024;
    procedure Initialize
      (Configuration : Boolean; Width, Height : Unsigned_64;
       Epoch : Compositor_Pool.ID;
@@ -85,7 +89,7 @@ package body Desktop_Renderer_Startup with SPARK_Mode is
       Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Pipeline_After); end if;
          if Evidence.Pipeline then
             Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Upload_Before);
-      GPU.Configure_Upload (2 * 1024 * 1024, Evidence.Upload);
+      GPU.Configure_Upload (Upload_Staging_Bytes, Evidence.Upload);
       Desktop_Breadcrumbs.Mark (Desktop_Breadcrumbs.Upload_After);
             -- Upload storage is required for this backend. Once it is denied,
             -- readback cannot make the renderer usable; retain failure evidence

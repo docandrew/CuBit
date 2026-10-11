@@ -10,6 +10,8 @@ with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Input; use CuBit.Input;
 with CuBit.Devices;
+with CuBit.Device_Interrupts;
+with CCL_Manifest_Bindings;
 with XHCI;
 with XHCI_Capabilities;
 with Optical_Service;
@@ -38,8 +40,6 @@ procedure main is
    reportReady : Boolean;
    eventAvailable : Boolean;
    interruptMode : XHCI.Runtime_Interrupt_Mode := XHCI.INTERRUPT_POLLING;
-   interruptVector : Unsigned_8 := 0;
-   interruptTableOffset : Unsigned_64 := 0;
    interruptEnabled : Boolean := False;
    interruptDriven : Boolean := False;
    lastButtons : Unsigned_8 := 0;
@@ -292,22 +292,32 @@ begin
       return;
    end if;
 
-   case msg.words (3) and 16#FF# is
-      when 0 =>
-         interruptMode := XHCI.INTERRUPT_POLLING;
-      when 1 =>
-         interruptMode := XHCI.INTERRUPT_MSI;
-      when 2 =>
-         interruptMode := XHCI.INTERRUPT_MSIX;
-      when others =>
-         Boot_Log.Write ("xhci: invalid interrupt mode" & LF);
-         Reply_With (REPLY_ERR);
-         ignore := syscall (SYSCALL_EXIT);
-         return;
-   end case;
-   interruptVector :=
-     Unsigned_8 (Shift_Right (msg.words (3), 8) and 16#FF#);
-   interruptTableOffset := Shift_Right (msg.words (3), 16);
+   --  Word 3 is the interrupt mode alone: devmgr programmed MSI or the
+   --  MSI-X table itself, for the vector in the manifest's events slot.
+   if msg.words (3) =
+        XHCI.Runtime_Interrupt_Mode'Enum_Rep (XHCI.INTERRUPT_POLLING)
+   then
+      interruptMode := XHCI.INTERRUPT_POLLING;
+   elsif msg.words (3) =
+           XHCI.Runtime_Interrupt_Mode'Enum_Rep (XHCI.INTERRUPT_MSI)
+   then
+      interruptMode := XHCI.INTERRUPT_MSI;
+   elsif msg.words (3) =
+           XHCI.Runtime_Interrupt_Mode'Enum_Rep (XHCI.INTERRUPT_MSIX)
+   then
+      interruptMode := XHCI.INTERRUPT_MSIX;
+   else
+      Boot_Log.Write ("xhci: invalid interrupt mode" & LF);
+      Reply_With (REPLY_ERR);
+      ignore := syscall (SYSCALL_EXIT);
+      return;
+   end if;
+   if interruptMode in XHCI.INTERRUPT_MSI | XHCI.INTERRUPT_MSIX and then
+     not CuBit.Device_Interrupts.Block_Of (CCL_Manifest_Bindings.Slot_events).Valid
+   then
+      Boot_Log.Write ("xhci: no interrupt capability; polling" & LF);
+      interruptMode := XHCI.INTERRUPT_POLLING;
+   end if;
 
    XHCI.Initialize
      (barPhys  => msg.words (0),
@@ -381,8 +391,6 @@ begin
    XHCI.Start_Boot_Keyboard_Transfers;
    XHCI.Enable_Runtime_Interrupts
      (interruptMode,
-      interruptVector,
-      interruptTableOffset,
       interruptEnabled);
    interruptDriven := interruptEnabled;
    if interruptEnabled then
@@ -391,8 +399,8 @@ begin
       Boot_Log.Write ("xhci: HID input using queued polling fallback" & LF);
    end if;
 
-   --  For MSI-X this reply tells devmgr that the table entry and xHCI
-   --  interrupter are ready, so it may safely release the PCI function mask.
+   --  For MSI-X this reply tells devmgr that the xHCI interrupter is ready,
+   --  so it may unmask the table entry and the function.
    Reply_With
      (REPLY_OK,
       Unsigned_64 (XHCI.Port_Count),

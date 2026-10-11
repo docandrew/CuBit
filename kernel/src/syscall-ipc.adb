@@ -10,6 +10,7 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with acpi;
+with Boot_Timeline;
 with BuddyAllocator;
 with Memory_Accounting;
 with Process_Memory_Budget;
@@ -95,6 +96,7 @@ package body Syscall.IPC is
         copied : Boolean;
         newPID   : Process.ProcessID;
         parent   : Process.ProcessID := callerPID;
+        started  : constant Unsigned_64 := Boot_Timeline.Now;
     begin
         retval := reterr;
 
@@ -175,6 +177,13 @@ package body Syscall.IPC is
             return;
         end if;
 
+        Boot_Timeline.Note_Spawn
+          (Slot     => Natural (newPID),
+           Identity => Process_Identities.To_Word (Process.identityOf (newPID)),
+           Spawner  => Process_Identities.To_Word (Process.identityOf (callerPID)),
+           Spawner_Slot => Natural (callerPID),
+           Name     => name,
+           Started  => started);
         -- Always spawn suspended; caller resumes after granting caps
         print ("SPAWN: created suspended PID ");
         println (Integer (newPID));

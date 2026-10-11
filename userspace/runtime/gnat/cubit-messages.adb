@@ -523,19 +523,19 @@ package body CuBit.Messages is
       ownerPID  : Process_ID;
       targetCPU : Unsigned_64;
       levelTriggered : Boolean := False;
-      activeLow      : Boolean := False;
-      messageSignaled : Boolean := False) return Unsigned_64
+      activeLow      : Boolean := False) return Unsigned_64
    is
-      route : Unsigned_64 := targetCPU and 16#FF#;
+      --  The route word (Syscall.Admin.handleEnableIrq).
+      ROUTE_CPU_MASK   : constant Unsigned_64 := 16#00FF#;
+      ROUTE_LEVEL      : constant Unsigned_64 := 16#0100#;
+      ROUTE_ACTIVE_LOW : constant Unsigned_64 := 16#0200#;
+      route : Unsigned_64 := targetCPU and ROUTE_CPU_MASK;
    begin
       if levelTriggered then
-         route := route or 16#100#;
+         route := route or ROUTE_LEVEL;
       end if;
       if activeLow then
-         route := route or 16#200#;
-      end if;
-      if messageSignaled then
-         route := route or 16#400#;
+         route := route or ROUTE_ACTIVE_LOW;
       end if;
       return syscall (SYSCALL_ENABLE_IRQ, vector, To_Word (ownerPID), route);
    end enableIrq;

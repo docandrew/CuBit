@@ -438,6 +438,12 @@ procedure main is
       debugPrint ("shell: display service pid=");
       debugPrint (Image (pid));
       debugPrint ("" & LF);
+      --  A desktop session owns the display: a lease taken here would
+      --  only block the desktop's own acquisition (it retries briefly).
+      if Registered_Driver (DRIVER_DESKTOP) /= No_Process then
+         debugPrint ("shell: desktop owns the display; present skipped" & LF);
+         return;
+      end if;
 
       status.tag := (label  => OP_DISPLAY_GET_STATUS,
                      length => 0,

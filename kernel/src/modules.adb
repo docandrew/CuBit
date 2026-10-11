@@ -15,12 +15,16 @@ with Interfaces; use Interfaces;
 with BuddyAllocator;
 with Capabilities;
 with Capabilities.Operations;
+with Device_Vector_ABI;
 with Cpio;
 with ELF;
 with Process;
 with Process.Loader;
 with Multiboot;
 with Boot_Modules;
+with Boot_Timeline;
+with Boot_Timeline_Layout;
+with Process_Identities;
 with Owned_Memory_Layout;
 with Sysinfo;
 with TextIO; use TextIO;
@@ -65,6 +69,7 @@ package body Modules with SPARK_Mode => Off is
         -- Allocator for page tables created during process loading
         procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
         pragma Unreferenced (mapPage);
+        started : constant Unsigned_64 := Boot_Timeline.Now;
     begin
         idx := Cpio.findFile (ar, name);
         if idx >= ar.count then
@@ -100,6 +105,13 @@ package body Modules with SPARK_Mode => Off is
         if pid = Process.NO_PROCESS then
             print ("Modules: load failed: "); println (name);
         else
+            Boot_Timeline.Note_Spawn
+              (Slot     => Natural (pid),
+               Identity => Process_Identities.To_Word (Process.identityOf (pid)),
+               Spawner  => Boot_Timeline_Layout.No_Identity,
+               Spawner_Slot => 0,
+               Name     => name,
+               Started  => started);
             print ("Modules: loaded "); print (name);
             print (" as PID "); println (Integer (pid));
         end if;
@@ -216,6 +228,7 @@ package body Modules with SPARK_Mode => Off is
             return;
         end if;
 
+        Boot_Timeline.Mark_Stage (Boot_Timeline_Layout.Initrd_Parsed);
         print ("Modules: CPIO initrd contains ");
         print (Integer(cpioArchive.count)); println (" files.");
 
@@ -294,8 +307,24 @@ package body Modules with SPARK_Mode => Off is
                       object   => (ref => 0, param => 16#FFFF_FFFF#),
                       gen      => Capabilities.INITIAL_GENERATION));
 
+        -- Device vector authority (docs/msi-interrupts.md): a CAP_IRQ naming
+        -- the whole device range. GRANT allocates and releases blocks for
+        -- drivers; READ reads per-vector counts and owners.
+        Capabilities.Operations.insertCapAt (
+            table => Process.proctab(devmgrPID).caps,
+            slot  => Device_Vector_ABI.Vector_Authority_Slot,
+            cap   => (capType  => Capabilities.CAP_IRQ,
+                      rights   => (Capabilities.RIGHT_READ  => True,
+                                   Capabilities.RIGHT_GRANT => True,
+                                   others => False),
+                      authorityTag => Capabilities.NO_AUTHORITY_TAG,
+                      object   => (ref   => Device_Vector_ABI.First_Vector,
+                                   param => Device_Vector_ABI.Vector_Count),
+                      gen      => Capabilities.INITIAL_GENERATION));
+
         println ("Modules: Starting device manager.");
         Process.resume (devmgrPID);
+        Boot_Timeline.Mark_Stage (Boot_Timeline_Layout.Device_Manager_Loaded);
 
     end setup;
 

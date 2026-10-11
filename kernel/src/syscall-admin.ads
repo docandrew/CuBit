@@ -42,6 +42,10 @@ is
     procedure handleReplyWait (arg0, arg1 : Unsigned_64;
                                retval     : out Unsigned_64);
 
+    procedure handleBootTimeline (callerPID : Process.ProcessID;
+                                  arg0, arg1, arg2, arg3 : Unsigned_64;
+                                  retval    : out Unsigned_64);
+
     procedure handleProclist (callerPID  : Process.ProcessID;
                               arg0, arg1 : Unsigned_64;
                               retval     : out Unsigned_64);
@@ -61,6 +65,36 @@ is
        recipient, sourceSlot, destinationSlot, rights, tag, reserved : Unsigned_64;
        retval : out Unsigned_64);
 
+    -- Device vectors (docs/msi-interrupts.md). Each needs the caller's
+    -- vector authority: a CAP_IRQ naming the whole device range
+    -- (Device_Vector_ABI), RIGHT_GRANT to allocate or release, RIGHT_READ
+    -- to read.
+    --
+    -- SYSCALL_ALLOCATE_DEVICE_VECTORS: arg0 = owner identity, arg1 = count,
+    -- arg2 = the owner's empty slot that receives CAP_IRQ (first vector,
+    -- count), arg3 = the CPU that receives them. The caller also needs a
+    -- capability-space grant for the owner. Returns
+    -- Device_Vector_ABI.Allocation_Word, or -1.
+    procedure handleAllocateDeviceVectors
+      (callerPID              : Process.ProcessID;
+       arg0, arg1, arg2, arg3 : Unsigned_64;
+       retval                 : out Unsigned_64);
+
+    -- SYSCALL_RELEASE_DEVICE_VECTORS: arg0 = a block's first vector, after
+    -- the caller has masked it at the device. Withdraws the owner's CAP_IRQ
+    -- if the owner still lives. Returns 0, or -1.
+    procedure handleReleaseDeviceVectors
+      (callerPID : Process.ProcessID;
+       arg0      : Unsigned_64;
+       retval    : out Unsigned_64);
+
+    -- SYSCALL_READ_DEVICE_VECTOR: arg0 = vector, arg1 =
+    -- Device_Vector_ABI.Read_Field. Returns the field, or -1.
+    procedure handleReadDeviceVector
+      (callerPID  : Process.ProcessID;
+       arg0, arg1 : Unsigned_64;
+       retval     : out Unsigned_64);
+
     procedure handleResume (callerPID : Process.ProcessID;
                             arg0      : Unsigned_64;
                             retval    : out Unsigned_64);
@@ -78,6 +112,9 @@ is
         arg0, arg1, arg2 : Unsigned_64;
         retval           : out Unsigned_64);
 
+    -- SYSCALL_ENABLE_IRQ: a legacy IOAPIC/PIC line (vectors PS2KEYBOARD ..
+    -- IDE2) only; message-signaled devices take allocated device vectors.
+    -- arg0 = vector, arg1 = owner identity, arg2 = route (Line_Route).
     procedure handleEnableIrq (callerPID  : Process.ProcessID;
                                arg0, arg1, arg2 : Unsigned_64;
                                retval     : out Unsigned_64);

@@ -1,3 +1,4 @@
+#include "vulkan_submission.h"
 #include "vulkan_pipeline_diagnostic.h"
 #include "vulkan_checker.h"
 #include "vulkan-checker-shaders.h"
@@ -87,5 +88,6 @@ uint32_t cubit_vulkan_checker_record(const struct cubit_vulkan_checker *e,
     e->viewport(command,0,1,&viewport);e->scissor(command,0,1,&clip);
     e->constants(command,e->layout,VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof push,&push);
     e->draw(command,6,1,0,0);
+    if(cubit_vulkan_job_note_draw)cubit_vulkan_job_note_draw(CUBIT_VULKAN_DRAW_CHECKER,(uint64_t)r->clip_w*r->clip_h);
     return 0;
 }

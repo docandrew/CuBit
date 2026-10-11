@@ -335,7 +335,12 @@ package CuBit.UI is
    procedure Draw_Text_Edit_Field
       (c : Canvas; r : Rect; colors : Theme; text : String;
        cursor, selectionStart, selectionEnd : Natural;
-       focused : Boolean; hot : Boolean; suggestion : String := "");
+       focused : Boolean; hot : Boolean; suggestion : String := "";
+       masked : Boolean := False);
+   --  A masked (secret) field shows Secret_Mask whatever the text's length,
+   --  so neither content nor length shows on screen; an empty field shows
+   --  nothing. The caret sits after the mask; any selection covers it.
+   Secret_Mask : constant String := "*******";
    --  Optional display-only suffix, clipped inside the field and drawn in the
    --  muted theme color. It never participates in selection or caret geometry.
    procedure Draw_Multiline_Text_Edit

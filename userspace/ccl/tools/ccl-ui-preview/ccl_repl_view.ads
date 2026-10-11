@@ -35,6 +35,17 @@ package CCL_REPL_View is
       Submitted : out Boolean);
    --  The newest entry's result, as the transcript shows it ("" if none).
    function Latest_Result (State : View_State) return String;
+
+   --  Copy and paste (docs/clipboard.md). The input has a selection: copy
+   --  and cut take it. Otherwise copy takes the newest successful result
+   --  as a typed value (CCL_Result_Copy); Found is False when there is none.
+   function Input_Selected (State : View_State) return Boolean;
+   generic
+      with procedure Process (Field : in out CuBit.UI.Editor.Edit_State; Changed : out Boolean);
+   procedure Edit_Input (State : in out View_State);
+   procedure Latest_Value
+     (State : View_State; Found : out Boolean;
+      Outcome : out CCL.Language.Interpretation_Result);
    procedure Draw
      (State : in out View_State; Canvas : CuBit.UI.Canvas;
       Bounds : CuBit.UI.Rect; Colors : CuBit.UI.Theme);

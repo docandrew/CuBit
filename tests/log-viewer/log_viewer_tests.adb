@@ -8,6 +8,8 @@ with CuBit.UI.Combo_Boxes;
 with CuBit.UI.State;
 with CuBit.Log_Records;
 with Log_View; use Log_View;
+with Clipboard_Text;
+with CuBit.UI.Editor;
 
 --  The Logs app's view, hosted: records, keys and clicks in, state and
 --  frames out. Clicks go through the toolkit's retained dispatch before the
@@ -155,6 +157,33 @@ begin
    Log (9_000, NETSTACK, LR.Critical, "dhcp: no lease after 5 attempts");
    Check (Total (State.all) = 62 and then Shown (State.all) = 62, "every record and the gap are shown");
    Check (Selected_Text (State.all) = "dhcp: no lease after 5 attempts", "following selects the newest");
+   --  Copy (docs/clipboard.md): the selected record as a typed LogEntry.
+   declare
+      Text_Form, Literal : Clipboard_Text.Builder (1_024);
+      Present : Boolean;
+      Source_Image : constant String := Unsigned_64'Image (NETSTACK);
+      procedure Paste_Probe (Field : in out CuBit.UI.Editor.Edit_State; Changed : out Boolean) is
+      begin
+         CuBit.UI.Editor.Insert (Field, "dhcp", Changed);
+      end Paste_Probe;
+      procedure Paste_Search is new Edit_Search_Field (Paste_Probe);
+   begin
+      Selected_Copy (State.all, Text_Form, Literal, Present);
+      Check (Present and then Clipboard_Text.Image (Text_Form) =
+               "00:00:09.000   CRIT   netstack.svc   dhcp: no lease after 5 attempts",
+             "copy: the text form is the detail line: " & Clipboard_Text.Image (Text_Form));
+      Check (Clipboard_Text.Image (Literal) =
+               "(LogEntry 9000 Severity.Critical " & Source_Image (Source_Image'First + 1 .. Source_Image'Last) &
+               " ""dhcp: no lease after 5 attempts"")",
+             "copy: the literal reads back as a LogEntry: " & Clipboard_Text.Image (Literal));
+      Check (not Search_Focused (State.all), "the table has the keyboard");
+      Paste_Search (State.all, Focus => True);
+      Check (Search_Focused (State.all) and then Search_Text (State.all) = "dhcp" and then Match_Count (State.all) = 1,
+             "a paste goes to the search field and searches");
+      Key (Escape);
+      Key (Escape);
+      Check (Search_Text (State.all) = "" and then not Search_Focused (State.all), "Escape clears and leaves the search");
+   end;
    Save ("logs-live");
 
    --  Moving pauses following; new records count as unseen; End resumes.

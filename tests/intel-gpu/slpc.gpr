@@ -1,0 +1,12 @@
+project SLPC is
+   -- GuC SLPC start-up encoding and sequencing (Intel_GPU_SLPC), hosted
+   -- tests and the SPARK proof (gnatprove -P slpc.gpr).
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("intel_gpu_gt_frequency.ads", "intel_gpu_slpc.ads",
+                         "intel_gpu_slpc.adb", "slpc_tests.adb");
+   for Object_Dir use "build-slpc";
+   for Main use ("slpc_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+end SLPC;

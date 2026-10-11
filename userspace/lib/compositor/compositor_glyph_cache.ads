@@ -176,5 +176,4 @@ private
        (for all J in Reader_Slot => (if S.Reading (J).Identity = 0 then S.Reading (J).Mask = No_Token
          else S.Reading (J).Identity <= S.Read_Issued and then
            Current (S, S.Reading (J).Mask) and then Status (S, S.Reading (J).Mask) = Ready)));
-   function Open (Budget : Byte_Count) return State is ((Budget => Budget, others => <>));
 end Compositor_Glyph_Cache;

@@ -1,0 +1,10 @@
+# Desktop clipboard regression profile (docs/clipboard.md): copy and paste
+# between Files, Logs and the clipboard-check client, by keyboard.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "files.app" (priority 3))
+  (start "logs.app" (priority 3))
+  (start "clipboard-check.app" (priority 3))
+)

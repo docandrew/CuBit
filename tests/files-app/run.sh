@@ -20,9 +20,15 @@ for unit in cubit.ads cubit-filesystems.ads cubit-filesystems.adb cubit-director
             cubit-channel_contracts.ads cubit-channel_contracts.adb cubit-protocols.ads \
             cubit-directory_pages.ads cubit-directory_pages.adb cubit-failures.ads cubit-failures.adb \
             cubit-filesystem_events.ads cubit-filesystem_events.adb cubit-volume_descriptions.ads \
-            cubit-volume_descriptions.adb cubit-file_access.ads cubit-file_access.adb; do
+            cubit-volume_descriptions.adb cubit-file_access.ads cubit-file_access.adb \
+            cubit-published_clock.ads cubit-published_clock.adb cubit-kernel_calls.ads \
+            cubit-kernel_calls.adb; do
   cmp -s "$root/userspace/runtime/gnat/$unit" "$here/build/source/$unit" ||
     cp "$root/userspace/runtime/gnat/$unit" "$here/build/source/"
+done
+# The published clock's pure parts (CuBit.Messages reads the fast clock).
+for unit in clock_publication.ads clock_publication.adb clock_publication-sample.ads clock_publication-sample.adb; do
+  cmp -s "$root/shared/time/$unit" "$here/build/source/$unit" || cp "$root/shared/time/$unit" "$here/build/source/"
 done
 # The desktop's themes from system.ccl, through the same compiled plan the
 # desktop reads (ccl-config; built by make -C kernel ccl-config).

@@ -6,6 +6,7 @@ with CuBit.Desktop_Messages;
 with CuBit.Display_Protocol;
 with CuBit.Display_Plane_Protocol;
 with Compositor_Requests;
+with CuBit.Newest_Wins;
 
 package body Desktop_Pointer_Plane is
    package PP renames CuBit.Display_Plane_Protocol;
@@ -24,16 +25,21 @@ package body Desktop_Pointer_Plane is
    type Pixel_Array is array (0 .. Staging_Pixels - 1) of Unsigned_32;
    Staging : Pixel_Array := [others => 0] with Alignment => Page_Bytes;
 
-   Started, Enabled, Shaped : Boolean := False;
+   Started, Enabled, Shaped, Granted : Boolean := False;
    Max_Width, Max_Height : Natural := 0;
    Grant : MG.Grant_Reference;
    Latest : PP.Report;
    Composed_Hardware_State : Boolean := False;
    Composed_Epoch : DPL.Plan_Epoch := DPL.No_Epoch;
    Changed : Boolean := False;
+   package NW renames CuBit.Newest_Wins;
+   --  Pointer position: newest wins, one move in flight (proved rule).
+   Moves : NW.State;
    Move_Token : Unsigned_64 := 0;
-   Want_X, Want_Y, Sent_X, Sent_Y : Integer := 0;
    Exact_Outputs : Boolean := True;
+   --  Input mode wanted by the desktop, and the mode the live request has.
+   Absolute_Wanted, Absolute_Created : Boolean := False;
+   Scanout_Cursors, Host_Cursors : DPL.Plane_Count := 0;
 
    function Call (Request : DSP.Wire_Message) return DSP.Wire_Message is
       Msg : Message := CuBit.Desktop_Messages.From_Wire (Request);
@@ -87,6 +93,16 @@ package body Desktop_Pointer_Plane is
 
    function Token return Unsigned_64 is (Move_Token);
 
+   procedure Announce_Mode is
+   begin
+      if Absolute_Created then
+         debugPrint ("desktop: pointer absolute (host-pointer cursor planes eligible: " &
+           (if Host_Cursors > 0 then "yes" else "none") & ")" & ASCII.LF);
+      elsif Scanout_Cursors = 0 and then Host_Cursors > 0 then
+         debugPrint ("desktop: pointer composited (host-pointer cursor planes need absolute input)" & ASCII.LF);
+      end if;
+   end Announce_Mode;
+
    procedure Start is
       Capability : PP.Capability_Decoding;
       Ok : Boolean;
@@ -94,25 +110,54 @@ package body Desktop_Pointer_Plane is
       if Started then return; end if;
       Started := True;
       Capability := PP.Decode_Capability (Call (PP.Encode_Empty (PP.Query_Output)));
-      --  PS/2 and USB mice report relative motion, so host-pointer planes
-      --  (a virtual GPU's cursor, drawn by the host only for absolute
-      --  pointers) cannot show this pointer. Only scanout planes count.
-      if not Capability.Valid or else Capability.Value.Planes (DPL.Cursor) = 0 then
-         if Capability.Valid and then Capability.Value.Host_Pointer_Cursors > 0 then
-            debugPrint ("desktop: pointer composited (host-pointer cursor planes need absolute input)" & ASCII.LF);
-         end if;
+      --  Relative mice (PS/2, USB) can use scanout cursor planes only:
+      --  host-pointer planes need absolute input (Set_Absolute). The request
+      --  exists whenever either kind exists; the planner decides.
+      if not Capability.Valid or else
+        (Capability.Value.Planes (DPL.Cursor) = 0 and then
+         Capability.Value.Host_Pointer_Cursors = 0)
+      then
          return;
       end if;
+      Scanout_Cursors := Capability.Value.Planes (DPL.Cursor);
+      Host_Cursors := Capability.Value.Host_Pointer_Cursors;
       Max_Width := Natural (Capability.Value.Max_Width);
       Max_Height := Natural (Capability.Value.Max_Height);
-      MG.Create_Via_Capability (CAP_SLOT_DISPLAY, Staging'Address,
-                                Staging_Pages, False, Grant, Ok);
-      if not Ok then return; end if;
+      if not Granted then
+         --  One staging grant for the life of the desktop.
+         MG.Create_Via_Capability (CAP_SLOT_DISPLAY, Staging'Address,
+                                   Staging_Pages, False, Grant, Ok);
+         if not Ok then return; end if;
+         Granted := True;
+      end if;
+      Absolute_Created := Absolute_Wanted;
       Observe (PP.Create_Request, Call (PP.Encode
         (PP.Create_Request, PP.Identity'
-           (Pointer, DPL.Cursor, DPL.Primary_Pointer, Absolute => False))));
+           (Pointer, DPL.Cursor, DPL.Primary_Pointer, Absolute => Absolute_Created))));
       Enabled := Latest.Status = DSP.DP.Success;
+      Announce_Mode;
    end Start;
+
+   function Absolute return Boolean is (Absolute_Wanted);
+
+   --  Shape state lives below; Reset is completed there (Forget_Shape).
+   procedure Forget_Shape;
+
+   procedure Reset is
+   begin
+      Started := False;
+      Enabled := False;
+      Shaped := False;
+      Latest := (others => <>);
+      Composed_Hardware_State := False;
+      Composed_Epoch := DPL.No_Epoch;
+      Changed := True;
+      Move_Token := 0;
+      NW.Completed (Moves);
+      NW.Resend (Moves);
+      Exact_Outputs := True;
+      Forget_Shape;
+   end Reset;
 
    procedure Place (Output : Natural; X, Y : Integer; Exact : Boolean) is
       Was : constant Boolean := Hardware;
@@ -143,6 +188,16 @@ package body Desktop_Pointer_Plane is
    Flight_Step : Shape_Step := No_Step;
 
    function Shape_Token return Unsigned_64 is (Shape_Flight);
+
+   procedure Forget_Shape is
+   begin
+      Shape_Flight := 0;
+      Flight_Step := No_Step;
+      Visible_Wanted := False;
+      Visible_Sent := False;
+      --  The newest image goes to the re-created request.
+      Image_Wanted := Wanted_Width > 0;
+   end Forget_Shape;
 
    procedure Submit_Shape (Request : DSP.Wire_Message; Step : Shape_Step;
                            Sequence : in out Unsigned_64; Sent : out Boolean) is
@@ -216,20 +271,57 @@ package body Desktop_Pointer_Plane is
    procedure Send (Sequence : in out Unsigned_64) is
       Token : Unsigned_64;
    begin
-      if Move_Token /= 0 or else (Want_X = Sent_X and then Want_Y = Sent_Y) then
+      if not Enabled or else not NW.Due (Moves) then
          return;
       end if;
       Compositor_Requests.Allocate (Sequence, Token);
       if Token /= 0 and then capSubmit (CAP_SLOT_DISPLAY,
            CuBit.Desktop_Messages.From_Wire (PP.Encode (PP.Move'
-             (Pointer, DPL.Space_Coordinate (Want_X), DPL.Space_Coordinate (Want_Y)))),
+             (Pointer, DPL.Space_Coordinate (NW.Wanted (Moves).X),
+              DPL.Space_Coordinate (NW.Wanted (Moves).Y)))),
            Token)
       then
          Move_Token := Token;
-         Sent_X := Want_X;
-         Sent_Y := Want_Y;
+         NW.Submitted (Moves);
       end if;
+      --  A refused submission stays Due: Retry sends it on a later turn.
    end Send;
+
+   --  Re-create the request in the wanted input mode once nothing is in
+   --  flight (completions for the old request must not be read as the new
+   --  one's). The new request starts without an image: resend the newest
+   --  shape, visibility and position.
+   procedure Apply_Mode (Sequence : in out Unsigned_64) is
+      Was : constant Boolean := Hardware;
+   begin
+      if not Enabled or else Absolute_Wanted = Absolute_Created or else
+        Shape_Flight /= 0 or else Move_Token /= 0
+      then
+         return;
+      end if;
+      Observe (PP.Destroy_Request, Call (PP.Encode_Destroy (Pointer)));
+      Absolute_Created := Absolute_Wanted;
+      Observe (PP.Create_Request, Call (PP.Encode
+        (PP.Create_Request, PP.Identity'
+           (Pointer, DPL.Cursor, DPL.Primary_Pointer, Absolute => Absolute_Created))));
+      Enabled := Latest.Status = DSP.DP.Success;
+      Shaped := False;
+      Visible_Wanted := False;
+      Visible_Sent := False;
+      Image_Wanted := Wanted_Width > 0;
+      --  Force the position out again.
+      NW.Resend (Moves);
+      Changed := Changed or else Hardware /= Was;
+      Announce_Mode;
+      Pump_Shape (Sequence);
+      Send (Sequence);
+   end Apply_Mode;
+
+   procedure Set_Absolute (Absolute : Boolean; Sequence : in out Unsigned_64) is
+   begin
+      Absolute_Wanted := Absolute;
+      Apply_Mode (Sequence);
+   end Set_Absolute;
 
    procedure Move (X, Y : Integer; Sequence : in out Unsigned_64) is
    begin
@@ -238,8 +330,7 @@ package body Desktop_Pointer_Plane is
       then
          return;
       end if;
-      Want_X := X;
-      Want_Y := Y;
+      NW.Want (Moves, (X, Y));
       Send (Sequence);
    end Move;
 
@@ -259,15 +350,25 @@ package body Desktop_Pointer_Plane is
          end if;
          Flight_Step := No_Step;
          Changed := Changed or else Hardware /= Was;
+         --  A pending mode change goes first: continuous shape or motion
+         --  traffic must not keep it waiting.
+         Apply_Mode (Sequence);
          Pump_Shape (Sequence);
          return;
       end if;
       Move_Token := 0;
+      NW.Completed (Moves);
       if Completion.valid and then Completion.status = COMPLETION_OK then
          Observe (PP.Move_Request, CuBit.Desktop_Messages.To_Wire (Completion.msg));
       else
          Observe (PP.Move_Request, (others => <>));
       end if;
+      Apply_Mode (Sequence);
       Send (Sequence);
    end Collect;
+
+   procedure Retry (Sequence : in out Unsigned_64) is
+   begin
+      Send (Sequence);
+   end Retry;
 end Desktop_Pointer_Plane;

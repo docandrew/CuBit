@@ -67,6 +67,7 @@ with Intel_GPU_Native_Queue_Ring;
 with Intel_GPU_Queue_Service;
 with Intel_GPU_Ring_Reservation;
 with CuBit.GPU_Queues;
+with CuBit.GPU_Queues.Kinds;
 with CuBit.Channels;
 with CuBit.Channel_Contracts;
 with CuBit.Channel_Protocol;
@@ -136,6 +137,8 @@ with Intel_GPU_RCS_Start;
 with Intel_GPU_Native_RCS_Start;
 with Intel_GPU_Native_Cursor;
 with Intel_GPU_Scanout_Inventory;
+with Intel_GPU_Display_Executor;
+with Intel_GPU_Firmware_Output;
 with Intel_GPU_DC_State;
 with Intel_GPU_Native_DC_State;
 with Intel_GPU_Native_DC;
@@ -144,7 +147,14 @@ with Intel_GPU_Native_Combo_State;
 with Intel_GPU_Combo_PHY;
 with Intel_GPU_Display_Topology;
 with Intel_GPU_Native_Reset;
+with Intel_GPU_ADLN_PPHWSP;
+with Intel_GPU_GT_Frequency;
+with Intel_GPU_SLPC;
+with Intel_GPU_Waitboost;
+with Intel_GPU_Native_GT_Frequency;
 with Intel_GPU_Native_GuC_Invalidate;
+with CuBit.Device_Interrupts;
+with CCL_Manifest_Bindings;
 procedure Main is
    package Parent_One is new Intel_GPU_Native_Parent (Intel_GPU_Display_Topology.PW1);
    package Parent_Two is new Intel_GPU_Native_Parent (Intel_GPU_Display_Topology.PW2);
@@ -201,6 +211,10 @@ procedure Main is
    ADS_Info : Intel_GPU_ADS_System_Info.System_Info;
    Reset_Write_Base : constant Unsigned_64 := Intel_GPU_Reset_Pages.Virtual_Base;
    Reset_Pages_Mapped : Boolean := False;
+   -- GEN6_PMINTRMSK and GEN6_RPNSWREQ on reset page 15 (Intel_GPU_SLPC).
+   function Frequency_Owner_Ready return Boolean is
+     (Reset_Pages_Mapped and then Intel_GPU_Native_Reset.Last_Succeeded);
+   package GT_Frequency_IO is new Intel_GPU_Native_GT_Frequency (Frequency_Owner_Ready);
    Display_Power_Owned : Boolean := False;
    PCI_IRQ_Attempted : Boolean := False;
    Selected_Upload_Bytes : Unsigned_64 := 0;
@@ -483,6 +497,21 @@ procedure Main is
    Table_Backing_Registry : Table_Allocations.Registry;
    procedure Publish_Snapshot (Text : String;
      Level : CuBit.Log_Records.Severity := CuBit.Log_Records.Information);
+   -- Display executor (DISP-003, docs/display-planes.md): the firmware
+   -- output's pipe and its hardware cursor, answering display.svc only.
+   function Display_Owner return Boolean is (Display_Power_Owned);
+   function Display_Publication_Ready return Boolean is
+     (GGTT_Takeover_Held and then Publication_Owner_Ready and then Address_Layout.Valid);
+   function Display_Runtime_First return Unsigned_64 is (Address_Layout.Runtime_First);
+   function Display_Runtime_Limit return Unsigned_64 is (Address_Layout.Runtime_Limit);
+   function Display_Scanout_Clear (First, Bytes : Unsigned_64) return Boolean is
+     (Intel_GPU_Scanout_Inventory.No_Scanout_Overlap (Scanout, (True, First, Bytes)));
+   procedure Display_Log (Text : String);
+   function Display_Read_MMIO (Offset : Unsigned_32) return Unsigned_32;
+   package Display_Executor is new Intel_GPU_Display_Executor
+     (Display_Owner, Pipe_A.Held, Pipe_B.Held, Pipe_C.Held, Pipe_D.Held,
+      Display_Publication_Ready, Display_Runtime_First, Display_Runtime_Limit,
+      Display_Scanout_Clear, Invalidate_Upload, Display_Log, Display_Read_MMIO);
    type Metadata_Table is (Tickets, Handles, Backing, Replacements, Retirement, Updates, Table_Backing);
    function Metadata_Capacity (Table : Metadata_Table) return Natural is
      (case Table is
@@ -1102,10 +1131,31 @@ procedure Main is
         Submission_Allocation.CPU_Address + Offset, Bytes);
    end Submission_Region;
    Submission_Mapped, Engine_Status_Mapped : Boolean := False;
+   -- GuC SLPC shared data (Intel_GPU_SLPC), published once, never rewritten
+   -- by the CPU after publication.
+   SLPC_Mapped : Boolean := False;
+   SLPC_GPU_Start, SLPC_CPU : Unsigned_64 := 0;
+   type SLPC_Words is array (Intel_GPU_SLPC.Word_Index) of Unsigned_32;
+   -- The initial image (Intel_GPU_SLPC.Initial_Word), written and read back
+   -- before the page has any GGTT alias.
+   procedure Write_SLPC_Image (CPU : Unsigned_64; Success : out Boolean) is
+      Shared : SLPC_Words with Import, Volatile,
+        Address => System'To_Address (CPU);
+   begin
+      for Index in Shared'Range loop
+         Shared (Index) := Intel_GPU_SLPC.Initial_Word (Index);
+      end loop;
+      Success := True;
+      for Index in Shared'Range loop
+         if Shared (Index) /= Intel_GPU_SLPC.Initial_Word (Index) then
+            Success := False;
+         end if;
+      end loop;
+   end Write_SLPC_Image;
    CT_Backing_View : Intel_GPU_Firmware_Buffer.Prepared_CT_Buffer;
    Runtime_Ledger : Intel_GPU_GGTT_Reservations.Ledger;
    type Runtime_Kind is (No_Buffer, ADS_Buffer, Log_Buffer, CT_Buffer,
-                         Submission_Buffer, Engine_Status_Buffer);
+                         Submission_Buffer, Engine_Status_Buffer, SLPC_Buffer);
    Active_Runtime : Runtime_Kind := No_Buffer;
    Runtime_DMA, Runtime_CPU, Runtime_Bytes, Runtime_GPU : Unsigned_64 := 0;
    Runtime_Bound : Boolean := False;
@@ -1125,7 +1175,7 @@ procedure Main is
             return Intel_GPU_Buffer_Reply.Page_Address
               (Submission_Allocation,
                Runtime_CPU - Submission_Allocation.CPU_Address + Offset);
-         when ADS_Buffer | Log_Buffer | CT_Buffer =>
+         when ADS_Buffer | Log_Buffer | CT_Buffer | SLPC_Buffer =>
             return Intel_GPU_GGTT.Linear_Page (Base, Offset);
          when No_Buffer => return 0;
       end case;
@@ -1207,6 +1257,21 @@ procedure Main is
                then return; end if;
                Success := Intel_GPU_DMA_Cache.Flush_Range (Runtime_CPU, Bytes);
             end;
+         when SLPC_Buffer =>
+            declare
+               Current : constant Intel_GPU_Firmware_Buffer.Prepared_SLPC_Buffer :=
+                 Intel_GPU_Firmware_Buffer.Prepared_SLPC;
+            begin
+               if SLPC_Mapped or else not Current.Ready or else
+                 Current.DMA_Address /= Runtime_DMA or else
+                 Current.CPU_Address /= Runtime_CPU or else Current.Region_Bytes /= Bytes or else
+                 First >= 2 ** 32 or else Bytes > 2 ** 32 - First
+               then return; end if;
+               Write_SLPC_Image (Runtime_CPU, Success);
+               if Success then
+                  Success := Intel_GPU_DMA_Cache.Flush_Range (Runtime_CPU, Bytes);
+               end if;
+            end;
          when No_Buffer => return;
       end case;
       if Success then Runtime_GPU := First; Runtime_Bound := True; end if;
@@ -1216,7 +1281,7 @@ procedure Main is
       Runtime_IO.Write_PTE, Invalidate_Upload, 16 * 1024 * 1024,
       Resolve_Page => Runtime_Page);
    ADS_Attempt, Log_Attempt, CT_Attempt, Submission_Attempt : Runtime_Publication.Attempt;
-   Engine_Status_Attempt : Runtime_Publication.Attempt;
+   Engine_Status_Attempt, SLPC_Attempt : Runtime_Publication.Attempt;
    Startup_Active, Startup_Access_Fault : Boolean := False;
    function Startup_Owner_Ready return Boolean is
      (Startup_Active and then not Startup_Access_Fault and then
@@ -1477,6 +1542,22 @@ procedure Main is
      (CT_Receive, CT_Receive_Owner_Ready, Queue_Log_Control, Poll_CT_Reply,
       Retain_CT_Event, Runtime_Now, GuC_Pause);
    CT_Probe_Attempt : CT_Roundtrip.Attempt;
+   -- GuC SLPC start-up requests (Intel_GPU_SLPC.Request_For), one serialized
+   -- roundtrip each on the same start-up-owned channel as the probe above.
+   SLPC_Pending : Intel_GPU_SLPC.Request := [others => 0];
+   procedure Queue_SLPC (Fence : Unsigned_16; Success : out Boolean) is
+      Send_Status : CT_Send.Result;
+      use type CT_Send.Result;
+   begin
+      CT_Send.Send (Send_Channel,
+        [SLPC_Pending (0), SLPC_Pending (1), SLPC_Pending (2), SLPC_Pending (3)],
+        Fence, Send_Status);
+      Success := Send_Status = CT_Send.Queued;
+   end Queue_SLPC;
+   package SLPC_Roundtrip is new Intel_GPU_GuC_CT_Roundtrip
+     (CT_Receive, CT_Receive_Owner_Ready, Queue_SLPC, Poll_CT_Reply,
+      Retain_CT_Event, Runtime_Now, GuC_Pause);
+   SLPC_Attempts : array (Intel_GPU_SLPC.Step) of SLPC_Roundtrip.Attempt;
    package Context_Life renames Intel_GPU_GuC_Context_Lifecycle;
    use type Context_Life.Phase;
    package Context_Event renames Intel_GPU_GuC_Context_Event;
@@ -1622,6 +1703,16 @@ procedure Main is
    function Service_Initial_Events return Boolean is (Drain_G2H = Drained);
    -- Every submission and startup completion gets this explicit deadline.
    Completion_Deadline_Us : constant Unsigned_64 := 1_000_000;
+   -- GPU-005 watchdog (docs/gpu-async-submission.md "GPU-005"). A started
+   -- job may run Completion_Deadline_Us. Evicting a hung context (MODE_SET
+   -- disable, which forces a preemption) is bounded by the per-context
+   -- preemption timeout (Context_Preemption_Us) plus a margin. A context
+   -- whose job never started waits Hang_Patience_Us, longer than a hang
+   -- plus its eviction, before it is judged hung itself.
+   Context_Preemption_Us : constant Unsigned_32 := 500_000;
+   Eviction_Bound_Us : constant Unsigned_64 := 3 * Unsigned_64 (Context_Preemption_Us);
+   Hang_Patience_Us : constant Unsigned_64 :=
+     Completion_Deadline_Us + Eviction_Bound_Us + Completion_Deadline_Us;
    -- Startup and registration waits also bound their polls (a frozen clock).
    Boot_Completion_Poll_Limit : constant Positive := 1_000_000;
    package Initial_Completion is new Intel_GPU_Initial_Completion
@@ -1752,6 +1843,10 @@ procedure Main is
       Intel_GPU_Diagnostics.Capture (Text, Level);
       Intel_GPU_Diagnostics.Tick;
    end Publish_Snapshot;
+   procedure Display_Log (Text : String) is
+   begin
+      Publish_Snapshot (Text);
+   end Display_Log;
    function Hex (Value : Unsigned_32) return String;
    -- One-shot offline-bind -> prepared context transition. Admission remains
    -- disabled at Handle_Render_Control until the complete backend is usable.
@@ -1953,7 +2048,7 @@ procedure Main is
                      end if;
                      if Accepted then
                         Context_Pool.Open
-                          (Contexts, GPU, Address_Layout.Runtime_First, 1000, 500_000, True,
+                          (Contexts, GPU, Address_Layout.Runtime_First, 1000, Context_Preemption_Us, True,
                            ID, Accepted, Session => Session);
                      end if;
                      if Accepted then
@@ -2124,6 +2219,98 @@ procedure Main is
    begin
       Reader.Read_Marker (Value, OK);
    end Read_Submission_Marker;
+   -- Job V's GPU execution time from the stamps its segment wrote into the
+   -- selected context's PPHWSP (Intel_GPU_ADLN_PPHWSP.Job_Start/End_Offset):
+   -- the command-streamer TIMESTAMP at Timestamp_Hz. The low DWORDs suffice
+   -- (modular difference; at 19.2 MHz they wrap after 223 s). Missing
+   -- (zero) stamps or no known frequency: OK False.
+   Microseconds_Per_Second : constant := 1_000_000;
+   -- Actual GT frequency sampled at each timed job's completion this period.
+   Job_MHz_Min, Job_MHz_Max : Unsigned_32 := 0;
+   -- GT frequency management outcome (Start_SLPC), in the job kinds line.
+   type SLPC_Outcome is (Not_Started, Running, Fallback_RP0, Unmanaged);
+   SLPC_State : SLPC_Outcome := Not_Started;
+   -- SLPC waitboost (Intel_GPU_Waitboost): RP0 while clients wait on GPU
+   -- work, RPe after Hold_Us without demand. Active only while SLPC runs.
+   Boost : Intel_GPU_Waitboost.State;
+   Boost_Active : Boolean := False;
+   -- OP_GPU_BOOST hints since the last waitboost step, and those refused
+   -- (not on a live session's own endpoint) since the last report.
+   Boost_Hint_Pending : Boolean := False;
+   Boost_Hints_Refused : Unsigned_64 := 0;
+   function SLPC_Name (Item : SLPC_Outcome) return String is
+     (case Item is
+         when Not_Started => "not-started", when Running => "running",
+         when Fallback_RP0 => "fallback-rp0", when Unmanaged => "unmanaged");
+   Job_MHz_Total, Job_MHz_Samples : Unsigned_64 := 0;
+   procedure Read_Job_Time (V : Unsigned_64; Exec_Us : out Unsigned_64; OK : out Boolean) is
+      package PPHWSP renames Intel_GPU_ADLN_PPHWSP;
+      Hz : constant Unsigned_32 := Intel_GPU_Native_Reset.Timestamp_Hz;
+      Start, Finish : Unsigned_32 := 0;
+   begin
+      Exec_Us := 0;
+      OK := Hz /= 0 and then Submission_Owner and then Selected_CPU /= 0 and then
+        Selected_Bytes >= PPHWSP.Page_Bytes and then
+        Intel_GPU_DMA_Cache.Flush_Range (Selected_CPU, PPHWSP.Page_Bytes);
+      if not OK then return; end if;
+      declare
+         First : Unsigned_32 with Import, Volatile_Full_Access,
+           Address => System.Storage_Elements.To_Address (System.Storage_Elements.Integer_Address
+             (Selected_CPU + Unsigned_64 (PPHWSP.Job_Start_Offset (V))));
+         Last : Unsigned_32 with Import, Volatile_Full_Access,
+           Address => System.Storage_Elements.To_Address (System.Storage_Elements.Integer_Address
+             (Selected_CPU + Unsigned_64 (PPHWSP.Job_End_Offset (V))));
+      begin
+         Start := First;
+         Finish := Last;
+      end;
+      OK := Start /= 0 and then Finish /= 0;
+      if OK then
+         Exec_Us := Unsigned_64 (Finish - Start) * Microseconds_Per_Second / Unsigned_64 (Hz);
+      end if;
+      -- The actual GT frequency right after a job ran, for the report.
+      declare
+         Status : Unsigned_32;
+         Valid : Boolean;
+         Now_MHz : Unsigned_32;
+      begin
+         Intel_GPU_Native_Reset.GT_Status (Status, Valid);
+         if Valid then
+            Now_MHz := Intel_GPU_GT_Frequency.Actual_MHz (Status);
+            Job_MHz_Min := (if Job_MHz_Samples = 0 then Now_MHz else Unsigned_32'Min (Job_MHz_Min, Now_MHz));
+            Job_MHz_Max := Unsigned_32'Max (Job_MHz_Max, Now_MHz);
+            Job_MHz_Total := Job_MHz_Total + Unsigned_64 (Now_MHz);
+            Job_MHz_Samples := Job_MHz_Samples + 1;
+         end if;
+      end;
+   end Read_Job_Time;
+   -- GPU-005: the selected context's job V has started: its start stamp is
+   -- newer than its slot's end stamp (still the previous user's, or zero).
+   -- Signal jobs write no stamps, so they read as not started.
+   function Job_Started (V : Unsigned_64) return Boolean is
+      package PPHWSP renames Intel_GPU_ADLN_PPHWSP;
+      Start, Finish : Unsigned_64 := 0;
+   begin
+      if not Submission_Owner or else Selected_CPU = 0 or else
+        Selected_Bytes < PPHWSP.Page_Bytes or else
+        not Intel_GPU_DMA_Cache.Flush_Range (Selected_CPU, PPHWSP.Page_Bytes)
+      then return False; end if;
+      declare
+         First : Unsigned_64 with Import, Volatile_Full_Access,
+           Address => System.Storage_Elements.To_Address (System.Storage_Elements.Integer_Address
+             (Selected_CPU + Unsigned_64 (PPHWSP.Job_Start_Offset (V))));
+         Last : Unsigned_64 with Import, Volatile_Full_Access,
+           Address => System.Storage_Elements.To_Address (System.Storage_Elements.Integer_Address
+             (Selected_CPU + Unsigned_64 (PPHWSP.Job_End_Offset (V))));
+      begin
+         Start := First;
+         Finish := Last;
+      end;
+      return Start > Finish;
+   end Job_Started;
+   pragma Compile_Time_Error
+     (Intel_GPU_ADLN_PPHWSP.Job_Time_Slots < CuBit.GPU_Queues.Max_In_Flight_Per_Context,
+      "a job's stamps must survive until it completes");
    function Submission_Batch (Handle, GPU, Offset, Bytes : Unsigned_64) return Boolean is
      (Submission_Owner and then Application_Binding.Batch_Mapped
        (Application_Buffer_State, Private_Contexts (Selected_Index).Source,
@@ -2254,10 +2441,18 @@ procedure Main is
    -- One GuC kick, never a wait: SCHED_CONTEXT for a resident context, or
    -- the MODE_SET enable that also submits a parked one (H6). MODE_DONE is
    -- drained from G2H by the loop.
+   -- Kicks per latency report: an enable (MODE_SET, the context was parked)
+   -- costs a GuC round trip before its jobs may complete.
+   Resident_Kicks, Enable_Kicks : Unsigned_64 := 0;
    procedure Kick (Enable : Boolean; Result : out Submission_Policy.Kick_Result) is
       Status : Context_Driver.Result;
       use type Submission_Policy.Kick_Result;
    begin
+      if Enable then
+         Enable_Kicks := Enable_Kicks + 1;
+      else
+         Resident_Kicks := Resident_Kicks + 1;
+      end if;
       if Enable then
          Context_Pool.Submit (Contexts, Selected_Context, Context_Life.Enable, Status);
       else
@@ -2318,8 +2513,9 @@ procedure Main is
    package Queue_Service is new Intel_GPU_Queue_Service
      (Session_Slot, Select_Context, Submission_Owner, Submission_Batch, Scheduling_Resident,
       Submission_Work_Owner, Write_Segment, Segment_Bytes, Kick, Read_Submission_Marker,
-      DC_Now_Us, Quarantine_Session, Call_Finished, Answer_Wake, Client_Region, Server_Region,
-      Hang_Budget_Us => Completion_Deadline_Us);
+      Read_Job_Time, Job_Started, DC_Now_Us, Quarantine_Session, Call_Finished, Answer_Wake,
+      Client_Region, Server_Region,
+      Hang_Budget_Us => Completion_Deadline_Us, Patience_Us => Hang_Patience_Us);
    Queue_State : Queue_Service.Table;
    use type Queue_Service.Call_Result;
    function GPU_Park_Allowed return Boolean is (Queue_Service.Park_Allowed (Queue_State));
@@ -2376,6 +2572,91 @@ procedure Main is
    -- Quarantines the service asked for during Turn or Submit_Call: exactly
    -- what the step 1 failed wait did (rejected delivery, retirement,
    -- backing retained).
+   ---------------------------------------------------------------------------
+   --  GPU-005 eviction: a session the watchdog judged hung (Hang, Deadline)
+   --  gets its GuC context's scheduling disabled at once, not on the idle
+   --  turn the retirement drain waits for (other sessions' work keeps the
+   --  queue busy). The disable forces a preemption: the context leaves the
+   --  engine and the others run. A GuC CONTEXT_RESET naming it also ends
+   --  the eviction. No acknowledgement within Eviction_Bound_Us is the last
+   --  resort: device loss for every session (no GT reset recovery yet).
+   ---------------------------------------------------------------------------
+   type Eviction is record
+      Active, Sent : Boolean := False;
+      ID : Unsigned_32 := 0;
+      Since : Unsigned_64 := 0;
+   end record;
+   Evictions : array (Session_Slot) of Eviction;
+   Evicted_Contexts, Eviction_Failures : Unsigned_64 := 0;
+   procedure Send_Eviction (E : in out Eviction) is
+      Status : Context_Driver.Result;
+      use type Context_Driver.Result;
+   begin
+      if E.Sent or else Context_Pool.State (Contexts, E.ID) /= Context_Life.Enabled or else
+        not Context_Pool.Can_Submit (Contexts, E.ID)
+      then return; end if;
+      Context_Pool.Submit (Contexts, E.ID, Context_Life.Disable, Status);
+      E.Sent := Status = Context_Driver.Queued;
+   end Send_Eviction;
+   procedure Start_Eviction (S : Session_Slot; Session : Unsigned_64) is
+      ID : constant Unsigned_32 := Context_Pool.Session_Context (Contexts, Session);
+   begin
+      if ID = Context_Pool.No_Context or else ID = Render_Context_ID then return; end if;
+      Evictions (S) := (Active => True, Sent => False, ID => ID, Since => DC_Now_Us);
+      Send_Eviction (Evictions (S));
+      Publish_Snapshot ("intel-gpu: hung context" & Unsigned_32'Image (ID) &
+        " session=" & Unsigned_64'Image (Session) & " evicting (scheduling disable " &
+        (if Evictions (S).Sent then "sent" else "deferred") & ")", CuBit.Log_Records.Warning);
+   end Start_Eviction;
+   --  Ends the eviction of guc-id ID (a CONTEXT_RESET named it). True when
+   --  ID was being evicted.
+   function End_Eviction_By_Reset (ID : Unsigned_32) return Boolean is
+   begin
+      for S in Session_Slot loop
+         if Evictions (S).Active and then Evictions (S).ID = ID then
+            Evictions (S).Active := False;
+            Evicted_Contexts := Evicted_Contexts + 1;
+            return True;
+         end if;
+      end loop;
+      return False;
+   end End_Eviction_By_Reset;
+   procedure Service_Evictions is
+      Now : constant Unsigned_64 := DC_Now_Us;
+      State : Context_Life.Phase;
+   begin
+      for S in Session_Slot loop
+         if Evictions (S).Active then
+            State := Context_Pool.State (Contexts, Evictions (S).ID);
+            if State in Context_Life.Disabled | Context_Life.Deregister_Pending |
+                        Context_Life.Deregistered
+            then
+               Evictions (S).Active := False;
+               Evicted_Contexts := Evicted_Contexts + 1;
+               Publish_Snapshot ("intel-gpu: hung context" & Unsigned_32'Image (Evictions (S).ID) &
+                 " evicted after" & Unsigned_64'Image
+                   (if Now >= Evictions (S).Since then (Now - Evictions (S).Since) / 1000 else 0) &
+                 " ms; other sessions continue", CuBit.Log_Records.Warning);
+            elsif Now = Unsigned_64'Last or else Now < Evictions (S).Since or else
+              Now - Evictions (S).Since >= Eviction_Bound_Us
+            then
+               Evictions (S).Active := False;
+               Eviction_Failures := Eviction_Failures + 1;
+               if not Runtime_Fault then
+                  Context_Pool.Fail (Contexts);
+                  Runtime_Fault := True;
+               end if;
+               Publish_Snapshot ("intel-gpu: hung context" & Unsigned_32'Image (Evictions (S).ID) &
+                 " not evicted within" & Unsigned_64'Image (Eviction_Bound_Us / 1000) &
+                 " ms state=" & Context_Life.Phase'Image (State) &
+                 ": device lost (GT reset recovery not implemented); backing retained",
+                 CuBit.Log_Records.Error);
+            else
+               Send_Eviction (Evictions (S));
+            end if;
+         end if;
+      end loop;
+   end Service_Evictions;
    procedure Process_Pending_Quarantines is
       Session : Unsigned_64;
    begin
@@ -2387,6 +2668,10 @@ procedure Main is
             Publish_Snapshot ("intel-gpu: submit FAILED session=" & Unsigned_64'Image (Session) &
               " reason=" & GQ.Fault_Reason'Image (Pending_Why (S)) & Submission_Counters,
               CuBit.Log_Records.Error);
+            if GQ."=" (Pending_Why (S), GQ.Hang) or else GQ."=" (Pending_Why (S), GQ.Deadline) then
+               -- Before retirement closes the session's context lookup.
+               Start_Eviction (S, Session);
+            end if;
             Intel_GPU_Render_Control.Reject_Delivery
               (Render_Admission,
                Intel_GPU_Render_Control.Recipient_Identity
@@ -2572,7 +2857,8 @@ procedure Main is
    -- no VM, buffer or context change and park nothing. Every other request
    -- found then is deferred until the GPU is idle.
    function Safe_While_Busy (Label : Unsigned_32) return Boolean is
-     (Label = Submit_Label or else Label = GQ.OP_GPU_WAKE or else
+     (Label = Submit_Label or else Display_Executor.Owns_Label (Label) or else Label = GQ.OP_GPU_WAKE or else
+      Label = GQ.OP_GPU_BOOST or else
       Label = CuBit.Channel_Protocol.OP_OPEN_PRODUCING or else
       Label = CuBit.Channel_Protocol.OP_OPEN_CONSUMING or else
       Label = CuBit.Channel_Protocol.OP_KICK or else Label = CuBit.Channel_Protocol.OP_CLOSE or else
@@ -5962,7 +6248,7 @@ procedure Main is
       -- This bring-up policy explicitly requests preempt-to-idle on quantum
       -- expiry; it is a driver policy choice, not a probed hardware property.
       Context_Pool.Open (Contexts, Submission_GPU_Start,
-        Address_Layout.Runtime_First, 1000, 500_000, True,
+        Address_Layout.Runtime_First, 1000, Context_Preemption_Us, True,
         Render_Context_ID, Published);
       if not Published then
          Context_Pool.Fail (Contexts); Runtime_Fault := True;
@@ -6382,6 +6668,21 @@ procedure Main is
    -- H9): fault the runtime visibly, keep all backing, and let outstanding
    -- work fail through its ownership checks. Other events are counted and
    -- summarised; none is dropped unseen.
+   -- The session slot whose live context is guc-id ID; 0 when none.
+   function Reset_Session (ID : Unsigned_32) return Natural is
+   begin
+      if ID = Render_Context_ID or else ID = Context_Pool.No_Context then return 0; end if;
+      for S in Session_Slot loop
+         declare
+            Session : constant Unsigned_64 := Intel_GPU_Render_Control.Issued_Tag (Render_Admission, S);
+         begin
+            if Session /= 0 and then Context_Pool.Session_Context (Contexts, Session) = ID then
+               return Natural (S);
+            end if;
+         end;
+      end loop;
+      return 0;
+   end Reset_Session;
    procedure Process_Retained_Events is
       Item : G2H_Events.Event;
       Found : Boolean;
@@ -6395,7 +6696,29 @@ procedure Main is
          if G2H_Events.Truncated (Item) then G2H_Truncated := G2H_Truncated + 1; end if;
          Decoded := Context_Event.Decode
            (Context_Event.Words (Item.Words (1 .. G2H_Events.Kept_Words (Item))), Item.Fence);
-         if Decoded.Tag in Context_Event.Device_Loss then
+         if Decoded.Tag = Context_Event.Context_Reset and then
+           End_Eviction_By_Reset (Decoded.ID)
+         then
+            -- GuC reset the engine under the context being evicted: only
+            -- that context is guilty; the others were resubmitted by GuC.
+            Publish_Snapshot ("intel-gpu: GuC CONTEXT_RESET guc-id=" &
+              Unsigned_32'Image (Decoded.ID) & ": hung context reset by GuC; other sessions continue",
+              CuBit.Log_Records.Warning);
+         elsif Decoded.Tag = Context_Event.Context_Reset and then
+           Reset_Session (Decoded.ID) /= 0
+         then
+            -- GuC reset the engine on its own (preemption timeout) under a
+            -- live session's context: that session alone is guilty.
+            declare
+               S : constant Session_Slot := Reset_Session (Decoded.ID);
+            begin
+               Queue_Service.Lose_Session (Queue_State, S, GQ.Hang);
+               Quarantine_Session (S, GQ.Hang);
+               Publish_Snapshot ("intel-gpu: GuC CONTEXT_RESET guc-id=" &
+                 Unsigned_32'Image (Decoded.ID) & ": session's jobs fail (Hang); other sessions continue",
+                 CuBit.Log_Records.Warning);
+            end;
+         elsif Decoded.Tag in Context_Event.Device_Loss then
             if not Runtime_Fault then
                Context_Pool.Fail (Contexts);
                Runtime_Fault := True;
@@ -6414,6 +6737,39 @@ procedure Main is
          end if;
       end loop;
    end Process_Retained_Events;
+   ---------------------------------------------------------------------------
+   --  Device interrupts (docs/msi-interrupts.md). devmgr allocated one MSI
+   --  vector for the whole device, programmed the MSI address and data with
+   --  MSI Enable clear, and installed the vector's CAP_IRQ in the
+   --  manifest's device slot. The next step (DISP-000-irq, GPU-001 step 6):
+   --  mask every GT and display source, ask devmgr to set MSI Enable, set
+   --  Device_Interrupts_Enabled, and fill in Handle_Device_Interrupt with
+   --  the i915 order (MSTR_IRQ off, GT banks, display IIRs, MSTR_IRQ on).
+   ---------------------------------------------------------------------------
+   Device_Interrupt : CuBit.Device_Interrupts.Interrupt_Block;
+   Device_Interrupts_Enabled : Boolean := False;
+   Device_Doorbells : Unsigned_64 := 0;
+
+   --  The hook: the device's registers say what happened.
+   procedure Handle_Device_Interrupt is null;
+
+   --  Take the IRQ doorbell, one bit however many interrupts arrived.
+   procedure Service_Device_Interrupts is
+      Event : Message;
+   begin
+      if not Device_Interrupts_Enabled or else not Device_Interrupt.Valid then
+         return;
+      end if;
+      while Poll_Event (Event) loop
+         if CuBit.Device_Interrupts.Is_Doorbell (Event) and then
+           CuBit.Device_Interrupts.Fired (Event, Device_Interrupt, 0)
+         then
+            Device_Doorbells := Device_Doorbells + 1;
+            Handle_Device_Interrupt;
+         end if;
+      end loop;
+   end Service_Device_Interrupts;
+
    procedure Report_G2H_Events is
       Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
    begin
@@ -6436,6 +6792,8 @@ procedure Main is
    begin
       return Value;
    end Read_Register;
+   function Display_Read_MMIO (Offset : Unsigned_32) return Unsigned_32 is
+     (Read_Register (Register_Virtual_Base + Unsigned_64 (Offset)));
    procedure Capture is new Intel_GPU_Observation.Capture (Read_Register);
    function Probe_Forcewake return String is
       Write_Base : constant Unsigned_64 := 16#6020_0000#;
@@ -6718,6 +7076,119 @@ procedure Main is
    Latency_Reported_At : Unsigned_64 := 0;
    --  queue-peak is the most jobs in flight at once, driver-wide, in the
    --  interval (GPU-001 step 2).
+   -- A job-kinds value as letters: u upload, r render, b readback (image to
+   -- buffer), i the driver library's internal batch; "none" untagged.
+   function Kinds_Name (K : Queue_Service.Kinds) return String is
+      package GQK renames CuBit.GPU_Queues.Kinds;
+      function Bit (Mask : Unsigned_8; Letter : String) return String is
+        ((if (Unsigned_8 (K) and Mask) /= 0 then Letter else ""));
+      Name : constant String :=
+        Bit (GQK.Kind_Upload, "u") & Bit (GQK.Kind_Render, "r") &
+        Bit (GQK.Kind_Readback, "b") & Bit (GQK.Kind_Internal, "i");
+   begin
+      return (if Name = "" then "none" else Name);
+   end Kinds_Name;
+   -- Per job kind, once per latency report: jobs, GPU execution time from
+   -- the jobs' own stamps (avg/max) and submit-to-completion latency.
+   -- PWR-001: GT0_PERF_LIMIT_REASONS decoded as comma-separated names,
+   -- "none" when no reason holds (Log: the latched bits).
+   function Limit_Names (Value : Unsigned_32; Log : Boolean) return String is
+      package F renames Intel_GPU_GT_Frequency;
+      Text : String (1 .. 96) := [others => ' '];
+      Last : Natural := 0;
+   begin
+      if not F.Any_Limit (Value, Log) then return "none"; end if;
+      for R in F.Limit_Reason loop
+         if F.Limited_By (Value, R, Log) then
+            declare
+               Name : constant String := (if Last = 0 then "" else ",") & F.Reason_Name (R);
+            begin
+               if Last + Name'Length <= Text'Last then
+                  Text (Last + 1 .. Last + Name'Length) := Name;
+                  Last := Last + Name'Length;
+               end if;
+            end;
+         end if;
+      end loop;
+      return Text (1 .. Last);
+   end Limit_Names;
+   procedure Report_Job_Kinds is
+      Table : constant Queue_Service.Kind_Table := Queue_Service.Kind_Stats (Queue_State);
+      Line : String (1 .. 600) := [others => ' '];
+      Last : Natural := 0;
+      procedure Add (Text : String) is
+      begin
+         if Last + Text'Length <= Line'Last then
+            Line (Last + 1 .. Last + Text'Length) := Text;
+            Last := Last + Text'Length;
+         end if;
+      end Add;
+      function Img (V : Unsigned_64) return String is
+        (Unsigned_64'Image (V) (2 .. Unsigned_64'Image (V)'Last));
+   begin
+      for K in Table'Range loop
+         if Table (K).Jobs > 0 then
+            declare
+               Timed : constant Unsigned_64 := Table (K).Jobs - Table (K).Untimed;
+            begin
+               Add (" " & Kinds_Name (K) & "=" & Img (Table (K).Jobs) &
+                    " exec_us=" & Img (if Timed = 0 then 0 else Table (K).Exec_Total_Us / Timed) &
+                    "/" & Img (Table (K).Exec_Max_Us) &
+                    " lat_us=" & Img (Table (K).Latency_Total_Us / Table (K).Jobs) &
+                    "/" & Img (Table (K).Latency_Max_Us) &
+                    (if Table (K).Untimed > 0 then " untimed=" & Img (Table (K).Untimed) else ""));
+            end;
+         end if;
+      end loop;
+      declare
+         package F renames Intel_GPU_GT_Frequency;
+         G : constant F.Snapshot := Intel_GPU_Native_Reset.GT_Frequency;
+      begin
+         if Job_MHz_Samples > 0 then
+            Add (" job_mhz=" & Img (Unsigned_64 (Job_MHz_Min)) & "/" &
+                 Img (Job_MHz_Total / Job_MHz_Samples) & "/" & Img (Unsigned_64 (Job_MHz_Max)));
+         end if;
+         Job_MHz_Min := 0; Job_MHz_Max := 0; Job_MHz_Total := 0; Job_MHz_Samples := 0;
+         if G.Valid then
+            Add (" gt_mhz act=" & Img (Unsigned_64 (F.Actual_MHz (G.Status))) &
+                 " req=" & Img (Unsigned_64 (F.Requested_MHz (G.Request))) &
+                 " rp0=" & Img (Unsigned_64 (F.RP0_MHz (G.Cap))) &
+                 " rp1=" & Img (Unsigned_64 (F.RP1_MHz (G.Cap))) &
+                 " rpe=" & Img (Unsigned_64 (F.RPe_MHz (G.Info))) &
+                 " rpn=" & Img (Unsigned_64 (F.RPn_MHz (G.Cap))) &
+                 " turbo=" & (if F.Host_Turbo (G.RP_Control) then "on" else "off") &
+                 " rp_ctl=" & Hex (G.RP_Control) & " rc_ctl=" & Hex (G.RC_Control) &
+                 " rc_state=" & Hex (G.RC_State) &
+                 " throttle=" & Limit_Names (G.Limits, False) &
+                 " throttle_log=" & Limit_Names (G.Limits, True));
+         else
+            Add (" gt_mhz unavailable");
+         end if;
+         Add (" slpc=" & SLPC_Name (SLPC_State));
+         if Boost_Active then
+            declare
+               package WB renames Intel_GPU_Waitboost;
+               Boosts, Hints, Sends, Boosted_Us, Ramps, Unreached, Ramp_Avg, Ramp_Max : Unsigned_64;
+            begin
+               WB.Take_Stats (Boost, DC_Now_Us, Boosts, Hints, Sends, Boosted_Us,
+                              Ramps, Unreached, Ramp_Avg, Ramp_Max);
+               Add (" boosts=" & Img (Boosts) & " hints=" & Img (Hints) &
+                    (if Boost_Hints_Refused > 0 then " hints_refused=" & Img (Boost_Hints_Refused) else "") &
+                    " boosted_ms=" & Img (Boosted_Us / 1000) &
+                    " boost_sends=" & Img (Sends) &
+                    " ramp_us=" & Img (Ramp_Avg) & "/" & Img (Ramp_Max) & " ramps=" & Img (Ramps) &
+                    (if Unreached > 0 then " unreached=" & Img (Unreached) else "") &
+                    " slpc_min=" & Img (Unsigned_64 (WB.Desired (Boost))) &
+                    (if WB.Need_Send (Boost) then " (send pending)" else ""));
+               Boost_Hints_Refused := 0;
+            end;
+         end if;
+      end;
+      if Last > 0 then
+         Publish_Snapshot ("intel-gpu: job kinds (avg/max)" & Line (1 .. Last));
+      end if;
+      Queue_Service.Reset_Kinds (Queue_State);
+   end Report_Job_Kinds;
    procedure Report_Submit_Latency is
       Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
       Stats : constant Queue_Service.Statistics := Queue_Service.Stats (Queue_State);
@@ -6725,6 +7196,7 @@ procedure Main is
       if Stats.Latency_Count = 0 or else Now < Latency_Reported_At + Latency_Report_Ms then
          return;
       end if;
+      Report_Job_Kinds;
       Publish_Snapshot ("intel-gpu: submit latency jobs=" & Unsigned_64'Image (Stats.Latency_Count) &
         " min_us=" & Unsigned_64'Image (Stats.Latency_Min_Us) &
         " max_us=" & Unsigned_64'Image (Stats.Latency_Max_Us) &
@@ -6734,7 +7206,11 @@ procedure Main is
         " taken=" & Submission_Policy.Event_Count'Image (Stats.Taken) &
         " refused=" & Submission_Policy.Event_Count'Image (Stats.Refused) &
         " lost=" & Submission_Policy.Event_Count'Image (Stats.Lost) &
-        " kick-retries=" & Submission_Policy.Event_Count'Image (Stats.Kick_Retries));
+        " kick-retries=" & Submission_Policy.Event_Count'Image (Stats.Kick_Retries) &
+        " kicks=" & Unsigned_64'Image (Resident_Kicks) &
+        " enables=" & Unsigned_64'Image (Enable_Kicks));
+      Resident_Kicks := 0;
+      Enable_Kicks := 0;
       Queue_Service.Reset_Latency (Queue_State);
       Queue_Service.Reset_Peak (Queue_State);
       Latency_Reported_At := Now;
@@ -6778,8 +7254,13 @@ procedure Main is
    --  Submission_Poll_Us (polling until MSI exists, H7) and sleeps between
    --  turns. Wait_For_Activity_Until cannot pace this: a deferred request
    --  stays queued in the kernel meanwhile, and queued work makes it return
-   --  at once, so the loop would spin. A monotonic-clock sleep cannot.
-   Submission_Poll_Us : constant Unsigned_64 := 1_000;
+   --  at once, so the loop would spin. A monotonic-clock sleep cannot (the
+   --  kernel wakes it on a TSC-deadline alarm, so microseconds hold).
+   --  The interval is the floor of every job's latency and of the delay
+   --  before a descriptor written mid-flight is taken: Desktop runs its
+   --  uploads, render and readback one job after another, so at 1 ms each
+   --  stage cost 1-2 ms (NUC, 2026-10-10: 200-350 jobs/s, min 1.02 ms).
+   Submission_Poll_Us : constant Unsigned_64 := 250;
    Submission_Poll_Ms : constant Unsigned_64 := 1;
    procedure Sleep_While_GPU_Busy is
       Now : constant Unsigned_64 := DC_Now_Us;
@@ -6802,7 +7283,9 @@ procedure Main is
       pragma Unreferenced (Unused);
    begin
       Deferred := False;
-      if Request.tag.label = Intel_GPU_Budget_Protocol.Label then
+      if Display_Executor.Owns_Label (Request.tag.label) then
+         Display_Executor.Handle (Sender, Request);
+      elsif Request.tag.label = Intel_GPU_Budget_Protocol.Label then
          Handle_Budget_Query (Sender, Request);
       elsif Request.tag.label = Application_Buffers.Accounting_Label then
          declare
@@ -6855,6 +7338,16 @@ procedure Main is
          null;
       elsif Request.tag.label = GQ.OP_GPU_WAKE then
          Handle_GPU_Wake (Sender, Request);
+      elsif Request.tag.label = GQ.OP_GPU_BOOST then
+         -- One-way input hint (waitboost): only on a live render session's
+         -- own endpoint, whose kernel-stamped tag names the session.
+         if Request.tag.length = 0 and then
+           Application_Session (To_Word (Sender), Request.authorityTag) /= 0
+         then
+            Boost_Hint_Pending := True;
+         elsif Boost_Hints_Refused < Unsigned_64'Last then
+            Boost_Hints_Refused := Boost_Hints_Refused + 1;
+         end if;
       else
          declare
             package DQ renames Intel_GPU_Device_Query;
@@ -6901,6 +7394,183 @@ procedure Main is
    begin
       Completed_Jobs := Stats.Completed;
    end Sync_Counters;
+   -- One word of the SLPC shared data as the GuC last wrote it (the CPU
+   -- cache lines are flushed first). All-ones when unreadable.
+   function SLPC_Word (Index : Intel_GPU_SLPC.Word_Index) return Unsigned_32 is
+      Shared : SLPC_Words with Import, Volatile,
+        Address => System'To_Address (SLPC_CPU);
+   begin
+      if not SLPC_Mapped or else
+        not Intel_GPU_DMA_Cache.Flush_Range (SLPC_CPU, Intel_GPU_SLPC.Page_Bytes)
+      then return Unsigned_32'Last; end if;
+      return Shared (Index);
+   end SLPC_Word;
+   -- SLPC did not start: request RP0 through GEN6_RPNSWREQ so the GT never
+   -- stays at whatever frequency firmware left (possibly RPn).
+   procedure Request_RP0_Fallback (Reason : String) is
+      G : constant Intel_GPU_GT_Frequency.Snapshot := Intel_GPU_Native_Reset.GT_Frequency;
+      Plan : Intel_GPU_SLPC.Software_Request;
+      Readback : Unsigned_32 := 0;
+      OK : Boolean := False;
+   begin
+      if G.Valid then
+         Plan := Intel_GPU_SLPC.RP0_Request (G.Cap);
+         if Plan.Valid then
+            GT_Frequency_IO.Request (Plan.Value, Readback, OK);
+         end if;
+      end if;
+      SLPC_State := (if OK then Fallback_RP0 else Unmanaged);
+      Publish_Snapshot ("intel-gpu: SLPC not running (" & Reason & "); " &
+        (if OK then "fallback RPNSWREQ=" & Hex (Plan.Value) & " readback=" & Hex (Readback) &
+           " rp0_mhz=" & Unsigned_32'Image (Intel_GPU_GT_Frequency.RP0_MHz (G.Cap))
+         else "fallback RPNSWREQ FAILED cap=" & Hex (G.Cap) & "; GT frequency unmanaged"),
+        CuBit.Log_Records.Warning);
+   end Request_RP0_Fallback;
+   -- GuC SLPC start-up as i915 intel_guc_slpc_enable does it, sequenced by
+   -- Intel_GPU_SLPC: reset, wait for RUNNING, query, ARAT unmask, max = RP0,
+   -- efficient frequency in use, min = RPe, query. Runs once, on the
+   -- start-up-owned CT channel, before the render engine starts.
+   procedure Start_SLPC is
+      package S renames Intel_GPU_SLPC;
+      use type S.Step;
+      use type S.Global_State;
+      use type SLPC_Roundtrip.Result;
+      G : constant Intel_GPU_GT_Frequency.Snapshot := Intel_GPU_Native_Reset.GT_Frequency;
+      Plan : constant S.Limits :=
+        (if G.Valid then S.Plan_Limits (G.Cap, G.Info) else (others => <>));
+      Current : S.Step := S.Send_Reset;
+      Status : SLPC_Roundtrip.Result := SLPC_Roundtrip.Rejected;
+      Reply, Mask_Before, Mask_After : Unsigned_32 := 0;
+      State : S.Global_State := S.Not_Running;
+      OK : Boolean := False;
+      procedure Wait_Running is
+         Start : constant Unsigned_64 := Runtime_Now;
+         Now : Unsigned_64;
+      begin
+         OK := False;
+         if Start = Unsigned_64'Last then return; end if;
+         loop
+            State := S.Decode_State (SLPC_Word (S.Global_State_Word));
+            if State = S.Running then OK := True; return; end if;
+            Now := Runtime_Now;
+            if Now = Unsigned_64'Last or else Now < Start or else
+              Now - Start >= S.Reset_Deadline_Us
+            then return; end if;
+            GuC_Pause;
+         end loop;
+      end Wait_Running;
+   begin
+      if SLPC_State /= Not_Started then return; end if;
+      if not SLPC_Mapped then
+         Request_RP0_Fallback ("shared data not mapped"); return;
+      end if;
+      if not S.Consistent (Plan) then
+         Request_RP0_Fallback ("frequency capabilities invalid cap=" & Hex (G.Cap) &
+           " info=" & Hex (G.Info));
+         return;
+      end if;
+      while Current in S.Pending loop
+         case Current is
+            when S.Wait_Running =>
+               Wait_Running;
+            when S.Unmask_Timer =>
+               GT_Frequency_IO.Unmask_ARAT (Mask_Before, Mask_After, OK);
+            when S.Send_Reset | S.Query_State | S.Set_Max | S.Set_Efficient |
+                 S.Set_Min | S.Verify =>
+               SLPC_Pending := S.Request_For (Current, Unsigned_32 (SLPC_GPU_Start), Plan);
+               SLPC_Roundtrip.Execute
+                 (SLPC_Attempts (Current), S.Fence_For (Current), 1_000_000, Reply, Status);
+               OK := Status = SLPC_Roundtrip.Complete;
+            when S.Started | S.Failed =>
+               OK := False;
+         end case;
+         exit when not OK;
+         Current := S.Next (Current, True);
+      end loop;
+      if Current = S.Started then
+         declare
+            Frequency : constant Unsigned_32 := SLPC_Word (S.Task_Frequency_Word);
+         begin
+            SLPC_State := Running;
+            if Plan.RPe < Plan.RP0 then
+               Boost := Intel_GPU_Waitboost.Start (Plan.RPe, Plan.RP0, DC_Now_Us);
+               Boost_Active := True;
+            end if;
+            Publish_Snapshot ("intel-gpu: SLPC running task_min_mhz=" &
+              Unsigned_32'Image (S.Task_Min_MHz (Frequency)) & " task_max_mhz=" &
+              Unsigned_32'Image (S.Task_Max_MHz (Frequency)) & " requested min=" &
+              Unsigned_32'Image (Plan.RPe) & " max=" & Unsigned_32'Image (Plan.RP0) &
+              " rpn=" & Unsigned_32'Image (Plan.RPn) & " task_status=" &
+              Hex (SLPC_Word (S.Task_Status_Word)) & " pmintrmsk=" & Hex (Mask_Before) &
+              "->" & Hex (Mask_After) & " gpu=" & Hex64 (SLPC_GPU_Start));
+         end;
+         return;
+      end if;
+      -- A firmware failure or retry response ends that request cleanly; any
+      -- other roundtrip failure leaves the channel uncertain (a late reply
+      -- could still arrive), so it is quarantined as the probe's would be.
+      if Current in S.Send_Reset | S.Query_State | S.Set_Max | S.Set_Efficient |
+                    S.Set_Min | S.Verify and then
+        Status not in SLPC_Roundtrip.Firmware_Failed | SLPC_Roundtrip.Retry_Requested
+      then
+         Runtime_Fault := True;
+      end if;
+      Request_RP0_Fallback
+        ("step=" & S.Step'Image (Current) &
+         (case Current is
+            when S.Wait_Running => " state=" & S.Global_State'Image (State) &
+              " raw=" & Hex (SLPC_Word (S.Global_State_Word)),
+            when S.Unmask_Timer => " pmintrmsk=" & Hex (Mask_Before) & "->" & Hex (Mask_After),
+            when others => " ct=" & SLPC_Roundtrip.Result'Image (Status) & " reply=" & Hex (Reply)));
+   end Start_SLPC;
+   -- One waitboost step per loop turn: demand is GPU work in flight (every
+   -- client job here has a waiter: Desktop waits on each frame, the
+   -- wrapper call and OP_GPU_WAKE wait on theirs). At most one SLPC
+   -- parameter set per turn, a FAST request on the context stream (no
+   -- reply, never a wait), and only when the wanted minimum changed.
+   procedure Service_Waitboost is
+      Value : Intel_GPU_Waitboost.MHz;
+      Request : Intel_GPU_SLPC.Request;
+      Status : CT_Send.Result;
+      Wire_Fence : Unsigned_16;
+      Accepted : Boolean;
+      use type CT_Send.Result;
+   begin
+      if not Boost_Active or else SLPC_State /= Running then return; end if;
+      Intel_GPU_Waitboost.Step (Boost, not Queue_Service.Idle (Queue_State), Boost_Hint_Pending,
+                                DC_Now_Us);
+      Boost_Hint_Pending := False;
+      -- Ramp latency: the actual frequency, read each turn of a ramp.
+      if Boost.Ramping then
+         declare
+            Status : Unsigned_32;
+            Valid : Boolean;
+         begin
+            Intel_GPU_Native_Reset.GT_Status (Status, Valid);
+            if Valid then
+               Intel_GPU_Waitboost.Note_Actual
+                 (Boost, Intel_GPU_GT_Frequency.Actual_MHz (Status), DC_Now_Us);
+            end if;
+         end;
+      end if;
+      if not Intel_GPU_Waitboost.Need_Send (Boost) or else not Context_Owner then return; end if;
+      Value := Intel_GPU_Waitboost.Desired (Boost);
+      Request := Intel_GPU_SLPC.Fast_Min_Request (Value);
+      Fast_Fences.Prepare (Fast_Stream, Wire_Fence, Accepted);
+      if not Accepted then return; end if;
+      CT_Send.Send (Send_Channel, [Request (0), Request (1), Request (2), Request (3)],
+                    Wire_Fence, Status);
+      Fast_Fences.Sent (Fast_Stream,
+        (if Status = CT_Send.Queued then Fast_Fences.Published
+         elsif Status = CT_Send.Would_Block then Fast_Fences.Not_Published
+         else Fast_Fences.Uncertain));
+      Intel_GPU_Waitboost.Note_Sent (Boost, Value, Status = CT_Send.Queued, DC_Now_Us);
+      if Status not in CT_Send.Queued | CT_Send.Would_Block then
+         Boost_Active := False;
+         Publish_Snapshot ("intel-gpu: SLPC waitboost send failed (" &
+           CT_Send.Result'Image (Status) & "); waitboost off", CuBit.Log_Records.Warning);
+      end if;
+   end Service_Waitboost;
 begin
    debugPrint ("intel-gpu: awaiting device-scoped bootstrap" & ASCII.LF);
    declare
@@ -6942,6 +7612,7 @@ begin
    -- Capture identity only after sender/protocol/resource admission. Later
    -- IPC requests must not become the source of firmware startup identity.
    Capture_Probe_Recipient;
+   Display_Executor.Register_Service;
    PCI_Device := Unsigned_16 (Shift_Right (Request.words (1), 16) and 16#FFFF#);
    PCI_Revision := Unsigned_8 (Shift_Right (Request.words (1), 32) and 16#FF#);
    debugPrint ("intel-gpu: GGC=" & Hex (Unsigned_32 (GGC)) &
@@ -6974,6 +7645,13 @@ begin
          Publish_Snapshot ("intel-gpu: PCI MSI-X present=" & Flag (IRQ.MSIX_Present) &
            " enabled=" & Flag (IRQ.MSIX_Enabled) & " masked=" & Flag (IRQ.MSIX_Masked));
       end if;
+      Device_Interrupt :=
+        CuBit.Device_Interrupts.Block_Of (CCL_Manifest_Bindings.Slot_device);
+      Publish_Snapshot
+        (if Device_Interrupt.Valid then
+           "intel-gpu: MSI vector" & Natural'Image (Device_Interrupt.Head) &
+           " assigned (MSI Enable clear until GT/display sources are set up)"
+         else "intel-gpu: no MSI vector assigned");
    end;
    -- Decode v4 admits only ADLN and authenticated devmgr D0 evidence.
    -- This is observation, not a power reference or scanout takeover. No writes.
@@ -7317,6 +7995,16 @@ begin
                        when Intel_GPU_Scanout_Inventory.Unsupported_Plane => "UNSUPPORTED-PLANE",
                        when Intel_GPU_Scanout_Inventory.Unsupported_Cursor => "UNSUPPORTED-CURSOR") &
                     " ranges=" & Natural'Image (Scanout.Count) & " (NOT GGTT ownership)");
+                  Display_Executor.Select_Output
+                    ([Intel_GPU_Display_Topology.A =>
+                        (Scanout_Planes (1).Collected, Scanout_Planes (1).Before, Scanout_Planes (1).After),
+                      Intel_GPU_Display_Topology.B =>
+                        (Scanout_Planes (6).Collected, Scanout_Planes (6).Before, Scanout_Planes (6).After),
+                      Intel_GPU_Display_Topology.C =>
+                        (Scanout_Planes (11).Collected, Scanout_Planes (11).Before, Scanout_Planes (11).After),
+                      Intel_GPU_Display_Topology.D =>
+                        (Scanout_Planes (16).Collected, Scanout_Planes (16).Before, Scanout_Planes (16).After)],
+                     Table_Bytes, Plan.Physical_Base);
                end;
                declare
                   Size_First : constant Unsigned_32 := Read_Register (Register_Virtual_Base + 16#C050#);
@@ -7731,6 +8419,31 @@ begin
                               end if;
                            end;
                         end if;
+                        if CT_Mapped then
+                           declare
+                              SLPC_Backing : constant Intel_GPU_Firmware_Buffer.Prepared_SLPC_Buffer :=
+                                Intel_GPU_Firmware_Buffer.Prepared_SLPC;
+                           begin
+                              if SLPC_Backing.Ready then
+                                 Active_Runtime := SLPC_Buffer;
+                                 Runtime_DMA := SLPC_Backing.DMA_Address;
+                                 Runtime_CPU := SLPC_Backing.CPU_Address;
+                                 Runtime_Bytes := SLPC_Backing.Region_Bytes;
+                                 Runtime_Bound := False;
+                                 Runtime_Publication.Publish_Available
+                                   (SLPC_Attempt, Runtime_Ledger, Runtime_DMA,
+                                    Runtime_Bytes, 4096, Selected, Status);
+                                 SLPC_Mapped := Status = Runtime_Publication.Published and then
+                                   Selected < 2 ** 32;
+                                 if SLPC_Mapped then
+                                    SLPC_GPU_Start := Selected;
+                                    SLPC_CPU := SLPC_Backing.CPU_Address;
+                                 end if;
+                                 Publish_Snapshot ("intel-gpu: SLPC shared data mapping " &
+                                   Describe (Status) & " gpu=" & Hex64 (SLPC_GPU_Start));
+                              end if;
+                           end;
+                        end if;
                         -- Claims/backing remain retained; revoke the local
                         -- write binding now that these transactions have ended.
                         Active_Runtime := No_Buffer; Runtime_Bound := False;
@@ -7755,7 +8468,7 @@ begin
                                   Crash_Count => 0, Capture_Count => 0,
                                   Debug_Pages_Count => 0),
                                Device => PCI_Device, Revision => PCI_Revision,
-                               Scheduler_Enabled => True, SLPC_Enabled => False,
+                               Scheduler_Enabled => True, SLPC_Enabled => SLPC_Mapped,
                                PXP_Enabled => False, Logging_Enabled => True,
                                Verbosity => 1, Workarounds => 16#0044_4000#));
                            Publish_Snapshot ("intel-gpu: GuC parameters " &
@@ -7880,6 +8593,9 @@ begin
                              Natural'Image (G2H_Events.Length (CT_Events)) &
                              " (NOT engine submission-ready)");
                            if Probe_Status = CT_Roundtrip.Complete then
+                              Start_SLPC;
+                           end if;
+                           if Probe_Status = CT_Roundtrip.Complete then
                               declare
                                  Engine_Result : RCS_Startup.Result;
                                  use type RCS_Startup.Result;
@@ -7926,18 +8642,66 @@ begin
    else
       Publish_Snapshot ("intel-gpu: native GuC startup prerequisites unavailable");
    end if;
+   if Display_Executor.Output_Selected then
+      -- The cursor's staging image and surfaces, before any client request.
+      declare
+         Ticket : Application_Buffers.Ticket;
+         Consumed : Boolean;
+         Backing : Intel_GPU_Buffer_Reply.Backing;
+      begin
+         Application_Buffers.Reserve_Private
+           (Application_Buffer_State, 0, Ticket, Pages => Display_Executor.Cursor_Pages);
+         if Ticket /= 0 then
+            Backing := Buffer_Memory.Acquire
+              (Buffer_Pool, Application_Buffers.Ticket_Slot (Ticket), Display_Executor.Cursor_Pages);
+            Application_Buffers.Finish_Private (Application_Buffer_State, Ticket, Consumed);
+            if not Consumed then Backing := (Ready => False); end if;
+         end if;
+         Display_Executor.Setup_Cursor (Runtime_Ledger, Backing);
+      end;
+      -- DISP-000a: three scanout buffers, after the cursor's DDB sequence.
+      if Display_Executor.Scanout_Pages > 0 then
+         declare
+            Ticket : Application_Buffers.Ticket;
+            Consumed : Boolean;
+            Backings : Display_Executor.Scanout_Backings;
+            Pages : constant Intel_GPU_Buffer_Backing.Page_Count :=
+              Intel_GPU_Buffer_Backing.Page_Count (Display_Executor.Scanout_Pages);
+         begin
+            for Item in Backings'Range loop
+               Backings (Item) := (Ready => False);
+               Application_Buffers.Reserve_Private
+                 (Application_Buffer_State, 0, Ticket, Pages => Pages);
+               if Ticket /= 0 then
+                  Backings (Item) := Buffer_Memory.Acquire
+                    (Buffer_Pool, Application_Buffers.Ticket_Slot (Ticket), Pages);
+                  Application_Buffers.Finish_Private (Application_Buffer_State, Ticket, Consumed);
+                  if not Consumed then Backings (Item) := (Ready => False); end if;
+               end if;
+            end loop;
+            Display_Executor.Setup_Scanout (Runtime_Ledger, Backings);
+         end;
+      else
+         Display_Executor.Setup_Scanout (Runtime_Ledger, [others => (Ready => False)]);
+      end if;
+   end if;
    Submit_Budget_Query;
    loop
       Refresh_Runtime_Health;
+      Service_Device_Interrupts;
       Service_Context_Events;
       Process_Retained_Events;
       Report_Slow_Requests;
       Report_In_Place_Summary;
       Report_Submit_Latency;
+      Display_Executor.Service;
+      Display_Executor.Report (syscall (SYSCALL_GETTIME));
       Report_G2H_Events;
       -- Every session's GPU work, one bounded, non-blocking pass.
       Queue_Service.Turn (Queue_State);
+      Service_Waitboost;
       Process_Pending_Quarantines;
+      Service_Evictions;
       Sync_Counters;
       if not Queue_Service.Idle (Queue_State) then
          -- GPU work in flight: no background step runs (it may park), and
@@ -8138,8 +8902,11 @@ begin
                -- Local directory/publication/cleanup work must advance without
                -- inserting a10ms idle wait between each bounded step. A faulted
                -- cleanup is not runnable and must not keep this loop spinning.
+               -- An owed flip is polled just after the predicted vblank.
                Activity := Wait_For_Activity_Until
-                 (if Now < Unsigned_64'Last - 10 then Now + 10 else Now);
+                 (Unsigned_64'Min
+                    ((if Now < Unsigned_64'Last - 10 then Now + 10 else Now),
+                     Display_Executor.Wake_Ms (Now)));
             end if;
          end;
       end if;

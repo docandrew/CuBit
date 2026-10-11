@@ -153,10 +153,17 @@ procedure Ring_Exhaustion_Submit_Tests is
    Client_Memory, Driver_Memory : access Region := new Region'(others => 0);
    function Client_Region (S : Session_Id) return System.Address is (Client_Memory.all'Address);
    function Driver_Region (S : Session_Id) return System.Address is (Driver_Memory.all'Address);
+   procedure Read_Job_Time (V : Unsigned_64; Exec_Us : out Unsigned_64; OK : out Boolean) is
+      pragma Unreferenced (V);
+   begin
+      Exec_Us := 0; OK := False;   -- no stamps in this fixture
+   end Read_Job_Time;
+   -- These fixtures write no stamps: no job reads as started.
+   function Job_Started (V : Unsigned_64) return Boolean is (V = 0);
    package Service is new Intel_GPU_Queue_Service
      (Session_Id, Select_Context, Owned, Batch_Ready, Resident, Owned, Write_Segment,
-      Segment_Bytes, Kick, Read_Timeline, Now_Us, Quarantine, Call_Finished, Answer_Wake,
-      Client_Region, Driver_Region, 1_000_000);
+      Segment_Bytes, Kick, Read_Timeline, Read_Job_Time, Job_Started, Now_Us, Quarantine, Call_Finished, Answer_Wake,
+      Client_Region, Driver_Region, 1_000_000, 1_000_000);
    use type Service.Call_Result;
    T : access Service.Table := new Service.Table;
    Client : access Clients.Client := new Clients.Client;
@@ -209,7 +216,7 @@ begin
       Job : constant Clients.Job :=
         (Operation => Q.Execute, Context => 0, Handle => 7, GPU => 16#20_0000#, Offset => 0,
          Bytes => 4096, First => (others => <>), Second => (others => <>),
-         Deadline => Q.No_Deadline);
+         Deadline => Q.No_Deadline, Kinds => 0);
    begin
       for Step in 1 .. 20_000 loop
          while Submitted < 4_096 and then Submitted - Reaped < 32 loop

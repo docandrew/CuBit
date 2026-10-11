@@ -107,6 +107,40 @@ package body Intel_GPU_Queue_Service is
       T.Counters.Latency_Total_Us := T.Counters.Latency_Total_Us + Took;
    end Note_Latency;
 
+   function Slot_Of (V : Value) return Job_Slot is
+     (Job_Slot (Unsigned_64 (V) mod Q.Max_In_Flight_Per_Context));
+
+   function Kind_Stats (T : Table) return Kind_Table is (T.Kind_Counters);
+   procedure Reset_Kinds (T : in out Table) is
+   begin
+      T.Kind_Counters := [others => (others => <>)];
+   end Reset_Kinds;
+
+   -- A completed job's execution time (from its stamps) and latency, under
+   -- its kinds. Called with S's context C selected.
+   procedure Note_Job (T : in out Table; S : Session_Id; C : Q.Context_Index; V : Value;
+                       Submitted, Now : Microseconds) is
+      Info : constant Job_Info := T.Jobs (S, C, Slot_Of (V));
+      K : Kind_Statistics renames T.Kind_Counters (Info.Kinds);
+      Exec : Unsigned_64 := 0;
+      OK : Boolean := False;
+   begin
+      K.Jobs := K.Jobs + 1;
+      if Info.Timed then
+         Read_Job_Time (Unsigned_64 (V), Exec, OK);
+      end if;
+      if OK then
+         K.Exec_Total_Us := K.Exec_Total_Us + Exec;
+         K.Exec_Max_Us := Unsigned_64'Max (K.Exec_Max_Us, Exec);
+      else
+         K.Untimed := K.Untimed + 1;
+      end if;
+      if Now /= Intel_GPU_Timeline.Clock_Unavailable and then Now >= Submitted then
+         K.Latency_Total_Us := K.Latency_Total_Us + Unsigned_64 (Now - Submitted);
+         K.Latency_Max_Us := Unsigned_64'Max (K.Latency_Max_Us, Unsigned_64 (Now - Submitted));
+      end if;
+   end Note_Job;
+
    -- Pop every job of S's context C that can be popped.
    procedure Pop_Ready (T : in out Table; S : Session_Id; C : Q.Context_Index;
                         Now : Microseconds) is
@@ -130,6 +164,7 @@ package body Intel_GPU_Queue_Service is
          if Status = Ledgers.Done then
             T.Counters.Completed := T.Counters.Completed + 1;
             Note_Latency (T, Item.Submitted, Now);
+            Note_Job (T, S, C, V, Item.Submitted, Now);
          else
             T.Counters.Lost := T.Counters.Lost + 1;
          end if;
@@ -397,6 +432,11 @@ package body Intel_GPU_Queue_Service is
                             Deadline => Microseconds (Head.Item.Deadline),
                             Submitted => Now),
                            Now);
+                        -- Admission let only the kind bits through.
+                        T.Jobs (S, C, Slot_Of (Next)) :=
+                          (Kinds => CuBit.GPU_Queues.Kinds.Job_Kinds
+                             (Head.Item.Flags and CuBit.GPU_Queues.Kinds.Kinds_Mask),
+                           Timed => D.Operation = Q.Execute);
                         Note_Kick (T, S, C);
                      end if;
                   end if;
@@ -416,6 +456,9 @@ package body Intel_GPU_Queue_Service is
       end loop;
    end Admit;
 
+   procedure Publish (T : Table; S : Session_Id);
+   -- The patience is never shorter than the budget (Observe's contract).
+   Patience : constant Unsigned_64 := Unsigned_64'Max (Patience_Us, Hang_Budget_Us);
    procedure Serve_Session (T : in out Table; S : Session_Id; Now : Microseconds) is
       V : Unsigned_64;
       OK, Gate : Boolean;
@@ -451,17 +494,30 @@ package body Intel_GPU_Queue_Service is
                Fail_Session (T, S, Q.Device_Fault, Now);
                return;
             end if;
-            Sessions.Observe (T.Items (S), C, OK, Value (V), Gate, Now,
-                              Microseconds (Hang_Budget_Us), Seen);
+            declare
+               L : constant Ledgers.Ledger := Sessions.Ledger (T.Items (S), C);
+               Started : constant Boolean :=
+                 Ledgers.Unfinished (L) and then
+                 Job_Started (Unsigned_64 (Ledgers.Completed (L)) + 1);
+            begin
+               Sessions.Observe (T.Items (S), C, OK, Value (V), Gate, Started, Now,
+                                 Microseconds (Hang_Budget_Us), Microseconds (Patience), Seen);
+            end;
             if Seen = Ledgers.Failed then
-               -- Until reset recovery exists, a hang or a bad timeline is
-               -- device loss for the session.
+               -- A hang (GPU-005) or a bad timeline fails this session's
+               -- jobs only; the caller evicts its context from the engine
+               -- (Quarantine with Hang or Deadline). Other sessions go on.
                Fail_Session (T, S, Ledgers.Why (Sessions.Ledger (T.Items (S), C)), Now);
                return;
             end if;
             Pop_Ready (T, S, C, Now);
          end if;
       end loop;
+      -- The status lines and records first: a client woken by the answer
+      -- must find its value there, not one turn later.
+      if Sessions.Live (T.Items (S)) then
+         Publish (T, S);
+      end if;
       Answer_Held_Wake (T, S);
       if Sessions.Live (T.Items (S)) and then not T.Quiesce then
          Admit (T, S, Now);
@@ -586,6 +642,7 @@ package body Intel_GPU_Queue_Service is
       Sessions.Commit_Call
         (T.Items (S), C, Next, Segment,
          (Token => 0, Deadline => Now + Microseconds (Budget_Us), Submitted => Now), Now);
+      T.Jobs (S, C, Slot_Of (Next)) := (Kinds => 0, Timed => True);
       Note_Kick (T, S, C);
       -- Kick now, not at the next turn: a failure from here on is
       -- answered through Call_Finished, like every later one.

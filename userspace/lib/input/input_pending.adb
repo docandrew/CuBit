@@ -26,6 +26,11 @@ package body Input_Pending with SPARK_Mode is
       Q.Data (Newest).Payload := Payload;
    end Replace_Newest;
 
+   procedure Require_Recovery (Q : in out Queue) is
+   begin
+      Q.Recover_Next := True;
+   end Require_Recovery;
+
    procedure Reset (Q : in out Queue) is
    begin
       Q.Used := 0;

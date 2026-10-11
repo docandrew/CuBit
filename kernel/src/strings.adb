@@ -87,7 +87,11 @@ is
     -- strlen
     -- Given a null-terminated C string, return its length.
     ---------------------------------------------------------------------------
-    function strlen (cstr : System.Address) return Natural is
+    -- Raw memory reads through an overlay at a caller-supplied address:
+    -- not SPARK.
+    function strlen (cstr : System.Address) return Natural with
+        SPARK_Mode => Off
+    is
         use System.Storage_Elements;
         use ASCII;
 
@@ -110,7 +114,9 @@ is
     ---------------------------------------------------------------------------
     -- toAda
     ---------------------------------------------------------------------------
-    procedure toAda (cstr : System.Address; s : in out String) is
+    procedure toAda (cstr : System.Address; s : in out String) with
+        SPARK_Mode => Off -- raw memory reads through an address overlay
+    is
         use System.Storage_Elements;
         use ASCII;
 
@@ -118,6 +124,9 @@ is
         idx      : Natural := s'First;
     begin
         s := (others => NUL);
+        if s'Length = 0 then
+            return;
+        end if;
 
         loop
             declare

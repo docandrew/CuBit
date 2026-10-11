@@ -1,0 +1,8 @@
+# Keyboard auto-repeat regression profile (tests/key-repeat): one text
+# field (clipboard-check) to hold keys in.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "clipboard-check.app" (priority 3))
+)

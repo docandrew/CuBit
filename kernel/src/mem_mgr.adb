@@ -325,7 +325,7 @@ package body Mem_mgr is
 
         -- Zeroize the top-level page table
         for i in kernelP4'Range loop
-            kernelP4(i) := Virtmem.u64ToPTE(0);
+            kernelP4(i) := Virtmem.EMPTY_PTE;
         end loop;
 
         -- Map everything R/W below 0x100000 (except null page) to start.
@@ -579,7 +579,7 @@ package body Mem_mgr is
         use Virtmem; -- for PageTableIndex
     begin
         for i in PageTableIndex(256) .. PageTableIndex(511) loop
-            procP4(i) := u64ToPTE(0);
+            procP4(i) := EMPTY_PTE;
         end loop;
 
         Virtmem.flushTLB;

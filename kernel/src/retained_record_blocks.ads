@@ -13,7 +13,7 @@ generic
    with function Allocate
      (Bytes, Alignment : System.Storage_Elements.Storage_Count)
       return System.Address;
-package Retained_Record_Blocks is
+package Retained_Record_Blocks with SPARK_Mode => Off is
    subtype Slot is Natural range 0 .. Maximum_Index;
    Maximum_Blocks : constant Positive := Maximum_Index / Records_Per_Block + 1;
    type Element_Access is access all Element;

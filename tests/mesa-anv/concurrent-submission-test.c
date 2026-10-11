@@ -11,6 +11,7 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdio.h>
+#include <string.h>
 
 uint32_t cubit_intel_memory_contract(uint64_t slot) { (void)slot; return 1; }
 uint32_t cubit_intel_session_status(uint64_t slot) { (void)slot; return 0; }
@@ -138,6 +139,8 @@ int main(void)
    assert(!pthread_create(&closing, NULL, close_thread, &r->device));
    wait_inside(&update_inside);
    wait_inside(&close_inside);
+   struct timespec held_from, held_to;
+   clock_gettime(CLOCK_MONOTONIC, &held_from);
    struct vk_sync *fence = make(r, &binary_type.sync, 0);
    for (unsigned frame = 0; frame < 1000; frame++) {
       assert(vk_sync_reset(&r->device.vk, fence) == VK_SUCCESS);
@@ -150,13 +153,24 @@ int main(void)
       checks += 3;
    }
    assert(atomic_load(&updates) == 0);
+   clock_gettime(CLOCK_MONOTONIC, &held_to);
+   const unsigned long long held_for_us = (unsigned long long)
+      ((held_to.tv_sec - held_from.tv_sec) * 1000000LL + (held_to.tv_nsec - held_from.tv_nsec) / 1000);
    pthread_mutex_lock(&gate);
    hold = false;
    pthread_cond_broadcast(&gate_changed);
    pthread_mutex_unlock(&gate);
    assert(!pthread_join(updating, NULL) && !pthread_join(closing, NULL));
    assert(update_result == VK_SUCCESS && close_ran == VK_SUCCESS && atomic_load(&updates) == 1);
-   checks += 2;
+   /* The blocking-call evidence names both held calls, each blocked for the
+    * 1000 frames (well over a millisecond); submits never block. */
+   char report[512];
+   assert(cubit_mesa_blocking_report(report, sizeof report) > 0);
+   unsigned long long held_us = 0;
+   const char *vm = strstr(report, "vm-update=1/"), *closed = strstr(report, "close=1/");
+   assert(vm && closed && sscanf(vm, "vm-update=1/%lluus", &held_us) == 1 && held_us >= held_for_us);
+   assert(cubit_mesa_blocking_report(report, sizeof report) == 0);   /* reset */
+   checks += 4;
 
    /* Four submitters, four VM updaters and a GPU, all at once. */
    pthread_t submitters[4], updaters[4], completer;

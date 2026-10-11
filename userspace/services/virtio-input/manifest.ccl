@@ -1,0 +1,16 @@
+# virtio-input.drv's authority (docs/ccl-driver-manifests.md). devmgr reads
+# the interrupt request from the linked ELF and installs the vector's CAP_IRQ
+# in its slot (docs/msi-interrupts.md); it maps the register BAR and mints
+# the others itself, at the slots these bindings name.
+(Executable_Manifest
+  identity => "com.cubit.virtio-input"
+  version => "0.1.0"
+  # 0x1AF4:0x1052, virtio-input (virtio-tablet-pci and siblings).
+  device => (Device_Match.PCI_ID (PCI_ID 6900 4178))
+  requests => [
+    (device-memory "registers" 4 65536 Access.Read_Write)
+    # The event queue uses MSI-X entry 0.
+    (interrupt "device" Interrupt_Mode.MSI_X 1)
+    (dma "events" 4096)
+    (notification "mouse" Notify_Access.Publish "pointer-events")
+    (service "device-manager" "ready")])

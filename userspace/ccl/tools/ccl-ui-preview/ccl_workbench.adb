@@ -26,6 +26,8 @@ with CCL.Sessions;
 with CCL.Periodic_Programs;
 with CCL_REPL_View;
 with CCL_REPL_Commands;
+with CCL_Result_Copy;
+with CCL_Field_Clipboard;
 with CuBit.File_Selection;
 with CuBit.UI.File_Dialogs;
 with CuBit.UI;
@@ -3171,7 +3173,18 @@ begin
          use CuBit.UI.File_Dialogs;
          Action : Dialog_Action;
          Event : Dialog_Event;
+         procedure Name_Clipboard (Name : in out CuBit.UI.Editor.Edit_State; Name_Changed : out Boolean) is
+            Copied : Boolean;
+         begin
+            CCL_Field_Clipboard.Apply (Name, Polled, Single_Line => True, Changed => Name_Changed, Copied => Copied);
+         end Name_Clipboard;
+         procedure Edit_Name is new CuBit.UI.File_Dialogs.Edit_Name (Name_Clipboard);
       begin
+         if Polled in CCL_Field_Clipboard.Clipboard_Event then
+            --  The name field: copy, cut and paste a file name.
+            Edit_Name (File_Dialog);
+            return;
+         end if;
          Event.Kind :=
            (case Polled is
                when Platform.Text_Input => Text_Input, when Platform.Backspace => Backspace, when Platform.Enter => Enter,
@@ -3229,6 +3242,102 @@ begin
          Handle_REPL_Event (REPL, Event, REPL_Bounds, Submitted);
          if Submitted then CCL_Desktop_Platform.REPL_Completed (CCL_REPL_View.Latest_Result (REPL)); end if;
       end Handle_REPL;
+
+      --  Copy, cut and paste (docs/clipboard.md), for whatever has the
+      --  keyboard: the file dialog's name, the read-only output (the run's
+      --  result, typed), the REPL (its input's selection, else the newest
+      --  result, typed), the find field, or the source's selections.
+      procedure Workbench_Clipboard is
+         subtype Clip is CCL_Field_Clipboard.Clipboard_Event;
+         Event : constant Clip := Polled;
+         Copy : constant Boolean := Event in Platform.Copy_Selection | Platform.Cut_Selection;
+         Copied : Boolean := False;
+         procedure Field (State : in out CuBit.UI.Editor.Edit_State; Field_Changed : out Boolean) is
+         begin
+            CCL_Field_Clipboard.Apply (State, Event, Single_Line => True, Changed => Field_Changed, Copied => Copied);
+         end Field;
+         procedure REPL_Field (State : in out CuBit.UI.Editor.Edit_State; Field_Changed : out Boolean) is
+         begin
+            --  REPL input takes several lines' paste as one entry.
+            CCL_Field_Clipboard.Apply (State, Event, Single_Line => False, Changed => Field_Changed, Copied => Copied);
+         end REPL_Field;
+         procedure Edit_REPL is new CCL_REPL_View.Edit_Input (REPL_Field);
+         procedure Copy_Outcome (Outcome : CCL.Language.Interpretation_Result) is
+            Literal : constant String := CCL_Result_Copy.Literal (Outcome);
+         begin
+            Copied :=
+              (if Literal'Length > 0 and then CCL_Result_Copy.Type_Name (Outcome)'Length > 0
+               then Platform.Copy_Value (CCL_Result_Copy.Type_Name (Outcome), CCL_Result_Copy.Text_Form (Outcome), Literal)
+               else Platform.Copy_Text (CCL_Result_Copy.Text_Form (Outcome)));
+         end Copy_Outcome;
+      begin
+         if Output_Focused then
+            if Copy and then Has_Run then
+               Copy_Outcome (Last_Outcome);
+            elsif Copy and then Result_Last > 0 then
+               Copied := Platform.Copy_Text (Result_Text (1 .. Result_Last));
+            end if;
+         elsif REPL_Visible then
+            if Copy and then not CCL_REPL_View.Input_Selected (REPL) then
+               declare
+                  Found : Boolean;
+                  Outcome : CCL.Language.Interpretation_Result;
+               begin
+                  CCL_REPL_View.Latest_Value (REPL, Found, Outcome);
+                  if Found then
+                     Copy_Outcome (Outcome);
+                  end if;
+               end;
+            else
+               Edit_REPL (REPL);
+            end if;
+            REPL_Only_Render := True;
+         elsif Find_Active then
+            Field (Find_Query, Changed);
+         elsif Copy then
+            declare
+               Text : constant String := CuBit.UI.Editor.Documents.Content (Source);
+               Selected : String (1 .. Text'Length + CuBit.UI.Editor.Cursors.Length (Source_Cursors));
+               Length : Natural := 0;
+               State : CuBit.UI.Editor.Cursors.Cursor_State;
+               First, After : Positive;
+            begin
+               --  Every cursor's selection, in cursor order, one per line.
+               for Index in 1 .. CuBit.UI.Editor.Cursors.Length (Source_Cursors) loop
+                  State := CuBit.UI.Editor.Cursors.Element (Source_Cursors, Index);
+                  First := Positive'Min (State.Position, State.Anchor);
+                  After := Positive'Max (State.Position, State.Anchor);
+                  if After > First then
+                     if Length > 0 then
+                        Length := Length + 1;
+                        Selected (Length) := ASCII.LF;
+                     end if;
+                     Selected (Length + 1 .. Length + After - First) :=
+                       Text (Text'First + First - 1 .. Text'First + After - 2);
+                     Length := Length + After - First;
+                  end if;
+               end loop;
+               if Length > 0 then
+                  Copied := Platform.Copy_Text (Selected (1 .. Length));
+                  if Copied and then Event = Platform.Cut_Selection then
+                     Backspace_Source (Changed);
+                  end if;
+               end if;
+            end;
+         else
+            declare
+               Text : String (1 .. SOURCE_CAPACITY);
+               Last : Natural;
+               Pasted : Boolean;
+            begin
+               CCL_Field_Clipboard.Paste_Into (Text, Last, Pasted);
+               if Pasted and then Last >= Text'First then
+                  Insert_Source (Text (1 .. Last), Changed, Source_Histories.Other_Edit);
+               end if;
+            end;
+         end if;
+         --  The platform logs each copy and paste outcome.
+      end Workbench_Clipboard;
 
       procedure Toggle_REPL is
       begin
@@ -3333,6 +3442,8 @@ begin
               Polled in Platform.Text_Input .. Platform.Select_All | Platform.Up .. Platform.Page_Down | Platform.Undo .. Platform.Redo | Platform.Wheel_Left .. Platform.Find_Next
             then
                null; -- read-only output cannot mutate the source behind it
+            elsif Polled in CCL_Field_Clipboard.Clipboard_Event then
+               Workbench_Clipboard;
             elsif Polled = Platform.Toggle_REPL then
                Toggle_REPL;
             elsif Polled = Platform.Toggle_Watch then

@@ -9,6 +9,7 @@
 #include "vk_device.h"
 #include <pthread.h>
 #include <errno.h>
+#include <stdio.h>
 #include <time.h>
 
 struct cubit_gpu_timeline {
@@ -46,6 +47,49 @@ VkResult anv_cubit_sync_prepare(void)
 {
    return pthread_once(&sync_once, initialize_condition) || !sync_ready ?
       VK_ERROR_INITIALIZATION_FAILED : VK_SUCCESS;
+}
+
+/* Blocking-call evidence, lock-free: relaxed counters, read and reset by
+ * the report (a sample racing the reset lands in either period). */
+struct blocking_site { uint64_t count, total_ns, max_ns; };
+static struct blocking_site blocking[ANV_CUBIT_BLOCK_SITES];
+static const char *const blocking_names[ANV_CUBIT_BLOCK_SITES] = {
+   "create", "close", "map", "unmap", "vm-update", "status", "prepare", "gpu-wait", "cpu-wait",
+};
+uint64_t anv_cubit_blocking_start(void)
+{
+   struct timespec now;
+   return clock_gettime(CLOCK_MONOTONIC, &now) ? 0 :
+      (uint64_t)now.tv_sec * NANOSECONDS_PER_SECOND + (uint64_t)now.tv_nsec;
+}
+void anv_cubit_blocking_note(enum anv_cubit_blocking_site site, uint64_t started)
+{
+   const uint64_t now = anv_cubit_blocking_start();
+   if (site >= ANV_CUBIT_BLOCK_SITES || !started || now < started) return;
+   const uint64_t took = now - started;
+   __atomic_add_fetch(&blocking[site].count, 1, __ATOMIC_RELAXED);
+   __atomic_add_fetch(&blocking[site].total_ns, took, __ATOMIC_RELAXED);
+   uint64_t seen = __atomic_load_n(&blocking[site].max_ns, __ATOMIC_RELAXED);
+   while (took > seen && !__atomic_compare_exchange_n(&blocking[site].max_ns, &seen, took,
+                                                      false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {}
+}
+uint32_t cubit_mesa_blocking_report(char *buffer, uint32_t capacity)
+{
+   uint32_t length = 0;
+   if (!buffer || !capacity) return 0;
+   buffer[0] = 0;
+   for (unsigned site = 0; site < ANV_CUBIT_BLOCK_SITES; site++) {
+      const uint64_t count = __atomic_exchange_n(&blocking[site].count, 0, __ATOMIC_RELAXED);
+      const uint64_t total = __atomic_exchange_n(&blocking[site].total_ns, 0, __ATOMIC_RELAXED);
+      const uint64_t max = __atomic_exchange_n(&blocking[site].max_ns, 0, __ATOMIC_RELAXED);
+      if (!count) continue;
+      const int wrote = snprintf(buffer + length, capacity - length, "%s%s=%llu/%lluus/%lluus",
+         length ? " " : "", blocking_names[site], (unsigned long long)count,
+         (unsigned long long)(total / 1000), (unsigned long long)(max / 1000));
+      if (wrote < 0 || (uint32_t)wrote >= capacity - length) { buffer[length] = 0; break; }
+      length += (uint32_t)wrote;
+   }
+   return length;
 }
 
 static struct cubit_gpu_timeline *as_timeline(struct vk_sync *sync)
@@ -181,7 +225,9 @@ static VkResult wait_values(struct vk_device *device, uint32_t count,
          if (any && on_cpu && remaining > MIXED_WAIT_SLICE_NS)
             remaining = MIXED_WAIT_SLICE_NS;
          pthread_mutex_unlock(&sync_mutex);
+         const uint64_t started = anv_cubit_blocking_start();
          enum cubit_gpu_queue_status status = cubit_gpu_queue_wait(slot, context, target, remaining);
+         anv_cubit_blocking_note(ANV_CUBIT_BLOCK_GPU_WAIT, started);
          if (status != CUBIT_GPU_QUEUE_OK && status != CUBIT_GPU_QUEUE_TIMED_OUT)
             return lost(device);
          pthread_mutex_lock(&sync_mutex);
@@ -192,7 +238,9 @@ static VkResult wait_values(struct vk_device *device, uint32_t count,
       uint64_t until = deadline - now > CPU_WAIT_SLICE_NS ? now + CPU_WAIT_SLICE_NS : deadline;
       struct timespec timeout = { .tv_sec = until / NANOSECONDS_PER_SECOND,
                                   .tv_nsec = until % NANOSECONDS_PER_SECOND };
+      const uint64_t started = anv_cubit_blocking_start();
       int error = pthread_cond_timedwait(&sync_changed, &sync_mutex, &timeout);
+      anv_cubit_blocking_note(ANV_CUBIT_BLOCK_CPU_WAIT, started);
       if (error && error != ETIMEDOUT) { result = VK_ERROR_UNKNOWN; break; }
       /* Always recheck values and clock, including spurious wakeups. */
    }

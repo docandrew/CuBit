@@ -33,6 +33,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
+with System;
 with CuBit.GPU_Queues;
 with Native_GPU_Timeline;
 
@@ -46,7 +47,7 @@ package Native_GPU_Queue is
 
    --  A descriptor as C writes it (struct cubit_gpu_job). Operation is
    --  GQ.Opcode's representation (Execute or Signal); a wait's Target 0 is
-   --  no wait.
+   --  no wait; Kinds are CuBit.GPU_Queues.Kinds bits (the driver's per-kind accounting).
    type Wait_Words is record
       Context : Unsigned_32 := 0;
       Reserved : Unsigned_32 := 0;
@@ -58,7 +59,7 @@ package Native_GPU_Queue is
       Handle    : Unsigned_32 := 0;
       Offset    : Unsigned_32 := 0;
       Bytes     : Unsigned_32 := 0;
-      Reserved  : Unsigned_32 := 0;
+      Kinds     : Unsigned_32 := 0;
       GPU       : Unsigned_64 := 0;
       First, Second : Wait_Words;
       Deadline_Us : Unsigned_64 := 0;
@@ -104,5 +105,35 @@ package Native_GPU_Queue is
      (Slot : Unsigned_64; Context : Unsigned_32; Target, Remaining_Ns : Unsigned_64)
       return Queue_Status
      with Export, Convention => C, External_Name => "cubit_gpu_queue_wait";
+
+   ------------------------------------------------------------------------
+   --  A completion event for an event loop (Desktop's): instead of looking
+   --  again on a timer while its GPU work runs, the loop arms one wake and
+   --  sleeps in its own wait; the driver answers OP_GPU_WAKE into the
+   --  loop's completion queue when the work is done (or fails). One armed
+   --  wake per process, on the one open queue; Arm and Collect are called
+   --  from the same thread. While armed, other threads' Wait polls.
+   ------------------------------------------------------------------------
+   type Wake_Arm is (Armed, Idle, Unavailable) with Convention => C;
+   for Wake_Arm use (Armed => 0, Idle => 1, Unavailable => 2);
+
+   --  Armed: a completion with Token (fresh, above every token used
+   --  before) will arrive once the last job submitted on the render context
+   --  completes. Idle: it has completed already (nothing to wait for).
+   --  Unavailable: no single open queue, the session failed, a wake is
+   --  armed or held already, or the kernel refused the request.
+   function Arm_Idle_Wake (Token : Unsigned_64) return Wake_Arm
+     with Export, Convention => C, External_Name => "cubit_gpu_wake_arm";
+   --  A completion-queue entry (a CuBit.Messages.CompletionEntry): 1 when
+   --  it answered the armed wake (consumed, the wake is disarmed), else 0.
+   function Collect_Wake (Receipt : System.Address) return Unsigned_32
+     with Export, Convention => C, External_Name => "cubit_gpu_wake_collect";
+
+   --  An input hint for the driver's waitboost (OP_GPU_BOOST, one way, no
+   --  wait): at most one per Boost_Hint_Interval_Ms per process, on the one
+   --  open queue. 1: sent; 0: coalesced, no single open queue, or refused.
+   Boost_Hint_Interval_Ms : constant := 16;
+   function Boost_Hint return Unsigned_32
+     with Export, Convention => C, External_Name => "cubit_gpu_boost_hint";
 
 end Native_GPU_Queue;

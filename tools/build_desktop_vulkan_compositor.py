@@ -178,6 +178,7 @@ def main():
             record(header)
         for directory in ('userspace/services/desktop', 'userspace/lib/compositor',
                           'userspace/lib/display', 'userspace/lib/image', 'userspace/lib/theme', 'userspace/lib/ui',
+                          'userspace/lib/input',
                           'userspace/ccl/src', 'userspace/allocator/src',
                           'userspace/services/display/production'):
             for path in sorted((source / directory).rglob('*')):

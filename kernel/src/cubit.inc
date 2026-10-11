@@ -62,3 +62,10 @@ SYSCALL_RETURN_SHARED_MEMORY_GRANT_ACQUISITION equ 111
 STDIN                   equ 0
 STDOUT                  equ 1
 STDERR                  equ 2
+
+; Device interrupt vectors - make sure these match
+; shared/interrupts/device_vector_abi.ads (First_Vector, Vector_Count) and
+; interrupts.adb (DEVICE_STUB_BYTES). createIDT checks the stub table size.
+DEVICE_VECTOR_FIRST     equ 48
+DEVICE_VECTOR_COUNT     equ 79
+DEVICE_STUB_BYTES       equ 32

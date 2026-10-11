@@ -375,13 +375,19 @@ package body Process.IPC is
         proctab(owner).irqNotificationPending := False;
         item :=
           (msg       =>
-             (tag      => (label => 1, length => 0, flags => 0, reserved => 0),
+             (tag      => (label => IPC_Labels.EVENT_IRQ,
+                           length => Device_Vector_ABI.Pending_Words,
+                           flags => 0, reserved => 0),
               authorityTag => 0,
               words    => (others => 0)),
            sender    => NO_PROCESS,
            kind      => RING_EVENT,
            requestId => NO_REQUEST_ID,
            senderThread => NO_THREAD, publisher => NO_PROCESS, callSequence => 0);
+        for w in Device_Vector_ABI.Pending_Word_Index loop
+            item.msg.words (w) := proctab(owner).irqPendingVectors (w);
+        end loop;
+        proctab(owner).irqPendingVectors := (others => 0);
         success := True;
     end takeIRQDoorbell;
 
@@ -1729,6 +1735,34 @@ package body Process.IPC is
 
         Spinlocks.exitCriticalSection (mailtab(dest).lock);
     end notifyIRQ;
+
+    ---------------------------------------------------------------------------
+    -- notifyDeviceVector
+    -- notifyIRQ for a message-signaled vector: also mark which one, so a
+    -- driver with several vectors (per-queue MSI-X) drains only those.
+    ---------------------------------------------------------------------------
+    procedure notifyDeviceVector (dest   : ProcessID;
+                                  vector : Device_Vector_ABI.Device_Vector)
+    is
+        use Device_Vector_ABI;
+    begin
+        if dest = NO_PROCESS or else threadOf (dest).state = INVALID then
+            return;
+        end if;
+
+        Spinlocks.enterCriticalSection (mailtab(dest).lock);
+        if mailtab(dest).closed then
+            Spinlocks.exitCriticalSection (mailtab(dest).lock);
+            return;
+        end if;
+        proctab(dest).irqPendingVectors (Word_Of (vector)) :=
+          proctab(dest).irqPendingVectors (Word_Of (vector)) or Mask_Of (vector);
+        proctab(dest).irqNotificationPending := True;
+
+        wakeForUnsolicitedWork (dest);
+
+        Spinlocks.exitCriticalSection (mailtab(dest).lock);
+    end notifyDeviceVector;
 
     function putReport
       (subject : ProcessID; kind : Kernel_Reports.Report_Kind;
@@ -4122,6 +4156,7 @@ package body Process.IPC is
                 proctab(pid).numPending := 0;
                 proctab(pid).requestSequence := IPC_Request_Ids.Initial_Sequence;
                 proctab(pid).irqNotificationPending := False;
+                proctab(pid).irqPendingVectors := (others => 0);
                 proctab(pid).kernelNoticePending := False;
                 t := mainThreadOf (pid);
                 while t /= NO_THREAD loop

@@ -1,0 +1,13 @@
+project Prove is
+   for Source_Dirs use ("../../userspace/lib/input",
+                        "../../userspace/services/virtio-input");
+   for Source_Files use (
+     "input_pending.ads", "input_pending.adb",
+     "absolute_pointer.ads", "absolute_pointer.adb",
+     "absolute_pending.ads", "absolute_pending.adb",
+     "virtio_input_events.ads", "virtio_input_events.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Prove;

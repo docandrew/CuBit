@@ -1,3 +1,4 @@
+pragma Ada_2022;
 -- Packed membership tree. Leaves identify blocks; internal bits summarize
 -- whether either child is nonempty. No addresses or payload data are stored.
 package Free_Block_Set with SPARK_Mode, Pure is

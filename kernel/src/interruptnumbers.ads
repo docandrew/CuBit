@@ -4,6 +4,8 @@
 --
 -- x86-64 interrupt vector numbers
 -------------------------------------------------------------------------------
+with Device_Vector_ABI;
+
 package InterruptNumbers with
     SPARK_Mode => On
 is
@@ -49,8 +51,15 @@ is
     COPROCESSOR                 : constant x86Interrupt := 45;
     IDE1                        : constant x86Interrupt := 46;  -- technically "ATA1"
     IDE2                        : constant x86Interrupt := 47;
-    DEVICE_MSI_FIRST            : constant x86Interrupt := 48;
-    DEVICE_MSI_LAST             : constant x86Interrupt := 49;
+
+    -- Message-signaled device vectors (docs/msi-interrupts.md): allocated
+    -- per device by Device_Interrupts, never fixed per driver.
+    DEVICE_VECTOR_FIRST         : constant x86Interrupt :=
+                                    Device_Vector_ABI.First_Vector;
+    DEVICE_VECTOR_LAST          : constant x86Interrupt :=
+                                    Device_Vector_ABI.Last_Vector;
+    subtype Device_Vector is x86Interrupt
+      range DEVICE_VECTOR_FIRST .. DEVICE_VECTOR_LAST;
 
     -- CuBitOS defined
     KERNEL_PANIC                : constant x86Interrupt := 127;

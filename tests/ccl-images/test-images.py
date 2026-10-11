@@ -83,7 +83,8 @@ class Images(unittest.TestCase):
                     ROOT / "images/artifacts.ccl", ROOT / f"images/{name}.ccl")
                 bootstrap = {row[5] for row in rows if row[0] == "BOOTSTRAP"}
                 if name == "development-initrd":
-                    self.assertEqual(bootstrap, stage1 | {"system.ccl"})
+                    # QEMU sessions add the virtio-tablet driver (docs/vm-guide.md).
+                    self.assertEqual(bootstrap, stage1 | {"system.ccl", "virtio-input.drv"})
                 elif name == "laptop-initrd":
                     self.assertEqual(bootstrap, stage1 | stage2 |
                                      {"system.ccl", "init.ccl", "live-rw.ext2", "doom1.wad"})

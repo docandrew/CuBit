@@ -17,12 +17,18 @@ with Intel_GPU_Timeline;
 --   Active  - takes jobs.
 --   Faulted - takes no more jobs (a descriptor was refused); jobs already
 --             on the GPU still complete normally.
---   Hung    - the watchdog fired: no timeline progress within the hang
---             budget, or the oldest unfinished job's deadline passed.
+--   Hung    - the watchdog fired (GPU-005): the oldest unfinished job has
+--             been running on the GPU (its start stamp written) for the
+--             hang budget, or past its deadline; or nothing progressed for
+--             the patience, which is longer than the budget. A context
+--             whose job waits behind another context's (not started) is
+--             never Hung by the budget: it is innocent while the guilty
+--             one is evicted.
 --   Lost    - the timeline regressed or went past what was published, it
 --             could not be read, the clock failed, or the device or session
 --             was lost. Hung and Lost fail every owed job.
--- Until reset recovery exists (step 7), Hung and Lost are final.
+-- Hung and Lost are final for the context; the driver evicts a Hung
+-- context from the engine (docs/gpu-async-submission.md "GPU-005").
 package Intel_GPU_Context_Ledger with SPARK_Mode is
    pragma Unevaluated_Use_Of_Old (Allow);
    package Q renames CuBit.GPU_Queues;
@@ -59,6 +65,9 @@ package Intel_GPU_Context_Ledger with SPARK_Mode is
    function State (L : Ledger) return Health;
    function Why (L : Ledger) return Reason;
    function Progress_At (L : Ledger) return Microseconds;
+   -- The oldest unfinished job was seen started on the GPU, at Running_Since.
+   function Running (L : Ledger) return Boolean;
+   function Running_Since (L : Ledger) return Microseconds;
    -- The value of the oldest owed job.
    function First_Owed (L : Ledger) return Value
      with Pre => Valid (L) and then Count (L) > 0;
@@ -81,6 +90,7 @@ package Intel_GPU_Context_Ledger with SPARK_Mode is
                   Completed (Started'Result) = Done and then
                   State (Started'Result) = Active and then
                   not Call_Pending (Started'Result) and then
+                  not Running (Started'Result) and then
                   Progress_At (Started'Result) = Now;
 
    -- Values stop short of the top: retire the context before exhaustion.
@@ -118,12 +128,15 @@ package Intel_GPU_Context_Ledger with SPARK_Mode is
 
    -- One non-blocking observation of the timeline and the watchdogs.
    -- Gate_Open carries any further completion condition (the GuC
-   -- acknowledged the enable that submitted the work). Hang_Budget: the
-   -- longest the GPU may go without progress; explicit, no default.
+   -- acknowledged the enable that submitted the work). Head_Started: the
+   -- oldest unfinished job's start stamp is written (it reached the GPU).
+   -- Hang_Budget: the longest a started job may run; Patience: the longest
+   -- the context may go without progress at all. Explicit, no defaults.
    procedure Observe
      (L : in out Ledger; Read_OK : Boolean; Observed : Value; Gate_Open : Boolean;
-      Now, Hang_Budget : Microseconds; Result : out Observation)
-     with Pre => Valid (L) and then Hang_Budget > 0,
+      Head_Started : Boolean; Now, Hang_Budget, Patience : Microseconds;
+      Result : out Observation)
+     with Pre => Valid (L) and then Hang_Budget > 0 and then Patience >= Hang_Budget,
           Post => Valid (L) and then Accepted (L) = Accepted (L)'Old and then
                   Count (L) = Count (L)'Old and then
                   Call_Pending (L) = Call_Pending (L)'Old and then
@@ -138,6 +151,18 @@ package Intel_GPU_Context_Ledger with SPARK_Mode is
                      State (L) in Failed_Health and State (L)'Old not in Failed_Health
                    else State (L) = State (L)'Old and Why (L) = Why (L)'Old) and then
                   (if Result = Idle then not Unfinished (L)'Old) and then
+                  -- GPU-005: a context Hung by the watchdog had its job
+                  -- running for the budget (or past its deadline), or made
+                  -- no progress for the whole patience. A job that never
+                  -- started is not charged the budget.
+                  (if Result = Failed and then State (L) = Hung then
+                     (Running (L) and then Now >= Running_Since (L) and then
+                      (Now - Running_Since (L) >= Hang_Budget or else
+                       Why (L) = Q.Deadline)) or else
+                     (Now >= Progress_At (L) and then Now - Progress_At (L) >= Patience)) and then
+                  (if Result = Failed and then State (L) = Hung and then
+                      not Head_Started and then not Running (L'Old)
+                   then Now - Progress_At (L) >= Patience) and then
                   -- A timeline that regressed or passed what was published,
                   -- or could not be read, is never accepted.
                   (if State (L)'Old not in Failed_Health and then Unfinished (L)'Old and then
@@ -197,6 +222,8 @@ private
       Current : Health := Active;
       Cause : Reason := Q.None;
       Progress : Microseconds := 0;
+      Is_Running : Boolean := False;
+      Run_Start : Microseconds := 0;
    end record;
 
    function Slot_Of (V : Value) return Job_Slot is (Job_Slot (V mod Max_In_Flight));
@@ -208,6 +235,7 @@ private
       -- (its failed jobs are then popped unfinished).
       (if L.Current not in Failed_Health then L.Last - L.Done <= Value (L.Owed)) and then
       L.Seen >= L.Done and then L.Seen <= L.Last and then
+      (if L.Is_Running then L.Run_Start >= L.Progress) and then
       (L.Call = 0 or else
          (L.Owed > 0 and then L.Call > L.Last - Value (L.Owed) and then L.Call <= L.Last)));
 
@@ -219,6 +247,8 @@ private
    function State (L : Ledger) return Health is (L.Current);
    function Why (L : Ledger) return Reason is (L.Cause);
    function Progress_At (L : Ledger) return Microseconds is (L.Progress);
+   function Running (L : Ledger) return Boolean is (L.Is_Running);
+   function Running_Since (L : Ledger) return Microseconds is (L.Run_Start);
    function First_Owed (L : Ledger) return Value is (L.Last - Value (L.Owed) + 1);
    function Job_At (L : Ledger; V : Value) return Job is (L.Jobs (Slot_Of (V)));
 end Intel_GPU_Context_Ledger;

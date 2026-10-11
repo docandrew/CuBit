@@ -274,7 +274,7 @@ retain_flags = []
 if args.retain_transport:
     for unit in ('native_gpu_buffers', 'native_gpu_memory', 'native_gpu_query', 'native_gpu_queue',
                  *(['native_gpu_presentation'] if args.present_triangle else [])):
-        subprocess.run(['gnatmake', '-q', '-c', '-gnatA', '-gnat2022', '-O2',
+        subprocess.run(['gnatmake', '-q', '-c', '-gnatA', '-gnat2022', '-gnatp', '-O2',
                         '-mno-red-zone', '-fno-pic',
                         '--RTS=' + str(root / 'userspace/runtime'),
                         '-I' + str(root / 'userspace/mesa/anv'),

@@ -414,8 +414,68 @@ def boot():
     return i
 
 
+# Clipboard manager (docs/clipboard.md): the manager's own icon, one per
+# entry type, the mask for secrets and the pin.
+def clipboard():
+    """Clipboard manager: a wooden board, clip and a page."""
+    i = Icon("clipboard")
+    i.path("M 9 8 L 37 8 Q 39 8 39 10 L 39 43 Q 39 45 37 45 L 9 45 Q 7 45 7 43 L 7 10 Q 7 8 9 8 Z",
+           i.gradient("#7aa8ff", "#2f5fd0"), ink="#0d1c45")
+    i.poly([(11, 13), (35, 13), (35, 41), (11, 41)], i.gradient("#ffffff", "#dfe8f6"), ink="#0d1c45", width=1.2)
+    i.path("M 16 5 L 30 5 L 31 11 L 15 11 Z", i.gradient("#f2f5fa", "#9aa6bc"), ink="#0d1c45", width=1.4)
+    for n, (c, w) in enumerate((("#ff8a3d", 14), ("#3fbf7f", 18), ("#8c5cf5", 11))):
+        y = 19 + n * 7
+        i.line([(15, y), (15 + w, y)], c, 2.6)
+    return i
+
+
+def clip_text():
+    """A text entry: a white sheet with blue lines and a folded corner."""
+    i = Icon("clip-text")
+    i.poly([(10, 5), (30, 5), (38, 13), (38, 43), (10, 43)], i.gradient("#ffffff", "#e3eaf5"), ink="#13284f")
+    i.poly([(30, 5), (30, 13), (38, 13)], i.gradient("#c9d6ec", "#9fb2d4"), ink="#13284f", width=1.4)
+    for n, w in enumerate((18, 22, 14, 20)):
+        y = 19 + n * 6
+        i.line([(15, y), (15 + w, y)], "#2f7cf6", 2.4)
+    return i
+
+
+def clip_value():
+    """A typed CCL value: an orange tag with a purple cube charm."""
+    i = Icon("clip-value")
+    i.path("M 6 22 L 20 8 L 40 8 L 40 28 L 26 42 Z", i.gradient("#ffc56b", "#f07a12"), ink="#3d1a00")
+    i.circle(33, 15, 3.2, "#fff4de", ink="#3d1a00", width=1.6)
+    i.box(-6, -6, -2, 12, 12, 10, PURPLE[0], PURPLE[1], PURPLE[2], ink="#25094d", ox=19, oy=30, )
+    return i
+
+
+def clip_mask():
+    """A secret: a deep purple masquerade mask with gold trim."""
+    i = Icon("clip-mask")
+    mask = ("M 4 18 Q 12 11 24 16 Q 36 11 44 18 Q 44 30 34 33 Q 28 34 24 28 "
+            "Q 20 34 14 33 Q 4 30 4 18 Z")
+    i.path(mask, i.gradient("#7d3df0", "#3a1286"), ink="#1a0640")
+    i.path("M 6 19 Q 13 13 24 18 Q 35 13 42 19", "none", ink="#ffd24a", width=1.8)
+    i.ellipse(15, 23, 5, 3.2, "#120428", ink="#ffd24a", width=1.4)
+    i.ellipse(33, 23, 5, 3.2, "#120428", ink="#ffd24a", width=1.4)
+    i.line([(24, 30), (24, 41)], "#ffd24a", 1.8)
+    return i
+
+
+def clip_pin():
+    """Pinned: a red push pin, isometric head and steel point."""
+    i = Icon("clip-pin")
+    i.line([(23, 28), (14, 43)], "#5b6577", 3.2)
+    i.line([(23, 28), (14, 43)], "#d7dde8", 1.4)
+    i.ellipse(27, 25, 12, 6, i.gradient("#c4151f", "#7a0a10"), ink="#2a0303")
+    i.path("M 21 23 L 23 10 L 33 10 L 33 23 Z", i.gradient("#ff6b6b", "#d4141e"), ink="#2a0303")
+    i.ellipse(28, 10, 8, 4, i.radial("#ffb3a8", "#ff3b3b"), ink="#2a0303")
+    return i
+
+
 ICONS = (cubit_logo, workbench, console, logs, trace, doom, devices, files, gameboy, settings,
-         inspector, mesa, boot, power, system, development, web, games, media, tools)
+         inspector, mesa, boot, power, system, development, web, games, media, tools,
+         clipboard, clip_text, clip_value, clip_mask, clip_pin)
 
 
 def main():

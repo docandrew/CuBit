@@ -9,7 +9,7 @@ project GPU_Queue_Runtime is
       "cubit-channel_contracts.adb", "cubit-channel_rings.ads", "cubit-channel_rings.adb",
       "cubit-slot_rings.ads", "cubit-slot_rings.adb",
       "cubit-submission_queues.ads", "cubit-submission_queues.adb",
-      "cubit-gpu_queues.ads", "cubit-gpu_queue_clients.ads", "cubit-gpu_queue_clients.adb");
+      "cubit-gpu_queues.ads", "cubit-gpu_queues-kinds.ads", "cubit-gpu_queue_clients.ads", "cubit-gpu_queue_clients.adb");
    for Object_Dir use external ("QUEUE_RUNTIME_OBJ", "build-gpu-queue-runtime");
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2", "-I-");

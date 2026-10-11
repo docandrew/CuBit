@@ -369,4 +369,16 @@ package body CuBit.UI.File_Dialogs is
          end;
       end if;
    end Draw;
+   procedure Edit_Name (State : in out Dialog_State) is
+      Changed : Boolean;
+   begin
+      if not State.Visible or else State.Operation = Unsaved_Changes then
+         return;
+      end if;
+      State.Focus := Name_Field;
+      Process (State.Name, Changed);
+      if Changed then
+         State.Error_Length := 0;
+      end if;
+   end Edit_Name;
 end CuBit.UI.File_Dialogs;

@@ -182,7 +182,11 @@ is
     ---------------------------------------------------------------------------
     -- teardown - free underlying memory used by this allocator
     ---------------------------------------------------------------------------
-    procedure teardown (pool : in out Slab);
+    procedure teardown (pool : in out Slab) with
+        Pre => BuddyAllocator.initialized and then
+               pool.numBlocks <= BlockList'Last and then
+               (for all b in 1 .. pool.numBlocks =>
+                  BuddyAllocator.isValidBlock (pool.blockOrder, pool.blocks (b)));
 
     ---------------------------------------------------------------------------
     -- hasFree
@@ -237,6 +241,7 @@ is
     -- @exception NotInitializedException if setup has not been called on pool
     ---------------------------------------------------------------------------
     function Storage_Size (pool : in Slab)
-        return System.Storage_Elements.Storage_Count;
+        return System.Storage_Elements.Storage_Count with
+        Pre => pool.initialized;
 
 end SlabAllocator;

@@ -21,6 +21,8 @@ with Trace;
 with Util;
 with x86;
 with Build;
+with Boot_Timeline;
+with Boot_Timeline_Layout;
 
 use type Process.MessageTag;
 
@@ -128,6 +130,11 @@ package body Syscall is
             when 37   => number := SYSCALL_OUTP32;
             when 129  => number := SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY;
             when 128  => number := SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY;
+            when 130  => number := SYSCALL_ALLOCATE_DEVICE_VECTORS;
+            when 131  => number := SYSCALL_RELEASE_DEVICE_VECTORS;
+            when 132  => number := SYSCALL_READ_DEVICE_VECTOR;
+            when Boot_Timeline_Layout.System_Call_Number =>
+                number := SYSCALL_BOOT_TIMELINE;
             when 42   => number := SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY;
             when 48   => number := SYSCALL_REPLY_WAIT;
             when 50   => number := SYSCALL_VIRT_TO_PHYS;
@@ -205,6 +212,13 @@ package body Syscall is
         startTSC   : Unsigned_64 := 0;
         syscallNum : SyscallNumber;
         validSyscall : Boolean;
+        -- Boot timeline (docs/boot-timeline.md): a blocking call's kind and
+        -- start, while the boot window records.
+        waitKind   : Boot_Timeline_Layout.Wait_Kind := Boot_Timeline_Layout.No_Wait;
+        waitStart  : Unsigned_64 := 0;
+        -- Captured before dispatch: a blocked thread may resume on another
+        -- CPU, where percpu no longer describes it.
+        waitPID    : Process.ProcessID := Process.NO_PROCESS;
     begin
         if traceActive then
             startTSC := x86.rdtsc;
@@ -231,9 +245,40 @@ package body Syscall is
             return 0;
         end if;
 
+        if Boot_Timeline.Recording then
+            case syscallNum is
+                -- Entering a receive: the first one after registration is
+                -- the process's Ready (its request loop).
+                when SYSCALL_RECEIVE | SYSCALL_REPLY_WAIT |
+                     SYSCALL_RECEIVE_UNTIL_MONOTONIC_MILLISECOND |
+                     SYSCALL_WAIT_FOR_IPC_OR_COMPLETION_UNTIL_MONOTONIC_MILLISECOND |
+                     SYSCALL_RECEIVE_EVENT =>
+                    Boot_Timeline.Note_Event
+                      (Natural (Process.processOf (percpu.currentThread)),
+                       Boot_Timeline.Received);
+                    waitKind := Boot_Timeline_Layout.Receive;
+                when SYSCALL_SLEEP | SYSCALL_SLEEP_UNTIL_MONOTONIC_MICROSECOND =>
+                    waitKind := Boot_Timeline_Layout.Sleep;
+                when SYSCALL_WAIT_COMPLETION =>
+                    waitKind := Boot_Timeline_Layout.Completion;
+                when SYSCALL_FUTEX_WAIT =>
+                    waitKind := Boot_Timeline_Layout.Futex;
+                when others =>
+                    null;
+            end case;
+            if Boot_Timeline_Layout."/=" (waitKind, Boot_Timeline_Layout.No_Wait) then
+                waitPID := Process.processOf (percpu.currentThread);
+                waitStart := Boot_Timeline.Now;
+            end if;
+        end if;
+
         case syscallNum is
             when SYSCALL_EXIT =>
                 exitp (Process.processOf (percpu.currentThread), arg0);
+
+            when SYSCALL_BOOT_TIMELINE =>
+                Admin.handleBootTimeline
+                  (Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, retval);
 
             when SYSCALL_KILL =>
                 Admin.handleKill (
@@ -548,6 +593,19 @@ package body Syscall is
                 Admin.handleEnableIrq (
                     Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
 
+            when SYSCALL_ALLOCATE_DEVICE_VECTORS =>
+                Admin.handleAllocateDeviceVectors (
+                    Process.processOf (percpu.currentThread),
+                    arg0, arg1, arg2, arg3, retval);
+
+            when SYSCALL_RELEASE_DEVICE_VECTORS =>
+                Admin.handleReleaseDeviceVectors (
+                    Process.processOf (percpu.currentThread), arg0, retval);
+
+            when SYSCALL_READ_DEVICE_VECTOR =>
+                Admin.handleReadDeviceVector (
+                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
+
             when SYSCALL_MAP_INTO =>
                 IPC.handleMapInto (
                     Process.processOf (percpu.currentThread),
@@ -635,6 +693,19 @@ package body Syscall is
 
         end case;
 
+        if Boot_Timeline_Layout."/=" (waitKind, Boot_Timeline_Layout.No_Wait) then
+            declare
+                pid : constant Process.ProcessID := waitPID;
+            begin
+                Boot_Timeline.Note_Wait
+                  (Slot    => Natural (pid),
+                   Waiter  => Process_Identities.To_Word (Process.identityOf (pid)),
+                   Kind    => waitKind,
+                   Label   => 0,
+                   Target  => Boot_Timeline_Layout.No_Identity,
+                   Started => waitStart);
+            end;
+        end if;
         if traceActive then
             Trace.ObserveDuration (Trace.EVENT_SYSCALL_TIME,
                                    x86.rdtsc - startTSC);

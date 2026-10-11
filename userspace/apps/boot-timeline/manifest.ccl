@@ -1,0 +1,7 @@
+# boot-timeline (BOOT-001, docs/boot-timeline.md): reads the kernel's boot
+# timeline through procmgr's process-observer role and prints it. Observes
+# only; writes nothing and reaches no network.
+(executable-manifest v1
+  (identity "com.cubit.boot-timeline")
+  (version "0.1.0")
+  (request-service process-observer read-write process-observer))

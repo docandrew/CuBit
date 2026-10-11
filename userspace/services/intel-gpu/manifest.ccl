@@ -1,3 +1,13 @@
-(executable-manifest v1
-  (identity "com.cubit.driver.intel-gpu")
-  (version "0.1.0"))
+# intel-gpu.drv's device requests (docs/ccl-driver-manifests.md). devmgr
+# reads the interrupt request from the linked ELF and installs the vector's
+# CAP_IRQ in its slot (docs/msi-interrupts.md); it still mints the register
+# pages itself, at the slots these bindings name. One MSI vector carries GT,
+# GuC and display interrupts alike, as in i915 (no MSI-X on Gen12).
+(Executable_Manifest
+  identity => "com.cubit.driver.intel-gpu"
+  version => "0.1.0"
+  device => (Device_Match.PCI_Class (PCI_Class 3 0 0))
+  requests => [
+    (device-memory "registers" 0 16777216 Access.Read)
+    (device-memory "forcewake" 0 4096 Access.Read_Write)
+    (interrupt "device" Interrupt_Mode.MSI 1)])

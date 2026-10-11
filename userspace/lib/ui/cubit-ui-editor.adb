@@ -20,11 +20,30 @@ package body CuBit.UI.Editor with SPARK_Mode is
    function Selection_Last (State : Edit_State) return Text_Position is
      (Text_Position'Max (State.Point, State.Anchor));
 
+   function Kind_Of (State : Edit_State) return Sensitivity is (State.Kind);
+
+   procedure Set_Kind (State : in out Edit_State; Kind : Sensitivity) is
+   begin
+      State.Kind := Kind;
+   end Set_Kind;
+
+   procedure Wipe (State : in out Edit_State) is
+   begin
+      State.Data := [others => ' '];
+      State.Last := 0;
+      State.Point := 1;
+      State.Anchor := 1;
+   end Wipe;
+
+   function Selected_Text (State : Edit_State) return String is
+     (State.Data (Selection_First (State) .. Selection_Last (State) - 1));
+
    procedure Initialize
-     (State : out Edit_State; Text : String; Accepted : out Boolean)
+     (State : out Edit_State; Text : String; Accepted : out Boolean;
+      Kind : Sensitivity := Ordinary)
    is
    begin
-      State := (others => <>);
+      State := (Kind => Kind, others => <>);
       Accepted := Text'Length <= MAX_TEXT_LENGTH;
       if Accepted and then Text'Length > 0 then
          State.Data (1 .. Text'Length) := Text;
@@ -47,6 +66,9 @@ package body CuBit.UI.Editor with SPARK_Mode is
             State.Data (First .. State.Last - Count) :=
               State.Data (Last .. State.Last);
          end if;
+         --  Overwrite the vacated tail: removed text (maybe a secret) must
+         --  not linger past Last.
+         State.Data (State.Last - Count + 1 .. State.Last) := [others => ' '];
          State.Last := State.Last - Count;
          State.Point := First;
          State.Anchor := First;

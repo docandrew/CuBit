@@ -1,10 +1,14 @@
-# DRAFT, not yet attached to hda.drv: devmgr still mints these grants itself.
-(executable-manifest v1
-  (identity "com.cubit.hda")
-  (version "0.1.0")
-  (match-pci-class 4 3 0)
-  (device-memory registers (bar 0) (max-bytes 16384) read-write)
-  (interrupt controller msi (vectors 1))
-  (dma streams (bytes 8388608))
-  (request-notification hda manage registration)
-  (request-service device-manager read-write ready))
+# hda.drv's authority (docs/ccl-driver-manifests.md). devmgr reads the
+# interrupt request from the linked ELF and installs the vector's CAP_IRQ in
+# its slot (docs/msi-interrupts.md); it still mints the others itself, at
+# the slots these bindings name.
+(Executable_Manifest
+  identity => "com.cubit.hda"
+  version => "0.1.0"
+  device => (Device_Match.PCI_Class (PCI_Class 4 3 0))
+  requests => [
+    (device-memory "registers" 0 16384 Access.Read_Write)
+    (interrupt "controller" Interrupt_Mode.MSI 1)
+    (dma "streams" 8388608)
+    (notification "hda" Notify_Access.Manage "registration")
+    (service "device-manager" "ready")])

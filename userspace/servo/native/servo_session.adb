@@ -2,6 +2,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.App;
 with CuBit.UI.Editor;
+with CuBit.UI.Editor_Clipboard;
 with CuBit.UI.Controls;
 with CuBit.UI.State;
 with CuBit.UI.Widgets;
@@ -789,7 +790,7 @@ package body Servo_Session is
             Outcome : Servo_Bookmarks.Outcome; OK : Boolean;
             use type Servo_Bookmarks.Outcome;
          begin
-            Servo_Bookmarks.Handle (Bookmark_Dialog, Input, Outcome);
+            Servo_Bookmarks.Handle (Bookmark_Dialog, Input, Outcome, App.Surface_ID (Win));
             if Outcome /= Servo_Bookmarks.Unchanged then Chrome_Dirty := True; Controls_Stale := True; end if;
             if Outcome = Servo_Bookmarks.Navigate then
                Editor.Initialize (Address_Edit, Servo_Bookmarks.Location (Bookmark_Dialog), OK);
@@ -844,6 +845,13 @@ package body Servo_Session is
                if not Changed then return 1; end if;
             else return 1;
             end if;
+         elsif Input.kind = App.INPUT_KEY_DOWN and then
+           CuBit.UI.Editor_Clipboard.Handle_Key
+             (Address_Edit, App.Surface_ID (Win), Input.payload0, Input.payload1).Handled
+         then
+            --  Copy, cut, paste and Select All on the address
+            --  (docs/clipboard.md).
+            null;
          elsif Input.kind = App.INPUT_KEY_DOWN then
             case Input.payload0 is
                when 16#1C# =>

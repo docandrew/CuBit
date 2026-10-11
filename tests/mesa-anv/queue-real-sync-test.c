@@ -75,7 +75,8 @@ int main(void)
    CHECK(q->executes == 1 && q->last.operation == CUBIT_GPU_EXECUTE && q->last.handle == 17 &&
          q->last.gpu == 0x20000 && q->last.offset == 0 && q->last.bytes == 4096 &&
          q->last.context == 0 && !q->last.first.target && !q->last.second.target &&
-         q->last.deadline_us == CUBIT_GPU_NO_DEADLINE && range_flushes == 1);
+         q->last.deadline_us == CUBIT_GPU_NO_DEADLINE && range_flushes == 1 &&
+         q->last.kinds == CUBIT_GPU_KIND_INTERNAL);
    const uint64_t startup_value = q->submitted.value[0];
    CHECK(!done(&r, init_fence, 0) && !done(&r, output, 1));
    CHECK(vk_sync_wait(&r.device.vk, output, 1, VK_SYNC_WAIT_PENDING, 0) == VK_SUCCESS);
@@ -93,7 +94,10 @@ int main(void)
       const struct vk_sync_signal signals[] = {{.sync = timeline, .signal_value = n + 1},
                                                {.sync = fence}};
       CHECK(vk_sync_reset(&r.device.vk, fence) == VK_SUCCESS);
+      /* The client's tag rides on this submit only. */
+      if (n == 0) cubit_gpu_tag_next_submit(CUBIT_GPU_KIND_RENDER | CUBIT_GPU_KIND_READBACK);
       CHECK(submit(&r, 2, 1, &wait, 2, signals) == VK_SUCCESS);
+      CHECK(q->last.kinds == (n == 0 ? (CUBIT_GPU_KIND_RENDER | CUBIT_GPU_KIND_READBACK) : 0u));
       CHECK(q->last.operation == CUBIT_GPU_EXECUTE && q->last.handle == 30 &&
             q->last.gpu == 0x40000 && q->last.bytes == 4096 &&
             !q->last.first.target && !q->last.second.target);

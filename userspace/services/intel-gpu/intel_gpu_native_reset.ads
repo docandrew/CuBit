@@ -2,6 +2,7 @@ with Interfaces;
 with Intel_GPU_ADLN_Steering;
 with Intel_GPU_ADLN_EU;
 with Intel_GPU_ADLN_Inventory;
+with Intel_GPU_GT_Frequency;
 package Intel_GPU_Native_Reset is
    -- Caller has mapped the six approved pages at61200000, forcewake page
    -- at60200000, and readonly BAR at60000000. Static8086:46D2 D0 ownership,
@@ -19,4 +20,11 @@ package Intel_GPU_Native_Reset is
    function ADS_Topology return Intel_GPU_ADLN_Steering.Topology;
    function ADS_Execution_Units return Intel_GPU_ADLN_EU.Topology;
    function ADS_Doorbell return Interfaces.Unsigned_32;
+   -- The render GT's frequency registers (Intel_GPU_GT_Frequency), read
+   -- only, under the forcewake this adapter retains after a successful
+   -- reset. Valid False otherwise or on an access fault.
+   function GT_Frequency return Intel_GPU_GT_Frequency.Snapshot;
+   -- GEN12_RPSTAT1 alone (the actual frequency), cheap enough per job.
+   -- Valid False under the same conditions.
+   procedure GT_Status (Status : out Interfaces.Unsigned_32; Valid : out Boolean);
 end Intel_GPU_Native_Reset;

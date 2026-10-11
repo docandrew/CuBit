@@ -144,7 +144,7 @@ package body CuBit.GPU_Queue_Clients is
            Address => Driver_Word (C, GQ.Server_Wake_At);
          Item_Wire : constant GQ.Descriptor :=
            (Operation      => GQ.Opcode'Enum_Rep (Item.Operation),
-            Flags          => 0,
+            Flags          => Item.Kinds,
             Context        => Item.Context,
             Wait_1_Context => (if Item.First.Target = GQ.No_Wait then 0
                                else GQ.Nibble (Item.First.Context)),

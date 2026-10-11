@@ -8,6 +8,7 @@ with CCL.Types;
 with CCL.Types.Shapes;
 with CCL.Units;
 
+with CCL_Result_Copy;
 package body CCL_Console_View is
    use type CCL.Interfaces.Console.Notation;
    use type CCL.Language.Views.Surface;
@@ -418,29 +419,10 @@ package body CCL_Console_View is
       State.Recalled := 0;
    end Set_Input;
 
-   --  A result as source that reads back as the same value.
-   function Result_Source (Outcome : CCL.Language.Interpretation_Result) return String is
-      Value : constant String := CCL.Sessions.Result_Value_Image (Outcome);
-      Quoted : String (1 .. 2 * Value'Length + 2);
-      Last : Natural := 1;
-   begin
-      if CCL.Sessions.Result_Type (Outcome) /= CCL.Language.String_Type or else
-        Outcome.Has_List or else Outcome.Has_Literal
-      then
-         return Value;
-      end if;
-      Quoted (1) := '"';
-      for C of Value loop
-         if C in '"' | '\' then
-            Last := Last + 1; Quoted (Last) := '\';
-         end if;
-         Last := Last + 1;
-         Quoted (Last) := (if C = ASCII.LF then 'n' else C);
-         if C = ASCII.LF then Quoted (Last - 1 .. Last) := "\n"; end if;
-      end loop;
-      Last := Last + 1; Quoted (Last) := '"';
-      return Quoted (1 .. Last);
-   end Result_Source;
+   --  A result as source that reads back as the same value (the literal a
+   --  typed copy carries, too).
+   function Result_Source (Outcome : CCL.Language.Interpretation_Result) return String
+     renames CCL_Result_Copy.Literal;
 
    --  The CCL that a table click writes. A row is bound as "row"; the
    --  query wraps the entry's own source, so it reads the same data again.
@@ -2074,6 +2056,73 @@ package body CCL_Console_View is
    end Latest_Result;
 
    function Input_Text (State : View_State) return String is (Edit.Content (State.Input));
+
+   --  The history entry a typed copy takes: the hovered result card, else
+   --  the newest entry. 0 when there is none that succeeded.
+   function Copy_Entry (State : View_State) return Natural is
+      Item : Natural := 0;
+      Entry_Value : CCL.Sessions.Submission;
+      Found : Boolean := False;
+   begin
+      if State.Hovered in 1 .. State.Hit_Total and then
+        State.Hits (State.Hovered).Kind = Result_Hit
+      then
+         Item := State.Hits (State.Hovered).Item;
+      elsif CCL.Sessions.Length (State.Session) > 0 then
+         Item := CCL.Sessions.Length (State.Session);
+      end if;
+      if Item > 0 then
+         CCL.Sessions.Recall (State.Session, Item, Entry_Value, Found);
+      end if;
+      return (if Found and then Entry_Value.Outcome.Status = CCL.Language.Succeeded
+              then Item else 0);
+   end Copy_Entry;
+
+   function Copy_Source (State : View_State) return Copy_Kind is
+     (if Edit.Selection_First (State.Input) /= Edit.Selection_Last (State.Input)
+      then Input_Selection
+      elsif Copy_Entry (State) /= 0 then Typed_Result
+      else Nothing_To_Copy);
+
+   function Copied_Outcome (State : View_State) return CCL.Sessions.Submission is
+      Entry_Value : CCL.Sessions.Submission;
+      Found : Boolean;
+   begin
+      CCL.Sessions.Recall (State.Session, Copy_Entry (State), Entry_Value, Found);
+      return Entry_Value;
+   end Copied_Outcome;
+
+   function Copy_Text (State : View_State) return String is
+     (case Copy_Source (State) is
+        when Input_Selection => Edit.Selected_Text (State.Input),
+        when Typed_Result =>
+          CCL.Sessions.Result_Value_Image (Copied_Outcome (State).Outcome),
+        when Nothing_To_Copy => "");
+
+   function Copy_Type (State : View_State) return String is
+     (if Copy_Source (State) = Typed_Result
+      then CCL.Sessions.Result_Type_Image (Copied_Outcome (State).Outcome)
+      else "");
+
+   function Copy_Literal (State : View_State) return String is
+     (if Copy_Source (State) = Typed_Result
+      then Result_Source (Copied_Outcome (State).Outcome)
+      else "");
+
+   procedure Delete_Selection (State : in out View_State; Changed : out Boolean) is
+   begin
+      Changed := False;
+      if Edit.Selection_First (State.Input) /= Edit.Selection_Last (State.Input) then
+         Edit.Backspace (State.Input, Changed);
+      end if;
+   end Delete_Selection;
+
+   procedure Insert_Pasted
+     (State : in out View_State; Text : String; Changed : out Boolean) is
+   begin
+      Edit.Insert (State.Input, Text, Changed);
+      State.Recalled := 0;
+   end Insert_Pasted;
 
    function Pointer_Style (State : View_State) return CuBit.UI.Pointer_Cursor_Style is
      (if State.Hovered in 1 .. State.Hit_Total and then State.Hits (State.Hovered).Kind = Input_Hit

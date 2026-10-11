@@ -209,7 +209,7 @@ is
     is
     begin
         for i in table'Range loop
-            table(i) := u64ToPTE (0);
+            table(i) := EMPTY_PTE;
         end loop;
     end zeroize;
 
@@ -227,6 +227,8 @@ is
         if table(index).size = True then
             raise PageTableLevelException with
                 "Attempted page table access where parent table maps big or huge pages";
+            pragma Annotate (GNATprove, Intentional, "unexpected exception might be raised",
+                             "a walk through a big or huge leaf: kernel panic, halts this CPU");
         end if;
 
         if table(index).present then
@@ -378,10 +380,6 @@ is
         --p1Addr : PhysAddress;
 
         physPFN : constant BigPFN := addrToBigPFN (phys);
-
-        -- The P2 table expects "4k" PFNs, where the lower 8 bits of the phys base
-        -- address is 0.
-        adjPFN : constant BigPFN := BigPFN(Shift_Left (physPFN, 9));
     begin
         -- Do not round an invalid request down into a different allocation.
         -- Runtime checks are required even in builds disabling contracts.
@@ -416,7 +414,7 @@ is
                            myP2(p2Index).pgNum /= 0) then
                             return;
                         end if;
-                        myP2(p2Index) := makeBigPTE (adjPFN, flags);
+                        myP2(p2Index) := makeBigPTE (physPFN, flags);
                         
                         success := True;
                         return;
@@ -699,13 +697,15 @@ is
         with SPARK_Mode => On
     is  
         newPTE : PageTableEntry; 
-        function toPFN is new Ada.Unchecked_Conversion(BigPFN, PFN);
+        -- A P2 leaf holds the "4k" frame number of the big page's first
+        -- frame: its low 9 bits are 0, and bit 0 is the PAT bit.
+        frame  : constant PFN := bigPFNToPFN (bigFrame);
     begin
         if (flags and PG_PAT) /= 0 then
             -- need to set LSB of pgNum for PAT flag
-            newPTE.pgNum        := toPFN(bigFrame) + 1;
+            newPTE.pgNum        := frame + 1;
         else
-            newPTE.pgNum        := toPFN(bigFrame);
+            newPTE.pgNum        := frame;
         end if;
 
         newPTE.present          := (flags and PG_PRESENT) /= 0;

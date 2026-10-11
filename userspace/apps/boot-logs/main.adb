@@ -6,6 +6,9 @@ with CuBit.Log_Records;
 with CuBit.Desktop_Protocol;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.App;
+with CuBit.UI.Clipboard;
+with Clipboard_Chords;
+with Clipboard_Text;
 with CuBit.UI.State;
 with CuBit.UI.Controls;
 with CuBit.UI.Input;
@@ -99,11 +102,42 @@ procedure Main is
          end loop;
       end if;
    end Render;
+   --  What Ctrl+C copies (docs/clipboard.md): the summary and the page shown,
+   --  one record per line. Records are short; this is ample.
+   COPY_CAPACITY : constant := 16_384;
+   Copy_Form : Clipboard_Text.Builder (COPY_CAPACITY);
+   procedure Copy_Shown (Win : CuBit.UI.App.Window) is
+      Result : CuBit.UI.Clipboard.Outcome;
+      First : constant Positive := Page * Rows + 1;
+      procedure Line (Text : String) is
+      begin
+         if Copy_Form.Length > 0 then
+            Clipboard_Text.Append (Copy_Form, [1 => ASCII.LF]);
+         end if;
+         Clipboard_Text.Append (Copy_Form, Text);
+      end Line;
+   begin
+      Clipboard_Text.Clear (Copy_Form);
+      for I in 1 .. Summary_Count loop
+         Line (CuBit.Log_Records.Text (Summary (I)));
+      end loop;
+      for I in First .. Natural'Min (Count, First + Rows - 1) loop
+         Line (CuBit.Log_Records.Text (Records (I)));
+      end loop;
+      CuBit.UI.Clipboard.Copy_Built (CuBit.UI.App.Surface_ID (Win), "", Copy_Form, Copy_Form, Result);
+      debugPrint ("boot-logs: copy " & CuBit.UI.Clipboard.Image (Result) & ASCII.LF);
+   end Copy_Shown;
+
    procedure Handle_Event (Win : in out CuBit.UI.App.Window;
      Event : CuBit.UI.App.Input_Event; Dirty : in out Rect; Running : in out Boolean) is
+      use type Clipboard_Chords.Command;
    begin
       if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
          Running := False;
+      elsif Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN and then
+        CuBit.UI.Clipboard.Command_Of (Event.payload0, Event.payload1) = Clipboard_Chords.Copy_Command
+      then
+         Copy_Shown (Win);
       elsif Event.kind = CuBit.UI.Input.INPUT_CONFIGURE then
          Rows := Positive'Max (1, (CuBit.UI.App.Height (Win) - 80 -
            (Summary_Capacity + 1) * Line_Height) / Line_Height);

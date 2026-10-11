@@ -354,12 +354,14 @@ is
     -- CPUID:06h[EBX]
     type CPUID_6_EBX is
     record
-        numThermalINTThresholds : Natural range 0..7;
+        numThermalINTThresholds : Natural range 0..15;
+        res4_31                 : Natural range 0..2**28 - 1;
     end record with Size => 32;
 
     for CPUID_6_EBX use
     record
         numThermalINTThresholds at 0 range 0..3;
+        res4_31                 at 0 range 4..31;
     end record;
 
     function toRecord is new Ada.Unchecked_Conversion(Unsigned_32, CPUID_6_EBX);
@@ -368,13 +370,17 @@ is
     type CPUID_6_ECX is
     record
         hasHWPerfFeedback       : Boolean;
+        res1_2                  : Natural range 0..3;
         hasPerfEnergyBiasPrefs  : Boolean;
+        res4_31                 : Natural range 0..2**28 - 1;
     end record with Size => 32;
 
     for CPUID_6_ECX use
     record
         hasHWPerfFeedback       at 0 range 0..0;
+        res1_2                  at 0 range 1..2;
         hasPerfEnergyBiasPrefs  at 0 range 3..3;
+        res4_31                 at 0 range 4..31;
     end record;
 
     function toRecord is new Ada.Unchecked_Conversion(Unsigned_32, CPUID_6_ECX);
@@ -521,7 +527,7 @@ is
         hasAVX512_4VNNIW        : Boolean; -- AVX-512 4-reg NN instrs.
         hasAVX512_4FMAPS        : Boolean; -- AVX-512 4-reg mult-acc. SP
         hasFastShortREPMOV      : Boolean;
-        res5_14                 : Natural range 0..255;
+        res5_14                 : Natural range 0..1023;
         isHybridPart            : Boolean;
         res16_19                : Natural range 0..15;
         hasCET_IBT              : Boolean; -- CET indir branch tracking
@@ -870,12 +876,15 @@ is
     -- cpuid - given the CPUID leaf, get the information returned by CPUID
     --  in the registers eax, ebx, ecx and edx.
     ---------------------------------------------------------------------------
+    -- The CPUID instruction always completes and touches only its registers.
     procedure cpuid(leaf : in Unsigned_32; 
                     eax : out Unsigned_32; ebx : out Unsigned_32;
-                    ecx : out Unsigned_32; edx : out Unsigned_32);
+                    ecx : out Unsigned_32; edx : out Unsigned_32) with
+        Global => null, Always_Terminates;
     -- CPUID with a sub-leaf in ECX (for example 0Dh, the XSAVE leaf).
     procedure cpuid(leaf, ecxIn : in Unsigned_32;
-                    eax, ebx, ecx, edx : out Unsigned_32);
+                    eax, ebx, ecx, edx : out Unsigned_32) with
+        Global => null, Always_Terminates;
 
     ---------------------------------------------------------------------------
     -- Wrapper around CPUID:00h[EAX]

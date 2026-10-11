@@ -27,6 +27,24 @@ package CuBit.UI.Input is
       payload1 : Unsigned_64 := 0;
    end record;
 
+   --  Key events: payload0 = set-1 scan code; payload1's low word holds the
+   --  KEYMOD_* modifiers and its high word the key flags. Text events:
+   --  payload1 holds the key flags alone. The values are the desktop
+   --  protocol's (CuBit.Desktop_Protocol.Key_Repeat_Flag).
+   KEY_MODIFIERS_MASK : constant Unsigned_64 := 16#FFFF_FFFF#;
+   KEY_REPEAT_FLAG    : constant Unsigned_64 := 16#1_0000_0000#;
+
+   --  A key press or text event the desktop synthesized because the key is
+   --  held (auto-repeat). Commands and toggles usually act once per press
+   --  and ignore these; editing and movement keys take them.
+   function Is_Repeat (event : Input_Event) return Boolean is
+     (event.kind in INPUT_KEY_DOWN | INPUT_TEXT and then
+      (event.payload1 and KEY_REPEAT_FLAG) /= 0);
+
+   --  Key events: the KEYMOD_* bits alone.
+   function Key_Modifiers (event : Input_Event) return Unsigned_64 is
+     (event.payload1 and KEY_MODIFIERS_MASK);
+
    --  Pointer events: payload0 = x (bits 0..31) and y (bits 32..63).
    function Pointer_X (event : Input_Event) return Natural is
      (Natural (event.payload0 and 16#7FFF_FFFF#));

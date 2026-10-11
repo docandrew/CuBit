@@ -2,6 +2,7 @@ with Interfaces;
 with Desktop_Breadcrumbs;
 with Desktop_Logs;
 with Desktop_Log_IO;
+with Desktop_Startup_Clock;
 with Compositor_Pool;
 with Compositor_Backend_Selection;
 -- Native startup boundary. Readiness is evidence for the proved selection
@@ -20,7 +21,8 @@ package Desktop_Renderer_Startup with SPARK_Mode is
       Epoch : Compositor_Pool.ID;
       Evidence : out Compositor_Backend_Selection.Readiness;
       Diagnostic : out Pipeline_Diagnostic)
-     with Global => (In_Out => (Desktop_Breadcrumbs.State, Desktop_Logs.State, Desktop_Log_IO.State)),
+     with Global => (Input => Desktop_Startup_Clock.Clock,
+                     In_Out => (Desktop_Breadcrumbs.State, Desktop_Logs.State, Desktop_Log_IO.State)),
        Post => Evidence = Compositor_Backend_Selection.Readiness'(others => False)
          and not Diagnostic.Valid;
    -- Retains uncertain startup backing; never implies physical reclamation.

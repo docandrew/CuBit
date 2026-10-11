@@ -8,7 +8,9 @@ package Desktop_Logs with SPARK_Mode, Abstract_State => State,
    procedure Write (Text : String)
      with Global => (In_Out => (State, Desktop_Log_IO.State));
    --  Echo one line (Text, without its line feed) and publish it as a
-   --  Warning record.
+   --  Warning record. (Text'Last below Positive'Last leaves room for the
+   --  line feed.)
    procedure Warn (Text : String)
-     with Global => (In_Out => (State, Desktop_Log_IO.State));
+     with Pre => Text'Last < Positive'Last,
+          Global => (In_Out => (State, Desktop_Log_IO.State));
 end Desktop_Logs;

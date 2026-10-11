@@ -1,3 +1,4 @@
+#include "vulkan_submission.h"
 #include "vulkan_pipeline_diagnostic.h"
 #include "vulkan_affine.h"
 #include "vulkan-affine-shaders.h"
@@ -138,6 +139,7 @@ static uint32_t record_affine(void *borrowed,const struct cubit_mesa_affine *d,
     e->viewport(b->command,0,1,&viewport); e->scissor(b->command,0,1,&clip);
     e->constants(b->command,e->layout,VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof push,&push);
     e->draw(b->command,6,1,0,0);
+    if(cubit_vulkan_job_note_draw)cubit_vulkan_job_note_draw(CUBIT_VULKAN_DRAW_AFFINE,(uint64_t)d->clip_w*d->clip_h);
     return 0;
 }
 

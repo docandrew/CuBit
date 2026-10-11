@@ -27,6 +27,14 @@ package body Intel_GPU_Firmware_Buffer is
         CPU_Address => Prepared_View.CPU_Address + CT_Region_Offset,
         Region_Bytes => CT_Region_Bytes);
    end Prepared_CT;
+   function Prepared_SLPC return Prepared_SLPC_Buffer is
+   begin
+      if not Prepared_View.Ready then return (Ready => False); end if;
+      return (Ready => True,
+        DMA_Address => Prepared_View.DMA_Address + SLPC_Region_Offset,
+        CPU_Address => Prepared_View.CPU_Address + SLPC_Region_Offset,
+        Region_Bytes => SLPC_Region_Bytes);
+   end Prepared_SLPC;
    function Prepared_Log return Prepared_Log_Buffer is
    begin
       if not Prepared_View.Ready then return (Ready => False); end if;

@@ -1,0 +1,24 @@
+--  SPARK proof of the desktop clipboard store, gesture tickets, the
+--  clipboard wire codec and the manager policy (level 2).
+project Prove is
+   Src := External ("CLIPBOARD_SRC", "../../userspace/services/desktop");
+   UI_Src := External ("CLIPBOARD_UI", "../../userspace/lib/ui");
+   for Source_Dirs use (Src, "../../userspace/lib/compositor", UI_Src, "build/source");
+   for Source_Files use
+     ("clipboard_store.ads", "clipboard_store.adb",
+      "clipboard_gestures.ads", "clipboard_gestures.adb",
+      "clipboard_menu.ads", "clipboard_menu.adb",
+      "compositor_clipboard_protocol.ads", "compositor_clipboard_protocol.adb",
+      "clipboard_chords.ads", "clipboard_chords.adb",
+      "clipboard_text.ads", "clipboard_text.adb",
+      "cubit.ads", "cubit-desktop_protocol.ads", "cubit-desktop_protocol.adb",
+      "cubit-grant_references.ads");
+   for Object_Dir use External ("CLIPBOARD_OBJ", "build/prove");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use
+        ("--level=2", "--checks-as-errors=on", "--report=fail", "-j0");
+   end Prove;
+end Prove;

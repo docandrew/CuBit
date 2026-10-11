@@ -15,9 +15,11 @@ static inline int cubit_desktop_input_reply_valid(
         return 0;
     switch (kind) {
     case 0: return first == 0 && second == 0 && flags == 0;
-    case 1: case 2: return first <= 127 && second <= 15;
+    /* Key press: modifiers in the low word, the repeat flag (bit 32) above. */
+    case 1: return first <= 127 && (second & 0xffffffffu) <= 15 && (second >> 32) <= 1;
+    case 2: return first <= 127 && second <= 15;
     case 10: return first == 0 && second == 0;
-    case 6: return first <= 255 && second == 0;
+    case 6: return first <= 255 && (second == 0 || second == (1ull << 32));
     case 8: return first <= 65535 && second <= 65535;
     default:
         if ((first & 0xffffffffu) > 65535 || (first >> 32) > 65535)

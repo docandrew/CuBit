@@ -66,4 +66,30 @@ package body CCL_Desktop_Platform is
       CCL_Application.Set_Name (Name);
       Set_Title (Title'Address, Interfaces.Integer_32 (Title'Length));
    end Activate;
+   --  Linux preview: an in-process clipboard (no desktop, no gestures).
+   PREVIEW_CLIPBOARD : constant := 8_192;
+   Clip_Text : String (1 .. PREVIEW_CLIPBOARD);
+   Clip_Last : Natural := 0;
+   Clip_Typed : Boolean := False;
+   function Keep (Text : String; Typed : Boolean) return Boolean is
+   begin
+      if Text'Length > PREVIEW_CLIPBOARD then return False; end if;
+      Clip_Text (1 .. Text'Length) := Text;
+      Clip_Last := Text'Length;
+      Clip_Typed := Typed;
+      return True;
+   end Keep;
+   function Copy_Text (Text : String) return Boolean is (Keep (Text, False));
+   function Copy_Value (Type_Name, Text, Literal : String) return Boolean is
+     (Type_Name'Length > 0 and then Text'Length > 0 and then Keep (Literal, True));
+   procedure Paste
+     (Text : out String; Last : out Natural; Typed, Pasted : out Boolean) is
+      Count : constant Natural := Natural'Min (Clip_Last, Text'Length);
+   begin
+      Text := [others => ' '];
+      Text (Text'First .. Text'First + Count - 1) := Clip_Text (1 .. Count);
+      Last := Text'First + Count - 1;
+      Typed := Clip_Typed;
+      Pasted := Count > 0;
+   end Paste;
 end CCL_Desktop_Platform;

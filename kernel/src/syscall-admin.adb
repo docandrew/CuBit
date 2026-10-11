@@ -11,9 +11,13 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with acpi;
+with Boot_Timeline;
+with Boot_Timeline_Layout;
 with Capabilities;
 with Capabilities.IRQ;
 with Config;
+with Device_Interrupts;
+with Device_Vector_ABI;
 with Capabilities.Operations;
 with InterruptNumbers;
 with IPC_Labels;
@@ -197,8 +201,87 @@ package body Syscall.Admin is
         -- The registrant's identity, not its slot (KERN-003).
         if retval = Unsigned_64 (callerPID) then
             retval := Process_Identities.To_Word (Process.identityOf (callerPID));
+            Boot_Timeline.Note_Event (Natural (callerPID),
+                                      Boot_Timeline.Registered);
         end if;
     end handleRegisterDriver;
+
+    ---------------------------------------------------------------------------
+    -- handleBootTimeline (docs/boot-timeline.md)
+    ---------------------------------------------------------------------------
+    procedure handleBootTimeline (callerPID : Process.ProcessID;
+                                  arg0, arg1, arg2, arg3 : Unsigned_64;
+                                  retval    : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        use type Capabilities.CapabilityType;
+        package BT renames Boot_Timeline_Layout;
+
+        --  The driver role whose registration authority may mark each
+        --  milestone: the service that owns the event.
+        Owner : constant array (BT.Milestone) of Sysinfo.DriverID :=
+          [BT.Startup_Profile_Started  => Sysinfo.DRIVER_PROCMGR,
+           BT.Startup_Profile_Launched => Sysinfo.DRIVER_PROCMGR,
+           BT.Display_Leased           => Sysinfo.DRIVER_DISPLAY,
+           BT.First_Frame_Presented    => Sysinfo.DRIVER_DESKTOP,
+           BT.First_Input_Accepted     => Sysinfo.DRIVER_DESKTOP];
+
+        function Holds (Kind : Capabilities.CapabilityType;
+                        Right : Capabilities.CapabilityRight;
+                        Object : Unsigned_64;
+                        Any_Object : Boolean) return Boolean is
+        begin
+            for slot in Capabilities.CapabilitySlot loop
+                if Process.proctab (callerPID).caps (slot).capType = Kind
+                  and then Process.proctab (callerPID).caps (slot).rights (Right)
+                  and then (Any_Object or else
+                            Process.proctab (callerPID).caps (slot).object.ref = Object)
+                then
+                    return True;
+                end if;
+            end loop;
+            return False;
+        end Holds;
+    begin
+        retval := reterr;
+        if arg0 = BT.Operation'Enum_Rep (BT.Read) then
+            if not Holds (Capabilities.CAP_PROCESS, Capabilities.RIGHT_READ, 0, True) then
+                Process.IPC.notifySupervisor
+                  (callerPID, IPC_Labels.EVENT_CAP_FAULT,
+                   Unsigned_64 (SyscallNumber'Enum_Rep (SYSCALL_BOOT_TIMELINE)), arg0, arg1);
+                return;
+            end if;
+            declare
+                Chunk  : aliased Storage_Array (1 .. BT.Read_Chunk_Bytes);
+                Copied : Unsigned_64;
+                ok     : Boolean;
+            begin
+                Boot_Timeline.Read (Chunk'Address, arg3, arg2, Copied);
+                if Copied = 0 then
+                    retval := 0;
+                    return;
+                end if;
+                Process.User_Memory.Copy_To_User
+                  (callerPID, arg1, Chunk'Address, Storage_Count (Copied), ok);
+                if ok then
+                    retval := Copied;
+                end if;
+            end;
+        elsif arg0 = BT.Operation'Enum_Rep (BT.Mark) then
+            for Item in BT.Milestone loop
+                if arg1 = BT.Milestone'Enum_Rep (Item) then
+                    if Holds (Capabilities.CAP_NOTIFICATION, Capabilities.RIGHT_WRITE,
+                              Unsigned_64 (Owner (Item)), False)
+                    then
+                        Boot_Timeline.Mark_Milestone
+                          (Item, Process_Identities.To_Word (Process.identityOf (callerPID)));
+                        retval := 0;
+                    end if;
+                    return;
+                end if;
+            end loop;
+        end if;
+    end handleBootTimeline;
 
     ---------------------------------------------------------------------------
     -- handlePortIO
@@ -431,9 +514,31 @@ package body Syscall.Admin is
         end if;
         -- arg2: the deadline (absolute monotonic ms; Unsigned_64'Last is
         -- for ever, as the caller chose: docs/ipc-fastpath.md).
-        replyTag := Process.IPC.capCall
-          (capSlot => Capabilities.CapabilitySlot (arg0), msg => localMsg,
-           deadlineMs => arg2);
+        declare
+            Recording : constant Boolean := Boot_Timeline.Recording;
+            Started   : constant Unsigned_64 :=
+              (if Recording then Boot_Timeline.Now else 0);
+            -- The callee as the capability named it when the call began.
+            Callee    : constant Unsigned_64 :=
+              Process.proctab (callerPID).caps (Capabilities.CapabilitySlot (arg0)).object.ref;
+            Target    : constant Unsigned_64 :=
+              (if Recording and then Callee in 1 .. Unsigned_64 (Process.ProctabRange'Last)
+               then Process_Identities.To_Word (Process.identityOf (Process.ProcessID (Callee)))
+               else Boot_Timeline_Layout.No_Identity);
+        begin
+            replyTag := Process.IPC.capCall
+              (capSlot => Capabilities.CapabilitySlot (arg0), msg => localMsg,
+               deadlineMs => arg2);
+            if Recording then
+                Boot_Timeline.Note_Wait
+                  (Slot    => Natural (callerPID),
+                   Waiter  => Process_Identities.To_Word (Process.identityOf (callerPID)),
+                   Kind    => Boot_Timeline_Layout.Call,
+                   Label   => localMsg.tag.label,
+                   Target  => Target,
+                   Started => Started);
+            end if;
+        end;
         Process.User_Memory.Write_Message
           (callerPID, arg1, Process.threadtab (PerCPUData.getCurrentThread).replyMsg, ok);
         Process.threadtab (PerCPUData.getCurrentThread).replyMsg := Process.NULL_MESSAGE;
@@ -814,6 +919,19 @@ package body Syscall.Admin is
                             return;
                         end if;
                         objectRef := Unsigned_64 (objectPID);
+                    end if;
+
+                    -- Device vectors are allocated with their owner
+                    -- (ALLOCATE_DEVICE_VECTORS), never minted: a minted one
+                    -- could name a vector bound to someone else.
+                    if ct = Capabilities.CAP_IRQ and then
+                       arg2 in Device_Vector_ABI.First_Vector ..
+                               Device_Vector_ABI.Last_Vector
+                    then
+                        println
+                          ("POLICY_MINT_CAPABILITY: device vectors are allocated, not minted");
+                        retval := reterr;
+                        return;
                     end if;
 
                     if ct = Capabilities.CAP_CSPACE and then
@@ -1300,18 +1418,30 @@ package body Syscall.Admin is
     is
         use type Capabilities.CapabilityType;
 
+        -- The route word: target CPU in the low byte, then trigger and
+        -- polarity for the IOAPIC redirection entry.
+        ROUTE_CPU_MASK     : constant Unsigned_64 := 16#00FF#;
+        ROUTE_LEVEL        : constant Unsigned_64 := 16#0100#;
+        ROUTE_ACTIVE_LOW   : constant Unsigned_64 := 16#0200#;
+        ROUTE_DEFINED_BITS : constant Unsigned_64 :=
+          ROUTE_CPU_MASK or ROUTE_LEVEL or ROUTE_ACTIVE_LOW;
 
         irqOk  : Boolean;
         targetPID : Process.ProcessID;
     begin
         -- Validate args before cap check (arg1 is the owner PID)
-        -- Only vectors with installed device-interrupt stubs may be assigned.
-        -- Never turn a missing IDT entry (or an exception/IPI vector) into a
-        -- device route, even for a process-management authority holder.
+        -- Only legacy lines with installed device-interrupt stubs may be
+        -- routed. Never turn a missing IDT entry (or an exception/IPI
+        -- vector) into a device route, even for a process-management
+        -- authority holder; device vectors are allocated, never enabled.
         if arg0 not in Unsigned_64 (InterruptNumbers.PS2KEYBOARD) ..
-          Unsigned_64 (InterruptNumbers.DEVICE_MSI_LAST)
+          Unsigned_64 (InterruptNumbers.IDE2)
         then
-            println ("ENABLE_IRQ: unsupported device vector");
+            println ("ENABLE_IRQ: not a legacy line vector");
+            retval := reterr;
+            return;
+        elsif (arg2 and not ROUTE_DEFINED_BITS) /= 0 then
+            println ("ENABLE_IRQ: undefined route bits");
             retval := reterr;
             return;
         end if;
@@ -1342,15 +1472,11 @@ package body Syscall.Admin is
                     status => irqOk);
 
                 if irqOk then
-                    --  MSI/MSI-X sources target an IDT vector directly and must
-                    --  not unmask the numerically corresponding IOAPIC input.
-                    if (arg2 and 16#400#) = 0 then
-                        Interrupts.enableDeviceIRQ (
-                            InterruptNumbers.x86Interrupt (arg0),
-                            Unsigned_32 (arg2 and 16#FF#),
-                            levelTriggered => (arg2 and 16#100#) /= 0,
-                            activeLow      => (arg2 and 16#200#) /= 0);
-                    end if;
+                    Interrupts.enableDeviceIRQ (
+                        InterruptNumbers.x86Interrupt (arg0),
+                        Unsigned_32 (arg2 and ROUTE_CPU_MASK),
+                        levelTriggered => (arg2 and ROUTE_LEVEL) /= 0,
+                        activeLow      => (arg2 and ROUTE_ACTIVE_LOW) /= 0);
                     retval := 0;
                 else
                     println ("ENABLE_IRQ: shared subscriber set full");
@@ -1361,6 +1487,208 @@ package body Syscall.Admin is
         end if;
         Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
     end handleEnableIrq;
+
+    ---------------------------------------------------------------------------
+    -- hasVectorAuthority
+    -- The caller holds a CAP_IRQ naming the whole device range with the
+    -- given right: the device manager's vector authority (Modules).
+    ---------------------------------------------------------------------------
+    function hasVectorAuthority (callerPID : Process.ProcessID;
+                                 right     : Capabilities.CapabilityRight)
+                                 return Boolean
+    is
+        use type Capabilities.CapabilityType;
+        cap : Capabilities.Capability;
+    begin
+        for slot in Capabilities.CapabilitySlot loop
+            cap := Process.proctab(callerPID).caps(slot);
+            if cap.capType = Capabilities.CAP_IRQ and then
+               cap.rights(right) and then
+               cap.object.ref = Device_Vector_ABI.First_Vector and then
+               cap.object.param = Device_Vector_ABI.Vector_Count
+            then
+                return True;
+            end if;
+        end loop;
+        return False;
+    end hasVectorAuthority;
+
+    ---------------------------------------------------------------------------
+    -- handleAllocateDeviceVectors
+    ---------------------------------------------------------------------------
+    procedure handleAllocateDeviceVectors
+      (callerPID              : Process.ProcessID;
+       arg0, arg1, arg2, arg3 : Unsigned_64;
+       retval                 : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        use type Capabilities.CapabilityType;
+        use type Device_Interrupts.Allocation_Outcome;
+
+        targetPID : Process.ProcessID;
+        expectedGeneration : Capabilities.Generation;
+    begin
+        retval := reterr;
+        if not hasVectorAuthority (callerPID, Capabilities.RIGHT_GRANT) then
+            println ("ALLOCATE_DEVICE_VECTORS: denied, no vector authority");
+            return;
+        elsif arg1 not in 1 .. Device_Vector_ABI.Max_Block_Vectors then
+            println ("ALLOCATE_DEVICE_VECTORS: invalid count");
+            return;
+        elsif arg2 > Unsigned_64 (Capabilities.CapabilitySlot'Last) then
+            println ("ALLOCATE_DEVICE_VECTORS: invalid slot");
+            return;
+        elsif arg3 > Unsigned_64 (Natural'Last) then
+            println ("ALLOCATE_DEVICE_VECTORS: invalid CPU");
+            return;
+        end if;
+
+        Process.resolveIdentity (Process_Identities.From_Word (arg0),
+                                 targetPID, expectedGeneration);
+        if targetPID = Process.NO_PROCESS then
+            println ("ALLOCATE_DEVICE_VECTORS: invalid owner identity");
+            return;
+        end if;
+
+        declare
+            procedure performLocked is
+                slot : constant Capabilities.CapabilitySlot :=
+                  Capabilities.CapabilitySlot (arg2);
+                head : Device_Interrupts.Vector;
+                destination : Device_Vector_ABI.Destination_ID;
+                outcome : Device_Interrupts.Allocation_Outcome;
+                count : constant Device_Interrupts.Block_Size :=
+                  Device_Interrupts.Block_Size (arg1);
+            begin
+                if expectedGeneration /= Process.generationOf (targetPID) or else
+                   not Process.proctab(targetPID).admitted or else
+                   Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime)
+                then
+                    return;
+                elsif not hasCspaceGrantFor (callerPID, targetPID) then
+                    println ("ALLOCATE_DEVICE_VECTORS: denied, no capability-space grant");
+                    return;
+                elsif Process.proctab(targetPID).caps(slot).capType /=
+                        Capabilities.CAP_NULL
+                then
+                    println ("ALLOCATE_DEVICE_VECTORS: owner slot occupied");
+                    return;
+                end if;
+
+                Device_Interrupts.allocate
+                  (targetPID, count, Natural (arg3), head, destination, outcome);
+                case outcome is
+                    when Device_Interrupts.Allocated =>
+                        -- The owner's interrupt capability: first vector and
+                        -- count, receive-only. Delivery follows the table,
+                        -- the capability names what was granted.
+                        Capabilities.Operations.insertCapAt (
+                            table => Process.proctab(targetPID).caps,
+                            slot  => slot,
+                            cap   => (capType  => Capabilities.CAP_IRQ,
+                                      rights   => Capabilities.READ_ONLY,
+                                      authorityTag => Process_Identities.To_Word
+                                        (Process.identityOf (targetPID)),
+                                      object   => (ref   => Unsigned_64 (head),
+                                                   param => Unsigned_64 (count)),
+                                      gen      => Capabilities.INITIAL_GENERATION));
+                        retval := Device_Vector_ABI.Allocation_Word
+                          (head, count, destination);
+                    when Device_Interrupts.Vectors_Exhausted =>
+                        println ("ALLOCATE_DEVICE_VECTORS: device vectors exhausted");
+                    when Device_Interrupts.Invalid_CPU =>
+                        println ("ALLOCATE_DEVICE_VECTORS: CPU not running");
+                end case;
+            end performLocked;
+        begin
+            Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
+            performLocked;
+            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
+        end;
+    end handleAllocateDeviceVectors;
+
+    ---------------------------------------------------------------------------
+    -- handleReleaseDeviceVectors
+    ---------------------------------------------------------------------------
+    procedure handleReleaseDeviceVectors
+      (callerPID : Process.ProcessID;
+       arg0      : Unsigned_64;
+       retval    : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        use type Capabilities.CapabilityType;
+        count : Device_Interrupts.Block_Size;
+        owner : Unsigned_64;
+        released : Boolean;
+        ownerPID : Process.ProcessID;
+    begin
+        retval := reterr;
+        if not hasVectorAuthority (callerPID, Capabilities.RIGHT_GRANT) then
+            println ("RELEASE_DEVICE_VECTORS: denied, no vector authority");
+            return;
+        elsif arg0 not in Device_Vector_ABI.First_Vector .. Device_Vector_ABI.Last_Vector then
+            return;
+        end if;
+
+        Device_Interrupts.release
+          (Device_Interrupts.Vector (arg0), count, owner, released);
+        if not released then
+            println ("RELEASE_DEVICE_VECTORS: not the first vector of a block");
+            return;
+        end if;
+
+        -- The owner may still live (setup failed, or a device was taken
+        -- away): withdraw the capability that named the block.
+        ownerPID := Process.processOfIdentity (Process_Identities.From_Word (owner));
+        if ownerPID /= Process.NO_PROCESS then
+            Spinlocks.enterCriticalSection (Process.mailtab(ownerPID).lock);
+            for slot in Capabilities.CapabilitySlot loop
+                declare
+                    cap : constant Capabilities.Capability :=
+                      Process.proctab(ownerPID).caps(slot);
+                    status : Capabilities.Operations.OperationStatus;
+                begin
+                    if cap.capType = Capabilities.CAP_IRQ and then
+                       cap.object.ref = arg0 and then
+                       cap.object.param = Unsigned_64 (count)
+                    then
+                        Capabilities.Operations.removeCap
+                          (Process.proctab(ownerPID).caps, slot, status);
+                    end if;
+                end;
+            end loop;
+            Spinlocks.exitCriticalSection (Process.mailtab(ownerPID).lock);
+        end if;
+        retval := 0;
+    end handleReleaseDeviceVectors;
+
+    ---------------------------------------------------------------------------
+    -- handleReadDeviceVector
+    ---------------------------------------------------------------------------
+    procedure handleReadDeviceVector
+      (callerPID  : Process.ProcessID;
+       arg0, arg1 : Unsigned_64;
+       retval     : out Unsigned_64) with
+        SPARK_Mode => Off
+    is
+        use Device_Vector_ABI;
+        v : Device_Interrupts.Vector;
+    begin
+        retval := reterr;
+        if not hasVectorAuthority (callerPID, Capabilities.RIGHT_READ) or else
+           arg0 not in First_Vector .. Last_Vector
+        then
+            return;
+        end if;
+        v := Device_Interrupts.Vector (arg0);
+        if arg1 = Read_Field'Enum_Rep (Interrupt_Count) then
+            retval := Device_Interrupts.interruptCount (v);
+        elsif arg1 = Read_Field'Enum_Rep (Owner_Identity) then
+            retval := Device_Interrupts.ownerIdentity (v);
+        elsif arg1 = Read_Field'Enum_Rep (Binding_State) then
+            retval := Vector_Binding'Enum_Rep (Device_Interrupts.binding (v));
+        end if;
+    end handleReadDeviceVector;
 
     ---------------------------------------------------------------------------
     -- handleSetSysinfo

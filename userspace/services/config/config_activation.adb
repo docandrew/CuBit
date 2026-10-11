@@ -1,4 +1,6 @@
+with CuBit.Process_IDs;
 package body Config_Activation with SPARK_Mode is
+   use type CuBit.Process_IDs.Process_ID;
    use type CCL.Configurations.Profile_Kind;
 
    function Corresponds

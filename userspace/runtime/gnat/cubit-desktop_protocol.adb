@@ -134,10 +134,19 @@ package body CuBit.Desktop_Protocol with SPARK_Mode is
                    when 1 => Shell_Surface,
                    when others => Window_Surface))));
 
+   --  Surface_Kind's representation (the Enum_Rep), spelled out so the
+   --  round trip with Decode_Create's case is immediate for the provers.
+   function Kind_Word (Kind : Surface_Kind) return Unsigned_64 is
+     (case Kind is
+        when Plain_Surface => 0,
+        when Shell_Surface => 1,
+        when Window_Surface => 2)
+     with Annotate => (GNATprove, Inline_For_Proof);
+
    function Encode_Create (Item : Create_Request) return Wire_Message is
      (Label => Code (Create_Surface), Length => 4,
       Words => [Unsigned_64 (Item.Width), Unsigned_64 (Item.Height),
-                Surface_Kind'Enum_Rep (Item.Kind), 0], others => <>);
+                Kind_Word (Item.Kind), 0], others => <>);
 
    function Decode_Creation_Result
      (Wire : Wire_Message) return Creation_Result is

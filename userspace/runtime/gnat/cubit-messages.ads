@@ -107,6 +107,10 @@ package CuBit.Messages is
    SYSCALL_TRACE_RESET     : constant Unsigned_64 := 82;
    SYSCALL_TRACE_SUMMARY   : constant Unsigned_64 := 83;
    SYSCALL_INSPECT_CAPABILITY : constant Unsigned_64 := 84;
+   --  Device vectors (docs/msi-interrupts.md; CuBit.Device_Interrupts).
+   SYSCALL_ALLOCATE_DEVICE_VECTORS : constant Unsigned_64 := 130;
+   SYSCALL_RELEASE_DEVICE_VECTORS  : constant Unsigned_64 := 131;
+   SYSCALL_READ_DEVICE_VECTOR      : constant Unsigned_64 := 132;
 
    SYSCALL_REGISTER_DRIVER : constant Unsigned_64 := 2000;
 
@@ -517,13 +521,14 @@ package CuBit.Messages is
    --  Enable IOAPIC routing and register an IRQ subscriber. PCI INTx callers
    --  must request level-triggered, active-low routing; ISA-style sources use
    --  the edge-triggered, active-high defaults.
+   --  Route a legacy IOAPIC/PIC line to its owner. Message-signaled
+   --  devices take allocated vectors instead (CuBit.Device_Interrupts).
    function enableIrq
      (vector    : Unsigned_64;
       ownerPID  : Process_ID;
       targetCPU : Unsigned_64;
       levelTriggered : Boolean := False;
-      activeLow      : Boolean := False;
-      messageSignaled : Boolean := False) return Unsigned_64;
+      activeLow      : Boolean := False) return Unsigned_64;
 
    --  Map physical pages into a target process's address space.
    --  flags: 0=RW, 1=RO, 2=IO (uncacheable)

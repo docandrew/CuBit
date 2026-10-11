@@ -12,6 +12,7 @@ with Build;
 with Boot_Timer_Probe;
 with Boot_Diagnostics;
 with Config;
+with Device_Interrupts;
 with ioapic;
 with IPC_Labels;
 with InterruptNumbers; use InterruptNumbers;
@@ -294,11 +295,14 @@ is
                 eoi (IDE2);
                 dispatchDeviceIRQ (IDE2);
 
-            when DEVICE_MSI_FIRST .. DEVICE_MSI_LAST =>
-                --  Dedicated PCI message-signaled vector. It is outside
-                --  the legacy PIC range so no physical IRQ line aliases it.
+            when Device_Vector =>
+                --  A message-signaled vector with at most one owner
+                --  (docs/msi-interrupts.md). It is outside the legacy
+                --  PIC range so no physical IRQ line aliases it. EOI first:
+                --  the owner's doorbell stays set until it drains the
+                --  device, so a message arriving after this is not lost.
                 eoi (interruptNumber);
-                dispatchDeviceIRQ (interruptNumber);
+                Device_Interrupts.deliver (interruptNumber);
 
             when INVALID .. COPROCESSOR =>
                 eoi (interruptNumber);
@@ -406,6 +410,8 @@ is
         -- demand-page request. Do not try to repair them by allocating RAM.
         if reservedWrite then
             raise PageFaultException with "Reserved bit in paging structure";
+            pragma Annotate (GNATprove, Intentional, "unexpected exception might be raised",
+                             "a kernel fault the handler cannot repair: kernel panic, halts this CPU");
         end if;
 
         -- Instruction fetches are never demand-backed by the data allocator.
@@ -419,6 +425,8 @@ is
                 -- if it was the kernel, we goofed up.
                 println("NXE violation in kernel!");
                 raise NXEException with "NXE violated in the kernel.";
+                pragma Annotate (GNATprove, Intentional, "unexpected exception might be raised",
+                                 "a kernel fault the handler cannot repair: kernel panic, halts this CPU");
             end if;
         end if;
 
@@ -440,6 +448,8 @@ is
                                 print ("Kernel page-protection write violation: ");
                                 println (faultAddr);
                                 raise PageFaultException with "Kernel tried to write non-writable page";
+                                pragma Annotate (GNATprove, Intentional, "unexpected exception might be raised",
+                                                 "a kernel fault the handler cannot repair: kernel panic, halts this CPU");
                         end case;
                     when False =>
                         case userMode is
@@ -455,6 +465,8 @@ is
                                 print ("Kernel page-protection read violation: ");
                                 println (faultAddr);
                                 raise PageFaultException with "Kernel tried to read non-readable page";
+                                pragma Annotate (GNATprove, Intentional, "unexpected exception might be raised",
+                                                 "a kernel fault the handler cannot repair: kernel panic, halts this CPU");
                         end case;
                 end case;
             when False =>
@@ -483,6 +495,8 @@ is
                                 print ("Kernel non-present page write: ");
                                 println (faultAddr);
                                 raise PageFaultException;
+                                pragma Annotate (GNATprove, Intentional, "unexpected exception might be raised",
+                                                 "a kernel fault the handler cannot repair: kernel panic, halts this CPU");
                         end case;
                     when False =>
                         case userMode is
@@ -509,6 +523,8 @@ is
                                 print ("Kernel non-present page read: ");
                                 println (faultAddr);
                                 raise PageFaultException with "Kernel read non-present page.";
+                                pragma Annotate (GNATprove, Intentional, "unexpected exception might be raised",
+                                                 "a kernel fault the handler cannot repair: kernel panic, halts this CPU");
                         end case;                    
                 end case;
         end case;
@@ -554,6 +570,7 @@ is
     is
     begin
         intController := cont;
+        initialized := True;
     end setInterruptController;
 
     ---------------------------------------------------------------------------
@@ -592,7 +609,7 @@ is
                              isTrap      : in Boolean;
                              gdtSelector : in segment.GDTOffset;
                              dpl         : in x86.PrivilegeLevel;
-                             ist         : in Integer := 0) return IDTEntry
+                             ist         : in IST_Slot := 0) return IDTEntry
         with SPARK_Mode => On
     is
         newidt : IDTEntry;
@@ -665,8 +682,21 @@ is
         idt(45) := createIDTEntry(addrToNum(isr45'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(46) := createIDTEntry(addrToNum(isr46'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(47) := createIDTEntry(addrToNum(isr47'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
-        idt(DEVICE_MSI_FIRST) := createIDTEntry(addrToNum(isr48'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
-        idt(DEVICE_MSI_LAST) := createIDTEntry(addrToNum(isr49'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+
+        -- Device vectors: one shared IDT, loaded by every CPU (loadIDT), so
+        -- each CPU accepts every device vector.
+        if addrToNum (deviceVectorStubsEnd'Address) - addrToNum (deviceVectorStubs'Address) /=
+           Unsigned_64 (DEVICE_STUB_BYTES * (DEVICE_VECTOR_LAST - DEVICE_VECTOR_FIRST + 1))
+        then
+            println ("FATAL: device vector stubs do not match the device range");
+            x86.halt;
+        end if;
+        for v in Device_Vector loop
+            idt(v) := createIDTEntry
+              (addrToNum (deviceVectorStubs'Address) +
+                 Unsigned_64 (DEVICE_STUB_BYTES * (v - DEVICE_VECTOR_FIRST)),
+               False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        end loop;
 
         -- Kernel Panic - don't want interrupts to happen here, because we're crashed.
         idt(127) := createIDTEntry(addrToNum(isr127'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);

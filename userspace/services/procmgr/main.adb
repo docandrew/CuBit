@@ -33,6 +33,8 @@ with CuBit.Metric_Protocol;
 with CuBit.Authority; use CuBit.Authority;
 with CuBit.Memory_Grants;
 with CuBit.Process_Observer;
+with CuBit.Boot_Milestone_Codes;
+with CuBit.Boot_Milestones;
 with CuBit.Grant_References;
 with CuBit.Launch_Arguments;
 with CuBit.Launch_Grants;
@@ -523,6 +525,80 @@ procedure main is
       CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
       Answer ((if Count = 0 then PO.Unavailable else PO.OK));
    end handleProcessList;
+
+   --  Boot timeline (docs/boot-timeline.md): one page of the kernel's
+   --  timeline image, for a process observer. procmgr holds the CAP_PROCESS
+   --  READ the kernel requires; observers get it only through this role.
+   --  The kernel writes only procmgr's own memory, never a received grant:
+   --  each chunk lands here first.
+   Timeline_Chunk : array (0 .. CuBit.Boot_Milestone_Codes.Read_Chunk_Bytes - 1) of Unsigned_8 :=
+     [others => 0];
+
+   procedure handleBootTimeline (sender : Process_ID; msg : Message) is
+      package BMC renames CuBit.Boot_Milestone_Codes;
+      --  Pages of the image a reader may ask for; the image is smaller.
+      Maximum_Page_Index : constant := 15;
+      Reference : CuBit.Memory_Grants.Grant_Reference;
+      Mapped : System.Address;
+      Ok, Returned : Boolean;
+      Written : Unsigned_64 := 0;
+      Image_Bytes : Unsigned_64 := 0;
+      replyMsg : Message := NULL_MESSAGE;
+      ignore : Unsigned_64;
+      procedure Answer (Result : PO.Status) is
+      begin
+         replyMsg.tag := (label => Unsigned_32 (PO.Status'Enum_Rep (Result)), length => 3, flags => 0, reserved => 0);
+         replyMsg.words := [0 => Unsigned_64 (PO.Status'Enum_Rep (Result)), 1 => Written,
+                            2 => Image_Bytes, others => 0];
+         ignore := reply (sender, replyMsg);
+      end Answer;
+   begin
+      if not PO.Is_Observer (msg.authorityTag) then
+         Answer (PO.Denied);
+         return;
+      end if;
+      if msg.tag.length < 2 or else not CuBit.Grant_References.Valid_Wire (msg.words (0))
+        or else msg.words (1) > Maximum_Page_Index
+      then
+         Answer (PO.Invalid_Request);
+         return;
+      end if;
+      Reference := CuBit.Grant_References.Decode (msg.words (0));
+      CuBit.Memory_Grants.Acquire
+        (Reference, sender, 0, BMC.Page_Bytes, CuBit.Memory_Grants.Write_Access, Mapped, Ok);
+      if not Ok then
+         Answer (PO.Invalid_Request);
+         return;
+      end if;
+      declare
+         Page : array (0 .. BMC.Page_Bytes - 1) of Unsigned_8 with Import, Address => Mapped;
+         Base : constant Unsigned_64 := msg.words (1) * BMC.Page_Bytes;
+         Copied : Unsigned_64;
+      begin
+         Page := [others => 0];
+         --  The kernel copies one chunk per call; loop until the page is
+         --  full or the image ends.
+         while Written < BMC.Page_Bytes loop
+            Copied := syscall
+              (BMC.System_Call, BMC.Read_Operation,
+               Unsigned_64 (To_Integer (Timeline_Chunk'Address)),
+               Unsigned_64'Min (BMC.Read_Chunk_Bytes, BMC.Page_Bytes - Written),
+               Base + Written);
+            exit when Copied = 0 or else Copied > BMC.Read_Chunk_Bytes;
+            for I in 0 .. Natural (Copied) - 1 loop
+               Page (Natural (Written) + I) := Timeline_Chunk (I);
+            end loop;
+            Written := Written + Copied;
+         end loop;
+         --  The image's end: where a read from past it returns nothing.
+         Image_Bytes := Base + Written;
+         if Written = BMC.Page_Bytes then
+            Image_Bytes := 0;   --  more follows; the last page tells the size
+         end if;
+      end;
+      CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
+      Answer ((if Written = 0 and then msg.words (1) = 0 then PO.Unavailable else PO.OK));
+   end handleBootTimeline;
 
    procedure clearAuthorityForPID (pid : Process_ID) is
    begin
@@ -3713,6 +3789,7 @@ procedure main is
       Plan : Compilation_Result;
       Source_Size : Unsigned_64;
    begin
+      CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.Startup_Profile_Started);
       debugPrint ("procmgr: reading init.ccl..." & LF);
       for Attempt in 1 .. 10 loop
          Source_Size := readFileFromFS ("init.ccl");
@@ -3776,6 +3853,7 @@ procedure main is
          end;
       end loop;
       end;
+      CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.Startup_Profile_Launched);
    end processInitCCL;
 
    ---------------------------------------------------------------------------
@@ -3896,6 +3974,8 @@ begin
             handleProgramDescription (sender, msg);
          when CuBit.Process_Observer.List_Label =>
             handleProcessList (sender, msg);
+         when CuBit.Boot_Milestone_Codes.Timeline_Label =>
+            handleBootTimeline (sender, msg);
          when EVENT_CHILD_EXIT =>
             --  A process retired (the kernel tells procmgr of each; only the
             --  kernel posts this label, with no sender). Act only if it is

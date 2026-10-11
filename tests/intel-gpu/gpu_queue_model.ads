@@ -25,6 +25,10 @@ package GPU_Queue_Model is
    -- Knobs.
    Latency : Positive := 3;               -- turns per job
    Hung : Boolean := False;               -- the GPU stops progressing
+   -- GPU-005: only this session's running job stops (0: none), and these
+   -- sessions' jobs wait behind it, never starting.
+   Hung_Only : Natural := 0;
+   Blocked : array (Session_Id) of Boolean := [others => False];
    Regress : Boolean := False;            -- the timeline reads back lower
    Ahead : Boolean := False;              -- the timeline reads past what was published
    Enable_Delay : Natural := 0;           -- turns before MODE_DONE follows an enable
@@ -42,6 +46,9 @@ package GPU_Queue_Model is
    Wakes_Answered : Natural := 0;
    Last_Wake : Q.Wake_Result := Q.Woken;
    Last_Wake_Session : Session_Id := 1;
+   -- Context 0's status-line completed value when the last wake was
+   -- answered: a woken client must already find its value there.
+   Line_At_Wake : Unsigned_64 := 0;
    Quarantined : array (Session_Id) of Boolean := [others => False];
    Clock : Unsigned_64 := 1_000_000;
 
@@ -59,6 +66,11 @@ package GPU_Queue_Model is
    function Segment_Bytes (Operation : Q.Opcode) return Unsigned_32;
    procedure Kick (Enable : Boolean; Result : out Intel_GPU_GuC_Submission_Policy.Kick_Result);
    procedure Read_Timeline (V : out Unsigned_64; OK : out Boolean);
+   -- Job V's execution time: the model's Latency turns (Torn: no stamps).
+   procedure Read_Job_Time (V : Unsigned_64; Exec_Us : out Unsigned_64; OK : out Boolean);
+   -- The selected context's job V has started: it is the next to complete,
+   -- published, and its session is not blocked.
+   function Job_Started (V : Unsigned_64) return Boolean;
    function Now_Us return Unsigned_64;
    procedure Quarantine (S : Session_Id; Why : Q.Fault_Reason);
    procedure Call_Finished (S : Session_Id; V : Unsigned_64; OK : Boolean);

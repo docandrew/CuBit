@@ -91,6 +91,12 @@ uint32_t cubit_vulkan_owned_targets_record_readback_regions(void *description,vo
     barrier(s->command,VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,
         0,0,NULL,0,NULL,1,&layout);
     copy(s->command,r->images[slot-1],VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,b->buffer,count,regions);
+    if(cubit_vulkan_job_note){
+        uint64_t bytes=0;
+        for(uint32_t i=0;i<count;i++)
+            bytes+=(uint64_t)(repairs[i].right-repairs[i].left)*(repairs[i].bottom-repairs[i].top)*4;
+        cubit_vulkan_job_note(CUBIT_VULKAN_JOB_READBACK,bytes);
+    }
     layout.srcAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
     layout.dstAccessMask=VK_ACCESS_COLOR_ATTACHMENT_READ_BIT|VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     layout.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;layout.newLayout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;

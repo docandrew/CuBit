@@ -39,6 +39,11 @@ ICONS = (
     ("Category_Games", "assets/desktop-icons/png/games-24.png", "Games category"),
     ("Category_Media", "assets/desktop-icons/png/media-24.png", "Media category"),
     ("Category_Tools", "assets/desktop-icons/png/tools-24.png", "Tools category"),
+    ("Clipboard", "assets/desktop-icons/png/clipboard-24.png", "Clipboard manager"),
+    ("Clip_Text", "assets/desktop-icons/png/clip-text-24.png", "Clipboard text entry"),
+    ("Clip_Value", "assets/desktop-icons/png/clip-value-24.png", "Clipboard typed CCL value"),
+    ("Clip_Mask", "assets/desktop-icons/png/clip-mask-24.png", "Clipboard secret (paste once)"),
+    ("Clip_Pin", "assets/desktop-icons/png/clip-pin-24.png", "Pinned clipboard entry"),
 )
 
 

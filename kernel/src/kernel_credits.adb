@@ -6,14 +6,62 @@ package body Kernel_Credits with
     SPARK_Mode => On
 is
 
+    -- Setting or clearing bit B of X leaves every other bit as it was.
+    procedure Lemma_Other_Bits (X : Unsigned_64; B : Bit_Index)
+      with Ghost,
+           Post => (for all C in Bit_Index =>
+                      (if C /= B then
+                         ((X or Mask (B)) and Mask (C)) = (X and Mask (C)) and then
+                         ((X and not Mask (B)) and Mask (C)) = (X and Mask (C))));
+
+    procedure Lemma_Other_Bits (X : Unsigned_64; B : Bit_Index) is null;
+
+    -- Another sender in S's word is a different bit of that word.
+    procedure Lemma_Same_Word (S, T : Sender)
+      with Ghost,
+           Pre  => T /= S and then Word_Of (T) = Word_Of (S),
+           Post => Bit_Of (T) /= Bit_Of (S);
+
+    procedure Lemma_Same_Word (S, T : Sender) is null;
+
+    -- After word Word_Of (S) changed only in bit Bit_Of (S), every other
+    -- sender (and the unused last bit) reads as before.
+    procedure Lemma_Others_Unchanged (Old, W : Sender_Bits; S : Sender)
+      with Ghost,
+           Pre  => (for all I in Word_Index =>
+                      (if I /= Word_Of (S) then W (I) = Old (I)))
+                   and then
+                   (for all C in Bit_Index =>
+                      (if C /= Bit_Of (S) then
+                         (W (Word_Of (S)) and Mask (C)) = (Old (Word_Of (S)) and Mask (C)))),
+           Post => (for all T in Sender =>
+                      (if T /= S then Is_Set (W, T) = Is_Set (Old, T))) and then
+                   (W (Word_Index'Last) and Last_Word_Unused) =
+                      (Old (Word_Index'Last) and Last_Word_Unused)
+    is
+    begin
+        pragma Assert (Bit_Of (S) /= Bits_Per_Word - 1 or else Word_Of (S) /= Word_Index'Last);
+        for T in Sender loop
+            if T /= S and then Word_Of (T) = Word_Of (S) then
+                Lemma_Same_Word (S, T);
+            end if;
+            pragma Loop_Invariant
+              (for all U in Sender'First .. T =>
+                 (if U /= S then Is_Set (W, U) = Is_Set (Old, U)));
+        end loop;
+    end Lemma_Others_Unchanged;
+
     procedure Set_Bit (W : in out Sender_Bits; S : Sender)
       with Post => Is_Set (W, S) and then
                    (for all T in Sender => (if T /= S then Is_Set (W, T) = Is_Set (W'Old, T))) and then
                    ((W (Word_Index'Last) and Last_Word_Unused) =
                       (W'Old (Word_Index'Last) and Last_Word_Unused))
     is
+        Old : constant Sender_Bits := W with Ghost;
     begin
+        Lemma_Other_Bits (W (Word_Of (S)), Bit_Of (S));
         W (Word_Of (S)) := W (Word_Of (S)) or Mask (Bit_Of (S));
+        Lemma_Others_Unchanged (Old, W, S);
     end Set_Bit;
 
     procedure Clear_Bit (W : in out Sender_Bits; S : Sender)
@@ -22,8 +70,11 @@ is
                    ((W (Word_Index'Last) and Last_Word_Unused) =
                       (W'Old (Word_Index'Last) and Last_Word_Unused))
     is
+        Old : constant Sender_Bits := W with Ghost;
     begin
+        Lemma_Other_Bits (W (Word_Of (S)), Bit_Of (S));
         W (Word_Of (S)) := W (Word_Of (S)) and not Mask (Bit_Of (S));
+        Lemma_Others_Unchanged (Old, W, S);
     end Clear_Bit;
 
     procedure Initialize (R : in out Receiver_State; Each : Credit) is
@@ -90,13 +141,11 @@ is
           with Pre  => Valid (R) and then (R.Nonempty (W) and Mask (B)) /= 0,
                Post => Is_Set (R.Nonempty, Sender_At'Result);
 
-        Words : constant := Word_Index'Last + 1;
         Start_Word : constant Word_Index := Word_Of (R.Cursor);
         Start_Bit  : constant Bit_Index := Bit_Of (R.Cursor);
         -- Bits at or after the cursor's, in its word.
         At_Or_After : constant Unsigned_64 := not (Mask (Start_Bit) - 1);
         Bits : Unsigned_64;
-        W : Word_Index;
     begin
         From := Sender'First;
         At_Position := 0;
@@ -109,16 +158,30 @@ is
             Found := True;
             return;
         end if;
-        for K in 1 .. Word_Index'Last loop
-            W := (Start_Word + K) mod Words;
-            if R.Nonempty (W) /= 0 then
-                Serve (Sender_At (W, Trailing_Zeros (R.Nonempty (W))));
+        -- The words after the cursor's, then those before it (no mod, so
+        -- each loop's invariant is a plain range).
+        for X in Start_Word + 1 .. Word_Index'Last loop
+            if R.Nonempty (X) /= 0 then
+                Serve (Sender_At (X, Trailing_Zeros (R.Nonempty (X))));
                 Found := True;
                 return;
             end if;
             pragma Loop_Invariant (R = R'Loop_Entry);
             pragma Loop_Invariant
-              (for all J in 1 .. K => R.Nonempty ((Start_Word + J) mod Words) = 0);
+              (for all Y in Start_Word + 1 .. X => R.Nonempty (Y) = 0);
+        end loop;
+        pragma Assert (for all Y in Start_Word + 1 .. Word_Index'Last => R.Nonempty (Y) = 0);
+        for X in Word_Index'First .. Start_Word - 1 loop
+            if R.Nonempty (X) /= 0 then
+                Serve (Sender_At (X, Trailing_Zeros (R.Nonempty (X))));
+                Found := True;
+                return;
+            end if;
+            pragma Loop_Invariant (R = R'Loop_Entry);
+            pragma Loop_Invariant
+              (for all Y in Start_Word + 1 .. Word_Index'Last => R.Nonempty (Y) = 0);
+            pragma Loop_Invariant
+              (for all Y in Word_Index'First .. X => R.Nonempty (Y) = 0);
         end loop;
         Bits := R.Nonempty (Start_Word) and not At_Or_After;
         if Bits /= 0 then
@@ -127,19 +190,11 @@ is
             return;
         end if;
         -- Nothing anywhere: the cursor's word is its two halves, and the
-        -- loop saw every other word.
+        -- loops saw every other word.
         pragma Assert
           (((R.Nonempty (Start_Word) and At_Or_After) or
             (R.Nonempty (Start_Word) and not At_Or_After)) = R.Nonempty (Start_Word));
         pragma Assert (R.Nonempty (Start_Word) = 0);
-        -- The loop saw the other three words; with the cursor's, all four.
-        pragma Assert (R.Nonempty ((Start_Word + 1) mod Words) = 0);
-        pragma Assert (R.Nonempty ((Start_Word + 2) mod Words) = 0);
-        pragma Assert (R.Nonempty ((Start_Word + 3) mod Words) = 0);
-        pragma Assert
-          (for all X in Word_Index =>
-             X = Start_Word or else X = (Start_Word + 1) mod Words or else
-             X = (Start_Word + 2) mod Words or else X = (Start_Word + 3) mod Words);
         pragma Assert (for all X in Word_Index => R.Nonempty (X) = 0);
         pragma Assert (Empty (R));
     end Take;

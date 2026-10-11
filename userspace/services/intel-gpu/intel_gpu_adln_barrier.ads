@@ -10,6 +10,12 @@ package Intel_GPU_ADLN_Barrier with SPARK_Mode is
    Scratch_Offset : constant Unsigned_32 := Intel_GPU_ADLN_PPHWSP.Scratch_Offset;
    Timeline_Offset : constant Unsigned_32 := Intel_GPU_ADLN_PPHWSP.Timeline_Offset;
    type Barrier_Words is array (Natural range 0 .. 21) of Unsigned_32;
+   -- Word 1 is the first PIPE_CONTROL's flags; its post-sync operation is in
+   -- bits 15:14 (1: write immediate, as the barrier does; 3: write the
+   -- TIMESTAMP register, which Intel_GPU_ADLN_Context_Init uses around a
+   -- batch). Word 2 is that post-sync's PPHWSP destination.
+   Post_Sync_Mask      : constant Unsigned_32 := 16#0000_C000#;
+   Post_Sync_Timestamp : constant Unsigned_32 := 16#0000_C000#;
    -- Words 2 and 9 are the two post-sync destinations.
    function Flush_And_Invalidate return Barrier_Words
      with Post => Flush_And_Invalidate'Result (2) = Scratch_Offset and

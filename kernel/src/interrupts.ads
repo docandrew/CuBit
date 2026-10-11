@@ -60,11 +60,14 @@ is
     -- @field offset3 - handler address bits 32..63
     -- @field zero
     ---------------------------------------------------------------------------
+    -- Interrupt Stack Table slot an IDT entry switches to (0 = none).
+    subtype IST_Slot is Integer range 0 .. 7;
+
     type IDTEntry is
     record
         offset1     : Unsigned_16           := 0;
         selector    : Segment.GDTOffset     := segment.GDT_OFFSET_NULL;
-        istIndex    : Integer range 0..7    := 0;
+        istIndex    : IST_Slot              := 0;
         res1        : Integer range 0..31   := 0;
         isTrap      : Boolean               := False;
         res2        : Integer range 0..7    := 7;
@@ -227,7 +230,7 @@ private
                             isTrap : in Boolean;
                             gdtSelector : in segment.GDTOffset;
                             dpl : in x86.PrivilegeLevel;
-                            ist : in Integer := 0) return IDTEntry;
+                            ist : in IST_Slot := 0) return IDTEntry;
 
     ---------------------------------------------------------------------------
     -- Put our interrupt vectors into the IDT array
@@ -275,8 +278,14 @@ private
     isr45   : Symbol with Import, Convention => C;
     isr46   : Symbol with Import, Convention => C;
     isr47   : Symbol with Import, Convention => C;
-    isr48   : Symbol with Import, Convention => C;
-    isr49   : Symbol with Import, Convention => C;
+
+    -- Device vectors (docs/msi-interrupts.md): DEVICE_STUB_BYTES-sized
+    -- stubs, one per vector from DEVICE_VECTOR_FIRST (cubit.inc).
+    deviceVectorStubs    : Symbol with Import, Convention => C,
+                                External_Name => "deviceVectorStubs";
+    deviceVectorStubsEnd : Symbol with Import, Convention => C,
+                                External_Name => "deviceVectorStubsEnd";
+    DEVICE_STUB_BYTES    : constant := 32;   -- must match cubit.inc
 
     -- CuBit-specific
     -- Kernel Panic interrupt

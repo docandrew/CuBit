@@ -5,8 +5,12 @@ with CuBit.Network_Authority; use CuBit.Network_Authority;
 with CuBit.Launch_Policy;
 with Network_Grants;
 with UDP_Channels; use UDP_Channels;
+with CuBit.Process_IDs;
 
 package body UDP_Tests is
+   use type CuBit.Process_IDs.Process_ID;
+   function PID (Word : Interfaces.Unsigned_64) return CuBit.Process_IDs.Process_ID
+     renames CuBit.Process_IDs.From_Word;
    procedure Authority is
       NTP : constant Scope := (Connect_UDP, 16#0A00_0202#, 32, 123, 123, False, 4);
       Named : constant Scope := (Connect_UDP, 0, 0, 123, 123, True, 4);
@@ -46,14 +50,14 @@ package body UDP_Tests is
       Decode (0, Descriptor (Named) and not Shift_Left (Unsigned_64'(255), 40),
               Decoded, Success);
       pragma Assert (not Success); -- operation zero
-      Network_Grants.Install (Grants, 42, NTP, Capacity, Tag, Success);
+      Network_Grants.Install (Grants, PID (42), NTP, Capacity, Tag, Success);
       pragma Assert (Success);
-      pragma Assert (Network_Grants.Allows (Grants, 42, Tag, Connect_UDP, 16#0A00_0202#, 123));
-      pragma Assert (not Network_Grants.Allows (Grants, 42, Tag, Connect_TCP, 16#0A00_0202#, 123));
-      pragma Assert (not Network_Grants.May_Resolve (Grants, 42, Tag));
-      Network_Grants.Install (Grants, 42, Named, Capacity, Named_Tag, Success);
-      pragma Assert (Success and Network_Grants.May_Resolve (Grants, 42, Named_Tag));
-      pragma Assert (not Network_Grants.May_Resolve (Grants, 43, Named_Tag));
+      pragma Assert (Network_Grants.Allows (Grants, PID (42), Tag, Connect_UDP, 16#0A00_0202#, 123));
+      pragma Assert (not Network_Grants.Allows (Grants, PID (42), Tag, Connect_TCP, 16#0A00_0202#, 123));
+      pragma Assert (not Network_Grants.May_Resolve (Grants, PID (42), Tag));
+      Network_Grants.Install (Grants, PID (42), Named, Capacity, Named_Tag, Success);
+      pragma Assert (Success and Network_Grants.May_Resolve (Grants, PID (42), Named_Tag));
+      pragma Assert (not Network_Grants.May_Resolve (Grants, PID (43), Named_Tag));
    end Authority;
 
    procedure Channels is

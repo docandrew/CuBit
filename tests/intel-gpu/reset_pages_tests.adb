@@ -24,6 +24,8 @@ begin
    pragma Assert (Offset (12) = 16#E000# and Slot (12) = 37);
    pragma Assert (Offset (13) = 16#1C3000# and Slot (13) = 38);
    pragma Assert (Offset (14) = 16#1D3000# and Slot (14) = 39);
+   pragma Assert (Offset (15) = 16#A000# and Slot (15) = 13);
+   pragma Assert (Covered (16#A008#) and Covered (16#A168#));
    pragma Assert (Covered (16#FDC#) and Covered (16#E18C#) and Covered (16#E4F4#));
    pragma Assert (Covered (16#B020#) and Covered (16#B09C#));
    pragma Assert (Covered (16#4800#) and Covered (16#481C#));
@@ -35,12 +37,12 @@ begin
    end loop;
    for A in Page_Index loop
       pragma Assert (Offset (A) mod 4096 = 0 and Offset (A) < 16#200000#);
-      pragma Assert (Slot (A) in 16 .. 22 | 32 .. 39);
+      pragma Assert (Slot (A) in 13 | 16 .. 22 | 32 .. 39);
       pragma Assert (Slot (A) not in 23 .. 31 and Slot (A) < 63);
       for B in Page_Index loop
          pragma Assert (A = B or else (Offset (A) /= Offset (B) and Slot (A) /= Slot (B)));
       end loop;
    end loop;
    pragma Assert (not Covered (16#800000#) and not Covered (16#70000#));
-   Ada.Text_IO.Put_Line ("PASS: fifteen distinct control pages cover engines, reset, GuC, PAT, MOCS and steering");
+   Ada.Text_IO.Put_Line ("PASS: sixteen distinct control pages cover engines, reset, GuC, PAT, MOCS, steering and GT frequency");
 end Reset_Pages_Tests;

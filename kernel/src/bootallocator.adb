@@ -79,6 +79,8 @@ is
         Frames.Reserve (reservations, Frames.Request_Size (num), first);
         if first = 0 then
             raise OutOfMemoryException with "Out of boot allocation memory";
+            pragma Annotate (GNATprove, Intentional, "unexpected exception might be raised",
+                             "boot memory exhausted: a kernel panic that halts this CPU");
         end if;
         addr := Virtmem.PFNToAddr (Virtmem.PFN (first));
     end allocFrames;

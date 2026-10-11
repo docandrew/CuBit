@@ -13,7 +13,10 @@ with Config_Worker_Storage;
 with Config_Worker_Messages;
 with Config_Schema_Protocol;
 
+with CuBit.Process_IDs;
 procedure Receiver_Tests is
+   function PID (Word : Interfaces.Unsigned_64) return CuBit.Process_IDs.Process_ID
+     renames CuBit.Process_IDs.From_Word;
    package P renames Config_Worker_Protocol;
    package Codec renames CCL.Objects.Persistence;
    package Grants renames CuBit.Memory_Grants;
@@ -38,7 +41,7 @@ procedure Receiver_Tests is
    Calls, Cases : Natural := 0;
 
    function Authorized (Sender : Process_ID; Authority_Tag : Unsigned_64) return Boolean is
-     (Sender = 42 and Authority_Tag = 77);
+     (Sender = PID (42) and Authority_Tag = 77);
 
    procedure Invoke
      (Action : P.Operation; Name, Context : String; Expected_Revision : P.Number;
@@ -104,7 +107,7 @@ procedure Receiver_Tests is
       Server : Receiver.State;
       Input, Output : T.Frame;
       Envelope, Reply : Message;
-      Source : Process_ID := 42;
+      Source : Process_ID := PID (42);
       Ok, Valid, Taken : Boolean;
       Sent : Submission;
       Done : Completion_Result;
@@ -125,7 +128,7 @@ procedure Receiver_Tests is
       Submit_Type (Client, Input, Sent); pragma Assert (Sent = Submitted);
       Envelope := Last_Request; Envelope.authorityTag := 77;
       case Scenario is
-         when Wrong_Source => Source := 43;
+         when Wrong_Source => Source := PID (43);
          when Wrong_Tag => Envelope.authorityTag := 78;
          when Wrong_Operation => Envelope.tag.label := 0;
          when Short_Envelope => Envelope.tag.length := 3;
@@ -158,7 +161,7 @@ procedure Receiver_Tests is
       pragma Assert (Taken and (Valid = Delivered));
       if Valid then pragma Assert (T.Valid_Reply (Output, Input)); end if;
       if Recovery then
-         Receiver.Handle (Server, 42, Envelope, Reply);
+         Receiver.Handle (Server, PID (42), Envelope, Reply);
          pragma Assert (Reply.tag.label = Wire.Status'Enum_Rep (Wire.Unavailable));
          pragma Assert (Calls = (if Invoked then 1 else 0));
       end if;
@@ -173,7 +176,7 @@ procedure Receiver_Tests is
       Input, Output : P.Frame;
       Schema : CCL.Objects.Schemas.Image;
       Envelope, Reply : Message;
-      Sender : Process_ID := 42;
+      Sender : Process_ID := PID (42);
       Ok, Valid, Taken : Boolean;
       Sent : Submission;
       Done : Completion_Result;
@@ -193,7 +196,7 @@ procedure Receiver_Tests is
          Grants.Mapping := Schema'Address;
          Grants.Expected_Pages := CCL.Objects.Schemas.Native_Schema_Bytes / 4096;
          Envelope := Wire.Schema_Request ((7, 9)); Envelope.authorityTag := 77;
-         Receiver.Handle (Server, 42, Envelope, Reply);
+         Receiver.Handle (Server, PID (42), Envelope, Reply);
          pragma Assert (Wire.Valid_Schema_Acknowledgment (Reply) and Calls = 0);
       end if;
       Grants.Acquisitions := 0; Grants.Returns := 0;
@@ -206,7 +209,7 @@ procedure Receiver_Tests is
       Envelope := Last_Request;
       Envelope.authorityTag := 77;
       case Scenario is
-         when Wrong_Source => Sender := 43;
+         when Wrong_Source => Sender := PID (43);
          when Wrong_Tag => Envelope.authorityTag := 78;
          when Wrong_Operation => Envelope.tag.label := 0;
          when Short_Envelope => Envelope.tag.length := 3;
@@ -244,7 +247,7 @@ procedure Receiver_Tests is
             Previous_Calls : constant Natural := Calls;
             Ignored_Reply : Message;
          begin
-            Receiver.Handle (Server, 42, Envelope, Ignored_Reply);
+            Receiver.Handle (Server, PID (42), Envelope, Ignored_Reply);
             pragma Assert (Ignored_Reply.tag.label = Wire.Status'Enum_Rep (Wire.Unavailable));
             pragma Assert (Grants.Acquisitions = Previous_Acquisitions and Calls = Previous_Calls);
          end;
@@ -289,25 +292,25 @@ procedure Receiver_Tests is
       pragma Assert (Wire.Valid_Schema_Request (Envelope) and not Wire.Valid_Request (Envelope));
       pragma Assert (not Wire.Valid_Acknowledgment (Wire.Schema_Acknowledgment));
       pragma Assert (not Wire.Valid_Schema_Acknowledgment (Wire.Acknowledgment));
-      Send (99, Wire.Denied); pragma Assert (Grants.Acquisitions = 0);
+      Send (PID (99), Wire.Denied); pragma Assert (Grants.Acquisitions = 0);
       Envelope.authorityTag := 78;
-      Send (42, Wire.Denied); pragma Assert (Grants.Acquisitions = 0);
+      Send (PID (42), Wire.Denied); pragma Assert (Grants.Acquisitions = 0);
       Envelope.authorityTag := 77;
       Envelope.tag.flags := 1;
-      Send (42, Wire.Invalid_Request); pragma Assert (Grants.Acquisitions = 0);
+      Send (PID (42), Wire.Invalid_Request); pragma Assert (Grants.Acquisitions = 0);
       Envelope.tag.flags := 0;
       Envelope.words (2) := P.Frame_Bytes;
-      Send (42, Wire.Invalid_Request); pragma Assert (Grants.Acquisitions = 0);
+      Send (PID (42), Wire.Invalid_Request); pragma Assert (Grants.Acquisitions = 0);
       Envelope.words (2) := CCL.Objects.Schemas.Native_Schema_Bytes;
       Grants.Deny_Acquisition := 1;
-      Send (42, Wire.Invalid_Request); pragma Assert (Grants.Returns = 0);
+      Send (PID (42), Wire.Invalid_Request); pragma Assert (Grants.Returns = 0);
       Grants.Deny_Acquisition := 0;
       Schema.Root := CCL.Objects.Schemas.Handler_ID;
-      Send (42, Wire.Invalid_Request);
+      Send (PID (42), Wire.Invalid_Request);
       Schema.Root := CCL.Objects.Schemas.Integer_ID;
-      Send (42, Wire.Schema_Ready);
+      Send (PID (42), Wire.Schema_Ready);
       pragma Assert (Wire.Valid_Schema_Acknowledgment (Reply));
-      Send (42, Wire.Schema_Ready); -- exact duplicate, no second slot
+      Send (PID (42), Wire.Schema_Ready); -- exact duplicate, no second slot
       declare
          Extra_Types : CCL.Types.Registry;
          Extra : CCL.Objects.Binding;
@@ -321,27 +324,27 @@ procedure Receiver_Tests is
          CCL.Objects.Bind (Extra_Types, CCL.Types.Integer_Type,
            CCL.Objects.Identity (Contract), Extra, Good); pragma Assert (Good);
          CCL.Objects.Schemas.Write (Extra, Schema, Good); pragma Assert (Good);
-         Send (42, Wire.Schema_Ready); -- equivalent root, different registry
+         Send (PID (42), Wire.Schema_Ready); -- equivalent root, different registry
          CCL.Objects.Schemas.Write (Contract, Schema, Good); pragma Assert (Good);
       end;
       Schema.Root := CCL.Objects.Schemas.Boolean_ID;
-      Send (42, Wire.Invalid_Request); -- same key, incompatible layout
+      Send (PID (42), Wire.Invalid_Request); -- same key, incompatible layout
       Schema.Root := CCL.Objects.Schemas.Integer_ID;
       for Index in 2 .. Receiver.Maximum_Schemas loop
          Schema.Key (0) := Unsigned_64 (Index);
-         Send (42, Wire.Schema_Ready);
+         Send (PID (42), Wire.Schema_Ready);
       end loop;
       Schema.Key (0) := Receiver.Maximum_Schemas + 1;
-      Send (42, Wire.Unavailable);
+      Send (PID (42), Wire.Unavailable);
       Schema.Key (0) := 1;
-      Send (42, Wire.Schema_Ready); -- duplicate remains usable at capacity
+      Send (PID (42), Wire.Schema_Ready); -- duplicate remains usable at capacity
       -- Failure to release even a valid provisioning grant poisons this
       -- receiver before import. No later call can reuse that uncertain mapping.
       Grants.Acquisitions := 0; Grants.Returns := 0; Grants.Fail_Return := 1;
-      Receiver.Handle (Broken, 42, Envelope, Reply);
+      Receiver.Handle (Broken, PID (42), Envelope, Reply);
       pragma Assert (Receiver.Needs_Recovery (Broken) and Grants.Active_Acquisitions = 1);
       pragma Assert (Reply.tag.label = Wire.Status'Enum_Rep (Wire.Unavailable));
-      Receiver.Handle (Broken, 42, Envelope, Reply);
+      Receiver.Handle (Broken, PID (42), Envelope, Reply);
       pragma Assert (Grants.Acquisitions = 1 and Calls = Previous_Calls);
       Cases := Cases + 1;
       -- Hosted model teardown only; native mapping cleanup is a kernel duty.

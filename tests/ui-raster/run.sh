@@ -9,9 +9,10 @@ alr exec -- gprbuild -p -q -P "$here/ui_raster.gpr"
 if [[ "${1:-}" != "--no-prove" ]]; then
   alr exec -- gnatprove -P "$here/ui_raster.gpr" -u client_raster.adb -j4
   # Proof gate: every drawing unit compiled with pragma Suppress (All_Checks)
+  # (a generic such as Compositor_Glyph_Cache is proved through an instance)
   # must prove with no unproved check, or the suppression is not safe.
   for pair in client_canvas:client_canvas_geometry.adb client_blend:client_glyph_blend.adb \
-              glyph_cache:compositor_glyph_cache.adb glyph_layout:compositor_glyph_layout.adb \
+              glyph_cache:glyph_cache_model.ads glyph_layout:compositor_glyph_layout.adb \
               client_glyphs:client_glyphs.adb client_glyphs:compositor_glyph_software.adb; do
     alr exec -- gnatprove -P "$here/../compositor/${pair%%:*}.gpr" -u "${pair##*:}" \
       --level=2 --report=fail --checks-as-errors=on -j4

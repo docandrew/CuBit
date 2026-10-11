@@ -1,0 +1,249 @@
+# Every SPARK proof target in the repository, one per line, for
+# tests/prove-all.sh. Format (fields separated by " | "):
+#
+#   name | group | directory (relative to the repository root) | command
+#
+# The command runs with `bash -c` in that directory inside the Nix shell.
+# Groups let a checkpoint run a subset: tests/prove-all.sh --group desktop.
+# A target's level is read from its --level flag (gnatprove's default is 0).
+# Add a line here whenever a new proof project or prove-* target lands.
+
+# --- Kernel (kernel/Makefile) ---------------------------------------------
+kernel                  | kcore    | kernel | make prove
+kernel-spark-boundaries | kcore    | kernel | make check-spark-boundaries
+interrupt-state         | kernel   | kernel | make prove-interrupt-state
+lock-ownership          | kernel   | kernel | make prove-lock-ownership
+process-lifetime        | kernel   | kernel | make prove-process-lifetime
+frame-pins              | kernel   | kernel | make prove-frame-pins
+tlb-reclamation         | kernel   | kernel | make prove-tlb-reclamation
+capability-policy       | kernel   | kernel | make prove-capability-policy
+capability-derive       | kernel   | kernel | make prove-capability-derive
+memory-grants           | kernel   | kernel | make prove-memory-grants
+grant-loans             | kernel   | kernel | make prove-grant-loans
+ipc-request-ids         | kernel   | kernel | make prove-ipc-request-ids
+boot-panel              | boot     | kernel | make prove-boot-panel
+boot-framebuffer        | boot     | kernel | make prove-boot-framebuffer
+deadline-ownership      | sched    | kernel | make prove-deadline-ownership
+scheduler-shadow        | sched    | kernel | make prove-scheduler-shadow
+execution-accounting    | sched    | kernel | make prove-execution-accounting
+scheduler-budgets       | sched    | kernel | make prove-scheduler-budgets
+scheduler-turns         | sched    | kernel | make prove-scheduler-turns
+quiescent-reclamation   | sched    | kernel | make prove-quiescent-reclamation
+id-ledger               | sched    | kernel | make prove-id-ledger
+work-stealing           | sched    | kernel | make prove-work-stealing
+futex-queues            | sched    | kernel | make prove-futex-queues
+scheduler-timing        | sched    | kernel | make prove-scheduler-timing
+ccl-cbor                | ccl      | kernel | make prove-ccl-cbor
+usb-optical             | drivers  | kernel | make prove-usb-optical
+network-authority       | net      | kernel | make prove-network-authority
+timesync                | net      | kernel | make prove-timesync
+tcp-session             | net      | kernel | make prove-tcp-session
+filesystem-policy       | fs       | kernel | make prove-filesystem-policy
+stream-policies         | ipc      | kernel | make prove-stream-policies
+qoi                     | desktop  | kernel | make prove-qoi
+appearance              | desktop  | kernel | make prove-appearance
+clipboard               | desktop  | kernel | make prove-clipboard
+desktop-protocol        | desktop  | kernel | make prove-desktop-protocol
+desktop-state           | desktop  | kernel | make prove-desktop-state
+ccl-interpreter-host    | ccl      | kernel | make prove-ccl-interpreter-host
+ccl-periodic            | ccl      | kernel | make prove-ccl-periodic
+ccl-remote              | ccl      | kernel | make prove-ccl-remote
+monitor-edid            | display  | kernel | make prove-monitor-edid
+display-geometry        | display  | kernel | make prove-display-geometry
+display-arrangement     | display  | kernel | make prove-display-arrangement
+display-layouts         | display  | kernel | make prove-display-layouts
+window-placement        | display  | kernel | make prove-window-placement
+output-registry         | display  | kernel | make prove-output-registry
+output-discovery        | display  | kernel | make prove-output-discovery
+ccl-format              | ccl      | kernel | make prove-ccl-format
+ccl-startup             | ccl      | kernel | make prove-ccl-startup
+tls-scopes              | net      | kernel | make prove-tls-scopes
+
+# --- Hosted test scripts with --prove (tests/*/run.sh) ----------------------
+acpi-tables             | acpi     | . | bash tests/acpi-tables/run.sh --prove
+async-requests          | ipc      | . | bash tests/async-requests/run.sh --prove
+audio-periods           | drivers  | . | bash tests/audio-periods/run.sh --prove
+call-sequences          | ipc      | . | bash tests/call-sequences/run.sh --prove
+ccl-objects             | ccl      | . | bash tests/ccl-objects/run.sh --prove
+ccl-objects-persistence | ccl      | . | bash tests/ccl-objects/run-persistence.sh --prove
+ccl-objects-schema-codec| ccl      | . | bash tests/ccl-objects/run-schema-codec.sh --prove
+ccl-objects-schemas     | ccl      | . | bash tests/ccl-objects/run-schemas.sh --prove
+ccl-owned-locals        | ccl      | . | bash tests/ccl-owned-locals/run.sh --prove
+ccl-resource-policies   | ccl      | . | bash tests/ccl-resource-policies/run.sh --prove
+ccl-resources           | ccl      | . | bash tests/ccl-resources/run.sh --prove
+ccl-resource-signatures | ccl      | . | bash tests/ccl-resource-signatures/run.sh --prove
+ccl-resource-values     | ccl      | . | bash tests/ccl-resource-values/run.sh --prove
+ccl-schema-catalog      | ccl      | . | bash tests/ccl-schema-catalog/run.sh --prove
+ccl-type-discovery      | ccl      | . | bash tests/ccl-type-discovery/run.sh --prove
+channel-contracts       | ipc      | . | bash tests/channel-contracts/run.sh --prove
+channel-rings           | ipc      | . | bash tests/channel-rings/run.sh --prove
+config-activation       | config   | . | bash tests/config-activation/run.sh --prove
+config-collections      | config   | . | bash tests/config-collections/run.sh --prove
+config-inspection       | config   | . | bash tests/config-inspection/run.sh --prove
+config-object-client    | config   | . | bash tests/config-object-client/run.sh --prove
+config-worker           | config   | . | bash tests/config-worker/run.sh --prove
+config-worker-schema    | config   | . | bash tests/config-worker/run-schema.sh --prove
+doom-port               | ports    | . | bash tests/doom-port/run.sh --prove
+fast-clock              | kernel   | . | bash tests/fast-clock/run.sh --prove
+files-app               | desktop  | . | bash tests/files-app/run.sh --prove
+grant-windows           | kernel   | . | bash tests/grant-windows/run.sh --prove
+kernel-controls         | kernel   | . | bash tests/kernel-controls/run.sh --prove
+kernel-credits          | kernel   | . | bash tests/kernel-credits/run.sh --prove
+kernel-reports          | kernel   | . | bash tests/kernel-reports/run.sh --prove
+launch-arguments        | process  | . | bash tests/launch-arguments/run.sh --prove
+launch-grants           | process  | . | bash tests/launch-grants/run.sh --prove
+libc-ada                | runtime  | kernel | alr exec -- gnatprove -P ../tests/libc-ada/libc_ada.gpr -u cubit-child_table.adb -u cubit-libc_time.adb -u cubit-libc_select.adb -u cubit-libc_reports.adb -u cubit-libc_start_layout.adb -u cubit-libc_rings.adb -u cubit-libc_directory_entries.adb -u cubit-libc_descriptor_rules.adb -u cubit-libc_file_cache.adb -u cubit-libc_dirty_map.adb -u cubit-libc_park_table.adb -u cubit-libc_net_addresses.adb -u cubit-libc_net_targets.adb -u cubit-libc_net_names.adb --level=2 -j4 --checks-as-errors=on
+multiboot2              | boot     | . | bash tests/multiboot2/run.sh --prove
+outlet-rings            | ipc      | . | bash tests/outlet-rings/run.sh --prove
+path-names              | fs       | . | bash tests/path-names/run.sh --prove
+process-identities      | process  | . | bash tests/process-identities/run.sh --prove
+program-descriptions    | process  | . | bash tests/program-descriptions/run.sh --prove
+sameboy-port            | ports    | . | bash tests/sameboy-port/run.sh --prove
+volume-names            | fs       | . | bash tests/volume-names/run.sh --prove
+
+# --- Scripts that always prove ----------------------------------------------
+log-fanout              | logging  | . | bash tests/log-fanout/run.sh
+log-fields              | logging  | . | bash tests/log-fields/run.sh
+metrics                 | logging  | . | bash tests/metrics/run.sh
+observatory-metrics     | logging  | . | bash tests/observatory-metrics/run.sh
+observatory-adapter     | logging  | . | bash tests/observatory-metrics/run-adapter.sh
+observatory-format      | logging  | . | bash tests/observatory-metrics/run-format.sh
+observatory-history     | logging  | . | bash tests/observatory-metrics/run-history.sh
+stream-connections      | ipc      | . | bash tests/stream-connections/run.sh
+typed-logging           | logging  | . | bash tests/typed-logging/run.sh
+ui-raster               | desktop  | . | bash tests/ui-raster/run.sh
+userspace-allocator     | runtime  | . | bash tests/userspace-allocator/run.sh
+boot-frame-allocator    | boot     | . | bash tests/boot-frame-allocator/prove.sh
+boot-modules            | boot     | . | bash tests/boot-modules/prove.sh
+buddy-bitmap            | kernel   | . | bash tests/buddy-bitmap/prove.sh
+buddy-blocks            | kernel   | . | bash tests/buddy-blocks/prove.sh
+buddy-boot-admission    | kernel   | . | bash tests/buddy-boot-admission/prove.sh
+buddy-geometry          | kernel   | . | bash tests/buddy-geometry/prove.sh
+buddy-metadata          | kernel   | . | bash tests/buddy-metadata/prove.sh
+firmware-frames         | boot     | . | bash tests/firmware-frames/prove.sh
+free-block-set          | fs       | . | bash tests/free-block-set/prove.sh
+intrusive-list-splices  | kernel   | . | bash tests/intrusive-list-splices/prove.sh
+multiboot-entry         | boot     | . | bash tests/multiboot-entry/prove.sh
+multiboot-memory-map    | boot     | . | bash tests/multiboot-memory-map/prove.sh
+display-pool            | desktop  | . | bash tests/compositor/check-display-pool.sh
+
+# --- Proof projects documented in READMEs and design notes ------------------
+# The AML proofs (tests/aml-core/run.sh --prove) and the libc's Ada proofs
+# (tests/libc-ada/run.sh --prove) are listed one by one so they do not wait
+# on those scripts' hosted tests and musl headers.
+allocation-failures     | kernel   | kernel | alr exec -- gnatprove -P ../tests/allocation-failures/allocation_tests.gpr -u page_admission.adb allocation_proof.adb elf_admission.adb heap_growth_proof.adb --mode=all --level=2 --checks-as-errors=on -j2
+aml-hardware-capabilities | acpi   | kernel | alr exec -- gnatprove -P ../tests/aml-core/hardware-capabilities/capabilities.gpr -u capabilities.ads --mode=all --level=2 --prover=cvc5,z3 --checks-as-errors=on -j2
+aml-hardware-catalog    | acpi     | kernel | alr exec -- gnatprove -P ../tests/aml-core/hardware-catalog/catalog.gpr -u hardware_catalog.adb hardware_authority.ads --mode=all --level=2 --prover=cvc5,z3 --checks-as-errors=on -j2
+aml-hardware-cspace     | acpi     | kernel | alr exec -- gnatprove -P ../tests/aml-core/hardware-cspace/hardware_cspace.gpr -u hardware_grants-cspace.adb hardware_grants.adb hardware_catalog.adb hardware_authority.ads capabilities.ads --mode=all --level=2 --prover=cvc5,z3 --checks-as-errors=on -j2
+aml-hardware-grants     | acpi     | kernel | alr exec -- gnatprove -P ../tests/aml-core/hardware-grants/grants.gpr -u hardware_grants.adb hardware_catalog.adb hardware_authority.ads --mode=all --level=2 --prover=cvc5,z3 --checks-as-errors=on -j2
+aml-provisioning        | acpi     | . | gnatprove -P tests/aml-core/provisioning/provisioning.gpr -u firmware_tables-provisioning.adb --mode=all --level=2 --timeout=30 --memlimit=2000 --prover=cvc5,z3 --checks-as-errors=on -j2
+aml-snapshots           | acpi     | kernel | ulimit -S -s 65536; alr exec -- gnatprove -P ../tests/aml-core/snapshots/snapshots.gpr -u firmware_tables-snapshots.adb --mode=all --level=2 --prover=cvc5,z3 --checks-as-errors=on -j2
+# --no-inlining: gnat2why's contextual inlining of local subprograms passed
+# as generic actuals (aml_namespace.adb Execute instances) hits a GNAT bug
+# box (inline.adb:3290). Without it the proofs rely on declared contracts.
+aml-native-loop         | acpi     | kernel | alr exec -- gnatprove -P ../tests/aml-core/native-loop/acpi_loop.gpr -u acpi_launch.adb --mode=all --no-inlining --level=2 --prover=cvc5,z3 --checks-as-errors=on -j2
+aml-regions             | acpi     | kernel | alr exec -- gnatprove -P ../tests/aml-core/regions/regions.gpr -u hardware_authority.ads acpi_region_policy.adb region_mock.adb region_io_instance.ads --mode=all --level=2 --prover=cvc5,z3 --checks-as-errors=on -j2
+aml-transactions        | acpi     | kernel | alr exec -- gnatprove -P ../tests/aml-core/transactions/transactions.gpr -u acpi_fadt-transactions.adb --mode=all --level=2 --timeout=30 --steps=0 --prover=cvc5,z3 --checks-as-errors=on -j2
+aml-interpreter         | acpi     | kernel | alr exec -- gnatprove -P ../tests/aml-core/aml.gpr -u aml_coercions-strings.adb aml_table_backing.adb firmware_tables-identifiers.adb firmware_tables-copies.adb firmware_tables-exposure.adb firmware_tables-catalog.adb acpi_fadt-registers.adb acpi_fadt.adb aml_decode.adb aml_fields.adb aml_field_data.adb aml_names.adb aml_execute.adb aml_integers.adb aml_coercions.adb aml_logic.adb aml_objects.adb aml_objects-byte_references.adb aml_objects-package_references.adb aml_data.adb namespace_instance.ads acpi_service.ads aml_clock.adb timer_verification.adb timer_service_verification.adb acpi_bootstrap.adb acpi_requests.adb acpi_endpoint.adb --mode=all --no-inlining --level=2 --timeout=30 --memlimit=2000 --prover=cvc5,z3 --checks-as-errors=on -j2
+aml-backing             | acpi     | kernel | alr exec -- gnatprove -P ../tests/aml-core/backing.gpr -u multiboot_memory_map-reclaim.adb --mode=all --level=2 --prover=cvc5,z3 --checks-as-errors=on -j2
+aml-delay               | acpi     | . | gnatprove -P tests/aml-delay/proof.gpr -u aml_delays.adb --mode=all --level=1 --timeout=5 --prover=cvc5,z3 -j1 --checks-as-errors=on --report=all
+boot-hpet               | boot     | kernel | alr exec -- gnatprove -P ../tests/boot-hpet/hpet.gpr -u firmware_tables-hpet.adb --mode=all --level=2 --prover=cvc5,z3 --checks-as-errors=on -j2
+boot-timer-rates        | boot     | kernel | alr exec -- gnatprove -P ../tests/boot-timer-rates/rates.gpr -u boot_timer_rates.adb --level=1 --report=all --checks-as-errors=on -j2
+ccl-callbacks-queue     | ccl      | kernel | alr exec -- gnatprove -P ../tests/ccl-callbacks/callbacks_tests.gpr --subdirs=queue-proof -u queue_model.ads --mode=all --level=1 --timeout=5 -j2
+ccl-callbacks-flow      | ccl      | kernel | alr exec -- gnatprove -P ../tests/ccl-callbacks/callbacks_tests.gpr --subdirs=handler-flow -u ccl-language-handlers.adb ccl-callbacks.adb --mode=flow -j2
+ccl-callbacks-button    | ccl      | kernel | alr exec -- gnatprove -P ../tests/ccl-callbacks/callbacks_tests.gpr --subdirs=button-proof -u ccl-handler_references.adb ccl-host_values.adb queue_model.ads --mode=all --level=1 --timeout=5 -j2
+ccl-file-dialog         | ccl      | kernel | alr exec -- gnatprove -P ../tests/ccl-file-dialog/dialog_tests.gpr -u cubit-file_selection.adb --level=2 --report=all --checks-as-errors=on -j2
+ccl-host-results        | ccl      | kernel | alr exec -- gnatprove -P ../tests/ccl-host-results/results.gpr -u result_fixture.adb --level=2 -j2 --report=all --checks-as-errors=on
+ccl-input-budget        | desktop  | . | gnatprove -P tests/compositor/input_budget.gpr -u client_input_budget.adb --level=2 -j1
+ccl-sessions-flow       | ccl      | kernel | alr exec -- gnatprove -P ../tests/ccl-sessions/sessions_tests.gpr --subdirs=functions-flow -u ccl-language.adb --mode=flow -j2
+ccl-native-objects      | ccl      | kernel | ulimit -v 8388608; alr exec -- gnatprove -P ../tests/ccl-type-discovery/native_objects.gpr -u ccl-vm.adb ccl-vm-native_objects.adb ccl-host_values.adb --subdirs=object-projection-proof --level=2 -j2
+ccl-import-results      | ccl      | kernel | alr exec -- gnatprove -P ../tests/ccl-type-discovery/import_results.gpr --subdirs=proof -u ccl-vm.adb --level=2 -j2 --report=all --checks-as-errors=on
+ccl-typed-object-host   | ccl      | kernel | alr exec -- gnatprove -P ../tests/ccl-remote/remote.gpr --subdirs=typed-object-host-proof -u interpreter_host.adb --limit-region=ccl-language.adb:1660:1798 --level=2 -j2 --report=all --checks-as-errors=on
+ccl-vm-discovery        | ccl      | kernel | alr exec -- gnatprove -P ../tests/ccl-type-discovery/discovery.gpr --subdirs=vm-proof -u ccl-vm.adb --level=2 --checks-as-errors=on -j2
+ccl-root-export         | ccl      | kernel | alr exec -- gnatprove -P ../tests/ccl-remote/remote.gpr --subdirs=root-export-proof -u ccl-language.adb --limit-region=ccl-language.adb:1247:1266 --level=2 --report=all --checks-as-errors=on -j2
+ccl-types               | ccl      | kernel | alr exec -- gnatprove -P ../tests/ccl-types/types_tests.gpr --subdirs=types-proof -u ccl-types.adb --level=2 --report=all --checks-as-errors=on -j2
+ccl-types-resources     | ccl      | kernel | alr exec -- gnatprove -P ../tests/ccl-types/types_tests.gpr -u ccl-types.adb ccl-types-encoding.adb ccl-types-correspondence.adb ccl-objects.adb ccl-objects-schemas.adb ccl-objects-views.adb --subdirs=resource-proof --level=2 -j2 --checks-as-errors=on
+ccl-types-variants      | ccl      | kernel | alr exec -- gnatprove -P ../tests/ccl-types/types_tests.gpr --subdirs=variant-final-proof -u ccl-types.adb ccl-types-encoding.adb ccl-vm.adb ccl-ownership-bytecode.adb --level=2 --report=all --checks-as-errors=on -j2
+ccl-views               | ccl      | kernel | alr exec -- gnatprove -P ../tests/ccl-views/views_tests.gpr -u ccl-language-views.adb --mode=all --level=1 --timeout=5 -j2
+ccl-config-review       | ccl      | kernel | alr exec -- gnatprove -P ../userspace/ccl/ccl_config_review.gpr --level=2 -j2 --report=fail
+compositor-backend-selection | desktop | . | gnatprove -P tests/compositor/backend-selection/test.gpr -u compositor_backend_selection.adb --level=2 --report=all -j2
+compositor-startup-layout | desktop | kernel | alr exec -- gnatprove -P ../tests/compositor/startup-layout/test.gpr -u desktop_startup_layout.adb --mode=all --level=2 --report=all -j2
+compositor-trace-archive  | desktop | kernel | alr exec -- gnatprove -P ../tests/compositor/trace-archive/trace_archive.gpr -u compositor_trace_archive.adb compositor_trace_framing.adb --level=2 --timeout=30 -j2 --report=all
+compositor-affine       | desktop  | . | gnatprove -P tests/compositor/affine.gpr -U --level=2 -j2 --report=fail
+compositor-composition  | desktop  | . | gnatprove -P tests/compositor/composition.gpr -U --level=2 -j2 --report=fail
+compositor-density      | desktop  | . | gnatprove -P tests/compositor/density.gpr --level=2 -j2 --report=fail
+compositor-glyph-cache  | desktop  | kernel | alr exec -- gnatprove -P ../tests/compositor/glyph_cache.gpr --level=2 -j2 --report=fail
+compositor-glyph-renderer | desktop | . | gnatprove -P tests/compositor/glyph_renderer.gpr -U --level=2 --report=fail -j2
+compositor-glyph-software | desktop | . | gnatprove -P tests/compositor/glyph_software.gpr -U --level=2 --report=fail -j2
+compositor-gradient     | desktop  | kernel | alr exec -- gnatprove -P ../tests/compositor/gradient.gpr -u compositor_gradient.adb --level=2 -j2 --report=fail
+compositor-pool         | desktop  | . | gnatprove -P tests/compositor/pool.gpr --level=2 -j2 --report=fail
+compositor-readers      | desktop  | . | gnatprove -P tests/compositor/readers.gpr -U --level=2 -j2 --report=fail
+compositor-sampling     | desktop  | . | gnatprove -P tests/compositor/sampling.gpr -U --level=2 -j2 --report=fail
+compositor-storage      | desktop  | . | gnatprove -P tests/compositor/storage.gpr -U --level=2 -j2 --report=fail
+compositor-text-background | desktop | kernel | alr exec -- gnatprove -P ../tests/compositor/text_background.gpr -u compositor_text.ads --mode=all --level=2 --report=all --checks-as-errors=on -j2
+compositor-client-blend | desktop  | . | gnatprove -P tests/compositor/client_blend.gpr -u client_glyph_blend.adb --level=2 --report=all -j2
+compositor-input-provenance | desktop | . | gnatprove -P tests/compositor/input_provenance.gpr --level=2 -j2 --report=fail
+console-ring            | kernel   | kernel | alr exec -- gnatprove -P ../tests/console-ring/prove.gpr --mode=all --level=2 --report=fail --checks-as-errors=on -j2
+cpu-topology            | kernel   | kernel | alr exec -- gnatprove -P ../tests/cpu-topology/topology.gpr -u cpu_topology.adb --level=2 -j2 --report=all
+desktop-publication     | desktop  | kernel | mkdir -p ../tests/desktop-protocol/build/publication/source && cp ../userspace/runtime/gnat/cubit.ads ../userspace/runtime/gnat/cubit-grant_references.ads ../userspace/runtime/gnat/cubit-desktop_protocol.ad? ../userspace/runtime/gnat/cubit-desktop_protocol-publication.ad? ../tests/desktop-protocol/build/publication/source/ && alr exec -- gnatprove -P ../tests/desktop-protocol/publication.gpr -u cubit-desktop_protocol-publication.adb --level=2 -j1 --report=all
+desktop-policy-mesa     | desktop  | kernel | CUBIT_COMPOSITOR=mesa alr exec -- gnatprove -P ../userspace/services/desktop/desktop_policy_proof.gpr -u desktop_compositor.adb desktop_renderer_startup.adb desktop_mesa_software_renderer.adb --mode=all --level=2 --timeout=15 -j2 --report=fail
+desktop-policy-legacy   | desktop  | kernel | CUBIT_COMPOSITOR=legacy alr exec -- gnatprove -P ../userspace/services/desktop/desktop_policy_proof.gpr -u desktop_compositor.adb desktop_renderer_startup.adb --mode=all --level=2 --timeout=15 -j2 --report=fail
+desktop-gpu-scene       | desktop  | . | gnatprove -P tests/compositor/desktop_gpu_scene.gpr -u desktop_gpu_scene.adb desktop_glyph_residency.adb --mode=all --level=2 --timeout=15 -j2 --report=fail
+desktop-backdrop        | desktop  | . | gnatprove -P tests/compositor/desktop_backdrop.gpr -u desktop_gpu_scene-backdrop.adb desktop_backdrop_owner.adb desktop_backdrop_pixels.adb desktop_backdrop_upload.adb desktop_wallpaper_store.adb cubit-qoi.adb --mode=all --level=2 --timeout=15 -j2 --report=fail
+desktop-policy-vulkan   | desktop  | kernel | test -f ../userspace/services/desktop/build/generated/ccl_manifest_bindings.ads || { echo 'needs the desktop manifest bindings: make -C kernel world (or desktop) first'; exit 1; }; CUBIT_COMPOSITOR=vulkan alr exec -- gnatprove -P ../userspace/services/desktop/desktop_policy_proof.gpr -u desktop_compositor.adb desktop_vulkan_startup.adb desktop_image_source.adb desktop_readback_output.adb desktop_image_registry.adb desktop_gpu_scene.adb desktop_gpu_scene-images.adb desktop_gpu_scene-output.adb desktop_gpu_scene-backdrop.adb desktop_gpu_scene-drawing.adb desktop_glyph_residency.adb desktop_glyph_upload.adb desktop_renderer_startup.adb desktop_logs.adb desktop_breadcrumbs.adb desktop_startup_layout.adb desktop_backdrop_owner.adb desktop_backdrop_upload.adb desktop_backdrop_pixels.adb desktop_icon_atlas_owner.adb desktop_icon_pixels.adb desktop_icon_mapping.adb desktop_icon_upload.adb desktop_wallpaper_store.adb desktop_input_transfer.adb desktop_cpu_software_renderer.adb --mode=all --level=2 --timeout=15 -j2 --report=fail
+device-memory           | kernel   | kernel | alr exec -- gnatprove -P ../tests/device-memory/admission.gpr -u device_memory_admission.adb --level=1 --checks-as-errors=on --report=all -j2
+directory-pages         | fs       | kernel | alr exec -- gnatprove -P ../tests/directory-pages/pages.gpr -u cubit-directory_pages.adb --level=2 -j2 --report=fail --checks-as-errors=on
+display-planes          | display  | kernel | bash ../tests/display-planes/prepare.sh && alr exec -- gnatprove -P ../tests/display-planes/planes.gpr -u cubit-display_planes.adb cubit-display_plane_protocol.adb cubit-gpu_plane_protocol.adb --level=2 --report=fail --checks-as-errors=on -j4
+endpoint-disposal       | kernel   | . | gnatprove -P tests/endpoint-disposal/disposal.gpr -u capabilities-endpoint_disposal.adb --mode=all --level=2 --report=all -j2
+filesystem-copy         | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-copy/copy.gpr -u copy_slices.adb --level=2 --report=all -j2
+filesystem-events       | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-events/events.gpr -u cubit-filesystem_events.adb watch_reserve.adb --level=2 --report=all -j2
+filesystem-queue-wakes  | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-queue-wakes/wakes.gpr -u queue_wakes.adb --level=2 --report=all -j2
+filesystem-truncate     | fs       | kernel | alr exec -- gnatprove -P ../tests/filesystem-truncate/accounting_proof.gpr --level=1 --timeout=5 --checks-as-errors=on -j2
+grant-references        | ipc      | kernel | alr exec -- gnatprove -P ../tests/grant-references/references.gpr -u cubit-grant_references.ads codec_proof.adb --level=2 --report=all -j2
+heap-admission          | kernel   | kernel | alr exec -- gnatprove -P ../tests/heap-admission/heap_tests.gpr -u heap_admission.adb --mode=all --level=1 --checks-as-errors=on -j2
+input-pending           | input    | kernel | alr exec -- gnatprove -P ../tests/input-pending/pending.gpr -u input_pending.adb --mode=all --level=2 --report=all --checks-as-errors=on -j2
+input-library           | input    | kernel | alr exec -- gnatprove -P ../tests/input-pending/prove.gpr --mode=all --level=2 --report=fail --checks-as-errors=on -j2
+gpu-queue               | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/gpu_queue.gpr --subdirs=proof-step2 -u cubit-gpu_queues.ads intel_gpu_segment_window.adb intel_gpu_context_ledger.adb intel_gpu_queue_admission.adb intel_gpu_queue_wakes.adb intel_gpu_session_queue.adb intel_gpu_ring_reservation.adb --level=2 --report=fail --checks-as-errors=on -j4
+gpu-async               | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/gpu_async.gpr --subdirs=proof-step1 -u intel_gpu_timeline.adb intel_gpu_guc_event_queue.adb intel_gpu_adln_pphwsp.ads intel_gpu_adln_barrier.adb intel_gpu_adln_context_init.adb intel_gpu_guc_context_event.adb intel_gpu_guc_actions.ads intel_gpu_guc_submission_policy.ads intel_gpu_guc_context_lifecycle.adb intel_gpu_guc_fast_fences.adb intel_gpu_guc_context_request.adb live_ring_proof.ads --level=2 --report=fail --checks-as-errors=on -j4
+gpu-continuous-submit   | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/continuous_submit.gpr --subdirs=proof-residency -u intel_gpu_guc_fast_fences.adb intel_gpu_guc_context_lifecycle.adb intel_gpu_guc_submission_policy.ads intel_gpu_guc_actions.ads intel_gpu_guc_context_request.adb intel_gpu_guc_context_event.adb --level=2 --report=fail --checks-as-errors=on -j4
+gpu-sparse-vm           | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/sparse_vm.gpr --subdirs=preflight-admission -u intel_gpu_adln_lrc_initial.adb intel_gpu_adln_lrc_workaround.adb intel_gpu_adln_context_image.adb --level=1 --report=all --checks-as-errors=on -j2
+gpu-probe               | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/probe.gpr -u intel_gpu_probe.adb --level=1 --report=all --checks-as-errors=on -j2
+gpu-resources           | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/probe.gpr -u intel_gpu_resources.adb --level=2 --report=all --checks-as-errors=on -j2
+gpu-observation         | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/probe.gpr -u observation_proof.ads --level=2 --report=all --checks-as-errors=on -j2
+gpu-ggtt-reservations   | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/ggtt_reservations.gpr -u intel_gpu_ggtt_reservations.adb --level=2 --report=all --checks-as-errors=on -j2
+gpu-scanout-range       | gpu      | . | gnatprove -P tests/intel-gpu/scanout_range.gpr -u intel_gpu_scanout_range.adb --level=2 --report=all -j2
+gpu-plane-decode        | gpu      | . | gnatprove -P tests/intel-gpu/plane_decode.gpr -u intel_gpu_plane_decode.adb --level=2 --report=all -j2
+gpu-display-claim       | gpu      | . | gnatprove -P tests/intel-gpu/display_claim.gpr -u intel_gpu_display_claim.adb --level=2 --report=all -j2
+gpu-capture-list        | gpu      | . | gnatprove -P tests/intel-gpu/capture_list.gpr -u intel_gpu_capture_list.adb --level=2 --report=all --checks-as-errors=on -j2
+gpu-cursor-program      | gpu      | . | gnatprove -P tests/intel-gpu/cursor_program.gpr -u intel_gpu_cursor_program.adb --level=2 -j2
+gpu-video-decode        | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/video_decode.gpr --subdirs=proof -u intel_gpu_media_engines.adb intel_gpu_huc_firmware.adb intel_gpu_huc_registers.ads intel_gpu_adln_video_segment.adb huc_load_proof.ads --level=2 --report=fail --checks-as-errors=on -j4
+gpu-viewer-protocol     | gpu      | . | gnatprove -P tests/gpu-viewer/protocol_proof.gpr --level=2 -j2 --report=fail
+locators                | fs       | tests/locators | gnatprove -P locators_tests.gpr -j2 --checks-as-errors=on
+log-viewport            | logging  | . | gnatprove -P tests/log-viewer/log_viewport_proof.gpr --level=1 -j2 --report=fail
+net-tcp                 | net      | tests/net-tcp | gnatprove -P net_tcp_tests.gpr -j4 --level=1 --checks-as-errors=on
+owned-demand            | runtime  | kernel | alr exec -- gnatprove -P ../tests/owned-demand/demand.gpr -u owned_demand_policy.adb --level=2 --report=all -j2
+graphics-metrics        | logging  | kernel | bash ../tests/performance/test.sh && alr exec -- gnatprove -P ../tests/performance/histogram.gpr -u cubit-graphics_metrics.adb --level=2 --checks-as-errors=on --report=all -j2
+timing-histograms       | logging  | kernel | bash ../tests/performance/test.sh && alr exec -- gnatprove -P ../tests/performance/histogram.gpr -u cubit-timing_histograms.adb --level=1 -j2
+procmgr-reads           | process  | kernel | alr exec -- gnatprove -P ../tests/procmgr-reads/read_tests.gpr -u read_proof.adb --level=2 --report=all --checks-as-errors=on -j2
+region-layout           | kernel   | tests/region-transition | gnatprove -P layout.gpr -u owned_memory_layout.ads --mode=prove --level=2 --report=all -j2
+render-startup          | desktop  | kernel | alr exec -- gnatprove -P ../tests/render-startup/startup.gpr -u cubit-render_startup.ads --mode=all --level=2 --report=all --checks-as-errors=on -j1
+retained-dma            | kernel   | . | gnatprove -P tests/retained-dma/proof.gpr --level=2 --report=all -j2
+servo-frame-copy        | ports    | kernel | alr exec -- gnatprove -P ../tests/servo/frame_copy.gpr -u servo_frame_copy.adb --level=2 --timeout=20 -j2 --report=all
+servo-input-geometry    | ports    | kernel | alr exec -- gnatprove -P ../tests/servo/input_geometry.gpr -u servo_input_geometry.adb --level=2 --timeout=20 -j2 --report=all
+servo-input-admission   | ports    | kernel | alr exec -- gnatprove -P ../tests/servo/input-admission/admission.gpr -u servo_input_admission.ads --level=2 --report=all -j2
+shared-file-objects     | fs       | kernel | alr exec -- gnatprove -P ../tests/shared-file-objects/objects.gpr -u model.ads --level=2 --report=all -j2
+ui-popups               | desktop  | tests/ui-popups | gnatprove -P popups_proof.gpr --level=2 -j2 --report=fail
+usb-configurations      | drivers  | kernel | alr exec -- gnatprove -P ../tests/usb-input-discovery/discovery.gpr -u usb_configurations.adb --level=1 --report=all --checks-as-errors=on -j2
+xhci-topology           | drivers  | kernel | alr exec -- gnatprove -P ../tests/usb-input-discovery/discovery.gpr -u xhci_topology.adb --level=1 --report=all --checks-as-errors=on -j2
+user-memory             | kernel   | kernel | alr exec -- gnatprove -P ../tests/user-memory/user_memory_tests.gpr -u copy_proof.adb --mode=all --level=1 --checks-as-errors=on -j2
+volume-descriptions     | fs       | kernel | alr exec -- gnatprove -P ../tests/volume-descriptions/volumes.gpr -u cubit-volume_descriptions.adb --level=2 --report=all -j2
+volume-list             | fs       | kernel | alr exec -- gnatprove -P ../tests/volume-list/volumes.gpr -u volume_list.adb --level=1 --timeout=5 --checks-as-errors=on -j2
+
+# --- Added by the second proof sweep (2026-10-10 night) --------------------
+msi-vectors             | kernel   | . | bash tests/msi-vectors/run.sh --prove
+key-repeat              | desktop  | kernel | alr exec -- gnatprove -P ../tests/key-repeat/prove.gpr --mode=all -u key_repeat.adb --level=2 -j2
+absolute-pointer        | drivers  | kernel | alr exec -- gnatprove -P ../tests/absolute-pointer/prove.gpr --mode=all --level=2 --checks-as-errors=on --report=fail -j2
+output-modes            | display  | . | bash tests/output-modes/prepare.sh && gnatprove -P tests/output-modes/modes.gpr -u cubit-output_modes.adb --level=2 --report=fail -j2
+gpu-slpc                | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/slpc.gpr -u intel_gpu_slpc.adb --level=2 --report=fail --checks-as-errors=on -j2
+boot-timeline           | boot     | kernel | make prove-boot-timeline
+gpu-cursor-plane        | gpu      | kernel | alr exec -- gnatprove -P ../tests/intel-gpu/cursor_plane.gpr -u intel_gpu_cursor_surfaces.adb intel_gpu_cursor_ddb.adb intel_gpu_cursor_plane.adb intel_gpu_cursor_program.adb --level=2 --report=fail -j2

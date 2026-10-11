@@ -10,6 +10,8 @@
   (config-scope (rights read) "desktop.launch.")
   # Opt-in detailed tracing; Desktop only reads this operator setting.
   (config-scope (rights read) "desktop.metrics.")
+  # Keyboard settings (desktop.input.key-repeat: Desktop_Key_Repeat_Settings).
+  (config-scope (rights read) "desktop.input.")
   (request-service mixer-control read-write mixer-control)
   (request-service clock read-write clock)
   (request-service display read-write display)

@@ -59,7 +59,8 @@ package body Config_Authority with SPARK_Mode is
    is
       Slot : Natural range 0 .. Maximum_Subjects := 0;
    begin
-      if Subject = No_Subject then
+      --  Any slot-0 identity is ill-formed, not only the all-zero one.
+      if not CuBit.Process_IDs.Is_Process (Subject) then
          Result := Invalid_Subject; return;
       end if;
       if State.Last_Revision = Interfaces.Unsigned_64'Last then

@@ -117,6 +117,17 @@ package body CuBit.GPU_Sessions is
    function Wake_Armed (S : Session) return Boolean is
      (not CuBit.Async_Requests.Drained (S.Wake));
 
+   procedure Hint_Boost (S : Session; Sent : out Boolean) is
+      M : CuBit.Messages.Message := CuBit.Messages.NULL_MESSAGE;
+   begin
+      Sent := False;
+      if not S.Opened then
+         return;
+      end if;
+      M.tag := (label => GQ.OP_GPU_BOOST, length => 0, flags => 0, reserved => 0);
+      Sent := CuBit.Messages.capSubmit (S.Endpoint, M, CuBit.Messages.NO_COMPLETION_TOKEN);
+   end Hint_Boost;
+
    procedure Arm_Wake
      (S : in out Session; Context : GQ.Context_Index; Target : GQ.Timeline_Value;
       Wake_Token : CuBit.Async_Requests.Token; Accepted : out Boolean)

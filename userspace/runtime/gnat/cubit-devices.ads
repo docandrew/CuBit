@@ -14,6 +14,12 @@ package CuBit.Devices is
    OP_INVENTORY_ITEM     : constant Unsigned_32 := 16#0241#;
    OP_XHCI_DIAGNOSTICS   : constant Unsigned_32 := 16#0242#;
    OP_PUBLISH_XHCI_STATS : constant Unsigned_32 := 16#0243#;
+   --  A device's message interrupts (docs/msi-interrupts.md). Request:
+   --  word 0 the inventory index. Reply: word 0 the Interrupt_Mode, word 1
+   --  the first device vector, word 2 the vector count, word 3 the
+   --  interrupts the kernel delivered on them since boot. Polling devices
+   --  report Interrupt_Polling and zeros.
+   OP_INTERRUPT_VECTORS  : constant Unsigned_32 := 16#0244#;
 
    REPLY_OK              : constant Unsigned_32 := 16#F000#;
    REPLY_ERROR           : constant Unsigned_32 := 16#F001#;

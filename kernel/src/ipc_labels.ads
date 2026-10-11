@@ -28,6 +28,12 @@ is
     -- Spawn with launch arguments (procmgr, docs/process-arguments.md).
     OP_LAUNCH  : constant Unsigned_32 := 16#0106#;
 
+    --  The device IRQ doorbell (Process.IPC.takeIRQDoorbell): a driver's
+    --  coalesced "device has work" event. Words carry the pending device
+    --  vectors (Device_Vector_ABI). The historic value 1 is what drivers
+    --  match.
+    EVENT_IRQ : constant Unsigned_32 := 16#0001#;
+
     --  Process lifecycle events (kernel -> userspace)
     EVENT_CHILD_EXIT    : constant Unsigned_32 := 16#0103#;
     EVENT_CAP_FAULT     : constant Unsigned_32 := 16#0104#;

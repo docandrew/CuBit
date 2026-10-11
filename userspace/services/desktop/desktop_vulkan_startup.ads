@@ -123,6 +123,31 @@ package Desktop_Vulkan_Startup with SPARK_Mode,
    procedure Cancel_Write (Ticket : Write_Ticket; Producer_Retired : Boolean;
       Cancelled : out Boolean)
      with Global => (In_Out => Engine), Pre => Valid, Post => Valid and not Write_Active (Ticket);
+   -- Batched uploads (GPU-004): several images' chunks share one staging
+   -- buffer at increasing offsets and one transfer submission. A staged
+   -- write is produced like Begin_Write's, but Stage_Write only queues it;
+   -- Flush_Staged records every queued copy into one command buffer and
+   -- submits it. While writes are staged the submission stays Idle, so
+   -- descriptors can be released and other images staged; rendering,
+   -- readback and the single-write path wait for the flush (Source_Busy or
+   -- Deferred). One chunk per image per batch; a write that no longer fits
+   -- the remaining staging is refused (Source_Busy) until the next batch.
+   -- The plan's Buffer_Offset says where in Mapping the rows go.
+   function Slot_Staged (Index : Backing_Slot) return Boolean with Global => (Input => Engine);
+   function Staged_Writes return Natural with Global => (Input => Engine);
+   procedure Begin_Staged_Write (Index : Backing_Slot; Lease : Vulkan_Owned_Targets.A.Ticket;
+      Ticket : out Write_Ticket; Plan : out Compositor_Upload.Plan;
+      Mapping : out System.Address; Result : out Source_Result;
+      Row_Pixels : Compositor_Upload.Edge := 0)
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid and
+       (if Mapping /= System.Null_Address then Write_Active (Ticket) and Compositor_Upload.Valid (Plan));
+   procedure Stage_Write (Ticket : Write_Ticket; Producer_Retired : Boolean;
+      Result : out Source_Result)
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid and not Write_Active (Ticket);
+   -- Source_Accepted: one transfer submission now carries every staged
+   -- write. Source_Busy: nothing staged, or a write is still being produced.
+   procedure Flush_Staged (Result : out Source_Result)
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
    -- New content for the same live allocation: every row (Restart_Content)
    -- or only rows First .. Last - 1, keeping the rest (Update_Content). The
    -- descriptor must already be released; Import_Backing republishes it only
@@ -245,6 +270,12 @@ package Desktop_Vulkan_Startup with SPARK_Mode,
    procedure Poll_Frame (Result : out Poll_Result)
      with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
    procedure Poll_Upload (Result : out Poll_Result)
+     with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
+   -- One image's view of the batch: flushes staged writes first, then makes
+   -- at most one fence observation. Completed once this image's chunk is
+   -- done (possibly observed by another image's poll); Pending while it is
+   -- staged or in flight; Idle when it has no chunk.
+   procedure Poll_Slot_Upload (Index : Backing_Slot; Result : out Poll_Result)
      with Global => (In_Out => Engine), Pre => Valid, Post => Valid;
    function Upload_Pending return Boolean with Global => (Input => Engine);
    procedure Damage_Output (Region : Compositor_Damage.Box; Accepted : out Boolean)

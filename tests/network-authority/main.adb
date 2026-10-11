@@ -5,7 +5,11 @@ with Network_Grants;
 with CuBit.Launch_Policy;
 with UDP_Tests;
 
+with CuBit.Process_IDs;
 procedure Main is
+   use type CuBit.Process_IDs.Process_ID;
+   function PID (Word : Interfaces.Unsigned_64) return CuBit.Process_IDs.Process_ID
+     renames CuBit.Process_IDs.From_Word;
    Narrow : constant Scope := (Connect_TCP, 16#0A00_0200#, 24, 80, 443, False, 4);
    Listener : constant Scope := (Listen_TCP, 16#0A00_020F#, 32, 8080, 8080, False, 4);
    Decoded : Scope;
@@ -21,21 +25,27 @@ begin
    begin
       --  NetSurf is retired: its old name no longer carries browser
       --  approval.
-      pragma Assert (Policy.Desktop_Approval ("netsurf.app", 42, 42) =
+      pragma Assert (Policy.Desktop_Approval ("netsurf.app", PID (42), PID (42)) =
         Policy.No_Network);
-      pragma Assert (Policy.Desktop_Approval ("cubitshell.app", 0, 0) =
+      pragma Assert (Policy.Desktop_Approval ("cubitshell.app", PID (0), PID (0)) =
         Policy.No_Network);
+      --  Slot 0 is ill formed, whatever its generation; the all-ones word
+      --  is a well-formed identity, not a sentinel.
       pragma Assert (Policy.Desktop_Approval
-        ("cubitshell.app", Unsigned_64'Last, Unsigned_64'Last) = Policy.No_Network);
-      pragma Assert (Policy.Desktop_Approval ("other.app", 42, 42) =
+        ("cubitshell.app", CuBit.Process_IDs.To_Process_ID (Slot => 0, Generation => 1),
+         CuBit.Process_IDs.To_Process_ID (Slot => 0, Generation => 1)) = Policy.No_Network);
+      pragma Assert (Policy.Desktop_Approval
+        ("cubitshell.app", PID (Unsigned_64'Last), PID (Unsigned_64'Last)) =
+         Policy.Browser_Outbound);
+      pragma Assert (Policy.Desktop_Approval ("other.app", PID (42), PID (42)) =
         Policy.No_Network);
-      pragma Assert (Policy.Desktop_Approval ("/cubitshell.app", 42, 42) =
+      pragma Assert (Policy.Desktop_Approval ("/cubitshell.app", PID (42), PID (42)) =
         Policy.No_Network);
-      pragma Assert (Policy.Desktop_Approval ("cubitshell.app", 42, 42) =
+      pragma Assert (Policy.Desktop_Approval ("cubitshell.app", PID (42), PID (42)) =
         Policy.Browser_Outbound);
-      pragma Assert (Policy.Desktop_Approval ("cubitshell.app", 41, 42) =
+      pragma Assert (Policy.Desktop_Approval ("cubitshell.app", PID (41), PID (42)) =
         Policy.No_Network);
-      pragma Assert (Policy.Desktop_Approval ("cubitshell.apps", 42, 42) =
+      pragma Assert (Policy.Desktop_Approval ("cubitshell.apps", PID (42), PID (42)) =
         Policy.No_Network);
       pragma Assert (Policy.Allows (Policy.Browser_Outbound, Broad_Outbound_TCP));
       pragma Assert (Policy.Allows (Policy.Browser_Outbound, Narrow));
@@ -90,32 +100,32 @@ begin
               Shift_Left (Unsigned_64 (Invalid_Prefix), 32), Decoded, Success);
       pragma Assert (not Success);
    end loop;
-   pragma Assert (not Network_Grants.Owned (Grants, 42, 0));
-   Network_Grants.Install (Grants, 0, Narrow, Capacity, Tag, Success);
+   pragma Assert (not Network_Grants.Owned (Grants, PID (42), 0));
+   Network_Grants.Install (Grants, PID (0), Narrow, Capacity, Tag, Success);
    pragma Assert (not Success and Tag = 0);
-   Network_Grants.Install (Grants, 42, Denied_Scope, Capacity, Tag, Success);
+   Network_Grants.Install (Grants, PID (42), Denied_Scope, Capacity, Tag, Success);
    pragma Assert (not Success and Tag = 0);
-   Network_Grants.Install (Grants, 42, Narrow, Capacity, Tag, Success);
+   Network_Grants.Install (Grants, PID (42), Narrow, Capacity, Tag, Success);
    pragma Assert (Success and Tag >= First_Grant_Tag);
-   pragma Assert (Network_Grants.Allows (Grants, 42, Tag, Connect_TCP, 16#0A00_0202#, 443));
-   pragma Assert (not Network_Grants.Allows (Grants, 43, Tag, Connect_TCP, 16#0A00_0202#, 443));
-   pragma Assert (not Network_Grants.May_Resolve (Grants, 42, Tag));
-   Network_Grants.Install (Grants, 43, Broad_Outbound_TCP, Capacity, Other_Tag, Success);
+   pragma Assert (Network_Grants.Allows (Grants, PID (42), Tag, Connect_TCP, 16#0A00_0202#, 443));
+   pragma Assert (not Network_Grants.Allows (Grants, PID (43), Tag, Connect_TCP, 16#0A00_0202#, 443));
+   pragma Assert (not Network_Grants.May_Resolve (Grants, PID (42), Tag));
+   Network_Grants.Install (Grants, PID (43), Broad_Outbound_TCP, Capacity, Other_Tag, Success);
    pragma Assert (Success and Other_Tag /= Tag);
-   pragma Assert (Network_Grants.May_Resolve (Grants, 43, Other_Tag));
-   pragma Assert (not Network_Grants.May_Resolve (Grants, 42, Other_Tag));
-   Network_Grants.Release (Grants, 43, Tag);
-   pragma Assert (Network_Grants.Owned (Grants, 42, Tag));
-   Network_Grants.Release (Grants, 42, Tag);
-   pragma Assert (not Network_Grants.Owned (Grants, 42, Tag));
-   Network_Grants.Install (Grants, 42, Listener, Capacity, New_Tag, Success);
+   pragma Assert (Network_Grants.May_Resolve (Grants, PID (43), Other_Tag));
+   pragma Assert (not Network_Grants.May_Resolve (Grants, PID (42), Other_Tag));
+   Network_Grants.Release (Grants, PID (43), Tag);
+   pragma Assert (Network_Grants.Owned (Grants, PID (42), Tag));
+   Network_Grants.Release (Grants, PID (42), Tag);
+   pragma Assert (not Network_Grants.Owned (Grants, PID (42), Tag));
+   Network_Grants.Install (Grants, PID (42), Listener, Capacity, New_Tag, Success);
    pragma Assert (Success and New_Tag /= Tag);
-   pragma Assert (not Network_Grants.Owned (Grants, 42, Tag));
+   pragma Assert (not Network_Grants.Owned (Grants, PID (42), Tag));
    for I in 3 .. Network_Grants.Maximum_Grants loop
-      Network_Grants.Install (Grants, 42, Narrow, Capacity, New_Tag, Success);
+      Network_Grants.Install (Grants, PID (42), Narrow, Capacity, New_Tag, Success);
       pragma Assert (Success);
    end loop;
-   Network_Grants.Install (Grants, 42, Narrow, Capacity, New_Tag, Success);
+   Network_Grants.Install (Grants, PID (42), Narrow, Capacity, New_Tag, Success);
    pragma Assert (not Success and New_Tag = 0);
    --  Reservations: declared channels are reserved at install, never
    --  overcommitted, and charged one per open channel.
@@ -124,47 +134,47 @@ begin
       First_Tag, Second_Tag, Third_Tag : Unsigned_64;
       Ten : constant Network_Grants.Reservation := 10;
    begin
-      Network_Grants.Install (Small, 42, Narrow, Ten, First_Tag, Success);
+      Network_Grants.Install (Small, PID (42), Narrow, Ten, First_Tag, Success);
       pragma Assert (Success and Network_Grants.Reserved (Small) = 4);
-      Network_Grants.Install (Small, 43, Narrow, Ten, Second_Tag, Success);
+      Network_Grants.Install (Small, PID (43), Narrow, Ten, Second_Tag, Success);
       pragma Assert (Success and Network_Grants.Reserved (Small) = 8);
-      Network_Grants.Install (Small, 44, Narrow, Ten, Third_Tag, Success);
+      Network_Grants.Install (Small, PID (44), Narrow, Ten, Third_Tag, Success);
       pragma Assert (not Success and Third_Tag = 0); -- 12 > 10
-      Network_Grants.Install (Small, 44, (Narrow with delta Connections => 2), Ten, Third_Tag, Success);
+      Network_Grants.Install (Small, PID (44), (Narrow with delta Connections => 2), Ten, Third_Tag, Success);
       pragma Assert (Success and Network_Grants.Reserved (Small) = 10);
       for I in 1 .. 4 loop
-         Network_Grants.Charge (Small, 42, First_Tag, Success);
+         Network_Grants.Charge (Small, PID (42), First_Tag, Success);
          pragma Assert (Success);
       end loop;
-      Network_Grants.Charge (Small, 42, First_Tag, Success);
+      Network_Grants.Charge (Small, PID (42), First_Tag, Success);
       pragma Assert (not Success); -- all four declared channels open
-      Network_Grants.Charge (Small, 43, First_Tag, Success);
+      Network_Grants.Charge (Small, PID (43), First_Tag, Success);
       pragma Assert (not Success); -- another owner's grant
       pragma Assert (Network_Grants.In_Use (Small, Second_Tag) = 0);
       Network_Grants.Refund (Small, First_Tag);
       pragma Assert (Network_Grants.In_Use (Small, First_Tag) = 3);
-      Network_Grants.Charge (Small, 42, First_Tag, Success);
+      Network_Grants.Charge (Small, PID (42), First_Tag, Success);
       pragma Assert (Success and Network_Grants.In_Use (Small, First_Tag) = 4);
-      Network_Grants.Release (Small, 43, Second_Tag);
+      Network_Grants.Release (Small, PID (43), Second_Tag);
       pragma Assert (Network_Grants.Reserved (Small) = 6);
-      Network_Grants.Install (Small, 45, Narrow, Ten, Second_Tag, Success);
+      Network_Grants.Install (Small, PID (45), Narrow, Ten, Second_Tag, Success);
       pragma Assert (Success and Network_Grants.Reserved (Small) = 10);
-      Network_Grants.Charge (Small, 42, 0, Success);
+      Network_Grants.Charge (Small, PID (42), 0, Success);
       pragma Assert (not Success);
       --  Owner 42 exits: its scope and reservation go, others stay.
       declare
          Released : Network_Grants.Tag_List;
       begin
-         Network_Grants.Release_Owner (Small, 42, Released);
+         Network_Grants.Release_Owner (Small, PID (42), Released);
          pragma Assert (Released (1) = First_Tag);
          pragma Assert (for all I in 2 .. Released'Last => Released (I) = 0);
          pragma Assert (Network_Grants.Reserved (Small) = 6);
-         pragma Assert (not Network_Grants.Owned (Small, 42, First_Tag));
-         pragma Assert (Network_Grants.Owned (Small, 44, Third_Tag));
+         pragma Assert (not Network_Grants.Owned (Small, PID (42), First_Tag));
+         pragma Assert (Network_Grants.Owned (Small, PID (44), Third_Tag));
          pragma Assert (Network_Grants.In_Use (Small, First_Tag) = 0);
-         Network_Grants.Charge (Small, 42, First_Tag, Success);
+         Network_Grants.Charge (Small, PID (42), First_Tag, Success);
          pragma Assert (not Success); -- stale tag after exit
-         Network_Grants.Release_Owner (Small, 0, Released);
+         Network_Grants.Release_Owner (Small, PID (0), Released);
          pragma Assert (for all T of Released => T = 0);
          pragma Assert (Network_Grants.Reserved (Small) = 6);
       end;

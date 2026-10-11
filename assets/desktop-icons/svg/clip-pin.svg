@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c4151f"/><stop offset="1" stop-color="#7a0a10"/></linearGradient><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff6b6b"/><stop offset="1" stop-color="#d4141e"/></linearGradient><radialGradient id="g3" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#ffb3a8"/><stop offset="1" stop-color="#ff3b3b"/></radialGradient></defs>
+<polyline points="23.00,28.00 14.00,43.00" fill="none" stroke="#5b6577" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="23.00,28.00 14.00,43.00" fill="none" stroke="#d7dde8" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<ellipse cx="27.00" cy="25.00" rx="12.00" ry="6.00" fill="url(#g1)" stroke="#2a0303" stroke-width="2.0"/>
+<path d="M 21 23 L 23 10 L 33 10 L 33 23 Z" fill="url(#g2)" stroke="#2a0303" stroke-width="2.0" stroke-linejoin="round"/>
+<ellipse cx="28.00" cy="10.00" rx="8.00" ry="4.00" fill="url(#g3)" stroke="#2a0303" stroke-width="2.0"/>
+</svg>

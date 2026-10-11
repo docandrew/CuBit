@@ -1,5 +1,5 @@
 with System; with Interfaces; use Interfaces;
-with CuBit.UI.Trees; with CuBit.UI.Widgets;
+with CuBit.UI.Trees; with CuBit.UI.Widgets; with CuBit.UI.Editor_Clipboard;
 package body Servo_Bookmarks is
    use CuBit.UI; use CuBit.UI.Input;
    package Ed renames CuBit.UI.Editor;
@@ -153,13 +153,24 @@ package body Servo_Bookmarks is
          when others => null;
       end case;
    end Action;
-   procedure Handle (S : in out Dialog; Input : Input_Event; Result : out Outcome) is
+   procedure Handle
+     (S : in out Dialog; Input : Input_Event; Result : out Outcome;
+      Surface : Interfaces.Unsigned_64 := 0)
+   is
       Target, X, Y : Natural; Changed, Handled : Boolean; M : CB.Model;
       P : CT.Pointer_Action; K : CB.Key;
       Ctrl : constant Boolean := (Input.payload1 and 2) /= 0;
       Shift : constant Boolean := (Input.payload1 and 1) /= 0;
       procedure Edit (E : in out Ed.Edit_State) is
+         Clip : CuBit.UI.Editor_Clipboard.Result;
       begin
+         if Input.kind = INPUT_KEY_DOWN and then Surface /= 0 then
+            --  Copy, cut, paste and Select All (docs/clipboard.md).
+            Clip := CuBit.UI.Editor_Clipboard.Handle_Key (E, Surface, Input.payload0, Input.payload1);
+            if Clip.Handled then
+               return;
+            end if;
+         end if;
          if Input.kind = INPUT_TEXT and then Input.payload0 in 32 .. 126 then
             Ed.Insert (E, String'(1 => Character'Val (Input.payload0)), Changed);
          elsif Input.kind = INPUT_KEY_DOWN then

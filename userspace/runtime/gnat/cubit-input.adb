@@ -77,6 +77,8 @@ package body CuBit.Input with SPARK_Mode => On is
             report.device := KEYBOARD;
          when 2 =>
             report.device := RELATIVE_POINTER;
+         when 3 =>
+            report.device := ABSOLUTE_POINTER;
          when others =>
             valid := False;
             return;

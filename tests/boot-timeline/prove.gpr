@@ -1,0 +1,16 @@
+project Prove is
+   for Source_Dirs use ("../../kernel/src", "../../shared/boot",
+                        "../../userspace/apps/boot-timeline",
+                        "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use ("boot_timeline_records.ads", "boot_timeline_records.adb",
+                         "boot_timeline_layout.ads", "boot_timeline_report.ads",
+                         "boot_timeline_report.adb", "cubit.ads",
+                         "cubit-boot_milestone_codes.ads");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on", "--mode=all");
+   end Prove;
+end Prove;

@@ -1,5 +1,6 @@
 with Interfaces; use Interfaces;
 with System;
+with CuBit.GPU_Queues.Kinds;
 with CuBit.GPU_Queues;
 with Intel_GPU_Context_Ledger;
 with Intel_GPU_GuC_Submission_Policy;
@@ -12,7 +13,8 @@ with Intel_GPU_Session_Queue;
 -- Each Turn:
 --   1. retries kicks the GuC refused for backpressure;
 --   2. for each context with work: one ownership check, one timeline read,
---      one watchdog step; pops every job the timeline completed (a
+--      one watchdog step (a started job's run time against the hang
+--      budget, no progress at all against the patience); pops every job the timeline completed (a
 --      completion record for queue jobs, Call_Finished for the synchronous
 --      wrapper's) or that a hang or loss failed (Device_Lost, never OK);
 --   3. answers a held wake whose condition now holds;
@@ -51,6 +53,15 @@ generic
    with procedure Kick (Enable : Boolean; Result : out Intel_GPU_GuC_Submission_Policy.Kick_Result);
    -- The selected context's 64-bit timeline (high, low, high).
    with procedure Read_Timeline (V : out Unsigned_64; OK : out Boolean);
+   -- The selected context's GPU execution time of its Execute job V: the
+   -- TIMESTAMP stamps its segment wrote just before and just after the
+   -- batch (Intel_GPU_ADLN_Context_Init.Build_Batch), in microseconds. OK
+   -- False when the stamps are missing or inconsistent.
+   with procedure Read_Job_Time (V : Unsigned_64; Exec_Us : out Unsigned_64; OK : out Boolean);
+   -- The selected context's Execute job V has started on the GPU: its start
+   -- stamp is newer than the slot's end stamp (GPU-005 watchdog). False
+   -- when unreadable or for jobs that write no stamps (Signal).
+   with function Job_Started (V : Unsigned_64) return Boolean;
    -- Monotonic microseconds; Unsigned_64'Last when unavailable.
    with function Now_Us return Unsigned_64;
    -- Session S is lost: irreversible, backing retained (logged by the caller).
@@ -62,8 +73,11 @@ generic
    -- A live queue's regions: the client's (read-only here) and the driver's.
    with function Client_Region (S : Session_Id) return System.Address;
    with function Server_Region (S : Session_Id) return System.Address;
-   -- The longest the GPU may go without timeline progress. Explicit.
+   -- The longest a started job may run, and the longest a context may go
+   -- without timeline progress at all (a job queued behind another
+   -- context's). Explicit; Patience_Us >= Hang_Budget_Us.
    Hang_Budget_Us : Unsigned_64;
+   Patience_Us : Unsigned_64;
 package Intel_GPU_Queue_Service is
    package Q renames CuBit.GPU_Queues;
    package Sessions renames Intel_GPU_Session_Queue;
@@ -84,6 +98,19 @@ package Intel_GPU_Queue_Service is
    function Stats (T : Table) return Statistics;
    procedure Reset_Peak (T : in out Table);
    procedure Reset_Latency (T : in out Table);
+
+   -- Completed jobs by the kinds their descriptor named (CuBit.GPU_Queues
+   -- Kind_* bits; the wrapper's are 0): GPU execution time from the job's
+   -- own stamps, and submit-to-completion latency, since Reset_Kinds.
+   subtype Kinds is CuBit.GPU_Queues.Kinds.Job_Kinds;
+   type Kind_Statistics is record
+      Jobs, Untimed : Unsigned_64 := 0;
+      Exec_Total_Us, Exec_Max_Us : Unsigned_64 := 0;
+      Latency_Total_Us, Latency_Max_Us : Unsigned_64 := 0;
+   end record;
+   type Kind_Table is array (Kinds) of Kind_Statistics;
+   function Kind_Stats (T : Table) return Kind_Table;
+   procedure Reset_Kinds (T : in out Table);
 
    function Session (T : Table; S : Session_Id) return Sessions.Session;
    function Live (T : Table; S : Session_Id) return Boolean;
@@ -153,10 +180,20 @@ private
    type Kick_Row is array (Q.Context_Index) of Kick_Need;
    type Kick_Array is array (Session_Id) of Kick_Row;
    type Session_Array is array (Session_Id) of Sessions.Session;
+   -- What each published job is, by its slot (value mod the in-flight
+   -- limit, as the ledger): its kinds, and whether its segment stamps time.
+   type Job_Info is record
+      Kinds : CuBit.GPU_Queues.Kinds.Job_Kinds := 0;
+      Timed : Boolean := False;
+   end record;
+   subtype Job_Slot is Natural range 0 .. Q.Max_In_Flight_Per_Context - 1;
+   type Job_Info_Array is array (Session_Id, Q.Context_Index, Job_Slot) of Job_Info;
    type Table is limited record
       Items : Session_Array := [others => Sessions.Empty];
       Kicks : Kick_Array := [others => [others => No_Kick]];
       Counters : Statistics;
+      Jobs : Job_Info_Array := [others => [others => [others => (others => <>)]]];
+      Kind_Counters : Kind_Table := [others => (others => <>)];
       Quiesce : Boolean := False;
       Wake_Owned : Boolean := False;
       Wake_Owner : Session_Id := Session_Id'First;

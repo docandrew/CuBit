@@ -46,6 +46,11 @@
     (Launch_Entry label => "Settings" action => Launch_Action.Settings icon => Launch_Icon.Settings category => App_Category.System))
   (setting "desktop.launch.80-config-inspector"
     (Launch_Entry label => "Config Inspector" action => (Launch_Action.Program "config-inspector.app") icon => Launch_Icon.Inspector category => App_Category.System))
+  # Keyboard auto-repeat (Desktop, docs/development-backlog.md UI-022): the
+  # delay before a held key's first repeat and the repeats per second. The
+  # CCL type Key_Repeat (CCL.Interfaces.Desktop_Input) bounds both.
+  (setting "desktop.input.key-repeat"
+    (Key_Repeat enabled => true delay_ms => 500 rate_hz => 30))
   (setting "clock.time-zone" "UTC")
   (setting "cubit.config.storage.database" "@nvme:0/system-config.sqlite")
   # SNTP servers for timesync.svc (host or host:port). A majority of at least

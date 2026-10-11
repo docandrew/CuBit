@@ -2,7 +2,7 @@ project XHCI is
 
     for Languages use ("Ada");
     for Object_Dir use "build";
-    for Source_Dirs use (".", "../../lib/input");
+    for Source_Dirs use (".", "../../lib/input", "build/generated");
     for Main use ("main.adb");
     for Runtime ("Ada") use "../../runtime";
     for Library_Dir use "";
@@ -45,7 +45,8 @@ project XHCI is
             "-Wl,-z,stack-size=16777216",
             "-lgnat-user",
             "-T", "../../c/link.ld",
-            "../../c/build/crt0.o"
+            "../../c/build/crt0.o",
+            "build/manifest.o"
         );
     end Linker;
 

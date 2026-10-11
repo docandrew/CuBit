@@ -1400,6 +1400,56 @@ package body Log_View is
      (if State.Position.Selected in 1 .. State.Position.Count
          and then Shown_Entry (State, State.Position.Selected).Kind = Record_Entry
       then LR.Text (Shown_Entry (State, State.Position.Selected).Item) else "");
+   function Search_Focused (State : View_State) return Boolean is (State.Focus = Search_Focus);
+
+   procedure Edit_Search_Field (State : in out View_State; Focus : Boolean) is
+      Changed : Boolean;
+   begin
+      if Focus and then State.Focus /= Search_Focus then
+         Dismiss_Popups (State);
+         State.Focus := Search_Focus;
+      end if;
+      Process (State.Search, Changed);
+      if Changed then
+         Search_Changed (State);
+      end if;
+      State.Revision := State.Revision + 1;
+   end Edit_Search_Field;
+
+   --  The CCL member names of logs.minimum's Severity enum.
+   function Severity_Member (Level : LR.Severity) return String is
+     (case Level is
+         when LR.Trace => "Trace", when LR.Debug => "Debug", when LR.Information => "Information",
+         when LR.Warning => "Warning", when LR.Error => "Error", when LR.Critical => "Critical");
+
+   procedure Selected_Copy
+     (State : View_State; Text, Literal : in out Clipboard_Text.Builder;
+      Present : out Boolean)
+   is
+      package CT renames Clipboard_Text;
+   begin
+      CT.Clear (Text);
+      CT.Clear (Literal);
+      Present := State.Position.Selected in 1 .. State.Position.Count;
+      if not Present then
+         return;
+      end if;
+      declare
+         E : constant Log_Entry := Shown_Entry (State, State.Position.Selected);
+      begin
+         if E.Kind = Gap_Entry then
+            CT.Append (Text, Gap_Text (E));
+            return;
+         end if;
+         CT.Append (Text, Uptime (E.Time_Ms) & "   " & Level_Label (LR.Level (E.Item)) & "   " &
+                    Name_Of (State, E.Source, E.Time_Ms) & "   " & LR.Text (E.Item));
+         CT.Append (Literal, "(" & LOG_ENTRY_TYPE & " " & Image64 (E.Time_Ms) & " Severity." &
+                    Severity_Member (LR.Level (E.Item)) & " " & Image64 (E.Source) & " ");
+         CT.Append_Quoted (Literal, LR.Text (E.Item));
+         CT.Append (Literal, ")");
+      end;
+   end Selected_Copy;
+
    function Unseen (State : View_State) return Natural is (State.New_Since_Pause);
    function Top_Row (State : View_State) return Positive is (State.Position.Top + 1);
    function Selected_Row (State : View_State) return Natural is (State.Position.Selected);

@@ -740,6 +740,23 @@ begin
       Whole_Word => True, Case_Sensitive => True, Result => Search);
    pragma Assert (Search.First = 11 and then Search.Last = 17);
 
+   --  Sensitive fields (docs/clipboard.md): the kind survives edits, the
+   --  selection is what a copy takes, removed text is overwritten and Wipe
+   --  empties the field.
+   Initialize (State, "hunter2", Accepted, Kind => CuBit.UI.Editor.Sensitive);
+   pragma Assert (Accepted and then Kind_Of (State) = CuBit.UI.Editor.Sensitive);
+   Place_Cursor (State, 1);
+   Place_Cursor (State, 7, Extend_Selection => True);
+   pragma Assert (Selected_Text (State) = "hunter");
+   Backspace (State, Changed);
+   pragma Assert (Changed and then Content (State) = "2" and then
+                  Kind_Of (State) = CuBit.UI.Editor.Sensitive);
+   Wipe (State);
+   pragma Assert (Length (State) = 0 and then
+                  Kind_Of (State) = CuBit.UI.Editor.Sensitive);
+   Set_Kind (State, CuBit.UI.Editor.Ordinary);
+   pragma Assert (Kind_Of (State) = CuBit.UI.Editor.Ordinary and then
+                  Selected_Text (State) = "");
 
    Ada.Text_IO.Put_Line ("PASS: bounded one-based editor commands");
 end Main;

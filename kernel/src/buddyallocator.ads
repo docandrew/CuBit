@@ -149,14 +149,16 @@ is
     ---------------------------------------------------------------------------
     function blockSize (ord : in Order) return Storage_Count with
         Depends => (blockSize'Result => ord),
-        Post    => blockSize'Result >= Virtmem.FRAME_SIZE;
+        Post    => blockSize'Result >= Virtmem.FRAME_SIZE and then
+                   blockSize'Result <= 2 ** (Virtmem.FRAME_SHIFT + Config.MAX_BUDDY_ORDER);
 
     ---------------------------------------------------------------------------
     -- getOrder
     -- @return the order size for a given allocation request (in bytes)
     ---------------------------------------------------------------------------
     function getOrder (allocSize : in Storage_Count) return Order with
-        Depends => (getOrder'Result => allocSize);
+        Depends => (getOrder'Result => allocSize),
+        Pre     => allocSize in 1 .. blockSize (Order'Last);
 
     ---------------------------------------------------------------------------
     -- isValidBlock - given an address and an order, return True if this
@@ -367,6 +369,7 @@ is
     -- print
     -- Prints a nice table with the buddy allocator information.
     ---------------------------------------------------------------------------
-    procedure print;
+    procedure print with
+        Pre => BuddyAllocator.initialized;
     
 end BuddyAllocator;

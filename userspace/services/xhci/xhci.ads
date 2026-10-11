@@ -74,12 +74,11 @@ package XHCI is
    procedure Poll_Boot_Keyboard
      (Data : out USB_Keyboards.Report; Ready, Progressed : out Boolean);
 
-   --  Enable and acknowledge the controller's primary MSI interrupter.
+   --  Enable and acknowledge the controller's primary interrupter. devmgr
+   --  has programmed MSI or MSI-X entry 0 (docs/msi-interrupts.md).
    procedure Enable_Runtime_Interrupts
-     (mode        : Runtime_Interrupt_Mode;
-      vector      : Unsigned_8;
-      tableOffset : Unsigned_64;
-      enabled     : out Boolean);
+     (mode    : Runtime_Interrupt_Mode;
+      enabled : out Boolean);
    procedure Acknowledge_Runtime_Interrupt;
 
    --  Bounded, aggregate observability for the interrupt hot path.  The

@@ -10,7 +10,7 @@ project GPU_Queue is
       "cubit-channel_rings.ads", "cubit-channel_rings.adb",
       "cubit-slot_rings.ads", "cubit-slot_rings.adb",
       "cubit-submission_queues.ads", "cubit-submission_queues.adb",
-      "cubit-gpu_queues.ads", "cubit-gpu_queue_clients.ads", "cubit-gpu_queue_clients.adb",
+      "cubit-gpu_queues.ads", "cubit-gpu_queues-kinds.ads", "cubit-gpu_queue_clients.ads", "cubit-gpu_queue_clients.adb",
       "intel_gpu_ring_reservation.ads", "intel_gpu_ring_reservation.adb",
       "intel_gpu_segment_window.ads", "intel_gpu_segment_window.adb",
       "intel_gpu_timeline.ads", "intel_gpu_timeline.adb",

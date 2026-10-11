@@ -1,13 +1,18 @@
 with CuBit.UI; with CuBit.UI.Controls; with CuBit.UI.State;
 with CuBit.UI.Editor; with CuBit.UI.Combo_Boxes; with CuBit.UI.Input;
 with Servo_Bookmark_Model;
+with Interfaces;
 package Servo_Bookmarks is
    type Dialog is private;
    type Outcome is (Unchanged, Repaint, Closed, Navigate);
    procedure Open (S : in out Dialog; URL, Title : String; Add_Page : Boolean);
    function Is_Open (S : Dialog) return Boolean;
    function Location (S : Dialog) return String;
-   procedure Handle (S : in out Dialog; Input : CuBit.UI.Input.Input_Event; Result : out Outcome);
+   --  Surface: the window's, for the clipboard chords on the name and URL
+   --  fields (CuBit.UI.Editor_Clipboard); 0 leaves them unhandled.
+   procedure Handle
+     (S : in out Dialog; Input : CuBit.UI.Input.Input_Event; Result : out Outcome;
+      Surface : Interfaces.Unsigned_64 := 0);
    procedure Draw (C : CuBit.UI.Canvas; S : in out Dialog; Colors : CuBit.UI.Theme);
 private
    package Model renames Servo_Bookmark_Model;

@@ -2,6 +2,8 @@ with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.UI;
 with CuBit.UI.App;
+with CuBit.UI.Clipboard;
+with Clipboard_Chords;
 with CuBit.Metric_Protocol;
 with Observatory_Metric_Observer;
 with Observatory_Metric_Queries;
@@ -147,9 +149,23 @@ procedure Main is
       if not F.Active (Formatting) then Commit_View; end if;
    end Format_One;
    procedure Handle is
+      use type Clipboard_Chords.Command;
+      Copied : CuBit.UI.Clipboard.Outcome;
    begin
       A.Begin_Input_Event (Win, Event);
       if Event.kind = A.INPUT_CONFIGURE then Dirty := True;
+      elsif Event.kind = A.INPUT_KEY_DOWN and then
+        CuBit.UI.Clipboard.Command_Of (Event.payload0, Event.payload1) = Clipboard_Chords.Copy_Command
+      then
+         --  Copy the selected metric's row as text (docs/clipboard.md).
+         if Count > 0 and not Faulted then
+            CuBit.UI.Clipboard.Copy_Text
+              (A.Surface_ID (Win),
+               Image (Cached (Selected).Name) & ASCII.HT & Image (Cached (Selected).Samples) & ASCII.HT &
+               Image (Cached (Selected).Latency),
+               CuBit.UI.Clipboard.Ordinary, Copied);
+            debugPrint ("observatory: copy " & CuBit.UI.Clipboard.Image (Copied) & ASCII.LF);
+         end if;
       elsif Event.kind = A.INPUT_KEY_DOWN then
          case Event.payload0 is
             when A.KEY_ESC | A.KEY_Q => Running := False;

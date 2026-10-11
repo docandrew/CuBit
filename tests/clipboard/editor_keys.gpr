@@ -1,0 +1,14 @@
+--  Hosted tests of the toolkit's clipboard chords (CuBit.UI.Editor_Clipboard)
+--  against a host clipboard that issues tickets as Desktop does.
+project Editor_Keys extends "editor_keys_base.gpr" is
+   for Source_Dirs use ("editor_keys");
+   for Object_Dir use "build/keys";
+   for Exec_Dir use "build";
+   for Main use ("editor_keys_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O1");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-Es");
+   end Binder;
+end Editor_Keys;

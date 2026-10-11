@@ -1,12 +1,17 @@
-# DRAFT, not yet attached to xhci.drv: devmgr still mints these grants itself.
-# Sizes are upper bounds; devmgr grants what the device reports.
-(executable-manifest v1
-  (identity "com.cubit.xhci")
-  (version "0.1.0")
-  (match-pci-class 12 3 48)
-  (device-memory registers (bar 0) (max-bytes 65536) read-write)
-  (interrupt events msi (vectors 1))
-  (dma rings (bytes 4194304))
-  (request-notification mouse publish mouse-events)
-  (request-notification keyboard publish keyboard-events)
-  (request-service device-manager read-write ready))
+# xhci.drv's authority (docs/ccl-driver-manifests.md). devmgr reads the
+# interrupt request from the linked ELF and installs the vector's CAP_IRQ in
+# its slot (docs/msi-interrupts.md); it still mints the others itself, at
+# the slots these bindings name. Sizes are upper bounds; devmgr grants what
+# the device reports.
+(Executable_Manifest
+  identity => "com.cubit.xhci"
+  version => "0.1.0"
+  device => (Device_Match.PCI_Class (PCI_Class 12 3 48))
+  requests => [
+    (device-memory "registers" 0 65536 Access.Read_Write)
+    # Interrupter 0. MSI-X when the controller has it, else one MSI.
+    (interrupt "events" Interrupt_Mode.MSI_X 1)
+    (dma "rings" 4194304)
+    (notification "mouse" Notify_Access.Publish "mouse-events")
+    (notification "keyboard" Notify_Access.Publish "keyboard-events")
+    (service "device-manager" "ready")])

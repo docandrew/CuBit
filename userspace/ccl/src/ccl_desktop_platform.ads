@@ -30,7 +30,8 @@ package CCL_Desktop_Platform is
       Page_Up, Page_Down, Escape, Undo, Redo, Run_Source, Pointer_Hover,
       Wheel_Left, Wheel_Right, Match_Parenthesis, Select_To_Parenthesis,
       Add_Next_Occurrence, Open_Find, Find_Next, Open_Source, Save_Source,
-      Tab, Toggle_REPL, Toggle_Watch, Complete_Operation, Toggle_Syntax);
+      Tab, Toggle_REPL, Toggle_Watch, Complete_Operation, Toggle_Syntax,
+      Copy_Selection, Cut_Selection, Paste_Clipboard);
    for Window_Event use
      (No_Event => 0, Close_Request => 1, Text_Input => 2, Backspace => 3,
       Enter => 4, Left => 5, Right => 6, Home => 7, End_Key => 8, Delete => 9,
@@ -43,12 +44,24 @@ package CCL_Desktop_Platform is
       Select_To_Parenthesis => 30, Add_Next_Occurrence => 31,
       Open_Find => 32, Find_Next => 33, Open_Source => 34, Save_Source => 35,
       Tab => 36, Toggle_REPL => 37, Toggle_Watch => 38,
-      Complete_Operation => 39, Toggle_Syntax => 40);
+      Complete_Operation => 39, Toggle_Syntax => 40,
+      Copy_Selection => 41, Cut_Selection => 42, Paste_Clipboard => 43);
    --  The event a wire code names; unknown codes are No_Event.
    function Event_Of (Code : Interfaces.Integer_32) return Window_Event is
      (if Code in Window_Event'Enum_Rep (Window_Event'First) ..
                  Window_Event'Enum_Rep (Window_Event'Last)
       then Window_Event'Enum_Val (Code) else No_Event);
+   --  The desktop clipboard (docs/clipboard.md). Call these only while
+   --  handling the Copy_Selection, Cut_Selection or Paste_Clipboard event the
+   --  user's own chord produced: Desktop refuses a copy or paste without one.
+   --  A typed copy carries the value's type name, a text form for plain text
+   --  fields and the literal that reads back as the value.
+   function Copy_Text (Text : String) return Boolean;
+   function Copy_Value (Type_Name, Text, Literal : String) return Boolean;
+   --  Paste the typed form when there is one (Typed: Text holds the
+   --  literal), else the text form. Text (Text'First .. Last).
+   procedure Paste
+     (Text : out String; Last : out Natural; Typed, Pasted : out Boolean);
    --  The wire's modifier bits.
    SHIFT_MODIFIER   : constant Interfaces.Unsigned_32 := 1;
    CONTROL_MODIFIER : constant Interfaces.Unsigned_32 := 2;

@@ -324,6 +324,40 @@ package body CCL_Console is
               Shift => Shift, Control => Control);
    end View_Event_Of;
 
+   --  Copy, cut and paste (docs/clipboard.md). A result copies as a typed
+   --  value; a paste of one inserts its literal, so it reads back with its
+   --  type. Called only for the event the user's own chord produced.
+   MAXIMUM_PASTE : constant := 8_192;
+   procedure Clipboard_Event
+     (Event : Platform.Window_Event; Redraw : in out Boolean)
+   is
+      use CCL_Console_View;
+      Copied, Changed, Typed, Pasted : Boolean := False;
+      Text : String (1 .. MAXIMUM_PASTE);
+      Last : Natural;
+   begin
+      if Event = Platform.Paste_Clipboard then
+         Platform.Paste (Text, Last, Typed, Pasted);
+         if Pasted then
+            Insert_Pasted (Console, Text (1 .. Last), Changed);
+         end if;
+      else
+         case Copy_Source (Console) is
+            when Input_Selection =>
+               Copied := Platform.Copy_Text (Copy_Text (Console));
+               if Copied and then Event = Platform.Cut_Selection then
+                  Delete_Selection (Console, Changed);
+               end if;
+            when Typed_Result =>
+               Copied := Platform.Copy_Value
+                 (Copy_Type (Console), Copy_Text (Console), Copy_Literal (Console));
+            when Nothing_To_Copy =>
+               null;
+         end case;
+      end if;
+      Redraw := Redraw or else Changed;
+   end Clipboard_Event;
+
    procedure Run is
       Installed : Boolean;
    begin
@@ -400,6 +434,10 @@ package body CCL_Console is
                begin
                   if Polled = Platform.Close_Request then
                      Running := False;
+                  elsif Polled in Platform.Copy_Selection | Platform.Cut_Selection |
+                    Platform.Paste_Clipboard
+                  then
+                     Clipboard_Event (Polled, Needs_Render);
                   else
                      Handle (Console, View_Event_Of (Polled, Code, Modifiers, Mouse_X, Mouse_Y),
                              Submitted, Redraw);

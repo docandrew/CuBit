@@ -1,5 +1,6 @@
 with Interfaces; use Interfaces;
 with Intel_GPU_ADLN_PPHWSP;
+with Intel_GPU_ADLN_Barrier;
 package Intel_GPU_ADLN_Context_Init with SPARK_Mode is
    -- Final breadcrumb destination: the PPHWSP timeline slot. Barrier
    -- post-syncs go to PPHWSP scratch instead (Intel_GPU_ADLN_Barrier).
@@ -76,6 +77,13 @@ package Intel_GPU_ADLN_Context_Init with SPARK_Mode is
    -- high DWORD in word 91 (GPU-001 step 2: 64-bit timelines end to end).
    Breadcrumb_Low : constant Natural := 90;
    Breadcrumb_High : constant Natural := 91;
+   -- Execution-time accounting: the stalled barrier before the batch and the
+   -- one after it write the TIMESTAMP register (not their scratch dump) to
+   -- the job's PPHWSP slots (Intel_GPU_ADLN_PPHWSP.Job_Start/End_Offset).
+   Start_Stamp_Flags : constant Natural := Barrier_Starts (2) + 1;
+   Start_Stamp_Address : constant Natural := Barrier_Starts (2) + 2;
+   End_Stamp_Flags : constant Natural := Barrier_Starts (3) + 1;
+   End_Stamp_Address : constant Natural := Barrier_Starts (3) + 2;
    function Build_Batch
      (Read_Valid : Boolean; WM_Chicken2 : Unsigned_32; Sequence_Value : Unsigned_64;
       Batch_GPU : Unsigned_64) return Segment
@@ -85,7 +93,15 @@ package Intel_GPU_ADLN_Context_Init with SPARK_Mode is
        (if Build_Batch'Result.Valid then
           Build_Batch'Result.Words (88) = Timeline_Offset and
           Build_Batch'Result.Words (Breadcrumb_Low) = Unsigned_32 (Sequence_Value mod 2 ** 32) and
-          Build_Batch'Result.Words (Breadcrumb_High) = Unsigned_32 (Sequence_Value / 2 ** 32)
+          Build_Batch'Result.Words (Breadcrumb_High) = Unsigned_32 (Sequence_Value / 2 ** 32) and
+          (Build_Batch'Result.Words (Start_Stamp_Flags) and Intel_GPU_ADLN_Barrier.Post_Sync_Mask) =
+            Intel_GPU_ADLN_Barrier.Post_Sync_Timestamp and
+          Build_Batch'Result.Words (Start_Stamp_Address) =
+            Intel_GPU_ADLN_PPHWSP.Job_Start_Offset (Sequence_Value) and
+          (Build_Batch'Result.Words (End_Stamp_Flags) and Intel_GPU_ADLN_Barrier.Post_Sync_Mask) =
+            Intel_GPU_ADLN_Barrier.Post_Sync_Timestamp and
+          Build_Batch'Result.Words (End_Stamp_Address) =
+            Intel_GPU_ADLN_PPHWSP.Job_End_Offset (Sequence_Value)
         else (for all Word of Build_Batch'Result.Words => Word = 0));
    -- Immutable drawing batch, reached only after live capacity admission.
    -- Same before/after barriers and sequencing as the marker dispatch.

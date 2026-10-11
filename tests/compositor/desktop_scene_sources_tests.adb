@@ -80,6 +80,10 @@ begin
       if Frame = 2 then Binds := Image_Binds; Releases := Image_Releases; end if;
    end loop;
    pragma Assert (Completed = Frames and R.Resident_Keys (Reg) = Windows);
+   -- GPU-004: every stale window of a frame shares one transfer and one
+   -- recapture (was one of each per window: 12 per frame).
+   pragma Assert (Cold = Frames, "one cold recapture per frame, not one per window");
+   pragma Assert (D.Transfers_Submitted = U64 (Frames), "one upload submission per frame");
    pragma Assert (Image_Binds = Binds and Image_Releases = Releases,
      "no device allocation or free after warm-up");
    -- Scene capacity: an 1800-layer frame (900 fills, each clip + fill) (well past the former 512-layer
@@ -104,5 +108,6 @@ begin
    D.Stop;
    Ada.Text_IO.Put_Line ("PASS desktop scene sources:" & Frames'Image & " frames x" & Windows'Image &
      " windows, every window republished per frame, no slot pressure, all frames complete," &
-     Cold'Image & " cold recaptures, zero allocations after warm-up; 1800-layer scene submits, overflow reports Layer_Limit");
+     Cold'Image & " cold recaptures and" & D.Transfers_Submitted'Image &
+     " upload submissions (one each per frame, not per window), zero allocations after warm-up; 1800-layer scene submits, overflow reports Layer_Limit");
 end Desktop_Scene_Sources_Tests;

@@ -7,7 +7,7 @@ project Launch_Arguments is
                          "cubit-launch_arguments.adb",
                          "cubit-launch_arguments_c.ads",
                          "cubit-launch_arguments_c.adb",
-                         "cubit-child_exits.ads", "process_launch.ads",
+                         "cubit-child_exits.ads", "cubit-process_ids.ads", "cubit-process_ids.adb", "process_launch.ads",
                          "cubit-launch_authority.ads",
                          "cubit-launch_authority.adb",
                          "cubit-file_access.ads", "cubit-file_access.adb",

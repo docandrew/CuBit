@@ -1,7 +1,17 @@
 with Interfaces; use Interfaces;
 with System;
+with CuBit.Process_IDs;
 package CuBit.Messages is
-   subtype Process_ID is Unsigned_64;
+   subtype Process_ID is CuBit.Process_IDs.Process_ID;
+   No_Process : Process_ID renames CuBit.Process_IDs.No_Process;
+   function "=" (Left, Right : Process_ID) return Boolean
+     renames CuBit.Process_IDs."=";
+   function To_Word (Process : Process_ID) return Unsigned_64
+     renames CuBit.Process_IDs.To_Word;
+   function From_Word (Word : Unsigned_64) return Process_ID
+     renames CuBit.Process_IDs.From_Word;
+   function Is_Process (Process : Process_ID) return Boolean
+     renames CuBit.Process_IDs.Is_Process;
    subtype CapabilitySlot is Unsigned_64 range 0 .. 63;
    type MessageTag is record
       label : Unsigned_32;

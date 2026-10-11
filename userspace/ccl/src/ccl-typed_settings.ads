@@ -8,9 +8,10 @@ with CCL.Objects.Views;
 --  (the desktop) reads that source back through the same typed path and
 --  accepts it only if it is that canonical spelling, so a stored value is
 --  never parsed by hand and never in any other form.
---  First user: desktop.launch.* (CCL.Interfaces.Desktop_Launch).
+--  Users: desktop.launch.* (CCL.Interfaces.Desktop_Launch) and
+--  desktop.input.key-repeat (CCL.Interfaces.Desktop_Input).
 package CCL.Typed_Settings is
-   type Setting_Kind is (Untyped, Launch_Entry_Setting);
+   type Setting_Kind is (Untyped, Launch_Entry_Setting, Key_Repeat_Setting);
    function Kind_Of (Key : String) return Setting_Kind;
 
    MAXIMUM_CANONICAL : constant := 1_024;

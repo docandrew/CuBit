@@ -20,6 +20,8 @@ with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Memory_Grants;
 with CuBit.Busy_Poll;
 with CuBit.NVMe_Control;
+with CuBit.Device_Interrupts;
+with CCL_Manifest_Bindings;
 with NVMe;
 
 procedure main is
@@ -234,8 +236,8 @@ procedure main is
    --  devmgr's startup configuration (CuBit.NVMe_Control).
    configSender : Process_ID;
    configMessage : Message;
-   msixTable : Unsigned_64 := NVMe.NO_MSIX;
-   msixVector : Unsigned_64 := 0;
+   --  devmgr enabled MSI-X and installed the completion vectors' capability.
+   useInterrupts : Boolean := False;
    configValid : Boolean;
    queuesOk : Boolean;
 #if nvme_io_profile = "on" then
@@ -255,16 +257,14 @@ begin
       configValid := configSender /= No_Process and then
         configSender = Registered_Driver (DRIVER_DEVMGR);
       if configValid and then
-        configMessage.tag.label = Operation'Enum_Rep (Configure_MSIX)
+        configMessage.tag.label = Operation'Enum_Rep (Configure_Interrupts)
       then
-         configValid := configMessage.tag.length = 2 and then
-           configMessage.words (0) in Table_Offset and then
-           configMessage.words (0) mod 16 = 0 and then
-           configMessage.words (1) = Device_Vector;
-         if configValid then
-            msixTable := configMessage.words (0);
-            msixVector := configMessage.words (1);
-         end if;
+         --  The vectors are the capability in the manifest's completion
+         --  slot; devmgr programmed the table entries for them.
+         configValid := configMessage.tag.length = 0 and then
+           CuBit.Device_Interrupts.Block_Of
+             (CCL_Manifest_Bindings.Slot_completion).Valid;
+         useInterrupts := configValid;
       elsif configValid then
          configValid :=
            configMessage.tag.label = Operation'Enum_Rep (Configure_Polled) and then
@@ -280,7 +280,7 @@ begin
       debugPrint ("NVMe Driver: No BAR0 in sysinfo, exiting." & LF);
       --  Signal devmgr that no hardware is present
       declare
-         CAP_SLOT_READY  : constant Unsigned_64 := 15;
+         CAP_SLOT_READY  : constant Unsigned_64 := CCL_Manifest_Bindings.Slot_ready;
          OP_NOT_PRESENT  : constant Unsigned_32 := 16#FF01#;
          rdyIgnore : MessageTag;
          ignore : Unsigned_64;
@@ -307,10 +307,10 @@ begin
 
    --  4. Create I/O queues (interrupting through MSI-X if configured),
    --  then answer devmgr, which unmasks the function on success.
-   NVMe.createIOQueues (msixTable, msixVector, queuesOk);
-   if not queuesOk and then msixTable /= NVMe.NO_MSIX then
-      msixTable := NVMe.NO_MSIX;
-      NVMe.createIOQueues (NVMe.NO_MSIX, 0, queuesOk);
+   NVMe.createIOQueues (useInterrupts, queuesOk);
+   if not queuesOk and then useInterrupts then
+      useInterrupts := False;
+      NVMe.createIOQueues (False, queuesOk);
    end if;
    if configSender /= No_Process then
       sendReply (configSender,
@@ -330,7 +330,7 @@ begin
 
    --  Signal devmgr that we are ready
    declare
-      CAP_SLOT_READY : constant Unsigned_64 := 15;
+      CAP_SLOT_READY  : constant Unsigned_64 := CCL_Manifest_Bindings.Slot_ready;
       OP_READY       : constant Unsigned_32 := 16#FF00#;
       ignore : MessageTag;
    begin

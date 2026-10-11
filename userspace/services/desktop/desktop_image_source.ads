@@ -50,7 +50,8 @@ package Desktop_Image_Source with SPARK_Mode is
        Pre => Valid (S) and D.Valid, Post => Valid (S) and D.Valid and
          (if Result = Available then
             Current (S) = Resident and Desktop_Image_Source.Version (S) = Version);
-   -- At most one fence observation and one bounded staging chunk per call.
+   -- Flushes the staged batch if this image's chunk is in it, then at most
+   -- one fence observation and one bounded staging chunk per call.
    procedure Poll (S : in out State; Result : out Outcome)
      with Global => (In_Out => D.Engine),
        Pre => Valid (S) and D.Valid, Post => Valid (S) and D.Valid;

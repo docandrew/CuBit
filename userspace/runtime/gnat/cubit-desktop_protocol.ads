@@ -142,13 +142,27 @@ package CuBit.Desktop_Protocol with SPARK_Mode, Pure is
       More_Pending : Boolean := False;
    end record;
    More_Pending_Flag : constant Unsigned_8 := 1;
+   --  Key events: Payload0 is the set-1 scan code; Payload1's low word holds
+   --  the modifiers, its high word the key flags. Text events: Payload1 is
+   --  the key flags alone. Repeat marks an event the desktop synthesized for
+   --  a held key (auto-repeat), so an application can ignore repeats, e.g.
+   --  for shortcuts that should fire once per press.
+   Maximum_Scan_Code : constant Unsigned_64 := 127;
+   Maximum_Modifiers : constant Unsigned_64 := 15;
+   Key_Flags_Shift : constant := 32;
+   Key_Repeat_Flag : constant Unsigned_64 := 2 ** Key_Flags_Shift;
    function Valid_Input_Envelope (Item : Input_Envelope) return Boolean is
      (case Item.Kind is
          when No_Input =>
            Item.Payload0 = 0 and Item.Payload1 = 0 and not Item.More_Pending,
-         when Key_Pressed | Key_Released =>
-           Item.Payload0 <= 127 and Item.Payload1 <= 15,
-         when Text_Entered => Item.Payload0 <= 255 and Item.Payload1 = 0,
+         when Key_Pressed =>
+           Item.Payload0 <= Maximum_Scan_Code and
+           Item.Payload1 mod Key_Repeat_Flag <= Maximum_Modifiers and
+           Item.Payload1 / Key_Repeat_Flag <= 1,
+         when Key_Released =>
+           Item.Payload0 <= Maximum_Scan_Code and Item.Payload1 <= Maximum_Modifiers,
+         when Text_Entered =>
+           Item.Payload0 <= 255 and Item.Payload1 in 0 | Key_Repeat_Flag,
          when Close_Requested => Item.Payload0 = 0 and Item.Payload1 = 0,
          when Surface_Configured =>
            Item.Payload0 <= Unsigned_64 (Pixel_Extent'Last) and

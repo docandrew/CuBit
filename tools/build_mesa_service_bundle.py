@@ -150,11 +150,13 @@ def main():
         objects.append(obj)
     for name in ('native_gpu_calls', 'native_gpu_buffers', 'native_gpu_memory', 'native_gpu_query',
                  'native_gpu_queue'):
-        run(['gnatmake', '-q', '-c', '-gnatA', '-gnat2022', '-O2', '-mno-red-zone', '-fno-pic',
+        run(['gnatmake', '-q', '-c', '-gnatA', '-gnat2022', '-gnatp', '-O2', '-mno-red-zone', '-fno-pic',
              '--RTS=' + str(root / 'userspace/runtime'), '-I' + str(native), native / (name + '.adb')])
         objects.append(out / (name + '.o'))
     # The session queue's proved logic (GPU-001 step 3), compiled with it.
     objects += [out / 'native_gpu_timeline.o', out / 'native_gpu_job_rules.o']
+    # -gnatp, as the user runtime: it supplies no check handlers. The timeline
+    # logic is proved free of run-time errors (SPARK level 2).
     # C imports these units by name and no binder elaborates them: any
     # elaboration code would never run. Refuse it.
     for obj in objects:

@@ -2,6 +2,8 @@ with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.UI;
 with CuBit.UI.App;
+with CuBit.UI.Clipboard;
+with Clipboard_Chords;
 with Observatory_Archive_Reader;
 with Observatory_Trace_View;
 with Observatory_Trace_CCL;
@@ -57,15 +59,41 @@ procedure Main is
    end Evaluate;
    function Field (Name : String) return String is
      (Evaluate ("(" & Name & " " & Decimal (Unsigned_64 (Selected)) & ")"));
+   --  The selected event's details, as drawn (and copied).
+   DETAIL_LINES : constant := 5;
+   DETAIL_TOP : constant := 282;
+   DETAIL_STEP : constant := 24;
+   subtype Detail_Line_Number is Positive range 1 .. DETAIL_LINES;
+   function Detail_Line (Line : Detail_Line_Number) return String is
+     (case Line is
+        when 1 => "Selected " & Decimal (Unsigned_64 (Selected + 1)) & ": " & Field ("trace.kind"),
+        when 2 => "Time " & Field ("trace.time-us") & " us | Duration " & Field ("trace.duration-us") & " us",
+        when 3 => "PID " & Field ("trace.pid") & " | Publisher " & Field ("trace.publisher"),
+        when 4 => "Observer " & Field ("trace.observer") & " | Event " & Field ("trace.event-id"),
+        when 5 => "Output " & Field ("trace.output") & " | Session " & Field ("trace-detail.session") &
+                  " | Frame " & Field ("trace-detail.frame"));
+   function Details return String is
+     (Detail_Line (1) & ASCII.LF & Detail_Line (2) & ASCII.LF & Detail_Line (3) & ASCII.LF &
+      Detail_Line (4) & ASCII.LF & Detail_Line (5));
    procedure Reload is
    begin
       R.Start (Page, OK);
       if OK then V.Start (View, [others => 0], Page); Selected := 0; Dirty := True; end if;
    end Reload;
    procedure Handle is
+      use type Clipboard_Chords.Command;
+      Copied : CuBit.UI.Clipboard.Outcome;
    begin
       A.Begin_Input_Event (Win, Event);
       if Event.kind = A.INPUT_CONFIGURE then Dirty := True;
+      elsif Event.kind = A.INPUT_KEY_DOWN and then
+        CuBit.UI.Clipboard.Command_Of (Event.payload0, Event.payload1) = Clipboard_Chords.Copy_Command
+      then
+         --  Copy the selected event's details as text (docs/clipboard.md).
+         if V.Ready (View) and then V.Length (View) > 0 then
+            CuBit.UI.Clipboard.Copy_Text (A.Surface_ID (Win), Details, CuBit.UI.Clipboard.Ordinary, Copied);
+            debugPrint ("trace-viewer: copy " & CuBit.UI.Clipboard.Image (Copied) & ASCII.LF);
+         end if;
       elsif Event.kind = A.INPUT_KEY_DOWN then
          case Event.payload0 is
             when A.KEY_ESC | A.KEY_Q => Running := False;
@@ -117,11 +145,9 @@ procedure Main is
          end loop;
          UI.Draw_UI_Text (C, 16, 250, "Page interval: " & Decimal (Bounds.Last - Bounds.First) & " us", Theme.muted, Theme.face);
          if V.Length (View) > 0 then
-            UI.Draw_UI_Text (C, 16, 282, "Selected " & Decimal (Unsigned_64 (Selected + 1)) & ": " & Field ("trace.kind"), Theme.text, Theme.face);
-            UI.Draw_UI_Text (C, 16, 306, "Time " & Field ("trace.time-us") & " us | Duration " & Field ("trace.duration-us") & " us", Theme.text, Theme.face);
-            UI.Draw_UI_Text (C, 16, 330, "PID " & Field ("trace.pid") & " | Publisher " & Field ("trace.publisher"), Theme.text, Theme.face);
-            UI.Draw_UI_Text (C, 16, 354, "Observer " & Field ("trace.observer") & " | Event " & Field ("trace.event-id"), Theme.text, Theme.face);
-            UI.Draw_UI_Text (C, 16, 378, "Output " & Field ("trace.output") & " | Session " & Field ("trace-detail.session") & " | Frame " & Field ("trace-detail.frame"), Theme.text, Theme.face);
+            for Line in Detail_Line_Number loop
+               UI.Draw_UI_Text (C, 16, DETAIL_TOP + (Line - 1) * DETAIL_STEP, Detail_Line (Line), Theme.text, Theme.face);
+            end loop;
          end if;
       else
          UI.Draw_UI_Text (C, 16, 76,

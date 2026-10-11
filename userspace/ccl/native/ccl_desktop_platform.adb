@@ -10,6 +10,8 @@ with CuBit.Protocols;
 with Client_Frame_Wakeup;
 with CuBit.UI;
 with CuBit.UI.App;
+with CuBit.UI.Input;
+with CuBit.UI.Clipboard;
 with CCL_Workspace;
 with CCL_Application;
 with CCL_Native_Execution;
@@ -17,6 +19,11 @@ with CCL_Native_Execution;
 package body CCL_Desktop_Platform is
    function Code_Of (Event : Window_Event) return Integer_32 is
      (Window_Event'Enum_Rep (Event));
+   --  Key commands that act once per press (Window_Poll drops their
+   --  auto-repeats): running, files, panes, completion, copy/cut, Escape.
+   Once_Per_Press : constant array (Positive range <>) of Window_Event :=
+     [Run_Source, Open_Source, Save_Source, Open_Find, Toggle_REPL, Toggle_Watch,
+      Toggle_Syntax, Complete_Operation, Copy_Selection, Cut_Selection, Escape];
 
    --  This application's window title, from Activate.
    MAXIMUM_TITLE : constant := 64;
@@ -78,6 +85,72 @@ package body CCL_Desktop_Platform is
    MULTI_CLICK_RADIUS : constant Integer_64 := 5;
 
    Native_Window : aliased CuBit.UI.App.Window;
+
+   --  Clipboard chords (CuBit.UI.Clipboard.Chord_Of). Shift+Delete keeps
+   --  its editing meaning here: it is not mapped to Cut.
+   function Clipboard_Event (Key, Mods : Unsigned_64) return Window_Event is
+      use type CuBit.UI.Clipboard.Chord;
+      Chord : constant CuBit.UI.Clipboard.Chord :=
+        CuBit.UI.Clipboard.Chord_Of (Key, Mods);
+   begin
+      return
+        (if Chord = CuBit.UI.Clipboard.Copy_Chord then Copy_Selection
+         elsif Chord = CuBit.UI.Clipboard.Cut_Chord and then
+           (Mods and CuBit.UI.App.KEYMOD_CTRL) /= 0 then Cut_Selection
+         elsif Chord = CuBit.UI.Clipboard.Paste_Chord then Paste_Clipboard
+         else No_Event);
+   end Clipboard_Event;
+
+   function Copy_Text (Text : String) return Boolean is
+      use type CuBit.UI.Clipboard.Outcome;
+      Result : CuBit.UI.Clipboard.Outcome;
+   begin
+      CuBit.UI.Clipboard.Copy_Text
+        (CuBit.UI.App.Surface_ID (Native_Window), Text,
+         CuBit.UI.Clipboard.Ordinary, Result);
+      debugPrint (Name & ": copy text " & CuBit.UI.Clipboard.Image (Result) & ASCII.LF);
+      return Result = CuBit.UI.Clipboard.Done;
+   end Copy_Text;
+
+   function Copy_Value (Type_Name, Text, Literal : String) return Boolean is
+      use type CuBit.UI.Clipboard.Outcome;
+      Result : CuBit.UI.Clipboard.Outcome;
+   begin
+      CuBit.UI.Clipboard.Copy_Value
+        (CuBit.UI.App.Surface_ID (Native_Window), Type_Name, Text, Literal,
+         Result);
+      debugPrint (Name & ": copy typed " & Type_Name & " " & CuBit.UI.Clipboard.Image (Result) & ASCII.LF);
+      return Result = CuBit.UI.Clipboard.Done;
+   end Copy_Value;
+
+   procedure Paste
+     (Text : out String; Last : out Natural; Typed, Pasted : out Boolean)
+   is
+      use type CuBit.UI.Clipboard.Outcome;
+      MAXIMUM_TYPE_NAME : constant := CuBit.UI.Clipboard.P.Maximum_Type_Name;
+      Type_Name : String (1 .. MAXIMUM_TYPE_NAME);
+      Literal : String (Text'Range);
+      Type_Last, Text_Last, Literal_Last : Natural;
+      Result : CuBit.UI.Clipboard.Outcome;
+   begin
+      CuBit.UI.Clipboard.Paste_Value
+        (CuBit.UI.App.Surface_ID (Native_Window), Type_Name, Type_Last,
+         Text, Text_Last, Literal, Literal_Last, Result);
+      Pasted := Result = CuBit.UI.Clipboard.Done;
+      Typed := Pasted and then Literal_Last >= Literal'First;
+      Last := Text_Last;
+      if Typed then
+         Text := Literal;
+         Last := Literal_Last;
+      end if;
+      if Pasted then
+         debugPrint (Name & ": pasted " &
+           (if Typed then "typed " & Type_Name (1 .. Type_Last) else "text") &
+           ASCII.LF);
+      else
+         debugPrint (Name & ": paste " & CuBit.UI.Clipboard.Image (Result) & ASCII.LF);
+      end if;
+   end Paste;
    Native_Open : Boolean := False;
    First_Frame_Presented : Boolean := False;
    Current_Modifiers : Unsigned_64 := 0;
@@ -301,10 +374,12 @@ package body CCL_Desktop_Platform is
             return 0;
          when CuBit.UI.App.INPUT_KEY_DOWN =>
             Key := Event.payload0;
-            Mods := Event.payload1;
+            Mods := CuBit.UI.Input.Key_Modifiers (Event);
             Current_Modifiers := Mods;
             Modifiers.all := Unsigned_32 (Mods and 7);
-            if Key = KEY_O and then (Mods and 2) /= 0 then
+            if Clipboard_Event (Key, Mods) /= No_Event then
+               Kind.all := Code_Of (Clipboard_Event (Key, Mods));
+            elsif Key = KEY_O and then (Mods and 2) /= 0 then
                Kind.all := Code_Of (Open_Source);
             elsif Key = KEY_S and then (Mods and 2) /= 0 then
                Kind.all := Code_Of (Save_Source);
@@ -350,6 +425,13 @@ package body CCL_Desktop_Platform is
             elsif Key = KEY_A and then (Mods and 2) /= 0 then
                Kind.all := Code_Of (Select_All);
             else
+               return 0;
+            end if;
+            --  Commands and toggles act once per press, never on the
+            --  desktop's auto-repeat; editing and movement keys repeat.
+            if CuBit.UI.Input.Is_Repeat (Event) and then
+              (for some Command of Once_Per_Press => Kind.all = Code_Of (Command))
+            then
                return 0;
             end if;
          when others =>

@@ -7,7 +7,6 @@ with Intel_GPU_ADLN_L3_Commands;
 with Intel_GPU_ADLN_Context_Settings;
 with Intel_GPU_ADLN_Batch_Start;
 with Intel_GPU_Arbitration_Command;
-with Intel_GPU_ADLN_Barrier;
 with Intel_GPU_Submission_Image;
 package body Intel_GPU_ADLN_Context_Init with SPARK_Mode is
    function Build (Read_Valid : Boolean; WM_Chicken2 : Unsigned_32;
@@ -103,6 +102,14 @@ package body Intel_GPU_ADLN_Context_Init with SPARK_Mode is
       end loop;
       Result.Words (Breadcrumb_Low) := Unsigned_32 (Sequence_Value mod 2 ** 32);
       Result.Words (Breadcrumb_High) := Unsigned_32 (Sequence_Value / 2 ** 32);
+      Result.Words (Start_Stamp_Flags) :=
+        (Result.Words (Start_Stamp_Flags) and not Intel_GPU_ADLN_Barrier.Post_Sync_Mask) or
+        Intel_GPU_ADLN_Barrier.Post_Sync_Timestamp;
+      Result.Words (Start_Stamp_Address) := Intel_GPU_ADLN_PPHWSP.Job_Start_Offset (Sequence_Value);
+      Result.Words (End_Stamp_Flags) :=
+        (Result.Words (End_Stamp_Flags) and not Intel_GPU_ADLN_Barrier.Post_Sync_Mask) or
+        Intel_GPU_ADLN_Barrier.Post_Sync_Timestamp;
+      Result.Words (End_Stamp_Address) := Intel_GPU_ADLN_PPHWSP.Job_End_Offset (Sequence_Value);
       return Result;
    end Build_Batch;
    function Build_Draw (Read_Valid : Boolean; WM_Chicken2, Sequence_Value : Unsigned_32)

@@ -4,6 +4,7 @@ cd "$(dirname "$0")/../.."
 mkdir -p tests/config-inspection/build/source
 cp userspace/runtime/gnat/cubit.ads userspace/runtime/gnat/cubit-config_inspection.ad? tests/config-inspection/build/source/
 cp userspace/runtime/gnat/cubit-config_protocol.ad? tests/config-inspection/build/source/
+cp userspace/runtime/gnat/cubit-process_ids.ad? tests/config-inspection/build/source/
 cd kernel
 alr exec -- gprbuild -P ../tests/config-inspection/inspection.gpr
 ../tests/config-inspection/build/main

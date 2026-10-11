@@ -7,7 +7,7 @@ project Composition is
       "compositor_policy.ads", "compositor_policy.adb", "compositor_formats.ads",
       "compositor_cache.ads", "compositor_cache.adb", "mesa_binding.ads", "mesa_binding.adb",
       "mesa_masks.ads", "mesa_masks.adb", "mesa_binding-masks.ads", "mesa_binding-masks.adb", "mesa_mask_ffi.ads", "mesa_mask_ffi.adb", "compositor_glyph_layout.ads", "compositor_glyph_layout.adb",
-      "mesa_binding-affine.ads", "mesa_binding-affine.adb", "mesa_affine_ffi.ads", "mesa_affine_ffi.adb", "compositor_transform.ads", "compositor_transform.adb", "compositor_affine.ads", "compositor_affine.adb", "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb", "mesa_ffi.ads", "mesa_cache.ads", "desktop_compositor.ads", "desktop_compositor.adb");
+      "mesa_binding-affine.ads", "mesa_binding-affine.adb", "mesa_affine_ffi.ads", "mesa_affine_ffi.adb", "compositor_transform.ads", "compositor_transform.adb", "compositor_affine.ads", "compositor_affine.adb", "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb", "mesa_ffi.ads", "mesa_cache.ads");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";
    for Main use ("mask_batch_tests.adb", "composition_tests.adb", "cache_tests.adb", "damage_tests.adb");

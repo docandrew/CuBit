@@ -23,7 +23,14 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Network_Authority;
 with CuBit.Devices;
 with CuBit.Virtio_Net_Control;
+with CuBit.Virtio_Input_Control;
 with CuBit.NVMe_Control;
+with CuBit.Device_Interrupts;
+with Device_Vector_ABI;
+with CCL.Resource_Sections;
+with Driver_Manifests;
+with PCI_Message_Interrupts;
+with PCI_Message_Functions;
 with CuBit.Filesystems;
 with CuBit.Memory_Grants;
 with CuBit.File_Access;
@@ -32,6 +39,7 @@ with XHCI_DMA_Layout;
 with XHCI_Capabilities;
 with Intel_GPU_Probe;
 with Intel_GPU_Display_Pages;
+with Intel_GPU_Pipe_Pages;
 with Intel_GPU_PHY_Pages;
 with Intel_GPU_Resources;
 with Intel_GPU_Reset_Pages;
@@ -102,6 +110,9 @@ procedure main is
    --  PCI vendor ID for virtio devices
    VENDOR_VIRTIO       : constant Unsigned_16 := 16#1AF4#;
    DEVICE_VIRTIO_GPU    : constant Unsigned_16 := 16#1050#;
+   --  virtio 1.0 device ID 18 (input) at 0x1040 + ID: virtio-tablet-pci,
+   --  virtio-mouse-pci and virtio-keyboard-pci all present this one ID.
+   DEVICE_VIRTIO_INPUT  : constant Unsigned_16 := 16#1052#;
 
    --  PCI config space offsets
    PCI_VENDOR_ID       : constant Unsigned_8 := 0;
@@ -114,8 +125,6 @@ procedure main is
    PCI_BASEADDR_1      : constant Unsigned_8 := 20;
    PCI_CAP_PTR         : constant Unsigned_8 := 52;
    PCI_INTERRUPT_LINE  : constant Unsigned_8 := 60;
-   PCI_CAP_ID_MSI      : constant Unsigned_8 := 5;
-   PCI_CAP_ID_MSIX     : constant Unsigned_8 := 16#11#;
    PCI_HEADER_MULTIFUNCTION : constant Unsigned_8 := 16#80#;
    PCI_PROG_IF_AHCI         : constant Unsigned_8 := 16#01#;
    PCI_PROG_IF_XHCI         : constant Unsigned_8 := 16#30#;
@@ -198,6 +207,7 @@ procedure main is
    hdaDev    : PCIDeviceInfo;
    xhciDev   : PCIDeviceInfo;
    gpuDev    : PCIDeviceInfo;
+   inputDev  : PCIDeviceInfo;
    intelDev : PCIDeviceInfo;
    Intel_Inspection_PID : Process_ID := No_Process;
    package GP renames Native_GPU_Probe_Protocol;
@@ -231,6 +241,7 @@ procedure main is
    Intel_Display_Ownership : Intel_GPU_Display_Claim.Claim;
    Intel_Display_Granted : array (Intel_GPU_Display_Pages.Page_Index) of Boolean := [others => False];
    Intel_PHY_Granted : array (Intel_GPU_PHY_Pages.Page_Index) of Boolean := [others => False];
+   Intel_Pipe_Granted : array (Intel_GPU_Pipe_Pages.Page_Index) of Boolean := [others => False];
    Intel_GGTT_Granted : Boolean := False;
    Intel_GGTT_BAR, Intel_GGTT_Bytes : Unsigned_64 := 0;
    Intel_GGTT_Write_Attempted : Boolean := False;
@@ -337,8 +348,6 @@ procedure main is
    nvmePID       : Process_ID := No_Process;
    netstackPID   : Process_ID := No_Process;
    virtioNetPID  : Process_ID := No_Process;
-   netMSIXCap : Unsigned_8 := 0;
-   netTableOffset : Unsigned_64 := 0;
    netIOBase : Unsigned_64 := 0;
    --  A modern (virtio 1.0) device: its register layout within the mapped
    --  BAR (CuBit.Virtio_Net_Control.Configure_Modern).
@@ -347,11 +356,6 @@ procedure main is
    netModernBytes : Unsigned_64 := 0;
    netTransportReady : Boolean := False;
    DEVMGR_NET_SLOT : constant Unsigned_64 := 3;
-   --  NVMe completion interrupts (filesystem agent): MSI-X entry zero, set
-   --  up masked here, filled by nvme.drv, unmasked after its reply.
-   nvmeMSIXCap : Unsigned_8 := 0;
-   nvmeTableOffset : Unsigned_64 := 0;
-   nvmeMSIX : Boolean := False;
    --  Minted just before the configuration call, as DEVMGR_NET_SLOT is.
    DEVMGR_NVME_SLOT : constant Unsigned_64 := 3;
    procmgrPID    : Process_ID := No_Process;
@@ -363,6 +367,7 @@ procedure main is
    configPID     : Process_ID := No_Process;
    netmgrPID     : Process_ID := No_Process;
    virtioGpuPID  : Process_ID := No_Process;
+   virtioInputPID : Process_ID := No_Process;
 
    --  CPIO archive
    cpioArchive : Cpio.Archive;
@@ -719,6 +724,15 @@ procedure main is
             xhciDev := location;
             observedKind := CuBit.Devices.USB_Controller;
             debugPrint (" xHCI");
+         elsif vendorID = VENDOR_VIRTIO and then deviceID = DEVICE_VIRTIO_INPUT then
+            --  One virtio-input driver: the first such function. The driver
+            --  itself declines devices that are not absolute pointers.
+            if inputDev.found then
+               debugPrint (" virtio-input (unclaimed)");
+            else
+               inputDev := location;
+               debugPrint (" virtio-input");
+            end if;
          elsif vendorID = VENDOR_VIRTIO and then
                (deviceID = DEVICE_VIRTIO_GPU or else
                 classCode = CLASS_DISPLAY_VGA)
@@ -853,6 +867,47 @@ procedure main is
       return Read_Bytes;
    end Read_Boot_Image;
 
+   --  The interrupt each spawned driver's manifest asks for, by process.
+   type Spawned_Request is record
+      PID     : Process_ID := No_Process;
+      Request : Driver_Manifests.Interrupt_Request;
+   end record;
+   MAX_SPAWNED_REQUESTS : constant := 32;
+   spawnedRequests : array (1 .. MAX_SPAWNED_REQUESTS) of Spawned_Request;
+   spawnedRequestCount : Natural range 0 .. MAX_SPAWNED_REQUESTS := 0;
+
+   procedure Record_Manifest (PID : Process_ID; Address, Size : Unsigned_64) is
+   begin
+      if PID = No_Process or else Size = 0 or else
+        Size >= Unsigned_64 (Natural'Last) or else
+        spawnedRequestCount = MAX_SPAWNED_REQUESTS
+      then
+         return;
+      end if;
+      declare
+         Image : constant CCL.Resource_Sections.Byte_Array (1 .. Natural (Size))
+           with Import, Address => To_Address (Integer_Address (Address));
+         Request : constant Driver_Manifests.Interrupt_Request :=
+           Driver_Manifests.Interrupt_Of (Image);
+      begin
+         if Request.Present then
+            spawnedRequestCount := spawnedRequestCount + 1;
+            spawnedRequests (spawnedRequestCount) := (PID, Request);
+         end if;
+      end;
+   end Record_Manifest;
+
+   function Manifest_Interrupt (PID : Process_ID)
+     return Driver_Manifests.Interrupt_Request is
+   begin
+      for I in 1 .. spawnedRequestCount loop
+         if spawnedRequests (I).PID = PID then
+            return spawnedRequests (I).Request;
+         end if;
+      end loop;
+      return (others => <>);
+   end Manifest_Interrupt;
+
    function spawnFromBootStorage (name     : String;
                            priority : Unsigned_64) return Process_ID
    is
@@ -890,7 +945,12 @@ procedure main is
       Spawned := syscall (SYSCALL_SPAWN, addr, size, priority,
                       Unsigned_64 (To_Integer (nameBuf'Address)));
       --  The new process's identity, or all ones.
-      return (if Spawned = Unsigned_64'Last then No_Process else From_Word (Spawned));
+      if Spawned = Unsigned_64'Last then
+         return No_Process;
+      end if;
+      --  What its manifest asks of its device (docs/msi-interrupts.md).
+      Record_Manifest (From_Word (Spawned), addr, size);
+      return From_Word (Spawned);
    end spawnFromBootStorage;
 
    ---------------------------------------------------------------------------
@@ -948,21 +1008,21 @@ procedure main is
    ---------------------------------------------------------------------------
    -- Assign CPU affinity based on service type
    ---------------------------------------------------------------------------
-   procedure assignCPU (pid  : Process_ID;
-                        name : String)
-   is
-      ignore : Unsigned_64;
-      cpu    : Unsigned_64 := 0;
+   --  The CPU a service or driver is pinned to. A driver's message
+   --  interrupts are delivered to the same CPU (docs/msi-interrupts.md).
+   function cpuFor (name : String) return Natural is
+      cpu : Unsigned_64 := 0;
    begin
       if numCPUs <= 1 then
-         return;
+         return 0;
       end if;
 
       --  Storage/FS/input services pinned to CPU 0
       if strEq (name, "filesystem.svc") or strEq (name, "ata.drv") or
          strEq (name, "nvme.drv") or strEq (name, "ramdisk.drv") or
          strEq (name, "procmgr.svc") or
-         strEq (name, "ps2.drv") or strEq (name, "xhci.drv")
+         strEq (name, "ps2.drv") or strEq (name, "xhci.drv") or
+         strEq (name, "virtio-input.drv")
       then
          cpu := 0;
       --  Network services on CPU 1
@@ -992,9 +1052,46 @@ procedure main is
             nextAppCPU := 1;
          end if;
       end if;
+      return Natural (cpu);
+   end cpuFor;
 
-      ignore := setCpu (pid, cpu);
+   --  Where each placed process was pinned, so its device vectors can be
+   --  delivered to the same CPU (cpuOf).
+   type Placement is record
+      PID : Process_ID := No_Process;
+      CPU : Natural := 0;
+   end record;
+   MAX_PLACEMENTS : constant := 64;
+   placements : array (1 .. MAX_PLACEMENTS) of Placement;
+   placementCount : Natural range 0 .. MAX_PLACEMENTS := 0;
+
+   procedure assignCPU (pid  : Process_ID;
+                        name : String)
+   is
+      ignore : Unsigned_64;
+      cpu : Natural;
+   begin
+      if numCPUs <= 1 then
+         return;
+      end if;
+      cpu := cpuFor (name);
+      ignore := setCpu (pid, Unsigned_64 (cpu));
+      if placementCount < MAX_PLACEMENTS then
+         placementCount := placementCount + 1;
+         placements (placementCount) := (pid, cpu);
+      end if;
    end assignCPU;
+
+   --  The CPU pid was pinned to; CPU 0 for an unplaced process.
+   function cpuOf (pid : Process_ID) return Natural is
+   begin
+      for I in reverse 1 .. placementCount loop
+         if placements (I).PID = pid then
+            return placements (I).CPU;
+         end if;
+      end loop;
+      return 0;
+   end cpuOf;
 
    ---------------------------------------------------------------------------
    -- Resume a suspended process
@@ -1040,7 +1137,9 @@ procedure main is
                 (rdyMsg.tag = (Intel_GPU_Display_Pages.Request_Label, 1, 0, 0) and then
                  rdyMsg.words (0) <= Unsigned_64 (Intel_GPU_Display_Pages.Page_Index'Last)) or else
                 (rdyMsg.tag = (Intel_GPU_PHY_Pages.Request_Label, 1, 0, 0) and then
-                 rdyMsg.words (0) <= Unsigned_64 (Intel_GPU_PHY_Pages.Page_Index'Last))) and then
+                 rdyMsg.words (0) <= Unsigned_64 (Intel_GPU_PHY_Pages.Page_Index'Last)) or else
+                (rdyMsg.tag = (Intel_GPU_Pipe_Pages.Request_Label, 1, 0, 0) and then
+                 rdyMsg.words (0) <= Unsigned_64 (Intel_GPU_Pipe_Pages.Page_Index'Last))) and then
            sender = Intel_Inspection_PID and then sender /= No_Process and then
            rdyMsg.authorityTag = 16#4947# and then
            rdyMsg.words (1 .. 3) = [0, 0, 0]
@@ -1154,14 +1253,306 @@ procedure main is
    end sendWildcardACLConfig;
 
    ---------------------------------------------------------------------------
+   --  Message-signaled interrupts (docs/msi-interrupts.md)
+   --
+   --  For each driver whose manifest asks for MSI or MSI-X, devmgr allocates
+   --  a block of vectors from the kernel through its vector authority. The
+   --  kernel binds the block to the driver and installs the driver's CAP_IRQ
+   --  in the slot the manifest named. devmgr then programs the function:
+   --  every MSI-X entry written masked with the function masked, then
+   --  unmasked once the driver is ready (PCI_Message_Functions). Vectors go
+   --  to the local APIC of the CPU the driver is pinned to (cpuOf). A block
+   --  is released only after the function is masked and disabled.
+   ---------------------------------------------------------------------------
+   function probeMemoryBARSize
+     (dev : PCIDeviceInfo; bar : Unsigned_8) return Unsigned_64;
+
+   --  PCI command register bits.
+   PCI_COMMAND_INTX_DISABLE   : constant Unsigned_16 := 16#0400#;
+   PCI_STATUS_CAPABILITIES    : constant Unsigned_16 := 16#0010#;
+   --  Conventional capability list: pointers are dword-aligned, inside the
+   --  device-specific header, and the walk is bounded against cycles.
+   PCI_CAP_POINTER_MASK       : constant Unsigned_8 := 16#FC#;
+   PCI_CAP_FIRST              : constant Unsigned_8 := 16#40#;
+   PCI_CAP_LAST               : constant Unsigned_8 := 16#F4#;
+   PCI_CAP_MAX_HOPS           : constant := 48;
+   PCI_BAR_IO                 : constant Unsigned_32 := 16#0000_0001#;
+   PCI_BAR_TYPE_MASK          : constant Unsigned_32 := 16#0000_0006#;
+   PCI_BAR_TYPE_64            : constant Unsigned_32 := 16#0000_0004#;
+   PCI_BAR_ADDRESS_MASK       : constant Unsigned_32 := 16#FFFF_FFF0#;
+   PCI_BAR_BYTES              : constant := 4;
+   PAGE_BYTES                 : constant := 4096;
+
+   --  MSI-X tables are mapped into devmgr, one window per programmed
+   --  function. A table is at most 2048 entries (32 KiB) and may start
+   --  anywhere in its page, so a window holds nine pages.
+   MSIX_TABLE_WINDOW_BASE  : constant Unsigned_64 := 16#0000_6000_2000_0000#;
+   MSIX_TABLE_WINDOW_BYTES : constant Unsigned_64 := 16#0001_0000#;
+   MAX_MESSAGE_FUNCTIONS   : constant := 16;
+   subtype Table_Window is Natural range 0 .. MAX_MESSAGE_FUNCTIONS - 1;
+   nextTableWindow : Natural := 0;
+
+   type Message_Mode is (Polled, MSI_Mode, MSIX_Mode);
+
+   --  One device function's message interrupts, as programmed.
+   type Message_Function is record
+      Mode       : Message_Mode := Polled;
+      Device     : PCIDeviceInfo;
+      Capability : Unsigned_8 := 0;
+      --  devmgr's virtual address of MSI-X entry 0.
+      Table      : Unsigned_64 := 0;
+      Vectors    : CuBit.Device_Interrupts.Allocation;
+      Owner      : Process_ID := No_Process;
+   end record;
+
+   --  The function the hardware callbacks below act on.
+   current : Message_Function;
+
+   procedure Write_Entry
+     (Index : PCI_Message_Interrupts.Entry_Index;
+      Register : PCI_Message_Interrupts.Entry_Register;
+      Value : Unsigned_32)
+   is
+      type Table_Register is new Unsigned_32 with Volatile_Full_Access;
+      Target : Table_Register with Import, Address => To_Address (Integer_Address
+        (current.Table + PCI_Message_Interrupts.Entry_Offset (Index, Register)));
+   begin
+      Target := Table_Register (Value);
+   end Write_Entry;
+
+   function Read_Function_16 (Offset : Natural) return Unsigned_16 is
+     (pciReadConfig16 (current.Device.bus, current.Device.slot,
+                       current.Device.func, current.Capability + Unsigned_8 (Offset)));
+
+   procedure Write_Function_16 (Offset : Natural; Value : Unsigned_16) is
+   begin
+      pciWriteConfig16 (current.Device.bus, current.Device.slot,
+                        current.Device.func, current.Capability + Unsigned_8 (Offset), Value);
+   end Write_Function_16;
+
+   procedure Write_Function_32 (Offset : Natural; Value : Unsigned_32) is
+   begin
+      pciWriteConfig32 (current.Device.bus, current.Device.slot,
+                        current.Device.func, current.Capability + Unsigned_8 (Offset), Value);
+   end Write_Function_32;
+
+   package Message_Functions is new PCI_Message_Functions
+     (Write_Entry, Read_Function_16, Write_Function_16, Write_Function_32);
+
+   --  The offset of capability ID in dev's list, or zero.
+   function Find_Capability (dev : PCIDeviceInfo; ID : Unsigned_8) return Unsigned_8 is
+      at_offset : Unsigned_8;
+   begin
+      if (pciReadConfig16 (dev.bus, dev.slot, dev.func, PCI_STATUS) and
+          PCI_STATUS_CAPABILITIES) = 0
+      then
+         return 0;
+      end if;
+      at_offset := pciReadConfig8 (dev.bus, dev.slot, dev.func, PCI_CAP_PTR) and
+        PCI_CAP_POINTER_MASK;
+      for Hop in 1 .. PCI_CAP_MAX_HOPS loop
+         exit when at_offset not in PCI_CAP_FIRST .. PCI_CAP_LAST;
+         if pciReadConfig8 (dev.bus, dev.slot, dev.func, at_offset) = ID then
+            return at_offset;
+         end if;
+         at_offset := pciReadConfig8 (dev.bus, dev.slot, dev.func, at_offset + 1) and
+           PCI_CAP_POINTER_MASK;
+      end loop;
+      return 0;
+   end Find_Capability;
+
+   --  A memory BAR's physical base and size, or zero bytes.
+   procedure Memory_BAR
+     (dev : PCIDeviceInfo; index : Natural; base, bytes : out Unsigned_64)
+   is
+      register : constant Unsigned_8 :=
+        PCI_BASEADDR_0 + Unsigned_8 (index) * PCI_BAR_BYTES;
+      low : constant Unsigned_32 :=
+        pciReadConfig32 (dev.bus, dev.slot, dev.func, register);
+      wide : constant Boolean := (low and PCI_BAR_TYPE_MASK) = PCI_BAR_TYPE_64;
+   begin
+      base := 0;
+      bytes := 0;
+      if index >= PCI_Message_Interrupts.BAR_COUNT or else
+        (low and PCI_BAR_IO) /= 0 or else
+        (wide and then index = PCI_Message_Interrupts.BAR_COUNT - 1)
+      then
+         return;
+      end if;
+      base := Unsigned_64 (low and PCI_BAR_ADDRESS_MASK);
+      if wide then
+         base := base or Shift_Left
+           (Unsigned_64 (pciReadConfig32 (dev.bus, dev.slot, dev.func,
+                                          register + PCI_BAR_BYTES)), 32);
+      end if;
+      bytes := probeMemoryBARSize (dev, register);
+      if base = 0 or else base > Unsigned_64'Last - bytes then
+         bytes := 0;
+      end if;
+   end Memory_BAR;
+
+   --  Whether a table or PBA of length bytes at locator lies in a memory BAR.
+   function Locates (dev : PCIDeviceInfo; locator : Unsigned_32; length : Unsigned_64;
+                     address : out Unsigned_64) return Boolean
+   is
+      base, bytes : Unsigned_64;
+      offset : constant Unsigned_64 := PCI_Message_Interrupts.Locator_Offset (locator);
+   begin
+      Memory_BAR (dev, PCI_Message_Interrupts.Locator_BAR (locator), base, bytes);
+      address := base + offset;
+      return bytes /= 0 and then length <= bytes and then offset <= bytes - length;
+   end Locates;
+
+   procedure Disable_INTx (dev : PCIDeviceInfo) is
+   begin
+      pciWriteConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND,
+        pciReadConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND) or
+          PCI_COMMAND_INTX_DISABLE);
+   end Disable_INTx;
+
+   procedure Report (F : Message_Function; Name : String) is
+   begin
+      if F.Mode = Polled then
+         debugPrint ("devmgr: " & Name & " interrupts polled (no message vector)" & LF);
+      else
+         debugPrint ("devmgr: " & Name & " " &
+           (if F.Mode = MSIX_Mode then "MSI-X" else "MSI") & " vector" &
+           Natural'Image (F.Vectors.Head) &
+           (if F.Vectors.Count > 1 then " +" & Natural'Image (F.Vectors.Count - 1)
+            else "") &
+           " -> APIC" & Natural'Image (F.Vectors.Destination) & LF);
+      end if;
+   end Report;
+
+   ---------------------------------------------------------------------------
+   --  Setup_Message_Interrupts
+   --  Allocate and program dev's vectors for owner, as its manifest asks:
+   --  MSI-X when the function has it, else one MSI. The function stays
+   --  masked (MSI-X) until Open_Message_Interrupts. Enable_MSI False leaves
+   --  MSI programmed but off, for a driver that enables it later.
+   ---------------------------------------------------------------------------
+   procedure Setup_Message_Interrupts
+     (dev        : PCIDeviceInfo;
+      owner      : Process_ID;
+      name       : String;
+      F          : out Message_Function;
+      Enable_MSI : Boolean := True)
+   is
+      use PCI_Message_Interrupts;
+      request : constant Driver_Manifests.Interrupt_Request :=
+        Manifest_Interrupt (owner);
+      msix : constant Unsigned_8 := Find_Capability (dev, MSIX_CAPABILITY_ID);
+      msi  : constant Unsigned_8 := Find_Capability (dev, MSI_CAPABILITY_ID);
+      cpu  : constant Natural := cpuOf (owner);
+   begin
+      F := (Device => dev, Owner => owner, others => <>);
+      if not request.Present then
+         debugPrint ("devmgr: " & name & " manifest asks for no message interrupt" & LF);
+         return;
+      end if;
+
+      if msix /= 0 and then request.Mode in CCL.Resource_Sections.MSI_X and then
+        nextTableWindow <= Table_Window'Last
+      then
+         declare
+            control : constant Unsigned_16 :=
+              pciReadConfig16 (dev.bus, dev.slot, dev.func, msix + MSIX_CONTROL_OFFSET);
+            count : constant Device_Vector_ABI.Block_Size :=
+              Natural'Min (request.Vectors, Table_Size (control));
+            table_locator : constant Unsigned_32 :=
+              pciReadConfig32 (dev.bus, dev.slot, dev.func, msix + MSIX_TABLE_OFFSET);
+            pba_locator : constant Unsigned_32 :=
+              pciReadConfig32 (dev.bus, dev.slot, dev.func, msix + MSIX_PBA_OFFSET);
+            --  One pending bit per entry, in QWORDs.
+            pba_bytes : constant Unsigned_64 :=
+              Unsigned_64 ((Table_Size (control) + 63) / 64 * 8);
+            table, pba, page, window : Unsigned_64;
+            pages : Unsigned_64;
+         begin
+            if not Locates (dev, table_locator,
+                            Unsigned_64 (Table_Size (control)) * ENTRY_BYTES, table)
+              or else not Locates (dev, pba_locator, pba_bytes, pba)
+            then
+               debugPrint ("devmgr: " & name & " MSI-X table or PBA outside its BAR" & LF);
+            else
+               page := table - table mod PAGE_BYTES;
+               pages := (table mod PAGE_BYTES + Unsigned_64 (count) * ENTRY_BYTES +
+                         PAGE_BYTES - 1) / PAGE_BYTES;
+               window := MSIX_TABLE_WINDOW_BASE +
+                 Unsigned_64 (nextTableWindow) * MSIX_TABLE_WINDOW_BYTES;
+               if mapInto (myPID, page, window, pages, MAP_FLAG_IO) = reterr then
+                  debugPrint ("devmgr: " & name & " MSI-X table map failed" & LF);
+               else
+                  nextTableWindow := nextTableWindow + 1;
+                  F.Vectors := CuBit.Device_Interrupts.Allocate
+                    (owner, count, Unsigned_64 (request.Slot), cpu);
+                  if F.Vectors.Valid then
+                     F.Mode := MSIX_Mode;
+                     F.Capability := msix;
+                     F.Table := window + table mod PAGE_BYTES;
+                     current := F;
+                     Message_Functions.Program_MSIX
+                       (F.Vectors.Head, F.Vectors.Count, F.Vectors.Destination);
+                     Disable_INTx (dev);
+                  end if;
+               end if;
+            end if;
+         end;
+      end if;
+
+      if F.Mode = Polled and then msi /= 0 then
+         F.Vectors := CuBit.Device_Interrupts.Allocate
+           (owner, 1, Unsigned_64 (request.Slot), cpu);
+         if F.Vectors.Valid then
+            F.Mode := MSI_Mode;
+            F.Capability := msi;
+            current := F;
+            if Enable_MSI then
+               Message_Functions.Program_MSI (F.Vectors.Head, F.Vectors.Destination);
+               Disable_INTx (dev);
+            else
+               Message_Functions.Prepare_MSI (F.Vectors.Head, F.Vectors.Destination);
+            end if;
+         end if;
+      end if;
+      Report (F, name);
+   end Setup_Message_Interrupts;
+
+   --  The driver is ready: unmask its entries and the function. Messages
+   --  raised while masked were held pending and are sent now.
+   procedure Open_Message_Interrupts (F : Message_Function) is
+   begin
+      if F.Mode = MSIX_Mode then
+         current := F;
+         Message_Functions.Open_MSIX (F.Vectors.Count);
+      end if;
+   end Open_Message_Interrupts;
+
+   --  Mask and disable the function, then release its vectors.
+   procedure Close_Message_Interrupts (F : in out Message_Function) is
+   begin
+      current := F;
+      case F.Mode is
+         when MSIX_Mode => Message_Functions.Close_MSIX (F.Vectors.Count);
+         when MSI_Mode  => Message_Functions.Close_MSI;
+         when Polled    => return;
+      end case;
+      if not CuBit.Device_Interrupts.Release (F.Vectors.Head) then
+         debugPrint ("devmgr: device vector release refused" & LF);
+      end if;
+      F.Mode := Polled;
+   end Close_Message_Interrupts;
+
+   nvmeInterrupts, netInterrupts, hdaInterrupts, gpuInterrupts,
+     xhciInterrupts, intelInterrupts : Message_Function;
+
+   ---------------------------------------------------------------------------
    -- Setup NVMe driver: PCI config, DMA, capabilities
    ---------------------------------------------------------------------------
    procedure setupNvme is
       bar0Lo    : Unsigned_32;
       bar0Hi    : Unsigned_32;
       bar0Phys  : Unsigned_64;
-      irqLine   : Unsigned_8;
-      irqVector : Unsigned_64;
       pciCmd    : Unsigned_16;
       dmaPhys   : Unsigned_64;
       ret       : Unsigned_64;
@@ -1182,64 +1573,15 @@ procedure main is
       bar0Phys := Shift_Left (Unsigned_64 (bar0Hi), 32) or
                   Unsigned_64 (bar0Lo and 16#FFFF_FFF0#);
 
-      --  Read IRQ line, compute vector (legacy PCI: vector = 32 + line)
-      irqLine := pciReadConfig8 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
-                                 PCI_INTERRUPT_LINE);
-      irqVector := 32 + Unsigned_64 (irqLine);
-
       --  Enable bus master + memory space
       pciCmd := pciReadConfig16 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
                                  PCI_COMMAND);
       pciWriteConfig16 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
                         PCI_COMMAND, pciCmd or 16#0006#);
 
-      --  Completion interrupts by MSI-X when the table lies in the part of
-      --  BAR0 the driver maps; otherwise the driver polls. The function
-      --  stays masked until the driver has filled entry zero.
-      nvmeMSIX := False;
-      if (pciReadConfig16 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
-                           PCI_STATUS) and 16#10#) /= 0
-      then
-         nvmeMSIXCap := pciReadConfig8
-           (nvmeDev.bus, nvmeDev.slot, nvmeDev.func, PCI_CAP_PTR) and 16#FC#;
-         for hop in 1 .. 48 loop
-            exit when nvmeMSIXCap < 16#40# or else nvmeMSIXCap > 16#F4#;
-            exit when pciReadConfig8
-              (nvmeDev.bus, nvmeDev.slot, nvmeDev.func, nvmeMSIXCap) =
-              PCI_CAP_ID_MSIX;
-            nvmeMSIXCap := pciReadConfig8
-              (nvmeDev.bus, nvmeDev.slot, nvmeDev.func, nvmeMSIXCap + 1) and 16#FC#;
-         end loop;
-         if nvmeMSIXCap >= 16#40# and then nvmeMSIXCap <= 16#F4# and then
-           pciReadConfig8 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func, nvmeMSIXCap) =
-             PCI_CAP_ID_MSIX
-         then
-            declare
-               tableInfo : constant Unsigned_32 := pciReadConfig32
-                 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func, nvmeMSIXCap + 4);
-               offset : constant Unsigned_64 :=
-                 Unsigned_64 (tableInfo and 16#FFFF_FFF8#);
-               control : Unsigned_16;
-            begin
-               if (tableInfo and 7) = 0 and then
-                 offset <= CuBit.NVMe_Control.Table_Offset'Last and then
-                 enableIrq (CuBit.NVMe_Control.Device_Vector, nvmePID, 0,
-                            messageSignaled => True) /= reterr
-               then
-                  control := pciReadConfig16
-                    (nvmeDev.bus, nvmeDev.slot, nvmeDev.func, nvmeMSIXCap + 2);
-                  pciWriteConfig16 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
-                    nvmeMSIXCap + 2, control or 16#C000#);
-                  nvmeTableOffset := offset;
-                  nvmeMSIX := True;
-               end if;
-            end;
-         end if;
-      end if;
-      if not nvmeMSIX then
-         --  Legacy route, as before (the polling driver does not use it).
-         ret := enableIrq (irqVector, nvmePID, 0);
-      end if;
+      --  Completion interrupts by MSI-X, programmed here and left masked
+      --  until the driver has created its queues; otherwise it polls.
+      Setup_Message_Interrupts (nvmeDev, nvmePID, "nvme.drv", nvmeInterrupts);
 
       --  Allocate DMA
       dmaPhys := allocDma (nvmePID, DMA_ORDER, DMA_VIRT_BASE);
@@ -1251,9 +1593,6 @@ procedure main is
       --  Slot 4: CAP_DEVICE_MEM for BAR0 MMIO (16KB = 4 pages)
       mintCap (nvmePID, CAP_DEVICE_MEM, bar0Phys, 16384,
                RIGHT_READ or RIGHT_WRITE, 4);
-
-      --  Slot 5: CAP_IRQ for device interrupt
-      mintCap (nvmePID, CAP_IRQ, irqVector, 0, RIGHT_READ, 5);
 
       --  Slot 6: CAP_DEVICE_MEM for DMA region
       mintCap (nvmePID, CAP_DEVICE_MEM, 0, DMA_SIZE,
@@ -1298,9 +1637,6 @@ procedure main is
    --  findModernNet - the virtio-net device's modern (1.0) register layout,
    --  if it has one in a single memory BAR (virtio 1.0 4.1.4).
    ---------------------------------------------------------------------------
-   function probeMemoryBARSize
-     (dev : PCIDeviceInfo; bar : Unsigned_8) return Unsigned_64;
-
    netModernBar : Unsigned_64 := 0;
 
    procedure findModernNet is
@@ -1401,74 +1737,14 @@ procedure main is
       end if;
 
       --  Do not trust the firmware's legacy interrupt-line byte as an APIC
-      --  route. Require MSI-X and keep the function masked until the driver
-      --  installs its table entry and queue vectors. No periodic fallback.
-      if (pciReadConfig16 (netDev.bus, netDev.slot, netDev.func,
-                           PCI_STATUS) and 16#10#) = 0
-      then
-         return;
-      end if;
-      netMSIXCap := pciReadConfig8
-        (netDev.bus, netDev.slot, netDev.func, PCI_CAP_PTR) and 16#FC#;
-      for hop in 1 .. 48 loop
-         exit when netMSIXCap < 16#40# or else netMSIXCap > 16#F4#;
-         exit when pciReadConfig8
-           (netDev.bus, netDev.slot, netDev.func, netMSIXCap) = PCI_CAP_ID_MSIX;
-         netMSIXCap := pciReadConfig8
-           (netDev.bus, netDev.slot, netDev.func, netMSIXCap + 1) and 16#FC#;
-      end loop;
-      if netMSIXCap < 16#40# or else netMSIXCap > 16#F4# or else
-         pciReadConfig8 (netDev.bus, netDev.slot, netDev.func, netMSIXCap) /=
-           PCI_CAP_ID_MSIX
-      then
+      --  route. Require MSI-X, left masked until the driver has set its
+      --  queue vectors. No periodic fallback.
+      Setup_Message_Interrupts (netDev, virtioNetPID, "virtio-net.drv", netInterrupts);
+      if netInterrupts.Mode /= MSIX_Mode then
          debugPrint ("devmgr: virtio-net requires MSI-X" & LF);
+         Close_Message_Interrupts (netInterrupts);
          return;
       end if;
-      declare
-         tableInfo : constant Unsigned_32 := pciReadConfig32
-           (netDev.bus, netDev.slot, netDev.func, netMSIXCap + 4);
-         bir : constant Unsigned_8 := Unsigned_8 (tableInfo and 7);
-         bar : Unsigned_8;
-         lo, hi : Unsigned_32;
-         base, size, offset, tableAddress : Unsigned_64;
-         control : Unsigned_16;
-      begin
-         if bir > 5 then return; end if;
-         bar := PCI_BASEADDR_0 + bir * 4;
-         lo := pciReadConfig32 (netDev.bus, netDev.slot, netDev.func, bar);
-         if (lo and 1) /= 0 or else (lo and 6) not in 0 | 4 or else
-           (bir = 5 and then (lo and 6) = 4)
-         then
-            return;
-         end if;
-         base := Unsigned_64 (lo and 16#FFFF_FFF0#);
-         if (lo and 6) = 4 then
-            hi := pciReadConfig32 (netDev.bus, netDev.slot, netDev.func, bar + 4);
-            base := base or Shift_Left (Unsigned_64 (hi), 32);
-         end if;
-         size := probeMemoryBARSize (netDev, bar);
-         offset := Unsigned_64 (tableInfo and 16#FFFF_FFF8#);
-         if base = 0 or else size < 16 or else offset > size - 16 or else
-            base > Unsigned_64'Last - size
-         then
-            return;
-         end if;
-         tableAddress := base + offset;
-         netTableOffset := tableAddress mod 4096;
-         if netTableOffset > CuBit.Virtio_Net_Control.Table_Offset'Last then
-            return;
-         end if;
-         ret := mapInto (virtioNetPID, tableAddress - netTableOffset,
-           CuBit.Virtio_Net_Control.Table_Virtual_Address, 1, MAP_FLAG_IO);
-         if ret = reterr then return; end if;
-         ret := enableIrq (CuBit.Virtio_Net_Control.Device_Vector,
-           virtioNetPID, 0, messageSignaled => True);
-         if ret = reterr then return; end if;
-         control := pciReadConfig16
-           (netDev.bus, netDev.slot, netDev.func, netMSIXCap + 2);
-         pciWriteConfig16 (netDev.bus, netDev.slot, netDev.func,
-           netMSIXCap + 2, control or 16#C000#);
-      end;
 
       --  Enable I/O + MMIO + bus master; disable legacy INTx output.
       pciCmd := pciReadConfig16 (netDev.bus, netDev.slot, netDev.func,
@@ -1499,10 +1775,6 @@ procedure main is
                   RIGHT_READ or RIGHT_WRITE, 4);
       end if;
 
-      --  Slot 5: CAP_IRQ for device interrupt
-      mintCap (virtioNetPID, CAP_IRQ, CuBit.Virtio_Net_Control.Device_Vector,
-               0, RIGHT_READ, 5);
-
       --  Slot 6: CAP_DEVICE_MEM for DMA region
       mintCap (virtioNetPID, CAP_DEVICE_MEM, 0, DMA_SIZE,
                RIGHT_READ or RIGHT_WRITE, 6);
@@ -1528,13 +1800,11 @@ procedure main is
       pciCmd    : Unsigned_16;
       dmaPhys   : Unsigned_64;
       ret       : Unsigned_64;
-      msiCap    : Unsigned_8 := 0;
       msiReady  : Boolean := False;
 
       DMA_ORDER : constant Unsigned_64 := 5;   --  32 pages = 128KB
       DMA_PAGES : constant Unsigned_64 := 32;
       DMA_SIZE  : constant Unsigned_64 := DMA_PAGES * 4096;
-      HDA_MSI_VECTOR : constant Unsigned_64 := 45;
    begin
       if not hdaDev.found or hdaPID = No_Process then
          return;
@@ -1559,77 +1829,22 @@ procedure main is
       pciWriteConfig16 (hdaDev.bus, hdaDev.slot, hdaDev.func,
                         PCI_COMMAND, pciCmd or 16#0006#);
 
-      --  Prefer a dedicated MSI vector. Besides avoiding legacy PCI IRQ
+      --  Prefer an allocated MSI vector. Besides avoiding legacy PCI IRQ
       --  sharing, MSI is edge-triggered and therefore fits a userspace driver:
       --  the kernel may EOI immediately without a level line retriggering
       --  before HDA has cleared its stream status.
-      if (pciReadConfig16 (hdaDev.bus, hdaDev.slot, hdaDev.func,
-                           PCI_STATUS) and 16#0010#) /= 0
-      then
-         msiCap := pciReadConfig8
-           (hdaDev.bus, hdaDev.slot, hdaDev.func, PCI_CAP_PTR) and 16#FC#;
-         for hop in 1 .. 48 loop
-            exit when msiCap < 16#40# or else msiCap > 16#F0#;
-            if pciReadConfig8
-                 (hdaDev.bus, hdaDev.slot, hdaDev.func, msiCap) =
-               PCI_CAP_ID_MSI
-            then
-               exit;
-            end if;
-            msiCap := pciReadConfig8
-              (hdaDev.bus, hdaDev.slot, hdaDev.func, msiCap + 1) and 16#FC#;
-         end loop;
-
-         if msiCap >= 16#40# and then msiCap <= 16#F0# and then
-            pciReadConfig8
-              (hdaDev.bus, hdaDev.slot, hdaDev.func, msiCap) = PCI_CAP_ID_MSI
-         then
-            setupMsi : declare
-               control : Unsigned_16 := pciReadConfig16
-                 (hdaDev.bus, hdaDev.slot, hdaDev.func, msiCap + 2);
-               dataOff : Unsigned_8;
-            begin
-               --  Destination APIC ID 0, fixed delivery, physical mode.
-               pciWriteConfig32
-                 (hdaDev.bus, hdaDev.slot, hdaDev.func, msiCap + 4,
-                  16#FEE0_0000#);
-               if (control and 16#0080#) /= 0 then
-                  pciWriteConfig32
-                    (hdaDev.bus, hdaDev.slot, hdaDev.func, msiCap + 8, 0);
-                  dataOff := msiCap + 12;
-               else
-                  dataOff := msiCap + 8;
-               end if;
-               pciWriteConfig16
-                 (hdaDev.bus, hdaDev.slot, hdaDev.func, dataOff,
-                  Unsigned_16 (HDA_MSI_VECTOR));
-
-               ret := enableIrq
-                 (HDA_MSI_VECTOR, hdaPID, 0, messageSignaled => True);
-               if ret /= reterr then
-                  --  One message only, then enable MSI. Disable the device's
-                  --  legacy INTx output so it cannot assert the shared PIRQ.
-                  control := (control and not 16#0070#) or 1;
-                  pciWriteConfig16
-                    (hdaDev.bus, hdaDev.slot, hdaDev.func,
-                     msiCap + 2, control);
-                  pciCmd := pciReadConfig16
-                    (hdaDev.bus, hdaDev.slot, hdaDev.func, PCI_COMMAND);
-                  pciWriteConfig16
-                    (hdaDev.bus, hdaDev.slot, hdaDev.func,
-                     PCI_COMMAND, pciCmd or 16#0400#);
-                  irqVector := HDA_MSI_VECTOR;
-                  msiReady := True;
-                  debugPrint ("devmgr: HDA using MSI" & LF);
-               end if;
-            end setupMsi;
-         end if;
-      end if;
+      Setup_Message_Interrupts (hdaDev, hdaPID, "hda.drv", hdaInterrupts);
+      msiReady := hdaInterrupts.Mode /= Polled;
 
       if not msiReady then
          --  Compatibility fallback. The long-term legacy-INTx path needs a
          --  mask/ack/unmask protocol before it can offer the same latency.
+         --  The line's capability goes in the manifest's interrupt slot.
          ret := enableIrq (irqVector, hdaPID, 0);
+         if Manifest_Interrupt (hdaPID).Present then
+            mintCap (hdaPID, CAP_IRQ, irqVector, 0, RIGHT_READ,
+                     Unsigned_64 (Manifest_Interrupt (hdaPID).Slot));
+         end if;
          debugPrint ("devmgr: HDA using legacy INTx fallback" & LF);
       end if;
 
@@ -1643,9 +1858,6 @@ procedure main is
       --  Slot 4: CAP_DEVICE_MEM for BAR0 MMIO (16KB = 4 pages)
       mintCap (hdaPID, CAP_DEVICE_MEM, bar0Phys, 16384,
                RIGHT_READ or RIGHT_WRITE, 4);
-
-      --  Slot 5: CAP_IRQ for device interrupt
-      mintCap (hdaPID, CAP_IRQ, irqVector, 0, RIGHT_READ, 5);
 
       --  Slot 6: CAP_DEVICE_MEM for DMA region
       mintCap (hdaPID, CAP_DEVICE_MEM, 0, DMA_SIZE,
@@ -1689,12 +1901,25 @@ procedure main is
       dmaPhys : Unsigned_64;
       ret : Unsigned_64;
 
-      -- Two independently owned 8 MiB banks, within the allocator's supported
-      -- block size. A missing second bank must not prevent the boot output.
+      -- Two independently owned banks, one per head, within the allocator's
+      -- supported block size. A 16 MiB bank holds two fixed scanout buffers
+      -- of up to 1920x1080, so a mode change (a resized VM window) never
+      -- reallocates; a machine without that much contiguous memory gets
+      -- 8 MiB banks (up to 1280x800). Both banks have one size, which
+      -- virtio-gpu reads from its DMA capability. A missing second bank
+      -- must not prevent the boot output.
       secondDmaPhys : Unsigned_64;
-      DMA_ORDER : constant Unsigned_64 := 11;
-      DMA_PAGES : constant Unsigned_64 := 2 ** Natural (DMA_ORDER);
-      DMA_SIZE  : constant Unsigned_64 := DMA_PAGES * 4096;
+      LARGE_DMA_ORDER : constant Unsigned_64 := 12;
+      SMALL_DMA_ORDER : constant Unsigned_64 := 11;
+      --  32 MiB of large banks is a desktop VM's budget, not a small VM's:
+      --  below this much RAM (kernel MEM_TOTAL) the banks stay 8 MiB, as
+      --  before resizable modes, so 128 MiB guests keep their memory.
+      LARGE_BANK_MINIMUM_MEMORY : constant Unsigned_64 := 1024 * 1024 * 1024;
+      SYSINFO_MEM_TOTAL : constant Unsigned_64 := 1601;
+      DMA_ORDER : Unsigned_64 :=
+        (if getInfo (SYSINFO_MEM_TOTAL) >= LARGE_BANK_MINIMUM_MEMORY
+         then LARGE_DMA_ORDER else SMALL_DMA_ORDER);
+      DMA_SIZE  : Unsigned_64;
       function Fits (Offset, Bytes, Limit : Unsigned_64) return Boolean is
         (Bytes /= 0 and then Offset <= Limit and then Bytes <= Limit - Offset);
 
@@ -1820,21 +2045,39 @@ procedure main is
          return;
       end if;
 
-      irqLine := pciReadConfig8 (gpuDev.bus, gpuDev.slot, gpuDev.func,
-                                 PCI_INTERRUPT_LINE);
-      irqVector := 32 + Unsigned_64 (irqLine);
-
       pciCmd := pciReadConfig16 (gpuDev.bus, gpuDev.slot, gpuDev.func,
                                  PCI_COMMAND);
       pciWriteConfig16 (gpuDev.bus, gpuDev.slot, gpuDev.func,
                         PCI_COMMAND, pciCmd or 16#0006#);
-      ret := enableIrq (irqVector, virtioGpuPID, 0);
+      --  MSI-X entries for the queues and configuration changes. Opened
+      --  at once: the device signals nothing until the driver sets its
+      --  queue vectors, and the doorbell latches anything earlier.
+      Setup_Message_Interrupts (gpuDev, virtioGpuPID, "virtio-gpu.drv", gpuInterrupts);
+      if gpuInterrupts.Mode = MSIX_Mode then
+         Open_Message_Interrupts (gpuInterrupts);
+      else
+         --  No MSI-X: the legacy line, acknowledged through the ISR register.
+         Close_Message_Interrupts (gpuInterrupts);
+         irqLine := pciReadConfig8 (gpuDev.bus, gpuDev.slot, gpuDev.func,
+                                    PCI_INTERRUPT_LINE);
+         irqVector := 32 + Unsigned_64 (irqLine);
+         ret := enableIrq (irqVector, virtioGpuPID, 0);
+         if Manifest_Interrupt (virtioGpuPID).Present then
+            mintCap (virtioGpuPID, CAP_IRQ, irqVector, 0, RIGHT_READ,
+                     Unsigned_64 (Manifest_Interrupt (virtioGpuPID).Slot));
+         end if;
+      end if;
 
       dmaPhys := allocDma (virtioGpuPID, DMA_ORDER, DMA_VIRT_BASE);
+      if dmaPhys = reterr and then DMA_ORDER /= SMALL_DMA_ORDER then
+         DMA_ORDER := SMALL_DMA_ORDER;
+         dmaPhys := allocDma (virtioGpuPID, DMA_ORDER, DMA_VIRT_BASE);
+      end if;
       if dmaPhys = reterr then
          debugPrint ("devmgr: virtio-gpu DMA alloc failed" & LF);
          return;
       end if;
+      DMA_SIZE := 2 ** Natural (DMA_ORDER) * 4096;
 
       secondDmaPhys := allocDma
         (virtioGpuPID, DMA_ORDER, DMA_VIRT_BASE + DMA_SIZE);
@@ -1852,8 +2095,6 @@ procedure main is
       mintCap (virtioGpuPID, CAP_DEVICE_MEM,
                barPhys + Unsigned_64 (notifyOff), Unsigned_64 (notifyBytes),
                RIGHT_WRITE, 7);
-      --  Slot 5: IRQ.
-      mintCap (virtioGpuPID, CAP_IRQ, irqVector, 0, RIGHT_READ, 5);
       --  Slot 6: mapped DMA banks; actual frame ownership is tracked per bank.
       mintCap (virtioGpuPID, CAP_DEVICE_MEM, 0,
                (if secondDmaPhys = 0 then DMA_SIZE else DMA_SIZE * 2),
@@ -1874,6 +2115,130 @@ procedure main is
 
       debugPrint ("devmgr: virtio-gpu setup complete" & LF);
    end setupVirtioGpu;
+
+   ---------------------------------------------------------------------------
+   --  Setup the virtio-input driver (absolute pointers: QEMU virtio-tablet).
+   --  Modern transport only (virtio-input has no legacy interface): the
+   --  common, notify and device configuration in one memory BAR, mapped
+   --  where the driver expects it; MSI-X entry 0 on an allocated vector
+   --  (Setup_Message_Interrupts), masked until the driver's Configure reply.
+   ---------------------------------------------------------------------------
+   DEVMGR_INPUT_SLOT : constant Unsigned_64 := 3;
+   inputCommonOff, inputDeviceOff, inputNotifyOff, inputNotifyMult : Unsigned_64 := 0;
+   inputModernBytes : Unsigned_64 := 0;
+   inputTransportReady : Boolean := False;
+   inputInterrupts : Message_Function;
+
+   procedure setupVirtioInput is
+      package VIC renames CuBit.Virtio_Input_Control;
+      NONE : constant Unsigned_8 := 16#FF#;
+      dev : constant PCIDeviceInfo := inputDev;
+      capPtr, capId, next, cfgType, barIndex : Unsigned_8;
+      capOff : Unsigned_32;
+      commonBar, notifyBar, deviceBar : Unsigned_8 := NONE;
+      lo, hi : Unsigned_32;
+      bar : Unsigned_8;
+      modernBar, size, dmaPhys, ret : Unsigned_64;
+      pciCmd : Unsigned_16;
+      MEMORY_SPACE : constant Unsigned_16 := 16#0002#;
+      BUS_MASTER   : constant Unsigned_16 := 16#0004#;
+      INTX_DISABLE : constant Unsigned_16 := 16#0400#;
+      PCI_STATUS_CAPABILITIES : constant Unsigned_16 := 16#0010#;
+   begin
+      inputTransportReady := False;
+      if not dev.found or else virtioInputPID = No_Process then
+         return;
+      end if;
+      if (pciReadConfig16 (dev.bus, dev.slot, dev.func, PCI_STATUS) and
+          PCI_STATUS_CAPABILITIES) = 0
+      then
+         debugPrint ("devmgr: virtio-input has no capability list" & LF);
+         return;
+      end if;
+      capPtr := pciReadConfig8 (dev.bus, dev.slot, dev.func, PCI_CAP_PTR) and 16#FC#;
+      for hop in 1 .. 48 loop
+         exit when capPtr < 16#40# or else capPtr > 16#F0#;
+         capId := pciReadConfig8 (dev.bus, dev.slot, dev.func, capPtr);
+         next := pciReadConfig8 (dev.bus, dev.slot, dev.func, capPtr + 1) and 16#FC#;
+         if capId = PCI_CAP_ID_VENDOR_SPECIFIC then
+            cfgType := pciReadConfig8 (dev.bus, dev.slot, dev.func, capPtr + 3);
+            barIndex := pciReadConfig8 (dev.bus, dev.slot, dev.func, capPtr + 4);
+            capOff := pciReadConfig32 (dev.bus, dev.slot, dev.func, capPtr + 8);
+            case cfgType is
+               when VIRTIO_PCI_CAP_COMMON_CFG =>
+                  commonBar := barIndex;
+                  inputCommonOff := Unsigned_64 (capOff);
+               when VIRTIO_PCI_CAP_NOTIFY_CFG =>
+                  notifyBar := barIndex;
+                  inputNotifyOff := Unsigned_64 (capOff);
+                  inputNotifyMult := Unsigned_64
+                    (pciReadConfig32 (dev.bus, dev.slot, dev.func, capPtr + 16));
+               when VIRTIO_PCI_CAP_DEVICE_CFG =>
+                  deviceBar := barIndex;
+                  inputDeviceOff := Unsigned_64 (capOff);
+               when others =>
+                  null;
+            end case;
+         end if;
+         capPtr := next;
+      end loop;
+      if commonBar > 5 or else notifyBar /= commonBar or else deviceBar /= commonBar then
+         debugPrint ("devmgr: virtio-input lacks a single modern BAR" & LF);
+         return;
+      end if;
+
+      --  The register BAR.
+      bar := PCI_BASEADDR_0 + commonBar * 4;
+      lo := pciReadConfig32 (dev.bus, dev.slot, dev.func, bar);
+      if (lo and 1) /= 0 or else (commonBar = 5 and then (lo and 6) = 4) then
+         return;   --  an I/O BAR, or a 64-bit BAR with no high half
+      end if;
+      modernBar := Unsigned_64 (lo and 16#FFFF_FFF0#);
+      if (lo and 6) = 4 then
+         hi := pciReadConfig32 (dev.bus, dev.slot, dev.func, bar + 4);
+         modernBar := modernBar or Shift_Left (Unsigned_64 (hi), 32);
+      end if;
+      size := probeMemoryBARSize (dev, bar);
+      if modernBar = 0 or else size < 4096 or else modernBar mod 4096 /= 0 then
+         debugPrint ("devmgr: virtio-input register BAR unusable" & LF);
+         return;
+      end if;
+      inputModernBytes := Unsigned_64'Min (size, VIC.Maximum_Modern_Bytes);
+      inputModernBytes := inputModernBytes - inputModernBytes mod 4096;
+
+      --  MSI-X entry 0, masked until the driver has set its queue vector.
+      Setup_Message_Interrupts (dev, virtioInputPID, "virtio-input.drv", inputInterrupts);
+      if inputInterrupts.Mode /= MSIX_Mode then
+         debugPrint ("devmgr: virtio-input requires MSI-X" & LF);
+         Close_Message_Interrupts (inputInterrupts);
+         return;
+      end if;
+
+      pciCmd := pciReadConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND);
+      pciWriteConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND,
+        pciCmd or MEMORY_SPACE or BUS_MASTER or INTX_DISABLE);
+
+      dmaPhys := allocDma (virtioInputPID, 0, DMA_VIRT_BASE);
+      if dmaPhys = reterr then
+         debugPrint ("devmgr: virtio-input DMA alloc failed" & LF);
+         return;
+      end if;
+      ret := mapInto (virtioInputPID, modernBar, VIC.Modern_Virtual_Address,
+        inputModernBytes / 4096, MAP_FLAG_IO);
+      if ret = reterr then
+         debugPrint ("devmgr: virtio-input register BAR map failed" & LF);
+         return;
+      end if;
+
+      --  Slot 6: its DMA page; slot 7: publication to the registered mouse
+      --  consumer (the desktop). The interrupt capability is the kernel's,
+      --  installed by allocation in the manifest's slot.
+      mintCap (virtioInputPID, CAP_DEVICE_MEM, 0, VIC.DMA_Pages * 4096,
+               RIGHT_READ or RIGHT_WRITE, 6);
+      mintCap (virtioInputPID, CAP_NOTIFICATION, DRIVER_MOUSE, 0, RIGHT_READ, 7);
+      inputTransportReady := True;
+      debugPrint ("devmgr: virtio-input setup complete" & LF);
+   end setupVirtioInput;
 
    ---------------------------------------------------------------------------
    -- Setup PS/2 driver: grant IOPORT + IRQ capabilities
@@ -2004,10 +2369,7 @@ procedure main is
       dmaPhys   : Unsigned_64;
       cfgMsg    : Message;
       replyTag  : MessageTag;
-      msiCap    : Unsigned_8 := 0;
-      msixCap   : Unsigned_8 := 0;
       interruptMode : XHCI_Interrupt_Mode := XHCI_INTERRUPT_POLLING;
-      msixTableOffset : Unsigned_64 := 0;
       irqRet    : Unsigned_64;
 
       scratchpads : XHCI_Capabilities.Scratchpad_Buffer_Count;
@@ -2017,7 +2379,6 @@ procedure main is
       CAPABILITY_PROBE_BASE : constant Unsigned_64 := 16#0000_6000_1000_0000#;
       DEVMGR_XHCI_SLOT : constant Unsigned_64 := 3;
       OP_XHCI_CONFIGURE : constant Unsigned_32 := 16#0220#;
-      XHCI_MSI_VECTOR : constant Unsigned_64 := 48;
    begin
       if not xhciDev.found or else xhciPID = No_Process then
          return;
@@ -2052,143 +2413,17 @@ procedure main is
         (xhciDev.bus, xhciDev.slot, xhciDev.func,
          PCI_COMMAND, pciCmd or 16#0006#);
 
-      --  xHCI is a latency-sensitive producer. Prefer an MSI outside the
-      --  legacy PIC range so its driver can block on event-ring changes
-      --  instead of polling on the millisecond system tick.
-      if (pciReadConfig16 (xhciDev.bus, xhciDev.slot, xhciDev.func,
-                           PCI_STATUS) and 16#0010#) /= 0
-      then
-         msiCap := pciReadConfig8
-           (xhciDev.bus, xhciDev.slot, xhciDev.func,
-            PCI_CAP_PTR) and 16#FC#;
-         for hop in 1 .. 48 loop
-            exit when msiCap < 16#40# or else msiCap > 16#F0#;
-            if pciReadConfig8
-                 (xhciDev.bus, xhciDev.slot, xhciDev.func, msiCap) =
-               PCI_CAP_ID_MSI
-            then
-               exit;
-            end if;
-            msiCap := pciReadConfig8
-              (xhciDev.bus, xhciDev.slot, xhciDev.func,
-               msiCap + 1) and 16#FC#;
-         end loop;
-
-         if msiCap >= 16#40# and then msiCap <= 16#F0# and then
-            pciReadConfig8
-              (xhciDev.bus, xhciDev.slot, xhciDev.func, msiCap) =
-               PCI_CAP_ID_MSI
-         then
-            setupMsi : declare
-               control : Unsigned_16 := pciReadConfig16
-                 (xhciDev.bus, xhciDev.slot, xhciDev.func, msiCap + 2);
-               dataOff : Unsigned_8;
-            begin
-               --  Destination APIC ID 0, fixed delivery, physical mode.
-               pciWriteConfig32
-                 (xhciDev.bus, xhciDev.slot, xhciDev.func, msiCap + 4,
-                  16#FEE0_0000#);
-               if (control and 16#0080#) /= 0 then
-                  pciWriteConfig32
-                    (xhciDev.bus, xhciDev.slot, xhciDev.func,
-                     msiCap + 8, 0);
-                  dataOff := msiCap + 12;
-               else
-                  dataOff := msiCap + 8;
-               end if;
-               pciWriteConfig16
-                 (xhciDev.bus, xhciDev.slot, xhciDev.func, dataOff,
-                  Unsigned_16 (XHCI_MSI_VECTOR));
-
-               irqRet := enableIrq
-                 (XHCI_MSI_VECTOR, xhciPID, 0,
-                  messageSignaled => True);
-               if irqRet /= reterr then
-                  --  Request one message and disable legacy INTx before MSI
-                  --  is enabled. xhci.drv enables the controller interrupter
-                  --  only after initialization has completed.
-                  control := (control and not 16#0070#) or 1;
-                  pciWriteConfig16
-                    (xhciDev.bus, xhciDev.slot, xhciDev.func,
-                     msiCap + 2, control);
-                  pciCmd := pciReadConfig16
-                    (xhciDev.bus, xhciDev.slot, xhciDev.func, PCI_COMMAND);
-                  pciWriteConfig16
-                    (xhciDev.bus, xhciDev.slot, xhciDev.func,
-                     PCI_COMMAND, pciCmd or 16#0400#);
-                  interruptMode := XHCI_INTERRUPT_MSI;
-                  debugPrint ("devmgr: xHCI using MSI" & LF);
-               end if;
-            end setupMsi;
-         end if;
-      end if;
-
-      --  Many xHCI implementations, including QEMU's controller, expose
-      --  MSI-X rather than MSI. Keep the PCI function masked until xhci.drv
-      --  has validated and populated the BAR0-resident table entry.
-      if interruptMode = XHCI_INTERRUPT_POLLING and then
-         (pciReadConfig16 (xhciDev.bus, xhciDev.slot, xhciDev.func,
-                           PCI_STATUS) and 16#0010#) /= 0
-      then
-         msixCap := pciReadConfig8
-           (xhciDev.bus, xhciDev.slot, xhciDev.func,
-            PCI_CAP_PTR) and 16#FC#;
-         for hop in 1 .. 48 loop
-            exit when msixCap < 16#40# or else msixCap > 16#F0#;
-            if pciReadConfig8
-                 (xhciDev.bus, xhciDev.slot, xhciDev.func, msixCap) =
-               PCI_CAP_ID_MSIX
-            then
-               exit;
-            end if;
-            msixCap := pciReadConfig8
-              (xhciDev.bus, xhciDev.slot, xhciDev.func,
-               msixCap + 1) and 16#FC#;
-         end loop;
-
-         if msixCap >= 16#40# and then msixCap <= 16#F0# and then
-            pciReadConfig8
-              (xhciDev.bus, xhciDev.slot, xhciDev.func, msixCap) =
-               PCI_CAP_ID_MSIX
-         then
-            setupMsix : declare
-               control : Unsigned_16 := pciReadConfig16
-                 (xhciDev.bus, xhciDev.slot, xhciDev.func, msixCap + 2);
-               tableInfo : constant Unsigned_32 := pciReadConfig32
-                 (xhciDev.bus, xhciDev.slot, xhciDev.func, msixCap + 4);
-               tableBIR : constant Unsigned_32 := tableInfo and 7;
-               tableOffset : constant Unsigned_64 :=
-                 Unsigned_64 (tableInfo and 16#FFFF_FFF8#);
-            begin
-               if tableBIR = 0 and then barSize >= 16 and then
-                  tableOffset mod 8 = 0 and then
-                  tableOffset <= barSize - 16
-               then
-                  irqRet := enableIrq
-                    (XHCI_MSI_VECTOR, xhciPID, 0,
-                     messageSignaled => True);
-                  if irqRet /= reterr then
-                     --  MSI-X Enable plus Function Mask. The entry itself is
-                     --  still inaccessible to devmgr by design; xhci.drv
-                     --  owns BAR0 and fills it before setup returns.
-                     control := control or 16#C000#;
-                     pciWriteConfig16
-                       (xhciDev.bus, xhciDev.slot, xhciDev.func,
-                        msixCap + 2, control);
-                     pciCmd := pciReadConfig16
-                       (xhciDev.bus, xhciDev.slot, xhciDev.func,
-                        PCI_COMMAND);
-                     pciWriteConfig16
-                       (xhciDev.bus, xhciDev.slot, xhciDev.func,
-                        PCI_COMMAND, pciCmd or 16#0400#);
-                     interruptMode := XHCI_INTERRUPT_MSIX;
-                     msixTableOffset := tableOffset;
-                     debugPrint ("devmgr: xHCI using MSI-X" & LF);
-                  end if;
-               end if;
-            end setupMsix;
-         end if;
-      end if;
+      --  xHCI is a latency-sensitive producer: an allocated vector lets its
+      --  driver block on event-ring changes instead of polling on the
+      --  millisecond tick. MSI-X (QEMU's controller) stays masked until the
+      --  driver has enabled its interrupter.
+      assignCPU (xhciPID, "xhci.drv");
+      Setup_Message_Interrupts (xhciDev, xhciPID, "xhci.drv", xhciInterrupts);
+      interruptMode :=
+        (case xhciInterrupts.Mode is
+            when MSIX_Mode => XHCI_INTERRUPT_MSIX,
+            when MSI_Mode  => XHCI_INTERRUPT_MSI,
+            when Polled    => XHCI_INTERRUPT_POLLING);
 
       if interruptMode = XHCI_INTERRUPT_POLLING then
          debugPrint ("devmgr: xHCI using queued polling fallback" & LF);
@@ -2219,11 +2454,6 @@ procedure main is
       mintCap
         (xhciPID, CAP_DEVICE_MEM, 0, XHCI_DMA_Layout.Bytes (dmaLayout),
          RIGHT_READ or RIGHT_WRITE, 6);
-      if interruptMode /= XHCI_INTERRUPT_POLLING then
-         --  Slot 5: receive only the explicitly registered xHCI MSI.
-         mintCap
-           (xhciPID, CAP_IRQ, XHCI_MSI_VECTOR, 0, RIGHT_READ, 5);
-      end if;
       --  Slot 7: may publish mouse-class events only to the currently
       --  registered mouse consumer.  RIGHT_READ cannot register or replace
       --  that consumer; desktop.svc holds the complementary RIGHT_WRITE.
@@ -2238,7 +2468,6 @@ procedure main is
       grantEndpoint (myPID, xhciPID, DEVMGR_XHCI_SLOT, myPID);
       -- Authenticated driver diagnostics/bootstrap log-grant request only.
       grantEndpoint (xhciPID, myPID, CAP_SLOT_READY, xhciPID);
-      assignCPU (xhciPID, "xhci.drv");
       resumeProc (xhciPID);
 
       cfgMsg :=
@@ -2252,25 +2481,12 @@ procedure main is
             --  accessing DMA; this does not grant arbitrary allocation size.
             1 => barPages or Shift_Left (Unsigned_64 (scratchpads), 32),
             2 => dmaPhys,
-            3 =>
-              Unsigned_64 (XHCI_Interrupt_Mode'Enum_Rep (interruptMode)) or
-              Shift_Left (XHCI_MSI_VECTOR, 8) or
-              Shift_Left (msixTableOffset, 16)]);
+            --  The interrupt mode alone: devmgr programmed the message.
+            3 => Unsigned_64 (XHCI_Interrupt_Mode'Enum_Rep (interruptMode))]);
       replyTag := capCall (DEVMGR_XHCI_SLOT, cfgMsg, CuBit.Messages.Wait_Forever);
       if replyTag.label = REPLY_OK then
-         if interruptMode = XHCI_INTERRUPT_MSIX then
-            --  The driver has installed and unmasked table entry zero. Drop
-            --  only the function mask; leave MSI-X itself enabled.
-            declare
-               control : Unsigned_16 := pciReadConfig16
-                 (xhciDev.bus, xhciDev.slot, xhciDev.func, msixCap + 2);
-            begin
-               control := control and not Unsigned_16 (16#4000#);
-               pciWriteConfig16
-                 (xhciDev.bus, xhciDev.slot, xhciDev.func,
-                  msixCap + 2, control);
-            end;
-         end if;
+         --  The interrupter is enabled: unmask the entry and the function.
+         Open_Message_Interrupts (xhciInterrupts);
          debugPrint ("devmgr: xHCI controller started" & LF);
          --  Read-only optical block endpoint; no raw controller authority.
          if filesystemPID /= No_Process then
@@ -2279,6 +2495,7 @@ procedure main is
          end if;
       else
          debugPrint ("devmgr: xHCI controller rejected setup" & LF);
+         Close_Message_Interrupts (xhciInterrupts);
          xhciPID := No_Process;
       end if;
    end setupXHCI;
@@ -2495,11 +2712,12 @@ begin
       nvmePID := No_Process;
    end if;
    if nvmePID /= No_Process then
+      --  Placed first: its completion vectors go to the CPU it runs on.
+      assignCPU (nvmePID, "nvme.drv");
       setupNvme;
       --  CAP_NOTIFICATION for DRIVER_NVME registration (slot 7)
       mintCap (nvmePID, CAP_NOTIFICATION, DRIVER_NVME, 0,
                RIGHT_WRITE, 7);
-      assignCPU (nvmePID, "nvme.drv");
       mintCap (nvmePID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       grantEndpoint (myPID, nvmePID, DEVMGR_NVME_SLOT, myPID);
@@ -2507,33 +2725,24 @@ begin
       declare
          use CuBit.NVMe_Control;
          cfg : Message :=
-           (if nvmeMSIX then
-              (tag => (label => Operation'Enum_Rep (Configure_MSIX),
-                       length => 2, flags => 0, reserved => 0),
-               authorityTag => 0,
-               words => [0 => nvmeTableOffset, 1 => Device_Vector,
-                         others => 0])
-            else
-              (tag => (label => Operation'Enum_Rep (Configure_Polled),
-                       length => 0, flags => 0, reserved => 0),
-               authorityTag => 0, words => [others => 0]));
+           (tag => (label => Operation'Enum_Rep
+                      (if nvmeInterrupts.Mode /= Polled then Configure_Interrupts
+                       else Configure_Polled),
+                    length => 0, flags => 0, reserved => 0),
+            authorityTag => 0, words => [others => 0]);
          response : MessageTag;
-         control : Unsigned_16;
       begin
          response := capCall (DEVMGR_NVME_SLOT, cfg, CuBit.Messages.Wait_Forever);
-         if nvmeMSIX then
-            control := pciReadConfig16
-              (nvmeDev.bus, nvmeDev.slot, nvmeDev.func, nvmeMSIXCap + 2);
-            if response.label = REPLY_OK then
-               --  Entry zero is filled: clear the function mask.
-               pciWriteConfig16 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
-                 nvmeMSIXCap + 2, control and not Unsigned_16'(16#4000#));
-               debugPrint ("devmgr: NVMe using MSI-X" & LF);
-            else
-               --  The driver polls: disable MSI-X again.
-               pciWriteConfig16 (nvmeDev.bus, nvmeDev.slot, nvmeDev.func,
-                 nvmeMSIXCap + 2, control and not Unsigned_16'(16#8000#));
+         if response.label = REPLY_OK then
+            --  The queues exist: unmask the entries and the function.
+            Open_Message_Interrupts (nvmeInterrupts);
+            if nvmeInterrupts.Mode /= Polled then
+               debugPrint ("devmgr: NVMe using " &
+                 (if nvmeInterrupts.Mode = MSIX_Mode then "MSI-X" else "MSI") & LF);
             end if;
+         else
+            --  The driver polls: mask, disable and release the vectors.
+            Close_Message_Interrupts (nvmeInterrupts);
          end if;
       end;
       debugPrint ("devmgr: NVMe driver started" & LF);
@@ -2565,6 +2774,53 @@ begin
 
       if not waitReady (ps2PID) then
          ps2PID := No_Process;
+      end if;
+   end if;
+
+   -----------------------------------------------------------------------
+   -- Phase 2b': Spawn the virtio-input driver for a virtio tablet.
+   -----------------------------------------------------------------------
+   if inputDev.found then
+      virtioInputPID := spawnFromBootStorage ("virtio-input.drv", 5);
+      if virtioInputPID /= No_Process then
+         --  Placed first: its vector goes to the CPU it runs on.
+         assignCPU (virtioInputPID, "virtio-input.drv");
+         setupVirtioInput;
+      end if;
+      if virtioInputPID /= No_Process and then inputTransportReady then
+         mintCap (virtioInputPID, CAP_ENDPOINT, To_Word (myPID), 0,
+                  RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
+         grantEndpoint (myPID, virtioInputPID, DEVMGR_INPUT_SLOT, myPID);
+         resumeProc (virtioInputPID);
+         declare
+            use CuBit.Virtio_Input_Control;
+            cfg : Message :=
+              (tag => (label => Operation'Enum_Rep (Configure),
+                       length => 3, flags => 0, reserved => 0),
+               authorityTag => 0,
+               words => [0 => Pair (inputCommonOff, inputDeviceOff),
+                         1 => Pair (inputNotifyOff, inputNotifyMult),
+                         2 => Pair (inputModernBytes, 0),
+                         others => 0]);
+            response : MessageTag;
+         begin
+            response := capCall (DEVMGR_INPUT_SLOT, cfg, CuBit.Messages.Wait_Forever);
+            if response.label = REPLY_OK then
+               --  The queue vector is set: unmask the entry and the function.
+               Open_Message_Interrupts (inputInterrupts);
+               debugPrint ("devmgr: virtio-input driver started (MSI-X)" & LF);
+               if not waitReady (virtioInputPID) then
+                  virtioInputPID := No_Process;
+               end if;
+            else
+               --  The driver declined (not an absolute pointer) and exits.
+               debugPrint ("devmgr: virtio-input driver declined the device" & LF);
+               Close_Message_Interrupts (inputInterrupts);
+               virtioInputPID := No_Process;
+            end if;
+         end;
+      elsif virtioInputPID /= No_Process then
+         debugPrint ("devmgr: virtio-input setup unavailable" & LF);
       end if;
    end if;
 
@@ -2758,11 +3014,12 @@ begin
       virtioGpuPID := No_Process;
    end if;
    if virtioGpuPID /= No_Process then
+      --  Placed first: its vector goes to the CPU it runs on.
+      assignCPU (virtioGpuPID, "virtio-gpu.drv");
       setupVirtioGpu;
       --  CAP_NOTIFICATION for DRIVER_GPU registration (slot 8)
       mintCap (virtioGpuPID, CAP_NOTIFICATION, DRIVER_GPU, 0,
                RIGHT_WRITE, 8);
-      assignCPU (virtioGpuPID, "virtio-gpu.drv");
       mintCap (virtioGpuPID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (virtioGpuPID);
@@ -2791,6 +3048,8 @@ begin
 
    --  Grant cross-endpoints between netstack and virtio-net
    if netstackPID /= No_Process and virtioNetPID /= No_Process then
+      --  Placed first: its vector goes to the CPU it runs on.
+      assignCPU (virtioNetPID, "virtio-net.drv");
       setupVirtioNet;
 
       --  Netstack slot 10 -> virtio-net driver
@@ -2816,7 +3075,6 @@ begin
       end if;
 
       if netTransportReady then
-         assignCPU (virtioNetPID, "virtio-net.drv");
          mintCap (virtioNetPID, CAP_ENDPOINT, To_Word (myPID), 0,
                   RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
          grantEndpoint (myPID, virtioNetPID, DEVMGR_NET_SLOT, myPID);
@@ -2826,29 +3084,27 @@ begin
             cfg : Message :=
               (if netModern then
                  (tag => (label => Operation'Enum_Rep (Configure_Modern),
-                          length => 4, flags => 0, reserved => 0),
+                          length => 3, flags => 0, reserved => 0),
                   authorityTag => 0,
                   words => [0 => Pair (netCommonOff, netDeviceOff),
                             1 => Pair (netNotifyOff, netNotifyMult),
-                            2 => Pair (netTableOffset, netModernBytes),
-                            3 => Device_Vector])
+                            2 => Pair (netModernBytes, 0),
+                            others => 0])
                else
                  (tag => (label => Operation'Enum_Rep (Configure_MSIX),
-                          length => 3, flags => 0, reserved => 0),
+                          length => 1, flags => 0, reserved => 0),
                   authorityTag => 0,
-                  words => [0 => netIOBase, 1 => netTableOffset,
-                            2 => Device_Vector, others => 0]));
+                  words => [0 => netIOBase, others => 0]));
             response : MessageTag;
-            control : Unsigned_16;
          begin
             response := capCall (DEVMGR_NET_SLOT, cfg, CuBit.Messages.Wait_Forever);
             netTransportReady := response.label = REPLY_OK;
             if netTransportReady then
-               control := pciReadConfig16
-                 (netDev.bus, netDev.slot, netDev.func, netMSIXCap + 2);
-               pciWriteConfig16 (netDev.bus, netDev.slot, netDev.func,
-                 netMSIXCap + 2, control and not Unsigned_16'(16#4000#));
+               --  Queue vectors are set: unmask the entry and the function.
+               Open_Message_Interrupts (netInterrupts);
                debugPrint ("devmgr: virtio-net using MSI-X" & LF);
+            else
+               Close_Message_Interrupts (netInterrupts);
             end if;
          end;
          debugPrint ("devmgr: virtio-net driver started" & LF);
@@ -2974,6 +3230,12 @@ begin
             if Child /= No_Process then
                Intel_Inspection_PID := Child;
                Grant_Intel_Firmware (Child);
+               --  The display executor registers as the GPU service so
+               --  display.svc's (request-service gpu) reaches it (slot 8,
+               --  as for virtio-gpu). Never two GPU services.
+               if virtioGpuPID = No_Process then
+                  mintCap (Child, CAP_NOTIFICATION, DRIVER_GPU, 0, RIGHT_WRITE, 8);
+               end if;
                mintCap (Child, CAP_ENDPOINT, To_Word (myPID), 16#4947#, RIGHT_READ or RIGHT_WRITE, 15);
                mintCap (Child, CAP_DEVICE_MEM, Plan.Physical_Base, Plan.Bytes, RIGHT_READ, 4);
                mintCap (myPID, CAP_ENDPOINT, To_Word (Child), Intel_GPU_Boot.Broker_Tag,
@@ -3026,6 +3288,15 @@ begin
                    (intelDev.bus, intelDev.slot, intelDev.func, 16#50#)), 16);
                Intel_Claim_Base := Plan.Physical_Base;
                Intel_Claim_Identity := Unsigned_32 (Request.words (1) and 16#FFFF_FFFF#);
+               --  One MSI vector for the whole device, GT and display alike
+               --  (docs/msi-interrupts.md): address and data programmed
+               --  now, while configuration writes are still allowed, with
+               --  MSI Enable left clear. Enabling it is the next step
+               --  (DISP-000-irq / GPU-001 step 6), once intel-gpu has its
+               --  interrupt sources masked and a handler ready.
+               Setup_Message_Interrupts
+                 (intelDev, Child, "intel-gpu.drv", intelInterrupts,
+                  Enable_MSI => False);
                Intel_Config_Frozen := True;
                resumeProc (Child);
                Submitted := capSubmit (31, Request, NO_COMPLETION_TOKEN);
@@ -3050,6 +3321,8 @@ begin
    end if;
 
    if hdaPID /= No_Process and mixerPID /= No_Process then
+      --  Placed first: its vector goes to the CPU it runs on.
+      assignCPU (hdaPID, "hda.drv");
       setupHDA;
 
       --  HDA slot 7: endpoint to mixer
@@ -3066,7 +3339,6 @@ begin
       mintCap (mixerPID, CAP_NOTIFICATION, DRIVER_MIXER, 0,
                RIGHT_WRITE, 8);
 
-      assignCPU (hdaPID, "hda.drv");
       mintCap (hdaPID, CAP_ENDPOINT, To_Word (myPID), 0,
                RIGHT_READ or RIGHT_WRITE, CAP_SLOT_READY);
       resumeProc (hdaPID);
@@ -3429,7 +3701,9 @@ begin
              (msg.tag = (Intel_GPU_Display_Pages.Request_Label, 1, 0, 0) and then
               msg.words (0) <= Unsigned_64 (Intel_GPU_Display_Pages.Page_Index'Last)) or else
              (msg.tag = (Intel_GPU_PHY_Pages.Request_Label, 1, 0, 0) and then
-              msg.words (0) <= Unsigned_64 (Intel_GPU_PHY_Pages.Page_Index'Last))) and then
+              msg.words (0) <= Unsigned_64 (Intel_GPU_PHY_Pages.Page_Index'Last)) or else
+             (msg.tag = (Intel_GPU_Pipe_Pages.Request_Label, 1, 0, 0) and then
+              msg.words (0) <= Unsigned_64 (Intel_GPU_Pipe_Pages.Page_Index'Last))) and then
         Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = 16#4947# and then
         msg.words (1 .. 3) = [0, 0, 0]
@@ -3437,14 +3711,19 @@ begin
          declare
             Display_Page : constant Boolean := msg.tag.label = Intel_GPU_Display_Pages.Request_Label;
             PHY_Page : constant Boolean := msg.tag.label = Intel_GPU_PHY_Pages.Request_Label;
+            --  One pipe's register page (cursor and primary plane), for the
+            --  display executor (DISP-003, Intel_GPU_Pipe_Pages).
+            Pipe_Page : constant Boolean := msg.tag.label = Intel_GPU_Pipe_Pages.Request_Label;
             Index : constant Intel_GPU_Reset_Pages.Page_Index := Natural (msg.words (0));
             Offset : constant Unsigned_64 :=
               (if Display_Page then Intel_GPU_Display_Pages.Offset (Index)
                elsif PHY_Page then Intel_GPU_PHY_Pages.Offset (Index)
+               elsif Pipe_Page then Intel_GPU_Pipe_Pages.Offset (Index)
                else Intel_GPU_Reset_Pages.Offset (Index));
             Target_Slot : constant Unsigned_64 :=
               (if Display_Page then Intel_GPU_Display_Pages.Slot (Index)
                elsif PHY_Page then Intel_GPU_PHY_Pages.Slot (Index)
+               elsif Pipe_Page then Intel_GPU_Pipe_Pages.Slot (Index)
                else Intel_GPU_Reset_Pages.Slot (Index));
             Config : Intel_GPU_PCI_Power.Configuration;
             Plan : Intel_GPU_Resources.Mapping_Plan;
@@ -3462,6 +3741,9 @@ begin
                elsif PHY_Page then
                  Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = To_Word (from) and then
                  not Intel_PHY_Granted (Index)
+               elsif Pipe_Page then
+                 Intel_GPU_Display_Claim.Owner (Intel_Display_Ownership) = To_Word (from) and then
+                 not Intel_Pipe_Granted (Index)
                else not Intel_Reset_Granted (Index))
             then
                for Byte in Config'Range loop
@@ -3487,6 +3769,7 @@ begin
                   if Issued /= reterr then
                      if Display_Page then Intel_Display_Granted (Index) := True;
                      elsif PHY_Page then Intel_PHY_Granted (Index) := True;
+                     elsif Pipe_Page then Intel_Pipe_Granted (Index) := True;
                      else Intel_Reset_Granted (Index) := True;
                      end if;
                   end if;
@@ -3840,6 +4123,51 @@ begin
                    words =>
                      [0 => locationWord, 1 => identityWord,
                       2 => To_Word (driverPID), 3 => 1])));
+         end;
+      elsif msg.tag.label = CuBit.Devices.OP_INTERRUPT_VECTORS and then
+            msg.tag.length >= 1 and then msg.words (0) >= 1 and then
+            msg.words (0) <= Unsigned_64 (inventoryCount)
+      then
+         declare
+            item : Inventory_Device renames
+              inventory (Natural (msg.words (0)));
+            F : constant Message_Function :=
+              (if Same_Location (item.location, nvmeDev) then nvmeInterrupts
+               elsif Same_Location (item.location, netDev) then netInterrupts
+               elsif Same_Location (item.location, gpuDev) then gpuInterrupts
+               elsif Same_Location (item.location, intelDev) then intelInterrupts
+               elsif Same_Location (item.location, hdaDev) then hdaInterrupts
+               elsif Same_Location (item.location, xhciDev) then xhciInterrupts
+               elsif Same_Location (item.location, inputDev) then inputInterrupts
+               else (others => <>));
+            mode : constant CuBit.Devices.Interrupt_Mode :=
+              (case F.Mode is
+                  when MSIX_Mode => CuBit.Devices.Interrupt_MSIX,
+                  when MSI_Mode  => CuBit.Devices.Interrupt_MSI,
+                  when Polled    => CuBit.Devices.Interrupt_Polling);
+            delivered : Unsigned_64 := 0;
+            count : Unsigned_64;
+         begin
+            if F.Mode /= Polled then
+               for V in F.Vectors.Head .. F.Vectors.Head + F.Vectors.Count - 1 loop
+                  count := CuBit.Device_Interrupts.Read
+                    (V, Device_Vector_ABI.Interrupt_Count);
+                  if count /= reterr then
+                     delivered := delivered + count;
+                  end if;
+               end loop;
+            end if;
+            ret := Unsigned_64
+              (reply
+                 (from,
+                  (tag => (label => CuBit.Devices.REPLY_OK,
+                           length => 4, flags => 0, reserved => 0),
+                   authorityTag => 0,
+                   words =>
+                     [0 => Unsigned_64 (CuBit.Devices.Interrupt_Mode'Enum_Rep (mode)),
+                      1 => (if F.Mode = Polled then 0 else Unsigned_64 (F.Vectors.Head)),
+                      2 => (if F.Mode = Polled then 0 else Unsigned_64 (F.Vectors.Count)),
+                      3 => delivered])));
          end;
       elsif msg.tag.label = CuBit.Devices.OP_PUBLISH_XHCI_STATS and then
             from = xhciPID and then msg.tag.length >= 3

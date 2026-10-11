@@ -35,6 +35,11 @@ package CuBit.UI.File_Dialogs is
      (State : in out Dialog_State; Event : Dialog_Event;
       Width, Height : Natural; Action : out Dialog_Action);
    procedure Draw (C : Canvas; State : Dialog_State; Colors : Theme);
+   --  Copy and paste (docs/clipboard.md): Process runs on the name field
+   --  (a clipboard chord from the caller's clipboard), which takes focus.
+   generic
+      with procedure Process (Field : in out CuBit.UI.Editor.Edit_State; Changed : out Boolean);
+   procedure Edit_Name (State : in out Dialog_State);
 private
    subtype Decision is Dialog_Action range Save_Changes .. Cancelled;
    type Focus_Target is (File_List, Name_Field, Accept_Button, Cancel_Button);

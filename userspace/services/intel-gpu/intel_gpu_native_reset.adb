@@ -12,6 +12,7 @@ with Intel_GPU_ADS_System_Info;
 with Intel_GPU_Timestamp_Clock;
 with Intel_GPU_Timestamp_Observe;
 package body Intel_GPU_Native_Reset is
+   package Freq renames Intel_GPU_GT_Frequency;
    use Interfaces;
    Description : Inventory;
    Saved_Fuse : Unsigned_32 := Unsigned_32'Last;
@@ -31,7 +32,11 @@ package body Intel_GPU_Native_Reset is
          Offset = Intel_GPU_ADS_System_Info.Doorbell_Register or else
          Offset = Intel_GPU_Timestamp_Clock.CONFIG0_Offset or else
          Offset = Intel_GPU_Timestamp_Clock.CTC_Mode_Offset or else
-         Offset = Intel_GPU_Timestamp_Clock.Override_Offset));
+         Offset = Intel_GPU_Timestamp_Clock.Override_Offset or else
+         Offset = Freq.RP_State_Cap_Offset or else Offset = Freq.RP_Request_Offset or else
+         Offset = Freq.RP_Status_Offset or else Offset = Freq.RP_Control_Offset or else
+         Offset = Freq.RC_Control_Offset or else Offset = Freq.RC_State_Offset or else
+         Offset = Freq.Frequency_Info_Offset or else Offset = Freq.Perf_Limit_Reasons_Offset));
       for D in Domain loop Allowed := Allowed or Offset = Ack_Register (D); end loop;
       for E in Engine loop
          if Description.Engines (E) then
@@ -154,6 +159,36 @@ package body Intel_GPU_Native_Reset is
       Success := not Access_Fault and Value /= Unsigned_32'Last;
    end Read_Clock;
    package Clock_Reader is new Intel_GPU_Timestamp_Observe (Read_Clock);
+   function GT_Frequency return Freq.Snapshot is
+      use type Power.Ownership_State;
+      Result : Freq.Snapshot;
+   begin
+      if not Succeeded or else Access_Fault or else Power.State /= Power.Held then
+         return Result;
+      end if;
+      Result :=
+        (Valid      => True,
+         Cap        => Read (Freq.RP_State_Cap_Offset),
+         Info       => Read (Freq.Frequency_Info_Offset),
+         Request    => Read (Freq.RP_Request_Offset),
+         Status     => Read (Freq.RP_Status_Offset),
+         RP_Control => Read (Freq.RP_Control_Offset),
+         RC_Control => Read (Freq.RC_Control_Offset),
+         RC_State   => Read (Freq.RC_State_Offset),
+         Limits     => Read (Freq.Perf_Limit_Reasons_Offset));
+      Result.Valid := not Access_Fault;
+      return Result;
+   end GT_Frequency;
+   procedure GT_Status (Status : out Unsigned_32; Valid : out Boolean) is
+      use type Power.Ownership_State;
+   begin
+      Status := 0;
+      Valid := Succeeded and then not Access_Fault and then Power.State = Power.Held;
+      if Valid then
+         Status := Read (Freq.RP_Status_Offset);
+         Valid := not Access_Fault;
+      end if;
+   end GT_Status;
    procedure Hold (Success : out Boolean) is
    begin Power.Acquire (16#8086#, 16#46D2#, Saved_Fuse, Success); end Hold;
    package Reset is new Intel_GPU_ADLN_Reset (Read, Write, Hold, Now, Pause);

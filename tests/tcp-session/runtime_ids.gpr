@@ -1,0 +1,11 @@
+--  The two CuBit runtime units the netstack's channel handles depend on.
+--  An explicit list: the runtime directory also holds target-only
+--  predefined Ada units that must not shadow the host's.
+project Runtime_IDs is
+   for Source_Dirs use ("../../userspace/runtime/gnat");
+   for Source_Files use ("cubit.ads", "cubit-process_ids.ads");
+   for Object_Dir use "build/runtime-ids";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa");
+   end Compiler;
+end Runtime_IDs;

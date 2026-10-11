@@ -12,6 +12,11 @@ with CuBit.UI.App;
 with CuBit.UI.State;
 with CuBit.UI.Controls;
 with CuBit.UI.Input;
+with CuBit.UI.Clipboard;
+with CuBit.UI.Editor;
+with CuBit.UI.Editor_Clipboard;
+with Clipboard_Chords;
+with Clipboard_Text;
 with Log_View;
 
 --  Logs (docs/logs-app.md): every service's records, live, through the
@@ -23,6 +28,7 @@ procedure Main is
    use type P.Status;
    use type CuBit.Messages.MessageTag;
    use type Log_View.Key_Name;
+   use type Clipboard_Chords.Command;
 
    KEY_BACKSPACE : constant Unsigned_64 := 16#0E#;
    KEY_TAB : constant Unsigned_64 := 16#0F#;
@@ -57,6 +63,9 @@ procedure Main is
    Status : P.Status := P.Unavailable;
    --  About 1.4 MiB of records, on the 16 MiB main stack (no heap here).
    View : Log_View.View_State;
+   --  The two forms of a copied record (a record's text is far shorter).
+   COPY_CAPACITY : constant := 4_096;
+   Copy_Text_Form, Copy_Literal : Clipboard_Text.Builder (COPY_CAPACITY);
    Due, Names_Due, Last_Frame : Unsigned_64 := 0;
    --  The view revision last drawn.
    Drawn : Unsigned_64 := 0;
@@ -178,9 +187,47 @@ procedure Main is
          elsif Code = KEY_END then Log_View.End_Key
          elsif Code = KEY_F3 then Log_View.F3
          else Log_View.No_Key);
+      Command : constant Clipboard_Chords.Command :=
+        (if Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN
+         then CuBit.UI.Clipboard.Command_Of (Event.payload0, Event.payload1)
+         else Clipboard_Chords.No_Command);
+
+      --  A clipboard chord on the search field: the toolkit's editor chords.
+      procedure Search_Chord (Field : in out CuBit.UI.Editor.Edit_State; Changed : out Boolean) is
+         R : constant CuBit.UI.Editor_Clipboard.Result :=
+           CuBit.UI.Editor_Clipboard.Handle_Key
+             (Field, CuBit.UI.App.Surface_ID (Win), Event.payload0, Event.payload1);
+      begin
+         Changed := R.Changed;
+         debugPrint ("logs: search chord " & CuBit.UI.Clipboard.Image (R.Outcome) & ASCII.LF);
+      end Search_Chord;
+      procedure Edit_Search is new Log_View.Edit_Search_Field (Search_Chord);
+
+      --  Copy, cut or paste with the table focused: the selected record is
+      --  copied as a typed LogEntry; a paste goes to the search field.
+      procedure Clipboard_Key is
+         Present : Boolean;
+         Result : CuBit.UI.Clipboard.Outcome;
+      begin
+         if Log_View.Search_Focused (View) or else Command = Clipboard_Chords.Paste_Command then
+            Edit_Search (View, Focus => True);
+            Redraw := True;
+         elsif Command in Clipboard_Chords.Copy_Command | Clipboard_Chords.Cut_Command then
+            Log_View.Selected_Copy (View, Copy_Text_Form, Copy_Literal, Present);
+            if Present then
+               CuBit.UI.Clipboard.Copy_Built
+                 (CuBit.UI.App.Surface_ID (Win), Log_View.LOG_ENTRY_TYPE, Copy_Text_Form, Copy_Literal, Result);
+               debugPrint ("logs: copy record " & CuBit.UI.Clipboard.Image (Result) & ASCII.LF);
+            end if;
+         end if;
+      end Clipboard_Key;
    begin
       if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
          Running := False;
+      elsif Command /= Clipboard_Chords.No_Command and then
+        (Command /= Clipboard_Chords.Select_All_Command or else Log_View.Search_Focused (View))
+      then
+         Clipboard_Key;
       elsif Event.kind = CuBit.UI.Input.INPUT_CONFIGURE then
          Send ((Kind => Log_View.Resize, X => CuBit.UI.App.Width (Win), Y => CuBit.UI.App.Height (Win), others => <>));
       elsif Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN then

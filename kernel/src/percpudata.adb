@@ -17,7 +17,11 @@ with x86;
 
 -- Ada implementation: custom storage, address overlays or live context state.
 -- Only separately annotated SPARK policy/state routines carry proof obligations.
-package body PerCPUData is
+-- Running_Context's constituents are the GS base register and this CPU's
+-- PerCPUData record, reached through address overlays Ada does not name.
+package body PerCPUData with
+    Refined_State => (Running_Context => null)
+is
     function toSegmentDescriptor is
         new Ada.Unchecked_Conversion (Unsigned_64, Segment.Descriptor);
 

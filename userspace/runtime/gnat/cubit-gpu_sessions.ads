@@ -61,6 +61,10 @@ package CuBit.GPU_Sessions is
       Signal : out GQ.Timeline_Value; Submitted : out Boolean);
    procedure Reap (S : in out Session; Item : out Clients.Q.Completion; Got : out Boolean);
 
+   --  OP_GPU_BOOST, one way: never waits, never gets a reply. Sent False:
+   --  not open, or the kernel refused it (the hint is simply lost).
+   procedure Hint_Boost (S : Session; Sent : out Boolean);
+
    --  The wake: OP_GPU_WAKE for Context and Target submitted with Wake_Token
    --  (process-wide unique, increasing). Accepted False: not sent (one is
    --  armed already, the token is not fresh, or the kernel refused it).

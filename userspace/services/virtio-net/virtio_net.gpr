@@ -4,7 +4,7 @@ project Virtio_Net is
 
     for Object_Dir use "build";
 
-    for Source_Dirs use (".", "../../net/src");
+    for Source_Dirs use (".", "../../net/src", "build/generated");
 
     for Main use ("main.adb");
 
@@ -62,7 +62,8 @@ project Virtio_Net is
             "-Wl,-z,stack-size=16777216",
             "-lgnat-user",
             "-T", "../../c/link.ld",
-            "../../c/build/crt0.o"
+            "../../c/build/crt0.o",
+            "build/manifest.o"
         );
     end Linker;
 

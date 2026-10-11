@@ -10,8 +10,11 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "userspace/services/intel-gpu"
 main = (SOURCE / "main.adb").read_text()
-start = main.index("   function Image_Retirement_Owner return Boolean is")
-end = main.index("   end Image_Retirement_Owner;", start) + len("   end Image_Retirement_Owner;")
+# The gate is Image_Retirement_Ready (facts) plus Image_Retirement_Owner
+# (Ready and every context stopped), extracted together.
+start = main.index("   function Image_Retirement_Ready return Boolean is")
+owner_end = "     (Image_Retirement_Ready and then All_Contexts_Stopped);"
+end = main.index(owner_end, start) + len(owner_end)
 gate = main[start:end]
 query_start = main.index("            declare\n               Index : constant Positive := Stored;", main.index("   procedure Handle_Retirement_Query"))
 query_end = main.index("            end;", query_start) + len("            end;")
@@ -99,6 +102,13 @@ procedure Retirement_Gate_Tests is
       pragma Assert (First = Image_Retirement_First and Bytes = 20 * 4096);
       return Range_Allowed;
    end Runtime_Range_Allowed;
+   Swept, Stopped : Boolean := True;
+   function Cleanup_Swept (Session : Unsigned_64) return Boolean is
+   begin
+      pragma Assert (Session = 100 + Unsigned_64 (Image_Retirement_Index));
+      return Swept;
+   end Cleanup_Swept;
+   function All_Contexts_Stopped return Boolean is (Stopped);
 """
 suffix = r"""
    Checks : Natural := 0;
@@ -141,13 +151,8 @@ begin
       Expect (CPU = Application_Maps.Clear);
    end loop;
    Application_Maps.Observed := Application_Maps.Clear;
-   for I in Contexts'Range loop
-      for Phase in Context_Life.Phase loop
-         Contexts (I) := Phase;
-         Expect (Phase in Context_Life.Disabled | Context_Life.Deregistered);
-      end loop;
-      Contexts (I) := Context_Life.Deregistered;
-   end loop;
+   Swept := False; Expect (False); Swept := True;
+   Stopped := False; Expect (False); Stopped := True;
    Expect (True);
    Ada.Text_IO.Put_Line ("Native retirement gate PASS" & Natural'Image (Checks) &
      " checks (actual function, mocked observations; NOT hardware authority proof)");

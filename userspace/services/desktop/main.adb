@@ -1,3 +1,5 @@
+with CuBit.Boot_Milestone_Codes;
+with CuBit.Boot_Milestones;
 with Compositor_Transfer_Delta;
 with Desktop_Renderer_Startup;
 with Desktop_Input_Overlay;
@@ -59,6 +61,9 @@ with Compositor_Repaint;
 with Compositor_Output_Retirement;
 with Compositor_Lease_Request;
 with Compositor_Layout_Restore;
+with Compositor_Layout_Resize;
+with CuBit.Output_Discovery;
+with CuBit.Output_Modes;
 with Compositor_Storage;
 with CuBit.Display_Pool_Protocol;
 with Interfaces; use Interfaces;
@@ -71,6 +76,7 @@ with CuBit.Display_Layouts;
 with CuBit.Display_Arrangement;
 with CuBit.Desktop_Messages;
 with CuBit.Input;
+with Absolute_Pointer;
 with CuBit.Audio_Control;
 with CuBit.Clocks;
 with CuBit.Click_Sequences;
@@ -91,7 +97,13 @@ with Desktop_Settings;
 with Desktop_Launch;
 with Desktop_Launch_Refresh;
 with Desktop_Status_Refresh;
+with Desktop_GPU_Wake;
 with Desktop_Launch_Menus;
+with Desktop_Clipboard;
+with Clipboard_Store;
+with Clipboard_Menu;
+with Key_Repeat;
+with Desktop_Key_Repeat_Settings;
 with Client_Popup_Layout;
 with CCL.Interfaces.Desktop_Launch;
 with CuBit.Appearance;
@@ -213,7 +225,13 @@ procedure main is
    KEY_DOWN           : constant Unsigned_8 := 16#50#;
    KEY_LEFT_SUPER     : constant Unsigned_8 := 16#5B#;
    KEY_RIGHT_SUPER    : constant Unsigned_8 := 16#5C#;
+   --  Super+V opens the clipboard manager.
+   KEY_CLIPBOARD_V    : constant Unsigned_8 := 16#2F#;
    KEY_EXTENDED_PREFIX : constant Unsigned_8 := 16#E0#;
+   --  Set-1 multimedia keys (after the extended prefix).
+   KEY_MUTE           : constant Unsigned_8 := 16#20#;
+   KEY_VOLUME_DOWN    : constant Unsigned_8 := 16#2E#;
+   KEY_VOLUME_UP      : constant Unsigned_8 := 16#30#;
 
    PIXEL_FORMAT_BGRA8888 : constant Unsigned_64 :=
      DP.Pixel_Format'Enum_Rep (DP.BGRA_8888);
@@ -338,6 +356,28 @@ procedure main is
       Damage, Frame_Damage : Compositor_Damage.State;
    end record;
    presentations : array (Output_Index) of Output_Presentation;
+
+   --  Output mode changes (a resized VM window; docs/vm-guide.md). Display
+   --  answers the watch when its catalog changes; an output whose host
+   --  preference changed is re-laid out: release every output, ask Display
+   --  for the mode (Set_Mode), reopen, carry the scale over. The preference
+   --  last acted on is remembered, so a mode the backend could only
+   --  approximate (OM.Fit) is not requested again and again.
+   package OM renames CuBit.Output_Modes;
+   use type OM.Mode;
+   MODE_CALL_DEADLINE_MS : constant := 15_000;
+   outputRevisionSeen : OM.Revision := 1;
+   outputWatchToken : Unsigned_64 := 0;
+   outputChangeNoticed : Boolean := False;
+   type Mode_Request is record
+      Pending : Boolean := False;
+      Mode : OM.Mode;
+   end record;
+   wantedModes : array (Output_Index) of Mode_Request;
+   actedPreference : array (Output_Index) of OM.Mode;
+   modeChangePending : Boolean := False;
+   --  False once Display (or its GPU) answered that it has no mode watch.
+   outputWatchUsable : Boolean := True;
    -- Bounded process-lifetime diagnostics, independent of output reconfiguration.
    type GPU_Progress is record
       Completed, Published : Boolean := False;
@@ -606,6 +646,15 @@ procedure main is
    audioPopupOpen : Boolean := False;
    audioPointerCapture : Boolean := False;
    audioSliderDragging : Boolean := False;
+   --  Clipboard manager popup (docs/clipboard.md), toggled by Super+V.
+   clipboardMenuOpen : Boolean := False;
+   --  The surface the last routed key press went to (queueKey).
+   keysRoutedTo : Unsigned_64 := 0;
+   clipboardMenu : Clipboard_Menu.Menu_State;
+   --  Super is a modifier: the Apps menu opens when Super is released
+   --  without having been part of a chord such as Super+V.
+   desktopSuperDown : Boolean := False;
+   desktopSuperChord : Boolean := False;
    clockText : String (1 .. 5) := "--:--";
    statusDueMs : Unsigned_64 := 0;
    --  Status area clock and volume refresh period (and the latest next read).
@@ -615,6 +664,12 @@ procedure main is
    desktopCtrlDown  : Boolean := False;
    desktopAltDown   : Boolean := False;
    desktopCapsLockOn : Boolean := False;
+   --  Keyboard auto-repeat (Key_Repeat): Desktop synthesizes repeats for
+   --  every keyboard and application, and drops the devices' own.
+   package KR renames Key_Repeat;
+   use type KR.Destination, KR.Press_Outcome;
+   keyRepeat : KR.State;
+   keyRepeatSettings : KR.Settings := KR.DEFAULT_SETTINGS;
 
    type ScanTable is array (Unsigned_8 range 0 .. 16#39#) of Unsigned_8;
    scancodeNormal : constant ScanTable :=
@@ -966,6 +1021,11 @@ procedure main is
    statsStartMs      : Unsigned_64 := 0;
    statsEvents       : Unsigned_64 := 0;
    statsKeyboardEvents : Unsigned_64 := 0;
+   --  Auto-repeats delivered, and skipped because the client had not taken
+   --  the previous one; device repeats (PS/2 typematic) dropped.
+   statsKeyRepeats : Unsigned_64 := 0;
+   statsKeyRepeatsSkipped : Unsigned_64 := 0;
+   statsDeviceRepeats : Unsigned_64 := 0;
    statsMouseEvents  : Unsigned_64 := 0;
    statsButtonTransitions : Unsigned_64 := 0;
    statsWheelEvents  : Unsigned_64 := 0;
@@ -1040,6 +1100,40 @@ procedure main is
          debugPrint ("desktop: detailed trace metrics enabled" & LF);
       end if;
    end Read_Trace_Configuration;
+
+   --  desktop.input.key-repeat (Desktop_Key_Repeat_Settings). Absent keeps
+   --  the defaults; an invalid value is reported and keeps them too. The
+   --  effective settings are logged either way.
+   procedure Load_Key_Repeat is
+      use type CuBit.Config.ConfigStatus;
+      Value  : System.Address;
+      Length : Natural;
+      Status : CuBit.Config.ConfigStatus;
+      Loaded : KR.Settings;
+      OK     : Boolean := False;
+   begin
+      CuBit.Config.get (Desktop_Key_Repeat_Settings.Config_Key, Value, Length, Status);
+      if Status = CuBit.Config.OK and then Value /= System.Null_Address and then
+        Length in 1 .. Desktop_Key_Repeat_Settings.Maximum_Source
+      then
+         declare
+            Source : String (1 .. Length) with Import, Address => Value;
+         begin
+            Desktop_Key_Repeat_Settings.Decode (Source, Loaded, OK);
+         end;
+      end if;
+      if OK then
+         keyRepeatSettings := Loaded;
+      elsif Status /= CuBit.Config.NotFound then
+         debugPrint ("desktop: invalid " & Desktop_Key_Repeat_Settings.Config_Key &
+                     "; using the default key repeat" & LF);
+      end if;
+      debugPrint ("desktop: key repeat " &
+                  (if keyRepeatSettings.Enabled then "on" else "off") &
+                  " delay_ms=" & Decimal (keyRepeatSettings.Initial_Delay) &
+                  " rate_hz=" & Decimal (keyRepeatSettings.Rate) &
+                  (if OK then " (configured)" else " (default)") & LF);
+   end Load_Key_Repeat;
 
    procedure recordFrameTrace (Value : FT.Record_Value) is
    begin
@@ -1176,7 +1270,8 @@ procedure main is
       Source_Gaps, Source_Rejects, Age_Max_Ms, Age_Avg_Ms, Requests, Frames,
       Fast_Frames, Full_Frames, Present_Req, Input_Req, Other_Req, Draw_Ms,
       Present_Ops, Completion_Ms, Damage_Px, Repair_Px, Scene_Px,
-      Cursor_X, Cursor_Y, Max_Frame_Us, Max_Motion_Us, Forced : Unsigned_64 := 0;
+      Cursor_X, Cursor_Y, Max_Frame_Us, Max_Motion_Us, Forced,
+      Key_Repeats, Key_Repeats_Skipped, Device_Repeats : Unsigned_64 := 0;
    end record;
    type Report_Step is
      (Stats_Line, Frames_Line, GPU_Sources_Line, Stage_Lines,
@@ -1229,6 +1324,9 @@ procedure main is
                   CuBit.Messages.debugPrint
                     ("desktop: stats ev=" & Decimal (C.Events) &
                      " key=" & Decimal (C.Keyboard) &
+                     " key_repeat=" & Decimal (C.Key_Repeats) &
+                     " key_repeat_skip=" & Decimal (C.Key_Repeats_Skipped) &
+                     " device_repeat=" & Decimal (C.Device_Repeats) &
                      " mouse=" & Decimal (C.Mouse) &
                      " button=" & Decimal (C.Buttons) &
                      " wheel=" & Decimal (C.Wheel) &
@@ -1494,7 +1592,8 @@ procedure main is
          Repair_Px => statsRepairPixels, Scene_Px => statsScenePixels,
          Cursor_X => Unsigned_64 (cursorX), Cursor_Y => Unsigned_64 (cursorY),
          Max_Frame_Us => statsMaxFrameUs, Max_Motion_Us => statsMaxMotionUs,
-         Forced => reportsForced);
+         Forced => reportsForced, Key_Repeats => statsKeyRepeats,
+         Key_Repeats_Skipped => statsKeyRepeatsSkipped, Device_Repeats => statsDeviceRepeats);
       report.Stages := Timing;
       report.Stage_Invalid := Timing_Invalid;
       report.Stage_Dropped := Timing_Dropped;
@@ -1600,6 +1699,9 @@ procedure main is
       statsStartMs := now;
       statsEvents := 0;
       statsKeyboardEvents := 0;
+      statsKeyRepeats := 0;
+      statsKeyRepeatsSkipped := 0;
+      statsDeviceRepeats := 0;
       statsMouseEvents := 0;
       statsButtonTransitions := 0;
       statsWheelEvents := 0;
@@ -2518,6 +2620,26 @@ procedure main is
             Desktop_Pointer_Plane.Collect (completion, requestSequence);
          elsif Desktop_Status_Refresh.Matches (completion.token) then
             Desktop_Status_Refresh.Collect (completion, requestSequence);
+         elsif Desktop_GPU_Wake.Matches (completion.token) then
+            Desktop_GPU_Wake.Collect (completion, nowMs);
+         elsif outputWatchToken /= 0 and then completion.token = outputWatchToken then
+            --  Handled in the main loop (handleOutputChange), never here:
+            --  re-layout releases outputs, which this dispatcher serves.
+            outputWatchToken := 0;
+            declare
+               Answer : constant OM.Revision_Decoding :=
+                 (if completion.valid and then completion.status = COMPLETION_OK
+                  then OM.Decode_Watch (CuBit.Output_Discovery.Display_Broker,
+                                        CuBit.Desktop_Messages.To_Wire (completion.msg))
+                  else (Valid => False));
+            begin
+               if Answer.Valid then
+                  outputChangeNoticed := True;
+               else
+                  outputWatchUsable := False;
+                  debugPrint ("desktop: output mode watch unavailable" & LF);
+               end if;
+            end;
          elsif completion.token > retiredThrough then
             matched := False;
             for Output in Output_Index loop
@@ -2568,6 +2690,11 @@ procedure main is
                         debugPrint ("desktop: asynchronous transfer quarantined" & LF);
                         exitCompositor (1);
                      else
+                        --  Boot timeline (docs/boot-timeline.md): the first
+                        --  frame Display published. One branch after that.
+                        if result.Valid and then result.Value.Result.Outcome = DSP.Published then
+                           CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.First_Frame_Presented);
+                        end if;
                         if not gpuProgress (P.Trace_Output).Published and then
                           GPU_Frame /= BP.None and then
                           GPU_Frame = gpuProgress (P.Trace_Output).Submitted
@@ -4204,6 +4331,7 @@ procedure main is
 
    procedure flushCursorPresent is
    begin
+      Desktop_Pointer_Plane.Retry (requestSequence);
       if Desktop_Pointer_Plane.Take_Change then
          cursorPresentPending := True;
       end if;
@@ -4218,6 +4346,7 @@ procedure main is
       occluded : Boolean;
    begin
       if isEmpty (r) or else launchMenuOpen or else audioPopupOpen or else
+         clipboardMenuOpen or else
          not backBufferReady or else backBufferAddr = System.Null_Address
       then
          return False;
@@ -4707,6 +4836,172 @@ procedure main is
                   (if masterAudio.Muted then "Unmute" else "Mute"), C_TEXT, C_BAR);
    end drawAudioPopup;
 
+   --  Clipboard manager geometry: a fixed-size panel centred above the
+   --  taskbar, Clipboard_Menu.Visible_Rows rows of two text lines each.
+   CLIP_MENU_W : constant := 480;
+   CLIP_HEADER_H : constant := 38;
+   CLIP_ROW_H : constant := 44;
+   CLIP_FOOTER_H : constant := 28;
+   CLIP_PREVIEW_CHARS : constant := 52;
+
+   function clipboardMenuRect return Rect is
+      h : constant Natural :=
+        CLIP_HEADER_H + Clipboard_Menu.Visible_Rows * CLIP_ROW_H + CLIP_FOOTER_H;
+   begin
+      return clampRect
+        ((x => primaryBounds.x +
+                (if primaryBounds.w > CLIP_MENU_W
+                 then (primaryBounds.w - CLIP_MENU_W) / 2 else 0),
+          y => (if taskbarY > h + 12 then taskbarY - h - 12 else 0),
+          w => CLIP_MENU_W, h => h));
+   end clipboardMenuRect;
+
+   function clipboardRowRect (offset : Natural) return Rect is
+      r : constant Rect := clipboardMenuRect;
+   begin
+      return (x => r.x + 6, y => r.y + CLIP_HEADER_H + offset * CLIP_ROW_H,
+              w => (if r.w > 12 then r.w - 12 else 0), h => CLIP_ROW_H - 2);
+   end clipboardRowRect;
+
+   --  The window title of the copying app (any of its surfaces), for the
+   --  manager's second line. The source is the kernel-authenticated sender.
+   function clipboardSourceName (source : Clipboard_Store.Source_Identity)
+     return String is
+   begin
+      for i in surfaces'Range loop
+         if surfaces (i).used and then
+           To_Word (surfaces (i).owner) = Unsigned_64 (source) and then
+           surfaces (i).title.Length > 0
+         then
+            return surfaces (i).title.Text;
+         end if;
+      end loop;
+      return "closed app";
+   end clipboardSourceName;
+
+   procedure reloadClipboardMenu is
+      use type Clipboard_Store.Slot_Count;
+      rows : Clipboard_Menu.Row_Slots := [others => 0];
+      count : Clipboard_Menu.Row_Count := 0;
+      below : Clipboard_Store.Entry_Name := Clipboard_Store.No_Entry;
+      slot : Clipboard_Store.Slot_Count;
+   begin
+      loop
+         slot := Clipboard_Store.Older (Desktop_Clipboard.History, below);
+         exit when slot = 0 or else count = Clipboard_Menu.Row_Count'Last;
+         count := count + 1;
+         rows (count) := slot;
+         below := Clipboard_Store.Info (Desktop_Clipboard.History, slot).Name;
+      end loop;
+      Clipboard_Menu.Reload (clipboardMenu, rows, count);
+   end reloadClipboardMenu;
+
+   procedure drawClipboardMenu is
+      use type Clipboard_Store.Slot_Count, Clipboard_Store.Sensitivity,
+        Clipboard_Store.Entry_Phase, Clipboard_Store.Payload_Length;
+      package CS renames Clipboard_Store;
+      r : constant Rect := clipboardMenuRect;
+
+      --  Printable ASCII only; line breaks and tabs show as spaces.
+      function previewText (slot : CS.Slot_Index) return String is
+         length : constant CS.Payload_Length := CS.Preview_Length
+           (Desktop_Clipboard.History, slot, CLIP_PREVIEW_CHARS);
+         text : String (1 .. Natural (length));
+         b : Unsigned_8;
+      begin
+         for i in text'Range loop
+            b := CS.Preview_Byte (Desktop_Clipboard.History, slot,
+                                  CS.Payload_Index (i));
+            text (i) := (if b in 32 .. 126 then Character'Val (b) else ' ');
+         end loop;
+         return text;
+      end previewText;
+
+      function typeName (slot : CS.Slot_Index) return String is
+         meta : constant CS.Metadata := CS.Info (Desktop_Clipboard.History, slot);
+         text : String (1 .. Natural'Min (Natural (meta.Shape.Type_Length), 32));
+      begin
+         for i in text'Range loop
+            text (i) := Character'Val
+              (CS.Byte (Desktop_Clipboard.History, slot, CS.Payload_Index (i)));
+         end loop;
+         return text;
+      end typeName;
+   begin
+      if not clipboardMenuOpen or else isEmpty (r) then
+         return;
+      end if;
+      drawDappledShadow (r.x, r.y, r.w, r.h);
+      fillRect (r.x, r.y, r.w, r.h, C_PANEL);
+      strokeRect (r.x, r.y, r.w, r.h, C_EDGE, C_SHADOW);
+      fillRect (r.x, r.y, 4, r.h, C_ACCENT);
+      drawIcon (Desktop_Icons.Clipboard, r.x + 12, r.y + 7, C_PANEL);
+      drawUIText (r.x + 44, r.y + 11, "Clipboard", C_TEXT, C_PANEL);
+      if clipboardMenu.Count = 0 then
+         drawUIText (r.x + 44, r.y + CLIP_HEADER_H + 14,
+                     "Nothing copied yet. Ctrl+C copies, Ctrl+V pastes.",
+                     C_MUTED, C_PANEL);
+      end if;
+      for offset in 0 .. Clipboard_Menu.Visible_Rows - 1 loop
+         declare
+            row : constant Natural := Natural (clipboardMenu.First) + offset;
+         begin
+            exit when row > Natural (clipboardMenu.Count);
+            declare
+               slot : constant CS.Slot_Index :=
+                 clipboardMenu.Slots (Clipboard_Menu.Row_Index (row));
+               meta : constant CS.Metadata :=
+                 CS.Info (Desktop_Clipboard.History, slot);
+               item : constant Rect := clipboardRowRect (offset);
+               selected : constant Boolean :=
+                 Natural (clipboardMenu.Selected) = row;
+               bg : constant Unsigned_32 := (if selected then C_ACCENT else C_PANEL);
+               fg : constant Unsigned_32 := (if selected then C_WHITE else C_TEXT);
+               dim : constant Unsigned_32 := (if selected then C_WHITE else C_MUTED);
+               secret : constant Boolean := meta.Kind = CS.Sensitive;
+               typed : constant Boolean := meta.Shape.CCL_Length > 0;
+               hint : constant String :=
+                 (if row <= 9 then Natural'Image (row) else "");
+            begin
+               if selected then
+                  fillRect (item.x, item.y, item.w, item.h, bg);
+               end if;
+               drawIcon ((if secret then Desktop_Icons.Clip_Mask
+                          elsif typed then Desktop_Icons.Clip_Value
+                          else Desktop_Icons.Clip_Text),
+                         item.x + 8, item.y + 10, bg);
+               --  A secret never shows content, length or type: the mask
+               --  and its state are all the manager knows how to say.
+               drawUIText (item.x + 42, item.y + 5,
+                           (if secret then "Secret" else previewText (slot)),
+                           fg, bg);
+               drawUIText
+                 (item.x + 42, item.y + 23,
+                  clipboardSourceName (meta.Source) & " - " &
+                  (if secret then
+                     (case meta.Phase is
+                        when CS.Available => "paste once",
+                        when CS.Consumed => "pasted, wiped",
+                        when CS.Expired => "expired, wiped",
+                        when CS.Vacant => "")
+                   elsif typed then "CCL " & typeName (slot)
+                   else "text," & meta.Shape.Text_Length'Image & " bytes"),
+                  dim, bg);
+               if meta.Pinned then
+                  drawIcon (Desktop_Icons.Clip_Pin, item.x + item.w - 52,
+                            item.y + 10, bg);
+               end if;
+               if hint'Length > 0 then
+                  drawUIText (item.x + item.w - 22, item.y + 14, hint, dim, bg);
+               end if;
+            end;
+         end;
+      end loop;
+      drawUIText (r.x + 14, r.y + r.h - CLIP_FOOTER_H + 6,
+                  "Enter paste  1-9 quick  P pin  Del delete  Shift+Del clear",
+                  C_MUTED, C_PANEL);
+   end drawClipboardMenu;
+
    procedure drawDesktopShell is
       barY     : constant Natural := taskbarY;
       launch   : constant Rect := launchButtonRect;
@@ -4753,6 +5048,7 @@ procedure main is
       drawLaunchMenu;
       drawStatus;
       drawAudioPopup;
+      drawClipboardMenu;
    end drawDesktopShell;
 
    procedure drawCurrentScene is
@@ -5017,6 +5313,7 @@ procedure main is
       --  Composite current taskbar state over it, within this damage clip.
       drawStatus;
       drawAudioPopup;
+      drawClipboardMenu;
       if textSceneRetry then drawCurrentScene; end if;
       clipEnabled := False;
       drawCursorOverlay;
@@ -6195,6 +6492,7 @@ procedure main is
    procedure forceInputResynchronization is
       mods : Unsigned_64 := 0;
    begin
+      KR.Cancel (keyRepeat);
       CuBit.Click_Sequences.Reset (titleClicks);
       pointerSurfaceId := 0;
       endDrag;
@@ -6317,20 +6615,42 @@ procedure main is
       return mods;
    end modifierState;
 
-   procedure queueKey (raw : Unsigned_8) is
+   --  repeat: a press the desktop synthesized for a held key; the key and
+   --  text events carry the protocol's repeat flag.
+   procedure queueKey (raw : Unsigned_8; repeat : Boolean) is
       release : constant Boolean := (raw and 16#80#) /= 0;
       code    : constant Unsigned_64 := Unsigned_64 (raw and 16#7F#);
       ch      : Character;
       mods    : constant Unsigned_64 := modifierState;
+      flags   : constant Unsigned_64 := (if repeat then DP.Key_Repeat_Flag else 0);
    begin
       if focusSurface = 0 then
          return;
       end if;
 
+      if not release then
+         --  A copy or paste chord routed to this surface is the only paste
+         --  authority it gets (docs/clipboard.md); issue it before the app
+         --  can see the key.
+         Desktop_Clipboard.Note_Key
+           (focusSurface, raw and 16#7F#, mods, nowMs);
+         if focusSurface /= keysRoutedTo then
+            --  Name the window keys now go to, once per change (tests and
+            --  traces read it; the clipboard's gestures follow it).
+            keysRoutedTo := focusSurface;
+            declare
+               idx : constant Integer := findSurface (focusSurface);
+            begin
+               if idx >= 0 then
+                  debugPrint ("desktop: keys to " & surfaces (SurfaceIndex (idx)).title.Text & LF);
+               end if;
+            end;
+         end if;
+      end if;
       enqueueInput ((if release then INPUT_KEY_UP else INPUT_KEY_DOWN),
                     focusSurface,
                     code,
-                    mods);
+                    mods or flags);
       if not release and then
          (mods and (KEYMOD_CTRL or KEYMOD_ALT)) = 0
       then
@@ -6343,7 +6663,7 @@ procedure main is
             enqueueInput (INPUT_TEXT,
                           focusSurface,
                           Unsigned_64 (Character'Pos (ch)),
-                          0);
+                          flags);
          end if;
       end if;
    end queueKey;
@@ -6376,6 +6696,9 @@ procedure main is
                     packU32Pair (localX, localY),
                     buttons);
       if kind = INPUT_POINTER_DOWN or else kind = INPUT_POINTER_UP then
+         --  A press or release is the user's own gesture: it may authorize
+         --  a copy from a menu or button, never a paste (docs/clipboard.md).
+         Desktop_Clipboard.Note_Activation (target, nowMs);
          tracePointer
            ((if kind = INPUT_POINTER_DOWN then "queue-down" else "queue-up"),
             target,
@@ -6594,6 +6917,24 @@ procedure main is
       use type DP.Status_Code;
       use type DP.Operation;
    begin
+      if Desktop_Clipboard.Handles (request.tag.label) then
+         declare
+            focusIdx : constant Integer := findSurface (focusSurface);
+         begin
+            statsRequests := statsRequests + 1;
+            replyMsg := Desktop_Clipboard.Handle
+              (from, request, focusSurface,
+               (if focusIdx >= 0 then surfaces (SurfaceIndex (focusIdx)).owner
+                else No_Process),
+               nowMs);
+            ignore := reply (from, replyMsg);
+            if clipboardMenuOpen then
+               reloadClipboardMenu;
+               scheduleRedrawRect (inflateRect (clipboardMenuRect, 4));
+            end if;
+         end;
+         return;
+      end if;
       if request.tag.label = Compositor_Input_Protocol.Label then
          declare
             package Batch_Protocol renames Compositor_Input_Protocol;
@@ -7171,6 +7512,11 @@ procedure main is
          publicationMode => False, publicationBuffers => <>,
          publicationInputAfter => 0);
                   focusSurface := nextSurfaceId;
+                  --  Window geometry, for tests that drive the pointer
+                  --  onto a title bar (desktop-vm drag check).
+                  debugPrint ("desktop: surface" & Natural'Image (Natural (nextSurfaceId mod 2 ** 31)) &
+                    " at" & Natural'Image (surfX) & "," & Natural'Image (surfY) &
+                    " size" & Natural'Image (reqW) & " x" & Natural'Image (reqH) & LF);
 
                   replyMsg := CuBit.Desktop_Messages.From_Wire
                     (DP.Encode_Creation_Result
@@ -7615,6 +7961,107 @@ procedure main is
       end if;
    end handleRequest;
 
+   procedure closeClipboardMenu (damage : in out Rect) is
+   begin
+      if clipboardMenuOpen then
+         clipboardMenuOpen := False;
+         damage := unionRect (damage, inflateRect (clipboardMenuRect, 4));
+      end if;
+   end closeClipboardMenu;
+
+   procedure toggleClipboardMenu (damage : in out Rect) is
+      ignore : Boolean;
+   begin
+      if clipboardMenuOpen then
+         closeClipboardMenu (damage);
+         return;
+      end if;
+      if launchMenuOpen then
+         launchMenuOpen := False;
+         damage := unionRect (damage, inflateRect (unionRect (launchButtonRect, launchMenuArea), 4));
+      end if;
+      if audioPopupOpen then
+         audioPopupOpen := False;
+         damage := unionRect (damage, unionRect (audioPopupRect, statusRect));
+      end if;
+      ignore := Desktop_Clipboard.Expire (nowMs);
+      clipboardMenu := (others => <>);
+      reloadClipboardMenu;
+      clipboardMenuOpen := True;
+      damage := unionRect (damage, inflateRect (clipboardMenuRect, 4));
+      debugPrint ("desktop: clipboard manager open entries=" &
+                  clipboardMenu.Count'Image & LF);
+   end toggleClipboardMenu;
+
+   --  Paste the chosen entry into the focused app exactly as its own Ctrl+V
+   --  would: the entry becomes current, the surface gets a paste ticket and
+   --  the chord is delivered to it.
+   procedure clipboardPasteChosen (slot : Clipboard_Store.Slot_Index) is
+      KEY_V : constant Unsigned_64 := 16#2F#;
+      done : Boolean;
+   begin
+      Desktop_Clipboard.Paste_From_Manager (slot, focusSurface, nowMs, done);
+      if done and then focusSurface /= 0 then
+         enqueueInput (INPUT_KEY_DOWN, focusSurface, KEY_V, KEYMOD_CTRL);
+         enqueueInput (INPUT_KEY_UP, focusSurface, KEY_V, KEYMOD_CTRL);
+         debugPrint ("desktop: clipboard manager paste" & LF);
+      end if;
+   end clipboardPasteChosen;
+
+   procedure handleClipboardMenuKey (code : Unsigned_8; damage : in out Rect) is
+      package CM renames Clipboard_Menu;
+      KEY_P      : constant Unsigned_8 := 16#19#;
+      KEY_HOME   : constant Unsigned_8 := 16#47#;
+      KEY_END    : constant Unsigned_8 := 16#4F#;
+      KEY_DELETE : constant Unsigned_8 := 16#53#;
+      KEY_1      : constant Unsigned_8 := 16#02#;
+      KEY_9      : constant Unsigned_8 := 16#0A#;
+      result : CM.Action := CM.Nothing;
+      slot : Clipboard_Store.Slot_Count := 0;
+      digit : CM.Digit_Value := 1;
+      use type CM.Action;
+   begin
+      if code = KEY_UP then
+         CM.Press (clipboardMenu, CM.Up, digit, result, slot);
+      elsif code = KEY_DOWN then
+         CM.Press (clipboardMenu, CM.Down, digit, result, slot);
+      elsif code = KEY_HOME then
+         CM.Press (clipboardMenu, CM.Home, digit, result, slot);
+      elsif code = KEY_END then
+         CM.Press (clipboardMenu, CM.Last, digit, result, slot);
+      elsif code = KEY_ENTER then
+         CM.Press (clipboardMenu, CM.Enter, digit, result, slot);
+      elsif code = KEY_P then
+         CM.Press (clipboardMenu, CM.Pin, digit, result, slot);
+      elsif code = KEY_DELETE then
+         CM.Press (clipboardMenu,
+                   (if desktopShiftDown then CM.Clear else CM.Delete),
+                   digit, result, slot);
+      elsif code = KEY_ESCAPE then
+         CM.Press (clipboardMenu, CM.Escape, digit, result, slot);
+      elsif code in KEY_1 .. KEY_9 then
+         digit := CM.Digit_Value (code - KEY_1 + 1);
+         CM.Press (clipboardMenu, CM.Number, digit, result, slot);
+      end if;
+      damage := unionRect (damage, inflateRect (clipboardMenuRect, 4));
+      case result is
+         when CM.Nothing => null;
+         when CM.Close => closeClipboardMenu (damage);
+         when CM.Paste =>
+            closeClipboardMenu (damage);
+            clipboardPasteChosen (slot);
+         when CM.Toggle_Pin =>
+            Desktop_Clipboard.Toggle_Pin (slot);
+            reloadClipboardMenu;
+         when CM.Remove =>
+            Desktop_Clipboard.Delete (slot);
+            reloadClipboardMenu;
+         when CM.Remove_All =>
+            Desktop_Clipboard.Clear;
+            reloadClipboardMenu;
+      end case;
+   end handleClipboardMenuKey;
+
    function shouldExitKey (raw : Unsigned_8) return Boolean is
       release : constant Boolean := (raw and 16#80#) /= 0;
       code    : constant Unsigned_8 := raw and 16#7F#;
@@ -7925,6 +8372,7 @@ procedure main is
       cursorPresentPending := False;
       launchMenuOpen := False;
       audioPopupOpen := False;
+      clipboardMenuOpen := False;
       settingsView.Applied_Layout := Candidate;
       settingsView.Applied_Primary := Choice.Display;
       settingsView.Dragging := False;
@@ -8038,6 +8486,42 @@ procedure main is
          end case;
       end;
    end performLaunchAction;
+
+   --  A pointer source either moved by a displacement (PS/2 and USB mice,
+   --  positive DY up) or reports where it is in desktop coordinates
+   --  (tablets: absoluteTarget).
+   type Pointer_Motion (Absolute : Boolean := False) is record
+      case Absolute is
+         when False => DX, DY : Integer := 0;
+         when True  => X, Y : Natural := 0;
+      end case;
+   end record;
+
+   --  An absolute pointer is bound to output zero: QEMU's first console,
+   --  virtio-gpu head 0. Its normalized position names a native pixel of
+   --  that output (the exact inverse of QEMU's host-pixel scaling), which
+   --  maps into desktop space with the output's scale and rotation.
+   function absoluteTarget (R : Absolute_Pointer.Report) return Pointer_Motion is
+   begin
+      if desktopLayout.Count > 0 then
+         declare
+            G : DG.Output renames desktopLayout.Items (1).Geometry;
+            Mapped : constant DG.Point_Mapping := DG.To_Desktop
+              (G, (X => DG.Pixel_Index (Absolute_Pointer.To_Pixel (R.X, Natural (G.Width))),
+                   Y => DG.Pixel_Index (Absolute_Pointer.To_Pixel (R.Y, Natural (G.Height)))));
+         begin
+            if Mapped.Valid then
+               return (Absolute => True,
+                       X => Natural (DG.Logical_Coordinate'Max (0, Mapped.Value.X)),
+                       Y => Natural (DG.Logical_Coordinate'Max (0, Mapped.Value.Y)));
+            end if;
+         end;
+      end if;
+      --  Before any layout: the whole framebuffer.
+      return (Absolute => True,
+              X => (if fbWidth > 0 then Absolute_Pointer.To_Pixel (R.X, Natural'Min (fbWidth, Absolute_Pointer.Maximum_Extent)) else 0),
+              Y => (if fbHeight > 0 then Absolute_Pointer.To_Pixel (R.Y, Natural'Min (fbHeight, Absolute_Pointer.Maximum_Extent)) else 0));
+   end absoluteTarget;
 
    function clampPointerCoord (value, maxValue : Integer) return Natural is
    begin
@@ -8165,8 +8649,7 @@ procedure main is
 
    procedure handleMouseMotion
       (buttons : Unsigned_64;
-       dx      : Integer;
-       dy      : Integer;
+       Motion  : Pointer_Motion;
        dz      : Integer;
        Observed_Ms : Unsigned_64)
    is
@@ -8184,7 +8667,9 @@ procedure main is
       leftDown  : constant Boolean := (buttons and 1) /= 0;
       leftWasDown : constant Boolean := (lastButtons and 1) /= 0;
       leftTransition : constant Boolean := leftDown /= leftWasDown;
-      pointerMoved : constant Boolean := dx /= 0 or else dy /= 0;
+      pointerMoved : constant Boolean :=
+        (if Motion.Absolute then Motion.X /= cursorX or else Motion.Y /= cursorY
+         else Motion.DX /= 0 or else Motion.DY /= 0);
       deliverMove : constant Boolean :=
         not leftTransition and then
         (pointerMoved or else buttons /= lastButtons);
@@ -8221,10 +8706,15 @@ procedure main is
          maxY := Integer (fbHeight - 1);
       end if;
 
-      --  PS/2 reports positive Y as upward motion; screen coordinates grow
-      --  downward.
-      cursorX := clampPointerCoord (Integer (cursorX) + dx, maxX);
-      cursorY := clampPointerCoord (Integer (cursorY) - dy, maxY);
+      if Motion.Absolute then
+         cursorX := clampPointerCoord (Motion.X, maxX);
+         cursorY := clampPointerCoord (Motion.Y, maxY);
+      else
+         --  PS/2 reports positive Y as upward motion; screen coordinates
+         --  grow downward.
+         cursorX := clampPointerCoord (Integer (cursorX) + Motion.DX, maxX);
+         cursorY := clampPointerCoord (Integer (cursorY) - Motion.DY, maxY);
+      end if;
       if desktopLayout.Count > 0 then
          declare
             Visible : constant DL.Pointer_Position := DL.Confine
@@ -8233,6 +8723,37 @@ procedure main is
             cursorX := Natural (Visible.Point.X);
             cursorY := Natural (Visible.Point.Y);
          end;
+      end if;
+
+      --  The clipboard manager takes the pointer while open: a click on a
+      --  row pastes it, a click elsewhere closes the manager.
+      if clipboardMenuOpen and then pointerSurfaceId = 0 and then
+        dragMode = DRAG_NONE
+      then
+         if leftDown and then not leftWasDown then
+            declare
+               r : constant Rect := clipboardMenuRect;
+               hit : Boolean := False;
+               use type Clipboard_Store.Slot_Count;
+            begin
+               if pointInRect (cursorX, cursorY, r) and then
+                 cursorY >= r.y + CLIP_HEADER_H
+               then
+                  Clipboard_Menu.Select_Visible
+                    (clipboardMenu, (cursorY - r.y - CLIP_HEADER_H) / CLIP_ROW_H, hit);
+               end if;
+               damage := unionRect (damage, inflateRect (r, 4));
+               clipboardMenuOpen := False;
+               if hit and then clipboardMenu.Selected /= 0 then
+                  clipboardPasteChosen (clipboardMenu.Slots (clipboardMenu.Selected));
+               end if;
+               scheduleRedrawRect (damage);
+            end;
+         end if;
+         lastButtons := buttons;
+         cursorStyle := POINTER_DEFAULT;
+         scheduleCursorPresent;
+         return;
       end if;
 
       --  Popup input belongs to the desktop, including the release outside
@@ -8597,6 +9118,10 @@ procedure main is
 
       cursorStyle := cursorStyleAtPointer;
       lastButtons := buttons;
+      --  The hardware pointer follows every motion, including drags, menus
+      --  and hovers that also schedule a scene repaint (the repaint path
+      --  never moves the plane).
+      updatePointerPlane;
       if sceneDamage or else not isEmpty (damage) then
          scheduleRedrawRect
            (inflateRect (unionRect (damage, unionRect (oldCursor, cursorRect)), 2));
@@ -8643,11 +9168,20 @@ procedure main is
          (report.device = CuBit.Input.KEYBOARD and then
           report.delivery /= CuBit.Input.ORDERED_TRANSITION) or else
          (report.device = CuBit.Input.RELATIVE_POINTER and then
-          report.delivery /= CuBit.Input.ACCUMULABLE_DISPLACEMENT)
+          report.delivery /= CuBit.Input.ACCUMULABLE_DISPLACEMENT) or else
+         (report.device = CuBit.Input.ABSOLUTE_POINTER and then
+          report.delivery /= CuBit.Input.REPLACEABLE_STATE)
       then
          statsSourceRejects := statsSourceRejects + 1;
          if slot < 0 then DI.Reject (Input_Diagnostic, DI.Table_Full);
          else DI.Reject (Input_Diagnostic, DI.Delivery); end if;
+         return;
+      end if;
+      if report.device = CuBit.Input.ABSOLUTE_POINTER and then
+        not Absolute_Pointer.Valid_Payload (report.payload)
+      then
+         statsSourceRejects := statsSourceRejects + 1;
+         DI.Reject (Input_Diagnostic, DI.Malformed);
          return;
       end if;
 
@@ -8672,13 +9206,18 @@ procedure main is
               not CuBit.Input.Is_Immediate_Successor
                 (source.sequence, report.sequence)));
 
-         if not source.used then DI.New_Source (Input_Diagnostic); end if;
+         if not source.used then
+            DI.New_Source (Input_Diagnostic);
+            if report.device = CuBit.Input.ABSOLUTE_POINTER then
+               debugPrint ("desktop: absolute pointer source on output 0" & LF);
+            end if;
+         end if;
          source.used := True;
          source.authorityTag := report.sourceAuthorityTag;
          source.device := report.device;
          source.generation := report.generation;
          source.sequence := report.sequence;
-         if report.device = CuBit.Input.RELATIVE_POINTER then
+         if report.device in CuBit.Input.RELATIVE_POINTER | CuBit.Input.ABSOLUTE_POINTER then
             source.buttons := report.snapshot and 16#FF#;
          end if;
       end;
@@ -8686,7 +9225,7 @@ procedure main is
       seatButtons := 0;
       for i in inputSources'Range loop
          if inputSources (i).used and then
-            inputSources (i).device = CuBit.Input.RELATIVE_POINTER
+            inputSources (i).device in CuBit.Input.RELATIVE_POINTER | CuBit.Input.ABSOLUTE_POINTER
          then
             seatButtons := seatButtons or inputSources (i).buttons;
          end if;
@@ -8698,6 +9237,210 @@ procedure main is
       end if;
       accepted := True;
    end acceptSourceReport;
+
+   --  Keyboard auto-repeat (Key_Repeat). A key goes to one destination,
+   --  chosen from the state below before delivering it changes anything;
+   --  its repeats go the same way or stop.
+   function keyDestination (raw : Unsigned_8; extended : Boolean) return KR.Destination is
+      code : constant Unsigned_8 := raw and 16#7F#;
+   begin
+      if extended and then code in KEY_MUTE | KEY_VOLUME_DOWN | KEY_VOLUME_UP then
+         return KR.Volume_Control;
+      elsif audioPopupOpen then
+         return KR.Audio_Popup;
+      elsif extended and then (code = KEY_LEFT_SUPER or else code = KEY_RIGHT_SUPER) then
+         return KR.Super_Key;
+      elsif desktopSuperDown then
+         return KR.Super_Chord;
+      elsif clipboardMenuOpen then
+         return KR.Clipboard_Manager;
+      elsif launchMenuOpen then
+         return KR.Apps_Menu;
+      --  Once a shell/client surface has focus, keyboard events belong to
+      --  that surface. The service-level Q/Esc escape remains available
+      --  only before a client has connected.
+      elsif shouldCycleFocusKey (raw) then
+         return KR.Focus_Cycle;
+      elsif focusSurface /= 0 then
+         return KR.Focused_Surface;
+      elsif shouldExitKey (raw) then
+         return KR.Exit_Key;
+      end if;
+      return KR.Nowhere;
+   end keyDestination;
+
+   function keyRoute (where : KR.Destination) return KR.Route is
+     ((Where => where,
+       Surface => (if where = KR.Focused_Surface then focusSurface else 0)));
+
+   --  Deliver one key transition (set-1 byte, E0 context) to where.
+   --  repeat: an auto-repeat of a held key (presses only).
+   procedure deliverKey
+     (raw : Unsigned_8; extended : Boolean; where : KR.Destination;
+      repeat : Boolean; running : in out Boolean)
+   is
+      release  : constant Boolean := (raw and 16#80#) /= 0;
+      code     : constant Unsigned_8 := raw and 16#7F#;
+      damage   : Rect := cursorRect;
+   begin
+      case where is
+         when KR.Volume_Control =>
+            if not release then
+               if code = KEY_MUTE then
+                  setMasterAudio (masterAudio.Level, not masterAudio.Muted);
+               else
+                  setMasterAudio
+                    (Natural (Integer'Max (0, Integer'Min (100,
+                       Integer (masterAudio.Level) +
+                       (if code = KEY_VOLUME_UP then 5 else -5)))), masterAudio.Muted);
+               end if;
+            end if;
+         when KR.Audio_Popup =>
+            if not release and then code = KEY_ESCAPE then
+               audioPopupOpen := False;
+               scheduleRedrawRect (audioPopupRect);
+               scheduleRedrawRect (statusRect);
+            end if;
+         when KR.Super_Key =>
+            --  Super is a modifier. Its press arms the Apps menu; the
+            --  release opens it unless Super was part of a chord. A held
+            --  Super's device repeats never get here (Key_Repeat).
+            if not release then
+               desktopSuperChord := False;
+               desktopSuperDown := True;
+            elsif desktopSuperDown and then not desktopSuperChord and then
+              shellSurfaceVisible
+            then
+               desktopSuperDown := False;
+               closeClipboardMenu (damage);
+               damage := unionRect (damage, inflateRect (launchMenuArea, 4));
+               launchMenuOpen := not launchMenuOpen;
+               if launchMenuOpen then
+                  Desktop_Launch_Refresh.Request;
+               end if;
+               LM.Reset (launchMenuState);
+               damage := unionRect
+                 (damage,
+                  inflateRect
+                    (unionRect (launchButtonRect, launchMenuArea), 4));
+               scheduleRedrawRect (inflateRect (damage, 2));
+            else
+               desktopSuperDown := False;
+               scheduleRedrawRect (inflateRect (damage, 2));
+            end if;
+         when KR.Super_Chord =>
+            --  A Super chord belongs to the desktop, press and release:
+            --  the focused app never sees half of it.
+            if not release then
+               desktopSuperChord := True;
+               if code = KEY_CLIPBOARD_V and then shellSurfaceVisible then
+                  toggleClipboardMenu (damage);
+                  scheduleRedrawRect (inflateRect (damage, 2));
+               end if;
+            end if;
+         when KR.Clipboard_Manager =>
+            --  The manager owns the keyboard while open (both edges).
+            if not release then
+               handleClipboardMenuKey (code, damage);
+               scheduleRedrawRect (inflateRect (damage, 2));
+            end if;
+         when KR.Apps_Menu =>
+            --  The compositor owns keyboard input while its Apps menu
+            --  is open. Swallow both presses and releases so the focused
+            --  client cannot observe half of a key transition.
+            if not release then
+               declare
+                  --  Set-1 arrow scancodes (sent after the extended prefix).
+                  KEY_LEFT_ARROW : constant Unsigned_8 := 16#4B#;
+                  KEY_RIGHT_ARROW : constant Unsigned_8 := 16#4D#;
+                  result : LM.Choice := LM.Nothing;
+                  entryIndex : Natural := 0;
+                  use type LM.Choice;
+               begin
+                  damage := unionRect (damage, inflateRect (launchMenuArea, 4));
+                  if code = KEY_UP then
+                     LM.Press (launchMenuState, launchMenu, LM.Up, result, entryIndex);
+                  elsif code = KEY_DOWN then
+                     LM.Press (launchMenuState, launchMenu, LM.Down, result, entryIndex);
+                  elsif code = KEY_LEFT_ARROW then
+                     LM.Press (launchMenuState, launchMenu, LM.Left, result, entryIndex);
+                  elsif code = KEY_RIGHT_ARROW then
+                     LM.Press (launchMenuState, launchMenu, LM.Right, result, entryIndex);
+                  elsif code = KEY_ENTER then
+                     LM.Press (launchMenuState, launchMenu, LM.Enter, result, entryIndex);
+                  elsif code = KEY_ESCAPE then
+                     LM.Press (launchMenuState, launchMenu, LM.Escape, result, entryIndex);
+                  end if;
+                  if result = LM.Launch then
+                     launchMenuOpen := False;
+                     performLaunchAction (entryIndex, damage);
+                  elsif result in LM.Close | LM.Power then
+                     launchMenuOpen := False;
+                  end if;
+               end;
+
+               damage := unionRect
+                 (damage,
+                  inflateRect
+                    (unionRect (launchButtonRect, launchMenuArea), 4));
+               scheduleRedrawRect (inflateRect (damage, 2));
+            end if;
+         when KR.Focus_Cycle =>
+            cycleFocus (damage);
+            scheduleRedrawRect (inflateRect (damage, 2));
+         when KR.Focused_Surface =>
+            if handleInternalKey (raw, damage) then
+               scheduleRedrawRect (inflateRect (damage, 2));
+            else
+               queueKey (raw, repeat);
+            end if;
+         when KR.Exit_Key =>
+            debugPrint ("desktop: exit key" & LF);
+            running := False;
+         when KR.Nowhere =>
+            null;
+      end case;
+   end deliverKey;
+
+   --  The focused client has not yet taken the last repeat: skip this one
+   --  rather than queue another behind it, so a slow client never builds a
+   --  backlog that keeps "typing" after the key is released.
+   function repeatPending (target : Unsigned_64) return Boolean is
+      channelSlot : constant Integer := findInputChannel (target);
+   begin
+      return channelSlot >= 0 and then
+        (for some E of inputChannels (SurfaceIndex (channelSlot)).events =>
+           E.Valid and then E.Kind = INPUT_KEY_DOWN and then
+           (E.Payload1 and DP.Key_Repeat_Flag) /= 0);
+   end repeatPending;
+
+   --  Deliver a due auto-repeat. The main loop calls this only once its
+   --  input queue is drained, so a release already queued wins over the
+   --  repeat it would cancel.
+   procedure pumpKeyRepeat (running : in out Boolean) is
+      now : constant KR.Time := KR.Clamp (CuBit.Monotonic.Milliseconds);
+   begin
+      if not KR.Armed (keyRepeat) or else KR.Next_Due (keyRepeat) > now then
+         return;
+      end if;
+      declare
+         held  : constant KR.Key := KR.Armed_Key (keyRepeat);
+         raw   : constant Unsigned_8 := Unsigned_8 (held.Code);
+         where : constant KR.Destination := keyDestination (raw, held.Extended);
+         fire  : Boolean;
+         key   : KR.Key;
+      begin
+         KR.Tick (keyRepeat, now, keyRoute (where), fire, key);
+         if not fire then
+            null;  --  The route changed (focus, a menu): repeat stopped.
+         elsif where = KR.Focused_Surface and then repeatPending (focusSurface) then
+            statsKeyRepeatsSkipped := statsKeyRepeatsSkipped + 1;
+         else
+            statsKeyRepeats := statsKeyRepeats + 1;
+            deliverKey (raw, key.Extended, where, True, running);
+         end if;
+      end;
+   end pumpKeyRepeat;
 
    procedure handleEvent (eventMsg : Message; running : in out Boolean) is
       raw : Unsigned_8;
@@ -8728,6 +9471,14 @@ procedure main is
             return;
          end if;
       end if;
+      if sourceAccepted or else eventMsg.tag.label = EVENT_KEYBOARD or else
+        eventMsg.tag.label = EVENT_MOUSE
+      then
+         --  Boot timeline (docs/boot-timeline.md); one branch after the first.
+         CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.First_Input_Accepted);
+         --  A frame follows: let the GPU clock rise now (one-way, coalesced).
+         Desktop_GPU_Wake.Input_Hint;
+      end if;
 
       if eventMsg.tag.label = EVENT_KEYBOARD or else
          (sourceAccepted and then
@@ -8746,7 +9497,12 @@ procedure main is
             desktopShiftDown := False;
             desktopCtrlDown := False;
             desktopAltDown := False;
+            desktopSuperDown := False;
             desktopExtendedPrefix := False;
+            --  Which keys are down is unknown: no repeat, nothing held.
+            KR.Reset (keyRepeat);
+            --  No chord survives a gap in the report stream.
+            Desktop_Clipboard.Revoke_Gestures;
          end if;
 
          --  Set-1 extended keys arrive as E0 followed by a normal press or
@@ -8758,105 +9514,26 @@ procedure main is
          else
             declare
                extended : constant Boolean := desktopExtendedPrefix;
-               release  : constant Boolean := (raw and 16#80#) /= 0;
-               code     : constant Unsigned_8 := raw and 16#7F#;
-               damage   : Rect := cursorRect;
+               key      : constant KR.Key := (KR.Scan_Code (raw and 16#7F#), extended);
+               where    : constant KR.Destination := keyDestination (raw, extended);
+               outcome  : KR.Press_Outcome := KR.New_Press;
             begin
                desktopExtendedPrefix := False;
-               if updateDesktopModifierKey (raw) then
-                  null;
+               if (raw and 16#80#) /= 0 then
+                  KR.Release (keyRepeat, key);
+               else
+                  KR.Press (keyRepeat, key, KR.Clamp (CuBit.Monotonic.Milliseconds),
+                            keyRepeatSettings, keyRoute (where), outcome);
                end if;
-
-               if extended and then code in 16#20# | 16#2E# | 16#30# then
-                  --  Set-1 multimedia keys: mute, volume down, volume up.
-                  if not release then
-                     if code = 16#20# then
-                        setMasterAudio (masterAudio.Level, not masterAudio.Muted);
-                     else
-                        setMasterAudio
-                          (Natural (Integer'Max (0, Integer'Min (100,
-                             Integer (masterAudio.Level) +
-                             (if code = 16#30# then 5 else -5)))), masterAudio.Muted);
-                     end if;
+               if outcome = KR.Held_Repeat then
+                  --  A held key's device repeat (PS/2 typematic, a VM host's
+                  --  auto-repeat): Desktop repeats keys itself, at its rate.
+                  statsDeviceRepeats := statsDeviceRepeats + 1;
+               else
+                  if updateDesktopModifierKey (raw) then
+                     null;
                   end if;
-               elsif audioPopupOpen then
-                  if not release and then code = KEY_ESCAPE then
-                     audioPopupOpen := False;
-                     scheduleRedrawRect (audioPopupRect);
-                     scheduleRedrawRect (statusRect);
-                  end if;
-               elsif extended and then
-                  (code = KEY_LEFT_SUPER or else code = KEY_RIGHT_SUPER)
-               then
-                  if not release and then shellSurfaceVisible then
-                     damage := unionRect (damage, inflateRect (launchMenuArea, 4));
-                     launchMenuOpen := not launchMenuOpen;
-                     if launchMenuOpen then
-                        Desktop_Launch_Refresh.Request;
-                     end if;
-                     LM.Reset (launchMenuState);
-                     damage := unionRect
-                       (damage,
-                        inflateRect
-                          (unionRect (launchButtonRect, launchMenuArea), 4));
-                     scheduleRedrawRect (inflateRect (damage, 2));
-                  end if;
-               elsif launchMenuOpen then
-                  --  The compositor owns keyboard input while its Apps menu
-                  --  is open. Swallow both presses and releases so the focused
-                  --  client cannot observe half of a key transition.
-                  if not release then
-                     declare
-                        --  Set-1 arrow scancodes (sent after the extended prefix).
-                        KEY_LEFT_ARROW : constant Unsigned_8 := 16#4B#;
-                        KEY_RIGHT_ARROW : constant Unsigned_8 := 16#4D#;
-                        result : LM.Choice := LM.Nothing;
-                        entryIndex : Natural := 0;
-                        use type LM.Choice;
-                     begin
-                        damage := unionRect (damage, inflateRect (launchMenuArea, 4));
-                        if code = KEY_UP then
-                           LM.Press (launchMenuState, launchMenu, LM.Up, result, entryIndex);
-                        elsif code = KEY_DOWN then
-                           LM.Press (launchMenuState, launchMenu, LM.Down, result, entryIndex);
-                        elsif code = KEY_LEFT_ARROW then
-                           LM.Press (launchMenuState, launchMenu, LM.Left, result, entryIndex);
-                        elsif code = KEY_RIGHT_ARROW then
-                           LM.Press (launchMenuState, launchMenu, LM.Right, result, entryIndex);
-                        elsif code = KEY_ENTER then
-                           LM.Press (launchMenuState, launchMenu, LM.Enter, result, entryIndex);
-                        elsif code = KEY_ESCAPE then
-                           LM.Press (launchMenuState, launchMenu, LM.Escape, result, entryIndex);
-                        end if;
-                        if result = LM.Launch then
-                           launchMenuOpen := False;
-                           performLaunchAction (entryIndex, damage);
-                        elsif result in LM.Close | LM.Power then
-                           launchMenuOpen := False;
-                        end if;
-                     end;
-
-                     damage := unionRect
-                       (damage,
-                        inflateRect
-                          (unionRect (launchButtonRect, launchMenuArea), 4));
-                     scheduleRedrawRect (inflateRect (damage, 2));
-                  end if;
-               --  Once a shell/client surface has focus, keyboard events
-               --  belong to that surface. The service-level Q/Esc escape
-               --  remains available only before a client has connected.
-               elsif shouldCycleFocusKey (raw) then
-                  cycleFocus (damage);
-                  scheduleRedrawRect (inflateRect (damage, 2));
-               elsif focusSurface /= 0 then
-                  if handleInternalKey (raw, damage) then
-                     scheduleRedrawRect (inflateRect (damage, 2));
-                  else
-                     queueKey (raw);
-                  end if;
-               elsif shouldExitKey (raw) then
-                  debugPrint ("desktop: exit key" & LF);
-                  running := False;
+                  deliverKey (raw, extended, where, False, running);
                end if;
             end;
          end if;
@@ -8870,7 +9547,7 @@ procedure main is
          end if;
       elsif eventMsg.tag.label = EVENT_MOUSE or else
          (sourceAccepted and then
-          sourceReport.device = CuBit.Input.RELATIVE_POINTER)
+          sourceReport.device in CuBit.Input.RELATIVE_POINTER | CuBit.Input.ABSOLUTE_POINTER)
       then
          statsMouseEvents := statsMouseEvents + 1;
          if Diagnostic_Mouse < Unsigned_64'Last then Diagnostic_Mouse := Diagnostic_Mouse + 1; end if;
@@ -8902,18 +9579,54 @@ procedure main is
                end if;
             end;
          end if;
-         if signed8 (Shift_Right (packed, 32)) /= 0 then
-            statsWheelEvents := statsWheelEvents + 1;
+         if sourceAccepted and then sourceReport.device = CuBit.Input.ABSOLUTE_POINTER then
+            --  Validated in acceptSourceReport.
+            declare
+               Report : constant Absolute_Pointer.Report := Absolute_Pointer.Decode (packed);
+            begin
+               --  The host's pointer is this pointer: a host-pointer cursor
+               --  plane can show it with no compositing and no frame.
+               if not Desktop_Pointer_Plane.Absolute then
+                  Desktop_Pointer_Plane.Set_Absolute (True, requestSequence);
+               end if;
+               if Report.Wheel /= 0 then
+                  statsWheelEvents := statsWheelEvents + 1;
+               end if;
+               declare
+                  Target : constant Pointer_Motion := absoluteTarget (Report);
+               begin
+                  --  Button transitions of a VM or tablet pointer, with the
+                  --  desktop position they apply at (a few per click).
+                  if seatButtons /= lastButtons then
+                     debugPrint ("desktop: absolute buttons" & Unsigned_64'Image (seatButtons) &
+                       " at " & Decimal (Unsigned_64 (Target.X)) & "," &
+                       Decimal (Unsigned_64 (Target.Y)) & LF);
+                  end if;
+                  handleMouseMotion
+                    (buttons => seatButtons,
+                     Motion  => Target,
+                     dz      => Report.Wheel,
+                     Observed_Ms => CuBit.Input.Pointer_Time (sourceReport.snapshot));
+               end;
+            end;
+         else
+            if Desktop_Pointer_Plane.Absolute then
+               Desktop_Pointer_Plane.Set_Absolute (False, requestSequence);
+            end if;
+            if signed8 (Shift_Right (packed, 32)) /= 0 then
+               statsWheelEvents := statsWheelEvents + 1;
+            end if;
+            handleMouseMotion
+              (buttons =>
+                 (if sourceAccepted then seatButtons
+                  else packed and 16#FF#),
+               Motion  => (Absolute => False,
+                           DX => signed12 (Shift_Right (packed, 8)),
+                           DY => signed12 (Shift_Right (packed, 20))),
+               dz      => signed8 (Shift_Right (packed, 32)),
+               Observed_Ms => (if sourceAccepted then CuBit.Input.Pointer_Time (sourceReport.snapshot)
+                               else Unsigned_64'Last));
          end if;
-         handleMouseMotion
-           (buttons =>
-              (if sourceAccepted then seatButtons
-               else packed and 16#FF#),
-            dx      => signed12 (Shift_Right (packed, 8)),
-            dy      => signed12 (Shift_Right (packed, 20)),
-            dz      => signed8 (Shift_Right (packed, 32)),
-            Observed_Ms => (if sourceAccepted then CuBit.Input.Pointer_Time (sourceReport.snapshot)
-                            else Unsigned_64'Last));
 
          if sourceAccepted and then sourceDiscontinuity then
             forceInputResynchronization;
@@ -9112,6 +9825,10 @@ procedure main is
       releasePixelStorage (sceneAllocation);
       releasePixelStorage (dragAllocation);
       for Output in Output_Index loop presentations (Output) := (others => <>); end loop;
+      --  Display dropped the pointer's plane request with output zero's
+      --  lease; the reopen re-creates it and re-sends the shape.
+      Desktop_Pointer_Plane.Reset;
+      pointerShapeSent := False;
       retiredThrough := requestSequence;
       backBufferAddr := System.Null_Address;
       privateSceneAddr := System.Null_Address;
@@ -9244,6 +9961,106 @@ procedure main is
       Ok := True;
    end prepareOutput;
 
+   --  The outputs reopened at new modes (a resized VM window): keep every
+   --  window on the output it was on, inside that output's new work area;
+   --  maximized windows fill it; the shell spans the new desktop.
+   --  "WxH" with no padding (log markers the tests match).
+   function Dimensions (Width, Height : Natural) return String is
+      W : constant String := Width'Image;
+      H : constant String := Height'Image;
+   begin
+      return W (W'First + 1 .. W'Last) & "x" & H (H'First + 1 .. H'Last);
+   end Dimensions;
+
+   procedure relayoutAfterModeChange (Old : DL.Layout) is
+      function Translate (Value : Natural; Old_Origin, New_Origin : DG.Output_Origin;
+                          Extent, Object_Extent : Natural) return Natural is
+         Low : constant Integer := Integer (New_Origin);
+         High : constant Integer := Low + Integer'Max (0, Integer (Extent) - Integer (Object_Extent));
+      begin
+         return Natural (Integer'Max (Low, Integer'Min (High,
+           Integer (Value) - Integer (Old_Origin) + Low)));
+      end Translate;
+      Pointer : DL.Pointer_Position;
+   begin
+      if Old.Count = 0 or else desktopLayout.Count = 0 then return; end if;
+      for S of surfaces loop
+         if S.used and then (S.flags and SURFACE_FLAG_WINDOW) /= 0 then
+            declare
+               Owner : constant DL.Pointer_Position := DL.Confine (Old,
+                 (DG.Logical_Coordinate (S.x + Natural'Min (S.w / 2, 64)),
+                  DG.Logical_Coordinate (S.y + Natural'Min (S.h / 2, 12))));
+               Screen : constant DL.Viewport_Index :=
+                 (if Owner.Screen <= desktopLayout.Count then Owner.Screen else 1);
+               Old_G : DG.Output renames Old.Items (Owner.Screen).Geometry;
+               New_G : DG.Output renames desktopLayout.Items (Screen).Geometry;
+               B : constant Rect := logicalBounds (New_G);
+               Work_Height : constant Natural := B.h -
+                 (if Screen = Natural (primaryOutput) + 1 then Natural'Min (B.h, TASKBAR_H) else 0);
+            begin
+               if S.maximized then
+                  declare
+                     Area : constant Rect := windowWorkArea (B);
+                     W : Natural := Area.w;
+                     H : Natural := Area.h;
+                  begin
+                     clampSurfaceSize (S, W, H);
+                     S.x := Area.x; S.y := Area.y;
+                     if S.w /= W or S.h /= H then
+                        S.w := W; S.h := H; S.serial := S.serial + 1;
+                        if S.owner /= No_Process then
+                           queueConfigure (S.id, Unsigned_64 (W), Unsigned_64 (H));
+                        end if;
+                     end if;
+                  end;
+               else
+                  declare
+                     W : Natural := Natural'Min (S.w, B.w);
+                     H : Natural := Natural'Min (S.h, Work_Height);
+                  begin
+                     clampSurfaceSize (S, W, H);
+                     if W /= S.w or H /= S.h then
+                        S.w := W; S.h := H; S.serial := S.serial + 1;
+                        if S.owner /= No_Process then
+                           queueConfigure (S.id, Unsigned_64 (W), Unsigned_64 (H));
+                        end if;
+                     end if;
+                  end;
+                  S.x := Translate (S.x, Old_G.X, New_G.X, B.w, S.w);
+                  S.y := Translate (S.y, Old_G.Y, New_G.Y, Work_Height, Natural'Min (S.h, Work_Height));
+               end if;
+               S.restoreX := Translate (S.restoreX, Old_G.X, New_G.X, B.w, S.restoreW);
+               S.restoreY := Translate (S.restoreY, Old_G.Y, New_G.Y, Work_Height,
+                                        Natural'Min (S.restoreH, TITLE_HEIGHT));
+               S.dirty := True;
+            end;
+         elsif S.used and then (S.flags and SURFACE_FLAG_SHELL) /= 0 then
+            S.x := 0; S.y := 0; S.w := fbWidth; S.h := fbHeight;
+            S.dirty := True;
+         end if;
+      end loop;
+      Pointer := DL.Confine (desktopLayout,
+        (DG.Logical_Coordinate (cursorX), DG.Logical_Coordinate (cursorY)));
+      cursorX := Natural (Pointer.Point.X);
+      cursorY := Natural (Pointer.Point.Y);
+      launchMenuOpen := False;
+      audioPopupOpen := False;
+      settingsView.Applied_Layout := desktopLayout;
+      settingsView.Pending_Layout := desktopLayout;
+      for I in 1 .. desktopLayout.Count loop
+         declare
+            B : constant Rect := logicalBounds (desktopLayout.Items (I).Geometry);
+         begin
+            debugPrint ("desktop: output" & Natural'Image (I - 1) & " re-laid out " &
+              Dimensions (Natural (desktopLayout.Items (I).Geometry.Width),
+                          Natural (desktopLayout.Items (I).Geometry.Height)) &
+              " logical " & Dimensions (B.w, B.h) & " scale" &
+              desktopLayout.Items (I).Geometry.Scale.Numerator'Image & "/" &
+              desktopLayout.Items (I).Geometry.Scale.Denominator'Image & LF);
+         end;
+      end loop;
+   end relayoutAfterModeChange;
+
    procedure setupDisplayBuffer (ok : out Boolean; Wait_For_Owner : Boolean := True) is
       First_Info : constant Message := callDisplay (OP_DISPLAY_GET_INFO);
       Second_Info : constant Message := callDisplay (OP_DISPLAY_GET_INFO, Output => 1);
@@ -9253,6 +10070,8 @@ procedure main is
       Choice : DL.Primary_Selection;
       Raw, Pages, Drag_Raw : Unsigned_64;
       Total_Width, Total_Height : Natural;
+      Previous : constant DL.Layout := desktopLayout;
+      Modes_Changed : Boolean := False;
    begin
       ok := False;
       if outputDrainRequested then return; end if;
@@ -9290,6 +10109,14 @@ procedure main is
          end if;
       end loop;
       if outputReopenPending then
+         --  New modes (a resized VM window): carry the scale over and pack
+         --  the outputs again; otherwise restore the arrangement exactly.
+         Modes_Changed := not Compositor_Layout_Restore.Compatible (desktopLayout, Candidate);
+         if Modes_Changed then
+            Candidate := Compositor_Layout_Resize.Carry_Settings
+              (desktopLayout, Candidate,
+               (CuBit.Display_Arrangement.Minimum_Width, CuBit.Display_Arrangement.Minimum_Height));
+         end if;
          Candidate := Compositor_Layout_Restore.Choose (desktopLayout, Candidate);
          Total_Width := 0; Total_Height := 0;
          for I in 1 .. Candidate.Count loop
@@ -9387,9 +10214,104 @@ procedure main is
       debugPrint ("desktop: active outputs=" & Candidate.Count'Image &
         " primary=" & primaryOutput'Image & LF);
       desktopLayout := Candidate;
+      if Modes_Changed then
+         relayoutAfterModeChange (Previous);
+      end if;
       syncPointerPlane;
       ok := True;
    end setupDisplayBuffer;
+
+   procedure armOutputWatch is
+      Token : Unsigned_64;
+   begin
+      if outputWatchToken /= 0 or else not outputWatchUsable or else
+        not backBufferReady or else outputDrainRequested or else outputReopenPending
+      then
+         return;
+      end if;
+      CR.Allocate (requestSequence, Token);
+      if Token /= 0 and then capSubmit (CAP_SLOT_DISPLAY, CuBit.Desktop_Messages.From_Wire
+           (OM.Encode_Watch (CuBit.Output_Discovery.Display_Broker, outputRevisionSeen)), Token)
+      then
+         outputWatchToken := Token;
+      end if;
+   end armOutputWatch;
+
+   --  Display's catalog changed: find outputs whose host preference changed
+   --  since we last acted on it, and re-lay them out.
+   procedure handleOutputChange is
+      package OD renames CuBit.Output_Discovery;
+      use type OD.Output_Source, OD.Output_Role;
+      Summary : OD.Summary_Decoding;
+      Item : OD.Description_Decoding;
+   begin
+      outputChangeNoticed := False;
+      Summary := OD.Decode_Summary (OD.Display_Broker, CuBit.Desktop_Messages.To_Wire
+        (callDisplay (OD.Code (OD.Display_Broker, OD.Get_Catalog))));
+      if not Summary.Valid then return; end if;
+      outputRevisionSeen := Summary.Value.Revision;
+      for Index in 1 .. Summary.Value.Count loop
+         Item := OD.Decode_Description (OD.Display_Broker, CuBit.Desktop_Messages.To_Wire
+           (callDisplay (OD.Code (OD.Display_Broker, OD.Get_Description),
+                         Summary.Value.Revision, Unsigned_64 (Index))));
+         exit when not Item.Valid;
+         declare
+            D : constant OD.Description := Item.Value.Item;
+         begin
+            if D.Source = OD.Virtio_GPU and then D.Role /= OD.Detected_Only and then
+              D.Native_Number <= Natural (Output_Index'Last) and then
+              presentations (Output_Index (D.Native_Number)).Enabled
+            then
+               declare
+                  Output : constant Output_Index := Output_Index (D.Native_Number);
+                  Preferred : constant OM.Mode := (D.Advertised_Width, D.Advertised_Height);
+                  Current : constant OM.Mode := (D.Current_Width, D.Current_Height);
+               begin
+                  if Preferred /= actedPreference (Output) and then Preferred /= Current then
+                     actedPreference (Output) := Preferred;
+                     wantedModes (Output) := (True, Preferred);
+                     modeChangePending := True;
+                     debugPrint ("desktop: output" & Output'Image & " host mode" &
+                       " " & Dimensions (Preferred.Width, Preferred.Height) & LF);
+                  else
+                     actedPreference (Output) := Preferred;
+                  end if;
+               end;
+            end if;
+         end;
+      end loop;
+      if modeChangePending then
+         releaseDisplayBuffer;
+      end if;
+   end handleOutputChange;
+
+   --  Before reopening: switch each output that wants a new mode. A refusal
+   --  (or a fitted mode) is fine: the reopen uses whatever the output has.
+   procedure applyWantedModes is
+      Call : Message;
+      Answer : OM.Result_Decoding;
+   begin
+      modeChangePending := False;
+      for Output in Output_Index loop
+         if wantedModes (Output).Pending then
+            wantedModes (Output).Pending := False;
+            Call := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
+              (OM.Encode_Set_Mode (CuBit.Output_Discovery.Display_Broker,
+                                   wantedModes (Output).Mode), Output));
+            Call.tag := capCall (CAP_SLOT_DISPLAY, Call,
+                                 CuBit.Messages.Deadline_After (MODE_CALL_DEADLINE_MS));
+            Answer := OM.Decode_Result (CuBit.Output_Discovery.Display_Broker,
+                                        CuBit.Desktop_Messages.To_Wire (Call));
+            if Answer.Valid then
+               debugPrint ("desktop: output" & Output'Image & " mode" &
+                 " " & Dimensions (Answer.Value.Current.Width, Answer.Value.Current.Height) &
+                 (if Answer.Value.Status = DP.Success then "" else " (refused)") & LF);
+            else
+               debugPrint ("desktop: output" & Output'Image & " mode change refused" & LF);
+            end if;
+         end if;
+      end loop;
+   end applyWantedModes;
 
    procedure queryDisplayInfo (ok : out Boolean) is
       Info : constant Message := callDisplay (OP_DISPLAY_GET_INFO);
@@ -9520,10 +10442,18 @@ procedure main is
    displayInfoOk : Boolean := False;
 begin
    debugPrint ("desktop: starting" & LF);
+   --  Announce the session before anything slow (configuration, wallpaper
+   --  reads): a framebuffer shell started next to the desktop checks this
+   --  and leaves the display to it (shell setupDisplayPresent).
+   ret := registerDriver (DRIVER_DESKTOP);
+   if ret = Unsigned_64'Last then
+      debugPrint ("desktop: register failed" & LF);
+   end if;
    Read_Appearance;
    Desktop_Wallpaper_Assets.Prepare (appearance.Backdrop);
    Read_Trace_Configuration;
    Load_Launch_Menu;
+   Load_Key_Repeat;
    Desktop_Launch_Refresh.Initialize;
 
    ret := setLatencyContract
@@ -9532,11 +10462,6 @@ begin
        4_000);  --  Budget hint for input dispatch and compositor drawing.
    if ret = Unsigned_64'Last then
       debugPrint ("desktop: latency contract rejected" & LF);
-   end if;
-
-   ret := registerDriver (DRIVER_DESKTOP);
-   if ret = Unsigned_64'Last then
-      debugPrint ("desktop: register failed" & LF);
    end if;
 
    --  Validate the initial output before acquiring presentation buffers and
@@ -9635,6 +10560,12 @@ begin
          turnStartedUs := dispatchNow;
          turnWork := (statsEvents, statsRequests, statsPresentOps);
          collectPresentations;
+         if outputChangeNoticed and then not outputDrainRequested and then
+           not outputReopenPending and then not shutdownRequested
+         then
+            handleOutputChange;
+         end if;
+         armOutputWatch;
          if Desktop_Launch_Refresh.Can_Take (launchMenuOpen) then
             declare
                Fresh : Desktop_Launch.Menu;
@@ -9671,6 +10602,10 @@ begin
          --  repaint later. Both drains share a finite budget: input floods
          --  must still permit requests and rendering to make progress.
          Drain_Events;
+         --  Auto-repeat only once input is drained (a queued release wins).
+         if running and then not eventFound then
+            pumpKeyRepeat (running);
+         end if;
          if not running and then not shutdownRequested then
             shutdownRequested := True;
             outputReopenPending := False;
@@ -9683,6 +10618,9 @@ begin
          if outputReopenPending and then not outputDrainRequested and then not shutdownRequested then
             declare Ready : Boolean;
             begin
+               if modeChangePending then
+                  applyWantedModes;
+               end if;
                setupDisplayBuffer (Ready, False);
                outputReopenPending := not Ready;
                if Ready then scheduleRedraw; end if;
@@ -9714,6 +10652,13 @@ begin
               " invalid=" & Decimal (DM.Invalid) & " rejected=" & Decimal (DM.Rejected) & LF);
          end if;
          expireInputWaiters;
+         --  Secrets are wiped at their deadline, not only on the next paste.
+         if Desktop_Clipboard.Next_Deadline (Unsigned_64'Last) /= Unsigned_64'Last
+           and then Desktop_Clipboard.Expire (nowMs) and then clipboardMenuOpen
+         then
+            reloadClipboardMenu;
+            scheduleRedrawRect (inflateRect (clipboardMenuRect, 4));
+         end if;
          --  Input, requests and presentation are done for this turn;
          --  housekeeping (the period boundary, then report text) comes
          --  last, and only while nothing is pending. A turn that did work is
@@ -9740,6 +10685,8 @@ begin
                null;
             elsif not framePending and then not cursorPresentPending and then
               nextInputDeadline = 0 and then statusDueMs = 0 and then
+              Desktop_Clipboard.Next_Deadline (Unsigned_64'Last) = Unsigned_64'Last and then
+              not KR.Armed (keyRepeat) and then
               metricsDelayUs = Unsigned_64'Last and then not renderingPending and then
               not sourceRetirementPending and then not outputDrainRequested and then not outputReopenPending
             then
@@ -9752,10 +10699,24 @@ begin
                   now : constant Unsigned_64 := nowMs;
                   nextDueMs : Unsigned_64 := nextInputDeadline;
                   mayWait : Boolean := now /= Unsigned_64'Last;
+                  gpuWaitMode : Desktop_GPU_Wake.Wait_Mode;
+                  use type Desktop_GPU_Wake.Wait_Mode;
                begin
                   if statusDueMs /= 0 and then
                     (nextDueMs = 0 or else statusDueMs < nextDueMs)
                   then nextDueMs := statusDueMs; end if;
+                  declare
+                     secretDue : constant Unsigned_64 :=
+                       Desktop_Clipboard.Next_Deadline (Unsigned_64'Last);
+                  begin
+                     if secretDue /= Unsigned_64'Last and then
+                       (nextDueMs = 0 or else secretDue < nextDueMs)
+                     then nextDueMs := secretDue; end if;
+                  end;
+                  --  The next auto-repeat (Key_Repeat; same clock as GETTIME).
+                  if KR.Armed (keyRepeat) and then
+                    (nextDueMs = 0 or else KR.Next_Due (keyRepeat) < nextDueMs)
+                  then nextDueMs := KR.Next_Due (keyRepeat); end if;
                   if metricsDelayUs = 0 then
                      mayWait := False;
                   elsif mayWait and then metricsDelayUs /= Unsigned_64'Last then
@@ -9765,13 +10726,26 @@ begin
                         if nextDueMs = 0 or else Deadline < nextDueMs then nextDueMs := Deadline; end if;
                      end;
                   end if;
-                  if renderingPending or else sourceRetirementPending or else outputDrainRequested or else outputReopenPending then
-                     -- Bounded fallback until renderer completion has a kernel
-                     -- activity event. Input can wake this wait immediately.
-                     if now < Unsigned_64'Last - 1 then
-                        if nextDueMs = 0 or else now + 1 < nextDueMs then nextDueMs := now + 1; end if;
-                     else mayWait := False;
-                     end if;
+                  -- GPU work in flight: sleep on its completion event when the
+                  -- glue can arm one (Desktop_GPU_Wake), else the 1 ms timer.
+                  Desktop_GPU_Wake.Prepare_Wait (renderingPending, requestSequence, now, gpuWaitMode);
+                  if gpuWaitMode = Desktop_GPU_Wake.Look_Again then
+                     mayWait := False;
+                  elsif renderingPending or else sourceRetirementPending or else outputDrainRequested or else outputReopenPending then
+                     -- Bounded fallback: the event's (a lost answer), or the
+                     -- timer until renderer completion has an event. Input
+                     -- can wake this wait immediately.
+                     declare
+                        Step : constant Unsigned_64 :=
+                          (if gpuWaitMode = Desktop_GPU_Wake.Event and then not sourceRetirementPending
+                             and then not outputDrainRequested and then not outputReopenPending
+                           then Desktop_GPU_Wake.Event_Fallback_Ms else Desktop_GPU_Wake.Timer_Ms);
+                     begin
+                        if now < Unsigned_64'Last - Step then
+                           if nextDueMs = 0 or else now + Step < nextDueMs then nextDueMs := now + Step; end if;
+                        else mayWait := False;
+                        end if;
+                     end;
                   end if;
                   if not outputDrainRequested and then not outputReopenPending and then
                     (framePending or else cursorPresentPending) then
@@ -9781,6 +10755,9 @@ begin
                   if mayWait and then nextDueMs /= 0 then
                      activity := Wait_For_Activity_Until (nextDueMs);
                      if activity = Unavailable then running := False; end if;
+                     if renderingPending then
+                        Desktop_GPU_Wake.Woke (gpuWaitMode, now, nowMs);
+                     end if;
                   end if;
                end;
             end if;

@@ -1,7 +1,11 @@
 package body CuBit.Backend_Targets with SPARK_Mode is
+   procedure Set_Count (S : in out State; N : Buffer_Count) is
+   begin
+      if S.Stage = Unconfigured then S.Buffers := N; end if;
+   end Set_Count;
    procedure Cleared (S : in out State) is
    begin
-      if S.Stage in Unconfigured | Idle then S := (Idle, 0, 0);
+      if S.Stage in Unconfigured | Idle then S := (Idle, 0, 0, S.Buffers);
       else S.Stage := Failed; end if;
    end Cleared;
    procedure Prepare (S : in out State; Accepted : out Boolean) is
@@ -17,7 +21,7 @@ package body CuBit.Backend_Targets with SPARK_Mode is
    procedure Complete (S : in out State; ID : Identifier; Published : Boolean) is
    begin
       if S.Stage = In_Flight and ID = S.Pending and Published then
-         S := (Idle, 1 - S.Front, 0);
+         S := (Idle, (S.Front + 1) mod S.Buffers, 0, S.Buffers);
       else S.Stage := Failed; end if;
    end Complete;
    procedure Quarantine (S : in out State) is

@@ -36,6 +36,8 @@ uint32_t cubit_vulkan_upload_record(void *submission,void *upload,void *image,
         .imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1},.imageOffset={(int32_t)r->x,(int32_t)r->y,0},
         .imageExtent={r->width,r->height,1}};
     copy(c->command,u->buffer,s->image,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&region);
+    if(cubit_vulkan_job_note)
+        cubit_vulkan_job_note(CUBIT_VULKAN_JOB_UPLOAD,(uint64_t)r->width*r->height*(r->mask?1u:4u));
     layout.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;layout.dstAccessMask=VK_ACCESS_SHADER_READ_BIT;
     layout.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;layout.newLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     barrier(c->command,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,0,0,NULL,0,NULL,1,&layout);

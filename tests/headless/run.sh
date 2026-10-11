@@ -45,7 +45,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, desktop-doom, desktop-virtio-vga, virtio-gpu, or virtio-vga-primary
+  --test NAME          Test to run: boot-shell-nvme, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, threads, futex, clock, avx, rust-std, libc, processes, control-events, binutils, gcc, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
   --accel NAME         QEMU accelerator (for example: tcg,thread=multi)
   --cpus COUNT         Virtual CPUs, 1..4 (default: 4)
@@ -274,7 +274,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|desktop-doom|desktop-virtio-vga|virtio-gpu|virtio-vga-primary|bench-latency)
+    boot-shell-nvme|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|logs|ccl-remote|capability-security|network-authority|bench-net|bench-fs|threads|futex|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -639,8 +639,12 @@ case "$TEST_NAME" in
     storage-grants)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-storage-grants.ccl"
         ;;
-    desktop-display|desktop-virtio-vga)
+    desktop-display|desktop-virtio-vga|desktop-vm)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-display.ccl"
+        ;;
+    boot-timeline)
+        # docs/boot-timeline.md: the desktop-display boot plus the reader.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-boot-timeline.ccl"
         ;;
     input-stream)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-input-stream.ccl"
@@ -680,6 +684,12 @@ case "$TEST_NAME" in
         ;;
     files)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-files.ccl"
+        ;;
+    clipboard)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-clipboard.ccl"
+        ;;
+    key-repeat)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-key-repeat.ccl"
         ;;
     desktop-doom)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-doom-desktop.ccl"
@@ -735,6 +745,11 @@ if [ "$BENCH_LOAD" = 1 ]; then
         ' "$INIT_PROFILE" > "$TEMP_LOAD_PROFILE"
         INIT_PROFILE="$TEMP_LOAD_PROFILE"
     fi
+fi
+# desktop-vm mirrors run-desktop (2 GiB): large GPU banks (modes up to
+# 1920x1080) need at least 1 GiB (devmgr LARGE_BANK_MINIMUM_MEMORY).
+if [ "$TEST_NAME" = desktop-vm ]; then
+    QEMU_MEMORY="${QEMU_MEMORY:-2G}"
 fi
 # A desktop session (desktop.svc, its GPU buffers, fonts and workbench) needs
 # more than the 128M default. Resource-constrained sizing comes later.
@@ -926,7 +941,9 @@ if [ -n "$INIT_PROFILE" ]; then
             done
         fi
     fi
-    if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "desktop-dual-output" ]; then
+    # desktop-vm drags the workbench window (hardware pointer follows drags).
+    if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "desktop-dual-output" ] ||
+       [ "$TEST_NAME" = "desktop-vm" ]; then
         app=ccl-workbench.app
         if [ ! -f "$KERNEL_DIR/isodir/boot/$app" ]; then
             echo "headless: build ccl-workbench before desktop window tests" >&2
@@ -951,9 +968,13 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "render-launch-policy" ] ||
        [ "$TEST_NAME" = "config-tree" ] ||
        [ "$TEST_NAME" = "files" ] ||
+       [ "$TEST_NAME" = "clipboard" ] ||
+       [ "$TEST_NAME" = "key-repeat" ] ||
        [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
+       [ "$TEST_NAME" = "desktop-vm" ] ||
        [ "$TEST_NAME" = "desktop-doom" ] ||
-       [ "$TEST_NAME" = "virtio-vga-primary" ]; then
+       [ "$TEST_NAME" = "virtio-vga-primary" ] ||
+       [ "$TEST_NAME" = "boot-timeline" ]; then
         for DESKTOP_TEST_IMAGE_NAME in display.svc desktop.svc virtio-gpu.drv; do
             DESKTOP_TEST_IMAGE="$KERNEL_DIR/isodir/boot/$DESKTOP_TEST_IMAGE_NAME"
             # Explicit test-only compositor executable; never alter production staging.
@@ -1017,7 +1038,18 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
     fi
-    if [ "$TEST_NAME" = "virtio-vga-primary" ] || [ "$TEST_NAME" = "desktop-display" ]; then
+    if [ "$TEST_NAME" = "boot-timeline" ]; then
+        for TIMELINE_IMAGE in logstore.svc clock.svc boot-timeline.app; do
+            debugfs -w -R "rm $TIMELINE_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$TIMELINE_IMAGE $TIMELINE_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $TIMELINE_IMAGE (make boot-timeline)" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "virtio-vga-primary" ] || [ "$TEST_NAME" = "desktop-display" ] ||
+       [ "$TEST_NAME" = "boot-timeline" ]; then
         SHELL_TEST_IMAGE="$KERNEL_DIR/isodir/boot/shell.app"
         if [ ! -f "$SHELL_TEST_IMAGE" ]; then
             echo "headless: build shell first" >&2
@@ -1167,6 +1199,34 @@ if [ -n "$INIT_PROFILE" ]; then
     if [ "$TEST_NAME" = "config-tree" ]; then
         debugfs -w -R "rm config-inspector.app" "$TEMP_DISK" >/dev/null 2>&1
         debugfs -w -R "write $KERNEL_DIR/isodir/boot/config-inspector.app config-inspector.app" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+    fi
+    if [ "$TEST_NAME" = "clipboard" ]; then
+        for CLIPBOARD_TEST_IMAGE_NAME in files.app clipboard-check.app logs.app desktop.svc; do
+            CLIPBOARD_TEST_IMAGE="$KERNEL_DIR/isodir/boot/$CLIPBOARD_TEST_IMAGE_NAME"
+            if [ ! -f "$CLIPBOARD_TEST_IMAGE" ]; then
+                echo "headless: missing current clipboard test image: $CLIPBOARD_TEST_IMAGE" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm $CLIPBOARD_TEST_IMAGE_NAME" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $CLIPBOARD_TEST_IMAGE $CLIPBOARD_TEST_IMAGE_NAME" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $CLIPBOARD_TEST_IMAGE_NAME" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "key-repeat" ]; then
+        KEY_REPEAT_TEST_IMAGE="$KERNEL_DIR/isodir/boot/clipboard-check.app"
+        if [ ! -f "$KEY_REPEAT_TEST_IMAGE" ]; then
+            echo "headless: missing current key-repeat test image: $KEY_REPEAT_TEST_IMAGE" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm clipboard-check.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $KEY_REPEAT_TEST_IMAGE clipboard-check.app" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install clipboard-check.app" >&2
+            exit 1
+        fi
     fi
     if [ "$TEST_NAME" = "files" ]; then
         debugfs -w -R "mkdir lost+found/nested" "$TEMP_DISK" >/dev/null 2>&1
@@ -1855,6 +1915,18 @@ if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
    [ "$TEST_NAME" = "desktop-doom" ]; then
     VIDEO_ARGS=(-vga none -device virtio-vga,xres=1024,yres=768)
 fi
+if [ "$TEST_NAME" = "desktop-vm" ]; then
+    # run-desktop's devices: virtio-vga plus a virtio tablet (absolute
+    # pointer). VNC carries host resizes (SetDesktopSize, as a resized GTK
+    # window does); QEMU's cursor trace shows the host cursor plane.
+    VM_VNC_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-vnc-$$.sock"
+    VM_TRACE_LOG="${SERIAL_LOG}.cursor-trace.log"
+    rm -f "$VM_VNC_SOCKET" "$VM_TRACE_LOG"
+    VIDEO_ARGS=(-vga none -device virtio-vga,xres=1024,yres=768
+                -device virtio-tablet-pci
+                -vnc "unix:$VM_VNC_SOCKET"
+                -D "$VM_TRACE_LOG" -trace enable=virtio_gpu_update_cursor)
+fi
 if [ "$TEST_NAME" = "virtio-gpu-multi-output" ] ||
    [ "$TEST_NAME" = "display-discovery-multi-output" ]; then
     # QEMU 11.1 supports per-head initial modes. These are native mode hints;
@@ -1897,11 +1969,11 @@ if [ "$TEST_NAME" = "managed-ui" ]; then
     rm -f "$MONITOR_SOCKET"
     MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
 fi
-if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
+if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "clipboard" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
    [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
    [ "$TEST_NAME" = "logs" ] ||
-   [ "$TEST_NAME" = "desktop-doom" ] ||
+   [ "$TEST_NAME" = "desktop-doom" ] || [ "$TEST_NAME" = "boot-timeline" ] ||
    { [ "$TEST_NAME" = "servo" ] && [ -n "${SERVO_DESKTOP:-}" ]; }; then
     if ! command -v nc >/dev/null 2>&1; then
         echo "headless: desktop input regression requires nc" >&2
@@ -1939,6 +2011,12 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             exit 1
         fi
 
+        if [ "$TEST_NAME" = "boot-timeline" ]; then
+            # One key as soon as the PS/2 driver serves its consumer: the
+            # timeline's First_Input_Accepted is when Desktop takes it.
+            printf 'sendkey shift\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+            exit 0
+        fi
         if [ "$TEST_NAME" = "gpu-viewer" ]; then
             attached=0
             for ((attempt = 0; attempt < 250; attempt++)); do
@@ -2448,6 +2526,28 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-errors.ppm"
                 sleep 0.5
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            elif [ "${CCL_CONSOLE_DEMO:-}" = clipboard ]; then
+            # Typed copy and paste (CCL_CONSOLE_DEMO=clipboard,
+            # docs/clipboard.md): copy a result as an Integer, paste its
+            # literal back, evaluate it again; then the manager (Super+V).
+            {
+                sleep 0.5
+                type_keys shift-9 shift-equal spc 4 0 spc 2 shift-0
+                printf 'sendkey ret\n'
+                sleep 1.5
+                printf 'sendkey ctrl-c\n'
+                sleep 0.8
+                printf 'sendkey ctrl-v\n'
+                sleep 0.8
+                printf 'sendkey ret\n'
+                sleep 1.5
+                printf 'sendkey meta_l-v\n'
+                sleep 1
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-clipboard.ppm"
+                sleep 0.5
+                printf 'sendkey esc\n'
+                sleep 0.5
+            } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
             elif [ "${CCL_CONSOLE_DEMO:-}" = logs ]; then
             # What logstore keeps (CCL_CONSOLE_DEMO=logs): read it, lower it
             # to Debug through log-control, read it again.
@@ -2593,6 +2693,136 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 sleep 0.5
             } | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
             fi
+        elif [ "$TEST_NAME" = "clipboard" ]; then
+            # Desktop clipboard (docs/clipboard.md) by keyboard only: copy in
+            # clipboard-check, paste into Files' filter, a paste-once secret,
+            # the manager (Super+V), then typed copies from Files (names,
+            # paths) and Logs (a LogEntry) pasted into other apps. Each step
+            # waits for its marker.
+            clip_wait() {
+                local attempt
+                for ((attempt = 0; attempt < 150; attempt++)); do
+                    grep -aF "$1" "$SERIAL_LOG" >/dev/null 2>&1 && return 0
+                    sleep 0.1
+                done
+                echo "headless: clipboard step did not report: $1" >&2
+                exit 1
+            }
+            clip_keys() {
+                local key
+                for key in "$@"; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.15
+                done | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            }
+            clip_shot() {
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-$1.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            }
+            clip_count() {
+                grep -acF "$1" "$SERIAL_LOG" 2>/dev/null || true
+            }
+            clip_wait_count() {
+                local attempt
+                for ((attempt = 0; attempt < 150; attempt++)); do
+                    [ "$(clip_count "$1")" -ge "$2" ] && return 0
+                    sleep 0.1
+                done
+                echo "headless: clipboard step did not report $2 times: $1" >&2
+                exit 1
+            }
+            # Bring a window to the keyboard: Desktop names the window keys
+            # go to ("desktop: keys to TITLE"); Shift alone is a harmless probe.
+            clip_focus() {
+                local probe routed
+                for ((probe = 0; probe < 4; probe++)); do
+                    clip_keys shift
+                    sleep 0.3
+                    routed="$(grep -a "desktop: keys to " "$SERIAL_LOG" | tail -1 | tr -d '\r')"
+                    [ "$routed" = "desktop: keys to $1" ] && return 0
+                    clip_keys alt-tab
+                    sleep 0.4
+                done
+                echo "headless: $1 never took the keyboard" >&2
+                exit 1
+            }
+            clip_wait "clipboard-check: ready"
+            clip_wait "files: pane 1 listed @nvme:0/ "
+            clip_wait "logs: window ready"
+            clip_wait "clipboard-check: ungestured paste denied"
+            sleep 0.5
+            clip_shot start
+            clip_focus "Clipboard check"
+            # 1. Copy "lost" from the ordinary field ...
+            clip_keys l o s t ctrl-a ctrl-c
+            clip_wait "clipboard-check: copy field=name outcome=DONE"
+            clip_wait "desktop: clipboard offer entry= 1 kind=ordinary text= 4"
+            # ... and paste it into Files' filter in the other process.
+            clip_focus Files
+            clip_shot files-focused
+            clip_keys ctrl-v
+            clip_wait "files: pasted 4 characters into the filter"
+            clip_keys ret
+            clip_wait "files: pane 1 listed @nvme:0/lost+found "
+            # 2. A secret: copied from the masked field, pasted once.
+            clip_focus "Clipboard check"
+            clip_keys tab h u n t e r 2 ctrl-a ctrl-c
+            clip_wait "clipboard-check: copy field=secret outcome=DONE"
+            clip_wait "desktop: clipboard offer entry= 2 kind=sensitive"
+            sleep 0.3
+            clip_shot clipboard-check
+            clip_keys tab ctrl-a ctrl-v
+            clip_wait "clipboard-check: paste field=name outcome=DONE length= 7"
+            clip_wait "desktop: clipboard paste entry= 2 kind=sensitive consumed"
+            # The second paste cannot see the secret: the newest remaining
+            # entry ("lost") comes back instead.
+            clip_keys ctrl-a ctrl-v
+            clip_wait "clipboard-check: paste field=name outcome=DONE length= 4"
+            clip_wait "desktop: clipboard paste entry= 1 kind=ordinary"
+            # 3. The manager: Super+V, a screenshot, Escape.
+            clip_keys meta_l-v
+            clip_wait "desktop: clipboard manager open entries= 2"
+            sleep 0.5
+            clip_shot manager
+            clip_keys esc
+            sleep 0.3
+            # 4. Files copies the entry under the cursor as a typed
+            # List-String: back up to the root (the cursor lands on
+            # lost+found), Ctrl+C for its name, Ctrl+Shift+C for its path ...
+            clip_focus Files
+            clip_keys esc backspace
+            clip_wait_count "files: pane 1 listed @nvme:0/ entries=" 2
+            clip_keys ctrl-c
+            clip_wait "files: copy 1 names DONE"
+            clip_wait "desktop: clipboard offer entry= 3 kind=ordinary text= 10 typed=yes"
+            clip_keys ctrl-shift-c
+            clip_wait "files: copy 1 paths DONE"
+            clip_wait "desktop: clipboard offer entry= 4 kind=ordinary text= 18 typed=yes"
+            # ... and the path pastes into clipboard-check, another process.
+            clip_focus "Clipboard check"
+            clip_keys ctrl-a ctrl-v
+            clip_wait "clipboard-check: paste field=name outcome=DONE length= 18"
+            clip_wait "desktop: clipboard paste entry= 4 kind=ordinary"
+            # 5. Logs copies its first record as a typed LogEntry, pastes it
+            # into its own search, and clipboard-check pastes it too.
+            clip_focus Logs
+            clip_keys home ctrl-c
+            clip_wait "logs: copy record DONE"
+            clip_wait "desktop: clipboard offer entry= 5 kind=ordinary"
+            clip_keys ctrl-v
+            clip_wait "logs: search chord DONE"
+            clip_wait "desktop: clipboard paste entry= 5 kind=ordinary"
+            clip_focus "Clipboard check"
+            clip_keys ctrl-a ctrl-v
+            clip_wait_count "desktop: clipboard paste entry= 5 kind=ordinary" 2
+            # 6. The manager lists every app's copy.
+            clip_keys meta_l-v
+            clip_wait "desktop: clipboard manager open entries= 5"
+            sleep 0.5
+            clip_shot manager-apps
+            clip_keys esc
+            sleep 0.3
+            clip_keys esc
+            clip_wait "clipboard-check: closed"
         elif [ "$TEST_NAME" = "files" ]; then
             # Files (docs/files-app.md) by keyboard only: no pixel
             # coordinates, so layout changes cannot break it. Each step
@@ -2725,6 +2955,28 @@ if { [ "$TEST_NAME" = "display-dual-output" ] || [ "$TEST_NAME" = "desktop-dual-
         observer=check-dual-display.py
     fi
     python3 "$ROOT_DIR/tests/headless/$observer" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" &
+    INPUT_INJECTOR_PID=$!
+fi
+
+if [ "$TEST_NAME" = "desktop-vm" ]; then
+    # Absolute pointer and dynamic resolution, driven from the host; the
+    # checker quits QEMU when done (tests/vm-experience/check-desktop-vm.py).
+    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    rm -f "$QMP_SOCKET"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/vm-experience/check-desktop-vm.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$VM_VNC_SOCKET" "$VM_TRACE_LOG" &
+    INPUT_INJECTOR_PID=$!
+fi
+
+if [ "$TEST_NAME" = "key-repeat" ]; then
+    # Keys held through QEMU's PS/2 keyboard (QMP); the checker reads the
+    # text field's length and quits QEMU (tests/key-repeat/check-headless.py).
+    QMP_SOCKET="${TMPDIR:-/tmp}/cubit-${TEST_NAME}-qmp-$$.sock"
+    rm -f "$QMP_SOCKET"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/key-repeat/check-headless.py" \
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" &
     INPUT_INJECTOR_PID=$!
 fi
@@ -3638,6 +3890,15 @@ ccl-console: REPL completed: Expression does not type-check: field output takes 
 ccl-console: REPL completed: Task<Run_Outcome>: Done (Run_Outcome.Finished (Unix_Exit 1))
 ccl-console: REPL completed: Task<Run_Outcome>: Done (Run_Outcome.Finished (Unix_Exit 0))
 "
+        elif [ "${CCL_CONSOLE_DEMO:-}" = clipboard ]; then
+            required_markers="$required_markers
+ccl-console: REPL completed: Integer: 42
+ccl-console: copy typed Integer DONE
+desktop: clipboard offer entry= 1 kind=ordinary text= 2 typed=yes
+desktop: clipboard paste entry= 1 kind=ordinary typed
+ccl-console: pasted typed Integer
+desktop: clipboard manager open entries= 1
+"
         elif [ -z "${CCL_CONSOLE_DEMO:-}" ]; then
             required_markers="$required_markers
 ccl-console: REPL completed: Integer: 42
@@ -3788,6 +4049,15 @@ shell: cwd=@nvme:0/
 ccl-workbench: native window ready
 "
         ;;
+    boot-timeline)
+        required_markers="
+BT-HEADER tsc-hz=
+BT-PATH FIRST FRAME PRESENTED: power-on -> goal along spawns and long waits
+BT-BUDGET first-frame=
+BOOT-TIMELINE: COMPLETE
+"
+        grep -aE '^(BT-|BOOT-TIMELINE)' "$SERIAL_LOG" || true
+        ;;
     desktop-dual-output)
         required_markers="
 desktop: active outputs= 2 primary= 0
@@ -3929,6 +4199,40 @@ MESA-NATIVE: instance 1 destroyed
 TEST: PASS native Mesa lifecycle without provider (NO GPU)
 "
         ;;
+    clipboard)
+        required_markers="
+clipboard-check: ready
+clipboard-check: ungestured paste denied
+desktop: clipboard paste denied reason=
+desktop: clipboard offer entry= 1 kind=ordinary text= 4
+files: pasted 4 characters into the filter
+files: pane 1 listed @nvme:0/lost+found entries=
+desktop: clipboard offer entry= 2 kind=sensitive
+desktop: clipboard paste entry= 2 kind=sensitive consumed
+clipboard-check: paste field=name outcome=DONE length= 7
+clipboard-check: paste field=name outcome=DONE length= 4
+desktop: clipboard manager open entries= 2
+desktop: keys to Logs
+files: copy 1 names DONE
+desktop: clipboard offer entry= 3 kind=ordinary text= 10 typed=yes
+files: copy 1 paths DONE
+desktop: clipboard offer entry= 4 kind=ordinary text= 18 typed=yes
+clipboard-check: paste field=name outcome=DONE length= 18
+desktop: clipboard paste entry= 4 kind=ordinary
+logs: copy record DONE
+desktop: clipboard offer entry= 5 kind=ordinary
+logs: search chord DONE
+desktop: clipboard manager open entries= 5
+clipboard-check: closed
+"
+        ;;
+    key-repeat)
+        required_markers="
+clipboard-check: ready
+clipboard-check: copy field=name outcome=
+clipboard-check: closed
+"
+        ;;
     files)
         required_markers="
 files: starting
@@ -3953,6 +4257,27 @@ virtio-gpu: page flipping active
 desktop: active outputs= 1 primary= 0
 desktop: internal shell active
 shell: cwd=@nvme:0/
+"
+        ;;
+    desktop-vm)
+        required_markers="
+display: backend virtio-gpu
+display: output 0 hardware cursor planes 1
+devmgr: virtio-input driver started (MSI-X)
+virtio-input: tablet ready
+virtio-input: absolute pointer reports published
+desktop: absolute pointer source on output 0
+desktop: pointer absolute (host-pointer cursor planes eligible: yes)
+virtio-gpu: display change head 0 preferred 1280x800
+display: output 0 host prefers 1280x800
+desktop: output 0 host mode 1280x800
+virtio-gpu: head 0 mode 1280x800
+display: output 0 mode 1280x800
+desktop: output 0 re-laid out 1280x800
+virtio-gpu: head 0 mode 800x600
+desktop: output 0 re-laid out 800x600
+desktop: output 0 re-laid out 1024x768
+desktop: internal shell active
 "
         ;;
     desktop-doom)
@@ -4018,7 +4343,7 @@ case "$TEST_NAME" in
         required_markers="$required_markers
 DISPLAY-DISCOVERY-CHECK: PASS
 DISPLAY-ASYNC-CHECK: PASS" ;;
-    input-stream|bench-input|desktop-protocol|desktop-doom|desktop-display|desktop-virtio-vga)
+    input-stream|bench-input|desktop-protocol|desktop-doom|desktop-display|desktop-virtio-vga|desktop-vm)
         required_markers="$required_markers
 desktop: asynchronous presentation active
 desktop: asynchronous frame released" ;;
@@ -4182,6 +4507,25 @@ if [ "$TEST_NAME" = "desktop-display" ]; then
     fi
 fi
 
+if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = clipboard ] &&
+   [ "$(grep -acF 'ccl-console: REPL completed: Integer: 42' "$SERIAL_LOG")" -lt 2 ]; then
+    echo "headless: the pasted literal was not evaluated back to the same value" >&2
+    exit 1
+fi
+
+if [ "$TEST_NAME" = "clipboard" ]; then
+    # Paste once: the secret is delivered exactly once, and no unrequested
+    # paste is ever allowed.
+    if [ "$(grep -acF 'desktop: clipboard paste entry= 2' "$SERIAL_LOG")" != 1 ]; then
+        echo "headless: the sensitive entry was not delivered exactly once" >&2
+        exit 1
+    fi
+    if grep -aF "clipboard-check: ungestured paste ALLOWED" "$SERIAL_LOG" >/dev/null; then
+        echo "headless: a paste without a gesture was allowed" >&2
+        exit 1
+    fi
+fi
+
 if [ "$TEST_NAME" = "files" ]; then
     # The read-only grant: making a folder must have been refused.
     if ! grep -aE 'files: status Stopped at x: (not granted|the place is read-only)' \
@@ -4191,7 +4535,7 @@ if [ "$TEST_NAME" = "files" ]; then
     fi
 fi
 
-if { [ "$TEST_NAME" = "desktop-virtio-vga" ] ||
+if { [ "$TEST_NAME" = "desktop-virtio-vga" ] || [ "$TEST_NAME" = "desktop-vm" ] ||
      [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
      [ "$TEST_NAME" = "logs" ] ||
      [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||

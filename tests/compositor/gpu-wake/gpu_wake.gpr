@@ -1,0 +1,16 @@
+project GPU_Wake is
+   -- GPU-001 step 3 follow-up, Linux-hosted: Desktop_GPU_Wake (production)
+   -- with a scripted glue hook and logs. DESKTOP_SRC points at a mutated
+   -- copy of the unit for mutation checks.
+   Desktop_Src := external ("DESKTOP_SRC", "../../../userspace/services/desktop");
+   for Source_Dirs use (".", Desktop_Src, "../../../userspace/lib/compositor", "../../../userspace/runtime/gnat");
+   for Source_Files use
+     ("cubit.ads", "cubit-messages.ads", "compositor_requests.ads", "compositor_requests.adb",
+      "desktop_logs.ads", "desktop_logs.adb", "desktop_gpu_wake_hook.ads", "desktop_gpu_wake_hook.adb",
+      "desktop_gpu_wake.ads", "desktop_gpu_wake.adb", "gpu_wake_tests.adb");
+   for Object_Dir use external ("GPU_WAKE_OBJ", "build");
+   for Main use ("gpu_wake_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O1", "-I-");
+   end Compiler;
+end GPU_Wake;

@@ -25,6 +25,19 @@ package Desktop_Pointer_Plane is
    --  Without cursor planes the pointer simply stays composited.
    procedure Start;
    function Active return Boolean;
+   --  Every output was released, and display dropped the request with the
+   --  lease: forget it (no completion of it is awaited any more). The next
+   --  Start re-creates it in the current mode with the newest shape.
+   procedure Reset;
+
+   --  The pointer's input mode follows the source that moved it last. A
+   --  host-pointer plane (a virtual GPU's cursor, which the host draws as
+   --  its own pointer) is eligible only while the pointer is absolute:
+   --  QEMU shows it as the host pointer only for absolute input. A change
+   --  re-creates the request with the new mode (and its shape) once no
+   --  request is in flight; until then the old mode stays in force.
+   procedure Set_Absolute (Absolute : Boolean; Sequence : in out Interfaces.Unsigned_64);
+   function Absolute return Boolean;
 
    --  Desktop space: output Output's top-left in pointer coordinates. Only
    --  unscaled, unrotated outputs can take a hardware pointer: Exact = False
@@ -42,6 +55,9 @@ package Desktop_Pointer_Plane is
    --  Newest pointer position; sent at once or after the move in flight.
    procedure Move
      (X, Y : Integer; Sequence : in out Interfaces.Unsigned_64);
+   --  Once per loop turn: send the newest position if a send is due (a
+   --  move display.svc's queue refused is never left behind).
+   procedure Retry (Sequence : in out Interfaces.Unsigned_64);
 
    --  The newest plan puts the pointer on a hardware plane.
    function Hardware return Boolean;

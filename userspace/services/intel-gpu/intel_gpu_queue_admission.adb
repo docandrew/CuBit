@@ -1,3 +1,4 @@
+with CuBit.GPU_Queues.Kinds;
 package body Intel_GPU_Queue_Admission with SPARK_Mode is
 
    function Decide
@@ -17,7 +18,8 @@ package body Intel_GPU_Queue_Admission with SPARK_Mode is
       elsif Operation not in Q.Execute | Q.Signal then
          Result.Cause := Q.Unsupported_Opcode;
          return Result;
-      elsif D.Flags /= 0 then
+      elsif D.Flags > CuBit.GPU_Queues.Kinds.Kinds_Mask then
+         --  Only the job-kind bits (an accounting hint) may be set.
          Result.Cause := Q.Bad_Flags;
          return Result;
       elsif not Context_Named (D, View) then

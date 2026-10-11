@@ -1,3 +1,4 @@
+with "runtime_ids.gpr";
 project TCP_Session_Tests is
    for Source_Dirs use (".", "../../userspace/services/netstack", "../../userspace/net/src");
    for Object_Dir use "build";

@@ -7,7 +7,7 @@ package body Config_Worker_Startup with SPARK_Mode is
    function Authorized_Config_Request
      (Sender : CuBit.Messages.Process_ID; Tag : Interfaces.Unsigned_64;
       Registered_Config : CuBit.Messages.Process_ID) return Boolean is
-     (CuBit.Messages."/=" (Registered_Config, CuBit.Messages.No_Process) and then
+     (CuBit.Messages.Is_Process (Registered_Config) and then
       CuBit.Messages."=" (Sender, Registered_Config) and then
       Tag = CuBit.Messages.To_Word (Registered_Config));
    function Valid_Attachment (Request : CuBit.Messages.Message) return Boolean is

@@ -5,7 +5,10 @@ package body ACPI_FADT.Transactions with SPARK_Mode is
      Post => Unsigned_64 (High) - Unsigned_64 (Low) = Unsigned_64 (High - Low);
    procedure Byte_Difference (Low, High : Natural) is
    begin
-      pragma Assert (Unsigned_64 (High) = Unsigned_64 (Low) + Unsigned_64 (High - Low));
+      pragma Assert (Unsigned_64 (Low) <= Unsigned_64 (High));
+      pragma Assert (Unsigned_64 (High) - Unsigned_64 (Low) <= 63);
+      pragma Assert
+        (Natural (Unsigned_64 (High) - Unsigned_64 (Low)) = High - Low);
    end Byte_Difference;
    function Describe
      (Item : Generic_Address; Width : Access_Width;

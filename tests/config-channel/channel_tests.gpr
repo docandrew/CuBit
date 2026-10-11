@@ -20,7 +20,7 @@ project Channel_Tests is
       "config_worker_protocol.ads", "config_worker_protocol.adb",
       "ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-objects.ads", "ccl-objects.adb",
       "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
-      "cubit.ads", "cubit-messages.ads", "cubit-messages.adb",
+      "cubit.ads", "cubit-messages.ads", "cubit-messages.adb", "cubit-process_ids.ads", "cubit-process_ids.adb",
       "cubit-memory_grants.ads", "cubit-memory_grants.adb", "cubit-grant_references.ads");
    for Object_Dir use "build";
    for Exec_Dir use "build";

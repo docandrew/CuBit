@@ -22,7 +22,13 @@ with Process;
 with Segment;
 with Util;
 
-package PerCPUData is
+-- Running_Context: which thread this CPU is running, as the running code
+-- sees it. It is not volatile to that code: whichever CPU it runs on, the
+-- current thread is itself, and a thread's process never changes. Only the
+-- scheduler and the context switch (outside SPARK) change it.
+package PerCPUData with
+    Abstract_State => Running_Context
+is
     ---------------------------------------------------------------------------
     -- Each CPU has one of these data structures associated with it.
     -- @field cpuNum - the CPU number this record is for
@@ -154,10 +160,14 @@ package PerCPUData is
     ---------------------------------------------------------------------------
     -- The process of the thread running on this CPU (the caller's identity
     -- for capabilities, IPC and memory).
-    function getCurrentPID return Process.ProcessID;
+    function getCurrentPID return Process.ProcessID with
+        Global  => (Input => Running_Context),
+        Depends => (getCurrentPID'Result => Running_Context);
 
     -- The thread running on this CPU (for scheduling and blocking).
-    function getCurrentThread return Process.ThreadID;
+    function getCurrentThread return Process.ThreadID with
+        Global  => (Input => Running_Context),
+        Depends => (getCurrentThread'Result => Running_Context);
 
     ---------------------------------------------------------------------------
     -- IST (Interrupt Stack Table) stacks for critical exceptions.

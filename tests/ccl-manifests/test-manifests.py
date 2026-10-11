@@ -700,10 +700,12 @@ class Manifests(unittest.TestCase):
             '(request-scheduling', '(requests-none)\n  (request-scheduling')).returncode, 0)
 
     def test_driver_draft_manifests(self):
-        # Draft driver manifests (not yet attached) against the slots devmgr
-        # hand-mints today. Differences are listed so a migration handles them
-        # deliberately: ps2 mouse notification (devmgr 9, now reserved for
-        # scheduling), hda and mixer registration (devmgr 8).
+        # Driver manifests against the slots devmgr mints. nvme, xhci,
+        # virtio-net and hda are typed and linked: devmgr installs their
+        # interrupt capability in the slot named here (docs/msi-interrupts.md).
+        # ps2, ata and mixer are drafts. Differences are listed so a migration
+        # handles them deliberately: ps2 mouse notification (devmgr 9, now
+        # reserved for scheduling), hda and mixer registration (devmgr 8).
         catalog = (ROOT / 'userspace/ccl/catalogs/driver-services.ccl').read_text()
         expected = {
             'nvme': {'registers': 4, 'completion': 5, 'queues': 6, 'registration': 7, 'ready': 15},

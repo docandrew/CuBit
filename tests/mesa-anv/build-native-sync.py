@@ -30,7 +30,7 @@ for name in ("gpu-timeline-sync-test", "gpu-queue-mock"):
     subprocess.run(args + ["-UNDEBUG", "-DCUBIT_SYNC_NATIVE_TEST", "-I" + str(native)],
                    cwd=build, check=True)
     objects.append(str(out / (name + ".o")))
-subprocess.run(["gnatmake", "-q", "-c", "-gnatA", "-gnat2022", "-O2", "-mno-red-zone", "-fno-pic",
+subprocess.run(["gnatmake", "-q", "-c", "-gnatA", "-gnat2022", "-gnatp", "-O2", "-mno-red-zone", "-fno-pic",
                 "--RTS=" + str(root / "userspace/runtime"), "-I" + str(native),
                 str(native / "native_gpu_timeline.adb")], cwd=out, check=True)
 objects.append(str(out / "native_gpu_timeline.o"))

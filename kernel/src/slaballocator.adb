@@ -137,6 +137,11 @@ is
         for b in 1..pool.numBlocks loop
             BuddyAllocator.free (pool.blockOrder, pool.blocks(b));
             pool.blocks(b) := System.Null_Address;
+            pragma Loop_Invariant
+              (pool.numBlocks = pool.numBlocks'Loop_Entry and then
+               BuddyAllocator."=" (pool.blockOrder, pool.blockOrder'Loop_Entry) and then
+               (for all c in b + 1 .. pool.numBlocks =>
+                  pool.blocks (c) = pool.blocks'Loop_Entry (c)));
         end loop;
 
         pool.initialized := False;

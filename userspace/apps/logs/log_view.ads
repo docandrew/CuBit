@@ -7,6 +7,7 @@ with CuBit.UI.State;
 with CuBit.UI.Tables;
 with CuBit.Log_Records;
 with CuBit.Log_Protocol;
+with Clipboard_Text;
 with Log_Viewport;
 
 --  The Logs app's view (docs/logs-app.md): what logstore delivers, as a live
@@ -126,6 +127,25 @@ package Log_View is
    --  The message of the Row'th shown row (1 = top of the table).
    function Row_Text (State : View_State; Row : Positive) return String;
    function Selected_Text (State : View_State) return String;
+
+   --  Copy and paste (docs/clipboard.md). The platform owns the clipboard
+   --  calls; the view says what to copy and takes what is pasted.
+   function Search_Focused (State : View_State) return Boolean;
+   --  Run Process on the search field (a clipboard chord through
+   --  CuBit.UI.Editor_Clipboard), focusing it first when Focus is set; the
+   --  matches follow any change.
+   generic
+      with procedure Process (Field : in out CuBit.UI.Editor.Edit_State; Changed : out Boolean);
+   procedure Edit_Search_Field (State : in out View_State; Focus : Boolean);
+   --  The selected record as a typed CCL LogEntry (logs.minimum's schema,
+   --  CCL.Interfaces.Logs): Text gets the line the detail pane shows,
+   --  Literal "(LogEntry time Severity.Level source \"message\")". Present
+   --  is False when no record is selected (a gap row copies as text only,
+   --  with Literal cleared).
+   LOG_ENTRY_TYPE : constant String := "LogEntry";
+   procedure Selected_Copy
+     (State : View_State; Text, Literal : in out Clipboard_Text.Builder;
+      Present : out Boolean);
    --  New records not yet looked at while paused.
    function Unseen (State : View_State) return Natural;
    --  The first row drawn and the selected row (0: none), in shown rows.

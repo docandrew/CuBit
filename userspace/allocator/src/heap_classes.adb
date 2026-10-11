@@ -9,17 +9,22 @@ package body Heap_Classes with SPARK_Mode is
    function Class_For (Size : Request_Size) return Size_Class is
      (Classes (Bucket ((Size - 1) / 16 + 1)));
 
-   subtype Scale_Factor is Positive range 16 .. 4_096;
-   function Scale_For (Class : Size_Class) return Scale_Factor is
-     (case Class is
-        when Bytes_16 => 4_096, when Bytes_32 => 2_048, when Bytes_64 => 1_024,
-        when Bytes_128 => 512, when Bytes_256 => 256, when Bytes_512 => 128,
-        when Bytes_1024 => 64, when Bytes_2048 => 32, when Bytes_4096 => 16);
    function Quotient (Relative : Geometry_Offset; Class : Size_Class) return Natural is
    begin
-      -- The bounded operands keep the product below 2**32. Unsigned division
-      -- avoids signed-rounding corrections; the public contract stays integer.
-      return Natural ((Interfaces.Unsigned_32 (Relative) *
-                       Interfaces.Unsigned_32 (Scale_For (Class))) / 65_536);
+      -- Every stride is a power of two: one constant divisor per class of a
+      -- non-negative operand, so the compiler emits a shift and the provers
+      -- see linear arithmetic (a shared scale-and-divide form left the
+      -- contract unproved).
+      case Class is
+         when Bytes_16 => return Relative / 16;
+         when Bytes_32 => return Relative / 32;
+         when Bytes_64 => return Relative / 64;
+         when Bytes_128 => return Relative / 128;
+         when Bytes_256 => return Relative / 256;
+         when Bytes_512 => return Relative / 512;
+         when Bytes_1024 => return Relative / 1_024;
+         when Bytes_2048 => return Relative / 2_048;
+         when Bytes_4096 => return Relative / 4_096;
+      end case;
    end Quotient;
 end Heap_Classes;

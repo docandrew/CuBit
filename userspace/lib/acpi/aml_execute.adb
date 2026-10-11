@@ -425,7 +425,9 @@ package body AML_Execute with SPARK_Mode is
             Source_Name : AML_Names.Name_Result := (Kind => AML_Names.Truncated);
             Left : Datum := (Value_Kind => Integer_Datum, Number => 0, Origin => AML_Decode.Ordinary_Integer);
             Left_Slot : Slot_Number := 0;
-            Left_Concat, Right_Concat : Concatenation_Operand;
+            Left_Concat, Right_Concat : Concatenation_Operand :=
+              (Kind => Data_Operand,
+               Value => (Value_Kind => Integer_Datum, Number => 0, Origin => AML_Decode.Ordinary_Integer));
             Left_Provenance, Right_Provenance : Concatenation_Provenance := Stored_Value;
             Has_Left : Boolean := False;
             Has_Middle : Boolean := False;

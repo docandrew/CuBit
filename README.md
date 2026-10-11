@@ -44,9 +44,15 @@ Alire), GRUB and image tools, and QEMU.
    (the desktop's renderer). Allow plenty of disk space; the Mesa build
    directory alone grows to several gigabytes. Later builds are incremental.
 
-`run-desktop` boots a 4-CPU, 2 GiB q35 machine with an NVMe disk, virtio
-networking, HDA audio and a 1024x768 virtio-vga display, in a GTK window. The
-kernel's serial output goes to `kernel/serial_output.log`.
+`run-desktop` boots a 4-CPU, 2 GiB q35 machine in a GTK window, with an NVMe
+disk, virtio networking, HDA audio, a virtio-vga display and a virtio tablet.
+The kernel's serial output goes to `kernel/serial_output.log`.
+
+The mouse is never grabbed: the tablet reports where the host pointer is, so
+the pointer moves in and out of the window freely, and CuBit's arrow is
+drawn as the host's own pointer. The desktop starts at 1024x768 and follows
+the window when you resize it. See [docs/vm-guide.md](docs/vm-guide.md) for
+the QEMU options, the limits and what to check.
 
 What you'll see
 ---------------

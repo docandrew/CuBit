@@ -169,12 +169,13 @@ package body Intel_GPU_Session_Queue with SPARK_Mode is
 
    procedure Observe
      (S : in out Session; C : Context_Index; Read_OK : Boolean; Observed : Value;
-      Gate_Open : Boolean; Now, Hang_Budget : Microseconds;
+      Gate_Open, Head_Started : Boolean; Now, Hang_Budget, Patience : Microseconds;
       Result : out Ledgers.Observation)
    is
       Before : constant Session := S with Ghost;
    begin
-      Ledgers.Observe (S.Ledgers_Of (C), Read_OK, Observed, Gate_Open, Now, Hang_Budget, Result);
+      Ledgers.Observe (S.Ledgers_Of (C), Read_OK, Observed, Gate_Open, Head_Started, Now,
+                       Hang_Budget, Patience, Result);
       Windows.Retire (S.Windows_Of (C), Windows.Value (Ledgers.Completed (S.Ledgers_Of (C))));
       Lemma_Total_Change (Before, S, C);
    end Observe;

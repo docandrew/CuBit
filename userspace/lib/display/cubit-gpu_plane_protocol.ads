@@ -26,10 +26,12 @@ package CuBit.GPU_Plane_Protocol with Pure, SPARK_Mode is
    use type D.Wire_Message;
 
    --  0x0A20.. belong to the Intel render/buffer protocol.
-   type Operation is (Query, Map_Plane, Show_Plane, Move_Plane, Hide_Plane);
+   type Operation is
+     (Query, Map_Plane, Show_Plane, Move_Plane, Hide_Plane, Describe_Scanout);
    for Operation use
      (Query => 16#0A10#, Map_Plane => 16#0A11#, Show_Plane => 16#0A12#,
-      Move_Plane => 16#0A13#, Hide_Plane => 16#0A14#);
+      Move_Plane => 16#0A13#, Hide_Plane => 16#0A14#,
+      Describe_Scanout => 16#0A15#);
    function Code (Item : Operation) return Unsigned_32 is
      (Operation'Enum_Rep (Item));
 
@@ -142,6 +144,40 @@ package CuBit.GPU_Plane_Protocol with Pure, SPARK_Mode is
    function Decode_Move (Wire : D.Wire_Message) return Move_Decoding
      with Post => (if Decode_Move'Result.Valid then
                      Encode (Decode_Move'Result.Value) = Wire);
+
+   --  Describe_Scanout: which scanout the driver's planes overlay on the
+   --  routed output. A driver that owns its output's scanout answers
+   --  Driver_Output. A driver that overlays a firmware framebuffer it found
+   --  being scanned out (Intel on the firmware mode) answers
+   --  Firmware_Framebuffer with that framebuffer's geometry; display uses
+   --  the planes on its firmware output only when the geometry equals the
+   --  framebuffer the kernel handed it. A driver without planes answers
+   --  Unsupported (a one-word status), which decodes as invalid here.
+   type Scanout_Source is (Driver_Output, Firmware_Framebuffer);
+   for Scanout_Source use (Driver_Output => 1, Firmware_Framebuffer => 2);
+   type Scanout is record
+      Source : Scanout_Source := Driver_Output;
+      Width, Height : D.DP.Positive_Extent := 1;
+      Pitch : D.DP.Buffer_Pitch := 0;
+   end record;
+   type Scanout_Decoding (Valid : Boolean := False) is record
+      case Valid is
+         when True => Value : Scanout;
+         when False => null;
+      end case;
+   end record;
+   Describe_Request : constant D.Wire_Message :=
+     (Label => Operation'Enum_Rep (Describe_Scanout), Length => Payload_Words,
+      Words => [0, 0, 0, 0], others => <>);
+   function Encode (Item : Scanout) return D.Wire_Message is
+     (Label => Code (Describe_Scanout), Length => Payload_Words,
+      Words => [Scanout_Source'Enum_Rep (Item.Source),
+                Unsigned_64 (Item.Width), Unsigned_64 (Item.Height),
+                Unsigned_64 (Item.Pitch)],
+      others => <>);
+   function Decode_Scanout (Wire : D.Wire_Message) return Scanout_Decoding
+     with Post => (if Decode_Scanout'Result.Valid then
+                     Encode (Decode_Scanout'Result.Value) = Wire);
 
    --  Positions as two 32-bit two's complement halves (x low, y high).
    function Pack (Item : Position) return Unsigned_64;

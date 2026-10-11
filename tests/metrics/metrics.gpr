@@ -8,7 +8,7 @@ project Metrics is
       "cubit-metric_protocol.ads",
       "cubit-metric_batches.ads", "cubit-metric_batches.adb",
       "metric_histograms.ads", "metric_histograms.adb",
-      "metric_store.ads", "metric_store.adb");
+      "metric_store.ads", "metric_store.adb", "metric_history.ads", "metric_history.adb");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";
    for Main use ("main.adb");

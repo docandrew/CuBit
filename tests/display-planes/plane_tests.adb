@@ -25,7 +25,7 @@ procedure Plane_Tests is
      PP.Report_Decoding, PP.Plan_Frame_Decoding, PP.Image_Decoding,
      PP.Move_Decoding, PP.Identity_Decoding;
    use all type GP.Description_Decoding, GP.Plane_Decoding, GP.Show_Decoding,
-     GP.Move_Decoding, GP.Buffer_Decoding;
+     GP.Move_Decoding, GP.Buffer_Decoding, GP.Scanout_Decoding;
 
    Checks : Natural := 0;
    procedure Check (Condition : Boolean; Name : String) is
@@ -422,6 +422,27 @@ procedure Plane_Tests is
       Check (not GP.Decode_Buffer (Bad).Valid, "padded pitch rejected");
       Check (GP.Accepted_Reply (GP.Show_Plane,
                GP.Encode_Status (GP.Show_Plane, GP.Accepted)), "status");
+      declare
+         Firmware : constant GP.Scanout :=
+           (GP.Firmware_Framebuffer, 1920, 1080, 7680);
+      begin
+         W := GP.Encode (Firmware);
+         Check (W.Label = 16#0A15# and then
+                  GP.Decode_Scanout (W) = (True, Firmware), "scanout round trip");
+         Check (GP.Decode_Scanout (GP.Encode (GP.Scanout'(GP.Driver_Output, 640, 480, 2560))) =
+                  (True, (GP.Driver_Output, 640, 480, 2560)), "driver output scanout");
+         Bad := W; Bad.Words (0) := 0;
+         Check (not GP.Decode_Scanout (Bad).Valid, "unknown scanout source");
+         Bad := W; Bad.Words (1) := 0;
+         Check (not GP.Decode_Scanout (Bad).Valid, "zero scanout width");
+         Bad := W; Bad.Reserved := 1;
+         Check (not GP.Decode_Scanout (Bad).Valid, "routed scanout reply");
+         Check (not GP.Decode_Scanout
+                  (GP.Encode_Status (GP.Describe_Scanout, GP.Unsupported)).Valid,
+                "unsupported status is no scanout");
+         Check (GP.Describe_Request.Label = 16#0A15# and then
+                  GP.Describe_Request.Length = 4, "describe request");
+      end;
    end GPU_Codec_Cases;
 begin
    Planner_Cases;

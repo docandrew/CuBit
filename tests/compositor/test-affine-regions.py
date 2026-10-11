@@ -15,7 +15,7 @@ for variant in ['full','window']:
  c=(root/'userspace/lib/compositor/vulkan_affine.c').read_text()
  host=(root/'tests/compositor/vulkan_affine_host.c').read_text()
  if variant=='window':
-  a='return record_affine(borrowed,d,c,width,height,mask,argb,NULL);'
+  a='return record_affine(borrowed,d,c,width,height,mask,argb,NULL,NULL);'
   assert c.count(a)==1
   c=c.replace(a,'const struct cubit_vulkan_source_region region={2,3,7,9,32,24};\n    return cubit_vulkan_record_affine_region(borrowed,d,c,width,height,mask,argb,&region);')
   a='*sx=(int)(u*W/ud);*sy=(int)(v*H/vd);return 1;';assert host.count(a)==1

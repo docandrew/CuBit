@@ -66,6 +66,16 @@ MUTATIONS = {
         'userspace/services/desktop/desktop_gpu_scene-backdrop.adb',
         '      Set_Clip (S, Damage, Accepted);\n      if not Accepted then return; end if;\n',
         ''),
+    'cold capture stops staging other images (GPU-004)': (SCENE,
+        'userspace/services/desktop/desktop_gpu_scene-images.adb',
+        '         Registry.Ensure (Sources, Key, Version, Image, Bytes, Ticket, Result);\n'
+        '         if Result = Registry.I.Unsafe then Scene.Status := Quarantined; end if;\n'
+        '         return;',
+        '         return;'),
+    'one transfer submission per staged image (GPU-004)': (SCENE,
+        'userspace/services/desktop/desktop_image_source.adb',
+        'if Copied then D.Stage_Write (Write, True, Reply);',
+        'if Copied then D.Submit_Write (Write, True, Reply);'),
     'scene budget back to 512 layers': (SCENE,
         'userspace/lib/compositor/vulkan_submission.ads',
         'Maximum_Draws : constant := 16384;',

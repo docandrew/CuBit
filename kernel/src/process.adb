@@ -16,12 +16,14 @@ pragma Ada_2022;
 with Ada.Unchecked_Conversion;
 
 with BuddyAllocator;
+with Boot_Timeline;
 with Clock_Page;
 with Memory_Accounting;
 with Process_Memory_Budget;
 with Build;
 with Trace;
 with Capabilities.IRQ;
+with Device_Interrupts;
 with Capabilities.Operations;
 with IPC_Labels;
 with IPI;
@@ -1497,6 +1499,7 @@ package body Process is
         end if;
 
         ready (mainThreadOf (pid));
+        Boot_Timeline.Note_Event (Natural (pid), Boot_Timeline.Resumed);
 
         -- println ("Process.resume: releasing proctab lock");
         Spinlocks.exitCriticalSection (lock);
@@ -1602,6 +1605,12 @@ package body Process is
         -- Keep interrupts masked until interruptReturn restores the initial
         -- RFLAGS together with CS/RSP through IRETQ.
         PerCPUData.resumeHandoff (Interrupt_State.Initial_Context);
+        --  A context's first dispatch (docs/boot-timeline.md): the first of
+        --  a process is when its first instruction runs.
+        if Boot_Timeline.Recording then
+            Boot_Timeline.Note_Event (Natural (PerCPUData.getCurrentPID),
+                                      Boot_Timeline.First_Run);
+        end if;
         -- println ("Process.start: releasing proctab lock");
         Spinlocks.exitCriticalSection (lock);
         -- Return to interruptReturn.
@@ -1923,8 +1932,11 @@ package body Process is
         IPC.closeNotices (pid);
         IPC.revokeAllGrants (pid);
         IPC.revokeAllGrantsTo (pid);
-        --  Unregister IRQ and sysinfo driver registrations
+        --  Unregister IRQ and sysinfo driver registrations. Device vectors
+        --  are retired, not freed: the device may still send until the
+        --  device manager masks it and releases them.
         Capabilities.IRQ.unregisterAllByPID (Unsigned_64 (pid));
+        Device_Interrupts.retireProcess (pid);
         Sysinfo.unregisterDriverByPID (pid);
 
         -- Bump the generation counter to invalidate caps held by others.  A

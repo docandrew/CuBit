@@ -30,6 +30,8 @@ with CuBit.Grant_References;
 with CuBit.Memory_Grants;
 with Virtqueue_Index;
 with CuBit.Virtio_Net_Control;
+with CuBit.Device_Interrupts;
+with CCL_Manifest_Bindings;
 with CuBit.Busy_Poll;
 
 procedure main is
@@ -732,58 +734,42 @@ begin
    receive (configSender, configMessage);
    declare
       use CuBit.Virtio_Net_Control;
-      tableOffset : Unsigned_64 := 0;
       valid : Boolean := configSender /= No_Process and then
         configSender = Registered_Driver (DRIVER_DEVMGR);
    begin
       if valid and then configMessage.tag.label = Operation'Enum_Rep (Configure_MSIX) then
-         valid := configMessage.tag.length = 3 and then
-           configMessage.words (0) in 1 .. 16#FFE0# and then
-           configMessage.words (2) = Device_Vector;
-         tableOffset := configMessage.words (1);
+         valid := configMessage.tag.length = 1 and then
+           configMessage.words (0) in 1 .. 16#FFE0#;
          if valid then
             ioBase := Unsigned_16 (configMessage.words (0));
          end if;
       elsif valid and then configMessage.tag.label = Operation'Enum_Rep (Configure_Modern) then
-         valid := configMessage.tag.length = 4 and then
-           configMessage.words (3) = Device_Vector;
-         tableOffset := Low (configMessage.words (2));
+         valid := configMessage.tag.length = 3 and then
+           High (configMessage.words (2)) = 0;
          if valid then
             Virtio.Modern.Bind
               (Common     => Low (configMessage.words (0)),
                Device     => High (configMessage.words (0)),
                Notify     => Low (configMessage.words (1)),
                Multiplier => High (configMessage.words (1)),
-               Mapped     => High (configMessage.words (2)),
+               Mapped     => Low (configMessage.words (2)),
                OK         => valid);
             modern := valid;
          end if;
       else
          valid := False;
       end if;
-      if not valid or else tableOffset not in Table_Offset or else tableOffset mod 8 /= 0 then
+      --  devmgr programmed MSI-X entry MSIX_Entry for the vector in the
+      --  manifest's device slot; without it there is no interrupt path.
+      if not valid or else
+        not CuBit.Device_Interrupts.Block_Of (CCL_Manifest_Bindings.Slot_device).Valid
+      then
          modern := False;
          ignore := reply (configSender,
            (tag => (label => 16#F001#, length => 0, flags => 0, reserved => 0),
             authorityTag => 0, words => (others => 0)));
          return;
       end if;
-      declare
-         tableEntry : array (0 .. 3) of Unsigned_32 with Volatile,
-           Import, Address => To_Address (Integer_Address
-             (Table_Virtual_Address + tableOffset));
-         flushed : Unsigned_32;
-      begin
-         --  Function remains masked by devmgr. Mask this entry while editing;
-         --  the UC readback orders posted MMIO before the configuration reply.
-         tableEntry (3) := 1;
-         tableEntry (0) := 16#FEE0_0000#; -- physical destination APIC 0
-         tableEntry (1) := 0;
-         tableEntry (2) := Unsigned_32 (Device_Vector);
-         tableEntry (3) := 0;
-         flushed := tableEntry (3);
-         if flushed /= 0 then Reject_Configuration; return; end if;
-      end;
    end;
    if modern then
       VIRTIO_NET_HDR_SIZE := MODERN_NET_HDR_SIZE;
@@ -859,7 +845,8 @@ begin
    rxKickedIdx := rxAvail.idx;
    TX_Descriptors.Initialize (txPool);
 
-   --  5. Tell the device where they are; every vector is MSI-X entry 0.
+   --  5. Tell the device where they are; every vector is MSI-X entry
+   --  CuBit.Virtio_Net_Control.MSIX_Entry.
    if modern then
       declare
          RING_AVAIL : constant := 16#1000#;
@@ -869,10 +856,12 @@ begin
          ok, ok2, ok3 : Boolean;
       begin
          Virtio.Modern.Setup_Queue
-           (RX_QUEUE, Virtio.QUEUE_SIZE, rxPhys, rxPhys + RING_AVAIL, rxPhys + RING_USED, 0, ok);
+           (RX_QUEUE, Virtio.QUEUE_SIZE, rxPhys, rxPhys + RING_AVAIL, rxPhys + RING_USED,
+            CuBit.Virtio_Net_Control.MSIX_Entry, ok);
          Virtio.Modern.Setup_Queue
-           (TX_QUEUE, Virtio.QUEUE_SIZE, txPhys, txPhys + RING_AVAIL, txPhys + RING_USED, 0, ok2);
-         Virtio.Modern.Set_Config_Vector (0, ok3);
+           (TX_QUEUE, Virtio.QUEUE_SIZE, txPhys, txPhys + RING_AVAIL, txPhys + RING_USED,
+            CuBit.Virtio_Net_Control.MSIX_Entry, ok2);
+         Virtio.Modern.Set_Config_Vector (CuBit.Virtio_Net_Control.MSIX_Entry, ok3);
          if not (ok and then ok2 and then ok3) then
             debugPrint ("virtio-net: queue setup failed" & LF);
             Reject_Configuration;
@@ -901,8 +890,11 @@ begin
          Reject_Configuration;
          return;
       end if;
-      ignore := portOutp16 (ioBase + Virtio.REG_CONFIG_MSIX_VECTOR, 0);
-      if portInp16 (ioBase + Virtio.REG_CONFIG_MSIX_VECTOR) /= 0 then
+      ignore := portOutp16 (ioBase + Virtio.REG_CONFIG_MSIX_VECTOR,
+                            CuBit.Virtio_Net_Control.MSIX_Entry);
+      if portInp16 (ioBase + Virtio.REG_CONFIG_MSIX_VECTOR) /=
+        Unsigned_64 (CuBit.Virtio_Net_Control.MSIX_Entry)
+      then
          Reject_Configuration;
          return;
       end if;
@@ -925,7 +917,7 @@ begin
 
    --  Signal devmgr that we are ready
    declare
-      CAP_SLOT_READY : constant Unsigned_64 := 15;
+      CAP_SLOT_READY  : constant Unsigned_64 := CCL_Manifest_Bindings.Slot_ready;
       OP_READY       : constant Unsigned_32 := 16#FF00#;
       rdyIgnore : MessageTag;
    begin

@@ -56,8 +56,8 @@ global isr44
 global isr45
 global isr46
 global isr47
-global isr48
-global isr49
+global deviceVectorStubs     ; device vectors, DEVICE_STUB_BYTES apart
+global deviceVectorStubsEnd
 
 global isr127   ; KERNEL PANIC
 global isr128   ; SYSCALL
@@ -333,19 +333,27 @@ isr47:
 	push long 47
 	jmp isrCommon
 
-; First vector outside the legacy PIC range.  Device management currently
-; assigns this vector to the xHCI controller's message-signaled interrupt.
-isr48:
-	swapGSIfFromProcess
-	push long 0
-	push long 48
-	jmp isrCommon
-
-isr49:
+; Device vectors (docs/msi-interrupts.md): one fixed-size stub per vector
+; from DEVICE_VECTOR_FIRST, so stub V is at deviceVectorStubs +
+; DEVICE_STUB_BYTES * (V - DEVICE_VECTOR_FIRST). The padding fails to
+; assemble if a stub ever outgrows its slot.
+%macro deviceVectorStub 1
+%%start:
     swapGSIfFromProcess
     push long 0
-    push long 49
-    jmp isrCommon
+    push long %1
+    jmp near isrCommon
+    times DEVICE_STUB_BYTES - ($ - %%start) db 0xCC
+%endmacro
+
+align DEVICE_STUB_BYTES
+deviceVectorStubs:
+%assign deviceVector DEVICE_VECTOR_FIRST
+%rep DEVICE_VECTOR_COUNT
+    deviceVectorStub deviceVector
+%assign deviceVector deviceVector + 1
+%endrep
+deviceVectorStubsEnd:
 
 ; Kernel Panic
 isr127:

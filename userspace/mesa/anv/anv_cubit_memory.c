@@ -241,6 +241,7 @@ anv_cubit_check_status(struct vk_device *vk_device)
       transport_failure("queue-health", status, 0);
       return vk_device_set_lost(vk_device, "CuBit render session unavailable");
    }
+   const uint64_t started = anv_cubit_blocking_start();
    pthread_mutex_lock(&lifetime_mutex);
    unsigned i = submission_lifetime(device);
    bool healthy = i != CUBIT_MEMORY_LIFETIMES;
@@ -251,6 +252,7 @@ anv_cubit_check_status(struct vk_device *vk_device)
       if (!healthy) (*lifetimes[i]).tracker.lost = true;
    }
    pthread_mutex_unlock(&lifetime_mutex);
+   anv_cubit_blocking_note(ANV_CUBIT_BLOCK_STATUS, started);
    return healthy ? VK_SUCCESS :
       vk_device_set_lost(vk_device, "CuBit render session unavailable");
 }
@@ -459,6 +461,7 @@ update_bo_live(struct anv_device *device, struct anv_bo *bo,
       return VK_ERROR_INITIALIZATION_FAILED;
    }
    uint32_t generation = 0;
+   const uint64_t started = anv_cubit_blocking_start();
    /* A generation is a committed VM transaction, not a batch marker. */
    pthread_mutex_lock(&record->vm_mutex);
    if (record->vm_failed) {
@@ -476,6 +479,7 @@ update_bo_live(struct anv_device *device, struct anv_bo *bo,
    else
       record->vm_failed = true;
    pthread_mutex_unlock(&record->vm_mutex);
+   anv_cubit_blocking_note(ANV_CUBIT_BLOCK_VM_UPDATE, started);
    if (!committed) {
       transport_failure(remove ? "vm-unbind" : "vm-bind", status, bo->gem_handle);
       /* No queue work after a VM the session cannot trust. */
@@ -533,7 +537,23 @@ anv_cubit_unbind_bo(struct anv_device *device, struct anv_bo *bo)
 }
 
 static VkResult
+prepare_submission_timed(struct anv_device *device, bool allow_ready);
+static VkResult
 prepare_submission(struct anv_device *device, bool allow_ready)
+{
+   /* Prepared already (set once, before the queue opened): internal batches
+    * take no lifetime_mutex, which a buffer request may hold across IPC. */
+   struct cubit_memory_lifetime *record = device_record(device);
+   if (allow_ready && record && __atomic_load_n(&record->submission_ready, __ATOMIC_ACQUIRE) &&
+       !vk_device_is_lost_no_report(&device->vk))
+      return VK_SUCCESS;
+   const uint64_t started = anv_cubit_blocking_start();
+   VkResult result = prepare_submission_timed(device, allow_ready);
+   anv_cubit_blocking_note(ANV_CUBIT_BLOCK_PREPARE, started);
+   return result;
+}
+static VkResult
+prepare_submission_timed(struct anv_device *device, bool allow_ready)
 {
    pthread_mutex_lock(&lifetime_mutex);
    unsigned i = submission_lifetime(device);
@@ -562,7 +582,7 @@ prepare_submission(struct anv_device *device, bool allow_ready)
    (*lifetimes[i]).queue_failed = false;
    p_atomic_set(&(*lifetimes[i]).queue_open, true);
    pthread_mutex_unlock(&(*lifetimes[i]).queue_mutex);
-   (*lifetimes[i]).submission_ready = true;
+   __atomic_store_n(&(*lifetimes[i]).submission_ready, true, __ATOMIC_RELEASE);
    pthread_mutex_unlock(&lifetime_mutex);
    return VK_SUCCESS;
 }
@@ -622,11 +642,18 @@ struct signal_list {
  * waits for: translate the waits, write at most one descriptor, give every
  * signal its point. No blocking call (a full queue is the queue's own
  * bounded backpressure). batch NULL: no commands. */
+/* The next vkQueueSubmit's kinds, as the client tagged it. */
+static uint32_t next_submit_kinds;
+void cubit_gpu_tag_next_submit(uint32_t kinds)
+{
+   __atomic_store_n(&next_submit_kinds, kinds & CUBIT_GPU_KINDS_MASK, __ATOMIC_RELAXED);
+}
+
 static VkResult
 queue_submit_locked(struct anv_device *device, struct cubit_memory_lifetime *record,
                     const struct batch_ref *batch, uint32_t wait_count,
                     const struct vk_sync_wait *waits, const struct signal_list *lists,
-                    uint32_t list_count, const char **why)
+                    uint32_t list_count, uint32_t kinds, const char **why)
 {
    const uint64_t slot = record->tracker.slot;
    if (!record->queue_admitting || record->queue_failed) {
@@ -653,7 +680,7 @@ queue_submit_locked(struct anv_device *device, struct cubit_memory_lifetime *rec
          if (!merged) { *why = "CuBit queue wait on an unknown context"; return VK_ERROR_DEVICE_LOST; }
       }
    }
-   struct cubit_gpu_job job = {.context = CUBIT_RENDER_CONTEXT,
+   struct cubit_gpu_job job = {.context = CUBIT_RENDER_CONTEXT, .kinds = kinds,
                                .deadline_us = CUBIT_GPU_NO_DEADLINE};
    uint32_t fits;
    native_gpu_wait_set_select(&set, &job.first.context, &job.first.target,
@@ -708,12 +735,12 @@ static VkResult
 queue_submit(struct anv_device *device, struct cubit_memory_lifetime *record,
              const struct batch_ref *batch, uint32_t wait_count,
              const struct vk_sync_wait *waits, const struct signal_list *lists,
-             uint32_t list_count)
+             uint32_t list_count, uint32_t kinds)
 {
    const char *why = NULL;
    pthread_mutex_lock(&record->queue_mutex);
    VkResult result = queue_submit_locked(device, record, batch, wait_count, waits,
-                                         lists, list_count, &why);
+                                         lists, list_count, kinds, &why);
    if (result != VK_SUCCESS)
       record->queue_failed = true;
    pthread_mutex_unlock(&record->queue_mutex);
@@ -795,8 +822,9 @@ anv_cubit_queue_exec_locked(struct anv_queue *queue,
       {signal_count, signals},
       {queue->sync ? 1u : 0u, &debug},
    };
+   const uint32_t kinds = __atomic_exchange_n(&next_submit_kinds, 0, __ATOMIC_RELAXED);
    return queue_submit(device, record, cmd_buffer_count ? &batch : NULL,
-                       wait_count, waits, lists, ARRAY_SIZE(lists));
+                       wait_count, waits, lists, ARRAY_SIZE(lists), kinds);
 }
 
 VkResult
@@ -851,7 +879,8 @@ anv_cubit_queue_exec_async(struct anv_async_submit *submit,
       {submit->signal.sync ? 1u : 0u, &submit->signal},
       {queue->sync ? 1u : 0u, &debug},
    };
-   return queue_submit(device, record, &batch, wait_count, waits, lists, ARRAY_SIZE(lists));
+   return queue_submit(device, record, &batch, wait_count, waits, lists, ARRAY_SIZE(lists),
+                       CUBIT_GPU_KIND_INTERNAL);
 }
 
 static bool
@@ -1205,27 +1234,33 @@ anv_cubit_gem_create(struct anv_device *device,
                     uint16_t num_regions, uint64_t size,
                     enum anv_bo_alloc_flags flags, uint64_t *actual_size)
 {
+   const uint64_t started = anv_cubit_blocking_start();
    pthread_mutex_lock(&lifetime_mutex);
    uint32_t result = gem_create_locked(device, regions, num_regions, size, flags, actual_size);
    pthread_mutex_unlock(&lifetime_mutex);
+   anv_cubit_blocking_note(ANV_CUBIT_BLOCK_CREATE, started);
    return result;
 }
 
 void
 anv_cubit_gem_close(struct anv_device *device, struct anv_bo *bo)
 {
+   const uint64_t started = anv_cubit_blocking_start();
    pthread_mutex_lock(&lifetime_mutex);
    gem_close_locked(device, bo);
    pthread_mutex_unlock(&lifetime_mutex);
+   anv_cubit_blocking_note(ANV_CUBIT_BLOCK_CLOSE, started);
 }
 
 void *
 anv_cubit_gem_mmap(struct anv_device *device, struct anv_bo *bo,
                    uint64_t offset, uint64_t size, void *placed_addr)
 {
+   const uint64_t started = anv_cubit_blocking_start();
    pthread_mutex_lock(&lifetime_mutex);
    void *result = gem_mmap_locked(device, bo, offset, size, placed_addr);
    pthread_mutex_unlock(&lifetime_mutex);
+   anv_cubit_blocking_note(ANV_CUBIT_BLOCK_MAP, started);
    return result;
 }
 
@@ -1233,8 +1268,10 @@ VkResult
 anv_cubit_unmap_bo(struct anv_device *device, struct anv_bo *bo,
                   void *map, size_t size, bool replace)
 {
+   const uint64_t started = anv_cubit_blocking_start();
    pthread_mutex_lock(&lifetime_mutex);
    VkResult result = unmap_bo_locked(device, bo, map, size, replace);
    pthread_mutex_unlock(&lifetime_mutex);
+   anv_cubit_blocking_note(ANV_CUBIT_BLOCK_UNMAP, started);
    return result;
 }

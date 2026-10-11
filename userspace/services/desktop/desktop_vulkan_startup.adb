@@ -11,7 +11,7 @@ with System;
 with Vulkan_Context_Owner;
 with Vulkan_Submission;
 package body Desktop_Vulkan_Startup with SPARK_Mode,
-  Refined_State => (Engine => (Device, Context, Submission, Targets, Budget, Pool, Damage, Configured, Stopping, Pipeline, Pipeline_Ticket, Backings, Upload, Readback_Storage, Readback_Operation, Coverage, Extents, Writer, Active_Write, Write_Plan, Write_Discard, Glyph_Sources, Source_Readers, Reader_Sequence, Transfers, Allocations, Allocated_By, Released_By)) is
+  Refined_State => (Engine => (Device, Context, Submission, Targets, Budget, Pool, Damage, Configured, Stopping, Pipeline, Pipeline_Ticket, Backings, Upload, Readback_Storage, Readback_Operation, Coverage, Extents, Writer, Active_Write, Write_Plan, Write_Discard, Batch, Batch_Used, Glyph_Sources, Source_Readers, Reader_Sequence, Transfers, Allocations, Allocated_By, Released_By)) is
    package CP renames Upload_Progress;
    package GS renames Vulkan_Glyph_Sources;
    Glyph_Sources : GS.State;
@@ -24,11 +24,31 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
    end record;
    type Extent_Array is array (Backing_Slot) of Extent_Record;
    Extents : Extent_Array;
-   type Writer_Phase is (Available, Producing, Transferring, Unsafe);
+   -- Staged: one or more writes queued for the next transfer batch, none
+   -- being produced, the submission Idle (GPU-004).
+   type Writer_Phase is (Available, Producing, Staged, Transferring, Unsafe);
    Writer : Writer_Phase := Available;
    Active_Write : Write_Ticket := No_Write;
    Write_Plan : G.Plan;
    Write_Discard : Boolean := False;
+   -- The batch: each member slot's chunk, plan (at its staging offset) and
+   -- discard flag. Batch_Used is the staging bytes the members occupy.
+   type Member is record
+      Staged : Boolean := False;
+      Chunk : CP.Ticket := CP.No_Ticket;
+      Plan : G.Plan;
+      Discard : Boolean := False;
+   end record;
+   type Member_Array is array (Backing_Slot) of Member;
+   Batch : Member_Array;
+   Batch_Used : G.Byte_Count := 0;
+   -- Staging offsets are aligned for the copy engine (texel and
+   -- optimalBufferCopyOffsetAlignment); 256 covers both.
+   Staging_Alignment : constant := 256;
+   function Any_Member return Boolean is (for some I in Backing_Slot => Batch (I).Staged);
+   -- No GPU work owned by the writer: the submission may take other work
+   -- that does not touch staged slots (their descriptors are released).
+   function Writer_Idle return Boolean is (Writer in Available | Staged);
    use type CP.Phase, CP.Ticket, G.Pixel_Format;
    package U renames Vulkan_Upload_Owner;
    Upload : U.State;
@@ -78,12 +98,19 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
      (O.A.Valid (Budget) and then
       (for all Index in Backing_Slot => CP.Valid (Coverage (Index)) and
          (if CP.Current (Coverage (Index)) in CP.Writing | CP.Pending then
-            Writer /= Available and Index = Active_Write.Index)) and then
+            Writer /= Available and
+            ((Writer = Producing and Index = Active_Write.Index) or Batch (Index).Staged)) and
+         (if Batch (Index).Staged then
+            Writer in Producing | Staged | Transferring | Unsafe and
+            (if Writer in Producing | Staged then
+               CP.Can_Write (Coverage (Index), Batch (Index).Chunk) and G.Valid (Batch (Index).Plan)) and
+            (if Writer = Transferring then
+               CP.Current (Coverage (Index)) = CP.Pending and
+               CP.Active (Coverage (Index), Batch (Index).Chunk)))) and then
       (if Writer = Producing then V.Current (Submission) = V.Idle and
-         Write_Active (Active_Write)) and then
-      (if Writer = Transferring then V.Current (Submission) = V.Pending and
-         CP.Current (Coverage (Active_Write.Index)) = CP.Pending and
-         CP.Active (Coverage (Active_Write.Index), Active_Write.Chunk)) and then P.Valid (Pool) and then TD.Valid (Damage) and then (if D.Current (Device) = D.Fresh then
+         Write_Active (Active_Write) and not Batch (Active_Write.Index).Staged) and then
+      (if Writer = Staged then V.Current (Submission) in V.Idle | V.Quarantined) and then
+      (if Writer = Transferring then V.Current (Submission) = V.Pending) and then P.Valid (Pool) and then TD.Valid (Damage) and then (if D.Current (Device) = D.Fresh then
         Writer = Available and Vulkan_Context_Owner.Current (Context) = Vulkan_Context_Owner.Fresh and
         Vulkan_Context_Owner.Empty (Context) and
         Vulkan_Submission.Owner_Context (Submission) = System.Null_Address and
@@ -213,9 +240,9 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
       if Stopping or else D.Current (Device) /= D.Ready or else Pipeline /= Live or else
          not O.Ready (Targets) or else not Configured or else P.Faulted (Pool) or else
          TD.Faulted (Damage) then return; end if;
-      if Writer /= Available or else V.Current (Submission) /= V.Idle then Result := Source_Busy; return; end if;
+      if not Writer_Idle or else V.Current (Submission) /= V.Idle then Result := Source_Busy; return; end if;
       if Backing_Phase (Index) not in O.I.Fresh | O.I.Closed or else
-         V.Source_Present (Submission, Index) then return; end if;
+         V.Source_Present (Submission, Index) or else Batch (Index).Staged then return; end if;
       if Width not in 1 .. 65535 or else Height not in 1 .. 65535 then return; end if;
       Vulkan_Device_Source_FFI.Prepare (Vulkan_Device_Source_FFI.Slot (Index),
          Width, Height, Mask, Request, Allowed);
@@ -241,9 +268,9 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
       Released : out Boolean) is
    begin
       Released := False;
-      if Writer /= Available or else D.Current (Device) /= D.Ready or else V.Current (Submission) /= V.Idle or else
+      if not Writer_Idle or else D.Current (Device) /= D.Ready or else V.Current (Submission) /= V.Idle or else
          Lease = O.A.No_Ticket or else Lease /= Backing_Lease (Index) or else
-         V.Source_Present (Submission, Index) then return; end if;
+         V.Source_Present (Submission, Index) or else Batch (Index).Staged then return; end if;
       S.Close (Backings (Index), Context, Budget, True, Released);
       if Released and then Released_By (V.Class_Of (Index)) < Interfaces.Unsigned_64'Last then
          Released_By (V.Class_Of (Index)) := Released_By (V.Class_Of (Index)) + 1;
@@ -256,7 +283,7 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
       Layout : constant GS.L.Layout := GS.L.Plan (Key.Scale);
    begin
       Accepted := False;
-      if Stopping or else D.Current (Device) /= D.Ready or else Writer /= Available or else
+      if Stopping or else D.Current (Device) /= D.Ready or else not Writer_Idle or else
          V.Current (Submission) /= V.Idle or else Natural (Index) >= GS.Slot'Last or else
          Lease = O.A.No_Ticket or else Lease /= Backing_Lease (Index) or else
          Backing_Phase (Index) /= O.I.Live or else Extents (Index).Kind /= G.R8 or else
@@ -273,7 +300,7 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
       Vulkan_Scene.Append_Glyph (Scene, Submission, Glyph_Sources, Key, Cell, Tint, Accepted);
    end Capture_Glyph;
    function Can_Retire_Readers return Boolean is
-     (D.Current (Device) = D.Ready and Pipeline = Live and Writer = Available and
+     (D.Current (Device) = D.Ready and Pipeline = Live and Writer_Idle and
       V.Current (Submission) = V.Idle and not P.Faulted (Pool) and not TD.Faulted (Damage));
    function Source_Held (Ticket : V.Source_Ticket) return Boolean is
      (V.Source_Valid (Submission, Ticket));
@@ -314,7 +341,7 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
       end if;
       if Stopping or else D.Current (Device) /= D.Ready or else Pipeline /= Live or else
          P.Faulted (Pool) or else TD.Faulted (Damage) then return; end if;
-      if Writer /= Available or else V.Current (Submission) /= V.Idle then Result := Source_Busy; return; end if;
+      if not Writer_Idle or else V.Current (Submission) /= V.Idle then Result := Source_Busy; return; end if;
       V.Import_Source (Submission, Index, Description, Ticket);
       if Ticket /= V.No_Source then Result := Source_Accepted;
       elsif V.Current (Submission) = V.Quarantined then Result := Source_Unsafe;
@@ -337,16 +364,16 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
       end if;
       if Stopping or else D.Current (Device) /= D.Ready or else Pipeline /= Live or else
          P.Faulted (Pool) or else TD.Faulted (Damage) then return; end if;
-      if Writer /= Available or else V.Current (Submission) /= V.Idle then Result := Source_Busy; return; end if;
+      if not Writer_Idle or else V.Current (Submission) /= V.Idle then Result := Source_Busy; return; end if;
       if Backing_Phase (Index) not in O.I.Fresh | O.I.Closed or else
-         V.Source_Present (Submission, Index) then return; end if;
+         V.Source_Present (Submission, Index) or else Batch (Index).Staged then return; end if;
       Description := Vulkan_Device_Pipeline_FFI.Source_Request (Interfaces.Unsigned_32 (Index), Image);
       if Description /= System.Null_Address then Import_Source (Index, Description, Ticket, Result); end if;
    end Import_Owned_Source;
    procedure Release_Source (Ticket : V.Source_Ticket; Released : out System.Address) is
    begin
       Released := System.Null_Address;
-      if Writer /= Available or else D.Current (Device) /= D.Ready or else Pipeline /= Live then return; end if;
+      if not Writer_Idle or else D.Current (Device) /= D.Ready or else Pipeline /= Live then return; end if;
       if Source_Pinned (Ticket) then return; end if;
       V.Release_Source (Submission, Ticket, Released);
    end Release_Source;
@@ -356,7 +383,7 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
    function Can_Produce (Index : Backing_Slot; Lease : O.A.Ticket) return Boolean is
      (not Stopping and D.Current (Device) = D.Ready and Pipeline = Live and
       O.Ready (Targets) and Configured and not P.Faulted (Pool) and not TD.Faulted (Damage) and
-      Writer = Available and V.Current (Submission) = V.Idle and
+      Writer_Idle and V.Current (Submission) = V.Idle and not Batch (Index).Staged and
       Lease /= O.A.No_Ticket and Lease = Backing_Lease (Index) and Backing_Phase (Index) = O.I.Live and
       not V.Source_Present (Submission, Index));
    procedure Restart_Content (Index : Backing_Slot; Lease : O.A.Ticket; Accepted : out Boolean) is
@@ -393,66 +420,238 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
       Ticket := (Index, Chunk); Active_Write := Ticket; Write_Plan := Plan; Write_Discard := Discard;
       Writer := Producing; Mapping := U.Mapping (Upload); Result := Source_Accepted;
    end Begin_Write;
+   function Slot_Staged (Index : Backing_Slot) return Boolean is (Batch (Index).Staged);
+   function Staged_Writes return Natural is
+      Count : Natural := 0;
+   begin
+      for I in Backing_Slot loop
+         pragma Loop_Invariant (Count <= Natural (I - Backing_Slot'First));
+         if Batch (I).Staged then Count := Count + 1; end if;
+      end loop;
+      return Count;
+   end Staged_Writes;
+   procedure Begin_Staged_Write (Index : Backing_Slot; Lease : O.A.Ticket;
+      Ticket : out Write_Ticket; Plan : out G.Plan; Mapping : out System.Address;
+      Result : out Source_Result; Row_Pixels : Compositor_Upload.Edge := 0) is
+      Chunk : CP.Ticket;
+      Discard, Accepted : Boolean;
+      Empty, Local : G.Plan;
+      Capacity : G.Byte_Count;
+   begin
+      Ticket := No_Write; Plan := Empty; Mapping := System.Null_Address; Result := Source_Rejected;
+      if Writer = Unsafe or else D.Current (Device) = D.Quarantined or else V.Current (Submission) = V.Quarantined then
+         Result := Source_Unsafe; return;
+      end if;
+      if not Writer_Idle or else V.Current (Submission) /= V.Idle then Result := Source_Busy; return; end if;
+      if not Can_Produce (Index, Lease) then return; end if;
+      if U.Current (Upload) /= U.Live or else U.Capacity (Upload) not in 1 .. G.Byte_Count'Last or else
+         U.Mapping (Upload) = System.Null_Address then return; end if;
+      Capacity := G.Byte_Count (U.Capacity (Upload));
+      if Batch_Used >= Capacity then Result := Source_Busy; return; end if;
+      -- The chunk is planned against the staging left after the batch so
+      -- far, then placed at Batch_Used in the shared buffer.
+      CP.Begin_Write (Coverage (Index), Capacity - Batch_Used, Local, Chunk, Discard, Accepted, Row_Pixels);
+      if not Accepted then
+         Result := (if Writer = Staged then Source_Busy else Source_Rejected); return;
+      end if;
+      G.Make (G.Image_Width (Local), G.Image_Height (Local), Capacity, G.Area (Local),
+              Batch_Used, G.Row_Length (Local), G.Format (Local), Plan, Accepted);
+      if not Accepted then
+         CP.Cancel (Coverage (Index), Chunk, True);
+         Plan := Empty; return;
+      end if;
+      Ticket := (Index, Chunk); Active_Write := Ticket; Write_Plan := Plan; Write_Discard := Discard;
+      Writer := Producing; Mapping := U.Mapping (Upload); Result := Source_Accepted;
+   end Begin_Staged_Write;
    procedure Cancel_Write (Ticket : Write_Ticket; Producer_Retired : Boolean; Cancelled : out Boolean) is
    begin
       Cancelled := False;
       if Writer /= Producing or else Ticket /= Active_Write or else Ticket = No_Write then return; end if;
       CP.Cancel (Coverage (Ticket.Index), Ticket.Chunk, Producer_Retired);
-      Writer := (if Producer_Retired then Available else Unsafe);
+      Writer := (if not Producer_Retired then Unsafe elsif Any_Member then Staged else Available);
       Cancelled := Producer_Retired;
    end Cancel_Write;
-   procedure Submit_Write (Ticket : Write_Ticket; Producer_Retired : Boolean; Result : out Source_Result) is
-      Accepted, Cancelled : Boolean;
+   procedure Stage_Write (Ticket : Write_Ticket; Producer_Retired : Boolean; Result : out Source_Result) is
+      End_Byte : G.Byte_Count;
+      Next : Natural;
    begin
       Result := Source_Rejected;
       if Writer /= Producing or else Ticket /= Active_Write or else Ticket = No_Write or else
          not CP.Can_Write (Coverage (Ticket.Index), Ticket.Chunk) then return; end if;
       if not Producer_Retired or else D.Current (Device) /= D.Ready or else
-         V.Current (Submission) /= V.Idle then
+         V.Current (Submission) /= V.Idle or else not G.Valid (Write_Plan) then
          CP.Cancel (Coverage (Ticket.Index), Ticket.Chunk, False); Writer := Unsafe; Result := Source_Unsafe; return;
       end if;
-      -- A stopped producer may cancel but cannot enqueue new GPU work at shutdown.
-      if Stopping then Cancel_Write (Ticket, True, Cancelled); return; end if;
+      End_Byte := G.End_Byte (Write_Plan);
+      Next := (End_Byte + Staging_Alignment - 1) / Staging_Alignment * Staging_Alignment;
+      Batch (Ticket.Index) := (Staged => True, Chunk => Ticket.Chunk, Plan => Write_Plan,
+                               Discard => Write_Discard);
+      Batch_Used := (if Next > G.Byte_Count'Last then G.Byte_Count'Last else Next);
+      Writer := Staged;
+      Result := Source_Accepted;
+   end Stage_Write;
+   -- Abandon every staged write (nothing was recorded or submitted).
+   procedure Discard_Staged
+     with Pre => Valid and Writer = Staged, Post => Valid and Writer = Available
+   is
+   begin
+      for I in Backing_Slot loop
+         pragma Loop_Invariant (Writer = Staged and V.Current (Submission) in V.Idle | V.Quarantined);
+         pragma Loop_Invariant (for all J in Backing_Slot =>
+           (if J < I then not Batch (J).Staged and CP.Valid (Coverage (J)) and
+              CP.Current (Coverage (J)) not in CP.Writing | CP.Pending));
+         pragma Loop_Invariant (for all J in Backing_Slot =>
+           (if J >= I then CP.Valid (Coverage (J)) and
+              (if CP.Current (Coverage (J)) in CP.Writing | CP.Pending then Batch (J).Staged) and
+              (if Batch (J).Staged then CP.Can_Write (Coverage (J), Batch (J).Chunk) and
+                 G.Valid (Batch (J).Plan))));
+         if Batch (I).Staged then
+            CP.Cancel (Coverage (I), Batch (I).Chunk, True);
+            Batch (I) := (others => <>);
+         end if;
+      end loop;
+      Batch_Used := 0;
+      Writer := Available;
+   end Discard_Staged;
+   procedure Flush_Batch (Result : out Source_Result)
+     with Pre => Valid and Writer = Staged, Post => Valid and Writer /= Producing;
+   procedure Flush_Staged (Result : out Source_Result) is
+   begin
+      Result := Source_Busy;
+      if Writer = Unsafe then Result := Source_Unsafe; return; end if;
+      if Writer /= Staged then return; end if;
+      Flush_Batch (Result);
+   end Flush_Staged;
+   procedure Flush_Batch (Result : out Source_Result) is
+      Accepted, Cancelled : Boolean;
+   begin
+      Result := Source_Busy;
+      if D.Current (Device) /= D.Ready or else V.Current (Submission) /= V.Idle or else Stopping then
+         -- Nothing reached the GPU: the staged copies are simply dropped.
+         Discard_Staged; Result := Source_Rejected; return;
+      end if;
       V.Begin_Record (Submission, Accepted);
       if Accepted then
-         Vulkan_Upload_Recording.Record_Transfer (Submission, Context, Upload,
-            Backings (Ticket.Index), Ticket.Index, Write_Plan, Write_Discard, Accepted);
-         if not Accepted then
-            V.Cancel (Submission, Cancelled);
-            CP.Cancel (Coverage (Ticket.Index), Ticket.Chunk, Cancelled);
-            Writer := (if Cancelled then Available else Unsafe);
-            Result := (if Cancelled then Source_Rejected else Source_Unsafe); return;
+         for I in Backing_Slot loop
+            pragma Loop_Invariant (V.Current (Submission) = V.Recording and Writer = Staged);
+            pragma Loop_Invariant (not V.Pass_Started (Submission));
+            pragma Loop_Invariant (for all J in Backing_Slot => CP.Valid (Coverage (J)) and
+              (if CP.Current (Coverage (J)) in CP.Writing | CP.Pending then Batch (J).Staged) and
+              (if Batch (J).Staged then CP.Can_Write (Coverage (J), Batch (J).Chunk) and
+                 G.Valid (Batch (J).Plan)));
+            pragma Loop_Invariant (O.A.Valid (Budget));
+            if Batch (I).Staged then
+               Vulkan_Upload_Recording.Record_Transfer (Submission, Context, Upload,
+                  Backings (I), I, Batch (I).Plan, Batch (I).Discard, Accepted);
+               exit when not Accepted;
+            end if;
+         end loop;
+         if Accepted and then V.Current (Submission) = V.Recording and then
+           V.Complete_Frame (Submission) and then not V.Pass_Started (Submission) and then
+           V.Draws (Submission) > 0
+         then
+            V.Seal_Transfer (Submission, Accepted);
+            if Accepted then V.Submit (Submission, Accepted); end if;
+         else
+            Accepted := False;
          end if;
-         V.Seal_Transfer (Submission, Accepted);
-         if Accepted then V.Submit (Submission, Accepted); end if;
+         if not Accepted and then V.Current (Submission) in V.Recording | V.Sealed then
+            V.Cancel (Submission, Cancelled);
+            if Cancelled then Discard_Staged; Result := Source_Rejected; return; end if;
+         end if;
       end if;
       if not Accepted then
-         CP.Cancel (Coverage (Ticket.Index), Ticket.Chunk, False); Writer := Unsafe; Result := Source_Unsafe; return;
+         -- The command buffer's fate is unknown: retain every member.
+         Writer := Unsafe; Result := Source_Unsafe; return;
       end if;
-      CP.Submitted (Coverage (Ticket.Index), Ticket.Chunk, Accepted);
-      Writer := (if Accepted then Transferring else Unsafe);
-      if Accepted and then Transfers < Interfaces.Unsigned_64'Last then Transfers := Transfers + 1; end if;
-      Result := (if Accepted then Source_Accepted else Source_Unsafe);
-   end Submit_Write;
-   procedure Poll_Upload (Result : out Poll_Result) is
-      Observation : V.Observation;
+      for I in Backing_Slot loop
+         pragma Loop_Invariant (V.Current (Submission) = V.Pending and Writer = Staged);
+         pragma Loop_Invariant (for all J in Backing_Slot => CP.Valid (Coverage (J)) and
+           (if CP.Current (Coverage (J)) in CP.Writing | CP.Pending then Batch (J).Staged) and
+           (if Batch (J).Staged then
+              (if J < I then CP.Current (Coverage (J)) = CP.Pending and
+                 CP.Active (Coverage (J), Batch (J).Chunk)
+               else CP.Can_Write (Coverage (J), Batch (J).Chunk) and G.Valid (Batch (J).Plan))));
+         pragma Loop_Invariant (O.A.Valid (Budget));
+         if Batch (I).Staged then
+            CP.Submitted (Coverage (I), Batch (I).Chunk, Accepted);
+         end if;
+      end loop;
+      Writer := Transferring; Batch_Used := 0;
+      if Transfers < Interfaces.Unsigned_64'Last then Transfers := Transfers + 1; end if;
+      Result := Source_Accepted;
+   end Flush_Batch;
+   procedure Submit_Write (Ticket : Write_Ticket; Producer_Retired : Boolean; Result : out Source_Result) is
+      Cancelled : Boolean;
    begin
-      Result := Idle;
-      if Writer = Unsafe then Result := GPU_Failed; return; end if;
-      if Writer /= Transferring then return; end if;
+      Result := Source_Rejected;
+      if Writer /= Producing or else Ticket /= Active_Write or else Ticket = No_Write or else
+         not CP.Can_Write (Coverage (Ticket.Index), Ticket.Chunk) then return; end if;
+      -- A stopped producer may cancel but cannot enqueue new GPU work at shutdown.
+      if Stopping and then Producer_Retired then Cancel_Write (Ticket, True, Cancelled); return; end if;
+      Stage_Write (Ticket, Producer_Retired, Result);
+      if Result = Source_Accepted and then Writer = Staged then Flush_Batch (Result); end if;
+   end Submit_Write;
+   -- One fence observation for the batch in flight; every member's chunk
+   -- completes (or fails) with it.
+   procedure Observe_Batch (Result : out Poll_Result)
+     with Pre => Valid and Writer = Transferring, Post => Valid
+   is
+      Observation : V.Observation;
+      Outcome : CP.Observation;
+      use type V.Observation, CP.Observation;
+   begin
       if D.Current (Device) /= D.Ready or else V.Current (Submission) /= V.Pending then
          Writer := Unsafe; Result := GPU_Failed; return;
       end if;
       V.Poll (Submission, Observation);
-      CP.Observe (Coverage (Active_Write.Index), Active_Write.Chunk,
-         (case Observation is when V.Still_Pending => CP.Still_Pending,
-            when V.Finished => CP.Completed, when V.Uncertain => CP.Uncertain));
-      case Observation is
-         when V.Still_Pending => Result := Pending;
-         when V.Finished => Writer := Available; Result := Completed;
-         when V.Uncertain => Writer := Unsafe; Result := GPU_Failed;
-      end case;
+      if Observation = V.Still_Pending then Result := Pending; return; end if;
+      Outcome := (if Observation = V.Finished then CP.Completed else CP.Uncertain);
+      -- Not Transferring while members are observed one by one.
+      Writer := Unsafe;
+      for I in Backing_Slot loop
+         pragma Loop_Invariant (Writer = Unsafe);
+         pragma Loop_Invariant (for all J in Backing_Slot => CP.Valid (Coverage (J)) and
+           (if CP.Current (Coverage (J)) in CP.Writing | CP.Pending then
+              J >= I and Batch (J).Staged) and
+           (if J < I then not Batch (J).Staged or Outcome = CP.Uncertain));
+         pragma Loop_Invariant (O.A.Valid (Budget));
+         if Batch (I).Staged then
+            CP.Observe (Coverage (I), Batch (I).Chunk, Outcome);
+            if Observation = V.Finished then Batch (I) := (others => <>); end if;
+         end if;
+      end loop;
+      if Observation = V.Finished then Writer := Available; Result := Completed;
+      else Result := GPU_Failed;
+      end if;
+   end Observe_Batch;
+   procedure Poll_Upload (Result : out Poll_Result) is
+   begin
+      Result := Idle;
+      if Writer = Unsafe then Result := GPU_Failed; return; end if;
+      if Writer /= Transferring then return; end if;
+      Observe_Batch (Result);
    end Poll_Upload;
+   procedure Poll_Slot_Upload (Index : Backing_Slot; Result : out Poll_Result) is
+      Flushed : Source_Result;
+   begin
+      Result := Idle;
+      if Writer = Staged and then Batch (Index).Staged then
+         Flush_Staged (Flushed);
+      end if;
+      if Writer = Transferring and then Batch (Index).Staged then
+         Observe_Batch (Result);
+      end if;
+      if Batch (Index).Staged then
+         Result := (if Writer = Unsafe then GPU_Failed else Pending);
+      elsif Writer = Unsafe and then CP.Current (Coverage (Index)) = CP.Quarantined then
+         Result := GPU_Failed;
+      elsif CP.Current (Coverage (Index)) in CP.Preparing | CP.Ready then
+         Result := Completed;
+      else
+         Result := GPU_Failed;
+      end if;
+   end Poll_Slot_Upload;
    procedure Import_Backing (Index : Backing_Slot; Lease : O.A.Ticket;
       Ticket : out V.Source_Ticket; Result : out Source_Result) is
       Description : System.Address;
@@ -708,6 +907,7 @@ package body Desktop_Vulkan_Startup with SPARK_Mode,
       -- The device/context retain uncertain children and accounting forever.
       if D.Current (Device) = D.Ready then
          Stopping := True;
+         if Writer = Staged then Discard_Staged; end if;
          if Writer /= Available or else
            (for some I in Reader_Index => Source_Readers (I).Serial /= 0) then return; end if;
          if not P.Faulted (Pool) and then P.Ready (Pool) /= P.None then

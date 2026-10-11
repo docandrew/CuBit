@@ -6,13 +6,13 @@ project Virtio_GPU is
     case Test_Mode is
         when "production" =>
             for Object_Dir use "build";
-            for Source_Dirs use ("../../lib/display", ".", "production");
+            for Source_Dirs use ("../../lib/display", ".", "production", "build/generated");
         when "delayed" =>
             for Object_Dir use "build-delayed";
-            for Source_Dirs use ("../../lib/display", ".", "test-delayed");
+            for Source_Dirs use ("../../lib/display", ".", "test-delayed", "build/generated");
         when "clear-failure" =>
             for Object_Dir use "build-clear-failure";
-            for Source_Dirs use ("../../lib/display", ".", "test-clear-failure");
+            for Source_Dirs use ("../../lib/display", ".", "test-clear-failure", "build/generated");
     end case;
     for Main use ("main.adb");
     for Runtime ("Ada") use "../../runtime";
@@ -55,7 +55,8 @@ project Virtio_GPU is
             "-Wl,-z,stack-size=16777216",
             "-lgnat-user",
             "-T", "../../c/link.ld",
-            "../../c/build/crt0.o"
+            "../../c/build/crt0.o",
+            "build/manifest.o"
         );
     end Linker;
 

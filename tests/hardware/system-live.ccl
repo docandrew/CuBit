@@ -8,6 +8,11 @@
   # Asset packages on the live disc (docs/assets.md). The all-in-initrd
   # laptop image has none; Desktop then draws the flat theme colour.
   (setting "system.assets.root" "@cd:0/Assets/")
+  # Keyboard auto-repeat (Desktop, docs/development-backlog.md UI-022): the
+  # delay before a held key's first repeat and the repeats per second. The
+  # CCL type Key_Repeat (CCL.Interfaces.Desktop_Input) bounds both.
+  (setting "desktop.input.key-repeat"
+    (Key_Repeat enabled => true delay_ms => 500 rate_hz => 30))
   (setting "clock.time-zone" "UTC")
   (setting "logs.minimum-level" "Severity.Information")
   # Explicitly volatile Turso; no writes to the machine's internal disks.

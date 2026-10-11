@@ -22,3 +22,19 @@ VkResult anv_cubit_sync_find(struct vk_device *device, const struct vk_sync_wait
  * signal resolves then. A failure marks the device lost. No IPC, no wait. */
 VkResult anv_cubit_sync_add_point(struct vk_device *device, const struct vk_sync_signal *signal,
    uint64_t slot, uint32_t context, uint64_t gpu);
+
+/* Blocking-call evidence: every call this backend makes that can block its
+ * caller's thread (device IPC or a wait), counted by call site with total
+ * and longest duration. Desktop prints one line per second. */
+enum anv_cubit_blocking_site {
+   ANV_CUBIT_BLOCK_CREATE, ANV_CUBIT_BLOCK_CLOSE, ANV_CUBIT_BLOCK_MAP,
+   ANV_CUBIT_BLOCK_UNMAP, ANV_CUBIT_BLOCK_VM_UPDATE, ANV_CUBIT_BLOCK_STATUS,
+   ANV_CUBIT_BLOCK_PREPARE, ANV_CUBIT_BLOCK_GPU_WAIT, ANV_CUBIT_BLOCK_CPU_WAIT,
+   ANV_CUBIT_BLOCK_SITES
+};
+/* Monotonic nanoseconds (0 when the clock fails: the sample is dropped). */
+uint64_t anv_cubit_blocking_start(void);
+void anv_cubit_blocking_note(enum anv_cubit_blocking_site site, uint64_t started);
+/* "site=count/total_us/max_us ..." for sites used since the last report,
+ * then reset; NUL-terminated within capacity. Returns the length. */
+uint32_t cubit_mesa_blocking_report(char *buffer, uint32_t capacity);

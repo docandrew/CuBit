@@ -1,8 +1,11 @@
 # Display backend target lifetime
 
-`CuBit.Backend_Targets` is the SPARK policy for Display's two GPU backing
-buffers. It replaces the raw active-buffer index in the native Display service.
-It applies to synchronous legacy presents and deferred pooled-frame presents.
+`CuBit.Backend_Targets` is the SPARK policy for Display's GPU backing
+buffers: two for virtio-gpu, three for the Intel takeover (DISP-000a,
+`Set_Count` before the first clear). The target rotates to the buffer after
+the active one and is never the active (on-screen) buffer. It replaces the raw active-buffer index in the native Display service.
+It applies to legacy presents and pooled-frame presents, both asynchronous
+since the synchronous `copyAndFlipGpuRect` was removed (DISP-000a).
 
 A successful initial GPU clear establishes buffer zero as active. Preparation
 may write only the other buffer. Display seals preparation before invoking GPU

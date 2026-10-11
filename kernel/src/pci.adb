@@ -360,19 +360,45 @@ package body pci with SPARK_Mode => Off is
     ---------------------------------------------------------------------------
     -- enumerateDevicesPCIe
     ---------------------------------------------------------------------------
+    -- Diagnostic listing only: nothing keeps the result (devmgr scans PCI
+    -- itself). Each configuration read is an uncached MMIO access, and a VM
+    -- exit under a hypervisor, so read one word per absent slot: function 0
+    -- must exist for a device to exist, and functions 1-7 only exist on a
+    -- multi-function device (PCI Local Bus 3.0, 6.2.1). Reading every
+    -- function's whole header took 3.8 s under KVM (docs/boot-timeline.md).
     procedure enumerateDevicesPCIe (base : System.Address)
     is
+        ABSENT : constant Unsigned_16 := 16#FFFF#;
+
+        function vendorOf (bus  : PCIBusNum;
+                           slot : PCISlotNum;
+                           func : PCIFunctionNum) return Unsigned_16
+        is
+            devBase : constant System.Address := base +
+                ((Storage_Offset(bus) * 256) + (Storage_Offset(slot) * 8) + Storage_Offset(func)) * 4096;
+            vendor  : Unsigned_16 with Import, Volatile, Address => devBase;
+        begin
+            return vendor;
+        end vendorOf;
+
         conf : PCIDeviceHeader;
+        lastFunc : PCIFunctionNum;
     begin
         println ("  Vendor   Device ID   Class  ");
         println ("------------------------------");
 
         BusLoop: for bus in PCIBusNum'Range loop
             SlotLoop: for slot in PCISlotNum'Range loop
+                lastFunc := PCIFunctionNum'First;
                 FuncLoop: for func in PCIFunctionNum'Range loop
-                    getPCIeConfig (base, bus, slot, func, conf);
-
-                    if conf.vendorID /= 16#FFFF# then
+                    exit FuncLoop when func > lastFunc;
+                    if vendorOf (bus, slot, func) /= ABSENT then
+                        getPCIeConfig (base, bus, slot, func, conf);
+                        if func = PCIFunctionNum'First and then
+                           (conf.headerType and PCI_MULTIPLE_FUNCS) /= 0
+                        then
+                            lastFunc := PCIFunctionNum'Last;
+                        end if;
                         print ("  "); print (conf.vendorID);
                         print ("    "); print (conf.deviceID);
                         print ("    "); print (conf.classCode);

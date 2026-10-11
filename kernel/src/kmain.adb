@@ -46,6 +46,8 @@ with Video;
 with Video.EGA;
 with Boot_Diagnostics;
 with Boot_Timer_Setup;
+with Boot_Timeline;
+with Boot_Timeline_Layout;
 with Virtmem; use Virtmem;
 with x86;
 
@@ -107,7 +109,12 @@ is
         Boot_Diagnostics.Complete_Step (message);
         println ("[ OK ] " & message, LT_GREEN, BLACK);
     end showBootStage;
+
+    package BT renames Boot_Timeline_Layout;
 begin
+    --  The TSC at kernel entry: time since reset, so firmware and the boot
+    --  loader are the first span of the boot timeline (docs/boot-timeline.md).
+    Boot_Timeline.Initialize (x86.rdtsc);
 
     if (config.serialMirror) then
         Serial.init (serial.COM1);
@@ -177,6 +184,7 @@ begin
     earlyCheckpoint ("process tables");
     Process.setup;
     earlyCheckpoint ("memory initialization complete");
+    Boot_Timeline.Mark_Stage (BT.Memory_Ready);
 
     -- Use video driver chosen by GRUB
     if earlyText then
@@ -188,6 +196,7 @@ begin
     end if;
 
     if earlyText then TextIO.clear (BLACK); end if;
+    Boot_Timeline.Mark_Stage (BT.Framebuffer_Ready);
 
     --  Graphical diagnostics use fixed rows, never terminal scrolling. The
     --  complete byte stream still reaches the existing serial mirror.
@@ -302,9 +311,11 @@ begin
         end if;
     end initACPI;
     showBootStage ("ACPI tables loaded");
+    Boot_Timeline.Mark_Stage (BT.Firmware_Tables_Ready);
     Boot_Diagnostics.Begin_Step ("Taking ownership of firmware timers");
     Boot_Timer_Setup.Take_Over;
     showBootStage ("Firmware timers quiesced");
+    Boot_Timeline.Mark_Stage (BT.Firmware_Timers_Owned);
     Boot_Diagnostics.Begin_Step ("Configuring interrupt routing");
 
 
@@ -341,6 +352,7 @@ begin
         x86.cli;
         timer_pit.disable;
     end initReferenceClock;
+    Boot_Timeline.Mark_Stage (BT.Clock_Calibrated);
     Boot_Diagnostics.Begin_Step ("Calibrating LAPIC countdown against TSC");
 
 
@@ -384,6 +396,8 @@ begin
             -- IF is still clear, the PIT is masked, and APs have not started.
             -- Anchor elapsed time before enabling the faster LAPIC tick.
             Time.enableSchedulingClock;
+            Boot_Timeline.Set_Frequency (Interfaces.Unsigned_64 (Time.tscFrequencyHz));
+            Boot_Timeline.Mark_Stage (BT.Scheduling_Clock_Started);
         else
             -- @TODO not a big deal to fall-back to the PIC, but we need to
             -- handle it.
@@ -462,6 +476,7 @@ begin
         end if;
     end initIOAPIC;
     showBootStage ("Interrupt routing ready");
+    Boot_Timeline.Mark_Stage (BT.Interrupt_Routing_Ready);
     Boot_Diagnostics.Begin_Step ("Enumerating PCI devices");
 
 
@@ -482,9 +497,11 @@ begin
         println ("-----------------------------------------------------");
 
         mapBigIOArea (pciConfigArea);
+        Boot_Timeline.Mark_Stage (BT.PCI_Config_Mapped);
         PCI.enumerateDevicesPCIe (Virtmem.P2Va (startAddr));
     end initPCI;
     showBootStage ("PCI devices enumerated");
+    Boot_Timeline.Mark_Stage (BT.PCI_Enumerated);
     Boot_Diagnostics.Begin_Step ("Loading the live system image");
 
 
@@ -554,6 +571,7 @@ begin
         end initSMP;
     end if;
     showBootStage ("CPU initialization complete");
+    Boot_Timeline.Mark_Stage (BT.Secondary_CPUs_Ready);
 
     println ("Starting idle service");
     Process.startKernelThread (procStart => Services.Idle.start'Address,
@@ -577,6 +595,7 @@ begin
         showBootStage ("Starting userspace...");
         Boot_Diagnostics.Begin_Step ("Starting services / NUC trace 12");
         println("Starting scheduler on CPU 0");
+        Boot_Timeline.Mark_Stage (BT.Scheduler_Started);
         Scheduler.schedule(cpu0Data);
     end initScheduler;
 

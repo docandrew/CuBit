@@ -14,8 +14,12 @@ package CuBit.Input with SPARK_Mode => On is
 
    OP_SOURCE_REPORT : constant Unsigned_32 := 16#0A00#;
 
-   type Device_Class is (KEYBOARD, RELATIVE_POINTER);
-   for Device_Class use (KEYBOARD => 1, RELATIVE_POINTER => 2);
+   --  RELATIVE_POINTER reports carry displacement (Pointer_Pending wire
+   --  layout, ACCUMULABLE_DISPLACEMENT); ABSOLUTE_POINTER reports carry a
+   --  normalized position (Absolute_Pointer wire layout, REPLACEABLE_STATE).
+   type Device_Class is (KEYBOARD, RELATIVE_POINTER, ABSOLUTE_POINTER);
+   for Device_Class use
+     (KEYBOARD => 1, RELATIVE_POINTER => 2, ABSOLUTE_POINTER => 3);
 
    type Delivery_Class is
      (ORDERED_TRANSITION, ACCUMULABLE_DISPLACEMENT, REPLACEABLE_STATE);
@@ -42,7 +46,7 @@ package CuBit.Input with SPARK_Mode => On is
       snapshot    : Unsigned_64 := 0;
    end record;
 
-   --  Relative-pointer snapshot: buttons in low eight bits, optional driver
+   --  Pointer snapshot (relative and absolute): buttons in low eight bits, optional driver
    --  acquisition time in the high 56 bits. Stored time is milliseconds + 1;
    --  zero means unavailable. No wrap: unrepresentable clocks are unstamped.
    --  Keyboard snapshots and the four-word wire envelope are unchanged.

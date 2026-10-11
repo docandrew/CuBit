@@ -1992,35 +1992,14 @@ package body XHCI is
    end Poll_Boot_Keyboard;
 
    procedure Enable_Runtime_Interrupts
-     (mode        : Runtime_Interrupt_Mode;
-      vector      : Unsigned_8;
-      tableOffset : Unsigned_64;
-      enabled     : out Boolean)
+     (mode    : Runtime_Interrupt_Mode;
+      enabled : out Boolean)
    is
       usbCommand : Unsigned_32;
    begin
       enabled := False;
       if mode = INTERRUPT_POLLING then
          return;
-      elsif mode = INTERRUPT_MSIX then
-         --  One MSI-X table entry is four dwords. The table location is
-         --  supplied by devmgr only after it has validated BIR=BAR0; repeat
-         --  the byte-range and alignment checks at the authority boundary.
-         if tableOffset mod 8 /= 0 or else barMappedBytes < 16 or else
-            tableOffset > barMappedBytes - 16
-         then
-            return;
-         end if;
-         Write32
-           (barBase, Storage_Offset (tableOffset), 16#FEE0_0000#);
-         Write32
-           (barBase, Storage_Offset (tableOffset + 4), 0);
-         Write32
-           (barBase, Storage_Offset (tableOffset + 8), Unsigned_32 (vector));
-         --  Vector Control bit 0 clear means this entry is unmasked. The
-         --  PCI function mask remains asserted by devmgr until setup replies.
-         Write32
-           (barBase, Storage_Offset (tableOffset + 12), 0);
       end if;
 
       --  Clear any initialization-time pending indication while enabling the

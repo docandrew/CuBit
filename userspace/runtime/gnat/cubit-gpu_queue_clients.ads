@@ -22,6 +22,7 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with System;
+with CuBit.GPU_Queues.Kinds;
 with CuBit.GPU_Queues;
 
 package CuBit.GPU_Queue_Clients is
@@ -63,6 +64,7 @@ package CuBit.GPU_Queue_Clients is
       Bytes     : Unsigned_32 := 0;
       First, Second : Wait;
       Deadline  : GQ.Deadline_Us := GQ.No_Deadline;
+      Kinds     : CuBit.GPU_Queues.Kinds.Job_Kinds := 0;     --  for the driver's per-kind accounting
    end record;
 
    --  Room for one more descriptor (taking the driver's consumed index).

@@ -1,4 +1,5 @@
 with Interfaces; use Interfaces;
+with CuBit.GPU_Queues.Kinds;
 with CuBit.GPU_Queues;
 with Intel_GPU_Timeline;
 with Intel_GPU_GuC_Submission_Policy;
@@ -101,7 +102,7 @@ package Intel_GPU_Queue_Admission with SPARK_Mode is
 
    -- Rule 1: a valid opcode, flags and context.
    function Addressed (D : Q.Descriptor; View : Session_View) return Boolean is
-     (Decode_Opcode (D.Operation) in Q.Execute | Q.Signal and then D.Flags = 0 and then
+     (Decode_Opcode (D.Operation) in Q.Execute | Q.Signal and then D.Flags <= CuBit.GPU_Queues.Kinds.Kinds_Mask and then
       Context_Named (D, View));
 
    -- Well formed: rules 1 and 3 hold.

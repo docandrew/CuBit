@@ -1,0 +1,10 @@
+project GT_Frequency is
+   -- The Gen12 GT frequency register decoder (Intel_GPU_GT_Frequency), hosted.
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("intel_gpu_gt_frequency.ads", "gt_frequency_tests.adb");
+   for Object_Dir use "build-gt-frequency";
+   for Main use ("gt_frequency_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+end GT_Frequency;

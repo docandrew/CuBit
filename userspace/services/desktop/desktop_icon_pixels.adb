@@ -1,8 +1,32 @@
 package body Desktop_Icon_Pixels with SPARK_Mode is
+   --  The icon tables are large constants: only these two bodies name
+   --  them, so the provers see them only for the index checks here.
+   function Application_Pixel
+     (Icon : Desktop_Icons.Icon_ID; Index : Natural) return Interfaces.Unsigned_32
+     with Pre => Index < Desktop_Icons.ICON_SIZE * Desktop_Icons.ICON_SIZE;
+   function Application_Pixel
+     (Icon : Desktop_Icons.Icon_ID; Index : Natural) return Interfaces.Unsigned_32 is
+   begin
+      return Desktop_Icons.Pixels (Icon) (Index);
+   end Application_Pixel;
+
+   function Control_Pixel
+     (Icon : Desktop_Window_Icons.Icon_ID; Index : Natural) return Interfaces.Unsigned_32
+     with Pre => Index < Desktop_Window_Icons.ICON_SIZE * Desktop_Window_Icons.ICON_SIZE;
+   function Control_Pixel
+     (Icon : Desktop_Window_Icons.Icon_ID; Index : Natural) return Interfaces.Unsigned_32 is
+   begin
+      return Desktop_Window_Icons.Pixels (Icon) (Index);
+   end Control_Pixel;
+
    function Pixel (Item : Asset; X, Y : Natural) return Interfaces.Unsigned_32 is
    begin
-      return (if Item.Kind = Application then Desktop_Icons.Pixels (Item.Icon) (Y * Size (Item) + X)
-      else Desktop_Window_Icons.Pixels (Item.Control) (Y * Size (Item) + X));
+      case Item.Kind is
+         when Application =>
+            return Application_Pixel (Item.Icon, Y * Desktop_Icons.ICON_SIZE + X);
+         when Window_Control =>
+            return Control_Pixel (Item.Control, Y * Desktop_Window_Icons.ICON_SIZE + X);
+      end case;
    end Pixel;
    procedure Copy_Chunk (Item : Asset; Target : in out Pixels;
       Plan : U.Plan; Complete : out Boolean) is

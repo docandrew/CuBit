@@ -19,6 +19,8 @@ with CuBit.Busy_Poll;
 with CuBit.Benchmark_Clock;
 #end if;
 
+with CuBit.NVMe_Control;
+
 package body NVMe is
 
    ADMIN_SLEEP_POLLS      : constant Positive := 5_000;
@@ -401,45 +403,28 @@ package body NVMe is
    ---------------------------------------------------------------------------
    --  createIOQueues
    ---------------------------------------------------------------------------
-   procedure createIOQueues
-     (msixTable : Unsigned_64 := NO_MSIX; vector : Unsigned_64 := 0;
-      ok : out Boolean)
+   procedure createIOQueues (interrupts : Boolean; ok : out Boolean)
    is
       cmd : SubmissionEntry := NULL_SUBMISSION;
-      MSI_ADDRESS : constant Unsigned_32 := 16#FEE0_0000#; --  APIC 0
-      ENTRY_MASKED : constant Unsigned_32 := 1;
       CQ_PHYSICALLY_CONTIGUOUS : constant Unsigned_32 := 1;
       CQ_INTERRUPTS_ENABLED : constant Unsigned_32 := 2;
-      useMSIX : constant Boolean := msixTable /= NO_MSIX;
+      INTERRUPT_VECTOR_SHIFT : constant := 16;
    begin
       interruptsEnabled := False;
-      if useMSIX then
-         --  Entry zero: masked while written, then unmasked; devmgr clears
-         --  the function mask after we reply.
-         declare
-            tableEntry : array (0 .. 3) of Unsigned_32 with Volatile,
-              Import, Address => barBase + Storage_Offset (msixTable);
-         begin
-            tableEntry (3) := ENTRY_MASKED;
-            tableEntry (0) := MSI_ADDRESS;
-            tableEntry (1) := 0;
-            tableEntry (2) := Unsigned_32 (vector);
-            tableEntry (3) := 0;
-            ok := tableEntry (2) = Unsigned_32 (vector);
-         end;
-         if not ok then
-            return;
-         end if;
-      end if;
       --  Create I/O Completion Queue (ID=1)
       adminCmdId := adminCmdId + 1;
       cmd := NULL_SUBMISSION;
       cmd.cdw0  := makeCdw0 (ADMIN_CREATE_IO_CQ, adminCmdId);
       cmd.prp1  := dmaBase + IO_CQ_OFFSET;
       cmd.cdw10 := Shift_Left (Unsigned_32 (QUEUE_DEPTH - 1), 16) or 1;  -- size | QID=1
-      --  PC=1; IEN=1 with interrupt vector 0 (MSI-X entry zero) if MSI-X.
+      --  PC=1; with interrupts IEN=1 and IV = the MSI-X entry devmgr
+      --  programmed for completions.
       cmd.cdw11 := CQ_PHYSICALLY_CONTIGUOUS or
-        (if useMSIX then CQ_INTERRUPTS_ENABLED else 0);
+        (if interrupts then
+           CQ_INTERRUPTS_ENABLED or
+           Shift_Left (CuBit.NVMe_Control.Completion_Message,
+                       INTERRUPT_VECTOR_SHIFT)
+         else 0);
 
       ok := submitAdmin (cmd);
       if not ok then
@@ -461,7 +446,7 @@ package body NVMe is
          return;
       end if;
 
-      interruptsEnabled := useMSIX;
+      interruptsEnabled := interrupts;
       debugPrint ("NVMe: I/O queues created." & ASCII.LF);
    end createIOQueues;
 

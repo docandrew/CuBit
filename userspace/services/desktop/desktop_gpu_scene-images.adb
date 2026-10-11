@@ -12,7 +12,15 @@ package body Desktop_GPU_Scene.Images with SPARK_Mode is
       Result : Registry.I.Outcome;
    begin
       Accepted := False;
-      if Scene.Status /= Capturing or else Scene.Cold or else Scene.Invalid then return; end if;
+      if Scene.Status /= Capturing or else Scene.Invalid then return; end if;
+      if Scene.Cold then
+         -- GPU-004: the scene is discarded anyway, but every other stale
+         -- image still stages its upload into the same batch, so one
+         -- transfer and one recapture cover them all. Nothing is drawn.
+         Registry.Ensure (Sources, Key, Version, Image, Bytes, Ticket, Result);
+         if Result = Registry.I.Unsafe then Scene.Status := Quarantined; end if;
+         return;
+      end if;
       Registry.Ensure (Sources, Key, Version, Image, Bytes, Ticket, Result);
       case Result is
          when Registry.I.Available =>
@@ -35,9 +43,14 @@ package body Desktop_GPU_Scene.Images with SPARK_Mode is
       Result : out Output_Completion; Repair : Compositor_Damage.State)
    is
       Progress : Registry.I.Outcome;
+      Flushed : D.Source_Result;
+      use type D.Source_Result;
    begin
       Result := Output_Unsafe;
       if Scene.Status = Quarantined then return; end if;
+      -- Uploads this capture staged go to the GPU in one submission.
+      D.Flush_Staged (Flushed);
+      if Flushed = D.Source_Unsafe then Scene.Status := Quarantined; return; end if;
       if Registry.Upload_Work (Sources) then
          if Poll_Only then
             Registry.Poll (Sources, Progress);

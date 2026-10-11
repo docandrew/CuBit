@@ -37,6 +37,7 @@ with BuddyAllocator;
 with Capabilities;
 with Config;
 with Descriptors;
+with Device_Vector_ABI;
 with Execution_Accounting;
 with Process_Launch;
 with Process_Identities;
@@ -337,6 +338,12 @@ package Process is
     NULL_TAG : constant MessageTag := (label => 0, length => 0, flags => 0, reserved => 0);
 
     type MessageWords is array (0..3) of Unsigned_64;
+
+    -- A process's pending device vectors, as its IRQ doorbell event carries
+    -- them (Device_Vector_ABI: bit B of word W is vector First_Vector +
+    -- 64 * W + B).
+    type Device_Vector_Words is
+      array (Device_Vector_ABI.Pending_Word_Index) of Unsigned_64;
 
     type Message is record
         tag      : MessageTag;
@@ -864,6 +871,13 @@ package Process is
         -- bit is cleared only when the driver observes it and then drains its
         -- authoritative device/controller state.
         irqNotificationPending : Boolean := False;
+
+        -- Which of the process's message-signaled device vectors fired
+        -- since it last took the doorbell (Device_Vector_ABI layout). Set
+        -- with irqNotificationPending under the mailbox lock and handed
+        -- over with it, so a multi-vector driver knows which queues to
+        -- drain. Legacy lines set only the doorbell.
+        irqPendingVectors : Device_Vector_Words := (others => 0);
 
         -- The kernel has notices for this process (grant ends, exit and
         -- fault reports; docs/ipc-delivery.md). A doorbell under the

@@ -8,6 +8,7 @@
 with Interfaces; use Interfaces;
 with System;
 
+with Boot_Timeline_Layout;
 with Descriptors;
 
 package Syscall with
@@ -92,6 +93,10 @@ is
         SYSCALL_SEND_CONTROL,
         SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY,
         SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY,
+        SYSCALL_ALLOCATE_DEVICE_VECTORS,
+        SYSCALL_RELEASE_DEVICE_VECTORS,
+        SYSCALL_READ_DEVICE_VECTOR,
+        SYSCALL_BOOT_TIMELINE,
         SYSCALL_REGISTER_DRIVER)
     with Size => Unsigned_64'Size;
 
@@ -140,6 +145,12 @@ is
         -- old binary gets an unknown call, not a garbage deadline.
         SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY   => 129,
         SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY   => 128,
+        -- Device vectors (docs/msi-interrupts.md)
+        SYSCALL_ALLOCATE_DEVICE_VECTORS => 130,
+        SYSCALL_RELEASE_DEVICE_VECTORS  => 131,
+        SYSCALL_READ_DEVICE_VECTOR      => 132,
+        -- docs/boot-timeline.md
+        SYSCALL_BOOT_TIMELINE => Boot_Timeline_Layout.System_Call_Number,
         SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY => 42,
         SYSCALL_REPLY_WAIT           => 48,
         SYSCALL_VIRT_TO_PHYS         => 50,

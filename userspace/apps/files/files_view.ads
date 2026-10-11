@@ -6,6 +6,7 @@ with CuBit.UI.Splits;
 with CuBit.UI.State;
 with Files_Limits;
 with Files_Order;
+with Clipboard_Text;
 
 --  CuBit Files' view (docs/files-app.md): two Commander-style panes over
 --  the filesystem's request queue, drawn with the shared toolkit.
@@ -132,6 +133,28 @@ package Files_View is
    --  Requests are out: the platform waits for the service's wake (or its
    --  input, or the deadline) rather than polling.
    function Waiting_For_IO (State : View_State) return Boolean;
+
+   --  Copy and paste (docs/clipboard.md). The platform owns the clipboard
+   --  calls; the view says what to copy and takes what is pasted.
+   --  What the selection is copied as: the entries' names, or their full
+   --  paths. Either way a description only: a pasted path is opened again
+   --  under the target's own grants, never with Files' rights.
+   type Copy_Form is (Copy_Names, Copy_Paths);
+   type Clipboard_Request is (No_Request, Request_Copy_Names, Request_Copy_Paths);
+   --  A Copy item chosen from the context menu, taken once by the platform
+   --  right after the Handle that chose it (the click is its gesture).
+   procedure Take_Clipboard_Request (State : in out View_State; Request : out Clipboard_Request);
+   --  The active pane's marked entries, or the entry under the cursor:
+   --  Text gets one per line, Literal the CCL List-String of them
+   --  (Clipboard_Text.String_List_Type). Count 0: nothing to copy.
+   procedure Selection_Copy
+     (State : View_State; Form : Copy_Form; Text, Literal : in out Clipboard_Text.Builder; Count : out Natural);
+   --  A prompt is asking for a name (new folder, rename): a paste or copy
+   --  goes to its text.
+   function Prompt_Takes_Text (State : View_State) return Boolean;
+   generic
+      with procedure Process (Text : in out String; Length : in out Natural; Changed : out Boolean);
+   procedure Edit_Prompt (State : in out View_State);
 
    --  What the view shows, for tests and the overlay.
    function Viewer_Open (State : View_State) return Boolean;

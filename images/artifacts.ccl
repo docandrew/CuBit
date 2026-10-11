@@ -14,6 +14,7 @@
   (artifact "mixer" repository "kernel/isodir/boot/mixer.svc")
   (artifact "ps2" repository "kernel/isodir/boot/ps2.drv")
   (artifact "xhci" repository "kernel/isodir/boot/xhci.drv")
+  (artifact "virtio-input" repository "kernel/isodir/boot/virtio-input.drv")
   (artifact "config" repository "kernel/isodir/boot/config.svc")
   (artifact "config-storage" repository "kernel/isodir/boot/config-storage.svc")
   (artifact "servo" repository "kernel/isodir/boot/cubitshell.app")

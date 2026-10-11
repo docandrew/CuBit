@@ -7,6 +7,8 @@ with CuBit.Config_Inspection;
 with CuBit.Config_Reader;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.App;
+with CuBit.UI.Clipboard;
+with Clipboard_Chords;
 with CuBit.UI.Controls;
 with CuBit.UI.Labels;
 with CuBit.UI.State;
@@ -204,10 +206,30 @@ procedure Main is
       CuBit.UI.State.Finish_Frame (UI);
    end Render;
 
+   --  Copy (docs/clipboard.md): the selected setting's stored value, or with
+   --  Shift (or for a namespace) its key. The value has no declared schema,
+   --  so it is copied as text.
+   procedure Copy_Selected (Win : CuBit.UI.App.Window; Key_Only : Boolean) is
+      Result : CuBit.UI.Clipboard.Outcome;
+      Has_Value : constant Boolean :=
+        Selected in 1 .. Model.Count and then Model.Nodes (Selected).Has_Value
+        and then Value_Status = P.OK and then Value.Length > 0;
+   begin
+      if Selected not in 2 .. Model.Count then
+         return;
+      end if;
+      CuBit.UI.Clipboard.Copy_Text
+        (CuBit.UI.App.Surface_ID (Win),
+         (if Has_Value and then not Key_Only then Value.Data (1 .. Value.Length) else T.Key (Model, Selected)),
+         CuBit.UI.Clipboard.Ordinary, Result);
+      debugPrint ("config-inspector: copy " & CuBit.UI.Clipboard.Image (Result) & ASCII.LF);
+   end Copy_Selected;
+
    procedure Handle_Event
      (Win : in out CuBit.UI.App.Window; Event : CuBit.UI.App.Input_Event;
       Dirty : in out Rect; Running : in out Boolean)
    is
+      use type Clipboard_Chords.Command;
       X, Y, Position : Natural;
       Hit : CuBit.UI.Controls.Control_ID;
       Changed : Boolean := False;
@@ -215,6 +237,11 @@ procedure Main is
    begin
       if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
          Running := False;
+         return;
+      elsif Event.kind = CuBit.UI.App.INPUT_KEY_DOWN and then
+        CuBit.UI.Clipboard.Command_Of (Event.payload0, Event.payload1) = Clipboard_Chords.Copy_Command
+      then
+         Copy_Selected (Win, Key_Only => (Event.payload1 and CuBit.UI.App.KEYMOD_SHIFT) /= 0);
          return;
       elsif Event.kind = CuBit.UI.App.INPUT_KEY_DOWN then
          if Event.payload0 = CuBit.UI.App.KEY_ESC then Running := False;

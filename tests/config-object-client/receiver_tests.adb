@@ -14,7 +14,10 @@ with Config_Worker_Protocol;
 with Config_Object_Messages;
 with Config_Object_Receiver;
 
+with CuBit.Process_IDs;
 procedure Receiver_Tests is
+   function PID (Word : Interfaces.Unsigned_64) return CuBit.Process_IDs.Process_ID
+     renames CuBit.Process_IDs.From_Word;
    package A renames Config_Authority;
    package C renames Config_Collections;
    package V renames Config_Objects;
@@ -38,7 +41,7 @@ procedure Receiver_Tests is
    Checks, Acquires, Returns, Saves, Replies : Natural := 0;
    Active, Saved, Current, Allow_Acquire, Allow_Return, Allow_Save, Allow_Delivery : Boolean := False;
    Mutate_On_Return : Boolean := False;
-   Saved_Caller, Current_Caller, Last_Caller : Process_ID := 0;
+   Saved_Caller, Current_Caller, Last_Caller : Process_ID := PID (0);
    Last_Slot : CapabilitySlot := 0;
    Last_Reply : Message := NULL_MESSAGE;
    Expected_Offset, Expected_Length : Unsigned_64 := 0;
@@ -125,7 +128,7 @@ procedure Receiver_Tests is
       R.Handle (Object, Store, Authority, Caller, Request, Token, Staged);
       Check (not Current);
    end Call;
-   procedure Is_Reply (Code : W.Status; Caller : Process_ID := 42; Slot : CapabilitySlot := 63) is
+   procedure Is_Reply (Code : W.Status; Caller : Process_ID := PID (42); Slot : CapabilitySlot := 63) is
    begin
       Check (Last_Reply.tag.label = W.Status'Enum_Rep (Code) and Last_Caller = Caller and Last_Slot = Slot);
    end Is_Reply;
@@ -141,79 +144,79 @@ begin
    CCL.Objects.Append (First, CCL.Objects.Integer_Cell (41), Built); Check (Built = CCL.Objects.Added);
    T.Register (Store, "org.cubit.settings", Contract, ID, Access_Result); Check (Access_Result = C.Registered);
    A.Append (Rules, "org.cubit", A.Read_Write, Good); Check (Good);
-   A.Install (Authority, 42, Rules, Installed); Check (Installed = A.Installed);
+   A.Install (Authority, PID (42), Rules, Installed); Check (Installed = A.Installed);
    W.Describe ("org.cubit.settings", W.Read_Write, 0, Schema, Input.Control, Good); Check (Good);
-   Call (42, W.Open_Collection); Is_Reply (W.Success); Handle := Last_Reply.words (0);
+   Call (PID (42), W.Open_Collection); Is_Reply (W.Success); Handle := Last_Reply.words (0);
    Check (Acquires = 1 and Returns = 1 and not Active and not Saved);
    -- More failures than the entire handle table: immediate Open must reclaim
    -- its fresh undelivered handle, without closing the earlier delivered one.
    Allow_Delivery := False;
    for Attempt in 1 .. 2 * C.Maximum_Handles loop
-      Call (42, W.Open_Collection); Is_Reply (W.Success);
+      Call (PID (42), W.Open_Collection); Is_Reply (W.Success);
       Check (Last_Reply.words (0) /= Handle);
-      Check (not T.Check_Access (Store, Authority, 42, Last_Reply.words (0), A.Read_Config));
-      Check (T.Check_Access (Store, Authority, 42, Handle, A.Read_Config));
+      Check (not T.Check_Access (Store, Authority, PID (42), Last_Reply.words (0), A.Read_Config));
+      Check (T.Check_Access (Store, Authority, PID (42), Handle, A.Read_Config));
    end loop;
    Allow_Delivery := True;
    T.Restore (Store, ID, 10, 1, Result); Check (Result = V.Accepted);
    Receipt_For (P.Absent, 0); Before_Replies := Replies;
    R.Finish (Object, Store, Receipt); Check (Replies = Before_Replies);
    Before_Acquires := Acquires;
-   Call (99, W.Get_Object); Is_Reply (W.Denied, 99); Check (Acquires = Before_Acquires);
-   Call (99, W.Set_Object, 2); Is_Reply (W.Denied, 99); Check (Acquires = Before_Acquires and Saves = 0);
+   Call (PID (99), W.Get_Object); Is_Reply (W.Denied, PID (99)); Check (Acquires = Before_Acquires);
+   Call (PID (99), W.Set_Object, 2); Is_Reply (W.Denied, PID (99)); Check (Acquires = Before_Acquires and Saves = 0);
    Input.Value := First; Allow_Save := False;
-   Call (42, W.Set_Object, 2); Is_Reply (W.Unavailable);
+   Call (PID (42), W.Set_Object, 2); Is_Reply (W.Unavailable);
    Check (not Staged and not Saved and not Active and T.Pending_Token (Store) = 0);
    Allow_Save := True; Mutate_On_Return := True; Input.Value := First;
    Before_Replies := Replies;
-   Call (42, W.Set_Object, 2);
+   Call (PID (42), W.Set_Object, 2);
    Check (Staged and Saved and R.Waiting (Object) and Replies = Before_Replies and not Active);
    T.Pending (Store, Job, Binding, Available); Check (Available and Job.Value = First);
    Check (Input.Value = CCL.Objects.Image'(others => <>)); Mutate_On_Return := False;
    Before_Acquires := Acquires; Before_Saves := Saves;
-   Call (42, W.Set_Object, 3); Is_Reply (W.Busy);
+   Call (PID (42), W.Set_Object, 3); Is_Reply (W.Busy);
    Check (Acquires = Before_Acquires and Saves = Before_Saves and Saved);
-   Call (99, W.Set_Object, 3); Is_Reply (W.Denied, 99);
+   Call (PID (99), W.Set_Object, 3); Is_Reply (W.Denied, PID (99));
    Check (Acquires = Before_Acquires and Saves = Before_Saves and Saved);
-   Call (42, W.Get_Object); Is_Reply (W.Missing); Check (Saved and Acquires = Before_Acquires);
+   Call (PID (42), W.Get_Object); Is_Reply (W.Missing); Check (Saved and Acquires = Before_Acquires);
    Receipt_For (P.Committed, 1); Old_Receipt := Receipt;
    Receipt.Session := 9; Before_Replies := Replies;
    R.Finish (Object, Store, Receipt); Check (Replies = Before_Replies and Saved);
    -- Revision 1 numerically equals the first delivered handle. A dropped
    -- Set receipt must never be mistaken for an acquisition and close it.
    Check (Handle = 1); Allow_Delivery := False;
-   R.Finish (Object, Store, Old_Receipt); Is_Reply (W.Success, 42, 62);
+   R.Finish (Object, Store, Old_Receipt); Is_Reply (W.Success, PID (42), 62);
    Check (not Saved and not R.Waiting (Object) and Last_Reply.words (0) = 1);
    Allow_Delivery := True;
-   Check (T.Check_Access (Store, Authority, 42, Handle, A.Read_Config));
+   Check (T.Check_Access (Store, Authority, PID (42), Handle, A.Read_Config));
    Before_Replies := Replies; R.Finish (Object, Store, Old_Receipt); Check (Replies = Before_Replies);
-   Call (42, W.Get_Object); Is_Reply (W.Success); Check (Input.Value = First and not Active);
+   Call (PID (42), W.Get_Object); Is_Reply (W.Success); Check (Input.Value = First and not Active);
    Allow_Acquire := False; Input.Value := (others => <>);
-   Call (42, W.Get_Object); Is_Reply (W.Unavailable); Check (Input.Value = CCL.Objects.Image'(others => <>));
-   Call (42, W.Set_Object, 3, 1); Is_Reply (W.Unavailable); Check (not Staged and not Saved);
+   Call (PID (42), W.Get_Object); Is_Reply (W.Unavailable); Check (Input.Value = CCL.Objects.Image'(others => <>));
+   Call (PID (42), W.Set_Object, 3, 1); Is_Reply (W.Unavailable); Check (not Staged and not Saved);
    Allow_Acquire := True; Input.Value := First;
-   Call (42, W.Set_Object, 3, 0); Is_Reply (W.Conflict, 42, 62);
+   Call (PID (42), W.Set_Object, 3, 0); Is_Reply (W.Conflict, PID (42), 62);
    Check (not Saved and not Staged and not R.Waiting (Object));
-   Call (42, W.Set_Object, 4, 1); Check (Staged and Saved);
+   Call (PID (42), W.Set_Object, 4, 1); Check (Staged and Saved);
    Receipt_For (P.Committed, 2); Before_Replies := Replies;
    R.Lost (Object, Store, 9); Check (Saved and Replies = Before_Replies);
-   R.Lost (Object, Store, 10); Is_Reply (W.Uncertain, 42, 62); Check (not Saved);
+   R.Lost (Object, Store, 10); Is_Reply (W.Uncertain, PID (42), 62); Check (not Saved);
    Before_Replies := Replies;
    R.Finish (Object, Store, Receipt); R.Lost (Object, Store, 10); Check (Replies = Before_Replies);
-   Call (42, W.Get_Object); Is_Reply (W.Stale); Check (Input.Value = First);
+   Call (PID (42), W.Get_Object); Is_Reply (W.Stale); Check (Input.Value = First);
    T.Restore (Store, ID, 11, 5, Result); Check (Result = V.Accepted);
    Receipt_For (P.Loaded, 2); R.Finish (Object, Store, Receipt);
-   Input.Value := First; Call (42, W.Set_Object, 6, 2); Check (Staged);
+   Input.Value := First; Call (PID (42), W.Set_Object, 6, 2); Check (Staged);
    Receipt_For (P.Committed, 3); Allow_Delivery := False;
    R.Finish (Object, Store, Receipt); Check (not Saved and not R.Waiting (Object));
    Allow_Delivery := True;
-   Call (42, W.Get_Object); Is_Reply (W.Success); Check (Last_Reply.words (0) = 3);
+   Call (PID (42), W.Get_Object); Is_Reply (W.Success); Check (Last_Reply.words (0) = 3);
    --  Invalid tag/grant never reaches acquire, including hostile enum values.
-   Before_Acquires := Acquires; Current := True; Current_Caller := 42;
+   Before_Acquires := Acquires; Current := True; Current_Caller := PID (42);
    Request := NULL_MESSAGE; Request.tag.label := Unsigned_32'Last;
-   R.Handle (Object, Store, Authority, 42, Request, 7, Staged); Is_Reply (W.Invalid_Request);
+   R.Handle (Object, Store, Authority, PID (42), Request, 7, Staged); Is_Reply (W.Invalid_Request);
    Current := True; Request := W.Request (W.Set_Object, (7, 9), Handle, 3); Request.words (1) := 0;
-   R.Handle (Object, Store, Authority, 42, Request, 7, Staged); Is_Reply (W.Invalid_Request);
+   R.Handle (Object, Store, Authority, PID (42), Request, 7, Staged); Is_Reply (W.Invalid_Request);
    Check (Acquires = Before_Acquires and not Staged);
    -- Creation borrows control before metadata, admits the namespace first,
    -- and retains only a snapshot while the durable worker runs.
@@ -222,7 +225,7 @@ begin
       Read_Rules, Other_Rules : A.Rule_Set;
       Control_Snapshot : W.Open_Descriptor;
       Binding_Snapshot : CCL.Objects.Binding;
-      procedure Create_Call (Caller : Process_ID := 42; Online : Boolean := True) is
+      procedure Create_Call (Caller : Process_ID := PID (42); Online : Boolean := True) is
       begin
          Current := True; Current_Caller := Caller; Creating_Request := True;
          R.Begin_Definition (Creator, Store, W.Create_Collection, Authority, Caller,
@@ -232,10 +235,10 @@ begin
       end Create_Call;
       procedure Open_Call is
       begin
-         Current := True; Current_Caller := 43;
+         Current := True; Current_Caller := PID (43);
          Expected_Offset := 0; Expected_Length := W.Control_Bytes;
          Expected_Access := G.Read_Access;
-         R.Begin_Definition (Creator, Store, W.Open_Collection, Authority, 43,
+         R.Begin_Definition (Creator, Store, W.Open_Collection, Authority, PID (43),
            W.Request (W.Open_Collection, (7, 9), 0, 0), True, Staged);
          Check (not Current and not Active);
       end Open_Call;
@@ -251,15 +254,15 @@ begin
       Create_Call; Is_Reply (W.Denied);
       Check (not Staged and not Saved and Saves = Before_Saves);
       W.Describe ("org.cubit.settings", W.Read_Write, 0, Schema, Input.Control, Good); Check (Good);
-      Before_Acquires := Acquires; Create_Call (99); Is_Reply (W.Denied, 99);
+      Before_Acquires := Acquires; Create_Call (PID (99)); Is_Reply (W.Denied, PID (99));
       Check (Acquires = Before_Acquires and not Staged);
       A.Append (Read_Rules, "org.cubit", A.Read_Only, Good); Check (Good);
-      A.Install (Authority, 43, Read_Rules, Installed); Check (Installed = A.Installed);
-      Before_Acquires := Acquires; Create_Call (43); Is_Reply (W.Denied, 43);
+      A.Install (Authority, PID (43), Read_Rules, Installed); Check (Installed = A.Installed);
+      Before_Acquires := Acquires; Create_Call (PID (43)); Is_Reply (W.Denied, PID (43));
       Check (Acquires = Before_Acquires + 1 and not Staged);
       A.Append (Other_Rules, "org.other", A.Read_Write, Good); Check (Good);
-      A.Install (Authority, 44, Other_Rules, Installed); Check (Installed = A.Installed);
-      Before_Acquires := Acquires; Create_Call (44); Is_Reply (W.Denied, 44);
+      A.Install (Authority, PID (44), Other_Rules, Installed); Check (Installed = A.Installed);
+      Before_Acquires := Acquires; Create_Call (PID (44)); Is_Reply (W.Denied, PID (44));
       Check (Acquires = Before_Acquires + 1 and not Staged);
       Before_Acquires := Acquires; Create_Call (Online => False); Is_Reply (W.Unavailable);
       Check (Acquires = Before_Acquires + 1 and not Staged);
@@ -278,26 +281,26 @@ begin
       Create_Call; Is_Reply (W.Busy);
       Check (Saved and Saves = Before_Saves and Acquires = Before_Acquires + 1);
       -- Same rights reinstalled are still a DIFFERENT authorization lifetime.
-      A.Install (Authority, 42, Rules, Installed); Check (Installed = A.Installed);
-      R.Finish_Definition (Creator, Store, Authority, W.Success); Is_Reply (W.Denied, 42, 62);
+      A.Install (Authority, PID (42), Rules, Installed); Check (Installed = A.Installed);
+      R.Finish_Definition (Creator, Store, Authority, W.Success); Is_Reply (W.Denied, PID (42), 62);
       Check (Last_Reply.words (0) = 0 and not Saved and not R.Waiting (Creator));
       Before_Replies := Replies; R.Finish_Definition (Creator, Store, Authority, W.Success);
       Check (Replies = Before_Replies);
       CCL.Objects.Schemas.Write (Contract, Metadata, Good); Check (Good);
       Create_Call; Check (Staged);
-      R.Finish_Definition (Creator, Store, Authority, W.Success); Is_Reply (W.Success, 42, 62);
+      R.Finish_Definition (Creator, Store, Authority, W.Success); Is_Reply (W.Success, PID (42), 62);
       Handle := Last_Reply.words (0); Check (Handle /= 0 and not Saved);
       Allow_Delivery := False;
       for Attempt in 1 .. 2 * C.Maximum_Handles loop
          Create_Call; Check (Staged and Saved);
-         R.Finish_Definition (Creator, Store, Authority, W.Success); Is_Reply (W.Success, 42, 62);
+         R.Finish_Definition (Creator, Store, Authority, W.Success); Is_Reply (W.Success, PID (42), 62);
          Check (not Saved and not R.Waiting (Creator));
-         Check (not T.Check_Access (Store, Authority, 42, Last_Reply.words (0), A.Read_Config));
-         Check (T.Check_Access (Store, Authority, 42, Handle, A.Read_Config));
+         Check (not T.Check_Access (Store, Authority, PID (42), Last_Reply.words (0), A.Read_Config));
+         Check (T.Check_Access (Store, Authority, PID (42), Handle, A.Read_Config));
       end loop;
       Allow_Delivery := True;
       Create_Call; Check (Staged);
-      R.Lost (Creator, Store, 999); Is_Reply (W.Uncertain, 42, 62);
+      R.Lost (Creator, Store, 999); Is_Reply (W.Uncertain, PID (42), 62);
       Check (not Saved and not R.Waiting (Creator));
       Check (W.Valid_Reply (Last_Reply, W.Create_Collection));
       Before_Replies := Replies;
@@ -309,54 +312,54 @@ begin
       -- local registration is missing. It must not claim pre-stage failure.
       Create_Call; Check (Staged and Saved);
       R.Finish_Definition (Creator, Store, Authority, W.Success);
-      Is_Reply (W.Uncertain, 42, 62);
+      Is_Reply (W.Uncertain, PID (42), 62);
       Check (not Saved and not R.Waiting (Creator) and Last_Reply.words (0) = 0);
-      Before_Acquires := Acquires; Open_Call; Is_Reply (W.Denied, 43);
+      Before_Acquires := Acquires; Open_Call; Is_Reply (W.Denied, PID (43));
       Check (Acquires = Before_Acquires + 1 and not Staged and not Saved);
       W.Describe ("org.cubit.unknown", W.Read_Only, 0, Schema, Input.Control, Good); Check (Good);
       Metadata := (others => <>); Before_Acquires := Acquires;
       Open_Call; Check (Staged and Saved and Acquires = Before_Acquires + 1);
-      A.Revoke (Authority, 43);
-      R.Finish_Definition (Creator, Store, Authority, W.Missing); Is_Reply (W.Denied, 43, 62);
+      A.Revoke (Authority, PID (43));
+      R.Finish_Definition (Creator, Store, Authority, W.Missing); Is_Reply (W.Denied, PID (43), 62);
       Check (not Saved and not R.Waiting (Creator) and Last_Reply.words (0) = 0);
-      A.Install (Authority, 43, Read_Rules, Installed); Check (Installed = A.Installed);
+      A.Install (Authority, PID (43), Read_Rules, Installed); Check (Installed = A.Installed);
       Open_Call; Check (Staged and Saved);
-      R.Finish_Definition (Creator, Store, Authority, W.Missing); Is_Reply (W.Missing, 43, 62);
+      R.Finish_Definition (Creator, Store, Authority, W.Missing); Is_Reply (W.Missing, PID (43), 62);
       Check (not Saved and not R.Waiting (Creator));
       -- Losing a read-only definition lookup cannot create durable state.
       Open_Call; Check (Staged and Saved);
-      R.Lost (Creator, Store, 999); Is_Reply (W.Unavailable, 43, 62);
+      R.Lost (Creator, Store, 999); Is_Reply (W.Unavailable, PID (43), 62);
       Check (not Saved and not R.Waiting (Creator));
       -- Cached opens retain their fast path, even during another definition
       -- request. They must not overwrite that caller's saved reply.
       Open_Call; Check (Staged and Saved);
       W.Describe ("org.cubit.settings", W.Read_Only, 0, Schema, Input.Control, Good); Check (Good);
-      Before_Saves := Saves; Open_Call; Is_Reply (W.Success, 43);
+      Before_Saves := Saves; Open_Call; Is_Reply (W.Success, PID (43));
       Check (not Staged and Saved and Saves = Before_Saves and Last_Reply.words (0) /= 0);
-      R.Finish_Definition (Creator, Store, Authority, W.Missing); Is_Reply (W.Missing, 43, 62);
+      R.Finish_Definition (Creator, Store, Authority, W.Missing); Is_Reply (W.Missing, PID (43), 62);
       -- Cached Open takes the other acquisition-delivery path.
       Allow_Delivery := False;
       for Attempt in 1 .. 2 * C.Maximum_Handles loop
-         Open_Call; Is_Reply (W.Success, 43);
+         Open_Call; Is_Reply (W.Success, PID (43));
          Check (not Staged and not Saved);
-         Check (not T.Check_Access (Store, Authority, 43, Last_Reply.words (0), A.Read_Config));
-         Check (T.Check_Access (Store, Authority, 42, Handle, A.Read_Config));
+         Check (not T.Check_Access (Store, Authority, PID (43), Last_Reply.words (0), A.Read_Config));
+         Check (T.Check_Access (Store, Authority, PID (42), Handle, A.Read_Config));
       end loop;
       -- Deferred Open after schema recovery likewise cannot strand a handle.
       W.Describe ("org.cubit.recovered", W.Read_Only, 0, Schema, Input.Control, Good); Check (Good);
       Open_Call; Check (Staged and Saved);
       T.Register (Store, "org.cubit.recovered", Contract, ID, Access_Result); Check (Access_Result = C.Registered);
-      R.Finish_Definition (Creator, Store, Authority, W.Success); Is_Reply (W.Success, 43, 62);
-      Check (not Saved and not T.Check_Access (Store, Authority, 43, Last_Reply.words (0), A.Read_Config));
+      R.Finish_Definition (Creator, Store, Authority, W.Success); Is_Reply (W.Success, PID (43), 62);
+      Check (not Saved and not T.Check_Access (Store, Authority, PID (43), Last_Reply.words (0), A.Read_Config));
       Allow_Delivery := True;
    end;
    --  Failed grant return: never stage or reuse this receiver. Kernel teardown
    --  must retire the leftover mapping; no fake local success cleanup here.
    Input.Value := First; Allow_Return := False; Before_Saves := Saves;
-   Call (42, W.Set_Object, 7, 3); Is_Reply (W.Unavailable);
+   Call (PID (42), W.Set_Object, 7, 3); Is_Reply (W.Unavailable);
    Check (R.Needs_Recovery (Object) and Active and not Staged and Saves = Before_Saves);
    Before_Acquires := Acquires;
-   Call (42, W.Get_Object); Is_Reply (W.Unavailable); Check (Acquires = Before_Acquires);
+   Call (PID (42), W.Get_Object); Is_Reply (W.Unavailable); Check (Acquires = Before_Acquires);
    --  Model teardown of the failed receiver and its mapping. A separate
    --  receiver can still use the store; there is no in-place reset API.
    Active := False; Allow_Return := True;
@@ -364,10 +367,10 @@ begin
       Replacement : R.State;
       procedure Replacement_Call (Op : W.Operation; Token : Unsigned_64 := 0) is
       begin
-         Current := True; Current_Caller := 42;
+         Current := True; Current_Caller := PID (42);
          Expected_Offset := W.Value_Offset; Expected_Length := CCL.Objects.Native_Image_Bytes;
          Expected_Access := (if Op = W.Get_Object then G.Write_Access else G.Read_Access);
-         R.Handle (Replacement, Store, Authority, 42, W.Request (Op, (7, 9), Handle, 3), Token, Staged);
+         R.Handle (Replacement, Store, Authority, PID (42), W.Request (Op, (7, 9), Handle, 3), Token, Staged);
          Check (not Current);
       end Replacement_Call;
    begin
@@ -377,7 +380,7 @@ begin
       --  Set's saved reply. Its eventual authenticated receipt still finishes.
       Allow_Return := False; Replacement_Call (W.Get_Object);
       Is_Reply (W.Unavailable); Check (Active and Saved and R.Needs_Recovery (Replacement));
-      R.Finish (Replacement, Store, Receipt); Is_Reply (W.Success, 42, 62);
+      R.Finish (Replacement, Store, Receipt); Is_Reply (W.Success, PID (42), 62);
       Check (not Saved and not R.Waiting (Replacement) and Last_Reply.words (0) = 4);
       Before_Replies := Replies; R.Finish (Replacement, Store, Receipt); Check (Replies = Before_Replies);
    end;

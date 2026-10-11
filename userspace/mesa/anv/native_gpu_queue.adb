@@ -1,6 +1,7 @@
 pragma Ada_2022;
 with System;
 with CuBit.GPU_Queue_Clients;
+with CuBit.GPU_Queues.Kinds;
 with CuBit.GPU_Sessions;
 with CuBit.Messages;
 with CuBit.Monotonic;
@@ -125,7 +126,7 @@ package body Native_GPU_Queue is
         Item.First.Reserved = 0 and then Item.Second.Reserved = 0;
    begin
       Decoded := (others => <>);
-      Valid := Item.Reserved = 0 and then Valid_Context (Item.Context) and then Waits_Valid and then
+      Valid := Item.Kinds <= CuBit.GPU_Queues.Kinds.Kinds_Mask and then Valid_Context (Item.Context) and then Waits_Valid and then
         ((Item.Operation = Execute_Code and then
             Rules.Valid_Batch (Item.Handle, Item.GPU, Item.Offset, Item.Bytes)) or else
          (Item.Operation = Signal_Code and then Item.Handle = 0 and then Item.GPU = 0 and then
@@ -142,7 +143,8 @@ package body Native_GPU_Queue is
          Bytes     => Item.Bytes,
          First     => Wait_Of (Item.First),
          Second    => Wait_Of (Item.Second),
-         Deadline  => GQ.Deadline_Us (Item.Deadline_Us));
+         Deadline  => GQ.Deadline_Us (Item.Deadline_Us),
+         Kinds     => CuBit.GPU_Queues.Kinds.Job_Kinds (Item.Kinds));
    end Decode;
 
    function Submit
@@ -259,5 +261,103 @@ package body Native_GPU_Queue is
                    when Sessions.Queue_Ended => Closed);
       end;
    end Wait;
+
+   --  The slot whose session holds the armed wake (one per process).
+   No_Armed_Slot : constant Unsigned_64 := Unsigned_64'Last;
+   Armed_Slot : Unsigned_64 := No_Armed_Slot;
+
+   function Arm_Idle_Wake (Token : Unsigned_64) return Wake_Arm is
+      Open_Count : Natural := 0;
+      Found : CuBit.Messages.CapabilitySlot := 0;
+      Line : GQ.Status_Line;
+      Read, Accepted : Boolean;
+      Completed : GQ.Timeline_Value;
+      Render : constant GQ.Context_Index := 0;
+   begin
+      if Armed_Slot /= No_Armed_Slot then
+         return Unavailable;
+      end if;
+      for Slot in Slots'Range loop
+         if Sessions.Is_Open (Slots (Slot).Session) then
+            Open_Count := Open_Count + 1;
+            Found := Slot;
+         end if;
+      end loop;
+      if Open_Count /= 1 then
+         return Unavailable;
+      end if;
+      declare
+         State : Slot_State renames Slots (Found);
+      begin
+         if Boolean (State.Failed) then
+            return Unavailable;
+         end if;
+         Completed := State.Reaped (Render);
+         Sessions.Read_Status (State.Session, Render, Line, Read);
+         if Read and then GQ.Timeline_Value (Line.Completed) > Completed then
+            Completed := GQ.Timeline_Value (Line.Completed);
+         end if;
+         if State.Last (Render) <= Completed then
+            return Idle;
+         end if;
+         --  The session's one driver wake: a thread in Wait would supersede it.
+         if Exchange (State.Waiter'Address, 1, Sequentially_Consistent) /= 0 then
+            return Unavailable;
+         end if;
+         Sessions.Arm_Wake (State.Session, Render, State.Last (Render), Token, Accepted);
+         if not Accepted then
+            Store (State.Waiter'Address, 0, Sequentially_Consistent);
+            return Unavailable;
+         end if;
+         Armed_Slot := Unsigned_64 (Found);
+         return Armed;
+      end;
+   end Arm_Idle_Wake;
+
+   Last_Hint_Ms : Unsigned_64 := 0;
+   Hinted : Boolean := False;
+   function Boost_Hint return Unsigned_32 is
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+      Open_Count : Natural := 0;
+      Found : CuBit.Messages.CapabilitySlot := 0;
+      Sent : Boolean;
+   begin
+      if Hinted and then Now >= Last_Hint_Ms and then Now - Last_Hint_Ms < Boost_Hint_Interval_Ms then
+         return 0;
+      end if;
+      for Slot in Slots'Range loop
+         if Sessions.Is_Open (Slots (Slot).Session) then
+            Open_Count := Open_Count + 1;
+            Found := Slot;
+         end if;
+      end loop;
+      if Open_Count /= 1 or else Boolean (Slots (Found).Failed) then
+         return 0;
+      end if;
+      Sessions.Hint_Boost (Slots (Found).Session, Sent);
+      Last_Hint_Ms := Now; Hinted := True;
+      return (if Sent then 1 else 0);
+   end Boost_Hint;
+
+   function Collect_Wake (Receipt : System.Address) return Unsigned_32 is
+      Item : constant CuBit.Messages.CompletionEntry with Import, Address => Receipt;
+      Consumed : Boolean;
+      Result : GQ.Wake_Result;
+   begin
+      if Armed_Slot = No_Armed_Slot or else System."=" (Receipt, System.Null_Address) then
+         return 0;
+      end if;
+      declare
+         State : Slot_State renames Slots (CuBit.Messages.CapabilitySlot (Armed_Slot));
+      begin
+         Sessions.Complete_Wake (State.Session, Item, Consumed, Result);
+         if not Consumed then
+            return 0;
+         end if;
+         Armed_Slot := No_Armed_Slot;
+         Store (State.Waiter'Address, 0, Sequentially_Consistent);
+         return 1;
+      end;
+   end Collect_Wake;
 
 end Native_GPU_Queue;

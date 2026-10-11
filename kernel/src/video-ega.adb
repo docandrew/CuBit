@@ -85,7 +85,12 @@ is
         egaFG : constant EGAColor := getEGAColor (fg);
         egaBG : constant EGAColor := getEGAColor (bg);
     begin
-        screen(Row(r) * COLS + Col(c)) := (ch, egaFG, egaBG);
+        -- TextIO keeps its cursor on screen; anything else is dropped
+        -- rather than written past the text buffer.
+        if c >= COLS or else r >= ROWS then
+            return;
+        end if;
+        screen(CursorType (r * COLS + c)) := (ch, egaFG, egaBG);
     end put;
 
     ---------------------------------------------------------------------------

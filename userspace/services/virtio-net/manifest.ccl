@@ -1,10 +1,15 @@
-# DRAFT, not yet attached to virtio-net.drv: devmgr still mints these grants
-# (and the netstack driver endpoint) itself.
-(executable-manifest v1
-  (identity "com.cubit.virtio-net")
-  (version "0.1.0")
-  (match-pci-id 6900 4096)          # 0x1AF4:0x1000, transitional virtio-net
-  (io-ports registers (bar 0) (count 32))
-  (interrupt device msix (vectors 1))
-  (dma rings (bytes 131072))
-  (request-service device-manager read-write ready))
+# virtio-net.drv's authority (docs/ccl-driver-manifests.md). devmgr reads the
+# interrupt request from the linked ELF and installs the vector's CAP_IRQ in
+# its slot (docs/msi-interrupts.md); it still mints the others (and the
+# netstack driver endpoint) itself, at the slots these bindings name.
+(Executable_Manifest
+  identity => "com.cubit.virtio-net"
+  version => "0.1.0"
+  # 0x1AF4:0x1000, transitional virtio-net.
+  device => (Device_Match.PCI_ID (PCI_ID 6900 4096))
+  requests => [
+    (io-ports "registers" 0 32)
+    # RX, TX and configuration changes share MSI-X entry 0.
+    (interrupt "device" Interrupt_Mode.MSI_X 1)
+    (dma "rings" 131072)
+    (service "device-manager" "ready")])

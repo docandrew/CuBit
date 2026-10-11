@@ -1,4 +1,4 @@
-"""Actual Display prepare/flip functions with independent two-output pixel memory.
+"""Actual Display prepare and flip-completion functions with independent two-output pixel memory.
 
 Only memory IO and GPU IPC are mocked. Tests exact inactive-buffer repair,
 copy exclusion, immutable active/other-output buffers, and failed-flip state.
@@ -7,8 +7,8 @@ from pathlib import Path
 import subprocess,tempfile
 root=Path(__file__).resolve().parents[2]
 s=(root/'userspace/services/display/main.adb').read_text()
-def helper(name):
- a=s.index('   function '+name+' ');b=s.index('   end '+name+';',a)+len('   end '+name+';');return s[a:b]
+def helper(name,kind='function'):
+ a=s.index('   '+kind+' '+name+' ');b=s.index('   end '+name+';',a)+len('   end '+name+';');return s[a:b]
 prefix='''with Ada.Text_IO; with Interfaces; use Interfaces;
 with System; with System.Storage_Elements; use System.Storage_Elements;
 with Compositor_Repaint; with Compositor_Damage;
@@ -41,13 +41,14 @@ procedure Check is
  type Backend_Kind is (Native_GPU,Firmware);
  type Backend_Type is record Kind:Backend_Kind:=Native_GPU;end record;
  type Addresses is array(Gpu_Buffer_Index) of System.Address;
+ type Stale_Array is array(Gpu_Buffer_Index) of Rect;
  type Output_State is record
   backend:Backend_Type;
   srcAddr:System.Address;
   srcPitch,fbPitch:Natural:=64;
   gpuScanoutAddr:Addresses;
   Targets:BT.State;
-  gpuPreviousDamage:Rect;
+  gpuStale:Stale_Array;
   presentationFault:Boolean:=False;
  end record;
  outputStates:array(Output_Index) of Output_State;
@@ -113,7 +114,7 @@ begin
     when 0=>(4,4,8,8),when 1=>(2,2,12,12),when 2=>(7,0,6,15),
     when 3=>(0,7,6,9),when others=>(14,14,20,20));
   Current:=clampGpuRect(Current);
-  Previous:=outputStates(selectedOutput).gpuPreviousDamage;
+  Previous:=outputStates(selectedOutput).gpuStale(BT.Target(outputStates(selectedOutput).Targets));
   Old:=Buffers;
   State_Before:=outputStates(selectedOutput);
   for Y in Current.y..Current.y+Current.h-1 loop
@@ -143,22 +144,26 @@ begin
     Unsigned_64(T.x) or Shift_Left(Unsigned_64(T.y),32),
     Unsigned_64(T.w) or Shift_Left(Unsigned_64(T.h),32),0]);
   end;
-  -- Fork the saved pre-prepare fixture to test the synchronous path independently.
-  outputStates(selectedOutput):=State_Before;Buffers:=Old;
-  -- Preparation does not authorize reuse; only the successful GPU reply flips.
-  pragma Assert(copyAndFlipGpuRect(Current));
+  -- Preparation does not authorize reuse; only the matching successful
+  -- completion (latched flip) flips, and the other buffer becomes stale.
+  BT.Seal(outputStates(selectedOutput).Targets,Unsigned_64(Step));
+  pragma Assert(not BT.Writable(outputStates(selectedOutput).Targets,0) and not BT.Writable(outputStates(selectedOutput).Targets,1));
+  BT.Complete(outputStates(selectedOutput).Targets,Unsigned_64(Step),True);
+  noteFlipped(outputStates(selectedOutput),BT.Target(State_Before.Targets),Current);
   pragma Assert(BT.Active(outputStates(selectedOutput).Targets)=BT.Target(State_Before.Targets));
-  pragma Assert(outputStates(selectedOutput).gpuPreviousDamage=Current);
+  pragma Assert(outputStates(selectedOutput).gpuStale(BT.Target(outputStates(selectedOutput).Targets))=Current);
+  pragma Assert(isEmpty(outputStates(selectedOutput).gpuStale(BT.Active(outputStates(selectedOutput).Targets))));
  end loop;
  for O in Output_Index loop
   selectedOutput:=O;State_Before:=outputStates(O);Old:=Buffers;
-  Reply_OK:=False;Current:=(3,3,6,6);
-  pragma Assert(not copyAndFlipGpuRect(Current));
-  pragma Assert(outputStates(O).presentationFault);
+  Current:=(3,3,6,6);
+  Request:=prepareGpuRect(Current);
+  BT.Seal(outputStates(O).Targets,77);
+  BT.Complete(outputStates(O).Targets,77,False);
   pragma Assert(BT.Current(outputStates(O).Targets)=BT.Failed);
   pragma Assert(prepareGpuRect(Current)=NULL_MESSAGE);
   pragma Assert(BT.Active(outputStates(O).Targets)=BT.Active(State_Before.Targets));
-  pragma Assert(outputStates(O).gpuPreviousDamage=State_Before.gpuPreviousDamage);
+  pragma Assert(outputStates(O).gpuStale=State_Before.gpuStale);
   pragma Assert(Buffers(O)(BT.Active(State_Before.Targets))=Old(O)(BT.Active(State_Before.Targets)));
  end loop;
  Initialize;selectedOutput:=0;Old:=Buffers;Before_Repair:=repairCopies;Before_Source:=backendCopies;
@@ -179,7 +184,7 @@ with tempfile.TemporaryDirectory(prefix='cubit-display-repair-') as tmp:
    p=root/'userspace/lib/compositor'/f'{name}.{ext}';(d/p.name).write_bytes(p.read_bytes())
  for p in (root/'userspace/runtime/gnat/cubit.ads',root/'userspace/lib/display/cubit-backend_targets.ads',root/'userspace/lib/display/cubit-backend_targets.adb'):
   (d/p.name).write_bytes(p.read_bytes())
- (d/'check.adb').write_text(prefix+helper('prepareGpuRect')+helper('copyAndFlipGpuRect')+suffix)
+ (d/'check.adb').write_text(prefix+helper('prepareGpuRect')+helper('noteFlipped','procedure')+suffix)
  (d/'check.gpr').write_text('''project Check is
  for Source_Dirs use (".");for Object_Dir use "obj";for Exec_Dir use ".";
  for Main use ("check.adb");
@@ -200,7 +205,7 @@ end Check;''')
             previous, repairCopies);
 """+body[b:]
   assert body!=helper('prepareGpuRect')
-  (d/'check.adb').write_text(prefix+body+helper('copyAndFlipGpuRect')+suffix)
+  (d/'check.adb').write_text(prefix+body+helper('noteFlipped','procedure')+suffix)
   subprocess.run(['gprbuild','-f','-q','-p','-P',str(d/'check.gpr')],check=True)
   result=subprocess.run([str(d/'check')],capture_output=True,text=True)
   assert result.returncode!=0 and 'ASSERTION_ERROR' in result.stderr,result

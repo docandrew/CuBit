@@ -13,6 +13,9 @@ with CuBit.Devices;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.UI;
 with CuBit.UI.App;
+with CuBit.UI.Clipboard;
+with Clipboard_Chords;
+with Clipboard_Text;
 with CuBit.UI.Controls;
 with CuBit.UI.Labels;
 with CuBit.UI.State;
@@ -57,6 +60,11 @@ procedure main is
       classCode : Unsigned_16 := 0;
       progIf    : Unsigned_8 := 0;
       driverPID : Unsigned_64 := 0;
+      --  Message interrupts (CuBit.Devices.OP_INTERRUPT_VECTORS).
+      interrupts : CuBit.Devices.Interrupt_Mode := CuBit.Devices.Interrupt_Polling;
+      firstVector : Unsigned_64 := 0;
+      vectorCount : Unsigned_64 := 0;
+      delivered   : Unsigned_64 := 0;
    end record;
    type Device_Array is array (Positive range 1 .. MAX_LOCAL_DEVICES) of
      Device_Record;
@@ -88,6 +96,10 @@ procedure main is
    diagnostic : Diagnostic_Record;
    selectedNode : Natural := NODE_COMPUTER;
    treeFocused : Boolean := True;
+   --  The details pane as text ("key: value" lines), kept as it is drawn,
+   --  for Ctrl+C (docs/clipboard.md).
+   DETAILS_TEXT_CAPACITY : constant := 2_048;
+   detailsText : Clipboard_Text.Builder (DETAILS_TEXT_CAPACITY);
    treeScroll : Natural := 0;
    splitPosition : Natural := 340;
    computerExpanded : Boolean := True;
@@ -256,7 +268,33 @@ procedure main is
                     (Shift_Right (identityWord, 32) and 16#FFFF#),
                   progIf => Unsigned_8
                     (Shift_Right (identityWord, 48) and 16#FF#),
-                  driverPID => msg.words (2));
+                  driverPID => msg.words (2),
+                  others => <>);
+               --  Its vectors and how many interrupts they delivered.
+               msg := NULL_MESSAGE;
+               msg.tag := (label => CuBit.Devices.OP_INTERRUPT_VECTORS,
+                           length => 1, flags => 0, reserved => 0);
+               msg.words (0) := Unsigned_64 (index);
+               tag := capCall (CAP_SLOT_DEVICE_INSPECTION, msg,
+                               CuBit.Messages.Wait_Forever);
+               if tag.label = CuBit.Devices.REPLY_OK and then
+                 msg.words (0) <= Unsigned_64
+                   (CuBit.Devices.Interrupt_Mode'Enum_Rep
+                      (CuBit.Devices.Interrupt_Mode'Last))
+               then
+                  devices (deviceCount).interrupts :=
+                    CuBit.Devices.Interrupt_Mode'Enum_Val (Natural (msg.words (0)));
+                  devices (deviceCount).firstVector := msg.words (1);
+                  devices (deviceCount).vectorCount := msg.words (2);
+                  devices (deviceCount).delivered := msg.words (3);
+                  if devices (deviceCount).vectorCount > 0 then
+                     debugPrint ("devices: irq " & Device_Label (devices (deviceCount)) &
+                       " " & Interrupt_Name (devices (deviceCount).interrupts) &
+                       " vector=" & Decimal (msg.words (1)) &
+                       " count=" & Decimal (msg.words (2)) &
+                       " interrupts=" & Decimal (msg.words (3)) & LF);
+                  end if;
+               end if;
             end if;
          end if;
       end loop;
@@ -477,6 +515,10 @@ procedure main is
 
       procedure Pair (key, value : String) is
       begin
+         if detailsText.Length > 0 then
+            Clipboard_Text.Append (detailsText, [1 => ASCII.LF]);
+         end if;
+         Clipboard_Text.Append (detailsText, key & ": " & value);
          if y + 22 <= content.y + content.h then
             CuBit.UI.Widgets.Key_Value
               (c, (x => content.x, y => y, w => content.w, h => 20),
@@ -486,6 +528,7 @@ procedure main is
       end Pair;
    begin
       CuBit.UI.Widgets.Group_Box (c, bounds, colors, "Details", content, 12);
+      Clipboard_Text.Clear (detailsText);
       y := content.y;
       if selectedNode >= NODE_PCI_FIRST and then
          selectedNode < NODE_PCI_FIRST + deviceCount
@@ -520,6 +563,15 @@ procedure main is
          Pair ("Driver process", (if devices (index).driverPID = 0 then
                "None" else "PID " & Decimal (devices (index).driverPID)));
          Pair ("Authority", "Inspection only");
+         Pair ("Interrupts",
+               (if devices (index).vectorCount = 0 then
+                  Interrupt_Name (devices (index).interrupts)
+                else
+                  Interrupt_Name (devices (index).interrupts) & " vector " &
+                  Decimal (devices (index).firstVector) &
+                  (if devices (index).vectorCount > 1 then
+                     " +" & Decimal (devices (index).vectorCount - 1) else "") &
+                  ", " & Decimal (devices (index).delivered) & " delivered"));
          if devices (index).kind = CuBit.Devices.USB_Controller then
             Pair ("Interrupt delivery", Interrupt_Name (diagnostic.interruptMode));
             Pair ("HID reports", Decimal (diagnostic.decodedReports));
@@ -756,8 +808,23 @@ procedure main is
       hit : CuBit.UI.Controls.Control_ID;
       selectionMoved : Boolean := False;
       oldScroll : Natural;
+      use type Clipboard_Chords.Command;
    begin
-      if event.kind = CuBit.UI.App.INPUT_KEY_DOWN then
+      if event.kind = CuBit.UI.App.INPUT_KEY_DOWN and then
+        CuBit.UI.Clipboard.Command_Of (event.payload0, event.payload1) = Clipboard_Chords.Copy_Command
+      then
+         --  Copy the selected device's details as text.
+         declare
+            result : CuBit.UI.Clipboard.Outcome;
+         begin
+            if detailsText.Length > 0 then
+               CuBit.UI.Clipboard.Copy_Text
+                 (CuBit.UI.App.Surface_ID (win), Clipboard_Text.Image (detailsText),
+                  CuBit.UI.Clipboard.Ordinary, result);
+               debugPrint ("devices: copy details " & CuBit.UI.Clipboard.Image (result) & ASCII.LF);
+            end if;
+         end;
+      elsif event.kind = CuBit.UI.App.INPUT_KEY_DOWN then
          if event.payload0 = CuBit.UI.App.KEY_ESC then
             running := False;
          elsif event.payload0 = KEY_F5 then

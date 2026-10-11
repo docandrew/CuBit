@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc56b"/><stop offset="1" stop-color="#f07a12"/></linearGradient><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7b3fd6"/><stop offset="1" stop-color="#4f1fa0"/></linearGradient><linearGradient id="g3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3ff0d6"/><stop offset="1" stop-color="#12a597"/></linearGradient><linearGradient id="g4" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c9a2ff"/><stop offset="1" stop-color="#9a5cf2"/></linearGradient></defs>
+<path d="M 6 22 L 20 8 L 40 8 L 40 28 L 26 42 Z" fill="url(#g1)" stroke="#3d1a00" stroke-width="2.0" stroke-linejoin="round"/>
+<circle cx="33.00" cy="15.00" r="3.20" fill="#fff4de" stroke="#3d1a00" stroke-width="1.6"/>
+<polygon points="8.61,32.00 19.00,38.00 19.00,28.00 8.61,22.00" fill="url(#g2)" stroke="#25094d" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="29.39,32.00 19.00,38.00 19.00,28.00 29.39,22.00" fill="url(#g3)" stroke="#25094d" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="19.00,16.00 29.39,22.00 19.00,28.00 8.61,22.00" fill="url(#g4)" stroke="#25094d" stroke-width="2.0" stroke-linejoin="round"/>
+</svg>

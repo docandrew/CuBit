@@ -4,6 +4,8 @@ root=Path(__file__).resolve().parents[2]
 s=(root/'userspace/services/display/main.adb').read_text()
 a=s.index('   procedure collectFrames is'); b=s.index('   end collectFrames;',a)+len('   end collectFrames;')
 body=s[a:b]
+a=s.index('   procedure noteFlipped'); b=s.index('   end noteFlipped;',a)+len('   end noteFlipped;')
+body=s[a:b]+body
 prefix='''with Ada.Text_IO; with Interfaces; use Interfaces;
 with System; with CuBit.Backend_Targets;
 procedure Check is
@@ -22,13 +24,19 @@ procedure Check is
   subtype Submission_ID is Natural;procedure Close(S:in out Natural);
  end PS;
  package body PS is procedure Close(S:in out Natural) is begin S:=99;end;end PS;
+ type Stale_Array is array(0..2) of Rect;
  type Output_State is record
   Targets:BT.State;
+  legacyToken:Unsigned_64:=0;
+  legacyTarget:Natural:=1;
+  legacyDamage:Rect;
+  pendingPresent:Boolean:=False;
+  gpuStale:Stale_Array;
   backendToken:Unsigned_64:=0;
   backendTarget:Natural:=1;
   backendFrame:DSP.Frame_Result;
   activeSession,sessionOutput,currentOutput,sourceOutput:Natural:=1;
-  gpuPreviousDamage,backendDamage:Rect;
+  backendDamage:Rect;
   backendID,frameState:Natural:=0;
   presentationFault:Boolean:=False;
  end record;
@@ -49,6 +57,15 @@ procedure Check is
  function replyCap(S:Natural;R:Message) return Unsigned_64 is
  begin Replies:=Replies+1;return 0;end;
  procedure debugPrint(S:String) is null;
+ subtype Gpu_Buffer_Index is Natural;
+ selectedOutput:Output_Index:=0;
+ gpuWatchToken:Unsigned_64:=0;
+ procedure collectGpuWatch(C:CompletionEntry) is null;
+ function collectPlaneMove(C:CompletionEntry) return Boolean is (False);
+ procedure flushPendingPresent is null;
+ function isEmpty(R:Rect) return Boolean is (R.w=0 or R.h=0);
+ function unionRect(A,B:Rect) return Rect is (A);
+
  procedure finishFrame(Output:Output_Index;ID:PS.Submission_ID;
   Result:in out DSP.Frame_Result;Published,Certain:Boolean;Response:out Message) is
  begin
@@ -83,7 +100,7 @@ begin
   collectFrames;
   pragma Assert(Finishes=1 and Replies=1 and Last_Published);
   pragma Assert(BT.Current(outputStates(O).Targets)=BT.Idle and BT.Active(outputStates(O).Targets)=1);
-  pragma Assert(outputStates(O).gpuPreviousDamage=outputStates(O).backendDamage);
+  pragma Assert(outputStates(O).gpuStale(0)=outputStates(O).backendDamage and isEmpty(outputStates(O).gpuStale(1)));
   pragma Assert(outputStates(1-O)=Saved(1-O));
   -- Duplicate completion after retirement must never release another target.
   Next:=0;collectFrames;
@@ -108,7 +125,7 @@ begin
   pragma Assert(Finishes=1 and Replies=1 and not Last_Published);
   pragma Assert(BT.Current(outputStates(0).Targets)=BT.Failed);
   pragma Assert(BT.Active(outputStates(0).Targets)=0 and BT.Token(outputStates(0).Targets)=100);
-  pragma Assert(outputStates(0).gpuPreviousDamage=Saved(0).gpuPreviousDamage);
+  pragma Assert(outputStates(0).gpuStale=Saved(0).gpuStale);
   pragma Assert(outputStates(1)=Saved(1));
  end loop;
  Initialize;Queue(1).token:=999;Count:=16;

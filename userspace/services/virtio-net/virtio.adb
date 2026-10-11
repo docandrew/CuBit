@@ -8,6 +8,8 @@
 ------------------------------------------------------------------------------
 with CuBit.Messages; use CuBit.Messages;
 
+with CuBit.Virtio_Net_Control;
+
 package body Virtio is
 
    ---------------------------------------------------------------------------
@@ -92,8 +94,8 @@ package body Virtio is
 
    function setQueueVector (ioBase : Unsigned_16) return Boolean is
    begin
-      outw (ioBase + REG_QUEUE_MSIX_VECTOR, 0);
-      return inw (ioBase + REG_QUEUE_MSIX_VECTOR) = 0;
+      outw (ioBase + REG_QUEUE_MSIX_VECTOR, CuBit.Virtio_Net_Control.MSIX_Entry);
+      return inw (ioBase + REG_QUEUE_MSIX_VECTOR) = CuBit.Virtio_Net_Control.MSIX_Entry;
    end setQueueVector;
 
    ---------------------------------------------------------------------------

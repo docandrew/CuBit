@@ -3,7 +3,7 @@ project Authority_Wire is
                         "../../userspace/runtime/gnat");
    for Source_Files use ("authority_wire_tests.adb", "config_authority_wire.ads",
      "config_authority_wire.adb", "config_authority.ads", "config_authority.adb",
-     "cubit.ads", "cubit-config_inspection.ads", "cubit-config_inspection.adb");
+     "cubit.ads", "cubit-process_ids.ads", "cubit-process_ids.adb", "cubit-config_inspection.ads", "cubit-config_inspection.adb");
    for Object_Dir use "build/authority-wire";
    for Exec_Dir use "build/authority-wire";
    for Main use ("authority_wire_tests.adb");

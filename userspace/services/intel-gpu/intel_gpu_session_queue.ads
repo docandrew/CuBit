@@ -190,9 +190,10 @@ package Intel_GPU_Session_Queue with SPARK_Mode is
    -- forgets segments behind the completed value.
    procedure Observe
      (S : in out Session; C : Context_Index; Read_OK : Boolean; Observed : Value;
-      Gate_Open : Boolean; Now, Hang_Budget : Microseconds;
+      Gate_Open, Head_Started : Boolean; Now, Hang_Budget, Patience : Microseconds;
       Result : out Ledgers.Observation)
-     with Pre => Valid (S) and then Context_Open (S, C) and then Hang_Budget > 0,
+     with Pre => Valid (S) and then Context_Open (S, C) and then Hang_Budget > 0 and then
+                 Patience >= Hang_Budget,
           Post => Valid (S) and then Live (S) = Live (S)'Old and then
                   Has_Head (S) = Has_Head (S)'Old and then
                   Server (S).Owed = Server (S)'Old.Owed and then

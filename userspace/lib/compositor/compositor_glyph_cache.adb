@@ -28,6 +28,27 @@ package body Compositor_Glyph_Cache with SPARK_Mode is
             Read_Prefix (Before, N) + (if I <= N and then After (I).Identity /= 0 then 1 else 0));
       end loop;
    end Changed_Readers;
+   -- A fresh table charges nothing and has no readers. The provers do not
+   -- unfold the recursive prefixes over the default aggregate by themselves.
+   procedure Empty_Tables (Masks : Items; Reading : Readers) with Ghost,
+     Pre => (for all I in Slot => Masks (I).Bytes = 0) and then
+            (for all J in Reader_Slot => Reading (J).Identity = 0),
+     Post => Prefix (Masks, Slot'Last) = 0 and then Read_Prefix (Reading, Reader_Slot'Last) = 0
+   is
+   begin
+      for N in Search_Result loop
+         pragma Loop_Invariant (Prefix (Masks, N) = 0);
+      end loop;
+      for N in 0 .. Reader_Slot'Last loop
+         pragma Loop_Invariant (Read_Prefix (Reading, N) = 0);
+      end loop;
+   end Empty_Tables;
+   function Open (Budget : Byte_Count) return State is
+      S : constant State := (Budget => Budget, others => <>);
+   begin
+      Empty_Tables (S.Masks, S.Reading);
+      return S;
+   end Open;
    function Find (S : State; K : Key) return Search_Result is
    begin
       for I in Slot loop

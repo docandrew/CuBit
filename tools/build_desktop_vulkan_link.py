@@ -34,7 +34,7 @@ def copy(path):
  data=path.read_bytes();dest=out/path.relative_to(root);dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(data)
  inputs[str(path.relative_to(root))]=hashlib.sha256(data).hexdigest()
 for rel in ('userspace/services/desktop','userspace/lib/compositor','userspace/lib/display','userspace/lib/image','userspace/lib/theme',
- 'userspace/lib/ui','userspace/ccl/src','userspace/allocator/src','userspace/services/display/production'):
+ 'userspace/lib/ui','userspace/lib/input','userspace/ccl/src','userspace/allocator/src','userspace/services/display/production'):
  for path in (root/rel).rglob('*'):
   if path.is_file() and path.suffix in ('.ads','.adb','.gpr','.c','.h','.vert','.frag') and not any(p.startswith('build') for p in path.relative_to(root/rel).parts):copy(path)
 for rel in ('userspace/runtime/gnat','userspace/runtime/adalib'):

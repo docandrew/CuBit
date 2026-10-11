@@ -704,6 +704,22 @@ begin
             end case;
             pragma Assert (Decode_Input_Result (Wire, Op).Status = Invalid_Request);
             Compare_Input_Decoders (Wire, Op);
+            --  Key presses and text may carry the repeat flag, nothing else
+            --  in the high word; releases never repeat.
+            Wire := Canonical;
+            case Kind is
+               when Key_Pressed | Text_Entered =>
+                  Wire.Words (3) := Wire.Words (3) or Key_Repeat_Flag;
+                  pragma Assert (Decode_Input_Result (Wire, Op).Status = Success);
+                  Compare_Input_Decoders (Wire, Op);
+                  Wire.Words (3) := Wire.Words (3) or 2 * Key_Repeat_Flag;
+               when Key_Released => Wire.Words (3) := Wire.Words (3) or Key_Repeat_Flag;
+               when others => null;
+            end case;
+            if Kind in Key_Pressed | Key_Released | Text_Entered then
+               pragma Assert (Decode_Input_Result (Wire, Op).Status = Invalid_Request);
+               Compare_Input_Decoders (Wire, Op);
+            end if;
             Wire := Canonical; Wire.Words (0) := 11;
             pragma Assert (Decode_Input_Result (Wire, Op).Status = Invalid_Request);
             Compare_Input_Decoders (Wire, Op);

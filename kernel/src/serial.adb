@@ -113,7 +113,14 @@ is
         divisorMSB          : constant Unsigned_8 := 16#00#;
         enableInterrupts    : constant Unsigned_8 := 16#01#;
 
-        function protToByte is new Ada.Unchecked_Conversion(LineControl, Unsigned_8);
+        -- The Line Control Register byte, field by field (the record's
+        -- representation clause, spelled out for the provers).
+        function protToByte (p : LineControl) return Unsigned_8 is
+          (Unsigned_8 (DataBitsType'Enum_Rep (p.dataBits))
+           or (if p.stopBit then 16#04# else 0)
+           or Shift_Left (Unsigned_8 (ParityType'Enum_Rep (p.parity)), 3)
+           or (if p.breakSignal then 16#40# else 0)
+           or (if p.DLAB then 16#80# else 0));
         function fifoToByte is new Ada.Unchecked_Conversion(FIFOControl, Unsigned_8);
         function modmToByte is new Ada.Unchecked_Conversion(ModemControl, Unsigned_8);
     begin

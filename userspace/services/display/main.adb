@@ -6,6 +6,8 @@
 --  Display scanout service prototype
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Boot_Milestone_Codes;
+with CuBit.Boot_Milestones;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -20,6 +22,7 @@ with CuBit.Display_Pool_Protocol;
 with CuBit.Display_Pool_Registry;
 with CuBit.Display_Outputs;
 with CuBit.Output_Discovery;
+with CuBit.Output_Modes;
 with CuBit.Graphics_Metrics;
 with CuBit.Graphics_Metrics_IO;
 with Presentation_Test_Policy;
@@ -42,6 +45,8 @@ procedure main is
    use type DSP.Output_Number;
    package Outputs renames CuBit.Display_Outputs.Registry;
    package OD renames CuBit.Output_Discovery;
+   package OM renames CuBit.Output_Modes;
+   use type OM.Mode, OM.DP.Status_Code;
    package GM renames CuBit.Graphics_Metrics;
    package Repair renames Compositor_Repaint;
    package BT renames CuBit.Backend_Targets;
@@ -51,7 +56,7 @@ procedure main is
    use type DPL.Plan, DPL.Plan_Epoch, DPL.Backing_Kind, DPL.Plane_Count,
             DPL.Request_Count, DPL.Plane_Kind, DPL.Anchor_Coordinate;
    use type PP.Operation;
-   use type GP.Position;
+   use type GP.Position, GP.Scanout_Source;
    use type BT.Phase;
    backendCopies, repairCopies : GM.Counter;
    backendReporter, repairReporter : CuBit.Graphics_Metrics_IO.Reporter;
@@ -102,9 +107,16 @@ procedure main is
    type Rect is record
       x, y, w, h : Natural := 0;
    end record;
-   subtype Gpu_Buffer_Index is Natural range 0 .. 1;
+   type Gpu_Rect_Array is array (BT.Buffer) of Rect;
+   --  Two scanout buffers (virtio-gpu) or three (Intel, DISP-000a): the
+   --  output's BT.Count. Only the target (never the on-screen buffer) is
+   --  written; a buffer's stale area is the damage presented since it was
+   --  last written, repaired from the active buffer before reuse.
+   subtype Gpu_Buffer_Index is BT.Buffer;
    type Gpu_Address_Array is
      array (Gpu_Buffer_Index) of System.Address;
+   type Gpu_Grant_Array is
+     array (Gpu_Buffer_Index) of CuBit.Memory_Grants.Grant_Reference;
 
    --  Selection and health are independent. A failed native backend never
    --  becomes a firmware backend. In particular, a GPU output carries no
@@ -142,6 +154,8 @@ procedure main is
       frameState : PS.State;
       presentationFault : Boolean := False;
       gpuScanoutAddr : Gpu_Address_Array := [others => System.Null_Address];
+      --  The GPU's grants behind gpuScanoutAddr, returned on a mode change.
+      gpuScanoutGrant : Gpu_Grant_Array;
       Targets : BT.State;
       displayOwner : Process_ID := No_Process;
       currentOutput : Outputs.Output_Reference := Outputs.No_Output;
@@ -149,7 +163,11 @@ procedure main is
       sourceOutput : Outputs.Output_Reference := Outputs.No_Output;
       sessionOutput : Outputs.Output_Reference := Outputs.No_Output;
       outputRebound : Boolean := False;
-      gpuPreviousDamage : Rect;
+      gpuStale : Gpu_Rect_Array;
+      --  A legacy (non-pool) present in flight: completed in collectFrames.
+      legacyToken : Unsigned_64 := 0;
+      legacyTarget : Gpu_Buffer_Index := 0;
+      legacyDamage : Rect;
       pendingPresent : Boolean := False;
       pendingRect : Rect;
       --  Captured continuation; never resolve a completion through whatever
@@ -170,8 +188,19 @@ procedure main is
    function frameReplySlot (Output : Output_Index) return CapabilitySlot is
      (CapabilitySlot (32 + Natural (Output)));
    gpuDetected : Boolean := False;
+   --  DISP-000a: the GPU (intel-gpu) flips the firmware mode's own scanout:
+   --  same geometry, driver buffers, no firmware framebuffer mapping.
+   intelTakeover : Boolean := False;
    outputCatalog : OD.Catalog;
    catalogReady : Boolean := False;
+   --  Output mode changes (CuBit.Output_Modes): the catalog's revision, the
+   --  GPU catalog revision last read and its outstanding watch, and the one
+   --  client watch (Desktop's) saved until the catalog changes.
+   catalogRevision : OD.Catalog_Revision := 1;
+   gpuRevision : OM.Revision := 1;
+   gpuWatchToken : Unsigned_64 := 0;
+   outputWatchArmed : Boolean := False;
+   OUTPUT_WATCH_SLOT : constant CapabilitySlot := 34;
    -- Bind registry lifetime to this process incarnation, not a reusable PID
    -- or a constant shared by successive Display instances. The fallback is
    -- only an inert discriminant: registration rejects a failed capture.
@@ -304,7 +333,29 @@ procedure main is
       status := callGpu (OP_GPU_GET_STATUS);
       gpuDetected := status.tag = (OP_GPU_GET_STATUS, 4, 0, 0) and then status.words (0) = 0 and then
         status.words (1) = 1;
-      if gpuPrimary then
+      if not gpuPrimary and then gpuDetected then
+         --  A driver that took over the firmware mode's own scanout (Intel,
+         --  DISP-000a) describes it as that framebuffer, same geometry.
+         declare
+            Scanout : constant GP.Scanout_Decoding :=
+              GP.Decode_Scanout (CuBit.Desktop_Messages.To_Wire
+                (callGpu (GP.Code (GP.Describe_Scanout))));
+         begin
+            intelTakeover := Scanout.Valid and then
+              Scanout.Value.Source = GP.Firmware_Framebuffer and then
+              Unsigned_64 (Scanout.Value.Width) = getInfo (SYSINFO_FB_WIDTH) and then
+              Unsigned_64 (Scanout.Value.Height) = getInfo (SYSINFO_FB_HEIGHT) and then
+              Unsigned_64 (Scanout.Value.Pitch) = getInfo (SYSINFO_FB_PITCH) and then
+              status.words (2) = getInfo (SYSINFO_FB_WIDTH) and then
+              status.words (3) = getInfo (SYSINFO_FB_HEIGHT);
+         end;
+      end if;
+      if intelTakeover then
+         Width := status.words (2);
+         Height := status.words (3);
+         Pitch := getInfo (SYSINFO_FB_PITCH);
+         Bits := 32;
+      elsif gpuPrimary then
          --  Once the boot adapter is driven natively its old firmware mode is
          --  not a fallback, even if driver startup failed part-way through.
          if not gpuDetected then return; end if;
@@ -327,7 +378,14 @@ procedure main is
       Layout := (DSP.DP.Positive_Extent (Width), DSP.DP.Positive_Extent (Height),
                  Natural (Pitch));
       if not DSP.DP.Valid_Layout (Layout) then return; end if;
-      if gpuPrimary then
+      if intelTakeover then
+         --  The driver flips between its own three buffers at vblank; the
+         --  firmware framebuffer is not mapped and is never written again.
+         State.backend := (Kind => Native_GPU);
+         BT.Set_Count (State.Targets, BT.Maximum_Buffers);
+         debugPrint ("display: backend intel flips (tear-free, 3 buffers)" &
+           Width'Image & " x" & Height'Image & LF);
+      elsif gpuPrimary then
          --  Publishing GPU_IS_PRIMARY retires kernel boot drawing before
          --  driver startup. Native outputs need no firmware mapping, even
          --  for diagnostics: kernel panic cannot reactivate that renderer.
@@ -343,6 +401,9 @@ procedure main is
            (Firmware_Framebuffer, To_Address (Integer_Address (Mapping)));
          if gpuDetected then
             debugPrint ("display: gpu not primary, using linear-fb" & LF);
+         elsif status.tag = (OP_GPU_GET_STATUS, 4, 0, 0) and then status.words (0) = 0 then
+            --  intel-gpu answered but cannot flip (its log says why).
+            debugPrint ("display: gpu scanout unavailable, using linear-fb" & LF);
          else
             debugPrint ("display: backend linear-fb" & LF);
          end if;
@@ -360,7 +421,7 @@ procedure main is
       Summary : OD.Summary_Decoding;
       Item : OD.Description_Decoding;
    begin
-      if outputStates (selectedOutput).backend.Kind /= Native_GPU then
+      if outputStates (selectedOutput).backend.Kind /= Native_GPU or else intelTakeover then
          if outputStates (selectedOutput).fbWidth not in OD.Extent or else outputStates (selectedOutput).fbHeight not in OD.Extent then
             return;
          end if;
@@ -370,13 +431,16 @@ procedure main is
             outputStates (selectedOutput).fbWidth, outputStates (selectedOutput).fbHeight, outputStates (selectedOutput).fbWidth, outputStates (selectedOutput).fbHeight);
          Selected := True;
       end if;
-      if gpuDetected then
+      --  The Intel takeover drives the boot output itself (same mode); it
+      --  is listed as that output, with no GPU catalog of its own yet.
+      if gpuDetected and then not intelTakeover then
          Response := callGpu (OD.Code (OD.GPU_Backend, OD.Get_Catalog));
          Summary := OD.Decode_Summary
            (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (Response));
          if not Summary.Valid or else Summary.Value.Count > 16 then
             return;
          end if;
+         gpuRevision := Summary.Value.Revision;
          for Index in 1 .. Summary.Value.Count loop
             Response := callGpu
               (OD.Code (OD.GPU_Backend, OD.Get_Description),
@@ -507,7 +571,7 @@ procedure main is
       outputStates (selectedOutput).srcOwner := No_Process;
       outputStates (selectedOutput).pendingPresent := False;
       outputStates (selectedOutput).pendingRect := (others => 0);
-      outputStates (selectedOutput).gpuPreviousDamage := (others => 0);
+      outputStates (selectedOutput).gpuStale := [others => (others => 0)];
       for B in Pool_Wire.Buffer_Slot loop
          if Pool_Registry.Registered (outputStates (selectedOutput).Pool, B) then
             MG.Return_Acquisition (Pool_Registry.Item (outputStates (selectedOutput).Pool, B).Grant, returned);
@@ -628,7 +692,7 @@ procedure main is
       reply := callGpu (OP_GPU_CLEAR, color, 0, 0, 0);
       if reply.tag = (OP_GPU_CLEAR, 1, 0, 0) and then reply.words (0) = 0 then
          BT.Cleared (outputStates (selectedOutput).Targets);
-         outputStates (selectedOutput).gpuPreviousDamage := (others => 0);
+         outputStates (selectedOutput).gpuStale := [others => (others => 0)];
          return True;
       end if;
 
@@ -707,7 +771,7 @@ procedure main is
       mapped : System.Address;
       acquired : Boolean;
    begin
-      for index in Gpu_Buffer_Index loop
+      for index in 0 .. BT.Count (outputStates (selectedOutput).Targets) - 1 loop
          if outputStates (selectedOutput).gpuScanoutAddr (index) = System.Null_Address then
             gpuMap := callGpu
               (OP_GPU_MAP_FRAMEBUFFER, Unsigned_64 (index), 0, 0, 0);
@@ -741,6 +805,7 @@ procedure main is
                -- Retain both acquisitions for this display instance. GPU death
                -- or grant revocation cannot recycle memory beneath a CPU copy.
                outputStates (selectedOutput).gpuScanoutAddr (index) := mapped;
+               outputStates (selectedOutput).gpuScanoutGrant (index) := decoded.Value.Grant;
             end;
          end if;
       end loop;
@@ -798,8 +863,8 @@ procedure main is
 
    function prepareGpuRect (damage : Rect) return Message is
       r : constant Rect := clampGpuRect (damage);
-      previous : constant Rect := clampGpuRect (outputStates (selectedOutput).gpuPreviousDamage);
       target : constant Gpu_Buffer_Index := BT.Target (outputStates (selectedOutput).Targets);
+      previous : constant Rect := clampGpuRect (outputStates (selectedOutput).gpuStale (target));
       transfer : Rect := r;
       packedXY : Unsigned_64;
       packedWH : Unsigned_64;
@@ -814,9 +879,9 @@ procedure main is
       BT.Prepare (outputStates (selectedOutput).Targets, accepted);
       if not accepted then return NULL_MESSAGE; end if;
 
-      --  The inactive resource is one frame old. Bring forward precisely the
-      --  damage written while it was inactive, then apply this frame's new
-      --  pixels. This is buffer-age tracking: unchanged pixels never need a
+      --  The target is stale by the damage presented since it was last
+      --  written. Bring forward precisely that from the active buffer, then
+      --  apply this frame's new pixels. This is buffer-age tracking: unchanged pixels never need a
       --  full-screen copy merely because the scanout resource alternates.
       if not isEmpty (previous) then
          -- New source pixels replace the overlap, so only preserve the
@@ -853,36 +918,54 @@ procedure main is
               words => [Unsigned_64 (target), packedXY, packedWH, 0]);
    end prepareGpuRect;
 
-   function copyAndFlipGpuRect (damage : Rect) return Boolean is
-      request : Message := prepareGpuRect (damage);
-      tag : MessageTag;
-      token : Unsigned_64;
-      State : Output_State renames outputStates (selectedOutput);
+   --  A published flip made Target the active buffer with Damage new:
+   --  every other buffer now lacks Damage, the new active one lacks nothing.
+   procedure noteFlipped (State : in out Output_State; Target : Gpu_Buffer_Index;
+                          Damage : Rect) is
    begin
+      for B in 0 .. BT.Count (State.Targets) - 1 loop
+         if B = Target then
+            State.gpuStale (B) := (others => 0);
+         elsif not isEmpty (Damage) then
+            State.gpuStale (B) :=
+              (if isEmpty (State.gpuStale (B)) then Damage
+               else unionRect (State.gpuStale (B), Damage));
+         end if;
+      end loop;
+   end noteFlipped;
+
+   --  Legacy (non-pool) presentation on a native output: copy into the
+   --  target and submit asynchronously; collectFrames completes it. A
+   --  present arriving meanwhile waits in pendingRect (coalesced).
+   function startGpuPresent (damage : Rect) return Boolean is
+      State : Output_State renames outputStates (selectedOutput);
+      request : Message;
+      token : Unsigned_64;
+   begin
+      if BT.Current (State.Targets) /= BT.Idle then
+         return False;
+      end if;
+      request := prepareGpuRect (damage);
       if request.tag.length = 0 then
          BT.Quarantine (State.Targets);
          State.presentationFault := True;
          return False;
       end if;
       Compositor_Requests.Allocate (backendSequence, token);
+      State.legacyTarget := BT.Target (State.Targets);
+      State.legacyDamage := clampGpuRect (damage);
       BT.Seal (State.Targets, token);
-      if BT.Current (State.Targets) /= BT.In_Flight then
+      if BT.Current (State.Targets) /= BT.In_Flight or else
+        not capSubmit (CAP_SLOT_GPU, request, token)
+      then
+         BT.Quarantine (State.Targets);
          State.presentationFault := True;
+         debugPrint ("display: gpu page flip failed" & LF);
          return False;
       end if;
-      tag := capCall (CAP_SLOT_GPU, request, CuBit.Messages.Wait_Forever);
-      request.tag := tag;
-      BT.Complete (State.Targets, token,
-                   request.tag = (OP_GPU_PRESENT_BUFFER, 1, 0, 0) and then request.words (0) = 0);
-      if BT.Current (State.Targets) = BT.Idle then
-         State.gpuPreviousDamage := clampGpuRect (damage);
-         return True;
-      end if;
-
-      debugPrint ("display: gpu page flip failed" & LF);
-      State.presentationFault := True;
-      return False;
-   end copyAndFlipGpuRect;
+      State.legacyToken := token;
+      return True;
+   end startGpuPresent;
 
    procedure flushPendingPresent is
       r : constant Rect := outputStates (selectedOutput).pendingRect;
@@ -903,8 +986,14 @@ procedure main is
       waitStart := syscall (SYSCALL_GETTIME);
       if outputStates (selectedOutput).presentationFault then return; end if;
       if outputStates (selectedOutput).backend.Kind = Native_GPU then
+         if BT.Current (outputStates (selectedOutput).Targets) /= BT.Idle then
+            --  A flip is in flight: keep the damage for its completion.
+            outputStates (selectedOutput).pendingPresent := True;
+            outputStates (selectedOutput).pendingRect := r;
+            return;
+         end if;
          copyStart := syscall (SYSCALL_GETTIME);
-         if not copyAndFlipGpuRect (r) then
+         if not startGpuPresent (r) then
             return;
          end if;
       elsif outputStates (selectedOutput).backend.Kind = Firmware_Framebuffer then
@@ -973,7 +1062,9 @@ procedure main is
          end loop;
          if not isEmpty (r) then
             pixels := Unsigned_64 (r.w) * Unsigned_64 (r.h);
-            if not copyAndFlipGpuRect (r) then
+            if BT.Current (outputStates (selectedOutput).Targets) /= BT.Idle then
+               queuePresent (r);
+            elsif not startGpuPresent (r) then
                return;
             end if;
          end if;
@@ -1105,7 +1196,26 @@ procedure main is
       if Output = 1 then
          Item.X := DPL.Space_Coordinate (outputStates (0).fbWidth);
       end if;
-      if State.backend.Kind /= Native_GPU then
+      if State.backend.Kind = Firmware_Framebuffer then
+         --  A driver's planes on the firmware output only when the driver
+         --  overlays this very framebuffer (Intel on the firmware mode); a
+         --  secondary GPU never claims the firmware output's cursor.
+         declare
+            Scanout : constant GP.Scanout_Decoding :=
+              GP.Decode_Scanout (callGpuOn (Output, GP.Describe_Request));
+         begin
+            if not Scanout.Valid or else
+              Scanout.Value.Source /= GP.Firmware_Framebuffer or else
+              Natural (Scanout.Value.Width) /= State.fbWidth or else
+              Natural (Scanout.Value.Height) /= State.fbHeight or else
+              Scanout.Value.Pitch /= State.fbPitch
+            then
+               return;
+            end if;
+            debugPrint ("display: driver overlays firmware output" & Output'Image &
+                        State.fbWidth'Image & " x" & State.fbHeight'Image & LF);
+         end;
+      elsif State.backend.Kind /= Native_GPU then
          return;
       end if;
       for Plane in DPL.Plane_Number loop
@@ -1174,10 +1284,23 @@ procedure main is
          B.Move_Token := Token;
          B.Sent := B.Position;
       else
-         --  Busy: the next completion or request retries the newest position.
+         --  Busy: retryMoves (every loop turn) sends the newest position.
          null;
       end if;
    end sendMove;
+
+   --  Once per loop turn: a move the GPU endpoint refused is sent again, so
+   --  the newest position is always delivered (no later request needed).
+   procedure retryMoves is
+   begin
+      for Output in Output_Index loop
+         for Plane in DPL.Plane_Number loop
+            if planeBuffers (Output, Plane).Shown then
+               sendMove (Output, Plane);
+            end if;
+         end loop;
+      end loop;
+   end retryMoves;
 
    --  Make every mapped plane show what the committed plan says, using the
    --  requests' current images and positions.
@@ -1667,6 +1790,7 @@ procedure main is
       end if;
    end finishFrame;
 
+   procedure collectGpuWatch (Completion : CompletionEntry);
    procedure collectFrames is
       Completion : aliased CompletionEntry;
       Response : Message;
@@ -1678,7 +1802,50 @@ procedure main is
       --  producer monopolize this loop with unbounded completion traffic.
       for Count in 1 .. COMPLETION_QUEUE_SIZE loop
          exit when Poll_Completion (Completion'Address) /= 1;
-         Matched := collectPlaneMove (Completion);
+         if gpuWatchToken /= 0 and then Completion.token = gpuWatchToken then
+            gpuWatchToken := 0;
+            collectGpuWatch (Completion);
+            Matched := True;
+         else
+            Matched := collectPlaneMove (Completion);
+         end if;
+         for Output in Output_Index loop
+            declare
+               State : Output_State renames outputStates (Output);
+            begin
+               if not Matched and then State.legacyToken /= 0 and then
+                 State.legacyToken = Completion.token
+               then
+                  Matched := True;
+                  BT.Complete (State.Targets, Completion.token,
+                               Completion.valid and then Completion.status = COMPLETION_OK and then
+                               Completion.msg.tag = (OP_GPU_PRESENT_BUFFER, 1, 0, 0) and then
+                               Completion.msg.words (0) = 0 and then
+                               State.legacyTarget = BT.Target (State.Targets));
+                  State.legacyToken := 0;
+                  if BT.Current (State.Targets) = BT.Idle then
+                     declare
+                        Flipped : constant Gpu_Buffer_Index := State.legacyTarget;
+                        Damage : constant Rect := State.legacyDamage;
+                     begin
+                        noteFlipped (State, Flipped, Damage);
+                     end;
+                     if State.pendingPresent then
+                        declare
+                           Saved : constant Output_Index := selectedOutput;
+                        begin
+                           selectedOutput := Output;
+                           flushPendingPresent;
+                           selectedOutput := Saved;
+                        end;
+                     end if;
+                  else
+                     State.presentationFault := True;
+                     debugPrint ("display: gpu page flip failed" & LF);
+                  end if;
+               end if;
+            end;
+         end loop;
          for Output in Output_Index loop
             declare
                State : Output_State renames outputStates (Output);
@@ -1700,7 +1867,12 @@ procedure main is
                                Published and then State.backendTarget = BT.Target (State.Targets));
                   Published := Published and then BT.Current (State.Targets) = BT.Idle;
                   if Published then
-                     State.gpuPreviousDamage := State.backendDamage;
+                     declare
+                        Flipped : constant Gpu_Buffer_Index := State.backendTarget;
+                        Damage : constant Rect := State.backendDamage;
+                     begin
+                        noteFlipped (State, Flipped, Damage);
+                     end;
                   end if;
                   finishFrame (Output, State.backendID, State.backendFrame,
                                Published, Published, Response);
@@ -1851,6 +2023,231 @@ procedure main is
       finishFrame (selectedOutput, id, result, published, True, replyMsg);
    end submitFrame;
 
+   ---------------------------------------------------------------------------
+   --  Output mode changes (CuBit.Output_Modes, docs/vm-guide.md). The GPU
+   --  answers a watch when its host changed a preferred mode; display.svc
+   --  re-reads the GPU catalog, publishes the new preference (Advertised) in
+   --  its own catalog and answers Desktop's watch. Desktop releases its
+   --  outputs and asks for the mode (Set_Mode); display.svc switches the GPU,
+   --  remaps the scanout buffers and re-registers the output.
+   ---------------------------------------------------------------------------
+   --  "WxH" with no padding (log markers the tests match).
+   function Dimensions (Width, Height : Natural) return String is
+      W : constant String := Width'Image;
+      H : constant String := Height'Image;
+   begin
+      return W (W'First + 1 .. W'Last) & "x" & H (H'First + 1 .. H'Last);
+   end Dimensions;
+
+   procedure answerOutputWatch is
+      Ignored : Unsigned_64;
+   begin
+      if outputWatchArmed then
+         outputWatchArmed := False;
+         Ignored := replyCap (OUTPUT_WATCH_SLOT, CuBit.Desktop_Messages.From_Wire
+           (OM.Encode_Watch (OD.Display_Broker, catalogRevision)));
+      end if;
+   end answerOutputWatch;
+
+   procedure catalogChanged is
+   begin
+      if catalogRevision < OD.Catalog_Revision'Last then
+         catalogRevision := catalogRevision + 1;
+      end if;
+      answerOutputWatch;
+   end catalogChanged;
+
+   procedure armGpuWatch is
+      Token : Unsigned_64;
+   begin
+      if not gpuDetected or else intelTakeover or else not catalogReady or else
+        gpuWatchToken /= 0
+      then
+         return;
+      end if;
+      Compositor_Requests.Allocate (backendSequence, Token);
+      if Token /= 0 and then capSubmit (CAP_SLOT_GPU, CuBit.Desktop_Messages.From_Wire
+           (OM.Encode_Watch (OD.GPU_Backend, gpuRevision)), Token)
+      then
+         gpuWatchToken := Token;
+      end if;
+   end armGpuWatch;
+
+   --  Copy the GPU's current preferences (Advertised) into the catalog.
+   procedure refreshAdvertised is
+      Saved : constant Output_Index := selectedOutput;
+      Response : Message;
+      Summary : OD.Summary_Decoding;
+      Item : OD.Description_Decoding;
+      Changed : Boolean := False;
+   begin
+      selectedOutput := 0;
+      Response := callGpu (OD.Code (OD.GPU_Backend, OD.Get_Catalog));
+      Summary := OD.Decode_Summary (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (Response));
+      if Summary.Valid and then Summary.Value.Count <= 16 then
+         for Index in 1 .. Summary.Value.Count loop
+            Response := callGpu
+              (OD.Code (OD.GPU_Backend, OD.Get_Description),
+               Summary.Value.Revision, Unsigned_64 (Index));
+            Item := OD.Decode_Description
+              (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (Response));
+            exit when not Item.Valid or else Item.Value.Requested /= (Summary.Value.Revision, Index);
+            for Known in 1 .. outputCatalog.Count loop
+               declare
+                  K : OD.Description renames outputCatalog.Items (Known);
+               begin
+                  if K.Source = OD.Virtio_GPU and then
+                    K.Native_Number = Item.Value.Item.Native_Number and then
+                    (K.Advertised_Width /= Item.Value.Item.Advertised_Width or else
+                     K.Advertised_Height /= Item.Value.Item.Advertised_Height)
+                  then
+                     K.Advertised_Width := Item.Value.Item.Advertised_Width;
+                     K.Advertised_Height := Item.Value.Item.Advertised_Height;
+                     Changed := True;
+                     debugPrint ("display: output" & K.Native_Number'Image & " host prefers" &
+                       " " & Dimensions (K.Advertised_Width, K.Advertised_Height) & LF);
+                  end if;
+               end;
+            end loop;
+         end loop;
+      end if;
+      selectedOutput := Saved;
+      if Changed then
+         catalogChanged;
+      end if;
+   end refreshAdvertised;
+
+   procedure collectGpuWatch (Completion : CompletionEntry) is
+      Answer : constant OM.Revision_Decoding :=
+        (if Completion.valid and then Completion.status = COMPLETION_OK
+         then OM.Decode_Watch (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (Completion.msg))
+         else (Valid => False));
+   begin
+      if not Answer.Valid then
+         --  A backend without mode changes (or a failed watch): outputs
+         --  keep their modes; do not resubmit.
+         debugPrint ("display: GPU mode watch unavailable" & LF);
+         return;
+      end if;
+      gpuRevision := Answer.Value;
+      refreshAdvertised;
+      armGpuWatch;
+   end collectGpuWatch;
+
+   --  The selected output switched to Mode: remap, clear, re-register and
+   --  publish. Only with no client buffers, session or frame on it.
+   procedure adoptMode (Mode : OM.Mode) is
+      State : Output_State renames outputStates (selectedOutput);
+      Returned : Boolean;
+      Fresh_Targets : BT.State;
+      Replacement : Outputs.Output_Reference;
+      Changed : Outputs.Mutation_Result;
+      Described : Outputs.Description;
+   begin
+      for Index in 0 .. BT.Count (State.Targets) - 1 loop
+         if State.gpuScanoutAddr (Index) /= System.Null_Address then
+            --  No copy uses the old mapping (no frame is in flight); the
+            --  GPU's buffers stay where they are, only the length changes.
+            MG.Return_Acquisition (State.gpuScanoutGrant (Index), Returned);
+            if not Returned then
+               State.presentationFault := True;
+            end if;
+            State.gpuScanoutAddr (Index) := System.Null_Address;
+         end if;
+      end loop;
+      State.fbWidth := Natural (Mode.Width);
+      State.fbHeight := Natural (Mode.Height);
+      State.fbPitch := Natural (Mode.Width) * 4;
+      BT.Set_Count (Fresh_Targets, BT.Count (State.Targets));
+      State.Targets := Fresh_Targets;
+      State.gpuStale := [others => (others => 0)];
+      if State.presentationFault or else not ensureGpuScanout or else
+        not clearOutput (16#0013_1518#)
+      then
+         State.presentationFault := True;
+         debugPrint ("display: output mode change failed" & LF);
+         return;
+      end if;
+      Described := Outputs.Describe (outputRegistry, State.currentOutput);
+      Described.Area.Width := Outputs.W.Extent (Mode.Width);
+      Described.Area.Height := Outputs.W.Extent (Mode.Height);
+      Outputs.Update (outputRegistry, State.currentOutput, Described, Replacement, Changed);
+      if Changed /= Outputs.Applied then
+         State.presentationFault := True;
+         debugPrint ("display: output re-registration failed" & LF);
+         return;
+      end if;
+      State.currentOutput := Replacement;
+      for Index in 1 .. outputCatalog.Count loop
+         declare
+            K : OD.Description renames outputCatalog.Items (Index);
+         begin
+            if K.Source = OD.Virtio_GPU and then K.Role /= OD.Detected_Only and then
+              K.Native_Number = Natural (selectedOutput)
+            then
+               if K.Role = OD.Selected_For_Desktop then
+                  K := (OD.Selected_For_Desktop, K.Source, K.Native_Number,
+                        K.Advertised_Width, K.Advertised_Height, Mode.Width, Mode.Height);
+               else
+                  K := (OD.Backend_Ready, K.Source, K.Native_Number,
+                        K.Advertised_Width, K.Advertised_Height, Mode.Width, Mode.Height);
+               end if;
+            end if;
+         end;
+      end loop;
+      planeOutputs (Output_Of (selectedOutput)).Width := DPL.Output_Extent (Mode.Width);
+      planeOutputs (Output_Of (selectedOutput)).Height := DPL.Output_Extent (Mode.Height);
+      if selectedOutput = 0 and then readyOutputs (1) then
+         planeOutputs (Output_Of (1)).X := DPL.Space_Coordinate (Mode.Width);
+      end if;
+      replan;
+      debugPrint ("display: output" & selectedOutput'Image & " mode" &
+        " " & Dimensions (Mode.Width, Mode.Height) & LF);
+      catalogChanged;
+   end adoptMode;
+
+   procedure handleSetMode (from : Process_ID; request : Message; replyMsg : out Message) is
+      State : Output_State renames outputStates (selectedOutput);
+      Wanted : constant OM.Mode_Decoding :=
+        OM.Decode_Set_Mode (OD.Display_Broker, CuBit.Desktop_Messages.To_Wire (request));
+      Current : constant OM.Mode := (OD.Extent (State.fbWidth), OD.Extent (State.fbHeight));
+      Result : OM.Mode_Result := (DSP.DP.Bad_State, Current);
+      Call : Message;
+      Answer : OM.Result_Decoding;
+   begin
+      if not Wanted.Valid then
+         Result.Status := DSP.DP.Invalid_Request;
+      elsif State.backend.Kind /= Native_GPU then
+         Result.Status := DSP.DP.Unsupported;
+      elsif State.displayOwner /= No_Process and then State.displayOwner /= from then
+         Result.Status := DSP.DP.Denied;
+      elsif State.presentationFault or else State.srcAcquired or else
+        Pool_Registry.Count (State.Pool) /= 0 or else State.activeSession /= 0 or else
+        State.backendToken /= 0 or else PS.Current (State.frameState) /= PS.Idle or else
+        BT.Current (State.Targets) not in BT.Unconfigured | BT.Idle
+      then
+         Result.Status := DSP.DP.Bad_State;
+      elsif Wanted.Value = Current then
+         Result.Status := DSP.DP.Success;
+      else
+         Call := CuBit.Desktop_Messages.From_Wire (DSP.With_Output
+           (OM.Encode_Set_Mode (OD.GPU_Backend, Wanted.Value), selectedOutput));
+         Call.tag := capCall (CAP_SLOT_GPU, Call,
+                              CuBit.Messages.Deadline_After (GPU_Call_Deadline_Ms));
+         Answer := OM.Decode_Result (OD.GPU_Backend, CuBit.Desktop_Messages.To_Wire (Call));
+         if Answer.Valid then
+            Result := Answer.Value;
+            if Result.Status = DSP.DP.Success and then Result.Current /= Current then
+               adoptMode (Result.Current);
+               if State.presentationFault then
+                  Result.Status := DSP.DP.Bad_State;
+               end if;
+            end if;
+         end if;
+      end if;
+      replyMsg := CuBit.Desktop_Messages.From_Wire (OM.Encode_Result (OD.Display_Broker, Result));
+   end handleSetMode;
+
    procedure handleRequest
       (from     : Process_ID;
        incoming : Message;
@@ -1866,13 +2263,38 @@ procedure main is
       then
          if catalogReady and then outputUsable (outputStates (0).currentOutput) then
             replyMsg := CuBit.Desktop_Messages.From_Wire (OD.Respond
-              (OD.Display_Broker, outputCatalog,
-               OD.Catalog_Revision (Outputs.Version (outputRegistry)),
+              (OD.Display_Broker, outputCatalog, catalogRevision,
                CuBit.Desktop_Messages.To_Wire (request)));
          else
             replyMsg.tag := (request.tag.label, 1, 0, 0);
             replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
          end if;
+         return;
+      end if;
+
+      if request.tag.label = OM.Code (OD.Display_Broker, OM.Watch) then
+         declare
+            Known : constant OM.Revision_Decoding :=
+              OM.Decode_Watch (OD.Display_Broker, CuBit.Desktop_Messages.To_Wire (request));
+         begin
+            if not Known.Valid then
+               replyMsg.tag := (request.tag.label, 1, 0, 0);
+               replyMsg.words (0) := DISPLAY_ERR_BAD_OBJECT;
+            elsif Known.Value /= catalogRevision then
+               replyMsg := CuBit.Desktop_Messages.From_Wire
+                 (OM.Encode_Watch (OD.Display_Broker, catalogRevision));
+            else
+               --  One watcher: a newer watch answers (supersedes) the older.
+               answerOutputWatch;
+               if saveReplyCap (Unsigned_64 (OUTPUT_WATCH_SLOT)) = 1 then
+                  outputWatchArmed := True;
+                  deferredReply := True;
+               else
+                  replyMsg.tag := (request.tag.label, 1, 0, 0);
+                  replyMsg.words (0) := DISPLAY_ERR_BAD_STATE;
+               end if;
+            end if;
+         end;
          return;
       end if;
 
@@ -2066,6 +2488,7 @@ procedure main is
                outputStates (selectedOutput).displayOwner := from;
                outputStates (selectedOutput).leasedOutput := outputStates (selectedOutput).currentOutput;
                replyMsg.words (0) := DISPLAY_OK;
+               CuBit.Boot_Milestones.Mark (CuBit.Boot_Milestone_Codes.Display_Leased);
             else
                replyMsg.words (0) := DISPLAY_ERR_DENIED;
             end if;
@@ -2249,7 +2672,9 @@ procedure main is
                Plane_Kind : constant PP.Operation_Decoding :=
                  PP.Decode_Operation (request.tag.label);
             begin
-               if Plane_Kind.Valid then
+               if request.tag.label = OM.Code (OD.Display_Broker, OM.Set_Mode) then
+                  handleSetMode (from, request, replyMsg);
+               elsif Plane_Kind.Valid then
                   handlePlaneRequest (from, Plane_Kind.Value, request, replyMsg);
                else
                   replyMsg.tag := (label  => request.tag.label,
@@ -2337,10 +2762,12 @@ begin
       end if;
    end loop;
    replan;
+   armGpuWatch;
    debugPrint ("display: ready" & LF);
 
    loop
       collectFrames;
+      retryMoves;
       Poll_Service_Request (from, msg, found);
       if found then
          deferredReply := False;

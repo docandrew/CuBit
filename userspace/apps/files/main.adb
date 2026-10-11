@@ -15,10 +15,15 @@ with CuBit.Log_Records;
 with CuBit.Monotonic;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.App;
+with CuBit.UI.Clipboard;
+with CuBit.UI.Editor_Clipboard;
+with Clipboard_Chords;
+with Clipboard_Text;
 with CuBit.UI.Controls;
 with CuBit.UI.Icons;
 with CuBit.UI.Input;
 with CuBit.UI.State;
+with Files_Filter;
 with Files_Limits;
 with Files_Queue;
 with Files_View;
@@ -95,6 +100,10 @@ procedure Main is
    Buttons : Unsigned_64 := 0;
    --  The desktop's modifier state as of the latest key or resync event.
    Modifiers : Unsigned_64 := 0;
+   use type Clipboard_Chords.Command;
+   --  The two forms of a copied selection: names or paths, one per line,
+   --  and the List-String literal; at most the clipboard's own bound.
+   Copy_Text_Form, Copy_Literal : Clipboard_Text.Builder (Clipboard_Text.Maximum_Form);
    Last_Pump_Us : Unsigned_64 := 0;
    First_Frame : Boolean := True;
 
@@ -289,6 +298,89 @@ procedure Main is
          Set_Clock (View, Now_Us);
          Handle (View, Item, Controls, Redraw);
       end Send;
+      Command : constant Clipboard_Chords.Command :=
+        (if Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN
+         then CuBit.UI.Clipboard.Command_Of (Event.payload0, Current_Modifiers)
+         else Clipboard_Chords.No_Command);
+
+      --  Copy the active pane's selection (docs/clipboard.md): names, or
+      --  full paths, as a typed List-String with a line-per-entry text form.
+      procedure Copy_Selection (Form : Copy_Form) is
+         Count : Natural;
+         Result : CuBit.UI.Clipboard.Outcome;
+      begin
+         Selection_Copy (View, Form, Copy_Text_Form, Copy_Literal, Count);
+         if Count = 0 then
+            debugPrint ("files: nothing to copy" & ASCII.LF);
+            return;
+         end if;
+         CuBit.UI.Clipboard.Copy_Built
+           (CuBit.UI.App.Surface_ID (Win), Clipboard_Text.String_List_Type, Copy_Text_Form, Copy_Literal, Result);
+         debugPrint ("files: copy" & Count'Image & (if Form = Copy_Paths then " paths " else " names ")
+                     & CuBit.UI.Clipboard.Image (Result) & ASCII.LF);
+      end Copy_Selection;
+
+      --  A clipboard chord on the prompt's name field.
+      procedure Prompt_Chord (Text : in out String; Length : in out Natural; Changed : out Boolean) is
+         R : constant CuBit.UI.Editor_Clipboard.Result :=
+           CuBit.UI.Editor_Clipboard.Handle_Line_Key
+             (Text, Length, CuBit.UI.App.Surface_ID (Win), Event.payload0, Current_Modifiers);
+      begin
+         Changed := R.Changed;
+         debugPrint ("files: prompt chord " & CuBit.UI.Clipboard.Image (R.Outcome) & ASCII.LF);
+      end Prompt_Chord;
+      procedure Edit_Prompt_Text is new Edit_Prompt (Prompt_Chord);
+
+      procedure Paste_Into_Filter is
+         --  Paste types into the filter, as if each character were typed.
+         --  Line breaks end the paste: a filter is one line.
+         Text : String (1 .. Files_Filter.MAXIMUM_QUERY);
+         Last : Natural;
+         Kind : CuBit.UI.Clipboard.Sensitivity;
+         Result : CuBit.UI.Clipboard.Outcome;
+         Count : Natural := 0;
+         use type CuBit.UI.Clipboard.Outcome;
+      begin
+         CuBit.UI.Clipboard.Paste_Text
+           (CuBit.UI.App.Surface_ID (Win), CuBit.UI.Clipboard.Ordinary, Text, Last, Kind, Result);
+         if Result = CuBit.UI.Clipboard.Done then
+            for I in Text'First .. Last loop
+               exit when Text (I) not in ' ' .. '~';
+               Send ((Kind => Text_Event, Character_Value => Text (I), others => <>));
+               Count := Count + 1;
+            end loop;
+            debugPrint ("files: pasted" & Count'Image & " characters into the filter" & ASCII.LF);
+         else
+            debugPrint ("files: paste " & CuBit.UI.Clipboard.Image (Result) & ASCII.LF);
+         end if;
+      end Paste_Into_Filter;
+
+      --  Ctrl+C copies names (Ctrl+Shift+C full paths). Ctrl+X does the
+      --  same: Files has no cut of files to the clipboard (moving is F6).
+      --  A prompt asking for a name takes the chords on its text; else a
+      --  paste goes to the filter.
+      procedure Clipboard_Key is
+      begin
+         if Prompt_Takes_Text (View) then
+            Edit_Prompt_Text (View);
+         elsif Command = Clipboard_Chords.Paste_Command then
+            Paste_Into_Filter;
+         else
+            Copy_Selection
+              ((if Shift and then Command = Clipboard_Chords.Copy_Command then Copy_Paths else Copy_Names));
+         end if;
+      end Clipboard_Key;
+
+      procedure Take_Menu_Copy is
+         Request : Clipboard_Request;
+      begin
+         Take_Clipboard_Request (View, Request);
+         case Request is
+            when No_Request => null;
+            when Request_Copy_Names => Copy_Selection (Copy_Names);
+            when Request_Copy_Paths => Copy_Selection (Copy_Paths);
+         end case;
+      end Take_Menu_Copy;
    begin
       Modifiers := Current_Modifiers;
       if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
@@ -296,6 +388,10 @@ procedure Main is
       elsif Event.kind = CuBit.UI.Input.INPUT_CONFIGURE then
          Send ((Kind => Resize, X => CuBit.UI.App.Width (Win), Y => CuBit.UI.App.Height (Win), others => <>));
          Dirty := CuBit.UI.App.Full_Rect (Win);
+      elsif Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN and then
+        Command in Clipboard_Chords.Copy_Command | Clipboard_Chords.Cut_Command | Clipboard_Chords.Paste_Command
+      then
+         Clipboard_Key;
       elsif Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN then
          if Key_Of (Event.payload0, Shift) /= No_Key then
             Send ((Kind => Key_Event, Key => Key_Of (Event.payload0, Shift), Shift => Shift, Control => Control,
@@ -348,6 +444,8 @@ procedure Main is
          Send ((Kind => Wheel, Steps => CuBit.UI.Input.Pointer_Wheel_Delta (Event),
                 X => CuBit.UI.Input.Pointer_X (Event), Y => CuBit.UI.Input.Pointer_Y (Event), others => <>));
       end if;
+      --  A Copy chosen from the context menu, by this event's click or Enter.
+      Take_Menu_Copy;
       --  Input often submits requests (a folder opened): move them now.
       Pump_View (Dirty);
       if Quit_Requested (View) then

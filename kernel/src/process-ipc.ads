@@ -27,6 +27,8 @@ with IPC_Labels;
 with Kernel_Controls;
 with Memory_Grants;
 
+with Device_Vector_ABI;
+
 package Process.IPC is
     -- Request/mixed receive variants share a mailbox-locked round-robin over
     -- queued messages, blocked synchronous senders, and persistent IRQ work.
@@ -108,6 +110,11 @@ package Process.IPC is
     -- Publish a coalescible, persistent device-work doorbell. It cannot be
     -- refused: it is a bit, not a queued message.
     procedure notifyIRQ (dest : ProcessID);
+
+    -- The same doorbell for a message-signaled device vector, which also
+    -- marks the vector in dest's pending set (Device_Vector_ABI).
+    procedure notifyDeviceVector (dest   : ProcessID;
+                                  vector : Device_Vector_ABI.Device_Vector);
 
     ---------------------------------------------------------------------------
     -- receive

@@ -64,7 +64,10 @@ enum ccl_event {
     CCL_EVENT_TOGGLE_REPL = 37,
     CCL_EVENT_TOGGLE_WATCH = 38,
     CCL_EVENT_COMPLETE_OPERATION = 39,
-    CCL_EVENT_TOGGLE_SYNTAX = 40
+    CCL_EVENT_TOGGLE_SYNTAX = 40,
+    CCL_EVENT_COPY_SELECTION = 41,
+    CCL_EVENT_CUT_SELECTION = 42,
+    CCL_EVENT_PASTE_CLIPBOARD = 43
 };
 
 enum {
@@ -386,6 +389,15 @@ int ccl_window_poll(void *handle, int *kind, unsigned int *character,
         if (event.key.keysym.sym == SDLK_DOWN) { *kind = CCL_EVENT_DOWN; return 1; }
         if (event.key.keysym.sym == SDLK_PAGEUP) { *kind = CCL_EVENT_PAGE_UP; return 1; }
         if (event.key.keysym.sym == SDLK_PAGEDOWN) { *kind = CCL_EVENT_PAGE_DOWN; return 1; }
+        if ((*modifiers & 2u) != 0 && event.key.keysym.sym == SDLK_c) {
+            *kind = CCL_EVENT_COPY_SELECTION; return 1;
+        }
+        if ((*modifiers & 2u) != 0 && event.key.keysym.sym == SDLK_x) {
+            *kind = CCL_EVENT_CUT_SELECTION; return 1;
+        }
+        if ((*modifiers & 2u) != 0 && event.key.keysym.sym == SDLK_v) {
+            *kind = CCL_EVENT_PASTE_CLIPBOARD; return 1;
+        }
         if (event.key.keysym.sym == SDLK_a && (*modifiers & 2u) != 0) {
             *kind = CCL_EVENT_SELECT_ALL; return 1;
         }

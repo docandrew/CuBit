@@ -16,6 +16,7 @@
   (file bootstrap "mixer" "mixer.svc")
   (file bootstrap "ps2" "ps2.drv")
   (file bootstrap "xhci" "xhci.drv")
+  (file bootstrap "virtio-input" "virtio-input.drv")
   (file bootstrap "config" "config.svc")
   (file bootstrap "netmgr" "netmgr.svc")
   (file bootstrap "procmgr" "procmgr.svc")

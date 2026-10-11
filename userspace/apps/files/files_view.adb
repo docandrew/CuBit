@@ -306,7 +306,9 @@ package body Files_View is
       Cmd_Mark_Toggle, Cmd_Mark_All, Cmd_Unmark_All, Cmd_Invert, Cmd_New_Folder, Cmd_Refresh, Cmd_Bookmark,
       Cmd_Bookmark_Entry, Cmd_Sort_Name, Cmd_Sort_Extension, Cmd_Sort_Modified, Cmd_Sort_Size, Cmd_Up, Cmd_Drawer,
       Cmd_Column_Extension, Cmd_Column_Size, Cmd_Column_Modified, Cmd_Column_Changed, Cmd_Column_Kind,
-      Cmd_Column_Mode, Cmd_Column_Owner);
+      Cmd_Column_Mode, Cmd_Column_Owner, Cmd_Copy_Names, Cmd_Copy_Paths);
+   --  A clipboard copy chosen from the menu, for the platform.
+   Pending_Clipboard : Clipboard_Request := No_Request;
    Menu : CuBit.UI.Popup_Menus.Model;
    Popup : CuBit.UI.Popup_Menus.Popup_State;
    Menu_Side : Side := Left_Pane;
@@ -2019,6 +2021,9 @@ package body Files_View is
             PM.Add (Menu, PM.ROOT, "Delete " & Count_Text, Pos (Cmd_Delete), "F8", OPERATIONS_READY,
                     Has_Icon => True, Picture => IC.Delete);
             PM.Add_Separator (Menu, PM.ROOT);
+            PM.Add (Menu, PM.ROOT, "Copy names", Pos (Cmd_Copy_Names), "Ctrl+C");
+            PM.Add (Menu, PM.ROOT, "Copy paths", Pos (Cmd_Copy_Paths), "Ctrl+Shift+C");
+            PM.Add_Separator (Menu, PM.ROOT);
             PM.Add (Menu, PM.ROOT, "Unmark all", Pos (Cmd_Unmark_All), "Esc");
             PM.Add (Menu, PM.ROOT, "Invert marks", Pos (Cmd_Invert), "Ctrl+I");
          end;
@@ -2040,6 +2045,8 @@ package body Files_View is
          PM.Add (Menu, PM.ROOT, "Delete", Pos (Cmd_Delete), "F8", OPERATIONS_READY,
                  Has_Icon => True, Picture => IC.Delete);
          PM.Add_Separator (Menu, PM.ROOT);
+         PM.Add (Menu, PM.ROOT, "Copy name", Pos (Cmd_Copy_Names), "Ctrl+C");
+         PM.Add (Menu, PM.ROOT, "Copy path", Pos (Cmd_Copy_Paths), "Ctrl+Shift+C");
          PM.Add (Menu, PM.ROOT, "Mark", Pos (Cmd_Mark_Toggle), "Ins");
       else
          PM.Add (Menu, PM.ROOT, "New folder", Pos (Cmd_New_Folder), "F7", OPERATIONS_READY,
@@ -2088,6 +2095,10 @@ package body Files_View is
                end;
             end if;
          when Cmd_Copy => Ask (State, Confirm_Copy, Which);
+         when Cmd_Copy_Names | Cmd_Copy_Paths =>
+            --  The entries are the menu's pane's: make it the active one.
+            State.Current := Which;
+            Pending_Clipboard := (if Command = Cmd_Copy_Names then Request_Copy_Names else Request_Copy_Paths);
          when Cmd_Move => Ask (State, Confirm_Move, Which);
          when Cmd_Delete => Ask (State, Confirm_Delete, Which);
          when Cmd_Rename => Ask (State, Ask_New_Name, Which);
@@ -3791,6 +3802,80 @@ package body Files_View is
       end if;
       return Files_Listing.Name (P.Listing, Entry_Of (P, Row));
    end Row_Name;
+   procedure Take_Clipboard_Request (State : in out View_State; Request : out Clipboard_Request) is
+      pragma Unreferenced (State);
+   begin
+      Request := Pending_Clipboard;
+      Pending_Clipboard := No_Request;
+   end Take_Clipboard_Request;
+
+   procedure Selection_Copy
+     (State : View_State; Form : Copy_Form; Text, Literal : in out Clipboard_Text.Builder; Count : out Natural)
+   is
+      package CT renames Clipboard_Text;
+      P : Pane_State renames State.Panes (State.Current).all;
+      procedure Add (Id : Entry_Id) is
+         Name : constant String := Files_Listing.Name (P.Listing, Id);
+         Child : DP.Path;
+         Done : Boolean := True;
+      begin
+         if Form = Copy_Paths then
+            DP.Append_Child (P.Where, Name, Child, Done);
+         end if;
+         if not Done then
+            Text.Fits := False;
+            return;
+         end if;
+         declare
+            Item : constant String := (if Form = Copy_Paths then DP.Value (Child) else Name);
+         begin
+            if Count > 0 then
+               CT.Append (Text, [1 => ASCII.LF]);
+               CT.Append (Literal, " ");
+            end if;
+            CT.Append (Text, Item);
+            CT.Append_Quoted (Literal, Item);
+            Count := Count + 1;
+         end;
+      end Add;
+   begin
+      CT.Clear (Text);
+      CT.Clear (Literal);
+      Count := 0;
+      CT.Append (Literal, CT.List_Open);
+      if Files_Marks.Count (P.Marks) > 0 then
+         --  In the pane's sort order, filtered out or not (as F5 takes them).
+         for Position in 1 .. Files_Order.Count (P.Order) loop
+            if Files_Marks.Marked (P.Marks, Files_Order.At_Position (P.Order, Position)) then
+               Add (Files_Order.At_Position (P.Order, Position));
+            end if;
+         end loop;
+      elsif P.View.Cursor > 0 and then Entry_Of (P, P.View.Cursor) > 0 then
+         Add (Entry_Of (P, P.View.Cursor));
+      end if;
+      CT.Append (Literal, CT.List_Close);
+   end Selection_Copy;
+
+   function Prompt_Takes_Text (State : View_State) return Boolean is
+      pragma Unreferenced (State);
+   begin
+      return Prompt in Ask_Folder_Name | Ask_New_Name;
+   end Prompt_Takes_Text;
+
+   procedure Edit_Prompt (State : in out View_State) is
+      Length : Natural := Input_Length;
+      Changed : Boolean;
+   begin
+      if Prompt not in Ask_Folder_Name | Ask_New_Name then
+         return;
+      end if;
+      Process (Input, Length, Changed);
+      if Changed then
+         Input_Length := Natural'Min (Length, MAXIMUM_NAME_BYTES);
+         Dirty_All (State);
+      end if;
+   end Edit_Prompt;
+
    function Cursor_Name (State : View_State; Pane : Side) return String is
      (if State.Panes (Pane).View.Cursor = 0 then "" else Row_Name (State, Pane, State.Panes (Pane).View.Cursor));
    function Marked_Count (State : View_State; Pane : Side) return Natural is

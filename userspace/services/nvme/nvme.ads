@@ -188,13 +188,11 @@ package NVMe is
    --  Sets nsBlockCount and nsSectorSize.
    procedure identifyNamespace;
 
-   --  Create I/O submission and completion queues. With msixTable (a BAR0
-   --  offset) the completion queue interrupts through MSI-X entry zero,
-   --  which is filled here with vector; otherwise completions are polled.
-   NO_MSIX : constant Unsigned_64 := Unsigned_64'Last;
-   procedure createIOQueues
-     (msixTable : Unsigned_64 := NO_MSIX; vector : Unsigned_64 := 0;
-      ok : out Boolean);
+   --  Create I/O submission and completion queues. With interrupts, the
+   --  completion queue signals MSI-X entry CuBit.NVMe_Control
+   --  .Completion_Message, which devmgr has programmed; otherwise
+   --  completions are polled.
+   procedure createIOQueues (interrupts : Boolean; ok : out Boolean);
 
    --  Whether completions interrupt (createIOQueues succeeded with MSI-X).
    interruptsEnabled : Boolean := False;

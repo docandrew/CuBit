@@ -1,0 +1,19 @@
+# virtio-gpu.drv's authority (docs/ccl-driver-manifests.md). devmgr reads
+# the interrupt request from the linked ELF and installs the vector's CAP_IRQ
+# in its slot (docs/msi-interrupts.md); it still mints the others itself, at
+# the slots these bindings name. The registers live in the BAR the virtio
+# common-configuration capability names (virtio-gpu-pci 4, virtio-vga 2);
+# devmgr follows the capability, the index here is the usual one.
+(Executable_Manifest
+  identity => "com.cubit.virtio-gpu"
+  version => "0.1.0"
+  # 0x1AF4:0x1050, virtio-gpu (also behind virtio-vga).
+  device => (Device_Match.PCI_ID (PCI_ID 6900 4176))
+  requests => [
+    (device-memory "registers" 4 1048576 Access.Read_Write)
+    # Entry 0: control and cursor queues; entry 1: configuration changes
+    # (display events). One vector if the device has only one entry.
+    (interrupt "device" Interrupt_Mode.MSI_X 2)
+    (dma "frames" 16777216)
+    (device-memory "notify" 4 1048576 Access.Read_Write)
+    (service "device-manager" "ready")])

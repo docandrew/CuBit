@@ -8,7 +8,11 @@ with Config_Objects;
 with Config_Typed_Store;
 with Config_Worker_Protocol;
 
+with CuBit.Process_IDs;
 procedure Managed_Tests is
+   use type CuBit.Process_IDs.Process_ID;
+   function PID (Word : Interfaces.Unsigned_64) return CuBit.Process_IDs.Process_ID
+     renames CuBit.Process_IDs.From_Word;
    package A renames Config_Authority;
    package C renames Config_Collections;
    package S renames Config_Typed_Store;
@@ -55,9 +59,9 @@ begin
    Check (Built = CCL.Objects.Added);
    -- Even an explicitly installed wildcard read/write grant is not activation.
    A.Append (Rules, "", A.Read_Write, Good); Check (Good);
-   A.Install (Authority, 42, Rules, Installed); Check (Installed = A.Installed);
+   A.Install (Authority, PID (42), Rules, Installed); Check (Installed = A.Installed);
    A.Append (Activator_Rules, "", [others => True], Good); Check (Good);
-   A.Install (Authority, 43, Activator_Rules, Installed); Check (Installed = A.Installed);
+   A.Install (Authority, PID (43), Activator_Rules, Installed); Check (Installed = A.Installed);
    for Kind in C.Management_Kind loop
       declare
          Name : constant String := (if Kind = C.Application_State then "test.state" else "test.managed");
@@ -67,10 +71,10 @@ begin
          Check (C.Management (Catalog, ID) = Kind);
          -- Activation never becomes a collection-handle operation, even for a
          -- subject explicitly granted it and even on application state.
-         C.Open (Catalog, Authority, 43, Name, 0,
+         C.Open (Catalog, Authority, PID (43), Name, 0,
            [A.Activate_Config => True, others => False], Schema, Token, Result);
          Check (Result = C.Denied and Token = 0);
-         C.Open (Catalog, Authority, 43, Name, 0,
+         C.Open (Catalog, Authority, PID (43), Name, 0,
            [others => True], Schema, Token, Result);
          Check (Result = C.Denied and Token = 0);
          C.Register (Catalog, Name, Contract, Actual_ID, Result, Kind);
@@ -84,7 +88,7 @@ begin
          Check (C.Management (Catalog, ID) = Kind);
          for Read_Right in Boolean loop
             for Write_Right in Boolean loop
-               C.Open (Catalog, Authority, 42, Name, 0,
+               C.Open (Catalog, Authority, PID (42), Name, 0,
                  [A.Read_Config => Read_Right, A.Write_Config => Write_Right,
                   A.Activate_Config => False], Schema, Token, Result);
                if (Read_Right or Write_Right) and
@@ -92,7 +96,7 @@ begin
                then
                   Check (Result = C.Opened and Token /= 0);
                   for Op in A.Operation loop
-                     C.Resolve (Catalog, Authority, 42, Token, Op, Actual_ID, Result);
+                     C.Resolve (Catalog, Authority, PID (42), Token, Op, Actual_ID, Result);
                      if (case Op is
                            when A.Read_Config => Read_Right,
                            when A.Write_Config => Write_Right,
@@ -103,7 +107,7 @@ begin
                         Check (Result = C.Denied and Actual_ID = C.No_Collection);
                      end if;
                   end loop;
-   C.Close (Catalog, 42, Token, Result); Check (Result = C.Closed);
+   C.Close (Catalog, PID (42), Token, Result); Check (Result = C.Closed);
                else
                   Check (Result = C.Denied and Token = 0);
                end if;
@@ -120,34 +124,34 @@ begin
    Check (Result = C.Management_Conflict and Actual_ID = C.No_Collection);
    S.Register (Store, "test.managed", Contract, Actual_ID, Result);
    Check (Result = C.Management_Conflict and Actual_ID = C.No_Collection);
-   S.Open (Store, Authority, 42, "test.managed", 0, A.Read_Only, Schema, Reader, Result);
+   S.Open (Store, Authority, PID (42), "test.managed", 0, A.Read_Only, Schema, Reader, Result);
    Check (Result = C.Opened);
-   Check (S.Check_Access (Store, Authority, 42, Reader, A.Read_Config));
-   Check (not S.Check_Access (Store, Authority, 42, Reader, A.Write_Config));
+   Check (S.Check_Access (Store, Authority, PID (42), Reader, A.Read_Config));
+   Check (not S.Check_Access (Store, Authority, PID (42), Reader, A.Write_Config));
    S.Restore (Store, ID, 1, 1, Outcome); Check (Outcome = V.Accepted);
    S.Pending (Store, Request, Retrieved, Available); Check (Available);
    P.Make_Reply (Request, P.Loaded, 7, Retrieved, Value, Response, Good); Check (Good);
    S.Complete (Store, Response, Outcome); Check (Outcome = V.Published);
-   S.Get (Store, Authority, 42, Reader, Actual, Revision, Authorized, Read_Result);
+   S.Get (Store, Authority, PID (42), Reader, Actual, Revision, Authorized, Read_Result);
    Check (Authorized and Read_Result = V.Found and Revision = 7 and Actual = Value);
-   S.Set (Store, Authority, 42, Reader, Value, 7, 2, Authorized, Outcome);
+   S.Set (Store, Authority, PID (42), Reader, Value, 7, 2, Authorized, Outcome);
    Check (not Authorized and Outcome = V.Rejected);
    S.Pending (Store, Request, Retrieved, Available); Check (not Available);
-   S.Get (Store, Authority, 42, Reader, Actual, Revision, Authorized, Read_Result);
+   S.Get (Store, Authority, PID (42), Reader, Actual, Revision, Authorized, Read_Result);
    Check (Authorized and Read_Result = V.Found and Revision = 7 and Actual = Value);
-   S.Open (Store, Authority, 42, "test.managed", 0, A.Read_Write, Schema, Token, Result);
+   S.Open (Store, Authority, PID (42), "test.managed", 0, A.Read_Write, Schema, Token, Result);
    Check (Result = C.Denied and Token = 0);
-   S.Open (Store, Authority, 99, "test.managed", 0, A.Read_Only, Schema, Token, Result);
+   S.Open (Store, Authority, PID (99), "test.managed", 0, A.Read_Only, Schema, Token, Result);
    Check (Result = C.Denied and Token = 0);
-   A.Revoke (Authority, 42);
-   S.Get (Store, Authority, 42, Reader, Actual, Revision, Authorized, Read_Result);
+   A.Revoke (Authority, PID (42));
+   S.Get (Store, Authority, PID (42), Reader, Actual, Revision, Authorized, Read_Result);
    Check (not Authorized and Revision = 0);
-   A.Install (Authority, 42, Rules, Installed); Check (Installed = A.Installed);
-   Check (not S.Check_Access (Store, Authority, 42, Reader, A.Read_Config));
-   S.Open (Store, Authority, 42, "test.managed", 0, A.Read_Write, Schema, Token, Result);
+   A.Install (Authority, PID (42), Rules, Installed); Check (Installed = A.Installed);
+   Check (not S.Check_Access (Store, Authority, PID (42), Reader, A.Read_Config));
+   S.Open (Store, Authority, PID (42), "test.managed", 0, A.Read_Write, Schema, Token, Result);
    Check (Result = C.Denied and Token = 0);
-   S.Open (Store, Authority, 42, "test.managed", 0, A.Read_Only, Schema, Reader, Result);
+   S.Open (Store, Authority, PID (42), "test.managed", 0, A.Read_Only, Schema, Reader, Result);
    Check (Result = C.Opened);
-   Check (S.Check_Access (Store, Authority, 42, Reader, A.Read_Config));
+   Check (S.Check_Access (Store, Authority, PID (42), Reader, A.Read_Config));
    Ada.Text_IO.Put_Line ("Managed Config enforcement: PASS" & Checks'Image & " checks");
 end Managed_Tests;

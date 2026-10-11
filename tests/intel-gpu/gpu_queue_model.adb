@@ -32,7 +32,7 @@ package body GPU_Queue_Model is
          Server_Regions (S).all := [others => 0];
       end loop;
       Latency := 3; Hung := False; Regress := False; Torn := False; Ownership := True;
-      Ahead := False; Enable_Delay := 0;
+      Ahead := False; Enable_Delay := 0; Hung_Only := 0; Blocked := [others => False];
       Backpressure_Every := 0; Execute_Bytes := 384; Signal_Bytes := 120;
       Overwrites := 0; Bad_Tails := 0; Kicks := 0; Enables := 0; Quarantines := 0;
       Calls_OK := 0; Calls_Failed := 0; Last_Call_Value := 0;
@@ -56,7 +56,9 @@ package body GPU_Queue_Model is
                      M.Enabled := True;
                   end if;
                end if;
-               if not Hung and then M.Done < M.Submitted then
+               if not Hung and then Hung_Only /= S and then not Blocked (S) and then
+                 M.Done < M.Submitted
+               then
                   M.Progress := M.Progress + 1;
                   if M.Progress >= Latency then
                      M.Done := M.Done + 1;
@@ -148,6 +150,16 @@ package body GPU_Queue_Model is
             elsif Ahead then M.Published + 1 else M.Done);
    end Read_Timeline;
 
+   procedure Read_Job_Time (V : Unsigned_64; Exec_Us : out Unsigned_64; OK : out Boolean) is
+      pragma Unreferenced (V);
+   begin
+      OK := not Torn;
+      Exec_Us := (if OK then Unsigned_64 (Latency) * Microseconds_Per_Turn else 0);
+   end Read_Job_Time;
+
+   function Job_Started (V : Unsigned_64) return Boolean is
+     (V = Models (Sel_S, Sel_C).Done + 1 and then V <= Models (Sel_S, Sel_C).Submitted and then
+      not Blocked (Sel_S));
    function Now_Us return Unsigned_64 is (Clock);
 
    procedure Quarantine (S : Session_Id; Why : Q.Fault_Reason) is
@@ -169,6 +181,12 @@ package body GPU_Queue_Model is
       Wakes_Answered := Wakes_Answered + 1;
       Last_Wake := Result;
       Last_Wake_Session := S;
+      declare
+         Completed : constant Unsigned_64 with Import, Volatile,
+           Address => Server_Regions (S).all (Q.Server_Status_At + Q.Line_Completed_At + 1)'Address;
+      begin
+         Line_At_Wake := Completed;
+      end;
    end Answer_Wake;
 
    function Client_Region (S : Session_Id) return System.Address is

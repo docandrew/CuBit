@@ -1,6 +1,7 @@
 with Interfaces;
 with CCL.Catalog;
 with CCL.Evaluation;
+with CCL.Interfaces.Desktop_Input;
 with CCL.Interfaces.Desktop_Launch;
 with CCL.Language;
 with CCL.Objects;
@@ -22,15 +23,19 @@ package body CCL.Typed_Settings is
    function Kind_Of (Key : String) return Setting_Kind is
      (if Key'Length > LAUNCH_PREFIX'Length
          and then Key (Key'First .. Key'First + LAUNCH_PREFIX'Length - 1) = LAUNCH_PREFIX
-      then Launch_Entry_Setting else Untyped);
+      then Launch_Entry_Setting
+      elsif Key = CCL.Interfaces.Desktop_Input.KEY_REPEAT_KEY then Key_Repeat_Setting
+      else Untyped);
 
    function Schema (Kind : Setting_Kind) return String is
      (case Kind is
          when Launch_Entry_Setting => CCL.Interfaces.Desktop_Launch.TYPE_SOURCE,
+         when Key_Repeat_Setting => CCL.Interfaces.Desktop_Input.TYPE_SOURCE,
          when Untyped => "");
    function Root_Name (Kind : Setting_Kind) return String is
      (case Kind is
          when Launch_Entry_Setting => CCL.Interfaces.Desktop_Launch.ROOT_TYPE_NAME,
+         when Key_Repeat_Setting => CCL.Interfaces.Desktop_Input.ROOT_TYPE_NAME,
          when Untyped => "");
 
    function Named (Object : Views.Snapshot; At_Cursor : Views.Cursor; Name : String) return Views.Cursor is
@@ -53,7 +58,8 @@ package body CCL.Typed_Settings is
 
    --  The value's canonical source: records name every field in order,
    --  sums are Type.Member or (Type.Member payload), strings are quoted with
-   --  \" and \\ escaped, lists are [...].
+   --  \" and \\ escaped, lists are [...], integers (range types too) are
+   --  decimal.
    function Render (Object : Views.Snapshot; At_Cursor : Views.Cursor) return String is
       Kind : constant CCL.Types.Type_Reference := Views.Type_Of (Object, At_Cursor);
       Shape : constant CCL.Types.Description := Views.Describe (Object, At_Cursor);
@@ -77,7 +83,8 @@ package body CCL.Typed_Settings is
    begin
       if Kind = CCL.Types.String_Type then
          return '"' & Quote (Views.Text (Object, At_Cursor)) & '"';
-      elsif Kind = CCL.Types.Integer_Type then
+      elsif Kind = CCL.Types.Integer_Type or else Shape.Form = CCL.Types.Bounded then
+         --  A range type's values are Integers (the type bounds them).
          declare
             Image : constant String :=
               Standard.Interfaces.Integer_64'Image (CCL.Objects.Integer_Of (Views.Scalar (Object, At_Cursor)));

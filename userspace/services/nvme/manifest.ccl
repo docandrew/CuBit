@@ -1,11 +1,15 @@
-# DRAFT, not yet attached to nvme.drv: devmgr still mints these grants itself.
-(executable-manifest v1
-  (identity "com.cubit.nvme")
-  (version "0.1.0")
-  (match-pci-class 1 8 2)
-  (device-memory registers (bar 0) (max-bytes 16384) read-write)
-  # devmgr falls back to a line interrupt when MSI-X is unavailable.
-  (interrupt completion msix (vectors 1))
-  (dma queues (bytes 1048576))
-  (request-notification nvme manage registration)
-  (request-service device-manager read-write ready))
+# nvme.drv's authority (docs/ccl-driver-manifests.md). devmgr reads the
+# interrupt request from the linked ELF and installs the vectors' CAP_IRQ in
+# its slot (docs/msi-interrupts.md); it still mints the others itself, at
+# the slots these bindings name.
+(Executable_Manifest
+  identity => "com.cubit.nvme"
+  version => "0.1.0"
+  device => (Device_Match.PCI_Class (PCI_Class 1 8 2))
+  requests => [
+    (device-memory "registers" 0 16384 Access.Read_Write)
+    # One completion vector; per-queue MSI-X is the next step.
+    (interrupt "completion" Interrupt_Mode.MSI_X 1)
+    (dma "queues" 1048576)
+    (notification "nvme" Notify_Access.Manage "registration")
+    (service "device-manager" "ready")])

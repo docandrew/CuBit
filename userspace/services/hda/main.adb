@@ -18,6 +18,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants; use CuBit.Memory_Grants;
 with HDA;
 with CuBit.Audio_Periods;
+with CCL_Manifest_Bindings;
 
 procedure main is
    use ASCII;
@@ -76,7 +77,7 @@ begin
       debugPrint ("hda: no usable output, exiting" & ASCII.LF);
       --  Failed setup must not be advertised to the mixer as usable audio.
       declare
-         CAP_SLOT_READY  : constant Unsigned_64 := 15;
+         CAP_SLOT_READY  : constant Unsigned_64 := CCL_Manifest_Bindings.Slot_ready;
          OP_NOT_PRESENT  : constant Unsigned_32 := 16#FF01#;
          rdyIgnore : MessageTag;
       begin
@@ -95,7 +96,7 @@ begin
 
    --  Signal devmgr that we are ready
    declare
-      CAP_SLOT_READY : constant Unsigned_64 := 15;
+      CAP_SLOT_READY  : constant Unsigned_64 := CCL_Manifest_Bindings.Slot_ready;
       OP_READY       : constant Unsigned_32 := 16#FF00#;
       ignore : MessageTag;
    begin

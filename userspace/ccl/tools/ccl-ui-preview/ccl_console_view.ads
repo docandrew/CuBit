@@ -116,6 +116,21 @@ package CCL_Console_View is
    function Latest_Result (State : View_State) return String;
    --  The current input, for tests.
    function Input_Text (State : View_State) return String;
+
+   --  Clipboard (docs/clipboard.md). A copy takes the input's selection as
+   --  text; with no selection, the result card under the pointer, else the
+   --  newest successful result, as a typed value: its type, its text form
+   --  and its literal (the source that reads back as the same value).
+   type Copy_Kind is (Nothing_To_Copy, Input_Selection, Typed_Result);
+   function Copy_Source (State : View_State) return Copy_Kind;
+   function Copy_Text (State : View_State) return String;
+   function Copy_Type (State : View_State) return String;
+   function Copy_Literal (State : View_State) return String;
+   --  Remove the input's selection (after a cut was copied).
+   procedure Delete_Selection (State : in out View_State; Changed : out Boolean);
+   --  Insert pasted text (or a pasted literal) at the input's caret.
+   procedure Insert_Pasted
+     (State : in out View_State; Text : String; Changed : out Boolean);
    --  The pointer shape for the last pointer position.
    function Pointer_Style (State : View_State) return CuBit.UI.Pointer_Cursor_Style;
 

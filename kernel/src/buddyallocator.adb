@@ -43,7 +43,7 @@ is
     -- Frame pfn's entry in the owner table (Buddy_Metadata.Frame_Owners).
     function ownerAddress (pfn : Unsigned_64) return System.Address is
       (frameOwnerBase + Storage_Offset (pfn) * Buddy_Metadata.Owner_Bytes)
-      with Inline;
+      with Inline, Pre => pfn <= Unsigned_64 (Virtmem.PFN'Last);
     -- Five 9-bit levels cover 45 PFN bits (more than the physical address
     -- geometry). Only the root is static; descendants are allocated on demand.
     -- Nodes never move or disappear, so a prepared slot survives lock drops.
@@ -158,12 +158,6 @@ is
         return To_Integer(Left) < To_Integer(Right);
     end "<";
 
-    function "not" (arg : Storage_Count) return Storage_Count
-    is
-    begin
-        -- Need to convert to modular type for this intrinsic.
-        return Storage_Count(not Unsigned_64(arg));
-    end "not";
 
     ---------------------------------------------------------------------------
     -- getBuddy
@@ -190,7 +184,7 @@ is
         Post => To_Integer (blockStart'Result) <= To_Integer (addr)
     is
         roundDownMask : constant Integer_Address := 
-            Integer_Address(not (blockSize (ord) - 1));
+            not (Integer_Address (blockSize (ord)) - 1);
     begin
         -- discard the lowest (FRAME_SHIFT + MAX_BUDDY_ORDER) bits
         --pragma Assert(addr and roundDownMask < addr);
@@ -532,6 +526,7 @@ is
                 if blockSize (ord) >= allocSize then
                     return ord;
                 end if;
+                pragma Loop_Invariant (blockSize (ord) < allocSize);
             end loop;
 
             raise AllocatorException with "getOrder - allocation size exceeds BuddyAllocator maximum block size";
@@ -1351,9 +1346,13 @@ is
     function getFreeBytes return Storage_Count with
         SPARK_Mode => On
     is
+        -- Each order contributes at most Natural'Last blocks of at most
+        -- the largest block size, so the sum cannot overflow.
+        Max_Term : constant := Natural'Last * 2 ** (Virtmem.FRAME_SHIFT + Config.MAX_BUDDY_ORDER);
         ret : Storage_Count := 0;
     begin
         for ord in Order'Range loop
+            pragma Loop_Invariant (ret <= Storage_Count (ord) * Max_Term);
             ret := ret + (Storage_Count(freeLists(ord).numFreeBlocks) * blockSize (ord));
         end loop;
 
@@ -1368,7 +1367,9 @@ is
         SPARK_Mode => On
     is
     begin
-        return Natural(getFreeBytes / Virtmem.FRAME_SIZE);
+        -- Saturates (more than 8 TiB free reads as Natural'Last).
+        return Natural (Storage_Count'Min (getFreeBytes / Virtmem.FRAME_SIZE,
+                                           Storage_Count (Natural'Last)));
     end getFreeFrames;
 
     ---------------------------------------------------------------------------
@@ -1388,7 +1389,8 @@ is
             print (" Free Blocks: "); println (freeLists(ord).numFreeBlocks);
         end loop;
         
-        print ("Total free: "); print (Natural(getFreeBytes / 16#100000#));
+        print ("Total free: "); print (Natural (Storage_Count'Min (getFreeBytes / 16#100000#,
+                                                            Storage_Count (Natural'Last))));
         println (" MiB");
 
     end print;

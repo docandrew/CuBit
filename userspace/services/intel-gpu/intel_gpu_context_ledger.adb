@@ -10,7 +10,8 @@ package body Intel_GPU_Context_Ledger with SPARK_Mode is
 
    function Started (Done : Value; Now : Microseconds) return Ledger is
      ((Jobs => [others => (others => <>)], Owed => 0, Last => Done, Done => Done, Seen => Done,
-       Call => 0, Current => Active, Cause => Q.None, Progress => Now));
+       Call => 0, Current => Active, Cause => Q.None, Progress => Now,
+       Is_Running => False, Run_Start => 0));
 
    procedure Accept_Job
      (L : in out Ledger; Next : Value; Source : Origin; Item : Job; Now : Microseconds)
@@ -19,6 +20,7 @@ package body Intel_GPU_Context_Ledger with SPARK_Mode is
    begin
       if L.Done = L.Last then
          L.Progress := Now;
+         L.Is_Running := False;
       end if;
       L.Jobs (Slot_Of (Next)) := Item;
       L.Owed := L.Owed + 1;
@@ -41,7 +43,8 @@ package body Intel_GPU_Context_Ledger with SPARK_Mode is
 
    procedure Observe
      (L : in out Ledger; Read_OK : Boolean; Observed : Value; Gate_Open : Boolean;
-      Now, Hang_Budget : Microseconds; Result : out Observation)
+      Head_Started : Boolean; Now, Hang_Budget, Patience : Microseconds;
+      Result : out Observation)
    is
       Seen : Intel_GPU_Timeline.Observation;
    begin
@@ -63,7 +66,9 @@ package body Intel_GPU_Context_Ledger with SPARK_Mode is
          L.Cause := Q.Timeline_Fault;
          Result := Failed;
          return;
-      elsif Now = Intel_GPU_Timeline.Clock_Unavailable or else Now < L.Progress then
+      elsif Now = Intel_GPU_Timeline.Clock_Unavailable or else Now < L.Progress or else
+        (L.Is_Running and then Now < L.Run_Start)
+      then
          L.Current := Lost;
          L.Cause := Q.Device_Fault;
          Result := Failed;
@@ -74,6 +79,7 @@ package body Intel_GPU_Context_Ledger with SPARK_Mode is
          L.Done := Observed;
          L.Seen := Observed;
          L.Progress := Now;
+         L.Is_Running := False;
          Result := Advanced;
          pragma Assert (Valid (L));
          return;
@@ -81,15 +87,26 @@ package body Intel_GPU_Context_Ledger with SPARK_Mode is
          -- The GPU progressed; completion waits for the gate.
          L.Seen := Observed;
          L.Progress := Now;
+         L.Is_Running := False;
          Result := Held;
          return;
       end if;
-      -- No progress: the watchdogs.
-      if Now - L.Progress >= Hang_Budget then
+      -- No progress: the watchdogs. The budget runs from the moment the
+      -- head job was first seen started; a job queued behind another
+      -- context's waits, up to the patience.
+      if Head_Started and then not L.Is_Running then
+         L.Is_Running := True;
+         L.Run_Start := Now;
+      end if;
+      if L.Is_Running and then Now - L.Run_Start >= Hang_Budget then
          L.Current := Hung;
          L.Cause := Q.Hang;
          Result := Failed;
-      elsif L.Jobs (Slot_Of (L.Done + 1)).Deadline <= Now then
+      elsif Now - L.Progress >= Patience then
+         L.Current := Hung;
+         L.Cause := Q.Hang;
+         Result := Failed;
+      elsif L.Is_Running and then L.Jobs (Slot_Of (L.Done + 1)).Deadline <= Now then
          L.Current := Hung;
          L.Cause := Q.Deadline;
          Result := Failed;

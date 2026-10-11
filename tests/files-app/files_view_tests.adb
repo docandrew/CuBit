@@ -11,6 +11,7 @@ with Interfaces; use Interfaces;
 with Files_Mock_Service;
 with Files_Order;
 with Files_View; use Files_View;
+with Clipboard_Text;
 with Files_Host_Support; use Files_Host_Support;
 
 package body Files_View_Tests is
@@ -161,6 +162,24 @@ package body Files_View_Tests is
       Check (Filter_Text (View.all, Left_Pane) = "" and then Rows (View.all, Left_Pane) = 7
              and then Cursor_Name (View.all, Left_Pane) = "file2.txt",
              "Escape clears the filter; the cursor stays on its entry");
+      --  Copy (docs/clipboard.md): the cursor's entry, as names or paths.
+      declare
+         Text_Form, Literal : Clipboard_Text.Builder (4_096);
+         Count : Natural;
+         Request : Clipboard_Request;
+      begin
+         Selection_Copy (View.all, Copy_Names, Text_Form, Literal, Count);
+         Check (Count = 1 and then Clipboard_Text.Image (Text_Form) = "file2.txt"
+                and then Clipboard_Text.Image (Literal) = "(list ""file2.txt"")",
+                "copy: the cursor's name, as a List-String: " & Clipboard_Text.Image (Literal));
+         Selection_Copy (View.all, Copy_Paths, Text_Form, Literal, Count);
+         Check (Count = 1 and then Clipboard_Text.Image (Text_Form) = "@scratch:0/fixture/file2.txt"
+                and then Clipboard_Text.Image (Literal) = "(list ""@scratch:0/fixture/file2.txt"")",
+                "copy: the cursor's path: " & Clipboard_Text.Image (Text_Form));
+         Take_Clipboard_Request (View.all, Request);
+         Check (Request = No_Request, "no menu copy pending");
+         Check (not Prompt_Takes_Text (View.all), "no prompt takes the paste");
+      end;
 
       --  Marks.
       Key (Insert);
@@ -170,6 +189,18 @@ package body Files_View_Tests is
       Check (Marked_Count (View.all, Left_Pane) = 2, "Shift+Down marks the row passed");
       Key (Letter_A, Control => True);
       Check (Marked_Count (View.all, Left_Pane) = 6, "Ctrl+A marks every entry");
+      declare
+         Text_Form, Literal : Clipboard_Text.Builder (4_096);
+         Count : Natural;
+      begin
+         Selection_Copy (View.all, Copy_Names, Text_Form, Literal, Count);
+         Check (Count = 6 and then Clipboard_Text.Image (Literal) =
+                  "(list ""alpha"" ""beta"" ""nested"" ""file2.txt"" ""file10.txt"" ""Zeta.md"")"
+                and then Clipboard_Text.Image (Text_Form) =
+                  "alpha" & ASCII.LF & "beta" & ASCII.LF & "nested" & ASCII.LF & "file2.txt" & ASCII.LF &
+                  "file10.txt" & ASCII.LF & "Zeta.md",
+                "copy: marked entries in the pane's order: " & Clipboard_Text.Image (Literal));
+      end;
       Key (Letter_I, Control => True);
       Check (Marked_Count (View.all, Left_Pane) = 0, "Ctrl+I inverts");
       Key (Space);

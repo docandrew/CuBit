@@ -1520,7 +1520,8 @@ package body CuBit.UI is
    procedure Draw_Text_Edit_Field
       (c : Canvas; r : Rect; colors : Theme; text : String;
        cursor, selectionStart, selectionEnd : Natural;
-       focused : Boolean; hot : Boolean; suggestion : String := "")
+       focused : Boolean; hot : Boolean; suggestion : String := "";
+       masked : Boolean := False)
    is
       face : constant Color := colors.field;
       textX : Natural := r.x + 8;
@@ -1534,6 +1535,19 @@ package body CuBit.UI is
         (c, Content_Rect (r, 8, 2));
    begin
       if Is_Empty (r) then return; end if;
+      if masked then
+         declare
+            Shown : constant Natural :=
+              (if text'Length = 0 then 0 else Secret_Mask'Length);
+            Selected : constant Boolean :=
+              Shown > 0 and then selectionStart < selectionEnd;
+         begin
+            Draw_Text_Edit_Field
+              (c, r, colors, Secret_Mask (1 .. Shown), Shown,
+               (if Selected then 0 else Shown), Shown, focused, hot);
+            return;
+         end;
+      end if;
 
       Fill_Rect (c, r, face);
       if focused or hot then

@@ -20,7 +20,9 @@ package body Desktop_Image_Source with SPARK_Mode is
    begin
       S.Status := Quarantined; Result := Unsafe;
    end Quarantine;
-   -- Import a completed pass, or copy and submit its next row chunk.
+   -- Import a completed pass, or copy its next row chunk into the shared
+   -- staging batch (GPU-004): the batch is submitted once, for every image
+   -- staged this capture, by Desktop_Vulkan_Startup.Flush_Staged.
    procedure Advance (S : in out State; Result : out Outcome)
      with Pre => Valid (S) and D.Valid and S.Status = Ready_To_Upload,
        Post => Valid (S) and D.Valid and
@@ -39,12 +41,12 @@ package body Desktop_Image_Source with SPARK_Mode is
       end if;
       if Reply = D.Source_Busy then Result := Deferred; return; end if;
       if Reply = D.Source_Unsafe then Quarantine (S, Result); return; end if;
-      D.Begin_Write (S.Index, S.Lease, Write, Plan, Mapping, Reply);
+      D.Begin_Staged_Write (S.Index, S.Lease, Write, Plan, Mapping, Reply);
       if Reply = D.Source_Accepted then
          Compositor_Upload_Copy.Copy (S.Image.Pixels, Mapping, S.Bytes,
            Natural (S.Image.Pitch), Natural (S.Image.Width), Natural (S.Image.Height),
            Compositor_Upload.BGRA8, Plan, Copied);
-         if Copied then D.Submit_Write (Write, True, Reply);
+         if Copied then D.Stage_Write (Write, True, Reply);
          else
             D.Cancel_Write (Write, True, Cancelled);
             Reply := (if Cancelled then D.Source_Rejected else D.Source_Unsafe);
@@ -167,7 +169,7 @@ package body Desktop_Image_Source with SPARK_Mode is
          return;
       end if;
       if S.Status = Uploading then
-         D.Poll_Upload (Reply);
+         D.Poll_Slot_Upload (S.Index, Reply);
          case Reply is
             when D.Pending => Result := Pending; return;
             when D.Completed => S.Status := Ready_To_Upload;

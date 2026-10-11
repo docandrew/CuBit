@@ -11,7 +11,12 @@ with Config_Worker_Protocol;
 -- Linux-hosted CPU/copy baseline, NOT an IPC, database or disk benchmark.
 -- Replies are synthesized by the real protocol builder. The production store
 -- still performs authorization, validation and acknowledged publication.
+with CuBit.Process_IDs;
+with Interfaces;
 procedure Store_Benchmark is
+   use type CuBit.Process_IDs.Process_ID;
+   function PID (Word : Interfaces.Unsigned_64) return CuBit.Process_IDs.Process_ID
+     renames CuBit.Process_IDs.From_Word;
    package A renames Config_Authority;
    package C renames Config_Collections;
    package V renames Config_Objects;
@@ -72,14 +77,14 @@ procedure Store_Benchmark is
       Started : Ada.Real_Time.Time;
    begin
       -- First acknowledged value; setup and allocation are not timed.
-      S.Set (Store, Authority, 42, Handle, Value, 0, Token, Authorized, Result);
+      S.Set (Store, Authority, PID (42), Handle, Value, 0, Token, Authorized, Result);
       Token := Token + 1;
       Require (Authorized and Result = V.Accepted);
       Finish (P.Committed, 1);
       for Run in 1 .. 5 loop
          Started := Ada.Real_Time.Clock;
          for I in 1 .. Iterations loop
-            S.Get (Store, Authority, 42, Handle, Actual, Revision, Authorized, Read_Result);
+            S.Get (Store, Authority, PID (42), Handle, Actual, Revision, Authorized, Read_Result);
             Require (Authorized and Read_Result = V.Found);
             Checksum := Checksum + Revision;
          end loop;
@@ -87,7 +92,7 @@ procedure Store_Benchmark is
          Require (Actual = Value);
          Started := Ada.Real_Time.Clock;
          for I in 1 .. Iterations loop
-            S.Set (Store, Authority, 42, Handle, Value, Revision, Token, Authorized, Result);
+            S.Set (Store, Authority, PID (42), Handle, Value, Revision, Token, Authorized, Result);
             Token := Token + 1;
             Require (Authorized and Result = V.Accepted);
             Revision := Revision + 1;
@@ -95,9 +100,9 @@ procedure Store_Benchmark is
          end loop;
          Report (Label & " set/pending/reply/complete" & Run'Image, Started);
       end loop;
-      S.Get (Store, Authority, 99, Handle, Actual, Revision, Authorized, Read_Result);
+      S.Get (Store, Authority, PID (99), Handle, Actual, Revision, Authorized, Read_Result);
       Require (not Authorized and Revision = 0 and Actual = CCL.Objects.Image'(others => <>));
-      S.Close (Store, 42, Handle, Catalog_Result);
+      S.Close (Store, PID (42), Handle, Catalog_Result);
       Require (Catalog_Result = C.Closed);
    end Measure;
 
@@ -105,7 +110,7 @@ procedure Store_Benchmark is
    begin
       S.Register (Store, Name, Contract, ID, Catalog_Result);
       Require (Catalog_Result = C.Registered);
-      S.Open (Store, Authority, 42, Name, 0, A.Read_Write,
+      S.Open (Store, Authority, PID (42), Name, 0, A.Read_Write,
         CCL.Objects.Identity (Contract), Handle, Catalog_Result);
       Require (Catalog_Result = C.Opened);
       S.Restore (Store, ID, 10, Token, Result);
@@ -115,7 +120,7 @@ procedure Store_Benchmark is
    end Setup;
 begin
    A.Append (Rules, "org.cubit", A.Read_Write, Good); Require (Good);
-   A.Install (Authority, 42, Rules, Installed); Require (Installed = A.Installed);
+   A.Install (Authority, PID (42), Rules, Installed); Require (Installed = A.Installed);
    CCL.Objects.Bind (Types, CCL.Types.Integer_Type, [1, 2, 3, 4], Contract, Good);
    Require (Good);
    Value := CCL.Objects.Empty (Contract);

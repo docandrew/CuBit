@@ -240,4 +240,32 @@ package body CuBit.GPU_Plane_Protocol with SPARK_Mode is
          return (True, Result);
       end;
    end Decode_Move;
+
+   function Decode_Scanout (Wire : D.Wire_Message) return Scanout_Decoding is
+      Source : constant Unsigned_64 := Wire.Words (0);
+   begin
+      if not Header_Valid (Wire, Describe_Scanout) or else
+        Source not in Scanout_Source'Enum_Rep (Driver_Output) |
+                      Scanout_Source'Enum_Rep (Firmware_Framebuffer) or else
+        Wire.Words (1) not in 1 .. Unsigned_64 (D.DP.Positive_Extent'Last) or else
+        Wire.Words (2) not in 1 .. Unsigned_64 (D.DP.Positive_Extent'Last) or else
+        Wire.Words (3) > Unsigned_64 (D.DP.Buffer_Pitch'Last)
+      then
+         return (Valid => False);
+      end if;
+      declare
+         Result : constant Scanout :=
+           (Source => (if Source = Scanout_Source'Enum_Rep (Driver_Output)
+                       then Driver_Output else Firmware_Framebuffer),
+            Width => D.DP.Positive_Extent (Wire.Words (1)),
+            Height => D.DP.Positive_Extent (Wire.Words (2)),
+            Pitch => D.DP.Buffer_Pitch (Wire.Words (3)));
+      begin
+         --  Canonical form: re-encoding must reproduce every bit.
+         if Encode (Result) /= Wire then
+            return (Valid => False);
+         end if;
+         return (True, Result);
+      end;
+   end Decode_Scanout;
 end CuBit.GPU_Plane_Protocol;

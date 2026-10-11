@@ -4,12 +4,29 @@ package CuBit.UI.Editor with SPARK_Mode is
    subtype Text_Length is Natural range 0 .. MAX_TEXT_LENGTH;
    subtype Text_Position is Positive range 1 .. MAX_TEXT_LENGTH + 1;
 
+   --  A Sensitive field holds a secret (a password, a passphrase, a key):
+   --  it is drawn masked, a copy from it makes a paste-once clipboard entry,
+   --  a paste into it consumes the entry, and removed text is overwritten.
+   type Sensitivity is (Ordinary, Sensitive);
+
    type Edit_State is private;
    type Movement is (Move_Left, Move_Right, Move_Word_Left, Move_Word_Right,
                      Move_Start, Move_End);
 
    procedure Initialize
-     (State : out Edit_State; Text : String; Accepted : out Boolean);
+     (State : out Edit_State; Text : String; Accepted : out Boolean;
+      Kind : Sensitivity := Ordinary)
+     with Post => Kind_Of (State) = Kind;
+   function Kind_Of (State : Edit_State) return Sensitivity;
+   procedure Set_Kind (State : in out Edit_State; Kind : Sensitivity)
+     with Post => Kind_Of (State) = Kind;
+   --  Empty the field and overwrite every byte it held; the kind stays.
+   procedure Wipe (State : in out Edit_State)
+     with Post => Length (State) = 0 and then Kind_Of (State) = Kind_Of (State'Old);
+   --  The selected text (empty when nothing is selected).
+   function Selected_Text (State : Edit_State) return String
+     with Post => Selected_Text'Result'Length =
+       Selection_Last (State) - Selection_First (State);
    function Content (State : Edit_State) return String;
    function Length (State : Edit_State) return Text_Length;
    function Cursor (State : Edit_State) return Text_Position;
@@ -37,6 +54,7 @@ private
       Last   : Text_Length := 0;
       Point  : Text_Position := 1;
       Anchor : Text_Position := 1;
+      Kind   : Sensitivity := Ordinary;
    end record
    with Type_Invariant =>
      Edit_State.Point <= Edit_State.Last + 1 and then

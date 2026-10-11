@@ -1,8 +1,11 @@
 with Ada.Text_IO;
 with Config_Authority; use Config_Authority;
+with CuBit.Process_IDs; use CuBit.Process_IDs;
 with Config_Authority_Wire;
 
 procedure Authority_Wire_Tests is
+   --  Subjects: well-formed identities (slot N, first life).
+   function P (Slot : Slot_Number) return Process_ID is (To_Process_ID (Slot, 1));
    package Wire renames Config_Authority_Wire;
    Item : String (1 .. Wire.Entry_Bytes) := [others => Character'Val (0)];
    Rules : Rule_Set;
@@ -42,14 +45,14 @@ begin
          Wire.Decode (Item, Rules, Accepted);
          Check (Accepted = (Mask <= 3 and Length <= Maximum_Scope));
          if Accepted then
-            Install (State, 42, Rules, Installed_As); Check (Installed_As = Installed);
+            Install (State, P (42), Rules, Installed_As); Check (Installed_As = Installed);
             declare
                Scope : constant String := Item (9 .. 8 + Length);
             begin
-               Check (Allows (State, 42, Scope, Read_Config) = (Mask mod 2 = 1));
-               Check (Allows (State, 42, Scope, Write_Config) = (Mask >= 2));
-               Check (not Allows (State, 42, Scope, Activate_Config));
-               Check (not Allows (State, 43, Scope, Read_Config));
+               Check (Allows (State, P (42), Scope, Read_Config) = (Mask mod 2 = 1));
+               Check (Allows (State, P (42), Scope, Write_Config) = (Mask >= 2));
+               Check (not Allows (State, P (42), Scope, Activate_Config));
+               Check (not Allows (State, P (43), Scope, Read_Config));
             end;
          else
             Check (Rules = Empty_Rules);
@@ -88,10 +91,10 @@ begin
          Entries (I * Wire.Entry_Bytes + 1) := Item (1);
       end loop;
       -- A malformed later entry cannot publish an earlier valid prefix.
-      Install (State, 42, Expected, Installed_As); Check (Installed_As = Installed);
-      Check (Allows (State, 42, "desktop.theme", Read_Config));
-      Check (not Allows (State, 42, "desktop2.theme", Read_Config));
-      Check (not Allows (State, 42, "desktop.theme", Write_Config));
+      Install (State, P (42), Expected, Installed_As); Check (Installed_As = Installed);
+      Check (Allows (State, P (42), "desktop.theme", Read_Config));
+      Check (not Allows (State, P (42), "desktop2.theme", Read_Config));
+      Check (not Allows (State, P (42), "desktop.theme", Write_Config));
    end;
    Ada.Text_IO.Put_Line ("Config authority wire: PASS" & Checks'Image & " checks");
 end Authority_Wire_Tests;

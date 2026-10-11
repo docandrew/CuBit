@@ -19,6 +19,25 @@ begin
          pragma Assert (B.Active (S) = 1 - Old and B.Current (S) = B.Idle);
       end;
    end loop;
+   --  Three buffers (Intel): the target rotates and is never the active one.
+   declare
+      T : B.State;
+   begin
+      B.Set_Count (T, 3);
+      B.Cleared (T);
+      B.Set_Count (T, 2); pragma Assert (B.Count (T) = 3);
+      for I in B.Identifier range 1 .. 3000 loop
+         declare Old : constant B.Buffer := B.Active (T); begin
+            B.Prepare (T, Accepted);
+            pragma Assert (Accepted and B.Target (T) = (Old + 1) mod 3 and
+                           not B.Writable (T, Old));
+            B.Seal (T, I);
+            pragma Assert (for all X in B.Buffer => not B.Writable (T, X));
+            B.Complete (T, I, True);
+            pragma Assert (B.Active (T) = (Old + 1) mod 3);
+         end;
+      end loop;
+   end;
    for Fault in 0 .. 5 loop
       declare Item : B.State; Before : B.State; begin
          B.Cleared (Item); B.Prepare (Item, Accepted); B.Seal (Item, 123);
@@ -39,5 +58,5 @@ begin
          end loop;
       end;
    end loop;
-   Ada.Text_IO.Put_Line ("BACKEND-TARGETS: PASS 10000 flips and stale/unknown/faulted lease retention");
+   Ada.Text_IO.Put_Line ("BACKEND-TARGETS: PASS 10000 two-buffer and 3000 three-buffer flips and stale/unknown/faulted lease retention");
 end Backend_Targets_Tests;

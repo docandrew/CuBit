@@ -5,6 +5,7 @@ with Intel_GPU_ADLN_Context_Init;
 with Intel_GPU_ADLN_Context_Settings;
 with Intel_GPU_ADLN_Batch_Start;
 with Intel_GPU_ADLN_Barrier;
+with Intel_GPU_ADLN_PPHWSP;
 procedure Context_Init_Tests is
    package Init renames Intel_GPU_ADLN_Context_Init;
    function Bit (N : Natural) return Unsigned_32 is (Shift_Left (1, N));
@@ -152,11 +153,20 @@ begin
                pragma Assert (R.Valid = M.Valid);
                for I in R.Words'Range loop
                   pragma Assert (R.Words (I) =
-                    (if R.Valid and I = 60 then 16#200400# else M.Words (I)));
+                    (if R.Valid and I = 60 then 16#200400#
+                     -- The barriers around the batch stamp the job's time.
+                     elsif R.Valid and (I = Init.Start_Stamp_Flags or I = Init.End_Stamp_Flags)
+                     then (M.Words (I) and not Intel_GPU_ADLN_Barrier.Post_Sync_Mask) or
+                          Intel_GPU_ADLN_Barrier.Post_Sync_Timestamp
+                     elsif R.Valid and I = Init.Start_Stamp_Address
+                     then Intel_GPU_ADLN_PPHWSP.Job_Start_Offset (Unsigned_64 (Sequence))
+                     elsif R.Valid and I = Init.End_Stamp_Address
+                     then Intel_GPU_ADLN_PPHWSP.Job_End_Offset (Unsigned_64 (Sequence))
+                     else M.Words (I)));
                end loop;
             end;
          end loop;
       end loop;
    end loop;
-   Ada.Text_IO.Put_Line ("Drawing branch PASS: only fixed private VA differs; guards/barriers retained");
+   Ada.Text_IO.Put_Line ("Drawing branch PASS: only fixed private VA and the job's time stamps differ; guards/barriers retained");
 end Context_Init_Tests;

@@ -57,6 +57,12 @@ package body CuBit.Display_Geometry with SPARK_Mode is
         (Wide'Min (W, ((Wide (R) - Wide (B.Left)) * N + D - 1) / D));
       Y1 := Pixel_Edge
         (Wide'Min (V, ((Wide (H) - Wide (B.Top)) * N + D - 1) / D));
+      --  Edges scale monotonically: stated per axis so the rotations below
+      --  need no nonlinear search to keep Left <= Right, Top <= Bottom.
+      pragma Assert ((Wide (L) - Wide (B.Left)) * N <= (Wide (R) - Wide (B.Left)) * N);
+      pragma Assert ((Wide (T) - Wide (B.Top)) * N <= (Wide (H) - Wide (B.Top)) * N);
+      pragma Assert (X0 <= X1 and then Y0 <= Y1);
+      pragma Assert (X1 <= Pixel_Edge (W) and then Y1 <= Pixel_Edge (V));
       case Screen.Rotation is
          when Unrotated => return (X0, Y0, X1, Y1);
          when Clockwise_90 =>

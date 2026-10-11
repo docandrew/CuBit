@@ -17,6 +17,13 @@ enum cubit_gpu_queue_status {
 };
 /* CuBit.GPU_Queues.Opcode */
 enum cubit_gpu_operation { CUBIT_GPU_EXECUTE = 1, CUBIT_GPU_SIGNAL = 2 };
+/* CuBit.GPU_Queues.Kind_*: what a job does, for the driver's per-kind
+ * GPU execution-time accounting. Any combination; 0 untagged. */
+enum cubit_gpu_kind {
+   CUBIT_GPU_KIND_UPLOAD = 1, CUBIT_GPU_KIND_RENDER = 2,
+   CUBIT_GPU_KIND_READBACK = 4, CUBIT_GPU_KIND_INTERNAL = 8,
+};
+#define CUBIT_GPU_KINDS_MASK 0xFu
 /* Absolute monotonic microseconds; none spelled out. */
 #define CUBIT_GPU_NO_DEADLINE UINT64_MAX
 /* Vulkan's no-timeout as remaining nanoseconds (Native_GPU_Job_Rules). */
@@ -25,7 +32,8 @@ enum cubit_gpu_operation { CUBIT_GPU_EXECUTE = 1, CUBIT_GPU_SIGNAL = 2 };
 struct cubit_gpu_wait { uint32_t context, reserved; uint64_t target; /* 0: none */ };
 struct cubit_gpu_job {
    uint32_t operation, context;
-   uint32_t handle, offset, bytes, reserved;   /* Execute: the batch within its BO */
+   uint32_t handle, offset, bytes;             /* Execute: the batch within its BO */
+   uint32_t kinds;                             /* CUBIT_GPU_KIND_* bits (accounting) */
    uint64_t gpu;                                /* raw 48-bit address of the batch */
    struct cubit_gpu_wait first, second;
    uint64_t deadline_us;
@@ -44,3 +52,6 @@ enum cubit_gpu_queue_status cubit_gpu_queue_observe(uint64_t slot,
 /* Block until context reaches target or remaining_ns pass. OK: reached. */
 enum cubit_gpu_queue_status cubit_gpu_queue_wait(uint64_t slot, uint32_t context,
    uint64_t target, uint64_t remaining_ns);
+/* The next vkQueueSubmit's job kinds (CUBIT_GPU_KIND_* bits), set by the
+ * client just before it submits (Desktop's recorder); taken by that submit. */
+void cubit_gpu_tag_next_submit(uint32_t kinds);

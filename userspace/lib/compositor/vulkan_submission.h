@@ -35,4 +35,32 @@ uint32_t cubit_vulkan_submission_submit(void *borrowed);
 uint32_t cubit_vulkan_submission_poll(void *borrowed);
 uint32_t cubit_vulkan_submission_cancel(void *borrowed);
 uint32_t cubit_vulkan_submission_matches(void *borrowed,void *draw);
+
+/* Job accounting (GPU-001 step 3 follow-up): what each submission does.
+ * Recorders note their work into the submission being recorded (Desktop
+ * records and submits one command buffer at a time); submit tags the job
+ * for the GPU driver's per-kind execution-time line and keeps per-kind
+ * counts, sizes and submit-to-seen times for Desktop's own line. Kinds are
+ * CuBit.GPU_Queues.Kind_* bits. Weak: fixtures without the submission
+ * module simply record nothing. */
+enum cubit_vulkan_job_kind {
+    CUBIT_VULKAN_JOB_UPLOAD = 1,    /* buffer to image: amount in bytes */
+    CUBIT_VULKAN_JOB_RENDER = 2,    /* render pass: amount in pixels */
+    CUBIT_VULKAN_JOB_READBACK = 4,  /* image to buffer: amount in bytes */
+};
+void cubit_vulkan_job_note(enum cubit_vulkan_job_kind kind,uint64_t amount) __attribute__((weak));
+/* One draw recorded into the render pass: its scissored pixel area (each
+ * draw is a quad shaded over its clip rectangle). Source names the recorder
+ * (cubit_vulkan_draw_source). */
+enum cubit_vulkan_draw_source {
+    CUBIT_VULKAN_DRAW_AFFINE = 0,   /* client surfaces, glyphs, icons */
+    CUBIT_VULKAN_DRAW_BACKDROP = 1, /* the wallpaper */
+    CUBIT_VULKAN_DRAW_CHECKER = 2,
+    CUBIT_VULKAN_DRAW_FILL = 3,     /* attachment clears */
+    CUBIT_VULKAN_DRAW_SOURCES = 4,
+};
+void cubit_vulkan_job_note_draw(enum cubit_vulkan_draw_source source,uint64_t pixels) __attribute__((weak));
+/* "kinds=jobs/amounts/seen_us(avg/max) ..." since the last report, then
+ * reset; NUL-terminated within capacity. Returns the length. */
+uint32_t cubit_vulkan_job_report(char *buffer,uint32_t capacity);
 #endif

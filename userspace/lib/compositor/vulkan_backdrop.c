@@ -1,3 +1,4 @@
+#include "vulkan_submission.h"
 #include "vulkan_backdrop.h"
 #include <stddef.h>
 /* Same push ABI as the affine engine; mask=2 selects endpoint bilinear mode. */
@@ -38,5 +39,6 @@ uint32_t cubit_vulkan_record_backdrop(void *borrowed,
     e->viewport(b->command,0,1,&viewport);e->scissor(b->command,0,1,&clip);
     e->constants(b->command,e->layout,VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof push,&push);
     e->draw(b->command,6,1,0,0);
+    if(cubit_vulkan_job_note_draw)cubit_vulkan_job_note_draw(CUBIT_VULKAN_DRAW_BACKDROP,(uint64_t)d->clip_w*d->clip_h);
     return 0;
 }

@@ -1,3 +1,4 @@
+pragma Ada_2022;
 package body Free_Block_Set with SPARK_Mode is
    procedure Prove_Population_Change
      (Before, After : Storage; Item, Prefix : Index) with Ghost,
